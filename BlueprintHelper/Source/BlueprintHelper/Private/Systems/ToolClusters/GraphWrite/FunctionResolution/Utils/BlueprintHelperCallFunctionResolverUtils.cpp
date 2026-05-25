@@ -98,6 +98,31 @@ static bool IsContainerPinCompatibleWithProperty(const FBlueprintHelperCallFunct
 	}
 	return true;
 }
+
+static UFunction* CanonicalizeActionDatabaseFunction(const UFunction* Function)
+{
+	if (!Function)
+	{
+		return nullptr;
+	}
+
+	const UClass* OwnerClass = Function->GetOwnerClass();
+	const UBlueprint* OwnerBlueprint = OwnerClass
+		? Cast<UBlueprint>(OwnerClass->ClassGeneratedBy)
+		: nullptr;
+	if (!OwnerBlueprint
+		|| OwnerBlueprint->SkeletonGeneratedClass.Get() != OwnerClass
+		|| !OwnerBlueprint->GeneratedClass)
+	{
+		return const_cast<UFunction*>(Function);
+	}
+
+	if (UFunction* GeneratedFunction = OwnerBlueprint->GeneratedClass->FindFunctionByName(Function->GetFName()))
+	{
+		return GeneratedFunction;
+	}
+	return const_cast<UFunction*>(Function);
+}
 }
 
 FString FBlueprintHelperCallFunctionResolverUtils::NormalizeForCompare(const FString& Value)
@@ -873,11 +898,6 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	FBlueprintHelperCallFunctionCandidate Candidate;
 	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
 	const bool bGraphCompatible = NodeSpawner != nullptr || IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
-	UBlueprintNodeSpawner* EffectiveNodeSpawner = NodeSpawner;
-	if (!EffectiveNodeSpawner && bGraphCompatible)
-	{
-		EffectiveNodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
-	}
 	Candidate.StableId = StableId;
 	Candidate.OwnerClassPath = GetOwnerClassPath(Function);
 	Candidate.NativeFunctionName = Function->GetName();
@@ -911,7 +931,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 		}
 	}
 	Candidate.Function = Function;
-	Candidate.NodeSpawner = EffectiveNodeSpawner;
+	Candidate.NodeSpawner = NodeSpawner;
 	InOutCandidates.Add(StableId, Candidate);
 }
 
@@ -934,6 +954,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddActionDatabaseCandidates(
 	Filter.Context = Context;
 	Filter.PermittedNodeTypes.Add(UK2Node_CallFunction::StaticClass());
 
+	FBlueprintActionDatabase::Get().RefreshAll();
 	const FBlueprintActionDatabase::FActionRegistry& ActionRegistry = FBlueprintActionDatabase::Get().GetAllActions();
 	for (const TPair<FObjectKey, FBlueprintActionDatabase::FActionList>& RegistryPair : ActionRegistry)
 	{
@@ -958,7 +979,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddActionDatabaseCandidates(
 				continue;
 			}
 
-			AddCandidateForFunction(const_cast<UFunction*>(AssociatedFunction), Request, InOutCandidates, Spawner);
+			AddCandidateForFunction(CanonicalizeActionDatabaseFunction(AssociatedFunction), Request, InOutCandidates, Spawner);
 		}
 	}
 }

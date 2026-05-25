@@ -923,11 +923,11 @@ bool FBlueprintHelperCallFunctionResolverStressBlueprintAuthoredOverloadLikeAmbi
 	const FBlueprintHelperCallFunctionCandidate* ChildCandidate =
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCandidateStableId(Result, ChildStableId);
 
-	TestNotEqual(TEXT("supplemental-only overload-like functions are not selected"), Result.Status, EBlueprintHelperCallFunctionResolveStatus::Resolved);
+	TestNotEqual(TEXT("overload-like functions are not selected without unique constraints"), Result.Status, EBlueprintHelperCallFunctionResolveStatus::Resolved);
 	TestTrue(TEXT("error code records no unique graph-compatible function"),
 		Result.ErrorCode == TEXT("function_call_not_found")
 		|| Result.ErrorCode == TEXT("ambiguous_function_call"));
-	TestTrue(TEXT("overload-like diagnostics include both supplemental candidates"),
+	TestTrue(TEXT("overload-like diagnostics include both candidates"),
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::CountCandidatesByFunctionName(Result, TEXT("ResolvePayload_Int")) +
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::CountCandidatesByFunctionName(Result, TEXT("ResolvePayload_String")) >=
 		2);
@@ -937,14 +937,14 @@ bool FBlueprintHelperCallFunctionResolverStressBlueprintAuthoredOverloadLikeAmbi
 	if (ParentCandidate)
 	{
 		TestEqual(TEXT("parent owner class"), ParentCandidate->OwnerClassPath, Fixture.ParentBlueprint->GeneratedClass->GetPathName());
-		TestFalse(TEXT("parent supplemental-only candidate has no action database evidence"), ParentCandidate->bFromActionDatabase);
-		TestFalse(TEXT("parent supplemental-only candidate has no node spawner evidence"), ParentCandidate->NodeSpawner.IsValid());
+		TestTrue(TEXT("parent candidate uses action database evidence"), ParentCandidate->bFromActionDatabase);
+		TestTrue(TEXT("parent candidate has node spawner evidence"), ParentCandidate->NodeSpawner.IsValid());
 	}
 	if (ChildCandidate)
 	{
 		TestEqual(TEXT("child owner class"), ChildCandidate->OwnerClassPath, ChildGeneratedClass->GetPathName());
-		TestFalse(TEXT("child supplemental-only candidate has no action database evidence"), ChildCandidate->bFromActionDatabase);
-		TestFalse(TEXT("child supplemental-only candidate has no node spawner evidence"), ChildCandidate->NodeSpawner.IsValid());
+		TestTrue(TEXT("child candidate uses action database evidence"), ChildCandidate->bFromActionDatabase);
+		TestTrue(TEXT("child candidate has node spawner evidence"), ChildCandidate->NodeSpawner.IsValid());
 	}
 	return true;
 }

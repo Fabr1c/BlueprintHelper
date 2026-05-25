@@ -27,6 +27,14 @@ bool FBlueprintHelperProjectedAssetActionEvidence::HasSelector() const
 		|| !Category.IsEmpty();
 }
 
+bool FBlueprintHelperProjectedAssetActionEvidence::HasProjectedIdentity() const
+{
+	return !StableId.IsEmpty()
+		&& !NodeClassPath.IsEmpty()
+		&& !SpawnerSignature.IsEmpty()
+		&& !OwnerPath.IsEmpty();
+}
+
 bool FBlueprintHelperProjectedTypePromotionEvidence::IsComplete() const
 {
 	return !OperatorName.IsEmpty()
@@ -46,6 +54,19 @@ FBlueprintHelperProjectedAssetActionEvidence FBlueprintHelperProjectedSpawnerEvi
 	Evidence.MenuName = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_menu_name"));
 	Evidence.Category = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_category"));
 	return Evidence;
+}
+
+void FBlueprintHelperProjectedSpawnerEvidence::WriteAssetActionEvidence(
+	const FBlueprintHelperProjectedAssetActionEvidence& Evidence,
+	TMap<FString, FString>& OutContextEvidence)
+{
+	OutContextEvidence.Add(TEXT("asset_action_stable_id"), Evidence.StableId);
+	OutContextEvidence.Add(TEXT("asset_action_node_class"), Evidence.NodeClassPath);
+	OutContextEvidence.Add(TEXT("asset_action_spawner_signature"), Evidence.SpawnerSignature);
+	OutContextEvidence.Add(TEXT("asset_action_owner_path"), Evidence.OwnerPath);
+	OutContextEvidence.Add(TEXT("asset_action_query"), Evidence.Query);
+	OutContextEvidence.Add(TEXT("asset_action_menu_name"), Evidence.MenuName);
+	OutContextEvidence.Add(TEXT("asset_action_category"), Evidence.Category);
 }
 
 FBlueprintHelperProjectedTypePromotionEvidence FBlueprintHelperProjectedSpawnerEvidence::ReadTypePromotionEvidence(

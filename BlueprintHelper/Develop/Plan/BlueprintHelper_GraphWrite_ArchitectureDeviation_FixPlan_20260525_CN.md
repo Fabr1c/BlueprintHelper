@@ -10,6 +10,21 @@
 - `Patch ConnectPins` 与审计项 1 有部分重叠，等 Merge/Patch ownership、Merge callable、EventDelegate handler scan 完成讨论后再决定。
 - 本批不做旧 Agent、旧字段、旧工具兼容。
 
+## 2026-05-25 后续状态同步
+
+第一批 FixPlan 的 Immediate Implementation 已完成；原 Discussion-gated Backlog 中的 1、2、3、5 已由后续专项计划关闭或收敛，不再保持“暂缓”状态：
+
+| 审计项 | 当前状态 | 后续关闭文档 | 备注 |
+|---|---|---|---|
+| 1. Merge / Patch ownership | CLOSED | `BlueprintHelper_GraphWrite_PatchMergeOwnership_ConnectPinsPlan_20260525_CN.md` | Patch/Merge service 解析 payload / anchor 并构造 mutation intent，pin mutation execution owner 为 coordinator。 |
+| 2. Merge callable convergence | CLOSED_WITH_TEST_NAME_NOTE | `BlueprintHelper_GraphWrite_MergeCallableConvergencePlan_20260525_CN.md` | 主体已收敛到 Merge callable fragment service + GraphStatement callable builder；最终行为测试名与原计划草案不同。 |
+| 3. EventDelegate handler scan | CLOSED | `BlueprintHelper_GraphWrite_EventTaxonomy_FiveBugFixPlan_20260525_CN.md` | Handler scan fallback 已移除，resolver 消费 projected handler evidence；taxonomy 边界按 Signature / GraphWrite / EventDelegate 拆分。 |
+| 4. GraphWrite runtime Review evidence | CLOSED | 本文件 Execution Result | GraphWrite TaskRuntime cluster 自建 Review evidence，不使用 runtime fallback。 |
+| 5. Patch ConnectPins | CLOSED | `BlueprintHelper_GraphWrite_PatchMergeOwnership_ConnectPinsPlan_20260525_CN.md` | source endpoint 解析和 ConnectPins coordinator execution 已落地。 |
+| 6. Public parsed DTO cleanup | CLOSED_FOR_FACADE | 本文件 Execution Result | `BlueprintGraphWriteFacade.h` 不再暴露 parsed DTO；Public pipeline JSON API 是否继续保留是独立 API boundary 问题。 |
+
+剩余不属于本 FixPlan 的全局稳定门禁：GraphWrite 稳定后统一执行 generality preflight、按 `BlueprintHelper_GraphWrite_CapabilityContract_20260525_CN.md` 补全全局 capability contract、legacy parsed-plan 全量 retire/cleanup、Review evidence 上层消费链路覆盖、全量最终 E2E smoke 重跑。
+
 ## Immediate Implementation
 
 ### 4. GraphWrite runtime Review evidence

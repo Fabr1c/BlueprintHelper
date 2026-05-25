@@ -18,6 +18,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperProjectedAssetActionEvidence
 	FString Category;
 
 	bool HasSelector() const;
+	bool HasProjectedIdentity() const;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperProjectedTypePromotionEvidence
@@ -36,6 +37,10 @@ class BLUEPRINTHELPER_API FBlueprintHelperProjectedSpawnerEvidence
 public:
 	static FBlueprintHelperProjectedAssetActionEvidence ReadAssetActionEvidence(
 		const FBlueprintHelperActionResolutionRequest& Request);
+
+	static void WriteAssetActionEvidence(
+		const FBlueprintHelperProjectedAssetActionEvidence& Evidence,
+		TMap<FString, FString>& OutContextEvidence);
 
 	static FBlueprintHelperProjectedTypePromotionEvidence ReadTypePromotionEvidence(
 		const FBlueprintHelperActionResolutionRequest& Request);

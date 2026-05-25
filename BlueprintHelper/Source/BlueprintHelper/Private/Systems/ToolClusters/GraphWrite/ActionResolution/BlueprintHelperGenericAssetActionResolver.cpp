@@ -1,62 +1,12 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetActionResolver.h"
 
-#include "BlueprintActionDatabase.h"
-#include "BlueprintActionFilter.h"
 #include "BlueprintNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperAssetActionProjectionService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
 
 namespace
 {
-struct FAssetActionDatabaseMatch
-{
-	const UObject* ActionOwner = nullptr;
-	UBlueprintNodeSpawner* Spawner = nullptr;
-	UClass* NodeClass = nullptr;
-	FString StableId;
-	FString MenuName;
-	FString Category;
-};
-
-static FString NormalizeAssetActionText(const FString& Value)
-{
-	FString Result = Value.TrimStartAndEnd().ToLower();
-	Result.ReplaceInline(TEXT("_"), TEXT(""));
-	Result.ReplaceInline(TEXT("-"), TEXT(""));
-	Result.ReplaceInline(TEXT("|"), TEXT(""));
-	Result.ReplaceInline(TEXT("/"), TEXT(""));
-	Result.ReplaceInline(TEXT(" "), TEXT(""));
-	return Result;
-}
-
-static bool MatchesExactEvidence(const FString& Expected, const FString& Actual)
-{
-	return Expected.IsEmpty() || Expected.Equals(Actual.TrimStartAndEnd(), ESearchCase::IgnoreCase);
-}
-
-static bool MatchesQueryEvidence(const FString& Query, const FAssetActionDatabaseMatch& Match)
-{
-	if (Query.TrimStartAndEnd().IsEmpty())
-	{
-		return true;
-	}
-
-	const FString NormalizedQuery = NormalizeAssetActionText(Query);
-	if (NormalizedQuery.IsEmpty())
-	{
-		return true;
-	}
-
-	const FString SearchText = NormalizeAssetActionText(FString::Printf(
-		TEXT("%s %s %s %s %s"),
-		*Match.StableId,
-		Match.ActionOwner ? *Match.ActionOwner->GetPathName() : TEXT(""),
-		Match.NodeClass ? *Match.NodeClass->GetPathName() : TEXT(""),
-		*Match.MenuName,
-		*Match.Category));
-	return SearchText.Contains(NormalizedQuery);
-}
-
 static FBlueprintHelperActionResolutionResult MakeInvalidResult(const FString& Message)
 {
 	FBlueprintHelperActionResolutionResult Result;
@@ -111,83 +61,23 @@ static FBlueprintHelperActionResolutionResult MakeAmbiguousResult(
 	return Result;
 }
 
-static FBlueprintHelperCallFunctionCandidateInfo MakeCandidateInfo(const FAssetActionDatabaseMatch& Match)
+static FBlueprintHelperCallFunctionCandidateInfo MakeCandidateInfo(
+	const FBlueprintHelperAssetActionProjectedCandidate& Match)
 {
 	FBlueprintHelperCallFunctionCandidateInfo Candidate;
 	Candidate.StableId = Match.StableId;
 	Candidate.DisplayName = Match.MenuName.IsEmpty() ? TEXT("asset_action") : Match.MenuName;
 	Candidate.Category = Match.Category;
-	Candidate.NodeClassPath = Match.NodeClass ? Match.NodeClass->GetPathName() : FString();
+	Candidate.NodeClassPath = Match.NodeClassPath;
 	Candidate.MatchReason = FString::Printf(
 		TEXT("action_database owner=%s node=%s menu=%s"),
-		Match.ActionOwner ? *Match.ActionOwner->GetPathName() : TEXT("none"),
-		Match.NodeClass ? *Match.NodeClass->GetPathName() : TEXT("none"),
+		Match.OwnerPath.IsEmpty() ? TEXT("none") : *Match.OwnerPath,
+		Match.NodeClassPath.IsEmpty() ? TEXT("none") : *Match.NodeClassPath,
 		Match.MenuName.IsEmpty() ? TEXT("none") : *Match.MenuName);
 	Candidate.Score = 100;
 	Candidate.bGraphCompatible = Match.Spawner != nullptr;
 	Candidate.bFromActionDatabase = true;
 	return Candidate;
-}
-
-static bool TryBuildMatch(
-	const FBlueprintActionContext& ActionContext,
-	const UObject* ActionOwner,
-	UBlueprintNodeSpawner* Spawner,
-	FAssetActionDatabaseMatch& OutMatch)
-{
-	if (!Spawner)
-	{
-		return false;
-	}
-
-	FBlueprintActionInfo ActionInfo(ActionOwner, Spawner);
-	UClass* NodeClass = const_cast<UClass*>(ActionInfo.GetNodeClass());
-	if (!NodeClass)
-	{
-		return false;
-	}
-
-	const FBlueprintActionUiSpec UiSpec =
-		Spawner->GetUiSpec(ActionContext, ActionInfo.GetBindings());
-
-	OutMatch.ActionOwner = ActionOwner;
-	OutMatch.Spawner = Spawner;
-	OutMatch.NodeClass = NodeClass;
-	OutMatch.StableId = FBlueprintHelperProjectedSpawnerEvidence::MakeAssetActionStableId(ActionOwner, Spawner, NodeClass);
-	OutMatch.MenuName = UiSpec.MenuName.ToString().TrimStartAndEnd();
-	OutMatch.Category = UiSpec.Category.ToString().TrimStartAndEnd();
-	return true;
-}
-
-static bool MatchesProjectedEvidence(
-	const FBlueprintHelperProjectedAssetActionEvidence& Evidence,
-	const FAssetActionDatabaseMatch& Match)
-{
-	if (!MatchesExactEvidence(Evidence.StableId, Match.StableId))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.NodeClassPath, Match.NodeClass ? Match.NodeClass->GetPathName() : FString()))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.SpawnerSignature, Match.Spawner ? Match.Spawner->GetSpawnerSignature().ToString() : FString()))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.OwnerPath, Match.ActionOwner ? Match.ActionOwner->GetPathName() : FString()))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.MenuName, Match.MenuName))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.Category, Match.Category))
-	{
-		return false;
-	}
-	return MatchesQueryEvidence(Evidence.Query, Match);
 }
 }
 
@@ -197,72 +87,37 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetActionResolve
 {
 	const FBlueprintHelperProjectedAssetActionEvidence Evidence =
 		FBlueprintHelperProjectedSpawnerEvidence::ReadAssetActionEvidence(Request);
-	if (!Evidence.HasSelector())
+	if (!Evidence.HasProjectedIdentity())
 	{
-		return MakeInvalidResult(TEXT("asset_action create requires projected ActionDatabase spawner evidence."));
+		return MakeInvalidResult(TEXT("asset_action create requires projected ActionDatabase spawner identity evidence."));
 	}
 
-	FBlueprintActionContext ActionContext;
-	if (Request.Blueprint)
+	FBlueprintHelperAssetActionProjectionRequest ProjectionRequest;
+	ProjectionRequest.Blueprint = Request.Blueprint;
+	ProjectionRequest.TargetGraph = Request.TargetGraph;
+	ProjectionRequest.RequiredEvidence = Evidence;
+
+	const FBlueprintHelperAssetActionProjectionResult Projection =
+		FBlueprintHelperAssetActionProjectionService::Project(ProjectionRequest);
+
+	if (Projection.Status == EBlueprintHelperActionResolutionStatus::InvalidRequest)
 	{
-		ActionContext.Blueprints.Add(Request.Blueprint);
+		return MakeInvalidResult(Projection.Message.IsEmpty()
+			? TEXT("asset_action create requires projected ActionDatabase spawner evidence.")
+			: Projection.Message);
 	}
-	if (Request.TargetGraph)
-	{
-		ActionContext.Graphs.Add(Request.TargetGraph);
-	}
-
-	FBlueprintActionFilter Filter(FBlueprintActionFilter::BPFILTER_RejectIncompatibleThreadSafety);
-	Filter.Context = ActionContext;
-
-	FBlueprintActionDatabase::Get().RefreshAll();
-	const FBlueprintActionDatabase::FActionRegistry& Registry =
-		FBlueprintActionDatabase::Get().GetAllActions();
-
-	TArray<FAssetActionDatabaseMatch> Matches;
-	for (const TPair<FObjectKey, FBlueprintActionDatabase::FActionList>& Pair : Registry)
-	{
-		const UObject* ActionOwner = Pair.Key.ResolveObjectPtr();
-		for (const TObjectPtr<UBlueprintNodeSpawner>& SpawnerPtr : Pair.Value)
-		{
-			UBlueprintNodeSpawner* Spawner = SpawnerPtr.Get();
-			if (!Spawner)
-			{
-				continue;
-			}
-
-			FBlueprintActionInfo ActionInfo(ActionOwner, Spawner);
-			if (Filter.IsFiltered(ActionInfo))
-			{
-				continue;
-			}
-
-			FAssetActionDatabaseMatch Match;
-			if (!TryBuildMatch(ActionContext, ActionOwner, Spawner, Match))
-			{
-				continue;
-			}
-			if (!MatchesProjectedEvidence(Evidence, Match))
-			{
-				continue;
-			}
-
-			Matches.Add(MoveTemp(Match));
-		}
-	}
-
-	if (Matches.Num() == 0)
+	if (Projection.Candidates.Num() == 0)
 	{
 		return MakeNotFoundResult(
 			Evidence,
 			TEXT("asset_action projected evidence did not match any ActionDatabase spawner."));
 	}
-	if (Matches.Num() > 1)
+	if (Projection.Candidates.Num() > 1)
 	{
-		return MakeAmbiguousResult(Evidence, Matches.Num());
+		return MakeAmbiguousResult(Evidence, Projection.Candidates.Num());
 	}
 
-	const FAssetActionDatabaseMatch& Match = Matches[0];
+	const FBlueprintHelperAssetActionProjectedCandidate& Match = Projection.Candidates[0];
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
@@ -270,7 +125,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetActionResolve
 	Result.SelectedSpawner = Match.Spawner;
 	Result.CandidateActions.Add(MakeCandidateInfo(Match));
 	Result.SpawnerClass = Match.Spawner ? Match.Spawner->GetClass()->GetPathName() : FString();
-	Result.NodeClass = Match.NodeClass ? Match.NodeClass->GetPathName() : FString();
+	Result.NodeClass = Match.NodeClassPath;
 	Result.MatchReason = FString::Printf(
 		TEXT("action_database stable_id=%s"),
 		*Match.StableId);

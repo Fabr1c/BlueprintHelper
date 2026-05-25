@@ -8,6 +8,28 @@
 
 结论：现有 GraphWrite 主路径已经部分具备 `SemanticIR -> ActionContextPipeline -> ActionResolutionCore -> GraphStatement fragment -> UE mutator` 的新架构形态，但 `merge_blueprint_graph`、`patch_blueprint_graph`、EventDelegate handler 解析、Review evidence 接入仍存在明确偏离。其中 Merge/Patch 独立执行链路是最高风险偏离，因为它绕开了设计文档要求的一致 GraphStatement/ActionContext/ActionResolution 主线。
 
+## 2026-05-25 状态同步
+
+本节记录后续修复计划执行后的当前状态；下方 P0/P1/P2/P3 原审计段落保留为历史问题来源，不再全部代表当前实现状态。
+
+| 原审计项 | 当前状态 | 当前证据 | 剩余判断 |
+|---|---|---|---|
+| 1. Merge/Patch ownership | CLOSED | `BlueprintHelper_GraphWrite_PatchMergeOwnership_ConnectPinsPlan_20260525_CN.md` 已记录 Execution/Verification Result；`Patch/Merge` 通过 mutation intent + `FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents` 收敛所有 pin mutation owner。 | 不再作为当前 P0 阻塞项；后续新增 Patch/Merge 子能力仍必须复用该 ownership。 |
+| 2. Merge callable convergence | CLOSED_WITH_TEST_NAME_NOTE | `BlueprintHelper_GraphWrite_MergeCallableConvergencePlan_20260525_CN.md` 已记录 Merge callable 创建收敛到 `FBlueprintHelperMergeCallableFragmentService`，并通过 `BuildCallFunctionFragment` / `ValidateCallFunctionFragment` 进入 GraphStatement callable fragment builder；`NoLocalMergeCallableSpawner` contract 已落地。 | 计划正文中的 `ToolResultBase.MergeCallableConvergence` 名称没有成为最终测试名，实际验收由 `BlockScopedAnchors.Merge` + source contract 承担。 |
+| 3. EventDelegate handler scan / event taxonomy | CLOSED | `BlueprintHelper_GraphWrite_EventTaxonomy_FiveBugFixPlan_20260525_CN.md` 已标记 completed；focused automation、legacy guards、source scans、final read-only review 均记录通过。 | 当前不再作为架构偏离项；后续 event 能力扩展仍保持 Signature owns declaration、GraphWrite owns body/use-site、EventDelegate owns delegate/component-bound use-site。 |
+| 4. GraphWrite runtime Review evidence | CLOSED | `BlueprintHelper_GraphWrite_ArchitectureDeviation_FixPlan_20260525_CN.md` 已记录 GraphWrite TaskRuntime cluster 自建 Review evidence，不走 runtime fallback，并通过 `BlueprintHelper.TaskRuntime.Cluster` / Review producer tests。 | 最小 graph surface atomic target 已接入；更细粒度 fragment/pin/action evidence 属于后续增强，不阻塞当前闭环。 |
+| 5. Patch ConnectPins | CLOSED | `BlueprintHelper_GraphWrite_PatchMergeOwnership_ConnectPinsPlan_20260525_CN.md` 已记录 `patch.source_node_ref/source_pin_ref` 与 path 形态解析、dry-run 端点校验、execute path 构造 `ConnectPins` intent 并走 coordinator。 | 不再作为功能失败项；TaskSpec agent-facing contract 是否公开 `connect_pins` 是独立能力边界问题。 |
+| 6. Public parsed DTO cleanup | CLOSED_FOR_FACADE | `BlueprintHelper_GraphWrite_ArchitectureDeviation_FixPlan_20260525_CN.md` 已记录 `BlueprintGraphWriteFacade.h` parsed DTO / legacy facade API 清理，public parsed DTO guard 通过。 | Public pipeline headers 仍暴露 `Generate*FromJson` pipeline API；这不是 Facade parsed DTO residue，但若目标是完全隐藏 JSON pipeline，应单独开 API boundary cleanup。 |
+
+## 当前距离“完全稳定 / 能力齐全”的剩余门禁
+
+1. `BlueprintHelper_GraphWrite_GeneralityPreflightTest_Plan_20260525_CN.md` 仍是未执行计划；该测试应在 GraphWrite 当前稳定性收敛后作为统一最终验收执行，而不是当前修复闭环的前置阻塞。
+2. Agent-facing `TaskSpec` public contract 仍是 first-slice 子集；它描述的是 Agent 可直接编写的稳定语义子集，不等同于 GraphWrite 内部/Bridge/runtime 的完整能力面。当前已新增 `BlueprintHelper_GraphWrite_CapabilityContract_20260525_CN.md` 作为待实现的全局能力契约入口。
+3. `asset_action` positive proof 当前主要是 C++ ActionResolution 证据；CLI/TaskSpec positive smoke 仍依赖能诚实生成 `asset_action_stable_id` 的 ActionDatabase projection fixture。
+4. legacy parsed-plan 路径仍是“执行层禁用”而非完全移除：`BlueprintGraphMutationPlanBuilder.cpp` 仍解析 legacy `nodes/links`，`BlueprintGraphMutationPlanExecutor.cpp` 以 `parsed_node_plan_unsupported` 阻断。当前决策是该类 parsed residue 必须全部移除，不能只保留阻断路径。
+5. Review evidence 仍缺少更上层的 TaskRuntime -> Review model 端到端消费断言；当前已有 cluster-owned evidence 构建证据，但 Merge/Patch/ConnectPins 的 Review metadata、`EvidenceId`/`ChangeId` 父子关系仍建议补链路级测试。
+6. GraphWrite 稳定性修复完成后，需要再跑一次统一最终 E2E：TaskSpec build/node tests、GraphWrite generality preflight、四簇/GraphWrite automation、UE 5.6 build、source hygiene scans。
+
 ## 严重等级
 
 - P0：主架构路径偏离，导致同一类 GraphWrite 写入存在两套事实上的执行模型。

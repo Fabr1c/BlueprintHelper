@@ -164,6 +164,8 @@ public:
 			Entry->SetStringField(TEXT("id"), EventName + TEXT("_entry"));
 			Entry->SetStringField(TEXT("kind"), TEXT("custom_event"));
 			Entry->SetStringField(TEXT("name"), EventName);
+			Entry->SetStringField(TEXT("source_cluster"), TEXT("blueprint_signature"));
+			Entry->SetStringField(TEXT("signature_evidence_id"), EventName + TEXT("_signature_evidence"));
 			LogicSpec->SetObjectField(TEXT("entry"), Entry);
 		}
 		LogicSpec->SetArrayField(TEXT("statements"), Statements);
@@ -2679,6 +2681,14 @@ bool FBlueprintHelperGraphWriteAppendOwnershipWritesMetadataWithoutManagedCommen
 	const FString GraphName = Graph->GetName();
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendReuseExistingEntryExecutePayload(Blueprint->GetPathName(), GraphName));
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		AddError(FString::Printf(
+			TEXT("append write failed: code=%s stage=%s message=%s"),
+			*Result.Error->Code,
+			ToolStageToString(Result.Error->Stage),
+			*Result.Error->Message));
+	}
 
 	TestTrue(TEXT("append write succeeds"), Result.bOk);
 	TestEqual(TEXT("append write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
@@ -2757,6 +2767,14 @@ bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FSt
 		OwnershipService);
 	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendReuseExistingEntryExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		AddError(FString::Printf(
+			TEXT("append reuse failed: code=%s stage=%s message=%s"),
+			*Result.Error->Code,
+			ToolStageToString(Result.Error->Stage),
+			*Result.Error->Message));
+	}
 
 	TestTrue(TEXT("append reusing signature entry succeeds"), Result.bOk);
 	TestEqual(TEXT("append reuse write status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);

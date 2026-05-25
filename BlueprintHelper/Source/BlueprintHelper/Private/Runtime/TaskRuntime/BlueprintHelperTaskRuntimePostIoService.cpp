@@ -47,14 +47,27 @@ FBlueprintHelperTaskRuntimePostIoFlushResult FBlueprintHelperTaskRuntimePostIoSe
 			: 0.0;
 		const TArray<FBlueprintHelperReviewRecord> ReviewRecords =
 			ReviewStore.BuildReviewRecordsFromEvidence(Batch.ReviewEvidences);
-		FString ReviewRecordError;
-		if (!ReviewStore.SaveReviewRecords(ReviewRecords, ReviewRecordError))
+		if (ReviewRecords.Num() == 0)
 		{
 			AddDiagnostic(
 				Result,
-				TEXT("review_record_write_failed"),
-				ReviewRecordError,
+				TEXT("review_evidence_produced_zero_records"),
+				FString::Printf(
+					TEXT("Review evidence batch produced zero review records from %d evidence item(s)."),
+					Batch.ReviewEvidences.Num()),
 				TEXT("review.records"));
+		}
+		else
+		{
+			FString ReviewRecordError;
+			if (!ReviewStore.SaveReviewRecords(ReviewRecords, ReviewRecordError))
+			{
+				AddDiagnostic(
+					Result,
+					TEXT("review_record_write_failed"),
+					ReviewRecordError,
+					TEXT("review.records"));
+			}
 		}
 		if (TimingTrace)
 		{

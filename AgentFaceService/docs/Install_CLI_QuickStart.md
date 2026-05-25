@@ -36,6 +36,10 @@ cd <PLUGIN_ROOT>
 
 The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
 
+交互式安装会在安装 Codex subagents 或 Claude sideAgents 时显示模型/思考等级表单。Codex 只显示推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`；Claude 只显示推荐组合 `haiku / high` 与 `sonnet / high`。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
+
+Interactive install shows model/reasoning forms when installing Codex subagents or Claude sideAgents. Codex only shows the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles; Claude only shows the recommended `haiku / high` and `sonnet / high` profiles. Non-interactive install uses the recommended defaults automatically, with a stronger default model for `task-worker`.
+
 Place the plugin at:
 
 ```text

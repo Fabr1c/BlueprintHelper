@@ -291,6 +291,14 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TSharedRef<FJsonObject> GraphWritePayload = MakeShared<FJsonObject>();
 	GraphWritePayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Door"));
 	GraphWritePayload->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+	GraphWritePayload->SetStringField(TEXT("kind"), TEXT("create"));
+	GraphWritePayload->SetStringField(TEXT("create_operation"), TEXT("asset_action"));
+	TSharedRef<FJsonObject> GraphWriteContextEvidence = MakeShared<FJsonObject>();
+	GraphWriteContextEvidence->SetStringField(TEXT("asset_action_stable_id"), TEXT("action_database:/Script/Engine.Blueprint:/Script/BlueprintGraph.K2Node_MakeArray:MakeArray"));
+	GraphWriteContextEvidence->SetStringField(TEXT("asset_action_node_class"), TEXT("/Script/BlueprintGraph.K2Node_MakeArray"));
+	GraphWriteContextEvidence->SetStringField(TEXT("asset_action_spawner_signature"), TEXT("MakeArray"));
+	GraphWriteContextEvidence->SetStringField(TEXT("asset_action_owner_path"), TEXT("/Script/Engine.Blueprint"));
+	GraphWritePayload->SetObjectField(TEXT("context_evidence"), GraphWriteContextEvidence);
 
 	FBlueprintHelperTaskRuntimeLoweredStep GraphWriteStep = FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("append_blueprint_graph"));
 	GraphWriteStep.Payload = GraphWritePayload;
@@ -330,9 +338,25 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestEqual(TEXT("graph write target operation step is required"),
 		GraphTarget.TaskStepIndex,
 		3);
+	TestEqual(TEXT("graph write target ownership is producer owned"),
+		GraphTarget.Ownership,
+		FString(TEXT("graph_write")));
+	TestEqual(TEXT("graph write target latest evidence id is preserved"),
+		GraphTarget.LatestEvidenceId,
+		GraphWriteEvidence.EvidenceId);
+	TestEqual(TEXT("graph write target keeps one source evidence id"),
+		GraphTarget.SourceEvidenceIds.Num(),
+		1);
+	TestEqual(TEXT("graph write target source evidence id is preserved"),
+		GraphTarget.SourceEvidenceIds.Num() == 1 ? GraphTarget.SourceEvidenceIds[0] : FString(),
+		GraphWriteEvidence.EvidenceId);
 	TestEqual(TEXT("graph write target surface is graph"),
 		static_cast<int32>(GraphTarget.Surface),
 		static_cast<int32>(EBlueprintHelperReviewSurface::Graph));
+	TestTrue(TEXT("graph write anchor preserves asset action stable id"),
+		GraphTarget.AnchorJson.Contains(TEXT("asset_action_stable_id")));
+	TestTrue(TEXT("graph write anchor preserves asset action operation"),
+		GraphTarget.AnchorJson.Contains(TEXT("create_operation")));
 
 	FBlueprintHelperWriteReviewEvidence FailedGraphWriteEvidence;
 	TestFalse(TEXT("failed graph write step does not produce Review evidence"),

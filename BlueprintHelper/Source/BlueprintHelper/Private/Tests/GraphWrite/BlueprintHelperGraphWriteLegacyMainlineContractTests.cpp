@@ -28,7 +28,12 @@ static const TCHAR* ForbiddenParsedNodeMainlineTokens[] = {
 	TEXT("const FParsedNode& NodeData"),
 	TEXT("FParsedNode NodeData"),
 	TEXT("FParsedNode BoundNodeData"),
-	TEXT("parsed_node_plan_unsupported")
+	TEXT("parsed_node_plan_unsupported"),
+	TEXT("FBlueprintGraphMutationPlan"),
+	TEXT("FBlueprintGraphMutationNodePlan"),
+	TEXT("FBlueprintGraphMutationLinkPlan"),
+	TEXT("MakeNodePlanFromParsedNode"),
+	TEXT("MakeLinkPlanFromParsedLink")
 };
 
 static const TCHAR* ForbiddenWideSurfaceFallbackTokens[] = {
@@ -86,10 +91,6 @@ private:
 
 static bool IsAllowedDiagnosticOnlyMatch(const FString& RelativePath, const FString& Token)
 {
-	if (Token == TEXT("parsed_node_plan_unsupported"))
-	{
-		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphMutationPlanExecutor.cpp"));
-	}
 	if (Token == TEXT("call_function.name"))
 	{
 		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.cpp"))
