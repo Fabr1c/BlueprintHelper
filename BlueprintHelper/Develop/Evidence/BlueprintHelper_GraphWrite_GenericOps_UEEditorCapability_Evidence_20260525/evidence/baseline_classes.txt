@@ -1,0 +1,13 @@
+Source/Editor/BlueprintGraph/Classes/K2Node_BreakStruct.h:28:class UK2Node_BreakStruct : public UK2Node_StructMemberGet
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchString.h:23:class UK2Node_SwitchString : public UK2Node_Switch
+Source/Editor/BlueprintGraph/Classes/K2Node_DoOnceMultiInput.h:23:class UK2Node_DoOnceMultiInput : public UK2Node, public IK2Node_AddPinInterface
+Source/Editor/BlueprintGraph/Classes/K2Node_ForEachElementInEnum.h:26:class UK2Node_ForEachElementInEnum : public UK2Node, public INodeDependingOnEnumInterface
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchName.h:23:class UK2Node_SwitchName : public UK2Node_Switch
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchInteger.h:23:class UK2Node_SwitchInteger : public UK2Node_Switch
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:27:class UK2Node_ExecutionSequence : public UK2Node, public IK2Node_AddPinInterface
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchEnum.h:29:class UK2Node_SwitchEnum : public UK2Node_Switch, public INodeDependingOnEnumInterface
+Source/Editor/BlueprintGraph/Classes/K2Node_IfThenElse.h:23:class UK2Node_IfThenElse : public UK2Node
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeStruct.h:33:class UK2Node_MakeStruct : public UK2Node_StructMemberSet
+Source/Editor/BlueprintGraph/Classes/K2Node_SetFieldsInStruct.h:29:class UK2Node_SetFieldsInStruct : public UK2Node_MakeStruct
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:26:class UK2Node_MultiGate : public UK2Node_ExecutionSequence
+Source/Editor/BlueprintGraph/Classes/K2Node_Select.h:32:class UK2Node_Select : public UK2Node, public INodeDependingOnEnumInterface, public IK2Node_AddPinInterface

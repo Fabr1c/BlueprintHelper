@@ -1,0 +1,360 @@
+     1	// Copyright Epic Games, Inc. All Rights Reserved.
+     2	
+     3	#pragma once
+     4	
+     5	#include "CoreMinimal.h"
+     6	#include "UObject/Script.h"
+     7	#include "UObject/ObjectMacros.h"
+     8	#include "UObject/Object.h"
+     9	#include "Templates/SubclassOf.h"
+    10	#include "UObject/UnrealType.h"
+    11	#include "UObject/ScriptMacros.h"
+    12	#include "Kismet/BlueprintFunctionLibrary.h"
+    13	#include "Net/Core/PushModel/PushModel.h"
+    14	#include "KismetArrayLibrary.generated.h"
+    15	
+    16	class AActor;
+    17	
+    18	UENUM(BlueprintType)
+    19	enum class EArraySortOrder : uint8
+    20	{
+    21		Ascending,
+    22		Descending
+    23	};
+    24	
+    25	UCLASS(meta=(BlueprintThreadSafe), MinimalAPI)
+    26	class UKismetArrayLibrary : public UBlueprintFunctionLibrary
+    27	{
+    28		GENERATED_UCLASS_BODY()
+    29		/** 
+    30		 *Add item to array
+    31		 *
+    32		 *@param	TargetArray		The array to add item to
+    33		 *@param	NewItem			The item to add to the array
+    34		 *@return	The index of the newly added item
+    35		*/
+    36		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Add", CompactNodeTitle = "ADD", ArrayParm = "TargetArray", ArrayTypeDependentParams = "NewItem", AutoCreateRefTerm = "NewItem"), Category="Utilities|Array")
+    37		static ENGINE_API int32 Array_Add(const TArray<int32>& TargetArray, const int32& NewItem);
+    38	
+    39		/**
+    40		*Add item to array (unique)
+    41		*
+    42		*@param		TargetArray		The array to add item to
+    43		*@param		NewItem			The item to add to the array
+    44		*@return	The index of the newly added item, or INDEX_NONE if the item is already present in the array
+    45		*/
+    46		UFUNCTION(BlueprintCallable, CustomThunk, meta = (DisplayName = "Add Unique", CompactNodeTitle = "ADDUNIQUE", ArrayParm = "TargetArray", ArrayTypeDependentParams = "NewItem", AutoCreateRefTerm = "NewItem"), Category = "Utilities|Array")
+    47		static ENGINE_API int32 Array_AddUnique(const TArray<int32>& TargetArray, const int32& NewItem);
+    48	
+    49		/** 
+    50		 * Shuffle (randomize) the elements of an array
+    51		 *
+    52		 *@param	TargetArray		The array to shuffle
+    53		*/
+    54		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Shuffle", CompactNodeTitle = "SHUFFLE", ArrayParm = "TargetArray"), Category="Utilities|Array")
+    55		static ENGINE_API void Array_Shuffle(const TArray<int32>& TargetArray);
+    56		
+    57		/** 
+    58		 * Shuffle (randomize) the elements of an array from a specific stream of random data, useful for achieving determinism
+    59		 *
+    60		 * @param	TargetArray		The array to shuffle
+    61		 * @param	RandomStream	The random stream
+    62		 */
+    63		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Shuffle from Stream", CompactNodeTitle = "SHUFFLE", ArrayParm = "TargetArray"), Category="Utilities|Array")
+    64		static ENGINE_API void Array_ShuffleFromStream(const TArray<int32>& TargetArray, UPARAM(Ref) FRandomStream& RandomStream);
+    65	
+    66		/** 
+    67		 * Checks if two arrays are memberwise identical
+    68		 *
+    69		 * @param	ArrayA		One of the arrays to compare
+    70		 * @param	ArrayB		The other array to compare
+    71		 * @return Whether the two arrays are identical
+    72		 */
+    73		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Identical", CompactNodeTitle = "==", ArrayParm = "ArrayA,ArrayB", ArrayTypeDependentParams = "ArrayB"), Category="Utilities|Array")
+    74		static ENGINE_API bool Array_Identical(const TArray<int32>& ArrayA, const TArray<int32>& ArrayB);
+    75	
+    76		/** 
+    77		 *Append an array to another array
+    78		 *
+    79		 *@param	TargetArray		The array to add the source array to
+    80		 *@param	SourceArray		The array to add to the target array
+    81		*/
+    82		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Append Array", CompactNodeTitle = "APPEND", ArrayParm = "TargetArray,SourceArray", ArrayTypeDependentParams = "SourceArray"), Category="Utilities|Array")
+    83		static ENGINE_API void Array_Append(const TArray<int32>& TargetArray, const TArray<int32>& SourceArray);
+    84	
+    85		/* 
+    86		 *Insert item at the given index into the array.
+    87		 *	
+    88		 *@param	TargetArray		The array to insert into
+    89		 *@param	NewItem			The item to insert into the array
+    90		 *@param	Index			The index at which to insert the item into the array
+    91		*/
+    92		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Insert", CompactNodeTitle = "INSERT", ArrayParm = "TargetArray", ArrayTypeDependentParams = "NewItem", AutoCreateRefTerm = "NewItem"), Category="Utilities|Array")
+    93		static ENGINE_API void Array_Insert(const TArray<int32>& TargetArray, const int32& NewItem, int32 Index);
+    94	
+    95	
+    96		/* 
+    97		 *Remove item at the given index from the array.
+    98		 *
+    99		 *@param	TargetArray		The array to remove from
+   100		 *@param	IndexToRemove	The index into the array to remove from
+   101		*/
+   102		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Remove Index", CompactNodeTitle = "REMOVE INDEX", ArrayParm = "TargetArray"), Category="Utilities|Array")
+   103		static ENGINE_API void Array_Remove(const TArray<int32>& TargetArray, int32 IndexToRemove);
+   104	
+   105		/* 
+   106		 *Remove all instances of item from array.
+   107		 *
+   108		 *@param	TargetArray		The array to remove from
+   109		 *@param	Item			The item to remove from the array
+   110		 *@return	True if one or more items were removed
+   111		*/
+   112		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Remove Item", CompactNodeTitle = "REMOVE", ArrayParm = "TargetArray", ArrayTypeDependentParams = "Item", AutoCreateRefTerm = "Item"), Category="Utilities|Array")
+   113		static ENGINE_API bool Array_RemoveItem(const TArray<int32>& TargetArray, const int32 &Item);
+   114	
+   115		/* 
+   116		 *Clear an array, removes all content
+   117		 *
+   118		 *@param	TargetArray		The array to clear
+   119		*/
+   120		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Clear", CompactNodeTitle = "CLEAR", Keywords = "empty", ArrayParm = "TargetArray"), Category="Utilities|Array")
+   121		static ENGINE_API void Array_Clear(const TArray<int32>& TargetArray);
+   122	
+   123		/* 
+   124		 *Resize Array to specified size. 
+   125		 *	
+   126		 *@param	TargetArray		The array to resize
+   127		 *@param	Size			The new size of the array
+   128		*/
+   129		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Resize", CompactNodeTitle = "RESIZE", ArrayParm = "TargetArray"), Category="Utilities|Array")
+   130		static ENGINE_API void Array_Resize(const TArray<int32>& TargetArray, int32 Size);
+   131		
+   132		/**
+   133		 * Reverse the elements of an array
+   134		 *
+   135		 *@param	TargetArray		The array to reverse
+   136		*/
+   137		UFUNCTION(BlueprintCallable, CustomThunk, meta = (DisplayName = "Reverse", CompactNodeTitle = "REVERSE", ArrayParm = "TargetArray"), Category = "Utilities|Array")
+   138		static ENGINE_API void Array_Reverse(const TArray<int32>& TargetArray);
+   139	
+   140		/* 
+   141		 *Get the number of items in an array
+   142		 *
+   143		 *@param	TargetArray		The array to get the length of
+   144		 *@return	The length of the array
+   145		*/
+   146		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Length", CompactNodeTitle = "LENGTH", ArrayParm = "TargetArray", Keywords = "num size count", BlueprintThreadSafe), Category="Utilities|Array")
+   147		static ENGINE_API int32 Array_Length(const TArray<int32>& TargetArray);
+   148	
+   149		/*
+   150		 *Check if the array is empty
+   151		 *
+   152		 *@param	TargetArray		The array to check
+   153		 *@return	A boolean indicating if the array is empty
+   154		*/
+   155		UFUNCTION(BlueprintPure, CustomThunk, meta = (DisplayName = "Is Empty", CompactNodeTitle = "IS EMPTY", ArrayParm = "TargetArray", BlueprintThreadSafe), Category = "Utilities|Array")
+   156		static ENGINE_API bool Array_IsEmpty(const TArray<int32>& TargetArray);
+   157	
+   158		/*
+   159		 *Check if the array has any elements
+   160		 *
+   161		 *@param	TargetArray		The array to check
+   162		 *@return	A boolean indicating if the array has any elements
+   163		*/
+   164		UFUNCTION(BlueprintPure, CustomThunk, meta = (DisplayName = "Is Not Empty", CompactNodeTitle = "IS NOT EMPTY", ArrayParm = "TargetArray", BlueprintThreadSafe), Category = "Utilities|Array")
+   165		static ENGINE_API bool Array_IsNotEmpty(const TArray<int32>& TargetArray);
+   166	
+   167	
+   168		/* 
+   169		 *Get the last valid index into an array
+   170		 *	
+   171		 *@param	TargetArray		The array to perform the operation on
+   172		 *@return	The last valid index of the array
+   173		*/
+   174		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Last Index", CompactNodeTitle = "LAST INDEX", ArrayParm = "TargetArray", BlueprintThreadSafe), Category="Utilities|Array")
+   175		static ENGINE_API int32 Array_LastIndex(const TArray<int32>& TargetArray);
+   176	
+   177		/*
+   178		 *Given an array and an index, returns a copy of the item found at that index
+   179		 *
+   180		 *@param	TargetArray		The array to get an item from
+   181		 *@param	Index			The index in the array to get an item from
+   182		 *@return	A copy of the item stored at the index
+   183		*/
+   184		UFUNCTION(BlueprintPure, CustomThunk, meta=(BlueprintInternalUseOnly = "true", DisplayName = "Get", CompactNodeTitle = "GET", ArrayParm = "TargetArray", ArrayTypeDependentParams = "Item", BlueprintThreadSafe), Category="Utilities|Array")
+   185		static ENGINE_API void Array_Get(const TArray<int32>& TargetArray, int32 Index, int32& Item);
+   186	
+   187		/* 
+   188		 *Given an array and an index, assigns the item to that array element
+   189		 *
+   190		 *@param	TargetArray		The array to perform the operation on
+   191		 *@param	Index			The index to assign the item to
+   192		 *@param	Item			The item to assign to the index of the array
+   193		 *@param	bSizeToFit		If true, the array will expand if Index is greater than the current size of the array
+   194		*/
+   195		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Set Array Elem", ArrayParm = "TargetArray", ArrayTypeDependentParams = "Item", AutoCreateRefTerm = "Item"), Category="Utilities|Array")
+   196		static ENGINE_API void Array_Set(const TArray<int32>& TargetArray, int32 Index, const int32& Item, bool bSizeToFit);
+   197	
+   198		/*
+   199		 *Swaps the elements at the specified positions in the specified array
+   200		 *If the specified positions are equal, invoking this method leaves the array unchanged
+   201		 *
+   202		 *@param	TargetArray		The array to perform the operation on
+   203		 *@param    FirstIndex      The index of one element to be swapped
+   204		 *@param    SecondIndex     The index of the other element to be swapped
+   205		*/
+   206		UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Swap Array Elements", CompactNodeTitle = "SWAP", ArrayParm = "TargetArray"), Category="Utilities|Array")
+   207		static ENGINE_API void Array_Swap(const TArray<int32>& TargetArray, int32 FirstIndex, int32 SecondIndex);
+   208	
+   209		/*  
+   210		 *Finds the index of the first instance of the item within the array
+   211		 *	
+   212		 *@param	TargetArray		The array to search for the item
+   213		 *@param	ItemToFind		The item to look for
+   214		 *@return	The index the item was found at, or -1 if not found
+   215		*/
+   216		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Find Item", CompactNodeTitle = "FIND", ArrayParm = "TargetArray", ArrayTypeDependentParams = "ItemToFind", AutoCreateRefTerm = "ItemToFind", BlueprintThreadSafe), Category="Utilities|Array")
+   217		static ENGINE_API int32 Array_Find(const TArray<int32>& TargetArray, const int32& ItemToFind);
+   218	
+   219		/*  
+   220		 *Returns true if the array contains the given item
+   221		 *
+   222		 *@param	TargetArray		The array to search for the item
+   223		 *@param	ItemToFind		The item to look for
+   224		 *@return	True if the item was found within the array
+   225		*/
+   226		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Contains Item", CompactNodeTitle = "CONTAINS", ArrayParm = "TargetArray", ArrayTypeDependentParams = "ItemToFind", AutoCreateRefTerm = "ItemToFind", BlueprintThreadSafe), Category="Utilities|Array")
+   227		static ENGINE_API bool Array_Contains(const TArray<int32>& TargetArray, const int32& ItemToFind);
+   228	
+   229		/*  
+   230		 *Filter an array based on a Class derived from Actor.  
+   231		 *	
+   232		 *@param	TargetArray		The array to filter from
+   233		 *@param	FilterClass		The Actor sub-class type that acts as the filter, only objects derived from it will be returned.
+   234		 *@return	An array containing only those objects which are derived from the class specified.
+   235		*/
+   236		UFUNCTION(BlueprintCallable, meta=(DisplayName = "Filter Array", DeterminesOutputType = "FilterClass", DynamicOutputParam = "FilteredArray"), Category = "Utilities|Array")
+   237		static ENGINE_API void FilterArray(const TArray<AActor*>& TargetArray, TSubclassOf<class AActor> FilterClass, TArray<AActor*>& FilteredArray);
+   238	
+   239		/** 
+   240		 * Not exposed to users. Supports setting an array property on an object by name.
+   241		 */
+   242		UFUNCTION(BlueprintCallable, CustomThunk, meta=(BlueprintInternalUseOnly = "true", ArrayParm = "Value", ArrayTypeDependentParams="Value"))
+   243		static ENGINE_API void SetArrayPropertyByName(UObject* Object, FName PropertyName, const TArray<int32>& Value);
+   244	
+   245		/*
+   246		 *Tests if IndexToTest is valid, i.e. greater than or equal to zero, and less than the number of elements in TargetArray.
+   247		 *
+   248		 *@param	TargetArray		Array to use for the IsValidIndex test
+   249		 *@param	IndexToTest		The Index, that we want to test for being valid
+   250		 *@return	True if the Index is Valid, i.e. greater than or equal to zero, and less than the number of elements in TargetArray.
+   251		*/
+   252		UFUNCTION(BlueprintPure, CustomThunk, meta = (DisplayName = "Is Valid Index", CompactNodeTitle = "IS VALID INDEX", ArrayParm = "TargetArray", BlueprintThreadSafe), Category = "Utilities|Array")
+   253		static ENGINE_API bool Array_IsValidIndex(const TArray<int32>& TargetArray, int32 IndexToTest);
+   254		
+   255		/**
+   256		 * Gets a random item from specified array
+   257		 * 
+   258		 * @param	TargetArray		The array
+   259		 * @param	OutItem			The random item from this array
+   260		 * @param	OutIndex		The index of random item (will be -1 if array is empty)
+   261		 */
+   262		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Random Array Item", CompactNodeTitle = "RANDOM", ArrayParm = "TargetArray", ArrayTypeDependentParams = "OutItem"), Category="Utilities|Array")
+   263		static ENGINE_API void Array_Random(const TArray<int32>& TargetArray, int32& OutItem, int32& OutIndex);
+   264	
+   265		/** 
+   266		 * Gets a random item from specified array (using random stream)
+   267		 * 
+   268		 * @param	TargetArray		The array
+   269		 * @param	RandomStream	The random stream
+   270		 * @param	OutItem			The random item from this array
+   271		 * @param	OutIndex		The index of random item (will be -1 if array is empty)
+   272		 */
+   273		UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Random Array Item from Stream", ArrayParm = "TargetArray", ArrayTypeDependentParams = "OutItem"), Category="Utilities|Array")
+   274		static ENGINE_API void Array_RandomFromStream(const TArray<int32>& TargetArray, UPARAM(Ref) FRandomStream& RandomStream, int32& OutItem, int32& OutIndex);
+   275	
+   276		/**
+   277		 * Sorts an array of strings alphabetically.
+   278		 *
+   279		 * @param	TargetArray		The array to sort.
+   280		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   281		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   282		 */
+   283		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (AdvancedDisplay = "bStableSort,SortOrder"))
+   284		static ENGINE_API void SortStringArray(UPARAM(Ref) TArray<FString>& TargetArray, bool bStableSort = false, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   285	
+   286		/**
+   287		 * Sorts an array of FNames.
+   288		 *
+   289		 * @param	TargetArray		The array to sort.
+   290		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   291		 * @param	bLexicalSort	If the names should be sorted based on the string value of the name rather than the comparison index. This is slower when enabled.
+   292		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   293		 */
+   294		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (AdvancedDisplay = "bStableSort,bLexicalSort,SortOrder"))
+   295		static ENGINE_API void SortNameArray(UPARAM(Ref) TArray<FName>& TargetArray, bool bStableSort = false, bool bLexicalSort = true, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   296	
+   297		/**
+   298		 * Sorts an array of bytes.
+   299		 *
+   300		 * @param	TargetArray		The array to sort.
+   301		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   302		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   303		 */
+   304		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (AdvancedDisplay = "bStableSort,SortOrder"))
+   305		static ENGINE_API void SortByteArray(UPARAM(Ref) TArray<uint8>& TargetArray, bool bStableSort = false, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   306	
+   307		/**
+   308		 * Sorts an array of integers.
+   309		 *
+   310		 * @param	TargetArray		The array to sort.
+   311		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   312		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   313		 */
+   314		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (DisplayName = "Sort Integer Array", AdvancedDisplay = "bStableSort,SortOrder"))
+   315		static ENGINE_API void SortIntArray(UPARAM(Ref) TArray<int32>& TargetArray, bool bStableSort = false, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   316	
+   317		/**
+   318		 * Sorts an array of 64-bit integers.
+   319		 *
+   320		 * @param	TargetArray		The array to sort.
+   321		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   322		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   323		 */
+   324		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (DisplayName = "Sort Integer64 Array", AdvancedDisplay = "bStableSort,SortOrder"))
+   325		static ENGINE_API void SortInt64Array(UPARAM(Ref) TArray<int64>& TargetArray, bool bStableSort = false, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   326	
+   327		/**
+   328		 * Sorts an array of doubles.
+   329		 *
+   330		 * @param	TargetArray		The array to sort.
+   331		 * @param	bStableSort		If a stable sort should be used. This preserves the order of identical elements, but is slower.
+   332		 * @param	SortOrder		If the array should be sorted in ascending or descending order.
+   333		 */
+   334		UFUNCTION(BlueprintCallable, Category = "Utilities|Array|Sort", meta = (AdvancedDisplay = "bStableSort,SortOrder"))
+   335		static ENGINE_API void SortFloatArray(UPARAM(Ref) TArray<double>& TargetArray, bool bStableSort = false, EArraySortOrder SortOrder = EArraySortOrder::Ascending);
+   336	
+   337		// Native functions that will be called by the below custom thunk layers, which read off the property address, and call the appropriate native handler
+   338		static ENGINE_API int32 GenericArray_Add(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem);
+   339		static ENGINE_API int32 GenericArray_AddUnique(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem);
+   340		static ENGINE_API void GenericArray_Shuffle(void* TargetArray, const FArrayProperty* ArrayProp);
+   341		static ENGINE_API void GenericArray_ShuffleFromStream(void* TargetArray, const FArrayProperty* ArrayProp, FRandomStream* RandomStream);
+   342		static ENGINE_API bool GenericArray_Identical(void* ArrayA, const FArrayProperty* ArrayAProp, void* ArrayB, const FArrayProperty* ArrayBProperty);
+   343		static ENGINE_API void GenericArray_Append(void* TargetArray, const FArrayProperty* TargetArrayProp, void* SourceArray, const FArrayProperty* SourceArrayProperty);
+   344		static ENGINE_API void GenericArray_Insert(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem, int32 Index);
+   345		static ENGINE_API void GenericArray_Remove(void* TargetArray, const FArrayProperty* ArrayProp, int32 IndexToRemove);
+   346		static ENGINE_API bool GenericArray_RemoveItem(void* TargetArray, const FArrayProperty* ArrayProp, const void* Item);
+   347		static ENGINE_API void GenericArray_Clear(void* TargetArray, const FArrayProperty* ArrayProp);
+   348		static ENGINE_API void GenericArray_Resize(void* TargetArray, const FArrayProperty* ArrayProp, int32 Size);
+   349		static ENGINE_API void GenericArray_Reverse(void* TargetArray, const FArrayProperty* ArrayProp);
+   350		static ENGINE_API int32 GenericArray_Length(const void* TargetArray, const FArrayProperty* ArrayProp);
+   351		static ENGINE_API bool GenericArray_IsEmpty(const void* TargetArray, const FArrayProperty* ArrayProp);
+   352		static ENGINE_API bool GenericArray_IsNotEmpty(const void* TargetArray, const FArrayProperty* ArrayProp);
+   353		static ENGINE_API int32 GenericArray_LastIndex(const void* TargetArray, const FArrayProperty* ArrayProp);
+   354		static ENGINE_API void GenericArray_Get(void* TargetArray, const FArrayProperty* ArrayProp, int32 Index, void* Item);
+   355		static ENGINE_API void GenericArray_Set(void* TargetArray, const FArrayProperty* ArrayProp, int32 Index, const void* NewItem, bool bSizeToFit);
+   356		static ENGINE_API void GenericArray_Swap(const void* TargetArray, const FArrayProperty* ArrayProp, int32 First, int32 Second);
+   357		static ENGINE_API int32 GenericArray_Find(const void* TargetArray, const FArrayProperty* ArrayProperty, const void* ItemToFind);
+   358		static ENGINE_API void GenericArray_SetArrayPropertyByName(UObject* OwnerObject, FName ArrayPropertyName, const void* SrcArrayAddr);
+   359		static ENGINE_API void GenericArray_Random(void* TargetArray, const FArrayProperty* ArrayProp, void* OutItem, int32* OutIndex);
+   360		static ENGINE_API void GenericArray_RandomFromStream(void* TargetArray, const FArrayProperty* ArrayProp, FRandomStream* RandomStream, void* OutItem, int32* OutIndex);

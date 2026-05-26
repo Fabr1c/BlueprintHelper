@@ -1,0 +1,1229 @@
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp 650-920 =====
+   650		AddClassCastActions(Class, ActionListOut);
+   651	}
+   652	
+   653	//------------------------------------------------------------------------------
+   654	static void BlueprintActionDatabaseImpl::AddClassFunctionActions(UClass const* const Class, FActionList& ActionListOut)
+   655	{
+   656		using namespace FBlueprintNodeSpawnerFactory; // for MakeMessageNodeSpawner()
+   657		check(Class != nullptr);
+   658	
+   659		// loop over all the functions in the specified class; exclude-super because 
+   660		// we can always get the super functions by looking up that class separately 
+   661		for (TFieldIterator<UFunction> FunctionIt(Class, EFieldIteratorFlags::ExcludeSuper); FunctionIt; ++FunctionIt)
+   662		{
+   663			UFunction* Function = *FunctionIt;
+   664	
+   665			bool const bIsInheritedFunction = BlueprintActionDatabaseImpl::IsInheritedBlueprintFunction(Function);
+   666			if (bIsInheritedFunction)
+   667			{
+   668				// inherited functions will be captured when the parent class is ran
+   669				// through this function (no need to duplicate)
+   670				continue;
+   671			}
+   672	
+   673			// Apply general filtering for functions
+   674			if(!FBlueprintActionDatabase::IsFunctionAllowed(Function, FBlueprintActionDatabase::EPermissionsContext::Node))
+   675			{
+   676				continue;
+   677			}
+   678	
+   679			bool const bIsBpInterfaceFunc = BlueprintActionDatabaseImpl::IsBlueprintInterfaceFunction(Function);
+   680			if (UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function) && !bIsBpInterfaceFunc)
+   681			{
+   682				if (UBlueprintEventNodeSpawner* NodeSpawner = UBlueprintEventNodeSpawner::Create(Function))
+   683				{
+   684					ActionListOut.Add(NodeSpawner);
+   685				}
+   686			}
+   687	
+   688			// If this is a promotable function, and it has already been registered
+   689			// than do NOT add it to the asset action database. We should
+   690			// probably have some better logic for this, like adding our own node spawner
+   691			const bool bIsRegisteredPromotionFunc =
+   692				TypePromoDebug::IsTypePromoEnabled() &&
+   693				FTypePromotion::IsFunctionPromotionReady(Function) &&
+   694				FTypePromotion::IsOperatorSpawnerRegistered(Function);
+   695	
+   696			if (UEdGraphSchema_K2::CanUserKismetCallFunction(Function))
+   697			{
+   698				// @TODO: if this is a Blueprint, and this function is from a 
+   699				//        Blueprint "implemented interface", then we don't need to 
+   700				//        include it (the function is accounted for in from the 
+   701				//        interface class).
+   702				UBlueprintFunctionNodeSpawner* FuncSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
+   703				
+   704				// Only add this action to the list of the operator function is not already registered. Otherwise we will 
+   705				// get a bunch of duplicate operator actions
+   706				if (!bIsRegisteredPromotionFunc)
+   707				{
+   708					ActionListOut.Add(FuncSpawner);
+   709				}
+   710	
+   711				if (FKismetEditorUtilities::IsClassABlueprintInterface(Class))
+   712				{
+   713					// Use the default function name
+   714					ActionListOut.Add(MakeMessageNodeSpawner(Function));
+   715				}
+   716			}
+   717		}
+   718	}
+   719	
+   720	//------------------------------------------------------------------------------
+   721	static void BlueprintActionDatabaseImpl::AddClassPropertyActions(UClass const* const Class, FActionList& ActionListOut)
+   722	{
+   723		using namespace FBlueprintNodeSpawnerFactory; // for MakeDelegateNodeSpawner()
+   724	
+   725		bool const bIsComponent  = Class->IsChildOf<UActorComponent>();
+   726		bool const bIsActorClass = Class->IsChildOf<AActor>();
+   727		
+   728		// loop over all the properties in the specified class; exclude-super because 
+   729		// we can always get the super properties by looking up that class separately 
+   730		for (TFieldIterator<FProperty> PropertyIt(Class, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+   731		{
+   732			FProperty* Property = *PropertyIt;
+   733			if (!IsPropertyBlueprintVisible(Property))
+   734			{
+   735				continue;
+   736			}
+   737	
+   738	 		bool const bIsDelegate = Property->IsA(FMulticastDelegateProperty::StaticClass());
+   739	 		if (bIsDelegate)
+   740	 		{
+   741				FMulticastDelegateProperty* DelegateProperty = CastFieldChecked<FMulticastDelegateProperty>(Property);
+   742				if (DelegateProperty->HasAnyPropertyFlags(CPF_BlueprintAssignable))
+   743				{
+   744					UBlueprintNodeSpawner* AddSpawner = UBlueprintDelegateNodeSpawner::Create(UK2Node_AddDelegate::StaticClass(), DelegateProperty);
+   745					ActionListOut.Add(AddSpawner);
+   746					
+   747					UBlueprintNodeSpawner* AssignSpawner = MakeAssignDelegateNodeSpawner(DelegateProperty);
+   748					ActionListOut.Add(AssignSpawner);
+   749				}
+   750				
+   751				if (DelegateProperty->HasAnyPropertyFlags(CPF_BlueprintCallable))
+   752				{
+   753					UBlueprintNodeSpawner* CallSpawner = UBlueprintDelegateNodeSpawner::Create(UK2Node_CallDelegate::StaticClass(), DelegateProperty);
+   754					ActionListOut.Add(CallSpawner);
+   755				}
+   756				
+   757				UBlueprintNodeSpawner* RemoveSpawner = UBlueprintDelegateNodeSpawner::Create(UK2Node_RemoveDelegate::StaticClass(), DelegateProperty);
+   758				ActionListOut.Add(RemoveSpawner);
+   759				UBlueprintNodeSpawner* ClearSpawner = UBlueprintDelegateNodeSpawner::Create(UK2Node_ClearDelegate::StaticClass(), DelegateProperty);
+   760				ActionListOut.Add(ClearSpawner);
+   761	
+   762				if (bIsComponent)
+   763				{
+   764					ActionListOut.Add(MakeComponentBoundEventSpawner(DelegateProperty));
+   765				}
+   766				else if (bIsActorClass)
+   767				{
+   768					ActionListOut.Add(MakeActorBoundEventSpawner(DelegateProperty));
+   769				}
+   770	 		}
+   771			else
+   772			{
+   773				UBlueprintVariableNodeSpawner* GetterSpawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(UK2Node_VariableGet::StaticClass(), Property);
+   774				ActionListOut.Add(GetterSpawner);
+   775				UBlueprintVariableNodeSpawner* SetterSpawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(UK2Node_VariableSet::StaticClass(), Property);
+   776				ActionListOut.Add(SetterSpawner);
+   777			}
+   778		}
+   779	}
+   780	
+   781	//------------------------------------------------------------------------------
+   782	static void BlueprintActionDatabaseImpl::AddClassDataObjectActions(UClass const* const Class, FActionList& ActionListOut)
+   783	{
+   784		using namespace FBlueprintNodeSpawnerFactory; // for MakeDelegateNodeSpawner()
+   785	
+   786		// loop over all the properties in the specified class; exclude-super because 
+   787		// we can always get the super properties by looking up that class separately 
+   788		const UStruct* SparseDataStruct = Class->GetSparseClassDataStruct();
+   789		const UStruct* ParentSparseDataStruct = Class->GetSuperClass() ? Class->GetSuperClass()->GetSparseClassDataStruct() : nullptr;
+   790		if (ParentSparseDataStruct != SparseDataStruct)
+   791		{
+   792			for (TFieldIterator<FProperty> PropertyIt(SparseDataStruct, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+   793			{
+   794				FProperty* Property = *PropertyIt;
+   795				if (!IsPropertyBlueprintVisible(Property))
+   796				{
+   797					continue;
+   798				}
+   799	
+   800				UClass* NonConstClass = const_cast<UClass*>(Class);
+   801				UBlueprintVariableNodeSpawner* GetterSpawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(UK2Node_VariableGet::StaticClass(), Property, nullptr, NonConstClass);
+   802				ActionListOut.Add(GetterSpawner);
+   803	//			UBlueprintVariableNodeSpawner* SetterSpawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(UK2Node_VariableSet::StaticClass(), Property);
+   804	//			ActionListOut.Add(SetterSpawner);
+   805			}
+   806		}
+   807	}
+   808	
+   809	//------------------------------------------------------------------------------
+   810	static void BlueprintActionDatabaseImpl::AddClassCastActions(UClass* Class, FActionList& ActionListOut)
+   811	{
+   812		Class = Class->GetAuthoritativeClass();
+   813		check(Class);
+   814	
+   815		UEdGraphSchema_K2 const* K2Schema = GetDefault<UEdGraphSchema_K2>();
+   816		bool bIsCastPermitted  = UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Class) && FBlueprintActionDatabase::IsClassAllowed(Class, FBlueprintActionDatabase::EPermissionsContext::Node);
+   817	
+   818		if (bIsCastPermitted)
+   819		{
+   820			auto CustomizeCastNodeLambda = [](UEdGraphNode* NewNode, bool bIsTemplateNode, UClass* TargetType)
+   821			{
+   822				UK2Node_DynamicCast* CastNode = CastChecked<UK2Node_DynamicCast>(NewNode);
+   823				CastNode->TargetType = TargetType;
+   824			};
+   825	
+   826			UBlueprintNodeSpawner* CastObjNodeSpawner = UBlueprintNodeSpawner::Create<UK2Node_DynamicCast>();
+   827			CastObjNodeSpawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(CustomizeCastNodeLambda, Class);
+   828			ActionListOut.Add(CastObjNodeSpawner);
+   829	
+   830			UBlueprintNodeSpawner* CastClassNodeSpawner = UBlueprintNodeSpawner::Create<UK2Node_ClassDynamicCast>();
+   831			CastClassNodeSpawner->CustomizeNodeDelegate = CastObjNodeSpawner->CustomizeNodeDelegate;
+   832			ActionListOut.Add(CastClassNodeSpawner);
+   833		}
+   834	}
+   835	
+   836	//------------------------------------------------------------------------------
+   837	static void BlueprintActionDatabaseImpl::AddBlueprintGraphActions(UBlueprint const* const Blueprint, FActionList& ActionListOut)
+   838	{
+   839		using namespace FBlueprintNodeSpawnerFactory; // for MakeMacroNodeSpawner()
+   840	
+   841		for (UEdGraph* MacroGraph : Blueprint->MacroGraphs)
+   842		{
+   843			ActionListOut.Add(MakeMacroNodeSpawner(MacroGraph));
+   844		}
+   845	
+   846		auto CreateEntriesForGraphLambda = [Blueprint, &ActionListOut](UEdGraph* FunctionGraph)
+   847		{
+   848			if (!FunctionGraph)
+   849			{
+   850				return;
+   851			}
+   852	
+   853			TArray<UK2Node_FunctionEntry*> GraphEntryNodes;
+   854			FunctionGraph->GetNodesOfClass<UK2Node_FunctionEntry>(GraphEntryNodes);
+   855	
+   856			for (UK2Node_FunctionEntry* FunctionEntry : GraphEntryNodes)
+   857			{
+   858				UFunction* SkeletonFunction = FindUField<UFunction>(Blueprint->SkeletonGeneratedClass, FunctionGraph->GetFName());
+   859	
+   860				// Create entries for function parameters
+   861				if (SkeletonFunction != nullptr)
+   862				{
+   863					for (TFieldIterator<FProperty> ParamIt(SkeletonFunction); ParamIt && (ParamIt->PropertyFlags & CPF_Parm); ++ParamIt)
+   864					{
+   865						FProperty* Param = *ParamIt;
+   866						const bool bIsFunctionInput = !Param->HasAnyPropertyFlags(CPF_ReturnParm) && (!Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm));
+   867						if (bIsFunctionInput)
+   868						{
+   869							UBlueprintNodeSpawner* GetVarSpawner = UBlueprintVariableNodeSpawner::CreateFromMemberOrParam(UK2Node_VariableGet::StaticClass(), Param, FunctionGraph);
+   870							ActionListOut.Add(GetVarSpawner);
+   871						}
+   872					}
+   873				}
+   874	
+   875				// Create entries for local variables
+   876				for (FBPVariableDescription const& LocalVar : FunctionEntry->LocalVariables)
+   877				{
+   878					// Create a member reference so we can safely resolve the FProperty
+   879					FMemberReference Reference;
+   880					Reference.SetLocalMember(LocalVar.VarName, FunctionGraph->GetName(), LocalVar.VarGuid);
+   881	
+   882					UBlueprintNodeSpawner* GetVarSpawner = UBlueprintVariableNodeSpawner::CreateFromLocal(UK2Node_VariableGet::StaticClass(), FunctionGraph, LocalVar, Reference.ResolveMember<FProperty>(Blueprint->SkeletonGeneratedClass));
+   883					ActionListOut.Add(GetVarSpawner);
+   884					UBlueprintNodeSpawner* SetVarSpawner = UBlueprintVariableNodeSpawner::CreateFromLocal(UK2Node_VariableSet::StaticClass(), FunctionGraph, LocalVar, Reference.ResolveMember<FProperty>(Blueprint->SkeletonGeneratedClass));
+   885					ActionListOut.Add(SetVarSpawner);
+   886				}
+   887			}
+   888		};
+   889	
+   890		auto CreateEntriesLambda = [&](const TArray<UEdGraph*>& Graphs)
+   891		{
+   892			for (UEdGraph* const Graph : Graphs)
+   893			{
+   894				CreateEntriesForGraphLambda(Graph);
+   895			}
+   896		};
+   897	
+   898		// local variables and parameters for functions
+   899		CreateEntriesLambda(Blueprint->FunctionGraphs);
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp 1400-1720 =====
+  1400	}
+  1401	
+  1402	//------------------------------------------------------------------------------
+  1403	void FBlueprintActionDatabase::DeferredRemoveEntry(FObjectKey const& InKey)
+  1404	{
+  1405		ActionRemoveQueue.AddUnique(InKey);
+  1406	}
+  1407	
+  1408	//------------------------------------------------------------------------------
+  1409	void FBlueprintActionDatabase::RefreshAll()
+  1410	{
+  1411		TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionDatabase::RefreshAll);
+  1412	
+  1413		TGuardValue<bool> ScopedInitialization(BlueprintActionDatabaseImpl::bIsInitializing, true);
+  1414		BlueprintActionDatabaseImpl::bRefreshAllRequested = false;
+  1415	
+  1416		// Refresh other systems before the database is recreated
+  1417		PreRefresh(true);
+  1418	
+  1419		// Remove callbacks from blueprints
+  1420		for (TObjectIterator<UBlueprint> BlueprintIt; BlueprintIt; ++BlueprintIt)
+  1421		{
+  1422			UBlueprint* Blueprint = *BlueprintIt;
+  1423	
+  1424			// Level script BPs are registered using the associated world context. This will clear any registered LSBP actions.
+  1425			const bool bIsLevelScript = FBlueprintEditorUtils::IsLevelScriptBlueprint(Blueprint);
+  1426			if (bIsLevelScript)
+  1427			{
+  1428				const ULevelScriptBlueprint* LSBP = CastChecked<ULevelScriptBlueprint>(Blueprint);
+  1429				if (UWorld* World = LSBP->GetWorld())
+  1430				{
+  1431					ClearAssetActions(World);
+  1432				}
+  1433			}
+  1434			
+  1435			// Do this for all BP assets to both clear registered actions and remove callbacks. In the case of LSBPs, this will just remove callbacks.
+  1436			ClearAssetActions(Blueprint);
+  1437		}
+  1438	
+  1439		ActionRegistry.Empty();
+  1440		UnloadedActionRegistry.Empty();
+  1441		for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+  1442		{
+  1443			UClass* const Class = (*ClassIt);
+  1444			RefreshClassActions(Class);
+  1445		}
+  1446	
+  1447		FComponentTypeRegistry::Get().SubscribeToComponentList(ComponentTypes).RemoveAll(this);
+  1448	
+  1449		// this handles creating entries for components that were loaded before the database was alive:
+  1450		FComponentTypeRegistry::Get().SubscribeToComponentList(ComponentTypes).AddRaw(this, &FBlueprintActionDatabase::RefreshComponentActions);
+  1451		RefreshComponentActions();
+  1452	
+  1453		// Refresh existing worlds
+  1454		RefreshWorlds();
+  1455	}
+  1456	
+  1457	//------------------------------------------------------------------------------
+  1458	void FBlueprintActionDatabase::RefreshWorlds()
+  1459	{
+  1460		// Add all level scripts from current world
+  1461		const TIndirectArray<FWorldContext>& WorldContexts = GEngine->GetWorldContexts();
+  1462	
+  1463		for (const FWorldContext& Context : WorldContexts)
+  1464		{
+  1465			if( Context.WorldType == EWorldType::Editor )
+  1466			{
+  1467				if( UWorld* CurrentWorld = Context.World())
+  1468				{
+  1469					RefreshAssetActions((UObject*)CurrentWorld);
+  1470				}
+  1471			}
+  1472		}
+  1473	}
+  1474	
+  1475	//------------------------------------------------------------------------------
+  1476	void FBlueprintActionDatabase::RefreshClassActions(UClass* const Class)
+  1477	{
+  1478		TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionDatabase::RefreshClassActions);
+  1479	
+  1480		using namespace BlueprintActionDatabaseImpl;
+  1481		check(Class != nullptr);
+  1482	
+  1483		bool const bFilterClass      = !IsClassAllowed(Class, EPermissionsContext::Asset);
+  1484		bool const bOutOfDateClass   = Class->HasAnyClassFlags(CLASS_NewerVersionExists);
+  1485		bool const bHiddenClass		 = Class->HasAnyClassFlags(CLASS_Hidden);
+  1486		bool const bIsBlueprintClass = (Cast<UBlueprintGeneratedClass>(Class) != nullptr);
+  1487		bool const bIsLevelScript	 = Class->ClassGeneratedBy && Cast<UBlueprint>(Class->ClassGeneratedBy)->BlueprintType == EBlueprintType::BPTYPE_LevelScript;
+  1488	
+  1489		if (bOutOfDateClass || bIsLevelScript || bHiddenClass)
+  1490		{
+  1491			ActionRegistry.Remove(Class);
+  1492			return;
+  1493		}
+  1494		else if (bIsBlueprintClass)
+  1495		{
+  1496			// Early out if the class is filtered
+  1497			if (bFilterClass)
+  1498			{
+  1499				return;
+  1500			}
+  1501	
+  1502			UBlueprint* Blueprint = Cast<UBlueprint>(Class->ClassGeneratedBy);
+  1503			if ((Blueprint != nullptr) && BlueprintActionDatabaseImpl::IsObjectValidForDatabase(Blueprint))
+  1504			{
+  1505				// to prevent us from hitting this twice on init (once for the skel 
+  1506				// class, again for the generated class)
+  1507				bool const bRefresh = !bIsInitializing || (Blueprint->SkeletonGeneratedClass == nullptr) ||
+  1508					(Blueprint->SkeletonGeneratedClass == Class);
+  1509	
+  1510				if (bRefresh)
+  1511				{
+  1512					RefreshAssetActions(Blueprint);
+  1513				}
+  1514			}
+  1515		}
+  1516		// here we account for "autonomous" standalone nodes, and any nodes that
+  1517		// exist in a separate module; each UK2Node has a chance to append its
+  1518		// own actions (presumably ones that would spawn that node)...
+  1519		else if (Class->IsChildOf<UEdGraphNode>())
+  1520		{
+  1521			// Early out if the class is filtered
+  1522			if (bFilterClass)
+  1523			{
+  1524				return;
+  1525			}
+  1526	
+  1527			{
+  1528				FActionList& ClassActionList = ActionRegistry.FindOrAdd(Class);
+  1529				if (!bIsInitializing)
+  1530				{
+  1531					ClassActionList.Empty();
+  1532				}
+  1533			}
+  1534	
+  1535			FBlueprintActionDatabaseRegistrar Registrar(ActionRegistry, UnloadedActionRegistry, ActionPrimingQueue, Class);
+  1536			if (!bIsInitializing)
+  1537			{
+  1538				// if this a call to RefreshClassActions() from somewhere other than 
+  1539				// RefreshAll(), then we should only add actions for this class (the
+  1540				// node could be adding actions, probably duplicate ones for assets)
+  1541				Registrar.ActionKeyFilter = Class;
+  1542			}
+  1543		
+  1544			// also, should catch any actions dealing with global UFields (like
+  1545			// global structs, enums, etc.; elements that wouldn't be caught
+  1546			// normally when sifting through fields on all known classes)		
+  1547			GetNodeSpecificActions(Class, Registrar);
+  1548			// don't worry, the registrar marks new actions for priming
+  1549	
+  1550			// Filter out actions by node class
+  1551			if(HasClassFiltering())
+  1552			{
+  1553				FActionList& ClassActionList = ActionRegistry.FindOrAdd(Class);
+  1554				ClassActionList.RemoveAllSwap([this](UBlueprintNodeSpawner* InAction)
+  1555				{
+  1556					return !IsClassAllowed(InAction->NodeClass.Get(), EPermissionsContext::Node);
+  1557				});
+  1558			}
+  1559		}
+  1560		else if (Class->IsChildOf<UBlueprint>())
+  1561		{
+  1562			// Early out if the class is filtered
+  1563			if (bFilterClass)
+  1564			{
+  1565				return;
+  1566			}
+  1567	
+  1568			FBlueprintActionDatabaseRegistrar Registrar(ActionRegistry, UnloadedActionRegistry, ActionPrimingQueue);
+  1569			Cast<UBlueprint>(Class->GetDefaultObject(false))->GetTypeActions(Registrar);
+  1570		}
+  1571		else
+  1572		{
+  1573			FActionList& ClassActionList = ActionRegistry.FindOrAdd(Class);
+  1574			if (!bIsInitializing && !bFilterClass)
+  1575			{
+  1576				ClassActionList.Empty();
+  1577				// if we're only refreshing this class (and not init'ing the whole 
+  1578				// database), then we have to reach out to individual nodes in case 
+  1579				// they'd add entries for this as well
+  1580				FBlueprintActionDatabaseRegistrar Registrar(ActionRegistry, UnloadedActionRegistry, ActionPrimingQueue);
+  1581				Registrar.ActionKeyFilter = Class; // only want actions for this class
+  1582	
+  1583				RegisterAllNodeActions(Registrar);
+  1584			}
+  1585			// Note: We still run this if we're filtering the class, as the class itself may expose properties/functions/etc that derived non-filtered classes need access to
+  1586			GetClassMemberActions(Class, ClassActionList);
+  1587	
+  1588			// queue the newly added actions for priming
+  1589			if (ClassActionList.Num() > 0)
+  1590			{
+  1591				ActionPrimingQueue.Add(Class, 0);
+  1592	
+  1593				if (HasClassFiltering())
+  1594				{
+  1595					// Filter out actions by node class
+  1596					ClassActionList.RemoveAllSwap([this](UBlueprintNodeSpawner* InAction)
+  1597					{
+  1598						return !IsClassAllowed(InAction->NodeClass.Get(), EPermissionsContext::Node);
+  1599					});
+  1600				}
+  1601			}
+  1602			else
+  1603			{
+  1604				ActionRegistry.Remove(Class);
+  1605			}
+  1606		}
+  1607	
+  1608		// blueprints are handled in RefreshAssetActions()
+  1609		if (!bIsInitializing && !bIsBlueprintClass)
+  1610		{
+  1611			EntryRefreshDelegate.Broadcast(Class);
+  1612		}
+  1613	}
+  1614	
+  1615	//------------------------------------------------------------------------------
+  1616	void FBlueprintActionDatabase::RefreshAssetActions(UObject* const AssetObject)
+  1617	{
+  1618		TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionDatabase::RefreshAssetActions);
+  1619	
+  1620		using namespace BlueprintActionDatabaseImpl;
+  1621	
+  1622		// this method is very expensive and is only for blueprint editor functionality
+  1623		// it should remain that way as *greatly* increases cook times, etc!
+  1624		if (IsRunningCommandlet())
+  1625		{
+  1626			return;
+  1627		}
+  1628	
+  1629		FActionList& AssetActionList = ActionRegistry.FindOrAdd(AssetObject);
+  1630		for (UBlueprintNodeSpawner* Action : AssetActionList)
+  1631		{
+  1632			// because some asserts expect everything to be cleaned up in a 
+  1633			// single GC pass, we need to ensure that any previously cached node templates
+  1634			// are cleaned up here before we add any new node spawners.
+  1635			Action->ClearCachedTemplateNode();
+  1636		}
+  1637		AssetActionList.Empty();
+  1638	
+  1639		if (!IsObjectValidForDatabase(AssetObject))
+  1640		{
+  1641			return;
+  1642		}
+  1643	
+  1644		if (!IsClassAllowed(AssetObject->GetClass(), EPermissionsContext::Asset))
+  1645		{
+  1646			return;
+  1647		}
+  1648	
+  1649		UBlueprint* BlueprintAsset = Cast<UBlueprint>(AssetObject);
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp 1860-1895 =====
+  1860	//------------------------------------------------------------------------------
+  1861	FBlueprintActionDatabase::FActionRegistry const& FBlueprintActionDatabase::GetAllActions()
+  1862	{
+  1863		// if this is the first time that we're querying for actions, generate the
+  1864		// list before returning it
+  1865		if (ActionRegistry.Num() == 0)
+  1866		{
+  1867			RefreshAll();
+  1868		}
+  1869		return ActionRegistry;
+  1870	}
+  1871	
+  1872	//------------------------------------------------------------------------------
+  1873	void FBlueprintActionDatabase::RegisterAllNodeActions(FBlueprintActionDatabaseRegistrar& Registrar)
+  1874	{
+  1875		TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionDatabase::RegisterAllNodeActions);
+  1876	
+  1877		// nodes may have actions they wish to add for this asset
+  1878		TArray<UClass*> NodeClassList;
+  1879		GetDerivedClasses(UK2Node::StaticClass(), NodeClassList);
+  1880	
+  1881		for (UClass* NodeClass : NodeClassList)
+  1882		{
+  1883			TGuardValue< TSubclassOf<UEdGraphNode> > ScopedNodeClass(Registrar.GeneratingClass, NodeClass);
+  1884			BlueprintActionDatabaseImpl::GetNodeSpecificActions(NodeClass, Registrar);
+  1885		}
+  1886	}
+  1887	
+  1888	void FBlueprintActionDatabase::OnBlueprintChanged(UBlueprint* InBlueprint)
+  1889	{
+  1890		if( InBlueprint->BlueprintType == BPTYPE_LevelScript )
+  1891		{
+  1892			// Levelscript blueprints are managed through their owning worlds.
+  1893			RefreshWorlds();
+  1894		}
+  1895		else
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawner.cpp 45-90 =====
+    45	
+    46	/*******************************************************************************
+    47	 * UBlueprintNodeSpawner
+    48	 ******************************************************************************/
+    49	
+    50	//------------------------------------------------------------------------------
+    51	UBlueprintNodeSpawner* UBlueprintNodeSpawner::Create(TSubclassOf<UEdGraphNode> const NodeClass, UObject* Outer/* = nullptr*/, FCustomizeNodeDelegate CustomizeNodeDelegate/* = FCustomizeNodeDelegate()*/)
+    52	{
+    53		check(NodeClass != nullptr);
+    54		check(NodeClass->IsChildOf<UEdGraphNode>());
+    55	
+    56		if (Outer == nullptr)
+    57		{
+    58			Outer = GetTransientPackage();
+    59		}
+    60		
+    61		UBlueprintNodeSpawner* NodeSpawner = NewObject<UBlueprintNodeSpawner>(Outer);
+    62		NodeSpawner->NodeClass = NodeClass;
+    63		NodeSpawner->CustomizeNodeDelegate = CustomizeNodeDelegate;
+    64		
+    65		return NodeSpawner;
+    66	}
+    67	
+    68	//------------------------------------------------------------------------------
+    69	UBlueprintNodeSpawner::UBlueprintNodeSpawner(FObjectInitializer const& ObjectInitializer)
+    70		: Super(ObjectInitializer)
+    71	{
+    72	}
+    73	
+    74	//------------------------------------------------------------------------------
+    75	void UBlueprintNodeSpawner::BeginDestroy()
+    76	{
+    77		ClearCachedTemplateNode();
+    78		Super::BeginDestroy();
+    79	}
+    80	
+    81	//------------------------------------------------------------------------------
+    82	void UBlueprintNodeSpawner::Prime()
+    83	{
+    84		if (FBlueprintNodeSpawnerUtils::IsStaleFieldAction(this))
+    85		{
+    86			const UFunction* AssociatedFunction = FBlueprintNodeSpawnerUtils::GetAssociatedFunction(this);
+    87			const FProperty* AssociatedProperty = FBlueprintNodeSpawnerUtils::GetAssociatedProperty(this);
+    88			ensureMsgf(false, TEXT("Priming invalid BlueprintActionDatabase entry (for %s). Was the database properly updated when this class was compiled?"), 
+    89				AssociatedFunction ? *AssociatedFunction->GetPathName() : *AssociatedProperty->GetPathName());
+    90			return;
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawner.cpp 260-345 =====
+   260		}
+   261		return SpawnerSignature;
+   262	}
+   263	
+   264	//------------------------------------------------------------------------------
+   265	FBlueprintActionUiSpec UBlueprintNodeSpawner::GetUiSpec(FBlueprintActionContext const& Context, FBindingSet const& Bindings) const
+   266	{
+   267		TRACE_CPUPROFILER_EVENT_SCOPE(UBlueprintNodeSpawner::GetUiSpec);
+   268	
+   269		FBlueprintActionUiSpec MenuSignature = PrimeDefaultUiSpec();
+   270		DynamicUiSignatureGetter.ExecuteIfBound(Context, Bindings, &MenuSignature);
+   271		return MenuSignature;
+   272	}
+   273	
+   274	//------------------------------------------------------------------------------
+   275	UEdGraphNode* UBlueprintNodeSpawner::Invoke(UEdGraph* ParentGraph, FBindingSet const& Bindings, FVector2D const Location) const
+   276	{
+   277		return SpawnNode<UEdGraphNode>(NodeClass, ParentGraph, Bindings, Location, CustomizeNodeDelegate);
+   278	}
+   279	
+   280	//------------------------------------------------------------------------------
+   281	UEdGraphNode* UBlueprintNodeSpawner::GetCachedTemplateNode() const
+   282	{
+   283		return BlueprintNodeSpawnerImpl::GetSharedTemplateCache()->GetNodeTemplate(this, NoInit);
+   284	}
+   285	
+   286	//------------------------------------------------------------------------------
+   287	UEdGraphNode* UBlueprintNodeSpawner::GetTemplateNode(UEdGraph* TargetGraph, FBindingSet const& Bindings) const
+   288	{       
+   289		TRACE_CPUPROFILER_EVENT_SCOPE(UBlueprintNodeSpawner::GetTemplateNode);
+   290		
+   291		UEdGraphNode* TemplateNode = BlueprintNodeSpawnerImpl::GetSharedTemplateCache()->GetNodeTemplate(this, TargetGraph);
+   292	
+   293		if (TemplateNode && Bindings.Num() > 0) 
+   294		{ 
+   295			UEdGraphNode* BoundTemplateNode = DuplicateObject(TemplateNode, TemplateNode->GetOuter()); 
+   296			ApplyBindings(BoundTemplateNode, Bindings); 
+   297			return BoundTemplateNode; 
+   298		} 
+   299		return TemplateNode; 
+   300	}
+   301	
+   302	//------------------------------------------------------------------------------
+   303	void UBlueprintNodeSpawner::ClearCachedTemplateNode() const
+   304	{
+   305		FBlueprintNodeTemplateCache* TemplateCache = BlueprintNodeSpawnerImpl::GetSharedTemplateCache(/*bNoInit =*/true);
+   306		if (TemplateCache != nullptr)
+   307		{
+   308			TemplateCache->ClearCachedTemplate(this);
+   309		}
+   310	}
+   311	
+   312	bool UBlueprintNodeSpawner::IsTemplateNodeFilteredOut(FBlueprintActionFilter const& Filter) const
+   313	{
+   314		TRACE_CPUPROFILER_EVENT_SCOPE(UBlueprintNodeSpawner::IsTemplateNodeFilteredOut);
+   315	
+   316		bool bIsFilteredOut = false;
+   317		if(UK2Node* NodeTemplate = Cast<UK2Node>(GetTemplateNode()))
+   318		{
+   319			bIsFilteredOut = NodeTemplate->IsActionFilteredOut(Filter);
+   320		}
+   321		return bIsFilteredOut;
+   322	}
+   323	
+   324	//------------------------------------------------------------------------------
+   325	UEdGraphNode* UBlueprintNodeSpawner::SpawnEdGraphNode(TSubclassOf<UEdGraphNode> InNodeClass, UEdGraph* ParentGraph, const FBindingSet& Bindings, FVector2D Location, FCustomizeNodeDelegate PostSpawnDelegate) const
+   326	{
+   327		UEdGraphNode* NewNode = nullptr;
+   328		if (InNodeClass != nullptr)
+   329		{
+   330			NewNode = NewObject<UEdGraphNode>(ParentGraph, InNodeClass);
+   331			check(NewNode != nullptr);
+   332			NewNode->CreateNewGuid();
+   333	
+   334			// position the node before invoking PostSpawnDelegate (in case it 
+   335			// wishes to modify this positioning)
+   336			NewNode->NodePosX = static_cast<int32>(Location.X);
+   337			NewNode->NodePosY = static_cast<int32>(Location.Y);
+   338	
+   339			bool const bIsTemplateNode = FBlueprintNodeTemplateCache::IsTemplateOuter(ParentGraph);
+   340			PostSpawnDelegate.ExecuteIfBound(NewNode, bIsTemplateNode);
+   341	
+   342			if (!bIsTemplateNode)
+   343			{
+   344				NewNode->SetFlags(RF_Transactional);
+   345				NewNode->AllocateDefaultPins();
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp 1000-1190 =====
+  1000		return bIsFilteredOut;
+  1001	}
+  1002	
+  1003	//------------------------------------------------------------------------------
+  1004	static bool BlueprintActionFilterImpl::IsRejectedGlobalField(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1005	{
+  1006		const bool bRejectAllGlobalFields = Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectGlobalFields);
+  1007		const bool bRejectNonImportedFields = Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectNonImportedFields);
+  1008	
+  1009		bool bIsFilteredOut = false;
+  1010		FFieldVariant Field = BlueprintAction.GetAssociatedMemberField();
+  1011		if (Field.IsValid() && IsGloballyAccessible(Field))
+  1012		{
+  1013			const UStruct* OuterType = nullptr;
+  1014			if (const UField* FieldAsUObject = Cast<UField>(Field.ToUObject()))
+  1015			{
+  1016				OuterType = FieldAsUObject->GetOwnerStruct();
+  1017			}
+  1018			else
+  1019			{
+  1020				OuterType = Field.ToField()->GetOwnerStruct();
+  1021			}
+  1022	
+  1023			bIsFilteredOut = bRejectAllGlobalFields || (bRejectNonImportedFields && OuterType && IsNonImportedObject(Filter, OuterType));
+  1024			
+  1025			UClass* FieldClass = Field.GetOwnerClass();
+  1026			if (bIsFilteredOut && (FieldClass != nullptr))
+  1027			{
+  1028				for (const auto& ClassData : Filter.TargetClasses)
+  1029				{
+  1030					bool const bIsInternalMemberField = IsClassOfType(ClassData.TargetClass, FieldClass);
+  1031					if (bIsInternalMemberField)
+  1032					{
+  1033						bIsFilteredOut = false;
+  1034						break;
+  1035					}
+  1036				}
+  1037			}
+  1038		}
+  1039	
+  1040		return bIsFilteredOut;
+  1041	}
+  1042	
+  1043	//------------------------------------------------------------------------------
+  1044	static bool BlueprintActionFilterImpl::IsNonTargetMember(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1045	{
+  1046		bool bIsFilteredOut = false;
+  1047	
+  1048		// Determines if this test should pass for external global/static fields.
+  1049		const bool bPermitNonTargetGlobals = !Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectGlobalFields);
+  1050	
+  1051		FFieldVariant ClassField = BlueprintAction.GetAssociatedMemberField();
+  1052		bool const bIsMemberAction = ClassField.IsValid() && ClassField.GetOwnerClass() != nullptr;
+  1053	
+  1054		if (bIsMemberAction)
+  1055		{
+  1056			UClass const* ActionClass = BlueprintAction.GetOwnerClass();
+  1057			checkSlow(ActionClass != nullptr);
+  1058	
+  1059			// global (and static library) fields can stay (unless explicitly
+  1060			// excluded... save that for a separate test)
+  1061			bool const bSkip = (bPermitNonTargetGlobals && IsGloballyAccessible(ClassField)) || BlueprintAction.GetNodeClass()->IsChildOf<UK2Node_Message>();
+  1062			if (!bSkip)
+  1063			{
+  1064				bIsFilteredOut = Filter.TargetClasses.Num() > 0;
+  1065	
+  1066				for (const auto& ClassData : Filter.TargetClasses)
+  1067				{
+  1068					bool const bIsTargetOwnedField = IsClassOfType(ClassData.TargetClass, ActionClass);
+  1069					if (bIsTargetOwnedField)
+  1070					{
+  1071						bIsFilteredOut = false;
+  1072						break;
+  1073					}
+  1074				}
+  1075			}
+  1076		}
+  1077		
+  1078		return bIsFilteredOut;
+  1079	}
+  1080	
+  1081	//------------------------------------------------------------------------------
+  1082	static bool BlueprintActionFilterImpl::IsFieldCategoryHidden(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1083	{
+  1084		bool bIsFilteredOut = false;
+  1085	
+  1086		const UFunction* NodeFunction = BlueprintAction.GetAssociatedFunction();
+  1087		if ((NodeFunction != nullptr) && NodeFunction->HasAnyFunctionFlags(FUNC_Static))
+  1088		{
+  1089			bIsFilteredOut = false;
+  1090		}
+  1091		else
+  1092		{
+  1093			bIsFilteredOut = (Filter.TargetClasses.Num() > 0);
+  1094	
+  1095			for (const auto& ClassData : Filter.TargetClasses)
+  1096			{
+  1097				// Use the UiSpec to get the category
+  1098				FBlueprintActionUiSpec UiSpec = BlueprintAction.NodeSpawner->GetUiSpec(Filter.Context, BlueprintAction.GetBindings());
+  1099				if (!FEditorCategoryUtils::IsCategoryHiddenFromClass(ClassData.HiddenCategories, ClassData.TargetClass, UiSpec.Category.ToString()))
+  1100				{
+  1101					bIsFilteredOut = false;
+  1102					break;
+  1103				}
+  1104			}
+  1105		}
+  1106	
+  1107		return bIsFilteredOut;
+  1108	}
+  1109	
+  1110	//------------------------------------------------------------------------------
+  1111	static bool BlueprintActionFilterImpl::IsActionHiddenByConfig(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1112	{
+  1113		bool bIsFilteredOut = false;
+  1114	
+  1115		FFieldVariant ActionField = BlueprintAction.GetAssociatedMemberField();
+  1116		if (ActionField.IsValid())
+  1117		{
+  1118			const TArray<FString>& HiddenFields = GetHiddenFieldPaths();
+  1119	
+  1120			FString const FieldPath = ActionField.GetPathName();
+  1121			if (HiddenFields.Contains(FieldPath))
+  1122			{
+  1123				bIsFilteredOut = true;
+  1124			}
+  1125		}
+  1126	
+  1127		if (!bIsFilteredOut)
+  1128		{
+  1129			const TArray< TSubclassOf<UEdGraphNode> >& HiddenNodes = GetHiddenNodeTypes();
+  1130			if (HiddenNodes.Contains(BlueprintAction.GetNodeClass()))
+  1131			{
+  1132				bIsFilteredOut = true;
+  1133			}
+  1134		}
+  1135	
+  1136		return bIsFilteredOut;
+  1137	}
+  1138	
+  1139	//------------------------------------------------------------------------------
+  1140	static bool BlueprintActionFilterImpl::IsPropertyAccessorNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1141	{
+  1142		bool bIsAccessor = false;
+  1143	
+  1144		if (UFunction const* Function = BlueprintAction.GetAssociatedFunction())
+  1145		{
+  1146			bIsAccessor = (Function->HasMetaData(FBlueprintMetadata::MD_PropertySetFunction) || Function->HasMetaData(FBlueprintMetadata::MD_PropertyGetFunction));
+  1147		}
+  1148	
+  1149		return bIsAccessor;
+  1150	}
+  1151	
+  1152	//------------------------------------------------------------------------------
+  1153	static bool BlueprintActionFilterImpl::IsThreadSafetyIncompatible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1154	{
+  1155		if (UFunction const* Function = BlueprintAction.GetAssociatedFunction())
+  1156		{	
+  1157			bool bAllowNonThreadSafeNodes = true;
+  1158	
+  1159			FBlueprintActionContext const& FilterContext = Filter.Context;
+  1160	
+  1161			for (UEdGraph* Graph : FilterContext.Graphs)
+  1162			{
+  1163				if (const UEdGraphSchema_K2* K2Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema()))
+  1164				{
+  1165					bAllowNonThreadSafeNodes &= !K2Schema->IsGraphMarkedThreadSafe(Graph);
+  1166				}
+  1167			}
+  1168	
+  1169			if(!bAllowNonThreadSafeNodes)
+  1170			{
+  1171				return !FBlueprintEditorUtils::HasFunctionBlueprintThreadSafeMetaData(Function);
+  1172			}
+  1173		}
+  1174		
+  1175		return false;
+  1176	}
+  1177	
+  1178	//------------------------------------------------------------------------------
+  1179	static bool BlueprintActionFilterImpl::IsIncompatibleImpureNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1180	{
+  1181		bool bAllowImpureNodes = true;
+  1182		FBlueprintActionContext const& FilterContext = Filter.Context;
+  1183	
+  1184		for (UEdGraph* Graph : FilterContext.Graphs)
+  1185		{
+  1186			if (const UEdGraphSchema_K2* K2Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema()))
+  1187			{
+  1188				bAllowImpureNodes &= K2Schema->DoesGraphSupportImpureFunctions(Graph);
+  1189			}
+  1190		}
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp 1600-1760 =====
+  1600		FName ParamTag = FBlueprintMetadata::MD_ArrayDependentParam;
+  1601		if (DesiredPinType.IsArray())
+  1602		{
+  1603			ParamTag = FBlueprintMetadata::MD_ArrayParam;
+  1604		}
+  1605		const FString& FlaggedParamMetaData = ArrayFunction->GetMetaData(ParamTag);
+  1606	
+  1607		TArray<FString> WildcardPinNameStrs;
+  1608		TArray<FName> WildcardPinNames;
+  1609		FlaggedParamMetaData.ParseIntoArray(WildcardPinNameStrs, TEXT(","), /*CullEmpty =*/true);
+  1610		Algo::Transform(WildcardPinNameStrs, WildcardPinNames, [](const FString& NameStr) { return FName(*NameStr); });
+  1611	
+  1612		for (TFieldIterator<FProperty> PropIt(ArrayFunction); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+  1613		{
+  1614			FProperty* FuncParam = *PropIt;
+  1615	
+  1616			const bool bIsFunctionInput = !FuncParam->HasAnyPropertyFlags(CPF_OutParm) || FuncParam->HasAnyPropertyFlags(CPF_ReferenceParm);
+  1617			if (bWantOutput == bIsFunctionInput)
+  1618			{
+  1619				continue;
+  1620			}
+  1621	
+  1622			const FName ParamName = FuncParam->GetFName();
+  1623	
+  1624			if (HiddenPins.Contains(ParamName) || !WildcardPinNames.Contains(ParamName))
+  1625			{
+  1626				continue;
+  1627			}
+  1628	
+  1629			FEdGraphPinType ParamPinType;
+  1630			if (K2Schema->ConvertPropertyToPinType(FuncParam, ParamPinType))
+  1631			{
+  1632				ParamPinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
+  1633	
+  1634				const FEdGraphPinType& InputType  = (bIsFunctionInput) ? ParamPinType : DesiredPinType;
+  1635				const FEdGraphPinType& OutputType = (bIsFunctionInput) ? DesiredPinType : ParamPinType;
+  1636	
+  1637				if (K2Schema->ArePinTypesCompatible(OutputType, InputType))
+  1638				{
+  1639					return true;
+  1640				}
+  1641			}
+  1642		}
+  1643	
+  1644		return false;
+  1645	}
+  1646	
+  1647	//------------------------------------------------------------------------------
+  1648	static bool BlueprintActionFilterImpl::IsMissmatchedPropertyType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1649	{
+  1650		bool bIsFilteredOut = false;
+  1651		if (FProperty const* Property = BlueprintAction.GetAssociatedProperty())
+  1652		{
+  1653			TArray<UEdGraphPin*> const& ContextPins = Filter.Context.Pins;
+  1654			if (ContextPins.Num() > 0)
+  1655			{
+  1656				bool const bIsDelegate = Property->IsA<FMulticastDelegateProperty>();
+  1657				bool const bIsGetter   = BlueprintAction.GetNodeClass()->IsChildOf<UK2Node_VariableGet>();
+  1658				bool const bIsSetter   = BlueprintAction.GetNodeClass()->IsChildOf<UK2Node_VariableSet>();
+  1659	
+  1660				for (int32 PinIndex = 0; !bIsFilteredOut && PinIndex < ContextPins.Num(); ++PinIndex)
+  1661				{
+  1662					UEdGraphPin const* ContextPin = ContextPins[PinIndex];
+  1663					FEdGraphPinType const& ContextPinType = ContextPin->PinType;
+  1664					UEdGraphSchema_K2 const* K2Schema = CastChecked<UEdGraphSchema_K2 const>(ContextPin->GetSchema());
+  1665	
+  1666					// have to account for "self" context pin
+  1667					if (IsPinCompatibleWithTargetSelf(ContextPin, BlueprintAction))
+  1668					{
+  1669						continue;
+  1670					}
+  1671					else if (bIsDelegate)
+  1672					{
+  1673						// there are a lot of different delegate nodes, so let's  
+  1674						// just iterate over all the pins
+  1675						bIsFilteredOut = !HasMatchingPin(BlueprintAction, ContextPin);
+  1676					}
+  1677					else if (ContextPinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+  1678					{
+  1679						// setters are impure, and therefore should have exec pins
+  1680						bIsFilteredOut = bIsGetter;
+  1681					}
+  1682					else if (bIsGetter || bIsSetter)
+  1683					{
+  1684						bIsFilteredOut = true;
+  1685	
+  1686						EEdGraphPinDirection const PinDir = ContextPin->Direction;
+  1687						if ((PinDir == EGPD_Input) && bIsGetter)
+  1688						{
+  1689							FEdGraphPinType OutputPinType;
+  1690							K2Schema->ConvertPropertyToPinType(Property, OutputPinType);
+  1691							bIsFilteredOut = !K2Schema->ArePinTypesCompatible(OutputPinType, ContextPinType);
+  1692						}
+  1693						else if ((PinDir == EGPD_Output) && bIsSetter)
+  1694						{
+  1695							FEdGraphPinType InputPinType;
+  1696							K2Schema->ConvertPropertyToPinType(Property, InputPinType);
+  1697							bIsFilteredOut = !K2Schema->ArePinTypesCompatible(ContextPinType, InputPinType);
+  1698						}	
+  1699					}
+  1700					else
+  1701					{
+  1702						ensureMsgf(false, TEXT("Unhandled property/node pair, we've probably made some bad assuptions."));
+  1703					}
+  1704				}
+  1705			}
+  1706		}
+  1707	
+  1708		return bIsFilteredOut;
+  1709	}
+  1710	
+  1711	//------------------------------------------------------------------------------
+  1712	static bool BlueprintActionFilterImpl::IsMissingMatchingPinParam(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1713	{
+  1714		bool bIsFilteredOut = false;
+  1715	
+  1716		// we have a separate pin tests for function/property nodes (IsFunctionMissingPinParam/IsMissmatchedPropertyType). Note that we only skip
+  1717		// this test for functions with bindings (because it does not handle getting templates for all binding nodes). By running this for 
+  1718		// other functions we ensure that IsConnectionDisallowed is honored.
+  1719		bool const bTestPinCompatibility = (BlueprintAction.GetAssociatedProperty() == nullptr) && BlueprintAction.GetBindings().Num() == 0 && !BlueprintAction.GetNodeClass()->IsChildOf<UK2Node_PromotableOperator>();
+  1720	
+  1721		if (bTestPinCompatibility)
+  1722		{
+  1723			for (UEdGraphPin const* ContextPin : Filter.Context.Pins)
+  1724			{
+  1725				if (!HasMatchingPin(BlueprintAction, ContextPin))
+  1726				{
+  1727					bIsFilteredOut = true;
+  1728					break;
+  1729				}
+  1730			}
+  1731		}
+  1732	
+  1733		return bIsFilteredOut;
+  1734	}
+  1735	
+  1736	//------------------------------------------------------------------------------
+  1737	static bool BlueprintActionFilterImpl::IsNotSubClassCast(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+  1738	{
+  1739		bool bIsFilteredOut = false;
+  1740	
+  1741		if (BlueprintAction.GetNodeClass()->IsChildOf<UK2Node_DynamicCast>())
+  1742		{
+  1743			for(UEdGraphPin const* ContextPin : Filter.Context.Pins)
+  1744			{
+  1745				// Only worry about removing cast nodes when dragging off output pins
+  1746				if (ContextPin->Direction != EGPD_Output)
+  1747				{
+  1748					break;
+  1749				}
+  1750				
+  1751				if (ContextPin->PinType.PinSubCategoryObject.IsValid())
+  1752				{
+  1753					UClass const* CastClass = BlueprintAction.GetOwnerClass();
+  1754					checkSlow(CastClass != nullptr);
+  1755	
+  1756					UClass const* ContextPinClass = Cast<UClass>(ContextPin->PinType.PinSubCategoryObject.Get());
+  1757					// could be a delegate (or some other) pin, with a non-class
+  1758					// PinSubCategoryObject
+  1759					if (ContextPinClass == nullptr)
+  1760					{
+\n===== Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp 1650-1850 =====
+  1650						{
+  1651							Section.AddMenuEntry(FGraphEditorCommands::Get().AssignReferencedActor);
+  1652						}
+  1653	
+  1654						// Conditionally show the "Create Matching Function" option if it is an unresolved CallFunction node
+  1655						if (const UK2Node_CallFunction* FuncNode = Cast<UK2Node_CallFunction>(InGraphNode))
+  1656						{
+  1657							if (!FuncNode->GetTargetFunction())
+  1658							{
+  1659								Section.AddMenuEntry(FGraphEditorCommands::Get().CreateMatchingFunction);
+  1660							}
+  1661						}
+  1662					}
+  1663	
+  1664					// If the node has an associated definition (for some loose sense of the word), allow going to it (same action as double-clicking on a node)
+  1665					if (InGraphNode->CanJumpToDefinition())
+  1666					{
+  1667						Section.AddMenuEntry(FGraphEditorCommands::Get().GoToDefinition);
+  1668					}
+  1669	
+  1670					// Show search for references for everyone. Depending on context, it's an action or a submenu.
+  1671					const bool bIsFuncOrVarNode = InGraphNode->IsA<UK2Node_CallFunction>() || InGraphNode->IsA<UK2Node_Event>() || InGraphNode->IsA<UK2Node_FunctionTerminator>() || InGraphNode->IsA<UK2Node_Variable>(); 
+  1672					const bool bExpandFindReferences = bIsFuncOrVarNode;
+  1673					if (!bExpandFindReferences)
+  1674					{
+  1675						Section.AddMenuEntry(FGraphEditorCommands::Get().FindReferences);
+  1676					}
+  1677					else
+  1678					{
+  1679						// Expandable menu: insert sub-menu here
+  1680						Section.AddSubMenu(
+  1681							FName("FindReferenceSubMenu"),
+  1682							LOCTEXT("FindReferences_Label", "Find References"),
+  1683							LOCTEXT("FindReferences_Tooltip", "Options for finding references to class members"),
+  1684							FNewToolMenuChoice(FNewMenuDelegate::CreateStatic(&FGraphEditorCommands::BuildFindReferencesMenu))
+  1685						);
+  1686					}
+  1687	
+  1688					if (!bIsDebugging)
+  1689					{
+  1690						if (InGraphNode->IsA(UK2Node_Variable::StaticClass()))
+  1691						{
+  1692							GetReplaceVariableMenu(Section, InGraphNode, OwnerBlueprint, true);
+  1693						}
+  1694	
+  1695						if (InGraphNode->IsA(UK2Node_SetFieldsInStruct::StaticClass()))
+  1696						{
+  1697							Section.AddMenuEntry(FGraphEditorCommands::Get().RestoreAllStructVarPins);
+  1698						}
+  1699	
+  1700						Section.AddMenuEntry(FGenericCommands::Get().Rename, LOCTEXT("Rename", "Rename"), LOCTEXT("Rename_Tooltip", "Renames selected function or variable in blueprint.") );
+  1701					}
+  1702	
+  1703					// Select referenced actors in the level
+  1704					Section.AddMenuEntry(FGraphEditorCommands::Get().SelectReferenceInLevel);
+  1705				}
+  1706	
+  1707				if (!bIsDebugging)
+  1708				{
+  1709					// Collapse/expand nodes
+  1710					{
+  1711						FToolMenuSection& Section = Menu->AddSection("EdGraphSchemaOrganization", LOCTEXT("OrganizationHeader", "Organization"));
+  1712						Section.AddMenuEntry( FGraphEditorCommands::Get().CollapseNodes );
+  1713						Section.AddMenuEntry( FGraphEditorCommands::Get().CollapseSelectionToFunction );
+  1714						Section.AddMenuEntry( FGraphEditorCommands::Get().CollapseSelectionToMacro );
+  1715						Section.AddMenuEntry( FGraphEditorCommands::Get().ExpandNodes );
+  1716	
+  1717						if (InGraphNode->IsA(UK2Node_FunctionEntry::StaticClass()))
+  1718						{
+  1719							Section.AddMenuEntry(FGraphEditorCommands::Get().ConvertFunctionToEvent);
+  1720						}
+  1721	
+  1722						if (InGraphNode->IsA(UK2Node_Event::StaticClass()))
+  1723						{
+  1724							Section.AddMenuEntry(FGraphEditorCommands::Get().ConvertEventToFunction);
+  1725						}
+  1726	
+  1727						if(InGraphNode->IsA(UK2Node_Composite::StaticClass()))
+  1728						{
+  1729							Section.AddMenuEntry( FGraphEditorCommands::Get().PromoteSelectionToFunction );
+  1730							Section.AddMenuEntry( FGraphEditorCommands::Get().PromoteSelectionToMacro );
+  1731						}
+  1732	
+  1733						Section.AddSubMenu("Alignment", LOCTEXT("AlignmentHeader", "Alignment"), FText(), FNewToolMenuDelegate::CreateLambda([](UToolMenu* AlignmentMenu)
+  1734						{
+  1735							{
+  1736								FToolMenuSection& InSection = AlignmentMenu->AddSection("EdGraphSchemaAlignment", LOCTEXT("AlignHeader", "Align"));
+  1737								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesTop);
+  1738								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesMiddle);
+  1739								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesBottom);
+  1740								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesLeft);
+  1741								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesCenter);
+  1742								InSection.AddMenuEntry(FGraphEditorCommands::Get().AlignNodesRight);
+  1743								InSection.AddMenuEntry(FGraphEditorCommands::Get().StraightenConnections);
+  1744							}
+  1745	
+  1746							{
+  1747								FToolMenuSection& InSection = AlignmentMenu->AddSection("EdGraphSchemaDistribution", LOCTEXT("DistributionHeader", "Distribution"));
+  1748								InSection.AddMenuEntry(FGraphEditorCommands::Get().DistributeNodesHorizontally);
+  1749								InSection.AddMenuEntry(FGraphEditorCommands::Get().DistributeNodesVertically);
+  1750							}
+  1751	
+  1752							{
+  1753								FToolMenuSection& InSection = AlignmentMenu->AddSection("EdGraphSchemaStack", LOCTEXT("StackHeader", "Stack"));
+  1754								InSection.AddMenuEntry(FGraphEditorCommands::Get().StackNodesHorizontally);
+  1755								InSection.AddMenuEntry(FGraphEditorCommands::Get().StackNodesVertically);						
+  1756							}
+  1757						}));
+  1758					}
+  1759				}
+  1760	
+  1761				if (const UK2Node* K2Node = Cast<const UK2Node>(InGraphNode))
+  1762				{
+  1763					if (!K2Node->IsNodePure())
+  1764					{
+  1765						if (!bIsDebugging && GetDefault<UBlueprintEditorSettings>()->bAllowExplicitImpureNodeDisabling)
+  1766						{
+  1767							// Don't expose the enabled state for disabled nodes that were not explicitly disabled by the user
+  1768							if (!K2Node->IsAutomaticallyPlacedGhostNode())
+  1769							{
+  1770								// Add compile options
+  1771								{
+  1772									FToolMenuSection& Section = Menu->AddSection("EdGraphSchemaCompileOptions", LOCTEXT("CompileOptionsHeader", "Compile Options"));
+  1773									Section.AddMenuEntry(
+  1774										FGraphEditorCommands::Get().DisableNodes,
+  1775										LOCTEXT("DisableCompile", "Disable (Do Not Compile)"),
+  1776										LOCTEXT("DisableCompileToolTip", "Selected node(s) will not be compiled."));
+  1777	
+  1778									{
+  1779										const FUIAction* SubMenuUIAction = Menu->Context.GetActionForCommand(FGraphEditorCommands::Get().EnableNodes);
+  1780										if(ensure(SubMenuUIAction))
+  1781										{
+  1782											Section.AddSubMenu(
+  1783												"EnableCompileSubMenu",
+  1784												LOCTEXT("EnableCompileSubMenu", "Enable Compile"),
+  1785												LOCTEXT("EnableCompileSubMenuToolTip", "Options to enable selected node(s) for compile."),
+  1786												FNewToolMenuDelegate::CreateLambda([](UToolMenu* SubMenu)
+  1787												{
+  1788													FToolMenuSection& SubMenuSection = SubMenu->AddSection("Section");
+  1789													SubMenuSection.AddMenuEntry(
+  1790														FGraphEditorCommands::Get().EnableNodes_Always,
+  1791														LOCTEXT("EnableCompileAlways", "Always"),
+  1792														LOCTEXT("EnableCompileAlwaysToolTip", "Always compile selected node(s)."));
+  1793													SubMenuSection.AddMenuEntry(
+  1794														FGraphEditorCommands::Get().EnableNodes_DevelopmentOnly,
+  1795														LOCTEXT("EnableCompileDevelopmentOnly", "Development Only"),
+  1796														LOCTEXT("EnableCompileDevelopmentOnlyToolTip", "Compile selected node(s) for development only."));
+  1797												}),
+  1798												*SubMenuUIAction,
+  1799												FGraphEditorCommands::Get().EnableNodes->GetUserInterfaceType());
+  1800										}
+  1801									}
+  1802								}
+  1803							}
+  1804						}
+  1805						
+  1806						// Add breakpoint actions
+  1807						if (K2Node->CanPlaceBreakpoints())
+  1808						{
+  1809							FToolMenuSection& Section = Menu->AddSection("EdGraphSchemaBreakpoints", LOCTEXT("BreakpointsHeader", "Breakpoints"));
+  1810							Section.AddMenuEntry( FGraphEditorCommands::Get().ToggleBreakpoint );
+  1811							Section.AddMenuEntry( FGraphEditorCommands::Get().AddBreakpoint );
+  1812							Section.AddMenuEntry( FGraphEditorCommands::Get().RemoveBreakpoint );
+  1813							Section.AddMenuEntry( FGraphEditorCommands::Get().EnableBreakpoint );
+  1814							Section.AddMenuEntry( FGraphEditorCommands::Get().DisableBreakpoint );
+  1815						}
+  1816					}
+  1817				}
+  1818			}
+  1819		}
+  1820	
+  1821		FToolMenuSection& Section = Menu->AddSection("EdGraphSchemaDocumentation", LOCTEXT("DocumentationHeader", "Documentation"));
+  1822		Section.AddMenuEntry(FGraphEditorCommands::Get().GoToDocumentation);
+  1823	
+  1824		Super::GetContextMenuActions(Menu, Context);
+  1825	}
+  1826	
+  1827	
+  1828	void UEdGraphSchema_K2::OnCreateNonExistentVariable( UK2Node_Variable* Variable,  UBlueprint* OwnerBlueprint)
+  1829	{
+  1830		if (UEdGraphPin* Pin = Variable->FindPin(Variable->GetVarName()))
+  1831		{
+  1832			const FScopedTransaction Transaction( LOCTEXT("CreateMissingVariable", "Create Missing Variable"), UEdGraphSchemaImpl::ShouldActuallyTransact());
+  1833	
+  1834			if (FBlueprintEditorUtils::AddMemberVariable(OwnerBlueprint,Variable->GetVarName(), Pin->PinType))
+  1835			{
+  1836				FGuid Guid = FBlueprintEditorUtils::FindMemberVariableGuidByName(OwnerBlueprint, Variable->GetVarName());
+  1837				Variable->VariableReference.SetSelfMember( Variable->GetVarName(), Guid );
+  1838			}
+  1839		}	
+  1840	}
+  1841	
+  1842	void UEdGraphSchema_K2::OnCreateNonExistentLocalVariable( UK2Node_Variable* Variable,  UBlueprint* OwnerBlueprint)
+  1843	{
+  1844		if (UEdGraphPin* Pin = Variable->FindPin(Variable->GetVarName()))
+  1845		{
+  1846			const FScopedTransaction Transaction( LOCTEXT("CreateMissingLocalVariable", "Create Missing Local Variable"), UEdGraphSchemaImpl::ShouldActuallyTransact());
+  1847	
+  1848			FName VarName = Variable->GetVarName();
+  1849			if (FBlueprintEditorUtils::AddLocalVariable(OwnerBlueprint, Variable->GetGraph(), VarName, Pin->PinType))
+  1850			{
