@@ -27,6 +27,35 @@ static void AddEvidenceIfPresent(
 	}
 }
 
+static void AddGuidEvidenceIfPresent(
+	FBlueprintHelperResolvedActionContext& Context,
+	const FString& Key,
+	const FGuid& Value)
+{
+	if (Value.IsValid())
+	{
+		AddEvidenceIfPresent(Context, Key, Value.ToString(EGuidFormats::Digits));
+	}
+}
+
+static FString SnapshotFactValue(const FBlueprintHelperActionContextFieldSnapshot& Field, const FString& Key)
+{
+	if (const FString* Value = Field.CapabilityFacts.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static FString DemandFactValue(const FBlueprintHelperActionContextDemand& Demand, const FString& Key)
+{
+	if (const FString* Value = Demand.CapabilityFacts.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
 static FString DescribePinTypeEvidence(const FBlueprintHelperCallFunctionPinType& PinType)
 {
 	if (!PinType.IsValid())
@@ -88,6 +117,45 @@ static const FBlueprintHelperActionContextFieldSnapshot* FindField(
 	const FBlueprintHelperActionContextSnapshot& Snapshot,
 	const FBlueprintHelperActionContextDemand& Demand)
 {
+	const FString RequestedMemberGuid = DemandFactValue(Demand, TEXT("field.member_guid"));
+	if (!RequestedMemberGuid.IsEmpty())
+	{
+		if (const FBlueprintHelperActionContextFieldSnapshot* Match = Snapshot.Fields.FindByPredicate(
+			[&RequestedMemberGuid](const FBlueprintHelperActionContextFieldSnapshot& Field)
+			{
+				return SnapshotFactValue(Field, TEXT("field.member_guid")).Equals(RequestedMemberGuid, ESearchCase::IgnoreCase);
+			}))
+		{
+			return Match;
+		}
+	}
+
+	const FString RequestedMemberName = !DemandFactValue(Demand, TEXT("field.member_name")).IsEmpty()
+		? DemandFactValue(Demand, TEXT("field.member_name"))
+		: Demand.Query;
+	if (!RequestedMemberName.IsEmpty())
+	{
+		const FString RequestedScope = DemandFactValue(Demand, TEXT("field.local_scope"));
+		const FString RequestedOwnerClass = DemandFactValue(Demand, TEXT("field.owner_class"));
+		if (const FBlueprintHelperActionContextFieldSnapshot* Match = Snapshot.Fields.FindByPredicate(
+			[&RequestedMemberName, &RequestedScope, &RequestedOwnerClass](const FBlueprintHelperActionContextFieldSnapshot& Field)
+			{
+				const bool bScopeMatches = RequestedScope.IsEmpty() ||
+					SnapshotFactValue(Field, TEXT("field.local_scope")).Equals(RequestedScope, ESearchCase::IgnoreCase) ||
+					SnapshotFactValue(Field, TEXT("field.function_name")).Equals(RequestedScope, ESearchCase::IgnoreCase);
+				const bool bOwnerMatches = RequestedOwnerClass.IsEmpty() ||
+					Field.OwnerClassPath.Equals(RequestedOwnerClass, ESearchCase::IgnoreCase);
+				return bScopeMatches &&
+					bOwnerMatches &&
+					(MatchesToken(SnapshotFactValue(Field, TEXT("field.member_name")), RequestedMemberName) ||
+						MatchesToken(Field.Name, RequestedMemberName) ||
+						MatchesToken(Field.FieldPath, RequestedMemberName));
+			}))
+		{
+			return Match;
+		}
+	}
+
 	return Snapshot.Fields.FindByPredicate(
 		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
 		{
@@ -126,13 +194,40 @@ static const FBlueprintHelperActionContextFieldSnapshot* FindComponentField(
 			{
 				return false;
 			}
+			const FString RequestedComponentName = DemandFactValue(Demand, TEXT("field.component_name"));
 			return MatchesToken(Field.Name, Demand.ComponentPath)
 				|| MatchesToken(Field.FieldPath, Demand.ComponentPath)
 				|| MatchesToken(Field.Name, Demand.TargetPath)
 				|| MatchesToken(Field.FieldPath, Demand.TargetPath)
 				|| MatchesToken(Field.Name, Demand.BindingObjectPath)
-				|| MatchesToken(Field.FieldPath, Demand.BindingObjectPath);
+				|| MatchesToken(Field.FieldPath, Demand.BindingObjectPath)
+				|| MatchesToken(Field.Name, RequestedComponentName)
+				|| MatchesToken(SnapshotFactValue(Field, TEXT("field.component_name")), RequestedComponentName);
 		});
+}
+
+static void ProjectFieldSnapshot(
+	FBlueprintHelperResolvedActionContext& Context,
+	const FBlueprintHelperActionContextDemand& Demand,
+	const FBlueprintHelperActionContextFieldSnapshot& Field)
+{
+	Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.owner_class"), Field.OwnerClassPath);
+	Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.member_name"), !SnapshotFactValue(Field, TEXT("field.member_name")).IsEmpty()
+		? SnapshotFactValue(Field, TEXT("field.member_name"))
+		: Field.Name);
+	for (const TPair<FString, FString>& FactPair : Field.CapabilityFacts)
+	{
+		Context.Semantic.CapabilityFacts.FindOrAdd(FactPair.Key, FactPair.Value);
+	}
+
+	AddEvidenceIfPresent(Context, TEXT("field.kind"), Field.Kind);
+	AddEvidenceIfPresent(Context, TEXT("field.member_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.member_name")));
+	AddEvidenceIfPresent(Context, TEXT("field.owner_class"), Field.OwnerClassPath);
+	for (const TPair<FString, FString>& FactPair : Context.Semantic.CapabilityFacts)
+	{
+		AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
+	}
+	AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
 }
 }
 
@@ -175,6 +270,8 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.PropertyPath = Demand.PropertyPath;
 	Context.Semantic.FieldOperation = Demand.FieldOperation;
 	Context.Semantic.FieldScope = Demand.FieldScope;
+	Context.Semantic.CapabilityId = Demand.CapabilityId;
+	Context.Semantic.CapabilityFacts = Demand.CapabilityFacts;
 	Context.Semantic.FunctionOperation = Demand.FunctionOperation;
 	Context.Semantic.TransformOperation = Demand.TransformOperation;
 	Context.Semantic.ScheduleOperation = Demand.ScheduleOperation;
@@ -257,6 +354,13 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("field_scope"), Demand.FieldScope);
 	}
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field_capability_id"), Demand.CapabilityId);
+	for (const TPair<FString, FString>& FactPair : Demand.CapabilityFacts)
+	{
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
+	}
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.blocking_reason"), Demand.BlockingReason);
 	if (!Demand.FunctionOperation.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("function_operation"), Demand.FunctionOperation);
@@ -382,6 +486,7 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		{
 			Context.Semantic.TargetObjectType = Field->OwnerClassPath;
 		}
+		BlueprintHelperActionContextInference::ProjectFieldSnapshot(Context, Demand, *Field);
 		Context.Evidence.Add(TEXT("field_name"), Field->Name);
 		Context.Evidence.Add(TEXT("field_pin_category"), Field->PinCategory);
 		Context.Evidence.Add(TEXT("field_pin_sub_category"), Field->PinSubCategory);
@@ -409,9 +514,19 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (const FBlueprintHelperActionContextFieldSnapshot* ComponentField =
 		BlueprintHelperActionContextInference::FindComponentField(Snapshot, Demand))
 	{
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), !BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_name")).IsEmpty()
+			? BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_name"))
+			: ComponentField->Name);
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_owner_class"), !BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class")).IsEmpty()
+			? BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class"))
+			: ComponentField->OwnerClassPath);
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_kind"), BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_kind")));
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_owner_class_path"), ComponentField->OwnerClassPath);
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_property_name"), ComponentField->Name);
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_field_path"), ComponentField->FieldPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_name")));
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_owner_class"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_owner_class")));
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_kind"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_kind")));
 	}
 
 	if (!Snapshot.Graph.GraphName.IsEmpty())

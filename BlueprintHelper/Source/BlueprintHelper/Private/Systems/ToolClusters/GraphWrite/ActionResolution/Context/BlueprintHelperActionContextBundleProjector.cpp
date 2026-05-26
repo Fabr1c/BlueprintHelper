@@ -43,6 +43,8 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 	Stable += TEXT("|");
 	Stable += Semantic.FieldScope;
 	Stable += TEXT("|");
+	Stable += Semantic.CapabilityId;
+	Stable += TEXT("|");
 	Stable += Semantic.FunctionOperation;
 	Stable += TEXT("|");
 	Stable += Semantic.TransformOperation;
@@ -109,6 +111,17 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 		Stable += Key;
 		Stable += TEXT("=");
 		AppendPinType(Stable, Semantic.ArgumentPinTypes.FindRef(Key));
+	}
+
+	TArray<FString> CapabilityFactKeys;
+	Semantic.CapabilityFacts.GetKeys(CapabilityFactKeys);
+	CapabilityFactKeys.Sort();
+	for (const FString& Key : CapabilityFactKeys)
+	{
+		Stable += TEXT("|cap:");
+		Stable += Key;
+		Stable += TEXT("=");
+		Stable += Semantic.CapabilityFacts.FindRef(Key);
 	}
 
 	return StableHashString(Stable);

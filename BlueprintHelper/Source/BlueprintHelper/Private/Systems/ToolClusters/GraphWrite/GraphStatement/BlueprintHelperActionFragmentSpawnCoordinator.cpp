@@ -5,6 +5,46 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentBuildUtils.h"
 
+namespace
+{
+static void AddOwnershipTagIfPresent(
+	FBlueprintHelperNodeFragment& Fragment,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
+	{
+		Fragment.OwnershipTags.FindOrAdd(Key, CleanValue);
+	}
+}
+
+static void AppendResolvedActionCandidateFacts(
+	const FBlueprintHelperActionResolutionResult& ActionResult,
+	FBlueprintHelperNodeFragment& OutFragment)
+{
+	if (ActionResult.CandidateActions.Num() == 0)
+	{
+		return;
+	}
+
+	const FBlueprintHelperActionCandidate& Candidate = ActionResult.CandidateActions[0];
+	AddOwnershipTagIfPresent(OutFragment, TEXT("capability_id"), Candidate.CapabilityId);
+	AddOwnershipTagIfPresent(OutFragment, TEXT("expected_node_family"), Candidate.ExpectedNodeFamily);
+	AddOwnershipTagIfPresent(OutFragment, TEXT("expected_node_class"), Candidate.ExpectedNodeClassPath);
+	AddOwnershipTagIfPresent(OutFragment, TEXT("node_class"), Candidate.NodeClassPath);
+
+	for (const TPair<FString, FString>& FactPair : Candidate.CapabilityFacts)
+	{
+		AddOwnershipTagIfPresent(OutFragment, TEXT("capability.") + FactPair.Key, FactPair.Value);
+	}
+	for (const TPair<FString, FString>& FactPair : Candidate.ReadbackFacts)
+	{
+		AddOwnershipTagIfPresent(OutFragment, TEXT("readback.") + FactPair.Key, FactPair.Value);
+	}
+}
+}
+
 bool FBlueprintHelperActionFragmentSpawnCoordinator::ValidateResolvedActionFragment(
 	const FBlueprintHelperActionFragmentSpawnCoordinatorRequest& Request,
 	FString& OutError,
@@ -103,6 +143,7 @@ bool FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment
 			TEXT("semantic_kind"),
 			FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.SemanticKind));
 	}
+	AppendResolvedActionCandidateFacts(ActionResult, OutFragment);
 
 	return true;
 }

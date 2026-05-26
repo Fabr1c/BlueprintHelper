@@ -160,6 +160,32 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 	}
 
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		&& !Statement.CapabilityId.TrimStartAndEnd().IsEmpty())
+	{
+		const FString FieldName = !Statement.ResolvedTarget.Member.IsEmpty()
+			? Statement.ResolvedTarget.Member
+			: (!Statement.Property.IsEmpty() ? Statement.Property : (!Statement.Target.IsEmpty() ? Statement.Target : Statement.Name));
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.FragmentId = StatementId;
+		Request.SourceStatementId = StatementId;
+		Request.ActionContextStatementId = StatementContextId;
+		Request.Query = FieldName;
+		Request.Target = !Statement.ResolvedTarget.Raw.IsEmpty() ? Statement.ResolvedTarget.Raw : FieldName;
+		Request.PropertyPath = !Statement.ResolvedTarget.PropertyPath.IsEmpty() ? Statement.ResolvedTarget.PropertyPath : Statement.Property;
+		if (Statement.Value.IsValid() && Statement.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
+		{
+			Request.DefaultValues.Add(FieldName, Statement.Value->LiteralValue);
+			Request.DefaultValues.Add(TEXT("value"), Statement.Value->LiteralValue);
+		}
+		return FBlueprintHelperGraphStatementBuilder::BuildFieldCapabilityFragment(
+			TargetGraph,
+			Request,
+			OutFragment,
+			OutError,
+			ActionContextScope);
+	}
+
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
 		&& Statement.FieldOperation.Equals(TEXT("set"), ESearchCase::IgnoreCase)
 		&& Statement.FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase))
 	{

@@ -171,7 +171,22 @@ static FString NormalizeFieldToken(const FString& Token)
 static bool IsSupportedFieldOperation(const FString& Operation)
 {
 	const FString Normalized = NormalizeFieldToken(Operation);
-	return Normalized == TEXT("get") || Normalized == TEXT("set");
+	return Normalized == TEXT("get")
+		|| Normalized == TEXT("set")
+		|| Normalized == TEXT("get_property")
+		|| Normalized == TEXT("set_property");
+}
+
+static bool IsFieldSetOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeFieldToken(Operation);
+	return Normalized == TEXT("set") || Normalized == TEXT("set_property");
+}
+
+static bool IsFieldReadOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeFieldToken(Operation);
+	return Normalized == TEXT("get") || Normalized == TEXT("get_property");
 }
 
 static bool IsSupportedFieldScope(const FString& Scope)
@@ -203,6 +218,61 @@ static FString ReadOptionalJsonValueAsString(const TSharedPtr<FJsonObject>& Obje
 	return FString();
 }
 
+static FString ReadFirstOptionalJsonValueAsString(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FirstFieldName,
+	const TCHAR* SecondFieldName = nullptr,
+	const TCHAR* ThirdFieldName = nullptr)
+{
+	FString Value = ReadOptionalJsonValueAsString(Object, FirstFieldName);
+	if (Value.IsEmpty() && SecondFieldName)
+	{
+		Value = ReadOptionalJsonValueAsString(Object, SecondFieldName);
+	}
+	if (Value.IsEmpty() && ThirdFieldName)
+	{
+		Value = ReadOptionalJsonValueAsString(Object, ThirdFieldName);
+	}
+	return Value;
+}
+
+static FGuid ReadOptionalGuidField(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FirstFieldName,
+	const TCHAR* SecondFieldName = nullptr)
+{
+	FGuid ParsedGuid;
+	const FString GuidText = ReadFirstOptionalJsonValueAsString(Object, FirstFieldName, SecondFieldName);
+	if (!GuidText.IsEmpty())
+	{
+		FGuid::Parse(GuidText, ParsedGuid);
+	}
+	return ParsedGuid;
+}
+
+static void AddCapabilityFactIfPresent(
+	TMap<FString, FString>& OutFacts,
+	const FString& FactKey,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (!FactKey.IsEmpty() && !CleanValue.IsEmpty())
+	{
+		OutFacts.FindOrAdd(FactKey, CleanValue);
+	}
+}
+
+static void AddCapabilityFactIfPresent(
+	TMap<FString, FString>& OutFacts,
+	const FString& FactKey,
+	const FGuid& Value)
+{
+	if (Value.IsValid())
+	{
+		OutFacts.FindOrAdd(FactKey, Value.ToString(EGuidFormats::DigitsWithHyphens));
+	}
+}
+
 static void ReadOptionalStringMapField(
 	const TSharedPtr<FJsonObject>& Object,
 	const TCHAR* FieldName,
@@ -222,6 +292,49 @@ static void ReadOptionalStringMapField(
 	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
 	{
 		OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
+	}
+}
+
+static void ReadOptionalCapabilityFacts(
+	const TSharedPtr<FJsonObject>& Object,
+	TMap<FString, FString>& OutFacts)
+{
+	ReadOptionalStringMapField(Object, TEXT("capability_facts"), OutFacts);
+
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.owner_class"), ReadFirstOptionalJsonValueAsString(Object, TEXT("owner_class_path"), TEXT("owner_class"), TEXT("field_owner_class")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.member_guid"), ReadOptionalGuidField(Object, TEXT("member_guid")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.local_scope"), ReadFirstOptionalJsonValueAsString(Object, TEXT("local_scope"), TEXT("scope_name")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.function_name"), ReadFirstOptionalJsonValueAsString(Object, TEXT("function_name")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.param_flags"), ReadFirstOptionalJsonValueAsString(Object, TEXT("param_flags")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_ref"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_ref"), TEXT("target_pin")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_type"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_type_category"), TEXT("target_pin_type")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_object_path"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_type_object_path"), TEXT("target_pin_object_path")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_name"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_name")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_owner_class"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_owner_class")));
+	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_kind"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_kind")));
+
+	const TArray<TSharedPtr<FJsonValue>>* SegmentValues = nullptr;
+	if (Object.IsValid()
+		&& (Object->TryGetArrayField(TEXT("field_path_segments"), SegmentValues)
+			|| Object->TryGetArrayField(TEXT("field_path"), SegmentValues))
+		&& SegmentValues)
+	{
+		TArray<FString> Segments;
+		for (const TSharedPtr<FJsonValue>& SegmentValue : *SegmentValues)
+		{
+			if (SegmentValue.IsValid())
+			{
+				Segments.Add(FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(SegmentValue).TrimStartAndEnd());
+			}
+		}
+		Segments.RemoveAll([](const FString& Segment)
+		{
+			return Segment.IsEmpty();
+		});
+		if (Segments.Num() > 0)
+		{
+			OutFacts.FindOrAdd(TEXT("field.property_path"), FString::Join(Segments, TEXT(".")));
+		}
 	}
 }
 
@@ -528,6 +641,48 @@ bool FBlueprintHelperGraphSemanticIR::TryFindSymbol(const FString& Name, FBluepr
 	return false;
 }
 
+bool FBlueprintHelperGraphSemanticIR::ValidateExpression(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FString& OutError)
+{
+	OutError.Reset();
+
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field)
+	{
+		if (!IsSupportedFieldOperation(Expression.FieldOperation))
+		{
+			OutError = TEXT("field expression operation must be get, set, get_property, or set_property");
+			return false;
+		}
+
+		if (!IsFieldReadOperation(Expression.FieldOperation))
+		{
+			OutError = TEXT("field expression operation must be get or get_property");
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool FBlueprintHelperGraphSemanticIR::ValidateStatement(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FString& OutError)
+{
+	OutError.Reset();
+
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field)
+	{
+		if (!IsSupportedFieldOperation(Statement.FieldOperation))
+		{
+			OutError = TEXT("field statement operation must be get, set, get_property, or set_property");
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
 	const TSharedPtr<FJsonObject>& LogicSpecObject,
 	FBlueprintHelperGraphSemanticIR& OutIR)
@@ -635,10 +790,12 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	{
 		StatementObject->TryGetStringField(TEXT("property_path"), Statement->Property);
 	}
+	Statement->CapabilityId = ReadFirstOptionalJsonValueAsString(StatementObject, TEXT("field_capability_id"), TEXT("capability_id"));
 	StatementObject->TryGetStringField(TEXT("field_operation"), Statement->FieldOperation);
 	StatementObject->TryGetStringField(TEXT("field_scope"), Statement->FieldScope);
 	Statement->FieldOperation = NormalizeFieldToken(Statement->FieldOperation);
 	Statement->FieldScope = NormalizeFieldToken(Statement->FieldScope);
+	ReadOptionalCapabilityFacts(StatementObject, Statement->CapabilityFacts);
 	StatementObject->TryGetStringField(TEXT("function_operation"), Statement->FunctionOperation);
 	Statement->FunctionOperation = NormalizeFieldToken(Statement->FunctionOperation);
 	StatementObject->TryGetStringField(TEXT("transform_operation"), Statement->TransformOperation);
@@ -829,10 +986,12 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	{
 		ExpressionObject->TryGetStringField(TEXT("property_path"), Expression->Property);
 	}
+	Expression->CapabilityId = ReadFirstOptionalJsonValueAsString(ExpressionObject, TEXT("field_capability_id"), TEXT("capability_id"));
 	ExpressionObject->TryGetStringField(TEXT("field_operation"), Expression->FieldOperation);
 	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
 	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
 	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
+	ReadOptionalCapabilityFacts(ExpressionObject, Expression->CapabilityFacts);
 	const FString NormalizedExpressionKind = NormalizeFieldToken(KindString);
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
 		&& Expression->FieldOperation.IsEmpty()
@@ -1119,7 +1278,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_target_missing"), Statement->Path + TEXT(".target"), TEXT("field statement requires target."));
 		}
-		if (!Statement->Value.IsValid())
+		if (IsFieldSetOperation(Statement->FieldOperation) && !Statement->Value.IsValid())
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_value_missing"), Statement->Path + TEXT(".value"), TEXT("field set statement requires value."));
 		}
@@ -1129,11 +1288,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				OutIR,
 				TEXT("field_operation_unsupported"),
 				Statement->Path + TEXT(".field_operation"),
-				FString::Printf(TEXT("Unsupported field_operation: %s."), *Statement->FieldOperation));
-		}
-		else if (Statement->FieldOperation != TEXT("set"))
-		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_statement_operation_unsupported"), Statement->Path + TEXT(".field_operation"), TEXT("Field statements currently support field_operation=set."));
+				TEXT("field statement operation must be get, set, get_property, or set_property"));
 		}
 		if (!IsSupportedFieldScope(Statement->FieldScope))
 		{
@@ -1361,11 +1516,11 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 				OutIR,
 				TEXT("field_operation_unsupported"),
 				Expression->Path + TEXT(".field_operation"),
-				FString::Printf(TEXT("Unsupported field_operation: %s."), *Expression->FieldOperation));
+				TEXT("field expression operation must be get, set, get_property, or set_property"));
 		}
-		else if (Expression->FieldOperation != TEXT("get"))
+		else if (!IsFieldReadOperation(Expression->FieldOperation))
 		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_expression_operation_unsupported"), Expression->Path + TEXT(".field_operation"), TEXT("Field expressions currently support field_operation=get."));
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_expression_operation_unsupported"), Expression->Path + TEXT(".field_operation"), TEXT("Field expressions currently support field_operation=get or get_property."));
 		}
 		if (!IsSupportedFieldScope(Expression->FieldScope))
 		{

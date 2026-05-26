@@ -2,11 +2,13 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 
+#include "Components/SceneComponent.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
@@ -59,6 +61,71 @@ static bool AddFieldVariableActionTestVariable(UBlueprint* Blueprint, const FStr
 	{
 		return false;
 	}
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	return true;
+}
+
+static UEdGraph* AddFieldVariableActionFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
+{
+	if (!Blueprint || FunctionName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	UEdGraph* FunctionGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(*FunctionName),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	if (!FunctionGraph)
+	{
+		return nullptr;
+	}
+
+	FBlueprintEditorUtils::AddFunctionGraph<UFunction>(
+		Blueprint,
+		FunctionGraph,
+		/*bIsUserCreated=*/ true,
+		nullptr);
+	return FunctionGraph;
+}
+
+static UK2Node_FunctionEntry* FindFieldVariableActionFunctionEntry(UEdGraph* FunctionGraph)
+{
+	if (!FunctionGraph)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+		{
+			return Entry;
+		}
+	}
+	return nullptr;
+}
+
+static bool AddFieldVariableActionFunctionInputPin(
+	UBlueprint* Blueprint,
+	UEdGraph* FunctionGraph,
+	const FString& PinName,
+	const FEdGraphPinType& PinType)
+{
+	UK2Node_FunctionEntry* Entry = FindFieldVariableActionFunctionEntry(FunctionGraph);
+	if (!Blueprint || !Entry || PinName.IsEmpty())
+	{
+		return false;
+	}
+
+	TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
+	NewPin->PinName = FName(*PinName);
+	NewPin->PinType = PinType;
+	NewPin->DesiredPinDirection = EGPD_Output;
+	Entry->UserDefinedPins.Add(NewPin);
+	Entry->ReconstructNode();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	return true;
@@ -252,6 +319,127 @@ bool FBlueprintHelperFieldVariableActionClusterAmbiguousTest::RunTest(const FStr
 		TestFalse(TEXT("candidate pin type"), Result.CandidateActions[0].ReturnType.IsEmpty());
 		TestTrue(TEXT("candidate score"), Result.CandidateActions[0].Score > 0);
 		TestFalse(TEXT("candidate reason"), Result.CandidateActions[0].MatchReason.IsEmpty());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterResolvesFunctionLocalGetAndSetTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.FunctionScope.LocalGetSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterResolvesFunctionLocalGetAndSetTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	UEdGraph* FunctionGraph = AddFieldVariableActionFunctionGraph(Blueprint, TEXT("ComputeLocalSpeed"));
+	TestNotNull(TEXT("function graph"), FunctionGraph);
+	TestNotNull(TEXT("function entry"), FindFieldVariableActionFunctionEntry(FunctionGraph));
+	if (!Blueprint || !FunctionGraph)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("add local variable"), FBlueprintEditorUtils::AddLocalVariable(
+		Blueprint,
+		FunctionGraph,
+		TEXT("LocalSpeed"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	FBlueprintHelperActionResolutionRequest GetRequest = MakeFieldVariableActionRequest(
+		Blueprint,
+		FunctionGraph,
+		TEXT("get"),
+		TEXT("variable"),
+		TEXT("LocalSpeed"));
+	GetRequest.Semantic.CapabilityId = TEXT("field.local_get");
+	GetRequest.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("LocalSpeed"));
+	GetRequest.Semantic.CapabilityFacts.Add(TEXT("field.local_scope"), TEXT("ComputeLocalSpeed"));
+	GetRequest.Semantic.CapabilityFacts.Add(TEXT("field.function_name"), TEXT("ComputeLocalSpeed"));
+
+	const FBlueprintHelperActionResolutionResult GetResult = FBlueprintHelperActionResolutionCore::Resolve(GetRequest);
+	TestEqual(TEXT("local get status"), GetResult.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("local get selected stable id"), GetResult.SelectedStableId.Contains(TEXT("field.local_get")));
+	TestTrue(TEXT("local get spawner"), GetResult.SelectedSpawner.IsValid());
+	TestEqual(TEXT("local get one candidate"), GetResult.CandidateActions.Num(), 1);
+	if (GetResult.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = GetResult.CandidateActions[0];
+		TestEqual(TEXT("local get capability"), Candidate.CapabilityId, FString(TEXT("field.local_get")));
+		TestTrue(TEXT("local get node class"), Candidate.NodeClassPath.Contains(TEXT("K2Node_VariableGet")));
+		TestEqual(TEXT("local get scope fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.local_scope")), FString(TEXT("ComputeLocalSpeed")));
+		TestEqual(TEXT("local get kind fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.kind")), FString(TEXT("local")));
+	}
+
+	FBlueprintHelperActionResolutionRequest SetRequest = MakeFieldVariableActionRequest(
+		Blueprint,
+		FunctionGraph,
+		TEXT("set"),
+		TEXT("variable"),
+		TEXT("LocalSpeed"));
+	SetRequest.Semantic.CapabilityId = TEXT("field.local_set");
+	SetRequest.Semantic.CapabilityFacts = GetRequest.Semantic.CapabilityFacts;
+
+	const FBlueprintHelperActionResolutionResult SetResult = FBlueprintHelperActionResolutionCore::Resolve(SetRequest);
+	TestEqual(TEXT("local set status"), SetResult.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("local set spawner"), SetResult.SelectedSpawner.IsValid());
+	TestEqual(TEXT("local set one candidate"), SetResult.CandidateActions.Num(), 1);
+	if (SetResult.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = SetResult.CandidateActions[0];
+		TestEqual(TEXT("local set capability"), Candidate.CapabilityId, FString(TEXT("field.local_set")));
+		TestTrue(TEXT("local set node class"), Candidate.NodeClassPath.Contains(TEXT("K2Node_VariableSet")));
+		TestEqual(TEXT("local set scope fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.local_scope")), FString(TEXT("ComputeLocalSpeed")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterResolvesFunctionParamGetTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.FunctionScope.ParamGet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterResolvesFunctionParamGetTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	UEdGraph* FunctionGraph = AddFieldVariableActionFunctionGraph(Blueprint, TEXT("ComputeInputSpeed"));
+	TestNotNull(TEXT("function graph"), FunctionGraph);
+	TestNotNull(TEXT("function entry"), FindFieldVariableActionFunctionEntry(FunctionGraph));
+	if (!Blueprint || !FunctionGraph)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("add function input pin"), AddFieldVariableActionFunctionInputPin(
+		Blueprint,
+		FunctionGraph,
+		TEXT("InputSpeed"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		FunctionGraph,
+		TEXT("get"),
+		TEXT("variable"),
+		TEXT("InputSpeed"));
+	Request.Semantic.CapabilityId = TEXT("field.function_param_get");
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("InputSpeed"));
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.function_name"), TEXT("ComputeInputSpeed"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("function param status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("function param selected stable id"), Result.SelectedStableId.Contains(TEXT("field.function_param_get")));
+	TestTrue(TEXT("function param spawner"), Result.SelectedSpawner.IsValid());
+	TestEqual(TEXT("function param one candidate"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = Result.CandidateActions[0];
+		TestEqual(TEXT("function param capability"), Candidate.CapabilityId, FString(TEXT("field.function_param_get")));
+		TestTrue(TEXT("function param node class"), Candidate.NodeClassPath.Contains(TEXT("K2Node_VariableGet")));
+		TestEqual(TEXT("function param kind fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.kind")), FString(TEXT("function_param")));
+		TestEqual(TEXT("function param function fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.function_name")), FString(TEXT("ComputeInputSpeed")));
 	}
 	return true;
 }
@@ -485,7 +673,7 @@ bool FBlueprintHelperFieldVariableActionClusterComponentRefResolvesTest::RunTest
 	TestTrue(TEXT("add component ref variable"), AddFieldVariableActionTestVariable(
 		Blueprint,
 		TEXT("DoorMesh"),
-		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Object)));
+		FEdGraphPinType(UEdGraphSchema_K2::PC_Object, NAME_None, USceneComponent::StaticClass(), EPinContainerType::None, false, FEdGraphTerminalType())));
 
 	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
 		Blueprint,
@@ -618,6 +806,154 @@ bool FBlueprintHelperFieldVariableActionClusterLinkedPinInfersExpectedReturnType
 	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
 	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	TestEqual(TEXT("selected id"), Result.SelectedStableId.Contains(TEXT("SmokeString")), true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterCapabilityStableIdTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.CapabilityStableId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterCapabilityStableIdTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestTrue(TEXT("add variable"), AddFieldVariableActionTestVariable(
+		Blueprint,
+		TEXT("Health"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("variable"),
+		TEXT("Health"));
+	Request.Semantic.CapabilityId = TEXT("field.member_get");
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("Health"));
+	AddProjectedFieldEvidence(Request, TEXT("Health"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestEqual(TEXT("one candidate"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = Result.CandidateActions[0];
+		TestEqual(TEXT("capability id"), Candidate.CapabilityId, FString(TEXT("field.member_get")));
+		TestEqual(TEXT("expected node family"), Candidate.ExpectedNodeFamily, FString(TEXT("variable_get")));
+		TestTrue(TEXT("stable id contains capability"), Candidate.StableId.Contains(TEXT("field.member_get")));
+		TestEqual(TEXT("resolved member"), Candidate.CapabilityFacts.FindRef(TEXT("field.member_name")), FString(TEXT("Health")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterComponentRefUsesVariableGetTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ComponentRef.UsesVariableGet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterComponentRefUsesVariableGetTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+
+	FEdGraphPinType ComponentPinType(UEdGraphSchema_K2::PC_Object, NAME_None, USceneComponent::StaticClass(), EPinContainerType::None, false, FEdGraphTerminalType());
+	TestTrue(TEXT("add component-like object property"), AddFieldVariableActionTestVariable(Blueprint, TEXT("MeshComponent"), ComponentPinType));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("component_ref"),
+		TEXT("MeshComponent"));
+	Request.Semantic.CapabilityId = TEXT("field.component_ref_get");
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.component_name"), TEXT("MeshComponent"));
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.component_owner_class"), Blueprint->GeneratedClass ? Blueprint->GeneratedClass->GetPathName() : FString());
+	Request.ContextEvidence.Add(TEXT("component_name"), TEXT("MeshComponent"));
+	Request.ContextEvidence.Add(TEXT("component_kind"), TEXT("scs_or_native_property"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestEqual(TEXT("candidate count"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = Result.CandidateActions[0];
+		TestEqual(TEXT("capability"), Candidate.CapabilityId, FString(TEXT("field.component_ref_get")));
+		TestTrue(TEXT("variable get node"), Candidate.NodeClassPath.Contains(TEXT("K2Node_VariableGet")));
+		TestFalse(TEXT("not add component"), Candidate.NodeClassPath.Contains(TEXT("K2Node_AddComponent")));
+		TestEqual(TEXT("component name fact"), Candidate.CapabilityFacts.FindRef(TEXT("field.component_name")), FString(TEXT("MeshComponent")));
+		TestEqual(TEXT("component spawner readback"), Candidate.ReadbackFacts.FindRef(TEXT("component_ref_spawner")), FString(TEXT("UBlueprintVariableNodeSpawner")));
+		TestTrue(TEXT("component class readback"), Candidate.ReadbackFacts.FindRef(TEXT("component_property_class")).Contains(TEXT("SceneComponent")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterComponentRefRejectsPlainObjectPropertyTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ComponentRef.RejectsPlainObjectProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterComponentRefRejectsPlainObjectPropertyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+
+	FEdGraphPinType ObjectPinType(UEdGraphSchema_K2::PC_Object, NAME_None, UObject::StaticClass(), EPinContainerType::None, false, FEdGraphTerminalType());
+	TestTrue(TEXT("add plain object property"), AddFieldVariableActionTestVariable(Blueprint, TEXT("PayloadObject"), ObjectPinType));
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("component_ref"),
+		TEXT("PayloadObject"));
+	Request.Semantic.CapabilityId = TEXT("field.component_ref_get");
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.component_name"), TEXT("PayloadObject"));
+	Request.ContextEvidence.Add(TEXT("component_name"), TEXT("PayloadObject"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::NotFound);
+	TestEqual(TEXT("error code"), Result.ErrorCode, FString(TEXT("not_class_component_property")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterObjectPinMemberGetRequiresTargetPinTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ObjectPinMemberGet.RequiresTargetPin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterObjectPinMemberGetRequiresTargetPinTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("blueprint"), Blueprint);
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		Blueprint,
+		GetFieldVariableActionTestGraph(Blueprint),
+		TEXT("get"),
+		TEXT("field_access"),
+		TEXT("Tags"));
+	Request.Semantic.CapabilityId = TEXT("field.object_pin_member_get");
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_ref"), TEXT("node:OwnerActor pin:ReturnValue"));
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.owner_class"), TEXT("/Script/Engine.Actor"));
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("Tags"));
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_type"), UEdGraphSchema_K2::PC_Object.ToString());
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_object_path"), TEXT("/Script/Engine.Actor"));
+	Request.ContextEvidence.Add(TEXT("target_pin_ref"), Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_ref")));
+	Request.ContextEvidence.Add(TEXT("linked_pin_type_category"), Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_type")));
+	Request.ContextEvidence.Add(TEXT("linked_pin_type_object_path"), Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestEqual(TEXT("candidate count"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		const FBlueprintHelperActionCandidate& Candidate = Result.CandidateActions[0];
+		TestEqual(TEXT("capability id"), Candidate.CapabilityId, FString(TEXT("field.object_pin_member_get")));
+		TestEqual(TEXT("target pin category"), Candidate.CapabilityFacts.FindRef(TEXT("field.target_pin_type")), FString(UEdGraphSchema_K2::PC_Object.ToString()));
+		TestEqual(TEXT("target pin object"), Candidate.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")), FString(TEXT("/Script/Engine.Actor")));
+		TestTrue(TEXT("stable id includes target pin class"), Candidate.StableId.Contains(TEXT("/Script/Engine.Actor")));
+	}
 	return true;
 }
 

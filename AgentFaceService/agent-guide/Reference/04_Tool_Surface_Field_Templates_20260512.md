@@ -440,6 +440,54 @@ For `merge_owned_graph` with `branch_fork`, keep the TaskSpec semantic and provi
 
 After a successful `branch_fork` execute, read back LogicJson or LogicMd and verify the inserted Sequence or equivalent distribution node, the inserted call, and the original successor are reachable from the anchor, with no orphaned nodes in the affected flow.
 
+## 14.5 GraphWrite Field First-Class Capability IDs
+
+Graph body Field statements use a stable `field.capability_id`. The statement may also carry namespaced `field.*` facts such as owner class, member guid, local scope, target pin, component metadata, or property path. Do not depend on transient editor UI state such as selection, context menus, pin drag state, or modifier keys.
+
+Allowed `field.capability_id` values:
+
+```text
+field.member_get
+field.member_set
+field.inherited_member_get
+field.inherited_member_set
+field.sparse_data_get
+field.function_param_get
+field.local_get
+field.local_set
+field.object_pin_member_get
+field.object_pin_member_set
+field.component_ref_get
+field.component_ref_set
+field.component_property_get
+field.component_property_set
+field.struct_member_get
+field.struct_member_set
+field.nested_property_path
+```
+
+Excluded Field-like inputs:
+
+| Category | IDs | Required behavior |
+|---|---|---|
+| UI-only evidence | `field.drag_get`, `field.drag_set`, `field.pin_drag_get`, `field.pin_drag_set` | Reject with `unsupported_ui_entry_not_statement`; caller must map UI evidence to a first-class Field capability before GraphWrite execution. |
+| Support/readback-only | `field.split_struct_pin_support`, `field.recombine_struct_pin_support` | Internal fragment/readback support only; no user statement surface. |
+| Other clusters | `control.function_return_write`, `function.selected_component_call`, `component.add_component_node` | Route or reject outside FieldVariableActionCluster; Field must not claim success. |
+| Diagnostic / first-stage excluded | `field.unsupported_path_diagnostic`, `field.by_ref_set` | Diagnostic-only; `field.by_ref_set` returns `unsupported_by_ref_set_deferred`. |
+
+Minimum statement-local facts by capability family:
+
+| Family | Required fields |
+|---|---|
+| member get/set | `field.member_name`, optional `field.owner_class`, optional `field.member_guid`, access mode from capability id |
+| inherited/native/sparse member | `field.owner_class`, `field.member_name`, optional `field.member_guid` |
+| local get/set | `field.function_name` or `field.local_scope`, `field.member_name` or `field.local_name`, optional `field.member_guid` |
+| function param get | `field.function_name`, `field.member_name` or parameter name, `field.param_flags` or resolved parameter evidence |
+| component_ref | `field.component_name`, optional `field.component_owner_class`, optional `field.component_kind` |
+| object pin member get/set | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.owner_class`, `field.member_name` |
+| component property get/set | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.property_path`, component/property owner evidence |
+| struct/nested property path | `field.property_path`, root expression evidence, expected read/write mode, linked pins/defaults when applicable |
+
 ## 15. Function Call Body Statement
 
 Use the GraphStatement form `kind="call"` + `target`. Legacy `kind="call_function"` + `name` is unsupported. The target may be a native function name, a Blueprint display name, an owner-qualified native name, or an explicit component/member call for append-owned graph writes. Preview resolves the function against the target Blueprint graph. If the target is ambiguous, use an owner-qualified native name and preview again.

@@ -112,6 +112,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString Target;
 	FString Name;
 	FString Property;
+	FString CapabilityId;
+	TMap<FString, FString> CapabilityFacts;
 	FString FieldOperation;
 	FString FieldScope;
 	FString FunctionOperation;
@@ -160,6 +162,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString Target;
 	FString Name;
 	FString Property;
+	FString CapabilityId;
+	TMap<FString, FString> CapabilityFacts;
 	FString FieldOperation;
 	FString FieldScope;
 	FString FunctionOperation;
@@ -224,6 +228,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphSemanticIR
 
 	bool HasErrors() const;
 	bool TryFindSymbol(const FString& Name, FBlueprintHelperGraphSymbol& OutSymbol) const;
+	static bool ValidateExpression(const FBlueprintHelperGraphExpressionIR& Expression, FString& OutError);
+	static bool ValidateStatement(const FBlueprintHelperGraphStatementIR& Statement, FString& OutError);
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperGraphSemanticIRBuilder

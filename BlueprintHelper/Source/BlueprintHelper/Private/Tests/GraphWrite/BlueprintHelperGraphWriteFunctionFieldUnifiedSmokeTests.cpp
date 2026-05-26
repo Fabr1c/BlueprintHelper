@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
 #include "BlueprintActionDatabase.h"
+#include "Components/SceneComponent.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
@@ -353,7 +354,7 @@ bool FBlueprintHelperGraphWriteUnifiedSmokeFieldComponentRefAndFieldAccessTest::
 	TestTrue(TEXT("add DoorMesh variable"), AddUnifiedSmokeVariable(
 		Blueprint,
 		TEXT("DoorMesh"),
-		MakeUnifiedSmokePinType(UEdGraphSchema_K2::PC_Object)));
+		FEdGraphPinType(UEdGraphSchema_K2::PC_Object, NAME_None, USceneComponent::StaticClass(), EPinContainerType::None, false, FEdGraphTerminalType())));
 	TestTrue(TEXT("add RelativeRotation variable"), AddUnifiedSmokeVariable(
 		Blueprint,
 		TEXT("RelativeRotation"),
