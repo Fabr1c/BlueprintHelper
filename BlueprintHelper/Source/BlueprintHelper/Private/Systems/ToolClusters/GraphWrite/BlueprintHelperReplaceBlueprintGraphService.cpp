@@ -270,6 +270,10 @@ FBlueprintHelperReplaceBlueprintGraphService::ParseRequest(const TSharedPtr<FJso
 		(*SelectorObject)->TryGetStringField(TEXT("block_id"), Request.BlockId);
 		(*SelectorObject)->TryGetStringField(TEXT("target_ref"), Request.TargetRef);
 		(*SelectorObject)->TryGetStringField(TEXT("entry_name"), Request.EntryName);
+		if (Request.EntryName.IsEmpty())
+		{
+			(*SelectorObject)->TryGetStringField(TEXT("function_name"), Request.EntryName);
+		}
 		(*SelectorObject)->TryGetStringField(TEXT("event_taxonomy"), Request.EventTaxonomy);
 		(*SelectorObject)->TryGetStringField(TEXT("signature_evidence_id"), Request.SignatureEvidenceId);
 		(*SelectorObject)->TryGetStringField(TEXT("node_path"), Request.NodePath);
@@ -343,6 +347,18 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 		Result.Conflicts.Add({TEXT("graph_scope_entry_selector_unsupported"),
 			TEXT("replace_scope=graph does not accept selector.entry_name; use custom_event_body or event_body for entry-body replacement."),
 			Request.EntryName, TEXT("selector.entry_name")});
+		return Result;
+	}
+
+	if ((Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
+		Request.Scope == EBlueprintHelperReplaceScope::EventBody) &&
+		Request.EntryName.IsEmpty())
+	{
+		Result.bPassed = false;
+		Result.BlockedBy.Add(TEXT("target_entry_not_found"));
+		Result.Conflicts.Add({TEXT("target_entry_not_found"),
+			TEXT("event/custom_event body replacement requires selector.entry_name."),
+			TEXT("selector.entry_name"), TEXT("payload")});
 		return Result;
 	}
 
@@ -865,12 +881,10 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	}
 
 	// event_body / custom_event_body / graph: 鍥為€€鍒?block_implementation 璇箟
-	if (Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
-		Request.Scope == EBlueprintHelperReplaceScope::EventBody ||
-		Request.Scope == EBlueprintHelperReplaceScope::Graph)
+	if (Request.Scope == EBlueprintHelperReplaceScope::Graph)
 	{
 		// 绠€鍖栵細鍒犻櫎鎵€鏈夐潪 entry 鑺傜偣
-		OutTarget.TargetRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
+		OutTarget.TargetRef = Request.GraphName;
 		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
 		EntryResolveRequest.Scope = Request.Scope;
 		EntryResolveRequest.EntryName = Request.EntryName;
@@ -883,22 +897,71 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 				if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
 				{
 					OutTarget.NodesToPreserve.Add(Node);
-					if (FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
-					{
-						FString EntryBlockId;
-						if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId))
-						{
-							OutTarget.OriginalBlockId = EntryBlockId;
-							OutTarget.OriginalBlockRef = Request.EntryName.IsEmpty() ? Request.GraphName : Request.EntryName;
-							OutTarget.TargetRef = OutTarget.OriginalBlockRef;
-							OutTarget.bIsBlueprintHelperOwned = true;
-						}
-					}
 				}
 				else
 				{
 					OutTarget.NodesToDelete.Add(Node);
 				}
+			}
+		}
+		return true;
+	}
+
+	if (Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
+		Request.Scope == EBlueprintHelperReplaceScope::EventBody)
+	{
+		OutTarget.TargetRef = Request.EntryName;
+		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+		EntryResolveRequest.Scope = Request.Scope;
+		EntryResolveRequest.EntryName = Request.EntryName;
+		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
+		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
+
+		UEdGraphNode* EntryNode = nullptr;
+		FString EntryBlockId;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node || !FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
+			{
+				continue;
+			}
+
+			EntryNode = Node;
+			OutTarget.NodesToPreserve.Add(Node);
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId);
+			break;
+		}
+
+		if (!EntryNode)
+		{
+			OutError = FString::Printf(TEXT("Entry %s was not found."), *Request.EntryName);
+			return false;
+		}
+
+		if (EntryBlockId.IsEmpty())
+		{
+			OutError = FString::Printf(TEXT("Entry %s does not have BlueprintHelper ownership metadata; scoped body replacement cannot determine its owned body."), *Request.EntryName);
+			return false;
+		}
+
+		OutTarget.OriginalBlockId = EntryBlockId;
+		OutTarget.OriginalBlockRef = Request.EntryName;
+		OutTarget.TargetRef = Request.EntryName;
+		OutTarget.bIsBlueprintHelperOwned = true;
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node || Node == EntryNode)
+			{
+				continue;
+			}
+
+			FString NodeBlockId;
+			if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, NodeBlockId) &&
+				NodeBlockId.Equals(EntryBlockId, ESearchCase::IgnoreCase))
+			{
+				OutTarget.NodesToDelete.Add(Node);
+				OutTarget.ExistingOwnedNodes.Add(Node);
 			}
 		}
 		return true;

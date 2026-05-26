@@ -113,8 +113,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       note: 'Switch, multi-gate, and macro controls do not expose one universal then pin; place generic control statements as terminal statements until an operation-specific body/continuation contract exists.',
     },
     replace_owned_graph: {
-      scopes: ['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+      scopes: ['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
       selector_kinds_by_scope: {
+        graph: 'graph',
         custom_event_definition: 'custom_event',
         custom_event_body: 'custom_event',
         function_body: 'function',
