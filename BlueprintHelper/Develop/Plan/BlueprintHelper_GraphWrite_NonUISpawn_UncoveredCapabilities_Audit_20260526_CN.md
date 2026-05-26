@@ -2,6 +2,8 @@
 
 日期：2026-05-26
 
+> 2026-05-27 同步：Evidence 文档不再作为当前判断依据，本审计只保留非 UI Spawn 边界和历史输入。以当前实现为准，`kind=control` 宽控制流、StandardMacros 控制流、`generic_schedule` 的 `timer_delegate_node` / `latent_or_async_node`、typed `select` 已不再按“未覆盖/未支持”统计；相关旧 `unsupported` 结论必须用当前实现和编辑器内 spawn 结果复核。
+
 ## 1. 审计口径
 
 本审计回答“BlueprintHelper 可以覆盖但当前尚未覆盖或未完全贯通的能力”。这里的“可以覆盖”限定为非 UI 强关联 Spawn：
@@ -25,8 +27,8 @@
 
 | Priority | 能力族 | 当前状态 | 为什么属于非 UI Spawn | 建议 owner / 入口 |
 |---|---|---|---|---|
-| P0 | 宽控制流 public shape：`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate` | capability contract 与 C++ resolver 已有控制流证据路径，但 Agent-facing compiler 仍只接受 `branch` / `sequence` / `return`；完整 body composition 计划仍未落地。 | `UK2Node_Switch*` / `UK2Node_MultiGate` 可由 node class/provider 创建，case/default/output pin 可由 statement-local evidence 配置，不依赖菜单。 | `GenericAssetStructControlActionCluster`，扩展 `kind=control` public shape 与 Fragment body branch composition。 |
-| P0 | StandardMacros 控制流：`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | C++ GenericOps resolver 可消费 `generic.macro.graph_path` 与 `generic.macro.pin_shape_snapshot`，但 public compiler 未接受这些 control kinds，final body/readback matrix 未闭环。 | `UK2Node_MacroInstance` 可用明确 macro graph path + pin snapshot 创建；array/condition/index/body pins 可由 TaskSpec evidence 驱动。 | `GenericAssetStructControlActionCluster`，复用 macro control fragment/readback。 |
+| P0 | 宽控制流 public shape：`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate` | 当前实现已接入 dedicated control vocabulary 与 TS lowering；不再是“Agent-facing compiler 只接受 `branch` / `sequence` / `return`”缺口。剩余工作是用当前通用性 E2E fixture/readback 复验各变体。 | `UK2Node_Switch*` / `UK2Node_MultiGate` 可由 node class/provider 创建，case/default/output pin 可由 statement-local evidence 配置，不依赖菜单。 | `GenericAssetStructControlActionCluster`；当前按已支持能力处理，后续只追踪复验结果。 |
+| P0 | StandardMacros 控制流：`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | 当前实现已接受这些 control kinds，并通过 graph-qualified macro path / pin shape evidence 驱动。旧报告中的 unsupported 来自旧 fixture/evidence 字段。 | `UK2Node_MacroInstance` 可用明确 macro graph path + pin snapshot 创建；array/condition/index/body pins 可由 TaskSpec evidence 驱动。 | `GenericAssetStructControlActionCluster`；当前按已支持能力处理，后续只追踪复验结果。 |
 | P0 | BroadControlFlow 计划中未进入当前 runtime vocabulary 的 `do_once_multi_input`、`reverse_foreach_loop` | `BroadControlFlowPlan` 将其列入范围，但当前 GenericOps contract / boundary 不在支持集内。 | `UK2Node_DoOnceMultiInput` 和 StandardMacros reverse foreach 都是 graph node spawn/configure，不是 UI 操作。 | 先扩展 control operation registry，再进入 Generic cluster。 |
 | P1 | Function-backed conversions：numeric、string/name/text、enum、blueprint autocast、object/class soft reference conversion | `generic_ops.transform` contract 已列出这些 operation，但 runtime Generic transform resolver 只支持 `dynamic_cast`、`class_cast`、`type_promotion`；OpCoverage 也把 `convert_numeric` / `convert_string_text_name` 排除到 convert taxonomy。 | 这些本质是 callable/autocast/typed conversion node，可由 typed pin evidence + callable/spawner evidence 选择，不需要 UI。 | Function-backed operation 归 `FunctionActionCluster`；generic cast node 归 Generic。需要 normalized `convert.*` taxonomy。 |
 | P1 | Function-backed schedule：timer by function/handle、clear/pause/unpause timer、delay、retriggerable delay、delay until next tick、generic latent function call、async proxy delegate connection | contract 已列出 `generic_ops.schedule.*`，但 runtime Generic schedule resolver 只支持 `timer_delegate_node` 和 `latent_or_async_node`；FunctionAction 目前是 query-driven `schedule_function` / `latent_or_async_function`，不是逐 operation matrix。 | Timer/latent/async callable nodes 能由 ActionDatabase/callable evidence 创建；handler/signature 只作为 dependency evidence。 | Function-backed schedule 归 `FunctionActionCluster`，Generic schedule node 保持 Generic。 |
@@ -55,14 +57,14 @@
 
 ## 5. 建议落地顺序
 
-1. 先补 `kind=control` broad control-flow public shape：这是当前最明确的“C++ resolver 边界已有、Agent-facing 没贯通”的缺口。
-2. 再拆 Function-backed `convert/create/schedule` operation matrix：让 contract 中已有的 function-backed operation 能被 TaskSpec、runtime、readback 和 final preflight 同步计数。
+1. `kind=control` broad control-flow public shape 已接通；下一步只保留当前实现的编辑器内 spawn/readback 复验。
+2. 再拆 Function-backed `convert/create/schedule` operation matrix：让 contract 中已有但已明确归 FunctionAction 的 operation 能被 TaskSpec、runtime、readback 和 final preflight 同步计数。
 3. 再做 predicate / special expression nodes：这些需要新的语义 owner，不应混入 Field 或 OpCoverage。
 
 ## 6. 证据索引
 
-- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1531-1544`：当前 Graph body statement 支持 `control`，但 `SUPPORTED_GRAPH_BODY_CONTROL_KINDS` 仅为 `branch`、`sequence`、`return`。
-- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1864-1899`：unsupported control kind 会直接失败并提示只用 `branch`、`sequence`、`return`。
+- 历史证据：`AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1531-1544` 曾只接受 `branch`、`sequence`、`return`；该判断已过期，当前以实现代码与 focused spawn 结果为准。
+- 历史证据：`AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1864-1899` 曾对其他 control kind 抛 `unsupported_control_kind`；该断点已由 TS 接线工作关闭。
 - `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts:236-249`、`:420-438`：GenericOps contract 已列出 switch、multi_gate 与 StandardMacros 控制流。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.cpp:43-63`、`:158-193`：C++ boundary 可识别 dedicated control 与 StandardMacros evidence。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericCreateActionResolver.cpp:189-199`：runtime create resolver 当前只支持 7 个 create operation。
@@ -70,7 +72,7 @@
 - `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts:340-400`：contract 中 function-backed transform/create/schedule operation 面更宽。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOpCallableCatalog.cpp:95-105`：`enum_equal`、`enum_not_equal`、conversion、container mutation、validity predicate 当前走 excluded op。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.cpp:82-92`：Field 拒绝 UI drag/pin drag、support-only、component/add-component 与 by-ref set。
-- `BlueprintHelper/Develop/Evidence/BlueprintHelper_GraphWrite_Field_UEEditorCapability_EngineSourceReadResult_20260525_CN.md:80`、`:151`、`:212`：`component.add_component_node` 仍指向 component template / component-tool ownership，不作为本轮 GraphWrite 候选。
+- 历史 Evidence 参考已不再作为当前支持率依据；`component.add_component_node` 仍按 component-tool / other-cluster ownership 排除，当前判断以实现代码和 spawn 结果为准。
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_BroadControlFlowPlan_20260525_CN.md:15-35`：宽控制流计划列出 switch、multi_gate、do_once_multi_input、StandardMacros loop/gate/do/flip-flop。
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md:75`：`foreach` 明确归 future control-flow，而非 container_action V1。
 - `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md:427`：EventDelegate 排除 action menu、drag menus、Details panel、UMG designer、Animation Blueprint events。
