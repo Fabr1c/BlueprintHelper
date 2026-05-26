@@ -9,7 +9,16 @@
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 
 #include "Async/Async.h"
+#include "Dom/JsonObject.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -156,6 +165,75 @@ bool FBlueprintHelperSecondBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest
 	TestFalse(
 		TEXT("ClassSettings route rejects graph command"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("append_blueprint_graph")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassSettingsBridgeRoutes_ReparentForwardsPayload,
+	"BlueprintHelper.Router.Cluster.ClassSettingsReparentForwardsPayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperClassSettingsBridgeRoutes_ReparentForwardsPayload::RunTest(const FString& Parameters)
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperBridge/%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		AActor::StaticClass(),
+		Package,
+		*FString::Printf(TEXT("BP_BridgeReparent_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperBridgeRouteTests"));
+	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+	Package->SetDirtyFlag(false);
+
+	FBlueprintHelperGraphResolver Resolver;
+	const FBlueprintHelperClassSettingsService Service(Resolver);
+	const FBlueprintHelperClassSettingsBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("bridge_reparent_request");
+	Request.Command = TEXT("reparent_blueprint");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	Request.Payload->SetStringField(TEXT("new_parent_class"), APawn::StaticClass()->GetPathName());
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestTrue(TEXT("bridge response succeeds"), Response.bSuccess);
+	TestTrue(TEXT("dry-run is not requested by direct bridge route"), Blueprint->ParentClass.Get() == APawn::StaticClass());
+	TestNotNull(TEXT("bridge response carries result"), Response.Result.Get());
+	if (!Response.Result.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* DataObject = nullptr;
+	TestTrue(TEXT("result carries data"), Response.Result->TryGetObjectField(TEXT("data"), DataObject));
+	if (!DataObject || !DataObject->IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* ReparentResult = nullptr;
+	TestTrue(TEXT("data carries reparent_result"), (*DataObject)->TryGetObjectField(TEXT("reparent_result"), ReparentResult));
+	if (!ReparentResult || !ReparentResult->IsValid())
+	{
+		return false;
+	}
+
+	FString NewParentClass;
+	TestTrue(TEXT("reparent_result carries new parent"), (*ReparentResult)->TryGetStringField(TEXT("new_parent_class"), NewParentClass));
+	TestEqual(TEXT("bridge forwarded new_parent_class"), NewParentClass, FString(APawn::StaticClass()->GetPathName()));
+
 	return true;
 }
 

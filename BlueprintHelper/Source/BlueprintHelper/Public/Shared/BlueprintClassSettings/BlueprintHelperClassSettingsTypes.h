@@ -159,3 +159,20 @@ struct FBlueprintHelperDefaultPropertyResult
 		return Json;
 	}
 };
+
+/** Blueprint reparent operation result. */
+struct FBlueprintHelperReparentResult
+{
+	FString PreviousParentClass;
+	FString NewParentClass;
+	bool bAlreadyParented = false;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("previous_parent_class"), PreviousParentClass);
+		Json->SetStringField(TEXT("new_parent_class"), NewParentClass);
+		Json->SetBoolField(TEXT("already_parented"), bAlreadyParented);
+		return Json;
+	}
+};

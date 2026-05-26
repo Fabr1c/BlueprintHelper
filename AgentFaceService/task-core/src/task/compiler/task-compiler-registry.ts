@@ -14,6 +14,7 @@ const CANONICAL_TS_TASK_TYPES = new Set([
   'edit_blueprint_variables',
   'edit_object_properties',
   'edit_blueprint_signature',
+  'edit_blueprint_class_settings',
 ]);
 
 export class TaskCompilerRegistry {

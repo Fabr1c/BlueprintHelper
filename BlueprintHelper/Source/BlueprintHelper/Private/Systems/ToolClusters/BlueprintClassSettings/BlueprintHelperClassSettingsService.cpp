@@ -7,7 +7,9 @@
 
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/UnrealType.h"
 #include "UObject/Interface.h"
 #include "Dom/JsonObject.h"
@@ -281,6 +283,63 @@ UClass* FBlueprintHelperClassSettingsService::ResolveInterfaceClass(
 }
 
 // ─── IsInterfaceImplemented ───
+
+UClass* FBlueprintHelperClassSettingsService::ResolveParentClass(
+	const FString& ParentClassPath,
+	FString& OutCode,
+	FString& OutMessage) const
+{
+	const FString TrimmedPath = ParentClassPath.TrimStartAndEnd();
+	if (TrimmedPath.IsEmpty())
+	{
+		OutCode = TEXT("parent_class_required");
+		OutMessage = TEXT("new_parent_class cannot be empty.");
+		return nullptr;
+	}
+
+	TArray<FString> CandidatePaths;
+	CandidatePaths.Add(TrimmedPath);
+	CandidatePaths.Add(NormalizeObjectPath(TrimmedPath));
+	if (!TrimmedPath.StartsWith(TEXT("/")) && !TrimmedPath.Contains(TEXT(".")))
+	{
+		CandidatePaths.Add(FString::Printf(TEXT("/Script/Engine.%s"), *TrimmedPath));
+	}
+
+	UClass* ParentClass = nullptr;
+	for (const FString& CandidatePath : CandidatePaths)
+	{
+		if (CandidatePath.IsEmpty())
+		{
+			continue;
+		}
+		ParentClass = FindObject<UClass>(nullptr, *CandidatePath);
+		if (!ParentClass)
+		{
+			ParentClass = LoadObject<UClass>(nullptr, *CandidatePath);
+		}
+		if (ParentClass)
+		{
+			break;
+		}
+	}
+
+	if (!ParentClass)
+	{
+		OutCode = TEXT("parent_class_not_found");
+		OutMessage = FString::Printf(TEXT("Could not resolve Blueprint parent class: %s"), *ParentClassPath);
+		return nullptr;
+	}
+
+	if (ParentClass->HasAnyClassFlags(CLASS_Interface) ||
+		!FKismetEditorUtilities::CanCreateBlueprintOfClass(ParentClass))
+	{
+		OutCode = TEXT("invalid_blueprint_parent_class");
+		OutMessage = FString::Printf(TEXT("Class is not a valid Blueprint parent: %s"), *ParentClass->GetPathName());
+		return nullptr;
+	}
+
+	return ParentClass;
+}
 
 bool FBlueprintHelperClassSettingsService::IsInterfaceImplemented(
 	UBlueprint* Blueprint,
@@ -1146,5 +1205,115 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 			(*PropResultObj)->SetStringField(TEXT("mode"), TEXT("single"));
 		}
 	}
+	return Result;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::ReparentBlueprint(
+	const FString& AssetPath,
+	const FString& NewParentClassPath,
+	bool bDryRun) const
+{
+	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
+
+	FString ErrorCode;
+	FString ErrorMessage;
+	UBlueprint* Blueprint = ResolveBlueprint(AssetPath, ErrorCode, ErrorMessage);
+	if (!Blueprint)
+	{
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("reparent_blueprint"),
+			TraceId,
+			MakeError(ErrorCode, EBlueprintHelperToolStage::ResolveTarget, ErrorMessage));
+	}
+
+	FString ParentErrorCode;
+	FString ParentErrorMessage;
+	UClass* NewParentClass = ResolveParentClass(NewParentClassPath, ParentErrorCode, ParentErrorMessage);
+	if (!NewParentClass)
+	{
+		FBlueprintHelperToolResultBase Failed = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("reparent_blueprint"),
+			TraceId,
+			MakeError(ParentErrorCode, EBlueprintHelperToolStage::Preflight, ParentErrorMessage, TEXT("new_parent_class")));
+		Failed.Target = FBlueprintHelperTargetRef();
+		Failed.Target->AssetPath = AssetPath;
+		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		return Failed;
+	}
+
+	if (Blueprint->GeneratedClass && NewParentClass->IsChildOf(Blueprint->GeneratedClass))
+	{
+		FBlueprintHelperToolResultBase Failed = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("reparent_blueprint"),
+			TraceId,
+			MakeError(
+				TEXT("invalid_reparent_cycle"),
+				EBlueprintHelperToolStage::Preflight,
+				FString::Printf(TEXT("Cannot reparent Blueprint to itself or one of its generated child classes: %s"), *NewParentClass->GetPathName()),
+				TEXT("new_parent_class")));
+		Failed.Target = FBlueprintHelperTargetRef();
+		Failed.Target->AssetPath = AssetPath;
+		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		return Failed;
+	}
+
+	FBlueprintHelperReparentResult ReparentResult;
+	ReparentResult.PreviousParentClass = GetClassPath(Blueprint->ParentClass);
+	ReparentResult.NewParentClass = GetClassPath(NewParentClass);
+	ReparentResult.bAlreadyParented = Blueprint->ParentClass.Get() == NewParentClass;
+
+	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("schema"), TEXT("BlueprintClassSettings.v1"));
+	Data->SetObjectField(TEXT("reparent_result"), ReparentResult.ToJson());
+
+	if (ReparentResult.bAlreadyParented)
+	{
+		if (bDryRun)
+		{
+			Data->SetBoolField(TEXT("dry_run"), true);
+		}
+		FBlueprintHelperToolResultBase NoOp = bDryRun
+			? FBlueprintHelperToolResultBuilder::DryRun(TEXT("reparent_blueprint"), TraceId)
+			: FBlueprintHelperToolResultBuilder::NoOp(TEXT("reparent_blueprint"), TraceId);
+		NoOp.Target = FBlueprintHelperTargetRef();
+		NoOp.Target->AssetPath = AssetPath;
+		NoOp.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		NoOp.Data = Data;
+		NoOp.Validation = MakeValidation(false, false);
+		return NoOp;
+	}
+
+	if (bDryRun)
+	{
+		Data->SetBoolField(TEXT("dry_run"), true);
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("reparent_blueprint"), TraceId);
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+		Result.Data = Data;
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Reparent Blueprint")),
+		Blueprint);
+
+	Blueprint->ParentClass = NewParentClass;
+	if (Blueprint->SimpleConstructionScript)
+	{
+		Blueprint->SimpleConstructionScript->ValidateSceneRootNodes();
+	}
+	FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	Mutation.Commit();
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
+		TEXT("reparent_blueprint"), TraceId);
+	Result.Target = FBlueprintHelperTargetRef();
+	Result.Target->AssetPath = AssetPath;
+	Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
+	Result.Data = Data;
+	Result.Validation = MakeValidation(true, true);
 	return Result;
 }

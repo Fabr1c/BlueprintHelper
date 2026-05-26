@@ -19,7 +19,7 @@
 
 1. 宽控制流 public TaskSpec 与 body composition：`switch_*`、`multi_gate`、StandardMacros loop/gate/do/flip-flop 家族。
 2. Function-backed transform / schedule / create 的 normalized operation 覆盖：当前 contract 比 runtime first-class 支持更宽。
-3. Runtime graph-body component / predicate / special-expression nodes：`AddComponent` runtime node、`IsValid` predicate、enum equality、`FormatText` / `MathExpression` / `GetClassDefaults` 等特殊 K2 node。
+3. Runtime graph-body predicate / special-expression nodes：`IsValid` predicate、`MathExpression` / `GetClassDefaults` 等特殊 K2 node。
 4. ActionDatabase asset-backed graph nodes：当前已有 `asset_action` 证据边界，但还没有按常见节点族做 first-class taxonomy 与 readback 矩阵。
 
 ## 3. 可覆盖但尚未完全覆盖的能力
@@ -34,11 +34,10 @@
 | P1 | Function-backed create / spawn / construct 与 async action | contract 列出 `async_action`、`function_backed_create`、`function_backed_spawn`、`function_backed_construct`，但 Generic create resolver当前只支持 `spawn_actor`、`create_widget`、`construct_object`、`make_array/map/set`、`asset_action`。 | BlueprintCallable factory / async action node 可由 callable evidence 或 ActionDatabase evidence 生成。 | Function-backed create 归 `FunctionActionCluster`；asset-backed graph node 归 Generic asset action。 |
 | P1 | `asset_backed_graph_node` 的常见节点族 taxonomy | contract 将其列为 Generic create operation，ActionDatabase projection 已用于 `asset_action`，但 runtime `GenericCreateActionResolver::IsSupportedCreateOperation` 未接受 `asset_backed_graph_node`。 | DataTable、Material Parameter Collection、asset-specific action nodes 可通过 projected ActionDatabase spawner identity 创建。 | `GenericAssetStructControlActionCluster` / `asset_action` evidence reader；需要节点族 readback。 |
 | P1 | Struct / select 泛化：`make_struct`、`break_struct`、`set_fields_in_struct`、typed `select` | 当前已有 Generic struct/select resolver 与 hardening tests，但仍主要是 focused coverage；final ownership-filtered matrix 尚未把多 struct、多字段、多 select result type proof 全部跑通。 | `K2Node_MakeStruct`、`K2Node_BreakStruct`、`K2Node_SetFieldsInStruct`、`K2Node_Select` 都可由 type path、selected field paths、result-type proof 驱动。 | `GenericAssetStructControlActionCluster`；补充 10-variant readback matrix。 |
-| P1 | Runtime `AddComponent` graph node，而非 Blueprint component template lifecycle | Field matrix 将 `component.add_component_node` 标为 other-cluster，不属于 Field；当前 Generic create operation 不包含 runtime add component node。 | `UK2Node_AddComponent` 是 graph body runtime node；如果只表达运行时 Add Component，不修改 SCS/template，就不是 `edit_blueprint_components`。 | 新增 Generic create `add_component_node` 或专门 Component runtime node family；必须严格拒绝 SCS/component lifecycle。 |
 | P1 | Component target function call / call-on-member | Field matrix 将 `function.selected_component_call` 标为 other-cluster；当前 FunctionAction 已有 target object pin/type evidence，但没有 first-class component-ref call taxonomy。 | 对已投影的 component reference 调用函数是普通 `K2Node_CallFunction` / `K2Node_CallFunctionOnMember` 选择，不需要选中组件 UI 状态。 | `FunctionActionCluster`，以 `component_ref` evidence 表达 target object，禁止 selected Slate/component state。 |
 | P2 | Predicate family：`validity_predicate` / IsValid / IsNotValid | OpCoverage 当前按 different semantic owner 拒绝，不应作为 plain `op`；尚无独立 predicate/control taxonomy。 | IsValid 类节点/宏可由 node class 或 callable/macro evidence 生成，并能作为 branch condition 或 expression。 | 新建 predicate semantic 或归 Generic control predicate；不要塞回 OpCoverage。 |
 | P2 | ContainerAction V1 之外的容器能力 | 核心 array/map/set V1 已覆盖，但 `foreach` 明确归 future control-flow；custom predicate container operation 仍未进入稳定 TaskSpec 语义。 | 容器 callable 本身可 FunctionAction-backed spawn；body-producing foreach 与 predicate callback 需要 control/predicate ownership，而不是 UI。 | `foreach` 归 broad control-flow；predicate callback 先设计 Predicate/Function boundary。 |
-| P2 | Special expression nodes：`FormatText`、`MathExpression`、`GetClassDefaults`、`CallParentFunction`、`CallFunctionOnMember` | UE BlueprintGraph 暴露这些 K2 node 类型；当前 GraphWrite 没有 first-class taxonomy/readback，只能靠一般 call 或 asset_action 的窄证据尝试。 | 它们是稳定 K2 node / NodeSpawner families，可由 explicit node class + evidence + readback 表达。 | 按节点族拆到 FunctionAction 或 Generic special-expression，不做 UI menu 模拟。 |
+| P2 | Special expression nodes：`MathExpression`、`GetClassDefaults`、`CallParentFunction` 等 | UE BlueprintGraph 暴露这些 K2 node 类型；当前 GraphWrite 对 `FormatText` 已有 parsed/readback 支持，`CallFunctionOnMember` 更接近普通 FunctionAction target-call ownership，因此本行只保留尚未 first-class taxonomy/readback 的特殊节点族。 | 它们是稳定 K2 node / NodeSpawner families，可由 explicit node class + evidence + readback 表达。 | 按节点族拆到 FunctionAction 或 Generic special-expression，不做 UI menu 模拟。 |
 | P2 | Timeline-like scheduler | GenericOps UE source-read handoff 将 timeline-like scheduler 标为待确认；当前 schedule implementation 只闭合 timer delegate node 与 latent/async node。 | Timeline node spawn 本身可非 UI，但通常涉及 Blueprint timeline template/member lifecycle。 | 先做 ownership split：GraphWrite 只写 use-site node；timeline template lifecycle 另归 Signature/asset-like lifecycle。 |
 
 ## 4. 当前应继续排除的项
@@ -53,13 +52,14 @@
 | SlateBrush equality | UI 类型 equality，当前没有稳定普通 Blueprint graph-body evidence。 |
 | Details panel delegate binding、UMG Designer events、Animation Blueprint events | UI/editor-domain 或非普通 Blueprint graph body；不计入 GraphWrite spawn coverage。 |
 | Content Browser asset creation、Blueprint component template、WidgetTree design-time nodes | 分别属于 asset lifecycle、component lifecycle、UMG widget lifecycle，不是 Graph body Spawn。 |
+| `component.add_component_node` / `UK2Node_AddComponent` | 当前证据仍与 `UBlueprintComponentNodeSpawner`、component class/template、add component template/name 输入绑定，归 component-tool / other-cluster ownership；不得在本轮把它提升为 GraphWrite 可覆盖项。 |
 | selected Slate/component state | 可以用 explicit component_ref evidence 取代；不能把“当前选中”作为 TaskSpec 语义来源。 |
 
 ## 5. 建议落地顺序
 
 1. 先补 `kind=control` broad control-flow public shape：这是当前最明确的“C++ resolver 边界已有、Agent-facing 没贯通”的缺口。
 2. 再拆 Function-backed `convert/create/schedule` operation matrix：让 contract 中已有的 function-backed operation 能被 TaskSpec、runtime、readback 和 final preflight 同步计数。
-3. 再做 predicate / component runtime node / special expression nodes：这些需要新的语义 owner，不应混入 Field 或 OpCoverage。
+3. 再做 predicate / special expression nodes：这些需要新的语义 owner，不应混入 Field 或 OpCoverage。
 4. 最后把 asset-backed graph node taxonomy 做成可扩展 registry：以 projected ActionDatabase identity + node-family readback 为准，不以菜单文本为准。
 
 ## 6. 证据索引
@@ -73,6 +73,7 @@
 - `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts:340-400`：contract 中 function-backed transform/create/schedule operation 面更宽。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOpCallableCatalog.cpp:95-105`：`enum_equal`、`enum_not_equal`、conversion、container mutation、validity predicate 当前走 excluded op。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.cpp:82-92`：Field 拒绝 UI drag/pin drag、support-only、component/add-component 与 by-ref set。
+- `BlueprintHelper/Develop/Evidence/BlueprintHelper_GraphWrite_Field_UEEditorCapability_EngineSourceReadResult_20260525_CN.md:80`、`:151`、`:212`：`component.add_component_node` 仍指向 component template / component-tool ownership，不作为本轮 GraphWrite 候选。
 - `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_BroadControlFlowPlan_20260525_CN.md:15-35`：宽控制流计划列出 switch、multi_gate、do_once_multi_input、StandardMacros loop/gate/do/flip-flop。
-- `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md:78`：`foreach` 明确归 future control-flow，而非 container_action V1。
-- `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md:428-430`：EventDelegate 排除 action menu、drag menus、Details panel、UMG designer、Animation Blueprint events。
+- `BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md:75`：`foreach` 明确归 future control-flow，而非 container_action V1。
+- `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md:427`：EventDelegate 排除 action menu、drag menus、Details panel、UMG designer、Animation Blueprint events。

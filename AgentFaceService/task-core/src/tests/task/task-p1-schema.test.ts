@@ -313,6 +313,30 @@ describe('P1 TaskSpec schema validation', () => {
       parent_class: '/Script/Engine.Pawn',
     })), /reparent\.new_parent_class/);
   });
+
+  it('rejects legacy composite class_settings parent_class in favor of reparent.new_parent_class', () => {
+    assert.throws(() => TaskSpecSchema.parse({
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      context_id: 'ctx_composite_parent_class',
+      task_type: 'create_blueprint_feature',
+      feature_name: 'CompositeParentClass',
+      target: {
+        asset_path: '/Game/BP/BP_CompositeParentClass',
+        target_type: 'blueprint',
+      },
+      class_settings: {
+        parent_class: '/Script/Engine.Pawn',
+      },
+      execution_policy: {
+        dry_run_mode: 'full',
+        on_missing_capability: 'stop_and_report',
+      },
+      validation: {
+        should_compile: true,
+        should_save: false,
+      },
+    }), /reparent\.new_parent_class/);
+  });
 });
 
 describe('P1 TaskPlan schema validation', () => {

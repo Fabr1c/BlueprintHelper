@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite-owned、ownership-filtered 的每个 `kind + operation` 都通过 TaskSpec 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过，并输出带统计图的通用性测试报告。
+**Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite-owned、ownership-filtered 的每个 capability operation 都通过 TaskSpec 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过，并输出带统计图的通用性测试报告。
 
 ## 2026-05-25 Current Status Sync
 
@@ -10,6 +10,23 @@
 - 当前源码树未发现 `graphwrite-generality-*` TaskSpec matrix、spec factory、report writer、PowerShell runner 或 `Run-GraphWriteFinalWithGenerality.ps1` 的实际实现文件；本文件仍是待执行计划。
 - 该计划应在 remaining evidence defects、capability contract expansion 完成后统一执行，用于最终能力面验收；`container_action` public shape 已在 `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 中实现并通过 focused gate，但它不替代本文件的 ownership-filtered 泛化验收。
 - 完成标准仍以本文 Exit Criteria 为准，但 operation 数量必须先按 `BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md` 的 ownership filter 重算；原 45 个 normalized operations / 450 个 variants 是未过滤草案，不再作为最终计数口径。最终仍必须覆盖 ownership-filtered operations、每项 10 variants、TaskSpec preview/execute/readback、JSON/CSV/Markdown/SVG report、`allOperationsPassed=true` final gate。
+
+## 2026-05-26 Capability Cluster Sync
+
+本次只更新通用性测试文档的输入口径，不表示 `graphwrite-generality-*` runner / report writer 已实现。最新能力簇来源以 `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts` 与 `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md` 的 2026-05-26 sections 为准。
+
+| Capability source | Operation namespace | Runtime owner rule | Generality treatment |
+|---|---|---|---|
+| Stable runtime clusters | `function_action`、`field`、`event`、`asset_action`、`container_action`、`generic_schedule` | 使用 `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` 的 supported operations。 | 作为 core matrix 种子；cluster contract 较粗的 `function_action` / `field` 需要展开成本文定义的具体 TaskSpec shapes。 |
+| EventDelegate use-site | `event_delegate.*` | `EventDelegateActionCluster`；只消费已有 component / delegate / handler / signature evidence。 | supported operations 进入 10-variant preflight；`replace` / `merge` duplicate policy 等 rejected rows 只进入负例与排除报告。 |
+| GenericOps logical groups | `generic_ops.control.*`、`generic_ops.container.*`、`generic_ops.transform.*`、`generic_ops.create.*`、`generic_ops.schedule.*`、`generic_ops.struct_select.*` | GenericOps 不是 runtime cluster，也不是 top-level `kind`；每项按 contract 的 `runtimeOwner` 路由到既有 owner。 | supported rows 必须生成 10 variants；`link_time_auto_conversion`、`split_pin`、`recombine_pin` 等 rejected rows 不计入通过率。 |
+| OpCoverage logical group | `op.<operation>` / contract group `op_coverage` | `op` 仍是 Graph body expression semantic；FunctionAction-owned，不新增 `graphwrite_op` cluster。 | 既有 TypePromotion 10 项 + P0/P1/P2 supported op 都进入 matrix；`enum_equal`、`enum_not_equal`、SlateBrush equality 等只做 deterministic rejection。 |
+
+硬边界保持不变：
+
+- `TaskSpec` 是唯一全局上下文；每个 `statement[]` 必须能独立解释自己的 operation、type/pin/function/asset/handler evidence。
+- 不允许把右键菜单、拖拽节点、拖拽 Pin、Slate selection、Content Browser/MyBlueprint/SCS 当前选中态作为可执行输入。
+- 通用性测试只计 TaskSpec preview / execute / readback；ActionResolution focused test 与 capability matrix verification 只能作为前置证据，不能替代 10-variant final gate。
 
 ## 2026-05-25 Stability Closure Input
 
@@ -24,6 +41,9 @@
 | legacy parsed-plan removal | PASS | `Automation RunTests BlueprintHelper.GraphWrite.LegacyMainline`; `rg -n "parsed_node_plan_unsupported|FBlueprintGraphMutationPlan|FBlueprintGraphMutationNodePlan|FBlueprintGraphMutationLinkPlan|MakeNodePlanFromParsedNode|MakeLinkPlanFromParsedLink" BlueprintHelper/Source/BlueprintHelper` 仅命中 contract test 禁止词。 |
 | container_action V1 | PASS | `Automation RunTests BlueprintHelper.GraphWrite.ContainerAction`；first-class TaskSpec public shape、C++ contract validation、FunctionAction-backed resolver、fragment role links、typed readback verifier、array-shaped result-symbol DAG metadata、endpoint pin_type JSON round-trip、array/map/set focused E2E 已落地。 |
 | generic_schedule | PASS | `timer_delegate_node` / `latent_or_async_node` success path 已落地；focused gates 为 `Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule` 和 `Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule`。最终 preflight 仍需生成 10-variant ownership-filtered TaskSpec/readback coverage。 |
+| GenericOps logical matrix | PASS | 2026-05-26 matrix update 记录 `BlueprintHelper.GraphWrite.GenericOps` 22/22、`BlueprintHelper.GraphWrite.ActionResolution.Generic` 24/24、`BlueprintHelper.GraphWrite.ContainerAction`、`BlueprintHelper.GraphWrite.GenericSchedule` 通过；最终 preflight 仍需按 `generic_ops.*` supported rows 生成 10 variants。 |
+| OpCoverage logical group | PASS | 2026-05-26 OpCoverage plan 记录 TS build/node tests、UE 5.6 build、`BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.Operator`、`BlueprintHelper.GraphWrite.OpCoverage.ArrayIdentical`、`BlueprintHelper.GraphWrite.OpCoverage` 等 focused gates 通过；最终 preflight 仍需覆盖 TypePromotion + P0/P1/P2 supported op。 |
+| EventDelegate use-site matrix | PASS | 2026-05-26 matrix update 记录 `BlueprintHelper.GraphWrite.EventDelegate` 9/9、`ActionResolution.EventDelegate` 16/16、`GraphStatement.EventDelegate` 6/6、`ToolResult.EventDelegate` 1/1 通过；最终 preflight 只消费已有 handler/signature evidence，不创建声明。 |
 | full GraphWrite suite | PASS | `Automation RunTests BlueprintHelper.GraphWrite`；该套件通过说明当前核心 GraphWrite automation gates 已绿，但不替代 ownership-filtered 泛化验收。 |
 | full generality preflight | PENDING | 本文件下方的 matrix、factory、runner、report writer 仍未实现，不能标记 stable final。 |
 
@@ -41,7 +61,10 @@
 | `anim_notify_event` | 归 Animation Blueprint / Animation tooling；当前 GraphWrite 只关注普通 Blueprint，不进入最终矩阵。 |
 | broad `container_action` | `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 已实现 V1 first-class 范围：核心 array/map/set 操作进入 `container_action` public shape，执行复用 FunctionAction-backed callable evidence；`make_*` 仍归 Generic create，`foreach` 归后续 control-flow。focused readback 已覆盖 wildcard 被替换成目标类型、target link 正确、编译无报错；最终矩阵仍需按 owned operation 生成 10 variants。 |
 | FunctionAction overlap | 容器操作会与 FunctionAction 高度重叠；最终矩阵前必须明确哪些作为普通 callable 计入 FunctionAction，哪些需要 first-class `container_action` 语义。 |
-| capability contract expansion | `container_action` slice 已对齐到 contract；完整 contract expansion 仍需等 remaining evidence defects 关闭后再统一重算最终矩阵。 |
+| GenericOps logical umbrella | `generic_ops.*` 只作为 logical operation catalog；不新增 runtime cluster，不扩展 top-level `kind`。最终矩阵按 contract `runtimeOwner` 路由，Function-backed convert/create/schedule/container/op 归 FunctionAction，control/struct/select/generic spawner 归 GenericAssetStructControlAction。 |
+| OpCoverage logical group | `op_coverage` 不发布 `graphwrite_op` cluster；TypePromotion 10 项、P0/P1 compact callable op、P2 `array_identical` 都按 FunctionAction-owned `op.*` 进入矩阵；excluded op 只进入 deterministic negative coverage。 |
+| UI/editor interaction inputs | Action Menu、右键、拖拽、拖拽 Pin、Slate selection、Content Browser/MyBlueprint/SCS 当前选中态一律不计入 supported operation。需要等价能力时必须替换为 statement-local typed pin、function/class/asset path、handler/signature evidence。 |
+| capability contract expansion | 2026-05-26 contract 已包含 `clusters` 与 `operationGroups` 双层来源；最终矩阵必须从 machine-readable contract 生成并保留手写 core-shape expansion，不能继续使用旧 45 项草案。 |
 | ownership-filtered final generality preflight | 放到 capability contract expansion 之后执行，作为最终门禁。 |
 
 **Architecture:** 通用性测试以 Agent-facing TaskSpec 为唯一计分入口，执行链路必须经过 `TaskSpec -> compiler lowering -> TaskPlan graph_write -> UE GraphWrite runtime -> graph readback`。Operation 矩阵是数据驱动的公共测试目录；fixture/setup 负责创建资产、变量、组件、签名和 handler 证据，但不计入 GraphWrite 正确率。报告生成器消费每个 operation 的 10 个 variant 结果，输出 JSON/CSV/Markdown/SVG，并作为最终 80% 总测的前置 gate。
@@ -58,74 +81,115 @@
 
 | Rule | Contract |
 |---|---|
-| Unit under test | 一个 normalized `operation_id`，格式为 `kind.operation` 或 `kind.operation.scope`。 |
+| Unit under test | 一个 ownership-filtered capability operation id。格式可以是 core shape（如 `call.call`、`field.member_get`、`op.add`），也可以是 logical group id（如 `generic_ops.control.switch_enum`、`event_delegate.delegate.bind`）。 |
 | Variant count | 每个 operation 必须生成并执行 10 个 variant，命名为 `GWGen_<OperationId>_00` 到 `GWGen_<OperationId>_09`。 |
 | Operation pass | 10 个 variant 全部 preview、execute、readback 通过。 |
 | Operation fail | 任意一个 variant 失败、缺少 readback、返回 unsupported、silent wrong graph、spawn/link/default/pin 错误。 |
 | Fixture failure | 资产、组件、变量、Signature dependency、handler 创建失败记录为 `setup_failure`，不计入 GraphWrite 正确率，但该 operation 不能通过前置 gate。 |
+| Matrix source | `GRAPHWRITE_CAPABILITY_CONTRACT.clusters`、`GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups`、以及本文保留的 core-shape expansion 共同生成；禁止再使用旧 45 项手写清单作为最终计数。 |
 | Direct spawn boundary | `branch`、`sequence`、`return`、`select` 等唯一控制流允许 direct spawn，但仍必须走 `SpawnerClusterKind -> cluster -> semantic constraint -> evidence/provider -> shared spawn adapter`。 |
 | Signature boundary | Handler、event dispatcher、custom event、function signature 的声明所有权属于 BlueprintSignature；GraphWrite/EventDelegate 只能消费已有声明/签名证据生成图节点、绑定节点、连接和 body 内容。 |
+| Statement-local evidence boundary | `TaskSpec` 是唯一全局上下文；单个 `statement[]` 不得依赖前一条 statement 的隐式 pin/menu/selection context。跨 statement symbol 或 catalog 共享必须先另行设计。 |
+| UI exclusion | Action Menu、右键菜单、拖拽、拖拽 Pin、Slate/UMG selection、display name alias 不能作为 supported operation 的执行依据；相关条目只能进入排除或 reference-only 证据。 |
 | Score source | 只有 TaskSpec preview/execute/readback 结果能进入通用性分数；ActionResolution 单测只作为定位和契约防回退。 |
 
 ## Operation Matrix
 
-实现时以一个代码化 matrix 作为单一测试目录。下面是首版必须覆盖的 normalized operations。
+实现时以代码化 matrix 作为单一测试目录。2026-05-26 起，最终矩阵不再手写旧 45 项清单，而是由 machine-readable capability contract 加上少量 core-shape expansion 生成。
 
-| OperationId | Agent-facing shape | Lowered shape | Expected node family |
+矩阵生成顺序固定如下：
+
+1. 读取 `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` 中 `supportStatus="supported"` 的 stable runtime operations。
+2. 读取 `GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups` 中 `supportStatus="supported"` 的 logical operations，并按每行 `runtimeOwner` 写入 matrix。
+3. 补充 contract 粒度较粗、但通用性测试必须拆开的 core shapes：`call.call`、17 个 `field.*` capability IDs、`body.custom_event`、既有 TypePromotion 10 项。
+4. 对 `supportStatus="rejected"` / `discussion-gated` rows 生成 exclusion / negative rows，不计入 operation pass rate。
+5. 按 operation id 去重；若同一 id 的 runtime owner、required evidence 或 support status 冲突，matrix test 必须失败。
+
+### Core Shape Expansion
+
+这些 operation 仍作为 GraphWrite 核心泛化项存在，因为当前 contract 的 runtime cluster 行粒度比 TaskSpec statement 粒度更粗。
+
+| Operation id seed | Agent-facing shape | Runtime owner | Expected node family |
 |---|---|---|---|
-| `call.call` | `kind=call` | `kind=call` | `K2Node_CallFunction` |
-| `field.set.variable` | `kind=set` or `kind=field, field_operation=set, field_scope=variable` | `kind=field, field_operation=set` | `K2Node_VariableSet` |
-| `field.set.property_path` | `kind=set_property` or explicit field | `kind=field, field_operation=set, field_scope=property_path` | property setter / call-backed property node |
-| `field.set.component_ref` | explicit field | `kind=field, field_operation=set, field_scope=component_ref` | component field setter |
-| `field.set.field_access` | explicit field | `kind=field, field_operation=set, field_scope=field_access` | field access setter |
-| `field.get.variable` | `kind=get` or explicit field expression | `kind=field, field_operation=get` | `K2Node_VariableGet` |
-| `field.get.property_path` | `kind=get_property` or explicit field expression | `kind=field, field_operation=get, field_scope=property_path` | property getter / call-backed property node |
-| `field.get.component_ref` | explicit field expression | `kind=field, field_operation=get, field_scope=component_ref` | component ref getter |
-| `field.get.field_access` | explicit field expression | `kind=field, field_operation=get, field_scope=field_access` | field access getter |
-| `op.add` | `kind=op, op=add` | `SemanticKind=op, query=add` | `K2Node_PromotableOperator` |
-| `op.subtract` | `kind=op, op=subtract` | `SemanticKind=op, query=subtract` | `K2Node_PromotableOperator` |
-| `op.multiply` | `kind=op, op=multiply` | `SemanticKind=op, query=multiply` | `K2Node_PromotableOperator` |
-| `op.divide` | `kind=op, op=divide` | `SemanticKind=op, query=divide` | `K2Node_PromotableOperator` |
-| `op.greater` | `kind=op, op=greater` | `SemanticKind=op, query=greater` | `K2Node_PromotableOperator` |
-| `op.greater_equal` | `kind=op, op=greater_equal` | `SemanticKind=op, query=greater_equal` | `K2Node_PromotableOperator` |
-| `op.less` | `kind=op, op=less` | `SemanticKind=op, query=less` | `K2Node_PromotableOperator` |
-| `op.less_equal` | `kind=op, op=less_equal` | `SemanticKind=op, query=less_equal` | `K2Node_PromotableOperator` |
-| `op.equal` | `kind=op, op=equal` | `SemanticKind=op, query=equal` | `K2Node_PromotableOperator` |
-| `op.not_equal` | `kind=op, op=not_equal` | `SemanticKind=op, query=not_equal` | `K2Node_PromotableOperator` |
-| `construct.construct` | `kind=construct` | `TypeOperation=construct` | `K2Node_MakeStruct` |
-| `deconstruct.deconstruct` | `kind=deconstruct` | `TypeOperation=deconstruct` | `K2Node_BreakStruct` |
-| `select.select` | `kind=select` | singleton select provider | `K2Node_Select` |
-| `control.branch` | `kind=control, control=branch` | internal `kind=branch` | `K2Node_IfThenElse` |
-| `control.sequence` | `kind=control, control=sequence` | internal `kind=sequence` | `K2Node_ExecutionSequence` |
-| `control.return` | `kind=control, control=return` | internal `kind=return` | return node |
-| `body.custom_event` | existing Signature-owned custom event body | projected `BlueprintSignature` entry evidence; not EventDelegateActionCluster | body graph content under an existing custom event entry |
-| `component_bound_event.bind` | `kind=component_bound_event` | `kind=component_bound_event` | `K2Node_ComponentBoundEvent` |
-| `delegate.bind` | `kind=delegate.bind` | `kind=delegate, delegate_operation=bind` | `K2Node_AddDelegate` + `K2Node_CreateDelegate` |
-| `delegate.assign` | `kind=delegate.assign` | `kind=delegate, delegate_operation=assign` | `K2Node_AssignDelegate` |
-| `delegate.unbind` | `kind=delegate.unbind` | `kind=delegate, delegate_operation=unbind, unbind_mode=single` | `K2Node_RemoveDelegate` |
-| `delegate.clear` | `kind=delegate.unbind_all` | `kind=delegate, delegate_operation=clear, unbind_mode=all` | `K2Node_ClearDelegate` |
-| `delegate.call` | `kind=delegate.call` | `kind=delegate, delegate_operation=call` | `K2Node_CallDelegate` |
-| `create.spawn_actor` | `kind=create, create_operation=spawn_actor` | create operation evidence | `K2Node_SpawnActorFromClass` |
-| `create.create_widget` | `kind=create, create_operation=create_widget` | create operation evidence | `K2Node_CreateWidget` |
-| `create.construct_object` | `kind=create, create_operation=construct_object` | create operation evidence | `K2Node_GenericCreateObject` |
-| `create.make_array` | `kind=create, create_operation=make_array` | create operation evidence | `K2Node_MakeArray` |
-| `create.make_map` | `kind=create, create_operation=make_map` | create operation evidence | `K2Node_MakeMap` |
-| `create.make_set` | `kind=create, create_operation=make_set` | create operation evidence | `K2Node_MakeSet` |
-| `create.asset_action` | `kind=create, create_operation=asset_action` | projected ActionDatabase spawner evidence | ActionDatabase selected node |
-| `convert.dynamic_cast` | `kind=convert, transform_operation=dynamic_cast` | transform operation evidence | `K2Node_DynamicCast` |
-| `convert.class_cast` | `kind=convert, transform_operation=class_cast` | transform operation evidence | `K2Node_ClassDynamicCast` |
-| `convert.type_promotion` | `kind=convert, transform_operation=type_promotion` | type promotion evidence | promotion-backed node |
-| `schedule.timer_delegate_node` | `kind=schedule, schedule_operation=timer_delegate_node` | projected ActionDatabase schedule spawner evidence + BlueprintSignature handler evidence | timer/delegate schedule node linked to existing handler |
-| `schedule.latent_or_async_node` | `kind=schedule, schedule_operation=latent_or_async_node` | projected ActionDatabase schedule spawner evidence + `graph_latent_allowed=true` | latent/async callable node |
+| `call.call` | `kind=call` | `FunctionAction` | `K2Node_CallFunction` |
+| `field.*` 17 first-class capability IDs | `capability_id=field.member_get` etc.; legacy `kind=set/get` aliases must normalize to one concrete `field.*` id | `Field` | variable get/set, component ref, function/local/struct/object-pin/nested-property fragments |
+| `body.custom_event` | existing Signature-owned custom event body | BlueprintSignature body boundary consumed by GraphWrite | body content under existing event entry |
 
-The matrix must not silently skip an operation. If an operation is still unsupported in runtime, the preflight records `unsupported_intent` and fails that operation. Only a value not present in the public GraphWrite contract may be excluded.
+The Field expansion is:
+
+```text
+field.member_get, field.member_set, field.local_get, field.local_set, field.component_ref_get,
+field.inherited_member_get, field.inherited_member_set, field.sparse_data_get, field.function_param_get,
+field.struct_member_get, field.struct_member_set, field.object_pin_member_get, field.object_pin_member_set,
+field.component_ref_set, field.component_property_get, field.component_property_set, field.nested_property_path
+```
+
+Field-like UI/support/other-cluster/diagnostic rows such as `field.drag_get`、`field.pin_drag_set`、`field.split_struct_pin_support`、`component.add_component_node`、`field.by_ref_set` must be excluded or routed to their owning boundary.
+
+### Runtime Contract Cluster Seeds
+
+| Contract cluster | Included operations | Notes |
+|---|---|---|
+| `function_action` | `call_function`、`macro_like` plus core shape `call.call` | Function-like statements resolve through ActionContext and shared action adapters. |
+| `field` | `field_access`、`component_ref` plus core field get/set expansion | First-class Field owns stable `field.capability_id` / resolver / evidence / readback paths; Field-specific facts do not move into GenericOps. |
+| `event` | `custom_event` supported; override/native and delegate-bound entries remain discussion-gated | Declaration creation stays outside EventDelegate use-site scoring. |
+| `asset_action` | `create.asset_action` | Requires projected ActionDatabase identity; no Content Browser selected state. |
+| `container_action` | V1 stable `container.array.*` / `container.map.*` / `container.set.*` rows from contract cluster | Current cluster seed remains the first-class stable container slice; broader container operations also appear under `generic_ops.container.*`. |
+| `generic_schedule` | `schedule.timer_delegate_node`、`schedule.latent_or_async_node` | Requires selected schedule spawner evidence; latent nodes require `graph_latent_allowed`; timer delegate nodes require existing handler/signature evidence. |
+
+### EventDelegate Use-Site Operations
+
+All supported rows in contract group `event_delegate` enter the preflight:
+
+```text
+event_delegate.component_bound_event
+event_delegate.delegate.bind
+event_delegate.delegate.assign
+event_delegate.delegate.unbind
+event_delegate.delegate.call
+event_delegate.delegate.clear
+```
+
+Rejected EventDelegate rows such as `event_delegate.component_bound_duplicate_policy.replace` and `event_delegate.component_bound_duplicate_policy.merge` must be reported as excluded / deterministic negative coverage. EventDelegate never creates event declarations, custom events, handlers, dispatcher declarations, or handler signature mutations.
+
+### GenericOps Logical Operations
+
+GenericOps is a public logical umbrella, not a runtime cluster. Every supported row below is scored by TaskSpec preview/execute/readback, but runtime execution still routes through its contract owner.
+
+| Logical group | Operation id families | Runtime owner |
+|---|---|---|
+| `generic_ops.control` | `branch`、`sequence`、`return`、`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate`、`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | `GenericAssetStructControlAction` |
+| `generic_ops.container` | array: `get,set,add,add_unique,append,insert,remove_item,remove_index,clear,contains,find,length,shuffle,shuffle_from_stream,identical,resize,reverse,is_empty,is_not_empty,last_index,swap,filter_array,is_valid_index,random,random_from_stream,sort_string,sort_name,sort_byte,sort_int,sort_int64,sort_float`; map: `add,remove,find,contains,keys,values,clear,length,is_empty,is_not_empty,get_key_value_by_index,get_last_index`; set: `add,remove,contains,clear,length,to_array,add_items,remove_items,is_empty,is_not_empty,intersection,union,difference,get_item_by_index,get_last_index` | `FunctionAction` |
+| `generic_ops.transform` | `dynamic_cast`、`class_cast`、`interface_dynamic_cast`、`type_promotion`、`function_conversion`、`blueprint_autocast`、`numeric_conversion`、`string_name_text_conversion`、`enum_conversion`、`object_to_soft_object`、`class_to_soft_class` | Generic cast rows use `GenericAssetStructControlAction`; function-backed rows use `FunctionAction` |
+| `generic_ops.create` | `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`、`asset_action`、`asset_backed_graph_node`、`async_action`、`function_backed_create`、`function_backed_spawn`、`function_backed_construct` | Generic spawner / asset rows use `GenericAssetStructControlAction`; function-backed rows use `FunctionAction` |
+| `generic_ops.schedule` | `timer_delegate_node`、`latent_or_async_node`、`timer_by_function_name`、`timer_by_handle`、`timer_clear_by_handle`、`timer_clear_by_function_name`、`timer_pause_by_handle`、`timer_pause_by_function_name`、`timer_unpause_by_handle`、`timer_unpause_by_function_name`、`delay`、`retriggerable_delay`、`delay_until_next_tick`、`generic_latent_function_call`、`async_proxy_output_delegate_connection` | Generic schedule nodes use `GenericAssetStructControlAction`; function-backed timer/latent calls use `FunctionAction`; async proxy handler linkage requires explicit EventDelegate use-site evidence |
+| `generic_ops.struct_select` | `make_struct`、`break_struct`、`set_fields_in_struct`、`select` | `GenericAssetStructControlAction` |
+
+Rejected GenericOps rows such as `generic_ops.transform.link_time_auto_conversion`、`generic_ops.struct_select.split_pin`、`generic_ops.struct_select.recombine_pin` must not enter operation pass rate. They belong to linker/readback or future PinOperation boundaries.
+
+### OpCoverage Operations
+
+OpCoverage remains `FunctionAction` owned and must not publish `graphwrite_op` as a runtime cluster.
+
+| Priority | Operation ids | Expected evidence |
+|---|---|---|
+| Existing TypePromotion | `add`、`subtract`、`multiply`、`divide`、`greater`、`greater_equal`、`less`、`less_equal`、`equal`、`not_equal` | typed operand/result evidence when required by TypePromotion path |
+| P0 commutative callable | `bitwise_and`、`bitwise_or`、`boolean_and`、`boolean_or`、`boolean_nand`、`max`、`min`、`string_append` | `op.operation_id` plus stable callable evidence projected by catalog |
+| P1 compact call-function | `boolean_not`、`boolean_xor`、`boolean_nor`、`bitwise_not`、`bitwise_xor`、`abs`、`modulo`、`negate`、`dot`、`dot3`、`cross`、`cross3`、`near_equal`、`intpoint_equal`、`transform_compose`、`equal_exact`、`not_equal_exact`、`equal_ignore_case`、`not_equal_ignore_case`、`datetime_add_datetime`、`datetime_add_timespan`、`datetime_subtract_datetime`、`datetime_subtract_timespan`、`datetime_equal`、`datetime_not_equal`、`datetime_greater`、`datetime_greater_equal`、`datetime_less`、`datetime_less_equal` | `op.operation_id` plus stable callable evidence projected by catalog |
+| P2 special node | `array_identical` | `op.operation_id`、`op.array_lhs_pin_type`、`op.array_rhs_pin_type`; both pins must be explicitly typed arrays with compatible element identity |
+
+Excluded OpCoverage inputs are `enum_equal`、`enum_not_equal`、SlateBrush equality、`convert_numeric`、`convert_string_text_name`、`array_map_set_mutation`、`validity_predicate`。They must reject deterministically or route to their owning future capability, not silently count as skipped.
+
+The matrix must not silently skip an operation. If a supported operation is still unsupported in runtime, the preflight records `unsupported_intent` and fails that operation. Only values absent from the public GraphWrite contract or explicitly marked `rejected` / `discussion-gated` may be excluded from the score.
 
 ## File Structure
 
-- Modify: `AgentFaceService/task-core/src/task/schema/task-contract.ts`
-  - Owns the public TaskSpec/TaskPlan contract. It must list every GraphWrite statement/expression kind that the compiler actually accepts.
+- Modify: `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts`
+  - Owns the machine-readable GraphWrite runtime clusters and logical operation groups. The generality matrix must read from this contract instead of duplicating capability rows.
+- Modify: `AgentFaceService/task-core/src/task/schema/task-schemas.ts`
+  - Owns public TaskSpec shape validation and exported operation constants such as `CONTAINER_ACTION_OPERATION_IDS` / `OP_COVERAGE_SUPPORTED_OPERATION_IDS`.
 - Create: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.ts`
-  - Single source for operation ids, public shapes, normalized operations, variant count, fixture requirements, expected readback signatures, and operation cluster ownership.
+  - Single generated source for operation ids, public shapes, normalized operations, variant count, fixture requirements, expected readback signatures, runtime owner, support status, and exclusion reason.
 - Create: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-spec-factory.ts`
   - Builds fixture TaskSpecs and operation TaskSpecs. It is pure data generation and does not call UE.
 - Create: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-report.ts`
@@ -145,64 +209,41 @@ The matrix must not silently skip an operation. If an operation is still unsuppo
 
 Agents executing this plan must not run `git add`, `git commit`, or `git push`. At each checkpoint, record the intended file list and suggested commit message for the user to execute manually.
 
-## Task 1: Align Public Contract With Compiler-Supported GraphWrite Shapes
+## Task 1: Align Public Capability Contract With Generality Matrix Inputs
 
 **Files:**
-- Modify: `AgentFaceService/task-core/src/task/schema/task-contract.ts`
+- Modify: `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts`
+- Modify: `AgentFaceService/task-core/src/task/schema/task-schemas.ts`
 - Test: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.test.ts`
 
-- [ ] **Step 1: Add the contract expectations test**
+> 2026-05-26 correction: do not use `task-contract.ts.supported_first_slice` as the operation matrix source. That file only describes a first TaskSpec slice; the generality preflight must read the full GraphWrite capability surface from `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` and `GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups`.
 
-Create the first test block in `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.test.ts`:
+- [ ] **Step 1: Add contract-source tests**
 
-```ts
-import assert from 'node:assert/strict';
-import test from 'node:test';
-import { TASK_PROTOCOL_CONTRACT_V1 } from '../schema/task-contract.js';
+Add tests that assert:
 
-test('GraphWrite public contract lists every compiler-supported statement and expression shape used by the generality preflight', () => {
-  const firstSlice = TASK_PROTOCOL_CONTRACT_V1.supported_first_slice;
-  assert.deepEqual(
-    new Set(firstSlice.statement_kinds),
-    new Set([
-      'call',
-      'field',
-      'set',
-      'set_property',
-      'let',
-      'control',
-      'create',
-      'convert',
-      'schedule',
-      'component_bound_event',
-      'delegate.bind',
-      'delegate.assign',
-      'delegate.unbind',
-      'delegate.unbind_all',
-      'delegate.call',
-    ]),
-  );
-  assert.deepEqual(
-    new Set(firstSlice.expression_kinds),
-    new Set([
-      'literal',
-      'field',
-      'get',
-      'get_property',
-      'call',
-      'op',
-      'construct',
-      'deconstruct',
-      'select',
-      'create',
-      'convert',
-      'schedule',
-    ]),
-  );
-});
+```text
+GRAPHWRITE_CAPABILITY_CONTRACT.clusters contains function_action, field, event, asset_action, container_action, generic_schedule.
+GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups contains event_delegate, generic_ops.control, generic_ops.container, generic_ops.transform, generic_ops.create, generic_ops.schedule, generic_ops.struct_select, op_coverage.
+No runtime cluster id is graphwrite_op, generic_ops, control, generic_transform, generic_create, struct_select, or generic_op.
+Every supported operation group row has runtimeOwner and requiredEvidenceKeys.
+Every rejected / discussion-gated row has a deterministic exclusion reason and is not counted as a scored operation.
 ```
 
-- [ ] **Step 2: Run the failing contract test**
+- [ ] **Step 2: Add shape-expansion tests**
+
+The matrix must add core-shape rows that are intentionally more specific than the contract cluster rows:
+
+```text
+call.call
+field.member_get / field.member_set and the rest of the 17 first-class field.* capability IDs
+body.custom_event as a BlueprintSignature-owned body target, not a runtime cluster
+op.add/subtract/multiply/divide/greater/greater_equal/less/less_equal/equal/not_equal
+```
+
+Field rows should use the 17 first-class Field capability IDs from `BlueprintHelper_GraphWrite_Field_FirstClassCapabilityExpansionPlan_20260526_CN.md`; older `field.get.variable` / `field.set.property_path` labels may remain as compatibility aliases only if the matrix maps them to a concrete `field.*` capability id.
+
+- [ ] **Step 3: Re-run the contract tests**
 
 Run:
 
@@ -213,24 +254,7 @@ npm.cmd run test:node
 Pop-Location
 ```
 
-Expected before contract update: the test fails because the contract omits at least `field`, `create`, `convert`, `schedule` from statement kinds and omits `field`, `create`, `convert`, `schedule` from expression kinds.
-
-- [ ] **Step 3: Update the public contract**
-
-In `AgentFaceService/task-core/src/task/schema/task-contract.ts`, update `supported_first_slice.statement_kinds` and `supported_first_slice.expression_kinds` to match the exact arrays in Step 1. Keep the delegate boundary text unchanged: Agent-facing compact delegate shapes remain public, compiler-internal `kind=delegate + delegate_operation` remains non-agent-facing.
-
-- [ ] **Step 4: Re-run the contract test**
-
-Run:
-
-```powershell
-Push-Location AgentFaceService\task-core
-npm.cmd run build
-npm.cmd run test:node
-Pop-Location
-```
-
-Expected after contract update: the new contract test passes.
+Expected after this task: the generality matrix tests prove their source is the capability contract plus explicit core-shape expansion, not a stale hard-coded operation count.
 
 ## Task 2: Add The Operation Matrix
 
@@ -238,71 +262,138 @@ Expected after contract update: the new contract test passes.
 - Create: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.ts`
 - Modify: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.test.ts`
 
-- [ ] **Step 1: Create the matrix types and constants**
+> 2026-05-26 correction: this task is contract-derived. Do not implement a fixed 45-operation array. The matrix module should generate rows from `GRAPHWRITE_CAPABILITY_CONTRACT`, then append only the documented core-shape expansion rows. Any old hard-coded example in this section must be treated as illustrative structure only, not as the operation list.
 
-Create `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.ts`:
+- [ ] **Step 1: Create contract-derived matrix types and constants**
+
+Create `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.ts` as a contract-derived builder, not as a literal operation array:
 
 ```ts
+import {
+  GRAPHWRITE_CAPABILITY_CONTRACT,
+  type GraphWriteCapabilityContract,
+  type GraphWriteOperationContract,
+  type GraphWriteOperationGroupOperation,
+  type GraphWriteSupportStatus,
+} from '../schema/graphwrite-capability-contract.js';
+
 export const GRAPHWRITE_GENERALITY_VARIANT_COUNT = 10;
 
-export type GraphWriteGeneralityCluster =
+export type GraphWriteGeneralityBoundary =
   | 'FunctionActionCluster'
   | 'FieldVariableActionCluster'
   | 'EventDelegateActionCluster'
-  | 'GraphWriteBodyWriter'
-  | 'GenericAssetStructControlActionCluster';
+  | 'GenericAssetStructControlActionCluster'
+  | 'BlueprintSignatureBodyBoundary';
 
-export type GraphWriteGeneralityFixture =
-  | 'actor_blueprint'
-  | 'variables'
-  | 'components'
-  | 'custom_events'
-  | 'event_dispatchers'
-  | 'delegate_handlers'
-  | 'widget_class'
-  | 'asset_action_evidence';
+export type GraphWriteGeneralityMatrixSource = 'cluster' | 'operation_group' | 'core_shape';
 
 export interface GraphWriteGeneralityOperationCase {
   operationId: string;
   owner: 'graph_write';
-  publicKind: string;
-  normalizedKind: string;
-  operationField?: string;
-  operationValue?: string;
-  fieldScope?: string;
-  cluster: GraphWriteGeneralityCluster;
-  expectedNodeClass: string;
-  fixtures: GraphWriteGeneralityFixture[];
+  source: GraphWriteGeneralityMatrixSource;
+  supportStatus: Extract<GraphWriteSupportStatus, 'supported' | 'rejected' | 'discussion-gated'>;
+  runtimeBoundary: GraphWriteGeneralityBoundary;
+  publicShape: string;
+  requiredEvidenceKeys: readonly string[];
+  expectedReadback: string;
+  excludedReason?: string;
   variantCount: number;
 }
 
-function op(input: Omit<GraphWriteGeneralityOperationCase, 'owner' | 'variantCount'>): GraphWriteGeneralityOperationCase {
-  return { owner: 'graph_write', ...input, variantCount: GRAPHWRITE_GENERALITY_VARIANT_COUNT };
+function matrixCase(input: Omit<GraphWriteGeneralityOperationCase, 'owner' | 'variantCount'>): GraphWriteGeneralityOperationCase {
+  return { owner: 'graph_write', variantCount: GRAPHWRITE_GENERALITY_VARIANT_COUNT, ...input };
 }
 
-export const GRAPHWRITE_GENERALITY_OPERATION_MATRIX: GraphWriteGeneralityOperationCase[] = [
-  op({ operationId: 'call.call', publicKind: 'call', normalizedKind: 'call', cluster: 'FunctionActionCluster', expectedNodeClass: 'K2Node_CallFunction', fixtures: ['actor_blueprint'] }),
-  op({ operationId: 'field.set.variable', publicKind: 'set', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'set', fieldScope: 'variable', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_VariableSet', fixtures: ['actor_blueprint', 'variables'] }),
-  op({ operationId: 'field.set.property_path', publicKind: 'set_property', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'set', fieldScope: 'property_path', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_CallFunction', fixtures: ['actor_blueprint', 'components'] }),
-  op({ operationId: 'field.set.component_ref', publicKind: 'field', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'set', fieldScope: 'component_ref', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_VariableSet', fixtures: ['actor_blueprint', 'components'] }),
-  op({ operationId: 'field.set.field_access', publicKind: 'field', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'set', fieldScope: 'field_access', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_CallFunction', fixtures: ['actor_blueprint', 'variables'] }),
-  op({ operationId: 'field.get.variable', publicKind: 'get', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'get', fieldScope: 'variable', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_VariableGet', fixtures: ['actor_blueprint', 'variables'] }),
-  op({ operationId: 'field.get.property_path', publicKind: 'get_property', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'get', fieldScope: 'property_path', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_CallFunction', fixtures: ['actor_blueprint', 'components'] }),
-  op({ operationId: 'field.get.component_ref', publicKind: 'field', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'get', fieldScope: 'component_ref', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_VariableGet', fixtures: ['actor_blueprint', 'components'] }),
-  op({ operationId: 'field.get.field_access', publicKind: 'field', normalizedKind: 'field', operationField: 'field_operation', operationValue: 'get', fieldScope: 'field_access', cluster: 'FieldVariableActionCluster', expectedNodeClass: 'K2Node_CallFunction', fixtures: ['actor_blueprint', 'variables'] }),
-  ...['add', 'subtract', 'multiply', 'divide', 'greater', 'greater_equal', 'less', 'less_equal', 'equal', 'not_equal'].map((operation) => op({ operationId: `op.${operation}`, publicKind: 'op', normalizedKind: 'op', operationField: 'op', operationValue: operation, cluster: 'FunctionActionCluster', expectedNodeClass: 'K2Node_PromotableOperator', fixtures: ['actor_blueprint'] })),
-  op({ operationId: 'construct.construct', publicKind: 'construct', normalizedKind: 'construct', operationField: 'type_operation', operationValue: 'construct', cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: 'K2Node_MakeStruct', fixtures: ['actor_blueprint'] }),
-  op({ operationId: 'deconstruct.deconstruct', publicKind: 'deconstruct', normalizedKind: 'deconstruct', operationField: 'type_operation', operationValue: 'deconstruct', cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: 'K2Node_BreakStruct', fixtures: ['actor_blueprint'] }),
-  op({ operationId: 'select.select', publicKind: 'select', normalizedKind: 'select', operationField: 'control_operation', operationValue: 'select', cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: 'K2Node_Select', fixtures: ['actor_blueprint'] }),
-  ...['branch', 'sequence', 'return'].map((operation) => op({ operationId: `control.${operation}`, publicKind: 'control', normalizedKind: operation, operationField: 'control', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'branch' ? 'K2Node_IfThenElse' : operation === 'sequence' ? 'K2Node_ExecutionSequence' : 'K2Node_FunctionResult', fixtures: ['actor_blueprint'] })),
-  op({ operationId: 'body.custom_event', publicKind: 'custom_event_body', normalizedKind: 'graph_body', operationField: 'entry_taxonomy', operationValue: 'custom_event', cluster: 'GraphWriteBodyWriter', expectedNodeClass: 'Existing K2Node_CustomEvent', fixtures: ['actor_blueprint', 'custom_events'] }),
-  op({ operationId: 'component_bound_event.bind', publicKind: 'component_bound_event', normalizedKind: 'component_bound_event', cluster: 'EventDelegateActionCluster', expectedNodeClass: 'K2Node_ComponentBoundEvent', fixtures: ['actor_blueprint', 'components', 'delegate_handlers'] }),
-  ...['bind', 'assign', 'unbind', 'clear', 'call'].map((operation) => op({ operationId: `delegate.${operation}`, publicKind: operation === 'clear' ? 'delegate.unbind_all' : `delegate.${operation}`, normalizedKind: 'delegate', operationField: 'delegate_operation', operationValue: operation, cluster: 'EventDelegateActionCluster', expectedNodeClass: operation === 'bind' ? 'K2Node_AddDelegate' : operation === 'assign' ? 'K2Node_AssignDelegate' : operation === 'unbind' ? 'K2Node_RemoveDelegate' : operation === 'clear' ? 'K2Node_ClearDelegate' : 'K2Node_CallDelegate', fixtures: ['actor_blueprint', 'event_dispatchers', ...(operation === 'call' || operation === 'clear' ? [] : ['delegate_handlers'])] })),
-  ...['spawn_actor', 'create_widget', 'construct_object', 'make_array', 'make_map', 'make_set', 'asset_action'].map((operation) => op({ operationId: `create.${operation}`, publicKind: 'create', normalizedKind: 'create', operationField: 'create_operation', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'spawn_actor' ? 'K2Node_SpawnActorFromClass' : operation === 'create_widget' ? 'K2Node_CreateWidget' : operation === 'construct_object' ? 'K2Node_GenericCreateObject' : operation === 'make_array' ? 'K2Node_MakeArray' : operation === 'make_map' ? 'K2Node_MakeMap' : operation === 'make_set' ? 'K2Node_MakeSet' : 'ActionDatabase', fixtures: operation === 'create_widget' ? ['actor_blueprint', 'widget_class'] : operation === 'asset_action' ? ['actor_blueprint', 'asset_action_evidence'] : ['actor_blueprint'] })),
-  ...['dynamic_cast', 'class_cast', 'type_promotion'].map((operation) => op({ operationId: `convert.${operation}`, publicKind: 'convert', normalizedKind: 'convert', operationField: 'transform_operation', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'class_cast' ? 'K2Node_ClassDynamicCast' : operation === 'type_promotion' ? 'K2Node_PromotableOperator' : 'K2Node_DynamicCast', fixtures: ['actor_blueprint'] })),
-  ...['timer_delegate_node', 'latent_or_async_node'].map((operation) => op({ operationId: `schedule.${operation}`, publicKind: 'schedule', normalizedKind: 'schedule', operationField: 'schedule_operation', operationValue: operation, cluster: 'GenericAssetStructControlActionCluster', expectedNodeClass: operation === 'timer_delegate_node' ? 'TimerDelegateNode' : 'LatentOrAsyncNode', fixtures: ['actor_blueprint', 'event_dispatchers'] })),
-];
+export const FIELD_CORE_CAPABILITY_IDS = [
+  'field.member_get',
+  'field.member_set',
+  'field.local_get',
+  'field.local_set',
+  'field.component_ref_get',
+  'field.inherited_member_get',
+  'field.inherited_member_set',
+  'field.sparse_data_get',
+  'field.function_param_get',
+  'field.struct_member_get',
+  'field.struct_member_set',
+  'field.object_pin_member_get',
+  'field.object_pin_member_set',
+  'field.component_ref_set',
+  'field.component_property_get',
+  'field.component_property_set',
+  'field.nested_property_path',
+] as const;
+
+export const TYPE_PROMOTION_CORE_OPERATION_IDS = [
+  'op.add',
+  'op.subtract',
+  'op.multiply',
+  'op.divide',
+  'op.greater',
+  'op.greater_equal',
+  'op.less',
+  'op.less_equal',
+  'op.equal',
+  'op.not_equal',
+] as const;
+
+export const GRAPHWRITE_GENERALITY_CORE_SHAPE_EXPANSION = [
+  matrixCase({
+    operationId: 'call.call',
+    source: 'core_shape',
+    supportStatus: 'supported',
+    runtimeBoundary: 'FunctionActionCluster',
+    publicShape: 'kind=call',
+    requiredEvidenceKeys: [],
+    expectedReadback: 'K2Node_CallFunction',
+  }),
+  ...FIELD_CORE_CAPABILITY_IDS.map((operationId) =>
+    matrixCase({
+      operationId,
+      source: 'core_shape',
+      supportStatus: 'supported',
+      runtimeBoundary: 'FieldVariableActionCluster',
+      publicShape: `capability_id=${operationId}`,
+      requiredEvidenceKeys: ['field.capability_id', 'field.capability_facts'],
+      expectedReadback: 'Field readback facts',
+    }),
+  ),
+  matrixCase({
+    operationId: 'body.custom_event',
+    source: 'core_shape',
+    supportStatus: 'supported',
+    runtimeBoundary: 'BlueprintSignatureBodyBoundary',
+    publicShape: 'existing BlueprintSignature entry body',
+    requiredEvidenceKeys: ['blueprint_signature.entry_evidence_id'],
+    expectedReadback: 'body content under existing K2Node_CustomEvent',
+  }),
+  ...TYPE_PROMOTION_CORE_OPERATION_IDS.map((operationId) =>
+    matrixCase({
+      operationId,
+      source: 'core_shape',
+      supportStatus: 'supported',
+      runtimeBoundary: 'FunctionActionCluster',
+      publicShape: `kind=op, op=${operationId.slice('op.'.length)}`,
+      requiredEvidenceKeys: ['op.operation_id'],
+      expectedReadback: 'K2Node_PromotableOperator',
+    }),
+  ),
+] as const;
+
+export const GRAPHWRITE_GENERALITY_OPERATION_MATRIX = buildGraphWriteGeneralityMatrix({
+  capabilityContract: GRAPHWRITE_CAPABILITY_CONTRACT,
+  coreShapeExpansion: GRAPHWRITE_GENERALITY_CORE_SHAPE_EXPANSION,
+});
 ```
+
+The builder must:
+
+- include all supported `clusters` operations and all supported `operationGroups` operations;
+- map `runtimeOwner` to the four current runtime clusters or the BlueprintSignature body boundary;
+- attach required evidence keys and exclusion reasons from the contract;
+- exclude `rejected` / `discussion-gated` rows from scored pass-rate math while preserving them in the report;
+- fail tests if an operation appears twice with conflicting owner, evidence, or support status.
 
 - [ ] **Step 2: Add matrix integrity tests**
 
@@ -321,9 +412,25 @@ test('GraphWrite generality matrix has stable unique operation ids and exactly t
   assert.ok(GRAPHWRITE_GENERALITY_OPERATION_MATRIX.every((entry) => entry.owner === 'graph_write'));
   for (const entry of GRAPHWRITE_GENERALITY_OPERATION_MATRIX) {
     assert.equal(entry.variantCount, GRAPHWRITE_GENERALITY_VARIANT_COUNT, entry.operationId);
-    assert.match(entry.operationId, /^[a-z0-9_]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$/);
-    assert.ok(entry.expectedNodeClass.length > 0, entry.operationId);
+    assert.match(entry.operationId, /^[a-z0-9_]+(\.[a-z0-9_]+)+$/);
+    assert.ok(entry.expectedReadback.length > 0, entry.operationId);
+    if (entry.supportStatus !== 'supported') {
+      assert.ok(entry.excludedReason, entry.operationId);
+    }
   }
+});
+
+test('GraphWrite generality matrix is derived from current capability groups', () => {
+  const ids = new Set(GRAPHWRITE_GENERALITY_OPERATION_MATRIX.map((entry) => entry.operationId));
+  assert.ok(ids.has('field.member_get'));
+  assert.ok(ids.has('event_delegate.delegate.bind'));
+  assert.ok(ids.has('generic_ops.control.switch_enum'));
+  assert.ok(ids.has('generic_ops.container.array.identical'));
+  assert.ok(ids.has('generic_ops.struct_select.set_fields_in_struct'));
+  assert.ok(ids.has('op_coverage.array_identical') || ids.has('op.array_identical') || ids.has('array_identical'));
+  assert.ok(!ids.has('field.set.variable'));
+  assert.ok(!ids.has('component_bound_event.bind'));
+  assert.ok(!ids.has('delegate.bind'));
 });
 ```
 
@@ -345,6 +452,8 @@ Expected: matrix tests pass after Step 1 and Step 2.
 **Files:**
 - Create: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-spec-factory.ts`
 - Modify: `AgentFaceService/task-core/src/task/testing/graphwrite-generality-matrix.test.ts`
+
+> 2026-05-26 correction: factory generation must branch on the matrix row's capability namespace and runtime owner, not on the old hand-written `kind.operation` prefixes alone. `field.*` rows use first-class Field capability IDs, `event_delegate.*` rows consume handler/signature evidence, `generic_ops.*` rows use their contract owner, and `op_coverage` rows emit statement-local `op.*` evidence. The snippets below remain implementation scaffolding and must be adapted to the generated matrix shape.
 
 - [ ] **Step 1: Add TaskSpec factory types**
 
@@ -467,9 +576,9 @@ function makeVariableFixtureSpec(assetPath: string, names: string[]): TaskSpec {
 }
 ```
 
-- [ ] **Step 3: Add operation body generation**
+- [ ] **Step 3: Add capability-namespace body generation**
 
-Append operation generation to the same file:
+Append operation generation to the same file. The dispatcher must branch by current capability namespace and `runtimeBoundary`, not by old bare operation prefixes:
 
 ```ts
 function makeOperationSpec(
@@ -481,7 +590,7 @@ function makeOperationSpec(
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',
     task_type: 'edit_blueprint_graph',
-    feature_name: `GraphWriteGenerality_${operation.operationId}`,
+    feature_name: `GraphWriteGenerality_${operation.operationId.replaceAll('.', '_')}`,
     target: { asset_path: assetPath },
     scope_policy: {
       graph_name: graphName,
@@ -504,105 +613,109 @@ function makeOperationSpec(
 }
 
 function makeStatementForOperation(operation: GraphWriteGeneralityOperationCase, name: string, index: number): Record<string, unknown> {
-  const literalNumber = { kind: 'literal', value_type: 'number', value: index + 1 };
-  const literalBool = { kind: 'literal', value_type: 'bool', value: index % 2 === 0 };
+  if (operation.supportStatus !== 'supported') {
+    return makeExpectedUnsupportedStatement(operation, name);
+  }
   if (operation.operationId === 'call.call') {
     return { id: name, kind: 'call', target: 'PrintString', args: { InString: `${name}_value` } };
   }
-  if (operation.operationId.startsWith('field.set.')) {
-    return makeFieldSetStatement(operation, name, index, literalNumber, literalBool);
+  if (operation.operationId.startsWith('field.')) {
+    return makeFieldCapabilityStatement(operation, name, index);
   }
-  if (operation.operationId.startsWith('field.get.')) {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: makeFieldGetExpression(operation, name) } };
+  if (operation.operationId.startsWith('event_delegate.')) {
+    return makeEventDelegateUseSiteStatement(operation, name);
   }
-  if (operation.operationId.startsWith('op.')) {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'op', op: operation.operationValue, left: literalNumber, right: { kind: 'literal', value_type: 'number', value: 1 } } } };
+  if (operation.operationId.startsWith('generic_ops.')) {
+    return makeGenericOpsStatement(operation, name, index);
   }
-  if (operation.operationId === 'control.branch') {
-    return { id: name, kind: 'control', control: 'branch', condition: literalBool, then: [{ kind: 'call', target: 'PrintString', args: { InString: `${name}_then` } }], else: [{ kind: 'call', target: 'PrintString', args: { InString: `${name}_else` } }] };
+  if (operation.operationId.startsWith('op.') || operation.operationId.startsWith('op_coverage.')) {
+    return makeOpCoverageStatement(operation, name, index);
   }
-  if (operation.operationId === 'control.sequence') {
-    return { id: name, kind: 'control', control: 'sequence' };
+  if (operation.operationId === 'body.custom_event') {
+    return { id: name, kind: 'call', target: 'PrintString', args: { InString: `${name}_body` } };
   }
-  if (operation.operationId === 'control.return') {
-    return { id: name, kind: 'control', control: 'return' };
-  }
-  if (operation.operationId.startsWith('delegate.')) {
-    return makeDelegateStatement(operation, name);
-  }
-  return makeGenericExpressionStatement(operation, name, index);
+  return makeContractClusterStatement(operation, name, index);
 }
 ```
 
-- [ ] **Step 4: Add complete branch helpers**
+- [ ] **Step 4: Add namespace helper implementations**
 
-Append helper implementations to the same file:
+Append helper implementations to the same file. The helpers must emit statement-local evidence and must not infer UI/menu/drag state:
 
 ```ts
-function makeFieldSetStatement(
-  operation: GraphWriteGeneralityOperationCase,
-  name: string,
-  index: number,
-  literalNumber: Record<string, unknown>,
-  literalBool: Record<string, unknown>,
-): Record<string, unknown> {
-  if (operation.fieldScope === 'variable') {
-    return { id: name, kind: index < 5 ? 'set' : 'field', target: name, field_operation: 'set', field_scope: 'variable', value: index % 2 === 0 ? literalNumber : literalBool };
-  }
-  if (operation.fieldScope === 'property_path') {
-    return { id: name, kind: index < 5 ? 'set_property' : 'field', target: 'RootComponent', property_path: 'RelativeLocation.X', field_operation: 'set', field_scope: 'property_path', value: literalNumber };
-  }
-  return { id: name, kind: 'field', target: name, field_operation: 'set', field_scope: operation.fieldScope, value: literalNumber, context_evidence: { field_name: name } };
+function makeFieldCapabilityStatement(operation: GraphWriteGeneralityOperationCase, name: string, index: number): Record<string, unknown> {
+  return {
+    id: name,
+    kind: 'field',
+    capability_id: operation.operationId,
+    capability_facts: {
+      'field.capability_id': operation.operationId,
+      'field.variant_name': name,
+      'field.variant_index': index,
+    },
+  };
 }
 
-function makeFieldGetExpression(operation: GraphWriteGeneralityOperationCase, name: string): Record<string, unknown> {
-  if (operation.fieldScope === 'variable') {
-    return { kind: 'get', target: name };
-  }
-  if (operation.fieldScope === 'property_path') {
-    return { kind: 'get_property', target: 'RootComponent', property_path: 'RelativeLocation.X' };
-  }
-  return { kind: 'field', target: name, field_operation: 'get', field_scope: operation.fieldScope, context_evidence: { field_name: name } };
+function makeEventDelegateUseSiteStatement(operation: GraphWriteGeneralityOperationCase, name: string): Record<string, unknown> {
+  const delegateOperation = operation.operationId.replace('event_delegate.', '');
+  return {
+    id: name,
+    kind: delegateOperation === 'component_bound_event' ? 'component_bound_event' : delegateOperation,
+    context_evidence: {
+      'event_delegate.operation_id': operation.operationId,
+      'event_delegate.binding_object_kind': 'self',
+      'event_delegate.delegate_property_name': `${name}_Dispatcher`,
+      'event_delegate.handler_function_path': `/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality:${name}_Handler`,
+      'event_delegate.handler_source_cluster': 'BlueprintSignature',
+      'event_delegate.signature_evidence_id': `sig:${name}`,
+    },
+  };
 }
 
-function makeDelegateStatement(operation: GraphWriteGeneralityOperationCase, name: string): Record<string, unknown> {
-  const delegateName = `${name}_Dispatcher`;
-  const handler = `${name}_Handler`;
-  if (operation.operationValue === 'clear') {
-    return { id: name, kind: 'delegate.unbind_all', target: 'self', delegate: delegateName };
-  }
-  if (operation.operationValue === 'call') {
-    return { id: name, kind: 'delegate.call', target: 'self', delegate: delegateName, args: {} };
-  }
-  return { id: name, kind: `delegate.${operation.operationValue}`, target: 'self', delegate: delegateName, handler };
+function makeGenericOpsStatement(operation: GraphWriteGeneralityOperationCase, name: string, index: number): Record<string, unknown> {
+  const [, family, ...operationParts] = operation.operationId.split('.');
+  return {
+    id: name,
+    kind: family,
+    [`${family}_operation`]: operationParts.join('.'),
+    context_evidence: {
+      'generic.operation_id': operation.operationId,
+      'generic.variant_name': name,
+      'generic.variant_index': index,
+      required_evidence_keys: operation.requiredEvidenceKeys,
+    },
+  };
 }
 
-function makeGenericExpressionStatement(operation: GraphWriteGeneralityOperationCase, name: string, index: number): Record<string, unknown> {
-  if (operation.operationId === 'construct.construct') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'construct', type: '/Script/CoreUObject.Vector', args: { X: index, Y: index + 1, Z: index + 2 } } } };
-  }
-  if (operation.operationId === 'deconstruct.deconstruct') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'deconstruct', type: '/Script/CoreUObject.Vector', value: { kind: 'construct', type: '/Script/CoreUObject.Vector', args: { X: index, Y: index, Z: index } } } } };
-  }
-  if (operation.operationId === 'select.select') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'select', condition: { kind: 'literal', value_type: 'bool', value: index % 2 === 0 }, options: [`${name}_A`, `${name}_B`] } } };
-  }
-  if (operation.publicKind === 'create') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'create', create_operation: operation.operationValue, class_path: '/Script/Engine.Actor', pin_type: 'float', args: {} } } };
-  }
-  if (operation.publicKind === 'convert') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'convert', transform_operation: operation.operationValue, target_class_path: '/Script/Engine.Actor', args: { value: { kind: 'literal', value_type: 'object', value: 'self' } } } } };
-  }
-  if (operation.publicKind === 'schedule') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: { kind: 'schedule', schedule_operation: operation.operationValue, args: { delay: { kind: 'literal', value_type: 'number', value: 0.1 } } } } };
-  }
-  if (operation.operationId === 'body.custom_event') {
-    return { id: name, kind: 'call', target: 'PrintString', args: { InString: `${name}_event_body` } };
-  }
-  if (operation.operationId === 'component_bound_event.bind') {
-    return { id: name, kind: 'component_bound_event', component: `${name}_Component`, delegate: 'OnComponentBeginOverlap', handler: `${name}_Handler` };
-  }
-  return { id: name, kind: 'call', target: 'PrintString', args: { InString: name } };
+function makeOpCoverageStatement(operation: GraphWriteGeneralityOperationCase, name: string, index: number): Record<string, unknown> {
+  const opId = operation.operationId.replace(/^op(_coverage)?\./, '');
+  return {
+    id: name,
+    kind: 'call',
+    target: 'PrintString',
+    args: {
+      InString: {
+        kind: 'op',
+        op: opId,
+        context_evidence: {
+          'op.operation_id': opId,
+          'op.variant_index': index,
+        },
+      },
+    },
+  };
+}
+
+function makeExpectedUnsupportedStatement(operation: GraphWriteGeneralityOperationCase, name: string): Record<string, unknown> {
+  return {
+    id: name,
+    kind: 'call',
+    target: 'PrintString',
+    context_evidence: {
+      expected_failure: operation.excludedReason,
+      operation_id: operation.operationId,
+    },
+  };
 }
 ```
 
@@ -662,8 +775,8 @@ export interface GraphWriteGeneralityVariantResult {
   executeStatus: 'pass' | 'fail';
   readbackStatus: 'pass' | 'fail';
   failureKind: 'none' | 'setup_failure' | 'preview_failure' | 'execute_failure' | 'readback_failure' | 'unsupported_intent' | 'silent_wrong_graph';
-  expectedNodeClass: string;
-  actualNodeClass?: string;
+  expectedReadback: string;
+  actualReadback?: string;
   evidencePath?: string;
   message?: string;
 }
@@ -732,7 +845,7 @@ export function summarizeGraphWriteGeneralityResults(results: GraphWriteGenerali
 }
 
 export function renderGraphWriteGeneralityCsv(results: GraphWriteGeneralityVariantResult[]): string {
-  const header = 'operation_id,variant_name,preview_status,execute_status,readback_status,failure_kind,expected_node_class,actual_node_class,evidence_path,message';
+  const header = 'operation_id,variant_name,preview_status,execute_status,readback_status,failure_kind,expected_readback,actual_readback,evidence_path,message';
   const rows = results.map((result) => [
     result.operationId,
     result.variantName,
@@ -740,8 +853,8 @@ export function renderGraphWriteGeneralityCsv(results: GraphWriteGeneralityVaria
     result.executeStatus,
     result.readbackStatus,
     result.failureKind,
-    result.expectedNodeClass,
-    result.actualNodeClass ?? '',
+    result.expectedReadback,
+    result.actualReadback ?? '',
     result.evidencePath ?? '',
     result.message ?? '',
   ].map(csvCell).join(','));
@@ -856,7 +969,7 @@ test('GraphWrite generality report requires all ten variants for an operation pa
     executeStatus: index === 9 ? 'fail' : 'pass',
     readbackStatus: index === 9 ? 'fail' : 'pass',
     failureKind: index === 9 ? 'execute_failure' : 'none',
-    expectedNodeClass: 'K2Node_CallFunction',
+    expectedReadback: 'K2Node_CallFunction',
   }));
   const summary = summarizeGraphWriteGeneralityResults(results);
   assert.equal(summary.totalOperations, 1);
@@ -1189,8 +1302,8 @@ Expected: source scan has no active legacy mainline hits except intentional diag
 
 ## Exit Criteria
 
-- [ ] Public TaskSpec contract and compiler-supported GraphWrite shapes are synchronized.
-- [ ] Operation matrix covers all ownership-filtered normalized GraphWrite operations listed in this plan after excluding existing-tool-owned declarations, fixtures, and mutation-service-owned operations.
+- [ ] Generality matrix source is synchronized with `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` and `GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups`, plus the explicit core-shape expansion in this plan.
+- [ ] Operation matrix covers all ownership-filtered supported capability operations after excluding existing-tool-owned declarations, fixtures, UI/editor-only inputs, rejected rows, and mutation-service-owned operations.
 - [ ] Every operation generates exactly 10 variant names and one TaskSpec body containing exactly 10 GraphWrite statements or expression-backed nodes.
 - [ ] Runtime preflight executes through TaskSpec preview/execute/readback; ActionResolution direct tests are not counted as score.
 - [ ] Report artifacts include JSON, CSV, Markdown, operation pass/fail SVG, and failure distribution SVG.
@@ -1200,5 +1313,6 @@ Expected: source scan has no active legacy mainline hits except intentional diag
 ## Suggested Manual Commit Message
 
 变更需求：
-1. 新增 GraphWrite 最终总测前置通用性测试计划，覆盖每个 kind + operation 的 10 变体 TaskSpec 门禁。
-2. 固定通用性报告输出为 JSON/CSV/Markdown/SVG，并要求最终 P6/80% 总测先通过通用性 gate。
+1. 按 2026-05-26 最新 GraphWrite 能力簇更新通用性测试矩阵来源。
+2. 明确通用性矩阵从 capability contract 的 clusters / operationGroups 派生，并保留 Field、EventDelegate、GenericOps、OpCoverage 的 TaskSpec 边界。
+3. 固定 UI/editor-menu/drag/pin 行为不进入 GraphWrite 通用性计分。

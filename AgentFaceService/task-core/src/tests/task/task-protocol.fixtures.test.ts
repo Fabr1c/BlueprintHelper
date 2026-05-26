@@ -129,9 +129,9 @@ describe('Task protocol fixtures', () => {
         ops: ['add_component', 'set_component_properties', 'remove_component'],
       }],
       ['edit_blueprint_class_settings', {
-        capabilities: ['blueprint_class_settings', 'blueprint_class_settings', 'blueprint_class_settings'],
-        strategies: ['class_settings', 'class_settings', 'class_settings'],
-        ops: ['add_implemented_interfaces', 'remove_implemented_interfaces', 'set_class_default_properties'],
+        capabilities: ['blueprint_class_settings', 'blueprint_class_settings', 'blueprint_class_settings', 'blueprint_class_settings'],
+        strategies: ['class_settings', 'class_settings', 'class_settings', 'class_settings'],
+        ops: ['add_implemented_interfaces', 'remove_implemented_interfaces', 'set_class_default_properties', 'reparent_blueprint'],
       }],
       ['edit_umg_widget', {
         capabilities: ['umg_widget', 'umg_widget', 'umg_widget'],

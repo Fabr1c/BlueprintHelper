@@ -93,12 +93,15 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
   if (taskSpec.task_type === 'edit_blueprint_signature') {
     return compileBlueprintSignatureTaskSpecToTaskPlan(taskSpec);
   }
+  if (taskSpec.task_type === 'edit_blueprint_class_settings') {
+    return compileBlueprintClassSettingsTaskSpecToTaskPlan(taskSpec);
+  }
   if (taskSpec.task_type !== 'edit_blueprint_graph') {
     throw new TaskSpecCompileError('unsupported_task_type', `Unsupported TaskSpec task_type: ${taskSpec.task_type}`, [
       {
         code: 'unsupported_task_type',
         path: 'task_type',
-        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, and composite feature slices.',
+        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, ClassSettings, and composite feature slices.',
       },
     ]);
   }
@@ -347,6 +350,16 @@ function compileCompositeClassSettingsSteps(taskSpec: Extract<TaskSpec, { task_t
   const classSettings = asRecord((taskSpec as Record<string, unknown>)['class_settings']);
   if (!classSettings) return [];
 
+  if (Object.hasOwn(classSettings, 'parent_class')) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Use class_settings.reparent.new_parent_class for Blueprint reparent operations.', [
+      {
+        code: 'unsupported_composite_class_settings_parent_class',
+        path: 'class_settings.parent_class',
+        message: 'Use class_settings.reparent.new_parent_class.',
+      },
+    ]);
+  }
+
   const steps: TaskPlanStep[] = [];
   const rawInterfaces = classSettings['implemented_interfaces'];
   if (Array.isArray(rawInterfaces) && rawInterfaces.length > 0) {
@@ -372,6 +385,17 @@ function compileCompositeClassSettingsSteps(taskSpec: Extract<TaskSpec, { task_t
     steps.push(makeCompositeCapabilityStep(steps.length + 1, 'blueprint_class_settings', taskSpec.target.asset_path, 'class_settings', [{
       op: 'set_class_default_properties',
       settings: classDefaults,
+    }]));
+  }
+
+  const reparent = asRecord(classSettings['reparent']);
+  if (reparent) {
+    steps.push(makeCompositeCapabilityStep(steps.length + 1, 'blueprint_class_settings', taskSpec.target.asset_path, 'class_settings', [{
+      op: 'reparent_blueprint',
+      new_parent_class: resolveCompositeReference(
+        getRequiredString(reparent, 'new_parent_class', 'class_settings.reparent.new_parent_class'),
+        taskSpec,
+      ),
     }]));
   }
 
@@ -759,6 +783,84 @@ function compileObjectPropertiesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, {
     'property_edit',
     [op],
     { property_scope: 'uobject' },
+  );
+}
+
+function compileBlueprintClassSettingsTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_class_settings' }>,
+): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'class_settings_strategy',
+    'class_settings',
+    'behavior.class_settings_strategy',
+    'Use class_settings_strategy="class_settings".',
+  );
+
+  if (Object.hasOwn(behavior, 'parent_class')) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Use behavior.reparent.new_parent_class for Blueprint reparent operations.', [
+      {
+        code: 'legacy_parent_class_field',
+        path: 'behavior.parent_class',
+        message: 'Use behavior.reparent.new_parent_class.',
+      },
+    ]);
+  }
+
+  const ops: Record<string, unknown>[] = [];
+  const interfaces = asRecord(behavior['interfaces']);
+  const ensurePresent = stringArrayOrEmpty(interfaces?.['ensure_present'], 'behavior.interfaces.ensure_present');
+  if (ensurePresent.length > 0) {
+    ops.push({
+      op: 'add_implemented_interfaces',
+      interface_paths: ensurePresent,
+    });
+  }
+
+  const ensureAbsent = stringArrayOrEmpty(interfaces?.['ensure_absent'], 'behavior.interfaces.ensure_absent');
+  if (ensureAbsent.length > 0) {
+    ops.push({
+      op: 'remove_implemented_interfaces',
+      interface_paths: ensureAbsent,
+    });
+  }
+
+  const classDefaults = classSettingsDefaultArray(behavior['class_defaults'], 'behavior.class_defaults');
+  if (classDefaults.length > 0) {
+    ops.push({
+      op: 'set_class_default_properties',
+      settings: classDefaults,
+    });
+  }
+
+  const reparent = asRecord(behavior['reparent']);
+  if (reparent) {
+    ops.push({
+      op: 'reparent_blueprint',
+      new_parent_class: getRequiredString(reparent, 'new_parent_class', 'behavior.reparent.new_parent_class'),
+    });
+  }
+
+  if (ops.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'edit_blueprint_class_settings requires at least one class settings change.', [
+      {
+        code: 'missing_class_settings_change',
+        path: 'behavior',
+        message: 'Provide interfaces, class_defaults, or reparent.new_parent_class.',
+      },
+    ]);
+  }
+
+  return makeTaskPlanWithSteps(
+    taskSpec,
+    ops.map((op, index) => makeCompositeCapabilityStep(
+      index + 1,
+      'blueprint_class_settings',
+      taskSpec.target.asset_path,
+      'class_settings',
+      [op],
+    )),
   );
 }
 
@@ -2928,6 +3030,70 @@ function requiredArray(record: Record<string, unknown>, field: string, path: str
       message: `Provide at least one item in ${path}.`,
     },
   ]);
+}
+
+function stringArrayOrEmpty(value: unknown, path: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an array.`, [
+      {
+        code: 'invalid_string_array',
+        path,
+        message: `${path} must contain path strings.`,
+      },
+    ]);
+  }
+  return value.map((item, index) => {
+    if (typeof item !== 'string' || item.length === 0) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}[${index}] must be a non-empty string.`, [
+        {
+          code: 'invalid_string_array_item',
+          path: `${path}[${index}]`,
+          message: `${path}[${index}] must be a non-empty string.`,
+        },
+      ]);
+    }
+    return item;
+  });
+}
+
+function classSettingsDefaultArray(rawSettings: unknown, path: string): Record<string, unknown>[] {
+  if (rawSettings === undefined || rawSettings === null) return [];
+  if (!Array.isArray(rawSettings)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an array.`, [
+      {
+        code: 'invalid_property_settings',
+        path,
+        message: 'Use an array of { property_path, value } settings.',
+      },
+    ]);
+  }
+  return rawSettings.map((rawSetting, index) => {
+    if (!isRecord(rawSetting)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}[${index}] must be an object.`, [
+        {
+          code: 'invalid_property_setting',
+          path: `${path}[${index}]`,
+          message: 'Use { property_path, value }.',
+        },
+      ]);
+    }
+    const setting = rawSetting as Record<string, unknown>;
+    if (!Object.hasOwn(setting, 'value')) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}[${index}].value is required.`, [
+        {
+          code: 'missing_property_value',
+          path: `${path}[${index}].value`,
+          message: 'Provide value.',
+        },
+      ]);
+    }
+    return {
+      ...setting,
+      property_path: getRequiredString(setting, 'property_path', `${path}[${index}].property_path`),
+      value: literalValue(setting['value']),
+    };
+  });
 }
 
 function literalRecordValues(record: Record<string, unknown>): Record<string, unknown> {

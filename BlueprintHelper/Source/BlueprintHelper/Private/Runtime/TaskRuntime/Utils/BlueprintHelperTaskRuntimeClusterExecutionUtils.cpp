@@ -754,6 +754,14 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 				TEXT("class_default_property"),
 				TEXT("class_setting"),
 				TEXT("class default"));
+			AddTaskRuntimeReviewTarget(
+				OutEvidence,
+				LoweredStep.Payload,
+				EBlueprintHelperReviewSurface::Details,
+				TEXT("class_setting_parent"),
+				ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("new_parent_class")),
+				TEXT("class_setting"),
+				TEXT("parent class"));
 		}));
 	Routes.Add(MakeTuple(
 		[&LoweredStep]()
@@ -1250,6 +1258,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		[&Service, Payload, AssetPath, bDryRun]()
 		{
 			return Service.SetClassDefaultProperties(AssetPath, ReadTaskRuntimeClassDefaultSettings(Payload), bDryRun);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperClassSettingsTaskPlanAdapter::ReparentBlueprintOp,
+		[&Service, Payload, AssetPath, bDryRun]()
+		{
+			return Service.ReparentBlueprint(
+				AssetPath,
+				ReadTaskRuntimeReviewStringField(Payload, TEXT("new_parent_class")),
+				bDryRun);
 		});
 
 	if (const FClassSettingsOperationHandler* Handler = OperationHandlers.Find(AdapterOperation))
