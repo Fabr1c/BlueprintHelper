@@ -10,6 +10,8 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.Query = !Statement.Target.IsEmpty() ? Statement.Target : Statement.Name;
 	Request.Target = Statement.Target;
 	Request.PropertyPath = Statement.Property;
+	Request.CapabilityId = Statement.CapabilityId;
+	Request.CapabilityFacts = Statement.CapabilityFacts;
 	Request.FieldOperation = Statement.FieldOperation;
 	Request.FieldScope = Statement.FieldScope;
 	Request.FunctionOperation = Statement.FunctionOperation;
@@ -58,6 +60,8 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.Query = Expression.Target;
 	Request.Target = Expression.Target;
 	Request.PropertyPath = Expression.ResolvedTarget.PropertyPath;
+	Request.CapabilityId = Expression.CapabilityId;
+	Request.CapabilityFacts = Expression.CapabilityFacts;
 	Request.FieldOperation = Expression.FieldOperation;
 	Request.FieldScope = Expression.FieldScope;
 	Request.FunctionOperation = Expression.FunctionOperation;

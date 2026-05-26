@@ -16,8 +16,13 @@ struct FBlueprintHelperCallFunctionCandidateInfo
 	FString ReturnType;
 	FString WorldContextPin;
 	FString TargetObjectPin;
+	FString CapabilityId;
+	FString ExpectedNodeFamily;
+	FString ExpectedNodeClassPath;
 	TArray<FString> InputPins;
 	TMap<FString, FString> InputPinTypes;
+	TMap<FString, FString> CapabilityFacts;
+	TMap<FString, FString> ReadbackFacts;
 	FString MismatchReason;
 	int32 Score = 0;
 	bool bGraphCompatible = false;

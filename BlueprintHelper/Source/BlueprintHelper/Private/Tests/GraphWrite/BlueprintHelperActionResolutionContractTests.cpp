@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
@@ -216,6 +217,58 @@ bool FBlueprintHelperActionResolutionGenericCreateSecondLevelContractTest::RunTe
 	TestEqual(TEXT("Create is the first-stage semantic constraint"), Request.Semantic.Kind, EBlueprintHelperActionSemanticKind::Create);
 	TestEqual(TEXT("Create family is explicit"), Request.Semantic.SemanticFamily, EBlueprintHelperActionSemanticFamily::Create);
 	TestEqual(TEXT("Create operation is second-level evidence"), Request.Semantic.CreateOperation, FString(TEXT("spawn_actor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionContractCarriesFieldCapabilityFactsTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.CarriesFieldCapabilityFacts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionContractCarriesFieldCapabilityFactsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionSemanticConstraints Constraints;
+	Constraints.Kind = EBlueprintHelperActionSemanticKind::Field;
+	Constraints.CapabilityId = TEXT("field.member_get");
+	Constraints.FieldOperation = TEXT("get");
+	Constraints.FieldScope = TEXT("variable");
+	Constraints.CapabilityFacts.Add(TEXT("field.owner_class"), TEXT("/Script/Engine.Actor"));
+	Constraints.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("Health"));
+	Constraints.CapabilityFacts.Add(TEXT("field.member_guid"), FGuid(0x11111111, 0x22222222, 0x33333333, 0x44444444).ToString(EGuidFormats::Digits));
+
+	TestEqual(TEXT("capability id"), Constraints.CapabilityId, FString(TEXT("field.member_get")));
+	TestEqual(TEXT("owner class"), Constraints.CapabilityFacts.FindRef(TEXT("field.owner_class")), FString(TEXT("/Script/Engine.Actor")));
+	TestEqual(TEXT("member name"), Constraints.CapabilityFacts.FindRef(TEXT("field.member_name")), FString(TEXT("Health")));
+	TestFalse(TEXT("member guid fact"), Constraints.CapabilityFacts.FindRef(TEXT("field.member_guid")).IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionContractFieldDiagnosticsRejectByRefAndUiOnlyTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.FieldDiagnostics.RejectByRefAndUiOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionContractFieldDiagnosticsRejectByRefAndUiOnlyTest::RunTest(const FString& Parameters)
+{
+	struct FRejectedFieldCapabilityExpectation
+	{
+		const TCHAR* Id;
+		const TCHAR* Reason;
+	};
+
+	const FRejectedFieldCapabilityExpectation Expectations[] = {
+		{TEXT("field.by_ref_set"), TEXT("unsupported_by_ref_set_deferred")},
+		{TEXT("field.pin_drag_set"), TEXT("unsupported_ui_entry_not_statement")}
+	};
+
+	for (const FRejectedFieldCapabilityExpectation& Expectation : Expectations)
+	{
+		FString RejectReason;
+		const bool bAllowed = FBlueprintHelperFieldCapabilityRegistry::IsAllowedUserStatement(Expectation.Id, RejectReason);
+		TestFalse(FString::Printf(TEXT("field diagnostic rejects %s"), Expectation.Id), bAllowed);
+		TestEqual(FString::Printf(TEXT("field diagnostic reason %s"), Expectation.Id), RejectReason, FString(Expectation.Reason));
+	}
+
 	return true;
 }
 
@@ -952,6 +1005,24 @@ bool FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractT
 
 	TestTrue(TEXT("type_promotion keeps registered FTypePromotion-only spawner resolution"), bClean);
 	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionResolutionContractComponentRefUsesVariableSpawnerFactsTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.Contract.ComponentRef.UsesVariableSpawnerFacts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionResolutionContractComponentRefUsesVariableSpawnerFactsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionCandidate Candidate;
+	Candidate.CapabilityId = TEXT("field.component_ref_get");
+	Candidate.ExpectedNodeClassPath = TEXT("/Script/BlueprintGraph.K2Node_VariableGet");
+	Candidate.NodeClassPath = TEXT("/Script/BlueprintGraph.K2Node_VariableGet");
+	Candidate.ReadbackFacts.Add(TEXT("component_ref_spawner"), TEXT("UBlueprintVariableNodeSpawner"));
+
+	TestFalse(TEXT("candidate node class is not add component"), Candidate.NodeClassPath.Contains(TEXT("K2Node_AddComponent")));
+	TestFalse(TEXT("candidate does not name component node spawner"), Candidate.ReadbackFacts.FindRef(TEXT("component_ref_spawner")).Contains(TEXT("UBlueprintComponentNodeSpawner")));
+	return true;
 }
 
 #endif

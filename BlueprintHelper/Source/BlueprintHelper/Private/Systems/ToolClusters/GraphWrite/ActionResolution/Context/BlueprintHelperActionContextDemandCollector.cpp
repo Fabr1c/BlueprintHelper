@@ -42,6 +42,110 @@ static FString EvidenceValue(const TMap<FString, FString>& Evidence, const FStri
 	return FString();
 }
 
+static void AddDefaultIfPresent(
+	FBlueprintHelperActionContextDemand& Demand,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
+	{
+		Demand.DefaultValues.FindOrAdd(Key) = CleanValue;
+	}
+}
+
+static void RemoveEmptyFacts(TMap<FString, FString>& Facts)
+{
+	TArray<FString> EmptyKeys;
+	for (const TPair<FString, FString>& Pair : Facts)
+	{
+		if (Pair.Value.TrimStartAndEnd().IsEmpty())
+		{
+			EmptyKeys.Add(Pair.Key);
+		}
+	}
+	for (const FString& EmptyKey : EmptyKeys)
+	{
+		Facts.Remove(EmptyKey);
+	}
+}
+
+static void AddFieldDemandFacts(FBlueprintHelperActionContextDemand& Demand)
+{
+	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Field)
+	{
+		return;
+	}
+
+	Demand.RequiredFacts.Add(TEXT("field.capability_id"));
+	Demand.RequiredFacts.Add(TEXT("field.owner_class"));
+	Demand.RequiredFacts.Add(TEXT("field.member_name"));
+	Demand.RequiredFacts.Add(TEXT("field.member_guid"));
+	Demand.RequiredFacts.Add(TEXT("field.local_scope"));
+	Demand.RequiredFacts.Add(TEXT("field.function_name"));
+	Demand.RequiredFacts.Add(TEXT("field.target_pin_ref"));
+	Demand.RequiredFacts.Add(TEXT("field.target_pin_type"));
+	Demand.RequiredFacts.Add(TEXT("field.component_name"));
+	Demand.RequiredFacts.Add(TEXT("field.component_guid"));
+	Demand.RequiredFacts.Add(TEXT("field.struct_type"));
+	Demand.RequiredFacts.Add(TEXT("field.property_path"));
+
+	AddDefaultIfPresent(Demand, TEXT("field.capability_id"), Demand.CapabilityId);
+	AddDefaultIfPresent(Demand, TEXT("field_capability_id"), Demand.CapabilityId);
+	for (const TPair<FString, FString>& FactPair : Demand.CapabilityFacts)
+	{
+		AddDefaultIfPresent(Demand, FactPair.Key, FactPair.Value);
+	}
+}
+
+static void ApplyStatementCapabilityFacts(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	FBlueprintHelperActionContextDemand& Demand)
+{
+	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Field)
+	{
+		return;
+	}
+
+	Demand.CapabilityId = Statement.CapabilityId;
+	Demand.CapabilityFacts = Statement.CapabilityFacts;
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.member_name"), FirstNonEmpty(Statement.Name, Statement.Property, Statement.ResolvedTarget.Member, Statement.Target));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_ref"), EvidenceValue(Statement.ContextEvidence, TEXT("target_pin_ref")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_type"), EvidenceValue(Statement.ContextEvidence, TEXT("linked_pin_type_category")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_object_path"), EvidenceValue(Statement.ContextEvidence, TEXT("linked_pin_type_object_path")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), FirstNonEmpty(Statement.ComponentName, EvidenceValue(Statement.ContextEvidence, TEXT("component_name"))));
+	if (!Demand.PropertyPath.IsEmpty())
+	{
+		Demand.CapabilityFacts.FindOrAdd(TEXT("field.property_path"), Demand.PropertyPath);
+	}
+	RemoveEmptyFacts(Demand.CapabilityFacts);
+	AddFieldDemandFacts(Demand);
+}
+
+static void ApplyExpressionCapabilityFacts(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperActionContextDemand& Demand)
+{
+	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Field)
+	{
+		return;
+	}
+
+	Demand.CapabilityId = Expression.CapabilityId;
+	Demand.CapabilityFacts = Expression.CapabilityFacts;
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.member_name"), FirstNonEmpty(Expression.Name, Expression.Property, Expression.ResolvedTarget.Member, Expression.Target));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_ref"), EvidenceValue(Expression.ContextEvidence, TEXT("target_pin_ref")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_type"), EvidenceValue(Expression.ContextEvidence, TEXT("linked_pin_type_category")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_object_path"), EvidenceValue(Expression.ContextEvidence, TEXT("linked_pin_type_object_path")));
+	Demand.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), EvidenceValue(Expression.ContextEvidence, TEXT("component_name")));
+	if (!Demand.PropertyPath.IsEmpty())
+	{
+		Demand.CapabilityFacts.FindOrAdd(TEXT("field.property_path"), Demand.PropertyPath);
+	}
+	RemoveEmptyFacts(Demand.CapabilityFacts);
+	AddFieldDemandFacts(Demand);
+}
+
 static bool IsEventDelegateSemantic(const EBlueprintHelperActionSemanticKind SemanticKind);
 
 static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& Statement, const EBlueprintHelperActionSemanticKind SemanticKind)
@@ -893,6 +997,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldOperation,
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyStatementCapabilityFacts(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyContainerActionStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
@@ -988,6 +1093,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyExpressionCapabilityFacts(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyContainerActionExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyConvertScheduleEvidence(
@@ -1141,6 +1247,7 @@ FBlueprintHelperActionContextDemand FBlueprintHelperActionContextDemandCollector
 				Demand.TargetPath = FieldQuery;
 			}
 		}
+		BlueprintHelperActionContextDemandCollector::AddFieldDemandFacts(Demand);
 	}
 	else if (Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Construct
 		|| Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Deconstruct)

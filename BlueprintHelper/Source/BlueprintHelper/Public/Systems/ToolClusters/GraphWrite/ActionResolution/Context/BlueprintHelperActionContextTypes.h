@@ -53,6 +53,8 @@ struct FBlueprintHelperActionContextDemand
 	FString PropertyPath;
 	FString FieldOperation;
 	FString FieldScope;
+	FString CapabilityId;
+	TMap<FString, FString> CapabilityFacts;
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
@@ -96,6 +98,8 @@ struct FBlueprintHelperActionContextDemand
 	TArray<FString> ArgumentNames;
 	TArray<FString> SourceSymbolIds;
 	TArray<FString> ConsumerSymbolIds;
+	TSet<FString> RequiredFacts;
+	FString BlockingReason;
 };
 
 struct FBlueprintHelperActionContextGraphSnapshot
@@ -113,12 +117,15 @@ struct FBlueprintHelperActionContextGraphSnapshot
 struct FBlueprintHelperActionContextFieldSnapshot
 {
 	FString Name;
+	FString Kind;
+	FString CapabilityId;
 	FString OwnerClassPath;
 	FString FieldPath;
 	FString PinCategory;
 	FString PinSubCategory;
 	FString PinSubCategoryObjectPath;
 	FString PinContainerType;
+	TMap<FString, FString> CapabilityFacts;
 	bool bReadable = true;
 	bool bWritable = true;
 	bool bComponent = false;
@@ -191,6 +198,14 @@ struct FBlueprintHelperResolvedActionContextBundle
 				if (Existing->Semantic.TypeOperation == EBlueprintHelperTypeOperation::None)
 				{
 					Existing->Semantic.TypeOperation = Context.Semantic.TypeOperation;
+				}
+				if (Existing->Semantic.CapabilityId.IsEmpty())
+				{
+					Existing->Semantic.CapabilityId = MoveTemp(Context.Semantic.CapabilityId);
+				}
+				for (TPair<FString, FString>& FactPair : Context.Semantic.CapabilityFacts)
+				{
+					Existing->Semantic.CapabilityFacts.FindOrAdd(FactPair.Key, FactPair.Value);
 				}
 				if (Existing->Semantic.StructPath.IsEmpty())
 				{

@@ -12,6 +12,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString Query;
 	FString Target;
 	FString PropertyPath;
+	FString CapabilityId;
+	TMap<FString, FString> CapabilityFacts;
 	FString FieldOperation;
 	FString FieldScope;
 	FString FunctionOperation;

@@ -330,6 +330,39 @@ TaskSpec execute 可能产生：
 | `open_asset`, `list_assets`, `save_asset`, `undo`, `redo`, `play_in_editor`, `exec_console_command` | direct Bridge / editor command surface，不是 AgentFace 写 TaskSpec 的普通路径。 |
 | direct GraphWrite / Component / Widget / DataTable bridge calls | AgentFace 应写 semantic TaskSpec，由 compiler 和 TaskRuntime adapter 转换，不应手写 raw bridge payload。 |
 
+## 2026-05-26 GraphWrite Field capability matrix
+
+Field-like GraphWrite statements are addressed by stable `field.capability_id` values plus statement-local `field.*` facts. Shared GraphWrite contracts consume generic `CapabilityId`, `CapabilityFacts`, and `ReadbackFacts`; Field-only meaning stays inside the Field registry, resolver, context projection, fragment builder, and readback helpers.
+
+| Priority | Capability ID | Node family | Required local facts |
+|---|---|---|---|
+| P0 | `field.member_get` | `variable_get` | `field.member_name`; optional `field.owner_class`, `field.member_guid` |
+| P0 | `field.member_set` | `variable_set` | `field.member_name`; optional `field.owner_class`, `field.member_guid` |
+| P0 | `field.local_get` | `variable_get` | `field.function_name` or `field.local_scope`; local/member name |
+| P0 | `field.local_set` | `variable_set` | `field.function_name` or `field.local_scope`; local/member name |
+| P0 | `field.component_ref_get` | `component_variable_get` | `field.component_name`; optional component owner/kind facts |
+| P1 | `field.inherited_member_get` | `variable_get` | `field.owner_class`, `field.member_name` |
+| P1 | `field.inherited_member_set` | `variable_set` | `field.owner_class`, `field.member_name` |
+| P1 | `field.sparse_data_get` | `variable_get` | `field.owner_class`, `field.member_name` |
+| P1 | `field.function_param_get` | `variable_get` | `field.function_name`, parameter/member name, parameter evidence |
+| P1 | `field.struct_member_get` | `break_struct` | `field.property_path`, root expression evidence |
+| P1 | `field.struct_member_set` | `set_fields_in_struct` | `field.property_path`, root expression evidence, write value/default facts |
+| P2 | `field.object_pin_member_get` | `variable_get_target` | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.owner_class`, `field.member_name` |
+| P2 | `field.object_pin_member_set` | `variable_set_target` | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.owner_class`, `field.member_name` |
+| P2 | `field.component_ref_set` | `component_variable_set` | `field.component_name`; optional component owner/kind facts |
+| P2 | `field.component_property_get` | `component_property_get` | `field.target_pin_ref`, target pin type/object facts, `field.property_path` |
+| P2 | `field.component_property_set` | `component_property_set` | `field.target_pin_ref`, target pin type/object facts, `field.property_path`, write value/default facts |
+| P2 | `field.nested_property_path` | `property_path_fragment` | `field.property_path`, root expression evidence, path segment facts |
+
+Excluded Field-like inputs:
+
+| Category | IDs | Required behavior |
+|---|---|---|
+| UI-only evidence | `field.drag_get`, `field.drag_set`, `field.pin_drag_get`, `field.pin_drag_set` | Reject with `unsupported_ui_entry_not_statement`; caller must map them to stable first-class IDs before execution. |
+| Support/readback-only | `field.split_struct_pin_support`, `field.recombine_struct_pin_support` | Internal support only; no TaskSpec user statement surface. |
+| Other clusters | `control.function_return_write`, `function.selected_component_call`, `component.add_component_node` | Route or reject outside FieldVariableActionCluster. |
+| Diagnostic / first-stage excluded | `field.unsupported_path_diagnostic`, `field.by_ref_set` | Diagnostic-only; `field.by_ref_set` rejects with `unsupported_by_ref_set_deferred`. |
+
 ## 源码依据
 
 - `AgentFaceService/task-core/src/task/schema/task-schemas.ts`

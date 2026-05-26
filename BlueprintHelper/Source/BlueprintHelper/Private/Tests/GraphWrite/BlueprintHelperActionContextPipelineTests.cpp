@@ -566,6 +566,36 @@ bool FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest::RunTest(c
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextCapturesFunctionLocalAndParamFieldsTest,
+	"BlueprintHelper.GraphWrite.ActionContext.CapabilityFacts.CapturesFunctionLocalAndParamFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextCapturesFunctionLocalAndParamFieldsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionContextFieldSnapshot LocalField;
+	LocalField.Name = TEXT("LocalSpeed");
+	LocalField.Kind = TEXT("local");
+	LocalField.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("LocalSpeed"));
+	LocalField.CapabilityFacts.Add(TEXT("field.function_name"), TEXT("ComputeSpeed"));
+	LocalField.CapabilityFacts.Add(TEXT("field.local_scope"), TEXT("ComputeSpeed"));
+	LocalField.CapabilityFacts.Add(TEXT("field.member_guid"), FGuid(0x12345678, 0x22222222, 0x33333333, 0x44444444).ToString(EGuidFormats::Digits));
+
+	FBlueprintHelperActionContextFieldSnapshot ParamField;
+	ParamField.Name = TEXT("InputSpeed");
+	ParamField.Kind = TEXT("function_param");
+	ParamField.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("InputSpeed"));
+	ParamField.CapabilityFacts.Add(TEXT("field.function_name"), TEXT("ComputeSpeed"));
+	ParamField.CapabilityFacts.Add(TEXT("field.param_flags"), TEXT("FUNC_Parm"));
+
+	TestEqual(TEXT("local kind"), LocalField.Kind, FString(TEXT("local")));
+	TestEqual(TEXT("local scope"), LocalField.CapabilityFacts.FindRef(TEXT("field.local_scope")), FString(TEXT("ComputeSpeed")));
+	TestFalse(TEXT("local guid"), LocalField.CapabilityFacts.FindRef(TEXT("field.member_guid")).IsEmpty());
+	TestEqual(TEXT("param kind"), ParamField.Kind, FString(TEXT("function_param")));
+	TestEqual(TEXT("param flags"), ParamField.CapabilityFacts.FindRef(TEXT("field.param_flags")), FString(TEXT("FUNC_Parm")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextSingleDemandSelectMapsToGenericClusterTest,
 	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.SelectMapsToGenericCluster",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

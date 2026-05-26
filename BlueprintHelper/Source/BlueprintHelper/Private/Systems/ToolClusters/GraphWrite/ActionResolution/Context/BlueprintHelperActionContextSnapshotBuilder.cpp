@@ -4,6 +4,7 @@
 #include "EdGraph/EdGraphSchema.h"
 #include "Components/ActorComponent.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/Class.h"
 #include "UObject/FieldIterator.h"
@@ -41,7 +42,31 @@ static FBlueprintHelperActionContextFieldSnapshot& FindOrAddFieldSnapshot(
 	Added.Name = Name;
 	Added.OwnerClassPath = OwnerClassPath;
 	Added.FieldPath = FieldPath;
+	Added.CapabilityFacts.Add(TEXT("field.member_name"), Name);
 	return Added;
+}
+
+static void AddCapabilityFact(
+	FBlueprintHelperActionContextFieldSnapshot& Field,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
+	{
+		Field.CapabilityFacts.FindOrAdd(Key, CleanValue);
+	}
+}
+
+static void AddCapabilityGuidFact(
+	FBlueprintHelperActionContextFieldSnapshot& Field,
+	const FString& Key,
+	const FGuid& Value)
+{
+	if (Value.IsValid())
+	{
+		AddCapabilityFact(Field, Key, Value.ToString(EGuidFormats::Digits));
+	}
 }
 
 static FString ContainerTypeToString(const EPinContainerType ContainerType)
@@ -85,6 +110,8 @@ static void CaptureDelegateFields(const UClass* Class, FBlueprintHelperActionCon
 			DelegateProperty->GetPathName());
 
 		Field.PinCategory = TEXT("delegate");
+		Field.Kind = TEXT("delegate");
+		AddCapabilityFact(Field, TEXT("field.member_name"), DelegateProperty->GetName());
 		Field.bReadable = false;
 		Field.bWritable = true;
 		Field.bMulticastDelegate = true;
@@ -122,6 +149,9 @@ static void CaptureClassFields(const UClass* Class, FBlueprintHelperActionContex
 
 		Field.bReadable = true;
 		Field.bWritable = true;
+		Field.Kind = Property->GetOwnerClass() == Class ? TEXT("member") : TEXT("inherited_or_native");
+		AddCapabilityFact(Field, TEXT("field.member_name"), Property->GetName());
+		AddCapabilityFact(Field, TEXT("field.is_inherited_or_native"), Property->GetOwnerClass() != Class ? TEXT("true") : TEXT("false"));
 
 		if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
 		{
@@ -133,13 +163,25 @@ static void CaptureClassFields(const UClass* Class, FBlueprintHelperActionContex
 				&& ObjectProperty->PropertyClass->IsChildOf(UActorComponent::StaticClass());
 			if (Field.bComponent)
 			{
+				AddCapabilityFact(Field, TEXT("field.component_name"), Field.Name);
+				AddCapabilityFact(Field, TEXT("field.component_owner_class"), OwnerClassPath);
+				AddCapabilityFact(Field, TEXT("field.component_kind"), TEXT("native_or_inherited_property"));
+			}
+			if (Field.bComponent)
+			{
 				CaptureDelegateFields(ObjectProperty->PropertyClass, Snapshot);
 			}
+		}
+
+		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			AddCapabilityFact(Field, TEXT("field.struct_type"), StructProperty->Struct ? StructProperty->Struct->GetPathName() : FString());
 		}
 
 		if (const FMulticastDelegateProperty* DelegateProperty = CastField<FMulticastDelegateProperty>(Property))
 		{
 			Field.PinCategory = TEXT("delegate");
+			Field.Kind = TEXT("delegate");
 			Field.bReadable = false;
 			Field.bWritable = true;
 			Field.bMulticastDelegate = true;
@@ -148,6 +190,93 @@ static void CaptureClassFields(const UClass* Class, FBlueprintHelperActionContex
 			Field.DelegateSignatureFunctionPath = DelegateProperty->SignatureFunction
 				? DelegateProperty->SignatureFunction->GetPathName()
 				: FString();
+		}
+	}
+}
+
+static void CaptureFunctionLocalVariables(UBlueprint* Blueprint, FBlueprintHelperActionContextSnapshot& Snapshot)
+{
+	if (!Blueprint)
+	{
+		return;
+	}
+
+	TArray<UEdGraph*> FunctionGraphs;
+	Blueprint->GetAllGraphs(FunctionGraphs);
+	for (UEdGraph* Graph : FunctionGraphs)
+	{
+		if (!Graph || !FBlueprintEditorUtils::DoesSupportLocalVariables(Graph))
+		{
+			continue;
+		}
+
+		TArray<UK2Node_FunctionEntry*> EntryNodes;
+		Graph->GetNodesOfClass<UK2Node_FunctionEntry>(EntryNodes);
+		for (UK2Node_FunctionEntry* EntryNode : EntryNodes)
+		{
+			if (!EntryNode)
+			{
+				continue;
+			}
+
+			for (const FBPVariableDescription& LocalVar : EntryNode->LocalVariables)
+			{
+				FBlueprintHelperActionContextFieldSnapshot Field;
+				Field.Name = LocalVar.VarName.ToString();
+				Field.Kind = TEXT("local");
+				AddCapabilityFact(Field, TEXT("field.member_name"), Field.Name);
+				AddCapabilityFact(Field, TEXT("field.local_scope"), Graph->GetName());
+				AddCapabilityFact(Field, TEXT("field.function_name"), Graph->GetName());
+				AddCapabilityGuidFact(Field, TEXT("field.member_guid"), LocalVar.VarGuid);
+				AddCapabilityFact(Field, TEXT("field.is_local_variable"), TEXT("true"));
+				Field.PinCategory = LocalVar.VarType.PinCategory.ToString();
+				Field.PinSubCategory = LocalVar.VarType.PinSubCategory.ToString();
+				Field.PinSubCategoryObjectPath = LocalVar.VarType.PinSubCategoryObject.Get()
+					? LocalVar.VarType.PinSubCategoryObject->GetPathName()
+					: FString();
+				Field.PinContainerType = ContainerTypeToString(LocalVar.VarType.ContainerType);
+				Snapshot.Fields.Add(MoveTemp(Field));
+			}
+		}
+	}
+}
+
+static void CaptureFunctionInputParameters(UBlueprint* Blueprint, FBlueprintHelperActionContextSnapshot& Snapshot)
+{
+	if (!Blueprint || !Blueprint->SkeletonGeneratedClass)
+	{
+		return;
+	}
+
+	for (TFieldIterator<UFunction> FunctionIt(Blueprint->SkeletonGeneratedClass, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
+	{
+		UFunction* Function = *FunctionIt;
+		if (!Function)
+		{
+			continue;
+		}
+
+		for (TFieldIterator<FProperty> PropIt(Function); PropIt; ++PropIt)
+		{
+			FProperty* Property = *PropIt;
+			if (!Property ||
+				!Property->HasAnyPropertyFlags(CPF_Parm) ||
+				Property->HasAnyPropertyFlags(CPF_OutParm | CPF_ReturnParm))
+			{
+				continue;
+			}
+
+			FBlueprintHelperActionContextFieldSnapshot Field;
+			Field.Name = Property->GetName();
+			Field.Kind = TEXT("function_param");
+			AddCapabilityFact(Field, TEXT("field.member_name"), Field.Name);
+			AddCapabilityFact(Field, TEXT("field.function_name"), Function->GetName());
+			AddCapabilityFact(Field, TEXT("field.local_scope"), Function->GetName());
+			AddCapabilityFact(Field, TEXT("field.param_flags"), TEXT("FUNC_Parm"));
+			Field.OwnerClassPath = Blueprint->SkeletonGeneratedClass->GetPathName();
+			Field.FieldPath = Function->GetPathName() + TEXT(".") + Field.Name;
+			AddCapabilityFact(Field, TEXT("field.is_function_parameter"), TEXT("true"));
+			Snapshot.Fields.Add(MoveTemp(Field));
 		}
 	}
 }
@@ -212,6 +341,10 @@ void FBlueprintHelperActionContextSnapshotBuilder::CaptureFields(
 	{
 		FBlueprintHelperActionContextFieldSnapshot Field;
 		Field.Name = Variable.VarName.ToString();
+		Field.Kind = TEXT("member");
+		AddCapabilityFact(Field, TEXT("field.member_name"), Field.Name);
+		AddCapabilityGuidFact(Field, TEXT("field.member_guid"), Variable.VarGuid);
+		AddCapabilityFact(Field, TEXT("field.is_blueprint_member"), TEXT("true"));
 		Field.OwnerClassPath = Blueprint->GeneratedClass
 			? Blueprint->GeneratedClass->GetPathName()
 			: FString();
@@ -226,6 +359,21 @@ void FBlueprintHelperActionContextSnapshotBuilder::CaptureFields(
 		Field.PinContainerType = ContainerTypeToString(Variable.VarType.ContainerType);
 		Field.bReadable = true;
 		Field.bWritable = true;
+		if (UClass* VariableObjectClass = Cast<UClass>(Variable.VarType.PinSubCategoryObject.Get()))
+		{
+			if (VariableObjectClass->IsChildOf(UActorComponent::StaticClass()))
+			{
+				Field.bComponent = true;
+				AddCapabilityFact(Field, TEXT("field.component_name"), Field.Name);
+				AddCapabilityGuidFact(Field, TEXT("field.component_guid"), Variable.VarGuid);
+				AddCapabilityFact(Field, TEXT("field.component_owner_class"), Field.OwnerClassPath);
+				AddCapabilityFact(Field, TEXT("field.component_kind"), TEXT("blueprint_member_variable"));
+			}
+		}
+		if (UScriptStruct* StructType = Cast<UScriptStruct>(Variable.VarType.PinSubCategoryObject.Get()))
+		{
+			AddCapabilityFact(Field, TEXT("field.struct_type"), StructType->GetPathName());
+		}
 		Snapshot.Fields.Add(MoveTemp(Field));
 
 		if (UClass* VariableObjectClass = Cast<UClass>(Variable.VarType.PinSubCategoryObject.Get()))
@@ -239,4 +387,6 @@ void FBlueprintHelperActionContextSnapshotBuilder::CaptureFields(
 
 	CaptureClassFields(Blueprint->SkeletonGeneratedClass, Snapshot);
 	CaptureClassFields(Blueprint->GeneratedClass, Snapshot);
+	CaptureFunctionLocalVariables(Blueprint, Snapshot);
+	CaptureFunctionInputParameters(Blueprint, Snapshot);
 }

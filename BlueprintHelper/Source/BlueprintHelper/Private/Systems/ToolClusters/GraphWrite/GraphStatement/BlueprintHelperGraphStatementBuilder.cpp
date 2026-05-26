@@ -14,6 +14,8 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionVocabulary.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldActionReadback.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextTypes.h"
@@ -22,6 +24,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentSpawnCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperDelegateLinkFragmentUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperFieldFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphPatternRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
@@ -222,6 +225,29 @@ static void ApplyExpressionActionRequestOverrides(
 	FBlueprintHelperActionResolutionRequest& InOutRequest)
 {
 	InOutRequest.Semantic.ExpectedReturnType = ExpectedReturnType;
+}
+
+static void ApplyFieldCapabilityActionRequestOverrides(
+	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest,
+	FBlueprintHelperActionResolutionRequest& InOutRequest)
+{
+	InOutRequest.Semantic.CapabilityId = BoundRequest.CapabilityId;
+	InOutRequest.Semantic.CapabilityFacts.Append(BoundRequest.CapabilityFacts);
+	for (const TPair<FString, FString>& FactPair : BoundRequest.CapabilityFacts)
+	{
+		if (!FactPair.Key.IsEmpty() && !FactPair.Value.TrimStartAndEnd().IsEmpty())
+		{
+			InOutRequest.ContextEvidence.FindOrAdd(FactPair.Key, FactPair.Value.TrimStartAndEnd());
+		}
+	}
+
+	const FString TargetPinCategory = BoundRequest.CapabilityFacts.FindRef(TEXT("field.target_pin_type")).TrimStartAndEnd();
+	const FString TargetPinObjectPath = BoundRequest.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")).TrimStartAndEnd();
+	if (!TargetPinCategory.IsEmpty() || !TargetPinObjectPath.IsEmpty())
+	{
+		InOutRequest.Semantic.TargetObjectPinType.Category = TargetPinCategory;
+		InOutRequest.Semantic.TargetObjectPinType.ObjectPath = TargetPinObjectPath;
+	}
 }
 
 static FBlueprintHelperCallFunctionPinType MakePinTypeFromCreateToken(const FString& Token)
@@ -1537,6 +1563,134 @@ bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 	return bBuilt;
 }
 
+bool FBlueprintHelperGraphStatementBuilder::BuildFieldCapabilityFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError,
+	const FBlueprintHelperActionContextScope* ActionContextScope)
+{
+	OutFragment = FBlueprintHelperNodeFragment();
+
+	const FBlueprintHelperFieldCapabilitySpec* Spec =
+		FBlueprintHelperFieldCapabilityRegistry::FindById(Request.CapabilityId);
+	if (!Spec || !Spec->bFirstClassStatement)
+	{
+		OutError = Request.CapabilityId.IsEmpty()
+			? FString(TEXT("unknown_field_capability"))
+			: FString::Printf(TEXT("unknown_field_capability: %s"), *Request.CapabilityId);
+		OutFragment.OwnershipTags.Add(TEXT("field.failure_reason"), TEXT("unknown_field_capability"));
+		OutFragment.OwnershipTags.Add(TEXT("field.success_claim"), TEXT("false"));
+		return false;
+	}
+
+	const FString ExpectedNodeFamily = Spec->ExpectedNodeFamily;
+	bool bBuilt = false;
+	if (ExpectedNodeFamily == TEXT("variable_get")
+		|| ExpectedNodeFamily == TEXT("component_variable_get")
+		|| ExpectedNodeFamily == TEXT("variable_get_target")
+		|| ExpectedNodeFamily == TEXT("variable_set")
+		|| ExpectedNodeFamily == TEXT("component_variable_set")
+		|| ExpectedNodeFamily == TEXT("variable_set_target"))
+	{
+		FBlueprintHelperActionResolutionRequest ActionRequest;
+		TArray<FString> ArgumentNames;
+		Request.DefaultValues.GetKeys(ArgumentNames);
+		if (!TryBuildProjectedActionRequestFromContext(
+			TargetGraph,
+			ActionContextScope,
+			Request.ActionContextStatementId.IsEmpty()
+				? Request.FragmentId
+				: Request.ActionContextStatementId,
+			EBlueprintHelperActionSemanticKind::Field,
+			Request.Query,
+			Request.Target,
+			Request.PropertyPath,
+			Request.ExpectedReturnType,
+			Request.SearchMode,
+			Request.AmbiguityPolicy,
+			Request.CategoryPriority,
+			ArgumentNames,
+			ActionRequest,
+			OutError,
+			Spec->FieldOperation,
+			Spec->FieldScope))
+		{
+			OutFragment.OwnershipTags.Add(TEXT("field.capability_id"), Spec->Id);
+			OutFragment.OwnershipTags.Add(TEXT("field.failure_reason"), OutError);
+			OutFragment.OwnershipTags.Add(TEXT("field.success_claim"), TEXT("false"));
+			return false;
+		}
+		ApplyFieldCapabilityActionRequestOverrides(Request, ActionRequest);
+		ActionRequest.ContextEvidence.Append(Request.ContextEvidence);
+
+		FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
+		CoordinatorRequest.TargetGraph = TargetGraph;
+		CoordinatorRequest.BuildRequest = &Request;
+		CoordinatorRequest.ActionRequest = ActionRequest;
+		CoordinatorRequest.SemanticKind = EBlueprintHelperActionSemanticKind::Field;
+		CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::ActionProvider;
+		CoordinatorRequest.CandidateGroupTarget = Request.Query;
+		CoordinatorRequest.FailurePrefix = FString::Printf(TEXT("field capability resolve failed: %s"), *Spec->Id);
+		CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
+
+		bBuilt = FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
+			CoordinatorRequest,
+			OutFragment,
+			OutError,
+			nullptr);
+	}
+	else
+	{
+		FBlueprintHelperFieldFragmentPlan Plan;
+		Plan.CapabilityId = Spec->Id;
+		Plan.FieldName = Request.Query;
+		Plan.CapabilityFacts = Request.CapabilityFacts;
+		if (ExpectedNodeFamily == TEXT("break_struct"))
+		{
+			bBuilt = FBlueprintHelperFieldFragmentBuilder::BuildStructReadFragment(TargetGraph, Plan, OutFragment, OutError);
+		}
+		else if (ExpectedNodeFamily == TEXT("set_fields_in_struct"))
+		{
+			bBuilt = FBlueprintHelperFieldFragmentBuilder::BuildStructWriteFragment(TargetGraph, Plan, OutFragment, OutError);
+		}
+		else if (ExpectedNodeFamily == TEXT("property_path_fragment"))
+		{
+			bBuilt = FBlueprintHelperFieldFragmentBuilder::BuildNestedPropertyPathFragment(TargetGraph, Plan, OutFragment, OutError);
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("unsupported_field_node_family: %s"), *ExpectedNodeFamily);
+		}
+	}
+
+	if (!bBuilt)
+	{
+		OutFragment.OwnershipTags.Add(TEXT("field.capability_id"), Spec->Id);
+		OutFragment.OwnershipTags.Add(TEXT("field.failure_reason"), OutError);
+		OutFragment.OwnershipTags.Add(TEXT("field.success_claim"), TEXT("false"));
+		return false;
+	}
+
+	OutFragment.OwnershipTags.Add(TEXT("field.capability_id"), Spec->Id);
+	OutFragment.OwnershipTags.Add(TEXT("field.success_claim"), TEXT("true"));
+	for (UEdGraphNode* Node : OutFragment.Nodes)
+	{
+		FBlueprintHelperFieldActionReadback Readback =
+			FBlueprintHelperFieldActionReadbackCollector::CollectFromNode(Spec->Id, Node);
+		TMap<FString, FString> FlatFacts;
+		Readback.AppendFlatFacts(FlatFacts);
+		for (const TPair<FString, FString>& FactPair : FlatFacts)
+		{
+			if (!FactPair.Key.IsEmpty() && !FactPair.Value.TrimStartAndEnd().IsEmpty())
+			{
+				OutFragment.OwnershipTags.FindOrAdd(FactPair.Key, FactPair.Value.TrimStartAndEnd());
+			}
+		}
+	}
+	return true;
+}
+
 bool FBlueprintHelperGraphStatementBuilder::BuildSequenceFragment(
 	UEdGraph* TargetGraph,
 	const FString& FragmentId,
@@ -1677,6 +1831,26 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field)
 	{
+		if (!Expression.CapabilityId.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);
+			Request.FragmentId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+			Request.SourceStatementId = Expression.ExpressionId;
+			Request.ActionContextStatementId = MakeExpressionActionContextStatementId(Expression);
+			Request.Query = !Expression.Property.IsEmpty() ? Expression.Property : Expression.Target;
+			Request.Target = !Expression.ResolvedTarget.Raw.IsEmpty() ? Expression.ResolvedTarget.Raw : Request.Query;
+			Request.PropertyPath = !Expression.ResolvedTarget.PropertyPath.IsEmpty() ? Expression.ResolvedTarget.PropertyPath : Expression.Property;
+			Request.ExpectedReturnType = Expression.Type;
+			if (!BuildFieldCapabilityFragment(TargetGraph, Request, OutFragment, OutError, ActionContextScope))
+			{
+				return false;
+			}
+			OutFragment.SourceStatementId = Expression.ExpressionId;
+			OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
+			OutFragment.ReviewTargets.Add(Expression.ExpressionId);
+			return true;
+		}
+
 		const FString FieldScope = Expression.FieldScope.IsEmpty() ? TEXT("variable") : Expression.FieldScope;
 		const bool bPropertyPathField = FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
 		const FString FieldName = !Expression.ResolvedTarget.Member.IsEmpty()

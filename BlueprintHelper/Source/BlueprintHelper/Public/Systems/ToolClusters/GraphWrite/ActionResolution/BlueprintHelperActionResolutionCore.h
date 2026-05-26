@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
+using FBlueprintHelperActionCandidate = FBlueprintHelperCallFunctionCandidateInfo;
+
 class UBlueprint;
 class UBlueprintNodeSpawner;
 class UEdGraph;
@@ -85,6 +87,8 @@ struct FBlueprintHelperActionSemanticConstraints
 	FString StableId;
 	FString TargetPath;
 	FString PropertyPath;
+	FString CapabilityId;
+	TMap<FString, FString> CapabilityFacts;
 	FString FieldOperation;
 	FString FieldScope;
 	FString FunctionOperation;
