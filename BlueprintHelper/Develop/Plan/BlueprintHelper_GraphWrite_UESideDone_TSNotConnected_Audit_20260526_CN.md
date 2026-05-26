@@ -2,6 +2,8 @@
 
 日期：2026-05-26
 
+> 2026-05-27 同步：本审计保留为“接线前”历史输入。`kind="control"` 的 dedicated control 与 StandardMacros control、`schedule.timer_delegate_node`、`schedule.latent_or_async_node`、`generic_ops.struct_select.select` 已不再按“UE 已做但 TS 未接”或“未支持”统计。当前 `_005` 通用性报告中的相关 `unsupported_intent` 是旧 fixture / evidence 字段不匹配，不是能力未实现。
+
 ## 1. 口径
 
 本文件只统计“UE/C++ 侧已经有 resolver / provider / fragment builder / readback 或自动化测试证据，但 AgentFaceService / TaskSpec / TS compiler 没有公开入口、没有 lowering，或只在能力 contract 中列出但 graph-body compiler 不接受”的项。
@@ -14,8 +16,8 @@
 
 | Priority | 能力 | UE 侧现状 | TS 侧断点 | 结论 |
 |---|---|---|---|---|
-| P0 | Dedicated control flow：`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate` | UE boundary 已识别 dedicated control vocabulary，并能按 `case_values` / `dynamic_output_count` 进入 `ControlFlowFragmentBuilder`；自动化已验证 `switch_int` 和 `multi_gate` resolved、spawned、readback。 | TS contract 已发布这些 operation，但 TS compiler 的 `SUPPORTED_GRAPH_BODY_CONTROL_KINDS` 仍只有 `branch`、`sequence`、`return`；`getControlStatementKind()` 对其他 control 直接 `unsupported_control_kind`。 | UE done / TS contract partial / compiler missing |
-| P0 | StandardMacros control flow：`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | UE boundary 已识别 StandardMacros vocabulary，并要求 `generic.macro.graph_path` 与 `generic.macro.pin_shape_snapshot`；`MacroControlFragmentBuilder` 与自动化已验证 `for_loop` macro resolved/spawned/readback。 | TS contract 已列出 StandardMacros operation，但 TS graph-body `control` 仍只允许 `branch/sequence/return`。Agent-facing TaskSpec 无可通过的 compiler 路由。 | UE done / TS contract partial / compiler missing |
+| P0 | Dedicated control flow：`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate` | UE boundary 已识别 dedicated control vocabulary，并能按 `case_values` / `dynamic_output_count` 进入 `ControlFlowFragmentBuilder`；自动化已验证 `switch_int` 和 `multi_gate` resolved、spawned、readback。 | 2026-05-26 TS connect 后，compiler 已接受并 lower 这些 `kind="control"` operations；旧 `unsupported_control_kind` 断点已关闭。 | RESOLVED；只剩通用性 E2E fixture/readback 复验 |
+| P0 | StandardMacros control flow：`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | UE boundary 已识别 StandardMacros vocabulary，并要求 `generic.macro.graph_path` 与 `generic.macro.pin_shape_snapshot`；`MacroControlFragmentBuilder` 与自动化已验证 `for_loop` macro resolved/spawned/readback。 | 2026-05-26 TS connect 后，compiler 已接受 StandardMacros `kind="control"` operations；旧 `_005` 失败来自 fixture graph path / evidence 字段，不是 compiler 未接。 | RESOLVED；只剩通用性 E2E fixture/readback 复验 |
 | P1 | Function-backed create owner：`create_function` | UE `FunctionSemanticActionResolver` 支持 `Create + function_operation=create_function`；GenericCreate resolver 明确把 function-backed create 判为 wrong owner，要求走 FunctionAction。 | TS `create` lowering 只输出 `create_operation`、`target/class_path/asset_path`、pin type 与 `context_evidence`；`function_operation` 只在 convert/schedule 语义字段中被 compiler 和 UE demand collector 正式处理，Create 没有公开/稳定 lowering。 | FunctionAction route question；不再作为 GenericOps public row |
 
 ## 3. TS 半接但还不是 first-class 的项
@@ -24,7 +26,7 @@
 |---|---|---|---|
 | P1 | Function-backed transform family | UE 已把 function-backed transform 与 generic transform 分 owner：function-backed 走 `FunctionActionCluster`，generic resolver 会拒绝 wrong owner；TS compiler 可以透传 `function_operation=convert_function` 与 `transform_operation`。 | 不再作为 GenericOps public vocabulary；若后续补模板，应归 FunctionAction 路径。 |
 | P1 | Function-backed schedule family | UE 已区分 generic schedule 与 FunctionAction schedule owner；function-backed schedule 走 FunctionAction，generic schedule resolver 拒绝 wrong owner。TS compiler 能透传 `function_operation=schedule_function/latent_or_async_function`。 | 不再作为 GenericOps public vocabulary；若后续补模板，应归 FunctionAction 路径。 |
-| P2 | `select` result type proof | UE `SelectFragmentBuilder` 已要求 `generic.select.result_type_proof` 或 resolved result type，并能配置 `UK2Node_Select`。TS 已有 `select` expression lowering，但 result proof 主要靠 `context_evidence` 透传，没有专门的 public validation/ergonomic shape。 | 记为 TS partial；不是 blocker，但 final coverage 不能只按“TS 有 select kind”算满。 |
+| P2 | `select` result type proof | UE `SelectFragmentBuilder` 已要求 `generic.select.result_type_proof` 或 resolved result type，并能配置 `UK2Node_Select`。TS 已有 `select` expression lowering，并可通过 statement-local `context_evidence` 传入 result proof。 | 已支持；旧 `_005` 失败来自 fake/unresolved result proof fixture。final coverage 仍需用真实 proof 重跑。 |
 
 ## 4. 不应算入“UE 已做 TS 未接”的项
 
@@ -40,8 +42,7 @@
 
 ## 5. 证据索引
 
-- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1552-1565`：TS graph-body statement 支持 `control`，但 control 子种类集合只包含 `branch`、`sequence`、`return`。
-- `AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1908-1920`：TS 对非 `branch/sequence/return` 的 control 抛 `unsupported_control_kind`。
+- 历史证据：`AgentFaceService/task-core/src/task/compiler/task-compiler.ts:1552-1565`、`:1908-1920` 曾只允许 `branch/sequence/return` 并对其他 control 抛 `unsupported_control_kind`；该断点已由 TS connect 工作关闭。
 - `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts:236-249`、`:420-438`：contract 已列出 switch、multi_gate、StandardMacros control operation。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.cpp:43-62`、`:158-192`：UE boundary 已识别 dedicated control 与 StandardMacros。
 - `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperControlFlowExtensionTests.cpp:83-118`：UE 自动化验证 `switch_int` / `multi_gate` resolver、spawn、readback。

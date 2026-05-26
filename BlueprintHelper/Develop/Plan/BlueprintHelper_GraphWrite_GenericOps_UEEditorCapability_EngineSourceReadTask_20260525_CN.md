@@ -12,6 +12,8 @@
 
 ## Current Status
 
+> 2026-05-27 同步：本 source-read handoff 是历史探索计划，不再作为当前 unsupported 计数依据。`control`、`schedule.timer_delegate_node` / `schedule.latent_or_async_node`、typed `select` 的当前状态以实现代码和编辑器内 spawn 复验为准；旧 Evidence 结论不再可靠。
+
 结论：这些能力当前没有完全通用化，也没有完全达到编辑器同等能力。部分能力已经有可用主线，但大多仍是 first-slice、固定 vocabulary、局部 spawner projection 或缺少回读证明。
 
 | Capability | 当前覆盖判断 | 主要原因 |
@@ -19,7 +21,7 @@
 | `construct` | 部分覆盖 | Struct / TypeStructure 构造路径存在，但需要确认 MakeStruct、MakeArray、MakeMap、MakeSet、SetFieldsInStruct、split struct pin、native make helper 的编辑器菜单行为。 |
 | `deconstruct` | 部分覆盖 | BreakStruct 路径存在，但需要确认 BreakStruct、split struct pin、native break helper、字段可见性和 pin 重建规则。 |
 | `select` | 部分覆盖 | 现有 `UK2Node_Select` builder 和 spawner 选择路径存在，但 pin type 推断、wildcard 收敛、enum/object/class/interface/soft 类型和 option readback 还没有证明达到编辑器同等能力。 |
-| `control` | 未完整覆盖 | TypeScript compiler 和 C++ builder 主要覆盖 `branch`、`sequence`、`return`；Broad Flow Control 计划已存在，但尚未证明覆盖普通蓝图右键菜单 Flow Control 节点。 |
+| `control` | 已接通当前 public control 语义，仍需泛化复验 | 当前 TS compiler 与 C++ builder 已覆盖 dedicated control 与 StandardMacros control 的 public shape；旧“只覆盖 `branch`、`sequence`、`return`”判断已过期。是否达到编辑器同等能力仍需按当前通用性 E2E/readback 复验。 |
 | `create` | 部分覆盖 | 当前固定支持 `make_array`、`make_map`、`make_set`、`spawn_actor`、`create_widget`、`construct_object`、`asset_action`，但编辑器 action menu 的 create/spawn/construct/async 创建入口更广。 |
 | `convert + transform_operation` | 部分覆盖 | `transform_operation` 已有 type promotion / cast / generic transform 基础，但编辑器转换包含 autoconv、dynamic cast、class cast、interface cast、object/class/soft conversions 和 function conversion action。 |
 | `schedule + schedule_operation` | 部分覆盖 | 当前 generic schedule 聚焦 `timer_delegate_node`、`latent_or_async_node`；需要确认 timer、delay、timeline、latent call、async action 的菜单入口、handler/signature 边界和回读证明。 |
