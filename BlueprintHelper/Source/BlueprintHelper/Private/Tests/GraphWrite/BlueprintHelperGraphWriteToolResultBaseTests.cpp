@@ -299,6 +299,21 @@ public:
 		return Payload;
 	}
 
+	static TSharedRef<FJsonObject> MakeReplaceCustomEventExecutePayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceExecutePayload(AssetPath, GraphName);
+
+		const TSharedPtr<FJsonObject>* Selector = nullptr;
+		if (Payload->TryGetObjectField(TEXT("selector"), Selector) && Selector && Selector->IsValid())
+		{
+			(*Selector)->SetStringField(TEXT("entry_name"), EventName);
+		}
+		return Payload;
+	}
+
 	static UK2Node_CustomEvent* AddGraphWriteCustomEvent(UEdGraph* Graph, const FString& EventName)
 	{
 		if (!Graph)
@@ -593,6 +608,24 @@ public:
 		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
 		return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true") &&
 			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
+	}
+
+	static int32 CountNodesWithBlueprintHelperBlockId(UEdGraph* Graph, const FString& BlockId)
+	{
+		if (!Graph)
+		{
+			return 0;
+		}
+
+		int32 Count = 0;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (NodeHasBlueprintHelperBlockId(Node, BlockId))
+			{
+				++Count;
+			}
+		}
+		return Count;
 	}
 
 	static void AssertNodeHasOwnershipMetadata(
@@ -2488,6 +2521,80 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyPreservesSiblingEventBodyTest,
+	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyPreservesSiblingEventBody",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyPreservesSiblingEventBodyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplacePreservesSiblingEventBody"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryA = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("ReplaceEventA"));
+	UK2Node_CallFunction* OldBodyA = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	UK2Node_CustomEvent* EntryB = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("ReplaceEventB"));
+	UK2Node_CallFunction* OldBodyB = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("first custom event entry is created"), EntryA);
+	TestNotNull(TEXT("first custom event old body is created"), OldBodyA);
+	TestNotNull(TEXT("second custom event entry is created"), EntryB);
+	TestNotNull(TEXT("second custom event old body is created"), OldBodyB);
+	if (!EntryA || !OldBodyA || !EntryB || !OldBodyB)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("first custom event body is linked before replace"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryA, OldBodyA));
+	TestTrue(TEXT("second custom event body is linked before replace"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryB, OldBodyB));
+
+	const FString BlockIdA = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("ReplaceEventA"));
+	const FString BlockIdB = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("ReplaceEventB"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryA, BlockIdA);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldBodyA, BlockIdA);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryB, BlockIdB);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldBodyB, BlockIdB);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceCustomEventExecutePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			TEXT("ReplaceEventA")));
+
+	TestTrue(TEXT("replace first custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace first custom event status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestEqual(TEXT("sibling custom event body ownership remains intact"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, BlockIdB),
+		2);
+	TestEqual(TEXT("target custom event block is entry plus replacement body"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, BlockIdA),
+		2);
+	UEdGraphPin* EntryBExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryB, EGPD_Output);
+	UEdGraphPin* OldBodyBExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(OldBodyB, EGPD_Input);
+	TestTrue(TEXT("target custom event links to replacement PrintString"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("ReplaceEventA"), TEXT("PrintString")));
+	TestTrue(TEXT("sibling custom event still links to its original body"),
+		EntryBExecOut && OldBodyBExecIn && EntryBExecOut->LinkedTo.Contains(OldBodyBExecIn));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewGraphBoundsUsesNodeGuidBeforeDisplayLabelTest,
 	"BlueprintHelper.Review.GraphBounds.UsesNodeGuidBeforeDisplayLabel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2813,6 +2920,9 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryE
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("SmokeCustomEvent"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryNode, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldPrintNode, BlockId);
 
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const FBlueprintHelperToolResultBase Result = Harness.RuntimeService.ExecuteTaskPlan(

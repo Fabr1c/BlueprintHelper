@@ -42,6 +42,21 @@ static void ReadParsedPinType(const TSharedPtr<FJsonObject>& PinTypeObject, FPar
 	PinTypeObject->TryGetStringField(TEXT("sub_category"), OutParsedPinType.SubCategory);
 	PinTypeObject->TryGetStringField(TEXT("object_path"), OutParsedPinType.SubCategoryObjectPath);
 	PinTypeObject->TryGetStringField(TEXT("container_type"), OutParsedPinType.ContainerType);
+	const TSharedPtr<FJsonObject>* ValueTypeObject = nullptr;
+	if (PinTypeObject->TryGetObjectField(TEXT("value_type"), ValueTypeObject) && ValueTypeObject && ValueTypeObject->IsValid())
+	{
+		OutParsedPinType.ValueType = MakeShared<FParsedPinType>();
+		ReadParsedPinType(*ValueTypeObject, *OutParsedPinType.ValueType);
+	}
+	else
+	{
+		FString ValueTypeCategory;
+		if (PinTypeObject->TryGetStringField(TEXT("value_type"), ValueTypeCategory) && !ValueTypeCategory.IsEmpty())
+		{
+			OutParsedPinType.ValueType = MakeShared<FParsedPinType>();
+			OutParsedPinType.ValueType->Category = ValueTypeCategory;
+		}
+	}
 }
 
 static FParsedPinType ParsedPinTypeFromJson(const TSharedPtr<FJsonObject>& PinTypeObject)

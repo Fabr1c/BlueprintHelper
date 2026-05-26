@@ -31,6 +31,16 @@
 #include "UObject/UObjectIterator.h"
 #include "EdGraphNode_Comment.h"
 
+namespace
+{
+static void CopyParsedPinTypeToMapValueTerminal(const FEdGraphPinType& PinType, FEdGraphTerminalType& OutTerminalType)
+{
+	OutTerminalType.TerminalCategory = PinType.PinCategory;
+	OutTerminalType.TerminalSubCategory = PinType.PinSubCategory;
+	OutTerminalType.TerminalSubCategoryObject = PinType.PinSubCategoryObject;
+}
+}
+
 bool FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(const FParsedPinType& InPinType, FEdGraphPinType& OutPinType, FString& OutErrorMessage)
 {
 	if (!InPinType.IsValid())
@@ -127,6 +137,20 @@ bool FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(const FParsedP
 	else if (ContainerType == TEXT("map"))
 	{
 		OutPinType.ContainerType = EPinContainerType::Map;
+		if (InPinType.ValueType.IsValid())
+		{
+			FEdGraphPinType ValuePinType;
+			if (!FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(*InPinType.ValueType, ValuePinType, OutErrorMessage))
+			{
+				return false;
+			}
+			if (ValuePinType.ContainerType != EPinContainerType::None)
+			{
+				OutErrorMessage = TEXT("Map pin_type.value_type must be a non-container pin type.");
+				return false;
+			}
+			CopyParsedPinTypeToMapValueTerminal(ValuePinType, OutPinType.PinValueType);
+		}
 	}
 
 	OutPinType.bIsReference = InPinType.bIsReference;

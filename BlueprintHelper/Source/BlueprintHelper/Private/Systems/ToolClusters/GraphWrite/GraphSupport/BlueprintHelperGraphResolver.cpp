@@ -145,8 +145,6 @@ UBlueprint* FBlueprintHelperGraphResolver::LoadBlueprintByPath(const FString& As
 		return nullptr;
 	}
 
-	// 确保编辑器已打开（蓝图操作需要编辑器上下文）
-	EnsureBlueprintEditorOpen(Blueprint, OutDiag);
 	return Blueprint;
 }
 

@@ -134,6 +134,14 @@ static TSharedRef<FJsonObject> MakePinType(const FString& Category)
 	return PinType;
 }
 
+static TSharedRef<FJsonObject> MakeStringIntMapPinType()
+{
+	TSharedRef<FJsonObject> PinType = MakePinType(TEXT("string"));
+	PinType->SetStringField(TEXT("container_type"), TEXT("map"));
+	PinType->SetObjectField(TEXT("value_type"), MakePinType(TEXT("int")));
+	return PinType;
+}
+
 static TSharedRef<FJsonObject> MakeServicePayload(
 	UBlueprint* Blueprint,
 	const FString& FunctionName,
@@ -632,6 +640,42 @@ bool FBlueprintHelperBlueprintVariableLocalVariablesTaskPlanDryRunAdapterTest::R
 	TestTrue(TEXT("local variable payload carries function_name"),
 		BuiltPayload.Payload.IsValid() && BuiltPayload.Payload->TryGetStringField(TEXT("function_name"), FunctionName));
 	TestEqual(TEXT("local variable function_name preserved"), FunctionName, FString(TEXT("CalculateDamage")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBlueprintVariableAddMemberStringIntMapVariableTest,
+	"BlueprintHelper.Safety.BlueprintVariable.AddMemberStringIntMapVariable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperBlueprintVariableAddMemberStringIntMapVariableTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("AddMemberStringIntMapVariable"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+
+	FBlueprintHelperGraphResolver GraphResolver;
+	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
+	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
+
+	TSharedRef<FJsonObject> AddPayload = MakeShared<FJsonObject>();
+	AddPayload->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : TEXT(""));
+	AddPayload->SetStringField(TEXT("name"), TEXT("ScoresByPlayer"));
+	AddPayload->SetObjectField(TEXT("pin_type"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeStringIntMapPinType());
+
+	const FBlueprintHelperToolResultBase AddResult = VariableService.AddMemberVariable(AddPayload);
+	TestTrue(TEXT("string-int map member variable is added"), AddResult.bOk);
+
+	const FBPVariableDescription* Variable =
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("ScoresByPlayer"));
+	TestNotNull(TEXT("ScoresByPlayer exists"), Variable);
+	if (!Variable)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("map key pin category is string"), Variable->VarType.PinCategory, UEdGraphSchema_K2::PC_String);
+	TestEqual(TEXT("variable container is map"), Variable->VarType.ContainerType, EPinContainerType::Map);
+	TestEqual(TEXT("map value terminal category is int"), Variable->VarType.PinValueType.TerminalCategory, UEdGraphSchema_K2::PC_Int);
 	return true;
 }
 

@@ -659,6 +659,18 @@ static FBlueprintHelperCallFunctionPinType MakeCallFunctionPinTypeFromEdGraphPin
 	{
 		Result.ObjectPath = Pin->PinType.PinSubCategoryObject->GetPathName();
 	}
+	if (Pin->PinType.ContainerType == EPinContainerType::Array)
+	{
+		Result.ContainerType = TEXT("array");
+	}
+	else if (Pin->PinType.ContainerType == EPinContainerType::Set)
+	{
+		Result.ContainerType = TEXT("set");
+	}
+	else if (Pin->PinType.ContainerType == EPinContainerType::Map)
+	{
+		Result.ContainerType = TEXT("map");
+	}
 	Result.bIsReference = Pin->PinType.bIsReference;
 	Result.bIsConst = Pin->PinType.bIsConst;
 	return Result;
@@ -837,8 +849,11 @@ static FSemanticStatementExecFlow BuildSemanticStatement(
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
 	const FString StatementId = GetSemanticStatementId(*Statement);
-	const TMap<FString, FBlueprintHelperCallFunctionPinType> SemanticArgumentPinTypes =
+	const bool bConsumesSemanticArgumentPinTypes =
 		Statement->Kind == EBlueprintHelperGraphStatementKind::Call
+		|| Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction;
+	const TMap<FString, FBlueprintHelperCallFunctionPinType> SemanticArgumentPinTypes =
+		bConsumesSemanticArgumentPinTypes
 			? CollectSemanticArgumentPinTypes(FragmentDag, GeneratedFragments, StatementId)
 			: TMap<FString, FBlueprintHelperCallFunctionPinType>();
 	if (!SpawnSemanticStatementFragment(TargetGraph, ActionContextScope, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticArgumentPinTypes))
