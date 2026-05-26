@@ -121,6 +121,8 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     ]);
     assert.equal(firstSlice.statement_kinds.includes('delegate.bind'), true);
     assert.equal((firstSlice.statement_kinds as readonly string[]).includes('delegate'), false);
+    assert.equal(JSON.stringify(boundary).includes('assign_auto_attached_event_policy'), false);
+    assert.equal(JSON.stringify(boundary).includes('attached_custom_event'), false);
   });
 
   it('publishes GraphWrite TaskPlan as structured IR, not low-level operation list', () => {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { TASK_PROTOCOL_CONTRACT_V1 } from '../../task/schema/task-contract.js';
 import { TaskPlanSchema } from '../../task/schema/task-schemas.js';
 import {
   graphWriteAppendExpectedTaskPlanFixture,
@@ -85,6 +86,33 @@ describe('GraphWrite TaskPlan canonical fixtures', () => {
         'review_baseline_dirty_asset_policy',
       ]);
     }
+  });
+
+  it('keeps EventDelegate side-effect policies out of protocol fixtures', () => {
+    for (const fixture of graphWriteTaskPlanFixtures) {
+      assertNoForbiddenKeys(fixture, [
+        'assign_auto_attached_event_policy',
+        'attached_custom_event',
+        'custom_event_autocreate',
+      ]);
+    }
+  });
+
+  it('publishes stable Agent-facing EventDelegate diagnostics', () => {
+    const diagnostics = TASK_PROTOCOL_CONTRACT_V1.graph_write_taskspec_contract.event_delegate_use_site_boundary.stable_agent_diagnostics;
+    assert.deepEqual(diagnostics, [
+      'missing_delegate_property_evidence',
+      'missing_binding_object_evidence',
+      'missing_handler_evidence',
+      'missing_signature_evidence',
+      'invalid_delegate_operation',
+      'handler_required_for_unbind',
+      'handler_not_allowed_for_clear',
+      'delegate_duplicate_binding',
+      'duplicate_mutation_policy_blocked',
+      'assign_side_effect_blocked',
+      'binding_object_cross_statement_unsupported',
+    ]);
   });
 });
 

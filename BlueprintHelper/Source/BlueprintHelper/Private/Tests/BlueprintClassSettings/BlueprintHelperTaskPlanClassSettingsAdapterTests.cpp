@@ -5,6 +5,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
@@ -46,6 +47,10 @@ public:
 			TArray<TSharedPtr<FJsonValue>> Settings;
 			Settings.Add(MakeShared<FJsonValueObject>(Setting.ToSharedRef()));
 			Op->SetArrayField(TEXT("settings"), Settings);
+		}
+		else if (OpName == TEXT("reparent_blueprint"))
+		{
+			Op->SetStringField(TEXT("new_parent_class"), TEXT("/Script/Engine.Pawn"));
 		}
 
 		TArray<TSharedPtr<FJsonValue>> Ops;
@@ -275,6 +280,96 @@ bool FBlueprintHelperTaskPlanClassSettingsAdapterSetDefaultsTest::RunTest(const 
 		return false;
 	}
 	TestEqual(TEXT("numeric value preserved"), (*Value)->AsNumber(), 1200.0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanClassSettingsAdapterReparentBlueprintTest,
+	"BlueprintHelper.TaskPlan.ClassSettingsAdapter.ReparentBlueprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanClassSettingsAdapterReparentBlueprintTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsStep(TEXT("reparent_blueprint"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperClassSettingsTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("reparent_blueprint lowers successfully"), bLowered);
+	TestEqual(TEXT("adapter operation is reparent_blueprint"), LoweredStep.AdapterOperation, FString(TEXT("reparent_blueprint")));
+	TestNotNull(TEXT("lowered payload exists"), LoweredStep.Payload.Get());
+	if (!bLowered || !LoweredStep.Payload.IsValid())
+	{
+		return false;
+	}
+
+	FString NewParentClass;
+	TestTrue(TEXT("payload carries new_parent_class"), LoweredStep.Payload->TryGetStringField(TEXT("new_parent_class"), NewParentClass));
+	TestEqual(TEXT("new parent class path preserved"), NewParentClass, FString(TEXT("/Script/Engine.Pawn")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassSettingsServiceReparentDryRunTest,
+	"BlueprintHelper.Safety.ClassSettings.ReparentDryRunDoesNotMutateBlueprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperClassSettingsServiceReparentDryRunTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsActorBlueprint(TEXT("DryRunReparentTarget"));
+	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	const FBlueprintHelperClassSettingsService Service(Resolver);
+	const FBlueprintHelperToolResultBase Result = Service.ReparentBlueprint(
+		Blueprint->GetPathName(),
+		APawn::StaticClass()->GetPathName(),
+		true);
+
+	TestTrue(TEXT("reparent dry-run succeeds"), Result.bOk);
+	TestEqual(TEXT("reparent dry-run status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
+	TestFalse(TEXT("reparent dry-run does not mark modified"), Result.bModified);
+	TestEqual(TEXT("dry-run keeps original parent class"), Blueprint->ParentClass, AActor::StaticClass());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassSettingsServiceReparentBlueprintTest,
+	"BlueprintHelper.Safety.ClassSettings.ReparentBlueprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperClassSettingsServiceReparentBlueprintTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperTaskPlanClassSettingsAdapterTestsLocalUtils::MakeClassSettingsActorBlueprint(TEXT("ReparentTarget"));
+	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	const FBlueprintHelperClassSettingsService Service(Resolver);
+	const FBlueprintHelperToolResultBase Result = Service.ReparentBlueprint(
+		Blueprint->GetPathName(),
+		APawn::StaticClass()->GetPathName(),
+		false);
+
+	TestTrue(TEXT("reparent succeeds"), Result.bOk);
+	TestTrue(TEXT("reparent marks modified"), Result.bModified);
+	TestEqual(TEXT("blueprint parent class updated"), Blueprint->ParentClass, APawn::StaticClass());
 
 	return true;
 }

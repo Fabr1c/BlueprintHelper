@@ -12,6 +12,9 @@ struct FBlueprintHelperDelegateLinkRequest
 {
 	FString FragmentId;
 	FString HandlerName;
+	FString HandlerFunctionPath;
+	FString HandlerScopeClassPath;
+	FString SignatureEvidenceId;
 	FString DelegateInputPinName;
 	FString DiagnosticPrefix = TEXT("delegate");
 	FVector2D CreateDelegateLocation = FVector2D::ZeroVector;

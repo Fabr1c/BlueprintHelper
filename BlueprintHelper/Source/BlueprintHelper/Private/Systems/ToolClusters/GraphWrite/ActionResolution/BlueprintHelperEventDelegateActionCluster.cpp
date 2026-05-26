@@ -10,6 +10,7 @@
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_RemoveDelegate.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegatePolicy.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
 
 namespace
@@ -22,7 +23,7 @@ static FBlueprintHelperActionResolutionResult MakeMissingEvidenceResult(
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.ErrorCode = TEXT("missing_required_evidence");
+	Result.ErrorCode = MissingDetail;
 	Result.Message = FString::Printf(TEXT("%s: %s"), *MissingDetail, *Message);
 	return Result;
 }
@@ -37,6 +38,17 @@ static FBlueprintHelperActionResolutionResult MakeEventDelegateBlockedResult(
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
 	Result.ErrorCode = ErrorCode;
 	Result.Message = Message;
+	return Result;
+}
+
+static FBlueprintHelperActionResolutionResult MakePolicyResult(
+	const FBlueprintHelperEventDelegatePolicyDecision& Decision)
+{
+	FBlueprintHelperActionResolutionResult Result;
+	Result.Status = Decision.Status;
+	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
+	Result.ErrorCode = Decision.ErrorCode;
+	Result.Message = Decision.Message;
 	return Result;
 }
 
@@ -130,6 +142,30 @@ static FBlueprintHelperActionResolutionResult MakeResolvedEventDelegateResult(
 	Result.CandidateActions.Add(MakeEventDelegateCandidateInfo(StableId, DisplayName, NodeClass, MatchReason));
 	return Result;
 }
+
+static FString EventDelegateEvidenceValue(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const TCHAR* Key)
+{
+	if (const FString* Value = Request.ContextEvidence.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static bool ShouldReturnExistingBinding(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
+	FString& OutExistingBindingId)
+{
+	if (!Evidence.DuplicatePolicy.Equals(TEXT("return_existing"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
+	OutExistingBindingId = EventDelegateEvidenceValue(Request, TEXT("event_delegate.existing_binding_evidence_id"));
+	return !OutExistingBindingId.IsEmpty();
+}
 }
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::Resolve(
@@ -154,6 +190,23 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			MissingMessage))
 		{
 			return MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
+		}
+		const FBlueprintHelperEventDelegatePolicyDecision PolicyDecision =
+			FBlueprintHelperEventDelegatePolicy::Evaluate(Request, Evidence);
+		if (!PolicyDecision.bAllowed)
+		{
+			return MakePolicyResult(PolicyDecision);
+		}
+		FString ExistingBindingId;
+		if (ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
+		{
+			return MakeResolvedEventDelegateResult(
+				ExistingBindingId,
+				nullptr,
+				UK2Node_ComponentBoundEvent::StaticClass(),
+				Evidence.DelegateName,
+				TEXT("existing_component_bound_event_binding"),
+				FString::Printf(TEXT("Returned existing component-bound event binding '%s'."), *ExistingBindingId));
 		}
 
 		UBlueprintBoundEventNodeSpawner* Spawner = UBlueprintBoundEventNodeSpawner::Create(
@@ -191,6 +244,12 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 		{
 			return MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
 		}
+		const FBlueprintHelperEventDelegatePolicyDecision PolicyDecision =
+			FBlueprintHelperEventDelegatePolicy::Evaluate(Request, Evidence);
+		if (!PolicyDecision.bAllowed)
+		{
+			return MakePolicyResult(PolicyDecision);
+		}
 
 		TSubclassOf<UK2Node_BaseMCDelegate> NodeClass = DelegateNodeClassForOperation(Evidence.DelegateOperation);
 		if (!NodeClass)
@@ -202,6 +261,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 		}
 
 		const FString StableId = MakeDelegateStableId(Evidence);
+		FString ExistingBindingId;
+		if (ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
+		{
+			return MakeResolvedEventDelegateResult(
+				ExistingBindingId,
+				nullptr,
+				NodeClass.Get(),
+				Evidence.DelegateName,
+				TEXT("existing_delegate_binding"),
+				FString::Printf(TEXT("Returned existing delegate binding '%s' for operation '%s'."), *ExistingBindingId, *Evidence.DelegateOperation));
+		}
 		if (Evidence.DelegateOperation.Equals(TEXT("assign"), ESearchCase::IgnoreCase))
 		{
 			return MakeResolvedEventDelegateResult(

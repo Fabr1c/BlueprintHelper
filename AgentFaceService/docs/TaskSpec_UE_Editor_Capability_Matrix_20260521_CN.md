@@ -1,4 +1,4 @@
-﻿# AgentFace TaskSpec UE 编辑器操作能力矩阵
+# AgentFace TaskSpec UE 编辑器操作能力矩阵
 
 日期：2026-05-21
 
@@ -409,6 +409,30 @@ GenericOps is a public logical umbrella for grouped GraphWrite operations. It is
 Clarification for Field: a first-class Field capability means stable `field.capability_id` plus Field-owned registry/resolver/evidence/readback paths. It does not mean adding Field-specific concepts to GenericOps, broad shared DTOs, or the core `kind` enum beyond the canonical Field semantic surface.
 
 Verification snapshot (2026-05-26): `npm.cmd --prefix AgentFaceService/task-core run build`, `npm.cmd --prefix AgentFaceService/task-core run test:node` (188/188), UE 5.6 `TemplateEditor` build, `BlueprintHelper.GraphWrite.GenericOps` (22/22), `BlueprintHelper.GraphWrite.ActionResolution.Generic` (24/24), `BlueprintHelper.GraphWrite.ContainerAction`, and `BlueprintHelper.GraphWrite.GenericSchedule` passed for this matrix update.
+
+## 2026-05-26 GraphWrite EventDelegate use-site capability matrix
+
+EventDelegate is a GraphWrite use-site capability owned by `EventDelegateActionCluster`. It consumes existing component/delegate/handler/signature evidence and does not create event declarations, custom events, handlers, dispatcher declarations, or handler signature mutations. Public compact TaskSpec statement kinds lower to `kind="component_bound_event"` or `kind="delegate"` plus second-stage `delegate_operation`.
+
+| Capability ID | Runtime owner | Required local facts | Boundary |
+|---|---|---|---|
+| `event_delegate.component_bound_event` | `EventDelegateActionCluster` | component binding owner/property/field/class, delegate owner/property/signature, handler path/source/signature evidence, duplicate policy | existing component-bound event use-site only |
+| `event_delegate.delegate.bind` | `EventDelegateActionCluster` | binding object kind/evidence, delegate owner/property/signature, handler path/source/signature evidence | binds to existing handler only |
+| `event_delegate.delegate.assign` | `EventDelegateActionCluster` | binding object kind/evidence, delegate owner/property/signature, handler path/source/signature evidence, `ue_delegate_manual_assign_factory` | manual assign factory; UE Assign spawner side effect is blocked |
+| `event_delegate.delegate.unbind` | `EventDelegateActionCluster` | binding object kind/evidence, delegate owner/property/signature, handler evidence, `unbind_mode=single` | missing handler fails with `handler_required_for_unbind` |
+| `event_delegate.delegate.call` | `EventDelegateActionCluster` | binding object kind/evidence, delegate owner/property/signature, call arg pin-type facts | call args/defaults/links are validated and read back |
+| `event_delegate.delegate.clear` | `EventDelegateActionCluster` | binding object kind/evidence, delegate owner/property, `unbind_mode=all` | handler evidence is forbidden |
+| duplicate `fail` / `return_existing` | `EventDelegateActionCluster` | duplicate policy and optional existing binding evidence | deterministic failure or existing binding reporting |
+| duplicate `replace` / `merge` | none | duplicate policy | rejected with `duplicate_mutation_policy_blocked` |
+
+Excluded EventDelegate domains:
+
+- action menu simulation, drag menus, selected Slate/component state, Details panel delegate binding, UMG designer events, Animation Blueprint events.
+- event declaration, custom event creation, handler creation, handler signature mutation.
+- automatic upstream function/field/handler creation.
+
+Verification snapshot (2026-05-26): AgentFace task-core build passed; `test:node` passed 195/195; UE 5.6 `TemplateEditor` build succeeded; focused automation passed for `BlueprintHelper.GraphWrite.EventDelegate` (9/9, including 3 EventDelegate.ActionContext tests), `BlueprintHelper.GraphWrite.ActionResolution.EventDelegate` (16/16), `BlueprintHelper.GraphWrite.GraphStatement.EventDelegate` (6/6), `BlueprintHelper.GraphWrite.ActionContext.EventDelegate` (2/2 legacy ActionContext focused suite), and `BlueprintHelper.GraphWrite.ToolResult.EventDelegate` (1/1).
+
 ## DataFlowCore Slice C 文档同步状态（2026-05-21）
 
 Canonical Graph body statement/expression path:

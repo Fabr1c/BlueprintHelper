@@ -230,5 +230,17 @@ bool FBlueprintHelperDelegateLinkFragmentUtils::AttachCreateDelegateToPrimary(
 	}
 
 	OutFragment.Nodes.Add(CreateDelegateNode);
+	if (!Request.HandlerFunctionPath.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(TEXT("handler_function_path"), Request.HandlerFunctionPath);
+	}
+	if (!Request.HandlerScopeClassPath.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(TEXT("handler_scope_class_path"), Request.HandlerScopeClassPath);
+	}
+	if (!Request.SignatureEvidenceId.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(TEXT("signature_evidence_id"), Request.SignatureEvidenceId);
+	}
 	return ConnectCreateDelegateToPin(TargetGraph, DelegateInPin, CreateDelegateNode, OutFragment, OutError);
 }

@@ -45,6 +45,14 @@ static bool IsGenericOpsCapability(const FBlueprintHelperGraphWriteCapabilityCas
 		|| Result.SemanticKind.Contains(TEXT("control|macro|container|transform|create|schedule|struct|select"), ESearchCase::IgnoreCase);
 }
 
+static bool IsEventDelegateCapability(const FBlueprintHelperGraphWriteCapabilityCaseResult& Result)
+{
+	return Result.Capability.Contains(TEXT("EventDelegate"), ESearchCase::IgnoreCase)
+		|| Result.SemanticKind.Contains(TEXT("component_bound_event"), ESearchCase::IgnoreCase)
+		|| Result.SemanticKind.Contains(TEXT("delegate"), ESearchCase::IgnoreCase)
+		|| Result.ClusterKind.Contains(TEXT("EventDelegateAction"), ESearchCase::IgnoreCase);
+}
+
 static TArray<TSharedPtr<FJsonValue>> GenericOpsCommonErrorCodes()
 {
 	const TCHAR* Codes[] = {
@@ -65,6 +73,55 @@ static TArray<TSharedPtr<FJsonValue>> GenericOpsCommonErrorCodes()
 	for (const TCHAR* Code : Codes)
 	{
 		Values.Add(MakeShared<FJsonValueString>(Code));
+	}
+	return Values;
+}
+
+static TArray<TSharedPtr<FJsonValue>> EventDelegateCommonErrorCodes()
+{
+	const TCHAR* Codes[] = {
+		TEXT("missing_delegate_property_evidence"),
+		TEXT("missing_binding_object_evidence"),
+		TEXT("missing_handler_evidence"),
+		TEXT("missing_signature_evidence"),
+		TEXT("invalid_delegate_operation"),
+		TEXT("handler_not_allowed_for_clear"),
+		TEXT("handler_required_for_unbind"),
+		TEXT("delegate_duplicate_binding"),
+		TEXT("duplicate_mutation_policy_blocked"),
+		TEXT("assign_side_effect_blocked"),
+		TEXT("incompatible_graph_type")
+	};
+
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const TCHAR* Code : Codes)
+	{
+		Values.Add(MakeShared<FJsonValueString>(Code));
+	}
+	return Values;
+}
+
+static TArray<TSharedPtr<FJsonValue>> EventDelegateReadbackFactKeys()
+{
+	const TCHAR* Keys[] = {
+		TEXT("node_class"),
+		TEXT("node_guid"),
+		TEXT("spawner_or_factory_kind"),
+		TEXT("delegate_owner_class_path"),
+		TEXT("delegate_property_path"),
+		TEXT("delegate_signature_function_path"),
+		TEXT("binding_object_kind"),
+		TEXT("handler_function_path"),
+		TEXT("component_dynamic_binding_target"),
+		TEXT("compile_diagnostic_correlation_key"),
+		TEXT("pin.call_arg.<name>.default"),
+		TEXT("pin.call_arg.<name>.linked_source_pin")
+	};
+
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const TCHAR* Key : Keys)
+	{
+		Values.Add(MakeShared<FJsonValueString>(Key));
 	}
 	return Values;
 }
@@ -288,6 +345,15 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphWriteCapabilityMetrics::ToDebugBund
 		Json->SetArrayField(
 			TEXT("generic_ops_common_error_codes"),
 			BlueprintHelperGraphWriteCapabilityMetrics::GenericOpsCommonErrorCodes());
+	}
+	if (BlueprintHelperGraphWriteCapabilityMetrics::IsEventDelegateCapability(Normalized))
+	{
+		Json->SetArrayField(
+			TEXT("event_delegate_common_error_codes"),
+			BlueprintHelperGraphWriteCapabilityMetrics::EventDelegateCommonErrorCodes());
+		Json->SetArrayField(
+			TEXT("event_delegate_readback_fact_keys"),
+			BlueprintHelperGraphWriteCapabilityMetrics::EventDelegateReadbackFactKeys());
 	}
 	return Json;
 }

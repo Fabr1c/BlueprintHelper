@@ -441,7 +441,8 @@ static bool IsFocusedContextEvidenceKey(const FString& Key)
 {
 	return Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase)
 		|| Key.StartsWith(TEXT("generic."), ESearchCase::IgnoreCase)
-		|| Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase);
+		|| Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase)
+		|| Key.StartsWith(TEXT("event_delegate."), ESearchCase::IgnoreCase);
 }
 
 static void AddFocusedContextEvidenceIfPresent(
@@ -957,15 +958,15 @@ static void ApplyEventDelegateStatementEvidence(
 	}
 	if (InOutDemand.HandlerFunctionPath.IsEmpty())
 	{
-		InOutDemand.HandlerFunctionPath = EvidenceValue(Statement.ContextEvidence, TEXT("handler_function_path"));
+		InOutDemand.HandlerFunctionPath = EvidenceValue(Statement.ContextEvidence, TEXT("event_delegate.handler_function_path"));
 	}
 	if (InOutDemand.HandlerSourceCluster.IsEmpty())
 	{
-		InOutDemand.HandlerSourceCluster = EvidenceValue(Statement.ContextEvidence, TEXT("handler_source_cluster"));
+		InOutDemand.HandlerSourceCluster = EvidenceValue(Statement.ContextEvidence, TEXT("event_delegate.handler_source_cluster"));
 	}
 	if (InOutDemand.SignatureEvidenceId.IsEmpty())
 	{
-		InOutDemand.SignatureEvidenceId = EvidenceValue(Statement.ContextEvidence, TEXT("signature_evidence_id"));
+		InOutDemand.SignatureEvidenceId = EvidenceValue(Statement.ContextEvidence, TEXT("event_delegate.signature_evidence_id"));
 	}
 	if (InOutDemand.UnbindMode.IsEmpty())
 	{
@@ -973,27 +974,27 @@ static void ApplyEventDelegateStatementEvidence(
 	}
 	if (!InOutDemand.HandlerName.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("handler_name"), InOutDemand.HandlerName);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.handler_name"), InOutDemand.HandlerName);
 	}
 	if (!InOutDemand.HandlerFunctionPath.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("handler_function_path"), InOutDemand.HandlerFunctionPath);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.handler_function_path"), InOutDemand.HandlerFunctionPath);
 	}
 	if (!InOutDemand.HandlerSourceCluster.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("handler_source_cluster"), InOutDemand.HandlerSourceCluster);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.handler_source_cluster"), InOutDemand.HandlerSourceCluster);
 	}
 	if (!InOutDemand.SignatureEvidenceId.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("signature_evidence_id"), InOutDemand.SignatureEvidenceId);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.signature_evidence_id"), InOutDemand.SignatureEvidenceId);
 	}
 	if (!InOutDemand.DelegateOperation.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("delegate_operation"), InOutDemand.DelegateOperation);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.operation"), InOutDemand.DelegateOperation);
 	}
 	if (!InOutDemand.UnbindMode.IsEmpty())
 	{
-		InOutDemand.DefaultValues.Add(TEXT("unbind_mode"), InOutDemand.UnbindMode);
+		InOutDemand.DefaultValues.Add(TEXT("event_delegate.unbind_mode"), InOutDemand.UnbindMode);
 	}
 }
 
@@ -1020,15 +1021,15 @@ static void ApplyEventDelegateExpressionEvidence(
 	}
 	if (InOutDemand.HandlerFunctionPath.IsEmpty())
 	{
-		InOutDemand.HandlerFunctionPath = EvidenceValue(Expression.ContextEvidence, TEXT("handler_function_path"));
+		InOutDemand.HandlerFunctionPath = EvidenceValue(Expression.ContextEvidence, TEXT("event_delegate.handler_function_path"));
 	}
 	if (InOutDemand.HandlerSourceCluster.IsEmpty())
 	{
-		InOutDemand.HandlerSourceCluster = EvidenceValue(Expression.ContextEvidence, TEXT("handler_source_cluster"));
+		InOutDemand.HandlerSourceCluster = EvidenceValue(Expression.ContextEvidence, TEXT("event_delegate.handler_source_cluster"));
 	}
 	if (InOutDemand.SignatureEvidenceId.IsEmpty())
 	{
-		InOutDemand.SignatureEvidenceId = EvidenceValue(Expression.ContextEvidence, TEXT("signature_evidence_id"));
+		InOutDemand.SignatureEvidenceId = EvidenceValue(Expression.ContextEvidence, TEXT("event_delegate.signature_evidence_id"));
 	}
 }
 }

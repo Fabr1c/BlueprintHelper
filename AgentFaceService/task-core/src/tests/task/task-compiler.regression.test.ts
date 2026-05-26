@@ -1612,6 +1612,52 @@ describe('TaskSpec GraphWrite Append compiler', () => {
   });
 });
 
+describe('Blueprint class settings compiler', () => {
+  it('lowers reparent.new_parent_class to the ClassSettings reparent operation', () => {
+    const taskPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse({
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      context_id: 'ctx_class_settings_reparent',
+      task_type: 'edit_blueprint_class_settings',
+      feature_name: 'ClassSettingsReparent',
+      target: {
+        asset_path: '/Game/Blueprints/BP_Door',
+        target_type: 'blueprint',
+      },
+      behavior: {
+        class_settings_strategy: 'class_settings',
+        reparent: {
+          new_parent_class: '/Script/Engine.Pawn',
+        },
+      },
+      execution_policy: {
+        dry_run_mode: 'full',
+        on_missing_capability: 'stop_and_report',
+      },
+      validation: {
+        should_compile: true,
+        should_save: false,
+      },
+    }));
+
+    assert.equal(taskPlan.task_type, 'edit_blueprint_class_settings');
+    assert.deepEqual(taskPlan.target_assets, ['/Game/Blueprints/BP_Door']);
+    assert.equal(taskPlan.steps.length, 1);
+
+    const step = taskPlan.steps[0] as Record<string, any>;
+    assert.equal(step['capability'], 'blueprint_class_settings');
+    assert.deepEqual(step['target'], { asset_path: '/Game/Blueprints/BP_Door' });
+    assert.deepEqual(step['write'], {
+      strategy: 'class_settings',
+      ops: [
+        {
+          op: 'reparent_blueprint',
+          new_parent_class: '/Script/Engine.Pawn',
+        },
+      ],
+    });
+  });
+});
+
 describe('TaskSpec Blueprint Variables compiler', () => {
   it('compiles ensure_member_variable into structured blueprint_variable IR', () => {
     const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeVariableTaskSpec()));

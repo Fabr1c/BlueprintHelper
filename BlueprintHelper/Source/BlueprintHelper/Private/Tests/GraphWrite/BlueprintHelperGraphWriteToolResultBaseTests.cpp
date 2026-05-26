@@ -46,6 +46,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperGraphWriteCapabilityMetrics.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
@@ -3729,6 +3730,51 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplacePatchMergeDryRunEnvelopeTest::R
 		TEXT("merge_blueprint_graph"),
 		false);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteEventDelegateToolResultReadbackContractTest,
+	"BlueprintHelper.GraphWrite.ToolResult.EventDelegate.ReadbackFactContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteEventDelegateToolResultReadbackContractTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphWriteCapabilityCaseResult Result;
+	Result.CaseName = TEXT("event_delegate_readback_contract");
+	Result.Phase = TEXT("GraphWrite");
+	Result.Capability = TEXT("EventDelegate");
+	Result.SemanticKind = TEXT("delegate");
+	Result.ClusterKind = TEXT("EventDelegateAction");
+	Result.ErrorKind = EBlueprintHelperGraphWriteCapabilityErrorKind::None;
+	Result.bGraphWriteCorrect = true;
+	Result.bCallCorrect = true;
+	Result.bHasResolverEvidence = true;
+	Result.bHasSpawnEvidence = true;
+	Result.bReadbackComplete = true;
+	Result.SelectedStableId = TEXT("delegate:call:/Script/Engine.PrimitiveComponent:OnComponentBeginOverlap");
+	Result.SelectedSpawnerClass = TEXT("UBlueprintNodeSpawner");
+	Result.SpawnedNodeClass = TEXT("UK2Node_CallDelegate");
+	Result.PinDefaultLinkReadbackSummary = TEXT("pin.call_arg.bSweep.default=true;pin.call_arg.bSweep.linked_source_pin=bSource");
+
+	const TSharedRef<FJsonObject> Json =
+		FBlueprintHelperGraphWriteCapabilityMetrics::ToDebugBundleFailureSummary(Result);
+	const TArray<TSharedPtr<FJsonValue>>* FactKeys = nullptr;
+	TestTrue(TEXT("event delegate readback fact keys are exposed"), Json->TryGetArrayField(TEXT("event_delegate_readback_fact_keys"), FactKeys));
+	bool bHasCorrelationKey = false;
+	bool bHasCallArgDefault = false;
+	if (FactKeys)
+	{
+		for (const TSharedPtr<FJsonValue>& KeyValue : *FactKeys)
+		{
+			const FString Key = KeyValue.IsValid() ? KeyValue->AsString() : FString();
+			bHasCorrelationKey |= Key == TEXT("compile_diagnostic_correlation_key");
+			bHasCallArgDefault |= Key == TEXT("pin.call_arg.<name>.default");
+		}
+	}
+	TestTrue(TEXT("readback fact keys include diagnostic correlation"), bHasCorrelationKey);
+	TestTrue(TEXT("readback fact keys include call arg defaults"), bHasCallArgDefault);
+	TestFalse(TEXT("debug bundle does not publish delegate atomic review target"), Json->HasField(TEXT("delegate_atomic_target")));
 	return true;
 }
 

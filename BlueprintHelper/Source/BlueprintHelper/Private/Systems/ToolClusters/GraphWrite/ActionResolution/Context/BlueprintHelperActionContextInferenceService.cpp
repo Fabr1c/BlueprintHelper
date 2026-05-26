@@ -330,21 +330,55 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("type_structure_id"), Demand.TypeStructureId);
 	}
 
-	if (!Demand.BindingObjectPath.IsEmpty())
+	const FString ExplicitBindingKind = Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_kind")).TrimStartAndEnd();
+	const FString ExplicitBindingEvidenceId = Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_evidence_id")).TrimStartAndEnd();
+	const FString ExplicitBindingPath = Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_path")).TrimStartAndEnd();
+	const FString ExplicitBindingProducerStatementId = Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_statement_id")).TrimStartAndEnd();
+	if (!ExplicitBindingKind.IsEmpty() || !ExplicitBindingEvidenceId.IsEmpty() || !ExplicitBindingPath.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("binding_object_path"), Demand.BindingObjectPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_kind"), ExplicitBindingKind);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_evidence_id"), ExplicitBindingEvidenceId);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_path"), ExplicitBindingPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_statement_id"), ExplicitBindingProducerStatementId);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			Context,
+			TEXT("event_delegate.binding_object_node_guid"),
+			Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_node_guid")));
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			Context,
+			TEXT("event_delegate.binding_object_pin_name"),
+			Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_pin_name")));
+		if (ExplicitBindingKind.Equals(TEXT("function_return_ref"), ESearchCase::IgnoreCase)
+			&& !ExplicitBindingProducerStatementId.IsEmpty()
+			&& !ExplicitBindingProducerStatementId.Equals(Demand.StatementId, ESearchCase::IgnoreCase))
+		{
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+				Context,
+				TEXT("event_delegate.binding_object_error"),
+				TEXT("binding_object_cross_statement_unsupported"));
+		}
+	}
+	else if (!Demand.BindingObjectPath.IsEmpty())
+	{
+		const FString BindingKind = Demand.BindingObjectPath.Equals(TEXT("self"), ESearchCase::IgnoreCase)
+			? TEXT("self")
+			: TEXT("component_ref");
+		Context.Evidence.Add(TEXT("event_delegate.binding_object_kind"), BindingKind);
+		Context.Evidence.Add(TEXT("event_delegate.binding_object_evidence_id"), FString::Printf(TEXT("%s:%s"), *BindingKind, *Demand.BindingObjectPath));
+		Context.Evidence.Add(TEXT("event_delegate.binding_object_path"), Demand.BindingObjectPath);
 	}
 	if (!Demand.ComponentPath.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("component_path"), Demand.ComponentPath);
+		Context.Evidence.Add(TEXT("event_delegate.component_property_name"), Demand.ComponentPath);
+		Context.Evidence.Add(TEXT("event_delegate.component_path"), Demand.ComponentPath);
 	}
 	if (!Demand.DelegateName.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("delegate_name"), Demand.DelegateName);
+		Context.Evidence.Add(TEXT("event_delegate.delegate_name"), Demand.DelegateName);
 	}
 	if (!Demand.DelegateOperation.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("delegate_operation"), Demand.DelegateOperation);
+		Context.Evidence.Add(TEXT("event_delegate.operation"), Demand.DelegateOperation);
 	}
 	if (!Demand.FieldOperation.IsEmpty())
 	{
@@ -411,22 +445,22 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	}
 	if (!Demand.DelegateSignature.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("delegate_signature"), Demand.DelegateSignature);
+		Context.Evidence.Add(TEXT("event_delegate.delegate_signature"), Demand.DelegateSignature);
 	}
 	if (!Demand.HandlerName.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("handler_name"), Demand.HandlerName);
+		Context.Evidence.Add(TEXT("event_delegate.handler_name"), Demand.HandlerName);
 		if (!Snapshot.Graph.BlueprintClassPath.IsEmpty())
 		{
-			Context.Evidence.Add(TEXT("handler_scope_class_path"), Snapshot.Graph.BlueprintClassPath);
+			Context.Evidence.Add(TEXT("event_delegate.handler_scope_class_path"), Snapshot.Graph.BlueprintClassPath);
 		}
 	}
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("handler_function_path"), Demand.HandlerFunctionPath);
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("handler_source_cluster"), Demand.HandlerSourceCluster);
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("signature_evidence_id"), Demand.SignatureEvidenceId);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_function_path"), Demand.HandlerFunctionPath);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_source_cluster"), Demand.HandlerSourceCluster);
+	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.signature_evidence_id"), Demand.SignatureEvidenceId);
 	if (!Demand.UnbindMode.IsEmpty())
 	{
-		Context.Evidence.Add(TEXT("unbind_mode"), Demand.UnbindMode);
+		Context.Evidence.Add(TEXT("event_delegate.unbind_mode"), Demand.UnbindMode);
 	}
 	if (!Demand.TargetObjectType.IsEmpty())
 	{
@@ -439,7 +473,8 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		{
 			if (DefaultPair.Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase)
 				|| DefaultPair.Key.StartsWith(TEXT("generic."), ESearchCase::IgnoreCase)
-				|| DefaultPair.Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase))
+				|| DefaultPair.Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase)
+				|| DefaultPair.Key.StartsWith(TEXT("event_delegate."), ESearchCase::IgnoreCase))
 			{
 				BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, DefaultPair.Key, DefaultPair.Value);
 			}
@@ -448,6 +483,13 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	if (Demand.ArgumentTypes.Num() > 0)
 	{
 		Context.Evidence.Add(TEXT("argument_type_count"), LexToString(Demand.ArgumentTypes.Num()));
+		for (const TPair<FString, FString>& ArgumentTypePair : Demand.ArgumentTypes)
+		{
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+				Context,
+				FString::Printf(TEXT("event_delegate.call_arg.%s.pin_type"), *ArgumentTypePair.Key),
+				ArgumentTypePair.Value);
+		}
 	}
 
 	if (Demand.SemanticKind == EBlueprintHelperActionSemanticKind::Field)
@@ -508,16 +550,16 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Semantic.PropertyPath = DelegateField->Name;
 		Context.Semantic.TargetObjectType = DelegateField->OwnerClassPath;
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_owner_class_path"), DelegateField->OwnerClassPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_property_name"), DelegateField->Name);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_property_path"), DelegateField->FieldPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_signature_function_path"), DelegateField->DelegateSignatureFunctionPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_owner_class_path"), DelegateField->OwnerClassPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_name"), DelegateField->Name);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_path"), DelegateField->FieldPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature_function_path"), DelegateField->DelegateSignatureFunctionPath);
 		if (Demand.DelegateSignature.IsEmpty())
 		{
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("delegate_signature"), DelegateField->DelegateSignatureFunctionPath);
+			BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature"), DelegateField->DelegateSignatureFunctionPath);
 		}
-		Context.Evidence.FindOrAdd(TEXT("delegate_blueprint_assignable")) = DelegateField->bBlueprintAssignable ? TEXT("true") : TEXT("false");
-		Context.Evidence.FindOrAdd(TEXT("delegate_blueprint_callable")) = DelegateField->bBlueprintCallable ? TEXT("true") : TEXT("false");
+		Context.Evidence.FindOrAdd(TEXT("event_delegate.delegate_blueprint_assignable")) = DelegateField->bBlueprintAssignable ? TEXT("true") : TEXT("false");
+		Context.Evidence.FindOrAdd(TEXT("event_delegate.delegate_blueprint_callable")) = DelegateField->bBlueprintCallable ? TEXT("true") : TEXT("false");
 	}
 
 	if (const FBlueprintHelperActionContextFieldSnapshot* ComponentField =
@@ -530,9 +572,10 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 			? BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class"))
 			: ComponentField->OwnerClassPath);
 		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_kind"), BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_kind")));
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_owner_class_path"), ComponentField->OwnerClassPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_property_name"), ComponentField->Name);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("component_binding_field_path"), ComponentField->FieldPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_owner_class_path"), ComponentField->OwnerClassPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_property_name"), ComponentField->Name);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_field_path"), ComponentField->FieldPath);
+		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_class_path"), ComponentField->PinSubCategoryObjectPath);
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_name")));
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_owner_class"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_owner_class")));
 		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_kind"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_kind")));

@@ -141,6 +141,37 @@ test('delegate.bind public statement lowers to canonical delegate bind operation
   assert.equal(statement.handler, 'BH_HandleSmokeOverlap');
 });
 
+test('delegate.assign public statement lowers to canonical delegate assign operation', () => {
+  const [statement] = compileStatements([{
+    kind: 'delegate.assign',
+    target: 'TriggerBox',
+    delegate: 'OnComponentBeginOverlap',
+    handler: 'BH_HandleSmokeOverlap',
+  }]);
+
+  assert.equal(statement.kind, 'delegate');
+  assert.equal(statement.delegate_operation, 'assign');
+  assert.equal(statement.target, 'TriggerBox');
+  assert.equal(statement.delegate, 'OnComponentBeginOverlap');
+  assert.equal(statement.handler, 'BH_HandleSmokeOverlap');
+});
+
+test('delegate.unbind public statement lowers to canonical single delegate unbind operation', () => {
+  const [statement] = compileStatements([{
+    kind: 'delegate.unbind',
+    target: 'TriggerBox',
+    delegate: 'OnComponentBeginOverlap',
+    handler: 'BH_HandleSmokeOverlap',
+  }]);
+
+  assert.equal(statement.kind, 'delegate');
+  assert.equal(statement.delegate_operation, 'unbind');
+  assert.equal(statement.unbind_mode, 'single');
+  assert.equal(statement.target, 'TriggerBox');
+  assert.equal(statement.delegate, 'OnComponentBeginOverlap');
+  assert.equal(statement.handler, 'BH_HandleSmokeOverlap');
+});
+
 test('delegate.unbind_all public statement lowers to canonical delegate clear operation', () => {
   const [statement] = compileStatements([{
     kind: 'delegate.unbind_all',
@@ -153,6 +184,28 @@ test('delegate.unbind_all public statement lowers to canonical delegate clear op
   assert.equal(statement.unbind_mode, 'all');
   assert.equal(statement.target, 'TriggerBox');
   assert.equal(statement.delegate, 'OnComponentBeginOverlap');
+});
+
+test('delegate.call public statement lowers to canonical delegate call operation', () => {
+  const [statement] = compileStatements([{
+    kind: 'delegate.call',
+    target: 'TriggerBox',
+    delegate: 'OnComponentBeginOverlap',
+    args: {
+      OtherActor: {
+        kind: 'literal',
+        value: 'None',
+      },
+    },
+  }]);
+
+  assert.equal(statement.kind, 'delegate');
+  assert.equal(statement.delegate_operation, 'call');
+  assert.equal(statement.target, 'TriggerBox');
+  assert.equal(statement.delegate, 'OnComponentBeginOverlap');
+  assert.deepEqual((statement.args as Record<string, Record<string, unknown>>).OtherActor.kind, 'literal');
+  assert.deepEqual((statement.args as Record<string, Record<string, unknown>>).OtherActor.value, 'None');
+  assert.ok((statement.args as Record<string, Record<string, unknown>>).OtherActor.id);
 });
 
 test('Agent-authored internal delegate statement is rejected before lowering', () => {

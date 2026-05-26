@@ -10,7 +10,10 @@ static FString EvidenceValue(
 	const FBlueprintHelperActionResolutionRequest& Request,
 	const FString& Key)
 {
-	if (const FString* Value = Request.ContextEvidence.Find(Key))
+	const FString NamespacedKey = Key.StartsWith(TEXT("event_delegate."))
+		? Key
+		: FString::Printf(TEXT("event_delegate.%s"), *Key);
+	if (const FString* Value = Request.ContextEvidence.Find(NamespacedKey))
 	{
 		return Value->TrimStartAndEnd();
 	}
@@ -83,7 +86,7 @@ static bool ResolveDelegateProperty(
 	if (!DelegateOwnerClass)
 	{
 		return Missing(
-			TEXT("delegate_owner_class_unresolved"),
+			TEXT("missing_delegate_property_evidence"),
 			FString::Printf(TEXT("Could not resolve delegate owner class '%s'."), *Evidence.DelegateOwnerClassPath),
 			OutMissingDetail,
 			OutMessage);
@@ -95,7 +98,7 @@ static bool ResolveDelegateProperty(
 	if (!Evidence.DelegateProperty)
 	{
 		return Missing(
-			TEXT("delegate_property_unresolved"),
+			TEXT("missing_delegate_property_evidence"),
 			FString::Printf(TEXT("Could not resolve multicast delegate property '%s' on '%s'."), *Evidence.DelegatePropertyName, *Evidence.DelegateOwnerClassPath),
 			OutMissingDetail,
 			OutMessage);
@@ -103,7 +106,7 @@ static bool ResolveDelegateProperty(
 	if (!PathMatches(Evidence.DelegateProperty, Evidence.DelegatePropertyPath))
 	{
 		return Missing(
-			TEXT("delegate_property_path_mismatch"),
+			TEXT("missing_delegate_property_evidence"),
 			FString::Printf(TEXT("Resolved delegate property path '%s' does not match projected path '%s'."), *Evidence.DelegateProperty->GetPathName(), *Evidence.DelegatePropertyPath),
 			OutMissingDetail,
 			OutMessage);
@@ -120,7 +123,7 @@ static bool ResolveComponentBindingProperty(
 	if (!ComponentOwnerClass)
 	{
 		return Missing(
-			TEXT("component_owner_class_unresolved"),
+			TEXT("missing_binding_object_evidence"),
 			FString::Printf(TEXT("Could not resolve component owner class '%s'."), *Evidence.ComponentBindingOwnerClassPath),
 			OutMissingDetail,
 			OutMessage);
@@ -132,7 +135,7 @@ static bool ResolveComponentBindingProperty(
 	if (!Evidence.ComponentBindingProperty)
 	{
 		return Missing(
-			TEXT("component_property_unresolved"),
+			TEXT("missing_binding_object_evidence"),
 			FString::Printf(TEXT("Could not resolve component binding property '%s' on '%s'."), *Evidence.ComponentPath, *Evidence.ComponentBindingOwnerClassPath),
 			OutMissingDetail,
 			OutMessage);
@@ -140,7 +143,7 @@ static bool ResolveComponentBindingProperty(
 	if (!PathMatches(Evidence.ComponentBindingProperty, Evidence.ComponentBindingFieldPath))
 	{
 		return Missing(
-			TEXT("component_property_path_mismatch"),
+			TEXT("missing_binding_object_evidence"),
 			FString::Printf(TEXT("Resolved component property path '%s' does not match projected path '%s'."), *Evidence.ComponentBindingProperty->GetPathName(), *Evidence.ComponentBindingFieldPath),
 			OutMissingDetail,
 			OutMessage);
@@ -157,7 +160,7 @@ static bool ResolveHandlerFunction(
 	if (!Evidence.HandlerFunction)
 	{
 		return Missing(
-			TEXT("handler_function_unresolved"),
+			TEXT("missing_handler_evidence"),
 			FString::Printf(TEXT("Could not resolve projected handler function '%s'."), *Evidence.HandlerFunctionPath),
 			OutMissingDetail,
 			OutMessage);
@@ -166,7 +169,7 @@ static bool ResolveHandlerFunction(
 		&& !Evidence.HandlerFunction->GetName().Equals(Evidence.HandlerName, ESearchCase::IgnoreCase))
 	{
 		return Missing(
-			TEXT("handler_function_name_mismatch"),
+			TEXT("missing_handler_evidence"),
 			FString::Printf(TEXT("Projected handler function '%s' does not match handler_name '%s'."), *Evidence.HandlerFunction->GetName(), *Evidence.HandlerName),
 			OutMissingDetail,
 			OutMessage);
@@ -223,7 +226,7 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	OutMessage.Reset();
 
 	OutEvidence.SemanticKind = SemanticKind;
-	OutEvidence.DelegateOperation = NormalizeDelegateOperation(EvidenceValue(Request, TEXT("delegate_operation")));
+	OutEvidence.DelegateOperation = NormalizeDelegateOperation(EvidenceValue(Request, TEXT("operation")));
 	OutEvidence.DelegateName = FirstNonEmpty({
 		EvidenceValue(Request, TEXT("delegate_name")),
 		Request.Semantic.PropertyPath,
@@ -238,41 +241,58 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	OutEvidence.DelegateSignature = EvidenceValue(Request, TEXT("delegate_signature"));
 	OutEvidence.DelegateSignatureFunctionPath = EvidenceValue(Request, TEXT("delegate_signature_function_path"));
 	OutEvidence.ComponentPath = FirstNonEmpty({
-		EvidenceValue(Request, TEXT("component_path")),
 		EvidenceValue(Request, TEXT("component_property_name")),
+		EvidenceValue(Request, TEXT("component_path")),
 		SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
 			? EvidenceValue(Request, TEXT("binding_object_path"))
 			: FString()
 	});
 	OutEvidence.ComponentBindingOwnerClassPath = EvidenceValue(Request, TEXT("component_binding_owner_class_path"));
 	OutEvidence.ComponentBindingFieldPath = EvidenceValue(Request, TEXT("component_binding_field_path"));
+	OutEvidence.ComponentClassPath = EvidenceValue(Request, TEXT("component_class_path"));
+	OutEvidence.BindingObjectKind = EvidenceValue(Request, TEXT("binding_object_kind"));
+	OutEvidence.BindingObjectEvidenceId = EvidenceValue(Request, TEXT("binding_object_evidence_id"));
 	OutEvidence.BindingObjectPath = EvidenceValue(Request, TEXT("binding_object_path"));
+	OutEvidence.BindingObjectProducerStatementId = EvidenceValue(Request, TEXT("binding_object_statement_id"));
+	OutEvidence.BindingObjectNodeGuid = EvidenceValue(Request, TEXT("binding_object_node_guid"));
+	OutEvidence.BindingObjectPinName = EvidenceValue(Request, TEXT("binding_object_pin_name"));
+	OutEvidence.BindingObjectError = EvidenceValue(Request, TEXT("binding_object_error"));
 	OutEvidence.HandlerName = EvidenceValue(Request, TEXT("handler_name"));
 	OutEvidence.HandlerScopeClassPath = EvidenceValue(Request, TEXT("handler_scope_class_path"));
 	OutEvidence.HandlerFunctionPath = EvidenceValue(Request, TEXT("handler_function_path"));
 	OutEvidence.HandlerSourceCluster = EvidenceValue(Request, TEXT("handler_source_cluster"));
 	OutEvidence.SignatureEvidenceId = EvidenceValue(Request, TEXT("signature_evidence_id"));
 	OutEvidence.UnbindMode = EvidenceValue(Request, TEXT("unbind_mode"));
+	OutEvidence.DuplicatePolicy = EvidenceValue(Request, TEXT("duplicate_policy"));
+	OutEvidence.AssignFactory = EvidenceValue(Request, TEXT("assign_factory"));
 
 	if (SemanticKind != EBlueprintHelperActionSemanticKind::ComponentBoundEvent
 		&& SemanticKind != EBlueprintHelperActionSemanticKind::Delegate)
 	{
 		return Missing(
-			TEXT("semantic_kind_unsupported"),
+			TEXT("invalid_delegate_operation"),
 			FString::Printf(TEXT("EventDelegate use-site evidence does not support semantic '%s'."), *FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind)),
 			OutMissingDetail,
 			OutMessage);
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate)
 	{
+		if (!OutEvidence.BindingObjectError.IsEmpty())
+		{
+			return Missing(
+				OutEvidence.BindingObjectError,
+				FString::Printf(TEXT("EventDelegate binding object projection failed: %s."), *OutEvidence.BindingObjectError),
+				OutMissingDetail,
+				OutMessage);
+		}
 		if (OutEvidence.DelegateOperation.IsEmpty())
 		{
-			return Missing(TEXT("delegate_operation_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_operation."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("invalid_delegate_operation"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.operation."), OutMissingDetail, OutMessage);
 		}
 		if (!IsSupportedDelegateOperation(OutEvidence.DelegateOperation))
 		{
 			return Missing(
-				TEXT("delegate_operation_unsupported"),
+				TEXT("invalid_delegate_operation"),
 				FString::Printf(TEXT("Unsupported delegate_operation '%s'."), *OutEvidence.DelegateOperation),
 				OutMissingDetail,
 				OutMessage);
@@ -281,41 +301,48 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent
 		&& OutEvidence.ComponentPath.IsEmpty())
 	{
-		return Missing(TEXT("component_missing"), TEXT("Component-bound event resolution requires ContextEvidence.component_path."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_binding_object_evidence"), TEXT("Component-bound event resolution requires ContextEvidence.event_delegate.component_property_name."), OutMissingDetail, OutMessage);
 	}
-	if (RequiresBindingObject(SemanticKind) && OutEvidence.BindingObjectPath.IsEmpty())
+	if (RequiresBindingObject(SemanticKind)
+		&& OutEvidence.BindingObjectKind.IsEmpty())
 	{
-		return Missing(TEXT("binding_object_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.binding_object_path."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_binding_object_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.binding_object_kind."), OutMissingDetail, OutMessage);
+	}
+	if (RequiresBindingObject(SemanticKind)
+		&& OutEvidence.BindingObjectEvidenceId.IsEmpty())
+	{
+		return Missing(TEXT("missing_binding_object_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.binding_object_evidence_id."), OutMissingDetail, OutMessage);
 	}
 	if (OutEvidence.DelegateName.IsEmpty())
 	{
-		return Missing(TEXT("delegate_name_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_name or semantic delegate query."), OutMissingDetail, OutMessage);
-	}
-	if (OutEvidence.DelegateSignature.IsEmpty())
-	{
-		return Missing(TEXT("delegate_signature_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_signature."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_delegate_property_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.delegate_property_name or semantic delegate query."), OutMissingDetail, OutMessage);
 	}
 	if (OutEvidence.DelegateOwnerClassPath.IsEmpty())
 	{
-		return Missing(TEXT("delegate_owner_class_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_owner_class_path."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_delegate_property_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.delegate_owner_class_path."), OutMissingDetail, OutMessage);
 	}
 	if (OutEvidence.DelegatePropertyName.IsEmpty())
 	{
-		return Missing(TEXT("delegate_property_name_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_property_name."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_delegate_property_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.delegate_property_name."), OutMissingDetail, OutMessage);
 	}
 	if (OutEvidence.DelegatePropertyPath.IsEmpty())
 	{
-		return Missing(TEXT("delegate_property_path_missing"), TEXT("Delegate use-site resolution requires ContextEvidence.delegate_property_path."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("missing_delegate_property_evidence"), TEXT("Delegate use-site resolution requires ContextEvidence.event_delegate.delegate_property_path."), OutMissingDetail, OutMessage);
+	}
+	if (!OutEvidence.DelegateOperation.Equals(TEXT("clear"), ESearchCase::IgnoreCase)
+		&& OutEvidence.DelegateSignatureFunctionPath.IsEmpty())
+	{
+		return Missing(TEXT("missing_signature_evidence"), TEXT("EventDelegate use-site resolution requires ContextEvidence.event_delegate.delegate_signature_function_path."), OutMissingDetail, OutMessage);
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
 	{
 		if (OutEvidence.ComponentBindingOwnerClassPath.IsEmpty())
 		{
-			return Missing(TEXT("component_owner_class_missing"), TEXT("Component-bound event resolution requires ContextEvidence.component_binding_owner_class_path."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_binding_object_evidence"), TEXT("Component-bound event resolution requires ContextEvidence.event_delegate.component_binding_owner_class_path."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.ComponentBindingFieldPath.IsEmpty())
 		{
-			return Missing(TEXT("component_binding_field_missing"), TEXT("Component-bound event resolution requires ContextEvidence.component_binding_field_path."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_binding_object_evidence"), TEXT("Component-bound event resolution requires ContextEvidence.event_delegate.component_binding_field_path."), OutMissingDetail, OutMessage);
 		}
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
@@ -323,64 +350,71 @@ bool FBlueprintHelperEventDelegateUseSiteEvidenceReader::TryRead(
 	{
 		if (OutEvidence.HandlerName.IsEmpty())
 		{
-			return Missing(TEXT("handler_missing"), TEXT("Delegate bind/assign/unbind resolution requires ContextEvidence.handler_name."), OutMissingDetail, OutMessage);
+			return Missing(
+				OutEvidence.DelegateOperation.Equals(TEXT("unbind"), ESearchCase::IgnoreCase) ? TEXT("handler_required_for_unbind") : TEXT("missing_handler_evidence"),
+				TEXT("Delegate bind/assign/unbind resolution requires ContextEvidence.event_delegate.handler_name."),
+				OutMissingDetail,
+				OutMessage);
 		}
 		if (OutEvidence.HandlerScopeClassPath.IsEmpty())
 		{
-			return Missing(TEXT("handler_scope_missing"), TEXT("Delegate bind/assign/unbind resolution requires ContextEvidence.handler_scope_class_path."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("Delegate bind/assign/unbind resolution requires ContextEvidence.event_delegate.handler_scope_class_path."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.HandlerFunctionPath.IsEmpty())
 		{
-			return Missing(TEXT("handler_function_path_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.HandlerSourceCluster.IsEmpty())
 		{
-			return Missing(TEXT("handler_source_cluster_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_source_cluster."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.handler_source_cluster."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.SignatureEvidenceId.IsEmpty())
 		{
-			return Missing(TEXT("signature_evidence_id_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.signature_evidence_id."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_signature_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.signature_evidence_id."), OutMissingDetail, OutMessage);
 		}
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::ComponentBoundEvent)
 	{
 		if (OutEvidence.HandlerName.IsEmpty())
 		{
-			return Missing(TEXT("handler_missing"), TEXT("Component-bound event resolution requires ContextEvidence.handler_name."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("Component-bound event resolution requires ContextEvidence.event_delegate.handler_name."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.HandlerScopeClassPath.IsEmpty())
 		{
-			return Missing(TEXT("handler_scope_missing"), TEXT("Component-bound event resolution requires ContextEvidence.handler_scope_class_path."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("Component-bound event resolution requires ContextEvidence.event_delegate.handler_scope_class_path."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.HandlerFunctionPath.IsEmpty())
 		{
-			return Missing(TEXT("handler_function_path_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.handler_function_path from BlueprintSignature."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.HandlerSourceCluster.IsEmpty())
 		{
-			return Missing(TEXT("handler_source_cluster_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.handler_source_cluster."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_handler_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.handler_source_cluster."), OutMissingDetail, OutMessage);
 		}
 		if (OutEvidence.SignatureEvidenceId.IsEmpty())
 		{
-			return Missing(TEXT("signature_evidence_id_missing"), TEXT("EventDelegate resolution requires projected ContextEvidence.signature_evidence_id."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_signature_evidence"), TEXT("EventDelegate resolution requires projected ContextEvidence.event_delegate.signature_evidence_id."), OutMissingDetail, OutMessage);
 		}
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
 		&& OutEvidence.DelegateOperation.Equals(TEXT("unbind"), ESearchCase::IgnoreCase)
 		&& !OutEvidence.UnbindMode.Equals(TEXT("single"), ESearchCase::IgnoreCase))
 	{
-		return Missing(TEXT("unbind_mode_single_missing"), TEXT("delegate unbind requires ContextEvidence.unbind_mode=single."), OutMissingDetail, OutMessage);
+		return Missing(TEXT("handler_required_for_unbind"), TEXT("delegate unbind requires ContextEvidence.event_delegate.unbind_mode=single."), OutMissingDetail, OutMessage);
 	}
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
 		&& OutEvidence.DelegateOperation.Equals(TEXT("clear"), ESearchCase::IgnoreCase))
 	{
 		if (!OutEvidence.UnbindMode.Equals(TEXT("all"), ESearchCase::IgnoreCase))
 		{
-			return Missing(TEXT("unbind_mode_all_missing"), TEXT("delegate clear requires ContextEvidence.unbind_mode=all."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("missing_binding_object_evidence"), TEXT("delegate clear requires ContextEvidence.event_delegate.unbind_mode=all."), OutMissingDetail, OutMessage);
 		}
-		if (!OutEvidence.HandlerName.IsEmpty())
+		if (!OutEvidence.HandlerName.IsEmpty()
+			|| !OutEvidence.HandlerFunctionPath.IsEmpty()
+			|| !OutEvidence.HandlerSourceCluster.IsEmpty()
+			|| !OutEvidence.SignatureEvidenceId.IsEmpty())
 		{
-			return Missing(TEXT("delegate_clear_handler_forbidden"), TEXT("delegate clear must not include handler_name."), OutMissingDetail, OutMessage);
+			return Missing(TEXT("handler_not_allowed_for_clear"), TEXT("delegate clear must not include handler evidence."), OutMissingDetail, OutMessage);
 		}
 	}
 

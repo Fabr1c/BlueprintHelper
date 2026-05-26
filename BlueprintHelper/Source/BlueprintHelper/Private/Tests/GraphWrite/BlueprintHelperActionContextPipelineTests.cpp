@@ -242,11 +242,11 @@ bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTe
 		InferenceServiceText,
 		InferenceServicePath,
 		{
-			TEXT("component_path"),
-			TEXT("binding_object_path"),
-			TEXT("delegate_name"),
-			TEXT("delegate_operation"),
-			TEXT("delegate_signature"),
+			TEXT("event_delegate.component_path"),
+			TEXT("event_delegate.binding_object_path"),
+			TEXT("event_delegate.delegate_name"),
+			TEXT("event_delegate.operation"),
+			TEXT("event_delegate.delegate_signature"),
 			TEXT("target_graph")
 		});
 
@@ -287,14 +287,15 @@ bool FBlueprintHelperActionContextDelegateProjectionTest::RunTest(const FString&
 
 	TestEqual(TEXT("cluster"), Context.ClusterKind, EBlueprintHelperSpawnerClusterKind::EventDelegateAction);
 	TestEqual(TEXT("semantic"), Context.Semantic.Kind, EBlueprintHelperActionSemanticKind::Delegate);
-	TestEqual(TEXT("delegate_name"), Context.Evidence.FindRef(TEXT("delegate_name")), FString(TEXT("OnDoorStateChanged")));
-	TestEqual(TEXT("delegate_operation"), Context.Evidence.FindRef(TEXT("delegate_operation")), FString(TEXT("bind")));
-	TestEqual(TEXT("binding object"), Context.Evidence.FindRef(TEXT("binding_object_path")), FString(TEXT("self")));
-	TestEqual(TEXT("handler"), Context.Evidence.FindRef(TEXT("handler_name")), FString(TEXT("HandleDoorStateChanged")));
-	TestEqual(TEXT("handler scope"), Context.Evidence.FindRef(TEXT("handler_scope_class_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
-	TestEqual(TEXT("handler function path"), Context.Evidence.FindRef(TEXT("handler_function_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C:HandleDoorStateChanged")));
-	TestEqual(TEXT("handler source cluster"), Context.Evidence.FindRef(TEXT("handler_source_cluster")), FString(TEXT("BlueprintSignature")));
-	TestEqual(TEXT("signature evidence id"), Context.Evidence.FindRef(TEXT("signature_evidence_id")), FString(TEXT("signature:custom_event:HandleDoorStateChanged")));
+	TestEqual(TEXT("delegate_name"), Context.Evidence.FindRef(TEXT("event_delegate.delegate_name")), FString(TEXT("OnDoorStateChanged")));
+	TestEqual(TEXT("delegate_operation"), Context.Evidence.FindRef(TEXT("event_delegate.operation")), FString(TEXT("bind")));
+	TestEqual(TEXT("binding object kind"), Context.Evidence.FindRef(TEXT("event_delegate.binding_object_kind")), FString(TEXT("self")));
+	TestEqual(TEXT("binding object"), Context.Evidence.FindRef(TEXT("event_delegate.binding_object_path")), FString(TEXT("self")));
+	TestEqual(TEXT("handler"), Context.Evidence.FindRef(TEXT("event_delegate.handler_name")), FString(TEXT("HandleDoorStateChanged")));
+	TestEqual(TEXT("handler scope"), Context.Evidence.FindRef(TEXT("event_delegate.handler_scope_class_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
+	TestEqual(TEXT("handler function path"), Context.Evidence.FindRef(TEXT("event_delegate.handler_function_path")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C:HandleDoorStateChanged")));
+	TestEqual(TEXT("handler source cluster"), Context.Evidence.FindRef(TEXT("event_delegate.handler_source_cluster")), FString(TEXT("BlueprintSignature")));
+	TestEqual(TEXT("signature evidence id"), Context.Evidence.FindRef(TEXT("event_delegate.signature_evidence_id")), FString(TEXT("signature:custom_event:HandleDoorStateChanged")));
 	return true;
 }
 
@@ -331,7 +332,7 @@ bool FBlueprintHelperActionContextDelegateStatementDemandTest::RunTest(const FSt
 	TestEqual(TEXT("binding object"), Demands[0].BindingObjectPath, FString(TEXT("self")));
 	TestEqual(TEXT("delegate name"), Demands[0].DelegateName, FString(TEXT("OnDoorStateChanged")));
 	TestEqual(TEXT("delegate operation"), Demands[0].DelegateOperation, FString(TEXT("unbind")));
-	TestEqual(TEXT("delegate operation default"), Demands[0].DefaultValues.FindRef(TEXT("delegate_operation")), FString(TEXT("unbind")));
+	TestEqual(TEXT("delegate operation default"), Demands[0].DefaultValues.FindRef(TEXT("event_delegate.operation")), FString(TEXT("unbind")));
 	TestEqual(TEXT("handler"), Demands[0].HandlerName, FString(TEXT("HandleDoorStateChanged")));
 	TestEqual(TEXT("unbind mode"), Demands[0].UnbindMode, FString(TEXT("single")));
 	return true;
@@ -594,7 +595,7 @@ bool FBlueprintHelperActionContextPropertyPathStatementKeepsOwnerRootTargetTest:
 
 	TestEqual(TEXT("field_name evidence resolves owner root"), Context.Evidence.FindRef(TEXT("field_name")), FString(TEXT("DoorMesh")));
 	TestEqual(TEXT("field owner evidence projected"), Context.Evidence.FindRef(TEXT("field_owner_class")), FString(TEXT("/Game/Test/BP_Door.BP_Door_C")));
-	TestEqual(TEXT("component property evidence projected"), Context.Evidence.FindRef(TEXT("component_property_name")), FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("component property evidence projected"), Context.Evidence.FindRef(TEXT("event_delegate.component_property_name")), FString(TEXT("DoorMesh")));
 	TestEqual(TEXT("semantic target root"), Context.Semantic.TargetPath, FString(TEXT("DoorMesh")));
 	TestEqual(TEXT("semantic property path"), Context.Semantic.PropertyPath, FString(TEXT("RelativeRotation.Roll")));
 	return true;
@@ -656,7 +657,7 @@ bool FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest::RunTest(c
 
 	const FBlueprintHelperResolvedActionContext ComponentContext =
 		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, ComponentDemand);
-	TestEqual(TEXT("component property evidence"), ComponentContext.Evidence.FindRef(TEXT("component_property_name")), FString(TEXT("DoorMesh")));
+	TestEqual(TEXT("component property evidence"), ComponentContext.Evidence.FindRef(TEXT("event_delegate.component_property_name")), FString(TEXT("DoorMesh")));
 
 	const FBlueprintHelperResolvedActionContext FieldAccessContext =
 		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, FieldAccessDemand);

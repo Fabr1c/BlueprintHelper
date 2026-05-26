@@ -119,11 +119,14 @@ static void AddDelegateEvidence(
 	FMulticastDelegateProperty* DelegateProperty)
 {
 	const UClass* OwnerClass = Cast<UClass>(DelegateProperty ? DelegateProperty->GetOwnerStruct() : nullptr);
-	Request.ContextEvidence.Add(TEXT("delegate_name"), DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("delegate_signature"), DelegateProperty->SignatureFunction ? DelegateProperty->SignatureFunction->GetPathName() : TEXT("delegate_signature_missing_for_test"));
-	Request.ContextEvidence.Add(TEXT("delegate_owner_class_path"), OwnerClass ? OwnerClass->GetPathName() : TEXT(""));
-	Request.ContextEvidence.Add(TEXT("delegate_property_name"), DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("delegate_property_path"), DelegateProperty->GetPathName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_name"), DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_signature"), DelegateProperty->SignatureFunction ? DelegateProperty->SignatureFunction->GetPathName() : TEXT("delegate_signature_missing_for_test"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_signature_function_path"), DelegateProperty->SignatureFunction ? DelegateProperty->SignatureFunction->GetPathName() : TEXT(""));
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_owner_class_path"), OwnerClass ? OwnerClass->GetPathName() : TEXT(""));
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_property_name"), DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_property_path"), DelegateProperty->GetPathName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_blueprint_assignable"), DelegateProperty->HasAnyPropertyFlags(CPF_BlueprintAssignable) ? TEXT("true") : TEXT("false"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.delegate_blueprint_callable"), DelegateProperty->HasAnyPropertyFlags(CPF_BlueprintCallable) ? TEXT("true") : TEXT("false"));
 	Request.Semantic.PropertyPath = DelegateProperty->GetName();
 }
 
@@ -132,9 +135,11 @@ static void AddComponentEvidence(
 	FObjectPropertyBase* ComponentProperty)
 {
 	const UClass* OwnerClass = Cast<UClass>(ComponentProperty ? ComponentProperty->GetOwnerStruct() : nullptr);
-	Request.ContextEvidence.Add(TEXT("component_path"), ComponentProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("component_binding_owner_class_path"), OwnerClass ? OwnerClass->GetPathName() : TEXT(""));
-	Request.ContextEvidence.Add(TEXT("component_binding_field_path"), ComponentProperty->GetPathName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.component_property_name"), ComponentProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.component_path"), ComponentProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.component_binding_owner_class_path"), OwnerClass ? OwnerClass->GetPathName() : TEXT(""));
+	Request.ContextEvidence.Add(TEXT("event_delegate.component_binding_field_path"), ComponentProperty->GetPathName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.component_class_path"), ComponentProperty->PropertyClass ? ComponentProperty->PropertyClass->GetPathName() : TEXT(""));
 }
 
 static void AddHandlerEvidence(
@@ -142,15 +147,15 @@ static void AddHandlerEvidence(
 	UClass* HandlerScopeClass,
 	const TCHAR* HandlerName)
 {
-	Request.ContextEvidence.Add(TEXT("handler_name"), HandlerName);
-	Request.ContextEvidence.Add(TEXT("handler_scope_class_path"), HandlerScopeClass ? HandlerScopeClass->GetPathName() : TEXT(""));
+	Request.ContextEvidence.Add(TEXT("event_delegate.handler_name"), HandlerName);
+	Request.ContextEvidence.Add(TEXT("event_delegate.handler_scope_class_path"), HandlerScopeClass ? HandlerScopeClass->GetPathName() : TEXT(""));
 	if (HandlerScopeClass)
 	{
 		if (UFunction* HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(HandlerName)))
 		{
-			Request.ContextEvidence.Add(TEXT("handler_function_path"), HandlerFunction->GetPathName());
-			Request.ContextEvidence.Add(TEXT("handler_source_cluster"), TEXT("BlueprintSignature"));
-			Request.ContextEvidence.Add(TEXT("signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
+			Request.ContextEvidence.Add(TEXT("event_delegate.handler_function_path"), HandlerFunction->GetPathName());
+			Request.ContextEvidence.Add(TEXT("event_delegate.handler_source_cluster"), TEXT("BlueprintSignature"));
+			Request.ContextEvidence.Add(TEXT("event_delegate.signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
 		}
 	}
 }
@@ -163,8 +168,8 @@ static bool AssertMissingEvidenceDiagnostic(
 {
 	bool bPassed = true;
 	bPassed &= Test.TestNotEqual(*FString::Printf(TEXT("%s not resolved"), *Label), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
-	bPassed &= Test.TestEqual(*FString::Printf(TEXT("%s error code"), *Label), Result.ErrorCode, FString(TEXT("missing_required_evidence")));
-	bPassed &= Test.TestTrue(*FString::Printf(TEXT("%s message names missing evidence"), *Label), Result.Message.Contains(ExpectedDetail));
+	bPassed &= Test.TestEqual(*FString::Printf(TEXT("%s error code"), *Label), Result.ErrorCode, ExpectedDetail);
+	bPassed &= Test.TestTrue(*FString::Printf(TEXT("%s message names missing evidence"), *Label), Result.Message.Contains(ExpectedDetail) || Result.ErrorCode == ExpectedDetail);
 	return bPassed;
 }
 
@@ -179,9 +184,9 @@ static void AddStatementHandlerEvidence(
 	}
 	if (UFunction* HandlerFunction = HandlerScopeClass->FindFunctionByName(FName(HandlerName)))
 	{
-		Statement.ContextEvidence.Add(TEXT("handler_function_path"), HandlerFunction->GetPathName());
-		Statement.ContextEvidence.Add(TEXT("handler_source_cluster"), TEXT("BlueprintSignature"));
-		Statement.ContextEvidence.Add(TEXT("signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
+		Statement.ContextEvidence.Add(TEXT("event_delegate.handler_function_path"), HandlerFunction->GetPathName());
+		Statement.ContextEvidence.Add(TEXT("event_delegate.handler_source_cluster"), TEXT("BlueprintSignature"));
+		Statement.ContextEvidence.Add(TEXT("event_delegate.signature_evidence_id"), FString::Printf(TEXT("signature:handler:%s"), HandlerName));
 	}
 }
 
@@ -364,7 +369,7 @@ bool FBlueprintHelperEventDelegateComponentBoundMissingHandlerTest::RunTest(cons
 		*this,
 		TEXT("component bound event missing handler"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
-		TEXT("handler_missing"));
+		TEXT("missing_handler_evidence"));
 	return true;
 }
 
@@ -389,8 +394,10 @@ bool FBlueprintHelperEventDelegateBindPositiveTest::RunTest(const FString& Param
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("bind"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
 	AddDelegateEvidence(Request, DelegateProperty);
 	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
 
@@ -435,15 +442,17 @@ bool FBlueprintHelperEventDelegateBindMissingHandlerTest::RunTest(const FString&
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("bind"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
 	AddDelegateEvidence(Request, DelegateProperty);
 
 	AssertMissingEvidenceDiagnostic(
 		*this,
 		TEXT("delegate bind missing handler"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
-		TEXT("handler_missing"));
+		TEXT("missing_handler_evidence"));
 	return true;
 }
 
@@ -468,17 +477,19 @@ bool FBlueprintHelperEventDelegateBindMissingHandlerFunctionPathTest::RunTest(co
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("bind"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
 	AddDelegateEvidence(Request, DelegateProperty);
-	Request.ContextEvidence.Add(TEXT("handler_name"), TEXT("K2_DestroyActor"));
-	Request.ContextEvidence.Add(TEXT("handler_scope_class_path"), AActor::StaticClass()->GetPathName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.handler_name"), TEXT("K2_DestroyActor"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.handler_scope_class_path"), AActor::StaticClass()->GetPathName());
 
 	AssertMissingEvidenceDiagnostic(
 		*this,
 		TEXT("delegate bind missing handler function path"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
-		TEXT("handler_function_path_missing"));
+		TEXT("missing_handler_evidence"));
 	return true;
 }
 
@@ -503,8 +514,11 @@ bool FBlueprintHelperEventDelegateAssignPositiveTest::RunTest(const FString& Par
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("assign"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("assign"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.assign_factory"), TEXT("ue_delegate_manual_assign_factory"));
 	AddDelegateEvidence(Request, DelegateProperty);
 	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
 
@@ -549,9 +563,11 @@ bool FBlueprintHelperEventDelegateUnbindPositiveTest::RunTest(const FString& Par
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("unbind"));
-	Request.ContextEvidence.Add(TEXT("unbind_mode"), TEXT("single"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("unbind"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.unbind_mode"), TEXT("single"));
 	AddDelegateEvidence(Request, DelegateProperty);
 	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
 
@@ -596,16 +612,18 @@ bool FBlueprintHelperEventDelegateUnbindMissingHandlerTest::RunTest(const FStrin
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("unbind"));
-	Request.ContextEvidence.Add(TEXT("unbind_mode"), TEXT("single"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("unbind"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.unbind_mode"), TEXT("single"));
 	AddDelegateEvidence(Request, DelegateProperty);
 
 	AssertMissingEvidenceDiagnostic(
 		*this,
 		TEXT("delegate unbind missing handler"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
-		TEXT("handler_missing"));
+		TEXT("handler_required_for_unbind"));
 	return true;
 }
 
@@ -630,8 +648,10 @@ bool FBlueprintHelperEventDelegateCallPositiveTest::RunTest(const FString& Param
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("call"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("call"));
 	AddDelegateEvidence(Request, DelegateProperty);
 
 	const FBlueprintHelperActionResolutionResult Result =
@@ -675,9 +695,11 @@ bool FBlueprintHelperEventDelegateClearPositiveTest::RunTest(const FString& Para
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("clear"));
-	Request.ContextEvidence.Add(TEXT("unbind_mode"), TEXT("all"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("clear"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.unbind_mode"), TEXT("all"));
 	AddDelegateEvidence(Request, DelegateProperty);
 
 	const FBlueprintHelperActionResolutionResult Result =
@@ -721,9 +743,11 @@ bool FBlueprintHelperEventDelegateClearHandlerForbiddenTest::RunTest(const FStri
 
 	FBlueprintHelperActionResolutionRequest Request =
 		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
-	Request.ContextEvidence.Add(TEXT("binding_object_path"), TEXT("CollisionComponent"));
-	Request.ContextEvidence.Add(TEXT("delegate_operation"), TEXT("clear"));
-	Request.ContextEvidence.Add(TEXT("unbind_mode"), TEXT("all"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("clear"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.unbind_mode"), TEXT("all"));
 	AddDelegateEvidence(Request, DelegateProperty);
 	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
 
@@ -731,7 +755,189 @@ bool FBlueprintHelperEventDelegateClearHandlerForbiddenTest::RunTest(const FStri
 		*this,
 		TEXT("delegate clear forbids handler"),
 		FBlueprintHelperActionResolutionCore::Resolve(Request),
-		TEXT("delegate_clear_handler_forbidden"));
+		TEXT("handler_not_allowed_for_clear"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateMissingBindingObjectTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Delegate.MissingBindingObject",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateMissingBindingObjectTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* Graph = GetEventDelegateActionTestGraph(Blueprint);
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	if (!Blueprint || !Graph || !DelegateProperty)
+	{
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
+	AddDelegateEvidence(Request, DelegateProperty);
+	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
+
+	return AssertMissingEvidenceDiagnostic(
+		*this,
+		TEXT("delegate bind missing binding object"),
+		FBlueprintHelperActionResolutionCore::Resolve(Request),
+		TEXT("missing_binding_object_evidence"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateMissingSignatureTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Delegate.MissingSignature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateMissingSignatureTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* Graph = GetEventDelegateActionTestGraph(Blueprint);
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	if (!Blueprint || !Graph || !DelegateProperty)
+	{
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
+	AddDelegateEvidence(Request, DelegateProperty);
+	Request.ContextEvidence.Remove(TEXT("event_delegate.delegate_signature_function_path"));
+	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
+
+	return AssertMissingEvidenceDiagnostic(
+		*this,
+		TEXT("delegate bind missing signature"),
+		FBlueprintHelperActionResolutionCore::Resolve(Request),
+		TEXT("missing_signature_evidence"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateIncompatibleGraphTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Policy.IncompatibleGraph",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateIncompatibleGraphTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* InvalidGraph = NewObject<UEdGraph>(GetTransientPackage());
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	if (!Blueprint || !InvalidGraph || !DelegateProperty)
+	{
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeEventDelegateActionRequest(Blueprint, InvalidGraph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("bind"));
+	AddDelegateEvidence(Request, DelegateProperty);
+	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("incompatible graph error"), Result.ErrorCode, FString(TEXT("incompatible_graph_type")));
+	TestNotEqual(TEXT("incompatible graph not resolved"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateDuplicatePolicyTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Policy.DuplicatePolicies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateDuplicatePolicyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* Graph = GetEventDelegateActionTestGraph(Blueprint);
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	FObjectPropertyBase* ComponentProperty =
+		FindRequiredObjectProperty(*this, ATriggerBase::StaticClass(), TEXT("CollisionComponent"));
+	if (!Blueprint || !Graph || !DelegateProperty || !ComponentProperty)
+	{
+		return false;
+	}
+
+	auto MakeRequest = [&]()
+	{
+		FBlueprintHelperActionResolutionRequest Request =
+			MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::ComponentBoundEvent, DelegateProperty->GetName());
+		AddDelegateEvidence(Request, DelegateProperty);
+		AddComponentEvidence(Request, ComponentProperty);
+		AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
+		return Request;
+	};
+
+	FBlueprintHelperActionResolutionRequest DuplicateFail = MakeRequest();
+	DuplicateFail.ContextEvidence.Add(TEXT("event_delegate.duplicate_policy"), TEXT("fail"));
+	DuplicateFail.ContextEvidence.Add(TEXT("event_delegate.existing_binding"), TEXT("true"));
+	TestEqual(TEXT("duplicate fail code"), FBlueprintHelperActionResolutionCore::Resolve(DuplicateFail).ErrorCode, FString(TEXT("delegate_duplicate_binding")));
+
+	FBlueprintHelperActionResolutionRequest DuplicateReturnExisting = MakeRequest();
+	DuplicateReturnExisting.ContextEvidence.Add(TEXT("event_delegate.duplicate_policy"), TEXT("return_existing"));
+	DuplicateReturnExisting.ContextEvidence.Add(TEXT("event_delegate.existing_binding_evidence_id"), TEXT("existing:overlap"));
+	const FBlueprintHelperActionResolutionResult ReturnExistingResult =
+		FBlueprintHelperActionResolutionCore::Resolve(DuplicateReturnExisting);
+	TestEqual(TEXT("return existing status"), ReturnExistingResult.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestEqual(TEXT("return existing stable id"), ReturnExistingResult.SelectedStableId, FString(TEXT("existing:overlap")));
+	if (ReturnExistingResult.CandidateActions.Num() == 1)
+	{
+		TestEqual(TEXT("return existing reason"), ReturnExistingResult.CandidateActions[0].MatchReason, FString(TEXT("existing_component_bound_event_binding")));
+	}
+
+	for (const TCHAR* Policy : { TEXT("replace"), TEXT("merge") })
+	{
+		FBlueprintHelperActionResolutionRequest Blocked = MakeRequest();
+		Blocked.ContextEvidence.Add(TEXT("event_delegate.duplicate_policy"), Policy);
+		TestEqual(
+			FString::Printf(TEXT("duplicate %s blocked"), Policy),
+			FBlueprintHelperActionResolutionCore::Resolve(Blocked).ErrorCode,
+			FString(TEXT("duplicate_mutation_policy_blocked")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEventDelegateAssignSideEffectBlockedTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.EventDelegate.Policy.AssignSideEffectBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEventDelegateAssignSideEffectBlockedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeEventDelegateActionTestBlueprint();
+	UEdGraph* Graph = GetEventDelegateActionTestGraph(Blueprint);
+	FMulticastDelegateProperty* DelegateProperty =
+		FindRequiredDelegateProperty(*this, UPrimitiveComponent::StaticClass(), TEXT("OnComponentBeginOverlap"));
+	if (!Blueprint || !Graph || !DelegateProperty)
+	{
+		return false;
+	}
+
+	FBlueprintHelperActionResolutionRequest Request =
+		MakeEventDelegateActionRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Delegate, DelegateProperty->GetName());
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_kind"), TEXT("component_ref"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_evidence_id"), TEXT("component_ref:CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.binding_object_path"), TEXT("CollisionComponent"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.operation"), TEXT("assign"));
+	Request.ContextEvidence.Add(TEXT("event_delegate.assign_factory"), TEXT("ue_assign_spawner"));
+	AddDelegateEvidence(Request, DelegateProperty);
+	AddHandlerEvidence(Request, AActor::StaticClass(), TEXT("K2_DestroyActor"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("assign side effect blocked"), Result.ErrorCode, FString(TEXT("assign_side_effect_blocked")));
+	TestNotEqual(TEXT("assign side effect not resolved"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
 	return true;
 }
 
@@ -850,9 +1056,8 @@ bool FBlueprintHelperEventDelegateAssignFragmentBuildTest::RunTest(const FString
 		FindSingleFragmentNode<UK2Node_AssignDelegate>(*this, Fragment, TEXT("assign node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("assign binding object getter"));
-	TestEqual(TEXT("assign fragment node count"), Fragment.Nodes.Num(), 3);
-	TestEqual(TEXT("assign fragment internal link count"), Fragment.InternalLinks.Num(), 2);
+	TestEqual(TEXT("assign fragment node count"), Fragment.Nodes.Num(), 2);
+	TestEqual(TEXT("assign fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestTrue(TEXT("assign fragment review target includes statement id"), Fragment.ReviewTargets.Contains(Statement.StatementId));
 	TestEqual(TEXT("assign ownership semantic kind"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("delegate")));
 	TestEqual(TEXT("assign ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("assign")));
@@ -930,9 +1135,8 @@ bool FBlueprintHelperEventDelegateBindFragmentBuildTest::RunTest(const FString& 
 		FindSingleFragmentNode<UK2Node_AddDelegate>(*this, Fragment, TEXT("bind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("bind binding object getter"));
-	TestEqual(TEXT("bind fragment node count"), Fragment.Nodes.Num(), 3);
-	TestEqual(TEXT("bind fragment internal link count"), Fragment.InternalLinks.Num(), 2);
+	TestEqual(TEXT("bind fragment node count"), Fragment.Nodes.Num(), 2);
+	TestEqual(TEXT("bind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("bind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("bind")));
 	if (CreateDelegateNode)
 	{
@@ -1003,9 +1207,8 @@ bool FBlueprintHelperEventDelegateUnbindFragmentBuildTest::RunTest(const FString
 		FindSingleFragmentNode<UK2Node_RemoveDelegate>(*this, Fragment, TEXT("unbind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
 		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
-	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("unbind binding object getter"));
-	TestEqual(TEXT("unbind fragment node count"), Fragment.Nodes.Num(), 3);
-	TestEqual(TEXT("unbind fragment internal link count"), Fragment.InternalLinks.Num(), 2);
+	TestEqual(TEXT("unbind fragment node count"), Fragment.Nodes.Num(), 2);
+	TestEqual(TEXT("unbind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("unbind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("unbind")));
 	if (CreateDelegateNode)
 	{
@@ -1036,11 +1239,16 @@ bool FBlueprintHelperEventDelegateCallFragmentBuildTest::RunTest(const FString& 
 	TestNotNull(TEXT("blueprint"), Blueprint);
 	TestNotNull(TEXT("graph"), Graph);
 
-	const FBlueprintHelperGraphStatementIR Statement = MakeDelegateStatement(
+	FBlueprintHelperGraphStatementIR Statement = MakeDelegateStatement(
 		TEXT("stmt_delegate_call_fragment"),
 		TEXT("OnComponentBeginOverlap"),
 		TEXT("call"),
 		TEXT("CollisionComponent"));
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> SweepArg = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	SweepArg->Kind = EBlueprintHelperGraphExpressionKind::Literal;
+	SweepArg->LiteralValue = TEXT("true");
+	SweepArg->Type = TEXT("bool");
+	Statement.Args.Add(TEXT("bFromSweep"), SweepArg);
 
 	FBlueprintHelperActionContextScope ActionContextScope;
 	FString ScopeError;
@@ -1071,10 +1279,14 @@ bool FBlueprintHelperEventDelegateCallFragmentBuildTest::RunTest(const FString& 
 	}
 
 	FindSingleFragmentNode<UK2Node_CallDelegate>(*this, Fragment, TEXT("call node"));
-	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("call binding object getter"));
-	TestEqual(TEXT("call fragment node count"), Fragment.Nodes.Num(), 2);
-	TestEqual(TEXT("call fragment internal link count"), Fragment.InternalLinks.Num(), 1);
+	TestEqual(TEXT("call fragment node count"), Fragment.Nodes.Num(), 1);
+	TestEqual(TEXT("call fragment internal link count"), Fragment.InternalLinks.Num(), 0);
 	TestEqual(TEXT("call ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("call")));
+	TestTrue(TEXT("call arg pin is recorded"), Fragment.PinBindings.Contains(TEXT("call_arg.bFromSweep")));
+	if (const FBlueprintHelperFragmentPinRef* CallArgPin = Fragment.PinBindings.Find(TEXT("call_arg.bFromSweep")))
+	{
+		TestEqual(TEXT("call arg pin default is applied"), CallArgPin->Pin ? CallArgPin->Pin->DefaultValue : FString(), FString(TEXT("true")));
+	}
 	for (UEdGraphNode* Node : Fragment.Nodes)
 	{
 		TestFalse(TEXT("call fragment does not create delegate node"), Node->IsA<UK2Node_CreateDelegate>());
@@ -1131,9 +1343,8 @@ bool FBlueprintHelperEventDelegateClearFragmentBuildTest::RunTest(const FString&
 	}
 
 	FindSingleFragmentNode<UK2Node_ClearDelegate>(*this, Fragment, TEXT("clear node"));
-	FindSingleFragmentNode<UK2Node_VariableGet>(*this, Fragment, TEXT("clear binding object getter"));
-	TestEqual(TEXT("clear fragment node count"), Fragment.Nodes.Num(), 2);
-	TestEqual(TEXT("clear fragment internal link count"), Fragment.InternalLinks.Num(), 1);
+	TestEqual(TEXT("clear fragment node count"), Fragment.Nodes.Num(), 1);
+	TestEqual(TEXT("clear fragment internal link count"), Fragment.InternalLinks.Num(), 0);
 	TestEqual(TEXT("clear ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("clear")));
 	for (UEdGraphNode* Node : Fragment.Nodes)
 	{

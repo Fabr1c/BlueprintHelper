@@ -9,7 +9,6 @@
 #include "K2Node.h"
 #include "K2Node_AssignDelegate.h"
 #include "K2Node_BaseMCDelegate.h"
-#include "K2Node_VariableGet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
@@ -17,6 +16,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperDelegateLinkFragmentUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateBindingObjectResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "UObject/UnrealType.h"
 
@@ -226,14 +226,35 @@ static UK2Node_AssignDelegate* SpawnAssignDelegateNodeManually(
 	return AssignNode;
 }
 
-static bool ConnectBindingObjectToPrimaryTarget(
+static bool ConnectProjectedBindingObjectToPrimaryTarget(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
 	UK2Node* PrimaryNode,
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError)
 {
-	if (!TargetGraph || !TargetGraph->GetSchema() || !Evidence.ComponentBindingProperty || !PrimaryNode)
+	if (!TargetGraph || !TargetGraph->GetSchema() || !PrimaryNode)
+	{
+		return true;
+	}
+
+	const FBlueprintHelperEventDelegateBindingObjectResolution BindingResolution =
+		FBlueprintHelperEventDelegateBindingObjectResolver::Resolve(Evidence, OutFragment);
+	if (!BindingResolution.bResolved)
+	{
+		OutError = FString::Printf(TEXT("%s: event_delegate binding object could not be resolved."), *BindingResolution.ErrorCode);
+		return false;
+	}
+
+	if (!BindingResolution.ObjectEvidenceId.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(TEXT("binding_object_evidence_id"), BindingResolution.ObjectEvidenceId);
+	}
+	if (!Evidence.BindingObjectKind.IsEmpty())
+	{
+		OutFragment.OwnershipTags.Add(TEXT("binding_object_kind"), Evidence.BindingObjectKind);
+	}
+	if (!BindingResolution.ObjectPin)
 	{
 		return true;
 	}
@@ -248,45 +269,71 @@ static bool ConnectBindingObjectToPrimaryTarget(
 		return true;
 	}
 
-	UK2Node_VariableGet* ComponentGetNode = NewObject<UK2Node_VariableGet>(TargetGraph);
-	if (!ComponentGetNode)
+	if (!TargetGraph->GetSchema()->TryCreateConnection(BindingResolution.ObjectPin, TargetPin))
 	{
-		OutError = TEXT("delegate target binding failed: could not allocate component getter.");
+		OutError = TEXT("delegate target binding failed: schema rejected projected binding-object target connection.");
 		return false;
 	}
 
-	TargetGraph->Modify();
-	TargetGraph->AddNode(ComponentGetNode, /*bFromUI=*/true, /*bSelectNewNode=*/false);
-	ComponentGetNode->CreateNewGuid();
-	ComponentGetNode->SetFlags(RF_Transactional);
-	ComponentGetNode->VariableReference.SetSelfMember(Evidence.ComponentBindingProperty->GetFName());
-	ComponentGetNode->NodePosX = PrimaryNode->NodePosX - 220;
-	ComponentGetNode->NodePosY = PrimaryNode->NodePosY - 120;
-	ComponentGetNode->PostPlacedNewNode();
-	ComponentGetNode->AllocateDefaultPins();
-
-	UEdGraphPin* ComponentOutputPin = ComponentGetNode->GetValuePin();
-	if (!ComponentOutputPin)
-	{
-		OutError = TEXT("delegate target binding failed: component getter output pin is missing.");
-		return false;
-	}
-	if (!TargetGraph->GetSchema()->TryCreateConnection(ComponentOutputPin, TargetPin))
-	{
-		OutError = TEXT("delegate target binding failed: schema rejected component target connection.");
-		return false;
-	}
-
-	OutFragment.Nodes.Add(ComponentGetNode);
-	AddPinRef(OutFragment, TEXT("binding_object"), Evidence.ComponentPath, ComponentOutputPin);
+	AddPinRef(OutFragment, TEXT("binding_object"), Evidence.BindingObjectEvidenceId, BindingResolution.ObjectPin);
 	AddPinRef(OutFragment, TEXT("delegate"), TEXT("target"), TargetPin);
 
 	FBlueprintHelperFragmentLink Link;
-	Link.From = FBlueprintHelperFragmentPinRef{ TEXT("binding_object"), ComponentOutputPin->PinName.ToString(), ComponentOutputPin->PinType.PinCategory.ToString(), ComponentOutputPin };
+	Link.From = FBlueprintHelperFragmentPinRef{ TEXT("binding_object"), BindingResolution.ObjectPin->PinName.ToString(), BindingResolution.ObjectPin->PinType.PinCategory.ToString(), BindingResolution.ObjectPin };
 	Link.To = FBlueprintHelperFragmentPinRef{ TEXT("delegate"), TargetPin->PinName.ToString(), TargetPin->PinType.PinCategory.ToString(), TargetPin };
 	OutFragment.InternalLinks.Add(Link);
 	OutFragment.PinBindings.Add(TEXT("binding_object.value"), Link.From);
 	OutFragment.PinBindings.Add(TEXT("delegate.target"), Link.To);
+	return true;
+}
+
+static FString DescribePinCategory(const UEdGraphPin* Pin)
+{
+	return Pin ? Pin->PinType.PinCategory.ToString() : FString();
+}
+
+static bool ValidateAndRecordDelegateCallArgs(
+	const FBlueprintHelperActionResolutionRequest& Request,
+	const FBlueprintHelperGraphStatementIR& Statement,
+	UK2Node* PrimaryNode,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	if (!PrimaryNode || Statement.Args.Num() == 0)
+	{
+		return true;
+	}
+
+	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Statement.Args)
+	{
+		const FString ArgName = ArgPair.Key.TrimStartAndEnd();
+		if (ArgName.IsEmpty())
+		{
+			continue;
+		}
+
+		UEdGraphPin* ArgPin = FBlueprintGraphWriteFacade::FindPinByAlias(PrimaryNode, ArgName);
+		if (!ArgPin)
+		{
+			OutError = FString::Printf(TEXT("missing_delegate_call_arg_pin:%s"), *ArgName);
+			return false;
+		}
+
+		const FString ExpectedPinType =
+			Request.ContextEvidence.FindRef(FString::Printf(TEXT("event_delegate.call_arg.%s.pin_type"), *ArgName)).TrimStartAndEnd();
+		if (!ExpectedPinType.IsEmpty()
+			&& !ExpectedPinType.Equals(DescribePinCategory(ArgPin), ESearchCase::IgnoreCase))
+		{
+			OutError = FString::Printf(
+				TEXT("delegate_call_arg_pin_type_mismatch:%s expected=%s actual=%s"),
+				*ArgName,
+				*ExpectedPinType,
+				*DescribePinCategory(ArgPin));
+			return false;
+		}
+
+		AddPinRef(OutFragment, TEXT("call_arg"), FString::Printf(TEXT("call_arg.%s"), *ArgName), ArgPin);
+	}
 	return true;
 }
 
@@ -392,7 +439,13 @@ bool FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 		OutFragment);
 
 	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
-		&& !ConnectBindingObjectToPrimaryTarget(TargetGraph, Evidence, PrimaryNode, OutFragment, OutError))
+		&& !ConnectProjectedBindingObjectToPrimaryTarget(TargetGraph, Evidence, PrimaryNode, OutFragment, OutError))
+	{
+		return false;
+	}
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Delegate
+		&& Evidence.DelegateOperation.Equals(TEXT("call"), ESearchCase::IgnoreCase)
+		&& !ValidateAndRecordDelegateCallArgs(ActionRequest, Statement, PrimaryNode, OutFragment, OutError))
 	{
 		return false;
 	}
@@ -410,6 +463,9 @@ bool FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 		FBlueprintHelperDelegateLinkRequest LinkRequest;
 		LinkRequest.FragmentId = StatementId;
 		LinkRequest.HandlerName = Evidence.HandlerName;
+		LinkRequest.HandlerFunctionPath = Evidence.HandlerFunctionPath;
+		LinkRequest.HandlerScopeClassPath = Evidence.HandlerScopeClassPath;
+		LinkRequest.SignatureEvidenceId = Evidence.SignatureEvidenceId;
 		LinkRequest.CreateDelegateLocation = FVector2D(-220.0, 120.0);
 		if (!FBlueprintHelperDelegateLinkFragmentUtils::AttachCreateDelegateToPrimary(
 			TargetGraph,

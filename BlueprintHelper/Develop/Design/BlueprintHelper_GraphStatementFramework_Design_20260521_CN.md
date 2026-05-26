@@ -1,4 +1,4 @@
-﻿# BlueprintHelper GraphStatement Framework 总设计文档
+# BlueprintHelper GraphStatement Framework 总设计文档
 
 ## ActionResolution 一级分发规则（2026-05-21 更新）
 
@@ -570,6 +570,21 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - `split_pin` / `recombine_pin` remain excluded from GraphWrite statement operations. They may be future PinOperation/readback support facts, but the current SemanticIR rejects them as unsupported statement kinds.
 
 Verification: UE 5.6 build succeeded; focused suites passed for `BlueprintHelper.GraphWrite.GenericOps`, `BlueprintHelper.GraphWrite.GenericOps.StructSelect`, `BlueprintHelper.GraphWrite.ContainerAction`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Convert`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule`, `BlueprintHelper.GraphWrite.ActionResolution.AssetAction`, and `BlueprintHelper.GraphWrite.GenericSchedule`; AgentFace task-core build and `test:node` passed.
+
+## 2026-05-26 EventDelegate use-site closure
+
+- EventDelegate remains a use-site-only GraphWrite capability. `component_bound_event` and `delegate + delegate_operation=bind|assign|unbind|call|clear` route to `EventDelegateActionCluster`; declaration, custom event creation, handler creation, and signature mutation remain owned by `BlueprintSignature`.
+- `delegate.assign` keeps the `ue_delegate_manual_assign_factory` boundary. UE's Assign Delegate spawner side-effect path is not used because it can create a Custom Event outside Signature ownership.
+- EventDelegate-specific data is projected through `ContextEvidence` under `event_delegate.*` and read by `FBlueprintHelperEventDelegateUseSiteEvidenceReader`. Core ActionContext request structs do not gain assign-auto policy or attached-custom-event fields.
+- `FBlueprintHelperEventDelegatePolicy` centralizes graph compatibility, duplicate policy, handler/clear/unbind rules, delegate flags, and assign side-effect blocking before any spawner/factory selection.
+- Binding object resolution is projected-only: `self`, `component_ref`, `field_get_ref`, `linked_pin_ref`, and same-statement `function_return_ref` are handled by `FBlueprintHelperEventDelegateBindingObjectResolver`; the FragmentBuilder must not synthesize `UK2Node_VariableGet`.
+- Cross-statement temporary `function_return_ref` is rejected with `binding_object_cross_statement_unsupported`.
+- `delegate.call` validates projected arg pin types when provided and readback records call arg pin/default/link facts.
+- Readback consumes actual fragment nodes and UE dynamic binding data, recording node class, node guid, delegate property/signature facts, binding object facts, handler facts, call arg facts, and statement/node diagnostic correlation.
+- Review remains graph/block scoped. Delegate details are DebugBundle/readback facts rather than delegate-level Review atomic targets.
+
+Verification (2026-05-26): AgentFace task-core build passed; `test:node` passed 195/195; UE 5.6 `TemplateEditor` build succeeded; focused automation passed for `BlueprintHelper.GraphWrite.EventDelegate` (9/9, including 3 EventDelegate.ActionContext tests), `BlueprintHelper.GraphWrite.ActionResolution.EventDelegate` (16/16), `BlueprintHelper.GraphWrite.GraphStatement.EventDelegate` (6/6), `BlueprintHelper.GraphWrite.ActionContext.EventDelegate` (2/2 legacy ActionContext focused suite), and `BlueprintHelper.GraphWrite.ToolResult.EventDelegate` (1/1).
+
 ## 2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync
 
 - `context_evidence` is now treated as projected mainline data that must survive:

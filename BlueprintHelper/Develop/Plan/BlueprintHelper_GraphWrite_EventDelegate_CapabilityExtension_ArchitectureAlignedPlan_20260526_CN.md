@@ -1,6 +1,6 @@
 # BlueprintHelper GraphWrite EventDelegate Capability Extension Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 在未实施原计划的前提下，替代原 `BlueprintHelper_EventDelegate_CapabilityExtension_ImplementationPlan_20260526.md`，补齐 GraphWrite / EventDelegate use-site 能力：`component_bound_event`、`delegate.bind`、`delegate.assign`、`delegate.unbind`、`delegate.call`、`delegate.clear/unbind_all`。
 
@@ -131,7 +131,7 @@ automatic upstream function/field/handler creation
 - Modify: `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.test.ts`
 - Modify: `AgentFaceService/task-core/src/tests/task/task-protocol-graphwrite-contract.test.ts`
 
-- [ ] **Step 1: 写失败测试：EventDelegate operations runtime owner 固定**
+- [x] **Step 1: 写失败测试：EventDelegate operations runtime owner 固定**
 
 Add assertions:
 
@@ -147,7 +147,7 @@ for (const op of ['component_bound_event', 'delegate.bind', 'delegate.assign', '
 }
 ```
 
-- [ ] **Step 2: 写失败测试：禁止 assign auto-attached policy**
+- [x] **Step 2: 写失败测试：禁止 assign auto-attached policy**
 
 ```ts
 const serialized = JSON.stringify(GRAPHWRITE_CAPABILITY_CONTRACT);
@@ -155,7 +155,7 @@ assert.equal(serialized.includes('assign_auto_attached_event_policy'), false);
 assert.equal(serialized.includes('attached_custom_event'), false);
 ```
 
-- [ ] **Step 3: 实现 contract**
+- [x] **Step 3: 实现 contract**
 
 Required evidence keys:
 
@@ -181,14 +181,14 @@ delegate.clear:
   delegate_property_name, delegate_property_path
 ```
 
-- [ ] **Step 4: Run TypeScript tests**
+- [x] **Step 4: Run TypeScript tests**
 
 ```bash
 cd AgentFaceService/task-core
 npm test -- graphwrite-capability-contract
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts \
@@ -204,7 +204,7 @@ git commit -m "feat(graphwrite): publish event delegate use-site contract"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperEventDelegateUseSiteEvidenceTests.cpp`
 
-- [ ] **Step 1: 写 missing evidence tests**
+- [x] **Step 1: 写 missing evidence tests**
 
 Required deterministic errors:
 
@@ -218,7 +218,7 @@ handler_not_allowed_for_clear
 handler_required_for_unbind
 ```
 
-- [ ] **Step 2: Implement reader rules**
+- [x] **Step 2: Implement reader rules**
 
 Reader reads only:
 
@@ -239,17 +239,17 @@ mutate signature
 read Slate/UI selected object
 ```
 
-- [ ] **Step 3: Add core field guard**
+- [x] **Step 3: Add core field guard**
 
 Fail if new fields such as `AssignAutoAttachedEventPolicy` or `AttachedCustomEventName` appear in core action context/request structs.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.EventDelegate.Evidence; Quit"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h \
@@ -266,7 +266,7 @@ git commit -m "feat(graphwrite): harden event delegate evidence reader"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperEventDelegateActionContextTests.cpp`
 
-- [ ] **Step 1: 写 projection tests**
+- [x] **Step 1: 写 projection tests**
 
 Cases:
 
@@ -278,7 +278,7 @@ same-statement function_return_ref is accepted only when producer node is in the
 cross-statement temporary symbol returns binding_object_cross_statement_unsupported
 ```
 
-- [ ] **Step 2: Implement evidence map projection**
+- [x] **Step 2: Implement evidence map projection**
 
 Canonical keys:
 
@@ -298,17 +298,17 @@ event_delegate.unbind_mode
 event_delegate.call_arg.<name>.pin_type
 ```
 
-- [ ] **Step 3: Include evidence in hash**
+- [x] **Step 3: Include evidence in hash**
 
 Sort evidence keys before hash so preview/execute context reuse is deterministic.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.EventDelegate.ActionContext; Quit"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.cpp \
@@ -326,7 +326,7 @@ git commit -m "feat(graphwrite): project event delegate use-site evidence"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp`
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperEventDelegateActionClusterTests.cpp`
 
-- [ ] **Step 1: 写 resolver tests**
+- [x] **Step 1: 写 resolver tests**
 
 Required cases:
 
@@ -341,7 +341,7 @@ delegate.clear with handler evidence returns handler_not_allowed_for_clear
 replace/merge duplicate policy returns duplicate_mutation_policy_blocked
 ```
 
-- [ ] **Step 2: Implement `FBlueprintHelperEventDelegatePolicy`**
+- [x] **Step 2: Implement `FBlueprintHelperEventDelegatePolicy`**
 
 Policy decisions:
 
@@ -353,17 +353,17 @@ Assign policy: manual factory only; UE side-effect assign spawner blocked.
 Handler policy: required for bind/assign/unbind; forbidden for clear; call validates args only.
 ```
 
-- [ ] **Step 3: Apply gates before spawner/factory selection**
+- [x] **Step 3: Apply gates before spawner/factory selection**
 
 No node/factory invocation may happen before policy result is `Allowed`.
 
-- [ ] **Step 4: Run resolver tests**
+- [x] **Step 4: Run resolver tests**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.EventDelegate.ActionCluster; Quit"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegatePolicy.h \
@@ -382,7 +382,7 @@ git commit -m "feat(graphwrite): enforce event delegate use-site policy gates"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperDelegateLinkFragmentUtils.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperEventDelegateFragmentBuilderTests.cpp`
 
-- [ ] **Step 1: 写 builder boundary tests**
+- [x] **Step 1: 写 builder boundary tests**
 
 Assertions:
 
@@ -395,7 +395,7 @@ builder never creates UK2Node_VariableGet for missing binding object
 CreateDelegate link uses existing handler_function_path and signature_evidence_id
 ```
 
-- [ ] **Step 2: Implement binding object resolver**
+- [x] **Step 2: Implement binding object resolver**
 
 Return a local DTO:
 
@@ -412,7 +412,7 @@ struct FBlueprintHelperEventDelegateBindingObjectResolution
 
 It must not create nodes. It may only bind to existing pins/nodes already created by the current fragment or explicitly projected by ActionContext.
 
-- [ ] **Step 3: Apply call/default/link rules**
+- [x] **Step 3: Apply call/default/link rules**
 
 `delegate.call` must validate each arg against the delegate signature pin, then read back:
 
@@ -423,13 +423,13 @@ literal default or linked source pin
 missing required arg diagnostics
 ```
 
-- [ ] **Step 4: Run builder tests**
+- [x] **Step 4: Run builder tests**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.EventDelegate.FragmentBuilder; Quit"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateBindingObjectResolver.h \
@@ -449,7 +449,7 @@ git commit -m "feat(graphwrite): build event delegate use sites from projected t
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGraphWriteToolResultBaseTests.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperEventDelegateDebugBundleTests.cpp`
 
-- [ ] **Step 1: 写 readback tests**
+- [x] **Step 1: 写 readback tests**
 
 Required facts:
 
@@ -466,21 +466,21 @@ call arg pin/default/link facts for delegate.call
 statement id -> node guid -> compile diagnostic correlation
 ```
 
-- [ ] **Step 2: Implement readback collector**
+- [x] **Step 2: Implement readback collector**
 
 Collector must consume actual spawned nodes and UE dynamic binding data, not request intent only.
 
-- [ ] **Step 3: Keep Review graph/block scoped**
+- [x] **Step 3: Keep Review graph/block scoped**
 
 Do not add delegate operation as a Review atomic target. Delegate details belong in DebugBundle/readback facts.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.EventDelegate.DebugBundle; Quit"
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Readback/BlueprintHelperEventDelegateReadback.h \
@@ -498,7 +498,7 @@ git commit -m "feat(graphwrite): add event delegate readback facts"
 - Modify: `AgentFaceService/docs/TaskSpec_UE_Editor_Capability_Matrix_20260521_CN.md`
 - Modify: `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
 
-- [ ] **Step 1: Add E2E cases**
+- [x] **Step 1: Add E2E cases**
 
 Minimum matrix:
 
@@ -507,7 +507,7 @@ positive: component_bound_event, bind, assign, unbind, call, clear
 negative: missing binding object, missing handler, missing signature, incompatible graph, duplicate fail, replace/merge blocked, assign side-effect blocked
 ```
 
-- [ ] **Step 2: Run final gate**
+- [x] **Step 2: Run final gate**
 
 ```powershell
 npm.cmd --prefix AgentFaceService/task-core run build
@@ -525,7 +525,7 @@ delegate.assign uses manual factory evidence
 Review remains graph/block scoped
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_EventDelegate_CapabilityExtension_ArchitectureAlignedPlan_20260526_CN.md \
@@ -538,15 +538,15 @@ git commit -m "docs(graphwrite): document event delegate use-site extension"
 
 ## 5. Final Acceptance Checklist
 
-- [ ] `delegate.bind/assign/unbind/call/clear` are second-stage operations, not new first-stage runtime clusters.
-- [ ] `delegate.assign` does not invoke UE Assign spawner side effect path.
-- [ ] `ue_delegate_manual_assign_factory` remains the supported assign path.
-- [ ] No handler/signature/event declaration is created or modified by GraphWrite/EventDelegate.
-- [ ] Binding object evidence is projected; FragmentBuilder does not synthesize `UK2Node_VariableGet`.
-- [ ] `delegate.unbind` missing handler fails and never downgrades to `clear`.
-- [ ] Duplicate `replace/merge` is deterministically blocked.
-- [ ] Review stays graph/block scoped; delegate details are DebugBundle/readback facts.
-- [ ] Missing evidence failures are stable and Agent-facing.
+- [x] `delegate.bind/assign/unbind/call/clear` are second-stage operations, not new first-stage runtime clusters.
+- [x] `delegate.assign` does not invoke UE Assign spawner side effect path.
+- [x] `ue_delegate_manual_assign_factory` remains the supported assign path.
+- [x] No handler/signature/event declaration is created or modified by GraphWrite/EventDelegate.
+- [x] Binding object evidence is projected; FragmentBuilder does not synthesize `UK2Node_VariableGet`.
+- [x] `delegate.unbind` missing handler fails and never downgrades to `clear`.
+- [x] Duplicate `replace/merge` is deterministically blocked.
+- [x] Review stays graph/block scoped; delegate details are DebugBundle/readback facts.
+- [x] Missing evidence failures are stable and Agent-facing.
 
 ---
 
@@ -558,3 +558,55 @@ git commit -m "docs(graphwrite): document event delegate use-site extension"
 4. **保持 FragmentBuilder 单一职责。** Builder 只使用 projected binding object/handler/signature，不自行创建 getter 或选择 handler，从而减少 resolver、builder、signature system 之间的横向耦合。
 5. **提高失败可解释性。** `handler_required_for_unbind`、`duplicate_mutation_policy_blocked`、`assign_side_effect_blocked` 等错误码使 Agent 能修正 TaskSpec，而不是获得不透明 UE compile failure。
 6. **保持 Review 粒度稳定。** delegate operation 是图写入内部事实，不需要把 Review atomic target 从 graph/block 扩张到 delegate 级，避免 Review 模型被能力细节拖散。
+
+## 7. Completion Evidence (2026-05-26)
+
+Status: COMPLETE under the repository `AGENTS.md` rule that forbids `git add`, `git commit`, and `git push` after task completion. The plan's commit steps are treated as handled by leaving the worktree unstaged and reporting manual commit commands in the final task output.
+
+Implemented scope:
+
+- Published EventDelegate as a use-site logical operation group owned by `EventDelegateActionCluster`.
+- Preserved `delegate_operation` as second-stage semantics for `bind`, `assign`, `unbind`, `call`, and `clear`.
+- Kept `delegate.assign` on `ue_delegate_manual_assign_factory`; UE Assign spawner side-effect creation is policy-blocked.
+- Added focused EventDelegate evidence reader diagnostics and core-field guards for forbidden side-effect fields.
+- Projected EventDelegate evidence through ActionContext under `event_delegate.*`, including binding object anchors, duplicate policy, call arg pin type, and deterministic cross-statement temporary rejection.
+- Added `FBlueprintHelperEventDelegatePolicy` for graph, duplicate, handler, clear/unbind, and assign-side-effect gates.
+- Added projected-only binding object resolver for `self`, `component_ref`, `field_get_ref`, `linked_pin_ref`, and same-statement `function_return_ref`; cross-statement temporary function-return binding is rejected.
+- Updated FragmentBuilder so it does not synthesize `UK2Node_VariableGet`, records projected binding object pins, and validates/records `delegate.call` arg pins/defaults.
+- Added EventDelegate readback facts for actual fragment nodes, node guid, component dynamic binding target, delegate property/signature facts, binding object facts, call arg default/link facts, and statement/node diagnostic correlation.
+- Kept Review graph/block scoped; delegate facts are exposed through readback/DebugBundle facts, not delegate-level Review atomic targets.
+- Updated TaskSpec capability matrix and GraphStatement framework design docs with EventDelegate use-site boundaries and verification.
+
+Verification:
+
+```text
+npm.cmd --prefix AgentFaceService/task-core run build
+  Result: passed
+
+npm.cmd --prefix AgentFaceService/task-core run test:node
+  Result: 195/195 passed
+
+E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReloadFromIDE -NoUBTMakefiles
+  Result: Succeeded
+
+Automation RunTests BlueprintHelper.GraphWrite.EventDelegate
+  Result: 9/9 passed, including 3 EventDelegate.ActionContext tests
+
+Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.EventDelegate
+  Result: 16/16 passed
+
+Automation RunTests BlueprintHelper.GraphWrite.GraphStatement.EventDelegate
+  Result: 6/6 passed
+
+Automation RunTests BlueprintHelper.GraphWrite.ActionContext.EventDelegate
+  Result: 2/2 passed for the legacy ActionContext focused suite
+
+Automation RunTests BlueprintHelper.GraphWrite.ToolResult.EventDelegate
+  Result: 1/1 passed
+```
+
+Notes:
+
+- UE startup logs include unrelated EOS/network and JetBrains port-file warnings, but all listed automation runs ended with `TEST COMPLETE. EXIT CODE: 0`.
+- No `BlueprintHelper/Develop/v*` archived documentation was modified.
+- No git staging, commit, or push was performed.
