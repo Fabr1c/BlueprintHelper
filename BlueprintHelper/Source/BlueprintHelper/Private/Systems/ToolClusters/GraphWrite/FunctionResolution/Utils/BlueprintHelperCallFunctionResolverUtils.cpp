@@ -10,7 +10,9 @@
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_CallArrayFunction.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CommutativeAssociativeBinaryOperator.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet/KismetArrayLibrary.h"
@@ -71,6 +73,111 @@ static UClass* ResolveClassFromPinType(const FBlueprintHelperCallFunctionPinType
 		}
 	}
 	return nullptr;
+}
+
+static UClass* ResolveNodeClassByPath(const FString& NodeClassPath)
+{
+	const FString CleanPath = NodeClassPath.TrimStartAndEnd();
+	if (CleanPath.IsEmpty())
+	{
+		return nullptr;
+	}
+	if (CleanPath.Equals(UK2Node_CallFunction::StaticClass()->GetPathName(), ESearchCase::IgnoreCase))
+	{
+		return UK2Node_CallFunction::StaticClass();
+	}
+	if (CleanPath.Equals(UK2Node_CallArrayFunction::StaticClass()->GetPathName(), ESearchCase::IgnoreCase))
+	{
+		return UK2Node_CallArrayFunction::StaticClass();
+	}
+	if (CleanPath.Equals(UK2Node_CommutativeAssociativeBinaryOperator::StaticClass()->GetPathName(), ESearchCase::IgnoreCase))
+	{
+		return UK2Node_CommutativeAssociativeBinaryOperator::StaticClass();
+	}
+	return FindObject<UClass>(nullptr, *CleanPath);
+}
+
+static TSubclassOf<UK2Node_CallFunction> InferNodeClassForFunction(const UFunction* Function)
+{
+	if (!Function)
+	{
+		return UK2Node_CallFunction::StaticClass();
+	}
+	if (Function->HasMetaData(TEXT("ArrayParm")))
+	{
+		return UK2Node_CallArrayFunction::StaticClass();
+	}
+	if (Function->HasMetaData(TEXT("CommutativeAssociativeBinaryOperator")))
+	{
+		return UK2Node_CommutativeAssociativeBinaryOperator::StaticClass();
+	}
+	return UK2Node_CallFunction::StaticClass();
+}
+
+static TSubclassOf<UK2Node_CallFunction> ResolveCandidateNodeClass(
+	const UFunction* Function,
+	const UBlueprintNodeSpawner* NodeSpawner)
+{
+	if (NodeSpawner && NodeSpawner->NodeClass)
+	{
+		return TSubclassOf<UK2Node_CallFunction>(*NodeSpawner->NodeClass);
+	}
+	return InferNodeClassForFunction(Function);
+}
+
+static void GetPermittedNodeClasses(
+	const FBlueprintHelperCallFunctionResolveRequest& Request,
+	TArray<UClass*>& OutNodeClasses)
+{
+	if (Request.CandidatePolicy.PermittedNodeClassPaths.Num() == 0)
+	{
+		OutNodeClasses.Add(UK2Node_CallFunction::StaticClass());
+		return;
+	}
+
+	for (const FString& NodeClassPath : Request.CandidatePolicy.PermittedNodeClassPaths)
+	{
+		if (UClass* NodeClass = ResolveNodeClassByPath(NodeClassPath))
+		{
+			OutNodeClasses.AddUnique(NodeClass);
+		}
+	}
+}
+
+static bool IsStableCallableIdPermitted(
+	const FString& StableId,
+	const FBlueprintHelperCallFunctionResolveRequest& Request)
+{
+	if (Request.CandidatePolicy.RequiredStableCallableIds.Num() == 0)
+	{
+		return true;
+	}
+	return Request.CandidatePolicy.RequiredStableCallableIds.ContainsByPredicate(
+		[&StableId](const FString& RequiredStableId)
+		{
+			return StableId.Equals(RequiredStableId.TrimStartAndEnd(), ESearchCase::IgnoreCase);
+		});
+}
+
+static bool IsNodeClassPermitted(
+	const UClass* NodeClass,
+	const FBlueprintHelperCallFunctionResolveRequest& Request)
+{
+	TArray<UClass*> PermittedNodeClasses;
+	GetPermittedNodeClasses(Request, PermittedNodeClasses);
+	if (!NodeClass)
+	{
+		return false;
+	}
+
+	for (const UClass* PermittedNodeClass : PermittedNodeClasses)
+	{
+		if (PermittedNodeClass && NodeClass->GetPathName().Equals(PermittedNodeClass->GetPathName(), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 static bool IsContainerPinCompatibleWithProperty(const FBlueprintHelperCallFunctionPinType& PinType, const FProperty* Property)
@@ -894,6 +1001,16 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	{
 		return;
 	}
+	if (!IsStableCallableIdPermitted(StableId, Request))
+	{
+		return;
+	}
+
+	const TSubclassOf<UK2Node_CallFunction> CandidateNodeClass = ResolveCandidateNodeClass(Function, NodeSpawner);
+	if (!IsNodeClassPermitted(*CandidateNodeClass, Request))
+	{
+		return;
+	}
 
 	FBlueprintHelperCallFunctionCandidate Candidate;
 	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
@@ -903,8 +1020,8 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	Candidate.NativeFunctionName = Function->GetName();
 	Candidate.DisplayName = GetFunctionDisplayName(Function);
 	Candidate.Category = GetFunctionCategory(Function);
-	Candidate.NodeClass = UK2Node_CallFunction::StaticClass();
-	Candidate.NodeClassPath = UK2Node_CallFunction::StaticClass()->GetPathName();
+	Candidate.NodeClass = CandidateNodeClass;
+	Candidate.NodeClassPath = CandidateNodeClass ? CandidateNodeClass->GetPathName() : FString();
 	Candidate.bFromActionDatabase = NodeSpawner != nullptr;
 	Candidate.bGraphCompatible = bGraphCompatible;
 	Candidate.bBlueprintCallable = Function->HasAnyFunctionFlags(FUNC_BlueprintCallable);
@@ -952,7 +1069,12 @@ void FBlueprintHelperCallFunctionResolverUtils::AddActionDatabaseCandidates(
 
 	FBlueprintActionFilter Filter(FBlueprintActionFilter::BPFILTER_RejectIncompatibleThreadSafety);
 	Filter.Context = Context;
-	Filter.PermittedNodeTypes.Add(UK2Node_CallFunction::StaticClass());
+	TArray<UClass*> PermittedNodeClasses;
+	GetPermittedNodeClasses(Request, PermittedNodeClasses);
+	for (UClass* PermittedNodeClass : PermittedNodeClasses)
+	{
+		Filter.PermittedNodeTypes.Add(PermittedNodeClass);
+	}
 
 	FBlueprintActionDatabase::Get().RefreshAll();
 	const FBlueprintActionDatabase::FActionRegistry& ActionRegistry = FBlueprintActionDatabase::Get().GetAllActions();

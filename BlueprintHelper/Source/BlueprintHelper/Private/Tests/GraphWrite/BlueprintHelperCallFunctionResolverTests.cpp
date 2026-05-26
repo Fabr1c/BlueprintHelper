@@ -502,6 +502,28 @@ bool FBlueprintHelperCallFunctionResolverQualifiedTest::RunTest(const FString& P
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionResolverDefaultExcludesCallArrayFunctionTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.DefaultRequestExcludesCallArrayFunction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionResolverDefaultExcludesCallArrayFunctionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
+	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
+	FBlueprintHelperCallFunctionResolveRequest Request =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeRequest(Graph, TEXT("/Script/Engine.KismetArrayLibrary:Array_Identical"));
+	Request.AmbiguityPolicy = TEXT("pick_best");
+
+	const FBlueprintHelperCallFunctionResolveResult Result = FBlueprintHelperCallFunctionResolver::Resolve(Request);
+	TestNotEqual(TEXT("default request does not resolve CallArrayFunction"), Result.Status, EBlueprintHelperCallFunctionResolveStatus::Resolved);
+	for (const FBlueprintHelperCallFunctionCandidate& Candidate : Result.Candidates)
+	{
+		TestNotEqual(TEXT("default candidates exclude CallArrayFunction"), Candidate.NodeClassPath, FString(TEXT("/Script/BlueprintGraph.K2Node_CallArrayFunction")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperCallFunctionResolverAmbiguousTest,
 	"BlueprintHelper.GraphWrite.CallFunctionResolver.AmbiguousShortNameBlocks",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

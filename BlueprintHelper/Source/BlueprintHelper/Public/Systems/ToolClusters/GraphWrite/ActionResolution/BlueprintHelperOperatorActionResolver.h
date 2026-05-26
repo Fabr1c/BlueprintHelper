@@ -22,5 +22,6 @@ private:
 		FName OpName,
 		UBlueprintFunctionNodeSpawner* Spawner);
 	static FBlueprintHelperActionResolutionResult MakeInvalidRequestResult(const FString& Message);
+	static FBlueprintHelperActionResolutionResult MakeInvalidRequestResult(const FString& ErrorCode, const FString& Message);
 	static FBlueprintHelperActionResolutionResult MakeNotFoundResult(const FBlueprintHelperActionResolutionRequest& Request, const FString& Message);
 };

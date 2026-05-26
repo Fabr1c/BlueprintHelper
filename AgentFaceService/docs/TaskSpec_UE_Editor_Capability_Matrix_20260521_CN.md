@@ -363,6 +363,25 @@ Excluded Field-like inputs:
 | Other clusters | `control.function_return_write`, `function.selected_component_call`, `component.add_component_node` | Route or reject outside FieldVariableActionCluster. |
 | Diagnostic / first-stage excluded | `field.unsupported_path_diagnostic`, `field.by_ref_set` | Diagnostic-only; `field.by_ref_set` rejects with `unsupported_by_ref_set_deferred`. |
 
+## 2026-05-26 GraphWrite OpCoverage capability matrix
+
+`op` remains a Graph body expression semantic owned by `FunctionActionCluster`; OpCoverage is a logical capability group, not a new `graphwrite_op` runtime cluster and not a top-level `kind` expansion. Operation-specific facts are statement-local `op.*` evidence consumed by the op catalog, evidence reader, resolver policy, and readback verifier.
+
+| Priority | Operation IDs | Runtime owner | Required local facts |
+|---|---|---|---|
+| Existing | `add`, `subtract`, `multiply`, `divide`, `greater`, `greater_equal`, `less`, `less_equal`, `equal`, `not_equal` | `FunctionActionCluster` TypePromotion first | typed operand/result evidence when the TypePromotion path requires it |
+| P0 | `bitwise_and`, `bitwise_or`, `boolean_and`, `boolean_or`, `boolean_nand`, `max`, `min`, `string_append` | `FunctionActionCluster` callable/operator evidence | `op.operation_id`; stable callable evidence projected by catalog |
+| P1 | `boolean_not`, `boolean_xor`, `boolean_nor`, `bitwise_not`, `bitwise_xor`, `abs`, `modulo`, `negate`, `dot`, `dot3`, `cross`, `cross3`, `near_equal`, `intpoint_equal`, `transform_compose`, `equal_exact`, `not_equal_exact`, `equal_ignore_case`, `not_equal_ignore_case`, `datetime_add_datetime`, `datetime_add_timespan`, `datetime_subtract_datetime`, `datetime_subtract_timespan`, `datetime_equal`, `datetime_not_equal`, `datetime_greater`, `datetime_greater_equal`, `datetime_less`, `datetime_less_equal` | `FunctionActionCluster` compact call-function evidence | `op.operation_id`; stable callable evidence projected by catalog |
+| P2 | `array_identical` | `FunctionActionCluster` request-scoped `UK2Node_CallArrayFunction` evidence | `op.operation_id`, `op.array_lhs_pin_type`, `op.array_rhs_pin_type`; both pins must be explicitly typed arrays with compatible element evidence |
+
+Excluded OpCoverage inputs:
+
+| Category | IDs | Required behavior |
+|---|---|---|
+| Missing stable non-UI evidence | `enum_equal`, `enum_not_equal`, SlateBrush equality | Reject deterministically; do not infer success from display name, menu text, or UI state. |
+| Deferred conversion taxonomy | `convert_numeric`, `convert_string_text_name` | Route to future convert/type-transform evidence work instead of OpCoverage. |
+| Different semantic owner | `array_map_set_mutation`, `validity_predicate` | Reject from OpCoverage until a matching container/control/predicate capability owns the semantics. |
+
 ## 源码依据
 
 - `AgentFaceService/task-core/src/task/schema/task-schemas.ts`

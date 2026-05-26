@@ -1,6 +1,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CoreMinimal.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
 
@@ -31,6 +34,18 @@ static FString BuildActionContextPublicPath(const TCHAR* FileName)
 		TEXT("GraphWrite"),
 		TEXT("ActionResolution"),
 		TEXT("Context"),
+		FileName);
+}
+
+static FString BuildActionResolutionPublicPath(const TCHAR* FileName)
+{
+	return FPaths::Combine(
+		BuildBlueprintHelperSourceRoot(),
+		TEXT("Public"),
+		TEXT("Systems"),
+		TEXT("ToolClusters"),
+		TEXT("GraphWrite"),
+		TEXT("ActionResolution"),
 		FileName);
 }
 
@@ -121,6 +136,23 @@ static bool CollectActionContextSourceFiles(FAutomationTestBase& Test, TArray<FS
 	}
 
 	return bPublicContextExists && bPrivateContextExists;
+}
+
+static FString ExtractStructBody(const FString& SourceText, const FString& StructName)
+{
+	const FString Needle = FString::Printf(TEXT("struct %s"), *StructName);
+	const int32 Start = SourceText.Find(Needle);
+	if (Start == INDEX_NONE)
+	{
+		return FString();
+	}
+
+	const int32 End = SourceText.Find(TEXT("\n};"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Start);
+	if (End == INDEX_NONE)
+	{
+		return SourceText.RightChop(Start);
+	}
+	return SourceText.Mid(Start, End - Start);
 }
 }
 
@@ -394,6 +426,77 @@ bool FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest::RunTest
 		TestEqual(TEXT("operator expression keeps operator token query"), OpDemand->Query, FString(TEXT(">")));
 	}
 	return CallDemand != nullptr && OpDemand != nullptr;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextOpExpressionProjectsCanonicalEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionContext.OpExpressionProjectsCanonicalEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextOpExpressionProjectsCanonicalEvidenceTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> Left = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	Left->ExpressionId = TEXT("expr_left");
+	Left->Kind = EBlueprintHelperGraphExpressionKind::Literal;
+	Left->Type = TEXT("bool");
+	Left->LiteralValue = TEXT("true");
+
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> Right = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	Right->ExpressionId = TEXT("expr_right");
+	Right->Kind = EBlueprintHelperGraphExpressionKind::Literal;
+	Right->Type = TEXT("bool");
+	Right->LiteralValue = TEXT("false");
+
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> OpExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	OpExpression->ExpressionId = TEXT("expr_boolean_and");
+	OpExpression->Path = TEXT("$.statements[0].args.condition");
+	OpExpression->Kind = EBlueprintHelperGraphExpressionKind::Op;
+	OpExpression->Operator = TEXT("boolean_and");
+	OpExpression->Left = Left;
+	OpExpression->Right = Right;
+	OpExpression->ContextEvidence.Add(TEXT("op.argument_pin_type.0"), TEXT("bool"));
+	OpExpression->ContextEvidence.Add(TEXT("op.argument_pin_type.1"), TEXT("bool"));
+	OpExpression->ContextEvidence.Add(TEXT("op.expected_return_pin_type"), TEXT("bool"));
+
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_gate");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Call;
+	Statement->Target = TEXT("PrintString");
+	Statement->Args.Add(TEXT("condition"), OpExpression);
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	const FBlueprintHelperActionContextDemand* OpDemand = Demands.FindByPredicate([](const FBlueprintHelperActionContextDemand& Demand)
+	{
+		return Demand.StatementId == TEXT("expr_boolean_and");
+	});
+
+	TestNotNull(TEXT("op demand exists"), OpDemand);
+	if (!OpDemand)
+	{
+		return false;
+	}
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("op function operation"), OpDemand->FunctionOperation, FString(TEXT("op.boolean_and")));
+	bPassed &= TestEqual(TEXT("op operation id default"), OpDemand->DefaultValues.FindRef(TEXT("op.operation_id")), FString(TEXT("boolean_and")));
+	bPassed &= TestEqual(TEXT("op first arg evidence default"), OpDemand->DefaultValues.FindRef(TEXT("op.argument_pin_type.0")), FString(TEXT("bool")));
+	bPassed &= TestEqual(TEXT("op second arg evidence default"), OpDemand->DefaultValues.FindRef(TEXT("op.argument_pin_type.1")), FString(TEXT("bool")));
+	bPassed &= TestEqual(TEXT("op return evidence default"), OpDemand->DefaultValues.FindRef(TEXT("op.expected_return_pin_type")), FString(TEXT("bool")));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, *OpDemand);
+	bPassed &= TestEqual(TEXT("projected semantic op"), Context.Semantic.FunctionOperation, FString(TEXT("op.boolean_and")));
+	bPassed &= TestEqual(TEXT("projected op operation evidence"), Context.Evidence.FindRef(TEXT("op.operation_id")), FString(TEXT("boolean_and")));
+	bPassed &= TestEqual(TEXT("projected op first arg evidence"), Context.Evidence.FindRef(TEXT("op.argument_pin_type.0")), FString(TEXT("bool")));
+	bPassed &= TestEqual(TEXT("projected op return evidence"), Context.Evidence.FindRef(TEXT("op.expected_return_pin_type")), FString(TEXT("bool")));
+	return bPassed;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1003,6 +1106,114 @@ bool FBlueprintHelperActionContextBundleProjectionSourceContractTest::RunTest(co
 
 	TestTrue(TEXT("ActionContext bundle projection source contract is complete"), bComplete);
 	return bComplete;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextProjectionHashIncludesEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionContext.Projection.SemanticHashIncludesEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextProjectionHashIncludesEvidenceTest::RunTest(const FString& Parameters)
+{
+	auto BuildBundle = [](const FString& PinType)
+	{
+		FBlueprintHelperResolvedActionContextBundle Bundle;
+		Bundle.Revision.AssetPath = TEXT("/Game/Test/BP_Op");
+		Bundle.Revision.GraphName = TEXT("EventGraph");
+		Bundle.Revision.TaskRunId = TEXT("task-op");
+		Bundle.Revision.PlanHash = TEXT("plan-op");
+
+		FBlueprintHelperResolvedActionContext Context;
+		Context.StatementId = TEXT("expr_boolean_and");
+		Context.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+		Context.GraphName = TEXT("EventGraph");
+		Context.Semantic.Kind = EBlueprintHelperActionSemanticKind::Op;
+		Context.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Operator;
+		Context.Semantic.FunctionOperation = TEXT("op.boolean_and");
+		Context.Evidence.Add(TEXT("op.operation_id"), TEXT("boolean_and"));
+		Context.Evidence.Add(TEXT("op.argument_pin_type.0"), PinType);
+		Context.Evidence.Add(TEXT("op.argument_pin_type.1"), TEXT("bool"));
+		Context.Evidence.Add(TEXT("op.expected_return_pin_type"), TEXT("bool"));
+		Bundle.Contexts.Add(MoveTemp(Context));
+		return Bundle;
+	};
+
+	UBlueprint* Blueprint = NewObject<UBlueprint>();
+	UEdGraph* Graph = NewObject<UEdGraph>();
+
+	FBlueprintHelperActionResolutionRequest BoolRequest;
+	FBlueprintHelperActionResolutionRequest ByteRequest;
+	FString Error;
+	const bool bBoolProjected = FBlueprintHelperActionContextBundleProjector::TryBuildRequest(
+		BuildBundle(TEXT("bool")),
+		TEXT("expr_boolean_and"),
+		Blueprint,
+		Graph,
+		BoolRequest,
+		Error);
+	const bool bByteProjected = FBlueprintHelperActionContextBundleProjector::TryBuildRequest(
+		BuildBundle(TEXT("byte")),
+		TEXT("expr_boolean_and"),
+		Blueprint,
+		Graph,
+		ByteRequest,
+		Error);
+
+	bool bPassed = true;
+	bPassed &= TestTrue(TEXT("bool context projects"), bBoolProjected);
+	bPassed &= TestTrue(TEXT("byte context projects"), bByteProjected);
+	bPassed &= TestNotEqual(TEXT("semantic hash changes with op evidence"), BoolRequest.SemanticConstraintsHash, ByteRequest.SemanticConstraintsHash);
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextOpDtoBoundarySourceContractTest,
+	"BlueprintHelper.GraphWrite.ActionContext.OpDtoBoundary.SourceContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextOpDtoBoundarySourceContractTest::RunTest(const FString& Parameters)
+{
+	const FString DemandFilePath = BuildActionContextPublicPath(TEXT("BlueprintHelperActionContextTypes.h"));
+	const FString SemanticFilePath = BuildActionResolutionPublicPath(TEXT("BlueprintHelperActionResolutionCore.h"));
+
+	FString DemandSourceText;
+	FString SemanticSourceText;
+	if (!LoadRequiredSourceFile(*this, DemandFilePath, DemandSourceText)
+		|| !LoadRequiredSourceFile(*this, SemanticFilePath, SemanticSourceText))
+	{
+		return false;
+	}
+
+	const FString DemandBody = ExtractStructBody(DemandSourceText, TEXT("FBlueprintHelperActionContextDemand"));
+	const FString SemanticBody = ExtractStructBody(SemanticSourceText, TEXT("FBlueprintHelperActionSemanticConstraints"));
+	if (DemandBody.IsEmpty() || SemanticBody.IsEmpty())
+	{
+		AddError(TEXT("ActionContext op DTO boundary could not locate core structs."));
+		return false;
+	}
+
+	const TArray<FString> ForbiddenTokens = {
+		TEXT("OpSpawnPath"),
+		TEXT("FunctionStableId"),
+		TEXT("OwnerClass"),
+		TEXT("FunctionName"),
+		TEXT("bRequiresArrayTypedPins")
+	};
+
+	bool bClean = true;
+	for (const FString& Token : ForbiddenTokens)
+	{
+		if (DemandBody.Contains(Token) || SemanticBody.Contains(Token))
+		{
+			AddError(FString::Printf(
+				TEXT("Op capability evidence must not add core DTO field '%s'; use ContextEvidence and focused readers."),
+				*Token));
+			bClean = false;
+		}
+	}
+
+	TestTrue(TEXT("op-specific details stay out of core ActionContext DTOs"), bClean);
+	return bClean;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

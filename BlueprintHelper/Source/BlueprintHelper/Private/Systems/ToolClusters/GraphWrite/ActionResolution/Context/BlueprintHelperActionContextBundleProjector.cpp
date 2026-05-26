@@ -22,7 +22,9 @@ static FString StableHashString(const FString& Stable)
 	return LexToString(GetTypeHash(Stable));
 }
 
-static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemanticConstraints& Semantic)
+static FString BuildSemanticConstraintsHash(
+	const FBlueprintHelperActionSemanticConstraints& Semantic,
+	const TMap<FString, FString>& Evidence)
 {
 	FString Stable;
 	Stable += FBlueprintHelperActionResolutionCore::SemanticKindToString(Semantic.Kind);
@@ -124,6 +126,17 @@ static FString BuildSemanticConstraintsHash(const FBlueprintHelperActionSemantic
 		Stable += Semantic.CapabilityFacts.FindRef(Key);
 	}
 
+	TArray<FString> EvidenceKeys;
+	Evidence.GetKeys(EvidenceKeys);
+	EvidenceKeys.Sort();
+	for (const FString& Key : EvidenceKeys)
+	{
+		Stable += TEXT("|ev:");
+		Stable += Key;
+		Stable += TEXT("=");
+		Stable += Evidence.FindRef(Key);
+	}
+
 	return StableHashString(Stable);
 }
 
@@ -196,7 +209,7 @@ bool FBlueprintHelperActionContextBundleProjector::TryBuildRequest(
 	OutRequest.Blueprint = Blueprint;
 	OutRequest.TargetGraph = Graph;
 	OutRequest.StatementId = Context->StatementId;
-	OutRequest.SemanticConstraintsHash = BuildSemanticConstraintsHash(Context->Semantic);
+	OutRequest.SemanticConstraintsHash = BuildSemanticConstraintsHash(Context->Semantic, Context->Evidence);
 	OutRequest.ProjectedContextHash = BuildProjectedContextHash(Bundle, *Context);
 	OutRequest.ContextEvidence = Context->Evidence;
 	OutRequest.Semantic = Context->Semantic;
