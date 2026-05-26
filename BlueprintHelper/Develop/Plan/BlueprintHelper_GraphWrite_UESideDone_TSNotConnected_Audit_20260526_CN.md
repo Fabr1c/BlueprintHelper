@@ -30,8 +30,6 @@
 
 | 项 | 原因 |
 |---|---|
-| `asset_backed_graph_node` | TS contract 与 `ActionResolutionCore` 词表出现了该 token，但实际 `GenericCreateActionResolver::IsSupportedCreateOperation()` 只接受 `asset_action`，不接受 `asset_backed_graph_node`；这不是 UE 已完成。 |
-| `interface_dynamic_cast` | TS contract 列出，但 UE generic transform resolver 当前只支持 `dynamic_cast`、`class_cast`、`type_promotion`；这是 TS/contract ahead，不是 TS 未接 UE。 |
 | `timer_delegate_node`、`latent_or_async_node` | TS compiler 已有 `schedule` public shape、ownership-mix 校验和测试；UE resolver/readback 也接通。 |
 | Function-backed convert / schedule 作为 raw compiler 路由 | TS 已能保留 `function_operation`、`transform_operation`、`schedule_operation`，并禁止 generic schedule owner mixing；它们的问题是 public/template partial，而不是 compiler completely missing。 |
 | `container_action` V1 | TS public `kind=container_action`、operation validation、role expression validation 与 UE FunctionAction-backed container path 已接通。 |

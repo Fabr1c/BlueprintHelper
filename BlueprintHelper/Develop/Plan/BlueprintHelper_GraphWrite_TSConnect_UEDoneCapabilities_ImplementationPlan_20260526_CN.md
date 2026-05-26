@@ -21,7 +21,7 @@
 - Generic controls are now contractually terminal unless a future operation-specific body/continuation contract is added; TS rejects implicit linear continuation after a generic control.
 - TS and UE both preserve/derive `function_operation="create_function"` for function-backed create operations and route those creates through `FunctionAction` instead of generic create ownership.
 - Function-backed create statements and expressions now require a callable target/name/stable-id before they can enter the TS or UE routing path.
-- Public TS contract and guide templates now expose `create`, `convert`, `schedule`, generic control, asset-backed create, function-backed create, function-backed schedule, and struct-field capability examples.
+- Public TS contract and guide templates now expose `create`, `convert`, `schedule`, generic control, `asset_action`, function-backed create, function-backed schedule, and struct-field capability examples.
 - `switch_enum` evidence now includes `generic.control.enum_path` on the GenericOps contract and schema test surface.
 
 **Verification run:**

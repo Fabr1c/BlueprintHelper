@@ -8,7 +8,7 @@
 
 **Goal:** 在未实施原计划的前提下，替代原 `BlueprintHelper_GenericOps_CapabilityExtension_ImplementationPlan_20260526.md`，覆盖 GenericOps 清洗文档中提及且未排除的全部能力，同时按 GraphWrite 四大 runtime cluster、focused evidence、高内聚低耦合的方式实施。
 
-**Architecture:** GenericOps 是 Agent-facing logical capability umbrella，不是 runtime cluster。每个 operation 必须映射到既有 runtime owner：Function-backed convert/create/schedule/op/container 归 `FunctionActionCluster`；control、StandardMacros、struct/deconstruct/select、asset-backed create、generic schedule node 归 `GenericAssetStructControlActionCluster`；async proxy delegate output connection 只能显式衔接 EventDelegate use-site；不得创建 handler/signature。Operation-specific evidence 进入 `ContextEvidence` 并由 focused readers 读取，Builder 只消费 resolved evidence 与 shared coordinator。
+**Architecture:** GenericOps 是 Agent-facing logical capability umbrella，不是 runtime cluster。每个 operation 必须映射到既有 runtime owner：Function-backed convert/create/schedule/op/container 归 `FunctionActionCluster`；control、StandardMacros、struct/deconstruct/select、`asset_action`、generic schedule node 归 `GenericAssetStructControlActionCluster`；async proxy delegate output connection 只能显式衔接 EventDelegate use-site；不得创建 handler/signature。Operation-specific evidence 进入 `ContextEvidence` 并由 focused readers 读取，Builder 只消费 resolved evidence 与 shared coordinator。
 
 **Tech Stack:** Unreal Engine 5.3+ / BlueprintGraph / K2 / NodeSpawner / StandardMacros / ActionDatabase / BlueprintHelper GraphWrite C++、AgentFaceService task-core TypeScript/Zod、UE Automation Tests、Node test runner。
 
@@ -64,7 +64,7 @@ set:   add, remove, contains, clear, length, to_array,
 | `type_promotion` | `FunctionActionCluster` for operator path; Generic only if projected generic node evidence exists | no display-name matching |
 | `function_conversion`, `blueprint_autocast`, `numeric_conversion`, `string_name_text_conversion`, `enum_conversion` | `FunctionActionCluster` | callable/function-backed conversion |
 | `link_time_auto_conversion` | linker/readback layer | no standalone GraphWrite statement success without actual conversion readback |
-| `object_to_soft_object`, `class_to_soft_class`, `interface_dynamic_cast` | FunctionAction or Generic according to projected spawner/function evidence | resolver must reject ambiguous owner |
+| `object_to_soft_object`, `class_to_soft_class` | FunctionAction or Generic according to projected spawner/function evidence | resolver must reject ambiguous owner |
 
 ### 1.4 Create / asset operations
 
@@ -72,7 +72,7 @@ set:   add, remove, contains, clear, length, to_array,
 |---|---|---|
 | `spawn_actor`, `create_widget`, `construct_object` | Generic if node spawner-backed; FunctionAction if function-backed | owner decided by projected evidence |
 | `make_array`, `make_map`, `make_set` | `GenericAssetStructControlActionCluster` | container construction, not container mutation operation |
-| `asset_action`, `asset_backed_graph_node` | `GenericAssetStructControlActionCluster` | ActionDatabase projected asset evidence required |
+| `asset_action` | `GenericAssetStructControlActionCluster` | ActionDatabase projected asset evidence required |
 | `async_action`, `function_backed_create`, `function_backed_spawn`, `function_backed_construct` | `FunctionActionCluster` | factory UFunction path; output delegate connection is explicit use-site |
 
 ### 1.5 Schedule operations
@@ -512,7 +512,7 @@ Required:
 
 ```text
 asset_action requires projected ActionDatabase asset evidence
-asset_backed_graph_node rejects query-only selector
+asset_action rejects query-only selector
 spawn_actor/create_widget/construct_object read back expose-on-spawn pins after selected spawner evidence
 timer_delegate_node requires projected generic schedule spawner evidence and handler/signature evidence when delegate link is requested
 latent_or_async_node checks graph_latent_allowed=true

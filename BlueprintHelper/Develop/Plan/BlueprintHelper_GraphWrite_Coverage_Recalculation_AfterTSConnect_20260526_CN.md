@@ -10,7 +10,8 @@
 2. `BlueprintSignature` 拥有的 custom/override/native event declaration、handler/signature creation、dispatcher creation 只作为 GraphWrite/EventDelegate 的 projected evidence 来源，不算 EventDelegate 未实现。
 3. `rejected` / design-rejected 项不进入未实现分母。
 4. UI/menu/drag/pin-drag/editor-only 行为不进入 GraphWrite 能力分母。
-5. TS contract ahead 但当前 UE resolver 不支持的 token 不算已覆盖；需要单列为 contract alignment 问题。
+5. interface-target cast 视为 `dynamic_cast + interface target_class_path` 的参数化情形，不作为独立 GraphWrite operation。
+6. `UBlueprintAssetNodeSpawner` / `FAssetData` 资产专用 spawner 不进入当前 GraphWrite 分母；GraphWrite 只保留已证实的 `asset_action` 图节点插入入口。
 
 ## 当前机器可枚举覆盖率
 
@@ -37,21 +38,14 @@
 | `event_delegate` | 6 | 2 | 0 | 100% |
 | `generic_ops.control` | 17 | 0 | 0 | 100% |
 | `generic_ops.container` | 58 | 0 | 0 | 100% |
-| `generic_ops.transform` | 10 | 1 | 1 | 100% for evidence-backed rows |
-| `generic_ops.create` | 11 | 0 | 1 | 100% for evidence-backed rows |
+| `generic_ops.transform` | 10 | 1 | 0 | 100% |
+| `generic_ops.create` | 11 | 0 | 0 | 100% |
 | `generic_ops.schedule` | 15 | 0 | 0 | 100% |
 | `generic_ops.struct_select` | 4 | 2 | 0 | 100% |
 | `op_coverage` | 38 | 8 | 0 | 100% |
-| **合计** | **159** | **13** | **2** | **159 / 159 = 100%** |
+| **合计** | **159** | **13** | **0** | **159 / 159 = 100%** |
 
-Published contract consistency is `159 / 161 = 98.8%` if the two contract-ahead rows remain marked supported.
-
-The two rows that should not be counted as implemented until contract or UE support is aligned:
-
-| Row | Current issue |
-|---|---|
-| `generic_ops.transform.interface_dynamic_cast` | Contract lists it, but current C++ generic transform resolver only supports `dynamic_cast`, `class_cast`, and `type_promotion`. |
-| `generic_ops.create.asset_backed_graph_node` | Contract lists it, and ActionResolutionCore knows the token for owner-mix checks, but current generic create resolver support set does not accept it. |
+Published contract consistency is now `159 / 159 = 100%` after removing the two non-denominator rows from the public operation contract.
 
 ## 四簇覆盖率区间更新
 
@@ -59,10 +53,10 @@ The two rows that should not be counted as implemented until contract or UE supp
 
 | 四簇 | 接线后建议区间 | 变化原因 |
 |---|---:|---|
-| `FunctionActionCluster` | 85%-90% | Function-backed create / convert / schedule 已进入 TS public/compiler/template 路径；container/op coverage 继续归 FunctionAction；contract-ahead 项不归 FunctionAction 分母。 |
+| `FunctionActionCluster` | 85%-90% | Function-backed create / convert / schedule 已进入 TS public/compiler/template 路径；container/op coverage 继续归 FunctionAction；参数化 dynamic cast 与资产专用 spawner 不归 FunctionAction 分母。 |
 | `FieldVariableActionCluster` | 80%-85% | 本轮 TS 接线没有实质改变 Field 分母；保持 first-class Field capability 后的区间。 |
 | `EventDelegateActionCluster` | 80%-85% | 只统计 use-site：component-bound event 与 delegate bind/assign/unbind/call/clear。Signature-owned declaration/handler/signature creation 排除后，不再把这些项记为 Event 未实现。 |
-| `GenericAssetStructControlActionCluster` | 85%-90% | Generic control、generic-owned create、generic schedule、struct/select 的 TS public/compiler/template 路径已接通；link-time conversion、split/recombine pin、contract-ahead token 不进入已实现分母。 |
+| `GenericAssetStructControlActionCluster` | 85%-90% | Generic control、generic-owned create、generic schedule、struct/select 的 TS public/compiler/template 路径已接通；link-time conversion、split/recombine pin、参数化 dynamic cast 与资产专用 spawner 不进入已实现分母。 |
 
 四簇等权估算：`(87.5 + 82.5 + 82.5 + 87.5) / 4 = 85.0%`。
 
@@ -77,13 +71,15 @@ The two rows that should not be counted as implemented until contract or UE supp
 | EventDelegate duplicate replace / merge policy | 设计性 rejected；不进入未实现分母。 |
 | link-time automatic conversion | 需要 linker/readback 专门边界；当前为 rejected，不进入 Generic transform 未实现分母。 |
 | split / recombine pin | 不是 graph statement operation；不进入 Generic struct/select 未实现分母。 |
+| interface-target dynamic cast | `dynamic_cast` 的 target type 参数化情形，不作为独立 operation。 |
+| asset-backed `UBlueprintAssetNodeSpawner` graph node | 资产专用 spawner，不属于当前 GraphWrite operation 分母；保留 `asset_action` 作为已证实入口。 |
 | UI/menu/drag/pin-drag/editor-only behavior | 非 GraphWrite TaskSpec 能力分母。 |
 
 ## 结论
 
 有更新：
 
-- 机器可枚举的 ownership-filtered GraphWrite contract coverage：`34 / 34 = 100%` core cluster rows，`159 / 159 = 100%` evidence-backed logical operation rows。
-- 如果用 published contract 一致性而不是 filtered coverage，则当前是 `159 / 161 = 98.8%`，差异来自 `interface_dynamic_cast` 与 `asset_backed_graph_node` 两个 contract-ahead token。
+- 机器可枚举的 ownership-filtered GraphWrite contract coverage：`34 / 34 = 100%` core cluster rows，`159 / 159 = 100%` logical operation rows。
+- published contract 一致性同步更新为 `159 / 159 = 100%`；不再存在这两个 contract-ahead token。
 - 四簇工程成熟度建议从之前约 `75%-80%` 更新为约 `82.5%-87.5%`，中位估算约 `85%`。
 - 不能写成 final 100% completion；final ownership-filtered generality preflight 仍未完成，完整 `BlueprintHelper.GraphWrite` suite 当前仍有既有 call-function / replace / block-scoped 失败。

@@ -28,8 +28,7 @@ static bool IsGenericCreateOperation(const FString& Operation)
 		|| Normalized == TEXT("make_array")
 		|| Normalized == TEXT("make_map")
 		|| Normalized == TEXT("make_set")
-		|| Normalized == TEXT("asset_action")
-		|| Normalized == TEXT("asset_backed_graph_node");
+		|| Normalized == TEXT("asset_action");
 }
 
 static bool IsGenericScheduleOperation(const FString& Operation)

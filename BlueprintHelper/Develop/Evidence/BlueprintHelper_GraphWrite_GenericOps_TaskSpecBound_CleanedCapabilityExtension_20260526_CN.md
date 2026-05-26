@@ -107,7 +107,6 @@ TaskSpec 规则：每个 operation 必须在 statement/expression 内携带 `con
 | async action create | 适合插入节点 | proxy factory function path、proxy class、node class、delegate output pins readback。 | 不隐式创建 async output delegate handler。 |
 | function-backed create/spawn/construct | 适合 | UFunction path、return type、world context/latent metadata、class-determines-output metadata。 | 不通过 display name 匹配 `Create ...`。 |
 | expose-on-spawn pin assignment/readback | 适合 | class path、property path、pin name/type、default/link value。 | 不猜测隐藏/高级 pin；创建后 readback 为准。 |
-| asset-backed graph node | 适合 | asset path/FAssetData、node class、spawner class、asset reference filter proof。 | 不负责资产创建/导入/保存；不读取 Content Browser 当前选中。 |
 
 ### 3.5 Schedule 拓展
 
