@@ -2,13 +2,15 @@
 > **Execution status (2026-05-26): COMPLETE.** Implementation, focused UE tests, TypeScript tests, UE 5.6 build, docs sync, and final read-only subagent audit are complete. Per `AGENTS.md`, commit steps are a manual commit handoff only; no `git add`, `git commit`, or `git push` was executed.
 >
 > **Architecture clarification:** GenericOps is an Agent-facing logical capability umbrella, not a runtime cluster and not a blanket `kind` expansion. “First-class Field capability” means stable Field capability IDs plus Field registry/resolver/evidence/readback boundaries; Field-specific facts stay under `field.*` and do not get copied into GenericOps, core `kind`, or broad shared DTOs.
+>
+> **2026-05-26 de-dup cleanup:** GenericOps no longer publishes `container.*`, schedule rows, `asset_action`, function-backed transform/create/schedule rows, or `set_fields_in_struct`. Those capabilities remain only under their canonical owners: `container_action`, `generic_schedule`, `asset_action`, `FunctionAction`, and `field.struct_member_set`.
 
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在未实施原计划的前提下，替代原 `BlueprintHelper_GenericOps_CapabilityExtension_ImplementationPlan_20260526.md`，覆盖 GenericOps 清洗文档中提及且未排除的全部能力，同时按 GraphWrite 四大 runtime cluster、focused evidence、高内聚低耦合的方式实施。
 
-**Architecture:** GenericOps 是 Agent-facing logical capability umbrella，不是 runtime cluster。每个 operation 必须映射到既有 runtime owner：Function-backed convert/create/schedule/op/container 归 `FunctionActionCluster`；control、StandardMacros、struct/deconstruct/select、`asset_action`、generic schedule node 归 `GenericAssetStructControlActionCluster`；async proxy delegate output connection 只能显式衔接 EventDelegate use-site；不得创建 handler/signature。Operation-specific evidence 进入 `ContextEvidence` 并由 focused readers 读取，Builder 只消费 resolved evidence 与 shared coordinator。
+**Architecture:** GenericOps 是 Agent-facing logical capability umbrella，不是 runtime cluster。清理后只发布 Generic-owned control、StandardMacros、transform、create、struct/select 逻辑行。Container、asset action、generic schedule use-site、function-backed convert/create/schedule 不再通过 GenericOps 建索引；它们只保留在各自 canonical owner 中。Operation-specific evidence 进入 `ContextEvidence` 并由 focused readers 读取，Builder 只消费 resolved evidence 与 shared coordinator。
 
 **Tech Stack:** Unreal Engine 5.3+ / BlueprintGraph / K2 / NodeSpawner / StandardMacros / ActionDatabase / BlueprintHelper GraphWrite C++、AgentFaceService task-core TypeScript/Zod、UE Automation Tests、Node test runner。
 
@@ -42,54 +44,38 @@
 
 ### 1.2 Container operations
 
-Container operations remain a GenericOps public area, but runtime owner is the current callable/container path under `FunctionActionCluster` / `FBlueprintHelperContainerActionResolver`.
-
-```text
-array: get, set, add, add_unique, append, insert, remove_item, remove_index, clear,
-       contains, find, length, shuffle, shuffle_from_stream, identical, resize, reverse,
-       is_empty, is_not_empty, last_index, swap, filter_array, is_valid_index, random,
-       random_from_stream, sort_string, sort_name, sort_byte, sort_int, sort_int64, sort_float
-map:   add, remove, find, contains, keys, values, clear, length,
-       is_empty, is_not_empty, get_key_value_by_index, get_last_index
-set:   add, remove, contains, clear, length, to_array,
-       add_items, remove_items, is_empty, is_not_empty, intersection, union, difference,
-       get_item_by_index, get_last_index
-```
+Container operations are removed from GenericOps. The only public denominator is `container_action`, backed by `FBlueprintHelperContainerActionResolver`. The canonical cluster publishes the 58 array/map/set rows, including `container.array.identical`.
 
 ### 1.3 Transform / convert operations
 
 | Operation | Runtime owner | Notes |
 |---|---|---|
-| `dynamic_cast`, `class_cast` | `GenericAssetStructControlActionCluster` | generic K2 cast node/spawner evidence |
-| `type_promotion` | `FunctionActionCluster` for operator path; Generic only if projected generic node evidence exists | no display-name matching |
-| `function_conversion`, `blueprint_autocast`, `numeric_conversion`, `string_name_text_conversion`, `enum_conversion` | `FunctionActionCluster` | callable/function-backed conversion |
+| `dynamic_cast`, `class_cast`, `type_promotion` | `GenericAssetStructControlActionCluster` | generic K2 cast / type promotion node evidence |
 | `link_time_auto_conversion` | linker/readback layer | no standalone GraphWrite statement success without actual conversion readback |
-| `object_to_soft_object`, `class_to_soft_class` | FunctionAction or Generic according to projected spawner/function evidence | resolver must reject ambiguous owner |
+
+Function-backed conversion rows are not GenericOps operations. They stay on the FunctionAction semantic/compiler/runtime path.
 
 ### 1.4 Create / asset operations
 
 | Operation | Runtime owner | Notes |
 |---|---|---|
-| `spawn_actor`, `create_widget`, `construct_object` | Generic if node spawner-backed; FunctionAction if function-backed | owner decided by projected evidence |
+| `spawn_actor`, `create_widget`, `construct_object` | `GenericAssetStructControlActionCluster` | projected generic node spawner evidence |
 | `make_array`, `make_map`, `make_set` | `GenericAssetStructControlActionCluster` | container construction, not container mutation operation |
-| `asset_action` | `GenericAssetStructControlActionCluster` | ActionDatabase projected asset evidence required |
-| `async_action`, `function_backed_create`, `function_backed_spawn`, `function_backed_construct` | `FunctionActionCluster` | factory UFunction path; output delegate connection is explicit use-site |
+
+`asset_action` is removed from GenericOps and remains only in the `asset_action` core cluster. Function-backed factory rows are not GenericOps operations.
 
 ### 1.5 Schedule operations
 
-| Operation | Runtime owner | Notes |
-|---|---|---|
-| `timer_delegate_node`, `latent_or_async_node` | `GenericAssetStructControlActionCluster` | projected generic spawner evidence required |
-| `timer_by_function_name`, `timer_by_handle`, `timer_clear_by_handle`, `timer_clear_by_function_name`, `timer_pause_by_handle`, `timer_pause_by_function_name`, `timer_unpause_by_handle`, `timer_unpause_by_function_name`, `delay`, `retriggerable_delay`, `delay_until_next_tick`, `generic_latent_function_call` | `FunctionActionCluster` | schedule_function / latent_or_async_function path |
-| `async_proxy_output_delegate_connection` | FunctionAction + EventDelegate explicit use-site | no implicit handler/signature creation |
+GenericOps no longer publishes a schedule group. `schedule.timer_delegate_node` and `schedule.latent_or_async_node` remain in the `generic_schedule` core cluster. Function-backed schedule / latent / async-proxy paths remain FunctionAction-owned and are not indexed as GenericOps rows.
 
 ### 1.6 Construct / Deconstruct / Select operations
 
 | Operation | Runtime owner | Notes |
 |---|---|---|
 | `make_struct`, `break_struct` | `GenericAssetStructControlActionCluster` | struct/type structure evidence |
-| `set_fields_in_struct` | `GenericAssetStructControlActionCluster` | selected field policy + readback proof |
 | `select` | `GenericAssetStructControlActionCluster` | enum/object/class/soft/interface proof; residual wildcard fails |
+
+`set_fields_in_struct` is removed from GenericOps and remains only as `field.struct_member_set`.
 
 ---
 
@@ -199,13 +185,14 @@ Assert representative mappings:
 ```ts
 assertOperationOwner('generic_ops.control.switch_enum', 'GenericAssetStructControlAction');
 assertOperationOwner('generic_ops.control.for_loop', 'GenericAssetStructControlAction');
-assertOperationOwner('generic_ops.container.array.add', 'FunctionAction');
-assertOperationOwner('generic_ops.transform.function_conversion', 'FunctionAction');
-assertOperationOwner('generic_ops.create.asset_action', 'GenericAssetStructControlAction');
-assertOperationOwner('generic_ops.create.function_backed_create', 'FunctionAction');
-assertOperationOwner('generic_ops.schedule.timer_by_handle', 'FunctionAction');
-assertOperationOwner('generic_ops.schedule.timer_delegate_node', 'GenericAssetStructControlAction');
-assertOperationOwner('generic_ops.struct.set_fields_in_struct', 'GenericAssetStructControlAction');
+assertOperationOwner('generic_ops.transform.type_promotion', 'GenericAssetStructControlAction');
+assertOperationOwner('generic_ops.create.spawn_actor', 'GenericAssetStructControlAction');
+assertOperationOwner('generic_ops.struct_select.make_struct', 'GenericAssetStructControlAction');
+assert.equal(operationIds.has('generic_ops.container.array.add'), false);
+assert.equal(operationIds.has('generic_ops.transform.function_conversion'), false);
+assert.equal(operationIds.has('generic_ops.create.asset_action'), false);
+assert.equal(operationIds.has('generic_ops.schedule.timer_delegate_node'), false);
+assert.equal(operationIds.has('generic_ops.struct_select.set_fields_in_struct'), false);
 ```
 
 - [x] **Step 3: Implement logical groups**
@@ -214,10 +201,8 @@ Groups:
 
 ```text
 generic_ops.control
-generic_ops.container
 generic_ops.transform
 generic_ops.create
-generic_ops.schedule
 generic_ops.struct_select
 ```
 
@@ -275,9 +260,8 @@ Reader DTOs:
 ```text
 ControlOperationEvidence: operation, case values, default policy, dynamic output count
 MacroInstanceEvidence: macro_graph_path, macro_pin_shape_snapshot, world/context policy
-GenericCreateEvidence: create_operation, class_path, asset_path, expose_on_spawn evidence keys
+GenericCreateEvidence: create_operation, class_path, expose_on_spawn evidence keys
 GenericTransformEvidence: transform_operation, source_pin_type, target_pin_type, cast/interface policy
-GenericScheduleEvidence: schedule_operation, graph_latent_allowed, handler evidence id when required
 StructFieldPolicyEvidence: struct_path, selected_field_paths, optional_pin_policy, result type proof
 ```
 
@@ -290,10 +274,8 @@ generic.control.*
 generic.macro.*
 generic.create.*
 generic.transform.*
-generic.schedule.*
 generic.struct.*
 generic.select.*
-container.*
 ```
 
 - [x] **Step 4: Hash evidence map**
@@ -676,17 +658,15 @@ Minimum positive coverage:
 ```text
 switch_enum, multi_gate, do_once macro, foreach_loop macro,
 array.add, array.identical, map.keys, set.union,
-dynamic_cast, function_conversion,
-spawn_actor expose-on-spawn, asset_action projected evidence,
-timer_delegate_node, delay function-backed,
-set_fields_in_struct, select enum
+dynamic_cast, type_promotion,
+spawn_actor expose-on-spawn,
+select enum
 ```
 
 Minimum negative coverage:
 
 ```text
-missing macro snapshot, missing container element type, wrong runtime owner,
-asset query-only selector, latent not allowed, missing handler for async delegate connection,
+missing macro snapshot, wrong runtime owner,
 wildcard select result, split/recombine statement rejected
 ```
 
@@ -760,7 +740,7 @@ Verification run:
 
 ```powershell
 npm.cmd --prefix AgentFaceService/task-core run build
-npm.cmd --prefix AgentFaceService/task-core run test:node # 188/188
+npm.cmd --prefix AgentFaceService/task-core run test:node # 217/217
 & 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development 'D:\UEProjects\Template\Template.uproject' -NoHotReloadFromIDE -WaitMutex
 & 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.GenericOps;Quit' # 22/22
 & 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic;Quit' # 24/24
@@ -772,6 +752,7 @@ Notes:
 
 - No new runtime clusters were added for GenericOps.
 - GenericOps public operations are logical contract groups with explicit `runtimeOwner` mapping.
-- Function-backed create/convert/schedule/container operations stay under FunctionAction.
+- Function-backed create/convert/schedule operations stay under FunctionAction and are not GenericOps rows.
+- Container operations stay under `container_action`.
 - Field capability remains Field-owned (`field.capability_id` + `field.*` evidence); no Field-tool-cluster-specific payload was added to GenericOps/core DTOs.
-- `select` now rejects wildcard/unresolved result proof; `set_fields_in_struct` requires selected field policy evidence; `split_pin` and `recombine_pin` remain rejected as GraphWrite statements.
+- `select` now rejects wildcard/unresolved result proof; struct member set is Field-owned as `field.struct_member_set`; `split_pin` and `recombine_pin` remain rejected as GraphWrite statements.

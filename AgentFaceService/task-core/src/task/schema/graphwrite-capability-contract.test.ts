@@ -51,10 +51,26 @@ describe('GraphWrite capability contract', () => {
     assert.ok(containerAction);
     assert.equal(containerAction.executeRevalidation, 'not-required');
     assert.equal(containerAction.evidence.projectionSource, 'ActionContext');
+    assert.equal(containerAction.operations.length, 58);
     assert.ok(containerAction.operations.some((operation) => operation.id === 'container.array.add'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.array.identical'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.array.sort_float'));
     assert.ok(containerAction.operations.some((operation) => operation.id === 'container.map.contains'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.map.get_last_index'));
     assert.ok(containerAction.operations.some((operation) => operation.id === 'container.set.to_array'));
+    assert.ok(containerAction.operations.some((operation) => operation.id === 'container.set.get_last_index'));
     assert.ok(containerAction.operations.every((operation) => operation.reviewEvidence === 'graph_surface_atomic_target'));
+  });
+
+  it('keeps struct member mutation under the Field cluster canonical owner', () => {
+    const field = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.find((cluster) => cluster.id === 'field');
+
+    assert.ok(field);
+    assert.ok(field.operations.some((operation) => operation.id === 'field.struct_member_set'));
+    assert.equal(
+      field.operations.find((operation) => operation.id === 'field.struct_member_set')?.reviewEvidence,
+      'graph_surface_atomic_target',
+    );
   });
 
   it('pins Generic schedule to projected spawner evidence and graph-level review evidence', () => {
@@ -171,13 +187,9 @@ describe('GraphWrite capability contract', () => {
 
     assertOperationOwner('generic_ops.control.switch_enum', 'GenericAssetStructControlAction');
     assertOperationOwner('generic_ops.control.for_loop', 'GenericAssetStructControlAction');
-    assertOperationOwner('generic_ops.container.array.add', 'FunctionAction');
-    assertOperationOwner('generic_ops.transform.function_conversion', 'FunctionAction');
-    assertOperationOwner('generic_ops.create.asset_action', 'GenericAssetStructControlAction');
-    assertOperationOwner('generic_ops.create.function_backed_create', 'FunctionAction');
-    assertOperationOwner('generic_ops.schedule.timer_by_handle', 'FunctionAction');
-    assertOperationOwner('generic_ops.schedule.timer_delegate_node', 'GenericAssetStructControlAction');
-    assertOperationOwner('generic_ops.struct_select.set_fields_in_struct', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.transform.type_promotion', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.create.spawn_actor', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.struct_select.make_struct', 'GenericAssetStructControlAction');
 
     assert.equal(
       operationById.get('generic_ops.struct_select.split_pin')?.rejectionReason,
@@ -211,9 +223,8 @@ describe('GraphWrite capability contract', () => {
       .map((operation) => operation.secondStageOperation?.replace('generic.create.', ''))
       .sort();
 
-    assert.deepEqual(genericTransformOperations, ['class_cast', 'dynamic_cast']);
+    assert.deepEqual(genericTransformOperations, ['class_cast', 'dynamic_cast', 'type_promotion']);
     assert.deepEqual(genericCreateOperations, [
-      'asset_action',
       'construct_object',
       'create_widget',
       'make_array',
@@ -221,6 +232,28 @@ describe('GraphWrite capability contract', () => {
       'make_set',
       'spawn_actor',
     ]);
+  });
+
+  it('does not publish duplicate canonical capability rows as GenericOps or OpCoverage aliases', () => {
+    const operationGroups = new Map<string, (typeof GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups)[number]>(
+      GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.map((group) => [group.id, group]),
+    );
+    const operationIds = new Set(
+      GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups
+        .flatMap((group) => group.operations)
+        .map((operation) => operation.id),
+    );
+
+    assert.equal(operationGroups.has('generic_ops.container'), false);
+    assert.equal(operationGroups.has('generic_ops.schedule'), false);
+    assert.equal(operationIds.has('generic_ops.transform.function_conversion'), false);
+    assert.equal(operationIds.has('generic_ops.create.function_backed_create'), false);
+    assert.equal(operationIds.has('generic_ops.create.asset_action'), false);
+    assert.equal(operationIds.has('generic_ops.schedule.timer_by_handle'), false);
+    assert.equal(operationIds.has('generic_ops.schedule.timer_delegate_node'), false);
+    assert.equal(operationIds.has('generic_ops.schedule.latent_or_async_node'), false);
+    assert.equal(operationIds.has('generic_ops.struct_select.set_fields_in_struct'), false);
+    assert.equal(operationIds.has('array_identical'), false);
   });
 
   it('keeps OpCoverage disjoint from GenericOps logical groups', () => {
@@ -284,7 +317,6 @@ describe('GraphWrite capability contract', () => {
       'datetime_greater_equal',
       'datetime_less',
       'datetime_less_equal',
-      'array_identical',
     ];
     assert.deepEqual([...supported].sort(), [...expectedSupported].sort());
 

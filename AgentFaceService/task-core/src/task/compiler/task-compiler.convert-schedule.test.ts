@@ -214,8 +214,6 @@ test('function-backed schedule preserves FunctionAction ownership evidence', () 
     schedule_operation: 'delay',
     graph_latent_allowed: true,
     context_evidence: {
-      'generic.schedule.operation': 'delay',
-      'generic.schedule.graph_latent_allowed': 'true',
       schedule_action_stable_id: 'action_database:/Script/Engine.KismetSystemLibrary:Delay',
       schedule_spawner_signature: 'Delay(WorldContextObject,Duration,LatentInfo)',
     },

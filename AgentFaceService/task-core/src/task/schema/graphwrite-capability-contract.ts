@@ -26,10 +26,8 @@ export interface GraphWriteOperationGroupContract {
     | 'op_coverage'
     | 'event_delegate'
     | 'generic_ops.control'
-    | 'generic_ops.container'
     | 'generic_ops.transform'
     | 'generic_ops.create'
-    | 'generic_ops.schedule'
     | 'generic_ops.struct_select';
   readonly responsibility: string;
   readonly operations: readonly GraphWriteOperationGroupOperation[];
@@ -108,12 +106,9 @@ const OP_COVERAGE_P1_OPERATIONS = [
   'datetime_less_equal',
 ] as const;
 
-const OP_COVERAGE_P2_OPERATIONS = ['array_identical'] as const;
-
 export const OP_COVERAGE_SUPPORTED_OPERATION_IDS = [
   ...OP_COVERAGE_P0_OPERATIONS,
   ...OP_COVERAGE_P1_OPERATIONS,
-  ...OP_COVERAGE_P2_OPERATIONS,
 ] as const;
 
 export const OP_COVERAGE_EXCLUDED_OPERATION_IDS = [
@@ -135,8 +130,6 @@ export const OP_COVERAGE_EVIDENCE_KEYS = [
   'op.argument_pin_type.0',
   'op.argument_pin_type.1',
   'op.expected_return_pin_type',
-  'op.array_lhs_pin_type',
-  'op.array_rhs_pin_type',
 ] as const;
 
 function makeSupportedOp(
@@ -176,28 +169,18 @@ export const GENERIC_OPS_EVIDENCE_KEYS = [
   'generic.macro.world_context_policy',
   'generic.create.operation',
   'generic.create.class_path',
-  'generic.create.asset_path',
   'generic.create.expose_on_spawn',
   'generic.transform.operation',
   'generic.transform.source_pin_type',
   'generic.transform.target_pin_type',
   'generic.transform.cast_policy',
-  'generic.schedule.operation',
-  'generic.schedule.graph_latent_allowed',
-  'generic.schedule.handler_evidence_id',
   'generic.struct.struct_path',
   'generic.struct.selected_field_paths',
   'generic.struct.optional_pin_policy',
   'generic.select.result_type_proof',
-  'container.kind',
-  'container.operation',
-  'container.collection_pin_type',
-  'container.element_pin_type',
-  'container.key_pin_type',
-  'container.value_pin_type',
 ] as const;
 
-type GenericOpsFamily = 'control' | 'container' | 'transform' | 'create' | 'schedule' | 'struct_select';
+type GenericOpsFamily = 'control' | 'transform' | 'create' | 'struct_select';
 
 function makeSupportedGenericOp(
   family: GenericOpsFamily,
@@ -271,7 +254,7 @@ const GENERIC_MACRO_EVIDENCE_KEYS = [
   'generic.macro.pin_shape_snapshot',
 ] as const;
 
-const GENERIC_CONTAINER_OPERATIONS = {
+const CONTAINER_ACTION_OPERATIONS = {
   array: [
     'get',
     'set',
@@ -338,23 +321,7 @@ const GENERIC_CONTAINER_OPERATIONS = {
   ],
 } as const;
 
-const GENERIC_CONTAINER_EVIDENCE_KEYS = [
-  'container.kind',
-  'container.operation',
-  'container.collection_pin_type',
-] as const;
-
-const GENERIC_TRANSFORM_GENERIC_OPERATIONS = ['dynamic_cast', 'class_cast'] as const;
-const GENERIC_TRANSFORM_FUNCTION_OPERATIONS = [
-  'type_promotion',
-  'function_conversion',
-  'blueprint_autocast',
-  'numeric_conversion',
-  'string_name_text_conversion',
-  'enum_conversion',
-  'object_to_soft_object',
-  'class_to_soft_class',
-] as const;
+const GENERIC_TRANSFORM_GENERIC_OPERATIONS = ['dynamic_cast', 'class_cast', 'type_promotion'] as const;
 const GENERIC_TRANSFORM_EVIDENCE_KEYS = [
   'generic.transform.operation',
   'generic.transform.source_pin_type',
@@ -368,55 +335,13 @@ const GENERIC_CREATE_GENERIC_OPERATIONS = [
   'make_array',
   'make_map',
   'make_set',
-  'asset_action',
-] as const;
-const GENERIC_CREATE_FUNCTION_OPERATIONS = [
-  'async_action',
-  'function_backed_create',
-  'function_backed_spawn',
-  'function_backed_construct',
 ] as const;
 const GENERIC_CREATE_EVIDENCE_KEYS = [
   'generic.create.operation',
   'generic.create.class_path',
   'generic.create.expose_on_spawn',
 ] as const;
-const GENERIC_ASSET_CREATE_EVIDENCE_KEYS = [
-  'generic.create.operation',
-  'generic.create.asset_path',
-  'asset_action_stable_id',
-  'asset_action_spawner_signature',
-] as const;
-
-const GENERIC_SCHEDULE_GENERIC_OPERATIONS = ['timer_delegate_node', 'latent_or_async_node'] as const;
-const GENERIC_SCHEDULE_FUNCTION_OPERATIONS = [
-  'timer_by_function_name',
-  'timer_by_handle',
-  'timer_clear_by_handle',
-  'timer_clear_by_function_name',
-  'timer_pause_by_handle',
-  'timer_pause_by_function_name',
-  'timer_unpause_by_handle',
-  'timer_unpause_by_function_name',
-  'delay',
-  'retriggerable_delay',
-  'delay_until_next_tick',
-  'generic_latent_function_call',
-  'async_proxy_output_delegate_connection',
-] as const;
-const GENERIC_SCHEDULE_EVIDENCE_KEYS = [
-  'generic.schedule.operation',
-  'schedule_action_stable_id',
-  'schedule_spawner_signature',
-] as const;
-const GENERIC_LATENT_SCHEDULE_EVIDENCE_KEYS = [
-  'generic.schedule.operation',
-  'schedule_action_stable_id',
-  'schedule_spawner_signature',
-  'generic.schedule.graph_latent_allowed',
-] as const;
-
-const GENERIC_STRUCT_SELECT_OPERATIONS = ['make_struct', 'break_struct', 'set_fields_in_struct', 'select'] as const;
+const GENERIC_STRUCT_SELECT_OPERATIONS = ['make_struct', 'break_struct', 'select'] as const;
 const GENERIC_STRUCT_SELECT_EVIDENCE_KEYS = [
   'generic.struct.struct_path',
   'generic.struct.selected_field_paths',
@@ -449,30 +374,12 @@ const GENERIC_OPS_OPERATION_GROUPS = [
     ],
   },
   {
-    id: 'generic_ops.container',
-    responsibility:
-      'GenericOps exposes container operations publicly, while runtime execution stays FunctionAction-owned through the container/callable path.',
-    operations: Object.entries(GENERIC_CONTAINER_OPERATIONS).flatMap(([containerKind, operations]) =>
-      operations.map((operation) =>
-        makeSupportedGenericOp(
-          'container',
-          `${containerKind}.${operation}`,
-          'FunctionAction',
-          GENERIC_CONTAINER_EVIDENCE_KEYS,
-        ),
-      ),
-    ),
-  },
-  {
     id: 'generic_ops.transform',
     responsibility:
-      'GenericOps transform operations split by existing owner: generic cast node evidence stays GenericAssetStructControlAction, function-backed conversion stays FunctionAction.',
+      'GenericOps transform operations cover generic cast and type-promotion node evidence; function-backed conversion is owned by FunctionAction and is not indexed here.',
     operations: [
       ...GENERIC_TRANSFORM_GENERIC_OPERATIONS.map((operation) =>
         makeSupportedGenericOp('transform', operation, 'GenericAssetStructControlAction', GENERIC_TRANSFORM_EVIDENCE_KEYS),
-      ),
-      ...GENERIC_TRANSFORM_FUNCTION_OPERATIONS.map((operation) =>
-        makeSupportedGenericOp('transform', operation, 'FunctionAction', GENERIC_TRANSFORM_EVIDENCE_KEYS),
       ),
       makeRejectedGenericOp('transform', 'link_time_auto_conversion', 'link_time_auto_conversion_requires_linker_readback'),
     ],
@@ -480,36 +387,15 @@ const GENERIC_OPS_OPERATION_GROUPS = [
   {
     id: 'generic_ops.create',
     responsibility:
-      'GenericOps create operations use projected generic spawner or asset evidence when generic-owned; function-backed factories stay FunctionAction-owned.',
+      'GenericOps create operations use projected generic spawner evidence; asset_action and function-backed factories are owned by their canonical clusters and are not indexed here.',
     operations: [
       ...GENERIC_CREATE_GENERIC_OPERATIONS.map((operation) =>
         makeSupportedGenericOp(
           'create',
           operation,
           'GenericAssetStructControlAction',
-          operation.startsWith('asset') ? GENERIC_ASSET_CREATE_EVIDENCE_KEYS : GENERIC_CREATE_EVIDENCE_KEYS,
+          GENERIC_CREATE_EVIDENCE_KEYS,
         ),
-      ),
-      ...GENERIC_CREATE_FUNCTION_OPERATIONS.map((operation) =>
-        makeSupportedGenericOp('create', operation, 'FunctionAction', GENERIC_CREATE_EVIDENCE_KEYS),
-      ),
-    ],
-  },
-  {
-    id: 'generic_ops.schedule',
-    responsibility:
-      'GenericOps schedule operations use generic spawner evidence only for generic schedule nodes; function-backed timer/latent calls stay FunctionAction-owned.',
-    operations: [
-      ...GENERIC_SCHEDULE_GENERIC_OPERATIONS.map((operation) =>
-        makeSupportedGenericOp(
-          'schedule',
-          operation,
-          'GenericAssetStructControlAction',
-          operation === 'latent_or_async_node' ? GENERIC_LATENT_SCHEDULE_EVIDENCE_KEYS : GENERIC_SCHEDULE_EVIDENCE_KEYS,
-        ),
-      ),
-      ...GENERIC_SCHEDULE_FUNCTION_OPERATIONS.map((operation) =>
-        makeSupportedGenericOp('schedule', operation, 'FunctionAction', GENERIC_SCHEDULE_EVIDENCE_KEYS),
       ),
     ],
   },
@@ -713,6 +599,12 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
           supportStatus: 'supported',
           reviewEvidence: 'graph_surface_atomic_target',
         },
+        {
+          id: 'field.struct_member_set',
+          kind: 'field',
+          supportStatus: 'supported',
+          reviewEvidence: 'graph_surface_atomic_target',
+        },
       ],
       evidence: {
         projectionSource: 'SemanticStatement',
@@ -771,34 +663,9 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
       id: 'container_action',
       responsibility:
         'GraphWrite owns first-class ordinary Blueprint array/map/set container semantics; execution resolves through ActionContext and FunctionAction-backed callable evidence.',
-      operations: [
-        'container.array.get',
-        'container.array.set',
-        'container.array.add',
-        'container.array.add_unique',
-        'container.array.append',
-        'container.array.insert',
-        'container.array.remove_item',
-        'container.array.remove_index',
-        'container.array.clear',
-        'container.array.contains',
-        'container.array.find',
-        'container.array.length',
-        'container.map.add',
-        'container.map.remove',
-        'container.map.find',
-        'container.map.contains',
-        'container.map.keys',
-        'container.map.values',
-        'container.map.clear',
-        'container.map.length',
-        'container.set.add',
-        'container.set.remove',
-        'container.set.contains',
-        'container.set.clear',
-        'container.set.length',
-        'container.set.to_array',
-      ].map((id) => ({
+      operations: Object.entries(CONTAINER_ACTION_OPERATIONS).flatMap(([containerKind, operations]) =>
+        operations.map((operation) => `container.${containerKind}.${operation}`),
+      ).map((id) => ({
         id,
         kind: 'container_action',
         supportStatus: 'supported' as const,
@@ -847,7 +714,6 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
       operations: [
         ...OP_COVERAGE_P0_OPERATIONS.map((id) => makeSupportedOp(id, 'P0')),
         ...OP_COVERAGE_P1_OPERATIONS.map((id) => makeSupportedOp(id, 'P1')),
-        makeSupportedOp('array_identical', 'P2', ['op.array_lhs_pin_type', 'op.array_rhs_pin_type']),
         ...OP_COVERAGE_EXCLUDED_OPERATION_IDS.map((id) => makeRejectedOp(id)),
       ],
     },

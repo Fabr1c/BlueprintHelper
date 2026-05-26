@@ -12,12 +12,14 @@ import {
 
 describe('GraphWrite GenericOps task schema exports', () => {
   it('exports logical groups without leaking runtime clusters', () => {
+    const operationGroupIds: readonly string[] = GENERIC_OPS_OPERATION_GROUP_IDS;
+
     assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.control'));
-    assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.container'));
     assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.transform'));
     assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.create'));
-    assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.schedule'));
     assert.ok(GENERIC_OPS_OPERATION_GROUP_IDS.includes('generic_ops.struct_select'));
+    assert.equal(operationGroupIds.includes('generic_ops.container'), false);
+    assert.equal(operationGroupIds.includes('generic_ops.schedule'), false);
 
     const runtimeClusterIds: readonly string[] = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.map((cluster) => cluster.id);
     for (const forbidden of GENERIC_OPS_FORBIDDEN_RUNTIME_CLUSTER_IDS) {
@@ -26,28 +28,33 @@ describe('GraphWrite GenericOps task schema exports', () => {
   });
 
   it('exports representative operation ids and context evidence keys', () => {
+    const operationIds: readonly string[] = GENERIC_OPS_OPERATION_IDS;
+    const evidenceKeys: readonly string[] = GENERIC_OPS_EVIDENCE_KEYS;
+
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.control.switch_enum'));
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.control.multi_gate'));
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.control.do_once'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.container.array.identical'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.container.map.keys'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.container.set.union'));
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.transform.dynamic_cast'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.transform.function_conversion'));
+    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.transform.type_promotion'));
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.create.spawn_actor'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.create.asset_action'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.schedule.timer_delegate_node'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.schedule.delay'));
-    assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.struct_select.set_fields_in_struct'));
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.struct_select.select'));
 
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.control.operation'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.control.enum_path'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.macro.pin_shape_snapshot'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.create.expose_on_spawn'));
-    assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.schedule.graph_latent_allowed'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.select.result_type_proof'));
-    assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('container.collection_pin_type'));
+    assert.equal(operationIds.some((id) => id.startsWith('generic_ops.container.')), false);
+    assert.equal(operationIds.includes('generic_ops.transform.function_conversion'), false);
+    assert.equal(operationIds.includes('generic_ops.create.asset_action'), false);
+    assert.equal(operationIds.includes('generic_ops.create.function_backed_create'), false);
+    assert.equal(operationIds.some((id) => id.startsWith('generic_ops.schedule.')), false);
+    assert.equal(operationIds.includes('generic_ops.schedule.timer_delegate_node'), false);
+    assert.equal(operationIds.includes('generic_ops.schedule.latent_or_async_node'), false);
+    assert.equal(operationIds.includes('generic_ops.struct_select.set_fields_in_struct'), false);
+    assert.equal(evidenceKeys.includes('container.collection_pin_type'), false);
+    assert.equal(evidenceKeys.includes('generic.create.asset_path'), false);
+    assert.equal(evidenceKeys.includes('generic.schedule.graph_latent_allowed'), false);
   });
 
   it('does not export UE node class names as GenericOps evidence keys', () => {
@@ -87,15 +94,6 @@ describe('GraphWrite GenericOps task schema exports', () => {
               target: { kind: 'get', name: 'Items' },
               item: { kind: 'literal', value_type: 'int', value: 7 },
               element_type: 'int',
-            }, {
-              id: 'stmt_delay',
-              kind: 'schedule',
-              schedule_operation: 'delay',
-              function_operation: 'schedule_function',
-              context_evidence: {
-                'generic.schedule.operation': 'delay',
-                'generic.schedule.graph_latent_allowed': 'true',
-              },
             }],
           },
         }],
