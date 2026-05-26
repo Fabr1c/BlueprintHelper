@@ -27,6 +27,10 @@ describe('GraphWrite TaskPlan canonical fixtures', () => {
     assert.equal((graphWriteStep as Record<string, any>).target.graph, 'BH_StoneGateActivation');
     assert.equal((graphWriteStep as Record<string, any>).write.strategy, 'owned_graph_edit');
     assert.deepEqual((graphWriteStep as Record<string, any>).write.ops.map((op: Record<string, unknown>) => op.op), ['ensure_entry']);
+    assert.equal(
+      (graphWriteStep as Record<string, any>).write.ops[0].signature_evidence_id,
+      'signature:custom_event:InitializeStoneGate',
+    );
     assert.deepEqual((graphWriteStep as Record<string, any>).depends_on, ['step_001']);
     assert.deepEqual((graphWriteStep as Record<string, any>).constraints, {
       allow_modify_user_nodes: false,

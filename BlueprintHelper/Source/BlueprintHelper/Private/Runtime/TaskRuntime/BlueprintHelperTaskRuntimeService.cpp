@@ -1744,10 +1744,17 @@ public:
 		EntryObject->SetStringField(TEXT("kind"), TEXT("custom_event"));
 		EntryObject->SetStringField(TEXT("name"), EntryName);
 		EntryObject->SetStringField(TEXT("id"), EntryId);
+		FString SignatureEvidenceId;
+		if (OpObject->TryGetStringField(TEXT("signature_evidence_id"), SignatureEvidenceId) &&
+			!SignatureEvidenceId.TrimStartAndEnd().IsEmpty())
+		{
+			EntryObject->SetStringField(TEXT("signature_evidence_id"), SignatureEvidenceId.TrimStartAndEnd());
+		}
 		if (bHasSignatureDependency)
 		{
 			EntryObject->SetBoolField(TEXT("signature_dependency"), true);
 			EntryObject->SetStringField(TEXT("source"), TEXT("signature_dependency"));
+			EntryObject->SetStringField(TEXT("source_cluster"), TEXT("blueprint_signature"));
 		}
 
 		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
