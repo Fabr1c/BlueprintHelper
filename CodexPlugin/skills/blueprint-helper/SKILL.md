@@ -23,7 +23,7 @@ Do not inspect the BlueprintHelper plugin package or implementation source (`Cod
 
 The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
 
-Important: call editor lifecycle commands only through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
+Important: call editor lifecycle commands only through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through the CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, stop and report `lifecycle_mcp_unavailable` instead of using a CLI fallback. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
 
 Deprecated MCP ordinary read/write/debug/task tools are forbidden for Agent workflows. Do not use them as fallback.
 
@@ -110,7 +110,7 @@ Before dispatching BlueprintHelper subagents:
 3. Check runtime profile with CLI:
    `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
 4. Confirm Bridge connectivity with CLI diagnostics/runtime profile.
-5. If the editor must be launched or closed, use only the global MCP lifecycle tools.
+5. If the editor must be launched or closed, use only the global MCP lifecycle tools. Never use CLI lifecycle aliases; if MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable`.
 6. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
 7. Never rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
 
@@ -198,6 +198,8 @@ Global MCP lifecycle tool ids:
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
 ```
+
+CLI lifecycle aliases are not Agent execution paths. Do not call `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor`; the CLI rejects Agent-owned lifecycle and points back to global MCP.
 
 Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.
 

@@ -1261,6 +1261,7 @@ This file records durable user-facing Agent preferences for BlueprintHelper work
 - Default save policy: no automatic save.
 - Use BlueprintHelper CLI for ordinary UE editor asset reads and writes.
 - Use global lifecycle-only MCP only for opening and closing Unreal Editor.
+- Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI to start or close Unreal Editor. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
 - Use normal repository tools for source, scripts, config, tests, and docs.
 - Do not inspect BlueprintHelper plugin package or implementation source for ordinary plugin usage. Use installed skill instructions, AgentGuide, CLI reference, and templates instead. Plugin source reads are allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
 - Do not request or store Bridge tokens, auth sessions, raw payloads, or private environment details.

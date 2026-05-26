@@ -31,6 +31,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by scoped BlueprintHelper operations within the approved session.
 - Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
+- Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI to start or close Unreal Editor. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
 - `AutoRepair` safety profile in `setting.json` bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 
 ### Save And Validation

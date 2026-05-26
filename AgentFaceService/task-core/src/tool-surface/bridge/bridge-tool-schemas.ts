@@ -24,13 +24,6 @@ const ReviewActionInputSchema = z.object({
   target_keys: z.array(z.string().min(1)).optional(),
 });
 
-const CloseEditorInputSchema = z.object({
-  save_all: z.boolean().optional(),
-  wait_timeout_ms: z.number().optional(),
-  project_file: z.string().optional(),
-  force: z.boolean().optional(),
-});
-
 export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_context: ReadContextInputSchema,
   blueprinthelper_read_context_capabilities: ReadContextCapabilitiesInputSchema,
@@ -40,5 +33,4 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_query_review_records: ReviewRecordQueryInputSchema,
   blueprinthelper_apply_review_action: ReviewActionInputSchema,
   blueprinthelper_read_function_chain_context: ReadFunctionChainContextInputSchema,
-  blueprint_close_editor: CloseEditorInputSchema,
 };

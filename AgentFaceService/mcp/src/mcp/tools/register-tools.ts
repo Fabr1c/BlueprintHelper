@@ -55,7 +55,7 @@ const LEGACY_TOOL_GUIDANCE =
 const FROZEN_TOOL_PREFIX =
   'FROZEN / Expert-only / Normal agents must not call directly.';
 
-const AGENT_GUIDE_INDEX_FILE_NAME = '00_Agent_Onboarding_Index_20260504.md';
+const AGENT_GUIDE_INDEX_FILE_NAME = '00_Agent_Onboarding_Index.md';
 const AGENT_GUIDE_INDEX_RELATIVE_PATH = path.join(
   'AgentFaceService',
   'agent-guide',

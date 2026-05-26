@@ -4,6 +4,8 @@ This package contains the Codex-facing BlueprintHelper plugin metadata, skill in
 
 Read `skills/blueprint-helper/SKILL.md` before using BlueprintHelper. The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI under the sibling `AgentFaceService/cli` package. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
 
+Editor lifecycle is MCP-only for Agents. Do not use `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable`.
+
 Deprecated MCP read/write/debug/task tools are not fallback paths for ordinary Agent workflows.
 
 Use normal repository tools for source files, docs, JSON, config, tests, and build scripts. Use BlueprintHelper CLI only for Unreal Editor assets through the running Editor and Bridge.

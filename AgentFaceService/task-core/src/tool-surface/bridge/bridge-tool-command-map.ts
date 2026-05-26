@@ -55,5 +55,4 @@ export const bridgeCommandByToolName: Record<string, string> = {
   blueprint_stop_pie: 'stop_pie',
   blueprint_create_blueprint: 'create_blueprint',
   blueprint_exec_console_command: 'exec_console_command',
-  blueprint_close_editor: 'close_editor',
 };

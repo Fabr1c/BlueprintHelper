@@ -103,6 +103,24 @@ test('lifecycle help directs Agents to global MCP instead of CLI aliases', async
   assert.match(output, /Do not use CLI lifecycle aliases as Agent compatibility paths/);
 });
 
+test('lifecycle CLI invocation is blocked and points Agents to MCP', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['open_editor', '--json', '{}'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 2);
+  assert.match(output, /lifecycle_mcp_required/);
+  assert.match(output, /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.match(output, /do not run bh open_editor/);
+});
+
 test('direct blueprint_get_runtime_profile calls matching Bridge command', async () => {
   const writes: string[] = [];
   const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
@@ -287,118 +305,65 @@ test('delayed Bridge calls emit Agent wait hints to stderr without contaminating
   }
 });
 
-test('direct blueprint_close_editor calls matching Bridge command when expert flag is present', async () => {
+test('direct blueprint_close_editor is blocked even when expert flag is present', async () => {
   const writes: string[] = [];
-  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
-  const bridge = {
-    sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
-      calls.push({ command, payload });
-      return {
-        request_id: 'close_editor',
-        success: true,
-        result: {
-          ok: true,
-          schema: 'BlueprintHelper.ToolResult.v1',
-          operation: 'close_editor',
-          status: 'completed',
-          modified: false,
-          data: { schema: 'CloseEditor.v1', close_scheduled: true },
-        },
-      };
-    },
-  };
-
   const exitCode = await runCli({
-    argv: ['blueprint_close_editor', '--json', '{ "save_all": false }', '--expert', '--select', 'status,artifacts.full_result'],
-    cwd: process.cwd(),
-    bridge,
-    runner: {} as never,
-    stdout: (line) => writes.push(line),
-    stderr: () => {},
-  });
-
-  assert.equal(exitCode, 0);
-  assert.deepEqual(calls, [{ command: 'close_editor', payload: { save_all: false } }]);
-  assert.equal(JSON.parse(writes.join('')).status, 'completed');
-});
-
-test('short close_editor does not require expert flag', async () => {
-  const writes: string[] = [];
-  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
-  const exitCode = await runCli({
-    argv: ['close_editor', '--select', 'status,artifacts.full_result'],
+    argv: ['blueprint_close_editor', '--json', '{ "save_all": false }', '--expert'],
     cwd: process.cwd(),
     bridge: {
-      sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
-        calls.push({ command, payload });
-        return {
-          request_id: 'close_editor',
-          success: true,
-          result: {
-            ok: true,
-            schema: 'BlueprintHelper.ToolResult.v1',
-            operation: 'close_editor',
-            status: 'completed',
-            modified: false,
-            data: { schema: 'CloseEditor.v1', close_scheduled: true },
-          },
-        };
-      },
-    },
-    runner: {} as never,
-    stdout: (line) => writes.push(line),
-    stderr: () => {},
-  });
-
-  assert.equal(exitCode, 0);
-  assert.deepEqual(calls, [{ command: 'close_editor', payload: { save_all: true } }]);
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(output.status, 'completed');
-});
-
-
-test('short open_editor discovers uproject from cwd and uses robust editor args', async () => {
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-open-editor-'));
-  const projectDir = path.join(tmpRoot, 'Template');
-  const childDir = path.join(projectDir, 'Plugins', 'BlueprintHelper');
-  fs.mkdirSync(path.join(projectDir, '.blueprinthelper'), { recursive: true });
-  fs.mkdirSync(childDir, { recursive: true });
-  fs.writeFileSync(path.join(projectDir, 'Template.uproject'), '{}', 'utf8');
-  fs.writeFileSync(path.join(projectDir, '.blueprinthelper', 'agent-profile.json'), JSON.stringify({
-    environment: { ue_engine_dir: 'E:\\UE_5.6' },
-  }), 'utf8');
-
-  const writes: string[] = [];
-  const launches: Array<{ command: string; args: string[] }> = [];
-  let pingCount = 0;
-  const exitCode = await runCli({
-    argv: ['open_editor', '--select', 'status,artifacts.full_result'],
-    cwd: childDir,
-    bridge: {
-      sendCommand: async () => { throw new Error('must not call sendCommand'); },
-      ping: async () => {
-        pingCount += 1;
-        return pingCount >= 2;
-      },
+      sendCommand: async () => { throw new Error('must not call bridge'); },
     } as never,
     runner: {} as never,
-    runLocalProcess: async (command, args) => {
-      launches.push({ command, args });
-      return { exitCode: 0, stdout: '', stderr: '' };
-    },
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(exitCode, 2);
+  assert.equal(output.error_code, 'lifecycle_mcp_required');
+  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_close_editor/);
+});
+
+test('short close_editor is blocked and does not call Bridge', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['close_editor'],
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => { throw new Error('must not call bridge'); },
+    } as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(exitCode, 2);
+  assert.equal(output.error_code, 'lifecycle_mcp_required');
+  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_close_editor/);
+});
+
+
+test('short open_editor is blocked and does not launch a process', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['open_editor'],
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => { throw new Error('must not call sendCommand'); },
+      ping: async () => { throw new Error('must not call ping'); },
+    } as never,
+    runner: {} as never,
+    runLocalProcess: async () => { throw new Error('must not launch process'); },
     sleep: async () => {},
     stdout: (line) => writes.push(line),
     stderr: () => {},
   });
 
-  assert.equal(exitCode, 0);
-  assert.equal(launches.length, 1);
-  assert.equal(path.basename(launches[0].command), 'UnrealEditor.exe');
-  assert.equal(launches[0].args[0], path.join(projectDir, 'Template.uproject'));
-  assert.ok(launches[0].args.includes('-DDC-ForceMemoryCache'));
-  assert.ok(launches[0].args.some((arg) => arg.startsWith('-ShaderWorkingDir=')));
-  assert.ok(launches[0].args.includes('-NoSplash'));
-  assert.equal(JSON.parse(writes.join('')).status, 'completed');
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(exitCode, 2);
+  assert.equal(output.error_code, 'lifecycle_mcp_required');
+  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_open_editor/);
 });
 test('frozen direct Bridge tools are not exposed through CLI tool invocation', async () => {
   const writes: string[] = [];

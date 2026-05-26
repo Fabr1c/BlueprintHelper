@@ -40,6 +40,8 @@ mcp__blueprint_helper__blueprint_close_editor
 
 Only the Main Agent may call MCP lifecycle tools. Subagents must not call MCP tools.
 
+Agents must not start or close Unreal Editor through CLI lifecycle aliases (`bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor`). If the global MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
+
 ## Mandatory Subagent Workflow
 
 When a request involves Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, preview, execute, compile, save, or other UE editor asset work, Codex must use the BlueprintHelper subagent workflow:
@@ -87,6 +89,6 @@ The root installer removes npm-generated PowerShell `.ps1` shims when `.cmd` lau
 
 ## Global MCP Lifecycle
 
-Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Deprecated MCP ordinary tools are not fallback paths.
+Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not use CLI lifecycle aliases for editor startup/shutdown. Deprecated MCP ordinary tools are not fallback paths.
 
 For editor-asset writes, keep the workflow TaskSpec-first. Prefer `AgentFaceService/agent-guide/Templates/` for copy-and-edit JSON inputs.

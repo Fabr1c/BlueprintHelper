@@ -68,7 +68,7 @@ Decisions:
 
   [B] Boundary policy
       A) CLI TaskSpec reads/writes + global MCP allowlist  [recommended]
-      B) CLI lifecycle fallback only
+      B) MCP lifecycle only, no CLI lifecycle fallback  [required]
       C) No plugin source reads for ordinary plugin usage  [required]
 
   [R] Review/debug policy
@@ -167,7 +167,7 @@ Runtime safety belongs in `<ProjectDir>/.blueprinthelper/setting.json`:
 Update the active preference sections with these facts:
 
 - Do not write subagent workflow or subagent model-map preferences here; the main `blueprint-helper` skill owns the mandatory Codex subagent workflow.
-- Editor lifecycle commands must use global MCP allowlist tools. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
+- Editor lifecycle commands must use global MCP allowlist tools. Do not enable CLI lifecycle fallback; if lifecycle MCP is unavailable, Agents must report `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
 - Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
 - Ordinary reads/writes must use the CLI.
 - Ordinary plugin usage must not read BlueprintHelper plugin package or implementation source; use installed skill instructions, AgentGuide, CLI reference, and templates. Plugin source reads are allowed only for explicit plugin development, installation repair, or debugging.

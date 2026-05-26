@@ -2,7 +2,7 @@
 
 BlueprintHelper is an Unreal Engine editor plugin with a CLI-first TaskSpec transport and a global MCP allowlist companion. It lets an agent inspect and modify Unreal Editor assets through a local Bridge: Blueprint graphs, UMG widgets, DataAssets, DataTables, asset browser operations, compile/save/open commands, PIE commands, and related diagnostics.
 
-BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first for ordinary asset work; global MCP is retained only for editor open/close lifecycle in ordinary Agent workflows.
+BlueprintHelper is not a general source editing API. Use normal repository tools for C++, TypeScript, Python, JSON, config files, code search, build scripts, and documentation edits. The current Agent-facing surface is CLI-first for ordinary asset work; global MCP is retained only for editor open/close lifecycle in ordinary Agent workflows. Agents must not start or close Unreal Editor through CLI lifecycle aliases; if global lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
 ## TaskSpec-First Architecture
 
@@ -102,7 +102,7 @@ Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../AgentFaceServ
 Agents should read these in order:
 
 1. [AGENTS.md](AGENTS.md)
-2. [AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md](../AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md)
+2. [AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md](../AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md)
 3. [AgentFaceService/docs/CLI_Tools_API_Reference.md](../AgentFaceService/docs/CLI_Tools_API_Reference.md)
 4. [Develop/Plan/README.md](../BlueprintHelper/Develop/Plan/README.md)
 5. [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md)
@@ -163,7 +163,7 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 
 ### MCP Lifecycle / Compatibility Behavior
 
-- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. Compatibility also uses the global MCP lifecycle tools, not CLI lifecycle aliases.
+- `blueprint_open_editor` and `blueprint_close_editor` are global MCP lifecycle companion commands for Agent-owned editor lifecycle. Compatibility also uses the global MCP lifecycle tools, not CLI lifecycle aliases. CLI lifecycle invocation is blocked for Agents.
 - Deprecated MCP ordinary tools are not fallback paths; do not add or run tests for them.
 - `blueprint_export_to_json` may still return `raw_json_ref` as a resource link in compatibility paths.
 - RawJson resource handling remains for historical fixtures and recovery workflows.

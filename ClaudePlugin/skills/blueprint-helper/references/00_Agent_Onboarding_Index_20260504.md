@@ -57,13 +57,14 @@ CLI output is optimized for Agent use. Use `--omit operation,status` when the de
 Template-first authoring is available at `AgentFaceService/agent-guide/Templates/README.md`. Prefer copying a matching JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
 `blueprint_open_editor` / `blueprint_close_editor` 指全局 MCP lifecycle 工具，不是 CLI direct tool。用户明确需要启动或关闭目标 Unreal Editor 时，统一调用 `mcp__blueprint_helper__blueprint_open_editor` / `mcp__blueprint_helper__blueprint_close_editor`；不要通过 CLI lifecycle alias 做兼容路径。
+如果全局 MCP lifecycle 工具不可用，返回 `lifecycle_mcp_unavailable`；不要改用 `bh open_editor` / `bh close_editor` 或 direct CLI lifecycle 命令启动/关闭 Editor。
 
 阅读顺序:
 
 1. `AgentFaceService/agent-guide/Reference/01_Preflight_And_Boundary.md`
 2. `AgentFaceService/agent-guide/Reference/02_TaskSpec_First_Tool_Selection.md`
 3. `AgentFaceService/agent-guide/Reference/03_Runtime_Profile_And_Diagnostics.md`
-4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates_20260512.md`
+4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates.md`
 5. `AgentFaceService/agent-guide/Templates/README.md`
 6. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
 7. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`

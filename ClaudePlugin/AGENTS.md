@@ -3,12 +3,14 @@
 This repository contains the BlueprintHelper Unreal Engine editor plugin. When an AI / IDE / CLI agent is asked to use this plugin, read this file first, then open the guide index:
 
 ```text
-AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md
+AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md
 ```
 
 ## Non-negotiable boundary
 
 BlueprintHelper is not a general file-system, code-search, or C++ source-editing API. The active Agent-facing transport for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI, which talks to a running Unreal Editor through the local Bridge. Global MCP is retained only for editor open/close lifecycle in ordinary Agent workflows.
+
+Editor lifecycle is MCP-only for Agents. Do not use `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable`.
 
 Use normal repository tools for:
 
@@ -44,7 +46,7 @@ Do not use MCP for normal asset workflows. New Agent workflows should use CLI co
 
 ## Fast path
 
-Open `AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md` and follow the workflow matching the user request.
+Open `AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md` and follow the workflow matching the user request.
 
 For complex JSON inputs, start at `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`.
 

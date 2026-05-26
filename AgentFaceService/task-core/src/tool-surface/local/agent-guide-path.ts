@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ancestorDirs } from './path-utils.js';
 
-const agentGuideIndexFileName = '00_Agent_Onboarding_Index_20260504.md';
+const agentGuideIndexFileName = '00_Agent_Onboarding_Index.md';
 const agentFaceServiceAgentGuideRelativePath = path.join(
   'AgentFaceService',
   'agent-guide',

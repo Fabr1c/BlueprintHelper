@@ -7,7 +7,7 @@
 推荐入口：
 
 ```text
-00_Agent_Onboarding_Index_20260504.md
+00_Agent_Onboarding_Index.md
 ```
 
 新 Agent 应先阅读 onboarding index，再根据用户任务进入 `Reference/`、`Workflows/` 或 `Templates/`。
@@ -26,7 +26,7 @@ This directory guides AI Agents in using the BlueprintHelper Agent-facing tool s
 Recommended entry:
 
 ```text
-00_Agent_Onboarding_Index_20260504.md
+00_Agent_Onboarding_Index.md
 ```
 
 New Agents should read the onboarding index first, then move into `Reference/`, `Workflows/`, or `Templates/` depending on the user task.

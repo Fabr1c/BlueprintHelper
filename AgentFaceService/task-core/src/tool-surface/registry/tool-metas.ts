@@ -26,6 +26,6 @@ export const toolMetas: ToolMeta[] = [
   { name: 'blueprinthelper_request_write_session', description: 'Request Editor-approved write permission.', audience: 'default', risk: 'medium' },
   { name: 'blueprinthelper_diagnostics', description: 'Run static diagnostics.', audience: 'default', risk: 'none' },
   { name: 'blueprinthelper_diagnostics_runtime', description: 'Run runtime diagnostics through the Bridge.', audience: 'default', risk: 'low' },
-  { name: 'blueprint_open_editor', description: 'Open the editor from the current project directory or an explicit project_file.', audience: 'compat', risk: 'medium' },
-  { name: 'blueprint_close_editor', description: 'Close the current editor process and return lifecycle status.', audience: 'compat', risk: 'medium' },
+  { name: 'blueprint_open_editor', description: 'Compatibility name only. Agent-owned editor open must use mcp__blueprint_helper__blueprint_open_editor; CLI invocation is blocked.', audience: 'compat', risk: 'medium' },
+  { name: 'blueprint_close_editor', description: 'Compatibility name only. Agent-owned editor close must use mcp__blueprint_helper__blueprint_close_editor; CLI invocation is blocked.', audience: 'compat', risk: 'medium' },
 ];

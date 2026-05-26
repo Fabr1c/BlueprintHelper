@@ -61,6 +61,8 @@ Editor lifecycle boundary:
 Agent -> global BlueprintHelper MCP allowlist -> open/close target Unreal Editor
 ```
 
+Agents must not use CLI lifecycle aliases (`bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor`) to start or close Unreal Editor. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
+
 普通写入流程：
 
 ```text

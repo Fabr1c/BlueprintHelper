@@ -325,7 +325,7 @@ TaskSpec execute 可能产生：
 
 | 能力 | 排除原因 |
 |---|---|
-| `blueprint_open_editor`, `blueprint_close_editor` | editor lifecycle surface，不是 TaskSpec 写入能力。 |
+| `blueprint_open_editor`, `blueprint_close_editor` | editor lifecycle surface，不是 TaskSpec 写入能力；Agent-owned open/close 只能走全局 MCP lifecycle，CLI lifecycle 调用会被阻断。 |
 | `blueprinthelper_read_context`, `blueprinthelper_read_reference_context`, `blueprinthelper_read_function_chain_context` | TaskSpec authoring 前的读链路工具。 |
 | `blueprinthelper_diagnostics`, `blueprinthelper_diagnostics_runtime`, `get_runtime_profile` | 诊断 / profiling 工具，不表达编辑器写入。 |
 | `blueprinthelper_query_review_records`, `blueprinthelper_get_debug_case`, `blueprinthelper_export_debug_bundle` | Review / debug 查询工具，不表达编辑器写入。 |

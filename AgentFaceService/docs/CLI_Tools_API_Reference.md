@@ -207,7 +207,7 @@ Agent 负责的编辑器打开 / 关闭是全局 MCP 生命周期工具，不是
 - `mcp__blueprint_helper__blueprint_open_editor`
 - `mcp__blueprint_helper__blueprint_close_editor`
 
-不要把 `bh open_editor` / `bh close_editor` 当成普通 Agent 兼容路径。
+不要把 `bh open_editor` / `bh close_editor` 当成普通 Agent 兼容路径。CLI lifecycle 调用会返回 `lifecycle_mcp_required`；如果 lifecycle MCP 不可用，Agent 应报告 `lifecycle_mcp_unavailable`，不能改用 CLI 启动/关闭 Editor。
 
 ## 典型工作流
 

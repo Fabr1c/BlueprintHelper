@@ -52,7 +52,7 @@ const helpEntries: Record<string, HelpEntry> = {
     templates: [
       ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_read_agent_guide_template.json`,
-      'AgentFaceService/agent-guide/00_Agent_Onboarding_Index_20260504.md',
+      'AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md',
     ],
   },
   blueprinthelper_read_context: {
@@ -367,6 +367,7 @@ function globalHelpText(): string {
     '    mcp__blueprint_helper__blueprint_open_editor',
     '    mcp__blueprint_helper__blueprint_close_editor',
     '  Do not use CLI lifecycle aliases as Agent compatibility paths.',
+    '  If lifecycle MCP is unavailable, report lifecycle_mcp_unavailable instead of starting or closing the editor through CLI.',
     '',
     'Notes:',
     '  --develop enables data.timing for command results.',
@@ -453,6 +454,7 @@ function lifecycleHelp(action: 'open' | 'close'): HelpEntry {
     notes: [
       'Ordinary reads, writes, diagnostics, preview, execute, and result lookup stay on the CLI.',
       'Do not use CLI lifecycle aliases as Agent compatibility paths.',
+      'CLI lifecycle invocation is blocked for Agents; report lifecycle_mcp_unavailable when the global MCP lifecycle tools are unavailable.',
     ],
   };
 }

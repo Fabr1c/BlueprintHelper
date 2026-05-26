@@ -57,7 +57,7 @@ bh task preview --help
 
 Tool help lists the expected input shape and the matching `AgentFaceService/agent-guide/Templates/` semantic index and template files. Prefer copying a template, replacing placeholders, and passing the result with `--file` instead of building large JSON directly in the shell.
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths.
+The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
 ## Read Context Capabilities
 
