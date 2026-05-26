@@ -128,7 +128,7 @@ test('read agent guide resolves from project root AgentFaceService layout', asyn
     const guideDir = path.join(tempRoot, 'AgentFaceService', 'agent-guide');
     fs.mkdirSync(guideDir, { recursive: true });
     fs.writeFileSync(
-      path.join(guideDir, '00_Agent_Onboarding_Index_20260504.md'),
+      path.join(guideDir, '00_Agent_Onboarding_Index.md'),
       '# BlueprintHelper AgentGuide\n\nFixture guide.',
       'utf8',
     );

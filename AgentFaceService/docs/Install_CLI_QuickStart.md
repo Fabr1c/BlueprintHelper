@@ -100,6 +100,8 @@ mcp__blueprint_helper__blueprint_close_editor
 
 Do not use plugin-local MCP or deprecated MCP ordinary tools as proof of Agent lifecycle or asset-workflow behavior. The normal Agent-owned lifecycle path is the global MCP allowlist server.
 
+Do not start or close Unreal Editor through CLI lifecycle aliases. `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, and `blueprint_close_editor` are not Agent lifecycle execution paths; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
+
 Bridge smoke check:
 
 ```powershell
@@ -110,7 +112,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle compatibility uses the global MCP lifecycle tools rather than CLI aliases. Deprecated MCP ordinary tools are not fallback paths.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle compatibility uses the global MCP lifecycle tools rather than CLI aliases, and CLI lifecycle invocation is blocked. Deprecated MCP ordinary tools are not fallback paths.
 
 Examples:
 
