@@ -45,6 +45,12 @@ struct FBlueprintHelperK2CallContext
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
 };
 
+struct FBlueprintHelperCallFunctionCandidatePolicy
+{
+	TArray<FString> RequiredStableCallableIds;
+	TArray<FString> PermittedNodeClassPaths;
+};
+
 enum class EBlueprintHelperCallFunctionResolveStatus : uint8
 {
 	Resolved,
@@ -100,6 +106,7 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	FString ExpectedReturnType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
 	FBlueprintHelperK2CallContext Context;
+	FBlueprintHelperCallFunctionCandidatePolicy CandidatePolicy;
 	bool bAllowFuzzyUnique = true;
 	int32 MaxCandidates = 8;
 };

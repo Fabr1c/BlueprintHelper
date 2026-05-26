@@ -1,5 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
+
 namespace BlueprintHelperActionContextDemandCollector
 {
 static FString FirstNonEmpty(const FString& First, const FString& Second)
@@ -399,6 +401,111 @@ static FString NormalizeSemanticOperationToken(const FString& Operation)
 	return Operation.TrimStartAndEnd().ToLower();
 }
 
+static FString NormalizeOpOperationId(const FString& Operation)
+{
+	FString Clean = NormalizeSemanticOperationToken(Operation);
+	if (Clean.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
+	{
+		Clean.RightChopInline(3, EAllowShrinking::No);
+	}
+
+	if (Clean == TEXT("+")) return TEXT("add");
+	if (Clean == TEXT("-")) return TEXT("subtract");
+	if (Clean == TEXT("*")) return TEXT("multiply");
+	if (Clean == TEXT("/")) return TEXT("divide");
+	if (Clean == TEXT(">")) return TEXT("greater");
+	if (Clean == TEXT(">=")) return TEXT("greater_equal");
+	if (Clean == TEXT("<")) return TEXT("less");
+	if (Clean == TEXT("<=")) return TEXT("less_equal");
+	if (Clean == TEXT("==") || Clean == TEXT("=")) return TEXT("equal");
+	if (Clean == TEXT("!=") || Clean == TEXT("<>")) return TEXT("not_equal");
+	if (Clean == TEXT("&&") || Clean == TEXT("and")) return TEXT("boolean_and");
+	if (Clean == TEXT("||") || Clean == TEXT("or")) return TEXT("boolean_or");
+	if (Clean == TEXT("!") || Clean == TEXT("not")) return TEXT("boolean_not");
+	return Clean;
+}
+
+static void AddOpEvidenceIfPresent(
+	FBlueprintHelperActionContextDemand& Demand,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase) && !CleanValue.IsEmpty())
+	{
+		Demand.DefaultValues.FindOrAdd(Key) = CleanValue;
+	}
+}
+
+static void CopyOpContextEvidence(
+	const TMap<FString, FString>& Evidence,
+	FBlueprintHelperActionContextDemand& Demand)
+{
+	for (const TPair<FString, FString>& EvidencePair : Evidence)
+	{
+		AddOpEvidenceIfPresent(Demand, EvidencePair.Key, EvidencePair.Value);
+	}
+}
+
+static FString ResolveOpOperationId(
+	const FString& ExplicitFunctionOperation,
+	const TMap<FString, FString>& Evidence,
+	const FString& Operator,
+	const FString& Query)
+{
+	const FString FunctionOperation = NormalizeOpOperationId(ExplicitFunctionOperation);
+	if (!FunctionOperation.IsEmpty() && !FunctionOperation.Equals(TEXT("operator_function"), ESearchCase::IgnoreCase))
+	{
+		return FunctionOperation;
+	}
+
+	const FString EvidenceOperation = NormalizeOpOperationId(FirstNonEmpty(
+		EvidenceValue(Evidence, TEXT("op.operation_id")),
+		EvidenceValue(Evidence, TEXT("op")),
+		EvidenceValue(Evidence, TEXT("op_name")),
+		EvidenceValue(Evidence, TEXT("operator"))));
+	if (!EvidenceOperation.IsEmpty())
+	{
+		return EvidenceOperation;
+	}
+
+	return NormalizeOpOperationId(FirstNonEmpty(Operator, Query));
+}
+
+static void ApplyOpEvidence(
+	const FString& ExplicitFunctionOperation,
+	const FString& Operator,
+	const TMap<FString, FString>& Evidence,
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Left,
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Right,
+	FBlueprintHelperActionContextDemand& InOutDemand)
+{
+	if (InOutDemand.SemanticKind != EBlueprintHelperActionSemanticKind::Op)
+	{
+		return;
+	}
+
+	CopyOpContextEvidence(Evidence, InOutDemand);
+	const FString OperationId = ResolveOpOperationId(ExplicitFunctionOperation, Evidence, Operator, InOutDemand.Query);
+	if (!OperationId.IsEmpty())
+	{
+		InOutDemand.FunctionOperation = FString::Printf(TEXT("op.%s"), *OperationId);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("op.operation_id")) = OperationId;
+	}
+	if (Left.IsValid() && !Left->Type.TrimStartAndEnd().IsEmpty())
+	{
+		AddOpEvidenceIfPresent(InOutDemand, TEXT("op.argument_pin_type.0"), Left->Type);
+	}
+	if (Right.IsValid() && !Right->Type.TrimStartAndEnd().IsEmpty())
+	{
+		AddOpEvidenceIfPresent(InOutDemand, TEXT("op.argument_pin_type.1"), Right->Type);
+	}
+	if (!InOutDemand.ExpectedReturnType.TrimStartAndEnd().IsEmpty())
+	{
+		AddOpEvidenceIfPresent(InOutDemand, TEXT("op.expected_return_pin_type"), InOutDemand.ExpectedReturnType);
+	}
+}
+
 static bool ShouldRouteConvertToGeneric(const FString& ExplicitFunctionOperation, const FString& ExplicitTransformOperation)
 {
 	const FString FunctionOperation = NormalizeSemanticOperationToken(ExplicitFunctionOperation);
@@ -415,22 +522,6 @@ static bool ShouldRouteScheduleToGeneric(const FString& ExplicitFunctionOperatio
 	return FunctionOperation.IsEmpty()
 		&& !ScheduleOperation.IsEmpty()
 		&& ScheduleOperation != TEXT("latent_or_async");
-}
-
-static FBlueprintHelperCallFunctionPinType MakePinTypeFromToken(const FString& Token)
-{
-	FBlueprintHelperCallFunctionPinType PinType;
-	TArray<FString> Parts;
-	Token.TrimStartAndEnd().ParseIntoArray(Parts, TEXT("|"), true);
-	if (Parts.Num() > 0)
-	{
-		PinType.Category = Parts[0];
-	}
-	if (Parts.Num() > 1)
-	{
-		PinType.ObjectPath = Parts[1];
-	}
-	return PinType;
 }
 
 static void ApplyFunctionSemanticOperations(FBlueprintHelperActionContextDemand& InOutDemand)
@@ -585,17 +676,17 @@ static void ApplyCreateStatementEvidence(
 	if (!Statement.PinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("element"), Statement.PinType.TrimStartAndEnd());
-		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(Statement.PinType);
+		InOutDemand.ContainerElementPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Statement.PinType);
 	}
 	if (!Statement.KeyPinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("key"), Statement.KeyPinType.TrimStartAndEnd());
-		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(Statement.KeyPinType);
+		InOutDemand.ContainerKeyPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Statement.KeyPinType);
 	}
 	if (!Statement.ValuePinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("value"), Statement.ValuePinType.TrimStartAndEnd());
-		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(Statement.ValuePinType);
+		InOutDemand.ContainerValuePinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Statement.ValuePinType);
 	}
 }
 
@@ -619,17 +710,17 @@ static void ApplyCreateExpressionEvidence(
 	if (!Expression.PinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("element"), Expression.PinType.TrimStartAndEnd());
-		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(Expression.PinType);
+		InOutDemand.ContainerElementPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Expression.PinType);
 	}
 	if (!Expression.KeyPinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("key"), Expression.KeyPinType.TrimStartAndEnd());
-		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(Expression.KeyPinType);
+		InOutDemand.ContainerKeyPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Expression.KeyPinType);
 	}
 	if (!Expression.ValuePinType.TrimStartAndEnd().IsEmpty())
 	{
 		InOutDemand.ArgumentTypes.Add(TEXT("value"), Expression.ValuePinType.TrimStartAndEnd());
-		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(Expression.ValuePinType);
+		InOutDemand.ContainerValuePinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Expression.ValuePinType);
 	}
 }
 
@@ -659,7 +750,7 @@ static void ApplyContainerTypeEvidence(
 	{
 		InOutDemand.ElementType = ElementType;
 		InOutDemand.ArgumentTypes.Add(TEXT("element"), ElementType);
-		InOutDemand.ContainerElementPinType = MakePinTypeFromToken(ElementType);
+		InOutDemand.ContainerElementPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(ElementType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("element"), InOutDemand.ContainerElementPinType);
 		InOutDemand.DefaultValues.Add(TEXT("element_type"), ElementType);
 	}
@@ -667,7 +758,7 @@ static void ApplyContainerTypeEvidence(
 	{
 		InOutDemand.KeyType = KeyType;
 		InOutDemand.ArgumentTypes.Add(TEXT("key"), KeyType);
-		InOutDemand.ContainerKeyPinType = MakePinTypeFromToken(KeyType);
+		InOutDemand.ContainerKeyPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(KeyType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("key"), InOutDemand.ContainerKeyPinType);
 		InOutDemand.DefaultValues.Add(TEXT("key_type"), KeyType);
 	}
@@ -675,7 +766,7 @@ static void ApplyContainerTypeEvidence(
 	{
 		InOutDemand.ValueType = ValueType;
 		InOutDemand.ArgumentTypes.Add(TEXT("value"), ValueType);
-		InOutDemand.ContainerValuePinType = MakePinTypeFromToken(ValueType);
+		InOutDemand.ContainerValuePinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(ValueType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("value"), InOutDemand.ContainerValuePinType);
 		InOutDemand.DefaultValues.Add(TEXT("value_type"), ValueType);
 	}
@@ -1104,8 +1195,15 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(Expression.Target, Expression.Name),
 		Expression.GraphLatentAllowed,
 		Demand);
-	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	Demand.ExpectedReturnType = Expression.Type;
+	BlueprintHelperActionContextDemandCollector::ApplyOpEvidence(
+		Expression.FunctionOperation,
+		Expression.Operator,
+		Expression.ContextEvidence,
+		Expression.Left,
+		Expression.Right,
+		Demand);
+	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
 	if (Expression.TargetObject.IsValid())
 	{
 		Demand.TargetObjectType = Expression.TargetObject->Type;

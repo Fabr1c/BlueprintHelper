@@ -108,7 +108,7 @@ latent_or_async_function
 
 - 普通函数调用。
 - Kismet library / Blueprint function 调用。
-- operator 通过 typed operands 转成 function/action query。
+- operator 先尝试 UE TypePromotion spawner；非 TypePromotion op 通过 projected `op.*` evidence 转成 request-scoped callable/action query。
 - 部分 cast/convert、timer/latent/async function action。
 
 ### 4.2 FieldVariableActionCluster
@@ -398,7 +398,7 @@ Implementation note 2026-05-22:
 
 - `get_property` / `set_property` belong to `FieldVariableActionCluster`; they should use the projected target/property evidence to shrink the field-variable search scope, not create a separate graph-local node path.
 - `set_property` FragmentDAG emission must invoke the selected UE `NodeSpawner` through the shared ActionResolution adapter. It must not fall back to parsed-node local spawning.
-- `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. It resolves to UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`, not to pseudo call-function lookup.
+- `op` belongs to `FunctionActionCluster`, but its semantic is operator constraints. Existing arithmetic/comparison ops resolve through UE type-promotion operator spawners from `FTypePromotion::GetOperatorSpawner`; newly covered function-backed ops resolve through projected `op.*` evidence, the op callable catalog, and a request-scoped call resolver policy, not through pseudo call-function lookup or UI/display text.
 - Generic construct/deconstruct may use a dedicated `UBlueprintFieldNodeSpawner` MakeStruct/BreakStruct boundary only when UE FunctionAction/native make-break lookup cannot express the struct operation. This boundary must be explicit in candidate evidence and must remain generic, not Vector-only or type-specific.
 - `EventDelegateActionCluster` follows the same projected-context rule, but it does not own `event` / custom-event / override / native declaration semantics. Signature-owned event entries must be created or confirmed before GraphWrite runs; GraphWrite may then write body content around that projected entry. Component-bound events and delegate bind/unbind/call/clear nodes require projected component/delegate/handler/signature evidence before they can invoke their UE spawner families. `delegate.assign` also requires the same projected evidence and uses a manual assign factory specifically to avoid UE spawner side effects that would create Signature-owned custom-event declarations.
 
@@ -533,6 +533,15 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - ActionContext Field 推断会从 linked source / consumer symbol pin 投影 `TargetObjectPinType` 与 `ExpectedReturnPinType`，并记录 `linked_source_pin_type` / `linked_consumer_pin_type` evidence，供 resolver 缩小候选空间。
 - TaskSpec TS/Python 编译器已接受 `component_ref` 与 `field_access`，并在 compiled body 中保留复杂 `property_path` 与 nested `field_access`。
 - Event lifecycle taxonomy 仍由 BlueprintSignature owning path 管理：`custom_event` / `override_event` / `native_event` 不作为 GraphWrite/EventDelegate public declaration taxonomy。GraphWrite 只消费 Signature 依赖后的 body 写入和 delegate use-site；统一 smoke 已验证 `blueprint_signature.ensure_custom_event -> graph_write` 的依赖边界。
+
+## 2026-05-26 Function-Owned OpCoverage
+
+- OpCoverage does not introduce a `graphwrite_op` runtime cluster. `kind=op` remains `FunctionActionCluster` with `SemanticFamily=Operator` and second-stage `op.<operation_id>` evidence.
+- Existing TypePromotion operations keep first priority: `add`, `subtract`, `multiply`, `divide`, `greater`, `greater_equal`, `less`, `less_equal`, `equal`, and `not_equal`.
+- Function-backed P0/P1 ops use `FBlueprintHelperOpCallableCatalog` plus `FBlueprintHelperOpCallableEvidenceReader` to convert statement-local `op.*` evidence into local resolver facts. These facts are not added to `FBlueprintHelperActionSemanticConstraints` or `FBlueprintHelperActionContextDemand` as op-only fields.
+- `FBlueprintHelperCallFunctionResolver` keeps its default candidate surface narrow. Special node classes such as `UK2Node_CommutativeAssociativeBinaryOperator` and `UK2Node_CallArrayFunction` are admitted only through request-scoped candidate policy supplied by the operator resolver.
+- `array_identical` is guarded by explicit array typed pin evidence. Missing or incompatible evidence rejects deterministically; it must not fall back to `equal`.
+- Readback for OpCoverage consumes the same resolution evidence model as DebugBundle and Accept/Reject state: operation id, node class, spawner class, source function or TypePromotion operator, pin evidence, wildcard residual, and deterministic error code.
 
 ## 2026-05-24 Generic Broad Create Closure
 

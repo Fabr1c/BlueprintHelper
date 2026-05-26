@@ -168,6 +168,116 @@ static FString NormalizeFieldToken(const FString& Token)
 	return Token.TrimStartAndEnd().ToLower();
 }
 
+static FString NormalizeOpOperationToken(const FString& Token)
+{
+	FString Clean = NormalizeFieldToken(Token);
+	if (Clean.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
+	{
+		Clean.RightChopInline(3, EAllowShrinking::No);
+	}
+
+	if (Clean == TEXT("+")) return TEXT("add");
+	if (Clean == TEXT("-")) return TEXT("subtract");
+	if (Clean == TEXT("*")) return TEXT("multiply");
+	if (Clean == TEXT("/")) return TEXT("divide");
+	if (Clean == TEXT(">")) return TEXT("greater");
+	if (Clean == TEXT(">=")) return TEXT("greater_equal");
+	if (Clean == TEXT("<")) return TEXT("less");
+	if (Clean == TEXT("<=")) return TEXT("less_equal");
+	if (Clean == TEXT("==") || Clean == TEXT("=")) return TEXT("equal");
+	if (Clean == TEXT("!=") || Clean == TEXT("<>")) return TEXT("not_equal");
+	if (Clean == TEXT("&&") || Clean == TEXT("and")) return TEXT("boolean_and");
+	if (Clean == TEXT("||") || Clean == TEXT("or")) return TEXT("boolean_or");
+	if (Clean == TEXT("!") || Clean == TEXT("not")) return TEXT("boolean_not");
+	return Clean;
+}
+
+static FString ContextEvidenceValue(const TMap<FString, FString>& Evidence, const FString& Key)
+{
+	if (const FString* Value = Evidence.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static void AddCanonicalOpEvidenceAlias(
+	TMap<FString, FString>& Evidence,
+	const FString& CanonicalKey,
+	const FString& LegacyKey)
+{
+	if (Evidence.Contains(CanonicalKey))
+	{
+		return;
+	}
+
+	const FString LegacyValue = ContextEvidenceValue(Evidence, LegacyKey);
+	if (!LegacyValue.IsEmpty())
+	{
+		Evidence.Add(CanonicalKey, LegacyValue);
+	}
+}
+
+static FString ResolveCanonicalOpOperationId(
+	const FString& FunctionOperation,
+	const TMap<FString, FString>& Evidence,
+	const FString& Operator)
+{
+	const FString FunctionOperationId = NormalizeOpOperationToken(FunctionOperation);
+	if (!FunctionOperationId.IsEmpty() && FunctionOperationId != TEXT("operator_function"))
+	{
+		return FunctionOperationId;
+	}
+
+	const FString CanonicalEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op.operation_id")));
+	if (!CanonicalEvidenceOperationId.IsEmpty())
+	{
+		return CanonicalEvidenceOperationId;
+	}
+
+	FString LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op")));
+	if (LegacyEvidenceOperationId.IsEmpty())
+	{
+		LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op_name")));
+	}
+	if (LegacyEvidenceOperationId.IsEmpty())
+	{
+		LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("operator")));
+	}
+	if (!LegacyEvidenceOperationId.IsEmpty())
+	{
+		return LegacyEvidenceOperationId;
+	}
+
+	return NormalizeOpOperationToken(Operator);
+}
+
+static void CanonicalizeOpExpressionEvidence(FBlueprintHelperGraphExpressionIR& Expression)
+{
+	if (Expression.Kind != EBlueprintHelperGraphExpressionKind::Op)
+	{
+		return;
+	}
+
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.0"), TEXT("argument_pin_type.0"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.0"), TEXT("argument_pin_type_0"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.1"), TEXT("argument_pin_type.1"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.1"), TEXT("argument_pin_type_1"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.expected_return_pin_type"), TEXT("expected_return_pin_type"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.array_lhs_pin_type"), TEXT("array_lhs_pin_type"));
+	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.array_rhs_pin_type"), TEXT("array_rhs_pin_type"));
+
+	const FString OperationId = ResolveCanonicalOpOperationId(
+		Expression.FunctionOperation,
+		Expression.ContextEvidence,
+		Expression.Operator);
+	if (!OperationId.IsEmpty())
+	{
+		Expression.ContextEvidence.FindOrAdd(TEXT("op.operation_id")) = OperationId;
+		Expression.FunctionOperation = FString::Printf(TEXT("op.%s"), *OperationId);
+	}
+}
+
 static bool IsSupportedFieldOperation(const FString& Operation)
 {
 	const FString Normalized = NormalizeFieldToken(Operation);
@@ -1076,6 +1186,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	{
 		ExpressionObject->TryGetStringField(TEXT("operator"), Expression->Operator);
 	}
+	CanonicalizeOpExpressionEvidence(*Expression);
 
 	if (const TSharedPtr<FJsonValue>* LiteralValue = ExpressionObject->Values.Find(TEXT("value")))
 	{

@@ -103,6 +103,49 @@ public:
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeLogicSpecWithOpContextEvidence()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> OpEvidence = MakeShared<FJsonObject>();
+		OpEvidence->SetStringField(TEXT("op.argument_pin_type.0"), TEXT("bool"));
+		OpEvidence->SetStringField(TEXT("op.argument_pin_type.1"), TEXT("bool"));
+		OpEvidence->SetStringField(TEXT("op.expected_return_pin_type"), TEXT("bool"));
+
+		TSharedRef<FJsonObject> Left = MakeShared<FJsonObject>();
+		Left->SetStringField(TEXT("kind"), TEXT("literal"));
+		Left->SetStringField(TEXT("type"), TEXT("bool"));
+		Left->SetBoolField(TEXT("value"), true);
+
+		TSharedRef<FJsonObject> Right = MakeShared<FJsonObject>();
+		Right->SetStringField(TEXT("kind"), TEXT("literal"));
+		Right->SetStringField(TEXT("type"), TEXT("bool"));
+		Right->SetBoolField(TEXT("value"), false);
+
+		TSharedRef<FJsonObject> OpExpression = MakeShared<FJsonObject>();
+		OpExpression->SetStringField(TEXT("id"), TEXT("expr_boolean_and"));
+		OpExpression->SetStringField(TEXT("kind"), TEXT("op"));
+		OpExpression->SetStringField(TEXT("operator"), TEXT("boolean_and"));
+		OpExpression->SetObjectField(TEXT("context_evidence"), OpEvidence);
+		OpExpression->SetObjectField(TEXT("left"), Left);
+		OpExpression->SetObjectField(TEXT("right"), Right);
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("condition"), OpExpression);
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_op_context_evidence"));
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("PrintString"));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static TSharedRef<FJsonObject> MakeLogicSpecWithRawStatementKind(
 		const FString& Kind,
 		const FString& DelegateOperation = FString())
@@ -295,6 +338,47 @@ bool FBlueprintHelperGraphSemanticIRRuntimeFact_ContextEvidenceSurvivesBuildRequ
 			FString(TEXT("latent_or_async_node")));
 	}
 
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRRuntimeFact_OpContextEvidenceSurvivesBuildRequest,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.RuntimeFact.OpContextEvidenceSurvivesBuildRequest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperGraphSemanticIRRuntimeFact_OpContextEvidenceSurvivesBuildRequest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithOpContextEvidence(),
+		IR);
+
+	TestTrue(TEXT("logic spec builds"), bBuilt);
+	TestEqual(TEXT("one statement parsed"), IR.Statements.Num(), 1);
+	if (IR.Statements.Num() != 1 || !IR.Statements[0].IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ExpressionPtr = IR.Statements[0]->Args.Find(TEXT("condition"));
+	TestTrue(TEXT("op expression exists"), ExpressionPtr && ExpressionPtr->IsValid());
+	if (!ExpressionPtr || !ExpressionPtr->IsValid())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperGraphExpressionIR& Expression = *ExpressionPtr->Get();
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("op operation id evidence"), Expression.ContextEvidence.FindRef(TEXT("op.operation_id")), FString(TEXT("boolean_and")));
+	bPassed &= TestEqual(TEXT("op function operation"), Expression.FunctionOperation, FString(TEXT("op.boolean_and")));
+	bPassed &= TestEqual(TEXT("op first arg pin evidence"), Expression.ContextEvidence.FindRef(TEXT("op.argument_pin_type.0")), FString(TEXT("bool")));
+	bPassed &= TestEqual(TEXT("op second arg pin evidence"), Expression.ContextEvidence.FindRef(TEXT("op.argument_pin_type.1")), FString(TEXT("bool")));
+	bPassed &= TestEqual(TEXT("op return pin evidence"), Expression.ContextEvidence.FindRef(TEXT("op.expected_return_pin_type")), FString(TEXT("bool")));
+
+	const FBlueprintHelperGraphFragmentBuildRequest ExpressionRequest =
+		FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);
+	bPassed &= TestEqual(TEXT("request op evidence survives"), ExpressionRequest.ContextEvidence.FindRef(TEXT("op.operation_id")), FString(TEXT("boolean_and")));
+	bPassed &= TestEqual(TEXT("request op function operation survives"), ExpressionRequest.FunctionOperation, FString(TEXT("op.boolean_and")));
 	return bPassed;
 }
 

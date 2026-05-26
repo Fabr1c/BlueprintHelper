@@ -96,4 +96,88 @@ describe('GraphWrite capability contract', () => {
       'discussion-gated',
     );
   });
+
+  it('does not publish op coverage as a runtime graphwrite_op cluster', () => {
+    const runtimeClusterIds: readonly string[] = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.map((cluster) => cluster.id);
+    assert.ok(!runtimeClusterIds.includes('graphwrite_op'));
+
+    const opGroup = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find((group) => group.id === 'op_coverage');
+    assert.ok(opGroup);
+    for (const operation of opGroup.operations.filter((item) => item.supportStatus === 'supported')) {
+      assert.equal(operation.runtimeCluster, 'FunctionAction');
+      assert.equal(operation.semanticKind, 'op');
+      assert.equal(operation.semanticFamily, 'operator');
+      assert.ok(operation.secondStageOperation?.startsWith('op.'));
+    }
+  });
+
+  it('publishes complete supported and excluded op coverage lists', () => {
+    const opGroup = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find((group) => group.id === 'op_coverage');
+    assert.ok(opGroup);
+
+    const supported = new Set(
+      opGroup.operations
+        .filter((operation) => operation.supportStatus === 'supported')
+        .map((operation) => operation.id),
+    );
+    const expectedSupported = [
+      'bitwise_and',
+      'bitwise_or',
+      'boolean_and',
+      'boolean_or',
+      'boolean_nand',
+      'max',
+      'min',
+      'string_append',
+      'boolean_not',
+      'boolean_xor',
+      'boolean_nor',
+      'bitwise_not',
+      'bitwise_xor',
+      'abs',
+      'modulo',
+      'negate',
+      'dot',
+      'dot3',
+      'cross',
+      'cross3',
+      'near_equal',
+      'intpoint_equal',
+      'transform_compose',
+      'equal_exact',
+      'not_equal_exact',
+      'equal_ignore_case',
+      'not_equal_ignore_case',
+      'datetime_add_datetime',
+      'datetime_add_timespan',
+      'datetime_subtract_datetime',
+      'datetime_subtract_timespan',
+      'datetime_equal',
+      'datetime_not_equal',
+      'datetime_greater',
+      'datetime_greater_equal',
+      'datetime_less',
+      'datetime_less_equal',
+      'array_identical',
+    ];
+    assert.deepEqual([...supported].sort(), [...expectedSupported].sort());
+
+    const excluded = new Map(
+      opGroup.operations
+        .filter((operation) => operation.supportStatus === 'rejected')
+        .map((operation) => [operation.id, operation.rejectionReason]),
+    );
+    for (const id of [
+      'enum_equal',
+      'enum_not_equal',
+      'slate_brush_equal',
+      'slate_brush_not_equal',
+      'convert_numeric',
+      'convert_string_text_name',
+      'array_map_set_mutation',
+      'validity_predicate',
+    ]) {
+      assert.equal(excluded.get(id), 'excluded_op_operation');
+    }
+  });
 });

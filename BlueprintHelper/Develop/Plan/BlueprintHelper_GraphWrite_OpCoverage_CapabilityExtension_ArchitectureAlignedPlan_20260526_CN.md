@@ -6,13 +6,47 @@
 
 **Architecture:** `op` 不新增 `graphwrite_op` runtime cluster。所有 op 作为 `FunctionActionCluster` 内的 `Semantic.Kind=Op`、`SemanticFamily=Operator`、`second_stage_operation=op.<id>` 处理；operation-specific 数据只进入 `ContextEvidence`，再由 `FBlueprintHelperOpCallableEvidenceReader` 读取成局部 DTO。Resolver 只选择或拒绝 UE callable/spawner evidence，Builder 只消费 resolution result 并走 shared spawn/compose/readback coordinator。
 
-**Tech Stack:** Unreal Engine 5.3+ / BlueprintGraph / K2 / ActionDatabase / NodeSpawner / BlueprintHelper GraphWrite C++、AgentFaceService task-core TypeScript/Zod、UE Automation Tests、Node test runner。
+**Tech Stack:** Unreal Engine 5.6 production baseline / BlueprintGraph / K2 / ActionDatabase / NodeSpawner / BlueprintHelper GraphWrite C++、AgentFaceService task-core TypeScript/Zod、UE Automation Tests、Node test runner。
 
 ---
 
 ## 0. 本计划状态
 
 本文件是原 OpCoverage 计划的**实施前替代版**，不是实施后的修复计划。执行时不要先实现原计划再打补丁；应直接按本文替代原计划执行。
+
+**2026-05-26 execution status:** implemented. Git commit steps in this plan were not executed because the repository AGENTS rule forbids `git add` / `git commit` / `git push` for completed tasks; final handoff must provide manual commands instead.
+
+| Task | Status | Evidence |
+|---|---|---|
+| Task 1 Contract logical OpCoverage | Done | `graphwrite-capability-contract.ts` exposes `op_coverage` as a logical operation group; `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` still has no `graphwrite_op`. |
+| Task 2 Catalog / evidence reader | Done | `FBlueprintHelperOpCallableCatalog` and `FBlueprintHelperOpCallableEvidenceReader` own supported/excluded op metadata and deterministic evidence rejection. |
+| Task 3 ActionContext evidence map | Done | `kind=op` evidence is projected through `ContextEvidence`; evidence key/value pairs participate in `SemanticConstraintsHash`; no op-only core DTO fields were added. |
+| Task 4 FunctionAction resolver path | Done | TypePromotion ops resolve first; function-backed ops resolve through request-scoped `FBlueprintHelperCallFunctionCandidatePolicy`. |
+| Task 5 `array_identical` guard | Done | Array typed pin evidence is required and `UK2Node_CallArrayFunction` is only permitted in the guarded request scope. |
+| Task 6 Readback / E2E | Done | OpCoverage readback verifier checks operation id, node/spawner/function facts, pins, wildcard residual, and deterministic negative diagnostics. |
+| Task 7 Docs / final gate | Done | Active plan, capability matrix, and design document are synchronized; final TS/UE build and focused automation gates passed. |
+
+Post-review fixes:
+
+- All P0 `commutative_function` specs now carry request-scoped `UK2Node_CommutativeAssociativeBinaryOperator` policy, covering `bitwise_and`, `bitwise_or`, `boolean_or`, `boolean_nand`, `max`, `min`, and `string_append` in addition to `boolean_and`.
+- `array_identical` guard now compares full array element identity, including object path for struct/object/class-like element categories.
+- `array_identical` tests cover scalar arrays, struct arrays, object arrays, and named-part pin-type tokens.
+- OpCoverage readback verifier selects candidate evidence by selected stable id instead of blindly trusting the first candidate.
+
+Final verification evidence:
+
+```text
+npm.cmd --prefix AgentFaceService/task-core run build -> exit 0
+npm.cmd --prefix AgentFaceService/task-core run test:node -> 179 pass, 0 fail
+E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development D:\UEProjects\Template\Template.uproject -NoHotReloadFromIDE -WaitMutex -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.ActionContext -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.GraphSemanticIR.RuntimeFact.OpContextEvidenceSurvivesBuildRequest -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.FunctionAction.Operator -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.CallFunctionResolver.DefaultRequestExcludesCallArrayFunction -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.OpCoverage.ArrayIdentical -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.OpCoverage.Readback.RejectsMismatchedFirstCandidate -> exit 0
+Automation RunTests BlueprintHelper.GraphWrite.OpCoverage -> exit 0
+```
 
 **替代原计划中的错误方向：**
 
@@ -548,15 +582,15 @@ git commit -m "docs(graphwrite): document function-owned op coverage extension"
 
 ## 5. Final Acceptance Checklist
 
-- [ ] `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` 中没有 `graphwrite_op`。
-- [ ] 所有 supported `op.*` 都声明 `runtimeCluster=FunctionAction`。
-- [ ] `FBlueprintHelperActionSemanticConstraints` 和 `FBlueprintHelperActionContextDemand` 未新增 op 专属字段组。
-- [ ] `FBlueprintHelperOperatorActionResolver` 保留 TypePromotion first。
-- [ ] `UK2Node_CallArrayFunction` 仅在 `array_identical` request scope 中放行。
-- [ ] `array_identical` 缺 array typed pin evidence 必须失败。
-- [ ] Builder 不执行 function lookup，不依赖 display/menu text。
-- [ ] DebugBundle 覆盖 unsupported/excluded/missing evidence/ambiguous/wildcard residual。
-- [ ] Preview 与 execute 使用同一 evidence path。
+- [x] `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` 中没有 `graphwrite_op`。
+- [x] 所有 supported `op.*` 都声明 `runtimeCluster=FunctionAction`。
+- [x] `FBlueprintHelperActionSemanticConstraints` 和 `FBlueprintHelperActionContextDemand` 未新增 op 专属字段组。
+- [x] `FBlueprintHelperOperatorActionResolver` 保留 TypePromotion first。
+- [x] `UK2Node_CallArrayFunction` 仅在 `array_identical` request scope 中放行。
+- [x] `array_identical` 缺 array typed pin evidence 必须失败。
+- [x] Builder 不执行 function lookup，不依赖 display/menu text。
+- [x] DebugBundle 覆盖 unsupported/excluded/missing evidence/ambiguous/wildcard residual。
+- [x] Preview 与 execute 使用同一 evidence path。
 
 ---
 

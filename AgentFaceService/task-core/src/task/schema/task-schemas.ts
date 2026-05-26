@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
 export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
+export {
+  OP_COVERAGE_EVIDENCE_KEYS,
+  OP_COVERAGE_EXCLUDED_OPERATION_IDS,
+  OP_COVERAGE_SUPPORTED_OPERATION_IDS,
+} from './graphwrite-capability-contract.js';
 export type {
   GraphWriteCapabilityContract,
   GraphWriteClusterContract,
   GraphWriteEvidenceProjectionSource,
+  GraphWriteLogicalRuntimeCluster,
   GraphWriteOperationContract,
+  GraphWriteOperationGroupContract,
+  GraphWriteOperationGroupOperation,
   GraphWriteReviewEvidencePolicy,
   GraphWriteSupportStatus,
 } from './graphwrite-capability-contract.js';
