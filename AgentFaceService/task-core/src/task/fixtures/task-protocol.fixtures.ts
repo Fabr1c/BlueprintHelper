@@ -118,6 +118,7 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
             op: 'ensure_entry',
             entry_type: 'custom_event',
             name: 'InitializeStoneGate',
+            signature_evidence_id: 'signature:custom_event:InitializeStoneGate',
             body: {
               schema: 'BlueprintLogicSpec.v2',
               statements: [

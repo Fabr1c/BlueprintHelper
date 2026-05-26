@@ -1095,6 +1095,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             op: 'ensure_entry',
             entry_type: 'custom_event',
             name: 'ToggleDoor',
+            signature_evidence_id: 'signature:custom_event:ToggleDoor',
             body: {
               schema: 'BlueprintLogicSpec.v2',
               statements: [
@@ -1131,7 +1132,13 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       feature_name: 'DoorFeature',
       logic_spec: {
         schema: 'BlueprintLogicSpec.v2',
-        entry: { kind: 'custom_event', name: 'ToggleDoor', id: 'ToggleDoor_entry' },
+        entry: {
+          kind: 'custom_event',
+          name: 'ToggleDoor',
+          id: 'ToggleDoor_entry',
+          source_cluster: 'blueprint_signature',
+          signature_evidence_id: 'signature:custom_event:ToggleDoor',
+        },
         statements: [
           {
             id: 'ToggleDoor_stmt_1',
@@ -1630,7 +1637,13 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     const payload = taskPlanToAppendBridgePayload(plan, false);
 
     assert.equal((payload as unknown as Record<string, unknown>).nodes, undefined);
-    assert.deepEqual(payload.logic_spec.entry, { kind: 'custom_event', name: 'OpenDoor', id: 'OpenDoor_entry' });
+    assert.deepEqual(payload.logic_spec.entry, {
+      kind: 'custom_event',
+      name: 'OpenDoor',
+      id: 'OpenDoor_entry',
+      source_cluster: 'blueprint_signature',
+      signature_evidence_id: 'signature:custom_event:OpenDoor',
+    });
     assert.deepEqual(payload.logic_spec.statements.map((statement) => (statement as Record<string, unknown>).id), ['OpenDoor_stmt_1']);
     assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).kind, 'field');
     assert.equal((payload.logic_spec.statements[0] as Record<string, unknown>).field_operation, 'set');
