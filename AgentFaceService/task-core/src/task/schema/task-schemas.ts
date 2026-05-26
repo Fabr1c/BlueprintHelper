@@ -334,9 +334,9 @@ const GraphWriteAppendEntrySchema = z.object({
 }).passthrough();
 
 const GraphWriteReplaceSchema = z.object({
-  scope: z.enum(['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation']),
+  scope: z.enum(['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation']),
   selector: z.object({
-    kind: z.enum(['custom_event', 'function', 'event', 'block']),
+    kind: z.enum(['graph', 'custom_event', 'function', 'event', 'block']),
     name: z.string().min(1).optional(),
     block_id: z.string().min(1).optional(),
     graph_id: z.string().min(1).optional(),
@@ -351,6 +351,7 @@ const GraphWriteReplaceSchema = z.object({
   }).passthrough().optional(),
 }).passthrough().superRefine((value, ctx) => {
   const expectedKindByScope: Record<string, string> = {
+    graph: 'graph',
     custom_event_definition: 'custom_event',
     custom_event_body: 'custom_event',
     function_body: 'function',
@@ -364,6 +365,9 @@ const GraphWriteReplaceSchema = z.object({
       path: ['selector', 'kind'],
       message: `${value.scope} requires selector.kind="${expectedKind}".`,
     });
+  }
+  if (value.selector.kind === 'graph') {
+    return;
   }
   if (value.selector.kind === 'block') {
     if (!value.selector.block_id) {

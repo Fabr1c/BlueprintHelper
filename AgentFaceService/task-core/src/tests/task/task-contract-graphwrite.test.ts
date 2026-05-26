@@ -184,6 +184,7 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'Bridge payload fields as TaskSpec body',
     ]);
     assert.deepEqual(taskSpecContract.replace_owned_graph.selector_kinds_by_scope, {
+      graph: 'graph',
       custom_event_definition: 'custom_event',
       custom_event_body: 'custom_event',
       function_body: 'function',

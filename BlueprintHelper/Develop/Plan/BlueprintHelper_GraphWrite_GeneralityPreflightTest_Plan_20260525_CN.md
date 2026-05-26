@@ -4,6 +4,142 @@
 
 **Goal:** 在 GraphWrite 最终总测试前新增一个通用性前置门禁：GraphWrite-owned、ownership-filtered 的每个 capability operation 都通过 TaskSpec preview / execute / readback。普通可参数化 operation 生成 10 个同类型不同名节点，10 个全通过才算该 operation 通过；Singleton operation 不要求生成 10 个同类型不同名节点，只要求 1 个代表性 TaskSpec 成功并通过 readback。测试输出带统计图的通用性测试报告。
 
+## 2026-05-27 Current Status Sync
+
+- Status: IMPLEMENTED / REAL EDITOR E2E RUNS / FULL GATE STILL FAIL.
+- 2026-05-27 起，旧 Evidence 文档和旧 `_005` raw report 不再作为当前能力结论来源；当前结论只以实际 TS/UE 实现、TaskSpec preview/execute/readback、UE automation artifacts 为准。
+- 本轮已实现 `graphwrite-generality-*` matrix、spec factory、report writer 与 PowerShell runner；旧的 2026-05-25 `OPEN / NOT IMPLEMENTED` 状态仅保留为历史记录。
+- 真实编辑器通用性 E2E 已按当前测试要求改为每个 operation 独立新 uasset：`/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_<RunId>_<operation>`。GraphWrite 本体执行为 spawn-only 计分，`should_compile=false`；setup 阶段仍可为资产/变量/组件/signature fixture 触发必要创建和保存。
+- 计分口径已拆成 `requestedVariantCount`、`availableSpawnCount`、`actualSpawnCount`、`requiredVariantCount`：普通 operation 请求 10 个同类不同名候选；真实 UE node 不足 10 个时用 `limited_real_nodes`，按已知真实候选数计分；singleton 只要求 1 个代表路径。
+- 报告 schema 已升为 `BlueprintHelper.GraphWriteGeneralitySummary.v2`，输出 JSON / CSV / Markdown / SVG。
+
+### 2026-05-27 Verification Evidence
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 22 个 FullTest 失败修复后 UE build | PASS | `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload` 返回 0。 |
+| Focused regression gates | PASS | 覆盖 CallFunction stable id、Legacy/EventDelegate contract、Struct boundary。 |
+| Full GraphWrite automation | PASS | `Automation RunTests BlueprintHelper.GraphWrite` 日志解析 `305/305` successful；report root `D:\UEProjects\Template\Saved\Automation\GraphWrite_FullTest_Fix22_20260527_001`。 |
+| Task-core build / node tests | PASS | `npm.cmd run build`；`npm.cmd run test:node` 最新返回 `230/230`。 |
+| CLI build / node tests | PASS | `npm.cmd run build`；`npm.cmd run test:node` 返回 `45/45`。 |
+| Crash-point slice after resolver fix | PASS | `container_array_append` 新 uasset 切片 preview / execute / readback 均成功；该切片新增日志中 `LogAssetEditorSubsystem: Opening Asset editor` 命中 0。 |
+| Real editor full generality E2E | FAIL | `Run-GraphWriteGeneralityPreflight.ps1 -RunId GraphWriteGenerality_E2E_20260527_005` 返回 0 并生成报告，但通用性 gate 未全通过。 |
+
+### 2026-05-27 Current Implementation Follow-up Results
+
+这些结果覆盖旧 Evidence 文档和旧 `_005` raw failure label。`unsupported_intent` 只在当前实现真实拒绝 operation / statement kind 时使用；缺少 projected spawner identity、handler/signature、latent permission、result-type proof 等证据时归 `missing_evidence` 或 fixture gap。
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Focused relabel slice | PASS_WITH_EVIDENCE_GAPS | `Run-GraphWriteGeneralityPreflight.ps1 -RunId GWRelabel003 -ReportDate 20260527_UnsupportedRelabelSpawn -Operations <33 ops>`；run root `D:\UEProjects\Template\Saved\Automation\GWRelabel003`；summary: 33 operations, 31 passed, 2 failed, operation pass rate 93.94%, variant pass rate 95.24%. |
+| Unsupported relabel classification | PASS | Focused slice failure kinds: `schedule.timer_delegate_node=missing_evidence`, `schedule.latent_or_async_node=missing_evidence`; `unsupported_intent=0`. Control flow, `function_action.macro_like`, `generic_ops.struct_select.select`, and all 12 `container.map.*` rows passed under current implementation. |
+| Generic schedule UE automation | PASS | `UnrealEditor-Cmd.exe ... -NullRHI -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule;Quit'`; report root `D:\UEProjects\Template\Saved\Automation\GraphWrite_GenericSchedule_Verify_20260527_001`; 4 tests discovered, 0 failed. Schedule remains a projected-evidence TaskSpec fixture issue in the focused generality runner, not an unsupported runtime operation. |
+| Single Blueprint connection E2E | PASS | `Run-GraphWriteSingleBlueprintConnectionE2E.ps1 -RunId GWConnE2EReplaceScope_Verify002`; run root `D:\UEProjects\Template\Saved\Automation\GWConnE2EReplaceScope_Verify002`; asset `/Game/BlueprintHelper/ConnectionE2E/BP_GraphWriteConnection_GWConnE2EReplaceScope_Verify002`; all preview/execute steps passed and final readback found 3 custom events, 1 function graph, 28 total nodes. The stricter gate now requires `GWConn_EventA/B/C` to each keep entry+body nodes after consecutive `replace_owned_graph(custom_event_body)`. |
+
+Single Blueprint connection details:
+
+| Item | Current result |
+|---|---|
+| Write strategies exercised | `append_new_owned_graph`, `replace_owned_graph`, `patch_owned_graph`, `merge_owned_graph` |
+| Executed representatives | `function_action.call_function`, `field.field_access`, `field.component_ref`, `event.custom_event`, `container_action.map/array/set`, `generic_ops.control.branch`, `generic_ops.transform.dynamic_cast`, `generic_ops.create.make_array`, `generic_ops.struct_select.select`, `op_coverage.string_append` |
+| Final readback representatives | `event.custom_event`, `function_action.call_function`, `generic_ops.control.sequence`, `generic_ops.transform.dynamic_cast`, `generic_ops.create.make_array`, `generic_ops.struct_select.select`, `op_coverage.string_append` |
+| Counts | main graph nodes 22, function graph nodes 6, total nodes 28, main exec links 12, main data links 4, function exec links 2, function data links 3 |
+| Event body preservation | `GWConn_EventA=6`, `GWConn_EventB=11`, `GWConn_EventC=5`; all are >= entry+body after consecutive event-body replacements |
+| Structural anchor | `GWConn_EventC` block `EG_GraphWriteConnectionE2E_GWConn_EventC0`, `node_ref=nodes[0]`, `pin_ref=then`, `link_ref=links[0]`; merge inserted `GWConnFunction` between event entry and original successor |
+
+Observed current implementation boundaries from the E2E attempts:
+
+- FIXED 2026-05-27: same-graph consecutive `replace_owned_graph(custom_event_body)` no longer behaves like graph-wide replace. `BlueprintHelper.GraphWrite.Replace.CustomEventBodyPreservesSiblingEventBody` and `GWConnE2EReplaceScope_Verify002` prove sibling event bodies are preserved; patch/merge still anchor on `GWConn_EventC`, but EventA/EventB bodies remain in final readback.
+- `field.struct_member_set` direct placement with `field.struct_type` evidence gets past semantic lowering, but attempted run `GWConnE2E008` failed Blueprint compilation because `SetFieldsInStruct` lacked a valid `Struct Ref` input. Keep this in focused coverage until the TaskSpec shape includes the required struct-ref source.
+- `event_delegate.delegate.clear` attempted in the same run exposed a target-pin issue: the generated node treated self as the target instead of a connected `PrimitiveComponent`. Keep EventDelegate use-site rows in focused tests with explicit handler/target evidence.
+- `asset_action` and `generic_schedule` are not part of the single-blueprint compile-green connection E2E because current TaskSpec use requires projected ActionDatabase / handler / latent evidence. Schedule support is covered by UE automation above and remains a fixture-evidence gap for the generality runner.
+
+### 2026-05-27 Real Editor E2E Result
+
+| Item | Value |
+|---|---:|
+| Run id | `GraphWriteGenerality_E2E_20260527_005` |
+| Run root | `D:\UEProjects\Template\Saved\Automation\GraphWriteGenerality_E2E_20260527_005` |
+| Markdown report | `BlueprintHelper\Develop\Report\BlueprintHelper_GraphWrite_GeneralityPreflight_Report_20260527_CN.md` |
+| Summary JSON | `BlueprintHelper\Develop\Report\BlueprintHelper_GraphWrite_GeneralityPreflight_LatestSummary.json` |
+| Total operations | 139 |
+| Passed operations | 103 |
+| Failed operations | 36 |
+| Operation pass rate | 74.10% |
+| Total variants | 174 |
+| Passed variants | 129 |
+| Failed variants | 45 |
+| Variant pass rate | 74.14% |
+| Failure kind totals | Raw `_005`: `preview_failure=22`、`unsupported_intent=23`。2026-05-27 unsupported-label audit 后，部分 `unsupported_intent` 已改判为 fixture/evidence mismatch 或重复排除项，不能继续当成“能力未实现”证据。 |
+| Gate conclusion | FAIL；runner 和报告可用，但当前 GraphWrite 通用性前置门禁尚未满足 `allOperationsPassed=true`。当前 `_005` 分数是 raw node-presence / old-evidence score，修正后的能力口径必须重跑后再覆盖。 |
+
+Failed operations:
+
+| Failure bucket | Operations |
+|---|---|
+| Container / set preview evidence gaps | `container.array.filter_array`、`container.array.random_from_stream`、`container.array.resize`、`container.array.shuffle_from_stream`、`container.array.swap`、`container.set.difference`、`container.set.intersection`、`container.set.union` |
+| Asset / EventDelegate / Field evidence fixture gaps | `create.asset_action`、`event_delegate.component_bound_event`、`event_delegate.delegate.assign`、`event_delegate.delegate.bind`、`event_delegate.delegate.clear`、`event_delegate.delegate.unbind`、`field.struct_member_set` |
+| Function / Generic control old-evidence mismatches | `function_action.macro_like`、`generic_ops.control.branch`、`generic_ops.control.do_n`、`generic_ops.control.do_once`、`generic_ops.control.flip_flop`、`generic_ops.control.for_loop`、`generic_ops.control.for_loop_with_break`、`generic_ops.control.foreach_loop`、`generic_ops.control.foreach_loop_with_break`、`generic_ops.control.gate`、`generic_ops.control.return`、`generic_ops.control.sequence`、`generic_ops.control.while_loop` |
+| Generic create / struct / transform evidence gaps | `generic_ops.create.make_map`、`generic_ops.struct_select.break_struct`、`generic_ops.struct_select.make_struct`、`generic_ops.struct_select.select`、`generic_ops.transform.type_promotion` |
+| Op / Schedule evidence fixture gaps | `op.intpoint_equal`、`schedule.latent_or_async_node`、`schedule.timer_delegate_node` |
+
+Representative diagnostics:
+
+- `container.array.filter_array`: `container_role_missing`，缺少 `filter_class` role。
+- `function_action.macro_like`: CLI preview error `Generic control requires generic.control.dynamic_output_count.`。
+- `schedule.timer_delegate_node`: `Generic schedule projected evidence did not match any current ActionDatabase spawner.`。
+
+### 2026-05-27 Unsupported Label Audit
+
+本节覆盖当前文档和 `BlueprintHelper_GraphWrite_GeneralityPreflight_Report_20260527_CN.md` 中写成 `unsupported_intent` / 未支持的条目。结论：`_005` 的 failure kind 是旧 fixture 与旧 evidence 字段跑出的 raw 结果，不应直接等同当前能力未实现。
+
+| Area | `_005` label | Current classification | Required doc / score treatment |
+|---|---|---|---|
+| `generic_ops.control.branch/sequence/return` | `unsupported_intent` | 已支持。旧生成器写入了 fake `generic.control.operation`，和 UE Generic control vocabulary 不匹配。 | 改为 fixture evidence mismatch；修正生成器后重跑，不计“未支持”。 |
+| `generic_ops.control.do_once/do_n/gate/flip_flop/for_loop/for_loop_with_break/foreach_loop/foreach_loop_with_break/while_loop` 与 `function_action.macro_like` | `unsupported_intent` / `preview_failure` | 已支持。旧生成器没有为 StandardMacros 使用 graph-qualified path，如 `/Engine/EditorBlueprintResources/StandardMacros.StandardMacros:ForLoop`，部分行也缺动态输出 / pin shape evidence。 | 改为 macro evidence mismatch；重跑后覆盖 raw `_005`。 |
+| `schedule.timer_delegate_node` | `unsupported_intent` | `generic_schedule` 已支持。旧 `_005` 缺少当前 ActionDatabase-projected schedule spawner identity / handler-signature evidence。 | 改为 projected schedule evidence fixture gap；不是未实现。 |
+| `schedule.latent_or_async_node` | `unsupported_intent` | `generic_schedule` 已支持。旧 `_005` 缺少 `graph_latent_allowed=true` 或等价 latent graph evidence。 | 改为 latent evidence fixture gap；不是未实现。 |
+| `generic_ops.struct_select.select` | `unsupported_intent` | 已支持。旧 `_005` 使用 fake `generic.select.result_type_proof`，不能解析为真实 result type。 | 改为 select result-type proof fixture gap；修正为真实 proof 后重跑。 |
+| `container.map.*` | raw report `PASS` but editor graph missing data links | 已支持，旧问题由 fixture 写错 `GWGenStringIntMap` key type 为 `int` 触发，且 C++ member-variable path 当时没有保留 map value terminal type。 | 不标记未支持；保留为旧 fixture/link verification caveat，修复后用 focused map slice 与 full E2E 覆盖。 |
+| `generic_ops.transform.interface_dynamic_cast`、`generic_ops.create.asset_backed_graph_node` | 旧 audit candidate | 排除。前者是 `dynamic_cast + target_class_path` 参数化情形，后者是 asset-specific spawner，不属于当前 GraphWrite denominator。 | 从未实现/未覆盖清单移除。 |
+| `generic_ops.container.*`、`generic_ops.schedule.*`、`generic_ops.create.asset_action`、`op_coverage.array_identical`、`generic_ops.struct_select.set_fields_in_struct`、GenericOps function-backed create/transform/schedule 子集 | duplicate / wrong-owner | 排除。只保留 canonical owner：`container_action`、`generic_schedule`、`asset_action`、`container.array.identical`、`field.struct_member_set`、FunctionAction。 | 不计入未实现分母，不保留 fallback / alias / 公共索引。 |
+
+仍需要用当前代码重跑后才能关闭的 raw `_005` 失败：container/set preview evidence rows、EventDelegate use-site projected evidence rows、`create.asset_action` projected evidence row、`generic_ops.create.make_map`、`generic_ops.struct_select.make_struct/break_struct`、`generic_ops.transform.type_promotion`、`op.intpoint_equal`。这些在新报告里应按真实 preview/execute/readback 结果分类，而不是沿用旧 `unsupported_intent`。
+
+### 2026-05-27 Crash And UI-Lifecycle Note
+
+- `GraphWriteGenerality_E2E_20260527_004` 在 `container_array_append` 附近发生 D3D12RHI access violation；CLI 侧 `ECONNRESET` / `ECONNREFUSED` 是编辑器崩溃后的后果，不能计作该 operation 的 GraphWrite spawn 失败。
+- 已修复 explicit asset path GraphWrite resolver：`LoadBlueprintByPath` 不再调用 `EnsureBlueprintEditorOpen`，并新增 architecture test 禁止该函数重新引入 `EnsureBlueprintEditorOpen` / `OpenEditorForAsset`。
+- `_005` 全量 E2E 未复现 access violation，说明崩溃 blocker 已移除；但日志仍显示少数 setup/compile 相关 `LogAssetEditorSubsystem: Opening Asset editor`，因此不能把当前 runner 描述为完全 headless / 完全无 UI 依赖。后续若要压低渲染风险，应优先支持 `-NullRHI` 或一能力一进程批处理。
+
+### 2026-05-27 Container Template Link Issue
+
+用户在真实编辑器中检查 `_005` 生成资产时发现 map container call 节点存在但未连接目标 map 变量。后续已确认根因不是 map 模板节点能力缺失，而是 fixture / type round-trip 错误：`GWGenStringIntMap` 被生成为 `TMap<int32,int32>` key，无法连接到 string-key map call；同时当时 C++ member-variable 创建路径未保留 map `value_type` terminal。截图样例：
+
+- `container.map.is_empty`: `GWGen String Int Map` variable get 与 `Is Empty` call node 并列存在，但没有 data link。
+- `container.map.get_last_index`: `GWGen String Int Map` variable get 与 `Get Last Index` call node 并列存在，但没有 data link。
+
+当前 readback 与截图一致：
+
+| Operation | Readback evidence | Current raw report status |
+|---|---|---|
+| `container.map.is_empty` | group 内有 `Get GWGenStringIntMap` 与 `call_function` `Is Empty`，但 `stats.data_links=0`、`orphan_nodes=3`。 | PASS `1/1`，因为 v2 report 只验证 expected variant node 是否出现。 |
+| `container.map.get_last_index` | group 内有 `Get GWGenStringIntMap` 与 `call_function` `Get Last Index`，但 `stats.data_links=0`、`orphan_nodes=3`。 | PASS `1/1`，同样是 node-presence pass。 |
+| `container.array.identical` | `Get GWGenIntArray` -> `ArrayA` 存在 data link，`stats.data_links=1`。 | PASS `1/1`，该项至少证明模板节点加变量连接的路线在 array 路径上可行。 |
+
+Expected architecture:
+
+- 容器 call 节点应继续通过 UE 自己的模板 / wildcard 节点机制生成，不应手工硬改成非模板节点。
+- GraphWrite 应把 statement-local `target` 容器变量连接到模板节点的目标容器 pin，例如 `TMap<FString,int32>` 的变量 get 连接到 `Map` / `TargetMap` / 对应容器输入 pin。
+- 连接完成后由 UE schema / node reconstruct 负责把 wildcard/template pin 收敛成真实容器类型。
+- 因此此问题不是“map 模板节点不能 spawn”，也不是 `container.map.*` 未支持；它是旧通用性 fixture 把 map key type 写错，并暴露了 member-variable map value terminal round-trip 缺口。
+
+Scoring correction:
+
+- `_005` 的 `103/139` operation、`129/174` variant 是当前 v2 report 的 raw node-presence score，不能作为严格容器语义通过率。
+- 下一版 report 必须把容器 action 的目标容器 data link 纳入 readback verifier；存在容器变量 get 但没有连接到 call node 的 operation 应标记为 `missing_container_target_link` 或等价 failure kind。
+- fixture 与 C++ map value terminal 修复后，`container.map.*` 应通过 focused slice 重新覆盖；全量 real editor generality E2E 仍需重跑后才能覆盖本节 raw 数据。
+
 ## 2026-05-25 Current Status Sync
 
 - Status: OPEN / NOT IMPLEMENTED.
@@ -832,7 +968,7 @@ export interface GraphWriteGeneralityVariantResult {
   previewStatus: 'pass' | 'fail';
   executeStatus: 'pass' | 'fail';
   readbackStatus: 'pass' | 'fail';
-  failureKind: 'none' | 'setup_failure' | 'preview_failure' | 'execute_failure' | 'readback_failure' | 'unsupported_intent' | 'silent_wrong_graph';
+  failureKind: 'none' | 'setup_failure' | 'preview_failure' | 'execute_failure' | 'missing_evidence' | 'readback_failure' | 'unsupported_intent' | 'silent_wrong_graph';
   expectedReadback: string;
   actualReadback?: string;
   evidencePath?: string;
@@ -1250,12 +1386,13 @@ const results: GraphWriteGeneralityVariantResult[] = readRunResults(args.get('--
 The helper must classify failures in this order:
 
 1. missing fixture or fixture execute failure -> `setup_failure`
-2. preview blocked -> `preview_failure`
-3. execute failed -> `execute_failure`
-4. unsupported operation code found -> `unsupported_intent`
-5. readback missing expected node class or expected variant name -> `readback_failure`
-6. readback exists but semantic metadata mismatches operation id -> `silent_wrong_graph`
-7. all checks match -> `none`
+2. preview/execute blocked by missing projected spawner identity, stale fixture proof, or required proof evidence -> `missing_evidence`
+3. preview blocked for other reasons -> `preview_failure`
+4. execute failed for other reasons -> `execute_failure`
+5. current implementation explicitly rejects an operation or statement kind -> `unsupported_intent`
+6. readback missing expected node class or expected variant name -> `readback_failure`
+7. readback exists but semantic metadata mismatches operation id -> `silent_wrong_graph`
+8. all checks match -> `none`
 
 - [ ] **Step 5: Run the preflight in preview-only mode first**
 

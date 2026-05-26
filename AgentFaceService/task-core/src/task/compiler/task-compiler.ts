@@ -625,11 +625,11 @@ function makeGraphWriteTaskPlanSteps(
         capability: 'graph_write',
         target: {
           asset_path: taskSpec.target.asset_path,
-          graph: taskSpec.scope_policy.graph_name,
+          graph: targetGraphForGraphWriteOp(taskSpec, op),
         },
         write: {
           strategy: 'owned_graph_edit',
-          ops: [stripGraphWriteCompilerMetadata(op)],
+          ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
         },
         constraints: {
           allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
@@ -672,11 +672,11 @@ function makeGraphWriteTaskPlanSteps(
           capability: 'graph_write',
           target: {
             asset_path: taskSpec.target.asset_path,
-            graph: taskSpec.scope_policy.graph_name,
+            graph: targetGraphForGraphWriteOp(taskSpec, op),
           },
           write: {
             strategy: 'owned_graph_edit',
-            ops: [stripGraphWriteCompilerMetadata(op)],
+            ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
           },
           constraints: {
             allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
@@ -697,7 +697,7 @@ function makeGraphWriteTaskPlanSteps(
     capability: 'graph_write',
     target: {
       asset_path: taskSpec.target.asset_path,
-      graph: taskSpec.scope_policy.graph_name,
+      graph: ops.length === 1 ? targetGraphForGraphWriteOp(taskSpec, ops[0]) : taskSpec.scope_policy.graph_name,
     },
     write: {
       strategy: 'owned_graph_edit',
@@ -713,6 +713,32 @@ function makeGraphWriteTaskPlanSteps(
 function stripGraphWriteCompilerMetadata(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
   const { __signature_split: _signatureSplit, ...cleanOp } = op as GraphWriteCompiledOp & { __signature_split?: unknown };
   return cleanOp as GraphWriteCompiledOp;
+}
+
+function targetGraphForGraphWriteOp(taskSpec: TaskSpec, op: GraphWriteCompiledOp): string {
+  if (op.op !== 'replace_body' || !isRecord(op.selector)) {
+    return taskSpec.scope_policy.graph_name;
+  }
+
+  if (op.replace_scope === 'function_body' && typeof op.selector.function_name === 'string' && op.selector.function_name.trim().length > 0) {
+    return op.selector.function_name.trim();
+  }
+
+  if (typeof op.selector.graph_id === 'string' && op.selector.graph_id.trim().length > 0) {
+    return op.selector.graph_id.trim();
+  }
+
+  return taskSpec.scope_policy.graph_name;
+}
+
+function withSignatureEvidence(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
+  if (op.op !== 'ensure_entry' || typeof op.name !== 'string' || op.name.trim().length === 0) {
+    return op;
+  }
+  return {
+    ...op,
+    signature_evidence_id: makeCustomEventSignatureEvidenceId(op.name.trim()),
+  };
 }
 
 function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>): TaskPlan {
@@ -1138,6 +1164,12 @@ function graphWriteTaskPlanToAppendBridgePayload(
         kind: 'custom_event',
         name: rawOp.name,
         id: `${toIdSegment(rawOp.name)}_entry`,
+        ...(typeof rawOp.signature_evidence_id === 'string' && rawOp.signature_evidence_id.trim().length > 0
+          ? {
+              source_cluster: 'blueprint_signature',
+              signature_evidence_id: rawOp.signature_evidence_id.trim(),
+            }
+          : {}),
       };
     }
   });
@@ -1288,6 +1320,10 @@ type GraphWriteSignatureSplit = {
   name_collision_policy: string;
 };
 
+function makeCustomEventSignatureEvidenceId(eventName: string): string {
+  return `signature:custom_event:${eventName}`;
+}
+
 function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
   const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
   if (strategy === 'append_new_owned_graph') {
@@ -1346,6 +1382,7 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
       op: 'ensure_entry',
       entry_type: entryType,
       name: entryName,
+      signature_evidence_id: makeCustomEventSignatureEvidenceId(entryName),
       body: compileLogicBodyToSemanticLogicSpec(body, entryName),
       ...(entryInputs
         ? {
@@ -1367,8 +1404,8 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
   assertAllowedString(
     replaceScope,
     'behavior.replace.scope',
-    ['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
-    'Use custom_event_definition, custom_event_body, function_body, event_body, or block_implementation.',
+    ['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
+    'Use graph, custom_event_definition, custom_event_body, function_body, event_body, or block_implementation.',
   );
   const graphWriteReplaceScope = replaceScope === 'custom_event_definition'
     ? 'custom_event_body'
@@ -3021,6 +3058,10 @@ function normalizeReplaceSelector(
   const out: Record<string, unknown> = {};
   copyOptionalStringFields(selector, out, ['graph_id', 'node_ref', 'node_path']);
 
+  if (replaceScope === 'graph') {
+    requireSelectorKind(kind, 'graph', replaceScope);
+    return out;
+  }
   if (replaceScope === 'custom_event_body') {
     requireSelectorKind(kind, 'custom_event', replaceScope);
     out['entry_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
