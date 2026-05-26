@@ -193,6 +193,36 @@ describe('GraphWrite capability contract', () => {
     );
   });
 
+  it('keeps parameterized dynamic casts and asset-backed spawners out of the GraphWrite denominator', () => {
+    const transformGroup = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find(
+      (group) => group.id === 'generic_ops.transform',
+    );
+    const createGroup = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find((group) => group.id === 'generic_ops.create');
+
+    assert.ok(transformGroup);
+    assert.ok(createGroup);
+
+    const genericTransformOperations = transformGroup.operations
+      .filter((operation) => operation.runtimeOwner === 'GenericAssetStructControlAction')
+      .map((operation) => operation.secondStageOperation?.replace('generic.transform.', ''))
+      .sort();
+    const genericCreateOperations = createGroup.operations
+      .filter((operation) => operation.runtimeOwner === 'GenericAssetStructControlAction')
+      .map((operation) => operation.secondStageOperation?.replace('generic.create.', ''))
+      .sort();
+
+    assert.deepEqual(genericTransformOperations, ['class_cast', 'dynamic_cast']);
+    assert.deepEqual(genericCreateOperations, [
+      'asset_action',
+      'construct_object',
+      'create_widget',
+      'make_array',
+      'make_map',
+      'make_set',
+      'spawn_actor',
+    ]);
+  });
+
   it('keeps OpCoverage disjoint from GenericOps logical groups', () => {
     const genericOps = new Set(
       GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups

@@ -344,7 +344,7 @@ const GENERIC_CONTAINER_EVIDENCE_KEYS = [
   'container.collection_pin_type',
 ] as const;
 
-const GENERIC_TRANSFORM_GENERIC_OPERATIONS = ['dynamic_cast', 'class_cast', 'interface_dynamic_cast'] as const;
+const GENERIC_TRANSFORM_GENERIC_OPERATIONS = ['dynamic_cast', 'class_cast'] as const;
 const GENERIC_TRANSFORM_FUNCTION_OPERATIONS = [
   'type_promotion',
   'function_conversion',
@@ -369,7 +369,6 @@ const GENERIC_CREATE_GENERIC_OPERATIONS = [
   'make_map',
   'make_set',
   'asset_action',
-  'asset_backed_graph_node',
 ] as const;
 const GENERIC_CREATE_FUNCTION_OPERATIONS = [
   'async_action',
