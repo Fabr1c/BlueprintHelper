@@ -30,7 +30,7 @@ write permission is disabled, and read back the target context after execute.
 | Create a compact Blueprint feature with variables, graph, and validation | `taskspec_create_blueprint_feature_template.json` |
 | Edit Blueprint components | `taskspec_edit_blueprint_components_template.json` |
 | Edit Blueprint member variables | `taskspec_edit_blueprint_variables_template.json` |
-| Edit Blueprint class settings and interfaces | `taskspec_edit_blueprint_class_settings_template.json` |
+| Edit Blueprint class settings, interfaces, class defaults, or reparenting | `taskspec_edit_blueprint_class_settings_template.json` |
 
 ## Signature Authoring
 
@@ -46,6 +46,10 @@ write permission is disabled, and read back the target context after execute.
 | Intent | Template |
 |---|---|
 | Append a new owned graph block | `taskspec_graph_append_owned_template.json` |
+| Append first-class container actions such as array/map/set operations | `taskspec_graph_append_container_action_template.json` |
+| Append component-bound events or delegate bind/assign/unbind/call statements | `taskspec_graph_append_event_delegate_template.json` |
+| Append generic schedule nodes without FunctionAction ownership mixing | `taskspec_graph_append_generic_schedule_template.json` |
+| Append representative generic op, transform, struct/select, create, and branch statements | `taskspec_graph_append_generic_ops_template.json` |
 | Replace an owned graph block | `taskspec_graph_replace_owned_template.json` |
 | Patch node comment | `taskspec_graph_patch_node_comment_template.json` |
 | Patch node position | `taskspec_graph_patch_node_position_template.json` |
@@ -61,12 +65,3 @@ write permission is disabled, and read back the target context after execute.
 | Edit UMG WidgetTree or widget properties | `taskspec_edit_umg_widget_template.json` |
 | Edit DataTable rows | `taskspec_edit_data_table_rows_template.json` |
 | Edit UObject or asset properties | `taskspec_edit_object_properties_template.json` |
-
-## Ownership And Recovery
-
-| Intent | Template |
-|---|---|
-| Clean up a BlueprintHelper-owned block | `taskspec_manage_ownership_cleanup_template.json` |
-| Convert a BlueprintHelper-owned block to user-owned | `taskspec_manage_ownership_convert_template.json` |
-| Roll back a BlueprintHelper-owned cleanup transaction | `taskspec_manage_ownership_rollback_template.json` |
-

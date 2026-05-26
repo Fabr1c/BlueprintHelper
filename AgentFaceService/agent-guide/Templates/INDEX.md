@@ -7,7 +7,7 @@ The category semantic indexes contain the per-intent template lists.
 |---|---|---|---|
 | Support tools | `./` | `SEMANTIC_INDEX.md` | Runtime profile, diagnostics, AgentGuide entry, write authorization, task result lookup, debug summaries, debug bundle manifest, and Review record summaries. |
 | Read tools | `read/` | `read/SEMANTIC_INDEX.md` | Read-only context before planning, authoring, verifying, or tracing custom Blueprint logic. |
-| Write tools | `write/` | `write/SEMANTIC_INDEX.md` | TaskSpec-first preview, execute, asset creation, graph edits, signatures, components, variables, UMG, DataTable, DataAsset, and ownership operations. |
+| Write tools | `write/` | `write/SEMANTIC_INDEX.md` | TaskSpec-first preview, execute, asset creation, graph edits, signatures, components, variables, UMG, DataTable, DataAsset, and GraphWrite statement examples. |
 
 ## Selection Rules
 

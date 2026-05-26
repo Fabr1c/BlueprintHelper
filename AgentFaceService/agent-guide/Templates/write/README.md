@@ -45,3 +45,11 @@ Common write loop:
 5. Request write session only if preview says write permission is disabled.
 6. Execute.
 7. Read task result and read back target context.
+
+GraphWrite coverage notes:
+
+1. Use `taskspec_graph_append_container_action_template.json` for first-class array, map, and set operations.
+2. Use `taskspec_graph_append_event_delegate_template.json` for public `component_bound_event` and `delegate.*` statements. Do not author the compiler-internal `kind=delegate` shape directly.
+3. Use `taskspec_graph_append_generic_schedule_template.json` for `timer_delegate_node` or `latent_or_async_node`; do not add `function_operation` to those generic schedule statements.
+4. Use `taskspec_graph_append_generic_ops_template.json` for representative op, convert, construct/select, create, and branch examples. Remove unused example statements before preview.
+5. Use `taskspec_edit_blueprint_class_settings_template.json` for interfaces, class defaults, and `behavior.reparent.new_parent_class`.
