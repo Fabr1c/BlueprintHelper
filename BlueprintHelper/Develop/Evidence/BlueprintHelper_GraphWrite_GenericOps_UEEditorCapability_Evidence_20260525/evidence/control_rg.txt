@@ -1,0 +1,992 @@
+Source/Editor/BlueprintGraph/Public/BlueprintNodeTemplateCache.h:82:	 * cache (like calling AllocateDefaultPins), and since we don't recalculate
+Source/Editor/BlueprintGraph/Public/BlueprintGraphDefinitions.h:39:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/VariableSetHandler.cpp:182:			CallFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/VariableSetHandler.cpp:206:			CallFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableSetRef.h:30:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableSetRef.h:39:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/Kismet/Public/SSCSEditor.h:1517:	/** Gate to prevent changing the selection while selection change is being broadcast. */
+Source/Editor/Kismet/Public/BlueprintEditor.h:1151:	 * @param InGatewayNode				The node replacing the selection of nodes
+Source/Editor/Kismet/Public/BlueprintEditor.h:1156:	void ExtractEventTemplateForFunction(class UK2Node_CustomEvent* InCustomEvent, UEdGraphNode* InGatewayNode, class UK2Node_EditablePinBase* InEntryNode, class UK2Node_EditablePinBase* InResultNode, TSet<UEdGraphNode*>& InCollapsableNodes);
+Source/Editor/Kismet/Public/BlueprintEditor.h:1161:	 * @param InGatewayNode				The node replacing the selection of nodes
+Source/Editor/Kismet/Public/BlueprintEditor.h:1168:	void CollapseNodesIntoGraph(UEdGraphNode* InGatewayNode, class UK2Node_EditablePinBase* InEntryNode, class UK2Node_EditablePinBase* InResultNode, UEdGraph* InSourceGraph, UEdGraph* InDestinationGraph, TSet<UEdGraphNode*>& InCollapsableNodes, bool bCanDiscardEmptyReturnNode, bool bCanHaveWeakObjPtrParam);
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableSet.h:33:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/CallFunctionHandler.cpp:10:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/CallFunctionHandler.cpp:830:				UK2Node_ExecutionSequence* DummyNode = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(CallFuncNode);
+Source/Editor/BlueprintGraph/Private/CallFunctionHandler.cpp:831:				DummyNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableGet.h:33:	Branch,
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableGet.h:48:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/BlueprintComponentNodeSpawner.cpp:186:		NewNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/Tests/TypePromotionTests.cpp:600:		MultiplyNode->AddInputPin();
+Source/Editor/BlueprintGraph/Private/Tests/TypePromotionTests.cpp:628:		AddNode->AddInputPin();
+Source/Editor/BlueprintGraph/Private/BlueprintNodeTemplateCache.cpp:361:		// nodes, so they could have grown in size... like with AllocateDefaultPins)
+Source/Editor/BlueprintGraph/Private/BlueprintNodeTemplateCache.cpp:365:		//        AllocateDefaultPins), and this returns a size estimate from
+Source/Editor/BlueprintGraph/Classes/K2Node_CallFunction.h:105:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawner.cpp:102:			CachedTemplateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawner.cpp:345:			NewNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_CallDelegate.h:17:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.h:44:	// Branching nodes
+Source/Editor/BlueprintGraph/Classes/K2Node_Timeline.h:62:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Timeline.h:86:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/PushModelHelpers.cpp:99:	MarkPropertyDirtyNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/PushModelHelpers.cpp:117:		SelfNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CustomEvent.cpp:226:		OutErrorMessage = NSLOCTEXT("K2Node", "AddInputPinError", "Cannot add input pins to custom event node!");
+Source/Editor/BlueprintGraph/Private/K2Node_CustomEvent.cpp:253:			OutErrorMessage = LOCTEXT("AddInputPinError", "Cannot add pins of this type to custom event node!");
+Source/Editor/BlueprintGraph/Private/K2Node_CustomEvent.cpp:382:void UK2Node_CustomEvent::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CustomEvent.cpp:517:		CustomEventNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_TemporaryVariable.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_TemporaryVariable.h:53:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:197:void UK2Node_BreakStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:361:void UK2Node_BreakStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:100:void UK2Node_AddComponent::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:102:	AllocateDefaultPinsWithoutExposedVariables();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:185:void UK2Node_AddComponent::AllocateDefaultPinsWithoutExposedVariables()
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:187:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:490:		NewNode->AllocateDefaultPinsWithoutExposedVariables();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp:518:		FinishAdd->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_CallArrayFunction.h:38:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:32:// FKCHandler_Branch
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:34:class FKCHandler_Branch : public FNodeHandlingFunctor
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:37:	FKCHandler_Branch(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:55:			CompilerContext.MessageLog.Error(*LOCTEXT("NoValidExecutionPinForBranch_Error", "@@ must have a valid execution pin @@").ToString(), Node, ExecTriggeringPin);
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:106:void UK2Node_IfThenElse::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:120:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:125:	return LOCTEXT("Branch", "Branch");
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:130:	return GetDefault<UGraphEditorSettings>()->ExecBranchNodeTitleColor;
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:135:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.Branch_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:141:	return LOCTEXT("BranchStatement_Tooltip", "Branch Statement\nIf Condition is true, execution goes to True, otherwise it goes to False");
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:160:	return new FKCHandler_Branch(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_IfThenElse.cpp:163:void UK2Node_IfThenElse::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:107:void UK2Node_PromotableOperator::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:137:		AddInputPinImpl(i);
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:203:				FExecuteAction::CreateUObject(const_cast<UK2Node_PromotableOperator*>(this), &UK2Node_PromotableOperator::AddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:793:void UK2Node_PromotableOperator::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:800:		AddInputPinImpl(NumFunctionInputs + NumAdditionalInputs);
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:910:UEdGraphPin* UK2Node_PromotableOperator::AddInputPinImpl(int32 PinIndex)
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:1080:	NewOperator->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_PromotableOperator.cpp:1126:		TemplateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:21:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:37:#include "K2Node_MultiGate.h"
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:653:			(NodeClass == UK2Node_MultiGate::StaticClass()) ||
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:656:			(NodeClass == UK2Node_ExecutionSequence::StaticClass());
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1428:			TemplateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2198:	// AllocateDefaultPins() which is costly, so it should be very last!
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchString.h:45:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchString.h:49:	BLUEPRINTGRAPH_API virtual void AddPinToSwitchNode() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchString.h:57:	virtual void CreateSelectionPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchString.h:58:	virtual void CreateCasePins() override;
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:134:	 * UK2Node's GetMenuActions() method).
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:917:		NodeCDO->GetMenuActions(Registrar);
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:922:	// leverage UK2Node's GetMenuActions() function, so here we HACK it in
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:1289:		// example, if this module contains a new node type that implements a GetMenuActions() override, most implementations assume that a NULL action
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSetRef.cpp:165:void UK2Node_VariableSetRef::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSetRef.cpp:179:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSetRef.cpp:327:void UK2Node_VariableSetRef::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_BreakStruct.h:56:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_BreakStruct.h:72:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_CreateDelegate.cpp:45:void UK2Node_CreateDelegate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CreateDelegate.cpp:57:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CreateDelegate.cpp:516:void UK2Node_CreateDelegate::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_BitmaskLiteral.cpp:108:void UK2Node_BitmaskLiteral::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_BitmaskLiteral.cpp:117:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BitmaskLiteral.cpp:133:	MakeLiteralInt->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BitmaskLiteral.cpp:151:void UK2Node_BitmaskLiteral::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:73:void UK2Node_GetSubsystem::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:90:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:186:	CallGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:229:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:243:void UK2Node_GetSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:366:void UK2Node_GetSubsystemFromPC::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:381:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:422:	CallGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:455:void UK2Node_GetSubsystemFromPC::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:513:void UK2Node_GetEngineSubsystem::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:525:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:564:	CallGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:590:void UK2Node_GetEngineSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:640:void UK2Node_GetEditorSubsystem::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:652:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:691:	CallGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:717:void UK2Node_GetEditorSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node.cpp:649:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2_Actions.cpp:271:	ResultNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2_Actions.cpp:649:			LiteralNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Copy.cpp:83:void UK2Node_Copy::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Copy.cpp:90:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Copy.cpp:221:void UK2Node_Copy::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:3:#include "K2Node_MultiGate.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:32:#define LOCTEXT_NAMESPACE "K2Node_MultiGate"
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:35:// FKCHandler_MultiGate
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:37:class FKCHandler_MultiGate : public FNodeHandlingFunctor
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:61:	FKCHandler_MultiGate(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:79:		UK2Node_MultiGate* GateNode = Cast<UK2Node_MultiGate>(Node);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:81:		if (!GateNode || !GateNode->DataNode)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:118:		UK2Node_MultiGate* GateNode = Cast<UK2Node_MultiGate>(Node);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:123:		GateNode->GetMarkBitFunction(MarkBitFunctionName, &MarkBitFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:128:		GateNode->GetHasUnmarkedBitFunction(HasUnmarkedBitFunctionName, &HasUnmarkedBitFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:133:		GateNode->GetUnmarkedBitFunction(GetUnmarkedBitFunctionName, &GetUnmarkedBitFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:138:		GateNode->GetConditionalFunction(ConditionalFunctionName, &ConditionalFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:143:		GateNode->GetEqualityFunction(EqualityFunctionName, &EqualityFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:148:		GateNode->GetBoolNotEqualFunction(BoolNotEqualFunctionName, &BoolNotEqualFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:153:		GateNode->GetPrintStringFunction(PrintStringFunctionName, &PrintStringFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:158:		GateNode->GetClearAllBitsFunction(ClearBitsFunctionName, &ClearBitsFunctionClass);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:163:		if (GateNode->DataNode)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:165:			UEdGraphPin* PinToTry = FEdGraphUtilities::GetNetFromPin(GateNode->DataNode->GetVariablePin());
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:172:			DataTerm = DataTermMap.FindRef(GateNode);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:180:		PinToTry = FEdGraphUtilities::GetNetFromPin(GateNode->GetStartIndexPin());
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:184:		PinToTry = FEdGraphUtilities::GetNetFromPin(GateNode->GetIsRandomPin());
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:188:		PinToTry = FEdGraphUtilities::GetNetFromPin(GateNode->GetLoopPin());
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:192:		FBPTerminal* FirstRunBoolTerm = FirstRunTermMap.FindRef(GateNode);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:208:		GateNode->GetOutPins(OutPins);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:451:			GenerateSimpleThenGoto(Context, *GateNode, OutPins[OutIdx]);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:485:		LiteralStringTerm->Name = FText::Format(LOCTEXT("MultiGateNode IndexWarningFmt", "MultiGate Node failed! Out of bounds indexing of the out pins. There are only {0} outs available."), OutPins.Num()).ToString();
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:492:UK2Node_MultiGate::UK2Node_MultiGate(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:497:FText UK2Node_MultiGate::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:499:	return NSLOCTEXT("K2Node", "MultiGate_Tooltip", "Executes a series of pins in order");
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:502:FLinearColor UK2Node_MultiGate::GetNodeTitleColor() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:507:FText UK2Node_MultiGate::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:509:	return NSLOCTEXT("K2Node", "MultiGate", "MultiGate");
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:512:bool UK2Node_MultiGate::CanAddPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:518:void UK2Node_MultiGate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:520:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:530:void UK2Node_MultiGate::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:542:UEdGraphPin* UK2Node_MultiGate::GetResetPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:549:UEdGraphPin* UK2Node_MultiGate::GetIsRandomPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:556:UEdGraphPin* UK2Node_MultiGate::GetLoopPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:563:UEdGraphPin* UK2Node_MultiGate::GetStartIndexPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:570:void UK2Node_MultiGate::GetOutPins(TArray<UEdGraphPin*>& OutPins) const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:583:int32 UK2Node_MultiGate::GetNumOutPins() const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:598:void UK2Node_MultiGate::GetMarkBitFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:604:void UK2Node_MultiGate::GetHasUnmarkedBitFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:610:void UK2Node_MultiGate::GetUnmarkedBitFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:617:void UK2Node_MultiGate::GetConditionalFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:623:void UK2Node_MultiGate::GetEqualityFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:630:void UK2Node_MultiGate::GetBoolNotEqualFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:637:void UK2Node_MultiGate::GetPrintStringFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:643:void UK2Node_MultiGate::GetClearAllBitsFunction(FName& FunctionName, UClass** FunctionClass)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:649:FName UK2Node_MultiGate::GetPinNameGivenIndex(int32 Index) const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:654:FNodeHandlingFunctor* UK2Node_MultiGate::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:656:	return new FKCHandler_MultiGate(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:659:void UK2Node_MultiGate::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:678:		TempVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:689:		AssignmentNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MultiGate.cpp:703:void UK2Node_MultiGate::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:36:void UK2Node_GetNumEnumEntries::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:41:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:99:	MakeLiteralInt->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:116:void UK2Node_GetNumEnumEntries::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:118:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:133:		NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeEnum, NonConstEnumPtr);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:52:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1630:					if( InGraphNode->IsA(UK2Node_ExecutionSequence::StaticClass()) || InGraphNode->IsA(UK2Node_Switch::StaticClass()) )
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1775:									LOCTEXT("DisableCompile", "Disable (Do Not Compile)"),
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6222:			NewNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6274:				CastNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6569:	CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7013:bool UEdGraphSchema_K2::CollapseGatewayNode(UK2Node* InNode, UEdGraphNode* InEntryNode, UEdGraphNode* InResultNode, FKismetCompilerContext* CompilerContext, TSet<UEdGraphNode*>* OutExpandedNodes) const
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7052:		UEdGraphNode* const GatewayNode = (BoundaryPin->Direction == EGPD_Input) ? InEntryNode : InResultNode;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7053:		UEdGraphPin* GatewayPin = nullptr;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7054:		if (GatewayNode)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7068:			for (int32 PinIdx = GatewayNode->Pins.Num() - 1; PinIdx >= 0; --PinIdx)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7070:				UEdGraphPin* const Pin = GatewayNode->Pins[PinIdx];
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7075:					GatewayPin = Pin;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7080:					GatewayPin = Pin;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7086:		if (GatewayPin)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7088:			CombineTwoPinNetsAndRemoveOldPins(BoundaryPin, GatewayPin);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7103:							GatewayNode ? FText::FromString(GatewayNode->GetName()) : NSLOCTEXT("K2Node", "PinOnBoundryNode_WarningNoNode", "(null)"),
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7117:							GatewayNode ? FText::FromString(GatewayNode->GetName()) : NSLOCTEXT("K2Node", "PinOnBoundryNode_WarningNoNode", "(null)"),
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7230:				MakeStructNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7270:				CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7294:				BreakStructNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7318:				CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponentByClass.cpp:57:void UK2Node_AddComponentByClass::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponentByClass.cpp:62:	AddComponentByClassNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponentByClass.cpp:79:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponentByClass.cpp:200:	CallAddComponentByClassNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AddComponentByClass.cpp:238:		CallRegisterComponentNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSet.cpp:97:void UK2Node_VariableSet::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSet.cpp:115:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSet.cpp:480:					VariableGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSet.cpp:514:				CallFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchName.h:41:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchName.h:45:	BLUEPRINTGRAPH_API virtual void AddPinToSwitchNode() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchName.h:53:	virtual void CreateSelectionPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchName.h:54:	virtual void CreateCasePins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:177:void UK2Node_ConvertAsset::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:193:void UK2Node_ConvertAsset::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:195:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:239:		NodeSpawner->DynamicUiSignatureGetter = UBlueprintFieldNodeSpawner::FUiSpecOverrideDelegate::CreateStatic(GetMenuActions_Utils::OverrideUI);
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:266:			ConvertToObjectFunc->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:296:			ConvertToObjectFunc->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ConvertAsset.cpp:314:				CastNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_BitmaskLiteral.h:36:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_BitmaskLiteral.h:45:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputVectorAxisValue.cpp:83:void UK2Node_GetInputVectorAxisValue::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CallParentFunction.cpp:55:void UK2Node_CallParentFunction::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CallParentFunction.cpp:57:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_BaseMCDelegate.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchInteger.h:42:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchInteger.h:54:	virtual void CreateCasePins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchInteger.h:55:	virtual void CreateSelectionPin() override;
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:119:	GetLevelScriptActorNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:185:			//@TODO: Why do this here in the compiler, it's already done on AllocateDefaultPins() during on-load node reconstruction
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:244:		CastToInterfaceNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:280:		FunctionCallNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:340:							TempVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:352:							AssignTempVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:378:							ClearArray->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:392:							ClearSet->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:405:							ClearMap->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:417:							AssignDefaultValue->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Message.cpp:435:					UE_LOG(LogK2Compiler, Log, TEXT("%s"), *LOCTEXT("NoPinConnectionFound_Error", "Unable to find connection for pin!  Check AllocateDefaultPins() for consistency!").ToString());
+Source/Editor/BlueprintGraph/Private/K2Node_AssignmentStatement.cpp:123:void UK2Node_AssignmentStatement::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_AssignmentStatement.cpp:131:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AssignmentStatement.cpp:231:void UK2Node_AssignmentStatement::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:111:				Result = EGetNodeVariation::Branch;
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:177:		if (SupportedVariation == EGetNodeVariation::Branch)
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:211:void UK2Node_VariableGet::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:223:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:397:				else if (SupportedVariation == EGetNodeVariation::Branch)
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:399:					MenuEntryTitle = LOCTEXT("ConvertToImpureGetBooleanTitle", "Convert to Branch");
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:436:		else if (BoundVariation == EGetNodeVariation::Branch)
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:438:			TransactionTitle = LOCTEXT("ToggleImpureGetBoolean", "Convert to Branch");
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:524:		// 3. A Branch node (only impure part)
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:528:		// 2. A Branch node (only impure part)
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:533:		VariableGetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:569:			IsValidFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:579:		// Create the Branch node
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:580:		UK2Node_IfThenElse* BranchNode = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:581:		BranchNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:582:		CompilerContext.MessageLog.NotifyIntermediateObjectCreation(BranchNode, this);
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:584:		// Connect the bool output pin from IsValid node to the Branch node
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:586:		SourceBoolPin->MakeLinkTo(BranchNode->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:588:		// Connect the Branch node to the input of the impure Get node
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:589:		CompilerContext.MovePinLinksToIntermediate(*GetExecPin(), *BranchNode->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:591:		// Move the two Branch pins to the Branch node
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:592:		CompilerContext.MovePinLinksToIntermediate(*FindPin(UEdGraphSchema_K2::PN_Then), *BranchNode->FindPin(UEdGraphSchema_K2::PN_Then));
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:593:		CompilerContext.MovePinLinksToIntermediate(*FindPin(UEdGraphSchema_K2::PN_Else), *BranchNode->FindPin(UEdGraphSchema_K2::PN_Else));
+Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp:614:			CallFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ConstructObjectFromClass.cpp:72:void UK2Node_ConstructObjectFromClass::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_ConstructObjectFromClass.cpp:96:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ConstructObjectFromClass.cpp:202:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ConstructObjectFromClass.cpp:440:void UK2Node_ConstructObjectFromClass::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:94:void UK2Node_BaseAsyncTask::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:239:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:268:	SelfNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:271:	CreateDelegateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:318:		AddDelegateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:323:		CurrentCENode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:342:		AssignNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:375:						SelfNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:398:	CallCreateProxyObjectNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:465:	IsValidFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:471:	ValidateProxyNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:490:		CallActivateProxyObjectNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_BaseAsyncTask.cpp:578:void UK2Node_BaseAsyncTask::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:26:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:674:void UK2Node_CallFunction::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:754:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2611:			UK2Node_ExecutionSequence* SpawnedSequenceNode = nullptr;
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2612:			int32 OutSequenceIndex = 0;
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2614:			const auto LinkIntoOutputChain = [&OutMainExecutePin, &SpawnedSequenceNode, &OutSequenceIndex, &CompilerContext, this, SourceGraph, Schema](UK2Node* Node)
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2624:					if (!SpawnedSequenceNode)
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2626:						SpawnedSequenceNode = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2627:						SpawnedSequenceNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2628:						CompilerContext.MovePinLinksToIntermediate(*OutMainExecutePin, *SpawnedSequenceNode->GetThenPinGivenIndex(OutSequenceIndex++));
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2629:						Schema->TryCreateConnection(OutMainExecutePin, SpawnedSequenceNode->Pins[0]);
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2634:				if (!SpawnedSequenceNode)
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2640:					UEdGraphPin* SequenceOutput = SpawnedSequenceNode->GetThenPinGivenIndex(OutSequenceIndex);
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2642:					if (!SequenceOutput)
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2644:						SpawnedSequenceNode->AddInputPin();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2645:						SequenceOutput = SpawnedSequenceNode->GetThenPinGivenIndex(OutSequenceIndex);
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2648:					Schema->TryCreateConnection(SequenceOutput, Node->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2649:					OutSequenceIndex++;
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2693:						TempEnumVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2711:								AssignNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2738:						SwitchEnumNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2786:						TempBoolVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2796:							AssignNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2823:						// Create a Branch node to switch on the output bool:
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2825:						IfElseNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2946:	LocalVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2960:		AssignDefaultValue->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2991:	IteratorVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:2995:	InteratorInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3001:	UK2Node_IfThenElse* Branch = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(Node, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3002:	Branch->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3003:	Schema->TryCreateConnection(InteratorInitialize->GetThenPin(), Branch->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3004:	CompilerContext.MovePinLinksToIntermediate(*ThenPin, *Branch->GetElsePin());
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3009:	Condition->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3010:	Schema->TryCreateConnection(Condition->GetReturnValuePin(), Branch->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3016:	ArrayLength->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3024:	GetElement->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3032:	Increment->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3038:	IteratorAssign->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3041:	Schema->TryCreateConnection(IteratorAssign->GetThenPin(), Branch->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:3044:	Schema->TryCreateConnection(Branch->GetThenPin(), Node->GetExecPin());
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchEnum.h:60:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchEnum.h:68:	virtual void AddPinToSwitchNode() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchEnum.h:79:	virtual void CreateCasePins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SwitchEnum.h:81:	virtual void CreateSelectionPin() override;
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisValue.cpp:37:void UK2Node_GetInputAxisValue::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisValue.cpp:39:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisValue.cpp:120:void UK2Node_GetInputAxisValue::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:154:void UK2Node_CommutativeAssociativeBinaryOperator::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:156:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:160:		AddInputPinInner(i);
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:164:void UK2Node_CommutativeAssociativeBinaryOperator::AddInputPinInner(int32 AdditionalPinIndex)
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:180:void UK2Node_CommutativeAssociativeBinaryOperator::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:187:		AddInputPinInner(NumAdditionalInputs);
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:260:					FExecuteAction::CreateUObject(const_cast<UK2Node_CommutativeAssociativeBinaryOperator*>(this), &UK2Node_CommutativeAssociativeBinaryOperator::AddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_CommutativeAssociativeBinaryOperator.cpp:293:			NewOperator->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Composite.cpp:37:void UK2Node_Composite::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Composite.cpp:39:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunctionOnMember.cpp:75:	CallFuncNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunctionOnMember.cpp:86:			GetVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunctionOnMember.cpp:103:					GetVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:95:void UK2Node_BaseMCDelegate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:97:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:334:void UK2Node_AddDelegate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:336:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:403:void UK2Node_RemoveDelegate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:405:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:463:void UK2Node_CallDelegate::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MCDelegate.cpp:465:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_AsyncAction.cpp:31:void UK2Node_AsyncAction::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_AsyncAction.cpp:33:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_AsyncAction.cpp:65:		NodeSpawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(GetMenuActions_Utils::SetNodeFunc, FunctionPtr);
+Source/Editor/BlueprintGraph/Classes/K2Node_BaseAsyncTask.h:58:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_BaseAsyncTask.h:73:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisKeyValue.cpp:39:void UK2Node_GetInputAxisKeyValue::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisKeyValue.cpp:41:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetInputAxisKeyValue.cpp:139:void UK2Node_GetInputAxisKeyValue::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:20:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:72:		LoopCounterNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:78:		LoopCounterInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:87:		ArrayIndexNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:93:		ArrayIndexInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:99:		UK2Node_IfThenElse* Branch = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(Node, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:100:		Branch->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:101:		bResult &= Schema->TryCreateConnection(ArrayIndexInitialize->GetThenPin(), Branch->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:102:		LoopCompleteOutExecPin = Branch->GetElsePin();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:108:		Condition->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:109:		bResult &= Schema->TryCreateConnection(Condition->GetReturnValuePin(), Branch->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:117:		GetEnumeratorValueFromIndexCall->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:123:		ArrayIndexAssign->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:124:		bResult &= Schema->TryCreateConnection(Branch->GetThenPin(), ArrayIndexAssign->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:129:		UK2Node_ExecutionSequence* Sequence = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(Node, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:130:		Sequence->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:131:		bResult &= Schema->TryCreateConnection(ArrayIndexAssign->GetThenPin(), Sequence->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:132:		InsideLoopExecOutPin = Sequence->GetThenPinGivenIndex(0);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:138:		Increment->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:144:		LoopCounterAssign->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:145:		bResult &= Schema->TryCreateConnection(LoopCounterAssign->GetExecPin(), Sequence->GetThenPinGivenIndex(1));
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:148:		bResult &= Schema->TryCreateConnection(LoopCounterAssign->GetThenPin(), Branch->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:163:void UK2Node_ForEachElementInEnum::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:237:	FForExpandNodeHelper ForLoop;
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:238:	if (!ForLoop.BuildLoop(this, CompilerContext, SourceGraph, Enum))
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:247:	GetNumEnumEntries->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:248:	bool bResult = Schema->TryCreateConnection(GetNumEnumEntries->FindPinChecked(UEdGraphSchema_K2::PN_ReturnValue), ForLoop.LoopCounterLimitInPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:253:	Conv_Func->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:254:	bResult &= Schema->TryCreateConnection(Conv_Func->FindPinChecked(TEXT("InInt")), ForLoop.ArrayIndexOutPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:259:	CastByteToEnum->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:263:	UK2Node_ExecutionSequence* SwitchOutputSequence = nullptr;
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:277:			UK2Node_IfThenElse* ShouldSkipHiddenBranch = nullptr;
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:281:				ShouldSkipHiddenBranch = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:282:				ShouldSkipHiddenBranch->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:283:				bResult &= Schema->TryCreateConnection(ForLoop.InsideLoopExecOutPin, ShouldSkipHiddenBranch->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:284:				bResult &= Schema->TryCreateConnection(SkipHiddenValuesPin->LinkedTo[0], ShouldSkipHiddenBranch->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:288:			if (ShouldSkipHiddenBranch || SkipHiddenValuesPin->GetDefaultAsString().Equals(TEXT("true"), ESearchCase::IgnoreCase))
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:294:				SwitchEnum->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:296:				bResult &= Schema->TryCreateConnection(SwitchEnum->GetExecPin(), ShouldSkipHiddenBranch ? ShouldSkipHiddenBranch->GetThenPin() : ForLoop.InsideLoopExecOutPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:299:				SwitchOutputSequence = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:300:				SwitchOutputSequence->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:301:				if (ShouldSkipHiddenBranch)
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:303:					bResult &= Schema->TryCreateConnection(ShouldSkipHiddenBranch->GetElsePin(), SwitchOutputSequence->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:309:						bResult &= Schema->TryCreateConnection(SwitchCasePin, SwitchOutputSequence->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:316:	CompilerContext.MovePinLinksToIntermediate(*GetExecPin(), *ForLoop.StartLoopExecInPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:317:	CompilerContext.MovePinLinksToIntermediate(*FindPinChecked(UEdGraphSchema_K2::PN_Then), *ForLoop.LoopCompleteOutExecPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:318:	CompilerContext.MovePinLinksToIntermediate(*FindPinChecked(InsideLoopPinName), SwitchOutputSequence ? *SwitchOutputSequence->GetThenPinGivenIndex(0) : *ForLoop.InsideLoopExecOutPin);
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:329:void UK2Node_ForEachElementInEnum::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:331:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:346:		NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeEnum, NonConstEnumPtr);
+Source/Editor/BlueprintGraph/Classes/K2Node_Switch.h:48:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Switch.h:75:	virtual void AddPinToSwitchNode();
+Source/Editor/BlueprintGraph/Classes/K2Node_Switch.h:100:	virtual void CreateSelectionPin() {}
+Source/Editor/BlueprintGraph/Classes/K2Node_Switch.h:101:	virtual void CreateCasePins() {}
+Source/Editor/BlueprintGraph/Private/K2Node_Timeline.cpp:119:void UK2Node_Timeline::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Timeline.cpp:183:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Timeline.cpp:616:		GetVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Timeline.cpp:722:void UK2Node_Timeline::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:51:void UK2Node_CastByteToEnum::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:110:		CallValidation->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:128:		UsafeCast->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:200:void UK2Node_CastByteToEnum::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:202:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:218:		NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeEnum, NonConstEnumPtr);
+Source/Editor/BlueprintGraph/Private/K2Node_GenericCreateObject.cpp:95:	CallCreateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GenericCreateObject.cpp:193:					SelfNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_CallArrayFunction.cpp:37:void UK2Node_CallArrayFunction::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_CallArrayFunction.cpp:39:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.cpp:25:void UK2Node_EditorPropertyAccessBase::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.cpp:27:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.cpp:33:void UK2Node_EditorPropertyAccessBase::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ClassDynamicCast.cpp:45:void UK2Node_ClassDynamicCast::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_ClassDynamicCast.cpp:67:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorNameAsString.cpp:23:void UK2Node_GetEnumeratorNameAsString::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorNameAsString.cpp:45:void UK2Node_GetEnumeratorNameAsString::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_AsyncAction.h:23:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:317: * Branch node that represents a binary operation, where its children are the 
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:375: * Branch node that represents a unary (prefix) operation, where its child is  
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:428: * Branch node that represents a ternary conditional (if-then-else) operation 
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:488: * Branch node that represents an n-dimentional list of sub-expressions (like 
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:577: * Branch node that represents some function (like sin(), cos(), etc.), could 
+Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp:2587:void UK2Node_MathExpression::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_TemporaryVariable.cpp:61:void UK2Node_TemporaryVariable::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_TemporaryVariable.cpp:66:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_TemporaryVariable.cpp:190:void UK2Node_TemporaryVariable::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_StructMemberSet.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_StructMemberSet.h:52:	// Helper for AllocateDefaultPins
+Source/Editor/BlueprintGraph/Private/K2Node_EditablePinBase.cpp:145:void UK2Node_EditablePinBase::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_EditablePinBase.cpp:147:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:190:void UK2Node_DoOnceMultiInput::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:192:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:231:void UK2Node_DoOnceMultiInput::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:314:					FExecuteAction::CreateUObject(const_cast<UK2Node_DoOnceMultiInput*>(this), &UK2Node_DoOnceMultiInput::AddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:334:	TempVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:351:		AssignmentNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:359:			// BranchNode
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:360:			UK2Node_IfThenElse* BranchNode = SourceGraph->CreateIntermediateNode<UK2Node_IfThenElse>();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:361:			BranchNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:362:			CompilerContext.MessageLog.NotifyIntermediateObjectCreation(BranchNode, this);
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:372:			Schema->TryCreateConnection(TempVarNode->GetVariablePin(), BranchNode->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:375:			CompilerContext.MovePinLinksToIntermediate(*ExecPin, *BranchNode->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:378:			Schema->TryCreateConnection(BranchNode->GetElsePin(), AssignmentNode->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_DoOnceMultiInput.cpp:403:void UK2Node_DoOnceMultiInput::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:4:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:27:#define LOCTEXT_NAMESPACE "K2Node_MultiGate"
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:30:// FKCHandler_ExecutionSequence
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:32:class FKCHandler_ExecutionSequence : public FNodeHandlingFunctor
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:35:	FKCHandler_ExecutionSequence(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:116:					FBlueprintCompiledStatement& GotoSequenceLinkedState = Context.AppendStatementForNode(Node);
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:117:					GotoSequenceLinkedState.Type = KCST_UnconditionalGoto;
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:118:					Context.GotoFixupRequestMap.Add(&GotoSequenceLinkedState, OutputPins[i]);
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:147:UK2Node_ExecutionSequence::UK2Node_ExecutionSequence(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:152:void UK2Node_ExecutionSequence::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:160:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:163:FText UK2Node_ExecutionSequence::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:165:	return NSLOCTEXT("K2Node", "Sequence", "Sequence");
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:168:FSlateIcon UK2Node_ExecutionSequence::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:170:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.Sequence_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:174:FLinearColor UK2Node_ExecutionSequence::GetNodeTitleColor() const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:179:FText UK2Node_ExecutionSequence::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:184:FName UK2Node_ExecutionSequence::GetUniquePinName()
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:200:void UK2Node_ExecutionSequence::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:206:void UK2Node_ExecutionSequence::InsertPinIntoExecutionNode(UEdGraphPin* PinToInsertBefore, EPinInsertPosition Position)
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:236:void UK2Node_ExecutionSequence::RemovePinFromExecutionNode(UEdGraphPin* TargetPin) 
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:238:	UK2Node_ExecutionSequence* OwningSeq = Cast<UK2Node_ExecutionSequence>( TargetPin->GetOwningNode() );
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:258:bool UK2Node_ExecutionSequence::CanRemoveExecutionPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:274:FName UK2Node_ExecutionSequence::GetPinNameGivenIndex(int32 Index) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:279:void UK2Node_ExecutionSequence::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins)
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:281:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:305:UEdGraphPin* UK2Node_ExecutionSequence::GetThenPinGivenIndex(const int32 Index) 
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:310:FNodeHandlingFunctor* UK2Node_ExecutionSequence::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:312:	return new FKCHandler_ExecutionSequence(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:315:void UK2Node_ExecutionSequence::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_ExecutionSequence.cpp:335:FText UK2Node_ExecutionSequence::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorName.cpp:38:void UK2Node_GetEnumeratorName::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorName.cpp:159:	CallGetName->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorName.cpp:195:		MakeLiteralByte->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetEnumeratorName.cpp:207:void UK2Node_GetEnumeratorName::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_DelegateSet.cpp:153:void UK2Node_DelegateSet::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_DelegateSet.cpp:166:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_DelegateSet.cpp:292:			DelegateEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchString.cpp:64:	return NSLOCTEXT("K2Node", "Switch_String", "Switch on String");
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchString.cpp:72:void UK2Node_SwitchString::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchString.cpp:92:void UK2Node_SwitchString::CreateSelectionPin()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchString.cpp:111:void UK2Node_SwitchString::CreateCasePins()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchString.cpp:135:void UK2Node_SwitchString::AddPinToSwitchNode()
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:9:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:62:void UK2Node_MapForEach::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:91:void UK2Node_MapForEach::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:93:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:158:	CreateTemporaryVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:166:	InitTemporaryVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:178:	// Branch on comparing the loop index with the size of the map
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:180:	UK2Node_IfThenElse* BranchOnIndex = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:181:	BranchOnIndex->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:183:	UEdGraphPin* Branch_Exec = BranchOnIndex->GetExecPin();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:184:	UEdGraphPin* Branch_Input = BranchOnIndex->GetConditionPin();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:185:	UEdGraphPin* Branch_Then = BranchOnIndex->GetThenPin();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:186:	UEdGraphPin* Branch_Else = BranchOnIndex->GetElsePin();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:188:	Init_Then->MakeLinkTo(Branch_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:189:	CompilerContext.MovePinLinksToIntermediate(*ForEach_Completed, *Branch_Else);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:193:	CompareLessThan->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:199:	Branch_Input->MakeLinkTo(Compare_Return);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:204:	GetMapLength->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:216:	// Sequence the loop body and incrementing the loop counter
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:218:	UK2Node_ExecutionSequence* LoopSequence = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:219:	LoopSequence->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:221:	UEdGraphPin* Sequence_Exec = LoopSequence->GetExecPin();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:222:	UEdGraphPin* Sequence_One = LoopSequence->GetThenPinGivenIndex(0);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:223:	UEdGraphPin* Sequence_Two = LoopSequence->GetThenPinGivenIndex(1);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:225:	Branch_Then->MakeLinkTo(Sequence_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:226:	CompilerContext.MovePinLinksToIntermediate(*ForEach_ForEach, *Sequence_One);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:230:	GetMapPair->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:251:	IncrementVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:258:	Sequence_Two->MakeLinkTo(Inc_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:259:	Branch_Exec->MakeLinkTo(Inc_Then);
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:265:	AddOne->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:277:	// The loop will then increment the counter and terminate on the next run of SequenceTwo.
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:280:	SetVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:291:	GetMapLastIndex->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MapForEach.cpp:307:	return LOCTEXT("NodeTitle", "For Each Loop (Map)");
+Source/Editor/BlueprintGraph/Classes/K2Node_StructMemberGet.h:38:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_StructMemberGet.h:49:	// AllocateDefaultPins with just one member set
+Source/Editor/BlueprintGraph/Classes/K2Node_AssignmentStatement.h:35:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_AssignmentStatement.h:46:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Private/K2Node_EaseFunction.cpp:107:void UK2Node_EaseFunction::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_EaseFunction.cpp:109:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EaseFunction.cpp:270:void UK2Node_EaseFunction::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_EaseFunction.cpp:435:	CallFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionResult.cpp:165:void UK2Node_FunctionResult::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionResult.cpp:174:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionResult.cpp:219:void UK2Node_FunctionResult::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_Event.cpp:345:void UK2Node_Event::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Event.cpp:367:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Event.cpp:733:		SelfNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Event.cpp:736:		CreateDelegateNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchName.cpp:45:	return NSLOCTEXT("K2Node", "Switch_Name", "Switch on Name");
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchName.cpp:53:void UK2Node_SwitchName::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchName.cpp:73:void UK2Node_SwitchName::CreateSelectionPin()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchName.cpp:92:void UK2Node_SwitchName::CreateCasePins()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchName.cpp:115:void UK2Node_SwitchName::AddPinToSwitchNode()
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:32:#include "UObject/FortniteMainBranchObjectVersion.h"
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:64:	Ar.UsingCustomVersion(FFortniteMainBranchObjectVersion::GUID);
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:66:	if (Ar.IsLoading() && Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) < FFortniteMainBranchObjectVersion::DynamicCastNodesUsePureStateEnum)
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:110:void UK2Node_DynamicCast::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:142:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumEquality.cpp:39:void UK2Node_EnumEquality::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_EnumEquality.cpp:48:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumEquality.cpp:201:	ConditionalNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumEquality.cpp:220:void UK2Node_EnumEquality::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_SpawnActorFromClass.h:36:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:80:void UK2Node_EnumLiteral::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:89:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:130:		MakeLiteralByteNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:145:		CastByte->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:163:void UK2Node_EnumLiteral::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:165:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:180:		NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeEnum, NonConstEnumPtr);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:154:void UK2Node_MakeStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:322:void UK2Node_MakeStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:56:void UK2Node_GetDataTableRow::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:79:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:209:void UK2Node_GetDataTableRow::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:379:	GetDataTableRowFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:408:    UK2Node_IfThenElse* BranchNode = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:409:    BranchNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:411:    FunctionThenPin->MakeLinkTo(BranchNode->GetExecPin());
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:412:    FunctionReturnPin->MakeLinkTo(BranchNode->GetConditionPin());
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:415:    CompilerContext.MovePinLinksToIntermediate(*GetThenPin(), *(BranchNode->GetThenPin()));
+Source/Editor/BlueprintGraph/Private/K2Node_GetDataTableRow.cpp:416:    CompilerContext.MovePinLinksToIntermediate(*GetRowNotFoundPin(), *(BranchNode->GetElsePin()));
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchInteger.cpp:30:	return NSLOCTEXT("K2Node", "Switch_Interger", "Switch on Int");
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchInteger.cpp:38:void UK2Node_SwitchInteger::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchInteger.cpp:58:void UK2Node_SwitchInteger::CreateSelectionPin()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchInteger.cpp:91:void UK2Node_SwitchInteger::CreateCasePins()
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.h:24:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.h:28:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/Kismet/Private/SFixupSelfContextDlg.cpp:76:	Options.Add(MakeShared<FString>(LOCTEXT("DoNothing", "Do Nothing").ToString()));
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:65:void UK2Node_FormatText::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:67:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:337:	MakeArrayNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:345:	CallFormatFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:364:		MakeFormatArgumentDataStruct->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:387:				ToTextFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:401:				CallFloatToDoubleFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:444:				CallByteToIntFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:494:			MakeArrayNode->AddInputPin();
+Source/Editor/BlueprintGraph/Private/K2Node_FormatText.cpp:676:void UK2Node_FormatText::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_SpawnActor.h:34:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_InstancedStruct.cpp:13:void UK2Node_InstancedStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_InstancedStruct.cpp:15:	Super::GetMenuActions(ActionRegistrar);
+Source/Editor/BlueprintGraph/Private/K2Node_GetArrayItem.cpp:148:void UK2Node_GetArrayItem::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetArrayItem.cpp:243:void UK2Node_GetArrayItem::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_GetArrayItem.cpp:342:		CallArrayLibFunc->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetClassDefaults.cpp:262:void UK2Node_GetClassDefaults::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GetClassDefaults.cpp:366:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetClassDefaults.cpp:401:				LocalVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetClassDefaults.cpp:404:				CopyDefaultValue->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GetClassDefaults.cpp:416:void UK2Node_GetClassDefaults::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:83:		return LOCTEXT("SwitchEnum_BadEnumTitle", "Switch on (bad enum)");
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:90:		CachedNodeTitle.SetCachedText(FText::Format(NSLOCTEXT("K2Node", "Switch_Enum", "Switch on {EnumName}"), Args), this);
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:134:void UK2Node_SwitchEnum::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:136:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:151:		NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeEnum, NonConstEnumPtr);
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:157:void UK2Node_SwitchEnum::CreateSelectionPin()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:171:void UK2Node_SwitchEnum::CreateCasePins()
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:215:void UK2Node_SwitchEnum::AddPinToSwitchNode()
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:384:void UK2Node_FunctionEntry::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:397:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:437:			OutErrorMessage = LOCTEXT("AddInputPinError", "Cannot add input pins to function entry node!");
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:977:						VariableSetNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:988:								MakeArray->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp:1009:										MakeArray->AddInputPin();
+Source/Editor/BlueprintGraph/Private/K2Node_GenericToText.cpp:50:void UK2Node_GenericToText::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_GenericToText.cpp:52:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GenericToText.cpp:169:		CallFunction->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_GenericToText.cpp:274:void UK2Node_GenericToText::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:112:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeSet*>(this), &UK2Node_MakeSet::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_InputVectorAxisEvent.cpp:91:void UK2Node_InputVectorAxisEvent::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:20:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:33:void UK2Node_LoadAsset::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:80:	// Sequence node, defaults to two output pins
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:81:	UK2Node_ExecutionSequence* SequenceNode = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:82:	SequenceNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:87:		UEdGraphPin* SequenceInputExePin = SequenceNode->GetExecPin();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:88:		bIsErrorFree &= InputExePin && SequenceInputExePin && CompilerContext.MovePinLinksToIntermediate(*InputExePin, *SequenceInputExePin).CanSafeConnect();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:94:	CallLoadAssetNode->AllocateDefaultPins(); 
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:99:		UEdGraphPin* SequenceFirstExePin = SequenceNode->GetThenPinGivenIndex(0);
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:100:		bIsErrorFree &= SequenceFirstExePin && CallFunctionInputExePin && Schema->TryCreateConnection(CallFunctionInputExePin, SequenceFirstExePin);
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:106:		UEdGraphPin* SequenceSecondExePin = SequenceNode->GetThenPinGivenIndex(1);
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:107:		bIsErrorFree &= OutputThenPin && SequenceSecondExePin && CompilerContext.MovePinLinksToIntermediate(*OutputThenPin, *SequenceSecondExePin).CanSafeConnect();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:115:	AssignNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:160:	OnLoadEventNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_LoadAsset.cpp:243:void UK2Node_LoadAsset::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_Knot.cpp:29:void UK2Node_Knot::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Knot.cpp:205:void UK2Node_Knot::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_Literal.cpp:100:void UK2Node_Literal::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Literal.cpp:182:void UK2Node_Literal::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_SetVariableOnPersistentFrame.h:27:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_InputAxisKeyEvent.cpp:144:void UK2Node_InputAxisKeyEvent::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_Switch.cpp:203:void UK2Node_Switch::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Switch.cpp:215:	CreateSelectionPin();
+Source/Editor/BlueprintGraph/Private/K2Node_Switch.cpp:221:	CreateCasePins();
+Source/Editor/BlueprintGraph/Private/K2Node_Switch.cpp:255:void UK2Node_Switch::AddPinToSwitchNode()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:112:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeArray*>(this), &UK2Node_MakeArray::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:65:void UK2Node_MakeMap::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:102:void UK2Node_MakeMap::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:189:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeMap*>(this), &UK2Node_MakeMap::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:129:void UK2Node_MakeContainer::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:512:void UK2Node_MakeContainer::InteractiveAddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:515:	AddInputPin();
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:518:void UK2Node_MakeContainer::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:629:void UK2Node_MakeContainer::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_AddPinInterface.h:62:	virtual void AddInputPin() = 0;
+Source/Editor/BlueprintGraph/Private/K2Node_InputAxisEvent.cpp:153:void UK2Node_InputAxisEvent::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetVariableOnPersistentFrame.cpp:105:void UK2Node_SetVariableOnPersistentFrame::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SetVariableOnPersistentFrame.cpp:110:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_SetForEach.h:28:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SetForEach.h:34:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:70:void UK2Node_InputTouch::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:81:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:110:void UK2Node_InputTouch::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:224:		TouchLocationVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:230:		TouchFingerVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:244:			InputTouchEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:248:			TouchLocationInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:256:			TouchFingerInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputTouch.cpp:285:			InputTouchEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_StructOperation.cpp:109:	struct GetMenuActions_Utils
+Source/Editor/BlueprintGraph/Private/K2Node_StructOperation.cpp:141:			NodeSpawner->SetNodeFieldDelegate = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeStruct, NonConstStructPtr);
+Source/Editor/BlueprintGraph/Private/K2Node_StructOperation.cpp:142:			NodeSpawner->DynamicUiSignatureGetter = UBlueprintFieldNodeSpawner::FUiSpecOverrideDelegate::CreateStatic(GetMenuActions_Utils::OverrideCategory, NonConstStructPtr, PinDirectionToPromote);
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:63:void UK2Node_InputAction::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:69:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:186:		ActionKeyVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:201:			InputActionEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:205:			ActionKeyInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:234:			InputActionEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputAction.cpp:251:void UK2Node_InputAction::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/Kismet/Private/SCSEditorViewportClient.h:142:	/** @return True if the specified object is selectable in the viewport and not made unselectable by the Sequencer selection limiting. */
+Source/Editor/BlueprintGraph/Private/K2Node_StructMemberGet.cpp:51:void UK2Node_StructMemberGet::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_StructMemberSet.cpp:60:void UK2Node_StructMemberSet::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:50:		MacroGraphReference.SetGraph(MacroGraph_DEPRECATED);
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:75:	if (const UEdGraph* MacroGraph = MacroGraphReference.GetGraph())
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:95:			MacroGraphReference.SetGraph(nullptr);
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:101:		MacroGraphReference.SetGraph(nullptr);
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:107:void UK2Node_MacroInstance::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:109:	UK2Node::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:112:	PreloadObject(MacroGraphReference.GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:113:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:154:	PreloadObject(MacroGraphReference.GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:155:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:162:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:197:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:213:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:267:		UEdGraph* InstanceMacroGraph = MacroInstance.Get()->MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:370:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:439:	if (UEdGraph* MacroGraph = MacroGraphReference.GetGraph())
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:457:	UEdGraph* MacroGraph = MacroGraphReference.GetGraph();
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:458:	if(MacroGraph != nullptr && MacroGraph->GetOuter()->GetName() == TEXT("StandardMacros"))
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:461:		if(	MacroName == TEXT("ForLoop" ) ||
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:462:			MacroName == TEXT("ForLoopWithBreak") ||
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:463:			MacroName == TEXT("WhileLoop") )
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:467:		else if( MacroName == TEXT("Gate") )
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:469:			IconName = "GraphEditor.Macro.Gate_16x";
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:471:		else if( MacroName == TEXT("Do N") )
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:483:		else if (MacroName == TEXT("FlipFlop"))
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:485:			IconName = "GraphEditor.Macro.FlipFlop_16x";
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:487:		else if ( MacroName == TEXT("ForEachLoop") ||
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:488:				  MacroName == TEXT("ForEachLoopWithBreak") )
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:594:	UBlueprint* OtherBlueprint = MacroGraphReference.GetBlueprint();
+Source/Editor/BlueprintGraph/Classes/K2Node_AddDelegate.h:16:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_Self.cpp:55:void UK2Node_Self::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Self.cpp:59:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Self.cpp:98:void UK2Node_Self::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:9:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:55:void UK2Node_SetForEach::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:84:void UK2Node_SetForEach::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:86:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:147:	CreateTemporaryVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:155:	InitTemporaryVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:167:	// Branch on comparing the loop index with the size of the set
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:169:	UK2Node_IfThenElse* BranchOnIndex = CompilerContext.SpawnIntermediateNode<UK2Node_IfThenElse>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:170:	BranchOnIndex->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:172:	UEdGraphPin* Branch_Exec = BranchOnIndex->GetExecPin();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:173:	UEdGraphPin* Branch_Input = BranchOnIndex->GetConditionPin();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:174:	UEdGraphPin* Branch_Then = BranchOnIndex->GetThenPin();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:175:	UEdGraphPin* Branch_Else = BranchOnIndex->GetElsePin();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:177:	Init_Then->MakeLinkTo(Branch_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:178:	CompilerContext.MovePinLinksToIntermediate(*ForEach_Completed, *Branch_Else);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:182:	CompareLessThan->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:188:	Branch_Input->MakeLinkTo(Compare_Return);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:193:	GetSetLength->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:205:	// Sequence the loop body and incrementing the loop counter
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:207:	UK2Node_ExecutionSequence* LoopSequence = CompilerContext.SpawnIntermediateNode<UK2Node_ExecutionSequence>(this, SourceGraph);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:208:	LoopSequence->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:210:	UEdGraphPin* Sequence_Exec = LoopSequence->GetExecPin();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:211:	UEdGraphPin* Sequence_One = LoopSequence->GetThenPinGivenIndex(0);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:212:	UEdGraphPin* Sequence_Two = LoopSequence->GetThenPinGivenIndex(1);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:214:	Branch_Then->MakeLinkTo(Sequence_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:215:	CompilerContext.MovePinLinksToIntermediate(*ForEach_ForEach, *Sequence_One);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:219:	GetSetElement->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:237:	IncrementVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:244:	Sequence_Two->MakeLinkTo(Inc_Exec);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:245:	Branch_Exec->MakeLinkTo(Inc_Then);
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:250:	AddOne->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:262:	// The loop will then increment the counter and terminate on the next run of SequenceTwo.
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:265:	SetVariable->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:276:	GetSetLastIndex->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetForEach.cpp:292:	return LOCTEXT("NodeTitle", "For Each Loop (Set)");
+Source/Editor/BlueprintGraph/Classes/K2Node_SetFieldsInStruct.h:34:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_SetFieldsInStruct.h:41:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/EdGraphSchema_K2.h:1207:	 * @param InGatewayNode			The function or tunnel node
+Source/Editor/BlueprintGraph/Classes/EdGraphSchema_K2.h:1213:	bool CollapseGatewayNode(UK2Node* InNode, UEdGraphNode* InEntryNode, UEdGraphNode* InResultNode, class FKismetCompilerContext* CompilerContext = nullptr, TSet<UEdGraphNode*>* OutExpandedNodes = nullptr) const;
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:206:void UK2Node_Select::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:261:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:645:void UK2Node_Select::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:661:	// We will let the AllocateDefaultPins call handle the actual addition via ReconstructNode
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:669:	// We will let the AllocateDefaultPins call handle the actual subtraction via ReconstructNode
+Source/Editor/BlueprintGraph/Private/K2Node_Select.cpp:930:void UK2Node_Select::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:59:void UK2Node_InputKey::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:65:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:288:		KeyVar->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:315:			InputKeyEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:319:			KeyInitialize->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:360:			InputKeyEvent->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_InputKey.cpp:377:void UK2Node_InputKey::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:58:void UK2Node_SpawnActor::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:89:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:145:	AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:371:	CallBeginSpawnNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:410:	CallFinishSpawnNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActor.cpp:457:				SetVarNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_AddComponentByClass.h:32:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp:71:void UK2Node_SpawnActorFromClass::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp:73:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp:487:	CallBeginSpawnNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp:546:	CallFinishSpawnNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:161:void UK2Node_SetFieldsInStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:408:void UK2Node_SetFieldsInStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Classes/K2Node_AddComponent.h:52:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_AddComponent.h:71:	BLUEPRINTGRAPH_API void AllocateDefaultPinsWithoutExposedVariables();
+Source/Editor/BlueprintGraph/Private/K2Node_PureAssignmentStatement.cpp:91:void UK2Node_PureAssignmentStatement::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_PureAssignmentStatement.cpp:97:	Super::AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Classes/K2Node_Self.h:28:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Self.h:36:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_DoOnceMultiInput.h:61:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_DoOnceMultiInput.h:68:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_DoOnceMultiInput.h:73:	BLUEPRINTGRAPH_API virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Composite.h:37:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CreateDelegate.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CreateDelegate.h:54:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputTouch.h:55:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputTouch.h:60:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetInputVectorAxisValue.h:33:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputAction.h:56:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputAction.h:68:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_FunctionResult.h:33:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_FunctionResult.h:43:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ClassDynamicCast.h:27:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node.h:234:	 * Reallocate pins during reconstruction; by default ignores the old pins and calls AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Classes/K2Node.h:392:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const {}
+Source/Editor/BlueprintGraph/Classes/K2Node_DelegateSet.h:41:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Copy.h:28:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Copy.h:41:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputKey.h:78:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputKey.h:84:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CommutativeAssociativeBinaryOperator.h:32:	void AddInputPinInner(int32 AdditionalPinIndex);
+Source/Editor/BlueprintGraph/Classes/K2Node_CommutativeAssociativeBinaryOperator.h:50:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CommutativeAssociativeBinaryOperator.h:61:	BLUEPRINTGRAPH_API virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Select.h:72:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Select.h:91:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Select.h:105:	virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_IfThenElse.h:28:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_IfThenElse.h:37:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CastByteToEnum.h:45:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CastByteToEnum.h:59:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetInputAxisValue.h:42:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetInputAxisValue.h:53:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeMap.h:29:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeMap.h:50:	virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputAxisEvent.h:61:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_FunctionEntry.h:63:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ConvertAsset.h:42:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ConvertAsset.h:60:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_RemoveDelegate.h:16:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CustomEvent.h:76:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InputAxisKeyEvent.h:63:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:55:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:80:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:85:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:100:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:105:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:117:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:125:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_CallParentFunction.h:26:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetInputAxisKeyValue.h:44:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetInputAxisKeyValue.h:56:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeContainer.h:67:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeContainer.h:75:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeContainer.h:82:	virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeContainer.h:94:	void InteractiveAddInputPin();
+Source/Editor/BlueprintGraph/Classes/K2Node_ConstructObjectFromClass.h:32:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ConstructObjectFromClass.h:51:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Literal.h:38:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Literal.h:54:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_FormatText.h:33:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_FormatText.h:50:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EnumLiteral.h:39:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EnumLiteral.h:50:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetNumEnumEntries.h:33:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetNumEnumEntries.h:42:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_PureAssignmentStatement.h:31:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:21:#include "K2Node_ExecutionSequence.generated.h"
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:27:class UK2Node_ExecutionSequence : public UK2Node, public IK2Node_AddPinInterface
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:32:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:42:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:49:	virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ExecutionSequence.h:52:	//~ Begin K2Node_ExecutionSequence Interface
+Source/Editor/BlueprintGraph/Classes/K2Node_EnumEquality.h:32:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EnumEquality.h:46:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_LocalVariable.h:50:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override {}
+Source/Editor/BlueprintGraph/Classes/K2Node_GetEnumeratorNameAsString.h:28:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetEnumeratorNameAsString.h:35:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EditablePinBase.h:154:	BLUEPRINTGRAPH_API virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Knot.h:31:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Knot.h:50:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ForEachElementInEnum.h:38:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_ForEachElementInEnum.h:48:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_PromotableOperator.h:36:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_PromotableOperator.h:55:	virtual void AddInputPin() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_PromotableOperator.h:85:	UEdGraphPin* AddInputPinImpl(int32 PinIndex);
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:47:	FGraphReference MacroGraphReference;
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:62:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:103:	void SetMacroGraph(UEdGraph* Graph) { MacroGraphReference.SetGraph(Graph); }
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:104:	UEdGraph* GetMacroGraph() const { return MacroGraphReference.GetGraph(); }
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:105:	UBlueprint* GetSourceBlueprint() const { return MacroGraphReference.GetBlueprint(); }
+Source/Editor/BlueprintGraph/Classes/K2Node_InputVectorAxisEvent.h:31:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_LoadAsset.h:28:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_LoadAsset.h:38:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_Event.h:78:	BLUEPRINTGRAPH_API virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EaseFunction.h:51:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_EaseFunction.h:66:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetEnumeratorName.h:32:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetEnumeratorName.h:48:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_InstancedStruct.h:21:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetArrayItem.h:39:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetArrayItem.h:53:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/Kismet/Private/SBlueprintEditorSelectedDebugObjectWidget.cpp:30:#include "SLevelOfDetailBranchNode.h"
+Source/Editor/Kismet/Private/SBlueprintEditorSelectedDebugObjectWidget.cpp:100:		SNew(SLevelOfDetailBranchNode)
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:10:#include "K2Node_ExecutionSequence.h"
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:17:#include "K2Node_MultiGate.generated.h"
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:26:class UK2Node_MultiGate : public UK2Node_ExecutionSequence
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:35:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MultiGate.h:45:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GenericToText.h:17:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GenericToText.h:35:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetDataTableRow.h:34:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetDataTableRow.h:46:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_DynamicCast.h:42:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MathExpression.h:64:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetClassDefaults.h:40:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetClassDefaults.h:54:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MapForEach.h:29:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MapForEach.h:35:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeStruct.h:61:	virtual void AllocateDefaultPins() override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MakeStruct.h:77:	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
+Source/Editor/Kismet/Private/BlueprintCompilationManager.cpp:45:#include "UObject/FortniteMainBranchObjectVersion.h"
+Source/Editor/Kismet/Private/BlueprintCompilationManager.cpp:3751:			if (Timeline->HasAllFlags(RF_NeedPostLoad) && Timeline->GetLinkerCustomVersion(FFortniteMainBranchObjectVersion::GUID) < FFortniteMainBranchObjectVersion::StoreTimelineNamesInTemplate)
+Source/Editor/Kismet/Private/BlueprintDetailsCustomization.cpp:60:#include "ISequencerModule.h"
+Source/Editor/Kismet/Private/BlueprintDetailsCustomization.cpp:628:	TSharedPtr<SToolTip> ExposeToCinematicsTooltip = IDocumentation::Get()->CreateToolTip(LOCTEXT("VariableExposeToCinematics_Tooltip", "Should this variable be exposed for Sequencer to modify?"), NULL, DocLink, TEXT("ExposeToCinematics"));
+Source/Editor/Kismet/Private/BlueprintDetailsCustomization.cpp:2317:			ISequencerModule* SequencerModule = FModuleManager::Get().GetModulePtr<ISequencerModule>("Sequencer");
+Source/Editor/Kismet/Private/BlueprintDetailsCustomization.cpp:2318:			if (SequencerModule->CanAnimateProperty(VariableProperty))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:59:#include "K2Node_ExecutionSequence.h"
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5005:		UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(*It);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5011:			SeqNode->AddInputPin();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5021:			SwitchNode->AddPinToSwitchNode();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5043:		if (UK2Node_ExecutionSequence* AddPinNode = Cast<UK2Node_ExecutionSequence>(*It))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5079:				if (UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(OwningNode))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5102:			if (UK2Node_ExecutionSequence* ExecutionSequence = Cast<UK2Node_ExecutionSequence>(SelectedPin->GetOwningNode()))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5104:				return ExecutionSequence->CanAddPin();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5125:		if (UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(OwningNode))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5152:			if (UK2Node_ExecutionSequence* SeqNode = Cast<UK2Node_ExecutionSequence>(OwningNode))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5302:			SeqNode->AddInputPin();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5501:				ParentFunctionNode->AllocateDefaultPins();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5844:	TArray<UEdGraphPin*> EntryGatewayPins;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5885:						EntryGatewayPins.Add(NodePin);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5898:										EntryGatewayPins.Add(NodePin);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:5929:	if (!bBadConnection && (InputConnection == nullptr) && (EntryGatewayPins.Num() > 1))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:6524:			NewNode->AllocateDefaultPins();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:7436:		NewNode->AllocateDefaultPins();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8486:void FBlueprintEditor::ExtractEventTemplateForFunction(class UK2Node_CustomEvent* InCustomEvent, UEdGraphNode* InGatewayNode, class UK2Node_EditablePinBase* InEntryNode, class UK2Node_EditablePinBase* InResultNode, TSet<UEdGraphNode*>& InCollapsableNodes)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8501:					InGatewayNode->Modify();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8505:					K2Schema->MovePinLinks(*Pin, *K2Schema->FindExecutionPin(*InGatewayNode, EGPD_Output));
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8517:					InGatewayNode->Modify();
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8522:					UEdGraphPin* RemotePortPin = InGatewayNode->FindPin(PortName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8526:						FName UniquePortName = InGatewayNode->CreateUniquePinName(PortName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8528:						RemotePortPin = InGatewayNode->CreatePin(Pin->Direction, Pin->PinType, UniquePortName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8538:					const FName UniquePortName = InGatewayNode->CreateUniquePinName(Pin->PinName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8603:void FBlueprintEditor::CollapseNodesIntoGraph(UEdGraphNode* InGatewayNode, UK2Node_EditablePinBase* InEntryNode, UK2Node_EditablePinBase* InResultNode, UEdGraph* InSourceGraph, UEdGraph* InDestinationGraph, TSet<UEdGraphNode*>& InCollapsableNodes, bool bCanDiscardEmptyReturnNode, bool bCanHaveWeakObjPtrParam)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8622:	if (InGatewayNode->GetClass() == UK2Node_CallFunction::StaticClass())
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8633:				ExtractEventTemplateForFunction(CustomEvent, InGatewayNode, InEntryNode, InResultNode, InCollapsableNodes);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8648:	TArray<UEdGraphPin*> GatewayPins;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8676:		TArray<UEdGraphPin*> OutputGatewayExecPins;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8683:			bool bIsGatewayPin = false;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8691:						bIsGatewayPin = true;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8697:			else if (InGatewayNode->GetClass() == UK2Node_CallFunction::StaticClass() && K2Schema->IsExecPin(*LocalPin))
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8709:					OutputGatewayExecPins.Add(LocalPin);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8713:			if (bIsGatewayPin)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8715:				GatewayPins.Add(LocalPin);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8719:		if (OutputGatewayExecPins.Num() > 0)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8729:				for (UEdGraphPin* LocalPin : OutputGatewayExecPins)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8740:	SortPinsByConnectionPosition(GatewayPins);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8743:	for (UEdGraphPin* LocalPin : GatewayPins)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8754:		if (InGatewayNode->GetClass() == UK2Node_CallFunction::StaticClass() && LocalPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8757:			RemotePortPin = K2Schema->FindExecutionPin(*InGatewayNode, (LocalPortPin->Direction == EGPD_Input)? EGPD_Output : EGPD_Input);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8776:				const FName UniquePortName = InGatewayNode->CreateUniquePinName(LocalPin->PinName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8790:					RemotePortPin = InGatewayNode->CreatePin(LocalPin->Direction, PinType, UniquePortName);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8872:	InGatewayNode->NodePosX = CenterX;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8873:	InGatewayNode->NodePosY = CenterY;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8874:	InGatewayNode->SnapToGrid(SNodePanel::GetSnapGridSize());
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8909:	UK2Node_Composite* GatewayNode = nullptr;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8911:		GatewayNode = FEdGraphSchemaAction_K2NewNode::SpawnNode<UK2Node_Composite>(SourceGraph, FVector2D(0,0), EK2NewNodeFlags::SelectNewNode);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8912:		GatewayNode->bCanRenameNode = true;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8913:		check(GatewayNode);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8920:	UEdGraph* DestinationGraph = GatewayNode->BoundGraph;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:8924:	CollapseNodesIntoGraph(GatewayNode, GatewayNode->GetInputSink(), GatewayNode->GetOutputSource(), SourceGraph, DestinationGraph, InCollapsableNodes, false, true);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:9002:	UK2Node_MacroInstance* GatewayNode = FEdGraphSchemaAction_K2NewNode::SpawnNode<UK2Node_MacroInstance>(
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:9013:	GatewayNode->GetMacroGraph()->GetNodesOfClass(TunnelNodes);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:9034:	CollapseNodesIntoGraph(GatewayNode, InputSink, OutputSink, SourceGraph, DestinationGraph, InCollapsableNodes, /* bCanDiscardEmptyReturnNode */ false, /* bCanHaveWeakObjPtrParam */ false);
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:9036:	OutMacroNode = GatewayNode;
+Source/Editor/Kismet/Private/BlueprintEditor.cpp:9071:	K2Schema->CollapseGatewayNode(Cast<UK2Node>(InNodeToExpand), Entry, Result, nullptr, &OutExpandedNodes);

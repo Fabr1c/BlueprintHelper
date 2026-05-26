@@ -1,0 +1,153 @@
+Source/Editor/BlueprintGraph/Public/BlueprintActionDatabaseRegistrar.h:16:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Public/BlueprintNodeTemplateCache.h:15:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:38:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:225:	bool Call(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& ActionInfo);
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:234:// constructor for TSharedRef<FBlueprintActionFilterRejectionTest> that auto deduces the name
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:239: * FBlueprintActionFilter
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:242:class BLUEPRINTGRAPH_API FBlueprintActionFilter
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:292:	FBlueprintActionFilter(const EFlags InFlags = BPFILTER_NoFlags);
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:295:	FBlueprintActionFilter(uint32 const Flags);
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:382:	FBlueprintActionFilter const& operator|=(FBlueprintActionFilter const& Rhs);
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:394:	FBlueprintActionFilter const& operator&=(FBlueprintActionFilter const& Rhs);
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:435:	TArray<FBlueprintActionFilter> AndFilters;
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:438:	TArray<FBlueprintActionFilter> OrFilters;
+Source/Editor/BlueprintGraph/Public/BlueprintActionFilter.h:457:ENUM_CLASS_FLAGS(FBlueprintActionFilter::EFlags);
+Source/Editor/BlueprintGraph/Public/BlueprintNodeSpawner.h:245:	virtual bool IsTemplateNodeFilteredOut(FBlueprintActionFilter const& Filter) const;
+Source/Editor/BlueprintGraph/Classes/K2Node_VariableSetRef.h:42:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;
+Source/Editor/BlueprintGraph/Public/BlueprintActionDatabase.h:26:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Classes/K2Node.h:267:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) { return false; }
+Source/Editor/BlueprintGraph/Public/BlueprintGraphModule.h:10:class FBlueprintActionFilter;
+Source/Editor/BlueprintGraph/Public/BlueprintGraphModule.h:17:	DECLARE_DELEGATE_RetVal_TwoParams(bool, FActionMenuRejectionTest, FBlueprintActionFilter const&, FBlueprintActionInfo&);
+Source/Editor/BlueprintGraph/Public/BlueprintGraphModule.h:27:	 * @return An array of additional rejection tests for FBlueprintActionFilter.
+Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawnerUtils.h:9:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Classes/K2Node_CallFunction.h:151:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;
+Source/Editor/BlueprintGraph/Classes/BlueprintTypePromotion.h:23:class UBlueprintFunctionNodeSpawner;
+Source/Editor/BlueprintGraph/Classes/EdGraphSchema_K2.h:535:	virtual void GetContextMenuActions(class UToolMenu* Menu, class UGraphNodeContextMenuContext* Context) const override;
+Source/Editor/BlueprintGraph/Classes/BlueprintComponentNodeSpawner.h:50:	virtual bool IsTemplateNodeFilteredOut(const FBlueprintActionFilter& Filter) const override;
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.h:185:	/** get the cached map used by FBlueprintActionFilter::IsFilteredByThis to determine whether BP actions are filtered out */
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.h:186:	TSharedPtr<TMap<FActionFilterCacheKey, bool>> GetCachedFilterResults(const FBlueprintActionFilter& Filter);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.h:219:	void CacheFilteredResult(const FBlueprintActionFilter& Filter, FBlueprintActionInfo& BlueprintAction, bool bWasFilteredOut);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.h:222:	bool IsFilteredByCachedResult(const FBlueprintActionFilter& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintNodeSpawner.cpp:312:bool UBlueprintNodeSpawner::IsTemplateNodeFilteredOut(FBlueprintActionFilter const& Filter) const
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.cpp:141:void FActionFilterCache::CacheFilteredResult(const FBlueprintActionFilter& Filter, FBlueprintActionInfo& BlueprintAction, bool bWasFilteredOut)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.cpp:147:bool FActionFilterCache::IsFilteredByCachedResult(const FBlueprintActionFilter& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilterResultCache.cpp:158:TSharedPtr<TMap<FActionFilterCacheKey, bool>> FActionFilterCache::GetCachedFilterResults(const FBlueprintActionFilter& Filter)
+Source/Editor/BlueprintGraph/Private/BlueprintComponentNodeSpawner.cpp:322:bool UBlueprintComponentNodeSpawner::IsTemplateNodeFilteredOut(const FBlueprintActionFilter& Filter) const
+Source/Editor/BlueprintGraph/Private/BlueprintComponentNodeSpawner.cpp:326:	if (Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectNonImportedFields))
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:305:	 * for later with FBlueprintActionFilter).
+Source/Editor/BlueprintGraph/Private/BlueprintActionDatabase.cpp:396:	 * Emulates UEdGraphSchema::GetGraphContextActions(). If the supplied class  
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:143:	static bool IsEventUnimplementable(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:154:	static bool IsFieldInaccessible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:165:	static bool IsRestrictedClassMember(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:176:	static bool IsAssetPermissionNotGranted(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:187:	static bool IsPermissionNotGranted(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:197:	static bool IsDeprecated(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:207:	static bool IsPropertyAccessorNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:217:	static bool IsThreadSafetyIncompatible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:227:	static bool IsIncompatibleImpureNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:237:	static bool IsIncompatibleLatentNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:247:	static bool IsIncompatibleWithGraphType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:257:	static bool IsRejectedGlobalField(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:267:	static bool IsNonImportedObject(FBlueprintActionFilter const& Filter, const UObject* InObject);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:278:	static bool IsNonTargetMember(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:288:	static bool IsFieldCategoryHidden(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:297:	static bool IsActionHiddenByConfig(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:307:	static bool IsFilteredNodeType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:318:	static bool IsUnBoundBindingSpawner(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:327:	static bool IsOutOfScopeLocalVariable(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:336:	static bool IsLevelScriptActionValid(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:345:	static bool IsSchemaIncompatible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:372:	static bool IsFunctionMissingPinParam(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:386:	static bool IsMissmatchedPropertyType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:395:	static bool IsMissingMatchingPinParam(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:405:	static bool IsNotSubClassCast(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:415:	static bool IsNodeTemplateSelfFiltered(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:425:	static bool IsIncompatibleAnimNotification( FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction); 
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:434:	static bool IsExtraneousInterfaceCall(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:443:	static bool IsIncompatibleMacroInstance(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:453:	static bool IsStaleFieldAction(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:463:	static bool IsHiddenInNonEditorBlueprint(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:704:static bool BlueprintActionFilterImpl::IsEventUnimplementable(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:752:static bool BlueprintActionFilterImpl::IsFieldInaccessible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:845:static bool BlueprintActionFilterImpl::IsRestrictedClassMember(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:909:static bool BlueprintActionFilterImpl::IsAssetPermissionNotGranted(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:945:static bool BlueprintActionFilterImpl::IsPermissionNotGranted(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:967:static bool BlueprintActionFilterImpl::IsDeprecated(FBlueprintActionFilter const& /*Filter*/, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:986:static bool BlueprintActionFilterImpl::IsNonImportedObject(FBlueprintActionFilter const& Filter, const UObject* InObject)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1004:static bool BlueprintActionFilterImpl::IsRejectedGlobalField(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1006:	const bool bRejectAllGlobalFields = Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectGlobalFields);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1007:	const bool bRejectNonImportedFields = Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectNonImportedFields);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1044:static bool BlueprintActionFilterImpl::IsNonTargetMember(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1049:	const bool bPermitNonTargetGlobals = !Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectGlobalFields);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1082:static bool BlueprintActionFilterImpl::IsFieldCategoryHidden(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1111:static bool BlueprintActionFilterImpl::IsActionHiddenByConfig(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1140:static bool BlueprintActionFilterImpl::IsPropertyAccessorNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1153:static bool BlueprintActionFilterImpl::IsThreadSafetyIncompatible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1179:static bool BlueprintActionFilterImpl::IsIncompatibleImpureNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1197:static bool BlueprintActionFilterImpl::IsIncompatibleLatentNode(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1218:static bool BlueprintActionFilterImpl::IsIncompatibleWithGraphType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1241:static bool BlueprintActionFilterImpl::IsFilteredNodeType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1246:	const bool bPermitChildClasses = !Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectPermittedSubClasses);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1249:	const bool bRejectChildClasses = !Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_PermitRejectionSubClasses);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1279:static bool BlueprintActionFilterImpl::IsUnBoundBindingSpawner(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1292:static bool BlueprintActionFilterImpl::IsOutOfScopeLocalVariable(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1316:static bool BlueprintActionFilterImpl::IsLevelScriptActionValid(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1352:static bool BlueprintActionFilterImpl::IsSchemaIncompatible(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1541:static bool BlueprintActionFilterImpl::IsFunctionMissingPinParam(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1648:static bool BlueprintActionFilterImpl::IsMissmatchedPropertyType(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1712:static bool BlueprintActionFilterImpl::IsMissingMatchingPinParam(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1737:static bool BlueprintActionFilterImpl::IsNotSubClassCast(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1782:static bool BlueprintActionFilterImpl::IsNodeTemplateSelfFiltered(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1788:static bool BlueprintActionFilterImpl::IsIncompatibleAnimNotification(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1826:static bool BlueprintActionFilterImpl::IsExtraneousInterfaceCall(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1896:static bool BlueprintActionFilterImpl::IsIncompatibleMacroInstance(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1900:	const bool bRejectNonImportedMacros = Filter.HasAllFlags(FBlueprintActionFilter::BPFILTER_RejectNonImportedFields);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1935:static bool BlueprintActionFilterImpl::IsStaleFieldAction(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:1943:static bool BlueprintActionFilterImpl::IsHiddenInNonEditorBlueprint(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2150:bool FActionFilterTest::Call(FBlueprintActionFilter const& Filter, FBlueprintActionInfo& ActionInfo)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2163: * FBlueprintActionFilter
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2168:FBlueprintActionFilter::FBlueprintActionFilter(uint32 Flags)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2169:	: FBlueprintActionFilter(EFlags(Flags))
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2174:FBlueprintActionFilter::FBlueprintActionFilter(const EFlags InFlags /*= BPFILTER_NoFlags*/)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2251:void FBlueprintActionFilter::AddUnique(TArray<FTargetClassFilterData>& ToArray, UClass* TargetClass)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2260:	FBlueprintActionFilter::Add(ToArray, TargetClass);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2264:void FBlueprintActionFilter::Add(TArray<FTargetClassFilterData>& ToArray, UClass* TargetClass)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2275:void FBlueprintActionFilter::AddRejectionTest(FRejectionTestDelegate RejectionTestDelegate)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2291:void FBlueprintActionFilter::AddRejectionTest(TSharedRef<FActionFilterTest> RejectionTest)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2297:bool FBlueprintActionFilter::IsFiltered(FBlueprintActionInfo& BlueprintAction)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2299:	TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionFilter::IsFiltered);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2304:		for (FBlueprintActionFilter& OrFilter : OrFilters)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2316:		for (FBlueprintActionFilter& AndFilter : AndFilters)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2326:FBlueprintActionFilter const& FBlueprintActionFilter::operator|=(FBlueprintActionFilter const& Rhs)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2333:FBlueprintActionFilter const& FBlueprintActionFilter::operator&=(FBlueprintActionFilter const& Rhs)
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2340:bool FBlueprintActionFilter::IsFilteredByThis(FBlueprintActionInfo& BlueprintAction) const
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2342:	TRACE_CPUPROFILER_EVENT_SCOPE(FBlueprintActionFilter::IsFilteredByThis);
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2344:	FBlueprintActionFilter const& FilterRef = *this;
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2450:bool FBlueprintActionFilter::IsFilterTestTraceLoggingEnabled()
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2455:bool FBlueprintActionFilter::IsFilterTestStatsLoggingEnabled()
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2460:TArray<FString> FBlueprintActionFilter::GetFilterTestProfile()
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2490:FBlueprintActionFilter::FFilterTestProfileRecord* FBlueprintActionFilter::BeginFilterTestProfileEvent(int32 FilterTestIndex, uint64 FilterTestFuncPtr) const
+Source/Editor/BlueprintGraph/Private/BlueprintActionFilter.cpp:2509:void FBlueprintActionFilter::EndFilterTestProfileEvent(FFilterTestProfileRecord* InEvent, bool bWasFiltered, double StartTime) const
+Source/Editor/BlueprintGraph/Private/K2Node_VariableSetRef.cpp:226:bool UK2Node_VariableSetRef::IsActionFilteredOut(class FBlueprintActionFilter const& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_CastByteToEnum.cpp:31:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Private/BlueprintTypePromotion.cpp:25:class UBlueprintFunctionNodeSpawner;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1506:void UEdGraphSchema_K2::GetContextMenuActions(UToolMenu* Menu, UGraphNodeContextMenuContext* Context) const
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1824:	Super::GetContextMenuActions(Menu, Context);
+Source/Editor/BlueprintGraph/Private/K2Node_GetArrayItem.cpp:365:bool UK2Node_GetArrayItem::IsActionFilteredOut(FBlueprintActionFilter const& Filter)
+Source/Editor/BlueprintGraph/Classes/K2Node_StructOperation.h:47:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;
+Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp:1503:bool UK2Node_CallFunction::IsActionFilteredOut(FBlueprintActionFilter const& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.h:30:	virtual bool IsActionFilteredOut(const class FBlueprintActionFilter& Filter) override;
+Source/Editor/BlueprintGraph/Private/K2Node_EnumLiteral.cpp:28:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Private/K2Node_ForEachElementInEnum.cpp:37:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Private/K2Node_EditorPropertyAccess.cpp:63:bool UK2Node_EditorPropertyAccessBase::IsActionFilteredOut(const FBlueprintActionFilter& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:596:bool UK2Node_DynamicCast::IsActionFilteredOut(const FBlueprintActionFilter& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp:600:	if (Filter.HasAnyFlags(FBlueprintActionFilter::BPFILTER_RejectNonImportedFields))
+Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp:796:bool UK2Node_GetEditorSubsystem::IsActionFilteredOut(class FBlueprintActionFilter const& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_GetNumEnumEntries.cpp:28:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp:54:bool UK2Node_MacroInstance::IsActionFilteredOut(FBlueprintActionFilter const& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_StructOperation.cpp:167:bool UK2Node_StructOperation::IsActionFilteredOut(const FBlueprintActionFilter& Filter)
+Source/Editor/BlueprintGraph/Private/K2Node_SwitchEnum.cpp:24:class UBlueprintNodeSpawner;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetSubsystem.h:123:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;
+Source/Editor/BlueprintGraph/Classes/K2Node_DynamicCast.h:63:	virtual bool IsActionFilteredOut(const class FBlueprintActionFilter& Filter) override;
+Source/Editor/BlueprintGraph/Classes/K2Node_GetArrayItem.h:58:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;
+Source/Editor/BlueprintGraph/Classes/K2Node_MacroInstance.h:89:	virtual bool IsActionFilteredOut(class FBlueprintActionFilter const& Filter) override;

@@ -1,0 +1,1031 @@
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_ConstructObjectFromClass.cpp 1-240 =====
+     1	// Copyright Epic Games, Inc. All Rights Reserved.
+     2	
+     3	#include "K2Node_ConstructObjectFromClass.h"
+     4	
+     5	#include "BlueprintActionDatabaseRegistrar.h"
+     6	#include "BlueprintNodeSpawner.h"
+     7	#include "Containers/EnumAsByte.h"
+     8	#include "EdGraph/EdGraph.h"
+     9	#include "EdGraph/EdGraphPin.h"
+    10	#include "EdGraphSchema_K2.h"
+    11	#include "EditorCategoryUtils.h"
+    12	#include "Engine/Blueprint.h"
+    13	#include "FindInBlueprintManager.h"
+    14	#include "HAL/PlatformCrt.h"
+    15	#include "Internationalization/Internationalization.h"
+    16	#include "Kismet2/BlueprintEditorUtils.h"
+    17	#include "Misc/AssertionMacros.h"
+    18	#include "Templates/Casts.h"
+    19	#include "Templates/SubclassOf.h"
+    20	#include "Templates/UnrealTemplate.h"
+    21	#include "UObject/Class.h"
+    22	#include "UObject/Object.h"
+    23	#include "UObject/ObjectPtr.h"
+    24	#include "UObject/UnrealNames.h"
+    25	#include "UObject/UnrealType.h"
+    26	#include "UObject/WeakObjectPtr.h"
+    27	#include "UObject/WeakObjectPtrTemplates.h"
+    28	
+    29	struct FK2Node_ConstructObjectFromClassHelper
+    30	{
+    31		static FName GetWorldContextPinName()
+    32		{
+    33			return TEXT("WorldContextObject");
+    34		}
+    35	
+    36		static FName GetClassPinName()
+    37		{
+    38			return TEXT("Class");
+    39		}
+    40	
+    41		static FName GetOuterPinFriendlyName()
+    42		{
+    43			return TEXT("Outer");
+    44		}
+    45	
+    46		static FName GetOuterPinName()
+    47		{
+    48			return UEdGraphSchema_K2::PN_Self;
+    49		}
+    50	};
+    51	
+    52	#define LOCTEXT_NAMESPACE "K2Node_ConstructObjectFromClass"
+    53	
+    54	UK2Node_ConstructObjectFromClass::UK2Node_ConstructObjectFromClass(const FObjectInitializer& ObjectInitializer)
+    55		: Super(ObjectInitializer)
+    56	{
+    57		NodeTooltip = LOCTEXT("NodeTooltip", "Attempts to spawn a new object");
+    58	}
+    59	
+    60	UClass* UK2Node_ConstructObjectFromClass::GetClassPinBaseClass() const
+    61	{
+    62		return UObject::StaticClass();
+    63	}
+    64	
+    65	bool UK2Node_ConstructObjectFromClass::UseWorldContext() const
+    66	{
+    67		UBlueprint* BP = GetBlueprint();
+    68		const UClass* ParentClass = BP ? BP->ParentClass : nullptr;
+    69		return ParentClass ? ParentClass->HasMetaDataHierarchical(FBlueprintMetadata::MD_ShowWorldContextPin) != nullptr : false;
+    70	}
+    71	
+    72	void UK2Node_ConstructObjectFromClass::AllocateDefaultPins()
+    73	{
+    74		// Add execution pins
+    75		CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Exec, UEdGraphSchema_K2::PN_Execute);
+    76		CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Exec, UEdGraphSchema_K2::PN_Then);
+    77	
+    78		// If required add the world context pin
+    79		if (UseWorldContext())
+    80		{
+    81			CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Object, UObject::StaticClass(), FK2Node_ConstructObjectFromClassHelper::GetWorldContextPinName());
+    82		}
+    83	
+    84		// Add blueprint pin
+    85		UEdGraphPin* ClassPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Class, GetClassPinBaseClass(), FK2Node_ConstructObjectFromClassHelper::GetClassPinName());
+    86		
+    87		// Result pin
+    88		UEdGraphPin* ResultPin = CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Object, GetClassPinBaseClass(), UEdGraphSchema_K2::PN_ReturnValue);
+    89		
+    90		if (UseOuter())
+    91		{
+    92			UEdGraphPin* OuterPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Object, UObject::StaticClass(), UEdGraphSchema_K2::PN_Self);
+    93			OuterPin->PinFriendlyName = FText::FromName(FK2Node_ConstructObjectFromClassHelper::GetOuterPinFriendlyName());
+    94		}
+    95	
+    96		Super::AllocateDefaultPins();
+    97	}
+    98	
+    99	UEdGraphPin* UK2Node_ConstructObjectFromClass::GetOuterPin() const
+   100	{
+   101		UEdGraphPin* Pin = FindPin(FK2Node_ConstructObjectFromClassHelper::GetOuterPinName());
+   102		ensure(nullptr == Pin || Pin->Direction == EGPD_Input);
+   103		return Pin;
+   104	}
+   105	
+   106	void UK2Node_ConstructObjectFromClass::SetPinToolTip(UEdGraphPin& MutatablePin, const FText& PinDescription) const
+   107	{
+   108		MutatablePin.PinToolTip = UEdGraphSchema_K2::TypeToText(MutatablePin.PinType).ToString();
+   109	
+   110		UEdGraphSchema_K2 const* const K2Schema = Cast<const UEdGraphSchema_K2>(GetSchema());
+   111		if (K2Schema != nullptr)
+   112		{
+   113			MutatablePin.PinToolTip += TEXT(" ");
+   114			MutatablePin.PinToolTip += K2Schema->GetPinDisplayName(&MutatablePin).ToString();
+   115		}
+   116	
+   117		MutatablePin.PinToolTip += FString(TEXT("\n")) + PinDescription.ToString();
+   118	}
+   119	
+   120	void UK2Node_ConstructObjectFromClass::CreatePinsForClass(UClass* InClass, TArray<UEdGraphPin*>* OutClassPins)
+   121	{
+   122		check(InClass);
+   123	
+   124		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+   125	
+   126		const UObject* const ClassDefaultObject = InClass->GetDefaultObject(false);
+   127	
+   128		for (TFieldIterator<FProperty> PropertyIt(InClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+   129		{
+   130			FProperty* Property = *PropertyIt;
+   131			UClass* PropertyClass = CastChecked<UClass>(Property->GetOwner<UObject>());
+   132			const bool bIsDelegate = Property->IsA(FMulticastDelegateProperty::StaticClass());
+   133			const bool bIsExposedToSpawn = UEdGraphSchema_K2::IsPropertyExposedOnSpawn(Property);
+   134			const bool bIsSettableExternally = !Property->HasAnyPropertyFlags(CPF_DisableEditOnInstance);
+   135	
+   136			if(	bIsExposedToSpawn &&
+   137				!Property->HasAnyPropertyFlags(CPF_Parm) && 
+   138				bIsSettableExternally &&
+   139				Property->HasAllPropertyFlags(CPF_BlueprintVisible) &&
+   140				!bIsDelegate &&
+   141				(nullptr == FindPin(Property->GetFName()) ) &&
+   142				FBlueprintEditorUtils::PropertyStillExists(Property))
+   143			{
+   144				if (UEdGraphPin* Pin = CreatePin(EGPD_Input, NAME_None, Property->GetFName()))
+   145				{
+   146					K2Schema->ConvertPropertyToPinType(Property, /*out*/ Pin->PinType);
+   147					if (OutClassPins)
+   148					{
+   149						OutClassPins->Add(Pin);
+   150					}
+   151	
+   152					if (Property->HasAllPropertyFlags(CPF_AdvancedDisplay))
+   153					{
+   154						Pin->bAdvancedView = true;
+   155	
+   156						if (AdvancedPinDisplay == ENodeAdvancedPins::NoPins)
+   157						{
+   158							AdvancedPinDisplay = ENodeAdvancedPins::Hidden;
+   159						}
+   160					}
+   161	
+   162					if (ClassDefaultObject && K2Schema->PinDefaultValueIsEditable(*Pin))
+   163					{
+   164						FString DefaultValueAsString;
+   165						const bool bDefaultValueSet = FBlueprintEditorUtils::PropertyValueToString(Property, reinterpret_cast<const uint8*>(ClassDefaultObject), DefaultValueAsString, this);
+   166						check(bDefaultValueSet);
+   167						K2Schema->SetPinAutogeneratedDefaultValue(Pin, DefaultValueAsString);
+   168					}
+   169	
+   170					// Copy tooltip from the property.
+   171					K2Schema->ConstructBasicPinTooltip(*Pin, Property->GetToolTipText(), Pin->PinToolTip);
+   172				}
+   173			}
+   174		}
+   175	
+   176		// Change class of output pin
+   177		UEdGraphPin* ResultPin = GetResultPin();
+   178		ResultPin->PinType.PinSubCategoryObject = InClass->GetAuthoritativeClass();
+   179	}
+   180	
+   181	UClass* UK2Node_ConstructObjectFromClass::GetClassToSpawn(const TArray<UEdGraphPin*>* InPinsToSearch /*=NULL*/) const
+   182	{
+   183		UClass* UseSpawnClass = nullptr;
+   184		const TArray<UEdGraphPin*>* PinsToSearch = InPinsToSearch ? InPinsToSearch : &Pins;
+   185	
+   186		UEdGraphPin* ClassPin = GetClassPin(PinsToSearch);
+   187		if (ClassPin && ClassPin->DefaultObject && ClassPin->LinkedTo.Num() == 0)
+   188		{
+   189			UseSpawnClass = CastChecked<UClass>(ClassPin->DefaultObject);
+   190		}
+   191		else if (ClassPin && ClassPin->LinkedTo.Num())
+   192		{
+   193			UEdGraphPin* ClassSource = ClassPin->LinkedTo[0];
+   194			UseSpawnClass = ClassSource ? Cast<UClass>(ClassSource->PinType.PinSubCategoryObject.Get()) : nullptr;
+   195		}
+   196	
+   197		return UseSpawnClass;
+   198	}
+   199	
+   200	void UK2Node_ConstructObjectFromClass::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins) 
+   201	{
+   202		AllocateDefaultPins();
+   203		if (UClass* UseSpawnClass = GetClassToSpawn(&OldPins))
+   204		{
+   205			CreatePinsForClass(UseSpawnClass);
+   206		}
+   207		RestoreSplitPins(OldPins);
+   208	}
+   209	
+   210	UK2Node::ERedirectType UK2Node_ConstructObjectFromClass::DoPinsMatchForReconstruction(const UEdGraphPin* NewPin, int32 NewPinIndex, const UEdGraphPin* OldPin, int32 OldPinIndex) const
+   211	{
+   212		// the name of the outer pin was changed and its friendly name was updated to match
+   213		// the legacy naming. Use this to identify the change
+   214		if (NewPin->PinName == FK2Node_ConstructObjectFromClassHelper::GetOuterPinName() &&
+   215			OldPin->PinName == FK2Node_ConstructObjectFromClassHelper::GetOuterPinFriendlyName())
+   216		{
+   217			return ERedirectType_Name;
+   218		}
+   219		return Super::DoPinsMatchForReconstruction(NewPin, NewPinIndex, OldPin, OldPinIndex);
+   220	}
+   221	
+   222	void UK2Node_ConstructObjectFromClass::PostPlacedNewNode()
+   223	{
+   224		Super::PostPlacedNewNode();
+   225	
+   226		if (UClass* UseSpawnClass = GetClassToSpawn())
+   227		{
+   228			CreatePinsForClass(UseSpawnClass);
+   229		}
+   230	}
+   231	
+   232	FString UK2Node_ConstructObjectFromClass::GetPinMetaData(FName InPinName, FName InKey)
+   233	{
+   234		FString MetaData = Super::GetPinMetaData(InPinName, InKey);
+   235	
+   236		if (MetaData.IsEmpty())
+   237		{
+   238			if (InPinName == FK2Node_ConstructObjectFromClassHelper::GetClassPinName() && InKey == FBlueprintMetadata::MD_AllowAbstractClasses)
+   239			{
+   240				MetaData = TEXT("false");
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_GenericCreateObject.cpp 1-190 =====
+     1	// Copyright Epic Games, Inc. All Rights Reserved.
+     2	
+     3	#include "K2Node_GenericCreateObject.h"
+     4	
+     5	#include "Components/ActorComponent.h"
+     6	#include "Containers/Array.h"
+     7	#include "Containers/UnrealString.h"
+     8	#include "EdGraph/EdGraphNode.h"
+     9	#include "EdGraph/EdGraphPin.h"
+    10	#include "EdGraph/EdGraphSchema.h"
+    11	#include "EdGraphSchema_K2.h"
+    12	#include "Engine/MemberReference.h"
+    13	#include "GameFramework/Actor.h"
+    14	#include "HAL/Platform.h"
+    15	#include "Internationalization/Internationalization.h"
+    16	#include "Internationalization/Text.h"
+    17	#include "K2Node.h"
+    18	#include "K2Node_CallFunction.h"
+    19	#include "K2Node_Self.h"
+    20	#include "Kismet/GameplayStatics.h"
+    21	#include "Kismet2/CompilerResultsLog.h"
+    22	#include "KismetCompiler.h"
+    23	#include "KismetCompilerMisc.h"
+    24	#include "Misc/AssertionMacros.h"
+    25	#include "Templates/SubclassOf.h"
+    26	#include "UObject/Class.h"
+    27	#include "UObject/NameTypes.h"
+    28	#include "UObject/Object.h"
+    29	#include "UObject/UObjectBaseUtility.h"
+    30	
+    31	#define LOCTEXT_NAMESPACE "K2Node_GenericCreateObject"
+    32	
+    33	struct FK2Node_GenericCreateObject_Utils
+    34	{
+    35		static bool CanSpawnObjectOfClass(TSubclassOf<UObject> ObjectClass, bool bAllowAbstract)
+    36		{
+    37			// Initially include types that meet the basic requirements.
+    38			// Note: CLASS_Deprecated is an inherited class flag, so any subclass of an explicitly-deprecated class also cannot be spawned.
+    39			bool bCanSpawnObject = (nullptr != *ObjectClass)
+    40				&& (bAllowAbstract || !ObjectClass->HasAnyClassFlags(CLASS_Abstract))
+    41				&& !ObjectClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists);
+    42	
+    43			// UObject is a special case where if we are allowing abstract we are going to allow it through even though it doesn't have BlueprintType on it
+    44			if (bCanSpawnObject && (!bAllowAbstract || (*ObjectClass != UObject::StaticClass())))
+    45			{
+    46				static const FName BlueprintTypeName(TEXT("BlueprintType"));
+    47				static const FName NotBlueprintTypeName(TEXT("NotBlueprintType"));
+    48				static const FName DontUseGenericSpawnObjectName(TEXT("DontUseGenericSpawnObject"));
+    49	
+    50				auto IsClassAllowedLambda = [](const UClass* InClass)
+    51				{
+    52					return InClass != AActor::StaticClass()
+    53						&& InClass != UActorComponent::StaticClass();
+    54				};
+    55	
+    56				// Exclude all types in the initial set by default.
+    57				bCanSpawnObject = false;
+    58				const UClass* CurrentClass = ObjectClass;
+    59	
+    60				// Climb up the class hierarchy and look for "BlueprintType." If "NotBlueprintType" is seen first, or if the class is not allowed, then stop searching.
+    61				while (!bCanSpawnObject && CurrentClass != nullptr && !CurrentClass->GetBoolMetaData(NotBlueprintTypeName) && IsClassAllowedLambda(CurrentClass))
+    62				{
+    63					// Include any type that either includes or inherits 'BlueprintType'
+    64					bCanSpawnObject = CurrentClass->GetBoolMetaData(BlueprintTypeName);
+    65	
+    66					// Stop searching if we encounter 'BlueprintType' with 'DontUseGenericSpawnObject'
+    67					if (bCanSpawnObject && CurrentClass->GetBoolMetaData(DontUseGenericSpawnObjectName))
+    68					{
+    69						bCanSpawnObject = false;
+    70						break;
+    71					}
+    72	
+    73					CurrentClass = CurrentClass->GetSuperClass();
+    74				}
+    75	
+    76				// If we validated the given class, continue walking up the hierarchy to make sure we exclude it if it's an Actor or ActorComponent derivative.
+    77				while (bCanSpawnObject && CurrentClass != nullptr)
+    78				{
+    79					bCanSpawnObject &= IsClassAllowedLambda(CurrentClass);
+    80	
+    81					CurrentClass = CurrentClass->GetSuperClass();
+    82				}
+    83			}
+    84	
+    85			return bCanSpawnObject;
+    86		}
+    87	};
+    88	
+    89	void UK2Node_GenericCreateObject::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
+    90	{
+    91		Super::ExpandNode(CompilerContext, SourceGraph);
+    92	
+    93		UK2Node_CallFunction* CallCreateNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
+    94		CallCreateNode->FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UGameplayStatics, SpawnObject), UGameplayStatics::StaticClass());
+    95		CallCreateNode->AllocateDefaultPins();
+    96		
+    97		// connect GenericCreateObject's self pin to the self node
+    98		bool bSucceeded = ExpandDefaultToSelfPin(CompilerContext, SourceGraph, CallCreateNode);
+    99	
+   100		// store off the class to spawn before we mutate pin connections:
+   101		UClass* ClassToSpawn = GetClassToSpawn();
+   102	
+   103		//connect exe
+   104		{
+   105			UEdGraphPin* SpawnExecPin = GetExecPin();
+   106			UEdGraphPin* CallExecPin = CallCreateNode->GetExecPin();
+   107			bSucceeded &= SpawnExecPin && CallExecPin && CompilerContext.MovePinLinksToIntermediate(*SpawnExecPin, *CallExecPin).CanSafeConnect();
+   108		}
+   109	
+   110		UEdGraphPin* CallClassPin = nullptr;
+   111		//connect class
+   112		{
+   113			UEdGraphPin* SpawnClassPin = GetClassPin();
+   114			CallClassPin = CallCreateNode->FindPin(TEXT("ObjectClass"));
+   115			bSucceeded &= SpawnClassPin && CallClassPin && CompilerContext.MovePinLinksToIntermediate(*SpawnClassPin, *CallClassPin).CanSafeConnect();
+   116		}
+   117			
+   118		//connect outer
+   119		{
+   120			UEdGraphPin* SpawnOuterPin = GetOuterPin();
+   121			UEdGraphPin* CallOuterPin = CallCreateNode->FindPin(TEXT("Outer"));
+   122			bSucceeded &= SpawnOuterPin && CallOuterPin && CompilerContext.MovePinLinksToIntermediate(*SpawnOuterPin, *CallOuterPin).CanSafeConnect();
+   123		}
+   124	
+   125		UEdGraphPin* CallResultPin = nullptr;
+   126		//connect result
+   127		{
+   128			UEdGraphPin* SpawnResultPin = GetResultPin();
+   129			CallResultPin = CallCreateNode->GetReturnValuePin();
+   130	
+   131			// cast HACK. It should be safe. The only problem is native code generation.
+   132			if (SpawnResultPin && CallResultPin)
+   133			{
+   134				CallResultPin->PinType = SpawnResultPin->PinType;
+   135			}
+   136			bSucceeded &= SpawnResultPin && CallResultPin && CompilerContext.MovePinLinksToIntermediate(*SpawnResultPin, *CallResultPin).CanSafeConnect();
+   137		}
+   138	
+   139		//assign exposed values and connect then
+   140		{
+   141			UEdGraphPin* LastThen = FKismetCompilerUtilities::GenerateAssignmentNodes(CompilerContext, SourceGraph, CallCreateNode, this, CallResultPin, ClassToSpawn, CallClassPin);
+   142			UEdGraphPin* SpawnNodeThen = GetThenPin();
+   143			bSucceeded &= SpawnNodeThen && LastThen && CompilerContext.MovePinLinksToIntermediate(*SpawnNodeThen, *LastThen).CanSafeConnect();
+   144		}
+   145	
+   146		BreakAllNodeLinks();
+   147	
+   148		if (!bSucceeded)
+   149		{
+   150			CompilerContext.MessageLog.Error(*LOCTEXT("GenericCreateObject_Error", "ICE: GenericCreateObject error @@").ToString(), this);
+   151		}
+   152	}
+   153	
+   154	void UK2Node_GenericCreateObject::EarlyValidation(class FCompilerResultsLog& MessageLog) const
+   155	{
+   156		Super::EarlyValidation(MessageLog);
+   157		UEdGraphPin* ClassPin = GetClassPin(&Pins);
+   158		const bool bAllowAbstract = ClassPin && ClassPin->LinkedTo.Num();
+   159		UClass* ClassToSpawn = GetClassToSpawn();
+   160		if (!FK2Node_GenericCreateObject_Utils::CanSpawnObjectOfClass(ClassToSpawn, bAllowAbstract))
+   161		{
+   162			MessageLog.Error(*FText::Format(LOCTEXT("GenericCreateObject_WrongClassFmt", "Cannot construct objects of type '{0}' in @@"), FText::FromString(GetPathNameSafe(ClassToSpawn))).ToString(), this);
+   163		}
+   164	}
+   165	
+   166	bool UK2Node_GenericCreateObject::IsCompatibleWithGraph(const UEdGraph* TargetGraph) const
+   167	{
+   168		return UK2Node::IsCompatibleWithGraph(TargetGraph);
+   169	}
+   170	
+   171	bool UK2Node_GenericCreateObject::ExpandDefaultToSelfPin(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph, UK2Node_CallFunction* CallCreateNode)
+   172	{
+   173		// ensure valid input
+   174		if (!SourceGraph || !CallCreateNode)
+   175		{
+   176			return false;
+   177		}
+   178	
+   179		// Connect a self reference pin if there is a TScriptInterface default to self
+   180		if (const UFunction* TargetFunc = CallCreateNode->GetTargetFunction())
+   181		{
+   182			const FString& MetaData = TargetFunc->GetMetaData(FBlueprintMetadata::MD_DefaultToSelf);
+   183			if (!MetaData.IsEmpty())
+   184			{
+   185				// Get the Self Pin from this so we can default it correctly
+   186				const UEdGraphSchema_K2* Schema = CompilerContext.GetSchema();
+   187				if (UEdGraphPin* DefaultToSelfPin = Schema->FindSelfPin(*this, EGPD_Input))
+   188				{
+   189					// If it has no links then spawn a new self node here
+   190					if (DefaultToSelfPin->LinkedTo.IsEmpty())
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp 60-120 =====
+    60	UK2Node_SpawnActorFromClass::UK2Node_SpawnActorFromClass(const FObjectInitializer& ObjectInitializer)
+    61		: Super(ObjectInitializer)
+    62	{
+    63		NodeTooltip = LOCTEXT("NodeTooltip", "Attempts to spawn a new Actor with the specified transform");
+    64	}
+    65	
+    66	UClass* UK2Node_SpawnActorFromClass::GetClassPinBaseClass() const
+    67	{
+    68		return AActor::StaticClass();
+    69	}
+    70	
+    71	void UK2Node_SpawnActorFromClass::AllocateDefaultPins()
+    72	{
+    73		Super::AllocateDefaultPins();
+    74	
+    75		// Transform pin
+    76		UScriptStruct* TransformStruct = TBaseStructure<FTransform>::Get();
+    77		UEdGraphPin* TransformPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Struct, TransformStruct, FK2Node_SpawnActorFromClassHelper::SpawnTransformPinName);
+    78	
+    79		// Collision handling method pin
+    80		UEnum* const CollisionMethodEnum = StaticEnum<ESpawnActorCollisionHandlingMethod>();
+    81		UEdGraphPin* const CollisionHandlingOverridePin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Byte, CollisionMethodEnum, FK2Node_SpawnActorFromClassHelper::CollisionHandlingOverridePinName);
+    82		CollisionHandlingOverridePin->DefaultValue = CollisionMethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorCollisionHandlingMethod::Undefined));
+    83		
+    84		// Pin to set transform scaling behavior (ie whether to multiply scale with root component or to just ignore the root component default scale)
+    85		UEnum* const ScaleMethodEnum = StaticEnum<ESpawnActorScaleMethod>();
+    86		UEdGraphPin* const ScaleMethodPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Byte, ScaleMethodEnum, FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName);
+    87		ScaleMethodPin->DefaultValue = ScaleMethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorScaleMethod::SelectDefaultAtRuntime));
+    88		ScaleMethodPin->bAdvancedView = true;
+    89		
+    90		UEdGraphPin* OwnerPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Object, AActor::StaticClass(), FK2Node_SpawnActorFromClassHelper::OwnerPinName);
+    91		OwnerPin->bAdvancedView = true;
+    92		if (ENodeAdvancedPins::NoPins == AdvancedPinDisplay)
+    93		{
+    94			AdvancedPinDisplay = ENodeAdvancedPins::Hidden;
+    95		}
+    96	}
+    97	
+    98	void UK2Node_SpawnActorFromClass::MaybeUpdateCollisionPin(TArray<UEdGraphPin*>& OldPins)
+    99	{
+   100		// see if there's a bNoCollisionFail pin
+   101		for (UEdGraphPin* Pin : OldPins)
+   102		{
+   103			if (Pin->PinName == FK2Node_SpawnActorFromClassHelper::NoCollisionFailPinName || Pin->PinName == FK2Node_SpawnActorFromClassHelper::SpawnEvenIfCollidingPinName)
+   104			{
+   105				bool bHadOldCollisionPin = true;
+   106				if (Pin->LinkedTo.Num() == 0)
+   107				{
+   108					// no links, use the default value of the pin
+   109					bool const bOldCollisionPinValue = (Pin->DefaultValue == FString(TEXT("true")));
+   110	
+   111					UEdGraphPin* const CollisionHandlingOverridePin = GetCollisionHandlingOverridePin();
+   112					if (CollisionHandlingOverridePin)
+   113					{
+   114						UEnum const* const MethodEnum = FindObjectChecked<UEnum>(nullptr, TEXT("/Script/Engine.ESpawnActorCollisionHandlingMethod"), true);
+   115						CollisionHandlingOverridePin->DefaultValue =
+   116							bOldCollisionPinValue
+   117							? MethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorCollisionHandlingMethod::AlwaysSpawn))
+   118							: MethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding));
+   119					}
+   120				}
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp 219-360 =====
+   219	void UK2Node_SpawnActorFromClass::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins) 
+   220	{
+   221		Super::ReallocatePinsDuringReconstruction(OldPins);
+   222	
+   223		MaybeUpdateCollisionPin(OldPins);
+   224	}
+   225	
+   226	bool UK2Node_SpawnActorFromClass::IsSpawnVarPin(UEdGraphPin* Pin) const
+   227	{
+   228		UEdGraphPin* ParentPin = Pin->ParentPin;
+   229		while (ParentPin)
+   230		{
+   231			if (ParentPin->PinName == FK2Node_SpawnActorFromClassHelper::SpawnTransformPinName)
+   232			{
+   233				return false;
+   234			}
+   235			ParentPin = ParentPin->ParentPin;
+   236		}
+   237	
+   238		return(	Super::IsSpawnVarPin(Pin) &&
+   239				Pin->PinName != FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName &&
+   240				Pin->PinName != FK2Node_SpawnActorFromClassHelper::CollisionHandlingOverridePinName &&
+   241				Pin->PinName != FK2Node_SpawnActorFromClassHelper::SpawnTransformPinName && 
+   242				Pin->PinName != FK2Node_SpawnActorFromClassHelper::OwnerPinName );
+   243	}
+   244	
+   245	void UK2Node_SpawnActorFromClass::GetPinHoverText(const UEdGraphPin& Pin, FString& HoverTextOut) const
+   246	{
+   247		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+   248	
+   249		if (UEdGraphPin* TransformPin = GetSpawnTransformPin())
+   250		{
+   251			K2Schema->ConstructBasicPinTooltip(*TransformPin, LOCTEXT("TransformPinDescription", "The transform to spawn the Actor with"), TransformPin->PinToolTip);
+   252		}
+   253		if (UEdGraphPin* CollisionHandlingOverridePin = GetCollisionHandlingOverridePin())
+   254		{
+   255			K2Schema->ConstructBasicPinTooltip(*CollisionHandlingOverridePin, LOCTEXT("CollisionHandlingOverridePinDescription", "Specifies how to handle collisions at the spawn point. If undefined, uses actor class settings."), CollisionHandlingOverridePin->PinToolTip);
+   256		}
+   257		if (UEdGraphPin* OwnerPin = GetOwnerPin())
+   258		{
+   259			K2Schema->ConstructBasicPinTooltip(*OwnerPin, LOCTEXT("OwnerPinDescription", "Can be left empty; primarily used for replication (bNetUseOwnerRelevancy and bOnlyRelevantToOwner), or visibility (PrimitiveComponent's bOwnerNoSee/bOnlyOwnerSee)"), OwnerPin->PinToolTip);
+   260		}
+   261	
+   262		return Super::GetPinHoverText(Pin, HoverTextOut);
+   263	}
+   264	
+   265	FSlateIcon UK2Node_SpawnActorFromClass::GetIconAndTint(FLinearColor& OutColor) const
+   266	{
+   267		static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.SpawnActor_16x");
+   268		return Icon;
+   269	}
+   270	
+   271	UEdGraphPin* UK2Node_SpawnActorFromClass::GetSpawnTransformPin() const
+   272	{
+   273		UEdGraphPin* Pin = FindPinChecked(FK2Node_SpawnActorFromClassHelper::SpawnTransformPinName);
+   274		check(Pin->Direction == EGPD_Input);
+   275		return Pin;
+   276	}
+   277	
+   278	UEdGraphPin* UK2Node_SpawnActorFromClass::GetCollisionHandlingOverridePin() const
+   279	{
+   280		UEdGraphPin* const Pin = FindPinChecked(FK2Node_SpawnActorFromClassHelper::CollisionHandlingOverridePinName);
+   281		check(Pin->Direction == EGPD_Input);
+   282		return Pin;
+   283	}
+   284	
+   285	UEdGraphPin* UK2Node_SpawnActorFromClass::GetScaleMethodPin() const
+   286	{
+   287		UEdGraphPin* const Pin = FindPinChecked(FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName);
+   288		check(Pin->Direction == EGPD_Input);
+   289		return Pin;
+   290	}
+   291	
+   292	UEdGraphPin* UK2Node_SpawnActorFromClass::TryGetScaleMethodPin() const
+   293	{
+   294		return FindPin(FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName, EGPD_Input);
+   295	}
+   296	
+   297	UEdGraphPin* UK2Node_SpawnActorFromClass::GetOwnerPin() const
+   298	{
+   299		UEdGraphPin* Pin = FindPin(FK2Node_SpawnActorFromClassHelper::OwnerPinName);
+   300		check(Pin == nullptr || Pin->Direction == EGPD_Input);
+   301		return Pin;
+   302	}
+   303	
+   304	FText UK2Node_SpawnActorFromClass::GetNodeTitle(ENodeTitleType::Type TitleType) const
+   305	{
+   306		FText NodeTitle = NSLOCTEXT("K2Node", "SpawnActor_BaseTitle", "Spawn Actor from Class");
+   307		if (TitleType != ENodeTitleType::MenuTitle)
+   308		{
+   309			if (UEdGraphPin* ClassPin = GetClassPin())
+   310			{
+   311				if (ClassPin->LinkedTo.Num() > 0)
+   312				{
+   313					// Blueprint will be determined dynamically, so we don't have the name in this case
+   314					NodeTitle = NSLOCTEXT("K2Node", "SpawnActor_Title_Unknown", "SpawnActor");
+   315				}
+   316				else if (ClassPin->DefaultObject == nullptr)
+   317				{
+   318					NodeTitle = NSLOCTEXT("K2Node", "SpawnActor_Title_NONE", "SpawnActor NONE");
+   319				}
+   320				else
+   321				{
+   322					if (CachedNodeTitle.IsOutOfDate(this))
+   323					{
+   324						FText ClassName;
+   325						if (UClass* PickedClass = Cast<UClass>(ClassPin->DefaultObject))
+   326						{
+   327							ClassName = PickedClass->GetDisplayNameText();
+   328						}
+   329	
+   330						FFormatNamedArguments Args;
+   331						Args.Add(TEXT("ClassName"), ClassName);
+   332	
+   333						// FText::Format() is slow, so we cache this to save on performance
+   334						CachedNodeTitle.SetCachedText(FText::Format(NSLOCTEXT("K2Node", "SpawnActor_Title_Class", "SpawnActor {ClassName}"), Args), this);
+   335					}
+   336					NodeTitle = CachedNodeTitle;
+   337				} 
+   338			}
+   339			else
+   340			{
+   341				NodeTitle = NSLOCTEXT("K2Node", "SpawnActor_Title_NONE", "SpawnActor NONE");
+   342			}
+   343		}
+   344		return NodeTitle;
+   345	}
+   346	
+   347	bool UK2Node_SpawnActorFromClass::IsCompatibleWithGraph(const UEdGraph* TargetGraph) const 
+   348	{
+   349		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+   350		return Super::IsCompatibleWithGraph(TargetGraph) && (!Blueprint || (FBlueprintEditorUtils::FindUserConstructionScript(Blueprint) != TargetGraph && Blueprint->GeneratedClass->GetDefaultObject()->ImplementsGetWorld()));
+   351	}
+   352	
+   353	void UK2Node_SpawnActorFromClass::PostPlacedNewNode()
+   354	{
+   355		UEdGraphPin* const ScaleMethodPin = GetScaleMethodPin();
+   356		const UEnum* const ScaleMethodEnum = StaticEnum<ESpawnActorScaleMethod>();
+   357		ScaleMethodPin->DefaultValue = ScaleMethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorScaleMethod::MultiplyWithRoot));
+   358	}
+   359	
+   360	void UK2Node_SpawnActorFromClass::Serialize(FArchive& Ar)
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp 439-620 =====
+   439	void UK2Node_SpawnActorFromClass::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
+   440	{
+   441		Super::ExpandNode(CompilerContext, SourceGraph);
+   442	
+   443		// make sure that if scale method needs to be given a default value, it gets it
+   444		FixupScaleMethodPin();
+   445	
+   446		static const FName BeginSpawningBlueprintFuncName = GET_FUNCTION_NAME_CHECKED(UGameplayStatics, BeginDeferredActorSpawnFromClass);
+   447		static const FName ActorClassParamName(TEXT("ActorClass"));
+   448		static const FName WorldContextParamName(TEXT("WorldContextObject"));
+   449	
+   450		static const FName FinishSpawningFuncName = GET_FUNCTION_NAME_CHECKED(UGameplayStatics, FinishSpawningActor);
+   451		static const FName ActorParamName(TEXT("Actor"));
+   452		static const FName TransformParamName(TEXT("SpawnTransform"));
+   453		static const FName CollisionHandlingOverrideParamName(TEXT("CollisionHandlingOverride"));
+   454		static const FName OwnerParamName(TEXT("Owner"));
+   455	
+   456		static const FName ObjectParamName(TEXT("Object"));
+   457		static const FName ValueParamName(TEXT("Value"));
+   458		static const FName PropertyNameParamName(TEXT("PropertyName"));
+   459	
+   460		UK2Node_SpawnActorFromClass* SpawnNode = this;
+   461		UEdGraphPin* SpawnNodeExec = SpawnNode->GetExecPin();
+   462		UEdGraphPin* SpawnNodeTransform = SpawnNode->GetSpawnTransformPin();
+   463		UEdGraphPin* SpawnNodeCollisionHandlingOverride = GetCollisionHandlingOverridePin();
+   464		UEdGraphPin* SpawnNodeScaleMethod = TryGetScaleMethodPin();
+   465		UEdGraphPin* SpawnWorldContextPin = SpawnNode->GetWorldContextPin();
+   466		UEdGraphPin* SpawnClassPin = SpawnNode->GetClassPin();
+   467		UEdGraphPin* SpawnNodeOwnerPin = SpawnNode->GetOwnerPin();
+   468		UEdGraphPin* SpawnNodeThen = SpawnNode->GetThenPin();
+   469		UEdGraphPin* SpawnNodeResult = SpawnNode->GetResultPin();
+   470	
+   471		// Cache the class to spawn. Note, this is the compile time class that the pin was set to or the variable type it was connected to. Runtime it could be a child.
+   472		UClass* ClassToSpawn = GetClassToSpawn();
+   473	
+   474		UClass* SpawnClass = (SpawnClassPin != NULL) ? Cast<UClass>(SpawnClassPin->DefaultObject) : NULL;
+   475		if ( !SpawnClassPin || ((0 == SpawnClassPin->LinkedTo.Num()) && (NULL == SpawnClass)))
+   476		{
+   477			CompilerContext.MessageLog.Error(*LOCTEXT("SpawnActorNodeMissingClass_Error", "Spawn node @@ must have a @@ specified.").ToString(), SpawnNode, SpawnClassPin);
+   478			// we break exec links so this is the only error we get, don't want the SpawnActor node being considered and giving 'unexpected node' type warnings
+   479			SpawnNode->BreakAllNodeLinks();
+   480			return;
+   481		}
+   482	
+   483		//////////////////////////////////////////////////////////////////////////
+   484		// create 'begin spawn' call node
+   485		UK2Node_CallFunction* CallBeginSpawnNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(SpawnNode, SourceGraph);
+   486		CallBeginSpawnNode->FunctionReference.SetExternalMember(BeginSpawningBlueprintFuncName, UGameplayStatics::StaticClass());
+   487		CallBeginSpawnNode->AllocateDefaultPins();
+   488	
+   489		UEdGraphPin* CallBeginExec = CallBeginSpawnNode->GetExecPin();
+   490		UEdGraphPin* CallBeginWorldContextPin = CallBeginSpawnNode->FindPinChecked(WorldContextParamName);
+   491		UEdGraphPin* CallBeginActorClassPin = CallBeginSpawnNode->FindPinChecked(ActorClassParamName);
+   492		UEdGraphPin* CallBeginTransform = CallBeginSpawnNode->FindPinChecked(TransformParamName);
+   493		UEdGraphPin* CallBeginScaleMethod = CallBeginSpawnNode->FindPinChecked(FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName);
+   494		UEdGraphPin* CallBeginCollisionHandlingOverride = CallBeginSpawnNode->FindPinChecked(CollisionHandlingOverrideParamName);
+   495	
+   496		UEdGraphPin* CallBeginOwnerPin = CallBeginSpawnNode->FindPinChecked(FK2Node_SpawnActorFromClassHelper::OwnerPinName);
+   497		UEdGraphPin* CallBeginResult = CallBeginSpawnNode->GetReturnValuePin();	
+   498	
+   499		// Move 'exec' connection from spawn node to 'begin spawn'
+   500		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeExec, *CallBeginExec);
+   501	
+   502		if(SpawnClassPin->LinkedTo.Num() > 0)
+   503		{
+   504			// Copy the 'blueprint' connection from the spawn node to 'begin spawn'
+   505			CompilerContext.MovePinLinksToIntermediate(*SpawnClassPin, *CallBeginActorClassPin);
+   506		}
+   507		else
+   508		{
+   509			// Copy blueprint literal onto begin spawn call 
+   510			CallBeginActorClassPin->DefaultObject = SpawnClass;
+   511		}
+   512	
+   513		// Copy the world context connection from the spawn node to 'begin spawn' if necessary
+   514		if (SpawnWorldContextPin)
+   515		{
+   516			CompilerContext.MovePinLinksToIntermediate(*SpawnWorldContextPin, *CallBeginWorldContextPin);
+   517		}
+   518	
+   519		if (SpawnNodeOwnerPin != nullptr)
+   520		{
+   521			CompilerContext.MovePinLinksToIntermediate(*SpawnNodeOwnerPin, *CallBeginOwnerPin);
+   522		}
+   523	
+   524		// Copy the 'transform' connection from the spawn node to 'begin spawn'
+   525		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeTransform, *CallBeginTransform);
+   526	
+   527		// Copy the 'CollisionHandlingOverride' connection from the spawn node to 'begin spawn'
+   528		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeCollisionHandlingOverride, *CallBeginCollisionHandlingOverride);
+   529	
+   530		// Copy the 'ScaleMethod' connection from the spawn node to 'begin spawn'
+   531		if (SpawnNodeScaleMethod)
+   532		{
+   533			CompilerContext.MovePinLinksToIntermediate(*SpawnNodeScaleMethod, *CallBeginScaleMethod);
+   534		}
+   535		else
+   536		{
+   537			// if for some reason we couldn't find scale method pin on the spawn node, defer it's value to runtime
+   538		    const UEnum* const ScaleMethodEnum = StaticEnum<ESpawnActorScaleMethod>();
+   539			CallBeginScaleMethod->DefaultValue = ScaleMethodEnum->GetNameStringByValue(static_cast<int>(ESpawnActorScaleMethod::SelectDefaultAtRuntime));
+   540		}
+   541	
+   542		//////////////////////////////////////////////////////////////////////////
+   543		// create 'finish spawn' call node
+   544		UK2Node_CallFunction* CallFinishSpawnNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(SpawnNode, SourceGraph);
+   545		CallFinishSpawnNode->FunctionReference.SetExternalMember(FinishSpawningFuncName, UGameplayStatics::StaticClass());
+   546		CallFinishSpawnNode->AllocateDefaultPins();
+   547	
+   548		UEdGraphPin* CallFinishExec = CallFinishSpawnNode->GetExecPin();
+   549		UEdGraphPin* CallFinishThen = CallFinishSpawnNode->GetThenPin();
+   550		UEdGraphPin* CallFinishActor = CallFinishSpawnNode->FindPinChecked(ActorParamName);
+   551		UEdGraphPin* CallFinishTransform = CallFinishSpawnNode->FindPinChecked(TransformParamName);
+   552		UEdGraphPin* CallFinishScaleMethod = CallFinishSpawnNode->FindPinChecked(FK2Node_SpawnActorFromClassHelper::TransformScaleMethodPinName);
+   553		UEdGraphPin* CallFinishResult = CallFinishSpawnNode->GetReturnValuePin();
+   554	
+   555		// Move 'then' connection from spawn node to 'finish spawn'
+   556		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeThen, *CallFinishThen);
+   557	
+   558		// Copy transform connection
+   559		CompilerContext.CopyPinLinksToIntermediate(*CallBeginTransform, *CallFinishTransform);
+   560	 
+   561		// Copy 'ScaleMethod' connection
+   562		CompilerContext.CopyPinLinksToIntermediate(*CallBeginScaleMethod, *CallFinishScaleMethod);
+   563	
+   564		// Connect output actor from 'begin' to 'finish'
+   565		CallBeginResult->MakeLinkTo(CallFinishActor);
+   566	
+   567		// Move result connection from spawn node to 'finish spawn'
+   568		CallFinishResult->PinType = SpawnNodeResult->PinType; // Copy type so it uses the right actor subclass
+   569		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeResult, *CallFinishResult);
+   570	
+   571		//////////////////////////////////////////////////////////////////////////
+   572		// create 'set var' nodes
+   573	
+   574		// Get 'result' pin from 'begin spawn', this is the actual actor we want to set properties on
+   575		UEdGraphPin* LastThen = FKismetCompilerUtilities::GenerateAssignmentNodes(CompilerContext, SourceGraph, CallBeginSpawnNode, SpawnNode, CallBeginResult, ClassToSpawn, CallBeginActorClassPin);
+   576	
+   577		// Make exec connection between 'then' on last node and 'finish'
+   578		LastThen->MakeLinkTo(CallFinishExec);
+   579	
+   580		// Break any links to the expanded node
+   581		SpawnNode->BreakAllNodeLinks();
+   582	}
+   583	
+   584	#undef LOCTEXT_NAMESPACE
+\n===== Source/Editor/UMGEditor/Private/Nodes/K2Node_CreateWidget.cpp 28-162 =====
+    28	UK2Node_CreateWidget::UK2Node_CreateWidget(const FObjectInitializer& ObjectInitializer)
+    29		: Super(ObjectInitializer)
+    30	{
+    31		NodeTooltip = LOCTEXT("NodeTooltip", "Creates a new widget");
+    32	}
+    33	
+    34	void UK2Node_CreateWidget::AllocateDefaultPins()
+    35	{
+    36		Super::AllocateDefaultPins();
+    37	
+    38		// OwningPlayer pin
+    39		UEdGraphPin* OwningPlayerPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Object, APlayerController::StaticClass(), FK2Node_CreateWidgetHelper::OwningPlayerPinName);
+    40		SetPinToolTip(*OwningPlayerPin, LOCTEXT("OwningPlayerPinDescription", "The player that 'owns' the widget."));
+    41	}
+    42	
+    43	FText UK2Node_CreateWidget::GetBaseNodeTitle() const
+    44	{
+    45		return LOCTEXT("CreateWidget_BaseTitle", "Create Widget");
+    46	}
+    47	
+    48	FText UK2Node_CreateWidget::GetNodeTitleFormat() const
+    49	{
+    50		return LOCTEXT("CreateWidget", "Create {ClassName} Widget");
+    51	}
+    52	
+    53	UClass* UK2Node_CreateWidget::GetClassPinBaseClass() const
+    54	{
+    55		return UUserWidget::StaticClass();
+    56	}
+    57	
+    58	FText UK2Node_CreateWidget::GetMenuCategory() const
+    59	{
+    60		return FEditorCategoryUtils::GetCommonCategory(FCommonEditorCategory::UserInterface);
+    61	}
+    62	
+    63	FName UK2Node_CreateWidget::GetCornerIcon() const
+    64	{
+    65		return TEXT("Graph.Replication.ClientEvent");
+    66	}
+    67	
+    68	UEdGraphPin* UK2Node_CreateWidget::GetOwningPlayerPin() const
+    69	{
+    70		UEdGraphPin* Pin = FindPin(FK2Node_CreateWidgetHelper::OwningPlayerPinName);
+    71		check(Pin == NULL || Pin->Direction == EGPD_Input);
+    72		return Pin;
+    73	}
+    74	
+    75	bool UK2Node_CreateWidget::IsSpawnVarPin(UEdGraphPin* Pin) const
+    76	{
+    77		return( Super::IsSpawnVarPin(Pin) &&
+    78			Pin->PinName != FK2Node_CreateWidgetHelper::OwningPlayerPinName );
+    79	}
+    80	
+    81	void UK2Node_CreateWidget::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
+    82	{
+    83		Super::ExpandNode(CompilerContext, SourceGraph);
+    84	
+    85		static const FName Create_FunctionName = GET_FUNCTION_NAME_CHECKED(UWidgetBlueprintLibrary, Create);
+    86		static const FName WorldContextObject_ParamName(TEXT("WorldContextObject"));
+    87		static const FName WidgetType_ParamName(TEXT("WidgetType"));
+    88		static const FName OwningPlayer_ParamName(TEXT("OwningPlayer"));
+    89	
+    90		UK2Node_CreateWidget* CreateWidgetNode = this;
+    91		UEdGraphPin* SpawnNodeExec = CreateWidgetNode->GetExecPin();
+    92		UEdGraphPin* SpawnWorldContextPin = CreateWidgetNode->GetWorldContextPin();
+    93		UEdGraphPin* SpawnOwningPlayerPin = CreateWidgetNode->GetOwningPlayerPin();
+    94		UEdGraphPin* SpawnClassPin = CreateWidgetNode->GetClassPin();
+    95		UEdGraphPin* SpawnNodeThen = CreateWidgetNode->GetThenPin();
+    96		UEdGraphPin* SpawnNodeResult = CreateWidgetNode->GetResultPin();
+    97	
+    98		UClass* SpawnClass = ( SpawnClassPin != NULL ) ? Cast<UClass>(SpawnClassPin->DefaultObject) : NULL;
+    99		if ( !SpawnClassPin || ((0 == SpawnClassPin->LinkedTo.Num()) && (NULL == SpawnClass)))
+   100		{
+   101			CompilerContext.MessageLog.Error(*LOCTEXT("CreateWidgetNodeMissingClass_Error", "Spawn node @@ must have a class specified.").ToString(), CreateWidgetNode);
+   102			// we break exec links so this is the only error we get, don't want the CreateWidget node being considered and giving 'unexpected node' type warnings
+   103			CreateWidgetNode->BreakAllNodeLinks();
+   104			return;
+   105		}
+   106	
+   107		//////////////////////////////////////////////////////////////////////////
+   108		// create 'UWidgetBlueprintLibrary::Create' call node
+   109		UK2Node_CallFunction* CallCreateNode = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(CreateWidgetNode, SourceGraph);
+   110		CallCreateNode->FunctionReference.SetExternalMember(Create_FunctionName, UWidgetBlueprintLibrary::StaticClass());
+   111		CallCreateNode->AllocateDefaultPins();
+   112	
+   113		// store off the class to spawn before we mutate pin connections:
+   114		UClass* ClassToSpawn = GetClassToSpawn();
+   115	
+   116		UEdGraphPin* CallCreateExec = CallCreateNode->GetExecPin();
+   117		UEdGraphPin* CallCreateWorldContextPin = CallCreateNode->FindPinChecked(WorldContextObject_ParamName);
+   118		UEdGraphPin* CallCreateWidgetTypePin = CallCreateNode->FindPinChecked(WidgetType_ParamName);
+   119		UEdGraphPin* CallCreateOwningPlayerPin = CallCreateNode->FindPinChecked(OwningPlayer_ParamName);
+   120		UEdGraphPin* CallCreateResult = CallCreateNode->GetReturnValuePin();
+   121	
+   122		// Move 'exec' connection from create widget node to 'UWidgetBlueprintLibrary::Create'
+   123		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeExec, *CallCreateExec);
+   124	
+   125		if ( SpawnClassPin->LinkedTo.Num() > 0 )
+   126		{
+   127			// Copy the 'blueprint' connection from the spawn node to 'UWidgetBlueprintLibrary::Create'
+   128			CompilerContext.MovePinLinksToIntermediate(*SpawnClassPin, *CallCreateWidgetTypePin);
+   129		}
+   130		else
+   131		{
+   132			// Copy blueprint literal onto 'UWidgetBlueprintLibrary::Create' call
+   133			CallCreateWidgetTypePin->DefaultObject = SpawnClass;
+   134		}
+   135	
+   136		// Copy the world context connection from the spawn node to 'UWidgetBlueprintLibrary::Create' if necessary
+   137		if ( SpawnWorldContextPin )
+   138		{
+   139			CompilerContext.MovePinLinksToIntermediate(*SpawnWorldContextPin, *CallCreateWorldContextPin);
+   140		}
+   141	
+   142		// Copy the 'Owning Player' connection from the spawn node to 'UWidgetBlueprintLibrary::Create'
+   143		CompilerContext.MovePinLinksToIntermediate(*SpawnOwningPlayerPin, *CallCreateOwningPlayerPin);
+   144	
+   145		// Move result connection from spawn node to 'UWidgetBlueprintLibrary::Create'
+   146		CallCreateResult->PinType = SpawnNodeResult->PinType; // Copy type so it uses the right actor subclass
+   147		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeResult, *CallCreateResult);
+   148	
+   149		//////////////////////////////////////////////////////////////////////////
+   150		// create 'set var' nodes
+   151	
+   152		// Get 'result' pin from 'begin spawn', this is the actual actor we want to set properties on
+   153		UEdGraphPin* LastThen = FKismetCompilerUtilities::GenerateAssignmentNodes(CompilerContext, SourceGraph, CallCreateNode, CreateWidgetNode, CallCreateResult, ClassToSpawn, CallCreateWidgetTypePin);
+   154	
+   155		// Move 'then' connection from create widget node to the last 'then'
+   156		CompilerContext.MovePinLinksToIntermediate(*SpawnNodeThen, *LastThen);
+   157	
+   158		// Break any links to the expanded node
+   159		CreateWidgetNode->BreakAllNodeLinks();
+   160	}
+   161	
+   162	TSharedPtr<SGraphNode> UK2Node_CreateWidget::CreateVisualWidget()
+\n===== Source/Editor/BlueprintGraph/Private/K2Node_AsyncAction.cpp 1-180 =====
+     1	// Copyright Epic Games, Inc. All Rights Reserved.
+     2	
+     3	#include "K2Node_AsyncAction.h"
+     4	
+     5	#include "BlueprintActionDatabaseRegistrar.h"
+     6	#include "BlueprintFunctionNodeSpawner.h"
+     7	#include "BlueprintNodeSpawner.h"
+     8	#include "Delegates/Delegate.h"
+     9	#include "EdGraph/EdGraphNode.h"
+    10	#include "HAL/Platform.h"
+    11	#include "Kismet/BlueprintAsyncActionBase.h"
+    12	#include "Misc/AssertionMacros.h"
+    13	#include "Templates/Casts.h"
+    14	#include "Templates/SubclassOf.h"
+    15	#include "UObject/Class.h"
+    16	#include "UObject/Field.h"
+    17	#include "UObject/NameTypes.h"
+    18	#include "UObject/ObjectPtr.h"
+    19	#include "UObject/UnrealType.h"
+    20	#include "UObject/WeakObjectPtrTemplates.h"
+    21	
+    22	
+    23	#define LOCTEXT_NAMESPACE "K2Node"
+    24	
+    25	UK2Node_AsyncAction::UK2Node_AsyncAction(const FObjectInitializer& ObjectInitializer)
+    26		: Super(ObjectInitializer)
+    27	{
+    28		ProxyActivateFunctionName = GET_FUNCTION_NAME_CHECKED(UBlueprintAsyncActionBase, Activate);
+    29	}
+    30	
+    31	void UK2Node_AsyncAction::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+    32	{
+    33		struct GetMenuActions_Utils
+    34		{
+    35			static void SetNodeFunc(UEdGraphNode* NewNode, bool /*bIsTemplateNode*/, TWeakObjectPtr<UFunction> FunctionPtr)
+    36			{
+    37				UK2Node_AsyncAction* AsyncTaskNode = CastChecked<UK2Node_AsyncAction>(NewNode);
+    38				if (FunctionPtr.IsValid())
+    39				{
+    40					UFunction* Func = FunctionPtr.Get();
+    41					FObjectProperty* ReturnProp = CastFieldChecked<FObjectProperty>(Func->GetReturnProperty());
+    42							
+    43					AsyncTaskNode->ProxyFactoryFunctionName = Func->GetFName();
+    44					AsyncTaskNode->ProxyFactoryClass        = Func->GetOuterUClass();
+    45					AsyncTaskNode->ProxyClass               = ReturnProp->PropertyClass;
+    46				}
+    47			}
+    48		};
+    49	
+    50		UClass* NodeClass = GetClass();
+    51		ActionRegistrar.RegisterClassFactoryActions<UBlueprintAsyncActionBase>(FBlueprintActionDatabaseRegistrar::FMakeFuncSpawnerDelegate::CreateLambda([NodeClass](const UFunction* FactoryFunc)->UBlueprintNodeSpawner*
+    52		{
+    53			UClass* FactoryClass = FactoryFunc ? FactoryFunc->GetOwnerClass() : nullptr;
+    54			if (FactoryClass && FactoryClass->HasMetaData(TEXT("HasDedicatedAsyncNode")))
+    55			{
+    56				// Wants to use a more specific blueprint node to handle the async action
+    57				return nullptr;
+    58			}
+    59	
+    60			UBlueprintNodeSpawner* NodeSpawner = UBlueprintFunctionNodeSpawner::Create(FactoryFunc);
+    61			check(NodeSpawner != nullptr);
+    62			NodeSpawner->NodeClass = NodeClass;
+    63	
+    64			TWeakObjectPtr<UFunction> FunctionPtr = MakeWeakObjectPtr(const_cast<UFunction*>(FactoryFunc));
+    65			NodeSpawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(GetMenuActions_Utils::SetNodeFunc, FunctionPtr);
+    66	
+    67			return NodeSpawner;
+    68		}) );
+    69	}
+    70	
+    71	void UK2Node_AsyncAction::InitializeProxyFromFunction(const UFunction* ProxyFunction)
+    72	{
+    73		if (ensure(ProxyFunction))
+    74		{
+    75			const FObjectProperty* ReturnProp = CastField<FObjectProperty>(ProxyFunction->GetReturnProperty());
+    76			if (ensure(ReturnProp))
+    77			{
+    78				ProxyFactoryFunctionName = ProxyFunction->GetFName();
+    79				ProxyFactoryClass = ProxyFunction->GetOuterUClass();
+    80				ProxyClass = ReturnProp->PropertyClass;
+    81			}
+    82		}
+    83	}
+    84	
+    85	#undef LOCTEXT_NAMESPACE
+\n===== Source/Editor/BlueprintGraph/Private/BlueprintAssetNodeSpawner.cpp 13-95 =====
+    13	UBlueprintAssetNodeSpawner* UBlueprintAssetNodeSpawner::Create(TSubclassOf<UEdGraphNode> const InNodeClass, const FAssetData& InAssetData, UObject* InOuter, FCustomizeNodeDelegate InPostSpawnDelegate)
+    14	{
+    15		check(InNodeClass != nullptr);
+    16		check(InNodeClass->IsChildOf<UEdGraphNode>());
+    17	
+    18		if (InOuter == nullptr)
+    19		{
+    20			InOuter = GetTransientPackage();
+    21		}
+    22	
+    23		UBlueprintAssetNodeSpawner* NodeSpawner = NewObject<UBlueprintAssetNodeSpawner>(InOuter);
+    24		NodeSpawner->NodeClass = InNodeClass;
+    25		NodeSpawner->CustomizeNodeDelegate = InPostSpawnDelegate;
+    26		NodeSpawner->AssetData = InAssetData;
+    27	
+    28		return NodeSpawner;
+    29	}
+    30	
+    31	const FAssetData& UBlueprintAssetNodeSpawner::GetAssetData() const
+    32	{
+    33		return AssetData;
+    34	}
+    35	
+    36	#undef LOCTEXT_NAMESPACE

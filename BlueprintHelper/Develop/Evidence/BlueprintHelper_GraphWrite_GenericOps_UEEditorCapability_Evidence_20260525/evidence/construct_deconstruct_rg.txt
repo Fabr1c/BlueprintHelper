@@ -1,0 +1,430 @@
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:3:#include "K2Node_MakeStruct.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:19:#include "MakeStructHandler.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:37:#define LOCTEXT_NAMESPACE "K2Node_MakeStruct"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:40:// UK2Node_MakeStruct
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:43:UK2Node_MakeStruct::FMakeStructPinManager::FMakeStructPinManager(const uint8* InSampleStructMemory, UBlueprint* InOwningBP)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:51:void UK2Node_MakeStruct::FMakeStructPinManager::GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:58:void UK2Node_MakeStruct::FMakeStructPinManager::CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, FProperty* Property) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:80:		const FString& MetadataDefaultValue = Property->GetMetaData(TEXT("MakeStructureDefaultValue"));
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:143:bool UK2Node_MakeStruct::FMakeStructPinManager::CanTreatPropertyAsOptional(FProperty* TestProperty) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:148:UK2Node_MakeStruct::UK2Node_MakeStruct(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:154:void UK2Node_MakeStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:156:	if (StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:158:		PreloadObject(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:159:		CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, StructType, StructType->GetFName());
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:163:			FStructOnScope StructOnScope(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:164:			FMakeStructPinManager OptionalPinManager(StructOnScope.GetStructMemory(), GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:165:			OptionalPinManager.RebuildPropertyList(ShowPinForProperties, StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:166:			OptionalPinManager.CreateVisiblePins(ShowPinForProperties, StructType, EGPD_Input, this);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:198:void UK2Node_MakeStruct::PreloadRequiredAssets()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:200:	PreloadObject(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:204:void UK2Node_MakeStruct::ValidateNodeDuringCompilation(class FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:208:	if(!StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:215:		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:230:			MessageLog.Note(*NSLOCTEXT("K2Node", "OverridePinRemoval_SetFieldsInStruct", "Override pins have been removed from @@ in @@, it functions the same as it did but some functionality may be deprecated! This note will go away after you resave the asset!").ToString(), this, GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:236:FText UK2Node_MakeStruct::GetNodeTitle(ENodeTitleType::Type TitleType) const 
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:238:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:245:		Args.Add(TEXT("StructName"), StructType->GetDisplayNameText());
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:252:FText UK2Node_MakeStruct::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:254:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:262:			LOCTEXT("MakeStruct_Tooltip", "Adds a node that create a '{0}' from its members"),
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:263:			StructType->GetDisplayNameText()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:269:FSlateIcon UK2Node_MakeStruct::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:271:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.MakeStruct_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:275:FLinearColor UK2Node_MakeStruct::GetNodeTitleColor() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:281:		PinType.PinSubCategoryObject = StructType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:287:bool UK2Node_MakeStruct::CanBeMade(const UScriptStruct* Struct, const bool bForInternalUse)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:292:bool UK2Node_MakeStruct::CanBeSplit(const UScriptStruct* Struct, UBlueprint* InBP)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:294:	if (CanBeMade(Struct))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:307:FNodeHandlingFunctor* UK2Node_MakeStruct::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:309:	return new FKCHandler_MakeStruct(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:312:UK2Node::ERedirectType UK2Node_MakeStruct::DoPinsMatchForReconstruction(const UEdGraphPin* NewPin, int32 NewPinIndex, const UEdGraphPin* OldPin, int32 OldPinIndex) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:322:void UK2Node_MakeStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:324:	Super::SetupMenuActions(ActionRegistrar, FMakeStructSpawnerAllowedDelegate::CreateStatic(&UK2Node_MakeStruct::CanBeMade), EGPD_Input);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:327:FText UK2Node_MakeStruct::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:332:void UK2Node_MakeStruct::PreSave(FObjectPreSaveContext SaveContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:342:void UK2Node_MakeStruct::PostPlacedNewNode()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:350:void UK2Node_MakeStruct::Serialize(FArchive& Ar)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:361:			if (StructType != nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:363:				FOptionalPinManager PinManager;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:366:				for (FOptionalPinFromProperty& PropertyEntry : ShowPinForProperties)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:368:					FProperty* Property = StructType->FindPropertyByName(PropertyEntry.PropertyName);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:373:						for (FOptionalPinFromProperty& OverridePropertyEntry : ShowPinForProperties)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:424:void UK2Node_MakeStruct::ConvertDeprecatedNode(UEdGraph* Graph, bool bOnlySafeChanges)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:429:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:435:	if (StructType->HasMetaData(FBlueprintMetadata::MD_NativeMakeFunction))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:442:		if (StructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:447:		else if (StructType == TBaseStructure<FVector>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:452:		else if (StructType == TBaseStructure<FVector2D>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:459:			const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeMakeFunction);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp:464:				OldPinToNewPinMap.Add(*StructType->GetName(), UEdGraphSchema_K2::PN_ReturnValue);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:3:#include "K2Node_BreakStruct.h"
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:46:#define LOCTEXT_NAMESPACE "K2Node_BreakStruct"
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:49:// FKCHandler_BreakStruct
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:51:class FKCHandler_BreakStruct : public FNodeHandlingFunctor
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:54:	FKCHandler_BreakStruct(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:59:	FBPTerminal* RegisterInputTerm(FKismetFunctionContext& Context, UK2Node_BreakStruct* Node)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:63:		if(NULL == Node->StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:65:			CompilerContext.MessageLog.Error(*LOCTEXT("BreakStruct_UnknownStructure_Error", "Unknown structure to break for @@").ToString(), Node);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:104:		if(NULL == StructInTerm || !StructInTerm->IsChildOf(Node->StructType))
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:106:			CompilerContext.MessageLog.Error(*LOCTEXT("BreakStruct_NoMatch_Error", "Structures don't match for @@").ToString(), Node);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:112:	void RegisterOutputTerm(FKismetFunctionContext& Context, UScriptStruct* StructType, UEdGraphPin* Net, FBPTerminal* ContextTerm)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:114:		if (FProperty* BoundProperty = FindFProperty<FProperty>(StructType, Net->PinName))
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:118:				FText Message = FText::Format(LOCTEXT("BreakStruct_DeprecatedField_Warning", "@@ : Member '{0}' of struct '{1}' is deprecated.")
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:120:					, StructType->GetDisplayNameText());
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:144:		UK2Node_BreakStruct* Node = Cast<UK2Node_BreakStruct>(InNode);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:147:		if(!UK2Node_BreakStruct::CanBeBroken(Node->StructType, Node->IsIntermediateNode()))
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:149:			CompilerContext.MessageLog.Warning(*LOCTEXT("BreakStruct_NoBreak_Error", "The structure cannot be broken using generic 'break' node @@. Try use specialized 'break' function if available.").ToString(), Node);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:158:					RegisterOutputTerm(Context, Node->StructType, Pin, StructContextTerm);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:166:UK2Node_BreakStruct::UK2Node_BreakStruct(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:182:bool UK2Node_BreakStruct::CanBeBroken(const UScriptStruct* Struct, const bool bForInternalUse)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:197:void UK2Node_BreakStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:199:	if (StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:205:		PreloadObject(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:206:		CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Struct, StructType, StructType->GetFName(), PinParams);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:208:		struct FBreakStructPinManager : public FStructOperationOptionalPinManager
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:217:			FBreakStructPinManager OptionalPinManager;
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:218:			OptionalPinManager.RebuildPropertyList(ShowPinForProperties, StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:219:			OptionalPinManager.CreateVisiblePins(ShowPinForProperties, StructType, EGPD_Output, this);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:241:void UK2Node_BreakStruct::PreloadRequiredAssets()
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:243:	PreloadObject(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:247:FText UK2Node_BreakStruct::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:249:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:256:		Args.Add(TEXT("StructName"), StructType->GetDisplayNameText());
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:264:FText UK2Node_BreakStruct::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:266:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:274:			LOCTEXT("BreakStruct_Tooltip", "Adds a node that breaks a '{0}' into its member fields"),
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:275:			StructType->GetDisplayNameText()
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:281:void UK2Node_BreakStruct::ValidateNodeDuringCompilation(class FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:285:	if(!StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:292:		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:322:			MessageLog.Warning(*NSLOCTEXT("K2Node", "OverridePinRemoval_BreakStruct", "Override pins have been removed from @@ in @@, please verify the Blueprint works as expected! See tooltips for enabling pin visibility for more details. This warning will go away after you resave the asset!").ToString(), this, GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:327:FSlateIcon UK2Node_BreakStruct::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:329:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.BreakStruct_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:333:FLinearColor UK2Node_BreakStruct::GetNodeTitleColor() const 
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:339:		PinType.PinSubCategoryObject = StructType;
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:345:UK2Node::ERedirectType UK2Node_BreakStruct::DoPinsMatchForReconstruction(const UEdGraphPin* NewPin, int32 NewPinIndex, const UEdGraphPin* OldPin, int32 OldPinIndex) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:356:FNodeHandlingFunctor* UK2Node_BreakStruct::CreateNodeHandler(class FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:358:	return new FKCHandler_BreakStruct(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:361:void UK2Node_BreakStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:363:	Super::SetupMenuActions(ActionRegistrar, FMakeStructSpawnerAllowedDelegate::CreateStatic(&UK2Node_BreakStruct::CanBeBroken), EGPD_Output);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:366:FText UK2Node_BreakStruct::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:371:void UK2Node_BreakStruct::PreSave(FObjectPreSaveContext SaveContext)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:381:void UK2Node_BreakStruct::PostPlacedNewNode()
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:389:void UK2Node_BreakStruct::Serialize(FArchive& Ar)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:398:		FOptionalPinManager PinManager;
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:401:		for (TFieldIterator<FProperty> It(StructType, EFieldIteratorFlags::IncludeSuper); It; ++It)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:418:void UK2Node_BreakStruct::ConvertDeprecatedNode(UEdGraph* Graph, bool bOnlySafeChanges)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:423:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:429:	if (StructType->HasMetaData(FBlueprintMetadata::MD_NativeBreakFunction))
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:436:		if (StructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:441:		else if (StructType == TBaseStructure<FVector>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:446:		else if (StructType == TBaseStructure<FVector2D>::Get())
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:453:			const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeBreakFunction);
+Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp:462:						OldPinToNewPinMap.Add(StructType->GetFName(), FieldIterator->GetFName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:3:#include "K2Node_SetFieldsInStruct.h"
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:27:#include "MakeStructHandler.h"
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:41:#define LOCTEXT_NAMESPACE "K2Node_MakeStruct"
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:43:struct SetFieldsInStructHelper
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:56:class FKCHandler_SetFieldsInStruct : public FKCHandler_MakeStruct
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:59:	FKCHandler_SetFieldsInStruct(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:60:		: FKCHandler_MakeStruct(InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:68:		check(InNode != nullptr && InNode->IsA<UK2Node_SetFieldsInStruct>());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:69:		UEdGraphPin* FoundPin = InNode->FindPinChecked(SetFieldsInStructHelper::StructRefPinName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:87:					FKCHandler_MakeStruct::RegisterNet(Context, Net);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:95:		FKCHandler_MakeStruct::RegisterNets(Context, Node);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:97:		if (UEdGraphPin* ReturnPin = Node->FindPin(SetFieldsInStructHelper::StructOutPinName()))
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:101:			UEdGraphPin* InputPin = Node->FindPinChecked(SetFieldsInStructHelper::StructRefPinName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:107:				CompilerContext.MessageLog.Error(*LOCTEXT("MakeStruct_NoTerm_Error", "Failed to generate a term for the @@ pin; was it a struct reference that was left unset?").ToString(), InputPin);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:121:			CompilerContext.MessageLog.Error(*LOCTEXT("SetFieldsInStruct_NoReturnPin_Error", "Failed to find a return pin for node @@. This is likely due to an unresolved dependency.").ToString(), Node);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:127:		FKCHandler_MakeStruct::Compile(Context, Node);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:131:			UEdGraphPin* InputPin = Node->FindPinChecked(SetFieldsInStructHelper::StructRefPinName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:138:				UEdGraphPin* ReturnPin = Node->FindPin(SetFieldsInStructHelper::StructOutPinName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:155:UK2Node_SetFieldsInStruct::UK2Node_SetFieldsInStruct(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:161:void UK2Node_SetFieldsInStruct::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:163:	if (StructType)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:171:		UEdGraphPin* InPin = CreatePin(EGPD_Input, UEdGraphSchema_K2::PC_Struct, StructType, SetFieldsInStructHelper::StructRefPinName(), PinParams);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:172:		UEdGraphPin* OutPin = CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, StructType, SetFieldsInStructHelper::StructOutPinName(), PinParams);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:177:		OutPin->PinToolTip = LOCTEXT("SetFieldsInStruct_OutPinTooltip", "Reference to the input struct").ToString();
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:179:			FStructOnScope StructOnScope(StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:180:			FSetFieldsInStructPinManager OptionalPinManager(StructOnScope.GetStructMemory(), GetBlueprint());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:181:			OptionalPinManager.RebuildPropertyList(ShowPinForProperties, StructType);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:182:			OptionalPinManager.CreateVisiblePins(ShowPinForProperties, StructType, EGPD_Input, this);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:187:FText UK2Node_SetFieldsInStruct::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:189:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:196:		Args.Add(TEXT("StructName"), StructType->GetDisplayNameText());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:198:		CachedNodeTitle.SetCachedText(FText::Format(LOCTEXT("SetFieldsInStructNodeTitle", "Set members in {StructName}"), Args), this);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:203:FText UK2Node_SetFieldsInStruct::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:205:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:207:		return LOCTEXT("SetFieldsInStruct_NullTooltip", "Adds a node that modifies an '<unknown struct>'");
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:213:			LOCTEXT("SetFieldsInStruct_Tooltip", "Adds a node that modifies a '{0}'"),
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:214:			StructType->GetDisplayNameText()
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:220:FSlateIcon UK2Node_SetFieldsInStruct::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:225:void UK2Node_SetFieldsInStruct::ValidateNodeDuringCompilation(FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:229:	UEdGraphPin* FoundPin = FindPin(SetFieldsInStructHelper::StructRefPinName());
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:258:void UK2Node_SetFieldsInStruct::BackTracePinPath(UEdGraphPin* OutputPin, TFunctionRef<void(UEdGraphPin*)> Predicate) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:282:FNodeHandlingFunctor* UK2Node_SetFieldsInStruct::CreateNodeHandler(class FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:284:	return new FKCHandler_SetFieldsInStruct(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:287:bool UK2Node_SetFieldsInStruct::ShowCustomPinActions(const UEdGraphPin* Pin, bool bIgnorePinsNum)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:291:	const auto Node = Pin ? Cast<const UK2Node_SetFieldsInStruct>(Pin->GetOwningNodeUnchecked()) : NULL;
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:295:		&& (Pin->PinName != SetFieldsInStructHelper::StructRefPinName())
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:299:void UK2Node_SetFieldsInStruct::RemoveFieldPins(UEdGraphPin* Pin, EPinsToRemove Selection)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:312:		for (FOptionalPinFromProperty& OptionalProperty : ShowPinForProperties)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:331:bool UK2Node_SetFieldsInStruct::AllPinsAreShown() const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:333:	UEdGraphPin* InputPin = FindPinChecked(SetFieldsInStructHelper::StructRefPinName(), EGPD_Input);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:341:	for (const FOptionalPinFromProperty& OptionalProperty : ShowPinForProperties)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:352:void UK2Node_SetFieldsInStruct::RestoreAllPins()
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:355:	for (FOptionalPinFromProperty& OptionalProperty : ShowPinForProperties)
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:370:void UK2Node_SetFieldsInStruct::FSetFieldsInStructPinManager::GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:372:	FMakeStructPinManager::GetRecordDefaults(TestProperty, Record);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:377:bool UK2Node_SetFieldsInStruct::IsConnectionDisallowed(const UEdGraphPin* MyPin, const UEdGraphPin* OtherPin, FString& OutReason) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:382:		OutReason = LOCTEXT("SetFieldsInStructConnectionDisallowed", "This pin must enable the override to set a value!").ToString();
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:389:bool UK2Node_SetFieldsInStruct::CanSplitPin(const UEdGraphPin* Pin) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:393:		UEdGraphPin* InputPin = FindPinChecked(SetFieldsInStructHelper::StructRefPinName(), EGPD_Input);
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:408:void UK2Node_SetFieldsInStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_SetFieldsInStruct.cpp:411:	Super::SetupMenuActions(ActionRegistrar, FMakeStructSpawnerAllowedDelegate::CreateStatic(&UK2Node_MakeStruct::CanBeMade), EGPD_Output);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:4:#include "K2Node_MakeContainer.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:33:#define LOCTEXT_NAMESPACE "MakeArrayNode"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:35:void FKCHandler_MakeContainer::RegisterNets(FKismetFunctionContext& Context, UEdGraphNode* Node)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:37: 	UK2Node_MakeContainer* ContainerNode = CastChecked<UK2Node_MakeContainer>(Node);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:49:void FKCHandler_MakeContainer::Compile(FKismetFunctionContext& Context, UEdGraphNode* Node)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:78:	UK2Node_MakeContainer* ContainerNode = CastChecked<UK2Node_MakeContainer>(Node);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:91:// UK2Node_MakeContainer
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:93:UK2Node_MakeContainer::UK2Node_MakeContainer(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:99:UEdGraphPin* UK2Node_MakeContainer::GetOutputPin() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:104:void UK2Node_MakeContainer::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:106:	Super::ReallocatePinsDuringReconstruction(OldPins);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:129:void UK2Node_MakeContainer::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:133:	PinParams.ContainerType = ContainerType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:143:void UK2Node_MakeContainer::GetKeyAndValuePins(TArray<UEdGraphPin*>& KeyPins, TArray<UEdGraphPin*>& ValuePins) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:154:bool UK2Node_MakeContainer::CanResetToWildcard() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:172:void UK2Node_MakeContainer::ClearPinTypeToWildcard()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:181:		if (ContainerType == EPinContainerType::Map)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:192:void UK2Node_MakeContainer::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:232:					OutputPin->PinType.ContainerType = ContainerType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:235:				if (ContainerType == EPinContainerType::Map && NumValuePinsWithLinks == 0 && (OutputPin->PinType.PinValueType.TerminalCategory == UEdGraphSchema_K2::PC_Wildcard && Pin->LinkedTo[0]->PinType.PinValueType.TerminalCategory != UEdGraphSchema_K2::PC_Wildcard))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:259:					OutputPin->PinType.ContainerType = ContainerType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:294:		if (bResetOutputPinSecondary && ContainerType == EPinContainerType::Map)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:311:void UK2Node_MakeContainer::PropagatePinType()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:397:void UK2Node_MakeContainer::PostReconstructNode()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:403:	const bool bMapContainer = ContainerType == EPinContainerType::Map;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:506:	OutputPin->PinType.ContainerType = ContainerType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:512:void UK2Node_MakeContainer::InteractiveAddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:518:void UK2Node_MakeContainer::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:534:FName UK2Node_MakeContainer::GetPinName(const int32 PinIndex) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:539:void UK2Node_MakeContainer::SyncPinNames()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:579:void UK2Node_MakeContainer::RemoveInputPin(UEdGraphPin* Pin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:603:	if (ContainerType == EPinContainerType::Map)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:629:void UK2Node_MakeContainer::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:653:bool UK2Node_MakeContainer::IsConnectionDisallowed(const UEdGraphPin* MyPin, const UEdGraphPin* OtherPin, FString& OutReason) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:663:		OutReason = NSLOCTEXT("K2Node", "MakeContainer_InputIsContainer", "Cannot make a container with an input of a container!").ToString();
+Source/Editor/BlueprintGraph/Private/K2Node_MakeContainer.cpp:669:		OutReason = NSLOCTEXT("K2Node", "MakeContainer_InputIsExec", "Cannot make a container with an execution input!").ToString();
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:4:#include "K2Node_MakeMap.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:32:namespace MakeMapLiterals
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:37:#define LOCTEXT_NAMESPACE "MakeMapNode"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:40:// FKCHandler_MakeMap
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:41:class FKCHandler_MakeMap : public FKCHandler_MakeContainer
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:44:	FKCHandler_MakeMap(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:45:		: FKCHandler_MakeContainer(InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:52:// UK2Node_MakeMap
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:54:UK2Node_MakeMap::UK2Node_MakeMap(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:57:	ContainerType = EPinContainerType::Map;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:60:FNodeHandlingFunctor* UK2Node_MakeMap::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:62:	return new FKCHandler_MakeMap(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:65:void UK2Node_MakeMap::AllocateDefaultPins()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:69:	PinParams.ContainerType = ContainerType;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:82:void UK2Node_MakeMap::GetKeyAndValuePins(TArray<UEdGraphPin*>& KeyPins, TArray<UEdGraphPin*>& ValuePins) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:102:void UK2Node_MakeMap::AddInputPin()
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:124:FText UK2Node_MakeMap::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:129:FName UK2Node_MakeMap::GetPinName(const int32 PinIndex) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:142:FName UK2Node_MakeMap::GetOutputPinName() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:144:	return MakeMapLiterals::OutputPinName;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:147:FText UK2Node_MakeMap::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:149:	return LOCTEXT("MakeMapTooltip", "Create a map from a series of key/value items.");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:152:FSlateIcon UK2Node_MakeMap::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:154:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.MakeMap_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:158:void UK2Node_MakeMap::GetNodeContextMenuActions(UToolMenu* Menu, UGraphNodeContextMenuContext* Context) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:164:		FToolMenuSection& Section = Menu->AddSection("K2NodeMakeMap", NSLOCTEXT("K2Nodes", "MakeMapHeader", "MakeMap"));
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:176:						FExecuteAction::CreateUObject(const_cast<UK2Node_MakeMap*>(this), &UK2Node_MakeMap::RemoveInputPin, const_cast<UEdGraphPin*>(Context->Pin))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:189:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeMap*>(this), &UK2Node_MakeMap::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:200:				FExecuteAction::CreateUObject(const_cast<UK2Node_MakeMap*>(this), &UK2Node_MakeMap::ClearPinTypeToWildcard),
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:201:				FCanExecuteAction::CreateUObject(this, &UK2Node_MakeMap::CanResetToWildcard)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:207:void UK2Node_MakeMap::ValidateNodeDuringCompilation(class FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:215:		MessageLog.Error(*NSLOCTEXT("K2Node", "MakeMap_OutputIsExec", "Unacceptable map type in @@").ToString(), this);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeMap.cpp:219:FText UK2Node_MakeMap::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:4:#include "K2Node_MakeSet.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:27:namespace MakeSetLiterals
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:32:#define LOCTEXT_NAMESPACE "MakeSetNode"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:35:// FKCHandler_MakeSet
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:36:class FKCHandler_MakeSet : public FKCHandler_MakeContainer
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:39:	FKCHandler_MakeSet(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:40:		: FKCHandler_MakeContainer(InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:47:// UK2Node_MakeSet
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:49:UK2Node_MakeSet::UK2Node_MakeSet(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:52:	ContainerType = EPinContainerType::Set;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:55:FNodeHandlingFunctor* UK2Node_MakeSet::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:57:	return new FKCHandler_MakeSet(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:60:FText UK2Node_MakeSet::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:65:FName UK2Node_MakeSet::GetOutputPinName() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:67:	return MakeSetLiterals::OutputPinName;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:70:FText UK2Node_MakeSet::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:72:	return LOCTEXT("MakeSetTooltip", "Create a set from a series of items.");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:75:FSlateIcon UK2Node_MakeSet::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:77:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.MakeSet_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:81:void UK2Node_MakeSet::GetNodeContextMenuActions(UToolMenu* Menu, UGraphNodeContextMenuContext* Context) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:87:		FToolMenuSection& Section = Menu->AddSection("K2NodeMakeSet", NSLOCTEXT("K2Nodes", "MakeSetHeader", "MakeSet"));
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:99:						FExecuteAction::CreateUObject(const_cast<UK2Node_MakeSet*>(this), &UK2Node_MakeSet::RemoveInputPin, const_cast<UEdGraphPin*>(Context->Pin))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:112:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeSet*>(this), &UK2Node_MakeSet::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:123:				FExecuteAction::CreateUObject(const_cast<UK2Node_MakeSet*>(this), &UK2Node_MakeSet::ClearPinTypeToWildcard),
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:124:				FCanExecuteAction::CreateUObject(this, &UK2Node_MakeSet::CanResetToWildcard)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:130:void UK2Node_MakeSet::ValidateNodeDuringCompilation(class FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:138:		MessageLog.Error(*NSLOCTEXT("K2Node", "MakeSet_OutputIsExec", "Unacceptable set type in @@").ToString(), this);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeSet.cpp:142:FText UK2Node_MakeSet::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:4:#include "K2Node_MakeArray.h"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:27:namespace MakeArrayLiterals
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:32:#define LOCTEXT_NAMESPACE "MakeArrayNode"
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:35:// FKCHandler_MakeArray
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:36:class FKCHandler_MakeArray : public FKCHandler_MakeContainer
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:39:	FKCHandler_MakeArray(FKismetCompilerContext& InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:40:		: FKCHandler_MakeContainer(InCompilerContext)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:47:// UK2Node_MakeArray
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:49:UK2Node_MakeArray::UK2Node_MakeArray(const FObjectInitializer& ObjectInitializer)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:52:	ContainerType = EPinContainerType::Array;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:55:FNodeHandlingFunctor* UK2Node_MakeArray::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:57:	return new FKCHandler_MakeArray(CompilerContext);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:60:FText UK2Node_MakeArray::GetNodeTitle(ENodeTitleType::Type TitleType) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:65:FName UK2Node_MakeArray::GetOutputPinName() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:67:	return MakeArrayLiterals::OutputPinName;
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:70:FText UK2Node_MakeArray::GetTooltipText() const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:72:	return LOCTEXT("MakeArrayTooltip", "Create an array from a series of items.");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:75:FSlateIcon UK2Node_MakeArray::GetIconAndTint(FLinearColor& OutColor) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:77:	static FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "GraphEditor.MakeArray_16x");
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:81:void UK2Node_MakeArray::GetNodeContextMenuActions(UToolMenu* Menu, UGraphNodeContextMenuContext* Context) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:87:		FToolMenuSection& Section = Menu->AddSection("K2NodeMakeArray", NSLOCTEXT("K2Nodes", "MakeArrayHeader", "MakeArray"));
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:99:						FExecuteAction::CreateUObject(const_cast<UK2Node_MakeArray*>(this), &UK2Node_MakeArray::RemoveInputPin, const_cast<UEdGraphPin*>(Context->Pin))
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:112:					FExecuteAction::CreateUObject(const_cast<UK2Node_MakeArray*>(this), &UK2Node_MakeArray::InteractiveAddInputPin)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:123:				FExecuteAction::CreateUObject(const_cast<UK2Node_MakeArray*>(this), &UK2Node_MakeArray::ClearPinTypeToWildcard),
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:124:				FCanExecuteAction::CreateUObject(this, &UK2Node_MakeArray::CanResetToWildcard)
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:130:void UK2Node_MakeArray::ValidateNodeDuringCompilation(class FCompilerResultsLog& MessageLog) const
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:138:		MessageLog.Error(*NSLOCTEXT("K2Node", "MakeArray_OutputIsExec", "Unacceptable array type in @@").ToString(), this);
+Source/Editor/BlueprintGraph/Private/K2Node_MakeArray.cpp:142:FText UK2Node_MakeArray::GetMenuCategory() const
+Source/Editor/BlueprintGraph/Classes/K2Node_StructOperation.h:35:	TObjectPtr<UScriptStruct> StructType;
+Source/Editor/BlueprintGraph/Classes/K2Node_StructOperation.h:52:	struct FStructOperationOptionalPinManager : public FOptionalPinManager
+Source/Editor/BlueprintGraph/Classes/K2Node_StructOperation.h:79:	DECLARE_DELEGATE_RetVal_TwoParams(bool, FMakeStructSpawnerAllowedDelegate, const UScriptStruct*, bool);
+Source/Editor/BlueprintGraph/Classes/K2Node_StructOperation.h:80:	void SetupMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar, const FMakeStructSpawnerAllowedDelegate& AllowedDelegate, EEdGraphPinDirection PinDirectionToPromote) const;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:43:#include "K2Node_BreakStruct.h"
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:59:#include "K2Node_MakeArray.h"
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:60:#include "K2Node_MakeStruct.h"
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:67:#include "K2Node_SetFieldsInStruct.h"
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1340:	const bool bBreakOrMakeStruct = 
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1341:		InGraphNode->IsA(UK2Node_BreakStruct::StaticClass()) || 
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1342:		InGraphNode->IsA(UK2Node_MakeStruct::StaticClass());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1343:	if (!bBreakOrMakeStruct)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1370:bool UEdGraphSchema_K2::PinHasSplittableStructType(const UEdGraphPin* InGraphPin) const
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1377:		UScriptStruct* StructType = Cast<UScriptStruct>(InGraphPin->PinType.PinSubCategoryObject.Get());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1380:		const bool bDisableSplit = StructType ? StructType->HasMetaData(FBlueprintMetadata::MD_NativeDisableSplitPin) : false;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1382:		if (StructType && !bDisableSplit)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1387:				bCanSplit = UK2Node_MakeStruct::CanBeSplit(StructType, Blueprint);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1390:					const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeMakeFunction);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1397:				bCanSplit = UK2Node_BreakStruct::CanBeSplit(StructType);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1400:					const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeBreakFunction);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1542:					if (PinHasSplittableStructType(InGraphPin))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1573:				if (UK2Node_SetFieldsInStruct::ShowCustomPinActions(InGraphPin, true))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1695:					if (InGraphNode->IsA(UK2Node_SetFieldsInStruct::StaticClass()))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:1715:					Section.AddMenuEntry( FGraphEditorCommands::Get().ExpandNodes );
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2323:		FString TypeString = FString::Printf(TEXT("%s;%s;%s;%d"), *PinType.PinCategory.ToString(), *PinSubCategory, Obj ? *Obj->GetPathName() : TEXT(""), (int32)PinType.ContainerType);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2325:		if (PinType.ContainerType == EPinContainerType::Map)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2590:	if (OutputPinType.ContainerType != InputPinType.ContainerType)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2644:			const UScriptStruct* OutputStructType = Cast<const UScriptStruct>(OutputPinType.PinSubCategoryObject.Get());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2645:			if (OutputStructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2647:				const UScriptStruct* InputStructType = Cast<const UScriptStruct>(InputPinType.PinSubCategoryObject.Get());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2648:				if ((InputPinType.PinCategory == PC_Struct) && (InputStructType == TBaseStructure<FTransform>::Get()))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:2738:			Result->TargetNode = NewObject<UK2Node_MakeArray>();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:3013:					FText MsgFormat = LOCTEXT("BadArrayDefaultVal", "Array inputs (like '{PinName}') must have an input wired into them (try connecting a MakeArray node).");
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:3018:					FText MsgFormat = LOCTEXT("BadSetDefaultVal", "Set inputs (like '{PinName}') must have an input wired into them (try connecting a MakeSet node).");
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:3023:					FText MsgFormat = LOCTEXT("BadMapDefaultVal", "Map inputs (like '{PinName}') must have an input wired into them (try connecting a MakeMap node).");
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:3660:	TypeOut.ContainerType = FEdGraphPinType::ToPinContainerType(ArrayProperty != nullptr, SetProperty != nullptr, MapProperty != nullptr);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4035:		TSharedPtr<FPinTypeTreeInfo> Structs = MakeShared<FPinTypeTreeInfo>(GetCategoryText(PC_Struct, true), PC_Struct, this, LOCTEXT("StructType", "Struct (value) types"), true);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4406:		const UScriptStruct* StructType = Cast<const UScriptStruct>(PinSubCategoryObject);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4407:		if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4414:			if ((StructType == VectorStruct) || (StructType == Vector3fStruct))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4421:			else if (StructType == RotatorStruct)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4428:			else if (StructType == TransformStruct)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4436:			else if (StructType == LinearColorStruct)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4481:		(Output.ContainerType != Input.ContainerType) && 
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:4689:		PinA.ContainerType == PinB.ContainerType &&
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:5437:	if (PinType.ContainerType == EPinContainerType::Array)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:5442:	else if (PinType.ContainerType == EPinContainerType::Set)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:5447:	else if (PinType.ContainerType == EPinContainerType::Map)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:5591:bool UEdGraphSchema_K2::CanSplitStructPin( const UEdGraphPin& Pin ) const
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:5593:	return Pin.GetOwningNode()->CanSplitPin(&Pin) && PinHasSplittableStructType(&Pin);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6222:			NewNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6274:				CastNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:6569:	CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7201:UK2Node* UEdGraphSchema_K2::CreateSplitPinNode(UEdGraphPin* Pin, const FCreateSplitPinNodeParams& Params) const
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7207:	UScriptStruct* StructType = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7208:	if (!StructType)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7214:		StructType = GetFallbackStruct();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7221:		if (UK2Node_MakeStruct::CanBeMade(StructType))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7223:			UK2Node_MakeStruct* MakeStructNode;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7227:				MakeStructNode = (Params.bTransient ? NewObject<UK2Node_MakeStruct>(Graph) : Params.CompilerContext->SpawnIntermediateNode<UK2Node_MakeStruct>(GraphNode, Params.SourceGraph));
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7228:				MakeStructNode->StructType = StructType;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7229:				MakeStructNode->bMadeAfterOverridePinRemoval = true;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7230:				MakeStructNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7234:				FGraphNodeCreator<UK2Node_MakeStruct> MakeStructCreator(*Graph);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7235:				MakeStructNode = MakeStructCreator.CreateNode(false);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7236:				MakeStructNode->StructType = StructType;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7237:				MakeStructNode->bMadeAfterOverridePinRemoval = true;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7238:				MakeStructCreator.Finalize();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7243:				FStructOnScope StructOnScope(StructType);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7244:				StructType->ImportText(*Pin->DefaultValue, StructOnScope.GetStructMemory(), nullptr, PPF_None, GLog, StructType->GetName());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7246:				for (TFieldIterator<FProperty> PropIt(StructType); PropIt; ++PropIt)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7248:					if (UEdGraphPin* MakeStructPin = MakeStructNode->FindPin(PropIt->GetFName(), EGPD_Input))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7250:						MakeStructPin->DefaultValue.Reset();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7251:						FBlueprintEditorUtils::PropertyValueToString(*PropIt, StructOnScope.GetStructMemory(), MakeStructPin->DefaultValue);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7252:						MakeStructPin->AutogeneratedDefaultValue = MakeStructPin->DefaultValue;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7257:			SplitPinNode = MakeStructNode;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7261:			const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeMakeFunction);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7270:				CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7274:				FGraphNodeCreator<UK2Node_CallFunction> MakeStructCreator(*Graph);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7275:				CallFunctionNode = MakeStructCreator.CreateNode(false);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7277:				MakeStructCreator.Finalize();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7285:		if (UK2Node_BreakStruct::CanBeBroken(StructType))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7287:			UK2Node_BreakStruct* BreakStructNode;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7291:				BreakStructNode = (Params.bTransient ? NewObject<UK2Node_BreakStruct>(Graph) : Params.CompilerContext->SpawnIntermediateNode<UK2Node_BreakStruct>(GraphNode, Params.SourceGraph));
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7292:				BreakStructNode->StructType = StructType;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7293:				BreakStructNode->bMadeAfterOverridePinRemoval = true;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7294:				BreakStructNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7298:				FGraphNodeCreator<UK2Node_BreakStruct> MakeStructCreator(*Graph);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7299:				BreakStructNode = MakeStructCreator.CreateNode(false);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7300:				BreakStructNode->StructType = StructType;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7301:				BreakStructNode->bMadeAfterOverridePinRemoval = true;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7302:				MakeStructCreator.Finalize();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7305:			SplitPinNode = BreakStructNode;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7309:			const FString& MetaData = StructType->GetMetaData(FBlueprintMetadata::MD_NativeBreakFunction);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7318:				CallFunctionNode->AllocateDefaultPins();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7322:				FGraphNodeCreator<UK2Node_CallFunction> MakeStructCreator(*Graph);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7323:				CallFunctionNode = MakeStructCreator.CreateNode(false);
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7325:				MakeStructCreator.Finalize();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7341:	UScriptStruct* StructType = Cast<UScriptStruct>(Pin->PinType.PinSubCategoryObject.Get());
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7342:	if (StructType == nullptr)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7356:	UK2Node* ProtoExpandNode = CreateSplitPinNode(Pin, FCreateSplitPinNodeParams(/*bTransient*/true));
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7358:	for (UEdGraphPin* ProtoPin : ProtoExpandNode->Pins)
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7365:			PinParams.ContainerType = ProtoPinType.ContainerType;
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7400:	ProtoExpandNode->DestroyNode();
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7405:		if (   StructType == TBaseStructure<FVector>::Get()
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7406:			|| StructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7421:			if (StructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7427:		else if (StructType == TBaseStructure<FVector2D>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7435:		else if (StructType == TBaseStructure<FLinearColor>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7505:		if (UScriptStruct* StructType = Cast<UScriptStruct>(ParentPin->PinType.PinSubCategoryObject.Get()))
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7507:			if (StructType == TBaseStructure<FVector>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7513:			else if (StructType == TBaseStructure<FRotator>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7521:			else if (StructType == TBaseStructure<FVector2D>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7529:			else if (StructType == TBaseStructure<FLinearColor>::Get())
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7966:		/** Get a string reference for an EPinContainerType */
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7967:		auto GetContainerTypeString = [](const EPinContainerType Type) -> const FString&
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7976:				case EPinContainerType::Array:
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7978:				case EPinContainerType::Map:
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7980:				case EPinContainerType::Set:
+Source/Editor/BlueprintGraph/Private/EdGraphSchema_K2.cpp:7996:				if (!bAddedContainerPreferenceBonus && FromPin->PinType.IsContainer() && InActionCategory == GetContainerTypeString(FromPin->PinType.ContainerType))
