@@ -19,7 +19,10 @@
         "property_path": "__PROPERTY_PATH__",
         "value": "__VALUE__"
       }
-    ]
+    ],
+    "reparent": {
+      "new_parent_class": "__NEW_PARENT_CLASS__"
+    }
   },
   "execution_policy": {
     "dry_run_mode": "full",
