@@ -52,6 +52,7 @@ struct FParsedPinType
 	FString SubCategory;
 	FString SubCategoryObjectPath;
 	FString ContainerType;
+	TSharedPtr<FParsedPinType> ValueType;
 	bool bIsReference = false;
 	bool bIsConst = false;
 
@@ -66,17 +67,20 @@ struct FParsedPinType
 			&& SubCategory == Other.SubCategory
 			&& SubCategoryObjectPath == Other.SubCategoryObjectPath
 			&& ContainerType == Other.ContainerType
+			&& ((!ValueType.IsValid() && !Other.ValueType.IsValid()) ||
+				(ValueType.IsValid() && Other.ValueType.IsValid() && ValueType->Equals(*Other.ValueType)))
 			&& bIsReference == Other.bIsReference
 			&& bIsConst == Other.bIsConst;
 	}
 
 	FString ToDebugString() const
 	{
-		return FString::Printf(TEXT("Category=%s, SubCategory=%s, Object=%s, Container=%s, Ref=%s, Const=%s"),
+		return FString::Printf(TEXT("Category=%s, SubCategory=%s, Object=%s, Container=%s, ValueType={%s}, Ref=%s, Const=%s"),
 			*Category,
 			*SubCategory,
 			*SubCategoryObjectPath,
 			*ContainerType,
+			ValueType.IsValid() ? *ValueType->ToDebugString() : TEXT(""),
 			bIsReference ? TEXT("true") : TEXT("false"),
 			bIsConst ? TEXT("true") : TEXT("false"));
 	}

@@ -30,7 +30,7 @@ static void ApplyNamedPinTypePart(
 	{
 		PinType.ContainerType = CleanValue;
 	}
-	else if (CleanKey == TEXT("ref") || CleanKey == TEXT("reference"))
+	else if (CleanKey == TEXT("reference"))
 	{
 		PinType.bIsReference = CleanValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
 	}

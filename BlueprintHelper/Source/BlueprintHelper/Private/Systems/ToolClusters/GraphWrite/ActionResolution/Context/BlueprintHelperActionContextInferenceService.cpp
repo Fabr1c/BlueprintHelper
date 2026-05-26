@@ -265,7 +265,6 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	Context.Semantic.SemanticFamily = Demand.SemanticFamily;
 	Context.Semantic.TypeOperation = Demand.TypeOperation;
 	Context.Semantic.Query = Demand.Query;
-	Context.Semantic.StableId = Demand.StatementId;
 	Context.Semantic.TargetPath = Demand.TargetPath;
 	Context.Semantic.PropertyPath = Demand.PropertyPath;
 	Context.Semantic.FieldOperation = Demand.FieldOperation;

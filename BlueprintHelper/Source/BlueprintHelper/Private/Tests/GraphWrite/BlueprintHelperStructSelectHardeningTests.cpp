@@ -158,7 +158,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGenericOpsStructSelectBuilderBoundaryTest::RunTest(const FString& Parameters)
 {
-	TestTrue(TEXT("make_struct supported"), FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(TEXT("make_struct")));
+	TestFalse(TEXT("make_struct is owned by generic struct/type-structure action, not the struct field builder"), FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(TEXT("make_struct")));
 	TestTrue(TEXT("break_struct supported"), FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(TEXT("break_struct")));
 	TestTrue(TEXT("set_fields_in_struct supported"), FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(TEXT("set_fields_in_struct")));
 	TestFalse(TEXT("split_pin is not a struct field builder operation"), FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(TEXT("split_pin")));

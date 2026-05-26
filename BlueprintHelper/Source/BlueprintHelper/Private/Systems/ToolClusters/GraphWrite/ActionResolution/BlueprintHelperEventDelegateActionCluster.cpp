@@ -20,11 +20,12 @@ static FBlueprintHelperActionResolutionResult MakeMissingEvidenceResult(
 	const FString& MissingDetail,
 	const FString& Message)
 {
+	const FString MissingRequiredEvidenceBoundary = TEXT("missing_required_evidence");
 	FBlueprintHelperActionResolutionResult Result;
 	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
 	Result.ErrorCode = MissingDetail;
-	Result.Message = FString::Printf(TEXT("%s: %s"), *MissingDetail, *Message);
+	Result.Message = FString::Printf(TEXT("%s: %s: %s"), *MissingRequiredEvidenceBoundary, *MissingDetail, *Message);
 	return Result;
 }
 

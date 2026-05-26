@@ -369,6 +369,30 @@ bool FBlueprintHelperActionContextCallDemandPrefersTargetTest::RunTest(const FSt
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextCallStatementIdIsNotCallableStableIdTest,
+	"BlueprintHelper.GraphWrite.ActionContext.CallStatementIdIsNotCallableStableId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextCallStatementIdIsNotCallableStableIdTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperActionContextDemand Demand;
+	Demand.StatementId = TEXT("stmt_call");
+	Demand.SemanticKind = EBlueprintHelperActionSemanticKind::Call;
+	Demand.Query = TEXT("PrintString");
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, Demand);
+
+	TestEqual(TEXT("statement id remains context identity"), Context.StatementId, FString(TEXT("stmt_call")));
+	TestEqual(TEXT("call query is preserved"), Context.Semantic.Query, FString(TEXT("PrintString")));
+	TestTrue(TEXT("statement id must not become callable stable id"), Context.Semantic.StableId.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextCallExpressionDemandPrefersTargetTest,
 	"BlueprintHelper.GraphWrite.ActionContext.CallExpressionDemandPrefersTarget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

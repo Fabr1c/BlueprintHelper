@@ -134,6 +134,28 @@ test('GraphWrite linker and default applier use GraphWriteContext pin lookup', (
   assert.doesNotMatch(defaultApplier, /FBlueprintGraphNodeUtility::FindPinByAlias/u);
 });
 
+test('GraphWrite explicit asset path resolution does not open BlueprintEditor UI', () => {
+  const graphResolver = fs.readFileSync(
+    path.resolve(
+      UE_SOURCE_ROOT,
+      'Private',
+      'Systems',
+      'ToolClusters',
+      'GraphWrite',
+      'GraphSupport',
+      'BlueprintHelperGraphResolver.cpp',
+    ),
+    'utf8',
+  );
+  const loadBlueprintByPath = graphResolver.match(
+    /UBlueprint\*\s+FBlueprintHelperGraphResolver::LoadBlueprintByPath[\s\S]*?\n[}]/u,
+  )?.[0] ?? '';
+
+  assert.ok(loadBlueprintByPath.length > 0, 'LoadBlueprintByPath should be discoverable');
+  assert.doesNotMatch(loadBlueprintByPath, /EnsureBlueprintEditorOpen/u);
+  assert.doesNotMatch(loadBlueprintByPath, /OpenEditorForAsset/u);
+});
+
 test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),

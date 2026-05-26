@@ -14,8 +14,7 @@ static FString NormalizeOperation(const FString& Operation)
 bool FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(const FString& Operation)
 {
 	const FString Normalized = NormalizeOperation(Operation);
-	return Normalized == TEXT("make_struct")
-		|| Normalized == TEXT("break_struct")
+	return Normalized == TEXT("break_struct")
 		|| Normalized == TEXT("set_fields_in_struct");
 }
 
@@ -29,7 +28,7 @@ TArray<FString> FBlueprintHelperStructFieldFragmentBuilder::RequiredEvidenceKeys
 			TEXT("generic.struct.selected_field_paths")
 		};
 	}
-	if (Normalized == TEXT("make_struct") || Normalized == TEXT("break_struct"))
+	if (Normalized == TEXT("break_struct"))
 	{
 		return { TEXT("generic.struct.struct_path") };
 	}
