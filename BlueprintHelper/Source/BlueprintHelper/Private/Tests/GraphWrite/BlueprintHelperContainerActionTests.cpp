@@ -720,7 +720,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperGraphWriteContainerActionVocabularyTest::RunTest(const FString& Parameters)
 {
 	const TArray<FBlueprintHelperContainerActionSpec> AllSpecs = FBlueprintHelperContainerActionVocabulary::All();
-	TestEqual(TEXT("V1 operation count"), AllSpecs.Num(), 26);
+	TestEqual(TEXT("V1 operation count"), AllSpecs.Num(), 58);
 	for (const FBlueprintHelperContainerActionSpec& Spec : AllSpecs)
 	{
 		TestNotNull(
@@ -736,7 +736,8 @@ bool FBlueprintHelperGraphWriteContainerActionVocabularyTest::RunTest(const FStr
 		TestEqual(TEXT("array add operation id"), ArrayAdd->OperationId, FString(TEXT("container.array.add")));
 		TestTrue(TEXT("array add mutates"), ArrayAdd->bMutatesTarget);
 		TestTrue(TEXT("array add requires item"), ArrayAdd->RequiredRoles.Contains(TEXT("item")));
-		TestFalse(TEXT("array add does not return value"), ArrayAdd->bReturnsValue);
+		TestTrue(TEXT("array add returns insertion index"), ArrayAdd->bReturnsValue);
+		TestEqual(TEXT("array add result kind"), ArrayAdd->ResultKind, EBlueprintHelperContainerActionResultKind::ReturnValue);
 		TestFalse(TEXT("array add function query"), ArrayAdd->FunctionQuery.IsEmpty());
 	}
 

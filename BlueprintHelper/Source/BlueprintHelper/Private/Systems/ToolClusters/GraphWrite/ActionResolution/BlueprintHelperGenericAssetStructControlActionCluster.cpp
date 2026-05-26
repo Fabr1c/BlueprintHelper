@@ -25,21 +25,6 @@ static FBlueprintHelperActionResolutionResult MakeNeedsMoreSemanticContextResult
 	return Result;
 }
 
-static FBlueprintHelperActionResolutionResult MakeDedicatedFragmentBuilderRequiredResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FBlueprintHelperGenericActionProviderBoundary& Boundary)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("dedicated_fragment_builder_required");
-	Result.Message = FString::Printf(
-		TEXT("%s Required builder: %s."),
-		*Boundary.Reason,
-		Boundary.RequiredBuilder.IsEmpty() ? TEXT("unknown") : *Boundary.RequiredBuilder);
-	return Result;
-}
-
 static FBlueprintHelperActionResolutionResult MakeUnsupportedProviderBoundaryResult(
 	const FBlueprintHelperActionResolutionRequest& Request,
 	const FBlueprintHelperGenericActionProviderBoundary& Boundary)
@@ -97,7 +82,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	case EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate:
 		return FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(Request, Context);
 	case EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired:
-		return MakeDedicatedFragmentBuilderRequiredResult(Request, Boundary);
+		return FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(Request, Context);
 	case EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext:
 		return MakeNeedsMoreSemanticContextResult(Request, Boundary);
 	case EBlueprintHelperGenericActionProviderMode::Unsupported:

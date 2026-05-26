@@ -105,9 +105,74 @@ describe('GraphWrite capability contract', () => {
     assert.ok(opGroup);
     for (const operation of opGroup.operations.filter((item) => item.supportStatus === 'supported')) {
       assert.equal(operation.runtimeCluster, 'FunctionAction');
+      assert.equal(operation.runtimeOwner, 'FunctionAction');
       assert.equal(operation.semanticKind, 'op');
       assert.equal(operation.semanticFamily, 'operator');
       assert.ok(operation.secondStageOperation?.startsWith('op.'));
+    }
+  });
+
+  it('does not publish GenericOps as new runtime clusters', () => {
+    const runtimeClusterIds: readonly string[] = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.map((cluster) => cluster.id);
+    for (const forbidden of ['control', 'generic_transform', 'generic_create', 'struct_select', 'generic_op']) {
+      assert.equal(runtimeClusterIds.includes(forbidden), false, forbidden);
+    }
+  });
+
+  it('publishes GenericOps logical groups with ownership-scoped operations', () => {
+    const operationById = new Map(
+      GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups
+        .flatMap((group) => group.operations)
+        .map((operation) => [operation.id, operation]),
+    );
+
+    function assertOperationOwner(id: string, runtimeOwner: 'FunctionAction' | 'GenericAssetStructControlAction') {
+      const operation = operationById.get(id);
+      assert.ok(operation, `missing operation: ${id}`);
+      assert.equal(operation.supportStatus, 'supported');
+      assert.equal(operation.runtimeOwner, runtimeOwner, id);
+      assert.equal(operation.runtimeCluster, runtimeOwner, id);
+      assert.ok(operation.semanticKind, `${id} missing semanticKind`);
+      assert.ok(operation.semanticFamily, `${id} missing semanticFamily`);
+      assert.ok(operation.secondStageOperation, `${id} missing secondStageOperation`);
+      assert.ok(operation.requiredEvidenceKeys, `${id} missing evidence keys`);
+    }
+
+    assertOperationOwner('generic_ops.control.switch_enum', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.control.for_loop', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.container.array.add', 'FunctionAction');
+    assertOperationOwner('generic_ops.transform.function_conversion', 'FunctionAction');
+    assertOperationOwner('generic_ops.create.asset_action', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.create.function_backed_create', 'FunctionAction');
+    assertOperationOwner('generic_ops.schedule.timer_by_handle', 'FunctionAction');
+    assertOperationOwner('generic_ops.schedule.timer_delegate_node', 'GenericAssetStructControlAction');
+    assertOperationOwner('generic_ops.struct_select.set_fields_in_struct', 'GenericAssetStructControlAction');
+
+    assert.equal(
+      operationById.get('generic_ops.struct_select.split_pin')?.rejectionReason,
+      'split_pin_is_not_a_graphwrite_statement_operation',
+    );
+    assert.equal(
+      operationById.get('generic_ops.struct_select.split_pin')?.excludedReason,
+      'split_pin_is_not_a_graphwrite_statement_operation',
+    );
+    assert.equal(
+      operationById.get('generic_ops.transform.link_time_auto_conversion')?.rejectionReason,
+      'link_time_auto_conversion_requires_linker_readback',
+    );
+  });
+
+  it('keeps OpCoverage disjoint from GenericOps logical groups', () => {
+    const genericOps = new Set(
+      GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups
+        .filter((group) => group.id.startsWith('generic_ops.'))
+        .flatMap((group) => group.operations.map((operation) => operation.id)),
+    );
+    const opCoverage = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find((group) => group.id === 'op_coverage');
+    assert.ok(opCoverage);
+    for (const operation of opCoverage.operations) {
+      assert.equal(genericOps.has(operation.id), false, operation.id);
+      assert.equal(operation.id.startsWith('generic_ops.'), false, operation.id);
     }
   });
 

@@ -287,6 +287,17 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSingletonControlFlowEvide
 	Candidate.bFromActionDatabase = false;
 	Candidate.bBlueprintCallable = true;
 	Candidate.bBlueprintPure = Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Select;
+	const FString KindName = SingletonKindToStableName(Evidence.SingletonKind);
+	Candidate.ReadbackFacts.Add(
+		TEXT("generic.family"),
+		Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Select ? TEXT("struct_select") : TEXT("control"));
+	Candidate.ReadbackFacts.Add(
+		TEXT("generic.operation_id"),
+		Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Select
+			? TEXT("generic_ops.struct_select.select")
+			: FString::Printf(TEXT("generic_ops.control.%s"), *KindName));
+	Candidate.ReadbackFacts.Add(TEXT("generic.operation"), KindName);
+	Candidate.ReadbackFacts.Add(TEXT("generic.wildcard_residual"), TEXT("false"));
 	Result.CandidateActions.Add(Candidate);
 
 	if (!NodeClass || Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Unknown || Evidence.StableId.IsEmpty())

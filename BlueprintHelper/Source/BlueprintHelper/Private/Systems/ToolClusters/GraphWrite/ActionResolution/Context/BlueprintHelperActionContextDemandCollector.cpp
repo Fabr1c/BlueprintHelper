@@ -437,13 +437,42 @@ static void AddOpEvidenceIfPresent(
 	}
 }
 
+static bool IsFocusedContextEvidenceKey(const FString& Key)
+{
+	return Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase)
+		|| Key.StartsWith(TEXT("generic."), ESearchCase::IgnoreCase)
+		|| Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase);
+}
+
+static void AddFocusedContextEvidenceIfPresent(
+	FBlueprintHelperActionContextDemand& Demand,
+	const FString& Key,
+	const FString& Value)
+{
+	const FString CleanValue = Value.TrimStartAndEnd();
+	if (IsFocusedContextEvidenceKey(Key) && !CleanValue.IsEmpty())
+	{
+		Demand.DefaultValues.FindOrAdd(Key) = CleanValue;
+	}
+}
+
+static void CopyFocusedContextEvidence(
+	const TMap<FString, FString>& Evidence,
+	FBlueprintHelperActionContextDemand& Demand)
+{
+	for (const TPair<FString, FString>& EvidencePair : Evidence)
+	{
+		AddFocusedContextEvidenceIfPresent(Demand, EvidencePair.Key, EvidencePair.Value);
+	}
+}
+
 static void CopyOpContextEvidence(
 	const TMap<FString, FString>& Evidence,
 	FBlueprintHelperActionContextDemand& Demand)
 {
 	for (const TPair<FString, FString>& EvidencePair : Evidence)
 	{
-		AddOpEvidenceIfPresent(Demand, EvidencePair.Key, EvidencePair.Value);
+		AddFocusedContextEvidenceIfPresent(Demand, EvidencePair.Key, EvidencePair.Value);
 	}
 }
 
@@ -619,11 +648,13 @@ static void ApplyConvertScheduleEvidence(
 	{
 		InOutDemand.TransformOperation = TransformOperation;
 		InOutDemand.DefaultValues.Add(TEXT("transform_operation"), TransformOperation);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("generic.transform.operation")) = TransformOperation;
 	}
 	if (!ScheduleOperation.IsEmpty())
 	{
 		InOutDemand.ScheduleOperation = ScheduleOperation;
 		InOutDemand.DefaultValues.Add(TEXT("schedule_operation"), ScheduleOperation);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("generic.schedule.operation")) = ScheduleOperation;
 	}
 
 	const FString ClassPath = FirstNonEmpty(ExplicitClassPath, ExplicitTarget).TrimStartAndEnd();
@@ -635,6 +666,14 @@ static void ApplyConvertScheduleEvidence(
 			InOutDemand.TargetPath = ClassPath;
 		}
 		InOutDemand.DefaultValues.Add(TEXT("target_class_path"), ClassPath);
+		if (InOutDemand.SemanticKind == EBlueprintHelperActionSemanticKind::Convert)
+		{
+			InOutDemand.DefaultValues.FindOrAdd(TEXT("generic.transform.target_pin_type")) = ClassPath;
+		}
+		else if (InOutDemand.SemanticKind == EBlueprintHelperActionSemanticKind::Schedule)
+		{
+			InOutDemand.DefaultValues.FindOrAdd(TEXT("generic.schedule.target_class_path")) = ClassPath;
+		}
 	}
 
 	const FString GraphLatentAllowed = ExplicitGraphLatentAllowed.TrimStartAndEnd().ToLower();
@@ -642,6 +681,7 @@ static void ApplyConvertScheduleEvidence(
 	{
 		InOutDemand.GraphLatentAllowed = GraphLatentAllowed;
 		InOutDemand.DefaultValues.Add(TEXT("graph_latent_allowed"), GraphLatentAllowed);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("generic.schedule.graph_latent_allowed")) = GraphLatentAllowed;
 	}
 
 	if (InOutDemand.SemanticKind == EBlueprintHelperActionSemanticKind::Convert
@@ -669,6 +709,9 @@ static void ApplyCreateStatementEvidence(
 	InOutDemand.ClassPath = FirstNonEmpty(Statement.ClassPath, Statement.Target, Statement.Name);
 	InOutDemand.AssetPath = Statement.AssetPath.TrimStartAndEnd();
 	InOutDemand.Query = InOutDemand.CreateOperation;
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.operation"), InOutDemand.CreateOperation);
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.class_path"), InOutDemand.ClassPath);
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.asset_path"), InOutDemand.AssetPath);
 	if (!InOutDemand.ClassPath.IsEmpty())
 	{
 		InOutDemand.TargetPath = InOutDemand.ClassPath;
@@ -703,6 +746,9 @@ static void ApplyCreateExpressionEvidence(
 	InOutDemand.ClassPath = FirstNonEmpty(Expression.ClassPath, Expression.Target, Expression.Name);
 	InOutDemand.AssetPath = Expression.AssetPath.TrimStartAndEnd();
 	InOutDemand.Query = InOutDemand.CreateOperation;
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.operation"), InOutDemand.CreateOperation);
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.class_path"), InOutDemand.ClassPath);
+	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.asset_path"), InOutDemand.AssetPath);
 	if (!InOutDemand.ClassPath.IsEmpty())
 	{
 		InOutDemand.TargetPath = InOutDemand.ClassPath;
@@ -753,6 +799,7 @@ static void ApplyContainerTypeEvidence(
 		InOutDemand.ContainerElementPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(ElementType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("element"), InOutDemand.ContainerElementPinType);
 		InOutDemand.DefaultValues.Add(TEXT("element_type"), ElementType);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.element_pin_type")) = ElementType;
 	}
 	if (!KeyType.IsEmpty())
 	{
@@ -761,6 +808,7 @@ static void ApplyContainerTypeEvidence(
 		InOutDemand.ContainerKeyPinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(KeyType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("key"), InOutDemand.ContainerKeyPinType);
 		InOutDemand.DefaultValues.Add(TEXT("key_type"), KeyType);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.key_pin_type")) = KeyType;
 	}
 	if (!ValueType.IsEmpty())
 	{
@@ -769,6 +817,7 @@ static void ApplyContainerTypeEvidence(
 		InOutDemand.ContainerValuePinType = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(ValueType);
 		InOutDemand.ArgumentPinTypes.Add(TEXT("value"), InOutDemand.ContainerValuePinType);
 		InOutDemand.DefaultValues.Add(TEXT("value_type"), ValueType);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.value_pin_type")) = ValueType;
 	}
 }
 
@@ -786,10 +835,12 @@ static void ApplyContainerActionStatementEvidence(
 	if (!InOutDemand.ContainerKind.IsEmpty())
 	{
 		InOutDemand.DefaultValues.Add(TEXT("container_kind"), InOutDemand.ContainerKind);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.kind")) = InOutDemand.ContainerKind;
 	}
 	if (!InOutDemand.ContainerOperation.IsEmpty())
 	{
 		InOutDemand.DefaultValues.Add(TEXT("container_operation"), InOutDemand.ContainerOperation);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.operation")) = InOutDemand.ContainerOperation;
 	}
 	if (!InOutDemand.ContainerKind.IsEmpty() || !InOutDemand.ContainerOperation.IsEmpty())
 	{
@@ -833,10 +884,12 @@ static void ApplyContainerActionExpressionEvidence(
 	if (!InOutDemand.ContainerKind.IsEmpty())
 	{
 		InOutDemand.DefaultValues.Add(TEXT("container_kind"), InOutDemand.ContainerKind);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.kind")) = InOutDemand.ContainerKind;
 	}
 	if (!InOutDemand.ContainerOperation.IsEmpty())
 	{
 		InOutDemand.DefaultValues.Add(TEXT("container_operation"), InOutDemand.ContainerOperation);
+		InOutDemand.DefaultValues.FindOrAdd(TEXT("container.operation")) = InOutDemand.ContainerOperation;
 	}
 	if (!InOutDemand.ContainerKind.IsEmpty() || !InOutDemand.ContainerOperation.IsEmpty())
 	{
@@ -1088,6 +1141,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		FieldOperation,
 		FieldScope);
 	BlueprintHelperActionContextDemandCollector::CopyExpressionMapContext(Statement.Args, Demand);
+	BlueprintHelperActionContextDemandCollector::CopyFocusedContextEvidence(Statement.ContextEvidence, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyStatementCapabilityFacts(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyContainerActionStatementEvidence(Statement, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateStatementEvidence(Statement, Demand);
@@ -1184,6 +1238,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("right"), Expression.Right, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("value"), Expression.Value, Demand);
 	BlueprintHelperActionContextDemandCollector::CopyNamedExpressionContext(TEXT("condition"), Expression.Condition, Demand);
+	BlueprintHelperActionContextDemandCollector::CopyFocusedContextEvidence(Expression.ContextEvidence, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyExpressionCapabilityFacts(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyContainerActionExpressionEvidence(Expression, Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyCreateExpressionEvidence(Expression, Demand);

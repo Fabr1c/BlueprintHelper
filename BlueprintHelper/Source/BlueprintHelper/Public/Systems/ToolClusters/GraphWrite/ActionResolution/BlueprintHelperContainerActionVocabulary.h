@@ -6,6 +6,19 @@ struct FBlueprintHelperContainerActionRoleBinding
 {
 	FString RoleName;
 	FString FunctionPinName;
+	bool bProjectToCallableRequest = true;
+};
+
+enum class EBlueprintHelperContainerActionResultKind : uint8
+{
+	None,
+	ReturnValue,
+	OutputPins
+};
+
+struct FBlueprintHelperContainerActionWildcardPolicy
+{
+	TArray<FString> TypedRoles;
 };
 
 struct FBlueprintHelperContainerActionSpec
@@ -13,9 +26,13 @@ struct FBlueprintHelperContainerActionSpec
 	FString OperationId;
 	FString ContainerKind;
 	FString ContainerOperation;
+	FString StableUFunctionPath;
 	FString FunctionQuery;
 	TArray<FString> RequiredRoles;
 	TArray<FBlueprintHelperContainerActionRoleBinding> RoleBindings;
+	EBlueprintHelperContainerActionResultKind ResultKind = EBlueprintHelperContainerActionResultKind::None;
+	FBlueprintHelperContainerActionWildcardPolicy WildcardPolicy;
+	TArray<FString> ReadbackPinRoles;
 	bool bMutatesTarget = false;
 	bool bReturnsValue = false;
 	bool bPureQuery = false;

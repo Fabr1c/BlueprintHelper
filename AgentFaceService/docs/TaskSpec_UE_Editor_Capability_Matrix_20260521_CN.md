@@ -1,4 +1,4 @@
-# AgentFace TaskSpec UE 编辑器操作能力矩阵
+﻿# AgentFace TaskSpec UE 编辑器操作能力矩阵
 
 日期：2026-05-21
 
@@ -393,6 +393,22 @@ Excluded OpCoverage inputs:
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/Clusters/*`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.cpp`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.cpp`
+## 2026-05-26 GraphWrite GenericOps capability matrix
+
+GenericOps is a public logical umbrella for grouped GraphWrite operations. It is not a runtime cluster and it is not a top-level `kind` expansion. The contract publishes `generic_ops.*` operation IDs only to declare ownership, required evidence, and excluded reasons; execution still routes through existing runtime owners.
+
+| Logical group | Runtime owner | Evidence boundary |
+|---|---|---|
+| `generic_ops.control` | `GenericAssetStructControlAction` | `generic.control.*`; singleton control, dedicated control-flow, or StandardMacros evidence. |
+| `generic_ops.container` | `FunctionAction` | `container.*` typed wildcard evidence; projected to the callable/container resolver. |
+| `generic_ops.transform` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.transform.*` for generic node evidence; function-backed conversions stay FunctionAction. |
+| `generic_ops.create` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.create.*`; asset actions require projected ActionDatabase identity. |
+| `generic_ops.schedule` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.schedule.*`; latent nodes require `graph_latent_allowed`; timer delegate nodes require handler/signature evidence. |
+| `generic_ops.struct_select` | `GenericAssetStructControlAction` | `generic.struct.*` / `generic.select.*`; `set_fields_in_struct` requires selected field paths and `select` rejects unresolved wildcard result types. |
+
+Clarification for Field: a first-class Field capability means stable `field.capability_id` plus Field-owned registry/resolver/evidence/readback paths. It does not mean adding Field-specific concepts to GenericOps, broad shared DTOs, or the core `kind` enum beyond the canonical Field semantic surface.
+
+Verification snapshot (2026-05-26): `npm.cmd --prefix AgentFaceService/task-core run build`, `npm.cmd --prefix AgentFaceService/task-core run test:node` (188/188), UE 5.6 `TemplateEditor` build, `BlueprintHelper.GraphWrite.GenericOps` (22/22), `BlueprintHelper.GraphWrite.ActionResolution.Generic` (24/24), `BlueprintHelper.GraphWrite.ContainerAction`, and `BlueprintHelper.GraphWrite.GenericSchedule` passed for this matrix update.
 ## DataFlowCore Slice C 文档同步状态（2026-05-21）
 
 Canonical Graph body statement/expression path:

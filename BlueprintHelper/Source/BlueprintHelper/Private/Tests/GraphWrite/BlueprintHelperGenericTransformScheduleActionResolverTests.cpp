@@ -598,7 +598,7 @@ bool FBlueprintHelperConvertScheduleAmbiguousOwnerRejectedTest::RunTest(const FS
 	const FBlueprintHelperActionResolutionResult ConvertResult =
 		FBlueprintHelperActionResolutionCore::Resolve(ConvertRequest);
 	TestEqual(TEXT("ambiguous convert status"), ConvertResult.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("ambiguous convert code"), ConvertResult.ErrorCode, FString(TEXT("ambiguous_convert_schedule_owner")));
+	TestEqual(TEXT("ambiguous convert code"), ConvertResult.ErrorCode, FString(TEXT("ambiguous_generic_function_owner")));
 
 	FBlueprintHelperActionResolutionRequest ScheduleRequest =
 		MakeFunctionOwnerRequest(Blueprint, Graph, EBlueprintHelperActionSemanticKind::Schedule);
@@ -608,7 +608,7 @@ bool FBlueprintHelperConvertScheduleAmbiguousOwnerRejectedTest::RunTest(const FS
 	const FBlueprintHelperActionResolutionResult ScheduleResult =
 		FBlueprintHelperActionResolutionCore::Resolve(ScheduleRequest);
 	TestEqual(TEXT("ambiguous schedule status"), ScheduleResult.Status, EBlueprintHelperActionResolutionStatus::InvalidRequest);
-	TestEqual(TEXT("ambiguous schedule code"), ScheduleResult.ErrorCode, FString(TEXT("ambiguous_convert_schedule_owner")));
+	TestEqual(TEXT("ambiguous schedule code"), ScheduleResult.ErrorCode, FString(TEXT("ambiguous_generic_function_owner")));
 	return true;
 }
 

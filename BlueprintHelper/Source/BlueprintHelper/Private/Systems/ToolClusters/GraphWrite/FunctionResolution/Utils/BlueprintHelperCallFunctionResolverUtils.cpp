@@ -13,6 +13,8 @@
 #include "K2Node_CallArrayFunction.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CommutativeAssociativeBinaryOperator.h"
+#include "Kismet/BlueprintMapLibrary.h"
+#include "Kismet/BlueprintSetLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet/KismetArrayLibrary.h"
@@ -23,6 +25,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/FieldIterator.h"
 #include "UObject/UnrealType.h"
+#include "UObject/UObjectIterator.h"
 
 namespace
 {
@@ -157,6 +160,24 @@ static bool IsStableCallableIdPermitted(
 		{
 			return StableId.Equals(RequiredStableId.TrimStartAndEnd(), ESearchCase::IgnoreCase);
 		});
+}
+
+static UFunction* ResolveStableCallableFunction(const FString& StableCallableId)
+{
+	FString OwnerPath;
+	FString FunctionName;
+	if (!FBlueprintHelperCallFunctionResolver::TryParseQualifiedQuery(StableCallableId, OwnerPath, FunctionName))
+	{
+		return nullptr;
+	}
+
+	UClass* OwnerClass = FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(OwnerPath);
+	if (!OwnerClass)
+	{
+		return nullptr;
+	}
+
+	return OwnerClass->FindFunctionByName(FName(*FunctionName));
 }
 
 static bool IsNodeClassPermitted(
@@ -332,6 +353,41 @@ UClass* FBlueprintHelperCallFunctionResolverUtils::ResolveClassByTypeName(const 
 	if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *Trimmed))
 	{
 		return LoadedClass;
+	}
+	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+	{
+		UClass* Class = *ClassIt;
+		if (!Class)
+		{
+			continue;
+		}
+
+		if (Class->GetPathName().Equals(Trimmed, ESearchCase::IgnoreCase)
+			|| Class->GetName().Equals(Trimmed, ESearchCase::IgnoreCase)
+			|| Trimmed.EndsWith(TEXT(".") + Class->GetName(), ESearchCase::IgnoreCase))
+		{
+			return Class;
+		}
+	}
+
+	const auto MatchesBuiltinClass = [&Trimmed](const UClass* Class)
+	{
+		return Class
+			&& (Class->GetPathName().Equals(Trimmed, ESearchCase::IgnoreCase)
+				|| Class->GetName().Equals(Trimmed, ESearchCase::IgnoreCase)
+				|| Trimmed.EndsWith(TEXT(".") + Class->GetName(), ESearchCase::IgnoreCase));
+	};
+	if (MatchesBuiltinClass(UKismetArrayLibrary::StaticClass()))
+	{
+		return UKismetArrayLibrary::StaticClass();
+	}
+	if (MatchesBuiltinClass(UBlueprintMapLibrary::StaticClass()))
+	{
+		return UBlueprintMapLibrary::StaticClass();
+	}
+	if (MatchesBuiltinClass(UBlueprintSetLibrary::StaticClass()))
+	{
+		return UBlueprintSetLibrary::StaticClass();
 	}
 	return nullptr;
 }
@@ -1006,15 +1062,21 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 		return;
 	}
 
-	const TSubclassOf<UK2Node_CallFunction> CandidateNodeClass = ResolveCandidateNodeClass(Function, NodeSpawner);
+	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
+	const bool bCompatibleByGraph = IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
+	UBlueprintNodeSpawner* EffectiveNodeSpawner = NodeSpawner;
+	if (!EffectiveNodeSpawner && bCompatibleByGraph)
+	{
+		EffectiveNodeSpawner = UBlueprintFunctionNodeSpawner::Create(Function);
+	}
+
+	const TSubclassOf<UK2Node_CallFunction> CandidateNodeClass = ResolveCandidateNodeClass(Function, EffectiveNodeSpawner);
 	if (!IsNodeClassPermitted(*CandidateNodeClass, Request))
 	{
 		return;
 	}
 
 	FBlueprintHelperCallFunctionCandidate Candidate;
-	const FBlueprintHelperK2CallContext Context = BuildEffectiveContext(Request);
-	const bool bGraphCompatible = NodeSpawner != nullptr || IsGraphCompatible(Function, Context.Blueprint, Context.Graph);
 	Candidate.StableId = StableId;
 	Candidate.OwnerClassPath = GetOwnerClassPath(Function);
 	Candidate.NativeFunctionName = Function->GetName();
@@ -1023,7 +1085,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 	Candidate.NodeClass = CandidateNodeClass;
 	Candidate.NodeClassPath = CandidateNodeClass ? CandidateNodeClass->GetPathName() : FString();
 	Candidate.bFromActionDatabase = NodeSpawner != nullptr;
-	Candidate.bGraphCompatible = bGraphCompatible;
+	Candidate.bGraphCompatible = NodeSpawner != nullptr || bCompatibleByGraph;
 	Candidate.bBlueprintCallable = Function->HasAnyFunctionFlags(FUNC_BlueprintCallable);
 	Candidate.bBlueprintPure = Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 	Candidate.bLatent = Function->HasMetaData(TEXT("Latent")) || Function->HasMetaData(TEXT("LatentInfo"));
@@ -1048,7 +1110,7 @@ void FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(
 		}
 	}
 	Candidate.Function = Function;
-	Candidate.NodeSpawner = NodeSpawner;
+	Candidate.NodeSpawner = EffectiveNodeSpawner;
 	InOutCandidates.Add(StableId, Candidate);
 }
 
@@ -1106,6 +1168,19 @@ void FBlueprintHelperCallFunctionResolverUtils::AddActionDatabaseCandidates(
 	}
 }
 
+static void AddRequiredStableCallableCandidates(
+	const FBlueprintHelperCallFunctionResolveRequest& Request,
+	TMap<FString, FBlueprintHelperCallFunctionCandidate>& InOutCandidates)
+{
+	for (const FString& RequiredStableId : Request.CandidatePolicy.RequiredStableCallableIds)
+	{
+		if (UFunction* Function = ResolveStableCallableFunction(RequiredStableId.TrimStartAndEnd()))
+		{
+			FBlueprintHelperCallFunctionResolverUtils::AddCandidateForFunction(Function, Request, InOutCandidates);
+		}
+	}
+}
+
 TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolverUtils::BuildCandidateUniverse(
 	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
@@ -1117,6 +1192,7 @@ TArray<FBlueprintHelperCallFunctionCandidate> FBlueprintHelperCallFunctionResolv
 		RequestedTargetClass = ResolveClassFromPinType(Context.TargetObjectPinType);
 	}
 	AddActionDatabaseCandidates(Request, CandidateMap);
+	AddRequiredStableCallableCandidates(Request, CandidateMap);
 
 	auto AddClassFunctions = [&CandidateMap, &Request](UClass* Class)
 	{

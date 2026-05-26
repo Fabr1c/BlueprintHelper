@@ -38,6 +38,36 @@ static int32 PositiveOrFallback(const int32 Value, const int32 Fallback)
 {
 	return Value > 0 ? Value : Fallback;
 }
+
+static bool IsGenericOpsCapability(const FBlueprintHelperGraphWriteCapabilityCaseResult& Result)
+{
+	return Result.Capability.Contains(TEXT("GenericOps"), ESearchCase::IgnoreCase)
+		|| Result.SemanticKind.Contains(TEXT("control|macro|container|transform|create|schedule|struct|select"), ESearchCase::IgnoreCase);
+}
+
+static TArray<TSharedPtr<FJsonValue>> GenericOpsCommonErrorCodes()
+{
+	const TCHAR* Codes[] = {
+		TEXT("missing_evidence"),
+		TEXT("schema_rejection"),
+		TEXT("wrong_runtime_owner"),
+		TEXT("macro_pin_shape_snapshot_missing"),
+		TEXT("macro_spawner_unavailable"),
+		TEXT("asset_reference_mismatch"),
+		TEXT("latent_not_allowed"),
+		TEXT("handler_missing"),
+		TEXT("wildcard_residual"),
+		TEXT("expose_on_spawn_pin_missing"),
+		TEXT("select_result_type_unresolved")
+	};
+
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const TCHAR* Code : Codes)
+	{
+		Values.Add(MakeShared<FJsonValueString>(Code));
+	}
+	return Values;
+}
 }
 
 double FBlueprintHelperGraphWriteCapabilitySummary::CapabilityCoverageRate() const
@@ -253,5 +283,11 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphWriteCapabilityMetrics::ToDebugBund
 	Json->SetStringField(TEXT("gap_update"), Normalized.GapUpdate);
 	Json->SetBoolField(TEXT("call_correct"), Normalized.bCallCorrect);
 	Json->SetBoolField(TEXT("graph_write_correct"), Normalized.bGraphWriteCorrect);
+	if (BlueprintHelperGraphWriteCapabilityMetrics::IsGenericOpsCapability(Normalized))
+	{
+		Json->SetArrayField(
+			TEXT("generic_ops_common_error_codes"),
+			BlueprintHelperGraphWriteCapabilityMetrics::GenericOpsCommonErrorCodes());
+	}
 	return Json;
 }

@@ -305,6 +305,23 @@ static FString FirstNonEmptyContainerType(const FString& Primary, const FString&
 	return PrimaryValue.IsEmpty() ? Secondary.TrimStartAndEnd() : PrimaryValue;
 }
 
+static FString ExtractContainerActionFunctionName(const FString& StableFunctionPath)
+{
+	int32 ColonIndex = INDEX_NONE;
+	if (StableFunctionPath.FindLastChar(TEXT(':'), ColonIndex)
+		&& ColonIndex > 0
+		&& ColonIndex < StableFunctionPath.Len() - 1)
+	{
+		return StableFunctionPath.Mid(ColonIndex + 1).TrimStartAndEnd();
+	}
+	return StableFunctionPath.TrimStartAndEnd();
+}
+
+static FString ContainerActionPermittedNodeClassPaths()
+{
+	return TEXT("/Script/BlueprintGraph.K2Node_CallFunction;/Script/BlueprintGraph.K2Node_CallArrayFunction");
+}
+
 static void ApplyContainerActionRequestOverrides(
 	const FBlueprintHelperGraphFragmentBuildRequest& BoundRequest,
 	FBlueprintHelperActionResolutionRequest& InOutRequest)
@@ -314,6 +331,20 @@ static void ApplyContainerActionRequestOverrides(
 	InOutRequest.Semantic.FunctionOperation = TEXT("container_action");
 	InOutRequest.Semantic.ContainerKind = NormalizeContainerToken(BoundRequest.ContainerKind);
 	InOutRequest.Semantic.ContainerOperation = NormalizeContainerToken(BoundRequest.ContainerOperation);
+	if (const FBlueprintHelperContainerActionSpec* Spec =
+		FBlueprintHelperContainerActionVocabulary::Find(BoundRequest.ContainerKind, BoundRequest.ContainerOperation))
+	{
+		InOutRequest.Semantic.Query = ExtractContainerActionFunctionName(Spec->StableUFunctionPath);
+		InOutRequest.Semantic.StableId = Spec->StableUFunctionPath;
+		InOutRequest.Semantic.CapabilityFacts.FindOrAdd(TEXT("container.stable_ufunction_path")) = Spec->StableUFunctionPath;
+		InOutRequest.Semantic.CapabilityFacts.FindOrAdd(TEXT("function.permitted_node_class_paths")) = ContainerActionPermittedNodeClassPaths();
+		InOutRequest.Semantic.DefaultValues.Add(TEXT("container.stable_ufunction_path"), Spec->StableUFunctionPath);
+		InOutRequest.Semantic.DefaultValues.Add(TEXT("function.permitted_node_class_paths"), ContainerActionPermittedNodeClassPaths());
+		InOutRequest.ContextEvidence.Add(TEXT("container_action_operation_id"), Spec->OperationId);
+		InOutRequest.ContextEvidence.Add(TEXT("container_action_kind"), Spec->ContainerKind);
+		InOutRequest.ContextEvidence.Add(TEXT("container_action_operation"), Spec->ContainerOperation);
+		InOutRequest.ContextEvidence.Add(TEXT("container.stable_ufunction_path"), Spec->StableUFunctionPath);
+	}
 	if (!BoundRequest.Target.TrimStartAndEnd().IsEmpty())
 	{
 		InOutRequest.Semantic.TargetPath = BoundRequest.Target.TrimStartAndEnd();
