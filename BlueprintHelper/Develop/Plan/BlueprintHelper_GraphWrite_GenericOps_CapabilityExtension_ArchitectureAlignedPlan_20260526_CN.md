@@ -1,4 +1,8 @@
-# BlueprintHelper GraphWrite GenericOps Capability Extension Implementation Plan
+﻿# BlueprintHelper GraphWrite GenericOps Capability Extension Implementation Plan
+> **Execution status (2026-05-26): COMPLETE.** Implementation, focused UE tests, TypeScript tests, UE 5.6 build, docs sync, and final read-only subagent audit are complete. Per `AGENTS.md`, commit steps are a manual commit handoff only; no `git add`, `git commit`, or `git push` was executed.
+>
+> **Architecture clarification:** GenericOps is an Agent-facing logical capability umbrella, not a runtime cluster and not a blanket `kind` expansion. “First-class Field capability” means stable Field capability IDs plus Field registry/resolver/evidence/readback boundaries; Field-specific facts stay under `field.*` and do not get copied into GenericOps, core `kind`, or broad shared DTOs.
+
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -179,7 +183,7 @@ set:   add, remove, contains, clear, length, to_array,
 - Modify: `AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.test.ts`
 - Create: `AgentFaceService/task-core/src/task/schema/task-schemas.genericops-extension.test.ts`
 
-- [ ] **Step 1: 写失败测试：禁止新增 GenericOps runtime clusters**
+- [x] **Step 1: 写失败测试：禁止新增 GenericOps runtime clusters**
 
 ```ts
 const clusterIds = GRAPHWRITE_CAPABILITY_CONTRACT.clusters.map((cluster) => cluster.id);
@@ -188,7 +192,7 @@ for (const forbidden of ['control', 'generic_transform', 'generic_create', 'stru
 }
 ```
 
-- [ ] **Step 2: 写 ownership matrix 测试**
+- [x] **Step 2: 写 ownership matrix 测试**
 
 Assert representative mappings:
 
@@ -204,7 +208,7 @@ assertOperationOwner('generic_ops.schedule.timer_delegate_node', 'GenericAssetSt
 assertOperationOwner('generic_ops.struct.set_fields_in_struct', 'GenericAssetStructControlAction');
 ```
 
-- [ ] **Step 3: Implement logical groups**
+- [x] **Step 3: Implement logical groups**
 
 Groups:
 
@@ -229,14 +233,14 @@ requiredEvidenceKeys
 excludedReason when rejected
 ```
 
-- [ ] **Step 4: Run TypeScript tests**
+- [x] **Step 4: Run TypeScript tests**
 
 ```bash
 cd AgentFaceService/task-core
 npm test -- graphwrite-capability-contract
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Manual commit handoff**
 
 ```bash
 git add AgentFaceService/task-core/src/task/schema/graphwrite-capability-contract.ts \
@@ -255,7 +259,7 @@ git commit -m "feat(graphwrite): publish ownership-scoped generic ops contract"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericOpsEvidenceTests.cpp`
 
-- [ ] **Step 1: 写 core DTO guard tests**
+- [x] **Step 1: 写 core DTO guard tests**
 
 Fail if new operation-specific fields such as these appear in core structs:
 
@@ -264,7 +268,7 @@ SwitchCasePins, MacroGraphPath, MacroPinShapeSnapshot, ExposeOnSpawnProperties,
 AsyncProxyDelegateHandlers, SelectOptionProofs, SetFieldsInStructFields
 ```
 
-- [ ] **Step 2: Implement focused readers**
+- [x] **Step 2: Implement focused readers**
 
 Reader DTOs:
 
@@ -277,7 +281,7 @@ GenericScheduleEvidence: schedule_operation, graph_latent_allowed, handler evide
 StructFieldPolicyEvidence: struct_path, selected_field_paths, optional_pin_policy, result type proof
 ```
 
-- [ ] **Step 3: Project canonical evidence map keys**
+- [x] **Step 3: Project canonical evidence map keys**
 
 Use prefixes:
 
@@ -292,11 +296,11 @@ generic.select.*
 container.*
 ```
 
-- [ ] **Step 4: Hash evidence map**
+- [x] **Step 4: Hash evidence map**
 
 The BundleProjector must hash sorted evidence keys so preview/execute cannot reuse stale GenericOps context.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.Evidence; Quit"
@@ -323,7 +327,7 @@ git commit -m "feat(graphwrite): add focused generic ops evidence readers"
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperControlFlowExtensionTests.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperStandardMacroControlFlowTests.cpp`
 
-- [ ] **Step 1: 写 control boundary tests**
+- [x] **Step 1: 写 control boundary tests**
 
 Required:
 
@@ -335,7 +339,7 @@ macro op without pin snapshot returns macro_pin_shape_snapshot_missing
 builder records singleton_or_macro_boundary reason for any direct K2 node path
 ```
 
-- [ ] **Step 2: Implement Generic boundary classification**
+- [x] **Step 2: Implement Generic boundary classification**
 
 `GenericActionProviderBoundary` may classify:
 
@@ -346,7 +350,7 @@ NeedsMoreSemanticContext for missing cases/snapshot
 Unsupported for UI/selection/menu-driven control requests
 ```
 
-- [ ] **Step 3: Implement builders with readback hooks**
+- [x] **Step 3: Implement builders with readback hooks**
 
 Builders may create canonical/dedicated control nodes only within the selected Generic cluster boundary. They must emit:
 
@@ -359,7 +363,7 @@ macro graph path
 macro pin shape snapshot match
 ```
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.Control; Quit"
@@ -384,7 +388,7 @@ git commit -m "feat(graphwrite): add generic control and macro operations"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperContainerActionReadbackVerifier.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperContainerActionCoverageExtensionTests.cpp`
 
-- [ ] **Step 1: 写 coverage tests**
+- [x] **Step 1: 写 coverage tests**
 
 For every array/map/set operation in §1.2, assert:
 
@@ -397,7 +401,7 @@ selected UFunction path is read back
 collection pin type is non-wildcard
 ```
 
-- [ ] **Step 2: Expand vocabulary**
+- [x] **Step 2: Expand vocabulary**
 
 Each spec must declare:
 
@@ -411,11 +415,11 @@ wildcard_policy
 readback_pin_roles
 ```
 
-- [ ] **Step 3: Resolver uses shared callable evidence**
+- [x] **Step 3: Resolver uses shared callable evidence**
 
 `FBlueprintHelperContainerActionResolver` must not duplicate function lookup logic. It builds a callable request with the vocabulary spec and uses existing function resolution/candidate evidence.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.ContainerAction; Quit"
@@ -439,7 +443,7 @@ git commit -m "feat(graphwrite): expand container action callable vocabulary"
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperTransformConversionPolicyTests.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperScheduleVocabularyExtensionTests.cpp`
 
-- [ ] **Step 1: 写 ownership tests**
+- [x] **Step 1: 写 ownership tests**
 
 Expected owners:
 
@@ -452,7 +456,7 @@ delay/retriggerable_delay/delay_until_next_tick/generic_latent_function_call => 
 function_backed_create/spawn/construct/async_action factory UFunction => FunctionAction
 ```
 
-- [ ] **Step 2: Implement FunctionAction second-stage operations**
+- [x] **Step 2: Implement FunctionAction second-stage operations**
 
 Add handling for:
 
@@ -463,7 +467,7 @@ schedule_function
 latent_or_async_function
 ```
 
-- [ ] **Step 3: Add ambiguity guard**
+- [x] **Step 3: Add ambiguity guard**
 
 If both Generic node evidence and function-backed evidence are present for the same statement, return:
 
@@ -473,11 +477,11 @@ ambiguous_generic_function_owner
 
 unless the operation contract explicitly declares a deterministic owner.
 
-- [ ] **Step 4: Keep Generic transform/schedule narrow**
+- [x] **Step 4: Keep Generic transform/schedule narrow**
 
 `GenericTransformScheduleActionResolver` should handle only Generic node/spawner evidence such as dynamic/class cast node or generic timer/latent node evidence. It must reject function-backed evidence with `function_backed_operation_wrong_owner`.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.Ownership; Quit"
@@ -502,7 +506,7 @@ git commit -m "feat(graphwrite): route function-backed generic ops through Funct
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericCreateExtensionTests.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericScheduleNodeTests.cpp`
 
-- [ ] **Step 1: 写 asset/create/schedule tests**
+- [x] **Step 1: 写 asset/create/schedule tests**
 
 Required:
 
@@ -515,15 +519,15 @@ latent_or_async_node checks graph_latent_allowed=true
 async proxy output delegate connection requires explicit EventDelegate use-site plan; no implicit handler creation
 ```
 
-- [ ] **Step 2: Harden asset evidence**
+- [x] **Step 2: Harden asset evidence**
 
 Do not accept raw asset path as success proof unless it matches projected `AssociatedAsset` / stable spawner evidence.
 
-- [ ] **Step 3: Harden expose-on-spawn readback**
+- [x] **Step 3: Harden expose-on-spawn readback**
 
 Resolver selects create spawner. Builder applies exposed pins. Readback verifies actual pin names/types/defaults/links.
 
-- [ ] **Step 4: Harden generic schedule**
+- [x] **Step 4: Harden generic schedule**
 
 Generic schedule success requires:
 
@@ -534,7 +538,7 @@ handler/signature evidence for delegate connection
 actual node class readback
 ```
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.CreateSchedule; Quit"
@@ -558,7 +562,7 @@ git commit -m "feat(graphwrite): harden generic create asset and schedule nodes"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperStructSelectHardeningTests.cpp`
 
-- [ ] **Step 1: 写 struct/select tests**
+- [x] **Step 1: 写 struct/select tests**
 
 Required:
 
@@ -571,7 +575,7 @@ select with unresolved wildcard returns wildcard_residual
 split/recombine pin is not accepted as GraphWrite statement operation
 ```
 
-- [ ] **Step 2: Implement SetFieldsInStruct evidence path**
+- [x] **Step 2: Implement SetFieldsInStruct evidence path**
 
 `StructFieldPolicyEvidence` must include:
 
@@ -582,11 +586,11 @@ enabled_optional_pin_names
 input/output pin type proof
 ```
 
-- [ ] **Step 3: Harden Select readback**
+- [x] **Step 3: Harden Select readback**
 
 Verify actual option pins, index pin, result pin type, enum/object/class/soft/interface target proof.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.StructSelect; Quit"
@@ -609,7 +613,7 @@ git commit -m "feat(graphwrite): harden struct and select generic operations"
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperGraphWriteCapabilityMetrics.cpp`
 - Create: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/GraphWrite/BlueprintHelperGenericOpsDebugBundleTests.cpp`
 
-- [ ] **Step 1: 写 DebugBundle/readback tests**
+- [x] **Step 1: 写 DebugBundle/readback tests**
 
 Required family-specific facts:
 
@@ -623,11 +627,11 @@ schedule: latent allowed proof, handler/signature evidence where required
 struct/select: field policy, result type proof
 ```
 
-- [ ] **Step 2: Implement verifier**
+- [x] **Step 2: Implement verifier**
 
 The verifier must compare actual UE node/pins after spawn/link against projected/resolved evidence. It must not treat request intent alone as readback success.
 
-- [ ] **Step 3: Add common error codes**
+- [x] **Step 3: Add common error codes**
 
 ```text
 missing_evidence
@@ -643,7 +647,7 @@ expose_on_spawn_pin_missing
 select_result_type_unresolved
 ```
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and manual commit handoff**
 
 ```powershell
 & "$env:UE_EDITOR_CMD" "$env:UE_PROJECT_FILE" -unattended -nop4 -nosplash -NullRHI -ExecCmds="Automation RunTests BlueprintHelper.GraphWrite.GenericOps.DebugBundle; Quit"
@@ -665,7 +669,7 @@ git commit -m "feat(graphwrite): add generic ops readback verifier"
 - Modify: `BlueprintHelper/Develop/Design/BlueprintHelper_GraphStatementFramework_Design_20260521_CN.md`
 - Modify: active GenericOps/Container/Control/Schedule plan docs under `BlueprintHelper/Develop/Plan/` as needed.
 
-- [ ] **Step 1: Add focused E2E smoke cases**
+- [x] **Step 1: Add focused E2E smoke cases**
 
 Minimum positive coverage:
 
@@ -686,7 +690,7 @@ asset query-only selector, latent not allowed, missing handler for async delegat
 wildcard select result, split/recombine statement rejected
 ```
 
-- [ ] **Step 2: Run final gate**
+- [x] **Step 2: Run final gate and manual commit handoff**
 
 ```powershell
 npm.cmd --prefix AgentFaceService/task-core run build
@@ -705,7 +709,7 @@ No handler/signature creation by GenericOps
 No UI/menu/display-name/selected-state dependency
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Manual commit handoff**
 
 ```bash
 git add BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_GenericOps_CapabilityExtension_ArchitectureAlignedPlan_20260526_CN.md \
@@ -719,19 +723,19 @@ git commit -m "docs(graphwrite): document architecture-aligned generic ops exten
 
 ## 5. Final Acceptance Checklist
 
-- [ ] GenericOps contract has logical groups only; no new runtime cluster ids.
-- [ ] Every operation declares a single runtime owner.
-- [ ] Function-backed convert/create/schedule/container paths route through FunctionAction.
-- [ ] Control/macro/struct/select/asset/generic schedule node paths route through GenericAssetStructControlAction.
-- [ ] OpCoverage is not duplicated inside GenericOps.
-- [ ] Operation-specific evidence is read by focused readers from `ContextEvidence`.
-- [ ] Builders do not choose spawners, functions, node class, handler, or signature.
-- [ ] StandardMacros require explicit macro graph path and pin shape snapshot.
-- [ ] AssetAction requires projected ActionDatabase/asset evidence.
-- [ ] Latent/schedule nodes check `graph_latent_allowed`.
-- [ ] Select and struct operations fail on unresolved wildcard or missing field policy evidence.
-- [ ] Split/recombine pin is not accepted as a GraphWrite statement operation.
-- [ ] DebugBundle includes all required missing evidence / wrong owner / wildcard / latent / asset mismatch codes.
+- [x] GenericOps contract has logical groups only; no new runtime cluster ids.
+- [x] Every operation declares a single runtime owner.
+- [x] Function-backed convert/create/schedule/container paths route through FunctionAction.
+- [x] Control/macro/struct/select/asset/generic schedule node paths route through GenericAssetStructControlAction.
+- [x] OpCoverage is not duplicated inside GenericOps.
+- [x] Operation-specific evidence is read by focused readers from `ContextEvidence`.
+- [x] Builders do not choose spawners, functions, node class, handler, or signature.
+- [x] StandardMacros require explicit macro graph path and pin shape snapshot.
+- [x] AssetAction requires projected ActionDatabase/asset evidence.
+- [x] Latent/schedule nodes check `graph_latent_allowed`.
+- [x] Select and struct operations fail on unresolved wildcard or missing field policy evidence.
+- [x] Split/recombine pin is not accepted as a GraphWrite statement operation.
+- [x] DebugBundle includes all required missing evidence / wrong owner / wildcard / latent / asset mismatch codes.
 
 ---
 
@@ -744,3 +748,30 @@ git commit -m "docs(graphwrite): document architecture-aligned generic ops exten
 5. **避免重复 source of truth。** OpCoverage 由独立计划维护，GenericOps 只声明依赖关系，防止两个计划各自维护 op schema/resolver/catalog。
 6. **保留 UE 行为边界。** Wide-surface action 优先用 ActionDatabase / NodeSpawner evidence；只有 canonical singleton、UE ActionDatabase 不可表达或多节点 DAG 才使用 dedicated builder。
 7. **更强 no-fake-success。** 每个 GenericOps success 都必须有真实 UE readback：node class、spawner/function/type identity、pin name/type/direction、dynamic pin count、wildcard residual 与 compile diagnostic correlation。
+
+
+---
+
+## 7. Completion Evidence (2026-05-26)
+
+All task checkboxes are complete under the repository rule that commit steps are a manual handoff, not an executed git operation.
+
+Verification run:
+
+```powershell
+npm.cmd --prefix AgentFaceService/task-core run build
+npm.cmd --prefix AgentFaceService/task-core run test:node # 188/188
+& 'E:\UE_5.6\Engine\Build\BatchFiles\Build.bat' TemplateEditor Win64 Development 'D:\UEProjects\Template\Template.uproject' -NoHotReloadFromIDE -WaitMutex
+& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.GenericOps;Quit' # 22/22
+& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.ActionResolution.Generic;Quit' # 24/24
+& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.ContainerAction;Quit' # 14/14
+& 'E:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' 'D:\UEProjects\Template\Template.uproject' -Unattended -NullRHI -NoSound -NoSplash -ExecCmds='Automation RunTests BlueprintHelper.GraphWrite.GenericSchedule;Quit' # 4/4
+```
+
+Notes:
+
+- No new runtime clusters were added for GenericOps.
+- GenericOps public operations are logical contract groups with explicit `runtimeOwner` mapping.
+- Function-backed create/convert/schedule/container operations stay under FunctionAction.
+- Field capability remains Field-owned (`field.capability_id` + `field.*` evidence); no Field-tool-cluster-specific payload was added to GenericOps/core DTOs.
+- `select` now rejects wildcard/unresolved result proof; `set_fields_in_struct` requires selected field policy evidence; `split_pin` and `recombine_pin` remain rejected as GraphWrite statements.

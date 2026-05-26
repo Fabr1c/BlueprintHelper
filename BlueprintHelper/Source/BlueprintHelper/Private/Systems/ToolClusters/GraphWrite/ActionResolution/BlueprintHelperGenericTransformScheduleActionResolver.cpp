@@ -102,6 +102,41 @@ static bool IsLatentOrAsyncOperation(const FString& Operation)
 	return Operation.Equals(TEXT("latent_or_async_node"), ESearchCase::IgnoreCase);
 }
 
+static bool HasFunctionBackedOperationEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
+{
+	return !Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty();
+}
+
+static bool IsFunctionBackedTransformOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeOperation(Operation);
+	return Normalized == TEXT("function_conversion")
+		|| Normalized == TEXT("blueprint_autocast")
+		|| Normalized == TEXT("numeric_conversion")
+		|| Normalized == TEXT("string_name_text_conversion")
+		|| Normalized == TEXT("enum_conversion")
+		|| Normalized == TEXT("object_to_soft_object")
+		|| Normalized == TEXT("class_to_soft_class");
+}
+
+static bool IsFunctionBackedScheduleOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeOperation(Operation);
+	return Normalized == TEXT("timer_by_function_name")
+		|| Normalized == TEXT("timer_by_handle")
+		|| Normalized == TEXT("timer_clear_by_handle")
+		|| Normalized == TEXT("timer_clear_by_function_name")
+		|| Normalized == TEXT("timer_pause_by_handle")
+		|| Normalized == TEXT("timer_pause_by_function_name")
+		|| Normalized == TEXT("timer_unpause_by_handle")
+		|| Normalized == TEXT("timer_unpause_by_function_name")
+		|| Normalized == TEXT("delay")
+		|| Normalized == TEXT("retriggerable_delay")
+		|| Normalized == TEXT("delay_until_next_tick")
+		|| Normalized == TEXT("generic_latent_function_call")
+		|| Normalized == TEXT("async_proxy_output_delegate_connection");
+}
+
 static FBlueprintHelperActionDatabaseProjectionEvidence ToProjectionEvidence(
 	const FBlueprintHelperProjectedScheduleActionEvidence& Evidence)
 {
@@ -204,6 +239,13 @@ static FBlueprintHelperActionResolutionResult ResolveConvert(
 			TEXT("Generic Convert requires transform_operation."));
 	}
 
+	if (HasFunctionBackedOperationEvidence(Context.GetSemantic()) || IsFunctionBackedTransformOperation(Operation))
+	{
+		return MakeUnsupportedResult(
+			TEXT("function_backed_operation_wrong_owner"),
+			TEXT("Function-backed convert operations must route through FunctionActionCluster."));
+	}
+
 	if (!FBlueprintHelperGenericTransformScheduleActionResolver::IsSupportedTransformOperation(Operation))
 	{
 		return MakeUnsupportedResult(
@@ -252,6 +294,13 @@ static FBlueprintHelperActionResolutionResult ResolveSchedule(
 		return MakeInvalidResult(
 			TEXT("needs_more_semantic_context"),
 			TEXT("Generic Schedule requires schedule_operation."));
+	}
+
+	if (HasFunctionBackedOperationEvidence(Context.GetSemantic()) || IsFunctionBackedScheduleOperation(Operation))
+	{
+		return MakeUnsupportedResult(
+			TEXT("function_backed_operation_wrong_owner"),
+			TEXT("Function-backed schedule operations must route through FunctionActionCluster."));
 	}
 
 	if (!FBlueprintHelperGenericTransformScheduleActionResolver::IsSupportedScheduleOperation(Operation))

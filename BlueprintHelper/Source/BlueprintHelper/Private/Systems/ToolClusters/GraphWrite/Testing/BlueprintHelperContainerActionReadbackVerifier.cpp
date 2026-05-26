@@ -103,6 +103,10 @@ static FString ExpectedElementType(const FBlueprintHelperContainerActionReadback
 		: Expectation.ValueType.TrimStartAndEnd();
 }
 
+static bool TryBuildExpectedResultPinType(
+	const FBlueprintHelperContainerActionReadbackExpectation& Expectation,
+	FExpectedContainerActionPinType& OutType);
+
 static bool TryBuildExpectedRolePinType(
 	const FBlueprintHelperContainerActionReadbackExpectation& Expectation,
 	const FString& RoleName,
@@ -135,6 +139,12 @@ static bool TryBuildExpectedRolePinType(
 		OutType.ContainerType = EPinContainerType::Array;
 		return true;
 	}
+	if (Role == TEXT("other"))
+	{
+		OutType.CategoryToken = ExpectedElementType(Expectation);
+		OutType.ContainerType = ExpectedContainerType(Expectation.ContainerKind);
+		return true;
+	}
 	if (Role == TEXT("key"))
 	{
 		OutType.CategoryToken = Expectation.KeyType;
@@ -150,6 +160,10 @@ static bool TryBuildExpectedRolePinType(
 		OutType.CategoryToken = TEXT("int");
 		return true;
 	}
+	if (Role == TEXT("result"))
+	{
+		return TryBuildExpectedResultPinType(Expectation, OutType);
+	}
 	return false;
 }
 
@@ -164,12 +178,25 @@ static bool TryBuildExpectedResultPinType(
 		OutType.CategoryToken = TEXT("bool");
 		return true;
 	}
-	if (Operation == TEXT("length") || (Kind == TEXT("array") && Operation == TEXT("find")))
+	if (Operation == TEXT("length")
+		|| Operation == TEXT("last_index")
+		|| Operation == TEXT("get_last_index")
+		|| (Kind == TEXT("array") && (Operation == TEXT("find") || Operation == TEXT("add") || Operation == TEXT("add_unique"))))
 	{
 		OutType.CategoryToken = TEXT("int");
 		return true;
 	}
-	if (Kind == TEXT("array") && Operation == TEXT("get"))
+	if (Operation == TEXT("is_empty") || Operation == TEXT("is_not_empty") || Operation == TEXT("identical") || Operation == TEXT("is_valid_index"))
+	{
+		OutType.CategoryToken = TEXT("bool");
+		return true;
+	}
+	if ((Kind == TEXT("map") || Kind == TEXT("set")) && Operation == TEXT("remove"))
+	{
+		OutType.CategoryToken = TEXT("bool");
+		return true;
+	}
+	if (Kind == TEXT("array") && (Operation == TEXT("get") || Operation == TEXT("random") || Operation == TEXT("random_from_stream")))
 	{
 		OutType.CategoryToken = ExpectedElementType(Expectation);
 		return true;
@@ -192,6 +219,23 @@ static bool TryBuildExpectedResultPinType(
 		return true;
 	}
 	if (Kind == TEXT("set") && Operation == TEXT("to_array"))
+	{
+		OutType.CategoryToken = ExpectedElementType(Expectation);
+		OutType.ContainerType = EPinContainerType::Array;
+		return true;
+	}
+	if (Kind == TEXT("set") && Operation == TEXT("get_item_by_index"))
+	{
+		OutType.CategoryToken = ExpectedElementType(Expectation);
+		return true;
+	}
+	if (Kind == TEXT("set") && (Operation == TEXT("intersection") || Operation == TEXT("union") || Operation == TEXT("difference")))
+	{
+		OutType.CategoryToken = ExpectedElementType(Expectation);
+		OutType.ContainerType = EPinContainerType::Set;
+		return true;
+	}
+	if (Kind == TEXT("array") && Operation == TEXT("filter_array"))
 	{
 		OutType.CategoryToken = ExpectedElementType(Expectation);
 		OutType.ContainerType = EPinContainerType::Array;
@@ -422,14 +466,17 @@ bool FBlueprintHelperContainerActionReadbackVerifier::Verify(
 		return false;
 	}
 
-	UK2Node_CallFunction* CallNode = FindContainerActionNode(Graph, ExtractFunctionName(Spec->FunctionQuery));
+	UK2Node_CallFunction* CallNode = FindContainerActionNode(Graph, ExtractFunctionName(Spec->StableUFunctionPath.IsEmpty() ? Spec->FunctionQuery : Spec->StableUFunctionPath));
 	if (!CallNode)
 	{
 		OutFailure = FString::Printf(TEXT("container_action readback failed: generated node not found for %s."), *OperationId);
 		return false;
 	}
 
-	for (const FString& Role : Expectation.RequiredRoles)
+	const TArray<FString>& RolesToVerify = Expectation.RequiredRoles.Num() > 0
+		? Expectation.RequiredRoles
+		: Spec->ReadbackPinRoles;
+	for (const FString& Role : RolesToVerify)
 	{
 		const FBlueprintHelperContainerActionRoleBinding* Binding = FindRoleBinding(*Spec, Role);
 		if (!Binding)

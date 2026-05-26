@@ -1,4 +1,4 @@
-# BlueprintHelper GraphStatement Framework 总设计文档
+﻿# BlueprintHelper GraphStatement Framework 总设计文档
 
 ## ActionResolution 一级分发规则（2026-05-21 更新）
 
@@ -560,6 +560,16 @@ This taxonomy does not change the top-level `SpawnerClusterKind` dispatch rule. 
 - Generic schedule support is only considered complete for operations that expose selected spawner evidence or deterministic missing-context diagnostics; normal Kismet timer calls remain FunctionAction.
 - 2026-05-25 decision: `timer_delegate_node` / `latent_or_async_node` 保留为 GraphWrite Generic schedule success path，但 handler/signature declaration 不归 GraphWrite；执行计划为 `BlueprintHelper_GraphWrite_GenericScheduleSuccessPathPlan_20260525_CN.md`。
 
+## 2026-05-26 GenericOps ownership closure
+
+- GenericOps is a logical Agent-facing capability umbrella. It does not add `EBlueprintHelperSpawnerClusterKind` values and does not create a broad `kind=generic_ops` runtime path.
+- Every GenericOps operation declares exactly one runtime owner. Function-backed container/convert/create/schedule operations route through `FunctionActionCluster`; control, StandardMacros, struct/select, asset-backed create, and generic schedule node operations route through `GenericAssetStructControlActionCluster` only when their focused evidence is present.
+- Operation-specific data is statement-local evidence in `ContextEvidence` (`generic.*`, `container.*`, or `op.*`). It is read by focused readers and must not grow `FBlueprintHelperActionSemanticConstraints` with tool-cluster-specific field groups.
+- `Field` remains a separate first-class capability boundary: stable `field.capability_id` plus Field registry/resolver/context/fragment/readback paths. Field-specific facts stay under `field.*`; they are not copied into GenericOps and do not become new runtime cluster or generic DTO fields.
+- `set_fields_in_struct` now has an explicit struct field policy evidence boundary. `select` requires result type proof for enum/object/class/soft/interface-like cases and fails with `wildcard_residual` or `select_result_type_unresolved` instead of silently spawning a wildcard Select node.
+- `split_pin` / `recombine_pin` remain excluded from GraphWrite statement operations. They may be future PinOperation/readback support facts, but the current SemanticIR rejects them as unsupported statement kinds.
+
+Verification: UE 5.6 build succeeded; focused suites passed for `BlueprintHelper.GraphWrite.GenericOps`, `BlueprintHelper.GraphWrite.GenericOps.StructSelect`, `BlueprintHelper.GraphWrite.ContainerAction`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Create`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Convert`, `BlueprintHelper.GraphWrite.ActionResolution.Generic.Schedule`, `BlueprintHelper.GraphWrite.ActionResolution.AssetAction`, and `BlueprintHelper.GraphWrite.GenericSchedule`; AgentFace task-core build and `test:node` passed.
 ## 2026-05-24 RemainingGaps Task 4 Smoke/Docs Sync
 
 - `context_evidence` is now treated as projected mainline data that must survive:

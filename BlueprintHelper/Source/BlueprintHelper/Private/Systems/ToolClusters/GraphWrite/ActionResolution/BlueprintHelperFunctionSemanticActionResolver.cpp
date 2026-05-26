@@ -114,6 +114,10 @@ static FBlueprintHelperActionResolutionResult ResolveViaCallFunctionResolver(
 	CallRequest.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 	CallRequest.bAllowFuzzyUnique = Request.bAllowFuzzyUnique;
 	CallRequest.MaxCandidates = Request.MaxCandidates;
+	if (!Semantic.StableId.TrimStartAndEnd().IsEmpty())
+	{
+		CallRequest.CandidatePolicy.RequiredStableCallableIds.Add(Semantic.StableId.TrimStartAndEnd());
+	}
 	PopulateCallContext(CallRequest, Request);
 
 	const FBlueprintHelperCallFunctionResolveResult CallResult = FBlueprintHelperCallFunctionResolver::Resolve(CallRequest);
@@ -138,6 +142,8 @@ bool FBlueprintHelperFunctionSemanticActionResolver::IsSupportedSemanticKind(
 	const FString FunctionOperation = NormalizeOperation(GetFunctionOperation(Semantic));
 	switch (Semantic.Kind)
 	{
+	case EBlueprintHelperActionSemanticKind::Create:
+		return FunctionOperation == TEXT("create_function");
 	case EBlueprintHelperActionSemanticKind::Convert:
 		return FunctionOperation == TEXT("convert_function");
 	case EBlueprintHelperActionSemanticKind::Schedule:

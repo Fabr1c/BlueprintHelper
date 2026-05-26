@@ -437,7 +437,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("default_value_count"), LexToString(Demand.DefaultValues.Num()));
 		for (const TPair<FString, FString>& DefaultPair : Demand.DefaultValues)
 		{
-			if (DefaultPair.Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
+			if (DefaultPair.Key.StartsWith(TEXT("op."), ESearchCase::IgnoreCase)
+				|| DefaultPair.Key.StartsWith(TEXT("generic."), ESearchCase::IgnoreCase)
+				|| DefaultPair.Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase))
 			{
 				BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, DefaultPair.Key, DefaultPair.Value);
 			}

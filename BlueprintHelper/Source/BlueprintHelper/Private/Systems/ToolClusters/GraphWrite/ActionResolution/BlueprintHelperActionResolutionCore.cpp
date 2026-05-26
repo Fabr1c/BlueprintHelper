@@ -19,6 +19,19 @@ static bool IsGenericTransformOperation(const FString& Operation)
 		|| Normalized == TEXT("type_promotion");
 }
 
+static bool IsGenericCreateOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeOperationToken(Operation);
+	return Normalized == TEXT("spawn_actor")
+		|| Normalized == TEXT("create_widget")
+		|| Normalized == TEXT("construct_object")
+		|| Normalized == TEXT("make_array")
+		|| Normalized == TEXT("make_map")
+		|| Normalized == TEXT("make_set")
+		|| Normalized == TEXT("asset_action")
+		|| Normalized == TEXT("asset_backed_graph_node");
+}
+
 static bool IsGenericScheduleOperation(const FString& Operation)
 {
 	const FString Normalized = NormalizeOperationToken(Operation);
@@ -26,7 +39,7 @@ static bool IsGenericScheduleOperation(const FString& Operation)
 		|| Normalized == TEXT("latent_or_async_node");
 }
 
-static bool HasAmbiguousConvertScheduleOwner(const FBlueprintHelperActionSemanticConstraints& Semantic)
+static bool HasAmbiguousGenericFunctionOwner(const FBlueprintHelperActionSemanticConstraints& Semantic)
 {
 	if (Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty())
 	{
@@ -41,6 +54,11 @@ static bool HasAmbiguousConvertScheduleOwner(const FBlueprintHelperActionSemanti
 	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Schedule)
 	{
 		return IsGenericScheduleOperation(Semantic.ScheduleOperation);
+	}
+
+	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Create)
+	{
+		return IsGenericCreateOperation(Semantic.CreateOperation);
 	}
 
 	return false;
@@ -99,13 +117,13 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		return Result;
 	}
 
-	if (HasAmbiguousConvertScheduleOwner(EffectiveRequest.Semantic))
+	if (HasAmbiguousGenericFunctionOwner(EffectiveRequest.Semantic))
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 		Result.ClusterKind = EffectiveRequest.ClusterKind;
-		Result.ErrorCode = TEXT("ambiguous_convert_schedule_owner");
-		Result.Message = TEXT("Convert/Schedule request contains both function_operation and a generic transform/schedule operation.");
+		Result.ErrorCode = TEXT("ambiguous_generic_function_owner");
+		Result.Message = TEXT("GenericOps request contains both function_operation and generic node/spawner operation evidence.");
 		return Result;
 	}
 

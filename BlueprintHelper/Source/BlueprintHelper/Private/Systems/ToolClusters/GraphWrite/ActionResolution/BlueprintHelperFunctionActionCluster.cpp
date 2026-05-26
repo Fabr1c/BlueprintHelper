@@ -43,6 +43,41 @@ static void PopulateCallContext(FBlueprintHelperCallFunctionResolveRequest& Call
 	CallRequest.Context.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 }
 
+static void AddDelimitedPolicyPaths(const FString& RawValue, TArray<FString>& InOutPaths)
+{
+	FString Normalized = RawValue;
+	Normalized.ReplaceInline(TEXT(","), TEXT(";"));
+	Normalized.ReplaceInline(TEXT("|"), TEXT(";"));
+
+	TArray<FString> Parts;
+	Normalized.ParseIntoArray(Parts, TEXT(";"), true);
+	for (FString Part : Parts)
+	{
+		Part = Part.TrimStartAndEnd();
+		if (!Part.IsEmpty())
+		{
+			InOutPaths.AddUnique(Part);
+		}
+	}
+}
+
+static void PopulateCandidatePolicy(FBlueprintHelperCallFunctionResolveRequest& CallRequest, const FBlueprintHelperActionSemanticConstraints& Semantic)
+{
+	if (!Semantic.StableId.TrimStartAndEnd().IsEmpty())
+	{
+		CallRequest.CandidatePolicy.RequiredStableCallableIds.Add(Semantic.StableId.TrimStartAndEnd());
+	}
+
+	if (const FString* PermittedNodeClassPaths = Semantic.CapabilityFacts.Find(TEXT("function.permitted_node_class_paths")))
+	{
+		AddDelimitedPolicyPaths(*PermittedNodeClassPaths, CallRequest.CandidatePolicy.PermittedNodeClassPaths);
+	}
+	if (const FString* PermittedNodeClassPaths = Semantic.DefaultValues.Find(TEXT("function.permitted_node_class_paths")))
+	{
+		AddDelimitedPolicyPaths(*PermittedNodeClassPaths, CallRequest.CandidatePolicy.PermittedNodeClassPaths);
+	}
+}
+
 FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request,
 	const FBlueprintHelperActionClusterContextView& Context)
@@ -86,6 +121,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	CallRequest.ExpectedReturnPinType = Semantic.ExpectedReturnPinType;
 	CallRequest.bAllowFuzzyUnique = Request.bAllowFuzzyUnique;
 	CallRequest.MaxCandidates = Request.MaxCandidates;
+	PopulateCandidatePolicy(CallRequest, Semantic);
 	PopulateCallContext(CallRequest, Request);
 
 	const FBlueprintHelperCallFunctionResolveResult CallResult = FBlueprintHelperCallFunctionResolver::Resolve(CallRequest);

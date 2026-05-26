@@ -7,7 +7,10 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
+#include "UObject/Class.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace
 {
@@ -31,7 +34,38 @@ static void AddPinAlias(
 
 static bool TryBuildSelectPinType(const FString& TypeName, FEdGraphPinType& OutPinType)
 {
-	const FString Normalized = TypeName.TrimStartAndEnd().ToLower();
+	FString Raw = TypeName.TrimStartAndEnd();
+	const FBlueprintHelperCallFunctionPinType ParsedPinType =
+		FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Raw);
+	FString Category = ParsedPinType.Category.TrimStartAndEnd();
+	FString ObjectPath = ParsedPinType.ObjectPath.TrimStartAndEnd();
+	if (ObjectPath.IsEmpty() && !ParsedPinType.SubCategory.TrimStartAndEnd().IsEmpty())
+	{
+		ObjectPath = ParsedPinType.SubCategory.TrimStartAndEnd();
+	}
+
+	const FString Prefixes[] = {
+		TEXT("object"),
+		TEXT("class"),
+		TEXT("soft_object"),
+		TEXT("softobject"),
+		TEXT("soft_class"),
+		TEXT("softclass"),
+		TEXT("interface"),
+		TEXT("struct"),
+		TEXT("enum")
+	};
+	for (const FString& Prefix : Prefixes)
+	{
+		if (Raw.StartsWith(Prefix + TEXT(":"), ESearchCase::IgnoreCase))
+		{
+			Category = Prefix;
+			ObjectPath = Raw.Mid(Prefix.Len() + 1).TrimStartAndEnd();
+			break;
+		}
+	}
+
+	const FString Normalized = Raw.ToLower();
 	if (Normalized.IsEmpty())
 	{
 		return false;
@@ -79,7 +113,158 @@ static bool TryBuildSelectPinType(const FString& TypeName, FEdGraphPinType& OutP
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Text;
 		return true;
 	}
+
+	auto ResolveTypeObject = [](const FString& Path) -> UObject*
+	{
+		const FString CleanPath = Path.TrimStartAndEnd();
+		if (CleanPath.IsEmpty())
+		{
+			return nullptr;
+		}
+		if (UObject* Existing = FindObject<UObject>(nullptr, *CleanPath))
+		{
+			return Existing;
+		}
+		return LoadObject<UObject>(nullptr, *CleanPath);
+	};
+
+	UObject* TypeObject = ResolveTypeObject(ObjectPath);
+	if (!TypeObject && Raw.StartsWith(TEXT("/"), ESearchCase::CaseSensitive))
+	{
+		TypeObject = ResolveTypeObject(Raw);
+		if (TypeObject)
+		{
+			if (TypeObject->IsA<UEnum>())
+			{
+				Category = TEXT("enum");
+			}
+			else if (TypeObject->IsA<UScriptStruct>())
+			{
+				Category = TEXT("struct");
+			}
+			else if (TypeObject->IsA<UClass>())
+			{
+				Category = TEXT("object");
+			}
+		}
+	}
+
+	const FString EffectiveCategory = Category.TrimStartAndEnd().ToLower();
+	if (EffectiveCategory == TEXT("object"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+		OutPinType.PinSubCategoryObject = TypeObject ? TypeObject : UObject::StaticClass();
+		return true;
+	}
+	if (EffectiveCategory == TEXT("class"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Class;
+		OutPinType.PinSubCategoryObject = TypeObject ? TypeObject : UObject::StaticClass();
+		return true;
+	}
+	if (EffectiveCategory == TEXT("soft_object") || EffectiveCategory == TEXT("softobject"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_SoftObject;
+		OutPinType.PinSubCategoryObject = TypeObject ? TypeObject : UObject::StaticClass();
+		return true;
+	}
+	if (EffectiveCategory == TEXT("soft_class") || EffectiveCategory == TEXT("softclass"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_SoftClass;
+		OutPinType.PinSubCategoryObject = TypeObject ? TypeObject : UObject::StaticClass();
+		return true;
+	}
+	if (EffectiveCategory == TEXT("interface"))
+	{
+		UClass* InterfaceClass = Cast<UClass>(TypeObject);
+		if (!InterfaceClass)
+		{
+			return false;
+		}
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Interface;
+		OutPinType.PinSubCategoryObject = InterfaceClass;
+		return true;
+	}
+	if (EffectiveCategory == TEXT("struct"))
+	{
+		UScriptStruct* StructType = Cast<UScriptStruct>(TypeObject);
+		if (!StructType)
+		{
+			return false;
+		}
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		OutPinType.PinSubCategoryObject = StructType;
+		return true;
+	}
+	if (EffectiveCategory == TEXT("enum"))
+	{
+		UEnum* EnumType = Cast<UEnum>(TypeObject);
+		if (!EnumType)
+		{
+			return false;
+		}
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Enum;
+		OutPinType.PinSubCategoryObject = EnumType;
+		return true;
+	}
 	return false;
+}
+
+static FString GetExpressionEvidenceValue(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	const TCHAR* Key)
+{
+	if (const FString* Value = Expression.ContextEvidence.Find(Key))
+	{
+		return Value->TrimStartAndEnd();
+	}
+	return FString();
+}
+
+static FString ResolveSelectResultTypeProof(const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	const FString EvidenceProof = GetExpressionEvidenceValue(Expression, TEXT("generic.select.result_type_proof"));
+	if (!EvidenceProof.IsEmpty())
+	{
+		return EvidenceProof;
+	}
+	return Expression.Type.TrimStartAndEnd();
+}
+
+static bool IsWildcardSelectTypeToken(const FString& TypeName)
+{
+	const FString Normalized = TypeName.TrimStartAndEnd().ToLower();
+	return Normalized == TEXT("wildcard")
+		|| Normalized == TEXT("wildcard_pin")
+		|| Normalized == TEXT("wildcardpin")
+		|| Normalized == TEXT("any")
+		|| Normalized == TEXT("unknown");
+}
+
+static bool ValidateSelectResultTypeProof(
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FEdGraphPinType& OutResultPinType,
+	FString& OutError)
+{
+	const FString ResultTypeProof = ResolveSelectResultTypeProof(Expression);
+	if (ResultTypeProof.IsEmpty())
+	{
+		OutError = TEXT("select_result_type_unresolved: select expression requires generic.select.result_type_proof or a resolved result type.");
+		return false;
+	}
+	if (IsWildcardSelectTypeToken(ResultTypeProof))
+	{
+		OutError = TEXT("wildcard_residual: select result type proof is still wildcard.");
+		return false;
+	}
+	if (!TryBuildSelectPinType(ResultTypeProof, OutResultPinType))
+	{
+		OutError = FString::Printf(
+			TEXT("select_result_type_unresolved: unsupported select result type proof '%s'."),
+			*ResultTypeProof);
+		return false;
+	}
+	return true;
 }
 
 static bool TryGetExpressionLiteral(
@@ -118,15 +303,9 @@ static void ApplyIndexPinType(UK2Node_Select* SelectNode, const FBlueprintHelper
 	SelectNode->ChangePinType(IndexPin);
 }
 
-static void ApplyResultPinType(UK2Node_Select* SelectNode, const FBlueprintHelperGraphExpressionIR& Expression)
+static void ApplyResultPinType(UK2Node_Select* SelectNode, const FEdGraphPinType& PinType)
 {
 	if (!SelectNode)
-	{
-		return;
-	}
-
-	FEdGraphPinType PinType;
-	if (!TryBuildSelectPinType(Expression.Type, PinType))
 	{
 		return;
 	}
@@ -309,6 +488,11 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 	}
 
 	const FString ExpressionId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	FEdGraphPinType ResultPinType;
+	if (!ValidateSelectResultTypeProof(Expression, ResultPinType, OutError))
+	{
+		return false;
+	}
 	if (!ActionResult.IsResolved())
 	{
 		OutError = ActionResult.Message.IsEmpty() ? TEXT("select fragment build failed: action provider did not resolve.") : ActionResult.Message;
@@ -316,7 +500,7 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 	}
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = ExpressionId;
-	SpawnOptions.NodeConfigurationHook = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, FString& HookError)
+	SpawnOptions.NodeConfigurationHook = [&Expression, ResultPinType](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, FString& HookError)
 	{
 		UK2Node_Select* SelectNode = Cast<UK2Node_Select>(&SpawnedNode);
 		if (!SelectNode)
@@ -330,7 +514,7 @@ bool FBlueprintHelperSelectFragmentBuilder::Build(
 		{
 			return false;
 		}
-		ApplyResultPinType(SelectNode, Expression);
+		ApplyResultPinType(SelectNode, ResultPinType);
 		return true;
 	};
 	SpawnOptions.DefaultValueProvider = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, TMap<FString, FString>& InOutDefaults)

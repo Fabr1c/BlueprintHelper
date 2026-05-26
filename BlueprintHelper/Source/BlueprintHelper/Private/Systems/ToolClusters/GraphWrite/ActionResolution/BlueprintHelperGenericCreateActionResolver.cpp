@@ -117,6 +117,20 @@ static FBlueprintHelperActionResolutionResult MakeUnsupportedResult(
 	return Result;
 }
 
+static bool HasFunctionBackedOperationEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
+{
+	return !Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty();
+}
+
+static bool IsFunctionBackedCreateOperation(const FString& Operation)
+{
+	const FString Normalized = NormalizeCreateOperation(Operation);
+	return Normalized == TEXT("async_action")
+		|| Normalized == TEXT("function_backed_create")
+		|| Normalized == TEXT("function_backed_spawn")
+		|| Normalized == TEXT("function_backed_construct");
+}
+
 static UClass* ResolveCreateWidgetNodeClass()
 {
 	FModuleManager::Get().LoadModule(FName(TEXT("UMGEditor")));
@@ -194,6 +208,13 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericCreateActionResolv
 		return MakeInvalidResult(
 			TEXT("needs_more_semantic_context"),
 			TEXT("Create semantic requires create_operation."));
+	}
+
+	if (HasFunctionBackedOperationEvidence(Context.GetSemantic()) || IsFunctionBackedCreateOperation(Operation))
+	{
+		return MakeUnsupportedResult(
+			TEXT("function_backed_operation_wrong_owner"),
+			TEXT("Function-backed create operations must route through FunctionActionCluster."));
 	}
 
 	if (!IsSupportedCreateOperation(Operation))
