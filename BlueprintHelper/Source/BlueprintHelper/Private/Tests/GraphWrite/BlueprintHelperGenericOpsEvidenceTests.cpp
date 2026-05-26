@@ -217,4 +217,71 @@ bool FBlueprintHelperGenericOpsActionContextProjectionTest::RunTest(const FStrin
 	return bPassed;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericOpsDedicatedControlStatementProjectionTest,
+	"BlueprintHelper.GraphWrite.GenericOps.Evidence.DedicatedControlStatementProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericOpsDedicatedControlStatementProjectionTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_switch_int");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Control;
+	Statement->ControlOperation = TEXT("switch_int");
+	Statement->ContextEvidence.Add(TEXT("generic.control.operation"), TEXT("switch_int"));
+	Statement->ContextEvidence.Add(TEXT("generic.control.case_values"), TEXT("0,1"));
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+	TestEqual(TEXT("one generic control demand"), Demands.Num(), 1);
+	if (Demands.Num() != 1)
+	{
+		return false;
+	}
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("control semantic kind"), Demands[0].SemanticKind, EBlueprintHelperActionSemanticKind::Control);
+	bPassed &= TestEqual(TEXT("control query"), Demands[0].Query, FString(TEXT("switch_int")));
+	bPassed &= TestEqual(TEXT("generic operation default"), Demands[0].DefaultValues.FindRef(TEXT("generic.control.operation")), FString(TEXT("switch_int")));
+	bPassed &= TestEqual(TEXT("generic case values default"), Demands[0].DefaultValues.FindRef(TEXT("generic.control.case_values")), FString(TEXT("0,1")));
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericOpsFunctionBackedCreateStatementProjectionTest,
+	"BlueprintHelper.GraphWrite.GenericOps.Evidence.FunctionBackedCreateStatementProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericOpsFunctionBackedCreateStatementProjectionTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_create_widget");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Create;
+	Statement->CreateOperation = TEXT("function_backed_create");
+	Statement->FunctionOperation = TEXT("create_function");
+	Statement->Target = TEXT("CreateWidget");
+	Statement->ClassPath = TEXT("/Script/UMG.UserWidget");
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+	TestEqual(TEXT("one function-backed create demand"), Demands.Num(), 1);
+	if (Demands.Num() != 1)
+	{
+		return false;
+	}
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("create cluster is FunctionAction"), Demands[0].ClusterKind, EBlueprintHelperSpawnerClusterKind::FunctionAction);
+	bPassed &= TestEqual(TEXT("create function operation"), Demands[0].FunctionOperation, FString(TEXT("create_function")));
+	bPassed &= TestEqual(TEXT("create query is factory function"), Demands[0].Query, FString(TEXT("CreateWidget")));
+	bPassed &= TestEqual(TEXT("create operation preserved"), Demands[0].CreateOperation, FString(TEXT("function_backed_create")));
+	return bPassed;
+}
+
 #endif

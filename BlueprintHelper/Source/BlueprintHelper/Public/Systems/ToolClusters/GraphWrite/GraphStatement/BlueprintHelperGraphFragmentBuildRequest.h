@@ -19,6 +19,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
+	FString ControlOperation;
 	FString CreateOperation;
 	FString ContainerKind;
 	FString ContainerOperation;

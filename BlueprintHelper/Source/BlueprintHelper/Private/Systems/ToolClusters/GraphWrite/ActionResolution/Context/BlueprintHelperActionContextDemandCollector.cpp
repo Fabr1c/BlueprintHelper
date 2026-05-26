@@ -180,6 +180,23 @@ static FString BuildStatementQuery(const FBlueprintHelperGraphStatementIR& State
 		return ContainerQuery == TEXT(".") ? Statement.PatternName : ContainerQuery;
 	}
 
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Control)
+	{
+		return FirstNonEmpty(
+			Statement.ControlOperation,
+			EvidenceValue(Statement.ContextEvidence, TEXT("generic.control.operation")),
+			Statement.PatternName);
+	}
+
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::Create
+		&& Statement.FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase))
+	{
+		return FirstNonEmpty(
+			Statement.Target,
+			Statement.Name,
+			Statement.ResolvedCallFunctionStableId);
+	}
+
 	if (IsEventDelegateSemantic(SemanticKind))
 	{
 		return FirstNonEmpty(
@@ -709,7 +726,17 @@ static void ApplyCreateStatementEvidence(
 	InOutDemand.CreateOperation = Statement.CreateOperation.TrimStartAndEnd().ToLower();
 	InOutDemand.ClassPath = FirstNonEmpty(Statement.ClassPath, Statement.Target, Statement.Name);
 	InOutDemand.AssetPath = Statement.AssetPath.TrimStartAndEnd();
-	InOutDemand.Query = InOutDemand.CreateOperation;
+	if (Statement.FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase))
+	{
+		InOutDemand.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+		InOutDemand.FunctionOperation = TEXT("create_function");
+		InOutDemand.Query = FirstNonEmpty(Statement.Target, Statement.Name, Statement.ResolvedCallFunctionStableId);
+		InOutDemand.DefaultValues.Add(TEXT("function_operation"), TEXT("create_function"));
+	}
+	else
+	{
+		InOutDemand.Query = InOutDemand.CreateOperation;
+	}
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.operation"), InOutDemand.CreateOperation);
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.class_path"), InOutDemand.ClassPath);
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.asset_path"), InOutDemand.AssetPath);
@@ -746,7 +773,17 @@ static void ApplyCreateExpressionEvidence(
 	InOutDemand.CreateOperation = Expression.CreateOperation.TrimStartAndEnd().ToLower();
 	InOutDemand.ClassPath = FirstNonEmpty(Expression.ClassPath, Expression.Target, Expression.Name);
 	InOutDemand.AssetPath = Expression.AssetPath.TrimStartAndEnd();
-	InOutDemand.Query = InOutDemand.CreateOperation;
+	if (Expression.FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase))
+	{
+		InOutDemand.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+		InOutDemand.FunctionOperation = TEXT("create_function");
+		InOutDemand.Query = FirstNonEmpty(Expression.Target, Expression.Name);
+		InOutDemand.DefaultValues.Add(TEXT("function_operation"), TEXT("create_function"));
+	}
+	else
+	{
+		InOutDemand.Query = InOutDemand.CreateOperation;
+	}
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.operation"), InOutDemand.CreateOperation);
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.class_path"), InOutDemand.ClassPath);
 	AddDefaultIfPresent(InOutDemand, TEXT("generic.create.asset_path"), InOutDemand.AssetPath);
@@ -1490,6 +1527,7 @@ EBlueprintHelperActionSemanticKind FBlueprintHelperActionContextDemandCollector:
 	case EBlueprintHelperGraphStatementKind::Branch:
 	case EBlueprintHelperGraphStatementKind::Sequence:
 	case EBlueprintHelperGraphStatementKind::Return:
+	case EBlueprintHelperGraphStatementKind::Control:
 		return EBlueprintHelperActionSemanticKind::Control;
 	case EBlueprintHelperGraphStatementKind::Create:
 		return EBlueprintHelperActionSemanticKind::Create;

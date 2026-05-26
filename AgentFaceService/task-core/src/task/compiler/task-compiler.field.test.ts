@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { compileTaskSpecToTaskPlan } from './task-compiler.js';
+import { compileTaskSpecToTaskPlan, taskPlanToAppendBridgePayload } from './task-compiler.js';
 
 function makeFieldSpec(statement: Record<string, unknown>) {
   return {
@@ -45,6 +45,13 @@ function compileFirstStatement(statement: Record<string, unknown>) {
   assert.ok(graphWriteStep);
   const write = graphWriteStep.write as { ops: Array<{ body: { statements: Record<string, unknown>[] } }> };
   return write.ops[0].body.statements[0];
+}
+
+function compileBridgeFirstStatement(statement: Record<string, unknown>) {
+  const taskPlan = compileTaskSpecToTaskPlan(makeFieldSpec(statement) as never);
+  const bridgePayload = taskPlanToAppendBridgePayload(taskPlan, true) as unknown as Record<string, unknown>;
+  const logicSpec = bridgePayload.logic_spec as { statements: Record<string, unknown>[] };
+  return logicSpec.statements[0];
 }
 
 test('set lowers to field variable set', () => {
@@ -143,4 +150,28 @@ test('explicit field_access preserves member property path', () => {
   assert.equal(value.field_scope, 'field_access');
   assert.equal(value.target, 'DoorState');
   assert.equal(value.property_path, 'TargetRoll');
+});
+
+test('struct member field capability facts survive TaskPlan and bridge lowering', () => {
+  const input = {
+    kind: 'field',
+    field_operation: 'set',
+    field_scope: 'field_access',
+    target: 'DoorState',
+    property_path: 'TargetRoll',
+    capability_id: 'field.struct_member_set',
+    capability_facts: {
+      'generic.struct.struct_path': '/Script/Engine.Rotator',
+      'generic.struct.selected_field_paths': 'TargetRoll',
+    },
+    value: { kind: 'literal', value_type: 'number', value: 90 },
+  };
+
+  for (const statement of [compileFirstStatement(input), compileBridgeFirstStatement(input)]) {
+    assert.equal(statement.kind, 'field');
+    assert.equal(statement.field_operation, 'set');
+    assert.equal(statement.field_scope, 'field_access');
+    assert.equal(statement.capability_id, 'field.struct_member_set');
+    assert.deepEqual(statement.capability_facts, input.capability_facts);
+  }
 });

@@ -912,6 +912,12 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	Statement->TransformOperation = NormalizeFieldToken(Statement->TransformOperation);
 	StatementObject->TryGetStringField(TEXT("schedule_operation"), Statement->ScheduleOperation);
 	Statement->ScheduleOperation = NormalizeFieldToken(Statement->ScheduleOperation);
+	StatementObject->TryGetStringField(TEXT("control"), Statement->ControlOperation);
+	if (Statement->ControlOperation.IsEmpty())
+	{
+		StatementObject->TryGetStringField(TEXT("control_operation"), Statement->ControlOperation);
+	}
+	Statement->ControlOperation = NormalizeFieldToken(Statement->ControlOperation);
 	StatementObject->TryGetStringField(TEXT("create_operation"), Statement->CreateOperation);
 	Statement->CreateOperation = NormalizeFieldToken(Statement->CreateOperation);
 	StatementObject->TryGetStringField(TEXT("container_kind"), Statement->ContainerKind);
@@ -1448,10 +1454,40 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	default:
 		break;
 
+	case EBlueprintHelperGraphStatementKind::Control:
+		if (Statement->ControlOperation.TrimStartAndEnd().IsEmpty())
+		{
+			const FString EvidenceOperation = Statement->ContextEvidence.FindRef(TEXT("generic.control.operation")).TrimStartAndEnd().ToLower();
+			if (!EvidenceOperation.IsEmpty())
+			{
+				Statement->ControlOperation = EvidenceOperation;
+			}
+		}
+		if (Statement->ControlOperation.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("needs_more_semantic_context"),
+				Statement->Path + TEXT(".control"),
+				TEXT("control statement requires control or generic.control.operation evidence."));
+		}
+		break;
+
 	case EBlueprintHelperGraphStatementKind::Create:
 		if (Statement->CreateOperation.TrimStartAndEnd().IsEmpty())
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Statement->Path + TEXT(".create_operation"), TEXT("create statement requires create_operation."));
+		}
+		if (Statement->FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase)
+			&& Statement->Target.TrimStartAndEnd().IsEmpty()
+			&& Statement->Name.TrimStartAndEnd().IsEmpty()
+			&& Statement->ResolvedCallFunctionStableId.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("missing_create_function_target"),
+				Statement->Path + TEXT(".target"),
+				TEXT("function-backed create statement requires target or name callable evidence."));
 		}
 		if (Statement->Target.TrimStartAndEnd().IsEmpty()
 			&& Statement->ClassPath.TrimStartAndEnd().IsEmpty()

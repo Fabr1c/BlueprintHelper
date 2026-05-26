@@ -16,6 +16,7 @@ enum class EBlueprintHelperGraphStatementKind : uint8
 	Sequence,
 	Let,
 	Return,
+	Control,
 	Create,
 	Convert,
 	Schedule,
@@ -119,6 +120,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphExpressionIR
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
+	FString ControlOperation;
 	FString CreateOperation;
 	FString ContainerKind;
 	FString ContainerOperation;
@@ -169,6 +171,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphStatementIR
 	FString FunctionOperation;
 	FString TransformOperation;
 	FString ScheduleOperation;
+	FString ControlOperation;
 	FString CreateOperation;
 	FString ContainerKind;
 	FString ContainerOperation;
