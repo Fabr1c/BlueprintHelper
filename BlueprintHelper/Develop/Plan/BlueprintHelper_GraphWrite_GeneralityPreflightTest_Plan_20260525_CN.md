@@ -19,7 +19,7 @@
 |---|---|---|---|
 | Stable runtime clusters | `function_action`、`field`、`event`、`asset_action`、`container_action`、`generic_schedule` | 使用 `GRAPHWRITE_CAPABILITY_CONTRACT.clusters` 的 supported operations。 | 作为 core matrix 种子；cluster contract 较粗的 `function_action` / `field` 需要展开成本文定义的具体 TaskSpec shapes。 |
 | EventDelegate use-site | `event_delegate.*` | `EventDelegateActionCluster`；只消费已有 component / delegate / handler / signature evidence。 | supported operations 进入 10-variant preflight；`replace` / `merge` duplicate policy 等 rejected rows 只进入负例与排除报告。 |
-| GenericOps logical groups | `generic_ops.control.*`、`generic_ops.container.*`、`generic_ops.transform.*`、`generic_ops.create.*`、`generic_ops.schedule.*`、`generic_ops.struct_select.*` | GenericOps 不是 runtime cluster，也不是 top-level `kind`；每项按 contract 的 `runtimeOwner` 路由到既有 owner。 | supported rows 必须生成 10 variants；`link_time_auto_conversion`、`split_pin`、`recombine_pin` 等 rejected rows 不计入通过率。 |
+| GenericOps logical groups | `generic_ops.control.*`、`generic_ops.transform.*`、`generic_ops.create.*`、`generic_ops.struct_select.*` | GenericOps 不是 runtime cluster，也不是 top-level `kind`；清理后不再包含 container、schedule、asset_action、function-backed 子集或 `set_fields_in_struct` 索引。 | supported rows 必须生成 10 variants；`link_time_auto_conversion`、`split_pin`、`recombine_pin` 等 rejected rows 不计入通过率。 |
 | OpCoverage logical group | `op.<operation>` / contract group `op_coverage` | `op` 仍是 Graph body expression semantic；FunctionAction-owned，不新增 `graphwrite_op` cluster。 | 既有 TypePromotion 10 项 + P0/P1/P2 supported op 都进入 matrix；`enum_equal`、`enum_not_equal`、SlateBrush equality 等只做 deterministic rejection。 |
 
 硬边界保持不变：
@@ -62,7 +62,7 @@
 | broad `container_action` | `BlueprintHelper_GraphWrite_ContainerAction_FirstClassPlan_20260525_CN.md` 已实现 V1 first-class 范围：核心 array/map/set 操作进入 `container_action` public shape，执行复用 FunctionAction-backed callable evidence；`make_*` 仍归 Generic create，`foreach` 归后续 control-flow。focused readback 已覆盖 wildcard 被替换成目标类型、target link 正确、编译无报错；最终矩阵仍需按 owned operation 生成 10 variants。 |
 | FunctionAction overlap | 容器操作会与 FunctionAction 高度重叠；最终矩阵前必须明确哪些作为普通 callable 计入 FunctionAction，哪些需要 first-class `container_action` 语义。 |
 | GenericOps logical umbrella | `generic_ops.*` 只作为 logical operation catalog；不新增 runtime cluster，不扩展 top-level `kind`。最终矩阵按 contract `runtimeOwner` 路由，Function-backed convert/create/schedule/container/op 归 FunctionAction，control/struct/select/generic spawner 归 GenericAssetStructControlAction。 |
-| OpCoverage logical group | `op_coverage` 不发布 `graphwrite_op` cluster；TypePromotion 10 项、P0/P1 compact callable op、P2 `array_identical` 都按 FunctionAction-owned `op.*` 进入矩阵；excluded op 只进入 deterministic negative coverage。 |
+| OpCoverage logical group | `op_coverage` 不发布 `graphwrite_op` cluster；P0/P1 compact callable op 按 FunctionAction-owned `op.*` 进入矩阵；`array_identical` 已从 OpCoverage 删除并归 `container.array.identical`。excluded op 只进入 deterministic negative coverage。 |
 | UI/editor interaction inputs | Action Menu、右键、拖拽、拖拽 Pin、Slate selection、Content Browser/MyBlueprint/SCS 当前选中态一律不计入 supported operation。需要等价能力时必须替换为 statement-local typed pin、function/class/asset path、handler/signature evidence。 |
 | capability contract expansion | 2026-05-26 contract 已包含 `clusters` 与 `operationGroups` 双层来源；最终矩阵必须从 machine-readable contract 生成并保留手写 core-shape expansion，不能继续使用旧 45 项草案。 |
 | ownership-filtered final generality preflight | 放到 capability contract expansion 之后执行，作为最终门禁。 |
@@ -134,7 +134,7 @@ Field-like UI/support/other-cluster/diagnostic rows such as `field.drag_get`、`
 | `field` | `field_access`、`component_ref` plus core field get/set expansion | First-class Field owns stable `field.capability_id` / resolver / evidence / readback paths; Field-specific facts do not move into GenericOps. |
 | `event` | `custom_event` supported; override/native and delegate-bound entries remain discussion-gated | Declaration creation stays outside EventDelegate use-site scoring. |
 | `asset_action` | `create.asset_action` | Requires projected ActionDatabase identity; no Content Browser selected state. |
-| `container_action` | V1 stable `container.array.*` / `container.map.*` / `container.set.*` rows from contract cluster | Current cluster seed remains the first-class stable container slice; broader container operations also appear under `generic_ops.container.*`. |
+| `container_action` | 58 个 `container.array.*` / `container.map.*` / `container.set.*` rows from contract cluster | `container_action` 是唯一 container denominator；不再存在 `generic_ops.container.*` 公共索引。 |
 | `generic_schedule` | `schedule.timer_delegate_node`、`schedule.latent_or_async_node` | Requires selected schedule spawner evidence; latent nodes require `graph_latent_allowed`; timer delegate nodes require existing handler/signature evidence. |
 
 ### EventDelegate Use-Site Operations
@@ -159,11 +159,9 @@ GenericOps is a public logical umbrella, not a runtime cluster. Every supported 
 | Logical group | Operation id families | Runtime owner |
 |---|---|---|
 | `generic_ops.control` | `branch`、`sequence`、`return`、`switch_int`、`switch_string`、`switch_name`、`switch_enum`、`multi_gate`、`do_once`、`do_n`、`gate`、`flip_flop`、`for_loop`、`for_loop_with_break`、`foreach_loop`、`foreach_loop_with_break`、`while_loop` | `GenericAssetStructControlAction` |
-| `generic_ops.container` | array: `get,set,add,add_unique,append,insert,remove_item,remove_index,clear,contains,find,length,shuffle,shuffle_from_stream,identical,resize,reverse,is_empty,is_not_empty,last_index,swap,filter_array,is_valid_index,random,random_from_stream,sort_string,sort_name,sort_byte,sort_int,sort_int64,sort_float`; map: `add,remove,find,contains,keys,values,clear,length,is_empty,is_not_empty,get_key_value_by_index,get_last_index`; set: `add,remove,contains,clear,length,to_array,add_items,remove_items,is_empty,is_not_empty,intersection,union,difference,get_item_by_index,get_last_index` | `FunctionAction` |
-| `generic_ops.transform` | `dynamic_cast`、`class_cast`、`type_promotion`、`function_conversion`、`blueprint_autocast`、`numeric_conversion`、`string_name_text_conversion`、`enum_conversion`、`object_to_soft_object`、`class_to_soft_class` | Generic cast rows use `GenericAssetStructControlAction`; function-backed rows use `FunctionAction` |
-| `generic_ops.create` | `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`、`asset_action`、`async_action`、`function_backed_create`、`function_backed_spawn`、`function_backed_construct` | Generic spawner / asset rows use `GenericAssetStructControlAction`; function-backed rows use `FunctionAction` |
-| `generic_ops.schedule` | `timer_delegate_node`、`latent_or_async_node`、`timer_by_function_name`、`timer_by_handle`、`timer_clear_by_handle`、`timer_clear_by_function_name`、`timer_pause_by_handle`、`timer_pause_by_function_name`、`timer_unpause_by_handle`、`timer_unpause_by_function_name`、`delay`、`retriggerable_delay`、`delay_until_next_tick`、`generic_latent_function_call`、`async_proxy_output_delegate_connection` | Generic schedule nodes use `GenericAssetStructControlAction`; function-backed timer/latent calls use `FunctionAction`; async proxy handler linkage requires explicit EventDelegate use-site evidence |
-| `generic_ops.struct_select` | `make_struct`、`break_struct`、`set_fields_in_struct`、`select` | `GenericAssetStructControlAction` |
+| `generic_ops.transform` | `dynamic_cast`、`class_cast`、`type_promotion` | `GenericAssetStructControlAction` |
+| `generic_ops.create` | `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set` | `GenericAssetStructControlAction` |
+| `generic_ops.struct_select` | `make_struct`、`break_struct`、`select` | `GenericAssetStructControlAction` |
 
 Rejected GenericOps rows such as `generic_ops.transform.link_time_auto_conversion`、`generic_ops.struct_select.split_pin`、`generic_ops.struct_select.recombine_pin` must not enter operation pass rate. They belong to linker/readback or future PinOperation boundaries.
 
@@ -176,7 +174,7 @@ OpCoverage remains `FunctionAction` owned and must not publish `graphwrite_op` a
 | Existing TypePromotion | `add`、`subtract`、`multiply`、`divide`、`greater`、`greater_equal`、`less`、`less_equal`、`equal`、`not_equal` | typed operand/result evidence when required by TypePromotion path |
 | P0 commutative callable | `bitwise_and`、`bitwise_or`、`boolean_and`、`boolean_or`、`boolean_nand`、`max`、`min`、`string_append` | `op.operation_id` plus stable callable evidence projected by catalog |
 | P1 compact call-function | `boolean_not`、`boolean_xor`、`boolean_nor`、`bitwise_not`、`bitwise_xor`、`abs`、`modulo`、`negate`、`dot`、`dot3`、`cross`、`cross3`、`near_equal`、`intpoint_equal`、`transform_compose`、`equal_exact`、`not_equal_exact`、`equal_ignore_case`、`not_equal_ignore_case`、`datetime_add_datetime`、`datetime_add_timespan`、`datetime_subtract_datetime`、`datetime_subtract_timespan`、`datetime_equal`、`datetime_not_equal`、`datetime_greater`、`datetime_greater_equal`、`datetime_less`、`datetime_less_equal` | `op.operation_id` plus stable callable evidence projected by catalog |
-| P2 special node | `array_identical` | `op.operation_id`、`op.array_lhs_pin_type`、`op.array_rhs_pin_type`; both pins must be explicitly typed arrays with compatible element identity |
+| Removed duplicate | `array_identical` | Not an OpCoverage row; score through `container.array.identical`. |
 
 Excluded OpCoverage inputs are `enum_equal`、`enum_not_equal`、SlateBrush equality、`convert_numeric`、`convert_string_text_name`、`array_map_set_mutation`、`validity_predicate`。They must reject deterministically or route to their owning future capability, not silently count as skipped.
 
@@ -224,7 +222,7 @@ Add tests that assert:
 
 ```text
 GRAPHWRITE_CAPABILITY_CONTRACT.clusters contains function_action, field, event, asset_action, container_action, generic_schedule.
-GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups contains event_delegate, generic_ops.control, generic_ops.container, generic_ops.transform, generic_ops.create, generic_ops.schedule, generic_ops.struct_select, op_coverage.
+GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups contains event_delegate, generic_ops.control, generic_ops.transform, generic_ops.create, generic_ops.struct_select, op_coverage.
 No runtime cluster id is graphwrite_op, generic_ops, control, generic_transform, generic_create, struct_select, or generic_op.
 Every supported operation group row has runtimeOwner and requiredEvidenceKeys.
 Every rejected / discussion-gated row has a deterministic exclusion reason and is not counted as a scored operation.
@@ -425,9 +423,11 @@ test('GraphWrite generality matrix is derived from current capability groups', (
   assert.ok(ids.has('field.member_get'));
   assert.ok(ids.has('event_delegate.delegate.bind'));
   assert.ok(ids.has('generic_ops.control.switch_enum'));
-  assert.ok(ids.has('generic_ops.container.array.identical'));
-  assert.ok(ids.has('generic_ops.struct_select.set_fields_in_struct'));
-  assert.ok(ids.has('op_coverage.array_identical') || ids.has('op.array_identical') || ids.has('array_identical'));
+  assert.ok(ids.has('container_action.container.array.identical') || ids.has('container.array.identical'));
+  assert.ok(ids.has('field.struct_member_set'));
+  assert.ok(!ids.has('generic_ops.container.array.identical'));
+  assert.ok(!ids.has('generic_ops.struct_select.set_fields_in_struct'));
+  assert.ok(!ids.has('op_coverage.array_identical') && !ids.has('op.array_identical') && !ids.has('array_identical'));
   assert.ok(!ids.has('field.set.variable'));
   assert.ok(!ids.has('component_bound_event.bind'));
   assert.ok(!ids.has('delegate.bind'));

@@ -374,7 +374,7 @@ Excluded Field-like inputs:
 | Existing | `add`, `subtract`, `multiply`, `divide`, `greater`, `greater_equal`, `less`, `less_equal`, `equal`, `not_equal` | `FunctionActionCluster` TypePromotion first | typed operand/result evidence when the TypePromotion path requires it |
 | P0 | `bitwise_and`, `bitwise_or`, `boolean_and`, `boolean_or`, `boolean_nand`, `max`, `min`, `string_append` | `FunctionActionCluster` callable/operator evidence | `op.operation_id`; stable callable evidence projected by catalog |
 | P1 | `boolean_not`, `boolean_xor`, `boolean_nor`, `bitwise_not`, `bitwise_xor`, `abs`, `modulo`, `negate`, `dot`, `dot3`, `cross`, `cross3`, `near_equal`, `intpoint_equal`, `transform_compose`, `equal_exact`, `not_equal_exact`, `equal_ignore_case`, `not_equal_ignore_case`, `datetime_add_datetime`, `datetime_add_timespan`, `datetime_subtract_datetime`, `datetime_subtract_timespan`, `datetime_equal`, `datetime_not_equal`, `datetime_greater`, `datetime_greater_equal`, `datetime_less`, `datetime_less_equal` | `FunctionActionCluster` compact call-function evidence | `op.operation_id`; stable callable evidence projected by catalog |
-| P2 | `array_identical` | `FunctionActionCluster` request-scoped `UK2Node_CallArrayFunction` evidence | `op.operation_id`, `op.array_lhs_pin_type`, `op.array_rhs_pin_type`; both pins must be explicitly typed arrays with compatible element evidence |
+| Removed duplicate | `array_identical` | `container_action` | Not an OpCoverage row; score through `container.array.identical`. |
 
 Excluded OpCoverage inputs:
 
@@ -397,20 +397,18 @@ Excluded OpCoverage inputs:
 - `BlueprintHelper/Source/BlueprintHelper/Private/Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.cpp`
 ## 2026-05-26 GraphWrite GenericOps capability matrix
 
-GenericOps is a public logical umbrella for grouped GraphWrite operations. It is not a runtime cluster and it is not a top-level `kind` expansion. The contract publishes `generic_ops.*` operation IDs only to declare ownership, required evidence, and excluded reasons; execution still routes through existing runtime owners.
+GenericOps is a public logical umbrella for grouped GraphWrite operations. It is not a runtime cluster and it is not a top-level `kind` expansion. After the 2026-05-26 de-dup cleanup, it no longer publishes container, schedule, asset_action, function-backed, or struct-member-set duplicate rows; execution still routes through existing runtime owners.
 
 | Logical group | Runtime owner | Evidence boundary |
 |---|---|---|
 | `generic_ops.control` | `GenericAssetStructControlAction` | `generic.control.*`; singleton control, dedicated control-flow, or StandardMacros evidence. |
-| `generic_ops.container` | `FunctionAction` | `container.*` typed wildcard evidence; projected to the callable/container resolver. |
-| `generic_ops.transform` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.transform.*` for generic node evidence; function-backed conversions stay FunctionAction. |
-| `generic_ops.create` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.create.*`; asset actions require projected ActionDatabase identity. |
-| `generic_ops.schedule` | `FunctionAction` or `GenericAssetStructControlAction` by operation owner | `generic.schedule.*`; latent nodes require `graph_latent_allowed`; timer delegate nodes require handler/signature evidence. |
-| `generic_ops.struct_select` | `GenericAssetStructControlAction` | `generic.struct.*` / `generic.select.*`; `set_fields_in_struct` requires selected field paths and `select` rejects unresolved wildcard result types. |
+| `generic_ops.transform` | `GenericAssetStructControlAction` | `dynamic_cast`、`class_cast`、`type_promotion`; function-backed conversions stay FunctionAction and are not GenericOps rows. |
+| `generic_ops.create` | `GenericAssetStructControlAction` | `spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`; `asset_action` stays in the `asset_action` core cluster. |
+| `generic_ops.struct_select` | `GenericAssetStructControlAction` | `make_struct`、`break_struct`、`select`; struct member set stays in `field.struct_member_set`. |
 
 Clarification for Field: a first-class Field capability means stable `field.capability_id` plus Field-owned registry/resolver/evidence/readback paths. It does not mean adding Field-specific concepts to GenericOps, broad shared DTOs, or the core `kind` enum beyond the canonical Field semantic surface.
 
-Verification snapshot (2026-05-26): `npm.cmd --prefix AgentFaceService/task-core run build`, `npm.cmd --prefix AgentFaceService/task-core run test:node` (188/188), UE 5.6 `TemplateEditor` build, `BlueprintHelper.GraphWrite.GenericOps` (22/22), `BlueprintHelper.GraphWrite.ActionResolution.Generic` (24/24), `BlueprintHelper.GraphWrite.ContainerAction`, and `BlueprintHelper.GraphWrite.GenericSchedule` passed for this matrix update.
+Verification snapshot (2026-05-26): `npm.cmd --prefix AgentFaceService/task-core run build`, `npm.cmd --prefix AgentFaceService/task-core run test:node` (217/217), UE 5.6 `TemplateEditor` build, `BlueprintHelper.GraphWrite.GenericOps` (22/22), `BlueprintHelper.GraphWrite.ActionResolution.Generic` (24/24), `BlueprintHelper.GraphWrite.ContainerAction`, and `BlueprintHelper.GraphWrite.GenericSchedule` passed for this matrix update.
 
 ## 2026-05-26 GraphWrite EventDelegate use-site capability matrix
 
