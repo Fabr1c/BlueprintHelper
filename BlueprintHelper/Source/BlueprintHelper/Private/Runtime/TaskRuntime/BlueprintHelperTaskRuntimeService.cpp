@@ -4081,6 +4081,15 @@ public:
 		{
 			return Service.SetClassDefaultProperties(AssetPath, ReadTaskRuntimeClassDefaultSettings(Payload), bDryRun);
 		}
+		if (AdapterOperation == FBlueprintHelperClassSettingsTaskPlanAdapter::ReparentBlueprintOp)
+		{
+			FString NewParentClass;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("new_parent_class"), NewParentClass);
+			}
+			return Service.ReparentBlueprint(AssetPath, NewParentClass, bDryRun);
+		}
 
 		return MakeFailure(
 			TEXT("blueprint_class_settings"),

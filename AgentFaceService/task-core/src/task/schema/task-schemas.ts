@@ -592,8 +592,18 @@ export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
       ensure_absent: z.array(z.string().min(1)).optional(),
     }).passthrough().optional(),
     class_defaults: z.array(z.record(z.unknown())).optional(),
-    parent_class: z.string().min(1).optional(),
-  }).passthrough(),
+    reparent: z.object({
+      new_parent_class: z.string().min(1),
+    }).passthrough().optional(),
+  }).passthrough().superRefine((value, ctx) => {
+    if (Object.hasOwn(value, 'parent_class')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent_class'],
+        message: 'Use behavior.reparent.new_parent_class for Blueprint reparent operations.',
+      });
+    }
+  }),
 }).passthrough();
 
 export const UMGWidgetTaskSpecSchema = TaskSpecBaseSchema.extend({
@@ -745,10 +755,21 @@ export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend
       z.record(z.unknown()),
       z.array(z.record(z.unknown())),
     ]).optional(),
+    reparent: z.object({
+      new_parent_class: z.string().min(1),
+    }).optional(),
   }).passthrough().optional(),
   behavior: GraphWriteBehaviorSchema.optional(),
   integration: z.record(z.unknown()).optional(),
 }).passthrough().superRefine((value, ctx) => {
+  const classSettings = value.class_settings as Record<string, unknown> | undefined;
+  if (classSettings && Object.hasOwn(classSettings, 'parent_class')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['class_settings', 'parent_class'],
+      message: 'Use class_settings.reparent.new_parent_class for Blueprint reparent operations.',
+    });
+  }
   const hasComponents = Array.isArray(value.components) && value.components.length > 0;
   const hasVariables = Array.isArray(value.variables) && value.variables.length > 0;
   const hasClassSettings = value.class_settings !== undefined;

@@ -347,6 +347,33 @@ describe('Composite create_blueprint_feature compiler', () => {
     assert.deepEqual(steps[7]['depends_on'], ['step_007']);
   });
 
+  it('compiles composite class_settings reparent into the ClassSettings reparent operation', () => {
+    const taskPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(makeCompositePhysicsDoorTaskSpec({
+      components: undefined,
+      variables: undefined,
+      behavior: undefined,
+      class_settings: {
+        reparent: {
+          new_parent_class: '/Script/Engine.Pawn',
+        },
+      },
+    })));
+    const steps = taskPlan.steps as Array<Record<string, any>>;
+
+    assert.equal(taskPlan.task_type, 'create_blueprint_feature');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0]['capability'], 'blueprint_class_settings');
+    assert.deepEqual(steps[0]['write'], {
+      strategy: 'class_settings',
+      ops: [
+        {
+          op: 'reparent_blueprint',
+          new_parent_class: '/Script/Engine.Pawn',
+        },
+      ],
+    });
+  });
+
   it('compiles composite interface integration through signature and graph_write capability steps', () => {
     const spec = makeCompositePhysicsDoorTaskSpec({
       class_settings: undefined,

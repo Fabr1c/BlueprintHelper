@@ -243,14 +243,14 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::IsSupportedOp(const FString& 
 {
 	return OpName == AddImplementedInterfacesOp ||
 		OpName == RemoveImplementedInterfacesOp ||
-		OpName == SetClassDefaultPropertiesOp;
+		OpName == SetClassDefaultPropertiesOp ||
+		OpName == ReparentBlueprintOp;
 }
 
 bool FBlueprintHelperClassSettingsTaskPlanAdapter::IsParentClassOp(const FString& OpName)
 {
 	return OpName == TEXT("set_parent_class") ||
-		OpName == TEXT("blueprint_reparent") ||
-		OpName == TEXT("reparent_blueprint");
+		OpName == TEXT("blueprint_reparent");
 }
 
 bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
@@ -331,6 +331,19 @@ bool FBlueprintHelperClassSettingsTaskPlanAdapter::TryBuildAdapterPayload(
 			return false;
 		}
 		Payload->SetArrayField(TEXT("settings"), Settings);
+	}
+	else if (OpName == ReparentBlueprintOp)
+	{
+		FString NewParentClass;
+		if (!OpObject->TryGetStringField(TEXT("new_parent_class"), NewParentClass) || NewParentClass.IsEmpty())
+		{
+			OutError = FBlueprintHelperClassSettingsTaskPlanAdapterLocalUtils::MakeClassSettingsAdapterError(
+				TEXT("invalid_class_settings_op"),
+				TEXT("reparent_blueprint requires new_parent_class."),
+				FBlueprintHelperClassSettingsTaskPlanAdapterLocalUtils::ClassSettingsOpFieldPath(0, TEXT("new_parent_class")));
+			return false;
+		}
+		Payload->SetStringField(TEXT("new_parent_class"), NewParentClass);
 	}
 
 	OutAdapterOperation = OpName;

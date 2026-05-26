@@ -196,6 +196,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'variables[]',
         'class_settings.implemented_interfaces[]',
         'class_settings.class_defaults',
+        'class_settings.reparent.new_parent_class',
         'behavior',
         'integration.interface',
       ],

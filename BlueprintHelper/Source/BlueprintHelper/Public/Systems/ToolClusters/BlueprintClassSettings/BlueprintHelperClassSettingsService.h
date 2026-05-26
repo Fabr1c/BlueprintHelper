@@ -60,9 +60,16 @@ public:
 		const TArray<FBlueprintHelperClassDefaultPropertySetting>& Settings,
 		bool bDryRun = false) const;
 
+	/** Reparent a Blueprint to a new parent class. */
+	FBlueprintHelperToolResultBase ReparentBlueprint(
+		const FString& AssetPath,
+		const FString& NewParentClassPath,
+		bool bDryRun = false) const;
+
 private:
 	UBlueprint* ResolveBlueprint(const FString& AssetPath, FString& OutErrorCode, FString& OutErrorMessage) const;
 	UClass* ResolveInterfaceClass(const FString& InterfacePath, FString& OutCode, FString& OutMessage) const;
+	UClass* ResolveParentClass(const FString& ParentClassPath, FString& OutCode, FString& OutMessage) const;
 	UObject* ResolveClassDefaultObject(UBlueprint* Blueprint, FString& OutCode, FString& OutMessage) const;
 
 	static FString NormalizeObjectPath(const FString& Path);

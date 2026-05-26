@@ -38,7 +38,10 @@
   ],
   "class_settings": {
     "implemented_interfaces": [],
-    "class_defaults": []
+    "class_defaults": [],
+    "reparent": {
+      "new_parent_class": "__NEW_PARENT_CLASS__"
+    }
   },
   "behavior": {
     "graph_strategy": "append_new_owned_graph",

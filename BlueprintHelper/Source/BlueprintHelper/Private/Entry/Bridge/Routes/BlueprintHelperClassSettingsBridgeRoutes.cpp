@@ -83,7 +83,8 @@ bool FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(const FSt
 		Command == TEXT("remove_implemented_interface") ||
 		Command == TEXT("remove_implemented_interfaces") ||
 		Command == TEXT("set_class_default_property") ||
-		Command == TEXT("set_class_default_properties");
+		Command == TEXT("set_class_default_properties") ||
+		Command == TEXT("reparent_blueprint");
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::HandleRequest(
@@ -161,6 +162,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 			ClassSettingsService.SetClassDefaultProperties(
 				AssetPath,
 				FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::ReadClassSettingsRouteDefaultSettings(Request.Payload)));
+	}
+	if (Request.Command == TEXT("reparent_blueprint"))
+	{
+		FString NewParentClass;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("new_parent_class"), NewParentClass);
+		}
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
+			Request,
+			ClassSettingsService.ReparentBlueprint(AssetPath, NewParentClass));
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(

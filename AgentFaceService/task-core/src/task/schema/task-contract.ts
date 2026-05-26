@@ -296,6 +296,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'variables[]',
       'class_settings.implemented_interfaces[]',
       'class_settings.class_defaults',
+      'class_settings.reparent.new_parent_class',
       'behavior',
       'integration.interface',
     ],
@@ -369,13 +370,14 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       task_type: 'edit_blueprint_class_settings',
       target_type: 'blueprint',
       class_settings_strategy: 'class_settings',
-      semantic_groups: ['interfaces.ensure_present', 'interfaces.ensure_absent', 'class_defaults'],
-      rejected_semantics: ['parent_class', 'reparent'],
+      semantic_groups: ['interfaces.ensure_present', 'interfaces.ensure_absent', 'class_defaults', 'reparent.new_parent_class'],
+      rejected_semantics: ['parent_class'],
       agent_semantic_paths: [
         'behavior.class_settings_strategy=class_settings',
         'behavior.interfaces.ensure_present[]',
         'behavior.interfaces.ensure_absent[]',
         'behavior.class_defaults[]',
+        'behavior.reparent.new_parent_class',
       ],
       forbidden_agent_fields: [
         'behavior.ops[]',
@@ -387,11 +389,13 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'add_implemented_interfaces',
         'remove_implemented_interfaces',
         'set_class_default_properties',
+        'reparent_blueprint',
       ],
       runtime_lowering_adapters: [
         'add_implemented_interfaces',
         'remove_implemented_interfaces',
         'set_class_default_properties',
+        'reparent_blueprint',
       ],
     },
     {
@@ -723,6 +727,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
           'add_implemented_interfaces',
           'remove_implemented_interfaces',
           'set_class_default_properties',
+          'reparent_blueprint',
         ],
         ue_commands: [
           'read_class_settings',
@@ -732,6 +737,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
           'remove_implemented_interfaces',
           'set_class_default_property',
           'set_class_default_properties',
+          'reparent_blueprint',
         ],
         documents: [
           'BlueprintHelper_BlueprintClassSettings_UE_FieldMapping_20260503.md',

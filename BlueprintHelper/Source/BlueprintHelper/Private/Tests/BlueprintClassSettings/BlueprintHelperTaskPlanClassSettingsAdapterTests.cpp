@@ -341,7 +341,7 @@ bool FBlueprintHelperClassSettingsServiceReparentDryRunTest::RunTest(const FStri
 	TestTrue(TEXT("reparent dry-run succeeds"), Result.bOk);
 	TestEqual(TEXT("reparent dry-run status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
 	TestFalse(TEXT("reparent dry-run does not mark modified"), Result.bModified);
-	TestEqual(TEXT("dry-run keeps original parent class"), Blueprint->ParentClass, AActor::StaticClass());
+	TestTrue(TEXT("dry-run keeps original parent class"), Blueprint->ParentClass.Get() == AActor::StaticClass());
 
 	return true;
 }
@@ -369,7 +369,7 @@ bool FBlueprintHelperClassSettingsServiceReparentBlueprintTest::RunTest(const FS
 
 	TestTrue(TEXT("reparent succeeds"), Result.bOk);
 	TestTrue(TEXT("reparent marks modified"), Result.bModified);
-	TestEqual(TEXT("blueprint parent class updated"), Blueprint->ParentClass, APawn::StaticClass());
+	TestTrue(TEXT("blueprint parent class updated"), Blueprint->ParentClass.Get() == APawn::StaticClass());
 
 	return true;
 }

@@ -18,6 +18,7 @@ public:
 	static constexpr const TCHAR* AddImplementedInterfacesOp = TEXT("add_implemented_interfaces");
 	static constexpr const TCHAR* RemoveImplementedInterfacesOp = TEXT("remove_implemented_interfaces");
 	static constexpr const TCHAR* SetClassDefaultPropertiesOp = TEXT("set_class_default_properties");
+	static constexpr const TCHAR* ReparentBlueprintOp = TEXT("reparent_blueprint");
 
 	static bool IsSupportedCapability(const FString& Capability);
 	static bool IsSupportedOp(const FString& OpName);

@@ -33,7 +33,7 @@ AgentFace 编写 TaskSpec
 |---|---|---|---|
 | `create_asset` | 确保资产存在 | 创建 Blueprint Class / Actor、Widget Blueprint、UserDefinedStruct、DataTable、DataAsset；运行时 AssetFactory 也识别 Blueprint Interface、InputAction、InputMappingContext 等 `asset_type` | `asset_factory` / `create_asset` |
 | `edit_blueprint_components` | 编辑 Blueprint 组件树 | 添加或复用组件、配置组件属性、移除组件 | `blueprint_component` / `add_component`, `set_component_properties`, `remove_component` |
-| `edit_blueprint_class_settings` | 编辑 Blueprint 类级设置 | 添加实现接口、移除实现接口、设置 class default properties | `blueprint_class_settings` / `add_implemented_interfaces`, `remove_implemented_interfaces`, `set_class_default_properties` |
+| `edit_blueprint_class_settings` | 编辑 Blueprint 类级设置 | 添加实现接口、移除实现接口、设置 class default properties、Reparent Blueprint | `blueprint_class_settings` / `add_implemented_interfaces`, `remove_implemented_interfaces`, `set_class_default_properties`, `reparent_blueprint` |
 | `edit_blueprint_signature` | 编辑 Blueprint callable 签名 | 确保函数、接口函数、自定义事件、接口事件、事件分发器、override/native event；带引用上下文保护地移除签名 | `blueprint_signature` / `ensure_function`, `ensure_custom_event`, `ensure_event_dispatcher`, `ensure_override_event`, `remove_signature` |
 | `edit_blueprint_variables` | 编辑 Blueprint 变量 | 成员变量增删改、成员默认值设置、函数 local variable 增删改 | `blueprint_variable` / `add_blueprint_member_variables`, `blueprint_variable_batch` |
 | `edit_blueprint_graph` | 编辑 Blueprint graph body | append 新 owned custom-event graph、replace owned function/event/custom-event/block body、patch owned node comment/position/pin default、按 anchor merge 插入 flow | `graph_write` / `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, `merge_blueprint_graph` |
@@ -96,16 +96,18 @@ AgentFace 可表达：
 - `behavior.interfaces.ensure_present[]`
 - `behavior.interfaces.ensure_absent[]`
 - `behavior.class_defaults[]`
+- `behavior.reparent.new_parent_class`
 
 可触达编辑器操作：
 
 - 添加 Blueprint implemented interfaces。
 - 移除 Blueprint implemented interfaces。
 - 设置 Blueprint class default properties。
+- Reparent Blueprint 到 `behavior.reparent.new_parent_class` 指定的新父类。
 
 明确不支持：
 
-- 通过 TaskSpec reparent / 修改 `parent_class`。
+- 通过 legacy `behavior.parent_class` 修改父类；应使用 `behavior.reparent.new_parent_class`。
 
 ### `edit_blueprint_signature`
 

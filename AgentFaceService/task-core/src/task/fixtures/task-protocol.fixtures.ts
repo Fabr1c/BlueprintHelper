@@ -1283,6 +1283,9 @@ export const classSettingsTaskSpecFixture = {
         value: true,
       },
     ],
+    reparent: {
+      new_parent_class: '/Script/Engine.Pawn',
+    },
   },
   execution_policy: {
     dry_run_mode: 'full',
@@ -1356,6 +1359,22 @@ export const classSettingsTaskPlanFixture = {
                 value: true,
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_004',
+      capability: 'blueprint_class_settings',
+      target: {
+        asset_path: '/Game/Blueprints/BP_Door',
+      },
+      write: {
+        strategy: 'class_settings',
+        ops: [
+          {
+            op: 'reparent_blueprint',
+            new_parent_class: '/Script/Engine.Pawn',
           },
         ],
       },
