@@ -397,6 +397,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'add_implemented_interfaces',
       'remove_implemented_interfaces',
       'set_class_default_properties',
+      'reparent_blueprint',
     ]);
 
     const supportClusters = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.support_clusters.map((cluster) => cluster.cluster);

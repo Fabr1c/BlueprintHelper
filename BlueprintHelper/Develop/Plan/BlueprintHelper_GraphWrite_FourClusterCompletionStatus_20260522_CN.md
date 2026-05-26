@@ -2,11 +2,15 @@
 
 日期：2026-05-22
 
+最近同步：2026-05-26
+
 ## 1. 判定口径
 
 本表用于同步当前四个 GraphWrite Spawner-Oriented 工具簇的完成状态。状态只表示“当前代码是否已经按目标架构闭环”，不等同于 `UEActionContext_InputMatrix` 中的百分比。
 
 `UEActionContext_InputMatrix` 中的旧百分比是当前 TaskSpec 能稳定获取的上下文覆盖率，用于判断每个簇的上下文输入成熟度；它不是实现完成度，也不是架构验收百分比。
+
+2026-05-26 起，本表百分比同步为 scoped implementation coverage：只统计当前 ownership filter 后属于 GraphWrite 的 first-class / supported 能力实现，不把 UI-only、editor-only、其他工具 ownership 或明确 rejected 的能力计入分母。该百分比仍不是最终 generality preflight 分数；最终稳定验收仍以 ownership-filtered TaskSpec preview / execute / readback 10-variant preflight 为准。
 
 | 状态 | 判定标准 |
 |---|---|
@@ -17,12 +21,12 @@
 
 ## 2. 四簇完成度总表
 
-| 工具簇 | 当前完成状态 | TaskSpec 稳定上下文覆盖率 | 已完成范围 | 剩余 gap | 下一步收敛 |
+| 工具簇 | 当前完成状态 | 能力实现同步覆盖率 | 已完成范围 | 剩余 gap | 下一步收敛 |
 |---|---|---:|---|---|---|
-| `FunctionActionCluster` | 部分完成 | 约 75%-80% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；`op` 有独立 resolver 入口；2026-05-24 已补齐 `Convert -> convert_function`、`Schedule -> schedule_function`、`Schedule -> latent_or_async_function` 的二级语义守卫、ActionContext 投影和 C++ smoke；call/action-provider fragment 已统一到 shared coordinator lifecycle。 | Gap 3 scoped shared adapter/lifecycle 已关闭；剩余不是当前 gap，而是更宽 Function taxonomy 扩展、更多真实资产 fixture 和后续新增语义的 evidence 覆盖。 | 继续保持 call/convert/schedule query 以 target/stable id、typed pin、latent graph evidence 为主的 evidence contract；后续 Function taxonomy 扩展应新增 scoped gap。 |
-| `FieldVariableActionCluster` | 部分完成 | 约 60%-65% | P6 readback 覆盖 variable get/set by field evidence；2026-05-24 已补齐复杂 `property_path` full/root/leaf metadata、linked typed pin 推断、`component_ref` 与 `field_access` 独立二级语义、SemanticIR/TaskSpec 编译器接受路径和 C++ smoke；四簇 smoke 已完成真实 Bridge preview/execute。 | Gap 4 real Bridge execute smoke 已关闭；剩余是更宽 field variable/property/component access spawner adapter/lifecycle 收敛和更多真实资产矩阵。 | 继续把 field variable/property/component access 的 spawner invocation 收敛到共享 adapter/lifecycle，并补充更宽 fixture 覆盖。 |
-| `EventDelegateActionCluster` | 部分完成 | 约 45%-55% | P6 readback 覆盖 custom event by event name；Gap5 已补齐 `component_bound_event` 与 `delegate.bind/assign/unbind/unbind_all/call` 的 projected-evidence 正向 resolver/fragment/readback 路径；`delegate.assign` 使用 `ue_delegate_manual_assign_factory`，避免 UE spawner 自动创建 Signature-owned custom event；2026-05-24 四簇 smoke 验证 Signature owns custom_event declaration and GraphWrite owns body/use-site boundary。 | Gap 5 scoped Signature collaboration smoke / taxonomy boundary 已关闭；不迁移 GraphWrite public `custom_event/override/native` declaration taxonomy。剩余是更宽已有 use-site 的真实资产覆盖。 | 保持 GraphWrite/EventDelegate 只写 use-site；后续如迁移 `event` 到 `Event + event_operation`，必须继续保持 Signature ownership。 |
-| `GenericAssetStructControlActionCluster` | 部分完成 | 约 60%-65% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；P4 provider boundary 证据可用；2026-05-24 已接入 explicit `Create + create_operation` first slice：`spawn_actor`、`create_widget`、`construct_object`、`make_array`、`make_map`、`make_set`；同日已接入 explicit Generic-side `Convert + transform_operation` 与 `Schedule + schedule_operation` 二级语义边界；`asset_action` 通过 ActionDatabase-backed resolver 真实选择 spawner；`dynamic_cast` / `class_cast` 可选中 cast node spawner；`type_promotion` 在 projected typed pin evidence 存在时走 `FTypePromotion` registered spawner。 | Gap 2/3/4 closed for their documented scopes；`asset_action` 和 `type_promotion` projected evidence scopes 已关闭。剩余是 `timer_delegate_node`、更宽 latent/schedule node evidence、更多 asset-action CLI positive fixture 等未列入当前 gap 的扩展覆盖。 | 保留一级分发到簇、簇内二级语义映射；继续让新增 asset-backed create / schedule-node success path 走完整 context -> provider/resolver -> spawner/evidence。 |
+| `FunctionActionCluster` | 部分完成 | 约 80%-85% | `call` 在 P6 能力行中已有 selected stable id、selected spawner、call node readback；2026-05-24 已补齐 Function-owned convert/schedule 二级语义守卫、ActionContext 投影和 C++ smoke；2026-05-26 OpCoverage 已将 `op.*` / `array_identical` 继续收敛到 `FunctionActionCluster`，不新增 `graphwrite_op` runtime cluster；GenericOps 中 function-backed container / convert / create / schedule 也按 owner 归入 FunctionAction。 | 最新四项实现显著提升 FunctionAction 覆盖，但最终 ownership-filtered generality preflight 未执行，且后续更宽 Function taxonomy、真实资产矩阵和新增语义仍需进入统一 evidence/readback 门禁。 | 保持 function-backed 能力复用 ActionContext / ActionDatabase / shared coordinator；将最终 operation matrix 中归 FunctionAction 的能力纳入 10-variant TaskSpec preview/execute/readback。 |
+| `FieldVariableActionCluster` | 部分完成 | 约 80%-85% | P6 readback 覆盖 variable get/set by field evidence；2026-05-24 已补齐复杂 `property_path`、linked typed pin、`component_ref` 与 `field_access`；2026-05-26 Field first-class implementation 已落地 17 个 `field.*` capability ID，覆盖 member/local/inherited/sparse/function-param/component/object-pin/struct/nested-property 路径，并保持 Field-specific facts 在 Field registry / resolver / fragment / readback 边界内。 | Field first-class 能力已有 taxonomy / resolver / fragment / readback / smoke 证据；UI-only、support-only、其他 cluster 与 diagnostic-only 项已显式排除或拒绝。仍需最终 ownership-filtered generality preflight、更多真实资产 fixture 和跨 graph/scope readback 矩阵。 | 继续把 Field 能力按 capability ID + namespaced facts 驱动，避免回退到变量名/编辑器 UI 状态；在 final preflight 中按 first-class Field operation 生成 10 variants。 |
+| `EventDelegateActionCluster` | 部分完成 | 约 65%-70% | P6 readback 覆盖 custom event by event name；Gap5 已补齐 `component_bound_event` 与 `delegate.bind/assign/unbind/unbind_all/call` 的 projected-evidence 路径；2026-05-26 EventDelegate use-site implementation 已支持 component-bound event 与 delegate bind/assign/unbind/call/clear，保持 `delegate.assign` manual factory 边界，FragmentBuilder 不再合成 binding-object getter，并新增 EventDelegate readback / DebugBundle facts。 | EventDelegate use-site 已闭环，但本簇历史缺口最大；custom/native/override declaration、handler/signature creation 仍归 BlueprintSignature，不计入本簇完成率。duplicate replace/merge policy 被设计性拒绝。仍需 final preflight 覆盖 statement-local evidence、签名 fixture 与真实资产变体。 | 保持 EventDelegate 只消费 projected declaration/signature/handler evidence；把 use-site operation 纳入 ownership-filtered 10-variant readback gate。 |
+| `GenericAssetStructControlActionCluster` | 部分完成 | 约 75%-80% | P6 readback 覆盖 select/control singleton stable id、struct make/break by struct type；2026-05-24 已接入 broad create、Generic convert/schedule 与四簇 E2E；2026-05-25/26 已落地 container_action V1、generic schedule success path 与 GenericOps ownership matrix，Generic-owned control、asset-backed create、struct/deconstruct/select、generic schedule node 等能力保持在 `GenericAssetStructControlActionCluster`，不新增 runtime cluster。 | GenericOps 已把 Generic-owned operation 的 evidence/readback 边界收紧，但 split/recombine pin、link-time auto conversion 等仍被排除或归后续专门边界。仍需 final ownership-filtered generality preflight、宏/控制流更多真实 graph fixture、asset_action positive TaskSpec/readback 变体。 | 保留一级分发到簇、簇内二级语义映射；用 ActionDatabase projected evidence 与 shared adapter 验证 Generic-owned operation 的 10-variant 泛化能力。 |
 
 ## 3. 分类汇总
 
@@ -47,7 +51,7 @@
 
 ## 5. 当前结论
 
-当前四个工具簇都不能标记为“完全完成”。它们已经不属于“未开始”，也不是完全不可用的“未完成”：每个簇至少有一个当前架构路径已经形成基础闭环。
+当前四个工具簇都不能标记为“完全完成”。它们已经不属于“未开始”，也不是完全不可用的“未完成”：每个簇都有当前架构路径形成闭环，并且 2026-05-26 的四项能力实现已把 scoped implementation coverage 同步到更高区间。
 
 下一步收敛重点不是追求所有节点都完整走 `context -> ActionDatabase 查询 -> NodeSpawner` 链路，而是按语义范围区分：
 
@@ -55,7 +59,7 @@
 2. `branch`、`sequence`、`select` 等唯一控制流可以 direct spawn，但仍必须保留统一的一级分发规则和簇内次级语义映射路径。
 3. direct spawn 也应有明确 evidence provider / adapter 边界，不能重新变成 mutation helper 或 builder 内的散落硬编码。
 
-P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；Gap 2/3/4/5 及 2026-05-24 RemainingGaps scoped follow-up 均已按各自文档范围关闭。四簇仍全部保持“部分完成”，原因不是当前 gap 文档仍有开放项，而是更宽 taxonomy、真实资产矩阵、timer/delegate/latent schedule evidence 和后续新增语义仍需继续完整走 context / resolver / evidence 链路。
+P6 已重新运行能力行、`BlueprintHelper.GraphWrite` 全量 regression 与 BuildPlugin，三者均通过；Gap 2/3/4/5 及 2026-05-24 RemainingGaps scoped follow-up 均已按各自文档范围关闭。2026-05-26 的 Field first-class、GenericOps、OpCoverage、EventDelegate use-site 四项实现进一步提升了四簇 scoped implementation coverage。四簇仍全部保持“部分完成”，原因不是当前 scoped implementation 仍有同级 blocker，而是最终 ownership-filtered generality preflight 尚未执行，且更宽 taxonomy、真实资产矩阵和后续新增语义仍需继续完整走 context / resolver / evidence / readback 链路。
 
 ## 6. P6 同步记录
 
@@ -130,3 +134,16 @@ Targeted bug evidence:
 - BUG-002: `D:\UEProjects\Template\Saved\Automation\GraphWrite_Bug002_DelegateBoundary_20260524_003\index.json`, `succeeded=3`, `failed=0`.
 
 Conclusion: four-cluster E2E smoke is no longer blocked by Field owner evidence, EventDelegate public TaskSpec lowering/target binding, Generic projected `type_promotion`, ActionDatabase-backed `asset_action`, or Function shared coordinator lifecycle. The clusters still remain "partial completion" at the broad capability table level because wider taxonomy, additional real-asset fixture coverage, timer/delegate/latent schedule evidence, and future semantic expansions remain outside the scoped gaps closed here.
+
+## 12. 2026-05-26 Four Latest Capability Implementation Sync
+
+本节同步最近四项能力实现对第 2 节百分比的影响。这里的 “coverage” 只表示当前 ownership filter 后的实现同步结果，不替代最终 generality preflight。
+
+| 能力实现 | 归属簇影响 | scoped 计数口径 | 同步影响 |
+|---|---|---|---|
+| Field first-class capability expansion | `FieldVariableActionCluster` | 17 个 first-class `field.*` capability ID 已实现；UI-only / support-only / other-cluster / diagnostic-only 项不进入分母。 | Field 从约 60%-65% 提升到约 80%-85%。 |
+| GenericOps capability extension | `FunctionActionCluster` + `GenericAssetStructControlActionCluster` | GenericOps 是 logical capability umbrella，不新增 runtime cluster；function-backed operation 归 FunctionAction，control/create/struct/select/generic schedule 等归 Generic。设计性 rejected 项不计入 supported 分母。 | Function 与 Generic 的 scoped coverage 均提升；Generic 从约 60%-65% 提升到约 75%-80%。 |
+| OpCoverage capability extension | `FunctionActionCluster` | 当前纳入 GraphWrite ownership 的 P0/P1/P2 `op.*` operations 已走 FunctionAction evidence/readback；excluded ops 保持 deterministic rejection，不发布 `graphwrite_op` cluster。 | Function 从约 75%-80% 提升到约 80%-85%。 |
+| EventDelegate use-site capability extension | `EventDelegateActionCluster` | component-bound event 与 delegate bind/assign/unbind/call/clear use-site 已实现；event/handler/signature declaration 继续归 BlueprintSignature，duplicate replace/merge 为设计性拒绝。 | EventDelegate 从约 45%-55% 提升到约 65%-70%。 |
+
+同步后的四簇等权估算区间为约 75%-80%，中位估算约 77.5%。该估算不能写成 “fully complete”：最终门禁仍是 `BlueprintHelper_GraphWrite_GeneralityPreflightTest_Plan_20260525_CN.md` 中的 ownership-filtered TaskSpec preview / execute / readback 10-variant preflight；在该门禁落地并通过前，四簇状态继续保持“部分完成”。

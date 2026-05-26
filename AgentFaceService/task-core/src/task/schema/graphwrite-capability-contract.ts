@@ -4,7 +4,7 @@ export type GraphWriteEvidenceProjectionSource = 'SemanticStatement' | 'ActionCo
 
 export type GraphWriteReviewEvidencePolicy = 'graph_surface_atomic_target';
 
-export type GraphWriteRuntimeOwner = 'FunctionAction' | 'GenericAssetStructControlAction';
+export type GraphWriteRuntimeOwner = 'FunctionAction' | 'GenericAssetStructControlAction' | 'EventDelegateAction';
 export type GraphWriteLogicalRuntimeCluster = GraphWriteRuntimeOwner;
 
 export interface GraphWriteOperationGroupOperation {
@@ -24,6 +24,7 @@ export interface GraphWriteOperationGroupOperation {
 export interface GraphWriteOperationGroupContract {
   readonly id:
     | 'op_coverage'
+    | 'event_delegate'
     | 'generic_ops.control'
     | 'generic_ops.container'
     | 'generic_ops.transform'
@@ -520,6 +521,108 @@ export const GENERIC_OPS_OPERATION_IDS = GENERIC_OPS_OPERATION_GROUPS.flatMap((g
   group.operations.map((operation) => operation.id),
 );
 
+const EVENT_DELEGATE_COMMON_EVIDENCE_KEYS = [
+  'event_delegate.delegate_owner_class_path',
+  'event_delegate.delegate_property_name',
+  'event_delegate.delegate_property_path',
+  'event_delegate.delegate_signature_function_path',
+] as const;
+
+const EVENT_DELEGATE_HANDLER_EVIDENCE_KEYS = [
+  'event_delegate.handler_function_path',
+  'event_delegate.handler_source_cluster',
+  'event_delegate.signature_evidence_id',
+] as const;
+
+function makeSupportedEventDelegateOp(
+  operation: string,
+  semanticKind: 'component_bound_event' | 'delegate',
+  secondStageOperation: string,
+  requiredEvidenceKeys: readonly string[],
+): GraphWriteOperationGroupOperation {
+  return {
+    id: `event_delegate.${operation}`,
+    supportStatus: 'supported',
+    runtimeOwner: 'EventDelegateAction',
+    runtimeCluster: 'EventDelegateAction',
+    semanticKind,
+    semanticFamily: 'event_delegate',
+    secondStageOperation,
+    requiredEvidenceKeys,
+  };
+}
+
+function makeRejectedEventDelegateOp(
+  operation: string,
+  rejectionReason: string,
+): GraphWriteOperationGroupOperation {
+  return {
+    id: `event_delegate.${operation}`,
+    supportStatus: 'rejected',
+    runtimeOwner: 'EventDelegateAction',
+    runtimeCluster: 'EventDelegateAction',
+    semanticKind: 'component_bound_event',
+    semanticFamily: 'event_delegate',
+    secondStageOperation: `event_delegate.${operation}`,
+    requiredEvidenceKeys: [],
+    excludedReason: rejectionReason,
+    rejectionReason,
+  };
+}
+
+const EVENT_DELEGATE_OPERATION_GROUP = {
+  id: 'event_delegate',
+  responsibility:
+    'EventDelegate publishes use-site operations as a logical capability group owned by EventDelegateActionCluster; it never creates event declarations, handlers, or signature mutations.',
+  operations: [
+    makeSupportedEventDelegateOp('component_bound_event', 'component_bound_event', 'component_bound_event', [
+      'event_delegate.component_binding_owner_class_path',
+      'event_delegate.component_property_name',
+      'event_delegate.component_binding_field_path',
+      'event_delegate.component_class_path',
+      ...EVENT_DELEGATE_COMMON_EVIDENCE_KEYS,
+      ...EVENT_DELEGATE_HANDLER_EVIDENCE_KEYS,
+      'event_delegate.duplicate_policy',
+    ]),
+    makeSupportedEventDelegateOp('delegate.bind', 'delegate', 'delegate.bind', [
+      'event_delegate.binding_object_kind',
+      'event_delegate.binding_object_evidence_id',
+      ...EVENT_DELEGATE_COMMON_EVIDENCE_KEYS,
+      ...EVENT_DELEGATE_HANDLER_EVIDENCE_KEYS,
+    ]),
+    makeSupportedEventDelegateOp('delegate.assign', 'delegate', 'delegate.assign', [
+      'event_delegate.binding_object_kind',
+      'event_delegate.binding_object_evidence_id',
+      ...EVENT_DELEGATE_COMMON_EVIDENCE_KEYS,
+      ...EVENT_DELEGATE_HANDLER_EVIDENCE_KEYS,
+      'event_delegate.assign_factory',
+    ]),
+    makeSupportedEventDelegateOp('delegate.unbind', 'delegate', 'delegate.unbind', [
+      'event_delegate.binding_object_kind',
+      'event_delegate.binding_object_evidence_id',
+      ...EVENT_DELEGATE_COMMON_EVIDENCE_KEYS,
+      ...EVENT_DELEGATE_HANDLER_EVIDENCE_KEYS,
+      'event_delegate.unbind_mode',
+    ]),
+    makeSupportedEventDelegateOp('delegate.call', 'delegate', 'delegate.call', [
+      'event_delegate.binding_object_kind',
+      'event_delegate.binding_object_evidence_id',
+      ...EVENT_DELEGATE_COMMON_EVIDENCE_KEYS,
+      'event_delegate.call_arg_policy',
+    ]),
+    makeSupportedEventDelegateOp('delegate.clear', 'delegate', 'delegate.clear', [
+      'event_delegate.binding_object_kind',
+      'event_delegate.binding_object_evidence_id',
+      'event_delegate.delegate_owner_class_path',
+      'event_delegate.delegate_property_name',
+      'event_delegate.delegate_property_path',
+      'event_delegate.unbind_mode',
+    ]),
+    makeRejectedEventDelegateOp('component_bound_duplicate_policy.replace', 'duplicate_mutation_policy_blocked'),
+    makeRejectedEventDelegateOp('component_bound_duplicate_policy.merge', 'duplicate_mutation_policy_blocked'),
+  ],
+} as const satisfies GraphWriteOperationGroupContract;
+
 function makeRejectedOp(id: string): GraphWriteOperationGroupOperation {
   return {
     id,
@@ -724,6 +827,7 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
     },
   ],
   operationGroups: [
+    EVENT_DELEGATE_OPERATION_GROUP,
     ...GENERIC_OPS_OPERATION_GROUPS,
     {
       id: 'op_coverage',

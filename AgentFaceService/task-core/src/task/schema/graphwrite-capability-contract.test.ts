@@ -119,6 +119,37 @@ describe('GraphWrite capability contract', () => {
     }
   });
 
+  it('publishes EventDelegate as a use-site logical operation group', () => {
+    const group = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups.find((item) => item.id === 'event_delegate');
+    assert.ok(group);
+
+    for (const op of ['component_bound_event', 'delegate.bind', 'delegate.assign', 'delegate.unbind', 'delegate.call', 'delegate.clear'] as const) {
+      const operation: (typeof group.operations)[number] | undefined = group.operations.find((item) => item.id === `event_delegate.${op}`);
+      assert.ok(operation, op);
+      assert.equal(operation.supportStatus, 'supported');
+      assert.equal(operation.runtimeOwner, 'EventDelegateAction');
+      assert.equal(operation.runtimeCluster, 'EventDelegateAction');
+      assert.ok(operation.semanticKind === 'component_bound_event' || operation.semanticKind === 'delegate');
+      assert.ok(operation.requiredEvidenceKeys?.every((key: string) => key.startsWith('event_delegate.')));
+    }
+
+    assert.equal(
+      group.operations.find((item) => item.id === 'event_delegate.component_bound_duplicate_policy.replace')?.rejectionReason,
+      'duplicate_mutation_policy_blocked',
+    );
+    assert.equal(
+      group.operations.find((item) => item.id === 'event_delegate.component_bound_duplicate_policy.merge')?.rejectionReason,
+      'duplicate_mutation_policy_blocked',
+    );
+  });
+
+  it('keeps EventDelegate side-effect assign policy out of the contract', () => {
+    const serialized = JSON.stringify(GRAPHWRITE_CAPABILITY_CONTRACT);
+    assert.equal(serialized.includes('assign_auto_attached_event_policy'), false);
+    assert.equal(serialized.includes('attached_custom_event'), false);
+    assert.equal(serialized.includes('ue_delegate_manual_assign_factory'), false);
+  });
+
   it('publishes GenericOps logical groups with ownership-scoped operations', () => {
     const operationById = new Map(
       GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups

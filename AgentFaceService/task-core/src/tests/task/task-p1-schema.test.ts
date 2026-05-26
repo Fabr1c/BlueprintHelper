@@ -118,6 +118,12 @@ describe('P1 TaskSpec schema validation', () => {
           ensure_present: ['/Game/Interfaces/BPI_Interact'],
         },
       }),
+      baseSpec('edit_blueprint_class_settings', {
+        class_settings_strategy: 'class_settings',
+        reparent: {
+          new_parent_class: '/Script/Engine.Pawn',
+        },
+      }),
       baseSpec('edit_umg_widget', {
         widget_strategy: 'widget_blueprint_edit',
         changes: [
@@ -299,6 +305,13 @@ describe('P1 TaskSpec schema validation', () => {
         target_type: 'data_table',
       },
     })));
+  });
+
+  it('rejects legacy ClassSettings parent_class in favor of reparent.new_parent_class', () => {
+    assert.throws(() => TaskSpecSchema.parse(baseSpec('edit_blueprint_class_settings', {
+      class_settings_strategy: 'class_settings',
+      parent_class: '/Script/Engine.Pawn',
+    })), /reparent\.new_parent_class/);
   });
 });
 

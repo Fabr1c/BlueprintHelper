@@ -150,6 +150,9 @@ bool FBlueprintHelperSecondBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest
 	TestTrue(
 		TEXT("ClassSettings route recognizes default property batch"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("set_class_default_properties")));
+	TestTrue(
+		TEXT("ClassSettings route recognizes reparent"),
+		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("reparent_blueprint")));
 	TestFalse(
 		TEXT("ClassSettings route rejects graph command"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("append_blueprint_graph")));
