@@ -271,8 +271,18 @@ static void ApplyCreateActionRequestOverrides(
 	FBlueprintHelperActionResolutionRequest& InOutRequest)
 {
 	InOutRequest.Semantic.CreateOperation = BoundRequest.CreateOperation.TrimStartAndEnd().ToLower();
+	InOutRequest.Semantic.FunctionOperation = BoundRequest.FunctionOperation.TrimStartAndEnd().ToLower();
 	InOutRequest.Semantic.ClassPath = BoundRequest.ClassPath.TrimStartAndEnd();
 	InOutRequest.Semantic.AssetPath = BoundRequest.AssetPath.TrimStartAndEnd();
+	if (!InOutRequest.Semantic.FunctionOperation.IsEmpty())
+	{
+		InOutRequest.Semantic.DefaultValues.Add(TEXT("function_operation"), InOutRequest.Semantic.FunctionOperation);
+	}
+	if (InOutRequest.Semantic.FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase)
+		&& !BoundRequest.Query.TrimStartAndEnd().IsEmpty())
+	{
+		InOutRequest.Semantic.Query = BoundRequest.Query.TrimStartAndEnd();
+	}
 	if (!InOutRequest.Semantic.ClassPath.IsEmpty())
 	{
 		InOutRequest.Semantic.TargetPath = InOutRequest.Semantic.ClassPath;
@@ -1418,6 +1428,9 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	TArray<FString> ArgumentNames;
 	Request.DefaultValues.GetKeys(ArgumentNames);
+	const FString CreateQuery = !Request.Query.TrimStartAndEnd().IsEmpty()
+		? Request.Query.TrimStartAndEnd()
+		: Request.CreateOperation;
 	if (!TryBuildProjectedActionRequestFromContext(
 		TargetGraph,
 		ActionContextScope,
@@ -1425,7 +1438,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 			? Request.FragmentId
 			: Request.ActionContextStatementId,
 		EBlueprintHelperActionSemanticKind::Create,
-		Request.CreateOperation,
+		CreateQuery,
 		CreateTarget,
 		Request.PropertyPath,
 		Request.TypeName,

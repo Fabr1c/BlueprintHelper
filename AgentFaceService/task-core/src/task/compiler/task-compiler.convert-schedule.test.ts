@@ -75,6 +75,30 @@ test('convert statement preserves generic transform evidence', () => {
   }
 });
 
+test('function-backed transform preserves FunctionAction ownership evidence', () => {
+  const input = {
+    kind: 'convert',
+    function_operation: 'convert_function',
+    transform_operation: 'blueprint_autocast',
+    target_class_path: '/Script/CoreUObject.String',
+    context_evidence: {
+      'generic.transform.operation': 'blueprint_autocast',
+      'generic.transform.source_pin_type': 'name',
+      'generic.transform.target_pin_type': 'string',
+    },
+    args: {
+      value: { kind: 'literal', value_type: 'name', value: 'DisplayName' },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.equal(statement.kind, 'convert');
+    assert.equal(statement.function_operation, 'convert_function');
+    assert.equal(statement.transform_operation, 'blueprint_autocast');
+    assert.deepEqual(statement.context_evidence, input.context_evidence);
+  }
+});
+
 test('schedule expression preserves operation and latent evidence', () => {
   const input = {
     kind: 'call',
@@ -179,6 +203,32 @@ test('generic schedule statement compiles without function_operation ownership m
     assert.equal(statement.kind, 'schedule');
     assert.equal(statement.schedule_operation, 'timer_delegate_node');
     assert.equal(Object.hasOwn(statement, 'function_operation'), false);
+    assert.deepEqual(statement.context_evidence, input.context_evidence);
+  }
+});
+
+test('function-backed schedule preserves FunctionAction ownership evidence', () => {
+  const input = {
+    kind: 'schedule',
+    function_operation: 'schedule_function',
+    schedule_operation: 'delay',
+    graph_latent_allowed: true,
+    context_evidence: {
+      'generic.schedule.operation': 'delay',
+      'generic.schedule.graph_latent_allowed': 'true',
+      schedule_action_stable_id: 'action_database:/Script/Engine.KismetSystemLibrary:Delay',
+      schedule_spawner_signature: 'Delay(WorldContextObject,Duration,LatentInfo)',
+    },
+    args: {
+      duration: { kind: 'literal', value_type: 'number', value: 0.25 },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.equal(statement.kind, 'schedule');
+    assert.equal(statement.function_operation, 'schedule_function');
+    assert.equal(statement.schedule_operation, 'delay');
+    assert.equal(statement.graph_latent_allowed, true);
     assert.deepEqual(statement.context_evidence, input.context_evidence);
   }
 });

@@ -731,6 +731,7 @@ public:
 			{ EBlueprintHelperGraphStatementKind::Sequence, TEXT("sequence") },
 			{ EBlueprintHelperGraphStatementKind::Let, TEXT("let") },
 			{ EBlueprintHelperGraphStatementKind::Return, TEXT("return") },
+			{ EBlueprintHelperGraphStatementKind::Control, TEXT("control") },
 			{ EBlueprintHelperGraphStatementKind::Create, TEXT("create") },
 			{ EBlueprintHelperGraphStatementKind::Convert, TEXT("convert") },
 			{ EBlueprintHelperGraphStatementKind::Schedule, TEXT("schedule") },

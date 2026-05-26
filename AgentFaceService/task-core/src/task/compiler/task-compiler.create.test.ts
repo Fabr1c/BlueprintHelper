@@ -106,6 +106,64 @@ test('append bridge accepts create statement lowering', () => {
   assert.equal(statement.class_path, '/Script/CoreUObject.Object');
 });
 
+test('function-backed create preserves FunctionAction ownership evidence', () => {
+  const input = {
+    kind: 'create',
+    create_operation: 'function_backed_create',
+    function_operation: 'create_function',
+    target: 'CreateWidget',
+    class_path: '/Script/UMG.UserWidget',
+    args: {},
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.equal(statement.kind, 'create');
+    assert.equal(statement.create_operation, 'function_backed_create');
+    assert.equal(statement.function_operation, 'create_function');
+    assert.equal(statement.target, 'CreateWidget');
+    assert.equal(statement.class_path, '/Script/UMG.UserWidget');
+  }
+});
+
+test('function-backed create operation derives create_function ownership', () => {
+  const statement = compileTaskPlanStatement({
+    kind: 'create',
+    create_operation: 'async_action',
+    target: 'AsyncLoadPrimaryAsset',
+    args: {},
+  });
+
+  assert.equal(statement.kind, 'create');
+  assert.equal(statement.create_operation, 'async_action');
+  assert.equal(statement.function_operation, 'create_function');
+  assert.equal(statement.target, 'AsyncLoadPrimaryAsset');
+});
+
+test('function-backed create requires a callable target', () => {
+  assert.throws(
+    () => compileTaskPlanStatement({
+      kind: 'create',
+      create_operation: 'function_backed_create',
+      function_operation: 'create_function',
+      class_path: '/Script/UMG.UserWidget',
+      args: {},
+    }),
+    /missing_create_function_target/,
+  );
+});
+
+test('generic create rejects FunctionAction ownership mixing', () => {
+  assert.throws(
+    () => compileTaskPlanStatement({
+      kind: 'create',
+      create_operation: 'spawn_actor',
+      function_operation: 'create_function',
+      class_path: '/Script/Engine.Actor',
+    }),
+    /unsupported_create_owner_mix/,
+  );
+});
+
 test('create requires create_operation', () => {
   assert.throws(
     () => compileTaskPlanStatement({

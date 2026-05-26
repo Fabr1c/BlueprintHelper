@@ -1562,7 +1562,26 @@ const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set([
   CONTAINER_ACTION_KIND,
   ...PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 ]);
-const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
+const GRAPH_BODY_SINGLETON_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
+const GRAPH_BODY_SWITCH_CONTROL_KINDS = new Set(['switch_int', 'switch_string', 'switch_name', 'switch_enum']);
+const GRAPH_BODY_DYNAMIC_CONTROL_KINDS = new Set(['multi_gate']);
+const GRAPH_BODY_MACRO_CONTROL_KINDS = new Set([
+  'do_once',
+  'do_n',
+  'gate',
+  'flip_flop',
+  'for_loop',
+  'for_loop_with_break',
+  'foreach_loop',
+  'foreach_loop_with_break',
+  'while_loop',
+]);
+const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set([
+  ...GRAPH_BODY_SINGLETON_CONTROL_KINDS,
+  ...GRAPH_BODY_SWITCH_CONTROL_KINDS,
+  ...GRAPH_BODY_DYNAMIC_CONTROL_KINDS,
+  ...GRAPH_BODY_MACRO_CONTROL_KINDS,
+]);
 const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
   'literal',
   'field',
@@ -1586,6 +1605,21 @@ const GRAPH_CONVERT_SCHEDULE_FIELDS = [
   'graph_latent_allowed',
 ] as const;
 const GENERIC_SCHEDULE_OPERATIONS = new Set(['timer_delegate_node', 'latent_or_async_node']);
+const FUNCTION_BACKED_CREATE_OPERATIONS = new Set([
+  'async_action',
+  'function_backed_create',
+  'function_backed_spawn',
+  'function_backed_construct',
+]);
+const GENERIC_CREATE_OPERATIONS = new Set([
+  'spawn_actor',
+  'create_widget',
+  'construct_object',
+  'make_array',
+  'make_map',
+  'make_set',
+  'asset_action',
+]);
 const FIELD_STATEMENT_KIND_MAP = new Map([
   ['set', { operation: 'set', scope: 'variable' }],
   ['set_property', { operation: 'set', scope: 'property_path' }],
@@ -1609,6 +1643,176 @@ function copyConvertScheduleSemanticFields(source: Record<string, unknown>, targ
       target[field] = source[field];
     }
   });
+}
+
+function normalizeSemanticToken(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function normalizeEvidenceValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeEvidenceValue(entry)).filter((entry) => entry.length > 0).join(',');
+  }
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function contextEvidenceValue(record: Record<string, unknown>, key: string): string {
+  const evidence = record.context_evidence;
+  if (!isRecord(evidence) || !Object.hasOwn(evidence, key)) {
+    return '';
+  }
+  return normalizeEvidenceValue(evidence[key]);
+}
+
+function firstEvidenceValue(record: Record<string, unknown>, evidenceKey: string, fields: readonly string[]): string {
+  const fromEvidence = contextEvidenceValue(record, evidenceKey);
+  if (fromEvidence.length > 0) {
+    return fromEvidence;
+  }
+  for (const field of fields) {
+    if (Object.hasOwn(record, field)) {
+      const value = normalizeEvidenceValue(record[field]);
+      if (value.length > 0) {
+        return value;
+      }
+    }
+  }
+  return '';
+}
+
+function isGenericControlKind(controlKind: string): boolean {
+  return SUPPORTED_GRAPH_BODY_CONTROL_KINDS.has(controlKind) && !GRAPH_BODY_SINGLETON_CONTROL_KINDS.has(controlKind);
+}
+
+function requireGenericControlEvidence(value: string, path: string, evidenceKey: string): string {
+  if (value.length > 0) {
+    return value;
+  }
+  throw new TaskSpecCompileError('missing_required_evidence', `Generic control requires ${evidenceKey}.`, [
+    {
+      code: 'missing_required_evidence',
+      path,
+      message: `Generic control requires ${evidenceKey}.`,
+    },
+  ]);
+}
+
+function genericControlContextEvidence(
+  record: Record<string, unknown>,
+  controlKind: string,
+  path: string,
+): Record<string, unknown> {
+  const evidence = isRecord(record.context_evidence) ? { ...record.context_evidence } : {};
+  evidence['generic.control.operation'] = controlKind;
+
+  if (GRAPH_BODY_SWITCH_CONTROL_KINDS.has(controlKind)) {
+    evidence['generic.control.case_values'] = requireGenericControlEvidence(
+      firstEvidenceValue(record, 'generic.control.case_values', ['case_values']),
+      `${path}.case_values`,
+      'generic.control.case_values',
+    );
+    const defaultPolicy = firstEvidenceValue(record, 'generic.control.default_policy', ['default_policy']);
+    if (defaultPolicy.length > 0) {
+      evidence['generic.control.default_policy'] = defaultPolicy;
+    }
+    if (controlKind === 'switch_enum') {
+      evidence['generic.control.enum_path'] = requireGenericControlEvidence(
+        firstEvidenceValue(record, 'generic.control.enum_path', ['enum_path']),
+        `${path}.enum_path`,
+        'generic.control.enum_path',
+      );
+    }
+  } else if (GRAPH_BODY_DYNAMIC_CONTROL_KINDS.has(controlKind)) {
+    evidence['generic.control.dynamic_output_count'] = requireGenericControlEvidence(
+      firstEvidenceValue(record, 'generic.control.dynamic_output_count', ['dynamic_output_count']),
+      `${path}.dynamic_output_count`,
+      'generic.control.dynamic_output_count',
+    );
+  } else if (GRAPH_BODY_MACRO_CONTROL_KINDS.has(controlKind)) {
+    evidence['generic.macro.graph_path'] = requireGenericControlEvidence(
+      firstEvidenceValue(record, 'generic.macro.graph_path', ['macro_graph_path']),
+      `${path}.macro_graph_path`,
+      'generic.macro.graph_path',
+    );
+    evidence['generic.macro.pin_shape_snapshot'] = requireGenericControlEvidence(
+      firstEvidenceValue(record, 'generic.macro.pin_shape_snapshot', ['macro_pin_shape_snapshot']),
+      `${path}.macro_pin_shape_snapshot`,
+      'generic.macro.pin_shape_snapshot',
+    );
+    const worldContextPolicy = firstEvidenceValue(record, 'generic.macro.world_context_policy', ['macro_world_context_policy']);
+    if (worldContextPolicy.length > 0) {
+      evidence['generic.macro.world_context_policy'] = worldContextPolicy;
+    }
+  }
+
+  return evidence;
+}
+
+function applyGenericControlSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>, controlKind: string, path: string): void {
+  target.kind = 'control';
+  target.control = controlKind;
+  target.control_operation = controlKind;
+  target.context_evidence = genericControlContextEvidence(source, controlKind, path);
+  delete target.case_values;
+  delete target.enum_path;
+  delete target.default_policy;
+  delete target.dynamic_output_count;
+  delete target.macro_graph_path;
+  delete target.macro_pin_shape_snapshot;
+  delete target.macro_world_context_policy;
+}
+
+function isFunctionBackedCreateOperation(createOperation: string): boolean {
+  return FUNCTION_BACKED_CREATE_OPERATIONS.has(createOperation);
+}
+
+function validateCreateOwnership(record: Record<string, unknown>, path: string): { createOperation: string; functionOperation: string } {
+  const createOperation = getRequiredString(record, 'create_operation', `${path}.create_operation`).trim().toLowerCase();
+  const functionOperation = normalizeSemanticToken(record.function_operation);
+  if (isFunctionBackedCreateOperation(createOperation)) {
+    const callableTarget = optionalString(record, 'target') ?? optionalString(record, 'name');
+    if (!callableTarget) {
+      throw new TaskSpecCompileError('missing_create_function_target', 'missing_create_function_target: Function-backed create operations require a callable target.', [
+        {
+          code: 'missing_create_function_target',
+          path: `${path}.target`,
+          message: 'Provide the callable factory function name in target for function-backed create operations.',
+        },
+      ]);
+    }
+    if (functionOperation.length > 0 && functionOperation !== 'create_function') {
+      throw new TaskSpecCompileError('unsupported_create_owner_mix', 'unsupported_create_owner_mix: Function-backed create operations require function_operation=create_function.', [
+        {
+          code: 'unsupported_create_owner_mix',
+          path: `${path}.function_operation`,
+          message: 'Use function_operation=create_function for function-backed create operations.',
+        },
+      ]);
+    }
+    return { createOperation, functionOperation: 'create_function' };
+  }
+  if (functionOperation.length > 0 || GENERIC_CREATE_OPERATIONS.has(createOperation) && functionOperation.length > 0) {
+    throw new TaskSpecCompileError('unsupported_create_owner_mix', 'unsupported_create_owner_mix: Generic create operations must not specify function_operation.', [
+      {
+        code: 'unsupported_create_owner_mix',
+        path: `${path}.function_operation`,
+        message: 'Remove function_operation for Generic create operations. Use it only for function-backed create factories.',
+      },
+    ]);
+  }
+  return { createOperation, functionOperation: '' };
+}
+
+function copyCreateSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>, path: string): void {
+  const { createOperation, functionOperation } = validateCreateOwnership(source, path);
+  target.create_operation = createOperation;
+  if (functionOperation.length > 0) {
+    target.function_operation = functionOperation;
+  } else {
+    delete target.function_operation;
+  }
 }
 
 function validateConvertScheduleOwnership(record: Record<string, unknown>, path: string): void {
@@ -1898,6 +2102,21 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
             },
           ]);
         }
+      } else if (isGenericControlKind(controlKind)) {
+        if (statementIndex < statements.length - 1) {
+          throw new TaskSpecCompileError('unsupported_control_continuation', 'unsupported_control_continuation: Generic control statements do not provide an implicit linear continuation.', [
+            {
+              code: 'unsupported_control_continuation',
+              path: statementPath,
+              message: 'Place generic control statements as terminal statements, or use a dedicated control shape with explicit branch/body semantics.',
+            },
+          ]);
+        }
+        genericControlContextEvidence(statementRecord, controlKind, statementPath);
+        validateExpressionMap(statementRecord.args, `${statementPath}.args`);
+        if (Object.hasOwn(statementRecord, 'value')) {
+          validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
+        }
       } else if (Object.hasOwn(statementRecord, 'value')) {
         validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
       }
@@ -1906,7 +2125,11 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
 }
 
 function getControlStatementKind(statementRecord: Record<string, unknown>, path: string): string {
-  const controlKind = typeof statementRecord.control === 'string' ? statementRecord.control : '';
+  const controlKind = normalizeSemanticToken(
+    typeof statementRecord.control === 'string'
+      ? statementRecord.control
+      : statementRecord.control_operation,
+  );
   if (SUPPORTED_GRAPH_BODY_CONTROL_KINDS.has(controlKind)) {
     return controlKind;
   }
@@ -1915,7 +2138,7 @@ function getControlStatementKind(statementRecord: Record<string, unknown>, path:
     {
       code: 'unsupported_control_kind',
       path: `${path}.control`,
-      message: 'Use branch, sequence, or return.',
+      message: 'Use branch, sequence, return, switch_int, switch_string, switch_name, switch_enum, multi_gate, or a supported StandardMacros control operation.',
     },
   ]);
 }
@@ -1985,7 +2208,7 @@ function validateSupportedExpression(expression: unknown, path: string): void {
 }
 
 function validateCreateShape(record: Record<string, unknown>, path: string): void {
-  getRequiredString(record, 'create_operation', `${path}.create_operation`);
+  validateCreateOwnership(record, path);
 }
 
 function compileLogicBodyToImportPayload(
@@ -2154,6 +2377,9 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
       ]),
     );
   }
+  if (kind === 'create') {
+    copyCreateSemanticFields(expression, out, nodeId);
+  }
 
   return out;
 }
@@ -2217,12 +2443,15 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
         cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
       ]),
     );
+    if (kind === 'create') {
+      copyCreateSemanticFields(statementRecord, out, statementId);
+    }
   } else if (kind === 'control') {
-    const controlKind = typeof statementRecord.control === 'string' ? statementRecord.control : '';
-    out.kind = controlKind;
-    delete out.control;
+    const normalizedControlKind = getControlStatementKind(statementRecord, statementId);
 
-    if (controlKind === 'branch') {
+    if (normalizedControlKind === 'branch') {
+      out.kind = normalizedControlKind;
+      delete out.control;
       out.condition = cloneLogicExpressionWithCompiledIds(statementRecord.condition, `${statementId}_condition`);
       if (Array.isArray(statementRecord.then)) {
         out.then = cloneLogicStatementSequenceWithCompiledIds(statementRecord.then as BlueprintLogicStatement[], `${statementId}_then`);
@@ -2230,11 +2459,30 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       if (Array.isArray(statementRecord['else'])) {
         out.else = cloneLogicStatementSequenceWithCompiledIds(statementRecord['else'] as BlueprintLogicStatement[], `${statementId}_else`);
       }
-    } else if (controlKind === 'sequence') {
+    } else if (normalizedControlKind === 'sequence') {
+      out.kind = normalizedControlKind;
+      delete out.control;
       delete out.statements;
-    } else if (controlKind === 'return' && Object.hasOwn(statementRecord, 'value')) {
-      out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    } else if (normalizedControlKind === 'return') {
+      out.kind = normalizedControlKind;
+      delete out.control;
+      if (Object.hasOwn(statementRecord, 'value')) {
+        out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+      }
+    } else {
+      applyGenericControlSemanticFields(statementRecord, out, normalizedControlKind, statementId);
+      if (isRecord(statementRecord.args)) {
+        out.args = Object.fromEntries(
+          Object.entries(statementRecord.args).map(([argName, argValue]) => [
+            argName,
+            cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+          ]),
+        );
+      }
     }
+  }
+  if (kind === 'create') {
+    copyCreateSemanticFields(statementRecord, out, statementId);
   }
 
   return out as BlueprintLogicStatement;
@@ -2325,6 +2573,15 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
     }
     if (controlKind === 'return') {
       return compileReturnStatementFlow(statementRecord, nodeId, path, context);
+    }
+    if (isGenericControlKind(controlKind)) {
+      const node = compileStatementNode(statement, nodeId, path);
+      return {
+        nodes: [node],
+        links: [],
+        entry: `${nodeId}.execute`,
+        exits: [`${nodeId}.then`],
+      };
     }
     return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
   }
@@ -2666,6 +2923,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     }
   } else if (kind === 'create') {
     node.create_operation = getRequiredString(expression, 'create_operation', `${path}.create_operation`);
+    copyCreateSemanticFields(expression, node as Record<string, unknown>, path);
     const target = optionalString(expression, 'target');
     const classPath = optionalString(expression, 'class_path');
     const assetPath = optionalString(expression, 'asset_path');
@@ -3475,6 +3733,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (Object.hasOwn(statementRecord, 'pin_type')) node.pin_type = statementRecord.pin_type;
     if (Object.hasOwn(statementRecord, 'key_pin_type')) node.key_pin_type = statementRecord.key_pin_type;
     if (Object.hasOwn(statementRecord, 'value_pin_type')) node.value_pin_type = statementRecord.value_pin_type;
+    copyCreateSemanticFields(statementRecord, node, path);
     copyContextEvidence(statementRecord, node);
     return omitUndefined(node) as AgentImportNode;
   }
@@ -3568,6 +3827,19 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     node.container_operation = containerOperation;
     copyContextEvidence(statementRecord, node);
     return node as AgentImportNode;
+  }
+
+  if (kind === 'control' && isGenericControlKind(getControlStatementKind(statementRecord, path))) {
+    const controlKind = getControlStatementKind(statementRecord, path);
+    const node: Record<string, unknown> = {
+      id: nodeId,
+      kind: 'control',
+      control: controlKind,
+      control_operation: controlKind,
+      inputs: compileArgs(statementRecord.args),
+    };
+    applyGenericControlSemanticFields(statementRecord, node, controlKind, path);
+    return omitUndefined(node) as AgentImportNode;
   }
 
   if (kind === 'component_bound_event') {

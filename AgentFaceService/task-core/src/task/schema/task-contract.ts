@@ -72,6 +72,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_property',
       'let',
       'control',
+      'create',
+      'convert',
+      'schedule',
       'container_action',
       'component_bound_event',
       'delegate.bind',
@@ -80,7 +83,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'delegate.unbind_all',
       'delegate.call',
     ],
-    expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select', 'container_action'],
+    expression_kinds: ['literal', 'get', 'get_property', 'call', 'op', 'construct', 'deconstruct', 'select', 'create', 'convert', 'schedule', 'container_action'],
     task_plan_capability: 'graph_write',
     task_plan_dependency_capabilities: ['blueprint_signature'],
     runtime_lowering_adapters: [
@@ -104,6 +107,11 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'generic behavior.ops[]',
       'Bridge payload fields as TaskSpec body',
     ],
+    generic_control_boundary: {
+      public_shape: 'kind=control with control/control_operation and operation-local context_evidence',
+      implicit_linear_continuation: 'unsupported',
+      note: 'Switch, multi-gate, and macro controls do not expose one universal then pin; place generic control statements as terminal statements until an operation-specific body/continuation contract exists.',
+    },
     replace_owned_graph: {
       scopes: ['custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
       selector_kinds_by_scope: {

@@ -17,6 +17,7 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.FunctionOperation = Statement.FunctionOperation;
 	Request.TransformOperation = Statement.TransformOperation;
 	Request.ScheduleOperation = Statement.ScheduleOperation;
+	Request.ControlOperation = Statement.ControlOperation;
 	Request.CreateOperation = Statement.CreateOperation;
 	Request.ContainerKind = Statement.ContainerKind;
 	Request.ContainerOperation = Statement.ContainerOperation;

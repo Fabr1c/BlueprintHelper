@@ -442,6 +442,9 @@ static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& St
 	case EBlueprintHelperGraphStatementKind::Return:
 		KindName = TEXT("return");
 		break;
+	case EBlueprintHelperGraphStatementKind::Control:
+		KindName = TEXT("control");
+		break;
 	case EBlueprintHelperGraphStatementKind::Create:
 		KindName = TEXT("create");
 		break;

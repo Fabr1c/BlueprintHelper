@@ -168,6 +168,7 @@ export const GENERIC_OPS_FORBIDDEN_RUNTIME_CLUSTER_IDS = [
 export const GENERIC_OPS_EVIDENCE_KEYS = [
   'generic.control.operation',
   'generic.control.case_values',
+  'generic.control.enum_path',
   'generic.control.default_policy',
   'generic.control.dynamic_output_count',
   'generic.macro.graph_path',
@@ -252,6 +253,12 @@ const GENERIC_CONTROL_EVIDENCE_KEYS = ['generic.control.operation'] as const;
 const GENERIC_CONTROL_SWITCH_EVIDENCE_KEYS = [
   'generic.control.operation',
   'generic.control.case_values',
+  'generic.control.default_policy',
+] as const;
+const GENERIC_CONTROL_SWITCH_ENUM_EVIDENCE_KEYS = [
+  'generic.control.operation',
+  'generic.control.case_values',
+  'generic.control.enum_path',
   'generic.control.default_policy',
 ] as const;
 const GENERIC_CONTROL_DYNAMIC_EVIDENCE_KEYS = [
@@ -427,7 +434,12 @@ const GENERIC_OPS_OPERATION_GROUPS = [
         makeSupportedGenericOp('control', operation, 'GenericAssetStructControlAction', GENERIC_CONTROL_EVIDENCE_KEYS),
       ),
       ...GENERIC_CONTROL_SWITCH_OPERATIONS.map((operation) =>
-        makeSupportedGenericOp('control', operation, 'GenericAssetStructControlAction', GENERIC_CONTROL_SWITCH_EVIDENCE_KEYS),
+        makeSupportedGenericOp(
+          'control',
+          operation,
+          'GenericAssetStructControlAction',
+          operation === 'switch_enum' ? GENERIC_CONTROL_SWITCH_ENUM_EVIDENCE_KEYS : GENERIC_CONTROL_SWITCH_EVIDENCE_KEYS,
+        ),
       ),
       ...GENERIC_CONTROL_DYNAMIC_OPERATIONS.map((operation) =>
         makeSupportedGenericOp('control', operation, 'GenericAssetStructControlAction', GENERIC_CONTROL_DYNAMIC_EVIDENCE_KEYS),

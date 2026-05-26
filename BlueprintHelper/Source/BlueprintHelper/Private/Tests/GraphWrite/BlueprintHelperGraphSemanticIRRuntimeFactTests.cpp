@@ -170,6 +170,24 @@ public:
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeFunctionBackedCreateWithoutTarget()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_create_missing_target"));
+		Statement->SetStringField(TEXT("kind"), TEXT("create"));
+		Statement->SetStringField(TEXT("create_operation"), TEXT("function_backed_create"));
+		Statement->SetStringField(TEXT("function_operation"), TEXT("create_function"));
+		Statement->SetStringField(TEXT("class_path"), TEXT("/Script/UMG.UserWidget"));
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static TSharedRef<FJsonObject> MakeLogicSpecWithEventDelegateStatements()
 	{
 		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
@@ -415,6 +433,24 @@ bool FBlueprintHelperGraphSemanticIRDelegateBoundary_RejectsDottedPublicKinds::R
 		}
 	}
 	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRRuntimeFact_FunctionBackedCreateRequiresTarget,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.RuntimeFact.FunctionBackedCreateRequiresTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperGraphSemanticIRRuntimeFact_FunctionBackedCreateRequiresTarget::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeFunctionBackedCreateWithoutTarget(),
+		IR);
+
+	TestFalse(TEXT("function-backed create without target is rejected"), bBuilt);
+	TestTrue(TEXT("missing target diagnostic"),
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("missing_create_function_target")));
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

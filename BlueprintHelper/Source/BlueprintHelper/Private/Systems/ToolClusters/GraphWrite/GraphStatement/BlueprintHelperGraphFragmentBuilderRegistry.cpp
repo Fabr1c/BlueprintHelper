@@ -88,7 +88,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.FragmentId = StatementId;
 		Request.SourceStatementId = StatementId;
 		Request.ActionContextStatementId = StatementContextId;
-		Request.Query = Statement.CreateOperation;
+		Request.Query = Statement.FunctionOperation.Equals(TEXT("create_function"), ESearchCase::IgnoreCase)
+			? (!Statement.Target.IsEmpty() ? Statement.Target : Statement.Name)
+			: Statement.CreateOperation;
 		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
 		Request.TypeName = Statement.ClassPath;
 		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
@@ -99,6 +101,24 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		return FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 			TargetGraph,
 			Request,
+			OutFragment,
+			OutError,
+			ActionContextScope);
+	}
+
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Control)
+	{
+		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.FragmentId = StatementId;
+		Request.SourceStatementId = StatementId;
+		Request.ActionContextStatementId = StatementContextId;
+		Request.Query = !Statement.ControlOperation.IsEmpty()
+			? Statement.ControlOperation
+			: Statement.ContextEvidence.FindRef(TEXT("generic.control.operation"));
+		return FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
+			TargetGraph,
+			Request,
+			EBlueprintHelperActionSemanticKind::Control,
 			OutFragment,
 			OutError,
 			ActionContextScope);

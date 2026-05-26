@@ -81,6 +81,7 @@ EBlueprintHelperGraphStatementKind FBlueprintHelperGraphSemanticIRUtils::ParseSt
 	if (Kind.Equals(TEXT("sequence"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Sequence;
 	if (Kind.Equals(TEXT("let"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Let;
 	if (Kind.Equals(TEXT("return"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Return;
+	if (Kind.Equals(TEXT("control"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Control;
 	if (Kind.Equals(TEXT("create"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Create;
 	if (Kind.Equals(TEXT("convert"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Convert;
 	if (Kind.Equals(TEXT("schedule"), ESearchCase::IgnoreCase)) return EBlueprintHelperGraphStatementKind::Schedule;
@@ -256,6 +257,8 @@ FString FBlueprintHelperGraphSemanticIRUtils::StatementPatternName(EBlueprintHel
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
+	case EBlueprintHelperGraphStatementKind::Control:
+		return TEXT("control");
 	case EBlueprintHelperGraphStatementKind::Create:
 		return TEXT("create");
 	case EBlueprintHelperGraphStatementKind::Convert:

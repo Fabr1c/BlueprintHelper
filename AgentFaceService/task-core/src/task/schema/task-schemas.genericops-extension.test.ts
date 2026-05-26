@@ -42,6 +42,7 @@ describe('GraphWrite GenericOps task schema exports', () => {
     assert.ok(GENERIC_OPS_OPERATION_IDS.includes('generic_ops.struct_select.select'));
 
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.control.operation'));
+    assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.control.enum_path'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.macro.pin_shape_snapshot'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.create.expose_on_spawn'));
     assert.ok(GENERIC_OPS_EVIDENCE_KEYS.includes('generic.schedule.graph_latent_allowed'));
@@ -76,7 +77,7 @@ describe('GraphWrite GenericOps task schema exports', () => {
               context_evidence: {
                 'generic.control.operation': 'switch_enum',
                 'generic.control.case_values': 'Idle,Running',
-                'generic.select.result_type_proof': '/Script/Engine.EEndPlayReason',
+                'generic.control.enum_path': '/Script/Engine.EEndPlayReason',
               },
             }, {
               id: 'stmt_array_add',
@@ -110,6 +111,7 @@ describe('GraphWrite GenericOps task schema exports', () => {
       .find((operation) => operation.id === 'generic_ops.control.switch_enum');
     assert.ok(switchEnum);
     assert.ok(switchEnum.requiredEvidenceKeys?.includes('generic.control.case_values'));
+    assert.ok(switchEnum.requiredEvidenceKeys?.includes('generic.control.enum_path'));
     assert.ok(switchEnum.requiredEvidenceKeys?.includes('generic.control.default_policy'));
 
     const doOnce = GRAPHWRITE_CAPABILITY_CONTRACT.operationGroups

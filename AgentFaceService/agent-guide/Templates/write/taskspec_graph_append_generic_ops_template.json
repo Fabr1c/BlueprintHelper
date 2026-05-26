@@ -110,6 +110,23 @@
               }
             },
             {
+              "kind": "field",
+              "field_operation": "set",
+              "field_scope": "field_access",
+              "target": "__STRUCT_SYMBOL__",
+              "property_path": "__FIELD_NAME__",
+              "capability_id": "field.struct_member_set",
+              "capability_facts": {
+                "generic.struct.struct_path": "__STRUCT_PATH__",
+                "generic.struct.selected_field_paths": "__FIELD_NAME__"
+              },
+              "value": {
+                "kind": "literal",
+                "value_type": "int",
+                "value": 2
+              }
+            },
+            {
               "kind": "let",
               "name": "__SELECT_SYMBOL__",
               "value": {
@@ -146,6 +163,45 @@
                 "generic.create.expose_on_spawn": "false"
               },
               "args": {}
+            },
+            {
+              "kind": "create",
+              "create_operation": "asset_action",
+              "asset_path": "__ASSET_PATH__",
+              "context_evidence": {
+                "generic.create.operation": "asset_action",
+                "generic.create.asset_path": "__ASSET_PATH__",
+                "asset_action_stable_id": "__ASSET_ACTION_STABLE_ID__",
+                "asset_action_spawner_signature": "__ASSET_ACTION_SPAWNER_SIGNATURE__"
+              },
+              "args": {}
+            },
+            {
+              "kind": "create",
+              "function_operation": "create_function",
+              "create_operation": "function_backed_create",
+              "target": "__FACTORY_FUNCTION_NAME__",
+              "class_path": "__FACTORY_RESULT_CLASS_PATH__",
+              "context_evidence": {
+                "generic.create.operation": "function_backed_create",
+                "generic.create.class_path": "__FACTORY_RESULT_CLASS_PATH__"
+              },
+              "args": {}
+            },
+            {
+              "kind": "control",
+              "control_operation": "switch_int",
+              "context_evidence": {
+                "generic.control.operation": "switch_int",
+                "generic.control.case_values": "0,1,2",
+                "generic.control.default_policy": "has_default"
+              },
+              "args": {
+                "selection": {
+                  "kind": "get",
+                  "target": "__INT_SELECTION_VARIABLE__"
+                }
+              }
             }
           ]
         }

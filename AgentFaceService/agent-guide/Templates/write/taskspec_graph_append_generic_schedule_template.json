@@ -60,6 +60,25 @@
                   "value": 0.25
                 }
               }
+            },
+            {
+              "kind": "schedule",
+              "function_operation": "schedule_function",
+              "schedule_operation": "delay",
+              "graph_latent_allowed": true,
+              "context_evidence": {
+                "generic.schedule.operation": "delay",
+                "generic.schedule.graph_latent_allowed": "true",
+                "schedule_action_stable_id": "__DELAY_ACTION_STABLE_ID__",
+                "schedule_spawner_signature": "__DELAY_SPAWNER_SIGNATURE__"
+              },
+              "args": {
+                "duration": {
+                  "kind": "literal",
+                  "value_type": "number",
+                  "value": 0.25
+                }
+              }
             }
           ]
         }

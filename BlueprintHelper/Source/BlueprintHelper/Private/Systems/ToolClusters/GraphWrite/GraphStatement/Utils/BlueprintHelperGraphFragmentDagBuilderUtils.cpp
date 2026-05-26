@@ -48,6 +48,8 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::StatementKindName(const EB
 		return TEXT("let");
 	case EBlueprintHelperGraphStatementKind::Return:
 		return TEXT("return");
+	case EBlueprintHelperGraphStatementKind::Control:
+		return TEXT("control");
 	case EBlueprintHelperGraphStatementKind::Create:
 		return TEXT("create");
 	case EBlueprintHelperGraphStatementKind::Convert:
@@ -1310,6 +1312,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	case EBlueprintHelperGraphStatementKind::Sequence:
 		return BuildSimpleStatement(Statement, TEXT("statement_sequence"), TEXT("sequence"), State, SymbolScopes);
+
+	case EBlueprintHelperGraphStatementKind::Control:
+		return BuildSimpleStatement(Statement, TEXT("statement_control"), TEXT("control"), State, SymbolScopes);
 
 	case EBlueprintHelperGraphStatementKind::Create:
 		return BuildSimpleStatement(Statement, TEXT("statement_create"), TEXT("create"), State, SymbolScopes);
