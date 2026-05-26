@@ -1,0 +1,509 @@
+{
+  "schema": "BlueprintHelper.GraphWriteGeneralitySummary.v2",
+  "totalOperations": 33,
+  "passedOperations": 31,
+  "failedOperations": 2,
+  "totalVariants": 42,
+  "passedVariants": 40,
+  "failedVariants": 2,
+  "operationPassRate": 0.9393939393939394,
+  "variantPassRate": 0.9523809523809523,
+  "allOperationsPassed": false,
+  "operations": [
+    {
+      "operationId": "container.map.add",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_add",
+      "graphName": "EG_GraphWriteGenerality_container_map_add",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.clear",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_clear",
+      "graphName": "EG_GraphWriteGenerality_container_map_clear",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.contains",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_contains",
+      "graphName": "EG_GraphWriteGenerality_container_map_contains",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.find",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_find",
+      "graphName": "EG_GraphWriteGenerality_container_map_find",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.get_key_value_by_index",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_get_key_value_by_index",
+      "graphName": "EG_GraphWriteGenerality_container_map_get_key_value_by_index",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.get_last_index",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_get_last_index",
+      "graphName": "EG_GraphWriteGenerality_container_map_get_last_index",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.is_empty",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_is_empty",
+      "graphName": "EG_GraphWriteGenerality_container_map_is_empty",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.is_not_empty",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_is_not_empty",
+      "graphName": "EG_GraphWriteGenerality_container_map_is_not_empty",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.keys",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_keys",
+      "graphName": "EG_GraphWriteGenerality_container_map_keys",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.length",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_length",
+      "graphName": "EG_GraphWriteGenerality_container_map_length",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.remove",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_remove",
+      "graphName": "EG_GraphWriteGenerality_container_map_remove",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "container.map.values",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_container_map_values",
+      "graphName": "EG_GraphWriteGenerality_container_map_values",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "function_action.macro_like",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_function_action_macro_like",
+      "graphName": "EG_GraphWriteGenerality_function_action_macro_like",
+      "variantMode": "parameterized_10",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 10,
+      "actualSpawnCount": 10,
+      "passedVariants": 10,
+      "requiredVariantCount": 10,
+      "failureKinds": {
+        "none": 10
+      }
+    },
+    {
+      "operationId": "generic_ops.control.branch",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_branch",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_branch",
+      "variantMode": "singleton_1",
+      "passed": true,
+      "requestedVariantCount": 1,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.do_n",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_do_n",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_do_n",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.do_once",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_do_once",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_do_once",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.flip_flop",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_flip_flop",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_flip_flop",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.for_loop",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_for_loop",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_for_loop",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.for_loop_with_break",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_for_loop_with_break",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_for_loop_with_break",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.foreach_loop",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_foreach_loop",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_foreach_loop",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.foreach_loop_with_break",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_foreach_loop_with_break",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_foreach_loop_with_break",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.gate",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_gate",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_gate",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.multi_gate",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_multi_gate",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_multi_gate",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.return",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_return",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_return",
+      "variantMode": "singleton_1",
+      "passed": true,
+      "requestedVariantCount": 1,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.sequence",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_sequence",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_sequence",
+      "variantMode": "singleton_1",
+      "passed": true,
+      "requestedVariantCount": 1,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.switch_enum",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_switch_enum",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_switch_enum",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.switch_int",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_switch_int",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_switch_int",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.switch_name",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_switch_name",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_switch_name",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.switch_string",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_switch_string",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_switch_string",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.control.while_loop",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_control_while_loop",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_control_while_loop",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "generic_ops.struct_select.select",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_generic_ops_struct_select_select",
+      "graphName": "EG_GraphWriteGenerality_generic_ops_struct_select_select",
+      "variantMode": "limited_real_nodes",
+      "passed": true,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 1,
+      "passedVariants": 1,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "none": 1
+      }
+    },
+    {
+      "operationId": "schedule.latent_or_async_node",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_schedule_latent_or_async_node",
+      "graphName": "EG_GraphWriteGenerality_schedule_latent_or_async_node",
+      "variantMode": "limited_real_nodes",
+      "passed": false,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 0,
+      "passedVariants": 0,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "missing_evidence": 1
+      }
+    },
+    {
+      "operationId": "schedule.timer_delegate_node",
+      "assetPath": "/Game/BlueprintHelper/Generality/BP_GraphWriteGenerality_GWRelabel003_schedule_timer_delegate_node",
+      "graphName": "EG_GraphWriteGenerality_schedule_timer_delegate_node",
+      "variantMode": "limited_real_nodes",
+      "passed": false,
+      "requestedVariantCount": 10,
+      "availableSpawnCount": 1,
+      "actualSpawnCount": 0,
+      "passedVariants": 0,
+      "requiredVariantCount": 1,
+      "failureKinds": {
+        "missing_evidence": 1
+      }
+    }
+  ]
+}
