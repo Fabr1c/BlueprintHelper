@@ -1239,6 +1239,24 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	const FString& OwnerStatementId,
 	TArray<FBlueprintHelperActionContextDemand>& OutDemands)
 {
+	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary)
+	{
+		if (Expression.TargetObject.IsValid())
+		{
+			AppendDemandForExpression(*Expression.TargetObject, OwnerStatementId, OutDemands);
+		}
+		if (Expression.Value.IsValid())
+		{
+			AppendDemandForExpression(*Expression.Value, OwnerStatementId, OutDemands);
+		}
+		if (Expression.Condition.IsValid())
+		{
+			AppendDemandForExpression(*Expression.Condition, OwnerStatementId, OutDemands);
+		}
+		return;
+	}
+
 	const EBlueprintHelperActionSemanticKind SemanticKind = ToActionSemanticKind(Expression.Kind);
 	const FString FieldOperation = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
 		? Expression.FieldOperation

@@ -163,6 +163,82 @@ static bool DelegateOperationRequiresHandler(const FString& Operation)
 		|| Normalized == TEXT("unbind");
 }
 
+static bool StatementKindCanReturnGraphLocalValue(const EBlueprintHelperGraphStatementKind Kind)
+{
+	switch (Kind)
+	{
+	case EBlueprintHelperGraphStatementKind::Call:
+	case EBlueprintHelperGraphStatementKind::Create:
+	case EBlueprintHelperGraphStatementKind::Convert:
+	case EBlueprintHelperGraphStatementKind::Schedule:
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool StatementResultSymbolRequiresTypeEvidence(const EBlueprintHelperGraphStatementKind Kind)
+{
+	return Kind == EBlueprintHelperGraphStatementKind::Call
+		|| Kind == EBlueprintHelperGraphStatementKind::Schedule;
+}
+
+static FString ResolveStatementResultTypeToken(const FBlueprintHelperGraphStatementIR& Statement)
+{
+	const FString ContainerResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+		Statement.ContainerKind,
+		Statement.ContainerOperation,
+		Statement.ElementType,
+		Statement.KeyType,
+		Statement.ValueType,
+		Statement.PinType,
+		Statement.KeyPinType,
+		Statement.ValuePinType);
+	if (!ContainerResultType.IsEmpty())
+	{
+		return ContainerResultType;
+	}
+	if (!Statement.ValueType.IsEmpty())
+	{
+		return Statement.ValueType;
+	}
+	if (!Statement.ElementType.IsEmpty())
+	{
+		return Statement.ElementType;
+	}
+	if (!Statement.PinType.IsEmpty())
+	{
+		return Statement.PinType;
+	}
+	if (!Statement.ResolvedTarget.Type.IsEmpty())
+	{
+		return Statement.ResolvedTarget.Type;
+	}
+	return FString();
+}
+
+static TSharedPtr<FBlueprintHelperGraphExpressionIR> MakeStatementResultSymbolExpression(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	const FString& ResultType)
+{
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> ResultExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	ResultExpression->ExpressionId = Statement.StatementId + TEXT("_result");
+	ResultExpression->Path = Statement.Path + TEXT(".result_symbol");
+	ResultExpression->Kind = EBlueprintHelperGraphExpressionKind::Field;
+	ResultExpression->Target = Statement.ResultSymbolName;
+	ResultExpression->Name = Statement.ResultSymbolName;
+	ResultExpression->FieldOperation = TEXT("get");
+	ResultExpression->FieldScope = TEXT("variable");
+	ResultExpression->Type = ResultType;
+	ResultExpression->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
+	ResultExpression->ResolvedTarget.Raw = Statement.ResultSymbolName;
+	ResultExpression->ResolvedTarget.Member = Statement.ResultSymbolName;
+	ResultExpression->ResolvedTarget.Type = ResultType;
+	ResultExpression->ResolvedTarget.bVerifiedByContext = true;
+	return ResultExpression;
+}
+
 static FString NormalizeFieldToken(const FString& Token)
 {
 	return Token.TrimStartAndEnd().ToLower();
@@ -1660,6 +1736,39 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Let)
 	{
 		FBlueprintHelperGraphSemanticIRUtils::RegisterSymbol(OutIR, Statement->Name, Statement->StatementId, Statement->Value, Statement->Path + TEXT(".name"), ScopeStack);
+	}
+	else if (!Statement->ResultSymbolName.TrimStartAndEnd().IsEmpty())
+	{
+		if (!StatementKindCanReturnGraphLocalValue(Statement->Kind))
+		{
+			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+				OutIR,
+				TEXT("result_symbol_statement_not_value_producing"),
+				Statement->Path + TEXT(".result_symbol"),
+				TEXT("result_symbol requires call, create, convert, schedule, or query container_action statement."));
+		}
+		else
+		{
+			const FString ResultType = ResolveStatementResultTypeToken(*Statement);
+			if (StatementResultSymbolRequiresTypeEvidence(Statement->Kind) && ResultType.IsEmpty())
+			{
+				FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
+					OutIR,
+					TEXT("result_symbol_missing_output_type"),
+					Statement->Path + TEXT(".result_symbol"),
+					TEXT("call and schedule result_symbol require explicit data output type evidence."));
+			}
+			else
+			{
+				FBlueprintHelperGraphSemanticIRUtils::RegisterSymbol(
+					OutIR,
+					Statement->ResultSymbolName,
+					Statement->StatementId,
+					MakeStatementResultSymbolExpression(*Statement, ResultType),
+					Statement->Path + TEXT(".result_symbol"),
+					ScopeStack);
+			}
+		}
 	}
 
 	if (Statement->ThenStatements.Num() > 0)

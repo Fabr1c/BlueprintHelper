@@ -280,6 +280,63 @@ FBlueprintHelperGraphFragmentEndpointRef FBlueprintHelperGraphFragmentDagBuilder
 		EBlueprintHelperGraphFragmentPortDirection::DataOutput);
 }
 
+static FString ResolveStatementResultEndpointName(const FBlueprintHelperGraphStatementIR& Statement)
+{
+	switch (Statement.Kind)
+	{
+	case EBlueprintHelperGraphStatementKind::Call:
+		return TEXT("ReturnValue");
+	case EBlueprintHelperGraphStatementKind::Create:
+	case EBlueprintHelperGraphStatementKind::Convert:
+	case EBlueprintHelperGraphStatementKind::Schedule:
+		return TEXT("value");
+	case EBlueprintHelperGraphStatementKind::ContainerAction:
+		return TEXT("result");
+	default:
+		return FString();
+	}
+}
+
+static bool StatementResultSymbolRequiresTypeEvidence(const FBlueprintHelperGraphStatementIR& Statement)
+{
+	return Statement.Kind == EBlueprintHelperGraphStatementKind::Call
+		|| Statement.Kind == EBlueprintHelperGraphStatementKind::Schedule;
+}
+
+static FString ResolveStatementResultEndpointType(const FBlueprintHelperGraphStatementIR& Statement)
+{
+	const FString ContainerResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
+		Statement.ContainerKind,
+		Statement.ContainerOperation,
+		Statement.ElementType,
+		Statement.KeyType,
+		Statement.ValueType,
+		Statement.PinType,
+		Statement.KeyPinType,
+		Statement.ValuePinType);
+	if (!ContainerResultType.IsEmpty())
+	{
+		return ContainerResultType;
+	}
+	if (!Statement.ValueType.IsEmpty())
+	{
+		return Statement.ValueType;
+	}
+	if (!Statement.ElementType.IsEmpty())
+	{
+		return Statement.ElementType;
+	}
+	if (!Statement.PinType.IsEmpty())
+	{
+		return Statement.PinType;
+	}
+	if (!Statement.ResolvedTarget.Type.IsEmpty())
+	{
+		return Statement.ResolvedTarget.Type;
+	}
+	return FString();
+}
+
 static FString ResolveContainerActionResultContainerType(
 	const FString& ContainerKind,
 	const FString& ContainerOperation)
@@ -941,7 +998,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			Expression,
 			TEXT("generic_action"),
 			TEXT("schedule"),
-			TEXT("then"),
+			TEXT("value"),
 			Expression->Type,
 			State,
 			SymbolScopes);
@@ -1078,38 +1135,50 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 
 	if (!Statement->ResultSymbolName.TrimStartAndEnd().IsEmpty())
 	{
-		const FString ResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
-			Statement->ContainerKind,
-			Statement->ContainerOperation,
-			Statement->ElementType,
-			Statement->KeyType,
-			Statement->ValueType,
-			Statement->PinType,
-			Statement->KeyPinType,
-			Statement->ValuePinType);
-		FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer ResultProducer;
-		ResultProducer.Endpoint = MakeDataOutput(
-			FragmentId,
-			TEXT("result"),
-			!ResultType.IsEmpty()
-				? ResultType
-				: (!Statement->ValueType.IsEmpty()
-				? Statement->ValueType
-				: (!Statement->ElementType.IsEmpty() ? Statement->ElementType : Statement->PinType)));
-		ApplyContainerActionResultEndpointType(
-			Statement->ContainerKind,
-			Statement->ContainerOperation,
-			Statement->ElementType,
-			Statement->KeyType,
-			Statement->ValueType,
-			Statement->PinType,
-			Statement->KeyPinType,
-			Statement->ValuePinType,
-			ResultProducer.Endpoint);
-		ResultProducer.SymbolId = NormalizeSymbolKey(Statement->ResultSymbolName);
-		ResultProducer.Type = ResultProducer.Endpoint.Type;
-		ResultProducer.Path = Statement->Path;
-		RegisterSymbolProducer(Statement->ResultSymbolName, ResultProducer, Statement->Path, State, SymbolScopes);
+		const FString ResultEndpointName = ResolveStatementResultEndpointName(*Statement);
+		if (ResultEndpointName.IsEmpty())
+		{
+			AddBuilderDiagnostic(
+				State,
+				TEXT("result_symbol_statement_not_value_producing"),
+				Statement->Path + TEXT(".result_symbol"),
+				TEXT("result_symbol requires a statement with a data output."),
+				EBlueprintHelperGraphFragmentDiagnosticSeverity::Error);
+		}
+		else
+		{
+			const FString ResultEndpointType = ResolveStatementResultEndpointType(*Statement);
+			if (StatementResultSymbolRequiresTypeEvidence(*Statement) && ResultEndpointType.IsEmpty())
+			{
+				AddBuilderDiagnostic(
+					State,
+					TEXT("result_symbol_missing_output_type"),
+					Statement->Path + TEXT(".result_symbol"),
+					TEXT("call and schedule result_symbol require explicit data output type evidence."),
+					EBlueprintHelperGraphFragmentDiagnosticSeverity::Error);
+				return Flow;
+			}
+
+			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer ResultProducer;
+			ResultProducer.Endpoint = MakeDataOutput(
+				FragmentId,
+				ResultEndpointName,
+				ResultEndpointType);
+			ApplyContainerActionResultEndpointType(
+				Statement->ContainerKind,
+				Statement->ContainerOperation,
+				Statement->ElementType,
+				Statement->KeyType,
+				Statement->ValueType,
+				Statement->PinType,
+				Statement->KeyPinType,
+				Statement->ValuePinType,
+				ResultProducer.Endpoint);
+			ResultProducer.SymbolId = NormalizeSymbolKey(Statement->ResultSymbolName);
+			ResultProducer.Type = ResultProducer.Endpoint.Type;
+			ResultProducer.Path = Statement->Path;
+			RegisterSymbolProducer(Statement->ResultSymbolName, ResultProducer, Statement->Path, State, SymbolScopes);
+		}
 	}
 
 	return Flow;
