@@ -10,6 +10,7 @@ struct FBlueprintHelperGraphExpressionIR;
 class FBlueprintHelperGraphStatementTypeUtils
 {
 public:
+	static FString MakeStatementFragmentId(const FBlueprintHelperGraphStatementIR& Statement, const FString& Suffix = FString());
 	static FString MakeExpressionFragmentId(const FBlueprintHelperGraphExpressionIR& Expression);
 	static FString ResolveContainerActionResultTypeToken(
 		const FString& ContainerKind,
@@ -25,6 +26,7 @@ public:
 private:
 	static void AddUniqueString(TArray<FString>& Values, const FString& Value);
 	static FString SanitizeFragmentIdPart(const FString& Value);
+	static FString ResolveStatementKindName(const EBlueprintHelperGraphStatementKind Kind);
 	static FString ResolveExpressionKindName(const EBlueprintHelperGraphExpressionKind Kind);
 	static FString NormalizeOperatorToken(const FString& Operator);
 	static bool TokenMatches(const FString& Token, const TArray<const TCHAR*>& Candidates);

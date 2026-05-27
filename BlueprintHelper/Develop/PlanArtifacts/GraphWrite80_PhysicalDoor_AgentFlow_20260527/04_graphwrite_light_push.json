@@ -1,0 +1,191 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_physicaldoor_agentflow_light_push_20260527_001",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "PhysicalDoorAgentFlowLightPush",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "LightPush",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "replace_owned_graph",
+    "replace": {
+      "scope": "function_body",
+      "selector": {
+        "kind": "function",
+        "name": "LightPush",
+        "graph_id": "LightPush"
+      },
+      "body": {
+        "schema": "BlueprintLogicSpec.v1",
+        "statements": [
+          {
+            "kind": "set",
+            "target": "bDoorClosed",
+            "value": {
+              "kind": "literal",
+              "value_type": "bool",
+              "value": false
+            }
+          },
+          {
+            "kind": "set",
+            "target": "DoorOpenAngle",
+            "value": {
+              "kind": "literal",
+              "value_type": "number",
+              "value": 177.0
+            }
+          },
+          {
+            "kind": "call",
+            "target": "K2_SetRelativeRotation",
+            "target_object": {
+              "kind": "field",
+              "field_operation": "get",
+              "field_scope": "component_ref",
+              "target": "Hinge",
+              "type": "/Script/Engine.SceneComponent",
+              "context_evidence": {
+                "component_name": "Hinge",
+                "graphwrite_physicaldoor.cluster": "field.component_ref"
+              }
+            },
+            "args": {
+              "NewRotation": {
+                "kind": "construct",
+                "type": "/Script/CoreUObject.Rotator",
+                "fields": {
+                  "Pitch": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 0.0
+                  },
+                  "Yaw": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 177.0
+                  },
+                  "Roll": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 0.0
+                  }
+                },
+                "context_evidence": {
+                  "generic.struct.struct_path": "/Script/CoreUObject.Rotator",
+                  "generic.struct.selected_field_paths": "Pitch,Yaw,Roll"
+                }
+              },
+              "bSweep": {
+                "kind": "literal",
+                "value_type": "bool",
+                "value": false
+              },
+              "bTeleport": {
+                "kind": "literal",
+                "value_type": "bool",
+                "value": true
+              }
+            },
+            "context_evidence": {
+              "graphwrite_physicaldoor.cluster": "function_action.call_function.rotation"
+            }
+          },
+          {
+            "kind": "call",
+            "target": "SetSimulatePhysics",
+            "target_object": {
+              "kind": "field",
+              "field_operation": "get",
+              "field_scope": "component_ref",
+              "target": "DoorMesh",
+              "type": "/Script/Engine.PrimitiveComponent",
+              "context_evidence": {
+                "component_name": "DoorMesh",
+                "graphwrite_physicaldoor.cluster": "field.component_ref"
+              }
+            },
+            "args": {
+              "bSimulate": {
+                "kind": "literal",
+                "value_type": "bool",
+                "value": true
+              }
+            },
+            "context_evidence": {
+              "graphwrite_physicaldoor.cluster": "function_action.call_function.physics"
+            }
+          },
+          {
+            "kind": "call",
+            "target": "AddImpulse",
+            "target_object": {
+              "kind": "field",
+              "field_operation": "get",
+              "field_scope": "component_ref",
+              "target": "DoorMesh",
+              "type": "/Script/Engine.PrimitiveComponent",
+              "context_evidence": {
+                "component_name": "DoorMesh",
+                "graphwrite_physicaldoor.cluster": "field.component_ref"
+              }
+            },
+            "args": {
+              "Impulse": {
+                "kind": "construct",
+                "type": "/Script/CoreUObject.Vector",
+                "fields": {
+                  "X": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 300.0
+                  },
+                  "Y": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 0.0
+                  },
+                  "Z": {
+                    "kind": "literal",
+                    "value_type": "number",
+                    "value": 0.0
+                  }
+                },
+                "context_evidence": {
+                  "generic.struct.struct_path": "/Script/CoreUObject.Vector",
+                  "generic.struct.selected_field_paths": "X,Y,Z"
+                }
+              },
+              "bVelChange": {
+                "kind": "literal",
+                "value_type": "bool",
+                "value": true
+              }
+            },
+            "context_evidence": {
+              "graphwrite_physicaldoor.cluster": "function_action.call_function.physics"
+            }
+          }
+        ]
+      },
+      "options": {
+        "strict": true,
+        "preserve_layout": false
+      }
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

@@ -84,7 +84,9 @@ export function makeGraphWriteGeneralitySetupSpecs(input: { assetPath: string })
         { name: 'GWGenIntArray', pin_type: { category: 'int', container_type: 'array' }, category: 'GraphWriteGenerality' },
         { name: 'GWGenOtherIntArray', pin_type: { category: 'int', container_type: 'array' }, category: 'GraphWriteGenerality' },
         { name: 'GWGenIntSet', pin_type: { category: 'int', container_type: 'set' }, category: 'GraphWriteGenerality' },
+        { name: 'GWGenOtherIntSet', pin_type: { category: 'int', container_type: 'set' }, category: 'GraphWriteGenerality' },
         { name: 'GWGenStringIntMap', pin_type: { category: 'string', container_type: 'map', value_type: { category: 'int' } }, category: 'GraphWriteGenerality' },
+        { name: 'GWGenRandomStream', pin_type: { category: 'struct', object_path: '/Script/CoreUObject.RandomStream' }, category: 'GraphWriteGenerality' },
       ],
       execution_policy: {
         dry_run_mode: 'full',
@@ -134,14 +136,7 @@ export function makeGraphWriteGeneralityBundles(input: { assetPath: string; grap
         },
         behavior: {
           graph_strategy: 'append_new_owned_graph',
-          entries: variants.map((variantName, index) => ({
-              entry_type: 'custom_event',
-              name: variantName,
-              body: {
-                schema: 'BlueprintLogicSpec.v1',
-                statements: [makeStatementForOperation(operation, variantName, index, candidates[index] ?? operation.operationId)],
-              },
-            })),
+          entries: makeEntriesForOperation(operation, variants, candidates, assetPath),
         },
         execution_policy: {
           dry_run_mode: 'full',
@@ -154,6 +149,34 @@ export function makeGraphWriteGeneralityBundles(input: { assetPath: string; grap
         },
       },
     };
+  });
+}
+
+function makeEntriesForOperation(
+  operation: GraphWriteGeneralityOperation,
+  variants: readonly string[],
+  candidates: readonly string[],
+  assetPath: string,
+): JsonRecord[] {
+  return variants.flatMap((variantName, index) => {
+    const statement = makeStatementForOperation(operation, variantName, index, candidates[index] ?? operation.operationId, assetPath);
+    const entries: JsonRecord[] = [];
+    const handlerName = delegateHandlerName(variantName);
+    if (operation.operationId.startsWith('event_delegate.') && operation.operationId !== 'event_delegate.delegate.clear') {
+      entries.push(makeOverlapHandlerEntry(handlerName));
+    }
+    if (operation.operationId === 'schedule.timer_delegate_node') {
+      entries.push(makeTimerHandlerEntry(handlerName));
+    }
+    entries.push({
+      entry_type: 'custom_event',
+      name: variantName,
+      body: {
+        schema: 'BlueprintLogicSpec.v1',
+        statements: [statement],
+      },
+    });
+    return entries;
   });
 }
 
@@ -204,8 +227,12 @@ function makeOperationAssetPath(baseAssetPath: string, operationKey: string): st
   const shortKey = operationKey.length > 48 ? `${operationKey.slice(0, 48)}_${stableHash(operationKey)}` : operationKey;
   const maxAssetNameLength = 96;
   const suffix = `_${shortKey}`;
-  const prefixBudget = Math.max(16, maxAssetNameLength - suffix.length);
-  const assetName = `${baseName.slice(0, prefixBudget)}${suffix}`.replace(/[^A-Za-z0-9_]/g, '_');
+  const safeBaseName = baseName.replace(/[^A-Za-z0-9_]/g, '_');
+  const runMarker = safeBaseName.length + suffix.length > maxAssetNameLength
+    ? `_r${stableHash(baseName)}`
+    : '';
+  const prefixBudget = Math.max(16, maxAssetNameLength - suffix.length - runMarker.length);
+  const assetName = `${safeBaseName.slice(0, prefixBudget)}${runMarker}${suffix}`;
   return `${directory}/${assetName}`;
 }
 
@@ -217,7 +244,13 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(36).slice(0, 6);
 }
 
-function makeStatementForOperation(operation: GraphWriteGeneralityOperation, variantName: string, index: number, nodeCandidate: string): JsonRecord {
+function makeStatementForOperation(
+  operation: GraphWriteGeneralityOperation,
+  variantName: string,
+  index: number,
+  nodeCandidate: string,
+  assetPath: string,
+): JsonRecord {
   const evidence = makeEvidence(operation, variantName, index);
   const id = operation.operationId;
   if (id === 'function_action.call_function') {
@@ -237,6 +270,12 @@ function makeStatementForOperation(operation: GraphWriteGeneralityOperation, var
     return { kind: 'let', name: `${variantName}_component`, value: { kind: 'field', field_operation: 'get', field_scope: 'component_ref', target, context_evidence: evidence } };
   }
   if (id === 'field.struct_member_set') {
+    const structEvidence = {
+      ...evidence,
+      'generic.struct.operation': 'set_fields_in_struct',
+      'generic.struct.struct_path': '/Script/CoreUObject.Rotator',
+      'generic.struct.selected_field_paths': 'Roll',
+    };
     return {
       kind: 'field',
       field_operation: 'set',
@@ -245,11 +284,13 @@ function makeStatementForOperation(operation: GraphWriteGeneralityOperation, var
       property_path: 'Roll',
       capability_id: 'field.struct_member_set',
       capability_facts: {
+        'field.struct_type': '/Script/CoreUObject.Rotator',
+        'field.property_path': 'Roll',
         'generic.struct.struct_path': '/Script/CoreUObject.Rotator',
         'generic.struct.selected_field_paths': 'Roll',
       },
       value: numberLiteral(index),
-      context_evidence: evidence,
+      context_evidence: structEvidence,
     };
   }
   if (id.startsWith('container.')) {
@@ -259,16 +300,42 @@ function makeStatementForOperation(operation: GraphWriteGeneralityOperation, var
     return controlStatement(id, variantName, index, evidence);
   }
   if (id.startsWith('generic_ops.transform.')) {
+    if (id === 'generic_ops.transform.type_promotion') {
+      return {
+        kind: 'convert',
+        transform_operation: 'type_promotion',
+        args: { value: numberLiteral(index + 1) },
+        context_evidence: {
+          ...evidence,
+          type_promotion_stable_id: 'type_promotion:Add:int:real',
+          type_promotion_operator: 'Add',
+          type_promotion_source_pin_type: 'int',
+          type_promotion_target_pin_type: 'real',
+          type_promotion_result_pin_type: 'real',
+        },
+      };
+    }
     return { kind: 'convert', transform_operation: id.split('.').at(-1), target_class_path: '/Script/Engine.Actor', args: { value: { kind: 'literal', value_type: 'object', value: 'Self' } }, context_evidence: evidence };
   }
   if (id.startsWith('generic_ops.create.')) {
     return createStatement(id, index, evidence);
   }
   if (id === 'generic_ops.struct_select.make_struct') {
-    return { kind: 'let', name: `${variantName}_struct`, value: vectorConstruct(index, evidence) };
+    return { kind: 'let', name: `${variantName}_struct`, value: vectorConstruct(index, structEvidence('/Script/CoreUObject.Vector', 'X,Y,Z', evidence)) };
   }
   if (id === 'generic_ops.struct_select.break_struct') {
-    return { kind: 'let', name: `${variantName}_break`, value: { kind: 'deconstruct', type: '/Script/CoreUObject.Vector', value: vectorConstruct(index, evidence), context_evidence: evidence } };
+    const evidenceForStruct = structEvidence('/Script/CoreUObject.Vector', 'X,Y,Z', evidence);
+    return {
+      kind: 'let',
+      name: `${variantName}_break`,
+      value: {
+        kind: 'deconstruct',
+        type: '/Script/CoreUObject.Vector',
+        fields: ['X', 'Y', 'Z'],
+        value: vectorConstruct(index, evidenceForStruct),
+        context_evidence: evidenceForStruct,
+      },
+    };
   }
   if (id === 'generic_ops.struct_select.select') {
     return {
@@ -283,10 +350,23 @@ function makeStatementForOperation(operation: GraphWriteGeneralityOperation, var
     };
   }
   if (id.startsWith('op.')) {
+    if (id === 'op.intpoint_equal') {
+      return {
+        kind: 'let',
+        name: `${variantName}_op`,
+        value: {
+          kind: 'op',
+          op: 'intpoint_equal',
+          left: intPointConstruct(index, index + 1),
+          right: intPointConstruct(index, index + 1),
+          context_evidence: evidence,
+        },
+      };
+    }
     return { kind: 'let', name: `${variantName}_op`, value: { kind: 'op', op: id.slice(3), left: numberLiteral(index + 1), right: numberLiteral(index + 2), context_evidence: evidence } };
   }
   if (id.startsWith('event_delegate.')) {
-    return delegateStatement(id, variantName, evidence);
+    return delegateStatement(id, variantName, evidence, assetPath);
   }
   if (id === 'create.asset_action') {
     return { kind: 'create', create_operation: 'asset_action', class_path: '/Script/Engine.Actor', context_evidence: evidence };
@@ -294,6 +374,9 @@ function makeStatementForOperation(operation: GraphWriteGeneralityOperation, var
   if (id === 'schedule.timer_delegate_node' || id === 'schedule.latent_or_async_node') {
     const scheduleOperation = id.split('.').at(-1);
     const contextEvidence = { ...evidence };
+    if (scheduleOperation === 'timer_delegate_node') {
+      Object.assign(contextEvidence, scheduleHandlerEvidence(assetPath, delegateHandlerName(variantName)));
+    }
     const statement: JsonRecord = {
       kind: 'schedule',
       schedule_operation: scheduleOperation,
@@ -440,7 +523,7 @@ function containerStatement(operationId: string, variantName: string, index: num
     value_type: 'int',
     context_evidence: evidence,
   };
-  const roles = roleValues(variantName, index);
+  const roles = roleValues(containerKind, variantName, index);
   for (const role of getRequiredContainerActionRoles(containerKind, containerOperation)) {
     if (role === 'target') {
       continue;
@@ -456,20 +539,20 @@ function containerTargetName(containerKind: string): string {
   return 'GWGenIntArray';
 }
 
-function roleValues(variantName: string, index: number): JsonRecord {
+function roleValues(containerKind: string, variantName: string, index: number): JsonRecord {
   return {
     item: numberLiteral(index),
     items: [{ kind: 'get', name: 'GWGenOtherIntArray' }],
     key: stringLiteral(`${variantName}_key`),
     value: numberLiteral(index),
     index: numberLiteral(index),
-    other: { kind: 'get', name: 'GWGenOtherIntArray' },
-    result: { kind: 'get', name: 'GWGenIntArray' },
+    other: { kind: 'get', name: containerKind === 'set' ? 'GWGenOtherIntSet' : 'GWGenOtherIntArray' },
+    result: { kind: 'get', name: containerKind === 'set' ? 'GWGenIntSet' : 'GWGenIntArray' },
     size: numberLiteral(index + 1),
     first_index: numberLiteral(0),
     second_index: numberLiteral(1),
-    random_stream: stringLiteral(`${variantName}_stream`),
-    filter_class: stringLiteral('/Script/Engine.Actor'),
+    random_stream: { kind: 'get', name: 'GWGenRandomStream' },
+    filter_class: classLiteral('/Script/Engine.Actor'),
   };
 }
 
@@ -527,26 +610,123 @@ function createStatement(operationId: string, index: number, evidence: JsonRecor
   if (createOperation === 'spawn_actor' || createOperation === 'construct_object' || createOperation === 'create_widget') {
     statement.class_path = createOperation === 'create_widget' ? '/Script/UMG.UserWidget' : '/Script/Engine.Actor';
   }
-  if (createOperation === 'make_array' || createOperation === 'make_set') statement.pin_type = { category: 'int', container_type: createOperation === 'make_set' ? 'set' : 'array' };
+  if (createOperation === 'make_array') statement.pin_type = 'int';
+  if (createOperation === 'make_set') statement.pin_type = 'int';
   if (createOperation === 'make_map') {
-    statement.key_pin_type = { category: 'string' };
-    statement.value_pin_type = { category: 'int' };
+    statement.pin_type = 'category=wildcard|container=map';
+    statement.key_pin_type = 'string';
+    statement.value_pin_type = 'int';
   }
   return statement;
 }
 
-function delegateStatement(operationId: string, variantName: string, evidence: JsonRecord): JsonRecord {
+function delegateStatement(operationId: string, variantName: string, evidence: JsonRecord, assetPath: string): JsonRecord {
+  const contextEvidence = generalityEvidence(evidence);
+  const handler = delegateHandlerName(variantName);
   if (operationId === 'event_delegate.component_bound_event') {
-    return { kind: 'component_bound_event', component: 'TriggerBox', delegate: 'OnComponentBeginOverlap', handler: `Handle_${variantName}`, context_evidence: evidence };
+    return {
+      kind: 'component_bound_event',
+      component: 'TriggerBox',
+      delegate: 'OnComponentBeginOverlap',
+      handler,
+      context_evidence: delegateHandlerEvidence(contextEvidence, assetPath, handler),
+    };
   }
   const delegateOperation = operationId.replace('event_delegate.', '');
+  if (delegateOperation === 'delegate.clear') {
+    return {
+      kind: 'delegate.unbind_all',
+      target: 'TriggerBox',
+      delegate: 'OnComponentBeginOverlap',
+      args: {},
+      context_evidence: contextEvidence,
+    };
+  }
   return {
-    kind: delegateOperation === 'delegate.clear' ? 'delegate.unbind_all' : delegateOperation,
-    target: 'Self',
-    delegate: 'OnActorBeginOverlap',
-    handler: `Handle_${variantName}`,
+    kind: delegateOperation,
+    target: 'TriggerBox',
+    delegate: 'OnComponentBeginOverlap',
+    handler,
     args: {},
-    context_evidence: evidence,
+    context_evidence: delegateHandlerEvidence(contextEvidence, assetPath, handler),
+  };
+}
+
+function delegateHandlerName(variantName: string): string {
+  return `Handle_${variantName}`;
+}
+
+function makeOverlapHandlerEntry(name: string): JsonRecord {
+  return {
+    entry_type: 'custom_event',
+    name,
+    inputs: [
+      { name: 'OverlappedComponent', pin_type: { category: 'object', object_path: '/Script/Engine.PrimitiveComponent' } },
+      { name: 'OtherActor', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
+      { name: 'OtherComp', pin_type: { category: 'object', object_path: '/Script/Engine.PrimitiveComponent' } },
+      { name: 'OtherBodyIndex', pin_type: { category: 'int' } },
+      { name: 'bFromSweep', pin_type: { category: 'bool' } },
+      { name: 'SweepResult', pin_type: { category: 'struct', object_path: '/Script/Engine.HitResult', is_reference: true, is_const: true } },
+    ],
+    body: {
+      schema: 'BlueprintLogicSpec.v1',
+      statements: [callStatement(`${name}_body`, {})],
+    },
+  };
+}
+
+function makeTimerHandlerEntry(name: string): JsonRecord {
+  return {
+    entry_type: 'custom_event',
+    name,
+    body: {
+      schema: 'BlueprintLogicSpec.v1',
+      statements: [callStatement(`${name}_body`, {})],
+    },
+  };
+}
+
+function delegateHandlerEvidence(evidence: JsonRecord, assetPath: string, handler: string): JsonRecord {
+  const handlerClassPath = skeletonClassPathForBlueprintAsset(assetPath);
+  return {
+    ...evidence,
+    'event_delegate.handler_name': handler,
+    'event_delegate.handler_scope_class_path': handlerClassPath,
+    'event_delegate.handler_function_path': `${handlerClassPath}:${handler}`,
+    'event_delegate.handler_source_cluster': 'BlueprintSignature',
+    'event_delegate.signature_evidence_id': `signature:custom_event:${handler}`,
+  };
+}
+
+function scheduleHandlerEvidence(assetPath: string, handler: string): JsonRecord {
+  const handlerClassPath = skeletonClassPathForBlueprintAsset(assetPath);
+  return {
+    handler_name: handler,
+    handler_function_path: `${handlerClassPath}:${handler}`,
+    handler_source_cluster: 'BlueprintSignature',
+    signature_evidence_id: `signature:custom_event:${handler}`,
+  };
+}
+
+function skeletonClassPathForBlueprintAsset(assetPath: string): string {
+  const cleanAssetPath = assetPath.trim().replace(/\/+$/, '');
+  const slashIndex = cleanAssetPath.lastIndexOf('/');
+  const assetName = slashIndex >= 0 ? cleanAssetPath.slice(slashIndex + 1) : cleanAssetPath;
+  return `${cleanAssetPath}.SKEL_${assetName}_C`;
+}
+
+function generalityEvidence(evidence: JsonRecord): JsonRecord {
+  return {
+    'graphwrite_generality.operation_id': evidence['graphwrite_generality.operation_id'],
+    'graphwrite_generality.variant_name': evidence['graphwrite_generality.variant_name'],
+  };
+}
+
+function structEvidence(structPath: string, selectedFields: string, evidence: JsonRecord): JsonRecord {
+  return {
+    ...evidence,
+    'generic.struct.struct_path': structPath,
+    'generic.struct.selected_field_paths': selectedFields,
   };
 }
 
@@ -554,7 +734,7 @@ function vectorConstruct(index: number, evidence: JsonRecord): JsonRecord {
   return {
     kind: 'construct',
     type: '/Script/CoreUObject.Vector',
-    args: {
+    fields: {
       X: numberLiteral(index),
       Y: numberLiteral(index + 1),
       Z: numberLiteral(index + 2),
@@ -563,8 +743,23 @@ function vectorConstruct(index: number, evidence: JsonRecord): JsonRecord {
   };
 }
 
+function intPointConstruct(x: number, y: number): JsonRecord {
+  return {
+    kind: 'construct',
+    type: '/Script/CoreUObject.IntPoint',
+    fields: {
+      X: numberLiteral(x),
+      Y: numberLiteral(y),
+    },
+  };
+}
+
 function stringLiteral(value: string): JsonRecord {
   return { kind: 'literal', value_type: 'string', value };
+}
+
+function classLiteral(classPath: string): JsonRecord {
+  return { kind: 'literal', value_type: '/Script/CoreUObject.Class', value: classPath };
 }
 
 function numberLiteral(value: number): JsonRecord {

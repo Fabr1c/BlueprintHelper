@@ -3,6 +3,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
 
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGraphWriteProjectedEvidenceQueryService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
@@ -54,7 +55,13 @@ bool FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(const FString& 
 	return Command == TEXT("append_blueprint_graph") ||
 		Command == TEXT("replace_blueprint_graph") ||
 		Command == TEXT("patch_blueprint_graph") ||
-		Command == TEXT("merge_blueprint_graph");
+		Command == TEXT("merge_blueprint_graph") ||
+		Command == TEXT("project_graphwrite_spawner_evidence");
+}
+
+bool FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteReadCommand(const FString& Command)
+{
+	return Command == TEXT("project_graphwrite_spawner_evidence");
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperGraphWriteBridgeRoutes::HandleRequest(
@@ -92,6 +99,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperGraphWriteBridgeRoutes::HandleReq
 			Request,
 			MergeGraphService.Execute(Request.Payload),
 			TEXT("merge_blueprint_graph 执行失败。"));
+	}
+
+	if (Request.Command == TEXT("project_graphwrite_spawner_evidence"))
+	{
+		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
+			Request,
+			FBlueprintHelperGraphWriteProjectedEvidenceQueryService::Project(Request.Payload),
+			TEXT("project_graphwrite_spawner_evidence failed."));
 	}
 
 	return FBlueprintHelperBridgeResponse::Error(

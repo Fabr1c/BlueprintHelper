@@ -71,7 +71,7 @@ static const TArray<FBlueprintHelperOpCallableSpec>& SupportedSpecs()
 		MakeSpec(TEXT("cross"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("CrossProduct2D")),
 		MakeSpec(TEXT("cross3"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("Cross_VectorVector")),
 		MakeSpec(TEXT("near_equal"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("NearlyEqual_FloatFloat")),
-		MakeSpec(TEXT("intpoint_equal"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("EqualEqual_IntPointIntPoint")),
+		MakeSpec(TEXT("intpoint_equal"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("Equal_IntPointIntPoint")),
 		MakeSpec(TEXT("transform_compose"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("ComposeTransforms")),
 		MakeSpec(TEXT("equal_exact"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("EqualExactly_VectorVector")),
 		MakeSpec(TEXT("not_equal_exact"), TEXT("call_function_compact"), TEXT("/Script/Engine.KismetMathLibrary"), TEXT("NotEqualExactly_VectorVector")),

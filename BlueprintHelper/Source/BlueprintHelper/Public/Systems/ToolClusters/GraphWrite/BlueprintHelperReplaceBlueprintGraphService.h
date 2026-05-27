@@ -102,6 +102,7 @@ private:
 
 		TArray<UEdGraphNode*> NodesToDelete;
 		TArray<UEdGraphNode*> NodesToPreserve;
+		TArray<UEdGraphNode*> NodesToAdoptOwnership;
 		TArray<UEdGraphNode*> ExistingOwnedNodes;
 		TArray<UEdGraphNode*> ExistingUserNodes;
 

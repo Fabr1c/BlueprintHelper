@@ -4,7 +4,8 @@ param(
   [string]$GraphName = "EG_GraphWriteGenerality",
   [string]$RunId = ("GraphWriteGenerality_E2E_" + (Get-Date -Format "yyyyMMdd_HHmmss")),
   [string]$ReportDate = (Get-Date -Format "yyyyMMdd"),
-  [string[]]$Operations = @()
+  [string[]]$Operations = @(),
+  [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,15 +25,17 @@ if ([string]::IsNullOrWhiteSpace($AssetPath)) {
 
 New-Item -ItemType Directory -Force -Path $SpecRoot, $ResultRoot, $ReportRoot | Out-Null
 
-Push-Location $TaskCore
-npm.cmd run build
-if ($LASTEXITCODE -ne 0) { throw "task-core build failed." }
-Pop-Location
+if (-not $SkipBuild) {
+  Push-Location $TaskCore
+  npm.cmd run build
+  if ($LASTEXITCODE -ne 0) { throw "task-core build failed." }
+  Pop-Location
 
-Push-Location $CliPackage
-npm.cmd run build
-if ($LASTEXITCODE -ne 0) { throw "cli build failed." }
-Pop-Location
+  Push-Location $CliPackage
+  npm.cmd run build
+  if ($LASTEXITCODE -ne 0) { throw "cli build failed." }
+  Pop-Location
+}
 
 $SpecArgs = @("--asset", $AssetPath, "--graph", $GraphName, "--out", $SpecRoot)
 if ($Operations.Count -gt 0) {
@@ -42,6 +45,22 @@ node (Join-Path $TaskCore "build\task\testing\write-graphwrite-generality-specs.
 if ($LASTEXITCODE -ne 0) { throw "GraphWrite generality spec generation failed." }
 if ($Operations.Count -gt 0 -and -not (Get-ChildItem -Path $SpecRoot -Directory -ErrorAction SilentlyContinue)) {
   throw "GraphWrite generality spec generation matched no operations: $($Operations -join ', ')"
+}
+
+$OperationSelection = @{}
+if ($Operations.Count -gt 0) {
+  foreach ($Operation in ($Operations -join "," -split ",")) {
+    $TrimmedOperation = $Operation.Trim()
+    if ([string]::IsNullOrWhiteSpace($TrimmedOperation)) {
+      continue
+    }
+
+    $OperationKey = ($TrimmedOperation -replace '[^A-Za-z0-9]+', '_').Trim('_')
+    if (-not [string]::IsNullOrWhiteSpace($OperationKey)) {
+      $OperationSelection[$OperationKey] = $true
+    }
+    $OperationSelection[$TrimmedOperation] = $true
+  }
 }
 
 function Invoke-CliJson {
@@ -55,8 +74,15 @@ function Invoke-CliJson {
   return ($Output -join [Environment]::NewLine) | ConvertFrom-Json
 }
 
-Get-ChildItem -Path $SpecRoot -Directory |
-  Sort-Object Name |
+$OperationDirs = Get-ChildItem -Path $SpecRoot -Directory | Sort-Object Name
+if ($Operations.Count -gt 0) {
+  $OperationDirs = $OperationDirs | Where-Object { $OperationSelection.ContainsKey($_.Name) }
+}
+if (-not $OperationDirs) {
+  throw "GraphWrite generality execution matched no operation directories: $($Operations -join ', ')"
+}
+
+$OperationDirs |
   ForEach-Object {
     $OperationDir = $_
     $OperationResultDir = Join-Path $ResultRoot $OperationDir.Name
@@ -94,6 +120,8 @@ Get-ChildItem -Path $SpecRoot -Directory |
       [System.Text.UTF8Encoding]::new($false))
 
     $GraphWriteSpecPath = Join-Path $OperationDir.FullName "graph_write.json"
+    node (Join-Path $TaskCore "build\task\testing\patch-graphwrite-generality-projected-evidence.js") --spec $GraphWriteSpecPath --asset $OperationAssetPath --graph "EventGraph"
+    if ($LASTEXITCODE -ne 0) { throw "GraphWrite projected evidence patch failed for $($OperationDir.Name)." }
 
     $PreviewFile = Join-Path $OperationResultDir "graph_write_preview.json"
     Invoke-CliJson -Arguments @("task", "preview", "--file", $GraphWriteSpecPath, "--format", "json", "--artifact-dir", $OperationResultDir) -OutputPath $PreviewFile | Out-Null

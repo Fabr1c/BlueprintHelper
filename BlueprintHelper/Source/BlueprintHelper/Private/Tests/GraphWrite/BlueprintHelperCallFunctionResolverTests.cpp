@@ -1169,6 +1169,33 @@ bool FBlueprintHelperCallFunctionActionResolutionPhysicalDoorSetRelativeRotation
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionActionResolutionTargetObjectSemanticPortTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.CallFunction.TargetObjectSemanticPortDoesNotBecomeArgument",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionActionResolutionTargetObjectSemanticPortTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
+	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
+	FBlueprintHelperActionResolutionRequest Request =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeActionRequest(Graph, TEXT("K2_SetRelativeRotation"));
+	Request.Semantic.TargetObjectType = USceneComponent::StaticClass()->GetPathName();
+	Request.Semantic.ArgumentNames.Add(TEXT("target_object"));
+	Request.Semantic.ArgumentTypes.Add(TEXT("target_object"), USceneComponent::StaticClass()->GetPathName());
+	FBlueprintHelperCallFunctionPinType TargetPinType;
+	TargetPinType.Category = UEdGraphSchema_K2::PC_Object.ToString();
+	TargetPinType.ObjectPath = USceneComponent::StaticClass()->GetPathName();
+	Request.Semantic.ArgumentPinTypes.Add(TEXT("target_object"), TargetPinType);
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("selected spawner"), Result.SelectedSpawner.IsValid());
+	TestTrue(TEXT("stable id has function identity"), Result.SelectedStableId.Contains(TEXT("K2_SetRelativeRotation")));
+	TestFalse(TEXT("target_object is not treated as missing callable arg"), Result.Message.Contains(TEXT("missing_argument_pin:target_object")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperCallFunctionActionResolutionPhysicalDoorGetRelativeRotationResolvesTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.CallFunction.P3.PhysicalDoorGetRelativeRotationResolvesWithSpawnerEvidence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

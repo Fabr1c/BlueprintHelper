@@ -103,6 +103,29 @@ public:
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeLogicSpecWithTargetObjectCall()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v1"));
+
+		TSharedRef<FJsonObject> TargetObject = MakeShared<FJsonObject>();
+		TargetObject->SetStringField(TEXT("kind"), TEXT("field"));
+		TargetObject->SetStringField(TEXT("field_operation"), TEXT("get"));
+		TargetObject->SetStringField(TEXT("field_scope"), TEXT("component_ref"));
+		TargetObject->SetStringField(TEXT("target"), TEXT("Hinge"));
+		TargetObject->SetStringField(TEXT("type"), TEXT("/Script/Engine.SceneComponent"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("K2_SetRelativeRotation"));
+		Statement->SetObjectField(TEXT("target_object"), TargetObject);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static TSharedRef<FJsonObject> MakeLogicSpecWithOpContextEvidence()
 	{
 		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
@@ -245,6 +268,75 @@ public:
 		Statement->SetStringField(TEXT("field_operation"), TEXT("set"));
 		Statement->SetStringField(TEXT("field_scope"), FieldScope);
 		Statement->SetObjectField(TEXT("value"), Value);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithExtendedContainerRoles()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		auto MakeLiteralNumber = [](const double Value)
+		{
+			TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+			Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+			Literal->SetStringField(TEXT("value_type"), TEXT("number"));
+			Literal->SetNumberField(TEXT("value"), Value);
+			return Literal;
+		};
+		auto MakeGet = [](const TCHAR* Name)
+		{
+			TSharedRef<FJsonObject> Get = MakeShared<FJsonObject>();
+			Get->SetStringField(TEXT("kind"), TEXT("get"));
+			Get->SetStringField(TEXT("name"), Name);
+			return Get;
+		};
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_container_extended_roles"));
+		Statement->SetStringField(TEXT("kind"), TEXT("container_action"));
+		Statement->SetStringField(TEXT("container_kind"), TEXT("set"));
+		Statement->SetStringField(TEXT("container_operation"), TEXT("union"));
+		Statement->SetObjectField(TEXT("target"), MakeGet(TEXT("GWGenIntSet")));
+		Statement->SetObjectField(TEXT("other"), MakeGet(TEXT("GWGenOtherIntSet")));
+		Statement->SetObjectField(TEXT("result"), MakeGet(TEXT("GWGenIntSet")));
+		Statement->SetObjectField(TEXT("size"), MakeLiteralNumber(3.0));
+		Statement->SetObjectField(TEXT("first_index"), MakeLiteralNumber(0.0));
+		Statement->SetObjectField(TEXT("second_index"), MakeLiteralNumber(1.0));
+
+		TSharedRef<FJsonObject> RandomStream = MakeShared<FJsonObject>();
+		RandomStream->SetStringField(TEXT("kind"), TEXT("literal"));
+		RandomStream->SetStringField(TEXT("value_type"), TEXT("string"));
+		RandomStream->SetStringField(TEXT("value"), TEXT("Stream"));
+		Statement->SetObjectField(TEXT("random_stream"), RandomStream);
+
+		TSharedRef<FJsonObject> FilterClass = MakeShared<FJsonObject>();
+		FilterClass->SetStringField(TEXT("kind"), TEXT("literal"));
+		FilterClass->SetStringField(TEXT("value_type"), TEXT("string"));
+		FilterClass->SetStringField(TEXT("value"), TEXT("/Script/Engine.Actor"));
+		Statement->SetObjectField(TEXT("filter_class"), FilterClass);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithMakeMapKeyValuePinTypes()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_create_make_map"));
+		Statement->SetStringField(TEXT("kind"), TEXT("create"));
+		Statement->SetStringField(TEXT("create_operation"), TEXT("make_map"));
+		Statement->SetStringField(TEXT("key_pin_type"), TEXT("string"));
+		Statement->SetStringField(TEXT("value_pin_type"), TEXT("int"));
 
 		TArray<TSharedPtr<FJsonValue>> Statements;
 		Statements.Add(MakeShared<FJsonValueObject>(Statement));
@@ -528,6 +620,32 @@ bool FBlueprintHelperGraphSemanticIRFieldScopes_AcceptsComponentRefAndFieldAcces
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRTargetObject_UsesDedicatedDagPort,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.TargetObject.UsesDedicatedDagPort",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRTargetObject_UsesDedicatedDagPort::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithTargetObjectCall(),
+		IR);
+	TestTrue(TEXT("target_object logic spec builds"), bBuilt);
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("target_object dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	TestEqual(TEXT("data edge count"), Dag.DataEdges.Num(), 1);
+	if (Dag.DataEdges.Num() != 1)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("target_object uses dedicated port"), Dag.DataEdges[0].To.PinName, FString(TEXT("target_object")));
+	TestNotEqual(TEXT("target_object is not a callable arg named target"), Dag.DataEdges[0].To.PinName, FString(TEXT("target")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphSemanticIRFieldScopes_RejectsUnsupportedScope,
 	"BlueprintHelper.GraphWrite.GraphSemanticIR.FieldScopes.RejectsUnsupportedScope",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -541,6 +659,67 @@ bool FBlueprintHelperGraphSemanticIRFieldScopes_RejectsUnsupportedScope::RunTest
 
 	TestTrue(TEXT("unsupported field scope diagnostic"),
 		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("field_scope_unsupported")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRContainerAction_ParsesExtendedPublicRoles,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.ContainerAction.ParsesExtendedPublicRoles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRContainerAction_ParsesExtendedPublicRoles::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithExtendedContainerRoles(),
+		IR);
+
+	TestTrue(TEXT("logic spec builds"), bBuilt);
+	TestEqual(TEXT("one statement parsed"), IR.Statements.Num(), 1);
+	if (IR.Statements.Num() != 1 || !IR.Statements[0].IsValid())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperGraphStatementIR& Statement = *IR.Statements[0];
+	bool bPassed = true;
+	const TArray<FString> Roles = {
+		TEXT("other"),
+		TEXT("result"),
+		TEXT("size"),
+		TEXT("first_index"),
+		TEXT("second_index"),
+		TEXT("random_stream"),
+		TEXT("filter_class")
+	};
+	for (const FString& Role : Roles)
+	{
+		bPassed &= TestTrue(*FString::Printf(TEXT("container role %s parsed"), *Role), Statement.Args.Contains(Role));
+	}
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRCreate_MakeMapAcceptsKeyValuePinEvidence,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.Create.MakeMapAcceptsKeyValuePinEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRCreate_MakeMapAcceptsKeyValuePinEvidence::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithMakeMapKeyValuePinTypes(),
+		IR);
+
+	TestTrue(TEXT("logic spec builds"), bBuilt);
+	TestFalse(TEXT("make_map key/value evidence avoids generic missing-context diagnostic"),
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("needs_more_semantic_context")));
+	TestEqual(TEXT("one statement parsed"), IR.Statements.Num(), 1);
+	if (IR.Statements.Num() == 1 && IR.Statements[0].IsValid())
+	{
+		TestEqual(TEXT("key pin type survives"), IR.Statements[0]->KeyPinType, FString(TEXT("string")));
+		TestEqual(TEXT("value pin type survives"), IR.Statements[0]->ValuePinType, FString(TEXT("int")));
+	}
 	return true;
 }
 

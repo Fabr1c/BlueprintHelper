@@ -154,7 +154,7 @@ FString FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(
 
 FString FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion()
 {
-	return TEXT("BlueprintHelper.CallFunctionResolver.v1");
+	return TEXT("BlueprintHelper.CallFunctionResolver.v2");
 }
 
 void FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::PruneIfNeeded(const FDateTime& NowUtc)

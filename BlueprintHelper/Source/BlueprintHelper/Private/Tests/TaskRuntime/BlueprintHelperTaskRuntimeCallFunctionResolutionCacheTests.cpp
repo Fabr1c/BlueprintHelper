@@ -86,6 +86,53 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_KeyIncludesContext::
 	const FString PinSecondKey =
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(PinSecond, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
 	TestFalse(TEXT("argument pin type produces different keys"), PinFirstKey == PinSecondKey);
+
+	FBlueprintHelperCallFunctionResolveRequest TargetPinFirst = First;
+	TargetPinFirst.TargetObjectPinType.Category = TEXT("object");
+	TargetPinFirst.TargetObjectPinType.ObjectPath = TEXT("/Script/Engine.PrimitiveComponent");
+
+	FBlueprintHelperCallFunctionResolveRequest TargetPinSecond = First;
+	TargetPinSecond.TargetObjectPinType.Category = TEXT("object");
+	TargetPinSecond.TargetObjectPinType.ObjectPath = TEXT("/Script/Engine.SceneComponent");
+
+	const FString TargetPinFirstKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(TargetPinFirst, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	const FString TargetPinSecondKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(TargetPinSecond, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	TestFalse(TEXT("target_object pin type produces different keys"), TargetPinFirstKey == TargetPinSecondKey);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_ResolverVersionGuard,
+	"BlueprintHelper.TaskRuntime.CallFunctionResolutionCache.ResolverVersionGuard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_ResolverVersionGuard::RunTest(const FString& Parameters)
+{
+	TestEqual(
+		TEXT("current resolver version"),
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion(),
+		FString(TEXT("BlueprintHelper.CallFunctionResolver.v2")));
+
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache Cache;
+	const FDateTime Now = FDateTime::UtcNow();
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Current;
+	Current.bResolved = true;
+	Current.StableId = TEXT("/Script/Engine.PrimitiveComponent:SetSimulatePhysics");
+	Current.NativeName = TEXT("SetSimulatePhysics");
+	Current.OwnerClassPath = TEXT("/Script/Engine.PrimitiveComponent");
+	Cache.Store(TEXT("current"), Current, Now);
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Found;
+	TestTrue(TEXT("empty stored resolver version is normalized to current version"), Cache.TryGet(TEXT("current"), TEXT(""), Now, Found));
+	TestEqual(TEXT("normalized resolver version"), Found.ResolverVersion, FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion());
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Stale = Current;
+	Stale.ResolverVersion = TEXT("BlueprintHelper.CallFunctionResolver.v1");
+	Cache.Store(TEXT("stale"), Stale, Now);
+	TestFalse(TEXT("stale resolver version misses"), Cache.TryGet(TEXT("stale"), TEXT(""), Now, Found));
 	return true;
 }
 

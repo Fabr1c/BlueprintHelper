@@ -1,0 +1,13 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_logic",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001",
+    "target_type": "function",
+    "target_name": "ForceOpen"
+  },
+  "view": {
+    "format": "logic_flow",
+    "detail": "full"
+  }
+}

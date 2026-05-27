@@ -86,6 +86,7 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("replace_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("patch_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("merge_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
+	{TEXT("project_graphwrite_spawner_evidence"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("query_review_records"), EBlueprintHelperBridgeRouteCluster::Review},
 	{TEXT("apply_review_action"), EBlueprintHelperBridgeRouteCluster::Review},
 };

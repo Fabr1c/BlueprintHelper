@@ -336,6 +336,76 @@ bool FBlueprintHelperGraphWriteUnifiedSmokeCallFragmentSemanticKindOwnershipTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteUnifiedSmokeCallFragmentTargetObjectPinAliasTest,
+	"BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.CallFragmentTargetObjectPinAlias",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteUnifiedSmokeCallFragmentTargetObjectPinAliasTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeUnifiedSmokeBlueprint();
+	UEdGraph* Graph = GetUnifiedSmokeGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	FBlueprintActionDatabase::Get().RefreshAll();
+
+	const FString StatementId = MakeUnifiedSmokeObjectName(TEXT("Stmt"));
+	FBlueprintHelperGraphStatementIR Statement = MakeUnifiedCallStatement(StatementId, TEXT("K2_SetRelativeRotation"));
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> TargetObject = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	TargetObject->ExpressionId = StatementId + TEXT("_target_object");
+	TargetObject->Path = TEXT("$.statements[0].target_object");
+	TargetObject->Kind = EBlueprintHelperGraphExpressionKind::Field;
+	TargetObject->Target = TEXT("Hinge");
+	TargetObject->Type = USceneComponent::StaticClass()->GetPathName();
+	TargetObject->FieldOperation = TEXT("get");
+	TargetObject->FieldScope = TEXT("component_ref");
+	Statement.TargetObject = TargetObject;
+
+	FBlueprintHelperActionContextScope ActionContextScope;
+	FString ScopeError;
+	TestTrue(
+		TEXT("build action context scope"),
+		BuildUnifiedSmokeActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+	if (!ScopeError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("action context scope detail: %s"), *ScopeError));
+	}
+	if (!ActionContextScope.IsValid())
+	{
+		return false;
+	}
+
+	FBlueprintHelperNodeFragment Fragment;
+	FString Error;
+	TArray<FBlueprintHelperCandidateFunctionGroup> Candidates;
+	TestTrue(
+		TEXT("registry builds target_object call fragment"),
+		FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
+			Graph,
+			&ActionContextScope,
+			Statement,
+			Fragment,
+			Error,
+			&Candidates));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("target_object call fragment detail: %s"), *Error));
+	}
+	if (!Fragment.IsValid())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperFragmentPinRef* TargetObjectPin = Fragment.DataInputs.Find(TEXT("target_object"));
+	TestNotNull(TEXT("target_object aliases callable receiver pin"), TargetObjectPin ? TargetObjectPin->Pin : nullptr);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteUnifiedSmokeFieldComponentRefAndFieldAccessTest,
 	"BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.FieldComponentRefAndFieldAccess",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

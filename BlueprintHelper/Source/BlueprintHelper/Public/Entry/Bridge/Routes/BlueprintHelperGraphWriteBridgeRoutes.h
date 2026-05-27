@@ -20,6 +20,7 @@ public:
 		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService);
 
 	static bool IsGraphWriteCommand(const FString& Command);
+	static bool IsGraphWriteReadCommand(const FString& Command);
 
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
 

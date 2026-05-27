@@ -150,6 +150,12 @@ public:
 			SecondPin->LinkedTo[0] == FirstPin;
 	}
 
+	static bool HasLinkedExecBody(UEdGraphNode* EntryNode)
+	{
+		UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+		return EntryExecOut && EntryExecOut->LinkedTo.Num() > 0;
+	}
+
 	static void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
 	{
 		if (!Pin)
@@ -740,11 +746,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 
 	if (Resolved.bIsBlueprintHelperOwned)
 	{
-		if (NewNodes.Num() > 0)
+		TArray<UEdGraphNode*> OwnershipNodes = NewNodes;
+		for (UEdGraphNode* NodeToAdopt : Resolved.NodesToAdoptOwnership)
+		{
+			OwnershipNodes.AddUnique(NodeToAdopt);
+		}
+
+		if (OwnershipNodes.Num() > 0)
 		{
 			FString OwnershipError;
 			if (!OwnershipService.WriteBlockOwnership(
-				Blueprint, NewNodes, Resolved.OriginalBlockId, TEXT("Replace"), OwnershipError))
+				Blueprint, OwnershipNodes, Resolved.OriginalBlockId, TEXT("Replace"), OwnershipError))
 			{
 				Mutation.Rollback();
 
@@ -940,8 +952,22 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 
 		if (EntryBlockId.IsEmpty())
 		{
-			OutError = FString::Printf(TEXT("Entry %s does not have BlueprintHelper ownership metadata; scoped body replacement cannot determine its owned body."), *Request.EntryName);
-			return false;
+			if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::HasLinkedExecBody(EntryNode))
+			{
+				OutError = FString::Printf(TEXT("Entry %s does not have BlueprintHelper ownership metadata and already has an exec body; scoped body replacement cannot determine a safe owned body boundary."), *Request.EntryName);
+				return false;
+			}
+
+			const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, Request.EntryName);
+			const FString FullBlockId = BlockIdService.MakeFullBlockId(Request.GraphName, BlockRef);
+			OutTarget.OriginalBlockId = FullBlockId.IsEmpty()
+				? FString::Printf(TEXT("%s_%s"), *Request.GraphName, *Request.EntryName)
+				: FullBlockId;
+			OutTarget.OriginalBlockRef = BlockRef.IsEmpty() ? Request.EntryName : BlockRef;
+			OutTarget.TargetRef = Request.EntryName;
+			OutTarget.bIsBlueprintHelperOwned = true;
+			OutTarget.NodesToAdoptOwnership.Add(EntryNode);
+			return true;
 		}
 
 		OutTarget.OriginalBlockId = EntryBlockId;

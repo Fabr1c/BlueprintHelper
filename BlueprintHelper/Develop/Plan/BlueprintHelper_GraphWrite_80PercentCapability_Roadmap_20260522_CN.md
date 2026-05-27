@@ -146,3 +146,18 @@ Setup Phase 的失败记录在测试文档中，但不计入 GraphWrite 正确�
 4. 唯一控制流允许 direct spawn，但必须通过统一 evidence/provider/adapter 边界。
 5. 正确率统计必须区分 setup failure、GraphWrite failure、call failure 和 silent wrong graph。
 6. 阶段完成不能只看测试通过，还要看 DebugBundle / readback / gap 文档是否一致。
+
+## 8. 2026-05-27 PhysicalDoor E2E 结果
+
+本轮已按普通 Agent flow 补跑 `PhysicalDoor_InteractableOnly`，目标资产为 `/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001`。Setup 只创建资产、组件、变量和函数入口，不计入 GraphWrite 正确率；Setup 后 GraphWrite 阶段使用 TaskSpec preview / execute 和 ReadSpec readback，没有使用自定义 E2E runner 脚本。
+
+| 项目 | 结果 | Evidence |
+|---|---|---|
+| Setup Phase | PASS | `Saved/Automation/GraphWrite80_PhysicalDoor_AgentFlow_20260527_001/01_create_asset_*`, `02_setup_fixture_*`, `03_ensure_functions_*`. |
+| GraphWrite Phase | PASS | `04_graphwrite_light_push_*_fix03`, `05_graphwrite_force_open_*_fix03`, `06_graphwrite_collision_close_*_fix03`. |
+| Readback | PASS | `12_read_light_push_graph_logic_json_fix03`, `13_read_force_open_graph_logic_json_fix03`, `14_read_collision_close_graph_logic_json_fix03`; all confirm expected receiver links and 0 orphan nodes. |
+| TaskRuntime CallFunction focused regression | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite.TaskRuntime.CallFunction`; `Saved/Logs/Template.log` at `2026.05.27-05.56.27`; 5 tests performed, 5 succeeded, including `TargetObjectPreviewExecuteReadBack` and `TargetObjectPinTypeCacheKey`. |
+| ContainerAction focused regression | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite.ContainerAction`; `Saved/Logs/Template.log` at `2026.05.27-05.57.15`; 14 tests performed, 14 succeeded, 0 failed. |
+| Full GraphWrite regression | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite`; `Saved/Logs/Template.log` at `2026.05.27-06.00.08`; 315 tests performed, 315 succeeded, 0 failed. |
+
+当前记录文档：`BlueprintHelper_GraphWrite_80PercentCapability_TestRecord_20260522_CN.md` 第 14 节。
