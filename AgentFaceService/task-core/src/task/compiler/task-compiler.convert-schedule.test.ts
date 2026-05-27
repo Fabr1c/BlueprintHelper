@@ -99,7 +99,7 @@ test('function-backed transform preserves FunctionAction ownership evidence', ()
   }
 });
 
-test('schedule expression preserves operation and latent evidence', () => {
+test('schedule expression is rejected and requires statement result_symbol', () => {
   const input = {
     kind: 'call',
     target: 'PrintString',
@@ -115,16 +115,10 @@ test('schedule expression preserves operation and latent evidence', () => {
     },
   };
 
-  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
-    const args = statement.args as Record<string, Record<string, unknown>>;
-    const value = args.value;
-    assert.equal(value.kind, 'schedule');
-    assert.equal(value.schedule_operation, 'timer_delegate_node');
-    assert.equal(Object.hasOwn(value, 'function_operation'), false);
-    assert.equal(value.graph_latent_allowed, true);
-    const nestedArgs = value.args as Record<string, Record<string, unknown>>;
-    assert.equal(nestedArgs.delay.id, 'ApplyConvertSchedule_stmt_1_arg_value_delay');
-  }
+  assert.throws(
+    () => compileTaskPlanStatement(input),
+    /impure schedule expressions require a statement result_symbol/,
+  );
 });
 
 test('convert and schedule preserve context_evidence through compiler outputs', () => {
@@ -150,36 +144,57 @@ test('convert and schedule preserve context_evidence through compiler outputs', 
     assert.deepEqual(statement.context_evidence, convertInput.context_evidence);
   }
 
-  const nestedScheduleInput = {
-    kind: 'call',
-    target: 'PrintString',
+  const scheduleInput = {
+    kind: 'schedule',
+    schedule_operation: 'latent_or_async_node',
+    value_type: 'LatentActionResult',
+    result_symbol: 'LatentResult',
+    context_evidence: {
+      graph_latent_allowed: 'false',
+      schedule_operation: 'latent_or_async_node',
+    },
     args: {
-      value: {
-        kind: 'schedule',
-        schedule_operation: 'latent_or_async_node',
-        context_evidence: {
-          graph_latent_allowed: 'false',
-          schedule_operation: 'latent_or_async_node',
-        },
-        args: {
-          delay: { kind: 'literal', value_type: 'number', value: 0.25 },
-        },
-      },
+      delay: { kind: 'literal', value_type: 'number', value: 0.25 },
     },
   };
 
-  for (const statement of [compileTaskPlanStatement(nestedScheduleInput), compileBridgeStatement(nestedScheduleInput)]) {
-    const args = statement.args as Record<string, Record<string, unknown>>;
-    const value = args.value;
-    assert.equal(value.kind, 'schedule');
-    assert.equal(value.schedule_operation, 'latent_or_async_node');
-    assert.deepEqual(value.context_evidence, {
+  for (const statement of [compileTaskPlanStatement(scheduleInput), compileBridgeStatement(scheduleInput)]) {
+    assert.equal(statement.kind, 'schedule');
+    assert.equal(statement.schedule_operation, 'latent_or_async_node');
+    assert.equal(statement.value_type, 'LatentActionResult');
+    assert.equal(statement.result_symbol, 'LatentResult');
+    assert.deepEqual(statement.context_evidence, {
       graph_latent_allowed: 'false',
       schedule_operation: 'latent_or_async_node',
     });
+    const args = statement.args as Record<string, Record<string, unknown>>;
+    assert.equal(args.delay.id, 'ApplyConvertSchedule_stmt_1_arg_delay');
   }
 });
 
+test('schedule statement preserves operation and latent evidence', () => {
+  const input = {
+    kind: 'schedule',
+    schedule_operation: 'timer_delegate_node',
+    value_type: 'TimerHandle',
+    graph_latent_allowed: true,
+    result_symbol: 'TimerResult',
+    args: {
+      delay: { kind: 'literal', value_type: 'number', value: 0.25 },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.equal(statement.kind, 'schedule');
+    assert.equal(statement.schedule_operation, 'timer_delegate_node');
+    assert.equal(statement.value_type, 'TimerHandle');
+    assert.equal(Object.hasOwn(statement, 'function_operation'), false);
+    assert.equal(statement.graph_latent_allowed, true);
+    assert.equal(statement.result_symbol, 'TimerResult');
+    const args = statement.args as Record<string, Record<string, unknown>>;
+    assert.equal(args.delay.id, 'ApplyConvertSchedule_stmt_1_arg_delay');
+  }
+});
 test('generic schedule statement compiles without function_operation ownership mixing', () => {
   const input = {
     kind: 'schedule',

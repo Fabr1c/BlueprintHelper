@@ -1599,6 +1599,13 @@ const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set([
   CONTAINER_ACTION_KIND,
   ...PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
 ]);
+const VALUE_PRODUCING_STATEMENT_KINDS = new Set([
+  'call',
+  'create',
+  'convert',
+  'schedule',
+  CONTAINER_ACTION_KIND,
+]);
 const GRAPH_BODY_SINGLETON_CONTROL_KINDS = new Set(['branch', 'sequence', 'return']);
 const GRAPH_BODY_SWITCH_CONTROL_KINDS = new Set(['switch_int', 'switch_string', 'switch_name', 'switch_enum']);
 const GRAPH_BODY_DYNAMIC_CONTROL_KINDS = new Set(['multi_gate']);
@@ -2073,6 +2080,69 @@ function validateContainerActionRoleExpressions(record: Record<string, unknown>,
   });
 }
 
+function statementKindSupportsResultSymbol(kind: string): boolean {
+  return VALUE_PRODUCING_STATEMENT_KINDS.has(kind);
+}
+
+function statementResultSymbolRequiresOutputEvidence(kind: string): boolean {
+  return kind === 'call' || kind === 'schedule';
+}
+
+function hasExplicitResultOutputEvidence(record: Record<string, unknown>): boolean {
+  const topLevelTypeFields = ['value_type', 'result_type', 'output_type', 'return_type'];
+  if (topLevelTypeFields.some((field) => optionalString(record, field))) {
+    return true;
+  }
+  if (Object.hasOwn(record, 'pin_type') || Object.hasOwn(record, 'result_pin_type') || Object.hasOwn(record, 'return_pin_type')) {
+    return true;
+  }
+  const evidence = record.context_evidence;
+  if (isRecord(evidence)) {
+    const evidenceTypeFields = [
+      'value_type',
+      'result_type',
+      'output_type',
+      'return_type',
+      'result_pin_type',
+      'return_pin_type',
+      'output_pin_type',
+      'schedule_result_pin_type',
+      'schedule_output_pin_type',
+    ];
+    return evidenceTypeFields.some((field) => optionalString(evidence, field))
+      || Object.hasOwn(evidence, 'pin_type')
+      || Object.hasOwn(evidence, 'result_pin')
+      || Object.hasOwn(evidence, 'return_pin')
+      || Object.hasOwn(evidence, 'output_pin');
+  }
+  return false;
+}
+
+function validateStatementResultSymbol(record: Record<string, unknown>, path: string): void {
+  if (!Object.hasOwn(record, 'result_symbol')) return;
+
+  getRequiredString(record, 'result_symbol', `${path}.result_symbol`);
+  const kind = typeof record.kind === 'string' ? record.kind : '';
+  if (!statementKindSupportsResultSymbol(kind)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'result_symbol requires a value-producing statement.', [
+      {
+        code: 'taskspec_semantic_invalid',
+        path: `${path}.result_symbol`,
+        message: 'Use result_symbol only on call, create, convert, schedule, or query container_action statements.',
+      },
+    ]);
+  }
+  if (statementResultSymbolRequiresOutputEvidence(kind) && !hasExplicitResultOutputEvidence(record)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'result_symbol requires explicit result output evidence.', [
+      {
+        code: 'taskspec_semantic_invalid',
+        path: `${path}.result_symbol`,
+        message: 'call and schedule result_symbol require value_type, pin_type, or context_evidence that identifies a data output.',
+      },
+    ]);
+  }
+}
+
 function validateSupportedStatements(statements: BlueprintLogicStatement[], path: string): void {
   statements.forEach((statement, statementIndex) => {
     const statementRecord = statement as Record<string, unknown>;
@@ -2096,6 +2166,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         },
       ]);
     }
+    validateStatementResultSymbol(statementRecord, statementPath);
     if (PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.has(kind)) {
       validateDelegateStatementShape(statementRecord, statementPath);
     } else if (kind === CONTAINER_ACTION_KIND) {
@@ -2192,6 +2263,14 @@ function validateExpressionList(value: unknown, path: string): void {
   value.forEach((expression, index) => validateSupportedExpression(expression, `${path}[${index}]`));
 }
 
+function isExplicitlyImpureCallExpression(expression: Record<string, unknown>): boolean {
+  if (expression.is_pure === false || expression.pure === false || expression.is_impure === true) {
+    return true;
+  }
+  const purity = (optionalString(expression, 'purity') ?? optionalString(expression, 'function_purity') ?? '').toLowerCase();
+  return purity === 'impure' || purity === 'not_pure' || purity === 'exec';
+}
+
 function validateSupportedExpression(expression: unknown, path: string): void {
   if (!isRecord(expression)) return;
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
@@ -2226,6 +2305,15 @@ function validateSupportedExpression(expression: unknown, path: string): void {
   }
   if (kind === 'convert' || kind === 'schedule') {
     validateConvertScheduleOwnership(expression, path);
+  }
+  if (kind === 'schedule' || (kind === 'call' && isExplicitlyImpureCallExpression(expression))) {
+    throw new TaskSpecCompileError('impure_expression_requires_statement', `impure ${kind} expressions require a statement result_symbol.`, [
+      {
+        code: 'impure_expression_requires_statement',
+        path: `${path}.kind`,
+        message: `Use a ${kind} statement with result_symbol, then read the symbol with kind=get.`,
+      },
+    ]);
   }
   if (kind === 'call' || kind === 'op' || kind === 'construct' || kind === 'deconstruct' || kind === 'create' || kind === 'convert' || kind === 'schedule') {
     validateExpressionMap(expression.args, `${path}.args`);
@@ -2284,6 +2372,16 @@ interface CompiledStatementFlow {
   preservePreviousExits?: boolean;
 }
 
+function statementResultOutputPin(kind: string): string | undefined {
+  if (kind === 'create' || kind === 'convert' || kind === 'schedule') {
+    return 'value';
+  }
+  if (kind === 'call' || kind === CONTAINER_ACTION_KIND) {
+    return 'ReturnValue';
+  }
+  return undefined;
+}
+
 function makeCompileFlowContext(parent?: CompileFlowContext): CompileFlowContext {
   return {
     symbols: new Map(parent ? parent.symbols : []),
@@ -2335,6 +2433,11 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   }
 
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
+  if (kind === 'get') {
+    const out: Record<string, unknown> = { ...expression, id: nodeId };
+    copyContextEvidence(expression, out);
+    return out;
+  }
   if (kind === CONTAINER_ACTION_KIND) {
     const { containerKind, containerOperation } = validateContainerActionShape(expression, nodeId, 'expression');
     const out = cloneContainerActionWithCompiledIds(expression, nodeId);
@@ -2719,6 +2822,11 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
       node.value = valueExprToString(valueFlow.defaultValue);
     }
   }
+  const resultSymbol = optionalString(statementRecord, 'result_symbol');
+  const outputPin = statementResultOutputPin(kind);
+  if (resultSymbol && outputPin && statementKindSupportsResultSymbol(kind) && (!statementResultSymbolRequiresOutputEvidence(kind) || hasExplicitResultOutputEvidence(statementRecord))) {
+    context.symbols.set(resultSymbol.toLowerCase(), { output: `${nodeId}.${outputPin}` });
+  }
   return {
     nodes,
     links,
@@ -2871,7 +2979,9 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
   }
 
   if (kind === 'get' || kind === 'get_property' || kind === 'field') {
-    const target = getRequiredString(expression, 'target', `${path}.target`);
+    const target = kind === 'get'
+      ? (optionalString(expression, 'target') ?? getRequiredString(expression, 'name', `${path}.name`))
+      : getRequiredString(expression, 'target', `${path}.target`);
     const fieldExpression = kind === 'field'
       ? fieldOperationScope(expression, path)
       : FIELD_EXPRESSION_KIND_MAP.get(kind);
