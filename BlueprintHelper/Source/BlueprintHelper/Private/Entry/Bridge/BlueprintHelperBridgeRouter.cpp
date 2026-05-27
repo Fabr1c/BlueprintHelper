@@ -124,7 +124,8 @@ public:
 			TEXT("get_datatable_rows"),
 			TEXT("get_object_properties"),
 			TEXT("read_components"),
-			TEXT("read_class_settings")
+			TEXT("read_class_settings"),
+			TEXT("project_graphwrite_spawner_evidence")
 		};
 		return ReadTimingCommands.Contains(Command);
 	}

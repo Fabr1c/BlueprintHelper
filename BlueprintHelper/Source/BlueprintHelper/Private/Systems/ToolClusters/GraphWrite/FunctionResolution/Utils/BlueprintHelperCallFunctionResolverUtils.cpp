@@ -680,6 +680,49 @@ bool FBlueprintHelperCallFunctionResolverUtils::DoesGraphSupportImpureFunctions(
 	return !K2Schema || K2Schema->DoesGraphSupportImpureFunctions(Graph);
 }
 
+static bool IsTargetObjectSemanticPortName(const FString& Name)
+{
+	return Name.Equals(TEXT("target_object"), ESearchCase::IgnoreCase);
+}
+
+static void RemoveTargetObjectSemanticPortFromContext(FBlueprintHelperK2CallContext& Context)
+{
+	Context.ArgumentNames.RemoveAll([](const FString& ArgumentName)
+	{
+		return IsTargetObjectSemanticPortName(ArgumentName);
+	});
+
+	TArray<FString> ArgumentTypeKeys;
+	Context.ArgumentTypes.GetKeys(ArgumentTypeKeys);
+	for (const FString& Key : ArgumentTypeKeys)
+	{
+		if (!IsTargetObjectSemanticPortName(Key))
+		{
+			continue;
+		}
+		if (Context.TargetObjectType.IsEmpty())
+		{
+			Context.TargetObjectType = Context.ArgumentTypes.FindRef(Key);
+		}
+		Context.ArgumentTypes.Remove(Key);
+	}
+
+	TArray<FString> ArgumentPinTypeKeys;
+	Context.ArgumentPinTypes.GetKeys(ArgumentPinTypeKeys);
+	for (const FString& Key : ArgumentPinTypeKeys)
+	{
+		if (!IsTargetObjectSemanticPortName(Key))
+		{
+			continue;
+		}
+		if (!Context.TargetObjectPinType.IsValid())
+		{
+			Context.TargetObjectPinType = Context.ArgumentPinTypes.FindRef(Key);
+		}
+		Context.ArgumentPinTypes.Remove(Key);
+	}
+}
+
 FBlueprintHelperK2CallContext FBlueprintHelperCallFunctionResolverUtils::BuildEffectiveContext(
 	const FBlueprintHelperCallFunctionResolveRequest& Request)
 {
@@ -740,6 +783,7 @@ FBlueprintHelperK2CallContext FBlueprintHelperCallFunctionResolverUtils::BuildEf
 	{
 		Context.ExpectedReturnPinType = Request.ExpectedReturnPinType;
 	}
+	RemoveTargetObjectSemanticPortFromContext(Context);
 	return Context;
 }
 

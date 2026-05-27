@@ -1,0 +1,45 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_physicaldoor_agentflow_ensure_functions_20260527_001",
+  "task_type": "edit_blueprint_signature",
+  "feature_name": "PhysicalDoorAgentFlowSignatures",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "signature_strategy": "signature_edit",
+    "changes": [
+      {
+        "kind": "ensure_function",
+        "function_name": "LightPush",
+        "inputs": [],
+        "outputs": [],
+        "name_collision_policy": "reuse_if_exists"
+      },
+      {
+        "kind": "ensure_function",
+        "function_name": "ForceOpen",
+        "inputs": [],
+        "outputs": [],
+        "name_collision_policy": "reuse_if_exists"
+      },
+      {
+        "kind": "ensure_function",
+        "function_name": "HandleCollisionClose",
+        "inputs": [],
+        "outputs": [],
+        "name_collision_policy": "reuse_if_exists"
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

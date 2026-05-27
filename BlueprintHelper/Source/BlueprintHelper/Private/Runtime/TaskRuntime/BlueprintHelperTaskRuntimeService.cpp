@@ -54,6 +54,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -697,110 +699,14 @@ public:
 		return Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
 	}
 
-	static FString SanitizeGraphFragmentIdPart(const FString& Value)
-	{
-		FString Clean = Value.TrimStartAndEnd();
-		if (Clean.IsEmpty())
-		{
-			return TEXT("unnamed");
-		}
-
-		FString Result;
-		Result.Reserve(Clean.Len());
-		for (int32 Index = 0; Index < Clean.Len(); ++Index)
-		{
-			const TCHAR Character = Clean[Index];
-			Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
-		}
-		return Result.IsEmpty() ? TEXT("unnamed") : Result;
-	}
-
-	static FString GetStatementKindName(EBlueprintHelperGraphStatementKind Kind)
-	{
-		struct FStatementKindRule
-		{
-			EBlueprintHelperGraphStatementKind Kind;
-			const TCHAR* Name;
-		};
-
-		static const FStatementKindRule Rules[] =
-		{
-			{ EBlueprintHelperGraphStatementKind::Call, TEXT("call") },
-			{ EBlueprintHelperGraphStatementKind::Field, TEXT("field") },
-			{ EBlueprintHelperGraphStatementKind::Branch, TEXT("branch") },
-			{ EBlueprintHelperGraphStatementKind::Sequence, TEXT("sequence") },
-			{ EBlueprintHelperGraphStatementKind::Let, TEXT("let") },
-			{ EBlueprintHelperGraphStatementKind::Return, TEXT("return") },
-			{ EBlueprintHelperGraphStatementKind::Control, TEXT("control") },
-			{ EBlueprintHelperGraphStatementKind::Create, TEXT("create") },
-			{ EBlueprintHelperGraphStatementKind::Convert, TEXT("convert") },
-			{ EBlueprintHelperGraphStatementKind::Schedule, TEXT("schedule") },
-		};
-
-		for (const FStatementKindRule& Rule : Rules)
-		{
-			if (Rule.Kind == Kind)
-			{
-				return Rule.Name;
-			}
-		}
-		return TEXT("unknown");
-	}
-
-	static FString GetExpressionKindName(EBlueprintHelperGraphExpressionKind Kind)
-	{
-		struct FExpressionKindRule
-		{
-			EBlueprintHelperGraphExpressionKind Kind;
-			const TCHAR* Name;
-		};
-
-		static const FExpressionKindRule Rules[] =
-		{
-			{ EBlueprintHelperGraphExpressionKind::Literal, TEXT("literal") },
-			{ EBlueprintHelperGraphExpressionKind::Field, TEXT("field") },
-			{ EBlueprintHelperGraphExpressionKind::Call, TEXT("call") },
-			{ EBlueprintHelperGraphExpressionKind::Op, TEXT("op") },
-			{ EBlueprintHelperGraphExpressionKind::Construct, TEXT("construct") },
-			{ EBlueprintHelperGraphExpressionKind::Deconstruct, TEXT("deconstruct") },
-			{ EBlueprintHelperGraphExpressionKind::Select, TEXT("select") },
-			{ EBlueprintHelperGraphExpressionKind::Create, TEXT("create") },
-			{ EBlueprintHelperGraphExpressionKind::Convert, TEXT("convert") },
-			{ EBlueprintHelperGraphExpressionKind::Schedule, TEXT("schedule") },
-		};
-
-		for (const FExpressionKindRule& Rule : Rules)
-		{
-			if (Rule.Kind == Kind)
-			{
-				return Rule.Name;
-			}
-		}
-		return TEXT("unknown");
-	}
-
 	static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& Statement)
 	{
-		const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-		if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-		{
-			return SanitizeGraphFragmentIdPart(SourceId);
-		}
-
-		const FString KindName = GetStatementKindName(Statement.Kind);
-		return SanitizeGraphFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+		return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement);
 	}
 
 	static FString GetSemanticExpressionId(const FBlueprintHelperGraphExpressionIR& Expression)
 	{
-		const FString SourceId = !Expression.ExpressionId.IsEmpty() ? Expression.ExpressionId : Expression.Path;
-		if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-		{
-			return SanitizeGraphFragmentIdPart(SourceId);
-		}
-
-		const FString KindName = GetExpressionKindName(Expression.Kind);
-		return SanitizeGraphFragmentIdPart(TEXT("expr_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+		return FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
 	}
 
 	static void AddUniqueString(TArray<FString>& Values, const FString& Value)
@@ -824,6 +730,76 @@ public:
 		return Result;
 	}
 
+	static void NormalizeObjectPathPinType(FBlueprintHelperCallFunctionPinType& InOutPinType)
+	{
+		const FString Category = InOutPinType.Category.TrimStartAndEnd();
+		if (InOutPinType.ObjectPath.IsEmpty()
+			&& (Category.StartsWith(TEXT("/")) || Category.StartsWith(TEXT("Class'"))))
+		{
+			InOutPinType.Category = TEXT("object");
+			InOutPinType.ObjectPath = Category;
+		}
+	}
+
+	static FBlueprintHelperCallFunctionPinType MakeTargetObjectPinTypeFromExpression(
+		const TSharedPtr<FBlueprintHelperGraphExpressionIR>& Expression)
+	{
+		FBlueprintHelperCallFunctionPinType Result;
+		if (!Expression.IsValid())
+		{
+			return Result;
+		}
+
+		if (!Expression->PinType.TrimStartAndEnd().IsEmpty())
+		{
+			Result = FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Expression->PinType);
+			NormalizeObjectPathPinType(Result);
+			if (Result.IsValid())
+			{
+				return Result;
+			}
+		}
+
+		const FString Type = !Expression->Type.TrimStartAndEnd().IsEmpty()
+			? Expression->Type.TrimStartAndEnd()
+			: Expression->ResolvedTarget.Type.TrimStartAndEnd();
+		if (!Type.IsEmpty())
+		{
+			Result.Category = Type;
+			NormalizeObjectPathPinType(Result);
+		}
+		return Result;
+	}
+
+	static bool TryCollectSemanticTargetObjectPinTypeFromDag(
+		const FBlueprintHelperGraphFragmentDag& FragmentDag,
+		const FString& ConsumerFragmentId,
+		FBlueprintHelperCallFunctionPinType& OutPinType)
+	{
+		for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : FragmentDag.DataEdges)
+		{
+			if (!DataEdge.To.FragmentId.Equals(ConsumerFragmentId, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+
+			const FString PortName = !DataEdge.To.PinName.IsEmpty() ? DataEdge.To.PinName : DataEdge.To.PortId;
+			if (!PortName.Equals(TEXT("target_object"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			FBlueprintHelperCallFunctionPinType PinType = MakeCallFunctionPinTypeFromDagRef(DataEdge.From.PinType);
+			NormalizeObjectPathPinType(PinType);
+			if (PinType.IsValid())
+			{
+				OutPinType = PinType;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static TMap<FString, FBlueprintHelperCallFunctionPinType> CollectSemanticArgumentPinTypesFromDag(
 		const FBlueprintHelperGraphFragmentDag& FragmentDag,
 		const FString& ConsumerFragmentId)
@@ -838,6 +814,10 @@ public:
 
 			const FString ArgumentName = !DataEdge.To.PinName.IsEmpty() ? DataEdge.To.PinName : DataEdge.To.PortId;
 			if (ArgumentName.IsEmpty())
+			{
+				continue;
+			}
+			if (ArgumentName.Equals(TEXT("target_object"), ESearchCase::IgnoreCase))
 			{
 				continue;
 			}
@@ -944,6 +924,12 @@ public:
 			{
 				InOutRequest.TargetObjectType = Statement.TargetObject->Type;
 			}
+			const FBlueprintHelperCallFunctionPinType TargetObjectPinType =
+				MakeTargetObjectPinTypeFromExpression(Statement.TargetObject);
+			if (TargetObjectPinType.IsValid())
+			{
+				InOutRequest.TargetObjectPinType = TargetObjectPinType;
+			}
 		}
 
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Statement.Args)
@@ -957,6 +943,14 @@ public:
 
 		const FString StatementId = GetSemanticStatementId(Statement);
 		InOutRequest.ArgumentPinTypes.Append(CollectSemanticArgumentPinTypesFromDag(FragmentDag, StatementId));
+		if (!InOutRequest.TargetObjectPinType.IsValid())
+		{
+			FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+			if (TryCollectSemanticTargetObjectPinTypeFromDag(FragmentDag, StatementId, TargetObjectPinType))
+			{
+				InOutRequest.TargetObjectPinType = TargetObjectPinType;
+			}
+		}
 	}
 
 	static void ApplySemanticExpressionContext(
@@ -987,6 +981,15 @@ public:
 		{
 			InOutRequest.TargetObjectType = Expression.TargetObject->Type;
 		}
+		if (Expression.TargetObject.IsValid())
+		{
+			const FBlueprintHelperCallFunctionPinType TargetObjectPinType =
+				MakeTargetObjectPinTypeFromExpression(Expression.TargetObject);
+			if (TargetObjectPinType.IsValid())
+			{
+				InOutRequest.TargetObjectPinType = TargetObjectPinType;
+			}
+		}
 
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{
@@ -999,6 +1002,14 @@ public:
 
 		const FString ExpressionId = GetSemanticExpressionId(Expression);
 		InOutRequest.ArgumentPinTypes.Append(CollectSemanticArgumentPinTypesFromDag(FragmentDag, ExpressionId));
+		if (!InOutRequest.TargetObjectPinType.IsValid())
+		{
+			FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+			if (TryCollectSemanticTargetObjectPinTypeFromDag(FragmentDag, ExpressionId, TargetObjectPinType))
+			{
+				InOutRequest.TargetObjectPinType = TargetObjectPinType;
+			}
+		}
 	}
 
 	static void CollectCallFunctionExpressionValue(

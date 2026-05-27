@@ -1,0 +1,91 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_physicaldoor_agentflow_setup_fixture_20260527_001",
+  "task_type": "create_blueprint_feature",
+  "feature_name": "PhysicalDoorAgentFlowSetup",
+  "target": {
+    "asset_path": "/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "prefer_new_graph": true,
+    "graph_name": "EG_PhysicalDoor_InteractableOnly",
+    "allow_modify_user_nodes": false,
+    "allow_create_assets": false
+  },
+  "asset_policy": {
+    "if_target_asset_missing": "fail",
+    "if_referenced_asset_missing": "fail",
+    "if_component_exists": "reuse_if_type_matches"
+  },
+  "components": [
+    {
+      "name": "Root",
+      "class": "SceneComponent",
+      "set_as_root": true
+    },
+    {
+      "name": "Hinge",
+      "class": "SceneComponent",
+      "attach_to": "Root"
+    },
+    {
+      "name": "DoorMesh",
+      "class": "StaticMeshComponent",
+      "attach_to": "Hinge",
+      "properties": [
+        {
+          "property_path": "BodyInstance.bSimulatePhysics",
+          "value": false
+        }
+      ]
+    }
+  ],
+  "variables": [
+    {
+      "name": "DoorOpenAngle",
+      "type": "float",
+      "default": 0.0,
+      "category": "PhysicalDoor"
+    },
+    {
+      "name": "OpenTargetYaw",
+      "type": "float",
+      "default": 177.0,
+      "category": "PhysicalDoor"
+    },
+    {
+      "name": "LightPushImpulse",
+      "type": "float",
+      "default": 300.0,
+      "category": "PhysicalDoor"
+    },
+    {
+      "name": "ForceOpenImpulse",
+      "type": "float",
+      "default": 1200.0,
+      "category": "PhysicalDoor"
+    },
+    {
+      "name": "ClosedThresholdDegrees",
+      "type": "float",
+      "default": 3.0,
+      "category": "PhysicalDoor"
+    },
+    {
+      "name": "bDoorClosed",
+      "type": "bool",
+      "default": true,
+      "category": "PhysicalDoor"
+    }
+  ],
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report",
+    "review_baseline_dirty_asset_policy": "save_before_archive"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

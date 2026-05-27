@@ -388,12 +388,7 @@ FString FBlueprintHelperGraphFragmentDagBuilderUtils::MakeStatementFragmentId(
 	const FBlueprintHelperGraphStatementIR& Statement,
 	const FString& Suffix)
 {
-	const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-	{
-		return SourceId;
-	}
-	return TEXT("stmt_") + StatementKindName(Statement.Kind) + TEXT("_") + SourceId + TEXT("_") + Suffix;
+	return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement, Suffix);
 }
 FString FBlueprintHelperGraphFragmentDagBuilderUtils::MakeExpressionFragmentId(
 	const FBlueprintHelperGraphExpressionIR& Expression,
@@ -1046,10 +1041,13 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	ConnectExpressionMapToInputs(Statement->Args, Statement->Path + TEXT(".args"), FragmentId, State, SymbolScopes);
 	if (Statement->TargetObject.IsValid())
 	{
+		const TCHAR* TargetInputName = Statement->Kind == EBlueprintHelperGraphStatementKind::Call
+			? TEXT("target_object")
+			: TEXT("target");
 		ConnectExpressionToInput(
 			Statement->TargetObject,
 			Statement->TargetObject->Path,
-			TEXT("target"),
+			TargetInputName,
 			Statement->TargetObject->Type,
 			FragmentId,
 			State,

@@ -177,3 +177,55 @@ Result:
 Remaining blocker:
 
 - The planned real CLI execute smoke cannot write because the fixture asset `/Game/BlueprintHelper/Smoke/BP_GraphWriteFunctionFieldSmoke` is not present in the project. This is an environment/fixture blocker, not a Function/Field semantic compiler or resolver failure.
+
+## 14. Real Case E2E Retest - 2026-05-27
+
+本节已按当前 live evidence 覆盖旧的 22-failure 记录。`Evidence` 文档不再作为能力状态来源；本轮以当前实现、CLI TaskSpec / ReadSpec 输出、UE Automation 日志和真实 uasset 读回为准。
+
+| Check | Status | Evidence |
+|---|---|---|
+| Project editor compile before retest | PASS | `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex -NoHotReloadFromIDE` exited `0`. |
+| Capability80 automation | PASS | `Saved/Automation/GraphWrite80_Capability80_Fix02_20260527_001/index.json`; 5 succeeded, 0 failed. |
+| Generality real-case E2E | PASS | `Saved/Automation/GraphWrite80_RealCaseE2E_AllFix07_Chunked_20260527`; 139/139 operations passed, 174/174 variants passed, allOperationsPassed=true. |
+| Full GraphWrite regression before PhysicalDoor target fix | PASS_WITH_WARNINGS | `Saved/Automation/GraphWrite80_RealCaseRetest_GraphWriteRegression_Fix02_20260527_001/index.json`; 291 succeeded, 19 succeeded with warnings, 0 failed. |
+| Full GraphWrite regression after PhysicalDoor target_object/id/cache fix | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite`; `Saved/Logs/Template.log` at `2026.05.27-06.00.08`: 315 tests performed, 315 succeeded, 0 failed, 0 automation errors. |
+| TaskRuntime CallFunction focused regression | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite.TaskRuntime.CallFunction`; `Saved/Logs/Template.log` at `2026.05.27-05.56.27`: 5 tests performed, 5 succeeded, 0 failed. |
+| ContainerAction focused regression after target-port split | PASS | MCP console `Automation RunTests BlueprintHelper.GraphWrite.ContainerAction`; `Saved/Logs/Template.log` at `2026.05.27-05.57.15`: 14 tests performed, 14 succeeded, 0 failed. |
+| TargetObject focused regressions | PASS | `BlueprintHelper.GraphWrite.ActionResolution.CallFunction.TargetObjectSemanticPortDoesNotBecomeArgument`, `BlueprintHelper.GraphWrite.GraphSemanticIR.TargetObject.UsesDedicatedDagPort`, `BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.CallFragmentTargetObjectPinAlias`, `BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.TargetObjectPreviewExecuteReadBack`, and `BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.TargetObjectPinTypeCacheKey` passed; both runtime tests are included in the 315-test full GraphWrite pass. |
+| TaskRuntime CallFunction resolution cache | PASS | `BlueprintHelper.TaskRuntime.CallFunctionResolutionCache`; 4 tests passed at `2026.05.27-05.56.48`: `KeyIncludesContext`, `ResolverVersionGuard`, `TracksHitsAndMisses`, `TtlAndAssetState`. |
+
+### 14.1 PhysicalDoor_InteractableOnly - 普通 Agent Flow E2E
+
+本轮物理门测试使用新 uasset：`/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001`。Setup 只负责创建资产、组件、变量和函数入口，不计入 GraphWrite 正确率；Setup 后的 GraphWrite 阶段按普通 Agent 接收用户指令后的 TaskSpec preview / execute / ReadSpec readback 运行，没有使用 Setup 后自定义 E2E runner 脚本。
+
+普通 Agent 输入和 TaskSpec 工件位于 `Develop/PlanArtifacts/GraphWrite80_PhysicalDoor_AgentFlow_20260527/`。运行证据位于 `Saved/Automation/GraphWrite80_PhysicalDoor_AgentFlow_20260527_001/`。
+
+| Phase | Check | Status | Evidence |
+|---|---|---|---|
+| Setup | Create asset | PASS | `01_create_asset_preview`, `01_create_asset_execute`; target asset `/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001`. |
+| Setup | Components and variables | PASS | `02_setup_fixture_preview`, `02_setup_fixture_execute`; readback confirms `Root`, `Hinge`, `DoorMesh`; variables include `DoorOpenAngle`, `OpenTargetYaw`, `LightPushImpulse`, `ForceOpenImpulse`, `ClosedThresholdDegrees`, `bDoorClosed`. |
+| Setup | Function entries | PASS | `03_ensure_functions_preview`, `03_ensure_functions_execute`; creates `LightPush`, `ForceOpen`, `CollisionClose` graph scopes. |
+| GraphWrite | LightPush | PASS | `04_graphwrite_light_push_preview_fix03/preview_1779855052665_0001/result.json`; `04_graphwrite_light_push_execute_fix03/task_738EF0344D46F11D733C139558CF8E44/result.json`. |
+| GraphWrite | ForceOpen | PASS | `05_graphwrite_force_open_preview_fix03/preview_1779855076071_0001/result.json`; `05_graphwrite_force_open_execute_fix03/task_DC0A1CBA418566C7E079739CF315BDAA/result.json`. |
+| GraphWrite | CollisionClose | PASS | `06_graphwrite_collision_close_preview_fix03/preview_1779855101012_0001/result.json`; `06_graphwrite_collision_close_execute_fix03/task_A7BEA4144815C25319B293A03AF64980/result.json`. |
+| Readback | LightPush graph logic | PASS | `12_read_light_push_graph_logic_json_fix03/cli_1779855124584/result.json`; sets `bDoorClosed=false`, sets `DoorOpenAngle=177`, links `Hinge` to `SetRelativeRotation`, links `DoorMesh` to `SetSimulatePhysics` and `AddImpulse`; 5 exec links, 5 data links, 0 orphan nodes. |
+| Readback | ForceOpen graph logic | PASS | `13_read_force_open_graph_logic_json_fix03/cli_1779855132701/result.json`; same open flow as LightPush with stronger impulse; 5 exec links, 5 data links, 0 orphan nodes. |
+| Readback | CollisionClose graph logic | PASS | `14_read_collision_close_graph_logic_json_fix03/cli_1779855140118/result.json`; compares `DoorOpenAngle <= ClosedThresholdDegrees`, true path sets `bDoorClosed=true`, sets `DoorOpenAngle=0`, disables `DoorMesh` physics; 5 exec links, 4 data links, 0 orphan nodes. |
+
+PhysicalDoor scoring:
+
+| Metric | Result | Notes |
+|---|---|---|
+| Setup failure | 0 | Setup succeeded and is excluded from GraphWrite correctness. |
+| GraphWrite flow failure | 0/3 | `LightPush`, `ForceOpen`, `CollisionClose` preview and execute all passed. |
+| Call correctness | PASS | Component receiver calls bind through `target_object` to the callable receiver pin, not to a normal argument pin. |
+| Silent wrong graph | 0 | Readback confirms expected state writes, component receiver links, rotation/physics/impulse calls, collision-close branch, and no orphan nodes. |
+
+### 14.2 Defects Found and Closed In This Retest
+
+| ID | Scope | Symptom | Fix | Closure evidence |
+|---|---|---|---|---|
+| GWE2E-20260527-008 | `call_function.target_object` receiver binding | PhysicalDoor preview/execute originally produced missing receiver evidence or unconnected `Target` pins for component member calls; the runtime readback test later isolated an unlinked receiver edge caused by inconsistent statement fragment ids across DAG, pipeline, registry, and TaskRuntime paths; final review found runtime pre-resolution still did not feed `target_object` pin evidence into `TargetObjectPinType` cache keys. | Keep `target_object` as a dedicated SemanticIR/DAG receiver port for `kind=call`; remove it from callable argument evidence; normalize resolver context; alias `target_object` to `self` / static `DefaultToSelf` receiver pins; bump runtime resolver cache version; centralize statement fragment id generation through `FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId`; promote semantic `target_object.pin_type` / receiver-edge pin type into `TargetObjectPinType` without adding it back to normal arguments. | PhysicalDoor `fix03` preview/execute/readback pass; TaskRuntime CallFunction focused test 5/5 pass including `TargetObjectPreviewExecuteReadBack` and `TargetObjectPinTypeCacheKey`; cache focused test 4/4 pass; full `BlueprintHelper.GraphWrite` 315/315 pass. |
+| GWE2E-20260527-009 | ContainerAction target role regression | First full rerun after the `target_object` fix failed 4 ContainerAction tests because non-call statements also emitted the receiver edge as `target_object`. | Restrict the dedicated `target_object` DAG input to `EBlueprintHelperGraphStatementKind::Call`; all other statement kinds keep the existing `target` input contract. | `BlueprintHelper.GraphWrite.ContainerAction` 14/14 pass; final full `BlueprintHelper.GraphWrite` 315/315 pass. |
+
+Current status: all previously recorded real-case E2E operation failures are closed by the current live gates. No open GraphWrite 80% real-case E2E gap remains in this document as of the final 2026-05-27 rerun.

@@ -5,20 +5,13 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 
 namespace
 {
 static FString GetStatementId(const FBlueprintHelperGraphStatementIR& Statement)
 {
-	if (!Statement.StatementId.IsEmpty())
-	{
-		return Statement.StatementId;
-	}
-	if (!Statement.Path.IsEmpty())
-	{
-		return Statement.Path;
-	}
-	return TEXT("semantic_statement");
+	return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement);
 }
 
 static FString GetStatementContextId(const FBlueprintHelperGraphStatementIR& Statement)

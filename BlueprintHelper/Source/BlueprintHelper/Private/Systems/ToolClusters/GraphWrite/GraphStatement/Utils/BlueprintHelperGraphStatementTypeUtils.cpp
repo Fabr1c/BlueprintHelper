@@ -31,6 +31,42 @@ FString FBlueprintHelperGraphStatementTypeUtils::SanitizeFragmentIdPart(const FS
 	return Result.IsEmpty() ? TEXT("unnamed") : Result;
 }
 
+FString FBlueprintHelperGraphStatementTypeUtils::ResolveStatementKindName(
+	const EBlueprintHelperGraphStatementKind Kind)
+{
+	struct FStatementKindRule
+	{
+		EBlueprintHelperGraphStatementKind Kind;
+		const TCHAR* Name;
+	};
+
+	static const FStatementKindRule Rules[] =
+	{
+		{ EBlueprintHelperGraphStatementKind::Call, TEXT("call") },
+		{ EBlueprintHelperGraphStatementKind::Field, TEXT("field") },
+		{ EBlueprintHelperGraphStatementKind::Branch, TEXT("branch") },
+		{ EBlueprintHelperGraphStatementKind::Sequence, TEXT("sequence") },
+		{ EBlueprintHelperGraphStatementKind::Let, TEXT("let") },
+		{ EBlueprintHelperGraphStatementKind::Return, TEXT("return") },
+		{ EBlueprintHelperGraphStatementKind::Control, TEXT("control") },
+		{ EBlueprintHelperGraphStatementKind::Create, TEXT("create") },
+		{ EBlueprintHelperGraphStatementKind::Convert, TEXT("convert") },
+		{ EBlueprintHelperGraphStatementKind::Schedule, TEXT("schedule") },
+		{ EBlueprintHelperGraphStatementKind::ContainerAction, TEXT("container_action") },
+		{ EBlueprintHelperGraphStatementKind::ComponentBoundEvent, TEXT("component_bound_event") },
+		{ EBlueprintHelperGraphStatementKind::Delegate, TEXT("delegate") },
+	};
+
+	for (const FStatementKindRule& Rule : Rules)
+	{
+		if (Rule.Kind == Kind)
+		{
+			return Rule.Name;
+		}
+	}
+	return TEXT("unknown");
+}
+
 FString FBlueprintHelperGraphStatementTypeUtils::ResolveExpressionKindName(
 	const EBlueprintHelperGraphExpressionKind Kind)
 {
@@ -231,6 +267,24 @@ TArray<FString> FBlueprintHelperGraphStatementTypeUtils::BuildOperatorTypeSuffix
 		AddUniqueString(Suffixes, Suffix);
 	}
 	return Suffixes;
+}
+
+FString FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(
+	const FBlueprintHelperGraphStatementIR& Statement,
+	const FString& Suffix)
+{
+	const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+	const FString EffectiveSuffix = Suffix.TrimStartAndEnd().IsEmpty()
+		? ResolveStatementKindName(Statement.Kind)
+		: Suffix.TrimStartAndEnd();
+	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("["))
+		&& !SourceId.Contains(TEXT("]")))
+	{
+		return SanitizeFragmentIdPart(SourceId);
+	}
+
+	return SanitizeFragmentIdPart(
+		TEXT("stmt_") + ResolveStatementKindName(Statement.Kind) + TEXT("_") + SourceId + TEXT("_") + EffectiveSuffix);
 }
 
 FString FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(

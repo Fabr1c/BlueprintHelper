@@ -4,6 +4,8 @@
 #include "Dom/JsonValue.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TextBlock.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -133,6 +135,42 @@ public:
 		return Literal;
 	}
 
+	static TSharedRef<FJsonObject> MakeBoolLiteralExpression(const bool bValue)
+	{
+		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+		Literal->SetStringField(TEXT("value_type"), TEXT("bool"));
+		Literal->SetBoolField(TEXT("value"), bValue);
+		return Literal;
+	}
+
+	static TSharedRef<FJsonObject> MakeComponentRefExpression(
+		const FString& ComponentName,
+		const UClass* ComponentClass,
+		const FString& TypeOverride = FString(),
+		const FString& PinObjectPathOverride = FString())
+	{
+		TSharedRef<FJsonObject> Expression = MakeShared<FJsonObject>();
+		Expression->SetStringField(TEXT("kind"), TEXT("field"));
+		Expression->SetStringField(TEXT("field_operation"), TEXT("get"));
+		Expression->SetStringField(TEXT("field_scope"), TEXT("component_ref"));
+		Expression->SetStringField(TEXT("target"), ComponentName);
+		Expression->SetStringField(
+			TEXT("type"),
+			!TypeOverride.IsEmpty() ? TypeOverride : (ComponentClass ? ComponentClass->GetPathName() : FString()));
+		if (!PinObjectPathOverride.IsEmpty())
+		{
+			Expression->SetStringField(
+				TEXT("pin_type"),
+				FString::Printf(TEXT("category=object|object=%s"), *PinObjectPathOverride));
+		}
+
+		TSharedRef<FJsonObject> ContextEvidence = MakeShared<FJsonObject>();
+		ContextEvidence->SetStringField(TEXT("component_name"), ComponentName);
+		Expression->SetObjectField(TEXT("context_evidence"), ContextEvidence);
+		return Expression;
+	}
+
 	static TSharedRef<FJsonObject> MakeCallStatement(const FString& FunctionName, const FString& Message = TEXT("graph write test"))
 	{
 		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
@@ -196,6 +234,30 @@ public:
 		TArray<TSharedPtr<FJsonValue>> Statements;
 		Statements.Add(MakeShared<FJsonValueObject>(MakeCallNameStatement(FunctionName)));
 		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
+	static TSharedRef<FJsonObject> MakeSetSimulatePhysicsTargetObjectLogicSpec(
+		const FString& TargetObjectTypeOverride = FString(),
+		const FString& TargetObjectPinObjectPathOverride = FString())
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("SetSimulatePhysics"));
+		Statement->SetObjectField(
+			TEXT("target_object"),
+			MakeComponentRefExpression(
+				TEXT("DoorMesh"),
+				UStaticMeshComponent::StaticClass(),
+				TargetObjectTypeOverride,
+				TargetObjectPinObjectPathOverride));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("bSimulate"), MakeBoolLiteralExpression(true));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		return MakeGraphWriteLogicSpec(FString(), Statements);
 	}
 
 	static TSharedRef<FJsonObject> MakeAppendPreviewPayload(const FString& AssetPath, const FString& GraphName)
@@ -773,6 +835,82 @@ public:
 			}
 		}
 
+		return false;
+	}
+
+	static bool GraphHasVariableGetLinkedToFunctionInput(
+		FAutomationTestBase& Test,
+		UEdGraph* Graph,
+		const FName VariableName,
+		const FString& FunctionName)
+	{
+		if (!Graph)
+		{
+			return false;
+		}
+
+		TArray<FString> Diagnostics;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (const UK2Node_VariableGet* VariableNode = Cast<UK2Node_VariableGet>(Node))
+			{
+				Diagnostics.Add(FString::Printf(
+					TEXT("target_object graph variable get observed: node=%s variable=%s"),
+					*VariableNode->GetName(),
+					*VariableNode->VariableReference.GetMemberName().ToString()));
+			}
+
+			const UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+			const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
+			if (!Function || !Function->GetName().Equals(FunctionName, ESearchCase::IgnoreCase))
+			{
+				if (Function)
+				{
+					Diagnostics.Add(FString::Printf(TEXT("target_object call node function observed: %s"), *Function->GetName()));
+				}
+				continue;
+			}
+
+			for (UEdGraphPin* Pin : CallNode->Pins)
+			{
+				if (Pin)
+				{
+					Diagnostics.Add(FString::Printf(
+						TEXT("target_object call pin observed: pin=%s direction=%d category=%s object=%s linked=%d hidden=%d"),
+						*Pin->PinName.ToString(),
+						static_cast<int32>(Pin->Direction),
+						*Pin->PinType.PinCategory.ToString(),
+						Pin->PinType.PinSubCategoryObject.IsValid() ? *Pin->PinType.PinSubCategoryObject->GetPathName() : TEXT("<none>"),
+						Pin->LinkedTo.Num(),
+						Pin->bHidden ? 1 : 0));
+				}
+				if (!Pin || Pin->Direction != EGPD_Input || Pin->LinkedTo.Num() == 0)
+				{
+					continue;
+				}
+
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					const UK2Node_VariableGet* VariableGet = LinkedPin ? Cast<UK2Node_VariableGet>(LinkedPin->GetOwningNode()) : nullptr;
+					Diagnostics.Add(FString::Printf(
+						TEXT("target_object candidate link: pin=%s linked_node=%s linked_node_class=%s linked_pin=%s variable=%s"),
+						*Pin->PinName.ToString(),
+						LinkedPin && LinkedPin->GetOwningNode() ? *LinkedPin->GetOwningNode()->GetName() : TEXT("<none>"),
+						LinkedPin && LinkedPin->GetOwningNode() ? *LinkedPin->GetOwningNode()->GetClass()->GetName() : TEXT("<none>"),
+						LinkedPin ? *LinkedPin->PinName.ToString() : TEXT("<none>"),
+						VariableGet ? *VariableGet->VariableReference.GetMemberName().ToString() : TEXT("<none>")));
+					if (VariableGet && VariableGet->VariableReference.GetMemberName() == VariableName)
+					{
+						return true;
+					}
+				}
+			}
+		}
+
+		for (const FString& Diagnostic : Diagnostics)
+		{
+			Test.AddInfo(Diagnostic);
+		}
 		return false;
 	}
 
@@ -1557,6 +1695,26 @@ public:
 		return Op;
 	}
 
+	static TSharedRef<FJsonObject> MakeEnsureEntrySetSimulatePhysicsTargetObjectOp(
+		const FString& EventName,
+		const FString& TargetObjectTypeOverride = FString(),
+		const FString& TargetObjectPinObjectPathOverride = FString())
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("entry_name"), EventName);
+		Op->SetObjectField(TEXT("selector"), Selector);
+		Op->SetObjectField(
+			TEXT("logic_spec"),
+			MakeSetSimulatePhysicsTargetObjectLogicSpec(
+				TargetObjectTypeOverride,
+				TargetObjectPinObjectPathOverride));
+		return Op;
+	}
+
 	struct FGraphWriteRuntimeHarness
 	{
 		FBlueprintHelperGraphResolver Resolver;
@@ -1659,6 +1817,41 @@ public:
 			Test.AddInfo(FString::Printf(TEXT("dry_run mismatch payload: %s"), *DryRunJson));
 		}
 		Test.TestEqual(TEXT("dry_run.can_execute matches child preflight"), bCanExecute, bExpectedCanExecute);
+	}
+
+	static void AddToolResultFailureDetail(
+		FAutomationTestBase& Test,
+		const FString& Label,
+		const FBlueprintHelperToolResultBase& Result)
+	{
+		if (Result.bOk)
+		{
+			return;
+		}
+
+		FString Message = FString::Printf(
+			TEXT("%s failed: operation=%s status=%d modified=%d"),
+			*Label,
+			*Result.Operation,
+			static_cast<int32>(Result.Status),
+			Result.bModified ? 1 : 0);
+		if (Result.Error.IsSet())
+		{
+			Message += FString::Printf(
+				TEXT(" error_code=%s error_stage=%d error_field=%s error_message=%s"),
+				*Result.Error->Code,
+				static_cast<int32>(Result.Error->Stage),
+				*Result.Error->Field,
+				*Result.Error->Message);
+		}
+		if (Result.Data.IsValid())
+		{
+			FString DataJson;
+			const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&DataJson);
+			FJsonSerializer::Serialize(Result.Data.ToSharedRef(), Writer);
+			Message += FString::Printf(TEXT(" data=%s"), *DataJson);
+		}
+		Test.AddError(Message);
 	}
 
 	static bool GetRuntimeDryRunFirstError(
@@ -2521,6 +2714,75 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyAdoptsEmptyUnownedEntryTest,
+	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyAdoptsEmptyUnownedEntry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyAdoptsEmptyUnownedEntryTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceAdoptsEmptyUnownedEntry"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("AdoptEmptyEvent");
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("custom event entry is created"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	const FString ExpectedBlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, EventName);
+	const FString ExpectedBlockId = BlockIdService.MakeFullBlockId(Graph->GetName(), ExpectedBlockRef);
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceCustomEventExecutePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			EventName));
+
+	TestTrue(TEXT("replace empty unowned custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace empty unowned custom event status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("custom event has output exec pin"), EntryExecOut);
+
+	UK2Node_CallFunction* ReplacementPrintNode = nullptr;
+	if (EntryExecOut)
+	{
+		for (UEdGraphPin* LinkedPin : EntryExecOut->LinkedTo)
+		{
+			UK2Node_CallFunction* CallNode = LinkedPin ? Cast<UK2Node_CallFunction>(LinkedPin->GetOwningNode()) : nullptr;
+			if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
+			{
+				ReplacementPrintNode = CallNode;
+				break;
+			}
+		}
+	}
+
+	TestNotNull(TEXT("empty unowned entry links to replacement PrintString"), ReplacementPrintNode);
+	TestTrue(TEXT("adopted entry keeps BlueprintHelper ownership for future scoped replace"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::NodeHasBlueprintHelperBlockId(EntryNode, ExpectedBlockId));
+	TestTrue(TEXT("replacement body node keeps adopted BlueprintHelper ownership"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::NodeHasBlueprintHelperBlockId(ReplacementPrintNode, ExpectedBlockId));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteReplaceCustomEventBodyPreservesSiblingEventBodyTest,
 	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyPreservesSiblingEventBody",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3161,6 +3423,10 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest::R
 		true);
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("runtime display-name call_function execute"),
+		ExecuteResult);
 	TestTrue(TEXT("runtime display-name call_function execute succeeds"), ExecuteResult.bOk);
 	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
 	{
@@ -3205,6 +3471,10 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 		true);
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("runtime qualified call_function execute"),
+		ExecuteResult);
 	TestTrue(TEXT("runtime qualified call_function execute succeeds"), ExecuteResult.bOk);
 	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
 	{
@@ -3212,6 +3482,178 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 	}
 	TestTrue(TEXT("read-back finds qualified event to PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPreviewExecuteReadBackTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.TargetObjectPreviewExecuteReadBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPreviewExecuteReadBackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionTargetObject"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	const FName DoorMeshComponentName(TEXT("DoorMesh"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+
+	FBlueprintHelperAddComponentRequest AddComponentRequest;
+	AddComponentRequest.AssetPath = Blueprint->GetPathName();
+	AddComponentRequest.ComponentName = DoorMeshComponentName.ToString();
+	AddComponentRequest.ComponentClass = TEXT("StaticMeshComponent");
+	const FBlueprintHelperToolResultBase AddComponentResult = Harness.ComponentService.AddComponent(AddComponentRequest);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object setup component"),
+		AddComponentResult);
+	TestTrue(TEXT("DoorMesh StaticMeshComponent fixture is added"), AddComponentResult.bOk);
+	TestTrue(TEXT("DoorMesh component_ref exists in SCS"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::HasSCSComponentNamed(Blueprint, DoorMeshComponentName.ToString()));
+	if (!AddComponentResult.bOk)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeTargetObjectCall");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntrySetSimulatePhysicsTargetObjectOp(EventName),
+		true);
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("replace_blueprint_graph"),
+		true);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object preview"),
+		Preview);
+
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object execute"),
+		ExecuteResult);
+	TestTrue(TEXT("target_object execute succeeds"), ExecuteResult.bOk);
+	TestEqual(TEXT("target_object execute status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	const TSharedPtr<FJsonObject>* CacheStats = nullptr;
+	double CacheHits = 0.0;
+	TestTrue(TEXT("execute exposes call_function cache stats"),
+		ExecuteResult.Data.IsValid() && ExecuteResult.Data->TryGetObjectField(TEXT("call_function_resolution_cache"), CacheStats));
+	TestTrue(TEXT("execute reads call_function cache hits"),
+		CacheStats && CacheStats->IsValid() && (*CacheStats)->TryGetNumberField(TEXT("hits"), CacheHits));
+	TestTrue(TEXT("execute reuses preview target_object call_function resolution"), CacheHits > 0.0);
+
+	TestTrue(TEXT("target_object receiver links DoorMesh to SetSimulatePhysics"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GraphHasVariableGetLinkedToFunctionInput(
+			*this,
+		Graph,
+		DoorMeshComponentName,
+		TEXT("SetSimulatePhysics")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPinTypeCacheKeyTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.CallFunction.TargetObjectPinTypeCacheKey",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPinTypeCacheKeyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeCallFunctionTargetObjectPinType"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	const FName DoorMeshComponentName(TEXT("DoorMesh"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+
+	FBlueprintHelperAddComponentRequest AddComponentRequest;
+	AddComponentRequest.AssetPath = Blueprint->GetPathName();
+	AddComponentRequest.ComponentName = DoorMeshComponentName.ToString();
+	AddComponentRequest.ComponentClass = TEXT("StaticMeshComponent");
+	const FBlueprintHelperToolResultBase AddComponentResult = Harness.ComponentService.AddComponent(AddComponentRequest);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object pin cache setup component"),
+		AddComponentResult);
+	TestTrue(TEXT("DoorMesh StaticMeshComponent fixture is added"), AddComponentResult.bOk);
+	if (!AddComponentResult.bOk)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeTargetObjectPinTypeCache");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	auto MakePayloadWithTargetPinType = [&](const FString& PinObjectPath) -> TSharedRef<FJsonObject>
+	{
+		return FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntrySetSimulatePhysicsTargetObjectOp(
+				EventName,
+				UStaticMeshComponent::StaticClass()->GetPathName(),
+				PinObjectPath),
+			true);
+	};
+
+	const FBlueprintHelperToolResultBase PrimitivePreview = Harness.RuntimeService.PreviewTaskPlan(
+		MakePayloadWithTargetPinType(UPrimitiveComponent::StaticClass()->GetPathName()));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		PrimitivePreview,
+		TEXT("replace_blueprint_graph"),
+		true);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object primitive pin preview"),
+		PrimitivePreview);
+
+	const FBlueprintHelperToolResultBase StaticMeshPreview = Harness.RuntimeService.PreviewTaskPlan(
+		MakePayloadWithTargetPinType(UStaticMeshComponent::StaticClass()->GetPathName()));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		StaticMeshPreview,
+		TEXT("replace_blueprint_graph"),
+		true);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("target_object static mesh pin preview"),
+		StaticMeshPreview);
+
+	const TSharedPtr<FJsonObject>* CacheStats = nullptr;
+	double CacheHits = 0.0;
+	double CacheMisses = 0.0;
+	double CacheEntries = 0.0;
+	TestTrue(TEXT("second preview exposes call_function cache stats"),
+		StaticMeshPreview.Data.IsValid() && StaticMeshPreview.Data->TryGetObjectField(TEXT("call_function_resolution_cache"), CacheStats));
+	if (CacheStats && CacheStats->IsValid())
+	{
+		TestTrue(TEXT("second preview reads call_function cache hits"), (*CacheStats)->TryGetNumberField(TEXT("hits"), CacheHits));
+		TestTrue(TEXT("second preview reads call_function cache misses"), (*CacheStats)->TryGetNumberField(TEXT("misses"), CacheMisses));
+		TestTrue(TEXT("second preview reads call_function cache entries"), (*CacheStats)->TryGetNumberField(TEXT("entries"), CacheEntries));
+		TestEqual(TEXT("target_object pin type changes runtime call_function cache key"), CacheHits, 0.0);
+		TestTrue(TEXT("target_object pin type forces a new runtime call_function resolution"), CacheMisses > 0.0);
+		TestTrue(TEXT("target_object pin type stores a distinct runtime call_function cache entry"), CacheEntries >= 2.0);
+	}
 	return true;
 }
 
@@ -3416,6 +3858,10 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTes
 	}
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("stable-id revalidation execute"),
+		ExecuteResult);
 	TestTrue(TEXT("execute succeeds after stable-id revalidation"), ExecuteResult.bOk);
 	TSharedPtr<FJsonObject> ExecuteFact;
 	TestTrue(TEXT("execute records resolved call_function runtime fact"),
@@ -3492,6 +3938,10 @@ bool FBlueprintHelperGraphWriteTaskRuntimeP6EvidenceBackedReadbackCoverageTest::
 		FString(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")));
 
 	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(TaskPlanPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("P6 evidence-backed readback execute"),
+		ExecuteResult);
 	TestTrue(TEXT("execute creates graph before readback"), ExecuteResult.bOk);
 	if (!ExecuteResult.bOk)
 	{

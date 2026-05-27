@@ -395,70 +395,9 @@ struct FSemanticStatementExecFlow
 	bool bPreservePreviousExits = false;
 };
 
-static FString SanitizeGraphFragmentIdPart(const FString& Value)
-{
-	FString Clean = Value.TrimStartAndEnd();
-	if (Clean.IsEmpty())
-	{
-		return TEXT("unnamed");
-	}
-
-	FString Result;
-	Result.Reserve(Clean.Len());
-	for (int32 Index = 0; Index < Clean.Len(); ++Index)
-	{
-		const TCHAR Character = Clean[Index];
-		Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
-	}
-	return Result.IsEmpty() ? TEXT("unnamed") : Result;
-}
-
 static FString GetSemanticStatementId(const FBlueprintHelperGraphStatementIR& Statement)
 {
-	const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("[")) && !SourceId.Contains(TEXT("]")))
-	{
-		return SanitizeGraphFragmentIdPart(SourceId);
-	}
-
-	FString KindName = TEXT("unknown");
-	switch (Statement.Kind)
-	{
-	case EBlueprintHelperGraphStatementKind::Call:
-		KindName = TEXT("call");
-		break;
-	case EBlueprintHelperGraphStatementKind::Field:
-		KindName = TEXT("field");
-		break;
-	case EBlueprintHelperGraphStatementKind::Branch:
-		KindName = TEXT("branch");
-		break;
-	case EBlueprintHelperGraphStatementKind::Sequence:
-		KindName = TEXT("sequence");
-		break;
-	case EBlueprintHelperGraphStatementKind::Let:
-		KindName = TEXT("let");
-		break;
-	case EBlueprintHelperGraphStatementKind::Return:
-		KindName = TEXT("return");
-		break;
-	case EBlueprintHelperGraphStatementKind::Control:
-		KindName = TEXT("control");
-		break;
-	case EBlueprintHelperGraphStatementKind::Create:
-		KindName = TEXT("create");
-		break;
-	case EBlueprintHelperGraphStatementKind::Convert:
-		KindName = TEXT("convert");
-		break;
-	case EBlueprintHelperGraphStatementKind::Schedule:
-		KindName = TEXT("schedule");
-		break;
-	default:
-		break;
-	}
-
-	return SanitizeGraphFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
+	return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement);
 }
 
 static FString GetSemanticStatementContextId(const FBlueprintHelperGraphStatementIR& Statement)
@@ -767,6 +706,10 @@ static TMap<FString, FBlueprintHelperCallFunctionPinType> CollectSemanticArgumen
 
 		const FString ArgumentName = !DataEdge.To.PinName.IsEmpty() ? DataEdge.To.PinName : DataEdge.To.PortId;
 		if (ArgumentName.IsEmpty())
+		{
+			continue;
+		}
+		if (ArgumentName.Equals(TEXT("target_object"), ESearchCase::IgnoreCase))
 		{
 			continue;
 		}

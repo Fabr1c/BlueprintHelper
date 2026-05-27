@@ -3,7 +3,51 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node.h"
+#include "K2Node_CallFunction.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+
+namespace
+{
+static bool IsCallableTargetObjectPin(UK2Node* Node, UEdGraphPin* Pin)
+{
+	if (!Pin || Pin->Direction != EGPD_Input || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+	{
+		return false;
+	}
+
+	const FString PinName = Pin->PinName.ToString();
+	if (PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
+	const UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+	const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
+	if (!Function || !Function->HasAnyFunctionFlags(FUNC_Static))
+	{
+		return false;
+	}
+
+	const FString DefaultToSelfPinName = Function->GetMetaData(TEXT("DefaultToSelf"));
+	return !DefaultToSelfPinName.IsEmpty()
+		&& DefaultToSelfPinName.Equals(PinName, ESearchCase::IgnoreCase);
+}
+
+static void AddDataInputAlias(
+	FBlueprintHelperNodeFragment& OutFragment,
+	const FString& Alias,
+	const FBlueprintHelperFragmentPinRef& PinRef)
+{
+	if (!OutFragment.DataInputs.Contains(Alias))
+	{
+		OutFragment.DataInputs.Add(Alias, PinRef);
+	}
+	if (!OutFragment.PinBindings.Contains(Alias))
+	{
+		OutFragment.PinBindings.Add(Alias, PinRef);
+	}
+}
+}
 
 void FBlueprintHelperActionFragmentBuildUtils::PopulatePins(
 	const EBlueprintHelperActionFragmentPinProfile PinProfile,
@@ -48,6 +92,13 @@ void FBlueprintHelperActionFragmentBuildUtils::PopulateCallFragmentPins(
 		if (Pin->Direction == EGPD_Input)
 		{
 			OutFragment.DataInputs.Add(PinName, PinRef);
+			if (IsCallableTargetObjectPin(CallNode, Pin))
+			{
+				AddDataInputAlias(
+					OutFragment,
+					TEXT("target_object"),
+					FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("target_object"), Pin->PinType.PinCategory.ToString(), Pin });
+			}
 		}
 		else if (Pin->Direction == EGPD_Output)
 		{
@@ -106,6 +157,13 @@ void FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPin
 			if (!OutFragment.DataInputs.Contains(PinName.ToLower()))
 			{
 				OutFragment.DataInputs.Add(PinName.ToLower(), FBlueprintHelperFragmentPinRef{ TEXT("primary"), PinName.ToLower(), Pin->PinType.PinCategory.ToString(), Pin });
+			}
+			if (IsCallableTargetObjectPin(Node, Pin))
+			{
+				AddDataInputAlias(
+					OutFragment,
+					TEXT("target_object"),
+					FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("target_object"), Pin->PinType.PinCategory.ToString(), Pin });
 			}
 			if (!PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase) && !OutFragment.DataInputs.Contains(TEXT("value")))
 			{
