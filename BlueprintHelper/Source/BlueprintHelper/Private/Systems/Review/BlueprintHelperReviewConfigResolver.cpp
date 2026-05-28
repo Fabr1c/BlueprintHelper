@@ -4,31 +4,7 @@
 
 #include "Misc/Paths.h"
 #include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
-
-namespace
-{
-	static FString BlueprintHelperResolveProjectPath(FString Path, const FString& DefaultRelativePath)
-	{
-		Path.TrimStartAndEndInline();
-		if (Path.IsEmpty())
-		{
-			Path = DefaultRelativePath;
-		}
-
-		FString ResolvedPath = FPaths::IsRelative(Path)
-			? FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / Path)
-			: Path;
-		FPaths::NormalizeFilename(ResolvedPath);
-		FPaths::CollapseRelativeDirectories(ResolvedPath);
-		return ResolvedPath;
-	}
-
-	static FString BlueprintHelperNormalizeVersion(FString Version)
-	{
-		Version.TrimStartAndEndInline();
-		return Version.IsEmpty() ? FString(TEXT("v2")) : Version;
-	}
-}
+#include "Systems/Review/Utils/BlueprintHelperReviewUtils.h"
 
 FString FBlueprintHelperReviewDebugBundleConfig::GetBundleDir() const
 {
@@ -40,7 +16,7 @@ FString FBlueprintHelperReviewDebugBundleConfig::GetBundleDir() const
 
 FString FBlueprintHelperReviewConfig::BuildVersionedSchema(const FString& BaseName) const
 {
-	return FString::Printf(TEXT("%s.%s"), *BaseName, *BlueprintHelperNormalizeVersion(Version));
+	return FString::Printf(TEXT("%s.%s"), *BaseName, *UBlueprintHelperReviewUtils::BlueprintHelperNormalizeVersion(Version));
 }
 
 FString FBlueprintHelperReviewConfig::MakeReviewRecordSchema() const
@@ -78,16 +54,16 @@ FString FBlueprintHelperReviewConfig::GetReviewRecordsDir() const
 FBlueprintHelperReviewConfig FBlueprintHelperReviewConfigResolver::Load()
 {
 	FBlueprintHelperReviewConfig Config;
-	Config.Version = BlueprintHelperNormalizeVersion(FBlueprintHelperRuntimeSettingResolver::GetString(
+	Config.Version = UBlueprintHelperReviewUtils::BlueprintHelperNormalizeVersion(FBlueprintHelperRuntimeSettingResolver::GetString(
 		TEXT("review.version"),
 		Config.Version));
 	Config.bEvidenceRequired = FBlueprintHelperRuntimeSettingResolver::GetBool(
 		TEXT("review.evidence_required"),
 		Config.bEvidenceRequired);
-	Config.Artifact.SnapshotRoot = BlueprintHelperResolveProjectPath(
+	Config.Artifact.SnapshotRoot = UBlueprintHelperReviewUtils::BlueprintHelperResolveProjectPath(
 		FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("review.artifact.snapshot_root"), Config.Artifact.SnapshotRoot),
 		TEXT("Saved/BlueprintHelper/Review/Snapshots"));
-	Config.DebugBundle.RootDir = BlueprintHelperResolveProjectPath(
+	Config.DebugBundle.RootDir = UBlueprintHelperReviewUtils::BlueprintHelperResolveProjectPath(
 		FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("review.debug_bundle.root_dir"), Config.DebugBundle.RootDir),
 		TEXT("Saved/BlueprintHelper/Debug"));
 	Config.DebugBundle.SubDir = FBlueprintHelperRuntimeSettingResolver::GetString(

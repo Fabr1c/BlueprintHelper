@@ -8,38 +8,9 @@
 #include "FileHelpers.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/Package.h"
+#include "Systems/Debug/Utils/BlueprintHelperDebugUtils.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperAssetBrowse, Log, All);
-
-namespace
-{
-static FString NormalizeAssetObjectPathForRegistry(const FString& InAssetPath)
-{
-	FString AssetPath = InAssetPath.TrimStartAndEnd();
-	if (AssetPath.IsEmpty())
-	{
-		return AssetPath;
-	}
-
-	int32 LastSlashIndex = INDEX_NONE;
-	AssetPath.FindLastChar(TEXT('/'), LastSlashIndex);
-	if (LastSlashIndex == INDEX_NONE)
-	{
-		return AssetPath;
-	}
-
-	int32 LastDotIndex = INDEX_NONE;
-	if (AssetPath.FindLastChar(TEXT('.'), LastDotIndex) && LastDotIndex > LastSlashIndex)
-	{
-		return AssetPath;
-	}
-
-	const FString AssetName = AssetPath.RightChop(LastSlashIndex + 1);
-	return AssetName.IsEmpty()
-		? AssetPath
-		: FString::Printf(TEXT("%s.%s"), *AssetPath, *AssetName);
-}
-}
 
 // ─── 辅助：FAssetData 。FBlueprintHelperAssetInfo ───
 
@@ -243,7 +214,7 @@ FBlueprintHelperAssetInfo FBlueprintHelperAssetBrowseService::GetAssetInfo(
 
 	IAssetRegistry& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
 
-	const FString NormalizedAssetPath = NormalizeAssetObjectPathForRegistry(AssetPath);
+	const FString NormalizedAssetPath = UBlueprintHelperDebugUtils::NormalizeAssetObjectPathForRegistry(AssetPath);
 	FAssetData AssetData = Registry.GetAssetByObjectPath(FSoftObjectPath(NormalizedAssetPath));
 	if (!AssetData.IsValid())
 	{

@@ -52,48 +52,7 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewActionRecordUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
-
-namespace
-{
-	static void CaptureReviewRejectCurrentStateDiagnostic(
-		const FBlueprintHelperReviewAtomicTarget& Target,
-		FBlueprintHelperReviewActionResult& InOutDiagnostic)
-	{
-		if (!InOutDiagnostic.HashGuardTargetKey.IsEmpty())
-		{
-			return;
-		}
-
-		if (Target.RecordedAfterHash.IsEmpty())
-		{
-			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
-			InOutDiagnostic.HashGuardExpectedHash = TEXT("<missing_recorded_after_hash>");
-			return;
-		}
-
-		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
-		FString CurrentSnapshotJson;
-		FString CurrentHash;
-		FString SnapshotError;
-		if (!SnapshotService.CaptureTargetSnapshot(Target, CurrentSnapshotJson, CurrentHash, SnapshotError))
-		{
-			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
-			InOutDiagnostic.HashGuardExpectedHash = Target.RecordedAfterHash;
-			InOutDiagnostic.HashGuardCurrentHash = FString::Printf(TEXT("<current_hash_unavailable:%s>"), *SnapshotError);
-			InOutDiagnostic.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
-			return;
-		}
-
-		if (!CurrentHash.Equals(Target.RecordedAfterHash, ESearchCase::CaseSensitive))
-		{
-			InOutDiagnostic.HashGuardTargetKey = Target.TargetKey;
-			InOutDiagnostic.HashGuardExpectedHash = Target.RecordedAfterHash;
-			InOutDiagnostic.HashGuardCurrentHash = CurrentHash;
-			InOutDiagnostic.HashGuardCurrentSnapshotJson = CurrentSnapshotJson;
-			InOutDiagnostic.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
-		}
-	}
-}
+#include "BlueprintHelperReviewUtils.h"
 
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
 		const FBlueprintHelperReviewVisibleChange& Change,
@@ -133,7 +92,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
 					TEXT("missing_recoverable_snapshot"));
 			}
-			CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
+			UBlueprintHelperReviewUtils::CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
 			if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 			{
 				FString SnapshotRestoreError;
