@@ -18,6 +18,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperAssetActionProjectionService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionDatabaseProjectionService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 // ============================================================================
 // From BlueprintHelperActionContextDemandCollector (original named namespace)
@@ -416,7 +417,7 @@ FString UGraphWriteActionContextUtils::NormalizeOpOperationId(const FString& Ope
 	FString Clean = UGraphWriteActionContextUtils::NormalizeSemanticOperationToken(Operation);
 	if (Clean.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
 	{
-		Clean.RightChopInline(3, EAllowShrinking::No);
+		FBlueprintHelperVersionCompat::RightChopInlineNoShrink(Clean, 3);
 	}
 
 	if (Clean == TEXT("+")) return TEXT("add");

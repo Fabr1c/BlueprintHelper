@@ -20,6 +20,7 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "UObject/Package.h"
+#include "Tests/GraphWrite/BlueprintHelperGraphWriteTestUtils.h"
 #include "Tests/GraphWrite/BlueprintHelperScheduleTestUtils.h"
 
 namespace
@@ -92,74 +93,6 @@ static FBlueprintHelperGraphStatementIR MakeGenericScheduleStatement(
 	return Statement;
 }
 
-static bool BuildActionContextScopeForStatement(
-	FAutomationTestBase& Test,
-	UBlueprint* Blueprint,
-	UEdGraph* Graph,
-	const FBlueprintHelperGraphStatementIR& Statement,
-	FBlueprintHelperActionContextScope& OutScope,
-	FString& OutError)
-{
-	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
-	Statements.Add(MakeShared<FBlueprintHelperGraphStatementIR>(Statement));
-
-	const TArray<FBlueprintHelperActionContextDemand> Demands =
-		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
-	Test.TestTrue(TEXT("generic schedule action context demands exist"), Demands.Num() > 0);
-	if (Demands.Num() == 0)
-	{
-		OutError = TEXT("no_action_context_demands");
-		return false;
-	}
-
-	return FBlueprintHelperActionContextScope::Build(
-		Blueprint,
-		Graph,
-		Demands,
-		FBlueprintHelperActionContextScope::MakeRevision(
-			Blueprint,
-			Graph,
-			TEXT("generic_schedule_fragment_tests"),
-			TEXT("task5")),
-		OutScope,
-		OutError);
-}
-
-template <typename TNode>
-static TNode* FindSingleFragmentNode(
-	FAutomationTestBase& Test,
-	const FBlueprintHelperNodeFragment& Fragment,
-	const TCHAR* Label)
-{
-	TNode* Result = nullptr;
-	int32 MatchCount = 0;
-	for (UEdGraphNode* Node : Fragment.Nodes)
-	{
-		if (TNode* TypedNode = Cast<TNode>(Node))
-		{
-			Result = TypedNode;
-			++MatchCount;
-		}
-	}
-
-	Test.TestEqual(FString::Printf(TEXT("%s count"), Label), MatchCount, 1);
-	return MatchCount == 1 ? Result : nullptr;
-}
-
-static int32 CountFragmentNodesOfClass(
-	const FBlueprintHelperNodeFragment& Fragment,
-	const UClass* NodeClass)
-{
-	int32 Count = 0;
-	for (UEdGraphNode* Node : Fragment.Nodes)
-	{
-		if (Node && NodeClass && Node->IsA(NodeClass))
-		{
-			++Count;
-		}
-	}
-	return Count;
-}
 
 static bool BuildScheduleFragment(
 	FAutomationTestBase& Test,
@@ -171,11 +104,14 @@ static bool BuildScheduleFragment(
 {
 	FBlueprintHelperActionContextScope ActionContextScope;
 	FString ScopeError;
-	const bool bScopeBuilt = BuildActionContextScopeForStatement(
+	const bool bScopeBuilt = FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(
 		Test,
 		Blueprint,
 		Graph,
 		Statement,
+		TEXT("generic schedule action context demands exist"),
+		TEXT("generic_schedule_fragment_tests"),
+		TEXT("task5"),
 		ActionContextScope,
 		ScopeError);
 	Test.TestTrue(TEXT("generic schedule scope builds"), bScopeBuilt);
@@ -248,7 +184,7 @@ bool FBlueprintHelperGenericScheduleTimerDelegateFragmentBuildTest::RunTest(cons
 	TestEqual(TEXT("timer schedule does not create delegate signature graph"), Blueprint->DelegateSignatureGraphs.Num(), DelegateSignatureGraphCountBefore);
 
 	UK2Node_CreateDelegate* CreateDelegateNode =
-		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("timer create delegate node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("timer create delegate node"));
 	TestNotNull(TEXT("timer primary node"), Fragment.PrimaryNode);
 	if (Fragment.PrimaryNode)
 	{
@@ -315,7 +251,7 @@ bool FBlueprintHelperGenericScheduleLatentAsyncFragmentBuildTest::RunTest(const 
 	{
 		TestEqual(TEXT("latent primary node class matches projected evidence"), Fragment.PrimaryNode->GetClass()->GetPathName(), Evidence.NodeClassPath);
 	}
-	TestEqual(TEXT("latent async create delegate count"), CountFragmentNodesOfClass(Fragment, UK2Node_CreateDelegate::StaticClass()), 0);
+	TestEqual(TEXT("latent async create delegate count"), FBlueprintHelperGraphWriteTestUtils::CountFragmentNodesOfClass(Fragment, UK2Node_CreateDelegate::StaticClass()), 0);
 	TestEqual(TEXT("latent async internal link count"), Fragment.InternalLinks.Num(), 0);
 	TestEqual(TEXT("latent ownership schedule operation"), Fragment.OwnershipTags.FindRef(TEXT("schedule_operation")), FString(TEXT("latent_or_async_node")));
 	TestTrue(TEXT("latent action provider pins populated"), Fragment.PinBindings.Num() > 0);

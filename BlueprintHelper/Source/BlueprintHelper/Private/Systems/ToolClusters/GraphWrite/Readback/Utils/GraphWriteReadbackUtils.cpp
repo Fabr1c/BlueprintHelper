@@ -29,7 +29,11 @@ void UGraphWriteReadbackUtils::AddPrimaryNodeFacts(
 	Facts.Add(TEXT("node_guid"), PrimaryNode->NodeGuid.ToString(EGuidFormats::Digits));
 	if (const UK2Node_ComponentBoundEvent* ComponentEvent = Cast<UK2Node_ComponentBoundEvent>(PrimaryNode))
 	{
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 		Facts.Add(TEXT("component_dynamic_binding_target"), ComponentEvent->GetComponentPropertyName().ToString());
+#else
+		Facts.Add(TEXT("component_dynamic_binding_target"), ComponentEvent->ComponentPropertyName.ToString());
+#endif
 		Facts.Add(TEXT("delegate_property_name"), ComponentEvent->DelegatePropertyName.ToString());
 	}
 }

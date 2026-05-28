@@ -55,6 +55,15 @@ public:
 #endif
 	}
 
+	static FORCEINLINE void RightChopInlineNoShrink(FString& String, const int32 Count)
+	{
+#if BLUEPRINTHELPER_UE_HAS_EALLOW_SHRINKING
+		String.RightChopInline(Count, EAllowShrinking::No);
+#else
+		String.RightChopInline(Count, false);
+#endif
+	}
+
 	template<typename ArrayType>
 	static FORCEINLINE void RemoveAtSwapNoShrink(ArrayType& Array, const int32 Index, const int32 Count = 1)
 	{

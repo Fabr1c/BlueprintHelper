@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/SubclassOf.h"
 
 // The generated header must be the last include
 #include "GraphWriteFunctionResolutionUtils.generated.h"
@@ -13,6 +14,8 @@ struct FBlueprintHelperCallFunctionCandidate;
 struct FBlueprintHelperK2CallContext;
 class UFunction;
 class UClass;
+class UK2Node_CallFunction;
+class UBlueprintNodeSpawner;
 class UBlueprintNodeSpawner;
 class UEdGraph;
 class FProperty;

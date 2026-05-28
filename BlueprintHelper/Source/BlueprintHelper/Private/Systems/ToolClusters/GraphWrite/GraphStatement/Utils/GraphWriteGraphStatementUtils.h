@@ -4,10 +4,12 @@
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraphPin.h"
 #include "K2Node.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "GraphWriteGraphStatementUtils.generated.h"
 
 class UBlueprint;
 enum class EBlueprintHelperGraphFragmentPortDirection : uint8;
+enum class EBlueprintHelperActionSemanticKind : uint8;
 
 class UEdGraph;
 class UEdGraphSchema;
