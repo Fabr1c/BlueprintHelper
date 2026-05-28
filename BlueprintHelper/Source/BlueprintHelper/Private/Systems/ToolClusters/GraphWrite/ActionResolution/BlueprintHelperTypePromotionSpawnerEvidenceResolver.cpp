@@ -7,6 +7,7 @@
 #include "K2Node_PromotableOperator.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/BlueprintHelperGraphActionUtils.h"
 
 namespace
 {
@@ -93,18 +94,6 @@ static UBlueprintFunctionNodeSpawner* FindRegisteredTypePromotionSpawner(FName O
 	return FTypePromotion::GetOperatorSpawner(OperatorName);
 }
 
-static FBlueprintHelperActionResolutionResult MakeInvalidResult(
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-
 static FBlueprintHelperActionResolutionResult MakeNotFoundResult(
 	const FBlueprintHelperProjectedTypePromotionEvidence& Evidence)
 {
@@ -154,7 +143,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 {
 	if (Context.GetSemantic().Kind != EBlueprintHelperActionSemanticKind::Convert)
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("type_promotion_requires_convert_semantic"),
 			TEXT("type_promotion projected spawner evidence resolver only accepts Semantic.Kind=Convert."));
 	}
@@ -163,7 +152,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 		FBlueprintHelperProjectedSpawnerEvidence::ReadTypePromotionEvidence(Request);
 	if (!Evidence.IsComplete())
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("needs_more_semantic_context"),
 			TEXT("type_promotion requires projected type-promotion spawner evidence."));
 	}
@@ -171,7 +160,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 	FEdGraphPinType SourcePinType;
 	if (!TryBuildPrimitivePinType(Evidence.SourcePinType, SourcePinType))
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("invalid_type_promotion_source_pin_type"),
 			FString::Printf(TEXT("type_promotion source pin type '%s' is not a supported primitive promotion token."), *Evidence.SourcePinType));
 	}
@@ -179,14 +168,14 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 	FEdGraphPinType TargetPinType;
 	if (!TryBuildPrimitivePinType(Evidence.TargetPinType, TargetPinType))
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("invalid_type_promotion_target_pin_type"),
 			FString::Printf(TEXT("type_promotion target pin type '%s' is not a supported primitive promotion token."), *Evidence.TargetPinType));
 	}
 
 	if (!IsPromotionCompatible(SourcePinType, TargetPinType))
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("invalid_type_promotion_evidence"),
 			FString::Printf(
 				TEXT("type_promotion evidence '%s' -> '%s' is not a valid UE primitive promotion."),
@@ -199,14 +188,14 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 		FEdGraphPinType ResultPinType;
 		if (!TryBuildPrimitivePinType(Evidence.ResultPinType, ResultPinType))
 		{
-			return MakeInvalidResult(
+			return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 				TEXT("invalid_type_promotion_result_pin_type"),
 				FString::Printf(TEXT("type_promotion result pin type '%s' is not a supported primitive promotion token."), *Evidence.ResultPinType));
 		}
 
 		if (!IsPromotionCompatible(TargetPinType, ResultPinType))
 		{
-			return MakeInvalidResult(
+			return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 				TEXT("invalid_type_promotion_result_evidence"),
 				FString::Printf(
 					TEXT("type_promotion result pin type '%s' is not compatible with target pin type '%s'."),
@@ -221,7 +210,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperTypePromotionSpawnerEvide
 		Evidence.TargetPinType);
 	if (!Evidence.StableId.IsEmpty() && !Evidence.StableId.Equals(ComputedStableId, ESearchCase::IgnoreCase))
 	{
-		return MakeInvalidResult(
+		return FBlueprintHelperGraphActionUtils::MakeInvalidResult(
 			TEXT("type_promotion_stable_id_mismatch"),
 			FString::Printf(
 				TEXT("type_promotion stable id '%s' does not match projected evidence '%s'."),

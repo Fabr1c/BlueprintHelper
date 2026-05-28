@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -30,16 +31,6 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectIterator.h"
 #include "EdGraphNode_Comment.h"
-
-namespace
-{
-static void CopyParsedPinTypeToMapValueTerminal(const FEdGraphPinType& PinType, FEdGraphTerminalType& OutTerminalType)
-{
-	OutTerminalType.TerminalCategory = PinType.PinCategory;
-	OutTerminalType.TerminalSubCategory = PinType.PinSubCategory;
-	OutTerminalType.TerminalSubCategoryObject = PinType.PinSubCategoryObject;
-}
-}
 
 bool FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(const FParsedPinType& InPinType, FEdGraphPinType& OutPinType, FString& OutErrorMessage)
 {
@@ -149,7 +140,7 @@ bool FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(const FParsedP
 				OutErrorMessage = TEXT("Map pin_type.value_type must be a non-container pin type.");
 				return false;
 			}
-			CopyParsedPinTypeToMapValueTerminal(ValuePinType, OutPinType.PinValueType);
+			UGraphWritePipelineUtils::CopyParsedPinTypeToMapValueTerminal(ValuePinType, OutPinType.PinValueType);
 		}
 	}
 

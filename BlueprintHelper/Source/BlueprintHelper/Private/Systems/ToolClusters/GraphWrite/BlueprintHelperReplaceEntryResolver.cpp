@@ -1,36 +1,10 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceEntryResolver.h"
+#include "Systems/ToolClusters/GraphWrite/Utils/GraphWriteCoreUtils.h"
 
 #include "EdGraph/EdGraphNode.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
-
-namespace
-{
-static bool NameMatches(const FString& Candidate, const FString& Expected)
-{
-	return !Candidate.TrimStartAndEnd().IsEmpty()
-		&& Candidate.TrimStartAndEnd().Equals(Expected.TrimStartAndEnd(), ESearchCase::IgnoreCase);
-}
-
-static bool EntryNameMatchesAny(const TArray<FString>& Candidates, const FString& EntryName)
-{
-	const FString CleanEntryName = EntryName.TrimStartAndEnd();
-	if (CleanEntryName.IsEmpty())
-	{
-		return true;
-	}
-
-	for (const FString& Candidate : Candidates)
-	{
-		if (NameMatches(Candidate, CleanEntryName))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-}
 
 bool FBlueprintHelperReplaceEntryResolver::MatchesEntryClass(
 	const FBlueprintHelperReplaceEntryResolveRequest& Request,
@@ -83,12 +57,12 @@ bool FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(
 
 	if (const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
 	{
-		return EntryNameMatchesAny({ CustomEvent->CustomFunctionName.ToString() }, Request.EntryName);
+		return UGraphWriteCoreUtils::EntryNameMatchesAny({ CustomEvent->CustomFunctionName.ToString() }, Request.EntryName);
 	}
 
 	if (const UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
 	{
-		return EntryNameMatchesAny(
+		return UGraphWriteCoreUtils::EntryNameMatchesAny(
 			{
 				EventNode->GetFunctionName().ToString(),
 				EventNode->EventReference.GetMemberName().ToString()
@@ -98,7 +72,7 @@ bool FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(
 
 	if (const UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
 	{
-		return EntryNameMatchesAny(
+		return UGraphWriteCoreUtils::EntryNameMatchesAny(
 			{
 				FunctionEntry->FunctionReference.GetMemberName().ToString(),
 				FunctionEntry->CustomGeneratedFunctionName.ToString()

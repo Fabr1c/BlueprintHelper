@@ -2,56 +2,7 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBuildService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
-
-namespace BlueprintHelperMergeCallableFragmentServiceLocal
-{
-static bool BuildCallActionContextScope(
-	UBlueprint* Blueprint,
-	UEdGraph* Graph,
-	const FBlueprintHelperGraphFragmentBuildRequest& BuildRequest,
-	FBlueprintHelperActionContextScope& OutScope,
-	FString& OutError)
-{
-	TArray<FString> ArgumentNames;
-	BuildRequest.DefaultValues.GetKeys(ArgumentNames);
-
-	const FString StatementId = BuildRequest.ActionContextStatementId.IsEmpty()
-		? BuildRequest.FragmentId
-		: BuildRequest.ActionContextStatementId;
-	const FString ResolveQuery = BuildRequest.ResolvedStableId.TrimStartAndEnd().IsEmpty()
-		? BuildRequest.Query
-		: BuildRequest.ResolvedStableId.TrimStartAndEnd();
-
-	TArray<FBlueprintHelperActionContextDemand> Demands;
-	Demands.Add(FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
-		StatementId,
-		TEXT("merge_callable"),
-		EBlueprintHelperActionSemanticKind::Call,
-		ResolveQuery,
-		BuildRequest.Target,
-		BuildRequest.PropertyPath,
-		BuildRequest.ExpectedReturnType,
-		BuildRequest.SearchMode,
-		BuildRequest.AmbiguityPolicy,
-		BuildRequest.CategoryPriority,
-		ArgumentNames));
-
-	const FBlueprintHelperActionContextRevisionToken Revision =
-		FBlueprintHelperActionContextScope::MakeRevision(
-			Blueprint,
-			Graph,
-			FString::Printf(TEXT("merge_callable:%s"), *StatementId),
-			FString::Printf(TEXT("query=%s;demands=%d"), *ResolveQuery, Demands.Num()));
-
-	return FBlueprintHelperActionContextBuildService::BuildSync(
-		Blueprint,
-		Graph,
-		Demands,
-		Revision,
-		OutScope,
-		OutError);
-}
-}
+#include "Systems/ToolClusters/GraphWrite/Utils/GraphWriteCoreUtils.h"
 
 FBlueprintHelperMergeCallableFragmentResult FBlueprintHelperMergeCallableFragmentService::ValidateCallable(
 	const FBlueprintHelperMergeCallableFragmentRequest& Request)
@@ -61,7 +12,7 @@ FBlueprintHelperMergeCallableFragmentResult FBlueprintHelperMergeCallableFragmen
 	FBlueprintHelperGraphFragmentBuildRequest BuildRequest = MakeBuildRequest(Request);
 	FBlueprintHelperActionContextScope ActionContextScope;
 	FString BuildError;
-	if (!BlueprintHelperMergeCallableFragmentServiceLocal::BuildCallActionContextScope(
+	if (!UGraphWriteCoreUtils::BuildCallActionContextScope(
 		Request.Blueprint,
 		Request.Graph,
 		BuildRequest,
@@ -109,7 +60,7 @@ FBlueprintHelperMergeCallableFragmentResult FBlueprintHelperMergeCallableFragmen
 
 	FBlueprintHelperActionContextScope ActionContextScope;
 	FString BuildError;
-	if (!BlueprintHelperMergeCallableFragmentServiceLocal::BuildCallActionContextScope(
+	if (!UGraphWriteCoreUtils::BuildCallActionContextScope(
 		Request.Blueprint,
 		Request.Graph,
 		BuildRequest,

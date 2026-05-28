@@ -2,7 +2,7 @@
 
 #include "Systems/ToolClusters/BlueprintClassSettings/Utils/BlueprintHelperClassSettingsUtils.h"
 
-#include "Shared/BlueprintHelperServiceTypes.h"
+#include "Shared/BlueprintClassSettings/BlueprintHelperClassSettingsTypes.h"
 
 FString UBlueprintHelperClassSettingsUtils::BlueprintClassSettingsDescribeInvalidInterface(const FBlueprintHelperInvalidInterface& Invalid)
 {

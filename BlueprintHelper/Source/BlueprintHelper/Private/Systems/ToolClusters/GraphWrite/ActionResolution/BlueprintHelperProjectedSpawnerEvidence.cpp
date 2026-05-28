@@ -1,20 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionEvidenceUtils.h"
 
 #include "BlueprintNodeSpawner.h"
-
-namespace
-{
-static FString ReadTrimmedEvidenceValue(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const TCHAR* Key)
-{
-	if (const FString* Value = Request.ContextEvidence.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
-}
-}
 
 bool FBlueprintHelperProjectedAssetActionEvidence::HasSelector() const
 {
@@ -79,13 +66,13 @@ FBlueprintHelperProjectedAssetActionEvidence FBlueprintHelperProjectedSpawnerEvi
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
 	FBlueprintHelperProjectedAssetActionEvidence Evidence;
-	Evidence.StableId = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_stable_id"));
-	Evidence.NodeClassPath = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_node_class"));
-	Evidence.SpawnerSignature = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_spawner_signature"));
-	Evidence.OwnerPath = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_owner_path"));
-	Evidence.Query = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_query"));
-	Evidence.MenuName = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_menu_name"));
-	Evidence.Category = ReadTrimmedEvidenceValue(Request, TEXT("asset_action_category"));
+	Evidence.StableId = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_stable_id"));
+	Evidence.NodeClassPath = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_node_class"));
+	Evidence.SpawnerSignature = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_spawner_signature"));
+	Evidence.OwnerPath = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_owner_path"));
+	Evidence.Query = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_query"));
+	Evidence.MenuName = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_menu_name"));
+	Evidence.Category = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("asset_action_category"));
 	return Evidence;
 }
 
@@ -106,11 +93,11 @@ FBlueprintHelperProjectedTypePromotionEvidence FBlueprintHelperProjectedSpawnerE
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
 	FBlueprintHelperProjectedTypePromotionEvidence Evidence;
-	Evidence.StableId = ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_stable_id"));
-	Evidence.OperatorName = ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_operator"));
-	Evidence.SourcePinType = ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_source_pin_type"));
-	Evidence.TargetPinType = ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_target_pin_type"));
-	Evidence.ResultPinType = ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_result_pin_type"));
+	Evidence.StableId = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_stable_id"));
+	Evidence.OperatorName = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_operator"));
+	Evidence.SourcePinType = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_source_pin_type"));
+	Evidence.TargetPinType = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_target_pin_type"));
+	Evidence.ResultPinType = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("type_promotion_result_pin_type"));
 	return Evidence;
 }
 
@@ -118,19 +105,19 @@ FBlueprintHelperProjectedScheduleActionEvidence FBlueprintHelperProjectedSpawner
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
 	FBlueprintHelperProjectedScheduleActionEvidence Evidence;
-	Evidence.StableId = ReadTrimmedEvidenceValue(Request, TEXT("schedule_action_stable_id"));
-	Evidence.NodeClassPath = ReadTrimmedEvidenceValue(Request, TEXT("schedule_node_class"));
-	Evidence.SpawnerSignature = ReadTrimmedEvidenceValue(Request, TEXT("schedule_spawner_signature"));
-	Evidence.OwnerPath = ReadTrimmedEvidenceValue(Request, TEXT("schedule_owner_path"));
-	Evidence.Query = ReadTrimmedEvidenceValue(Request, TEXT("schedule_query"));
-	Evidence.MenuName = ReadTrimmedEvidenceValue(Request, TEXT("schedule_menu_name"));
-	Evidence.Category = ReadTrimmedEvidenceValue(Request, TEXT("schedule_category"));
-	Evidence.DelegatePinName = ReadTrimmedEvidenceValue(Request, TEXT("schedule_delegate_pin_name"));
-	Evidence.HandlerName = ReadTrimmedEvidenceValue(Request, TEXT("handler_name"));
-	Evidence.HandlerFunctionPath = ReadTrimmedEvidenceValue(Request, TEXT("handler_function_path"));
-	Evidence.HandlerSourceCluster = ReadTrimmedEvidenceValue(Request, TEXT("handler_source_cluster"));
-	Evidence.SignatureEvidenceId = ReadTrimmedEvidenceValue(Request, TEXT("signature_evidence_id"));
-	Evidence.GraphLatentAllowed = ReadTrimmedEvidenceValue(Request, TEXT("graph_latent_allowed"));
+	Evidence.StableId = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_action_stable_id"));
+	Evidence.NodeClassPath = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_node_class"));
+	Evidence.SpawnerSignature = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_spawner_signature"));
+	Evidence.OwnerPath = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_owner_path"));
+	Evidence.Query = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_query"));
+	Evidence.MenuName = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_menu_name"));
+	Evidence.Category = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_category"));
+	Evidence.DelegatePinName = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("schedule_delegate_pin_name"));
+	Evidence.HandlerName = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("handler_name"));
+	Evidence.HandlerFunctionPath = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("handler_function_path"));
+	Evidence.HandlerSourceCluster = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("handler_source_cluster"));
+	Evidence.SignatureEvidenceId = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("signature_evidence_id"));
+	Evidence.GraphLatentAllowed = UGraphWriteActionEvidenceUtils::ReadTrimmedEvidenceValue(Request, TEXT("graph_latent_allowed"));
 	return Evidence;
 }
 
