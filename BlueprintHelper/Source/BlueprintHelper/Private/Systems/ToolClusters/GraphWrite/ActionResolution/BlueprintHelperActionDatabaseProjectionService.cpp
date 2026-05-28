@@ -4,137 +4,7 @@
 #include "BlueprintActionFilter.h"
 #include "BlueprintNodeSpawner.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
-
-namespace
-{
-static FString NormalizeProjectionText(const FString& Value)
-{
-	FString Result = Value.TrimStartAndEnd().ToLower();
-	Result.ReplaceInline(TEXT("_"), TEXT(""));
-	Result.ReplaceInline(TEXT("-"), TEXT(""));
-	Result.ReplaceInline(TEXT("|"), TEXT(""));
-	Result.ReplaceInline(TEXT("/"), TEXT(""));
-	Result.ReplaceInline(TEXT(" "), TEXT(""));
-	return Result;
-}
-
-static bool MatchesExactEvidence(const FString& Expected, const FString& Actual)
-{
-	return Expected.IsEmpty() || Expected.Equals(Actual.TrimStartAndEnd(), ESearchCase::IgnoreCase);
-}
-
-static bool MatchesQueryEvidence(
-	const FString& Query,
-	const FBlueprintHelperActionDatabaseProjectedCandidate& Candidate)
-{
-	if (Query.TrimStartAndEnd().IsEmpty())
-	{
-		return true;
-	}
-
-	const FString NormalizedQuery = NormalizeProjectionText(Query);
-	if (NormalizedQuery.IsEmpty())
-	{
-		return true;
-	}
-
-	const FString SearchText = NormalizeProjectionText(FString::Printf(
-		TEXT("%s %s %s %s %s"),
-		*Candidate.StableId,
-		*Candidate.OwnerPath,
-		*Candidate.NodeClassPath,
-		*Candidate.MenuName,
-		*Candidate.Category));
-	return SearchText.Contains(NormalizedQuery);
-}
-
-static bool TryBuildCandidate(
-	const FBlueprintActionContext& ActionContext,
-	const UObject* ActionOwner,
-	UBlueprintNodeSpawner* Spawner,
-	FBlueprintHelperActionDatabaseProjectedCandidate& OutCandidate)
-{
-	if (!Spawner)
-	{
-		return false;
-	}
-
-	FBlueprintActionInfo ActionInfo(ActionOwner, Spawner);
-	UClass* NodeClass = const_cast<UClass*>(ActionInfo.GetNodeClass());
-	if (!NodeClass)
-	{
-		return false;
-	}
-
-	const FBlueprintActionUiSpec UiSpec =
-		Spawner->GetUiSpec(ActionContext, ActionInfo.GetBindings());
-
-	OutCandidate.ActionOwner = ActionOwner;
-	OutCandidate.Spawner = Spawner;
-	OutCandidate.NodeClass = NodeClass;
-	OutCandidate.StableId = FBlueprintHelperProjectedSpawnerEvidence::MakeAssetActionStableId(ActionOwner, Spawner, NodeClass);
-	OutCandidate.NodeClassPath = NodeClass->GetPathName();
-	OutCandidate.SpawnerSignature = Spawner->GetSpawnerSignature().ToString();
-	OutCandidate.OwnerPath = ActionOwner ? ActionOwner->GetPathName() : FString();
-	OutCandidate.MenuName = UiSpec.MenuName.ToString().TrimStartAndEnd();
-	OutCandidate.Category = UiSpec.Category.ToString().TrimStartAndEnd();
-	return true;
-}
-
-static bool MatchesProjectedEvidence(
-	const FBlueprintHelperActionDatabaseProjectionEvidence& Evidence,
-	const FBlueprintHelperActionDatabaseProjectedCandidate& Candidate)
-{
-	if (!MatchesExactEvidence(Evidence.StableId, Candidate.StableId))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.NodeClassPath, Candidate.NodeClassPath))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.SpawnerSignature, Candidate.SpawnerSignature))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.OwnerPath, Candidate.OwnerPath))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.MenuName, Candidate.MenuName))
-	{
-		return false;
-	}
-	if (!MatchesExactEvidence(Evidence.Category, Candidate.Category))
-	{
-		return false;
-	}
-	return MatchesQueryEvidence(Evidence.Query, Candidate);
-}
-
-static FBlueprintHelperActionDatabaseProjectionEvidence BuildEffectiveEvidence(
-	const FBlueprintHelperActionDatabaseProjectionRequest& Request)
-{
-	FBlueprintHelperActionDatabaseProjectionEvidence Evidence = Request.RequiredEvidence;
-	if (Evidence.Query.IsEmpty())
-	{
-		Evidence.Query = Request.Query.TrimStartAndEnd();
-	}
-	return Evidence;
-}
-
-static FBlueprintHelperActionDatabaseProjectionResult MakeProjectionFailure(
-	EBlueprintHelperActionResolutionStatus Status,
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionDatabaseProjectionResult Result;
-	Result.Status = Status;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionAdapterUtils.h"
 
 bool FBlueprintHelperActionDatabaseProjectionEvidence::HasSelector() const
 {
@@ -153,16 +23,16 @@ FBlueprintHelperActionDatabaseProjectionResult FBlueprintHelperActionDatabasePro
 	const FString ErrorPrefix = Request.ErrorPrefix.IsEmpty() ? TEXT("action_database") : Request.ErrorPrefix;
 	if (!Request.Blueprint || !Request.TargetGraph)
 	{
-		return MakeProjectionFailure(
+		return UGraphWriteActionAdapterUtils::MakeProjectionFailure(
 			EBlueprintHelperActionResolutionStatus::InvalidRequest,
 			FString::Printf(TEXT("invalid_%s_projection_context"), *ErrorPrefix),
 			FString::Printf(TEXT("%s projection requires blueprint and target graph."), *ErrorPrefix));
 	}
 
-	const FBlueprintHelperActionDatabaseProjectionEvidence Evidence = BuildEffectiveEvidence(Request);
+	const FBlueprintHelperActionDatabaseProjectionEvidence Evidence = UGraphWriteActionAdapterUtils::BuildEffectiveEvidence(Request);
 	if (!Evidence.HasSelector())
 	{
-		return MakeProjectionFailure(
+		return UGraphWriteActionAdapterUtils::MakeProjectionFailure(
 			EBlueprintHelperActionResolutionStatus::InvalidRequest,
 			TEXT("needs_more_semantic_context"),
 			FString::Printf(TEXT("%s projection requires query or projected ActionDatabase spawner evidence."), *ErrorPrefix));
@@ -198,12 +68,12 @@ FBlueprintHelperActionDatabaseProjectionResult FBlueprintHelperActionDatabasePro
 			}
 
 			FBlueprintHelperActionDatabaseProjectedCandidate Candidate;
-			if (!TryBuildCandidate(ActionContext, ActionOwner, Spawner, Candidate))
+			if (!UGraphWriteActionAdapterUtils::TryBuildCandidate(ActionContext, ActionOwner, Spawner, Candidate))
 			{
 				continue;
 			}
 			Candidate.Query = Evidence.Query;
-			if (!MatchesProjectedEvidence(Evidence, Candidate))
+			if (!UGraphWriteActionAdapterUtils::MatchesProjectedEvidence(Evidence, Candidate))
 			{
 				continue;
 			}

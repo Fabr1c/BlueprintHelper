@@ -12,454 +12,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
-
-namespace
-{
-static FString SanitizeFragmentIdPart(const FString& Value)
-{
-	FString Clean = Value.TrimStartAndEnd();
-	if (Clean.IsEmpty())
-	{
-		return TEXT("unnamed");
-	}
-
-	FString Result;
-	Result.Reserve(Clean.Len());
-	for (int32 Index = 0; Index < Clean.Len(); ++Index)
-	{
-		const TCHAR Character = Clean[Index];
-		Result.AppendChar(FChar::IsAlnum(Character) ? Character : TEXT('_'));
-	}
-	return Result.IsEmpty() ? TEXT("unnamed") : Result;
-}
-
-static FString StatementKindName(const EBlueprintHelperGraphStatementKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperGraphStatementKind::Branch:
-		return TEXT("branch");
-	case EBlueprintHelperGraphStatementKind::Sequence:
-		return TEXT("sequence");
-	case EBlueprintHelperGraphStatementKind::Return:
-		return TEXT("return");
-	default:
-		return TEXT("control");
-	}
-}
-
-static FString ResolveStatementFragmentId(const FBlueprintHelperGraphStatementIR& Statement)
-{
-	const FString SourceId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
-	if (!SourceId.Contains(TEXT("$")) && !SourceId.Contains(TEXT(".")) && !SourceId.Contains(TEXT("["))
-		&& !SourceId.Contains(TEXT("]")))
-	{
-		return SanitizeFragmentIdPart(SourceId);
-	}
-
-	const FString KindName = StatementKindName(Statement.Kind);
-	return SanitizeFragmentIdPart(TEXT("stmt_") + KindName + TEXT("_") + SourceId + TEXT("_") + KindName);
-}
-
-static void AddPinAlias(
-	TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
-	const FString& Alias,
-	UEdGraphPin* Pin)
-{
-	if (Alias.IsEmpty() || !Pin)
-	{
-		return;
-	}
-
-	const FString Type = Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
-		? FString(TEXT("exec"))
-		: Pin->PinType.PinCategory.ToString();
-	const FBlueprintHelperFragmentPinRef PinRef{ TEXT("primary"), Alias, Type, Pin };
-	PinMap.Add(Alias, PinRef);
-
-	const FString LowerAlias = Alias.ToLower();
-	if (!PinMap.Contains(LowerAlias))
-	{
-		PinMap.Add(LowerAlias, FBlueprintHelperFragmentPinRef{ TEXT("primary"), LowerAlias, Type, Pin });
-	}
-}
-
-static void AddExecPinAlias(
-	FBlueprintHelperNodeFragment& Fragment,
-	const FString& Alias,
-	UEdGraphPin* Pin)
-{
-	AddPinAlias(Fragment.PinBindings, Alias, Pin);
-}
-
-static void AddDataInputAlias(
-	FBlueprintHelperNodeFragment& Fragment,
-	const FString& Alias,
-	UEdGraphPin* Pin)
-{
-	AddPinAlias(Fragment.PinBindings, Alias, Pin);
-	AddPinAlias(Fragment.DataInputs, Alias, Pin);
-}
-
-static UEdGraphPin* FindFirstExecPin(UK2Node* Node, const EEdGraphPinDirection Direction)
-{
-	if (!Node)
-	{
-		return nullptr;
-	}
-
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin
-			&& Pin->Direction == Direction
-			&& Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			return Pin;
-		}
-	}
-	return nullptr;
-}
-
-static UEdGraphPin* FindFirstDataInputPin(UK2Node* Node)
-{
-	if (!Node)
-	{
-		return nullptr;
-	}
-
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin
-			&& Pin->Direction == EGPD_Input
-			&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-		{
-			return Pin;
-		}
-	}
-	return nullptr;
-}
-
-static void CollectExecOutputPins(UK2Node* Node, TArray<UEdGraphPin*>& OutPins)
-{
-	OutPins.Reset();
-	if (!Node)
-	{
-		return;
-	}
-
-	for (UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin
-			&& Pin->Direction == EGPD_Output
-			&& Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			OutPins.Add(Pin);
-		}
-	}
-}
-
-static bool ResolveControlActionProvider(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperActionContextScope* ActionContextScope,
-	const FString& StatementContextId,
-	const FString& ControlKind,
-	const FString& FragmentId,
-	FBlueprintHelperActionResolutionResult& OutResult,
-	FString& OutError)
-{
-	if (!TargetGraph)
-	{
-		OutError = TEXT("control fragment build failed: target graph is invalid.");
-		return false;
-	}
-	if (StatementContextId.TrimStartAndEnd().IsEmpty())
-	{
-		OutError = TEXT("control fragment build failed: statement context id is required.");
-		return false;
-	}
-
-	FBlueprintHelperActionResolutionRequest ActionRequest;
-	if (!ActionContextScope)
-	{
-		OutError = FString::Printf(
-			TEXT("missing_required_evidence: action_context_scope_required for control '%s' statement '%s'."),
-			*ControlKind,
-			*StatementContextId);
-		return false;
-	}
-
-	if (!ActionContextScope->TryBuildRequest(
-		StatementContextId,
-		FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph),
-		TargetGraph,
-		ActionRequest,
-		OutError))
-	{
-		return false;
-	}
-
-	if (ActionRequest.Semantic.Query.IsEmpty())
-	{
-		ActionRequest.Semantic.Query = ControlKind;
-	}
-	if (ActionRequest.Semantic.TargetPath.IsEmpty())
-	{
-		ActionRequest.Semantic.TargetPath = FragmentId;
-	}
-
-	const FBlueprintHelperActionResolutionResult ActionResult =
-		FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
-	if (ActionResult.IsResolved())
-	{
-		OutResult = ActionResult;
-		return true;
-	}
-
-	OutError = ActionResult.Message.IsEmpty()
-		? FString::Printf(
-			TEXT("control fragment build failed: ActionResolution did not resolve Generic control spawner for '%s'."),
-			*ControlKind)
-		: ActionResult.Message;
-	return false;
-}
-
-static UK2Node* SpawnControlNodeThroughSpawner(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperActionResolutionResult& ActionResult,
-	const FVector2D& Location,
-	const FBlueprintHelperActionNodeSpawnOptions& SpawnOptions,
-	FString& OutError)
-{
-	return FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
-		TargetGraph,
-		ActionResult,
-		Location,
-		SpawnOptions,
-		OutError);
-}
-
-template <typename TNode>
-static TNode* SpawnTypedControlNode(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperActionResolutionResult& ActionResult,
-	const FString& ControlKind,
-	const FString& FragmentId,
-	const FBlueprintHelperActionNodeSpawnOptions& SpawnOptions,
-	FString& OutError)
-{
-	UK2Node* SpawnedNode = SpawnControlNodeThroughSpawner(
-		TargetGraph,
-		ActionResult,
-		FVector2D::ZeroVector,
-		SpawnOptions,
-		OutError);
-	TNode* TypedNode = Cast<TNode>(SpawnedNode);
-	if (!TypedNode && SpawnedNode)
-	{
-		OutError = FString::Printf(
-			TEXT("control fragment build failed: spawner for '%s' created unexpected node class '%s'."),
-			*ControlKind,
-			*SpawnedNode->GetClass()->GetName());
-	}
-	return TypedNode;
-}
-
-template <typename TNode>
-static TNode* SpawnTypedControlNode(
-	UEdGraph* TargetGraph,
-	const FBlueprintHelperActionResolutionResult& ActionResult,
-	const FString& ControlKind,
-	const FString& FragmentId,
-	FString& OutError)
-{
-	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
-	SpawnOptions.NodeId = FragmentId;
-	return SpawnTypedControlNode<TNode>(TargetGraph, ActionResult, ControlKind, FragmentId, SpawnOptions, OutError);
-}
-
-static void PopulateCommonControlMetadata(
-	const FString& FragmentId,
-	const FString& SourceStatementId,
-	const FString& ControlKind,
-	UK2Node* Node,
-	FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.FragmentId = FragmentId;
-	OutFragment.SourceStatementId = SourceStatementId;
-	OutFragment.PrimaryNode = Node;
-	OutFragment.Nodes.Add(Node);
-	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("control"));
-	OutFragment.OwnershipTags.Add(TEXT("control_kind"), ControlKind);
-	if (!SourceStatementId.IsEmpty())
-	{
-		OutFragment.OwnershipTags.Add(TEXT("statement_id"), SourceStatementId);
-		OutFragment.ReviewTargets.Add(SourceStatementId);
-	}
-	else
-	{
-		OutFragment.ReviewTargets.Add(FragmentId);
-	}
-}
-
-static bool EnsureSequenceOutputCount(
-	UK2Node_ExecutionSequence* SequenceNode,
-	const int32 DesiredOutputCount,
-	TArray<UEdGraphPin*>& OutOutputPins,
-	FString& OutError)
-{
-	CollectExecOutputPins(SequenceNode, OutOutputPins);
-	while (OutOutputPins.Num() < DesiredOutputCount)
-	{
-		SequenceNode->AddInputPin();
-		CollectExecOutputPins(SequenceNode, OutOutputPins);
-	}
-
-	if (OutOutputPins.Num() < DesiredOutputCount)
-	{
-		OutError = FString::Printf(
-			TEXT("sequence fragment build failed: expected at least %d exec outputs, got %d."),
-			DesiredOutputCount,
-			OutOutputPins.Num());
-		return false;
-	}
-	return true;
-}
-
-static void PopulateSequencePins(
-	UK2Node_ExecutionSequence* SequenceNode,
-	const TArray<UEdGraphPin*>& OutputPins,
-	FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(SequenceNode, TEXT("execute"));
-	if (!OutFragment.ExecEntryPin)
-	{
-		OutFragment.ExecEntryPin = FindFirstExecPin(SequenceNode, EGPD_Input);
-	}
-	AddExecPinAlias(OutFragment, TEXT("execute"), OutFragment.ExecEntryPin);
-	AddExecPinAlias(OutFragment, TEXT("exec"), OutFragment.ExecEntryPin);
-
-	if (OutputPins.Num() > 0)
-	{
-		OutFragment.ExecExitPin = OutputPins[0];
-		AddExecPinAlias(OutFragment, TEXT("then"), OutputPins[0]);
-	}
-
-	for (int32 OutputIndex = 0; OutputIndex < OutputPins.Num(); ++OutputIndex)
-	{
-		UEdGraphPin* Pin = OutputPins[OutputIndex];
-		if (!Pin)
-		{
-			continue;
-		}
-
-		AddExecPinAlias(OutFragment, Pin->PinName.ToString(), Pin);
-		AddExecPinAlias(OutFragment, FString::Printf(TEXT("then_%d"), OutputIndex), Pin);
-		AddExecPinAlias(OutFragment, FString::Printf(TEXT("then%d"), OutputIndex), Pin);
-	}
-}
-
-static void PopulateBranchPins(
-	UK2Node_IfThenElse* BranchNode,
-	FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(BranchNode, TEXT("execute"));
-	if (!OutFragment.ExecEntryPin)
-	{
-		OutFragment.ExecEntryPin = FindFirstExecPin(BranchNode, EGPD_Input);
-	}
-	AddExecPinAlias(OutFragment, TEXT("execute"), OutFragment.ExecEntryPin);
-	AddExecPinAlias(OutFragment, TEXT("exec"), OutFragment.ExecEntryPin);
-
-	UEdGraphPin* ThenPin = FBlueprintGraphWriteFacade::FindPinByAlias(BranchNode, TEXT("then"));
-	UEdGraphPin* ElsePin = FBlueprintGraphWriteFacade::FindPinByAlias(BranchNode, TEXT("else"));
-	OutFragment.ExecExitPin = ThenPin;
-	AddExecPinAlias(OutFragment, TEXT("then"), ThenPin);
-	AddExecPinAlias(OutFragment, TEXT("true"), ThenPin);
-	AddExecPinAlias(OutFragment, TEXT("else"), ElsePin);
-	AddExecPinAlias(OutFragment, TEXT("false"), ElsePin);
-
-	if (UEdGraphPin* ConditionPin = FBlueprintGraphWriteFacade::FindPinByAlias(BranchNode, TEXT("condition")))
-	{
-		AddDataInputAlias(OutFragment, TEXT("condition"), ConditionPin);
-		AddDataInputAlias(OutFragment, ConditionPin->PinName.ToString(), ConditionPin);
-	}
-}
-
-static void PopulateReturnPins(
-	UK2Node_FunctionResult* ReturnNode,
-	FBlueprintHelperNodeFragment& OutFragment)
-{
-	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(ReturnNode, TEXT("execute"));
-	if (!OutFragment.ExecEntryPin)
-	{
-		OutFragment.ExecEntryPin = FindFirstExecPin(ReturnNode, EGPD_Input);
-	}
-	OutFragment.ExecExitPin = nullptr;
-	AddExecPinAlias(OutFragment, TEXT("execute"), OutFragment.ExecEntryPin);
-	AddExecPinAlias(OutFragment, TEXT("exec"), OutFragment.ExecEntryPin);
-
-	UEdGraphPin* FirstDataPin = nullptr;
-	for (UEdGraphPin* Pin : ReturnNode->Pins)
-	{
-		if (!Pin
-			|| Pin->Direction != EGPD_Input
-			|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-		{
-			continue;
-		}
-
-		if (!FirstDataPin)
-		{
-			FirstDataPin = Pin;
-		}
-		AddDataInputAlias(OutFragment, Pin->PinName.ToString(), Pin);
-	}
-
-	AddDataInputAlias(OutFragment, TEXT("value"), FirstDataPin);
-	AddDataInputAlias(OutFragment, TEXT("return"), FirstDataPin);
-	AddDataInputAlias(OutFragment, TEXT("result"), FirstDataPin);
-}
-
-static void CollectBranchLiteralDefaults(
-	const FBlueprintHelperGraphStatementIR& Statement,
-	TMap<FString, FString>& OutDefaults)
-{
-	OutDefaults.Reset();
-	if (!Statement.Condition.IsValid()
-		|| Statement.Condition->Kind != EBlueprintHelperGraphExpressionKind::Literal
-		|| Statement.Condition->LiteralValue.IsEmpty())
-	{
-		return;
-	}
-
-	OutDefaults.Add(TEXT("Condition"), Statement.Condition->LiteralValue);
-	OutDefaults.Add(TEXT("condition"), Statement.Condition->LiteralValue);
-}
-
-static void CollectReturnLiteralDefault(
-	UK2Node_FunctionResult* ReturnNode,
-	const FBlueprintHelperGraphStatementIR& Statement,
-	TMap<FString, FString>& InOutDefaults)
-{
-	if (!ReturnNode
-		|| !Statement.Value.IsValid()
-		|| Statement.Value->Kind != EBlueprintHelperGraphExpressionKind::Literal
-		|| Statement.Value->LiteralValue.IsEmpty())
-	{
-		return;
-	}
-
-	UEdGraphPin* ValuePin = FindFirstDataInputPin(ReturnNode);
-	if (!ValuePin)
-	{
-		return;
-	}
-
-	InOutDefaults.Add(ValuePin->PinName.ToString(), Statement.Value->LiteralValue);
-	InOutDefaults.Add(TEXT("value"), Statement.Value->LiteralValue);
-	InOutDefaults.Add(TEXT("return"), Statement.Value->LiteralValue);
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	UEdGraph* TargetGraph,
@@ -471,14 +24,14 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	OutFragment = FBlueprintHelperNodeFragment();
 	OutError.Reset();
 
-	const FString CleanFragmentId = SanitizeFragmentIdPart(FragmentId);
+	const FString CleanFragmentId = UGraphWriteGraphStatementUtils::SanitizeFragmentIdPart(FragmentId);
 	FBlueprintHelperActionResolutionResult ActionResult;
-	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, CleanFragmentId, TEXT("sequence"), CleanFragmentId, ActionResult, OutError))
+	if (!UGraphWriteGraphStatementUtils::ResolveControlActionProvider(TargetGraph, ActionContextScope, CleanFragmentId, TEXT("sequence"), CleanFragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
 
-	UK2Node_ExecutionSequence* SequenceNode = SpawnTypedControlNode<UK2Node_ExecutionSequence>(
+	UK2Node_ExecutionSequence* SequenceNode = UGraphWriteGraphStatementUtils::SpawnTypedControlNode<UK2Node_ExecutionSequence>(
 		TargetGraph,
 		ActionResult,
 		TEXT("sequence"),
@@ -490,13 +43,13 @@ bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	}
 
 	TArray<UEdGraphPin*> OutputPins;
-	if (!EnsureSequenceOutputCount(SequenceNode, 2, OutputPins, OutError))
+	if (!UGraphWriteGraphStatementUtils::EnsureSequenceOutputCount(SequenceNode, 2, OutputPins, OutError))
 	{
 		return false;
 	}
 
-	PopulateCommonControlMetadata(CleanFragmentId, CleanFragmentId, TEXT("sequence"), SequenceNode, OutFragment);
-	PopulateSequencePins(SequenceNode, OutputPins, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateCommonControlMetadata(CleanFragmentId, CleanFragmentId, TEXT("sequence"), SequenceNode, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateSequencePins(SequenceNode, OutputPins, OutFragment);
 	return true;
 }
 
@@ -525,20 +78,20 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 		return false;
 	}
 
-	const FString FragmentId = ResolveStatementFragmentId(Statement);
+	const FString FragmentId = UGraphWriteGraphStatementUtils::ResolveStatementFragmentId(Statement);
 	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
 	FBlueprintHelperActionResolutionResult ActionResult;
-	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("branch"), FragmentId, ActionResult, OutError))
+	if (!UGraphWriteGraphStatementUtils::ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("branch"), FragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
 
 	TMap<FString, FString> DefaultValues;
-	CollectBranchLiteralDefaults(Statement, DefaultValues);
+	UGraphWriteGraphStatementUtils::CollectBranchLiteralDefaults(Statement, DefaultValues);
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = FragmentId;
 	SpawnOptions.DefaultValues = MoveTemp(DefaultValues);
-	UK2Node_IfThenElse* BranchNode = SpawnTypedControlNode<UK2Node_IfThenElse>(
+	UK2Node_IfThenElse* BranchNode = UGraphWriteGraphStatementUtils::SpawnTypedControlNode<UK2Node_IfThenElse>(
 		TargetGraph,
 		ActionResult,
 		TEXT("branch"),
@@ -550,8 +103,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildBranch(
 		return false;
 	}
 
-	PopulateCommonControlMetadata(FragmentId, Statement.StatementId, TEXT("branch"), BranchNode, OutFragment);
-	PopulateBranchPins(BranchNode, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateCommonControlMetadata(FragmentId, Statement.StatementId, TEXT("branch"), BranchNode, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateBranchPins(BranchNode, OutFragment);
 	return true;
 }
 
@@ -571,10 +124,10 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 		return false;
 	}
 
-	const FString FragmentId = ResolveStatementFragmentId(Statement);
+	const FString FragmentId = UGraphWriteGraphStatementUtils::ResolveStatementFragmentId(Statement);
 	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
 	FBlueprintHelperActionResolutionResult ActionResult;
-	if (!ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, ActionResult, OutError))
+	if (!UGraphWriteGraphStatementUtils::ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, ActionResult, OutError))
 	{
 		return false;
 	}
@@ -585,10 +138,10 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 	{
 		if (UK2Node_FunctionResult* FunctionResultNode = Cast<UK2Node_FunctionResult>(&SpawnedNode))
 		{
-			CollectReturnLiteralDefault(FunctionResultNode, Statement, InOutDefaults);
+			UGraphWriteGraphStatementUtils::CollectReturnLiteralDefault(FunctionResultNode, Statement, InOutDefaults);
 		}
 	};
-	UK2Node_FunctionResult* ReturnNode = SpawnTypedControlNode<UK2Node_FunctionResult>(
+	UK2Node_FunctionResult* ReturnNode = UGraphWriteGraphStatementUtils::SpawnTypedControlNode<UK2Node_FunctionResult>(
 		TargetGraph,
 		ActionResult,
 		TEXT("return"),
@@ -600,8 +153,8 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 		return false;
 	}
 
-	PopulateCommonControlMetadata(FragmentId, Statement.StatementId, TEXT("return"), ReturnNode, OutFragment);
-	PopulateReturnPins(ReturnNode, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateCommonControlMetadata(FragmentId, Statement.StatementId, TEXT("return"), ReturnNode, OutFragment);
+	UGraphWriteGraphStatementUtils::PopulateReturnPins(ReturnNode, OutFragment);
 	return true;
 }
 
@@ -617,7 +170,7 @@ bool FBlueprintHelperControlFragmentBuilder::BuildStatement(
 	case EBlueprintHelperGraphStatementKind::Branch:
 		return BuildBranch(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Sequence:
-		return BuildSequence(TargetGraph, ActionContextScope, ResolveStatementFragmentId(Statement), OutFragment, OutError);
+		return BuildSequence(TargetGraph, ActionContextScope, UGraphWriteGraphStatementUtils::ResolveStatementFragmentId(Statement), OutFragment, OutError);
 	case EBlueprintHelperGraphStatementKind::Return:
 		return BuildReturn(TargetGraph, ActionContextScope, Statement, OutFragment, OutError);
 	default:

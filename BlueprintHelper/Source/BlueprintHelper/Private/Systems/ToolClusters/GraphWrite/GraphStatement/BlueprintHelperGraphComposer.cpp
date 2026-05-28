@@ -1,52 +1,13 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphComposer.h"
 
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphComposerUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node.h"
-
-namespace
-{
-static bool NodeHasWildcardPins(const UEdGraphNode* Node)
-{
-	if (!Node)
-	{
-		return false;
-	}
-	for (const UEdGraphPin* Pin : Node->Pins)
-	{
-		if (Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-static void AddNodeForDeferredReconstruct(UEdGraphPin* Pin, TSet<UEdGraphNode*>& NodesToReconstruct)
-{
-	UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
-	if (Node && NodeHasWildcardPins(Node))
-	{
-		NodesToReconstruct.Add(Node);
-	}
-}
-
-static void ReconstructWildcardNodes(const TSet<UEdGraphNode*>& NodesToReconstruct)
-{
-	for (UEdGraphNode* Node : NodesToReconstruct)
-	{
-		if (UK2Node* K2Node = Cast<UK2Node>(Node))
-		{
-			K2Node->ReconstructNode();
-		}
-		Node->NodeConnectionListChanged();
-	}
-}
-}
 
 FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectLinearExecChain(
 	UEdGraph* TargetGraph,
@@ -165,8 +126,8 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 			continue;
 		}
 
-		AddNodeForDeferredReconstruct(FromPin, NodesToReconstruct);
-		AddNodeForDeferredReconstruct(ToPin, NodesToReconstruct);
+		UGraphWriteGraphStatementUtils::AddNodeForDeferredReconstruct(FromPin, NodesToReconstruct);
+		UGraphWriteGraphStatementUtils::AddNodeForDeferredReconstruct(ToPin, NodesToReconstruct);
 		FString ConnectionFailureReason;
 		if (FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(FromPin, ToPin, ConnectionFailureReason))
 		{
@@ -184,7 +145,7 @@ FBlueprintHelperGraphComposeResult FBlueprintHelperGraphComposer::ConnectDataEdg
 			: ConnectionFailureReason);
 	}
 
-	ReconstructWildcardNodes(NodesToReconstruct);
+	UGraphWriteGraphStatementUtils::ReconstructWildcardNodes(NodesToReconstruct);
 
 	Result.bSucceeded = Result.Diagnostics.Num() == 0;
 	return Result;

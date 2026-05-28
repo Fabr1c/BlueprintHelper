@@ -1,45 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
 
-namespace
-{
-static void ApplyNamedPinTypePart(
-	FBlueprintHelperCallFunctionPinType& PinType,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanKey = Key.TrimStartAndEnd().ToLower();
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (CleanValue.IsEmpty())
-	{
-		return;
-	}
-
-	if (CleanKey == TEXT("category") || CleanKey == TEXT("pin_category") || CleanKey == TEXT("type"))
-	{
-		PinType.Category = CleanValue;
-	}
-	else if (CleanKey == TEXT("subcategory") || CleanKey == TEXT("sub_category") || CleanKey == TEXT("pin_sub_category"))
-	{
-		PinType.SubCategory = CleanValue;
-	}
-	else if (CleanKey == TEXT("object") || CleanKey == TEXT("object_path") || CleanKey == TEXT("pin_sub_category_object"))
-	{
-		PinType.ObjectPath = CleanValue;
-	}
-	else if (CleanKey == TEXT("container") || CleanKey == TEXT("container_type"))
-	{
-		PinType.ContainerType = CleanValue;
-	}
-	else if (CleanKey == TEXT("reference"))
-	{
-		PinType.bIsReference = CleanValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
-	}
-	else if (CleanKey == TEXT("const"))
-	{
-		PinType.bIsConst = CleanValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
-	}
-}
-}
+#include "GraphWriteGraphStatementUtils.h"
 
 FBlueprintHelperCallFunctionPinType FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(const FString& Token)
 {
@@ -58,7 +19,7 @@ FBlueprintHelperCallFunctionPinType FBlueprintHelperGraphStatementPinTypeParser:
 		FString Value;
 		if (Part.Split(TEXT("="), &Key, &Value))
 		{
-			ApplyNamedPinTypePart(PinType, Key, Value);
+			UGraphWriteGraphStatementUtils::ApplyNamedPinTypePart(PinType, Key, Value);
 			bUsedNamedParts = true;
 		}
 	}

@@ -10,128 +10,7 @@
 #include "K2Node_Select.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
-
-namespace
-{
-static const TCHAR* SingletonKindToStableName(const EBlueprintHelperSingletonControlFlowKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperSingletonControlFlowKind::Branch:
-		return TEXT("branch");
-	case EBlueprintHelperSingletonControlFlowKind::Sequence:
-		return TEXT("sequence");
-	case EBlueprintHelperSingletonControlFlowKind::Return:
-		return TEXT("return");
-	case EBlueprintHelperSingletonControlFlowKind::Select:
-		return TEXT("select");
-	default:
-		return TEXT("unknown");
-	}
-}
-
-static const TCHAR* SingletonKindToDisplayName(const EBlueprintHelperSingletonControlFlowKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperSingletonControlFlowKind::Branch:
-		return TEXT("Branch");
-	case EBlueprintHelperSingletonControlFlowKind::Sequence:
-		return TEXT("Sequence");
-	case EBlueprintHelperSingletonControlFlowKind::Return:
-		return TEXT("Return");
-	case EBlueprintHelperSingletonControlFlowKind::Select:
-		return TEXT("Select");
-	default:
-		return TEXT("Unknown");
-	}
-}
-
-static FString SingletonKindToQuery(const EBlueprintHelperSingletonControlFlowKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperSingletonControlFlowKind::Branch:
-		return TEXT("branch");
-	case EBlueprintHelperSingletonControlFlowKind::Sequence:
-		return TEXT("sequence");
-	case EBlueprintHelperSingletonControlFlowKind::Return:
-		return TEXT("return");
-	case EBlueprintHelperSingletonControlFlowKind::Select:
-		return FString();
-	default:
-		return FString();
-	}
-}
-
-static EBlueprintHelperActionSemanticKind SingletonKindToSemanticKind(const EBlueprintHelperSingletonControlFlowKind Kind)
-{
-	return Kind == EBlueprintHelperSingletonControlFlowKind::Select
-		? EBlueprintHelperActionSemanticKind::Select
-		: EBlueprintHelperActionSemanticKind::Control;
-}
-
-static void AppendObjectIdentity(FString& Stable, const TCHAR* Label, const UObject* Object)
-{
-	Stable += Label;
-	Stable += TEXT("_path=");
-	Stable += Object ? Object->GetPathName() : FString();
-	Stable += TEXT("|");
-	Stable += Label;
-	Stable += TEXT("_name=");
-	Stable += Object ? Object->GetName() : FString();
-}
-
-static FString BuildSingletonCanonicalStableFields(
-	const EBlueprintHelperSingletonControlFlowKind Kind,
-	const EBlueprintHelperActionSemanticKind SemanticKind,
-	UBlueprint* Blueprint,
-	UEdGraph* TargetGraph,
-	const FString& StatementId,
-	const FString& Query)
-{
-	FString Stable;
-	Stable += TEXT("singleton_control_flow|kind=");
-	Stable += SingletonKindToStableName(Kind);
-	Stable += TEXT("|semantic=");
-	Stable += FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind);
-	Stable += TEXT("|query=");
-	Stable += Query;
-	Stable += TEXT("|");
-	AppendObjectIdentity(Stable, TEXT("blueprint"), Blueprint);
-	Stable += TEXT("|");
-	AppendObjectIdentity(Stable, TEXT("target_graph"), TargetGraph);
-	Stable += TEXT("|statement=");
-	Stable += StatementId;
-	return Stable;
-}
-
-static bool MakeEvidence(
-	const EBlueprintHelperSingletonControlFlowKind Kind,
-	TSubclassOf<UEdGraphNode> NodeClass,
-	FBlueprintHelperSingletonControlFlowEvidence& OutEvidence)
-{
-	OutEvidence = FBlueprintHelperSingletonControlFlowEvidence();
-	if (!NodeClass)
-	{
-		return false;
-	}
-
-	const FString KindName = SingletonKindToStableName(Kind);
-	const FString NodeClassPath = NodeClass->GetPathName();
-	OutEvidence.SingletonKind = Kind;
-	OutEvidence.NodeClass = NodeClass;
-	OutEvidence.StableId = FString::Printf(
-		TEXT("singleton_control_flow:%s:%s"),
-		*KindName,
-		*NodeClassPath);
-	OutEvidence.Reason = FString::Printf(
-		TEXT("GenericAssetStructControl singleton control-flow provider resolved canonical %s node class %s."),
-		*KindName,
-		*NodeClassPath);
-	return true;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionResolverUtils.h"
 
 bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequest(
 	const EBlueprintHelperSingletonControlFlowKind Kind,
@@ -147,15 +26,15 @@ bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryBuildCanonicalRequ
 		return false;
 	}
 
-	const FString Query = SingletonKindToQuery(Kind);
-	const EBlueprintHelperActionSemanticKind SemanticKind = SingletonKindToSemanticKind(Kind);
+	const FString Query = UGraphWriteActionResolverUtils::SingletonKindToQuery(Kind);
+	const EBlueprintHelperActionSemanticKind SemanticKind = UGraphWriteActionResolverUtils::SingletonKindToSemanticKind(Kind);
 	OutRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
 	OutRequest.Blueprint = Blueprint;
 	OutRequest.TargetGraph = TargetGraph;
 	OutRequest.StatementId = StatementId.IsEmpty()
-		? FString::Printf(TEXT("singleton_%s"), SingletonKindToStableName(Kind))
+		? FString::Printf(TEXT("singleton_%s"), UGraphWriteActionResolverUtils::SingletonKindToStableName(Kind))
 		: StatementId;
-	const FString StableFields = BuildSingletonCanonicalStableFields(
+	const FString StableFields = UGraphWriteActionResolverUtils::BuildSingletonCanonicalStableFields(
 		Kind,
 		SemanticKind,
 		Blueprint,
@@ -198,7 +77,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSingletonControlFlowEvide
 		Result.ErrorCode = TEXT("unsupported_singleton_control_flow_semantic");
 		Result.Message = FString::Printf(
 			TEXT("Singleton control-flow provider could not resolve canonical kind '%s'."),
-			SingletonKindToStableName(Kind));
+			UGraphWriteActionResolverUtils::SingletonKindToStableName(Kind));
 		return Result;
 	}
 
@@ -217,7 +96,7 @@ bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(
 
 	if (Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Select)
 	{
-		return MakeEvidence(
+		return UGraphWriteActionResolverUtils::MakeEvidence(
 			EBlueprintHelperSingletonControlFlowKind::Select,
 			UK2Node_Select::StaticClass(),
 			OutEvidence);
@@ -231,21 +110,21 @@ bool FBlueprintHelperSingletonControlFlowEvidenceProvider::TryResolve(
 	const FString Query = NormalizeSingletonControlQuery(Request.Semantic.Query);
 	if (Query == TEXT("branch"))
 	{
-		return MakeEvidence(
+		return UGraphWriteActionResolverUtils::MakeEvidence(
 			EBlueprintHelperSingletonControlFlowKind::Branch,
 			UK2Node_IfThenElse::StaticClass(),
 			OutEvidence);
 	}
 	if (Query == TEXT("sequence"))
 	{
-		return MakeEvidence(
+		return UGraphWriteActionResolverUtils::MakeEvidence(
 			EBlueprintHelperSingletonControlFlowKind::Sequence,
 			UK2Node_ExecutionSequence::StaticClass(),
 			OutEvidence);
 	}
 	if (Query == TEXT("return"))
 	{
-		return MakeEvidence(
+		return UGraphWriteActionResolverUtils::MakeEvidence(
 			EBlueprintHelperSingletonControlFlowKind::Return,
 			UK2Node_FunctionResult::StaticClass(),
 			OutEvidence);
@@ -265,7 +144,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSingletonControlFlowEvide
 	UClass* NodeClass = Evidence.NodeClass.Get();
 	FBlueprintHelperCallFunctionCandidateInfo Candidate;
 	Candidate.StableId = Evidence.StableId;
-	Candidate.DisplayName = SingletonKindToDisplayName(Evidence.SingletonKind);
+	Candidate.DisplayName = UGraphWriteActionResolverUtils::SingletonKindToDisplayName(Evidence.SingletonKind);
 	Candidate.Category = TEXT("Generic.SingletonControlFlow");
 	Candidate.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
 	Candidate.MatchReason = Evidence.Reason;
@@ -274,7 +153,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperSingletonControlFlowEvide
 	Candidate.bFromActionDatabase = false;
 	Candidate.bBlueprintCallable = true;
 	Candidate.bBlueprintPure = Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Select;
-	const FString KindName = SingletonKindToStableName(Evidence.SingletonKind);
+	const FString KindName = UGraphWriteActionResolverUtils::SingletonKindToStableName(Evidence.SingletonKind);
 	Candidate.ReadbackFacts.Add(
 		TEXT("generic.family"),
 		Evidence.SingletonKind == EBlueprintHelperSingletonControlFlowKind::Select ? TEXT("struct_select") : TEXT("control"));

@@ -12,162 +12,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegatePolicy.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
-
-namespace
-{
-static FBlueprintHelperActionResolutionResult MakeMissingEvidenceResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FString& MissingDetail,
-	const FString& Message)
-{
-	const FString MissingRequiredEvidenceBoundary = TEXT("missing_required_evidence");
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.ErrorCode = MissingDetail;
-	Result.Message = FString::Printf(TEXT("%s: %s: %s"), *MissingRequiredEvidenceBoundary, *MissingDetail, *Message);
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult MakeEventDelegateBlockedResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::Blocked;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult MakePolicyResult(
-	const FBlueprintHelperEventDelegatePolicyDecision& Decision)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = Decision.Status;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.ErrorCode = Decision.ErrorCode;
-	Result.Message = Decision.Message;
-	return Result;
-}
-
-static bool DelegateOperationRequiresHandler(const FString& Operation)
-{
-	return Operation.Equals(TEXT("bind"), ESearchCase::IgnoreCase)
-		|| Operation.Equals(TEXT("assign"), ESearchCase::IgnoreCase)
-		|| Operation.Equals(TEXT("unbind"), ESearchCase::IgnoreCase);
-}
-
-static TSubclassOf<UK2Node_BaseMCDelegate> DelegateNodeClassForOperation(const FString& Operation)
-{
-	if (Operation.Equals(TEXT("bind"), ESearchCase::IgnoreCase))
-	{
-		return UK2Node_AddDelegate::StaticClass();
-	}
-	if (Operation.Equals(TEXT("assign"), ESearchCase::IgnoreCase))
-	{
-		return UK2Node_AssignDelegate::StaticClass();
-	}
-	if (Operation.Equals(TEXT("unbind"), ESearchCase::IgnoreCase))
-	{
-		return UK2Node_RemoveDelegate::StaticClass();
-	}
-	if (Operation.Equals(TEXT("call"), ESearchCase::IgnoreCase))
-	{
-		return UK2Node_CallDelegate::StaticClass();
-	}
-	if (Operation.Equals(TEXT("clear"), ESearchCase::IgnoreCase))
-	{
-		return UK2Node_ClearDelegate::StaticClass();
-	}
-	return nullptr;
-}
-
-static FString MakeComponentBoundEventStableId(const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence)
-{
-	return FString::Printf(
-		TEXT("component_bound_event:%s:%s"),
-		*Evidence.DelegatePropertyPath,
-		*Evidence.ComponentBindingFieldPath);
-}
-
-static FString MakeDelegateStableId(const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence)
-{
-	FString StableId = FString::Printf(
-		TEXT("delegate:%s:%s"),
-		*Evidence.DelegateOperation,
-		*Evidence.DelegatePropertyPath);
-	if (DelegateOperationRequiresHandler(Evidence.DelegateOperation))
-	{
-		StableId += FString::Printf(TEXT(":%s"), *Evidence.HandlerName);
-	}
-	return StableId;
-}
-
-static FBlueprintHelperCallFunctionCandidateInfo MakeEventDelegateCandidateInfo(
-	const FString& StableId,
-	const FString& DisplayName,
-	UClass* NodeClass,
-	const FString& MatchReason)
-{
-	FBlueprintHelperCallFunctionCandidateInfo Candidate;
-	Candidate.StableId = StableId;
-	Candidate.DisplayName = DisplayName;
-	Candidate.Category = TEXT("EventDelegate");
-	Candidate.NodeClassPath = NodeClass ? NodeClass->GetPathName() : FString();
-	Candidate.MatchReason = MatchReason;
-	Candidate.Score = 100;
-	Candidate.bGraphCompatible = NodeClass != nullptr;
-	Candidate.bFromActionDatabase = true;
-	Candidate.bBlueprintCallable = true;
-	Candidate.bBlueprintPure = false;
-	return Candidate;
-}
-
-static FBlueprintHelperActionResolutionResult MakeResolvedEventDelegateResult(
-	const FString& StableId,
-	UBlueprintNodeSpawner* Spawner,
-	UClass* NodeClass,
-	const FString& DisplayName,
-	const FString& MatchReason,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::EventDelegateAction;
-	Result.Message = Message;
-	Result.SelectedStableId = StableId;
-	Result.SelectedSpawner = Spawner;
-	Result.CandidateActions.Add(MakeEventDelegateCandidateInfo(StableId, DisplayName, NodeClass, MatchReason));
-	return Result;
-}
-
-static FString EventDelegateEvidenceValue(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const TCHAR* Key)
-{
-	if (const FString* Value = Request.ContextEvidence.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
-}
-
-static bool ShouldReturnExistingBinding(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FBlueprintHelperEventDelegateUseSiteEvidence& Evidence,
-	FString& OutExistingBindingId)
-{
-	if (!Evidence.DuplicatePolicy.Equals(TEXT("return_existing"), ESearchCase::IgnoreCase))
-	{
-		return false;
-	}
-	OutExistingBindingId = EventDelegateEvidenceValue(Request, TEXT("event_delegate.existing_binding_evidence_id"));
-	return !OutExistingBindingId.IsEmpty();
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluster::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request,
@@ -190,18 +35,18 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			MissingDetail,
 			MissingMessage))
 		{
-			return MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
+			return UGraphWriteActionClusterUtils::MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
 		}
 		const FBlueprintHelperEventDelegatePolicyDecision PolicyDecision =
 			FBlueprintHelperEventDelegatePolicy::Evaluate(Request, Evidence);
 		if (!PolicyDecision.bAllowed)
 		{
-			return MakePolicyResult(PolicyDecision);
+			return UGraphWriteActionClusterUtils::MakePolicyResult(PolicyDecision);
 		}
 		FString ExistingBindingId;
-		if (ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
+		if (UGraphWriteActionClusterUtils::ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
 		{
-			return MakeResolvedEventDelegateResult(
+			return UGraphWriteActionClusterUtils::MakeResolvedEventDelegateResult(
 				ExistingBindingId,
 				nullptr,
 				UK2Node_ComponentBoundEvent::StaticClass(),
@@ -215,14 +60,14 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			Evidence.DelegateProperty);
 		if (!Spawner)
 		{
-			return MakeEventDelegateBlockedResult(
+			return UGraphWriteActionClusterUtils::MakeEventDelegateBlockedResult(
 				Request,
 				TEXT("component_bound_event_spawner_unavailable"),
 				FString::Printf(TEXT("Could not create component-bound event node spawner for delegate '%s'."), *Evidence.DelegateName));
 		}
 
-		const FString StableId = MakeComponentBoundEventStableId(Evidence);
-		return MakeResolvedEventDelegateResult(
+		const FString StableId = UGraphWriteActionClusterUtils::MakeComponentBoundEventStableId(Evidence);
+		return UGraphWriteActionClusterUtils::MakeResolvedEventDelegateResult(
 			StableId,
 			Spawner,
 			UK2Node_ComponentBoundEvent::StaticClass(),
@@ -243,29 +88,29 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			MissingDetail,
 			MissingMessage))
 		{
-			return MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
+			return UGraphWriteActionClusterUtils::MakeMissingEvidenceResult(Request, MissingDetail, MissingMessage);
 		}
 		const FBlueprintHelperEventDelegatePolicyDecision PolicyDecision =
 			FBlueprintHelperEventDelegatePolicy::Evaluate(Request, Evidence);
 		if (!PolicyDecision.bAllowed)
 		{
-			return MakePolicyResult(PolicyDecision);
+			return UGraphWriteActionClusterUtils::MakePolicyResult(PolicyDecision);
 		}
 
-		TSubclassOf<UK2Node_BaseMCDelegate> NodeClass = DelegateNodeClassForOperation(Evidence.DelegateOperation);
+		TSubclassOf<UK2Node_BaseMCDelegate> NodeClass = UGraphWriteActionClusterUtils::DelegateNodeClassForOperation(Evidence.DelegateOperation);
 		if (!NodeClass)
 		{
-			return MakeEventDelegateBlockedResult(
+			return UGraphWriteActionClusterUtils::MakeEventDelegateBlockedResult(
 				Request,
 				TEXT("delegate_operation_spawner_unavailable"),
 				FString::Printf(TEXT("No delegate spawner node class is available for operation '%s'."), *Evidence.DelegateOperation));
 		}
 
-		const FString StableId = MakeDelegateStableId(Evidence);
+		const FString StableId = UGraphWriteActionClusterUtils::MakeDelegateStableId(Evidence);
 		FString ExistingBindingId;
-		if (ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
+		if (UGraphWriteActionClusterUtils::ShouldReturnExistingBinding(Request, Evidence, ExistingBindingId))
 		{
-			return MakeResolvedEventDelegateResult(
+			return UGraphWriteActionClusterUtils::MakeResolvedEventDelegateResult(
 				ExistingBindingId,
 				nullptr,
 				NodeClass.Get(),
@@ -275,7 +120,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 		}
 		if (Evidence.DelegateOperation.Equals(TEXT("assign"), ESearchCase::IgnoreCase))
 		{
-			return MakeResolvedEventDelegateResult(
+			return UGraphWriteActionClusterUtils::MakeResolvedEventDelegateResult(
 				StableId,
 				nullptr,
 				NodeClass.Get(),
@@ -289,13 +134,13 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperEventDelegateActionCluste
 			Evidence.DelegateProperty);
 		if (!Spawner)
 		{
-			return MakeEventDelegateBlockedResult(
+			return UGraphWriteActionClusterUtils::MakeEventDelegateBlockedResult(
 				Request,
 				TEXT("delegate_node_spawner_unavailable"),
 				FString::Printf(TEXT("Could not create delegate node spawner for operation '%s' and delegate '%s'."), *Evidence.DelegateOperation, *Evidence.DelegateName));
 		}
 
-		return MakeResolvedEventDelegateResult(
+		return UGraphWriteActionClusterUtils::MakeResolvedEventDelegateResult(
 			StableId,
 			Spawner,
 			NodeClass.Get(),

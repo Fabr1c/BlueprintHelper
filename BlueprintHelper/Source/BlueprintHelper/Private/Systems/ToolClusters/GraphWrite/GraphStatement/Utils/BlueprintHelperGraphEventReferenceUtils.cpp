@@ -3,57 +3,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.h"
-
-namespace
-{
-static FString ReadStringField(
-	const TSharedPtr<FJsonObject>& Object,
-	const TCHAR* FieldName)
-{
-	FString Value;
-	if (Object.IsValid() && FieldName)
-	{
-		Object->TryGetStringField(FieldName, Value);
-	}
-	return Value.TrimStartAndEnd();
-}
-
-static void ReadStringMapField(
-	const TSharedPtr<FJsonObject>& Object,
-	const TCHAR* FieldName,
-	TMap<FString, FString>& OutMap)
-{
-	const TSharedPtr<FJsonObject>* MapObject = nullptr;
-	if (!Object.IsValid()
-		|| !FieldName
-		|| !Object->TryGetObjectField(FieldName, MapObject)
-		|| !MapObject
-		|| !MapObject->IsValid())
-	{
-		return;
-	}
-
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
-	{
-		if (!Pair.Key.IsEmpty())
-		{
-			OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value).TrimStartAndEnd());
-		}
-	}
-}
-
-static void AddMetadataIfPresent(
-	TMap<FString, FString>& OutMetadata,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		OutMetadata.Add(Key, CleanValue);
-	}
-}
-}
+#include "GraphWriteGraphStatementUtils.h"
 
 FString FBlueprintHelperGraphEventReferenceUtils::TaxonomyToString(EBlueprintHelperGraphEventTaxonomy Taxonomy)
 {
@@ -99,20 +49,20 @@ bool FBlueprintHelperGraphEventReferenceUtils::TryReadEntryReference(
 		return false;
 	}
 
-	OutReference.Kind = ReadStringField(EntryObject, TEXT("kind"));
-	OutReference.Name = ReadStringField(EntryObject, TEXT("name"));
-	OutReference.GraphName = ReadStringField(EntryObject, TEXT("graph"));
-	OutReference.SourceCluster = ReadStringField(EntryObject, TEXT("source_cluster"));
-	OutReference.SignatureEvidenceId = ReadStringField(EntryObject, TEXT("signature_evidence_id"));
+	OutReference.Kind = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("kind"));
+	OutReference.Name = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("name"));
+	OutReference.GraphName = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("graph"));
+	OutReference.SourceCluster = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("source_cluster"));
+	OutReference.SignatureEvidenceId = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("signature_evidence_id"));
 
-	FString TaxonomyText = ReadStringField(EntryObject, TEXT("event_taxonomy"));
+	FString TaxonomyText = UGraphWriteGraphStatementUtils::ReadStringField(EntryObject, TEXT("event_taxonomy"));
 	if (TaxonomyText.IsEmpty() && OutReference.Kind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase))
 	{
 		TaxonomyText = TEXT("custom_event");
 	}
 	OutReference.Taxonomy = ParseTaxonomy(TaxonomyText);
 
-	ReadStringMapField(EntryObject, TEXT("context_evidence"), OutReference.Metadata);
+	UGraphWriteGraphStatementUtils::ReadStringMapField(EntryObject, TEXT("context_evidence"), OutReference.Metadata);
 
 	if (OutReference.SourceCluster.IsEmpty())
 	{
@@ -131,12 +81,12 @@ void FBlueprintHelperGraphEventReferenceUtils::WriteMetadata(
 	const FBlueprintHelperGraphEventReference& Reference,
 	TMap<FString, FString>& OutMetadata)
 {
-	AddMetadataIfPresent(OutMetadata, TEXT("entry_kind"), Reference.Kind);
-	AddMetadataIfPresent(OutMetadata, TEXT("event_name"), Reference.Name);
-	AddMetadataIfPresent(OutMetadata, TEXT("graph_name"), Reference.GraphName);
-	AddMetadataIfPresent(OutMetadata, TEXT("event_taxonomy"), TaxonomyToString(Reference.Taxonomy));
-	AddMetadataIfPresent(OutMetadata, TEXT("source_cluster"), Reference.SourceCluster);
-	AddMetadataIfPresent(OutMetadata, TEXT("signature_evidence_id"), Reference.SignatureEvidenceId);
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("entry_kind"), Reference.Kind);
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("event_name"), Reference.Name);
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("graph_name"), Reference.GraphName);
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("event_taxonomy"), TaxonomyToString(Reference.Taxonomy));
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("source_cluster"), Reference.SourceCluster);
+	UGraphWriteGraphStatementUtils::AddMetadataIfPresent(OutMetadata, TEXT("signature_evidence_id"), Reference.SignatureEvidenceId);
 }
 
 bool FBlueprintHelperGraphEventReferenceUtils::IsSignatureOwnedTaxonomy(EBlueprintHelperGraphEventTaxonomy Taxonomy)
