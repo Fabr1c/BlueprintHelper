@@ -4,6 +4,7 @@
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeTransportTimingUtils.h"
+#include "Entry/Bridge/Utils/BlueprintHelperBridgeUtils.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
@@ -13,16 +14,6 @@
 #include "SocketSubsystem.h"
 
 DEFINE_LOG_CATEGORY(LogBlueprintHelperBridge);
-
-namespace
-{
-	static FBlueprintHelperBridgeRuntimeConfig BlueprintHelperBridgeConfigWithPort(int32 InPort)
-	{
-		FBlueprintHelperBridgeRuntimeConfig Config = FBlueprintHelperBridgeRuntimeConfigResolver::Load();
-		Config.Port = InPort;
-		return Config;
-	}
-}
 
 FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(
 	FBlueprintHelperBridgeRouter& InRouter,
@@ -39,7 +30,7 @@ FBlueprintHelperBridgeServer::FBlueprintHelperBridgeServer(
 	FBlueprintHelperBridgeRouter& InRouter,
 	int32 InPort,
 	const FBlueprintHelperDebugEntryService* InDebugEntryService)
-	: FBlueprintHelperBridgeServer(InRouter, BlueprintHelperBridgeConfigWithPort(InPort), InDebugEntryService)
+	: FBlueprintHelperBridgeServer(InRouter, UBlueprintHelperBridgeUtils::BridgeConfigWithPort(InPort), InDebugEntryService)
 {
 }
 

@@ -148,13 +148,13 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 			}
 			if (IsDedicatedControlFlowOperation(Operation))
 			{
-				if (Operation == TEXT("multi_gate") && EvidenceValue(Request, TEXT("generic.control.dynamic_output_count")).IsEmpty())
+				if (Operation == TEXT("multi_gate") && BoundaryRequestEvidenceValue(Request, TEXT("generic.control.dynamic_output_count")).IsEmpty())
 				{
 					return MakeNeedsContext(
 						TEXT("ControlFlowFragmentBuilder"),
 						TEXT("multi_gate requires generic.control.dynamic_output_count before the dedicated control-flow builder can run."));
 				}
-				if (Operation.StartsWith(TEXT("switch_")) && EvidenceValue(Request, TEXT("generic.control.case_values")).IsEmpty())
+				if (Operation.StartsWith(TEXT("switch_")) && BoundaryRequestEvidenceValue(Request, TEXT("generic.control.case_values")).IsEmpty())
 				{
 					return MakeNeedsContext(
 						TEXT("ControlFlowFragmentBuilder"),
@@ -166,13 +166,13 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 			}
 			if (IsStandardMacroControlOperation(Operation))
 			{
-				if (EvidenceValue(Request, TEXT("generic.macro.graph_path")).IsEmpty())
+				if (BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.graph_path")).IsEmpty())
 				{
 					return MakeNeedsContext(
 						TEXT("MacroControlFragmentBuilder"),
 						TEXT("StandardMacros control requires generic.macro.graph_path evidence."));
 				}
-				if (EvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot")).IsEmpty())
+				if (BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot")).IsEmpty())
 				{
 					return MakeNeedsContext(
 						TEXT("MacroControlFragmentBuilder"),
