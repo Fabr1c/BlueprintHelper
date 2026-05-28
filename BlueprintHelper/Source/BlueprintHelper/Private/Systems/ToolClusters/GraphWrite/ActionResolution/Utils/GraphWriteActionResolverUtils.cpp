@@ -1220,7 +1220,11 @@ UBlueprintNodeSpawner* UGraphWriteActionResolverUtils::CreateSwitchEnumSpawner(U
                 UK2Node_SwitchEnum* SwitchNode = Cast<UK2Node_SwitchEnum>(NewNode);
                 if (SwitchNode && EnumPtr.IsValid())
                 {
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
                     SwitchNode->SetEnum(EnumPtr.Get());
+#else
+                    SwitchNode->Enum = EnumPtr.Get();
+#endif
                 }
             });
     return UBlueprintNodeSpawner::Create(UK2Node_SwitchEnum::StaticClass(), nullptr, CustomizeSwitchEnum);

@@ -25,6 +25,7 @@
 #include "Misc/AutomationTest.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
+#include "Tests/GraphWrite/BlueprintHelperGraphWriteTestUtils.h"
 
 namespace
 {
@@ -237,59 +238,6 @@ static FBlueprintHelperGraphStatementIR MakeDelegateStatement(
 	return Statement;
 }
 
-static bool BuildActionContextScopeForStatement(
-	FAutomationTestBase& Test,
-	UBlueprint* Blueprint,
-	UEdGraph* Graph,
-	const FBlueprintHelperGraphStatementIR& Statement,
-	FBlueprintHelperActionContextScope& OutScope,
-	FString& OutError)
-{
-	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
-	Statements.Add(MakeShared<FBlueprintHelperGraphStatementIR>(Statement));
-
-	const TArray<FBlueprintHelperActionContextDemand> Demands =
-		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
-	Test.TestTrue(TEXT("action context demands exist"), Demands.Num() > 0);
-	if (Demands.Num() == 0)
-	{
-		OutError = TEXT("no_action_context_demands");
-		return false;
-	}
-
-	return FBlueprintHelperActionContextScope::Build(
-		Blueprint,
-		Graph,
-		Demands,
-		FBlueprintHelperActionContextScope::MakeRevision(
-			Blueprint,
-			Graph,
-			TEXT("event_delegate_fragment_tests"),
-			TEXT("gap5_task4")),
-		OutScope,
-		OutError);
-}
-
-template <typename TNode>
-static TNode* FindSingleFragmentNode(
-	FAutomationTestBase& Test,
-	const FBlueprintHelperNodeFragment& Fragment,
-	const TCHAR* Label)
-{
-	TNode* Result = nullptr;
-	int32 MatchCount = 0;
-	for (UEdGraphNode* Node : Fragment.Nodes)
-	{
-		if (TNode* TypedNode = Cast<TNode>(Node))
-		{
-			Result = TypedNode;
-			++MatchCount;
-		}
-	}
-
-	Test.TestEqual(FString::Printf(TEXT("%s count"), Label), MatchCount, 1);
-	return MatchCount == 1 ? Result : nullptr;
-}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -963,7 +911,7 @@ bool FBlueprintHelperEventDelegateComponentBoundFragmentBuildTest::RunTest(const
 	FString ScopeError;
 	TestTrue(
 		TEXT("build component-bound action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("component-bound scope error: %s"), *ScopeError));
@@ -988,7 +936,7 @@ bool FBlueprintHelperEventDelegateComponentBoundFragmentBuildTest::RunTest(const
 	}
 
 	UK2Node_ComponentBoundEvent* EventNode =
-		FindSingleFragmentNode<UK2Node_ComponentBoundEvent>(*this, Fragment, TEXT("component-bound event node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_ComponentBoundEvent>(*this, Fragment, TEXT("component-bound event node"));
 	TestNotNull(TEXT("component-bound primary node"), Fragment.PrimaryNode);
 	TestEqual(TEXT("fragment node count"), Fragment.Nodes.Num(), 1);
 	TestEqual(TEXT("fragment source statement id"), Fragment.SourceStatementId, Statement.StatementId);
@@ -997,7 +945,11 @@ bool FBlueprintHelperEventDelegateComponentBoundFragmentBuildTest::RunTest(const
 	TestEqual(TEXT("ownership semantic kind"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("component_bound_event")));
 	if (EventNode)
 	{
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 		TestEqual(TEXT("component property name"), EventNode->GetComponentPropertyName(), FName(TEXT("CollisionComponent")));
+#else
+		TestEqual(TEXT("component property name"), EventNode->ComponentPropertyName, FName(TEXT("CollisionComponent")));
+#endif
 		TestEqual(TEXT("delegate property name"), EventNode->DelegatePropertyName, FName(TEXT("OnComponentBeginOverlap")));
 	}
 	return bBuilt;
@@ -1028,7 +980,7 @@ bool FBlueprintHelperEventDelegateAssignFragmentBuildTest::RunTest(const FString
 	FString ScopeError;
 	TestTrue(
 		TEXT("build assign action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("assign scope error: %s"), *ScopeError));
@@ -1053,9 +1005,9 @@ bool FBlueprintHelperEventDelegateAssignFragmentBuildTest::RunTest(const FString
 	}
 
 	UK2Node_AssignDelegate* AssignNode =
-		FindSingleFragmentNode<UK2Node_AssignDelegate>(*this, Fragment, TEXT("assign node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_AssignDelegate>(*this, Fragment, TEXT("assign node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
-		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
 	TestEqual(TEXT("assign fragment node count"), Fragment.Nodes.Num(), 2);
 	TestEqual(TEXT("assign fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestTrue(TEXT("assign fragment review target includes statement id"), Fragment.ReviewTargets.Contains(Statement.StatementId));
@@ -1107,7 +1059,7 @@ bool FBlueprintHelperEventDelegateBindFragmentBuildTest::RunTest(const FString& 
 	FString ScopeError;
 	TestTrue(
 		TEXT("build bind action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("bind scope error: %s"), *ScopeError));
@@ -1132,9 +1084,9 @@ bool FBlueprintHelperEventDelegateBindFragmentBuildTest::RunTest(const FString& 
 	}
 
 	UK2Node_AddDelegate* BindNode =
-		FindSingleFragmentNode<UK2Node_AddDelegate>(*this, Fragment, TEXT("bind node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_AddDelegate>(*this, Fragment, TEXT("bind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
-		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
 	TestEqual(TEXT("bind fragment node count"), Fragment.Nodes.Num(), 2);
 	TestEqual(TEXT("bind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("bind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("bind")));
@@ -1179,7 +1131,7 @@ bool FBlueprintHelperEventDelegateUnbindFragmentBuildTest::RunTest(const FString
 	FString ScopeError;
 	TestTrue(
 		TEXT("build unbind action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("unbind scope error: %s"), *ScopeError));
@@ -1204,9 +1156,9 @@ bool FBlueprintHelperEventDelegateUnbindFragmentBuildTest::RunTest(const FString
 	}
 
 	UK2Node_RemoveDelegate* UnbindNode =
-		FindSingleFragmentNode<UK2Node_RemoveDelegate>(*this, Fragment, TEXT("unbind node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_RemoveDelegate>(*this, Fragment, TEXT("unbind node"));
 	UK2Node_CreateDelegate* CreateDelegateNode =
-		FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
+		FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_CreateDelegate>(*this, Fragment, TEXT("create delegate node"));
 	TestEqual(TEXT("unbind fragment node count"), Fragment.Nodes.Num(), 2);
 	TestEqual(TEXT("unbind fragment internal link count"), Fragment.InternalLinks.Num(), 1);
 	TestEqual(TEXT("unbind ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("unbind")));
@@ -1254,7 +1206,7 @@ bool FBlueprintHelperEventDelegateCallFragmentBuildTest::RunTest(const FString& 
 	FString ScopeError;
 	TestTrue(
 		TEXT("build call action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("call scope error: %s"), *ScopeError));
@@ -1278,7 +1230,7 @@ bool FBlueprintHelperEventDelegateCallFragmentBuildTest::RunTest(const FString& 
 		return false;
 	}
 
-	FindSingleFragmentNode<UK2Node_CallDelegate>(*this, Fragment, TEXT("call node"));
+	FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_CallDelegate>(*this, Fragment, TEXT("call node"));
 	TestEqual(TEXT("call fragment node count"), Fragment.Nodes.Num(), 1);
 	TestEqual(TEXT("call fragment internal link count"), Fragment.InternalLinks.Num(), 0);
 	TestEqual(TEXT("call ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("call")));
@@ -1318,7 +1270,7 @@ bool FBlueprintHelperEventDelegateClearFragmentBuildTest::RunTest(const FString&
 	FString ScopeError;
 	TestTrue(
 		TEXT("build clear action context scope"),
-		BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+		FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(*this, Blueprint, Graph, Statement, TEXT("action context demands exist"), TEXT("event_delegate_fragment_tests"), TEXT("gap5_task4"), ActionContextScope, ScopeError));
 	if (!ScopeError.IsEmpty())
 	{
 		AddInfo(FString::Printf(TEXT("clear scope error: %s"), *ScopeError));
@@ -1342,7 +1294,7 @@ bool FBlueprintHelperEventDelegateClearFragmentBuildTest::RunTest(const FString&
 		return false;
 	}
 
-	FindSingleFragmentNode<UK2Node_ClearDelegate>(*this, Fragment, TEXT("clear node"));
+	FBlueprintHelperGraphWriteTestUtils::FindSingleFragmentNode<UK2Node_ClearDelegate>(*this, Fragment, TEXT("clear node"));
 	TestEqual(TEXT("clear fragment node count"), Fragment.Nodes.Num(), 1);
 	TestEqual(TEXT("clear fragment internal link count"), Fragment.InternalLinks.Num(), 0);
 	TestEqual(TEXT("clear ownership delegate operation"), Fragment.OwnershipTags.FindRef(TEXT("delegate_operation")), FString(TEXT("clear")));

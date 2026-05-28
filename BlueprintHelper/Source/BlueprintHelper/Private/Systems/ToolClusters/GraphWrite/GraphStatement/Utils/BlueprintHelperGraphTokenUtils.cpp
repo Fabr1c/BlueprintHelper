@@ -1,4 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FString FBlueprintHelperGraphTokenUtils::NormalizeToken(const FString& Token)
 {
@@ -40,7 +41,7 @@ FString FBlueprintHelperGraphTokenUtils::NormalizeOpOperationToken(const FString
 	FString Clean = NormalizeFieldToken(Token);
 	if (Clean.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
 	{
-		Clean.RightChopInline(3, EAllowShrinking::No);
+		FBlueprintHelperVersionCompat::RightChopInlineNoShrink(Clean, 3);
 	}
 
 	if (Clean == TEXT("+")) return TEXT("add");
