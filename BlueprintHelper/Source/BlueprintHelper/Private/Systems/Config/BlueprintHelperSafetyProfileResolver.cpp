@@ -3,42 +3,15 @@
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 
 #include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
-
-namespace
-{
-FString BuildActiveProfileSafetyPath(const FString& ActiveProfile)
-{
-	const FString SanitizedProfile = ActiveProfile.IsEmpty() ? FString(TEXT("default")) : ActiveProfile;
-	return FString::Printf(TEXT("profiles.%s.safety_profile"), *SanitizedProfile);
-}
-
-EBlueprintHelperSafetyProfile ParseSafetyProfile(const FString& Profile)
-{
-	if (Profile.Equals(TEXT("readonly"), ESearchCase::IgnoreCase)
-		|| Profile.Equals(TEXT("read_only"), ESearchCase::IgnoreCase)
-		|| Profile.Equals(TEXT("read-only"), ESearchCase::IgnoreCase))
-	{
-		return EBlueprintHelperSafetyProfile::ReadOnly;
-	}
-	if (Profile.Equals(TEXT("standard"), ESearchCase::IgnoreCase))
-	{
-		return EBlueprintHelperSafetyProfile::Standard;
-	}
-	if (Profile.Equals(TEXT("autorepair"), ESearchCase::IgnoreCase))
-	{
-		return EBlueprintHelperSafetyProfile::AutoRepair;
-	}
-	return EBlueprintHelperSafetyProfile::Conservative;
-}
-}
+#include "Systems/Config/Utils/BlueprintHelperConfigUtils.h"
 
 EBlueprintHelperSafetyProfile FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfile()
 {
 	const FString ActiveProfile = FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("active_profile"), TEXT("default"));
 	const FString SafetyProfile = FBlueprintHelperRuntimeSettingResolver::GetString(
-		BuildActiveProfileSafetyPath(ActiveProfile),
+		UBlueprintHelperConfigUtils::BuildActiveProfileSafetyPath(ActiveProfile),
 		TEXT("standard"));
-	return ParseSafetyProfile(SafetyProfile);
+	return UBlueprintHelperConfigUtils::ParseSafetyProfile(SafetyProfile);
 }
 
 FString FBlueprintHelperSafetyProfileResolver::ResolveSafetyProfileString()

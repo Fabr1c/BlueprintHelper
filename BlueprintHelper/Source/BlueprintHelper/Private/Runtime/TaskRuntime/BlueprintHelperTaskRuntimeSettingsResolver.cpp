@@ -1,23 +1,10 @@
 // BlueprintHelper TaskRuntime settings resolver implementation.
 
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
+#include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeUtils.h"
 
 #include "Dom/JsonObject.h"
 #include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
-
-namespace
-{
-	static FString BlueprintHelperNormalizeDryRunMode(FString Mode)
-	{
-		Mode.TrimStartAndEndInline();
-		Mode = Mode.ToLower();
-		if (Mode == TEXT("quick") || Mode == TEXT("none"))
-		{
-			return Mode;
-		}
-		return TEXT("full");
-	}
-}
 
 FBlueprintHelperTaskRuntimeSettings FBlueprintHelperTaskRuntimeSettingsResolver::Load()
 {
@@ -79,7 +66,7 @@ FBlueprintHelperTaskRuntimeExecutionPolicySettings FBlueprintHelperTaskRuntimeSe
 	Settings.bShouldSave = FBlueprintHelperRuntimeSettingResolver::GetBool(
 		TEXT("runtime.task_runtime.execution_policy.should_save"),
 		Settings.bShouldSave);
-	Settings.DryRunMode = BlueprintHelperNormalizeDryRunMode(FBlueprintHelperRuntimeSettingResolver::GetString(
+	Settings.DryRunMode = UBlueprintHelperTaskRuntimeUtils::BlueprintHelperNormalizeDryRunMode(FBlueprintHelperRuntimeSettingResolver::GetString(
 		TEXT("runtime.task_runtime.execution_policy.dry_run_mode"),
 		Settings.DryRunMode));
 	return Settings;
@@ -111,7 +98,7 @@ FBlueprintHelperTaskRuntimeExecutionPolicySettings FBlueprintHelperTaskRuntimeSe
 	FString DryRunMode;
 	if ((*ExecutionPolicyPtr)->TryGetStringField(TEXT("dry_run_mode"), DryRunMode))
 	{
-		Policy.DryRunMode = BlueprintHelperNormalizeDryRunMode(DryRunMode);
+		Policy.DryRunMode = UBlueprintHelperTaskRuntimeUtils::BlueprintHelperNormalizeDryRunMode(DryRunMode);
 	}
 	return Policy;
 }
@@ -122,6 +109,6 @@ TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeSettingsResolver::MakeExecuti
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	Json->SetBoolField(TEXT("should_compile"), Policy.bShouldCompile);
 	Json->SetBoolField(TEXT("should_save"), Policy.bShouldSave);
-	Json->SetStringField(TEXT("dry_run_mode"), BlueprintHelperNormalizeDryRunMode(Policy.DryRunMode));
+	Json->SetStringField(TEXT("dry_run_mode"), UBlueprintHelperTaskRuntimeUtils::BlueprintHelperNormalizeDryRunMode(Policy.DryRunMode));
 	return Json;
 }

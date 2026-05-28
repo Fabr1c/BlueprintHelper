@@ -22,70 +22,7 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewStorePathUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
-
-namespace
-{
-	static FSimpleMulticastDelegate& BlueprintHelperReviewPendingReviewChangedDelegate()
-	{
-		static FSimpleMulticastDelegate Delegate;
-		return Delegate;
-	}
-
-	static void NormalizeReviewTargetSemanticSnapshots(
-		const FBlueprintHelperWriteReviewEvidence& Evidence,
-		FBlueprintHelperReviewAtomicTarget& Target)
-	{
-		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
-
-		if (!Target.BeforeSnapshotJson.IsEmpty())
-		{
-			Target.BaselineHash =
-				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(Target.BeforeSnapshotJson);
-		}
-		else
-		{
-			FString BaselineSnapshotJson;
-			FString BaselineSnapshotHash;
-			FString BaselineSnapshotError;
-			if (SnapshotService.TryLoadBaselineTargetSnapshot(
-				Evidence.ArchiveSessionId,
-				Target,
-				BaselineSnapshotJson,
-				BaselineSnapshotHash,
-				BaselineSnapshotError))
-			{
-				Target.BeforeSnapshotJson = BaselineSnapshotJson;
-				Target.BaselineHash = BaselineSnapshotHash;
-			}
-			else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added
-				&& !FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind))
-			{
-				FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
-					Target,
-					true,
-					Target.BeforeSnapshotJson,
-					Target.BaselineHash);
-			}
-		}
-
-		if (!Target.AfterSnapshotJson.IsEmpty())
-		{
-			Target.RecordedAfterHash =
-				FBlueprintHelperReviewBaselineSnapshotService::ComputeSemanticSnapshotHash(Target.AfterSnapshotJson);
-		}
-		else if (Target.RecordedAfterHash.IsEmpty())
-		{
-			FString AfterSnapshotJson;
-			FString AfterSnapshotHash;
-			FString AfterSnapshotError;
-			if (SnapshotService.CaptureTargetSnapshot(Target, AfterSnapshotJson, AfterSnapshotHash, AfterSnapshotError))
-			{
-				Target.AfterSnapshotJson = AfterSnapshotJson;
-				Target.RecordedAfterHash = AfterSnapshotHash;
-			}
-		}
-	}
-}
+#include "Systems/Review/Utils/BlueprintHelperReviewUtils.h"
 
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
 	const FString& GraphName,
@@ -993,14 +930,14 @@ TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::
 
 FDelegateHandle FBlueprintHelperReviewStoreService::AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const
 {
-	return BlueprintHelperReviewPendingReviewChangedDelegate().Add(Handler);
+	return UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Add(Handler);
 }
 
 void FBlueprintHelperReviewStoreService::RemovePendingReviewChangedHandler(FDelegateHandle Handle) const
 {
 	if (Handle.IsValid())
 	{
-		BlueprintHelperReviewPendingReviewChangedDelegate().Remove(Handle);
+		UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Remove(Handle);
 	}
 }
 
@@ -1008,13 +945,13 @@ void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged() const
 {
 	if (IsInGameThread())
 	{
-		BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
+		UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
 		return;
 	}
 
 	AsyncTask(ENamedThreads::GameThread, []()
 	{
-		BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
+		UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
 	});
 }
 
@@ -1140,7 +1077,7 @@ void FBlueprintHelperReviewStoreService::AddEvidenceAtomicTargets(
 		Target.ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
 			Target,
 			FBlueprintHelperReviewStoreTargetUtils::MakeReviewInternalMissingAnchorKey(Evidence.EvidenceId, Index));
-		NormalizeReviewTargetSemanticSnapshots(Evidence, Target);
+		UBlueprintHelperReviewUtils::NormalizeReviewTargetSemanticSnapshots(Evidence, Target);
 
 		FString NeedsActionReason;
 		if (!FBlueprintHelperReviewStoreTargetUtils::IsReviewEvidenceTargetComplete(Target, NeedsActionReason))

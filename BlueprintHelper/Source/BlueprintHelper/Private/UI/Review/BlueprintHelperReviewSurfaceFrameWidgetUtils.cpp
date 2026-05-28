@@ -4,14 +4,11 @@
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
 
-namespace
-{
-float GBlueprintHelperReviewFrameOuterPadding = 3.0f;
-float GBlueprintHelperReviewFrameActionPadding = 5.0f;
-FMargin GBlueprintHelperReviewFrameActionSpacing = FMargin(0.0f, 0.0f, 6.0f, 0.0f);
-float GBlueprintHelperReviewFrameFillAlpha = 0.60f;
-float GBlueprintHelperReviewFrameSelectedFillAlpha = 0.74f;
-}
+static float GBlueprintHelperReviewFrameOuterPadding = 3.0f;
+static float GBlueprintHelperReviewFrameActionPadding = 5.0f;
+static FMargin GBlueprintHelperReviewFrameActionSpacing = FMargin(0.0f, 0.0f, 6.0f, 0.0f);
+static float GBlueprintHelperReviewFrameFillAlpha = 0.60f;
+static float GBlueprintHelperReviewFrameSelectedFillAlpha = 0.74f;
 
 void BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
 	const float FrameOuterPadding,

@@ -9,6 +9,7 @@
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/SBlueprintHelperReviewDiffFrame.h"
+#include "UI/Review/Utils/BlueprintHelperReviewUIUtils.h"
 
 #include "Widgets/SCanvas.h"
 #include "Widgets/SNullWidget.h"
@@ -21,55 +22,6 @@ void BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
 	float FillAlpha,
 	float SelectedFillAlpha);
 
-namespace
-{
-static TSharedRef<SWidget> BlueprintHelperReviewBuildDiffFrameWidget(
-	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item,
-	const TSharedRef<SWidget>& Content,
-	bool bShowActions,
-	bool bFillBackground,
-	const FSlateColor& FrameColor,
-	const TFunction<FReply(const FBlueprintHelperReviewActionIntent&)>& OnReviewActionIntent,
-	const FBlueprintHelperReviewPanelSettings& ReviewPanelSettings,
-	bool bSelected)
-{
-	return SNew(SBlueprintHelperReviewDiffFrame)
-		.FrameColor(FrameColor)
-		.ShowActions(bShowActions && Item.IsValid())
-		.FillBackground(bFillBackground)
-		.Selected(bSelected)
-		.FrameOuterPadding(ReviewPanelSettings.DiffFrameOuterPadding)
-		.ActionPadding(ReviewPanelSettings.DiffActionPadding)
-		.ActionSpacing(ReviewPanelSettings.DiffActionSpacing)
-		.SurfaceOverlayFillAlpha(ReviewPanelSettings.SurfaceOverlayFillAlpha)
-		.SurfaceOverlaySelectedFillAlpha(ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha)
-		.OnAccept(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
-		{
-			return OnReviewActionIntent && Item.IsValid()
-				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Accept(
-					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
-						*Item,
-						EBlueprintHelperReviewSurface::Unknown,
-						Item->LocationKey),
-					TEXT("diff_frame")))
-				: FReply::Handled();
-		}))
-		.OnReject(FOnClicked::CreateLambda([Item, OnReviewActionIntent]()
-		{
-			return OnReviewActionIntent && Item.IsValid()
-				? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Reject(
-					FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
-						*Item,
-						EBlueprintHelperReviewSurface::Unknown,
-						Item->LocationKey),
-					TEXT("diff_frame")))
-				: FReply::Handled();
-		}))
-		[
-			Content
-		];
-}
-}
 
 FString FBlueprintHelperReviewSurfaceFrameBuilder::GetReviewTargetText(
 	const FBlueprintHelperReviewVisibleChange& Change,
@@ -238,7 +190,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		.Position(Frame.GeometryAnchor.Position)
 		.Size(Frame.GeometryAnchor.Size)
 		[
-			BlueprintHelperReviewBuildDiffFrameWidget(
+			UBlueprintHelperReviewUIUtils::BlueprintHelperReviewBuildDiffFrameWidget(
 				Frame.Item,
 				SNullWidget::NullWidget,
 				false,
@@ -291,7 +243,7 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildDiffFrame(
 		ReviewPanelSettings.DiffActionSpacing,
 		ReviewPanelSettings.SurfaceOverlayFillAlpha,
 		ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha);
-	return BlueprintHelperReviewBuildDiffFrameWidget(
+	return UBlueprintHelperReviewUIUtils::BlueprintHelperReviewBuildDiffFrameWidget(
 		Item,
 		Content,
 		bShowActions,

@@ -2,10 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewSurfaceFrameGeometryUtils.h"
 
-namespace
-{
-FVector2D GBlueprintHelperReviewSurfaceFrameGeometryPadding(10.0f, 10.0f);
-}
+static FVector2D GBlueprintHelperReviewSurfaceFrameGeometryPadding(10.0f, 10.0f);
 
 void BlueprintHelperReviewSetSurfaceFrameGeometryPadding(const FVector2D& Padding)
 {

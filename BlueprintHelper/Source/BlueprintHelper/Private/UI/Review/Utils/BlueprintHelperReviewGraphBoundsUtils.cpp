@@ -11,12 +11,9 @@
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 
-namespace
-{
-FVector2D GBlueprintHelperReviewGraphBoundsPadding(
+static FVector2D GBlueprintHelperReviewGraphBoundsPadding(
 	FBlueprintHelperReviewGraphBoundsUtils::CommentStylePadding,
 	FBlueprintHelperReviewGraphBoundsUtils::CommentStylePadding);
-}
 
 void FBlueprintHelperReviewGraphBoundsUtils::AddUniqueTrimmed(TArray<FString>& OutValues, FString Value)
 {
