@@ -1,235 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
-
-namespace BlueprintHelperActionContextInference
-{
-static bool MatchesToken(const FString& Value, const FString& Token)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	const FString CleanToken = Token.TrimStartAndEnd();
-	return !CleanValue.IsEmpty()
-		&& !CleanToken.IsEmpty()
-		&& (CleanValue.Equals(CleanToken, ESearchCase::IgnoreCase)
-			|| CleanValue.EndsWith(FString(TEXT(".")) + CleanToken, ESearchCase::IgnoreCase)
-			|| CleanToken.EndsWith(FString(TEXT(".")) + CleanValue, ESearchCase::IgnoreCase));
-}
-
-static void AddEvidenceIfPresent(
-	FBlueprintHelperResolvedActionContext& Context,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		Context.Evidence.FindOrAdd(Key) = CleanValue;
-	}
-}
-
-static void AddGuidEvidenceIfPresent(
-	FBlueprintHelperResolvedActionContext& Context,
-	const FString& Key,
-	const FGuid& Value)
-{
-	if (Value.IsValid())
-	{
-		AddEvidenceIfPresent(Context, Key, Value.ToString(EGuidFormats::Digits));
-	}
-}
-
-static FString SnapshotFactValue(const FBlueprintHelperActionContextFieldSnapshot& Field, const FString& Key)
-{
-	if (const FString* Value = Field.CapabilityFacts.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
-}
-
-static FString DemandFactValue(const FBlueprintHelperActionContextDemand& Demand, const FString& Key)
-{
-	if (const FString* Value = Demand.CapabilityFacts.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
-}
-
-static FString DescribePinTypeEvidence(const FBlueprintHelperCallFunctionPinType& PinType)
-{
-	if (!PinType.IsValid())
-	{
-		return FString();
-	}
-
-	TArray<FString> Parts;
-	if (!PinType.Category.IsEmpty())
-	{
-		Parts.Add(PinType.Category);
-	}
-	if (!PinType.SubCategory.IsEmpty())
-	{
-		Parts.Add(PinType.SubCategory);
-	}
-	if (!PinType.ObjectPath.IsEmpty())
-	{
-		Parts.Add(PinType.ObjectPath);
-	}
-	if (!PinType.ContainerType.IsEmpty())
-	{
-		Parts.Add(PinType.ContainerType);
-	}
-	return FString::Join(Parts, TEXT("|"));
-}
-
-static FBlueprintHelperCallFunctionPinType MakeFieldPinType(
-	const FBlueprintHelperActionContextFieldSnapshot& Field)
-{
-	FBlueprintHelperCallFunctionPinType PinType;
-	PinType.Category = Field.PinCategory;
-	PinType.SubCategory = Field.PinSubCategory;
-	PinType.ObjectPath = Field.PinSubCategoryObjectPath;
-	PinType.ContainerType = Field.PinContainerType;
-	return PinType;
-}
-
-static bool FindFirstLinkedPinType(
-	const FBlueprintHelperActionContextSnapshot& Snapshot,
-	const TArray<FString>& SymbolIds,
-	FBlueprintHelperCallFunctionPinType& OutPinType)
-{
-	for (const FString& SymbolId : SymbolIds)
-	{
-		if (const FBlueprintHelperCallFunctionPinType* PinType = Snapshot.SymbolPinTypes.Find(SymbolId))
-		{
-			if (PinType->IsValid())
-			{
-				OutPinType = *PinType;
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-static const FBlueprintHelperActionContextFieldSnapshot* FindField(
-	const FBlueprintHelperActionContextSnapshot& Snapshot,
-	const FBlueprintHelperActionContextDemand& Demand)
-{
-	const FString RequestedMemberGuid = DemandFactValue(Demand, TEXT("field.member_guid"));
-	if (!RequestedMemberGuid.IsEmpty())
-	{
-		if (const FBlueprintHelperActionContextFieldSnapshot* Match = Snapshot.Fields.FindByPredicate(
-			[&RequestedMemberGuid](const FBlueprintHelperActionContextFieldSnapshot& Field)
-			{
-				return SnapshotFactValue(Field, TEXT("field.member_guid")).Equals(RequestedMemberGuid, ESearchCase::IgnoreCase);
-			}))
-		{
-			return Match;
-		}
-	}
-
-	const FString RequestedMemberName = !DemandFactValue(Demand, TEXT("field.member_name")).IsEmpty()
-		? DemandFactValue(Demand, TEXT("field.member_name"))
-		: Demand.Query;
-	if (!RequestedMemberName.IsEmpty())
-	{
-		const FString RequestedScope = DemandFactValue(Demand, TEXT("field.local_scope"));
-		const FString RequestedOwnerClass = DemandFactValue(Demand, TEXT("field.owner_class"));
-		if (const FBlueprintHelperActionContextFieldSnapshot* Match = Snapshot.Fields.FindByPredicate(
-			[&RequestedMemberName, &RequestedScope, &RequestedOwnerClass](const FBlueprintHelperActionContextFieldSnapshot& Field)
-			{
-				const bool bScopeMatches = RequestedScope.IsEmpty() ||
-					SnapshotFactValue(Field, TEXT("field.local_scope")).Equals(RequestedScope, ESearchCase::IgnoreCase) ||
-					SnapshotFactValue(Field, TEXT("field.function_name")).Equals(RequestedScope, ESearchCase::IgnoreCase);
-				const bool bOwnerMatches = RequestedOwnerClass.IsEmpty() ||
-					Field.OwnerClassPath.Equals(RequestedOwnerClass, ESearchCase::IgnoreCase);
-				return bScopeMatches &&
-					bOwnerMatches &&
-					(MatchesToken(SnapshotFactValue(Field, TEXT("field.member_name")), RequestedMemberName) ||
-						MatchesToken(Field.Name, RequestedMemberName) ||
-						MatchesToken(Field.FieldPath, RequestedMemberName));
-			}))
-		{
-			return Match;
-		}
-	}
-
-	return Snapshot.Fields.FindByPredicate(
-		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
-		{
-			return Field.Name == Demand.TargetPath
-				|| Field.Name == Demand.PropertyPath
-				|| (!Demand.TargetPath.IsEmpty() && Demand.TargetPath.EndsWith(FString(TEXT(".")) + Field.Name));
-		});
-}
-
-static const FBlueprintHelperActionContextFieldSnapshot* FindDelegateField(
-	const FBlueprintHelperActionContextSnapshot& Snapshot,
-	const FBlueprintHelperActionContextDemand& Demand)
-{
-	return Snapshot.Fields.FindByPredicate(
-		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
-		{
-			if (!Field.bMulticastDelegate)
-			{
-				return false;
-			}
-			return MatchesToken(Field.Name, Demand.DelegateName)
-				|| MatchesToken(Field.Name, Demand.PropertyPath)
-				|| MatchesToken(Field.Name, Demand.Query)
-				|| MatchesToken(Field.FieldPath, Demand.PropertyPath);
-		});
-}
-
-static const FBlueprintHelperActionContextFieldSnapshot* FindComponentField(
-	const FBlueprintHelperActionContextSnapshot& Snapshot,
-	const FBlueprintHelperActionContextDemand& Demand)
-{
-	return Snapshot.Fields.FindByPredicate(
-		[&Demand](const FBlueprintHelperActionContextFieldSnapshot& Field)
-		{
-			if (!Field.bComponent)
-			{
-				return false;
-			}
-			const FString RequestedComponentName = DemandFactValue(Demand, TEXT("field.component_name"));
-			return MatchesToken(Field.Name, Demand.ComponentPath)
-				|| MatchesToken(Field.FieldPath, Demand.ComponentPath)
-				|| MatchesToken(Field.Name, Demand.TargetPath)
-				|| MatchesToken(Field.FieldPath, Demand.TargetPath)
-				|| MatchesToken(Field.Name, Demand.BindingObjectPath)
-				|| MatchesToken(Field.FieldPath, Demand.BindingObjectPath)
-				|| MatchesToken(Field.Name, RequestedComponentName)
-				|| MatchesToken(SnapshotFactValue(Field, TEXT("field.component_name")), RequestedComponentName);
-		});
-}
-
-static void ProjectFieldSnapshot(
-	FBlueprintHelperResolvedActionContext& Context,
-	const FBlueprintHelperActionContextDemand& Demand,
-	const FBlueprintHelperActionContextFieldSnapshot& Field)
-{
-	Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.owner_class"), Field.OwnerClassPath);
-	Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.member_name"), !SnapshotFactValue(Field, TEXT("field.member_name")).IsEmpty()
-		? SnapshotFactValue(Field, TEXT("field.member_name"))
-		: Field.Name);
-	for (const TPair<FString, FString>& FactPair : Field.CapabilityFacts)
-	{
-		Context.Semantic.CapabilityFacts.FindOrAdd(FactPair.Key, FactPair.Value);
-	}
-
-	AddEvidenceIfPresent(Context, TEXT("field.kind"), Field.Kind);
-	AddEvidenceIfPresent(Context, TEXT("field.member_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.member_name")));
-	AddEvidenceIfPresent(Context, TEXT("field.owner_class"), Field.OwnerClassPath);
-	for (const TPair<FString, FString>& FactPair : Context.Semantic.CapabilityFacts)
-	{
-		AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
-	}
-	AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionContextUtils.h"
 
 FBlueprintHelperResolvedActionContextBundle FBlueprintHelperActionContextInferenceService::Infer(
 	const FBlueprintHelperActionContextSnapshot& Snapshot,
@@ -335,15 +107,15 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	const FString ExplicitBindingProducerStatementId = Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_statement_id")).TrimStartAndEnd();
 	if (!ExplicitBindingKind.IsEmpty() || !ExplicitBindingEvidenceId.IsEmpty() || !ExplicitBindingPath.IsEmpty())
 	{
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_kind"), ExplicitBindingKind);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_evidence_id"), ExplicitBindingEvidenceId);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_path"), ExplicitBindingPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_statement_id"), ExplicitBindingProducerStatementId);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_kind"), ExplicitBindingKind);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_evidence_id"), ExplicitBindingEvidenceId);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_path"), ExplicitBindingPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.binding_object_statement_id"), ExplicitBindingProducerStatementId);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 			Context,
 			TEXT("event_delegate.binding_object_node_guid"),
 			Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_node_guid")));
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 			Context,
 			TEXT("event_delegate.binding_object_pin_name"),
 			Demand.DefaultValues.FindRef(TEXT("event_delegate.binding_object_pin_name")));
@@ -351,7 +123,7 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 			&& !ExplicitBindingProducerStatementId.IsEmpty()
 			&& !ExplicitBindingProducerStatementId.Equals(Demand.StatementId, ESearchCase::IgnoreCase))
 		{
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 				Context,
 				TEXT("event_delegate.binding_object_error"),
 				TEXT("binding_object_cross_statement_unsupported"));
@@ -387,13 +159,13 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		Context.Evidence.Add(TEXT("field_scope"), Demand.FieldScope);
 	}
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field_capability_id"), Demand.CapabilityId);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field_capability_id"), Demand.CapabilityId);
 	for (const TPair<FString, FString>& FactPair : Demand.CapabilityFacts)
 	{
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
 	}
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.blocking_reason"), Demand.BlockingReason);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.blocking_reason"), Demand.BlockingReason);
 	if (!Demand.FunctionOperation.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("function_operation"), Demand.FunctionOperation);
@@ -454,9 +226,9 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 			Context.Evidence.Add(TEXT("event_delegate.handler_scope_class_path"), Snapshot.Graph.BlueprintClassPath);
 		}
 	}
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_function_path"), Demand.HandlerFunctionPath);
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_source_cluster"), Demand.HandlerSourceCluster);
-	BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.signature_evidence_id"), Demand.SignatureEvidenceId);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_function_path"), Demand.HandlerFunctionPath);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.handler_source_cluster"), Demand.HandlerSourceCluster);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.signature_evidence_id"), Demand.SignatureEvidenceId);
 	if (!Demand.UnbindMode.IsEmpty())
 	{
 		Context.Evidence.Add(TEXT("event_delegate.unbind_mode"), Demand.UnbindMode);
@@ -475,7 +247,7 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 				|| DefaultPair.Key.StartsWith(TEXT("container."), ESearchCase::IgnoreCase)
 				|| DefaultPair.Key.StartsWith(TEXT("event_delegate."), ESearchCase::IgnoreCase))
 			{
-				BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, DefaultPair.Key, DefaultPair.Value);
+				UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, DefaultPair.Key, DefaultPair.Value);
 			}
 		}
 	}
@@ -484,7 +256,7 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 		Context.Evidence.Add(TEXT("argument_type_count"), LexToString(Demand.ArgumentTypes.Num()));
 		for (const TPair<FString, FString>& ArgumentTypePair : Demand.ArgumentTypes)
 		{
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 				Context,
 				FString::Printf(TEXT("event_delegate.call_arg.%s.pin_type"), *ArgumentTypePair.Key),
 				ArgumentTypePair.Value);
@@ -495,89 +267,89 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		FBlueprintHelperCallFunctionPinType LinkedSourcePinType;
 		if (!Context.Semantic.TargetObjectPinType.IsValid()
-			&& BlueprintHelperActionContextInference::FindFirstLinkedPinType(Snapshot, Demand.SourceSymbolIds, LinkedSourcePinType))
+			&& UGraphWriteActionContextUtils::FindFirstLinkedPinType(Snapshot, Demand.SourceSymbolIds, LinkedSourcePinType))
 		{
 			Context.Semantic.TargetObjectPinType = LinkedSourcePinType;
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 				Context,
 				TEXT("linked_source_pin_type"),
-				BlueprintHelperActionContextInference::DescribePinTypeEvidence(LinkedSourcePinType));
+				UGraphWriteActionContextUtils::DescribePinTypeEvidence(LinkedSourcePinType));
 		}
 
 		FBlueprintHelperCallFunctionPinType LinkedConsumerPinType;
 		if (!Context.Semantic.ExpectedReturnPinType.IsValid()
-			&& BlueprintHelperActionContextInference::FindFirstLinkedPinType(Snapshot, Demand.ConsumerSymbolIds, LinkedConsumerPinType))
+			&& UGraphWriteActionContextUtils::FindFirstLinkedPinType(Snapshot, Demand.ConsumerSymbolIds, LinkedConsumerPinType))
 		{
 			Context.Semantic.ExpectedReturnPinType = LinkedConsumerPinType;
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 				Context,
 				TEXT("linked_consumer_pin_type"),
-				BlueprintHelperActionContextInference::DescribePinTypeEvidence(LinkedConsumerPinType));
+				UGraphWriteActionContextUtils::DescribePinTypeEvidence(LinkedConsumerPinType));
 		}
 	}
 
 	if (const FBlueprintHelperActionContextFieldSnapshot* Field =
-		BlueprintHelperActionContextInference::FindField(Snapshot, Demand))
+		UGraphWriteActionContextUtils::FindField(Snapshot, Demand))
 	{
 		if (Demand.SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
 		{
 			const FBlueprintHelperCallFunctionPinType TargetPinType =
-				BlueprintHelperActionContextInference::MakeFieldPinType(*Field);
+				UGraphWriteActionContextUtils::MakeFieldPinType(*Field);
 			if (TargetPinType.IsValid())
 			{
 				Context.Semantic.ArgumentPinTypes.Add(TEXT("target"), TargetPinType);
-				BlueprintHelperActionContextInference::AddEvidenceIfPresent(
+				UGraphWriteActionContextUtils::AddEvidenceIfPresent(
 					Context,
 					TEXT("container_target_pin_type"),
-					BlueprintHelperActionContextInference::DescribePinTypeEvidence(TargetPinType));
+					UGraphWriteActionContextUtils::DescribePinTypeEvidence(TargetPinType));
 			}
 		}
 		else
 		{
 			Context.Semantic.TargetObjectType = Field->OwnerClassPath;
 		}
-		BlueprintHelperActionContextInference::ProjectFieldSnapshot(Context, Demand, *Field);
+		UGraphWriteActionContextUtils::ProjectFieldSnapshot(Context, Demand, *Field);
 		Context.Evidence.Add(TEXT("field_name"), Field->Name);
 		Context.Evidence.Add(TEXT("field_pin_category"), Field->PinCategory);
 		Context.Evidence.Add(TEXT("field_pin_sub_category"), Field->PinSubCategory);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field_pin_container"), Field->PinContainerType);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field_pin_container"), Field->PinContainerType);
 		Context.Evidence.Add(TEXT("field_owner_class"), Field->OwnerClassPath);
 	}
 
 	if (const FBlueprintHelperActionContextFieldSnapshot* DelegateField =
-		BlueprintHelperActionContextInference::FindDelegateField(Snapshot, Demand))
+		UGraphWriteActionContextUtils::FindDelegateField(Snapshot, Demand))
 	{
 		Context.Semantic.PropertyPath = DelegateField->Name;
 		Context.Semantic.TargetObjectType = DelegateField->OwnerClassPath;
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_owner_class_path"), DelegateField->OwnerClassPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_name"), DelegateField->Name);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_path"), DelegateField->FieldPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature_function_path"), DelegateField->DelegateSignatureFunctionPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_owner_class_path"), DelegateField->OwnerClassPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_name"), DelegateField->Name);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_property_path"), DelegateField->FieldPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature_function_path"), DelegateField->DelegateSignatureFunctionPath);
 		if (Demand.DelegateSignature.IsEmpty())
 		{
-			BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature"), DelegateField->DelegateSignatureFunctionPath);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.delegate_signature"), DelegateField->DelegateSignatureFunctionPath);
 		}
 		Context.Evidence.FindOrAdd(TEXT("event_delegate.delegate_blueprint_assignable")) = DelegateField->bBlueprintAssignable ? TEXT("true") : TEXT("false");
 		Context.Evidence.FindOrAdd(TEXT("event_delegate.delegate_blueprint_callable")) = DelegateField->bBlueprintCallable ? TEXT("true") : TEXT("false");
 	}
 
 	if (const FBlueprintHelperActionContextFieldSnapshot* ComponentField =
-		BlueprintHelperActionContextInference::FindComponentField(Snapshot, Demand))
+		UGraphWriteActionContextUtils::FindComponentField(Snapshot, Demand))
 	{
-		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), !BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_name")).IsEmpty()
-			? BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_name"))
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), !UGraphWriteActionContextUtils::SnapshotFactValue(*ComponentField, TEXT("field.component_name")).IsEmpty()
+			? UGraphWriteActionContextUtils::SnapshotFactValue(*ComponentField, TEXT("field.component_name"))
 			: ComponentField->Name);
-		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_owner_class"), !BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class")).IsEmpty()
-			? BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class"))
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_owner_class"), !UGraphWriteActionContextUtils::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class")).IsEmpty()
+			? UGraphWriteActionContextUtils::SnapshotFactValue(*ComponentField, TEXT("field.component_owner_class"))
 			: ComponentField->OwnerClassPath);
-		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_kind"), BlueprintHelperActionContextInference::SnapshotFactValue(*ComponentField, TEXT("field.component_kind")));
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_owner_class_path"), ComponentField->OwnerClassPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_property_name"), ComponentField->Name);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_field_path"), ComponentField->FieldPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_class_path"), ComponentField->PinSubCategoryObjectPath);
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_name")));
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_owner_class"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_owner_class")));
-		BlueprintHelperActionContextInference::AddEvidenceIfPresent(Context, TEXT("field.component_kind"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_kind")));
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.component_kind"), UGraphWriteActionContextUtils::SnapshotFactValue(*ComponentField, TEXT("field.component_kind")));
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_owner_class_path"), ComponentField->OwnerClassPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_property_name"), ComponentField->Name);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_binding_field_path"), ComponentField->FieldPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("event_delegate.component_class_path"), ComponentField->PinSubCategoryObjectPath);
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.component_name"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_name")));
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.component_owner_class"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_owner_class")));
+		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.component_kind"), Context.Semantic.CapabilityFacts.FindRef(TEXT("field.component_kind")));
 	}
 
 	if (!Snapshot.Graph.GraphName.IsEmpty())

@@ -65,7 +65,7 @@ static FString GetRequestedOpOperationId(const FBlueprintHelperActionResolutionR
 	return FString();
 }
 
-static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprintHelperCallFunctionResolveStatus Status)
+static EBlueprintHelperActionResolutionStatus MapOperatorFunctionResolveStatus(EBlueprintHelperCallFunctionResolveStatus Status)
 {
 	switch (Status)
 	{
@@ -116,7 +116,7 @@ static FBlueprintHelperActionResolutionResult MakeCallableOpResult(
 	const FBlueprintHelperCallFunctionResolveResult& CallResult)
 {
 	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = MapFunctionResolveStatus(CallResult.Status);
+	Result.Status = MapOperatorFunctionResolveStatus(CallResult.Status);
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 	Result.ErrorCode = CallResult.ErrorCode;
 	Result.Message = CallResult.Message;

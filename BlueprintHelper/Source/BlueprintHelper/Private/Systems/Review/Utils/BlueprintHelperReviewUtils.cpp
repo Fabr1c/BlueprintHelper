@@ -36,7 +36,7 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperReviewStoreMerge, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperReviewUtils, Log, All);
 
 // ====================================================================
 // ConfigResolver
@@ -538,7 +538,7 @@ void UBlueprintHelperReviewUtils::BlueprintHelperReviewLogFoldedVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Incoming)
 {
 	UE_LOG(
-		LogBlueprintHelperReviewStoreMerge,
+		LogBlueprintHelperReviewUtils,
 		Verbose,
 		TEXT("Folded duplicated visible change context=%s reason=%s existing_change_id=%s incoming_change_id=%s asset=%s existing_kind=%s incoming_kind=%s"),
 		Context ? Context : TEXT("unknown"),

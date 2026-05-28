@@ -1,33 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOpCallableEvidence.h"
-
-namespace
-{
-static FString GetEvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const FString& Key)
-{
-	if (const FString* Value = Request.ContextEvidence.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
-}
-
-static FString ReadRequestedOperationId(const FBlueprintHelperActionResolutionRequest& Request)
-{
-	const FString FunctionOperation = Request.Semantic.FunctionOperation.TrimStartAndEnd();
-	if (FunctionOperation.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
-	{
-		return FunctionOperation;
-	}
-
-	const FString EvidenceOperation = GetEvidenceValue(Request, TEXT("op.operation_id"));
-	if (!EvidenceOperation.IsEmpty())
-	{
-		return EvidenceOperation;
-	}
-
-	return FString();
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionEvidenceUtils.h"
 
 bool FBlueprintHelperOpCallableEvidenceReader::Read(
 	const FBlueprintHelperActionResolutionRequest& Request,
@@ -39,7 +11,7 @@ bool FBlueprintHelperOpCallableEvidenceReader::Read(
 	OutErrorCode.Reset();
 	OutMessage.Reset();
 
-	const FString OperationId = FBlueprintHelperOpCallableCatalog::NormalizeOperationId(ReadRequestedOperationId(Request));
+	const FString OperationId = FBlueprintHelperOpCallableCatalog::NormalizeOperationId(UGraphWriteActionEvidenceUtils::ReadRequestedOperationId(Request));
 	if (OperationId.IsEmpty())
 	{
 		OutErrorCode = TEXT("missing_op_operation");
@@ -66,7 +38,7 @@ bool FBlueprintHelperOpCallableEvidenceReader::Read(
 
 	for (const FString& RequiredKey : Spec->RequiredEvidenceKeys)
 	{
-		if (GetEvidenceValue(Request, RequiredKey).IsEmpty())
+		if (UGraphWriteActionEvidenceUtils::GetOpCallableEvidenceValue(Request, RequiredKey).IsEmpty())
 		{
 			OutErrorCode = FString::Printf(TEXT("missing_op_evidence.%s"), *RequiredKey);
 			OutMessage = FString::Printf(TEXT("Op operation %s requires evidence key %s."), *OperationId, *RequiredKey);
