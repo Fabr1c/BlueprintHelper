@@ -4,6 +4,7 @@
 #include "Engine/Blueprint.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 namespace
 {
@@ -21,11 +22,6 @@ static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprin
 	default:
 		return EBlueprintHelperActionResolutionStatus::NotFound;
 	}
-}
-
-static FString NormalizeOperation(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
 }
 
 static FString GetDefaultValue(

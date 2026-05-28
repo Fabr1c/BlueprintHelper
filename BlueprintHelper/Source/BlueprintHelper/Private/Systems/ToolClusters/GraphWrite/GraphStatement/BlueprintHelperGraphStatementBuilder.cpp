@@ -29,6 +29,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentWrappers.h"
 
 static void ApplyCallPatternBindings(FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
@@ -95,46 +98,9 @@ static FString MakeExpressionActionContextStatementId(const FBlueprintHelperGrap
 	return FString::Printf(TEXT("expression:%s"), *Expression.Path);
 }
 
-static FString ContextEvidenceValue(
-	const TMap<FString, FString>& ContextEvidence,
-	const FString& Key)
-{
-	const FString* Value = ContextEvidence.Find(Key);
-	return Value ? Value->TrimStartAndEnd() : FString();
-}
-
-static FString FirstNonEmptyString(const FString& First, const FString& Second)
-{
-	return First.TrimStartAndEnd().IsEmpty()
-		? Second.TrimStartAndEnd()
-		: First.TrimStartAndEnd();
-}
-
-static FString FirstNonEmptyString(const FString& First, const FString& Second, const FString& Third)
-{
-	return FirstNonEmptyString(FirstNonEmptyString(First, Second), Third);
-}
-
-static FString NormalizeScheduleOperationToken(const FString& ScheduleOperation)
-{
-	return ScheduleOperation.TrimStartAndEnd().ToLower();
-}
-
 static bool IsTimerDelegateScheduleOperation(const FString& ScheduleOperation)
 {
 	return NormalizeScheduleOperationToken(ScheduleOperation) == TEXT("timer_delegate_node");
-}
-
-static void AddOwnershipTagIfPresent(
-	FBlueprintHelperNodeFragment& OutFragment,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString TrimmedValue = Value.TrimStartAndEnd();
-	if (!TrimmedValue.IsEmpty())
-	{
-		OutFragment.OwnershipTags.Add(Key, TrimmedValue);
-	}
 }
 
 static bool TryBuildProjectedActionRequestFromContext(

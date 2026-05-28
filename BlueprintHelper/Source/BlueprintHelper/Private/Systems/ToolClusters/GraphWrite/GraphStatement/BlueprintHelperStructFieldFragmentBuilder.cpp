@@ -2,14 +2,7 @@
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericOpsEvidence.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperFieldFragmentBuilder.h"
-
-namespace
-{
-static FString NormalizeOperation(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 bool FBlueprintHelperStructFieldFragmentBuilder::SupportsOperation(const FString& Operation)
 {

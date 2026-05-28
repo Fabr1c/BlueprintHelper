@@ -7,7 +7,7 @@
 
 namespace
 {
-static void AddOwnershipTagIfPresent(
+static void AddOrKeepOwnershipTagIfPresent(
 	FBlueprintHelperNodeFragment& Fragment,
 	const FString& Key,
 	const FString& Value)
@@ -29,18 +29,18 @@ static void AppendResolvedActionCandidateFacts(
 	}
 
 	const FBlueprintHelperActionCandidate& Candidate = ActionResult.CandidateActions[0];
-	AddOwnershipTagIfPresent(OutFragment, TEXT("capability_id"), Candidate.CapabilityId);
-	AddOwnershipTagIfPresent(OutFragment, TEXT("expected_node_family"), Candidate.ExpectedNodeFamily);
-	AddOwnershipTagIfPresent(OutFragment, TEXT("expected_node_class"), Candidate.ExpectedNodeClassPath);
-	AddOwnershipTagIfPresent(OutFragment, TEXT("node_class"), Candidate.NodeClassPath);
+	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("capability_id"), Candidate.CapabilityId);
+	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("expected_node_family"), Candidate.ExpectedNodeFamily);
+	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("expected_node_class"), Candidate.ExpectedNodeClassPath);
+	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("node_class"), Candidate.NodeClassPath);
 
 	for (const TPair<FString, FString>& FactPair : Candidate.CapabilityFacts)
 	{
-		AddOwnershipTagIfPresent(OutFragment, TEXT("capability.") + FactPair.Key, FactPair.Value);
+		AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("capability.") + FactPair.Key, FactPair.Value);
 	}
 	for (const TPair<FString, FString>& FactPair : Candidate.ReadbackFacts)
 	{
-		AddOwnershipTagIfPresent(OutFragment, TEXT("readback.") + FactPair.Key, FactPair.Value);
+		AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("readback.") + FactPair.Key, FactPair.Value);
 	}
 }
 }

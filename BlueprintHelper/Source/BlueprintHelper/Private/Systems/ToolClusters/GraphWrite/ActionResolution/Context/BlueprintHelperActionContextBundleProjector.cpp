@@ -1,4 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 
 namespace
 {
@@ -15,11 +16,6 @@ static void AppendPinType(FString& Stable, const FBlueprintHelperCallFunctionPin
 	Stable += PinType.bIsReference ? TEXT("ref") : TEXT("value");
 	Stable += TEXT(".");
 	Stable += PinType.bIsConst ? TEXT("const") : TEXT("mutable");
-}
-
-static FString StableHashString(const FString& Stable)
-{
-	return LexToString(GetTypeHash(Stable));
 }
 
 static FString BuildSemanticConstraintsHash(

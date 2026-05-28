@@ -14,6 +14,7 @@
 #include "K2Node_SwitchName.h"
 #include "K2Node_SwitchString.h"
 #include "UObject/WeakObjectPtr.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 namespace
 {
@@ -23,17 +24,7 @@ static bool IsGenericNodeSpawnerSemantic(const EBlueprintHelperActionSemanticKin
 		|| Kind == EBlueprintHelperActionSemanticKind::Control;
 }
 
-static FString Clean(const FString& Value)
-{
-	return Value.TrimStartAndEnd();
-}
-
-static FString NormalizeOperation(const FString& Value)
-{
-	return Clean(Value).ToLower();
-}
-
-static FString EvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
+static FString ControlRequestEvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
 {
 	if (const FString* Value = Request.ContextEvidence.Find(Key))
 	{
@@ -48,7 +39,7 @@ static FString EvidenceValue(const FBlueprintHelperActionResolutionRequest& Requ
 
 static FString ResolveControlOperation(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	const FString EvidenceOperation = EvidenceValue(Request, TEXT("generic.control.operation"));
+	const FString EvidenceOperation = ControlRequestEvidenceValue(Request, TEXT("generic.control.operation"));
 	return NormalizeOperation(EvidenceOperation.IsEmpty() ? Request.Semantic.Query : EvidenceOperation);
 }
 
@@ -225,7 +216,7 @@ static UBlueprintNodeSpawner* CreateMacroInstanceSpawner(UEdGraph* MacroGraph)
 
 static UEnum* ResolveEnumEvidence(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	const FString EnumPath = EvidenceValue(Request, TEXT("generic.control.enum_path"));
+	const FString EnumPath = ControlRequestEvidenceValue(Request, TEXT("generic.control.enum_path"));
 	if (EnumPath.IsEmpty())
 	{
 		return nullptr;
@@ -239,7 +230,7 @@ static UEnum* ResolveEnumEvidence(const FBlueprintHelperActionResolutionRequest&
 
 static UEdGraph* ResolveMacroGraphEvidence(const FBlueprintHelperActionResolutionRequest& Request)
 {
-	const FString GraphPath = EvidenceValue(Request, TEXT("generic.macro.graph_path"));
+	const FString GraphPath = ControlRequestEvidenceValue(Request, TEXT("generic.macro.graph_path"));
 	if (GraphPath.IsEmpty())
 	{
 		return nullptr;
@@ -255,8 +246,8 @@ static FBlueprintHelperActionResolutionResult ResolveDedicatedControlFlowNodeSpa
 	const FBlueprintHelperActionResolutionRequest& Request)
 {
 	const FString Operation = ResolveControlOperation(Request);
-	const FString CaseValues = EvidenceValue(Request, TEXT("generic.control.case_values"));
-	const FString DynamicOutputCount = EvidenceValue(Request, TEXT("generic.control.dynamic_output_count"));
+	const FString CaseValues = ControlRequestEvidenceValue(Request, TEXT("generic.control.case_values"));
+	const FString DynamicOutputCount = ControlRequestEvidenceValue(Request, TEXT("generic.control.dynamic_output_count"));
 
 	TSubclassOf<UEdGraphNode> NodeClass = nullptr;
 	UBlueprintNodeSpawner* Spawner = nullptr;
@@ -375,8 +366,8 @@ static FBlueprintHelperActionResolutionResult ResolveStandardMacroNodeSpawner(
 			FString::Printf(TEXT("Unsupported StandardMacros GenericOps operation '%s'."), *Operation));
 	}
 
-	const FString GraphPath = EvidenceValue(Request, TEXT("generic.macro.graph_path"));
-	const FString PinShapeSnapshot = EvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot"));
+	const FString GraphPath = ControlRequestEvidenceValue(Request, TEXT("generic.macro.graph_path"));
+	const FString PinShapeSnapshot = ControlRequestEvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot"));
 	if (GraphPath.IsEmpty() || PinShapeSnapshot.IsEmpty())
 	{
 		return MakeInvalidGenericNodeSpawnerResult(
