@@ -10,6 +10,13 @@
 #include "Modules/ModuleManager.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetActionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/BlueprintHelperGraphActionUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
+
+#define MakeInvalidResult FBlueprintHelperGraphActionUtils::MakeInvalidResult
+#define MakeUnsupportedResult FBlueprintHelperGraphActionUtils::MakeUnsupportedResult
+#define HasFunctionBackedOperationEvidence FBlueprintHelperGraphActionUtils::HasFunctionBackedOperationEvidence
+#define ResolveClassEvidence FBlueprintHelperGraphActionUtils::ResolveClassEvidence
 
 namespace
 {
@@ -45,30 +52,6 @@ static FString DescribePinType(const FBlueprintHelperCallFunctionPinType& PinTyp
 	return FString::Join(Parts, TEXT("|"));
 }
 
-static FString FirstNonEmpty(const FString& First, const FString& Second)
-{
-	return First.TrimStartAndEnd().IsEmpty() ? Second.TrimStartAndEnd() : First.TrimStartAndEnd();
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second), Third);
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
-}
-
-static FString ResolveClassEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	return FirstNonEmpty(
-		Semantic.ClassPath,
-		Semantic.TargetPath,
-		Semantic.TypeName,
-		Semantic.Query);
-}
-
 static FString ResolveContainerElementEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
 {
 	return FirstNonEmpty(
@@ -91,35 +74,6 @@ static FString ResolveContainerValueEvidence(const FBlueprintHelperActionSemanti
 		Semantic.ArgumentTypes.FindRef(TEXT("value")),
 		Semantic.ArgumentTypes.FindRef(TEXT("element")),
 		DescribePinType(Semantic.ContainerValuePinType));
-}
-
-static FBlueprintHelperActionResolutionResult MakeInvalidResult(
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult MakeUnsupportedResult(
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-
-static bool HasFunctionBackedOperationEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	return !Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty();
 }
 
 static bool IsFunctionBackedCreateOperation(const FString& Operation)

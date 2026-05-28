@@ -8,19 +8,11 @@
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Select.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 
 namespace
 {
-static FString NormalizeSingletonControlQuery(const FString& Query)
-{
-	FString Normalized = Query.TrimStartAndEnd();
-	Normalized.ToLowerInline();
-	Normalized.ReplaceInline(TEXT(" "), TEXT(""));
-	Normalized.ReplaceInline(TEXT("_"), TEXT(""));
-	Normalized.ReplaceInline(TEXT("-"), TEXT(""));
-	return Normalized;
-}
-
 static const TCHAR* SingletonKindToStableName(const EBlueprintHelperSingletonControlFlowKind Kind)
 {
 	switch (Kind)
@@ -77,11 +69,6 @@ static EBlueprintHelperActionSemanticKind SingletonKindToSemanticKind(const EBlu
 	return Kind == EBlueprintHelperSingletonControlFlowKind::Select
 		? EBlueprintHelperActionSemanticKind::Select
 		: EBlueprintHelperActionSemanticKind::Control;
-}
-
-static FString StableHashString(const FString& Stable)
-{
-	return LexToString(GetTypeHash(Stable));
 }
 
 static void AppendObjectIdentity(FString& Stable, const TCHAR* Label, const UObject* Object)

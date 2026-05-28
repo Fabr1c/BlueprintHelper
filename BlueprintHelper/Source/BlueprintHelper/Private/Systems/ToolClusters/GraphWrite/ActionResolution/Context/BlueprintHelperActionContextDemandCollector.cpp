@@ -1,40 +1,10 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 namespace BlueprintHelperActionContextDemandCollector
 {
-static FString FirstNonEmpty(const FString& First, const FString& Second)
-{
-	return First.IsEmpty() ? Second : First;
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second), Third);
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth, const FString& Fifth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth), Fifth);
-}
-
-static FString FirstNonEmpty(
-	const FString& First,
-	const FString& Second,
-	const FString& Third,
-	const FString& Fourth,
-	const FString& Fifth,
-	const FString& Sixth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third, Fourth, Fifth), Sixth);
-}
-
 static FString EvidenceValue(const TMap<FString, FString>& Evidence, const FString& Key)
 {
 	if (const FString* Value = Evidence.Find(Key))
@@ -1168,7 +1138,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		SemanticKind,
 		BlueprintHelperActionContextDemandCollector::BuildStatementQuery(Statement, SemanticKind),
 		BlueprintHelperActionContextDemandCollector::BuildStatementTargetPath(Statement, SemanticKind),
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
+		FirstNonEmpty(
 			Statement.Property,
 			Statement.ResolvedTarget.PropertyPath),
 		Statement.ResolvedTarget.Type,
@@ -1188,7 +1158,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 		Statement.TransformOperation,
 		Statement.ScheduleOperation,
 		Statement.ClassPath,
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(Statement.Target, Statement.Name),
+		FirstNonEmpty(Statement.Target, Statement.Name),
 		Statement.GraphLatentAllowed,
 		Demand);
 	BlueprintHelperActionContextDemandCollector::ApplyFunctionSemanticOperations(Demand);
@@ -1273,14 +1243,14 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		Expression.Path,
 		SemanticKind,
 		BlueprintHelperActionContextDemandCollector::BuildExpressionQuery(Expression, SemanticKind),
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
+		FirstNonEmpty(
 			Expression.ResolvedTarget.Raw,
 			Expression.Target,
 			Expression.Name),
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
+		FirstNonEmpty(
 			Expression.Property,
 			Expression.ResolvedTarget.PropertyPath),
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(
+		FirstNonEmpty(
 			Expression.Type,
 			Expression.ResolvedTarget.Type),
 		Expression.SearchMode,
@@ -1303,7 +1273,7 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		Expression.TransformOperation,
 		Expression.ScheduleOperation,
 		Expression.ClassPath,
-		BlueprintHelperActionContextDemandCollector::FirstNonEmpty(Expression.Target, Expression.Name),
+		FirstNonEmpty(Expression.Target, Expression.Name),
 		Expression.GraphLatentAllowed,
 		Demand);
 	Demand.ExpectedReturnType = Expression.Type;

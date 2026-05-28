@@ -9,38 +9,16 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericTransformSpawnerFactory.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperProjectedSpawnerEvidence.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperTypePromotionSpawnerEvidenceResolver.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/BlueprintHelperGraphActionUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
+
+#define MakeInvalidResult FBlueprintHelperGraphActionUtils::MakeInvalidResult
+#define MakeUnsupportedResult FBlueprintHelperGraphActionUtils::MakeUnsupportedResult
+#define HasFunctionBackedOperationEvidence FBlueprintHelperGraphActionUtils::HasFunctionBackedOperationEvidence
+#define ResolveClassEvidence FBlueprintHelperGraphActionUtils::ResolveClassEvidence
 
 namespace
 {
-static FString NormalizeOperation(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second)
-{
-	return First.TrimStartAndEnd().IsEmpty() ? Second.TrimStartAndEnd() : First.TrimStartAndEnd();
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second), Third);
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third, const FString& Fourth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
-}
-
-static FString ResolveClassEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	return FirstNonEmpty(
-		Semantic.ClassPath,
-		Semantic.TargetPath,
-		Semantic.TypeName,
-		Semantic.Query);
-}
-
 static UClass* ResolveTargetClass(const FString& ClassEvidence)
 {
 	const FString CleanEvidence = ClassEvidence.TrimStartAndEnd();
@@ -54,30 +32,6 @@ static UClass* ResolveTargetClass(const FString& ClassEvidence)
 		return ExistingClass;
 	}
 	return LoadObject<UClass>(nullptr, *CleanEvidence);
-}
-
-static FBlueprintHelperActionResolutionResult MakeInvalidResult(
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult MakeUnsupportedResult(
-	const FString& ErrorCode,
-	const FString& Message)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = ErrorCode;
-	Result.Message = Message;
-	return Result;
 }
 
 static FBlueprintHelperActionResolutionResult MakeScheduleInvalidResult(
@@ -100,11 +54,6 @@ static bool IsTimerOperation(const FString& Operation)
 static bool IsLatentOrAsyncOperation(const FString& Operation)
 {
 	return Operation.Equals(TEXT("latent_or_async_node"), ESearchCase::IgnoreCase);
-}
-
-static bool HasFunctionBackedOperationEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	return !Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty();
 }
 
 static bool IsFunctionBackedTransformOperation(const FString& Operation)

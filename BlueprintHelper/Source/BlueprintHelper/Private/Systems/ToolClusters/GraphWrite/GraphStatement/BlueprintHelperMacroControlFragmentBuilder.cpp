@@ -1,12 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperMacroControlFragmentBuilder.h"
-
-namespace
-{
-static FString NormalizeOperation(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 bool FBlueprintHelperMacroControlFragmentBuilder::SupportsOperation(const FString& Operation)
 {

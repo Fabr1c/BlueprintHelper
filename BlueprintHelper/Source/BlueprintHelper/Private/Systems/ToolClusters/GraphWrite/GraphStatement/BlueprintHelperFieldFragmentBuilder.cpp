@@ -9,21 +9,10 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentBuildUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentUtils.h"
 
 namespace
 {
-static void AddOwnershipTagIfPresent(
-	FBlueprintHelperNodeFragment& Fragment,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		Fragment.OwnershipTags.Add(Key, CleanValue);
-	}
-}
-
 static bool BuildVariableFragment(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperGraphFragmentBuildRequest& Request,
@@ -68,12 +57,12 @@ static bool BuildVariableFragment(
 	if (ActionResult.CandidateActions.Num() > 0)
 	{
 		const FBlueprintHelperActionCandidate& Candidate = ActionResult.CandidateActions[0];
-		AddOwnershipTagIfPresent(OutFragment, TEXT("field.capability_id"), Candidate.CapabilityId);
-		AddOwnershipTagIfPresent(OutFragment, TEXT("field.expected_node_family"), Candidate.ExpectedNodeFamily);
-		AddOwnershipTagIfPresent(OutFragment, TEXT("field.expected_node_class"), Candidate.ExpectedNodeClassPath);
+		FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.capability_id"), Candidate.CapabilityId);
+		FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.expected_node_family"), Candidate.ExpectedNodeFamily);
+		FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.expected_node_class"), Candidate.ExpectedNodeClassPath);
 		for (const TPair<FString, FString>& FactPair : Candidate.ReadbackFacts)
 		{
-			AddOwnershipTagIfPresent(OutFragment, TEXT("field.readback.") + FactPair.Key, FactPair.Value);
+			FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.readback.") + FactPair.Key, FactPair.Value);
 		}
 	}
 	return true;
@@ -138,7 +127,7 @@ static void PopulateFieldPlanTags(
 	OutFragment.OwnershipTags.Add(TEXT("field.expected_node_family"), FBlueprintHelperFieldFragmentBuilder::ExpectedNodeFamilyForCapability(Plan.CapabilityId));
 
 	const FString PropertyPath = FirstPlanFact(Plan, {TEXT("field.property_path"), TEXT("property_path")});
-	AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path"), PropertyPath);
+	FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path"), PropertyPath);
 	if (!PropertyPath.IsEmpty())
 	{
 		TArray<FString> Segments;
@@ -146,8 +135,8 @@ static void PopulateFieldPlanTags(
 		OutFragment.OwnershipTags.Add(TEXT("field.property_path.segment_count"), FString::FromInt(Segments.Num()));
 		if (Segments.Num() > 0)
 		{
-			AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path.root"), Segments[0]);
-			AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path.leaf"), Segments.Last());
+			FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path.root"), Segments[0]);
+			FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.property_path.leaf"), Segments.Last());
 		}
 	}
 }
@@ -316,7 +305,7 @@ static bool BuildStructNodeFragment(
 				OutFragment.DataOutputs.Add(LeafKey, LeafRef);
 			}
 			OutFragment.PinBindings.Add(TEXT("field.leaf"), LeafRef);
-			AddOwnershipTagIfPresent(OutFragment, TEXT("field.leaf_pin"), LeafPin->PinName.ToString());
+			FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.leaf_pin"), LeafPin->PinName.ToString());
 		}
 	}
 	return true;
@@ -386,7 +375,7 @@ static bool BuildNestedStructBreakPathFragment(
 			OutFragment.DataOutputs.Add(Segment, LeafRef);
 			OutFragment.DataOutputs.Add(TEXT("field.path.leaf"), LeafRef);
 			OutFragment.PinBindings.Add(TEXT("field.leaf"), LeafRef);
-			AddOwnershipTagIfPresent(OutFragment, TEXT("field.leaf_pin"), SegmentPin->PinName.ToString());
+			FBlueprintHelperGraphFragmentUtils::AddOwnershipTagIfPresent(OutFragment, TEXT("field.leaf_pin"), SegmentPin->PinName.ToString());
 			OutFragment.OwnershipTags.Add(TEXT("field.path.break_node_count"), FString::FromInt(OutFragment.Nodes.Num()));
 			OutFragment.OwnershipTags.Add(TEXT("field.path.link_count"), FString::FromInt(OutFragment.InternalLinks.Num()));
 			return true;

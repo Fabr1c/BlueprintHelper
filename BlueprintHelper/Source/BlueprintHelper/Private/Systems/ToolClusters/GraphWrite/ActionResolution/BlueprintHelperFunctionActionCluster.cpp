@@ -8,7 +8,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOperatorActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
-static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprintHelperCallFunctionResolveStatus Status)
+static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus_Cluster(EBlueprintHelperCallFunctionResolveStatus Status)
 {
 	switch (Status)
 	{
@@ -24,7 +24,7 @@ static EBlueprintHelperActionResolutionStatus MapFunctionResolveStatus(EBlueprin
 	}
 }
 
-static void PopulateCallContext(FBlueprintHelperCallFunctionResolveRequest& CallRequest, const FBlueprintHelperActionResolutionRequest& Request)
+static void PopulateCallContext_Cluster(FBlueprintHelperCallFunctionResolveRequest& CallRequest, const FBlueprintHelperActionResolutionRequest& Request)
 {
 	const FBlueprintHelperActionSemanticConstraints& Semantic = Request.Semantic;
 	CallRequest.Context.Blueprint = Request.Blueprint;
@@ -122,12 +122,12 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFunctionActionCluster::Re
 	CallRequest.bAllowFuzzyUnique = Request.bAllowFuzzyUnique;
 	CallRequest.MaxCandidates = Request.MaxCandidates;
 	PopulateCandidatePolicy(CallRequest, Semantic);
-	PopulateCallContext(CallRequest, Request);
+	PopulateCallContext_Cluster(CallRequest, Request);
 
 	const FBlueprintHelperCallFunctionResolveResult CallResult = FBlueprintHelperCallFunctionResolver::Resolve(CallRequest);
 
 	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = MapFunctionResolveStatus(CallResult.Status);
+	Result.Status = MapFunctionResolveStatus_Cluster(CallResult.Status);
 	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
 	Result.ErrorCode = CallResult.ErrorCode;
 	Result.Message = CallResult.Message;

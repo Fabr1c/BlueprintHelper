@@ -1,18 +1,9 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 namespace
 {
-static FString Clean(const FString& Value)
-{
-	return Value.TrimStartAndEnd();
-}
-
-static FString NormalizeOperation(const FString& Operation)
-{
-	return Clean(Operation).ToLower();
-}
-
-static FString EvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
+static FString BoundaryRequestEvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
 {
 	if (const FString* Value = Request.ContextEvidence.Find(Key))
 	{
@@ -28,8 +19,8 @@ static FString EvidenceValue(const FBlueprintHelperActionResolutionRequest& Requ
 static FString ControlOperation(const FBlueprintHelperActionResolutionRequest& Request)
 {
 	return NormalizeOperation(
-		!EvidenceValue(Request, TEXT("generic.control.operation")).IsEmpty()
-			? EvidenceValue(Request, TEXT("generic.control.operation"))
+		!BoundaryRequestEvidenceValue(Request, TEXT("generic.control.operation")).IsEmpty()
+			? BoundaryRequestEvidenceValue(Request, TEXT("generic.control.operation"))
 			: Request.Semantic.Query);
 }
 

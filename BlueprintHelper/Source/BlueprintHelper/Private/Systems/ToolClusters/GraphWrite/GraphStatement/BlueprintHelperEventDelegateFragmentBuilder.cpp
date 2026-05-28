@@ -22,15 +22,15 @@
 
 namespace
 {
-static FString GetStatementId(const FBlueprintHelperGraphStatementIR& Statement)
+static FString GetEventDelegateStatementId(const FString& StatementId, const FString& Path)
 {
-	if (!Statement.StatementId.IsEmpty())
+	if (!StatementId.IsEmpty())
 	{
-		return Statement.StatementId;
+		return StatementId;
 	}
-	if (!Statement.Path.IsEmpty())
+	if (!Path.IsEmpty())
 	{
-		return Statement.Path;
+		return Path;
 	}
 	return TEXT("event_delegate_statement");
 }
@@ -388,7 +388,7 @@ bool FBlueprintHelperEventDelegateFragmentBuilder::BuildStatement(
 		return false;
 	}
 
-	const FString StatementId = GetStatementId(Statement);
+	const FString StatementId = GetEventDelegateStatementId(Statement.StatementId, Statement.Path);
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	if (!BuildActionRequest(TargetGraph, ActionContextScope, StatementId, ActionRequest, OutError))
 	{

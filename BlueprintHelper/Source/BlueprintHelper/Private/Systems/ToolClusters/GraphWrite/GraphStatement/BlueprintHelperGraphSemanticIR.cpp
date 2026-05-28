@@ -15,6 +15,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEventReferenceUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 
 namespace
 {
@@ -140,11 +142,6 @@ static void ValidateContainerActionContract(
 	}
 }
 
-static FString NormalizeDelegateOperation(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
-}
-
 static bool IsSupportedDelegateOperation(const FString& Operation)
 {
 	const FString Normalized = NormalizeDelegateOperation(Operation);
@@ -237,44 +234,6 @@ static TSharedPtr<FBlueprintHelperGraphExpressionIR> MakeStatementResultSymbolEx
 	ResultExpression->ResolvedTarget.Type = ResultType;
 	ResultExpression->ResolvedTarget.bVerifiedByContext = true;
 	return ResultExpression;
-}
-
-static FString NormalizeFieldToken(const FString& Token)
-{
-	return Token.TrimStartAndEnd().ToLower();
-}
-
-static FString NormalizeOpOperationToken(const FString& Token)
-{
-	FString Clean = NormalizeFieldToken(Token);
-	if (Clean.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
-	{
-		Clean.RightChopInline(3, EAllowShrinking::No);
-	}
-
-	if (Clean == TEXT("+")) return TEXT("add");
-	if (Clean == TEXT("-")) return TEXT("subtract");
-	if (Clean == TEXT("*")) return TEXT("multiply");
-	if (Clean == TEXT("/")) return TEXT("divide");
-	if (Clean == TEXT(">")) return TEXT("greater");
-	if (Clean == TEXT(">=")) return TEXT("greater_equal");
-	if (Clean == TEXT("<")) return TEXT("less");
-	if (Clean == TEXT("<=")) return TEXT("less_equal");
-	if (Clean == TEXT("==") || Clean == TEXT("=")) return TEXT("equal");
-	if (Clean == TEXT("!=") || Clean == TEXT("<>")) return TEXT("not_equal");
-	if (Clean == TEXT("&&") || Clean == TEXT("and")) return TEXT("boolean_and");
-	if (Clean == TEXT("||") || Clean == TEXT("or")) return TEXT("boolean_or");
-	if (Clean == TEXT("!") || Clean == TEXT("not")) return TEXT("boolean_not");
-	return Clean;
-}
-
-static FString ContextEvidenceValue(const TMap<FString, FString>& Evidence, const FString& Key)
-{
-	if (const FString* Value = Evidence.Find(Key))
-	{
-		return Value->TrimStartAndEnd();
-	}
-	return FString();
 }
 
 static void AddCanonicalOpEvidenceAlias(

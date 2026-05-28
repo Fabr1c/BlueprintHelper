@@ -11,6 +11,9 @@ AgentFaceService/**/build/**
 AgentFaceService/**/Saved/**
 AgentFaceService/**/tests/**
 AgentFaceService/task-core/python/tests
+ClaudePlugin/**/cli
+ClaudePlugin/**/task-core
+ClaudePlugin/**/mcp
 *.7z          
 /Saved/
 .tmp/

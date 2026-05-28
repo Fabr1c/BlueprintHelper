@@ -370,7 +370,7 @@ static const FProperty* FindVariableProperty(UBlueprint* Blueprint, const FName 
 	return Blueprint->ParentClass ? FindFProperty<FProperty>(Blueprint->ParentClass, VariableName) : nullptr;
 }
 
-static UClass* FindClassByPath(const FString& ClassPath)
+static UClass* FindClassByPath_FieldVarResolver(const FString& ClassPath)
 {
 	const FString CleanPath = ClassPath.TrimStartAndEnd();
 	return CleanPath.IsEmpty() ? nullptr : FindObject<UClass>(nullptr, *CleanPath);
@@ -409,7 +409,7 @@ static const FProperty* ResolveFieldProperty(
 		const FString OwnerClassPath = FirstNonEmptyFieldValue(
 			Request.Semantic.CapabilityFacts.FindRef(TEXT("field.owner_class")),
 			Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")));
-		if (const FProperty* TargetProperty = FindPropertyOnClass(FindClassByPath(OwnerClassPath), FieldFName))
+		if (const FProperty* TargetProperty = FindPropertyOnClass(FindClassByPath_FieldVarResolver(OwnerClassPath), FieldFName))
 		{
 			return TargetProperty;
 		}

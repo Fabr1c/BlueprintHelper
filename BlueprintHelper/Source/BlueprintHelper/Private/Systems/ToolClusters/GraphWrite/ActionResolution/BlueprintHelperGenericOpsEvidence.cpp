@@ -1,17 +1,8 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericOpsEvidence.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 
 namespace
 {
-static FString Clean(const FString& Value)
-{
-	return Value.TrimStartAndEnd();
-}
-
-static FString NormalizeOperation(const FString& Value)
-{
-	return Clean(Value).ToLower();
-}
-
 static FString GetEvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
 {
 	if (const FString* Value = Request.ContextEvidence.Find(Key))
@@ -23,25 +14,6 @@ static FString GetEvidenceValue(const FBlueprintHelperActionResolutionRequest& R
 		return Clean(*Value);
 	}
 	return FString();
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second)
-{
-	return First.IsEmpty() ? Second : First;
-}
-
-static FString FirstNonEmpty(const FString& First, const FString& Second, const FString& Third)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second), Third);
-}
-
-static FString FirstNonEmpty(
-	const FString& First,
-	const FString& Second,
-	const FString& Third,
-	const FString& Fourth)
-{
-	return FirstNonEmpty(FirstNonEmpty(First, Second, Third), Fourth);
 }
 
 static void CopyFactsWithPrefix(
