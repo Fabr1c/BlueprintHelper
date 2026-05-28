@@ -3,66 +3,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionClusterContextView.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionSettingsResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSpawnerClusterResolver.h"
-
-namespace
-{
-static FString NormalizeOperationToken(const FString& Operation)
-{
-	return Operation.TrimStartAndEnd().ToLower();
-}
-
-static bool IsGenericTransformOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeOperationToken(Operation);
-	return Normalized == TEXT("dynamic_cast")
-		|| Normalized == TEXT("class_cast")
-		|| Normalized == TEXT("type_promotion");
-}
-
-static bool IsGenericCreateOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeOperationToken(Operation);
-	return Normalized == TEXT("spawn_actor")
-		|| Normalized == TEXT("create_widget")
-		|| Normalized == TEXT("construct_object")
-		|| Normalized == TEXT("make_array")
-		|| Normalized == TEXT("make_map")
-		|| Normalized == TEXT("make_set")
-		|| Normalized == TEXT("asset_action");
-}
-
-static bool IsGenericScheduleOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeOperationToken(Operation);
-	return Normalized == TEXT("timer_delegate_node")
-		|| Normalized == TEXT("latent_or_async_node");
-}
-
-static bool HasAmbiguousGenericFunctionOwner(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	if (Semantic.FunctionOperation.TrimStartAndEnd().IsEmpty())
-	{
-		return false;
-	}
-
-	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Convert)
-	{
-		return IsGenericTransformOperation(Semantic.TransformOperation);
-	}
-
-	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Schedule)
-	{
-		return IsGenericScheduleOperation(Semantic.ScheduleOperation);
-	}
-
-	if (Semantic.Kind == EBlueprintHelperActionSemanticKind::Create)
-	{
-		return IsGenericCreateOperation(Semantic.CreateOperation);
-	}
-
-	return false;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request)
@@ -116,7 +57,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperActionResolutionCore::Res
 		return Result;
 	}
 
-	if (HasAmbiguousGenericFunctionOwner(EffectiveRequest.Semantic))
+	if (UGraphWriteActionClusterUtils::HasAmbiguousGenericFunctionOwner(EffectiveRequest.Semantic))
 	{
 		FBlueprintHelperActionResolutionResult Result;
 		Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;

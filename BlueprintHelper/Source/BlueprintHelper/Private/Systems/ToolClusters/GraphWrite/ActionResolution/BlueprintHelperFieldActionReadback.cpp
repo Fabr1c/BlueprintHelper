@@ -3,32 +3,18 @@
 #include "EdGraph/EdGraphNode.h"
 #include "K2Node.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.h"
-
-namespace
-{
-static void AddFactIfPresent(
-	TMap<FString, FString>& OutFacts,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		OutFacts.Add(Key, CleanValue);
-	}
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.h"
 
 void FBlueprintHelperFieldActionReadback::AppendFlatFacts(TMap<FString, FString>& OutFacts) const
 {
-	AddFactIfPresent(OutFacts, TEXT("field.capability_id"), CapabilityId);
-	AddFactIfPresent(OutFacts, TEXT("field.node_guid"), NodeGuid);
-	AddFactIfPresent(OutFacts, TEXT("field.node_class"), NodeClassPath);
-	AddFactIfPresent(OutFacts, TEXT("field.node_title"), NodeTitle);
-	AddFactIfPresent(OutFacts, TEXT("field.expected_node_family"), ExpectedNodeFamily);
+	UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, TEXT("field.capability_id"), CapabilityId);
+	UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, TEXT("field.node_guid"), NodeGuid);
+	UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, TEXT("field.node_class"), NodeClassPath);
+	UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, TEXT("field.node_title"), NodeTitle);
+	UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, TEXT("field.expected_node_family"), ExpectedNodeFamily);
 	for (const TPair<FString, FString>& FactPair : Facts)
 	{
-		AddFactIfPresent(OutFacts, FactPair.Key, FactPair.Value);
+		UGraphWriteActionClusterUtils::AddFactIfPresent(OutFacts, FactPair.Key, FactPair.Value);
 	}
 }
 

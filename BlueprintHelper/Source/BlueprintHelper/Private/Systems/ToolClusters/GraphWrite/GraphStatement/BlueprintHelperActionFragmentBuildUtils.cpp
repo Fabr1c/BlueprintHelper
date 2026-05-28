@@ -5,49 +5,7 @@
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
-
-namespace
-{
-static bool IsCallableTargetObjectPin(UK2Node* Node, UEdGraphPin* Pin)
-{
-	if (!Pin || Pin->Direction != EGPD_Input || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-	{
-		return false;
-	}
-
-	const FString PinName = Pin->PinName.ToString();
-	if (PinName.Equals(TEXT("self"), ESearchCase::IgnoreCase))
-	{
-		return true;
-	}
-
-	const UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
-	const UFunction* Function = CallNode ? CallNode->GetTargetFunction() : nullptr;
-	if (!Function || !Function->HasAnyFunctionFlags(FUNC_Static))
-	{
-		return false;
-	}
-
-	const FString DefaultToSelfPinName = Function->GetMetaData(TEXT("DefaultToSelf"));
-	return !DefaultToSelfPinName.IsEmpty()
-		&& DefaultToSelfPinName.Equals(PinName, ESearchCase::IgnoreCase);
-}
-
-static void AddDataInputAlias(
-	FBlueprintHelperNodeFragment& OutFragment,
-	const FString& Alias,
-	const FBlueprintHelperFragmentPinRef& PinRef)
-{
-	if (!OutFragment.DataInputs.Contains(Alias))
-	{
-		OutFragment.DataInputs.Add(Alias, PinRef);
-	}
-	if (!OutFragment.PinBindings.Contains(Alias))
-	{
-		OutFragment.PinBindings.Add(Alias, PinRef);
-	}
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 void FBlueprintHelperActionFragmentBuildUtils::PopulatePins(
 	const EBlueprintHelperActionFragmentPinProfile PinProfile,
@@ -92,9 +50,9 @@ void FBlueprintHelperActionFragmentBuildUtils::PopulateCallFragmentPins(
 		if (Pin->Direction == EGPD_Input)
 		{
 			OutFragment.DataInputs.Add(PinName, PinRef);
-			if (IsCallableTargetObjectPin(CallNode, Pin))
+			if (UGraphWriteGraphStatementUtils::IsCallableTargetObjectPin(CallNode, Pin))
 			{
-				AddDataInputAlias(
+				UGraphWriteGraphStatementUtils::ActionBuildUtilsAddDataInputAlias(
 					OutFragment,
 					TEXT("target_object"),
 					FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("target_object"), Pin->PinType.PinCategory.ToString(), Pin });
@@ -158,9 +116,9 @@ void FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPin
 			{
 				OutFragment.DataInputs.Add(PinName.ToLower(), FBlueprintHelperFragmentPinRef{ TEXT("primary"), PinName.ToLower(), Pin->PinType.PinCategory.ToString(), Pin });
 			}
-			if (IsCallableTargetObjectPin(Node, Pin))
+			if (UGraphWriteGraphStatementUtils::IsCallableTargetObjectPin(Node, Pin))
 			{
-				AddDataInputAlias(
+				UGraphWriteGraphStatementUtils::ActionBuildUtilsAddDataInputAlias(
 					OutFragment,
 					TEXT("target_object"),
 					FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("target_object"), Pin->PinType.PinCategory.ToString(), Pin });

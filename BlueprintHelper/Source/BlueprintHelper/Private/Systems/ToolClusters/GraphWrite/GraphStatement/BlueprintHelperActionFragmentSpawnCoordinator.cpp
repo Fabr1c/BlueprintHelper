@@ -4,46 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperActionFragmentBuildUtils.h"
-
-namespace
-{
-static void AddOrKeepOwnershipTagIfPresent(
-	FBlueprintHelperNodeFragment& Fragment,
-	const FString& Key,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!Key.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		Fragment.OwnershipTags.FindOrAdd(Key, CleanValue);
-	}
-}
-
-static void AppendResolvedActionCandidateFacts(
-	const FBlueprintHelperActionResolutionResult& ActionResult,
-	FBlueprintHelperNodeFragment& OutFragment)
-{
-	if (ActionResult.CandidateActions.Num() == 0)
-	{
-		return;
-	}
-
-	const FBlueprintHelperActionCandidate& Candidate = ActionResult.CandidateActions[0];
-	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("capability_id"), Candidate.CapabilityId);
-	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("expected_node_family"), Candidate.ExpectedNodeFamily);
-	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("expected_node_class"), Candidate.ExpectedNodeClassPath);
-	AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("node_class"), Candidate.NodeClassPath);
-
-	for (const TPair<FString, FString>& FactPair : Candidate.CapabilityFacts)
-	{
-		AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("capability.") + FactPair.Key, FactPair.Value);
-	}
-	for (const TPair<FString, FString>& FactPair : Candidate.ReadbackFacts)
-	{
-		AddOrKeepOwnershipTagIfPresent(OutFragment, TEXT("readback.") + FactPair.Key, FactPair.Value);
-	}
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 bool FBlueprintHelperActionFragmentSpawnCoordinator::ValidateResolvedActionFragment(
 	const FBlueprintHelperActionFragmentSpawnCoordinatorRequest& Request,
@@ -143,7 +104,7 @@ bool FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment
 			TEXT("semantic_kind"),
 			FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.SemanticKind));
 	}
-	AppendResolvedActionCandidateFacts(ActionResult, OutFragment);
+	UGraphWriteGraphStatementUtils::AppendResolvedActionCandidateFacts(ActionResult, OutFragment);
 
 	return true;
 }

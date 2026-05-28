@@ -3,17 +3,7 @@
 #include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraphNode.h"
 #include "K2Node_DynamicCast.h"
-
-namespace
-{
-static void CustomizeCastNode(UEdGraphNode* NewNode, bool bIsTemplateNode, UClass* TargetClass)
-{
-	if (UK2Node_DynamicCast* CastNode = Cast<UK2Node_DynamicCast>(NewNode))
-	{
-		CastNode->TargetType = TargetClass;
-	}
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionAdapterUtils.h"
 
 UBlueprintNodeSpawner* FBlueprintHelperGenericTransformSpawnerFactory::CreateCastSpawner(
 	TSubclassOf<UEdGraphNode> ResolvedNodeClass,
@@ -31,7 +21,7 @@ UBlueprintNodeSpawner* FBlueprintHelperGenericTransformSpawnerFactory::CreateCas
 	}
 
 	Spawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(
-		CustomizeCastNode,
+		UGraphWriteActionAdapterUtils::CustomizeCastNode,
 		TargetClass);
 	return Spawner;
 }

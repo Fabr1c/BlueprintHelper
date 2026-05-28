@@ -10,178 +10,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperOpCallableEvidence.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
-
-namespace
-{
-static FString MakePromotableOperatorStableId(FName OpName)
-{
-	return FString::Printf(TEXT("promotable_operator:%s"), *OpName.ToString());
-}
-
-static FString GetOperatorTokenFromContext(const FBlueprintHelperActionClusterContextView& Context)
-{
-	const FString SemanticQuery = Context.GetSemantic().Query.TrimStartAndEnd();
-	if (!SemanticQuery.IsEmpty())
-	{
-		return SemanticQuery;
-	}
-
-	static const TCHAR* EvidenceKeys[] =
-	{
-		TEXT("operator_token"),
-		TEXT("operator"),
-		TEXT("op"),
-		TEXT("op_name")
-	};
-
-	for (const TCHAR* EvidenceKey : EvidenceKeys)
-	{
-		if (const FString* EvidenceValue = Context.GetRequest().ContextEvidence.Find(EvidenceKey))
-		{
-			const FString Trimmed = EvidenceValue->TrimStartAndEnd();
-			if (!Trimmed.IsEmpty())
-			{
-				return Trimmed;
-			}
-		}
-	}
-
-	return FString();
-}
-
-static FString GetRequestedOpOperationId(const FBlueprintHelperActionResolutionRequest& Request)
-{
-	const FString FunctionOperation = Request.Semantic.FunctionOperation.TrimStartAndEnd();
-	if (FunctionOperation.StartsWith(TEXT("op."), ESearchCase::IgnoreCase))
-	{
-		return FBlueprintHelperOpCallableCatalog::NormalizeOperationId(FunctionOperation);
-	}
-
-	if (const FString* OperationId = Request.ContextEvidence.Find(TEXT("op.operation_id")))
-	{
-		return FBlueprintHelperOpCallableCatalog::NormalizeOperationId(*OperationId);
-	}
-
-	return FString();
-}
-
-static EBlueprintHelperActionResolutionStatus MapOperatorFunctionResolveStatus(EBlueprintHelperCallFunctionResolveStatus Status)
-{
-	switch (Status)
-	{
-	case EBlueprintHelperCallFunctionResolveStatus::Resolved:
-		return EBlueprintHelperActionResolutionStatus::Resolved;
-	case EBlueprintHelperCallFunctionResolveStatus::Ambiguous:
-		return EBlueprintHelperActionResolutionStatus::Ambiguous;
-	case EBlueprintHelperCallFunctionResolveStatus::Blocked:
-		return EBlueprintHelperActionResolutionStatus::Blocked;
-	case EBlueprintHelperCallFunctionResolveStatus::NotFound:
-	default:
-		return EBlueprintHelperActionResolutionStatus::NotFound;
-	}
-}
-
-static void ApplyArrayIdenticalEvidence(
-	const FBlueprintHelperOpCallableEvidence& Evidence,
-	FBlueprintHelperCallFunctionResolveRequest& CallRequest)
-{
-	if (!Evidence.OperationId.Equals(TEXT("array_identical"), ESearchCase::IgnoreCase))
-	{
-		return;
-	}
-
-	FBlueprintHelperCallFunctionPinType LhsPinType =
-		FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Evidence.Facts.FindRef(TEXT("op.array_lhs_pin_type")));
-	FBlueprintHelperCallFunctionPinType RhsPinType =
-		FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Evidence.Facts.FindRef(TEXT("op.array_rhs_pin_type")));
-	if (LhsPinType.IsValid() && LhsPinType.ContainerType.IsEmpty())
-	{
-		LhsPinType.ContainerType = TEXT("array");
-	}
-	if (RhsPinType.IsValid() && RhsPinType.ContainerType.IsEmpty())
-	{
-		RhsPinType.ContainerType = TEXT("array");
-	}
-
-	CallRequest.ArgumentNames = { TEXT("ArrayA"), TEXT("ArrayB") };
-	CallRequest.ArgumentPinTypes.Add(TEXT("ArrayA"), LhsPinType);
-	CallRequest.ArgumentPinTypes.Add(TEXT("ArrayB"), RhsPinType);
-	CallRequest.Context.ArgumentNames = CallRequest.ArgumentNames;
-	CallRequest.Context.ArgumentPinTypes = CallRequest.ArgumentPinTypes;
-}
-
-static FBlueprintHelperActionResolutionResult MakeCallableOpResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FBlueprintHelperOpCallableEvidence& Evidence,
-	const FBlueprintHelperCallFunctionResolveResult& CallResult)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = MapOperatorFunctionResolveStatus(CallResult.Status);
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
-	Result.ErrorCode = CallResult.ErrorCode;
-	Result.Message = CallResult.Message;
-	Result.SelectedStableId = CallResult.Selected.StableId;
-	Result.SelectedSpawner = CallResult.Selected.NodeSpawner;
-	Result.SelectedFunction = CallResult.Selected.Function;
-	Result.CandidateActions = CallResult.CandidateFunctions;
-	Result.FunctionCandidate = CallResult.Selected;
-	for (FBlueprintHelperCallFunctionCandidateInfo& CandidateInfo : Result.CandidateActions)
-	{
-		CandidateInfo.CapabilityId = TEXT("op_coverage");
-		CandidateInfo.ExpectedNodeFamily = Evidence.Spec.SpawnFamily;
-		CandidateInfo.ExpectedNodeClassPath = Evidence.Spec.RequiredNodeClassPath;
-		for (const TPair<FString, FString>& FactPair : Evidence.Facts)
-		{
-			CandidateInfo.CapabilityFacts.FindOrAdd(FactPair.Key, FactPair.Value);
-			CandidateInfo.ReadbackFacts.FindOrAdd(FactPair.Key, FactPair.Value);
-		}
-		CandidateInfo.ReadbackFacts.FindOrAdd(TEXT("op.operation_id"), Evidence.OperationId);
-		CandidateInfo.ReadbackFacts.FindOrAdd(TEXT("op.source_function_path"), Evidence.Spec.StableCallableId);
-		CandidateInfo.ReadbackFacts.FindOrAdd(TEXT("op.node_class_path"), CandidateInfo.NodeClassPath);
-		CandidateInfo.ReadbackFacts.FindOrAdd(TEXT("op.wildcard_residual"), TEXT("false"));
-		if (Result.SelectedSpawner.IsValid())
-		{
-			CandidateInfo.ReadbackFacts.FindOrAdd(TEXT("op.spawner_class"), Result.SelectedSpawner->GetClass()->GetPathName());
-		}
-	}
-	if (Result.IsResolved())
-	{
-		Result.Message = FString::Printf(
-			TEXT("Resolved op.%s to callable %s through FunctionActionCluster policy."),
-			*Evidence.OperationId,
-			*Evidence.Spec.StableCallableId);
-	}
-	return Result;
-}
-
-static FBlueprintHelperCallFunctionCandidateInfo MakePromotableOperatorCandidateInfo(
-	FName OpName,
-	UBlueprintFunctionNodeSpawner* Spawner)
-{
-	FBlueprintHelperCallFunctionCandidateInfo Candidate;
-	Candidate.StableId = MakePromotableOperatorStableId(OpName);
-	Candidate.DisplayName = OpName.ToString();
-	Candidate.Category = TEXT("Utilities|Operators");
-	Candidate.NodeClassPath = UK2Node_PromotableOperator::StaticClass()->GetPathName();
-	Candidate.MatchReason = TEXT("ue_promotable_operator_spawner");
-	Candidate.CapabilityId = TEXT("op_coverage");
-	Candidate.ExpectedNodeFamily = TEXT("type_promotion");
-	Candidate.ExpectedNodeClassPath = UK2Node_PromotableOperator::StaticClass()->GetPathName();
-	Candidate.ReadbackFacts.Add(TEXT("op.type_promotion_operator"), OpName.ToString());
-	Candidate.ReadbackFacts.Add(TEXT("op.node_class_path"), Candidate.NodeClassPath);
-	Candidate.ReadbackFacts.Add(TEXT("op.wildcard_residual"), TEXT("false"));
-	if (Spawner)
-	{
-		Candidate.ReadbackFacts.Add(TEXT("op.spawner_class"), Spawner->GetClass()->GetPathName());
-	}
-	Candidate.Score = 100;
-	Candidate.bGraphCompatible = Spawner != nullptr;
-	Candidate.bFromActionDatabase = true;
-	Candidate.bBlueprintCallable = true;
-	Candidate.bBlueprintPure = true;
-	return Candidate;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request,
@@ -197,7 +26,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 		return Result;
 	}
 
-	const FString RequestedOperationId = GetRequestedOpOperationId(Request);
+	const FString RequestedOperationId = UGraphWriteActionClusterUtils::GetRequestedOpOperationId(Request);
 	if (FBlueprintHelperOpCallableCatalog::IsTypePromotionOperation(RequestedOperationId))
 	{
 		FName OpName = NAME_None;
@@ -246,11 +75,11 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 		{
 			CallRequest.CandidatePolicy.PermittedNodeClassPaths.Add(Evidence.Spec.RequiredNodeClassPath);
 		}
-		ApplyArrayIdenticalEvidence(Evidence, CallRequest);
+		UGraphWriteActionClusterUtils::ApplyArrayIdenticalEvidence(Evidence, CallRequest);
 
 		const FBlueprintHelperCallFunctionResolveResult CallResult =
 			FBlueprintHelperCallFunctionResolver::Resolve(CallRequest);
-		return MakeCallableOpResult(Request, Evidence, CallResult);
+		return UGraphWriteActionClusterUtils::MakeCallableOpResult(Request, Evidence, CallResult);
 	}
 
 	if (EvidenceErrorCode != TEXT("missing_op_operation"))
@@ -259,7 +88,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::R
 	}
 
 	FName OpName = NAME_None;
-	const FString OperatorToken = GetOperatorTokenFromContext(Context);
+	const FString OperatorToken = UGraphWriteActionClusterUtils::GetOperatorTokenFromContext(Context);
 	if (OperatorToken.IsEmpty())
 	{
 		return MakeInvalidRequestResult(TEXT("invalid_operator_action_request"), TEXT("operator_context_missing: Semantic.Query or ContextEvidence.operator_token is required."));
@@ -371,9 +200,9 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperOperatorActionResolver::M
 		TEXT("Resolved UE promotable operator '%s' for token '%s' using FunctionActionCluster type-promotion evidence."),
 		*OpName.ToString(),
 		*OperatorToken.TrimStartAndEnd());
-	Result.SelectedStableId = MakePromotableOperatorStableId(OpName);
+	Result.SelectedStableId = UGraphWriteActionClusterUtils::MakePromotableOperatorStableId(OpName);
 	Result.SelectedSpawner = Spawner;
-	Result.CandidateActions.Add(MakePromotableOperatorCandidateInfo(OpName, Spawner));
+	Result.CandidateActions.Add(UGraphWriteActionClusterUtils::MakePromotableOperatorCandidateInfo(OpName, Spawner));
 	Result.CandidateActions[0].ReadbackFacts.FindOrAdd(TEXT("op.operation_id")) =
 		FBlueprintHelperOpCallableCatalog::NormalizeOperationId(OperatorToken);
 	return Result;

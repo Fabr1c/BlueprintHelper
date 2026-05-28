@@ -6,49 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericCreateActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericTransformScheduleActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperStructTypeStructureActionResolver.h"
-
-namespace
-{
-static FBlueprintHelperActionResolutionResult MakeNeedsMoreSemanticContextResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FBlueprintHelperGenericActionProviderBoundary& Boundary)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode =
-		(Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Construct
-			|| Request.Semantic.Kind == EBlueprintHelperActionSemanticKind::Deconstruct)
-		? TEXT("missing_required_evidence")
-		: TEXT("needs_more_semantic_context");
-	Result.Message = Boundary.Reason;
-	return Result;
-}
-
-static FBlueprintHelperActionResolutionResult MakeUnsupportedProviderBoundaryResult(
-	const FBlueprintHelperActionResolutionRequest& Request,
-	const FBlueprintHelperGenericActionProviderBoundary& Boundary)
-{
-	FBlueprintHelperActionResolutionResult Result;
-	Result.Status = EBlueprintHelperActionResolutionStatus::UnsupportedIntent;
-	Result.ClusterKind = EBlueprintHelperSpawnerClusterKind::GenericAssetStructControlAction;
-	Result.ErrorCode = TEXT("unsupported_generic_action_provider_boundary");
-	Result.Message = FString::Printf(
-		TEXT("%s Semantic kind: '%s'."),
-		*Boundary.Reason,
-		*FBlueprintHelperActionResolutionCore::SemanticKindToString(Request.Semantic.Kind));
-	return Result;
-}
-
-static bool IsStructTypeStructureOperation(const FBlueprintHelperActionSemanticConstraints& Semantic)
-{
-	const bool bStructFamily = Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::Struct
-		|| Semantic.SemanticFamily == EBlueprintHelperActionSemanticFamily::TypeStructure;
-	const bool bTypeOperation = Semantic.TypeOperation == EBlueprintHelperTypeOperation::Construct
-		|| Semantic.TypeOperation == EBlueprintHelperTypeOperation::Deconstruct;
-	return bStructFamily && bTypeOperation;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.h"
 
 FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControlActionCluster::Resolve(
 	const FBlueprintHelperActionResolutionRequest& Request,
@@ -59,7 +17,7 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 		return MakeUnsupportedIntentResult(Request);
 	}
 
-	if (IsStructTypeStructureOperation(Context.GetSemantic()))
+	if (UGraphWriteActionClusterUtils::IsStructTypeStructureOperation(Context.GetSemantic()))
 	{
 		return FBlueprintHelperStructTypeStructureActionResolver::Resolve(Request, Context);
 	}
@@ -84,10 +42,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperGenericAssetStructControl
 	case EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired:
 		return FBlueprintHelperGenericAssetStructControlActionResolver::ResolveNodeSpawnerCandidate(Request, Context);
 	case EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext:
-		return MakeNeedsMoreSemanticContextResult(Request, Boundary);
+		return UGraphWriteActionClusterUtils::MakeNeedsMoreSemanticContextResult(Request, Boundary);
 	case EBlueprintHelperGenericActionProviderMode::Unsupported:
 	default:
-		return MakeUnsupportedProviderBoundaryResult(Request, Boundary);
+		return UGraphWriteActionClusterUtils::MakeUnsupportedProviderBoundaryResult(Request, Boundary);
 	}
 }
 

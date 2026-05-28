@@ -17,549 +17,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
-namespace
-{
-static bool IsBoolProducingOperator(const FString& Operator)
-{
-	const FString Token = Operator.TrimStartAndEnd().ToLower();
-	return Token == TEXT(">")
-		|| Token == TEXT(">=")
-		|| Token == TEXT("<")
-		|| Token == TEXT("<=")
-		|| Token == TEXT("==")
-		|| Token == TEXT("=")
-		|| Token == TEXT("!=")
-		|| Token == TEXT("<>")
-		|| Token == TEXT("gt")
-		|| Token == TEXT("gte")
-		|| Token == TEXT("lt")
-		|| Token == TEXT("lte")
-		|| Token == TEXT("eq")
-		|| Token == TEXT("ne")
-		|| Token == TEXT("equal")
-		|| Token == TEXT("equals")
-		|| Token == TEXT("not_equal")
-		|| Token == TEXT("notequal")
-		|| Token == TEXT("and")
-		|| Token == TEXT("or")
-		|| Token == TEXT("&&")
-		|| Token == TEXT("||")
-		|| Token == TEXT("boolean_and")
-		|| Token == TEXT("boolean_or")
-		|| Token == TEXT("booleanand")
-		|| Token == TEXT("booleanor");
-}
-
-static TSharedPtr<FBlueprintHelperGraphExpressionIR> FindFirstExpression(
-	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Expressions)
-{
-	TArray<FString> Keys;
-	Expressions.GetKeys(Keys);
-	Keys.Sort();
-	for (const FString& Key : Keys)
-	{
-		const TSharedPtr<FBlueprintHelperGraphExpressionIR>* Expression = Expressions.Find(Key);
-		if (Expression && Expression->IsValid())
-		{
-			return *Expression;
-		}
-	}
-	return nullptr;
-}
-
-static bool ContainerActionHasRole(
-	const FBlueprintHelperContainerActionSpec& Spec,
-	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
-	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& TargetObject,
-	const FString& Target,
-	const FString& Role)
-{
-	if (Role.Equals(TEXT("target"), ESearchCase::IgnoreCase))
-	{
-		return TargetObject.IsValid() || !Target.TrimStartAndEnd().IsEmpty();
-	}
-	return Args.Contains(Role);
-}
-
-static void ValidateContainerActionContract(
-	FBlueprintHelperGraphSemanticIR& OutIR,
-	const FString& Path,
-	const FString& ContainerKind,
-	const FString& ContainerOperation,
-	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
-	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& TargetObject,
-	const FString& Target,
-	const FString& ResultSymbolName,
-	const bool bExpression)
-{
-	const FString Kind = ContainerKind.TrimStartAndEnd();
-	const FString Operation = ContainerOperation.TrimStartAndEnd();
-	if (Kind.IsEmpty() || Operation.IsEmpty())
-	{
-		return;
-	}
-
-	const FBlueprintHelperContainerActionSpec* Spec = FBlueprintHelperContainerActionVocabulary::Find(Kind, Operation);
-	if (!Spec)
-	{
-		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-			OutIR,
-			TEXT("unsupported_container_operation"),
-			Path + TEXT(".container_operation"),
-			FString::Printf(TEXT("Unsupported container_action operation: %s.%s."), *Kind, *Operation));
-		return;
-	}
-
-	for (const FString& Role : Spec->RequiredRoles)
-	{
-		if (!ContainerActionHasRole(*Spec, Args, TargetObject, Target, Role))
-		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-				OutIR,
-				TEXT("container_role_missing"),
-				Path + TEXT(".") + Role,
-				FString::Printf(TEXT("container_action %s requires role %s."), *Spec->OperationId, *Role));
-		}
-	}
-
-	if (!ResultSymbolName.TrimStartAndEnd().IsEmpty() && (!Spec->bReturnsValue || Spec->bMutatesTarget))
-	{
-		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-			OutIR,
-			TEXT("container_result_symbol_invalid"),
-			Path + TEXT(".result_symbol"),
-			FString::Printf(TEXT("container_action %s cannot bind result_symbol because it is not a pure query operation."), *Spec->OperationId));
-	}
-
-	if (bExpression && (!Spec->bReturnsValue || Spec->bMutatesTarget))
-	{
-		FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-			OutIR,
-			TEXT("container_expression_operation_invalid"),
-			Path + TEXT(".container_operation"),
-			FString::Printf(TEXT("container_action expression requires a pure query operation, got %s."), *Spec->OperationId));
-	}
-}
-
-static bool IsSupportedDelegateOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeDelegateOperation(Operation);
-	return Normalized == TEXT("bind")
-		|| Normalized == TEXT("assign")
-		|| Normalized == TEXT("unbind")
-		|| Normalized == TEXT("call")
-		|| Normalized == TEXT("clear");
-}
-
-static bool DelegateOperationRequiresHandler(const FString& Operation)
-{
-	const FString Normalized = NormalizeDelegateOperation(Operation);
-	return Normalized == TEXT("bind")
-		|| Normalized == TEXT("assign")
-		|| Normalized == TEXT("unbind");
-}
-
-static bool StatementKindCanReturnGraphLocalValue(const EBlueprintHelperGraphStatementKind Kind)
-{
-	switch (Kind)
-	{
-	case EBlueprintHelperGraphStatementKind::Call:
-	case EBlueprintHelperGraphStatementKind::Create:
-	case EBlueprintHelperGraphStatementKind::Convert:
-	case EBlueprintHelperGraphStatementKind::Schedule:
-	case EBlueprintHelperGraphStatementKind::ContainerAction:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static bool StatementResultSymbolRequiresTypeEvidence(const EBlueprintHelperGraphStatementKind Kind)
-{
-	return Kind == EBlueprintHelperGraphStatementKind::Call
-		|| Kind == EBlueprintHelperGraphStatementKind::Schedule;
-}
-
-static FString ResolveStatementResultTypeToken(const FBlueprintHelperGraphStatementIR& Statement)
-{
-	const FString ContainerResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
-		Statement.ContainerKind,
-		Statement.ContainerOperation,
-		Statement.ElementType,
-		Statement.KeyType,
-		Statement.ValueType,
-		Statement.PinType,
-		Statement.KeyPinType,
-		Statement.ValuePinType);
-	if (!ContainerResultType.IsEmpty())
-	{
-		return ContainerResultType;
-	}
-	if (!Statement.ValueType.IsEmpty())
-	{
-		return Statement.ValueType;
-	}
-	if (!Statement.ElementType.IsEmpty())
-	{
-		return Statement.ElementType;
-	}
-	if (!Statement.PinType.IsEmpty())
-	{
-		return Statement.PinType;
-	}
-	if (!Statement.ResolvedTarget.Type.IsEmpty())
-	{
-		return Statement.ResolvedTarget.Type;
-	}
-	return FString();
-}
-
-static TSharedPtr<FBlueprintHelperGraphExpressionIR> MakeStatementResultSymbolExpression(
-	const FBlueprintHelperGraphStatementIR& Statement,
-	const FString& ResultType)
-{
-	TSharedPtr<FBlueprintHelperGraphExpressionIR> ResultExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
-	ResultExpression->ExpressionId = Statement.StatementId + TEXT("_result");
-	ResultExpression->Path = Statement.Path + TEXT(".result_symbol");
-	ResultExpression->Kind = EBlueprintHelperGraphExpressionKind::Field;
-	ResultExpression->Target = Statement.ResultSymbolName;
-	ResultExpression->Name = Statement.ResultSymbolName;
-	ResultExpression->FieldOperation = TEXT("get");
-	ResultExpression->FieldScope = TEXT("variable");
-	ResultExpression->Type = ResultType;
-	ResultExpression->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
-	ResultExpression->ResolvedTarget.Raw = Statement.ResultSymbolName;
-	ResultExpression->ResolvedTarget.Member = Statement.ResultSymbolName;
-	ResultExpression->ResolvedTarget.Type = ResultType;
-	ResultExpression->ResolvedTarget.bVerifiedByContext = true;
-	return ResultExpression;
-}
-
-static void AddCanonicalOpEvidenceAlias(
-	TMap<FString, FString>& Evidence,
-	const FString& CanonicalKey,
-	const FString& LegacyKey)
-{
-	if (Evidence.Contains(CanonicalKey))
-	{
-		return;
-	}
-
-	const FString LegacyValue = ContextEvidenceValue(Evidence, LegacyKey);
-	if (!LegacyValue.IsEmpty())
-	{
-		Evidence.Add(CanonicalKey, LegacyValue);
-	}
-}
-
-static FString ResolveCanonicalOpOperationId(
-	const FString& FunctionOperation,
-	const TMap<FString, FString>& Evidence,
-	const FString& Operator)
-{
-	const FString FunctionOperationId = NormalizeOpOperationToken(FunctionOperation);
-	if (!FunctionOperationId.IsEmpty() && FunctionOperationId != TEXT("operator_function"))
-	{
-		return FunctionOperationId;
-	}
-
-	const FString CanonicalEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op.operation_id")));
-	if (!CanonicalEvidenceOperationId.IsEmpty())
-	{
-		return CanonicalEvidenceOperationId;
-	}
-
-	FString LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op")));
-	if (LegacyEvidenceOperationId.IsEmpty())
-	{
-		LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("op_name")));
-	}
-	if (LegacyEvidenceOperationId.IsEmpty())
-	{
-		LegacyEvidenceOperationId = NormalizeOpOperationToken(ContextEvidenceValue(Evidence, TEXT("operator")));
-	}
-	if (!LegacyEvidenceOperationId.IsEmpty())
-	{
-		return LegacyEvidenceOperationId;
-	}
-
-	return NormalizeOpOperationToken(Operator);
-}
-
-static void CanonicalizeOpExpressionEvidence(FBlueprintHelperGraphExpressionIR& Expression)
-{
-	if (Expression.Kind != EBlueprintHelperGraphExpressionKind::Op)
-	{
-		return;
-	}
-
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.0"), TEXT("argument_pin_type.0"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.0"), TEXT("argument_pin_type_0"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.1"), TEXT("argument_pin_type.1"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.argument_pin_type.1"), TEXT("argument_pin_type_1"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.expected_return_pin_type"), TEXT("expected_return_pin_type"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.array_lhs_pin_type"), TEXT("array_lhs_pin_type"));
-	AddCanonicalOpEvidenceAlias(Expression.ContextEvidence, TEXT("op.array_rhs_pin_type"), TEXT("array_rhs_pin_type"));
-
-	const FString OperationId = ResolveCanonicalOpOperationId(
-		Expression.FunctionOperation,
-		Expression.ContextEvidence,
-		Expression.Operator);
-	if (!OperationId.IsEmpty())
-	{
-		Expression.ContextEvidence.FindOrAdd(TEXT("op.operation_id")) = OperationId;
-		Expression.FunctionOperation = FString::Printf(TEXT("op.%s"), *OperationId);
-	}
-}
-
-static bool IsSupportedFieldOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeFieldToken(Operation);
-	return Normalized == TEXT("get")
-		|| Normalized == TEXT("set")
-		|| Normalized == TEXT("get_property")
-		|| Normalized == TEXT("set_property");
-}
-
-static bool IsFieldSetOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeFieldToken(Operation);
-	return Normalized == TEXT("set") || Normalized == TEXT("set_property");
-}
-
-static bool IsFieldReadOperation(const FString& Operation)
-{
-	const FString Normalized = NormalizeFieldToken(Operation);
-	return Normalized == TEXT("get") || Normalized == TEXT("get_property");
-}
-
-static bool IsSupportedFieldScope(const FString& Scope)
-{
-	const FString Normalized = NormalizeFieldToken(Scope);
-	return Normalized == TEXT("variable")
-		|| Normalized == TEXT("property_path")
-		|| Normalized == TEXT("component_ref")
-		|| Normalized == TEXT("field_access");
-}
-
-static bool IsPropertyFieldScope(const FString& Scope)
-{
-	return NormalizeFieldToken(Scope) == TEXT("property_path");
-}
-
-static bool HasCreateTargetEvidence(
-	const FString& CreateOperation,
-	const FString& Target,
-	const FString& ClassPath,
-	const FString& AssetPath,
-	const FString& PinType,
-	const FString& KeyPinType,
-	const FString& ValuePinType)
-{
-	if (!Target.TrimStartAndEnd().IsEmpty()
-		|| !ClassPath.TrimStartAndEnd().IsEmpty()
-		|| !AssetPath.TrimStartAndEnd().IsEmpty()
-		|| !PinType.TrimStartAndEnd().IsEmpty())
-	{
-		return true;
-	}
-
-	if (NormalizeFieldToken(CreateOperation) == TEXT("make_map"))
-	{
-		return !KeyPinType.TrimStartAndEnd().IsEmpty()
-			&& !ValuePinType.TrimStartAndEnd().IsEmpty();
-	}
-
-	return false;
-}
-
-static FString ReadOptionalJsonValueAsString(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
-{
-	if (!Object.IsValid() || !FieldName)
-	{
-		return FString();
-	}
-
-	if (const TSharedPtr<FJsonValue>* Value = Object->Values.Find(FieldName))
-	{
-		return FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(*Value).TrimStartAndEnd();
-	}
-
-	return FString();
-}
-
-static FString ReadFirstOptionalJsonValueAsString(
-	const TSharedPtr<FJsonObject>& Object,
-	const TCHAR* FirstFieldName,
-	const TCHAR* SecondFieldName = nullptr,
-	const TCHAR* ThirdFieldName = nullptr)
-{
-	FString Value = ReadOptionalJsonValueAsString(Object, FirstFieldName);
-	if (Value.IsEmpty() && SecondFieldName)
-	{
-		Value = ReadOptionalJsonValueAsString(Object, SecondFieldName);
-	}
-	if (Value.IsEmpty() && ThirdFieldName)
-	{
-		Value = ReadOptionalJsonValueAsString(Object, ThirdFieldName);
-	}
-	return Value;
-}
-
-static FGuid ReadOptionalGuidField(
-	const TSharedPtr<FJsonObject>& Object,
-	const TCHAR* FirstFieldName,
-	const TCHAR* SecondFieldName = nullptr)
-{
-	FGuid ParsedGuid;
-	const FString GuidText = ReadFirstOptionalJsonValueAsString(Object, FirstFieldName, SecondFieldName);
-	if (!GuidText.IsEmpty())
-	{
-		FGuid::Parse(GuidText, ParsedGuid);
-	}
-	return ParsedGuid;
-}
-
-static void AddCapabilityFactIfPresent(
-	TMap<FString, FString>& OutFacts,
-	const FString& FactKey,
-	const FString& Value)
-{
-	const FString CleanValue = Value.TrimStartAndEnd();
-	if (!FactKey.IsEmpty() && !CleanValue.IsEmpty())
-	{
-		OutFacts.FindOrAdd(FactKey, CleanValue);
-	}
-}
-
-static void AddCapabilityFactIfPresent(
-	TMap<FString, FString>& OutFacts,
-	const FString& FactKey,
-	const FGuid& Value)
-{
-	if (Value.IsValid())
-	{
-		OutFacts.FindOrAdd(FactKey, Value.ToString(EGuidFormats::DigitsWithHyphens));
-	}
-}
-
-static void ReadOptionalStringMapField(
-	const TSharedPtr<FJsonObject>& Object,
-	const TCHAR* FieldName,
-	TMap<FString, FString>& OutMap)
-{
-	OutMap.Reset();
-
-	const TSharedPtr<FJsonObject>* MapObject = nullptr;
-	if (!Object.IsValid()
-		|| !Object->TryGetObjectField(FieldName, MapObject)
-		|| !MapObject
-		|| !MapObject->IsValid())
-	{
-		return;
-	}
-
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
-	{
-		OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
-	}
-}
-
-static void ReadOptionalCapabilityFacts(
-	const TSharedPtr<FJsonObject>& Object,
-	TMap<FString, FString>& OutFacts)
-{
-	ReadOptionalStringMapField(Object, TEXT("capability_facts"), OutFacts);
-
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.owner_class"), ReadFirstOptionalJsonValueAsString(Object, TEXT("owner_class_path"), TEXT("owner_class"), TEXT("field_owner_class")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.member_guid"), ReadOptionalGuidField(Object, TEXT("member_guid")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.local_scope"), ReadFirstOptionalJsonValueAsString(Object, TEXT("local_scope"), TEXT("scope_name")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.function_name"), ReadFirstOptionalJsonValueAsString(Object, TEXT("function_name")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.param_flags"), ReadFirstOptionalJsonValueAsString(Object, TEXT("param_flags")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_ref"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_ref"), TEXT("target_pin")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_type"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_type_category"), TEXT("target_pin_type")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.target_pin_object_path"), ReadFirstOptionalJsonValueAsString(Object, TEXT("target_pin_type_object_path"), TEXT("target_pin_object_path")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_name"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_name")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_owner_class"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_owner_class")));
-	AddCapabilityFactIfPresent(OutFacts, TEXT("field.component_kind"), ReadFirstOptionalJsonValueAsString(Object, TEXT("component_kind")));
-
-	const TArray<TSharedPtr<FJsonValue>>* SegmentValues = nullptr;
-	if (Object.IsValid()
-		&& (Object->TryGetArrayField(TEXT("field_path_segments"), SegmentValues)
-			|| Object->TryGetArrayField(TEXT("field_path"), SegmentValues))
-		&& SegmentValues)
-	{
-		TArray<FString> Segments;
-		for (const TSharedPtr<FJsonValue>& SegmentValue : *SegmentValues)
-		{
-			if (SegmentValue.IsValid())
-			{
-				Segments.Add(FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(SegmentValue).TrimStartAndEnd());
-			}
-		}
-		Segments.RemoveAll([](const FString& Segment)
-		{
-			return Segment.IsEmpty();
-		});
-		if (Segments.Num() > 0)
-		{
-			OutFacts.FindOrAdd(TEXT("field.property_path"), FString::Join(Segments, TEXT(".")));
-		}
-	}
-}
-
-static void ParseLogicSpecEntry(
-	const TSharedPtr<FJsonObject>& LogicSpecObject,
-	FBlueprintHelperGraphSemanticIR& OutIR)
-{
-	const TSharedPtr<FJsonObject>* EntryObject = nullptr;
-	if (!LogicSpecObject.IsValid()
-		|| !LogicSpecObject->TryGetObjectField(TEXT("entry"), EntryObject)
-		|| !EntryObject
-		|| !EntryObject->IsValid())
-	{
-		return;
-	}
-
-	FBlueprintHelperGraphEventReference EntryReference;
-	if (!FBlueprintHelperGraphEventReferenceUtils::TryReadEntryReference(*EntryObject, EntryReference))
-	{
-		return;
-	}
-
-	OutIR.Entry.Kind = EntryReference.Kind;
-	OutIR.Entry.Name = EntryReference.Name;
-	OutIR.Entry.GraphName = EntryReference.GraphName;
-	OutIR.Entry.EventTaxonomy = FBlueprintHelperGraphEventReferenceUtils::TaxonomyToString(EntryReference.Taxonomy);
-	OutIR.Entry.SourceCluster = EntryReference.SourceCluster;
-	OutIR.Entry.SignatureEvidenceId = EntryReference.SignatureEvidenceId;
-	OutIR.Entry.ContextEvidence = EntryReference.Metadata;
-
-	if (FBlueprintHelperGraphEventReferenceUtils::IsSignatureOwnedTaxonomy(EntryReference.Taxonomy))
-	{
-		if (EntryReference.SignatureEvidenceId.TrimStartAndEnd().IsEmpty())
-		{
-			const FString DiagnosticCode = EntryReference.Taxonomy == EBlueprintHelperGraphEventTaxonomy::CustomEvent
-				? TEXT("custom_event_signature_evidence_missing")
-				: TEXT("event_signature_evidence_missing");
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-				OutIR,
-				DiagnosticCode,
-				TEXT("$.entry.signature_evidence_id"),
-				TEXT("Signature-owned event entry requires BlueprintSignature signature_evidence_id; GraphWrite only writes the body/use-site."));
-		}
-		if (EntryReference.SourceCluster.TrimStartAndEnd().IsEmpty())
-		{
-			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
-				OutIR,
-				TEXT("event_source_cluster_missing"),
-				TEXT("$.entry.source_cluster"),
-				TEXT("Signature-owned event entry requires source_cluster evidence."));
-		}
-	}
-}
-}
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
 	return Kind != EBlueprintHelperGraphTargetKind::Unknown && !Raw.IsEmpty();
@@ -820,13 +279,13 @@ bool FBlueprintHelperGraphSemanticIR::ValidateExpression(
 
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field)
 	{
-		if (!IsSupportedFieldOperation(Expression.FieldOperation))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldOperation(Expression.FieldOperation))
 		{
 			OutError = TEXT("field expression operation must be get, set, get_property, or set_property");
 			return false;
 		}
 
-		if (!IsFieldReadOperation(Expression.FieldOperation))
+		if (!UGraphWriteGraphStatementUtils::IsFieldReadOperation(Expression.FieldOperation))
 		{
 			OutError = TEXT("field expression operation must be get or get_property");
 			return false;
@@ -844,7 +303,7 @@ bool FBlueprintHelperGraphSemanticIR::ValidateStatement(
 
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field)
 	{
-		if (!IsSupportedFieldOperation(Statement.FieldOperation))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldOperation(Statement.FieldOperation))
 		{
 			OutError = TEXT("field statement operation must be get, set, get_property, or set_property");
 			return false;
@@ -892,7 +351,7 @@ bool FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
 			TEXT("warning"));
 	}
 
-	ParseLogicSpecEntry(LogicSpecObject, OutIR);
+	UGraphWriteGraphStatementUtils::ParseLogicSpecEntry(LogicSpecObject, OutIR);
 
 	const TArray<TSharedPtr<FJsonValue>>* StatementValues = nullptr;
 	if (!LogicSpecObject->TryGetArrayField(TEXT("statements"), StatementValues) || !StatementValues)
@@ -961,12 +420,12 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	{
 		StatementObject->TryGetStringField(TEXT("property_path"), Statement->Property);
 	}
-	Statement->CapabilityId = ReadFirstOptionalJsonValueAsString(StatementObject, TEXT("field_capability_id"), TEXT("capability_id"));
+	Statement->CapabilityId = UGraphWriteGraphStatementUtils::ReadFirstOptionalJsonValueAsString(StatementObject, TEXT("field_capability_id"), TEXT("capability_id"));
 	StatementObject->TryGetStringField(TEXT("field_operation"), Statement->FieldOperation);
 	StatementObject->TryGetStringField(TEXT("field_scope"), Statement->FieldScope);
 	Statement->FieldOperation = NormalizeFieldToken(Statement->FieldOperation);
 	Statement->FieldScope = NormalizeFieldToken(Statement->FieldScope);
-	ReadOptionalCapabilityFacts(StatementObject, Statement->CapabilityFacts);
+	UGraphWriteGraphStatementUtils::ReadOptionalCapabilityFacts(StatementObject, Statement->CapabilityFacts);
 	StatementObject->TryGetStringField(TEXT("function_operation"), Statement->FunctionOperation);
 	Statement->FunctionOperation = NormalizeFieldToken(Statement->FunctionOperation);
 	StatementObject->TryGetStringField(TEXT("transform_operation"), Statement->TransformOperation);
@@ -991,13 +450,13 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 		StatementObject->TryGetStringField(TEXT("target_class_path"), Statement->ClassPath);
 	}
 	StatementObject->TryGetStringField(TEXT("asset_path"), Statement->AssetPath);
-	Statement->GraphLatentAllowed = ReadOptionalJsonValueAsString(StatementObject, TEXT("graph_latent_allowed")).ToLower();
-	Statement->PinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("pin_type"));
-	Statement->KeyPinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_pin_type"));
-	Statement->ValuePinType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_pin_type"));
-	Statement->ElementType = ReadOptionalJsonValueAsString(StatementObject, TEXT("element_type"));
-	Statement->KeyType = ReadOptionalJsonValueAsString(StatementObject, TEXT("key_type"));
-	Statement->ValueType = ReadOptionalJsonValueAsString(StatementObject, TEXT("value_type"));
+	Statement->GraphLatentAllowed = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("graph_latent_allowed")).ToLower();
+	Statement->PinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("pin_type"));
+	Statement->KeyPinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("key_pin_type"));
+	Statement->ValuePinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("value_pin_type"));
+	Statement->ElementType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("element_type"));
+	Statement->KeyType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("key_type"));
+	Statement->ValueType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(StatementObject, TEXT("value_type"));
 	if (Statement->PinType.IsEmpty())
 	{
 		Statement->PinType = Statement->ElementType;
@@ -1060,7 +519,7 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	StatementObject->TryGetStringField(TEXT("ambiguity"), Statement->AmbiguityPolicy);
 	StatementObject->TryGetStringField(TEXT("ambiguity_policy"), Statement->AmbiguityPolicy);
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
-	ReadOptionalStringMapField(StatementObject, TEXT("context_evidence"), Statement->ContextEvidence);
+	UGraphWriteGraphStatementUtils::ReadOptionalStringMapField(StatementObject, TEXT("context_evidence"), Statement->ContextEvidence);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction)
 	{
@@ -1170,12 +629,12 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	{
 		ExpressionObject->TryGetStringField(TEXT("property_path"), Expression->Property);
 	}
-	Expression->CapabilityId = ReadFirstOptionalJsonValueAsString(ExpressionObject, TEXT("field_capability_id"), TEXT("capability_id"));
+	Expression->CapabilityId = UGraphWriteGraphStatementUtils::ReadFirstOptionalJsonValueAsString(ExpressionObject, TEXT("field_capability_id"), TEXT("capability_id"));
 	ExpressionObject->TryGetStringField(TEXT("field_operation"), Expression->FieldOperation);
 	ExpressionObject->TryGetStringField(TEXT("field_scope"), Expression->FieldScope);
 	Expression->FieldOperation = NormalizeFieldToken(Expression->FieldOperation);
 	Expression->FieldScope = NormalizeFieldToken(Expression->FieldScope);
-	ReadOptionalCapabilityFacts(ExpressionObject, Expression->CapabilityFacts);
+	UGraphWriteGraphStatementUtils::ReadOptionalCapabilityFacts(ExpressionObject, Expression->CapabilityFacts);
 	const FString NormalizedExpressionKind = NormalizeFieldToken(KindString);
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
 		&& Expression->FieldOperation.IsEmpty()
@@ -1213,13 +672,13 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 		ExpressionObject->TryGetStringField(TEXT("target_class_path"), Expression->ClassPath);
 	}
 	ExpressionObject->TryGetStringField(TEXT("asset_path"), Expression->AssetPath);
-	Expression->GraphLatentAllowed = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("graph_latent_allowed")).ToLower();
-	Expression->PinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("pin_type"));
-	Expression->KeyPinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_pin_type"));
-	Expression->ValuePinType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_pin_type"));
-	Expression->ElementType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("element_type"));
-	Expression->KeyType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_type"));
-	Expression->ValueType = ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_type"));
+	Expression->GraphLatentAllowed = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("graph_latent_allowed")).ToLower();
+	Expression->PinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("pin_type"));
+	Expression->KeyPinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_pin_type"));
+	Expression->ValuePinType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_pin_type"));
+	Expression->ElementType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("element_type"));
+	Expression->KeyType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("key_type"));
+	Expression->ValueType = UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(ExpressionObject, TEXT("value_type"));
 	if (Expression->PinType.IsEmpty())
 	{
 		Expression->PinType = Expression->ElementType;
@@ -1249,7 +708,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	ExpressionObject->TryGetStringField(TEXT("ambiguity"), Expression->AmbiguityPolicy);
 	ExpressionObject->TryGetStringField(TEXT("ambiguity_policy"), Expression->AmbiguityPolicy);
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(ExpressionObject, TEXT("category_priority"), Expression->CategoryPriority);
-	ReadOptionalStringMapField(ExpressionObject, TEXT("context_evidence"), Expression->ContextEvidence);
+	UGraphWriteGraphStatementUtils::ReadOptionalStringMapField(ExpressionObject, TEXT("context_evidence"), Expression->ContextEvidence);
 	ExpressionObject->TryGetStringField(TEXT("type"), Expression->Type);
 	if (Expression->Type.IsEmpty())
 	{
@@ -1260,7 +719,7 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	{
 		ExpressionObject->TryGetStringField(TEXT("operator"), Expression->Operator);
 	}
-	CanonicalizeOpExpressionEvidence(*Expression);
+	UGraphWriteGraphStatementUtils::CanonicalizeOpExpressionEvidence(*Expression);
 
 	if (const TSharedPtr<FJsonValue>* LiteralValue = ExpressionObject->Values.Find(TEXT("value")))
 	{
@@ -1470,11 +929,11 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("statement_target_missing"), Statement->Path + TEXT(".target"), TEXT("field statement requires target."));
 		}
-		if (IsFieldSetOperation(Statement->FieldOperation) && !Statement->Value.IsValid())
+		if (UGraphWriteGraphStatementUtils::IsFieldSetOperation(Statement->FieldOperation) && !Statement->Value.IsValid())
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_value_missing"), Statement->Path + TEXT(".value"), TEXT("field set statement requires value."));
 		}
-		if (!IsSupportedFieldOperation(Statement->FieldOperation))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldOperation(Statement->FieldOperation))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1482,7 +941,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				Statement->Path + TEXT(".field_operation"),
 				TEXT("field statement operation must be get, set, get_property, or set_property"));
 		}
-		if (!IsSupportedFieldScope(Statement->FieldScope))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldScope(Statement->FieldScope))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1490,14 +949,14 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				Statement->Path + TEXT(".field_scope"),
 				FString::Printf(TEXT("Unsupported field_scope: %s."), *Statement->FieldScope));
 		}
-		if (IsPropertyFieldScope(Statement->FieldScope)
+		if (UGraphWriteGraphStatementUtils::IsPropertyFieldScope(Statement->FieldScope)
 			&& Statement->Property.TrimStartAndEnd().IsEmpty()
 			&& !Statement->Target.Contains(TEXT(".")))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_property_missing"), Statement->Path + TEXT(".property_path"), TEXT("field property_path statement requires property_path when target is not Owner.PropertyPath."));
 		}
 		{
-			const FString ResolvedFieldTarget = IsPropertyFieldScope(Statement->FieldScope) && !Statement->Property.TrimStartAndEnd().IsEmpty()
+			const FString ResolvedFieldTarget = UGraphWriteGraphStatementUtils::IsPropertyFieldScope(Statement->FieldScope) && !Statement->Property.TrimStartAndEnd().IsEmpty()
 				? Statement->Target + TEXT(".") + Statement->Property
 				: Statement->Target;
 			Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
@@ -1564,7 +1023,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				Statement->Path + TEXT(".target"),
 				TEXT("function-backed create statement requires target or name callable evidence."));
 		}
-		if (!HasCreateTargetEvidence(
+		if (!UGraphWriteGraphStatementUtils::HasCreateTargetEvidence(
 			Statement->CreateOperation,
 			Statement->Target,
 			Statement->ClassPath,
@@ -1596,7 +1055,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_target_missing"), Statement->Path + TEXT(".target"), TEXT("container_action statement requires target."));
 		}
-		ValidateContainerActionContract(
+		UGraphWriteGraphStatementUtils::ValidateContainerActionContract(
 			OutIR,
 			Statement->Path,
 			Statement->ContainerKind,
@@ -1640,7 +1099,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_operation_missing"), Statement->Path + TEXT(".delegate_operation"), TEXT("delegate statement requires delegate_operation."));
 		}
-		else if (!IsSupportedDelegateOperation(Statement->DelegateOperation))
+		else if (!UGraphWriteGraphStatementUtils::IsSupportedDelegateOperation(Statement->DelegateOperation))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1648,7 +1107,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				Statement->Path + TEXT(".delegate_operation"),
 				FString::Printf(TEXT("Unsupported delegate_operation: %s."), *Statement->DelegateOperation));
 		}
-		if (DelegateOperationRequiresHandler(Statement->DelegateOperation)
+		if (UGraphWriteGraphStatementUtils::DelegateOperationRequiresHandler(Statement->DelegateOperation)
 			&& Statement->HandlerName.TrimStartAndEnd().IsEmpty())
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("delegate_handler_missing"), Statement->Path + TEXT(".handler"), TEXT("delegate bind/assign/unbind statement requires handler evidence."));
@@ -1698,7 +1157,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 	}
 	else if (!Statement->ResultSymbolName.TrimStartAndEnd().IsEmpty())
 	{
-		if (!StatementKindCanReturnGraphLocalValue(Statement->Kind))
+		if (!UGraphWriteGraphStatementUtils::StatementKindCanReturnGraphLocalValue(Statement->Kind))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1708,8 +1167,8 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 		}
 		else
 		{
-			const FString ResultType = ResolveStatementResultTypeToken(*Statement);
-			if (StatementResultSymbolRequiresTypeEvidence(Statement->Kind) && ResultType.IsEmpty())
+			const FString ResultType = UGraphWriteGraphStatementUtils::ResolveStatementResultTypeToken(*Statement);
+			if (UGraphWriteGraphStatementUtils::StatementResultSymbolRequiresTypeEvidence(Statement->Kind) && ResultType.IsEmpty())
 			{
 				FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 					OutIR,
@@ -1723,7 +1182,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 					OutIR,
 					Statement->ResultSymbolName,
 					Statement->StatementId,
-					MakeStatementResultSymbolExpression(*Statement, ResultType),
+					UGraphWriteGraphStatementUtils::MakeStatementResultSymbolExpression(*Statement, ResultType),
 					Statement->Path + TEXT(".result_symbol"),
 					ScopeStack);
 			}
@@ -1769,7 +1228,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("expression_target_missing"), Expression->Path + TEXT(".target"), TEXT("field expression requires target or name."));
 			break;
 		}
-		if (!IsSupportedFieldOperation(Expression->FieldOperation))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldOperation(Expression->FieldOperation))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1777,11 +1236,11 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 				Expression->Path + TEXT(".field_operation"),
 				TEXT("field expression operation must be get, set, get_property, or set_property"));
 		}
-		else if (!IsFieldReadOperation(Expression->FieldOperation))
+		else if (!UGraphWriteGraphStatementUtils::IsFieldReadOperation(Expression->FieldOperation))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("field_expression_operation_unsupported"), Expression->Path + TEXT(".field_operation"), TEXT("Field expressions currently support field_operation=get or get_property."));
 		}
-		if (!IsSupportedFieldScope(Expression->FieldScope))
+		if (!UGraphWriteGraphStatementUtils::IsSupportedFieldScope(Expression->FieldScope))
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(
 				OutIR,
@@ -1789,7 +1248,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 				Expression->Path + TEXT(".field_scope"),
 				FString::Printf(TEXT("Unsupported field_scope: %s."), *Expression->FieldScope));
 		}
-		if (IsPropertyFieldScope(Expression->FieldScope)
+		if (UGraphWriteGraphStatementUtils::IsPropertyFieldScope(Expression->FieldScope)
 			&& Expression->Property.TrimStartAndEnd().IsEmpty()
 			&& !Expression->Target.Contains(TEXT(".")))
 		{
@@ -1797,7 +1256,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		}
 		{
 			FBlueprintHelperGraphSymbol Symbol;
-			if (!IsPropertyFieldScope(Expression->FieldScope)
+			if (!UGraphWriteGraphStatementUtils::IsPropertyFieldScope(Expression->FieldScope)
 				&& FBlueprintHelperGraphSemanticIRUtils::FindSymbolInScopes(Expression->Target, ScopeStack, Symbol))
 			{
 				Expression->ResolvedTarget = FBlueprintHelperGraphResolvedTarget();
@@ -1814,7 +1273,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 			}
 		}
 		{
-			const FString ResolvedFieldTarget = IsPropertyFieldScope(Expression->FieldScope) && !Expression->Property.TrimStartAndEnd().IsEmpty()
+			const FString ResolvedFieldTarget = UGraphWriteGraphStatementUtils::IsPropertyFieldScope(Expression->FieldScope) && !Expression->Property.TrimStartAndEnd().IsEmpty()
 				? Expression->Target + TEXT(".") + Expression->Property
 				: Expression->Target;
 			Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
@@ -1844,7 +1303,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("op_args_missing"), Expression->Path + TEXT(".args"), TEXT("op expression requires args or left/right operands."));
 		}
-		if (Expression->Type.IsEmpty() && IsBoolProducingOperator(Expression->Operator))
+		if (Expression->Type.IsEmpty() && UGraphWriteGraphStatementUtils::IsBoolProducingOperator(Expression->Operator))
 		{
 			Expression->Type = TEXT("bool");
 		}
@@ -1888,7 +1347,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("needs_more_semantic_context"), Expression->Path + TEXT(".create_operation"), TEXT("create expression requires create_operation."));
 		}
-		if (!HasCreateTargetEvidence(
+		if (!UGraphWriteGraphStatementUtils::HasCreateTargetEvidence(
 			Expression->CreateOperation,
 			Expression->Target,
 			Expression->ClassPath,
@@ -1920,7 +1379,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 		{
 			FBlueprintHelperGraphSemanticIRUtils::AddDiagnostic(OutIR, TEXT("container_target_missing"), Expression->Path + TEXT(".target"), TEXT("container_action expression requires target."));
 		}
-		ValidateContainerActionContract(
+		UGraphWriteGraphStatementUtils::ValidateContainerActionContract(
 			OutIR,
 			Expression->Path,
 			Expression->ContainerKind,
@@ -1974,7 +1433,7 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Op && Expression->Type.IsEmpty())
 	{
-		if (const TSharedPtr<FBlueprintHelperGraphExpressionIR> FirstArg = FindFirstExpression(Expression->Args))
+		if (const TSharedPtr<FBlueprintHelperGraphExpressionIR> FirstArg = UGraphWriteGraphStatementUtils::FindFirstExpression(Expression->Args))
 		{
 			Expression->Type = FirstArg->Type;
 		}

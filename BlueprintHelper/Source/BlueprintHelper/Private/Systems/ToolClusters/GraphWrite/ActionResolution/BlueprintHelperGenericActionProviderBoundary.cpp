@@ -1,80 +1,6 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericActionProviderBoundary.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
-
-namespace
-{
-static FString BoundaryRequestEvidenceValue(const FBlueprintHelperActionResolutionRequest& Request, const TCHAR* Key)
-{
-	if (const FString* Value = Request.ContextEvidence.Find(Key))
-	{
-		return Clean(*Value);
-	}
-	if (const FString* Value = Request.Semantic.DefaultValues.Find(Key))
-	{
-		return Clean(*Value);
-	}
-	return FString();
-}
-
-static FString ControlOperation(const FBlueprintHelperActionResolutionRequest& Request)
-{
-	return NormalizeOperation(
-		!BoundaryRequestEvidenceValue(Request, TEXT("generic.control.operation")).IsEmpty()
-			? BoundaryRequestEvidenceValue(Request, TEXT("generic.control.operation"))
-			: Request.Semantic.Query);
-}
-
-static bool IsSingletonControlOperation(const FString& Operation)
-{
-	return Operation == TEXT("branch")
-		|| Operation == TEXT("sequence")
-		|| Operation == TEXT("return");
-}
-
-static bool IsDedicatedControlFlowOperation(const FString& Operation)
-{
-	return Operation == TEXT("switch_int")
-		|| Operation == TEXT("switch_string")
-		|| Operation == TEXT("switch_name")
-		|| Operation == TEXT("switch_enum")
-		|| Operation == TEXT("multi_gate");
-}
-
-static bool IsStandardMacroControlOperation(const FString& Operation)
-{
-	return Operation == TEXT("do_once")
-		|| Operation == TEXT("do_n")
-		|| Operation == TEXT("gate")
-		|| Operation == TEXT("flip_flop")
-		|| Operation == TEXT("for_loop")
-		|| Operation == TEXT("for_loop_with_break")
-		|| Operation == TEXT("foreach_loop")
-		|| Operation == TEXT("foreach_loop_with_break")
-		|| Operation == TEXT("while_loop");
-}
-
-static FBlueprintHelperGenericActionProviderBoundary MakeNeedsContext(
-	const FString& RequiredBuilder,
-	const FString& Reason)
-{
-	FBlueprintHelperGenericActionProviderBoundary Boundary;
-	Boundary.Mode = EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext;
-	Boundary.RequiredBuilder = RequiredBuilder;
-	Boundary.Reason = Reason;
-	return Boundary;
-}
-
-static FBlueprintHelperGenericActionProviderBoundary MakeDedicated(
-	const FString& RequiredBuilder,
-	const FString& Reason)
-{
-	FBlueprintHelperGenericActionProviderBoundary Boundary;
-	Boundary.Mode = EBlueprintHelperGenericActionProviderMode::DedicatedFragmentBuilderRequired;
-	Boundary.RequiredBuilder = RequiredBuilder;
-	Boundary.Reason = Reason;
-	return Boundary;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionResolverUtils.h"
 
 FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProviderBoundaryService::Classify(
 	const FBlueprintHelperActionResolutionRequest& Request)
@@ -131,7 +57,7 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 
 	case EBlueprintHelperActionSemanticKind::Control:
 		{
-			const FString Operation = ControlOperation(Request);
+			const FString Operation = UGraphWriteActionResolverUtils::ControlOperation(Request);
 			if (Operation.IsEmpty())
 			{
 				Boundary.Mode = EBlueprintHelperGenericActionProviderMode::NeedsMoreSemanticContext;
@@ -139,46 +65,46 @@ FBlueprintHelperGenericActionProviderBoundary FBlueprintHelperGenericActionProvi
 				Boundary.Reason = TEXT("control requires Semantic.Query or generic.control.operation such as branch, return, sequence, switch_enum, or StandardMacros operation.");
 				return Boundary;
 			}
-			if (IsSingletonControlOperation(Operation))
+			if (UGraphWriteActionResolverUtils::IsSingletonControlOperation(Operation))
 			{
 				Boundary.Mode = EBlueprintHelperGenericActionProviderMode::NodeSpawnerCandidate;
 				Boundary.RequiredBuilder = TEXT("ControlFragmentBuilder");
 				Boundary.Reason = TEXT("control resolves through the singleton control-flow evidence provider; ControlFragmentBuilder only performs flow composition and pin binding.");
 				return Boundary;
 			}
-			if (IsDedicatedControlFlowOperation(Operation))
+			if (UGraphWriteActionResolverUtils::IsDedicatedControlFlowOperation(Operation))
 			{
-				if (Operation == TEXT("multi_gate") && BoundaryRequestEvidenceValue(Request, TEXT("generic.control.dynamic_output_count")).IsEmpty())
+				if (Operation == TEXT("multi_gate") && UGraphWriteActionResolverUtils::BoundaryRequestEvidenceValue(Request, TEXT("generic.control.dynamic_output_count")).IsEmpty())
 				{
-					return MakeNeedsContext(
+					return UGraphWriteActionResolverUtils::MakeNeedsContext(
 						TEXT("ControlFlowFragmentBuilder"),
 						TEXT("multi_gate requires generic.control.dynamic_output_count before the dedicated control-flow builder can run."));
 				}
-				if (Operation.StartsWith(TEXT("switch_")) && BoundaryRequestEvidenceValue(Request, TEXT("generic.control.case_values")).IsEmpty())
+				if (Operation.StartsWith(TEXT("switch_")) && UGraphWriteActionResolverUtils::BoundaryRequestEvidenceValue(Request, TEXT("generic.control.case_values")).IsEmpty())
 				{
-					return MakeNeedsContext(
+					return UGraphWriteActionResolverUtils::MakeNeedsContext(
 						TEXT("ControlFlowFragmentBuilder"),
 						TEXT("switch control requires generic.control.case_values before the dedicated control-flow builder can run."));
 				}
-				return MakeDedicated(
+				return UGraphWriteActionResolverUtils::MakeDedicated(
 					TEXT("ControlFlowFragmentBuilder"),
 					FString::Printf(TEXT("control operation '%s' requires the dedicated control-flow fragment builder."), *Operation));
 			}
-			if (IsStandardMacroControlOperation(Operation))
+			if (UGraphWriteActionResolverUtils::IsStandardMacroControlOperation(Operation))
 			{
-				if (BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.graph_path")).IsEmpty())
+				if (UGraphWriteActionResolverUtils::BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.graph_path")).IsEmpty())
 				{
-					return MakeNeedsContext(
+					return UGraphWriteActionResolverUtils::MakeNeedsContext(
 						TEXT("MacroControlFragmentBuilder"),
 						TEXT("StandardMacros control requires generic.macro.graph_path evidence."));
 				}
-				if (BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot")).IsEmpty())
+				if (UGraphWriteActionResolverUtils::BoundaryRequestEvidenceValue(Request, TEXT("generic.macro.pin_shape_snapshot")).IsEmpty())
 				{
-					return MakeNeedsContext(
+					return UGraphWriteActionResolverUtils::MakeNeedsContext(
 						TEXT("MacroControlFragmentBuilder"),
 						TEXT("StandardMacros control requires generic.macro.pin_shape_snapshot evidence."));
 				}
-				return MakeDedicated(
+				return UGraphWriteActionResolverUtils::MakeDedicated(
 					TEXT("MacroControlFragmentBuilder"),
 					FString::Printf(TEXT("StandardMacros control operation '%s' requires the macro control fragment builder."), *Operation));
 			}

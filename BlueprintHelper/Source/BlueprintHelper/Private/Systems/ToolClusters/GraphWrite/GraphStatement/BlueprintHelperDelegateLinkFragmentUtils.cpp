@@ -11,19 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 
-namespace
-{
-static FString MakeDelegatePinDiagnostic(
-	const FString& DiagnosticPrefix,
-	const TCHAR* CodeSuffix,
-	const FString& Message)
-{
-	const FString Prefix = DiagnosticPrefix.TrimStartAndEnd().IsEmpty()
-		? TEXT("delegate")
-		: DiagnosticPrefix.TrimStartAndEnd();
-	return FString::Printf(TEXT("%s_%s: %s"), *Prefix, CodeSuffix, *Message);
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 UK2Node_CreateDelegate* FBlueprintHelperDelegateLinkFragmentUtils::SpawnCreateDelegateNode(
 	UEdGraph* TargetGraph,
@@ -90,7 +78,7 @@ UEdGraphPin* FBlueprintHelperDelegateLinkFragmentUtils::ResolveDelegateInputPin(
 {
 	if (!PrimaryNode)
 	{
-		OutError = MakeDelegatePinDiagnostic(
+		OutError = UGraphWriteGraphStatementUtils::MakeDelegatePinDiagnostic(
 			DiagnosticPrefix,
 			TEXT("pin_missing"),
 			TEXT("create delegate link failed: primary node is invalid."));
@@ -107,7 +95,7 @@ UEdGraphPin* FBlueprintHelperDelegateLinkFragmentUtils::ResolveDelegateInputPin(
 		}
 		if (!NamedPin)
 		{
-			OutError = MakeDelegatePinDiagnostic(
+			OutError = UGraphWriteGraphStatementUtils::MakeDelegatePinDiagnostic(
 				DiagnosticPrefix,
 				TEXT("pin_missing"),
 				FString::Printf(TEXT("create delegate link failed: delegate input pin '%s' was not found."), *TrimmedPinName));
@@ -115,7 +103,7 @@ UEdGraphPin* FBlueprintHelperDelegateLinkFragmentUtils::ResolveDelegateInputPin(
 		}
 		if (NamedPin->Direction != EGPD_Input)
 		{
-			OutError = MakeDelegatePinDiagnostic(
+			OutError = UGraphWriteGraphStatementUtils::MakeDelegatePinDiagnostic(
 				DiagnosticPrefix,
 				TEXT("pin_missing"),
 				FString::Printf(TEXT("create delegate link failed: delegate pin '%s' is not an input pin."), *TrimmedPinName));
@@ -153,14 +141,14 @@ UEdGraphPin* FBlueprintHelperDelegateLinkFragmentUtils::ResolveDelegateInputPin(
 	}
 	if (DelegatePins.Num() > 1)
 	{
-		OutError = MakeDelegatePinDiagnostic(
+		OutError = UGraphWriteGraphStatementUtils::MakeDelegatePinDiagnostic(
 			DiagnosticPrefix,
 			TEXT("pin_ambiguous"),
 			TEXT("create delegate link failed: primary node has multiple delegate input pins; schedule_delegate_pin_name evidence is required."));
 		return nullptr;
 	}
 
-	OutError = MakeDelegatePinDiagnostic(
+	OutError = UGraphWriteGraphStatementUtils::MakeDelegatePinDiagnostic(
 		DiagnosticPrefix,
 		TEXT("pin_missing"),
 		TEXT("create delegate link failed: delegate input pin is missing."));

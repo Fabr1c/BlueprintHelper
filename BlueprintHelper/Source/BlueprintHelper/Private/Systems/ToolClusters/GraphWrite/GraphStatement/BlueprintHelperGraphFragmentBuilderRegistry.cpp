@@ -6,41 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
-
-namespace
-{
-static FString GetStatementId(const FBlueprintHelperGraphStatementIR& Statement)
-{
-	return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement);
-}
-
-static FString GetStatementContextId(const FBlueprintHelperGraphStatementIR& Statement)
-{
-	return !Statement.StatementId.IsEmpty() ? Statement.StatementId : GetStatementId(Statement);
-}
-
-static void FillLiteralArgsAsDefaultsAndTypes(
-	const TMap<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& Args,
-	TMap<FString, FString>& OutDefaultValues,
-	TMap<FString, FString>& OutArgumentTypes)
-{
-	for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Args)
-	{
-		if (!ArgPair.Value.IsValid())
-		{
-			continue;
-		}
-		if (ArgPair.Value->Kind == EBlueprintHelperGraphExpressionKind::Literal)
-		{
-			OutDefaultValues.Add(ArgPair.Key, ArgPair.Value->LiteralValue);
-		}
-		if (!ArgPair.Value->Type.TrimStartAndEnd().IsEmpty())
-		{
-			OutArgumentTypes.Add(ArgPair.Key, ArgPair.Value->Type);
-		}
-	}
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 	UEdGraph* TargetGraph,
@@ -51,8 +17,8 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions,
 	const TMap<FString, FBlueprintHelperCallFunctionPinType>* SemanticArgumentPinTypes)
 {
-	const FString StatementId = GetStatementId(Statement);
-	const FString StatementContextId = GetStatementContextId(Statement);
+	const FString StatementId = UGraphWriteGraphStatementUtils::GetStatementId(Statement);
+	const FString StatementContextId = UGraphWriteGraphStatementUtils::GetStatementContextId(Statement);
 	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Call)
 	{
 		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
@@ -61,7 +27,7 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.ActionContextStatementId = StatementContextId;
 		Request.Query = !Statement.Target.IsEmpty() ? Statement.Target : Statement.Name;
 		Request.ResolvedStableId = Statement.ResolvedCallFunctionStableId;
-		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
 		if (SemanticArgumentPinTypes)
 		{
 			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
@@ -86,7 +52,7 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			: Statement.CreateOperation;
 		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
 		Request.TypeName = Statement.ClassPath;
-		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
 		if (SemanticArgumentPinTypes)
 		{
 			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
@@ -129,7 +95,7 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			: (!Statement.ScheduleOperation.IsEmpty() ? Statement.ScheduleOperation : Statement.PatternName);
 		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
 		Request.TypeName = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.ResolvedTarget.Type;
-		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
 		if (SemanticArgumentPinTypes)
 		{
 			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
@@ -158,7 +124,7 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.TypeName = !Statement.ValueType.IsEmpty()
 			? Statement.ValueType
 			: (!Statement.ElementType.IsEmpty() ? Statement.ElementType : Statement.ResolvedTarget.Type);
-		FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
+		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
 		if (SemanticArgumentPinTypes)
 		{
 			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);

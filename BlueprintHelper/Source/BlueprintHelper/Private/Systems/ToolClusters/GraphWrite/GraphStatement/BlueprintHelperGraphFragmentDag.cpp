@@ -3,41 +3,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentDagUtils.h"
-
-namespace
-{
-static bool TryReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, FString& OutValue)
-{
-	return Object.IsValid() && Object->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
-}
-
-static bool TryReadBoolField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName, bool& OutValue)
-{
-	return Object.IsValid() && Object->TryGetBoolField(FieldName, OutValue);
-}
-
-static EBlueprintHelperGraphFragmentPortDirection ParseFragmentPortDirection(const FString& Direction)
-{
-	const FString Normalized = Direction.TrimStartAndEnd().ToLower();
-	if (Normalized == TEXT("exec_input"))
-	{
-		return EBlueprintHelperGraphFragmentPortDirection::ExecInput;
-	}
-	if (Normalized == TEXT("exec_output"))
-	{
-		return EBlueprintHelperGraphFragmentPortDirection::ExecOutput;
-	}
-	if (Normalized == TEXT("data_input"))
-	{
-		return EBlueprintHelperGraphFragmentPortDirection::DataInput;
-	}
-	if (Normalized == TEXT("data_output"))
-	{
-		return EBlueprintHelperGraphFragmentPortDirection::DataOutput;
-	}
-	return EBlueprintHelperGraphFragmentPortDirection::Unknown;
-}
-}
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
 TSharedRef<FJsonObject> FBlueprintHelperGraphFragmentDiagnostic::ToJson() const
 {
@@ -85,22 +51,22 @@ FBlueprintHelperGraphFragmentPinTypeRef FBlueprintHelperGraphFragmentPinTypeRef:
 		return Result;
 	}
 
-	TryReadStringField(Object, TEXT("category"), Result.Category);
-	if (!TryReadStringField(Object, TEXT("subcategory"), Result.SubCategory))
+	UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("category"), Result.Category);
+	if (!UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("subcategory"), Result.SubCategory))
 	{
-		TryReadStringField(Object, TEXT("sub_category"), Result.SubCategory);
+		UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("sub_category"), Result.SubCategory);
 	}
-	if (!TryReadStringField(Object, TEXT("object_path"), Result.ObjectPath))
+	if (!UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("object_path"), Result.ObjectPath))
 	{
-		TryReadStringField(Object, TEXT("sub_category_object_path"), Result.ObjectPath);
+		UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("sub_category_object_path"), Result.ObjectPath);
 	}
-	if (!TryReadStringField(Object, TEXT("container_type"), Result.ContainerType))
+	if (!UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("container_type"), Result.ContainerType))
 	{
-		TryReadStringField(Object, TEXT("container"), Result.ContainerType);
+		UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("container"), Result.ContainerType);
 	}
-	TryReadStringField(Object, TEXT("value_type"), Result.ValueType);
-	TryReadBoolField(Object, TEXT("is_reference"), Result.bIsReference);
-	TryReadBoolField(Object, TEXT("is_const"), Result.bIsConst);
+	UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("value_type"), Result.ValueType);
+	UGraphWriteGraphStatementUtils::TryReadBoolField(Object, TEXT("is_reference"), Result.bIsReference);
+	UGraphWriteGraphStatementUtils::TryReadBoolField(Object, TEXT("is_const"), Result.bIsConst);
 	return Result;
 }
 
@@ -154,25 +120,25 @@ FBlueprintHelperGraphFragmentEndpointRef FBlueprintHelperGraphFragmentEndpointRe
 		return Result;
 	}
 
-	if (!TryReadStringField(Object, TEXT("fragment_id"), Result.FragmentId))
+	if (!UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("fragment_id"), Result.FragmentId))
 	{
-		TryReadStringField(Object, TEXT("fragment"), Result.FragmentId);
+		UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("fragment"), Result.FragmentId);
 	}
-	if (!TryReadStringField(Object, TEXT("port_id"), Result.PortId))
+	if (!UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("port_id"), Result.PortId))
 	{
-		TryReadStringField(Object, TEXT("port"), Result.PortId);
+		UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("port"), Result.PortId);
 	}
-	TryReadStringField(Object, TEXT("pin_name"), Result.PinName);
-	TryReadStringField(Object, TEXT("type"), Result.Type);
+	UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("pin_name"), Result.PinName);
+	UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("type"), Result.Type);
 
 	FString DirectionString;
-	if (TryReadStringField(Object, TEXT("direction"), DirectionString))
+	if (UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("direction"), DirectionString))
 	{
-		Result.Direction = ParseFragmentPortDirection(DirectionString);
+		Result.Direction = UGraphWriteGraphStatementUtils::ParseFragmentPortDirection(DirectionString);
 	}
 
 	FString PinTypeCategory;
-	if (TryReadStringField(Object, TEXT("pin_type"), PinTypeCategory))
+	if (UGraphWriteGraphStatementUtils::TryReadStringField(Object, TEXT("pin_type"), PinTypeCategory))
 	{
 		Result.PinType.Category = PinTypeCategory;
 	}
