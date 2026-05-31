@@ -841,6 +841,7 @@ function restoreTerminalForPrompt() {
 function restoreTerminal() {
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(false);
+    process.stdin.pause();
   }
   if (sharedLineReader) {
     sharedLineReader.close();
