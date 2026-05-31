@@ -139,6 +139,51 @@ public:
 			FBlueprintGraphWriteExecutionStatsSerializer::ToJson(Stats));
 	}
 
+	static void CollectExecReachableOwnershipNodes(
+		UEdGraphNode* EntryNode,
+		const TSet<UEdGraphNode*>& OwnershipCandidates,
+		TArray<UEdGraphNode*>& OutNodes)
+	{
+		if (!EntryNode)
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> Stack;
+		TSet<UEdGraphNode*> Visited;
+		Stack.Add(EntryNode);
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Current = Stack.Pop(EAllowShrinking::No);
+			if (!Current || Visited.Contains(Current))
+			{
+				continue;
+			}
+			Visited.Add(Current);
+
+			if (OwnershipCandidates.Contains(Current))
+			{
+				OutNodes.AddUnique(Current);
+			}
+
+			for (UEdGraphPin* Pin : Current->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedNode && OwnershipCandidates.Contains(LinkedNode) && !Visited.Contains(LinkedNode))
+					{
+						Stack.Add(LinkedNode);
+					}
+				}
+			}
+		}
+	}
+
 };
 
 // ─── 构造 ───
@@ -846,13 +891,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	// 6. 分组并为节点写入 ownership
 	TArray<FString> BlockRefs;
 	const TArray<FString> EntryNames = ExtractCustomEventNames(Request);
-	TArray<UEdGraphNode*> CreatedNodes;
+	TArray<UEdGraphNode*> ImportedNodes;
 	for (UEdGraphNode* Node : TargetGraph->Nodes)
 	{
 		if (Node && !NodeSnapshot.Contains(Node))
 		{
-			CreatedNodes.Add(Node);
+			ImportedNodes.Add(Node);
 		}
+	}
+	TSet<UEdGraphNode*> OwnershipCandidates;
+	for (UEdGraphNode* Node : ImportedNodes)
+	{
+		OwnershipCandidates.Add(Node);
 	}
 	if (Request.bReuseExistingEntries)
 	{
@@ -860,7 +910,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		{
 			if (UK2Node_CustomEvent* ExistingEntry = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(TargetGraph, EntryName))
 			{
-				CreatedNodes.AddUnique(ExistingEntry);
+				OwnershipCandidates.Add(ExistingEntry);
 			}
 		}
 	}
@@ -871,14 +921,31 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		const FString FullBlockId = BlockIdService.MakeFullBlockId(Request.GraphName, BlockRef);
 		BlockRefs.Add(BlockRef);
 
-		// 为每个 block 关联的节点写入 ownership
-		// 第一版简化：所有新节点归属到第一个 block
+		// Keep ownership partitioned per entry instead of stamping every imported node with every block id.
+		TArray<UEdGraphNode*> OwnershipNodes;
+		UK2Node_CustomEvent* EntryNode = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(TargetGraph, EntryName);
+		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CollectExecReachableOwnershipNodes(
+			EntryNode,
+			OwnershipCandidates,
+			OwnershipNodes);
+		if (OwnershipNodes.Num() == 0 && EntryNames.Num() == 1)
+		{
+			for (UEdGraphNode* CandidateNode : OwnershipCandidates)
+			{
+				OwnershipNodes.AddUnique(CandidateNode);
+			}
+		}
+		if (OwnershipNodes.Num() == 0)
+		{
+			continue;
+		}
+
 		FString OwnershipError;
 		if (!OwnershipService.WriteBlockOwnership(
-			Blueprint, CreatedNodes, FullBlockId, Request.FeatureName, OwnershipError))
+			Blueprint, OwnershipNodes, FullBlockId, Request.FeatureName, OwnershipError))
 		{
 			// Ownership 写入失败 → 回滚
-			for (UEdGraphNode* Node : CreatedNodes)
+			for (UEdGraphNode* Node : ImportedNodes)
 			{
 				if (Node)
 				{
@@ -927,9 +994,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	SuccessResult.Validation = Validation;
 
 	const double LayoutStart = FPlatformTime::Seconds();
-	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(TargetGraph, CreatedNodes);
+	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(TargetGraph, ImportedNodes);
 	ExecutionStats.RecordLayoutMs = (FPlatformTime::Seconds() - LayoutStart) * 1000.0;
-	ExecutionStats.LayoutRecordNodeCount = CreatedNodes.Num();
+	ExecutionStats.LayoutRecordNodeCount = ImportedNodes.Num();
 	if (Request.bIncludeTiming)
 	{
 		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(

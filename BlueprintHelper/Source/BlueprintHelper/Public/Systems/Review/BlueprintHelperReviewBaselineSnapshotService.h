@@ -60,6 +60,9 @@ private:
 	static TSharedRef<FJsonObject> BuildGenericObjectSnapshot(UObject* Asset);
 	static TSharedRef<FJsonObject> BuildGraphSnapshot(const UEdGraph* Graph, const FString& Surface);
 	static TSharedRef<FJsonObject> BuildNodeSnapshot(const UEdGraphNode* Node);
+	static TSharedRef<FJsonObject> BuildNodePinSubsetSnapshot(
+		const UEdGraphNode* Node,
+		const FString& PinName);
 	static TSharedRef<FJsonObject> BuildWidgetTreeSnapshot(UWidgetTree* WidgetTree);
 	static TSharedRef<FJsonObject> BuildTargetSnapshotHeader(
 		const FBlueprintHelperReviewAtomicTarget& Target,

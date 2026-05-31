@@ -522,6 +522,13 @@ public:
 			Link.PinRef = FromPin;
 			Link.ToNode = *TargetNodeRef;
 			Link.ToPin = ToPin;
+			const TSharedPtr<FJsonObject>* ExternalAnchorObj = nullptr;
+			if ((*LinkObjPtr)->TryGetObjectField(TEXT("external_anchor"), ExternalAnchorObj)
+				&& ExternalAnchorObj
+				&& ExternalAnchorObj->IsValid())
+			{
+				Link.ExternalAnchor = *ExternalAnchorObj;
+			}
 			SourceNode.Links.Add(MoveTemp(Link));
 		}
 	}
@@ -886,6 +893,30 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 	Node.Kind = IdentifyNodeKind(NodeObj);
 	Node.Name = ExtractNodeName(NodeObj);
 	Node.Owner = ExtractOwner(NodeObj);
+	const TSharedPtr<FJsonObject>* ExternalAnchorObj = nullptr;
+	if (NodeObj->TryGetObjectField(TEXT("external_anchor"), ExternalAnchorObj)
+		&& ExternalAnchorObj
+		&& ExternalAnchorObj->IsValid())
+	{
+		Node.ExternalAnchor = *ExternalAnchorObj;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* ExternalAnchorArray = nullptr;
+	if (NodeObj->TryGetArrayField(TEXT("external_anchors"), ExternalAnchorArray) && ExternalAnchorArray)
+	{
+		for (const TSharedPtr<FJsonValue>& AnchorValue : *ExternalAnchorArray)
+		{
+			const TSharedPtr<FJsonObject>* AnchorObj = nullptr;
+			if (AnchorValue.IsValid()
+				&& AnchorValue->TryGetObject(AnchorObj)
+				&& AnchorObj
+				&& AnchorObj->IsValid())
+			{
+				Node.ExternalAnchors.Add(*AnchorObj);
+			}
+		}
+	}
+
 	const TSharedPtr<FJsonObject>* InputsObj = nullptr;
 	if (NodeObj->TryGetObjectField(TEXT("inputs"), InputsObj) && InputsObj && InputsObj->IsValid())
 	{
@@ -929,6 +960,13 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 				TEXT("to_pin"),
 				TEXT("target_pin"));
 			Link.Type = FBlueprintHelperLogicGroupBuilderLocalUtils::IdentifyGraphLinkType(*LinkObjPtr, Link.FromPin, Link.ToPin);
+			const TSharedPtr<FJsonObject>* LinkExternalAnchorObj = nullptr;
+			if ((*LinkObjPtr)->TryGetObjectField(TEXT("external_anchor"), LinkExternalAnchorObj)
+				&& LinkExternalAnchorObj
+				&& LinkExternalAnchorObj->IsValid())
+			{
+				Link.ExternalAnchor = *LinkExternalAnchorObj;
+			}
 
 			Node.Links.Add(MoveTemp(Link));
 		}

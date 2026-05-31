@@ -6,10 +6,7 @@
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterHubUtils.h"
 
 FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperBlueprintStructureService& InStructureService,
 	const FBlueprintHelperAssetFactoryService& InAssetFactoryService,
@@ -18,11 +15,7 @@ FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
 	const FBlueprintHelperWidgetService& InWidgetService,
 	const FBlueprintHelperDataTableService& InDataTableService,
 	const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService)
-	: GraphWriteCluster(
-		InAppendGraphService,
-		InReplaceGraphService,
-		InPatchGraphService,
-		InMergeGraphService)
+	: GraphWriteCluster(InGraphWriteRegistry)
 	, BlueprintVariablesCluster(InVariableService)
 	, SignatureCluster(InStructureService)
 	, AssetFactoryCluster(InAssetFactoryService)

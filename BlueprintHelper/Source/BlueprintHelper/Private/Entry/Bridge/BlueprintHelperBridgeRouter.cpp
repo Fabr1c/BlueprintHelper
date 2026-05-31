@@ -712,10 +712,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperAssetFactoryService& InAssetFactory,
 	const FBlueprintHelperComponentService& InComponentService,
 	const FBlueprintHelperClassSettingsService& InClassSettings,
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperReviewStoreService& InReviewStoreService)
@@ -737,18 +734,11 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, AssetFactoryRoutes(InAssetFactory)
 	, ComponentRoutes(InComponentService)
 	, ClassSettingsRoutes(InClassSettings)
-	, GraphWriteRoutes(
-		InAppendGraphService,
-		InReplaceGraphService,
-		InPatchGraphService,
-		InMergeGraphService)
+	, GraphWriteRoutes(InGraphWriteRegistry)
 	, VariableService(InVariableService)
 	, BlueprintVariablesRoutes(InVariableService)
 	, TaskRuntimeService(
-		InAppendGraphService,
-		InReplaceGraphService,
-		InPatchGraphService,
-		InMergeGraphService,
+		InGraphWriteRegistry,
 		InVariableService,
 		InStructure,
 		InAssetFactory,

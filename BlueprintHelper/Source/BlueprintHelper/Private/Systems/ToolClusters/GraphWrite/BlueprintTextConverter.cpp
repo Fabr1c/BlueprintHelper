@@ -51,6 +51,8 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "Internationalization/Regex.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Serialization/JsonSerializer.h"
@@ -325,6 +327,62 @@ public:
 			return TEXT("output");
 		default:
 			return TEXT("unknown");
+		}
+	}
+
+	static bool IsBlueprintHelperOwnedNode(UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true");
+		}
+
+		return false;
+	}
+
+	static void WriteExternalAnchorsForUserNode(
+		const FString& AssetPath,
+		const FString& GraphName,
+		UEdGraphNode* Node,
+		const TSharedRef<FJsonObject>& NodeObj)
+	{
+		if (!Node || IsBlueprintHelperOwnedNode(Node))
+		{
+			return;
+		}
+
+		FBlueprintHelperExternalGraphAnchorService AnchorService;
+		FString AnchorError;
+		FBlueprintHelperExternalGraphAnchor NodeAnchor;
+		if (AnchorService.BuildNodeAnchor(AssetPath, GraphName, Node, NodeAnchor, AnchorError))
+		{
+			NodeObj->SetObjectField(TEXT("external_anchor"), NodeAnchor.ToJson());
+		}
+
+		TArray<TSharedPtr<FJsonValue>> BoundaryAnchors;
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			FBlueprintHelperExternalGraphAnchor BoundaryAnchor;
+			if (AnchorService.BuildExecBoundaryAnchor(AssetPath, GraphName, Pin, BoundaryAnchor, AnchorError))
+			{
+				BoundaryAnchors.Add(MakeShared<FJsonValueObject>(BoundaryAnchor.ToJson()));
+			}
+		}
+
+		if (BoundaryAnchors.Num() > 0)
+		{
+			NodeObj->SetArrayField(TEXT("external_anchors"), BoundaryAnchors);
 		}
 	}
 
@@ -865,6 +923,9 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 
 	TMap<UEdGraphNode*, FString> NodeToIdMap;
 	TSet<FString> LinkDeduplication;
+	const UBlueprint* GraphBlueprint = Graph->GetTypedOuter<UBlueprint>();
+	const FString AssetPath = GraphBlueprint ? GraphBlueprint->GetPathName() : TEXT("");
+	const FString GraphName = Graph->GetName();
 
 	// 为每个节点生成 ID 并导出
 	for (int32 NodeIndex = 0; NodeIndex < Graph->Nodes.Num(); ++NodeIndex)
@@ -896,6 +957,11 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		NodeObj->SetStringField(TEXT("node_guid"), Node->NodeGuid.ToString(EGuidFormats::Digits));
 		NodeObj->SetNumberField(TEXT("x"), Node->NodePosX);
 		NodeObj->SetNumberField(TEXT("y"), Node->NodePosY);
+		FBlueprintTextConverterLocalUtils::WriteExternalAnchorsForUserNode(
+			AssetPath,
+			GraphName,
+			Node,
+			NodeObj.ToSharedRef());
 
 		if (UPackage* Package = Node->GetOutermost())
 		{
@@ -1159,6 +1225,13 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 				LinkObj->SetStringField(TEXT("to_pin_type"), FBlueprintTextConverterLocalUtils::GetPinCategoryString(LinkedPin));
 				LinkObj->SetStringField(TEXT("from_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(Pin));
 				LinkObj->SetStringField(TEXT("to_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(LinkedPin));
+				FBlueprintHelperExternalGraphAnchorService AnchorService;
+				FString AnchorError;
+				FBlueprintHelperExternalGraphAnchor BoundaryAnchor;
+				if (AnchorService.BuildExecBoundaryAnchor(AssetPath, GraphName, Pin, BoundaryAnchor, AnchorError))
+				{
+					LinkObj->SetObjectField(TEXT("external_anchor"), BoundaryAnchor.ToJson());
+				}
 				OutLinks.Add(MakeShared<FJsonValueObject>(LinkObj));
 			}
 		}

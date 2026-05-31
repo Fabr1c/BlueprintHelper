@@ -9,15 +9,13 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
+class FBlueprintHelperGraphWriteServiceRegistry;
 
 class BLUEPRINTHELPER_API FBlueprintHelperGraphWriteBridgeRoutes
 {
 public:
-	FBlueprintHelperGraphWriteBridgeRoutes(
-		const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService);
+	explicit FBlueprintHelperGraphWriteBridgeRoutes(
+		const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry);
 
 	static bool IsGraphWriteCommand(const FString& Command);
 	static bool IsGraphWriteReadCommand(const FString& Command);
@@ -25,8 +23,5 @@ public:
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
 
 private:
-	const FBlueprintHelperAppendBlueprintGraphService& AppendGraphService;
-	const FBlueprintHelperReplaceBlueprintGraphService& ReplaceGraphService;
-	const FBlueprintHelperPatchBlueprintGraphService& PatchGraphService;
-	const FBlueprintHelperMergeBlueprintGraphService& MergeGraphService;
+	const FBlueprintHelperGraphWriteServiceRegistry& GraphWriteRegistry;
 };

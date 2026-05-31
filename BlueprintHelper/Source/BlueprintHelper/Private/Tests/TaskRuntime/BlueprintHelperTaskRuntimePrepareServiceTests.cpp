@@ -36,6 +36,39 @@ public:
 		return Step;
 	}
 
+	static TSharedRef<FJsonObject> MakeGraphWriteStep(
+		bool bAllowModifyUserNodes,
+		bool bIncludeOwnershipScope)
+	{
+		TSharedRef<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), TEXT("graph_write_owned"));
+		Step->SetStringField(TEXT("capability"), TEXT("graph_write"));
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BlueprintHelperPrepare/BP_A"));
+		Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+
+		TSharedRef<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("owned_graph_edit"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		TSharedRef<FJsonObject> Constraints = MakeShared<FJsonObject>();
+		Constraints->SetBoolField(TEXT("allow_modify_user_nodes"), bAllowModifyUserNodes);
+		if (bIncludeOwnershipScope)
+		{
+			Constraints->SetStringField(TEXT("ownership_scope"), TEXT("blueprinthelper_owned"));
+		}
+		Step->SetObjectField(TEXT("constraints"), Constraints);
+		return Step;
+	}
+
 	static TSharedRef<FJsonObject> MakePayloadWithSteps(
 		const TArray<TSharedRef<FJsonObject>>& Steps)
 	{
@@ -131,6 +164,54 @@ bool FBlueprintHelperTaskRuntimePrepareService_BlocksDryRunNone::RunTest(const F
 	TestEqual(TEXT("blocked policy is parsed"),
 		PreparedRun.DryRunPolicy.ToDiagnosticString(),
 		FString(TEXT("none")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimePrepareService_GraphWriteRejectsMissingOwnershipScope,
+	"BlueprintHelper.TaskRuntime.Prepare.GraphWriteRejectsMissingOwnershipScope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimePrepareService_GraphWriteRejectsMissingOwnershipScope::RunTest(const FString& Parameters)
+{
+	const TSharedRef<FJsonObject> Step =
+		FBlueprintHelperTaskRuntimePrepareServiceTestsLocalUtils::MakeGraphWriteStep(false, false);
+	const TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperTaskRuntimePrepareServiceTestsLocalUtils::MakePayloadWithSteps({Step});
+
+	FBlueprintHelperTaskRuntimePrepareService PrepareService;
+	FBlueprintHelperTaskRuntimePreparedTaskRun PreparedRun;
+	FBlueprintHelperToolError Error;
+	TestFalse(TEXT("missing graph write ownership scope is rejected during prepare"),
+		PrepareService.Prepare(Payload, true, PreparedRun, Error));
+	TestEqual(TEXT("error code is owned scope policy"), Error.Code, FString(TEXT("unsupported_scope_policy")));
+	TestEqual(TEXT("error field points at ownership scope"),
+		Error.Field,
+		FString(TEXT("task_plan.steps[0].constraints.ownership_scope")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimePrepareService_GraphWriteRejectsAllowModifyUserNodes,
+	"BlueprintHelper.TaskRuntime.Prepare.GraphWriteRejectsAllowModifyUserNodes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimePrepareService_GraphWriteRejectsAllowModifyUserNodes::RunTest(const FString& Parameters)
+{
+	const TSharedRef<FJsonObject> Step =
+		FBlueprintHelperTaskRuntimePrepareServiceTestsLocalUtils::MakeGraphWriteStep(true, true);
+	const TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperTaskRuntimePrepareServiceTestsLocalUtils::MakePayloadWithSteps({Step});
+
+	FBlueprintHelperTaskRuntimePrepareService PrepareService;
+	FBlueprintHelperTaskRuntimePreparedTaskRun PreparedRun;
+	FBlueprintHelperToolError Error;
+	TestFalse(TEXT("allow_modify_user_nodes=true is rejected during prepare"),
+		PrepareService.Prepare(Payload, true, PreparedRun, Error));
+	TestEqual(TEXT("error code is owned scope policy"), Error.Code, FString(TEXT("unsupported_scope_policy")));
+	TestEqual(TEXT("error field points at graph write constraints"),
+		Error.Field,
+		FString(TEXT("task_plan.steps[0].constraints")));
 	return true;
 }
 

@@ -874,6 +874,42 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("merge_external_flow")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("insert_strategy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("anchor"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("inserted"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("sequence_order"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("patch_external_graph")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("patch_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("anchor"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("expected_old_state"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("replace_external_body")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("anchor"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("body"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, true},
+			{TEXT("expected_body_fingerprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("require_full_dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, true},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("project_graphwrite_spawner_evidence")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -1000,6 +1036,9 @@ TEXT("create_blueprint"),
 	TEXT("replace_blueprint_graph"),
 	TEXT("patch_blueprint_graph"),
 	TEXT("merge_blueprint_graph"),
+	TEXT("merge_external_flow"),
+	TEXT("patch_external_graph"),
+	TEXT("replace_external_body"),
 	TEXT("add_blueprint_member_variable"),
 	TEXT("add_blueprint_member_variables"),
 	TEXT("set_blueprint_member_variable_properties"),

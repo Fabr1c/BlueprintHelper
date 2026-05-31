@@ -127,6 +127,32 @@ public:
         return Root;
     }
 
+    static TSharedPtr<FJsonObject> MakeExportedFunctionGraphWithoutEntryRawJsonObject()
+    {
+        TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+        Root->SetStringField(TEXT("version"), TEXT("2.2"));
+        Root->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
+
+        TArray<TSharedPtr<FJsonValue>> EventGraphNodes;
+        EventGraphNodes.Add(MakeShared<FJsonValueObject>(
+            MakeLogicTestEventNode(TEXT("event_graph_entry"), TEXT("K2Node_CustomEvent"), TEXT("EventGraphDoor"), TEXT("EventGraphDoor"))));
+
+        TArray<TSharedPtr<FJsonValue>> FunctionNodes;
+        TSharedRef<FJsonObject> SetRelativeRotationNode = MakeShared<FJsonObject>();
+        SetRelativeRotationNode->SetStringField(TEXT("id"), TEXT("set_relative_rotation"));
+        SetRelativeRotationNode->SetStringField(TEXT("type"), TEXT("K2Node_CallFunction"));
+        SetRelativeRotationNode->SetStringField(TEXT("name"), TEXT("SetRelativeRotation"));
+        SetRelativeRotationNode->SetStringField(TEXT("function_name"), TEXT("SetRelativeRotation"));
+        FunctionNodes.Add(MakeShared<FJsonValueObject>(SetRelativeRotationNode));
+
+        TArray<TSharedPtr<FJsonValue>> Graphs;
+        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
+        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("AddMazeRelativeRotation"), FunctionNodes)));
+        Root->SetArrayField(TEXT("graphs"), Graphs);
+
+        return Root;
+    }
+
     static TSharedPtr<FJsonObject> MakeCustomEventWithGraphLevelExecLinkRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -551,6 +577,40 @@ bool FObjectFirstLogic_FunctionTargetUsesFunctionGraph::RunTest(const FString& P
     {
         TestEqual(TEXT("function target first node is function entry"), Payload.Nodes[0].Name, FString(TEXT("AddMazeRelativeRotation")));
         TestEqual(TEXT("function target includes function body node"), Payload.Nodes[1].Name, FString(TEXT("SetRelativeRotation")));
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FObjectFirstLogic_FunctionTargetUsesExportedFunctionGraphWithoutEntry,
+    "BlueprintHelper.ObjectFirst.Logic.FunctionTargetUsesExportedFunctionGraphWithoutEntry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FObjectFirstLogic_FunctionTargetUsesExportedFunctionGraphWithoutEntry::RunTest(const FString& Parameters)
+{
+    FBlueprintHelperLogicGroupBuilder Builder;
+    const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildTargetEntry(
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeExportedFunctionGraphWithoutEntryRawJsonObject(),
+        TEXT("/Game/Gameplay/Maze/BP_Maze"),
+        TEXT(""),
+        TEXT("AddMazeRelativeRotation"),
+        EBlueprintHelperLogicScope::TargetFunction);
+
+    TestEqual(TEXT("function target resolves exported function graph"), Payload.Graph, FString(TEXT("AddMazeRelativeRotation")));
+    TestEqual(TEXT("function target records function name from target"), Payload.Function, FString(TEXT("AddMazeRelativeRotation")));
+    TestTrue(TEXT("function target synthesizes entry metadata"), Payload.Entry.IsSet());
+    if (Payload.Entry.IsSet())
+    {
+        TestEqual(TEXT("synthetic function entry uses target name"), Payload.Entry->Name, FString(TEXT("AddMazeRelativeRotation")));
+        TestEqual(TEXT("synthetic function entry kind is function"), Payload.Entry->Kind, EBlueprintHelperLogicNodeKind::FunctionEntry);
+        TestEqual(TEXT("synthetic function entry ref is stable"), Payload.Entry->NodeRef, FString(TEXT("__function_entry__")));
+    }
+    TestEqual(TEXT("function target returns exported body nodes"), Payload.Nodes.Num(), 1);
+    if (Payload.Nodes.Num() == 1)
+    {
+        TestEqual(TEXT("function target includes function body node"), Payload.Nodes[0].Name, FString(TEXT("SetRelativeRotation")));
+        TestEqual(TEXT("function target body node keeps raw node ref"), Payload.Nodes[0].NodeRef, FString(TEXT("nodes[0]")));
     }
 
     return true;

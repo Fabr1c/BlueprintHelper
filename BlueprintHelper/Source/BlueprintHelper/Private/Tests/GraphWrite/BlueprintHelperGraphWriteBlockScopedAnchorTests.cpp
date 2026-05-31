@@ -575,11 +575,47 @@ bool FBlueprintHelperGraphWritePatchSetNodeCommentBlockScopedAnchorTest::RunTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest,
-	"BlueprintHelper.GraphWrite.BlockScopedAnchors.LegacyManagedCommentFallback",
+	FBlueprintHelperGraphWritePatchRejectsMissingBlockIdAnchorTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.RejectsMissingBlockId",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWritePatchRejectsMissingBlockIdAnchorTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchRejectsMissingBlockId"));
+	TestNotNull(TEXT("test blueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("owned entry node is created"), Fixture.OwnedEntry);
+	if (!Fixture.Blueprint || !Fixture.OwnedEntry)
+	{
+		return false;
+	}
+
+	TSharedRef<FJsonObject> Payload = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture);
+	TSharedPtr<FJsonObject> PatchedRef = Payload->GetObjectField(TEXT("patched_ref"));
+	if (PatchedRef.IsValid())
+	{
+		PatchedRef->RemoveField(TEXT("block_id"));
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(Payload);
+
+	TestFalse(TEXT("owned patch without block_id is rejected"), Result.bOk);
+	TestTrue(TEXT("owned patch without block_id reports anchor requirement"),
+		Result.Error.IsSet() && Result.Error->Code == TEXT("owned_block_anchor_required"));
+	TestFalse(TEXT("owned entry comment is not patched without block_id"),
+		Fixture.OwnedEntry->NodeComment == FString(TEXT("Updated block entry comment")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchRejectsLegacyManagedCommentFallbackTest,
+	"BlueprintHelper.GraphWrite.BlockScopedAnchors.RejectsLegacyCommentFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchRejectsLegacyManagedCommentFallbackTest::RunTest(const FString& Parameters)
 {
 	const FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::FBlockScopedGraph Fixture = FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeBlockScopedGraph(TEXT("PatchLegacyManagedCommentFallback"));
 	TestNotNull(TEXT("fixture graph exists"), Fixture.Graph);
@@ -599,8 +635,11 @@ bool FBlueprintHelperGraphWritePatchResolvesLegacyManagedCommentFallbackTest::Ru
 
 	const FBlueprintHelperToolResultBase Result = PatchService.Execute(FBlueprintHelperGraphWriteBlockScopedAnchorTestsLocalUtils::MakeSetNodeCommentPayload(Fixture));
 
-	TestTrue(TEXT("legacy comment fallback patch succeeds"), Result.bOk);
-	TestEqual(TEXT("legacy comment fallback resolves owned entry"), Fixture.OwnedEntry->NodeComment, FString(TEXT("Updated block entry comment")));
+	const FString LegacyComment = FString::Printf(TEXT("[BlueprintHelper]\nblock_id=%s"), *Fixture.BlockId);
+	TestFalse(TEXT("legacy comment fallback patch is rejected"), Result.bOk);
+	TestTrue(TEXT("legacy comment fallback reports missing owned group"),
+		Result.Error.IsSet() && Result.Error->Code == TEXT("target_group_not_found"));
+	TestEqual(TEXT("legacy comment does not establish ownership"), Fixture.OwnedEntry->NodeComment, LegacyComment);
 	TestFalse(TEXT("whole-graph nodes[0] was not patched"), Fixture.FirstUnownedEvent->NodeComment == FString(TEXT("Updated block entry comment")));
 	return true;
 }

@@ -41,6 +41,7 @@
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
@@ -488,6 +489,23 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		GraphResolver, LogicJsonPathService);
 	FBlueprintHelperMergeBlueprintGraphService MergeGraphService(
 		GraphResolver, LogicJsonPathService);
+	FBlueprintHelperGraphWriteServiceRegistry GraphWriteRegistry;
+	GraphWriteRegistry.RegisterHandler(TEXT("append_blueprint_graph"), [&AppendGraphService](const TSharedRef<FJsonObject>& Payload)
+	{
+		return AppendGraphService.Execute(Payload);
+	});
+	GraphWriteRegistry.RegisterHandler(TEXT("replace_blueprint_graph"), [&ReplaceGraphService](const TSharedRef<FJsonObject>& Payload)
+	{
+		return ReplaceGraphService.Execute(Payload);
+	});
+	GraphWriteRegistry.RegisterHandler(TEXT("patch_blueprint_graph"), [&PatchGraphService](const TSharedRef<FJsonObject>& Payload)
+	{
+		return PatchGraphService.Execute(Payload);
+	});
+	GraphWriteRegistry.RegisterHandler(TEXT("merge_blueprint_graph"), [&MergeGraphService](const TSharedRef<FJsonObject>& Payload)
+	{
+		return MergeGraphService.Execute(Payload);
+	});
 	FBlueprintHelperCompileAssetService CompileAssetService(CompileService);
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 	FBlueprintHelperReviewStoreService ReviewStoreService;
@@ -510,10 +528,7 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		AssetFactoryService,
 		ComponentService,
 		ClassSettingsService,
-		AppendGraphService,
-		ReplaceGraphService,
-		PatchGraphService,
-		MergeGraphService,
+		GraphWriteRegistry,
 		CompileAssetService,
 		VariableService,
 		ReviewStoreService);

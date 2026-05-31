@@ -688,6 +688,34 @@ function makeGraphWriteTaskPlanSteps(
     }
   }
 
+  if (strategy === 'merge_external_flow' || strategy === 'patch_external_graph' || strategy === 'replace_external_body') {
+    const mutationPolicyByStrategy: Record<string, string[]> = {
+      merge_external_flow: ['exec_boundary_link'],
+      patch_external_graph: ['pin_default', 'node_comment'],
+      replace_external_body: ['body_replace'],
+    };
+    return graphWriteOps.map((op, index) => ({
+      step_id: `step_${String(index + 1).padStart(3, '0')}`,
+      capability: 'graph_write',
+      target: {
+        asset_path: taskSpec.target.asset_path,
+        graph: targetGraphForGraphWriteOp(taskSpec, op),
+      },
+      write: {
+        strategy: 'external_graph_edit',
+        ops: [stripGraphWriteCompilerMetadata(op)],
+      },
+      constraints: {
+        allow_modify_user_nodes: false,
+        ownership_scope: 'external_user_authored',
+        external_mutation_policy: {
+          strategy,
+          allowed_mutations: mutationPolicyByStrategy[strategy],
+        },
+      },
+    } as TaskPlanStep));
+  }
+
   const opBatches = strategy === 'append_new_owned_graph'
     ? [graphWriteOps]
     : graphWriteOps.map((op) => [stripGraphWriteCompilerMetadata(op)]);
@@ -1287,19 +1315,40 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
 
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
-  if (!['append_new_owned_graph', 'replace_owned_graph', 'patch_owned_graph', 'merge_owned_graph'].includes(strategy)) {
+  if (!['append_new_owned_graph', 'replace_owned_graph', 'patch_owned_graph', 'merge_owned_graph', 'merge_external_flow', 'patch_external_graph', 'replace_external_body'].includes(strategy)) {
     throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
       {
         code: 'unsupported_graph_strategy',
         path: 'behavior.graph_strategy',
-        message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.',
+        message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph, merge_external_flow, patch_external_graph, or replace_external_body.',
         suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
       },
     ]);
   }
+  const requiredFieldByStrategy: Record<string, string> = {
+    append_new_owned_graph: 'entries',
+    replace_owned_graph: 'replace',
+    patch_owned_graph: 'patches',
+    merge_owned_graph: 'merges',
+    merge_external_flow: 'external_merges',
+    patch_external_graph: 'external_patches',
+    replace_external_body: 'external_replace',
+  };
+  const requiredField = requiredFieldByStrategy[strategy];
+  for (const field of ['entries', 'replace', 'patches', 'merges', 'external_merges', 'external_patches', 'external_replace']) {
+    if (field !== requiredField && behavior[field] !== undefined) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${field} does not belong to graph_strategy ${strategy}.`, [
+        {
+          code: 'graph_write_strategy_field_mismatch',
+          path: `behavior.${field}`,
+          message: `Use behavior.${requiredField} for ${strategy}.`,
+        },
+      ]);
+    }
+  }
 
   if (taskSpec.scope_policy.allow_modify_user_nodes) {
-    throw new TaskSpecCompileError('unsupported_scope_policy', 'Modifying user nodes is not supported for GraphWrite owned strategies.', [
+    throw new TaskSpecCompileError('unsupported_scope_policy', 'unsupported_scope_policy: Modifying user nodes is not supported for GraphWrite owned strategies.', [
       {
         code: 'unsupported_scope_policy',
         path: 'scope_policy.allow_modify_user_nodes',
@@ -1308,8 +1357,76 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
       },
     ]);
   }
+  if (strategy === 'merge_external_flow') {
+    validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['exec_boundary_link']);
+  }
+  if (strategy === 'patch_external_graph') {
+    validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['pin_default', 'node_comment']);
+  }
+  if (strategy === 'replace_external_body') {
+    if (taskSpec.execution_policy.dry_run_mode !== 'full') {
+      throw new TaskSpecCompileError('unsupported_execution_policy', 'replace_external_body requires execution_policy.dry_run_mode="full".', [
+        {
+          code: 'replace_external_body_requires_full_dry_run',
+          path: 'execution_policy.dry_run_mode',
+          message: 'Set dry_run_mode="full" for replace_external_body.',
+          suggested_patch: { op: 'replace', path: '/execution_policy/dry_run_mode', value: 'full' },
+        },
+      ]);
+    }
+    validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['body_replace']);
+  }
 
   compileGraphWriteOps(behavior);
+}
+
+function validateExternalGraphWriteScopePolicy(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>,
+  strategy: string,
+  requiredMutations: string[],
+): void {
+  const policy = asRecord(taskSpec.scope_policy['external_mutation_policy']);
+  if (!policy) {
+    throw new TaskSpecCompileError('unsupported_scope_policy', 'unsupported_scope_policy: External graph writes require scope_policy.external_mutation_policy.', [
+      {
+        code: 'missing_external_mutation_policy',
+        path: 'scope_policy.external_mutation_policy',
+        message: `Set external_mutation_policy.strategy="${strategy}" with the required allowed_mutations.`,
+      },
+    ]);
+  }
+
+  const policyStrategy = typeof policy['strategy'] === 'string' ? policy['strategy'] : '';
+  if (policyStrategy !== strategy) {
+    throw new TaskSpecCompileError('unsupported_scope_policy', 'unsupported_scope_policy: External graph mutation policy strategy does not match graph_strategy.', [
+      {
+        code: 'external_mutation_policy_strategy_mismatch',
+        path: 'scope_policy.external_mutation_policy.strategy',
+        message: `Use strategy="${strategy}".`,
+        suggested_patch: { op: 'replace', path: '/scope_policy/external_mutation_policy/strategy', value: strategy },
+      },
+    ]);
+  }
+
+  const allowedMutations = Array.isArray(policy['allowed_mutations'])
+    ? policy['allowed_mutations'].filter((value): value is string => typeof value === 'string')
+    : [];
+  const exactMatch = allowedMutations.length === requiredMutations.length
+    && requiredMutations.every((mutation) => allowedMutations.includes(mutation))
+    && allowedMutations.every((mutation) => requiredMutations.includes(mutation));
+  if (!exactMatch) {
+    throw new TaskSpecCompileError(
+      'unsupported_scope_policy',
+      `unsupported_scope_policy: External graph mutation policy allowlist must be exactly: ${requiredMutations.join(', ')}.`,
+      [
+      {
+        code: 'external_mutation_policy_exact_allowlist_required',
+        path: 'scope_policy.external_mutation_policy.allowed_mutations',
+        message: `Use exactly: ${requiredMutations.join(', ')}.`,
+      },
+      ],
+    );
+  }
 }
 
 type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
@@ -1338,12 +1455,21 @@ function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteComp
   if (strategy === 'merge_owned_graph') {
     return compileMergeGraphWriteOps(behavior);
   }
+  if (strategy === 'merge_external_flow') {
+    return compileExternalMergeGraphWriteOps(behavior);
+  }
+  if (strategy === 'patch_external_graph') {
+    return compileExternalPatchGraphWriteOps(behavior);
+  }
+  if (strategy === 'replace_external_body') {
+    return [compileExternalReplaceBodyGraphWriteOp(behavior)];
+  }
 
   throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
     {
       code: 'unsupported_graph_strategy',
       path: 'behavior.graph_strategy',
-      message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.',
+      message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph, merge_external_flow, patch_external_graph, or replace_external_body.',
       suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
     },
   ]);
@@ -1542,6 +1668,139 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
       sequence_order: sequenceOrder,
     }) as GraphWriteCompiledOp;
   });
+}
+
+function compileExternalMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const merges = requiredNonEmptyArray(behavior, 'external_merges', 'behavior.external_merges');
+  return merges.map((rawMerge, index) => {
+    const path = `behavior.external_merges[${index}]`;
+    if (!isRecord(rawMerge)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External GraphWrite merge must be an object.', [
+        {
+          code: 'invalid_external_graph_write_merge',
+          path,
+          message: 'External GraphWrite merge must be an object.',
+        },
+      ]);
+    }
+
+    const merge = rawMerge as Record<string, unknown>;
+    const kind = getRequiredString(merge, 'kind', `${path}.kind`);
+    if (kind !== 'insert_external_flow') {
+      throw new TaskSpecCompileError('unsupported_external_graph_write_merge', `Unsupported external GraphWrite merge kind: ${kind}`, [
+        {
+          code: 'unsupported_external_graph_write_merge',
+          path: `${path}.kind`,
+          message: 'Use insert_external_flow.',
+        },
+      ]);
+    }
+
+    const insertStrategy = getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`);
+    assertAllowedString(
+      insertStrategy,
+      `${path}.insert_strategy`,
+      ['append_after', 'insert_between', 'branch_fork'],
+      'Use append_after, insert_between, or branch_fork.',
+    );
+    const inserted = requiredRecord(merge, 'inserted', `${path}.inserted`);
+    const body = getRequiredLogicBody(inserted, 'body', `${path}.inserted.body`);
+    validateSupportedStatements(body.statements, `${path}.inserted.body.statements`);
+
+    return omitUndefined({
+      op: 'insert_external_flow',
+      insert_strategy: insertStrategy,
+      anchor: normalizeExternalExecBoundaryAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
+      inserted: {
+        body: compileLogicBodyToSemanticLogicSpec(body, `external_merge_${index}`),
+      },
+      sequence_order: normalizeMergeSequenceOrder(merge, insertStrategy, `${path}.sequence_order`),
+    }) as GraphWriteCompiledOp;
+  });
+}
+
+function compileExternalPatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const patches = requiredNonEmptyArray(behavior, 'external_patches', 'behavior.external_patches');
+  return patches.map((rawPatch, index) => {
+    const path = `behavior.external_patches[${index}]`;
+    if (!isRecord(rawPatch)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External GraphWrite patch must be an object.', [
+        {
+          code: 'invalid_external_graph_write_patch',
+          path,
+          message: 'External GraphWrite patch must be an object.',
+        },
+      ]);
+    }
+
+    const patch = rawPatch as Record<string, unknown>;
+    const kind = getRequiredString(patch, 'kind', `${path}.kind`);
+    assertAllowedString(
+      kind,
+      `${path}.kind`,
+      ['set_external_pin_default', 'set_external_node_comment'],
+      'Use set_external_pin_default or set_external_node_comment.',
+    );
+    if (!Object.hasOwn(patch, 'value')) {
+      throwMissingPatchValue(path, `${kind} requires value.`);
+    }
+    const expectedOldState = requiredRecord(patch, 'expected_old_state', `${path}.expected_old_state`);
+
+    return {
+      op: kind,
+      anchor: normalizeExternalNodeAnchor(requiredRecord(patch, 'anchor', `${path}.anchor`), `${path}.anchor`, kind),
+      value: patchValueToString(literalValue(patch['value'])),
+      expected_old_state: normalizeExpectedOldState(expectedOldState),
+    } as GraphWriteCompiledOp;
+  });
+}
+
+function compileExternalReplaceBodyGraphWriteOp(behavior: Record<string, unknown>): GraphWriteCompiledOp {
+  const replace = requiredRecord(behavior, 'external_replace', 'behavior.external_replace');
+  const scope = getRequiredString(replace, 'scope', 'behavior.external_replace.scope');
+  assertAllowedString(
+    scope,
+    'behavior.external_replace.scope',
+    ['custom_event_body', 'event_body', 'function_body'],
+    'Use custom_event_body, event_body, or function_body.',
+  );
+  if (replace['require_full_dry_run'] !== true) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_external_body requires require_full_dry_run=true.', [
+      {
+        code: 'replace_external_body_requires_full_dry_run',
+        path: 'behavior.external_replace.require_full_dry_run',
+        message: 'Set require_full_dry_run=true.',
+      },
+    ]);
+  }
+
+  const body = getRequiredLogicBody(replace, 'body', 'behavior.external_replace.body');
+  validateSupportedStatements(body.statements, 'behavior.external_replace.body.statements');
+  if (body.statements.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_external_body requires at least one replacement statement.', [
+      {
+        code: 'empty_external_body_replacement',
+        path: 'behavior.external_replace.body.statements',
+        message: 'Provide at least one replacement statement.',
+      },
+    ]);
+  }
+
+  return {
+    op: 'replace_external_body',
+    replace_scope: scope,
+    anchor: normalizeExternalBodyEntryAnchor(
+      requiredRecord(replace, 'anchor', 'behavior.external_replace.anchor'),
+      'behavior.external_replace.anchor',
+    ),
+    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'external_body_replace'),
+    expected_body_fingerprint: getRequiredString(
+      replace,
+      'expected_body_fingerprint',
+      'behavior.external_replace.expected_body_fingerprint',
+    ),
+    require_full_dry_run: true,
+  } as GraphWriteCompiledOp;
 }
 
 const PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES = new Map<string, string>([
@@ -3280,6 +3539,118 @@ function normalizeMergeAnchor(anchor: Record<string, unknown>, path: string): Re
   return { ...anchor };
 }
 
+function normalizeExternalGraphAnchorBase(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  const schema = getRequiredString(anchor, 'schema', `${path}.schema`);
+  if (schema !== 'BlueprintHelper.ExternalGraphAnchor.v1') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'External GraphWrite requires BlueprintHelper.ExternalGraphAnchor.v1.', [
+      {
+        code: 'unsupported_external_graph_anchor',
+        path: `${path}.schema`,
+        message: 'Use an external_anchor emitted by blueprinthelper_read_context.',
+      },
+    ]);
+  }
+
+  const semanticRole = getRequiredString(anchor, 'semantic_role', `${path}.semantic_role`);
+  assertAllowedString(
+    semanticRole,
+    `${path}.semantic_role`,
+    ['exec_boundary', 'node', 'body_entry'],
+    'Use exec_boundary, node, or body_entry.',
+  );
+
+  const nodeGuid = getRequiredString(anchor, 'node_guid', `${path}.node_guid`);
+  if (!/^[0-9a-fA-F]{32}$/u.test(nodeGuid)) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'External GraphWrite anchor node_guid must be a stable UE GUID.', [
+      {
+        code: 'unsupported_external_graph_anchor_node_guid',
+        path: `${path}.node_guid`,
+        message: 'Do not use nodes[index], display names, or JSONPath selectors for external graph writes.',
+      },
+    ]);
+  }
+
+  const out = {
+    schema,
+    asset_path: getRequiredString(anchor, 'asset_path', `${path}.asset_path`),
+    graph_name: getRequiredString(anchor, 'graph_name', `${path}.graph_name`),
+    node_guid: nodeGuid,
+    node_class: getRequiredString(anchor, 'node_class', `${path}.node_class`),
+    semantic_role: semanticRole,
+    fingerprint: getRequiredString(anchor, 'fingerprint', `${path}.fingerprint`),
+  } as Record<string, unknown>;
+  if (typeof anchor['pin_name'] === 'string' && anchor['pin_name'].trim().length > 0) {
+    out['pin_name'] = anchor['pin_name'].trim();
+  }
+  if (typeof anchor['pin_direction'] === 'string' && anchor['pin_direction'].trim().length > 0) {
+    const pinDirection = anchor['pin_direction'].trim();
+    assertAllowedString(pinDirection, `${path}.pin_direction`, ['input', 'output'], 'Use input or output.');
+    out['pin_direction'] = pinDirection;
+  }
+  return out;
+}
+
+function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  const out = normalizeExternalGraphAnchorBase(anchor, path);
+  if (out['semantic_role'] !== 'exec_boundary') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'merge_external_flow requires an exec_boundary external anchor.', [
+      {
+        code: 'unsupported_external_graph_anchor_role',
+        path: `${path}.semantic_role`,
+        message: 'Use semantic_role="exec_boundary".',
+      },
+    ]);
+  }
+
+  const pinDirection = getRequiredString(out, 'pin_direction', `${path}.pin_direction`);
+  if (pinDirection !== 'output') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'merge_external_flow requires an output exec boundary anchor.', [
+      {
+        code: 'unsupported_external_graph_anchor_pin_direction',
+        path: `${path}.pin_direction`,
+        message: 'Use pin_direction="output".',
+      },
+    ]);
+  }
+
+  return {
+    ...out,
+    pin_name: getRequiredString(out, 'pin_name', `${path}.pin_name`),
+    pin_direction: pinDirection,
+  };
+}
+
+function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: string, kind: string): Record<string, unknown> {
+  const out = normalizeExternalGraphAnchorBase(anchor, path);
+  if (out['semantic_role'] !== 'node') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'patch_external_graph requires a node external anchor.', [
+      {
+        code: 'unsupported_external_graph_anchor_role',
+        path: `${path}.semantic_role`,
+        message: 'Use semantic_role="node".',
+      },
+    ]);
+  }
+  if (kind === 'set_external_pin_default') {
+    out['pin_name'] = getRequiredString(out, 'pin_name', `${path}.pin_name`);
+  }
+  return out;
+}
+
+function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  const out = normalizeExternalGraphAnchorBase(anchor, path);
+  if (out['semantic_role'] !== 'body_entry') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'replace_external_body requires a body_entry external anchor.', [
+      {
+        code: 'unsupported_external_graph_anchor_role',
+        path: `${path}.semantic_role`,
+        message: 'Use semantic_role="body_entry".',
+      },
+    ]);
+  }
+  return out;
+}
+
 function assertBlockScopedGraphWriteRef(ref: Record<string, unknown>, path: string): void {
   const hasBlockId = typeof ref['block_id'] === 'string' && ref['block_id'].trim().length > 0;
   if (hasBlockId) return;
@@ -3373,6 +3744,16 @@ function normalizeMergeSequenceOrder(record: Record<string, unknown>, insertStra
       },
     ]);
   });
+  const uniqueEntries = new Set(sequenceOrder);
+  if (sequenceOrder.length > 2 || uniqueEntries.size !== sequenceOrder.length) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'branch_fork sequence_order entries must be unique.', [
+      {
+        code: 'sequence_order_invalid',
+        path,
+        message: 'Provide each branch_fork sequence_order entry at most once.',
+      },
+    ]);
+  }
   if (!sequenceOrder.includes('inserted_logic')) {
     throw new TaskSpecCompileError('taskspec_semantic_invalid', 'branch_fork sequence_order must include inserted_logic.', [
       {
@@ -4107,7 +4488,12 @@ function optionalString(record: Record<string, unknown>, field: string): string 
 
 function getRequiredLogicBody(record: Record<string, unknown>, field: string, path: string): { statements: BlueprintLogicStatement[] } {
   const value = record[field];
-  if (isRecord(value) && Array.isArray(value['statements'])) {
+  const logicBodySchema = isRecord(value) ? value['schema'] : undefined;
+  if (
+    isRecord(value)
+    && (logicBodySchema === 'BlueprintLogicSpec.v1' || logicBodySchema === 'BlueprintLogicSpec.v2')
+    && Array.isArray(value['statements'])
+  ) {
     return {
       statements: value['statements'] as BlueprintLogicStatement[],
     };

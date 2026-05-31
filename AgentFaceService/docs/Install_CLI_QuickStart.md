@@ -36,9 +36,9 @@ cd <PLUGIN_ROOT>
 
 The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
 
-交互式安装会在安装 Codex subagents 或 Claude sideAgents 时显示模型/思考等级表单。Codex 只显示推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`；Claude 只显示推荐组合 `haiku / high` 与 `sonnet / high`。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
+交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
 
-Interactive install shows model/reasoning forms when installing Codex subagents or Claude sideAgents. Codex only shows the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles; Claude only shows the recommended `haiku / high` and `sonnet / high` profiles. Non-interactive install uses the recommended defaults automatically, with a stronger default model for `task-worker`.
+Interactive install prefers Node.js built-in terminal prompts. When Codex subagents or Claude sideAgents are selected, the three agents are shown in a table with separate model and reasoning fields. Non-interactive install uses the recommended defaults automatically, with a stronger default model for `task-worker`.
 
 Place the plugin at:
 
@@ -60,6 +60,8 @@ Use the root installer for setup and rebuilds. Do not duplicate per-package Node
 ```
 
 `install.cmd` opens the interactive installer when launched without arguments and passes arguments through to the underlying PowerShell installer when supplied. Prefer this entry in Agent-facing docs so users do not need to run `.ps1` directly.
+
+The repository root keeps only `.cmd` user script entry points. The underlying PowerShell and Node implementation scripts live under `InstallScripts/`. Use `uninstall.cmd` to remove the global CLI link, plugin entries, installed subagents, and lifecycle MCP config.
 
 After `npm link`, the installer removes npm-generated `bh.ps1` / `blueprinthelper-cli.ps1` shims when matching `.cmd` launchers exist. This avoids PowerShell ExecutionPolicy blocking `bh`. If an older install still resolves `bh` to a `.ps1` file, rerun the root installer or call `bh.cmd`.
 

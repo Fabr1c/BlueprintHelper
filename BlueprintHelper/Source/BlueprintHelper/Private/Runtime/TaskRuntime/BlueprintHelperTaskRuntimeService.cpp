@@ -3,9 +3,11 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/Policy/BlueprintHelperGraphWriteDomainPolicy.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
@@ -332,7 +334,10 @@ public:
 		return Operation == TEXT("append_blueprint_graph") ||
 			Operation == TEXT("replace_blueprint_graph") ||
 			Operation == TEXT("patch_blueprint_graph") ||
-			Operation == TEXT("merge_blueprint_graph");
+			Operation == TEXT("merge_blueprint_graph") ||
+			Operation == TEXT("merge_external_flow") ||
+			Operation == TEXT("patch_external_graph") ||
+			Operation == TEXT("replace_external_body");
 	}
 
 	static FString BuildStepFieldPath(const FString& Suffix)
@@ -347,6 +352,208 @@ public:
 		return Suffix.IsEmpty()
 			? FString::Printf(TEXT("task_plan.steps[0].write.ops[%d]"), OpIndex)
 			: FString::Printf(TEXT("task_plan.steps[0].write.ops[%d].%s"), OpIndex, *Suffix);
+	}
+
+	static bool ValidateOwnedGraphWriteDomainPolicy(
+		const TSharedPtr<FJsonObject>& StepObject,
+		const FString& Strategy,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonObject>* ConstraintsObjectPtr = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetObjectField(TEXT("constraints"), ConstraintsObjectPtr) ||
+			!ConstraintsObjectPtr || !ConstraintsObjectPtr->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write owned_graph_edit TaskPlan steps require constraints ownership policy."),
+				BuildStepFieldPath(TEXT("constraints")));
+			return false;
+		}
+
+		bool bAllowModifyUserNodes = false;
+		if (!(*ConstraintsObjectPtr)->TryGetBoolField(TEXT("allow_modify_user_nodes"), bAllowModifyUserNodes))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write owned_graph_edit TaskPlan steps require constraints.allow_modify_user_nodes=false."),
+				BuildStepFieldPath(TEXT("constraints.allow_modify_user_nodes")));
+			return false;
+		}
+
+		FString OwnershipScope;
+		if (!(*ConstraintsObjectPtr)->TryGetStringField(TEXT("ownership_scope"), OwnershipScope) ||
+			OwnershipScope.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write owned_graph_edit TaskPlan steps require constraints.ownership_scope=blueprinthelper_owned."),
+				BuildStepFieldPath(TEXT("constraints.ownership_scope")));
+			return false;
+		}
+
+		FBlueprintHelperGraphWriteDomainPolicyRequest DomainRequest;
+		DomainRequest.Domain = EBlueprintHelperGraphWriteTargetDomain::BlueprintHelperOwned;
+		DomainRequest.Strategy = Strategy;
+		DomainRequest.OwnershipScope = OwnershipScope;
+		DomainRequest.bAllowModifyUserNodes = bAllowModifyUserNodes;
+		FString DomainPolicyError;
+		if (!FBlueprintHelperGraphWriteDomainPolicy::ValidateOwnedRequest(DomainRequest, DomainPolicyError))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				DomainPolicyError,
+				BuildStepFieldPath(TEXT("constraints")));
+			return false;
+		}
+
+		return true;
+	}
+
+	static bool ValidateExternalGraphWriteDomainPolicy(
+		const TSharedPtr<FJsonObject>& StepObject,
+		const FString& Strategy,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonObject>* ConstraintsObjectPtr = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetObjectField(TEXT("constraints"), ConstraintsObjectPtr) ||
+			!ConstraintsObjectPtr || !ConstraintsObjectPtr->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write external_graph_edit TaskPlan steps require constraints ownership policy."),
+				BuildStepFieldPath(TEXT("constraints")));
+			return false;
+		}
+
+		bool bAllowModifyUserNodes = false;
+		if (!(*ConstraintsObjectPtr)->TryGetBoolField(TEXT("allow_modify_user_nodes"), bAllowModifyUserNodes) ||
+			bAllowModifyUserNodes)
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write external_graph_edit TaskPlan steps require constraints.allow_modify_user_nodes=false."),
+				BuildStepFieldPath(TEXT("constraints.allow_modify_user_nodes")));
+			return false;
+		}
+
+		FString OwnershipScope;
+		if (!(*ConstraintsObjectPtr)->TryGetStringField(TEXT("ownership_scope"), OwnershipScope) ||
+			OwnershipScope != TEXT("external_user_authored"))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write external_graph_edit TaskPlan steps require constraints.ownership_scope=external_user_authored."),
+				BuildStepFieldPath(TEXT("constraints.ownership_scope")));
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* PolicyObjectPtr = nullptr;
+		if (!(*ConstraintsObjectPtr)->TryGetObjectField(TEXT("external_mutation_policy"), PolicyObjectPtr) ||
+			!PolicyObjectPtr || !PolicyObjectPtr->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("graph_write external_graph_edit TaskPlan steps require constraints.external_mutation_policy."),
+				BuildStepFieldPath(TEXT("constraints.external_mutation_policy")));
+			return false;
+		}
+
+		FString PolicyStrategy;
+		if (!(*PolicyObjectPtr)->TryGetStringField(TEXT("strategy"), PolicyStrategy) ||
+			(PolicyStrategy != TEXT("merge_external_flow") &&
+				PolicyStrategy != TEXT("patch_external_graph") &&
+				PolicyStrategy != TEXT("replace_external_body")))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("external_graph_edit requires constraints.external_mutation_policy.strategy to be merge_external_flow, patch_external_graph, or replace_external_body."),
+				BuildStepFieldPath(TEXT("constraints.external_mutation_policy.strategy")));
+			return false;
+		}
+
+		TArray<FString> ExpectedMutations;
+		if (PolicyStrategy == TEXT("merge_external_flow"))
+		{
+			ExpectedMutations.Add(TEXT("exec_boundary_link"));
+		}
+		else if (PolicyStrategy == TEXT("patch_external_graph"))
+		{
+			ExpectedMutations.Add(TEXT("pin_default"));
+			ExpectedMutations.Add(TEXT("node_comment"));
+		}
+		else if (PolicyStrategy == TEXT("replace_external_body"))
+		{
+			ExpectedMutations.Add(TEXT("body_replace"));
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* MutationsArray = nullptr;
+		if (!(*PolicyObjectPtr)->TryGetArrayField(TEXT("allowed_mutations"), MutationsArray) ||
+			!MutationsArray || MutationsArray->Num() != ExpectedMutations.Num())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				FString::Printf(TEXT("%s requires an exact external mutation allowlist."), *PolicyStrategy),
+				BuildStepFieldPath(TEXT("constraints.external_mutation_policy.allowed_mutations")));
+			return false;
+		}
+
+		TArray<FString> ActualMutations;
+		for (const TSharedPtr<FJsonValue>& MutationValue : *MutationsArray)
+		{
+			FString Mutation;
+			if (!MutationValue.IsValid() || !MutationValue->TryGetString(Mutation))
+			{
+				OutError = MakeTaskRuntimeError(
+					TEXT("unsupported_scope_policy"),
+					EBlueprintHelperToolStage::ParseInput,
+					FString::Printf(TEXT("%s requires string external mutation allowlist entries."), *PolicyStrategy),
+					BuildStepFieldPath(TEXT("constraints.external_mutation_policy.allowed_mutations")));
+				return false;
+			}
+			ActualMutations.Add(Mutation);
+		}
+		ActualMutations.Sort();
+		ExpectedMutations.Sort();
+		if (ActualMutations != ExpectedMutations)
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				FString::Printf(TEXT("%s requires an exact external mutation allowlist."), *PolicyStrategy),
+				BuildStepFieldPath(TEXT("constraints.external_mutation_policy.allowed_mutations")));
+			return false;
+		}
+
+		FBlueprintHelperGraphWriteDomainPolicyRequest DomainRequest;
+		DomainRequest.Domain = EBlueprintHelperGraphWriteTargetDomain::ExternalUserAuthored;
+		DomainRequest.Strategy = Strategy;
+		DomainRequest.OwnershipScope = OwnershipScope;
+		DomainRequest.bAllowModifyUserNodes = bAllowModifyUserNodes;
+		DomainRequest.AllowedExternalMutations = ActualMutations;
+		FString DomainPolicyError;
+		if (!FBlueprintHelperGraphWriteDomainPolicy::ValidateExternalRequest(DomainRequest, DomainPolicyError))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_scope_policy"),
+				EBlueprintHelperToolStage::ParseInput,
+				DomainPolicyError,
+				BuildStepFieldPath(TEXT("constraints")));
+			return false;
+		}
+
+		return true;
 	}
 
 	static FString ToTaskRuntimeIdSegment(const FString& Value)
@@ -1826,13 +2033,24 @@ public:
 
 		FString Strategy;
 		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
-			Strategy != TEXT("owned_graph_edit"))
+			(Strategy != TEXT("owned_graph_edit") && Strategy != TEXT("external_graph_edit")))
 		{
 			OutError = MakeTaskRuntimeError(
 				TEXT("unsupported_graph_write_strategy"),
 				EBlueprintHelperToolStage::ParseInput,
-				TEXT("GraphWrite Task Runtime currently supports owned_graph_edit only."),
+				TEXT("GraphWrite Task Runtime supports owned_graph_edit and external_graph_edit."),
 				BuildStepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		if (Strategy == TEXT("owned_graph_edit") &&
+			!ValidateOwnedGraphWriteDomainPolicy(StepObject, Strategy, OutError))
+		{
+			return false;
+		}
+		if (Strategy == TEXT("external_graph_edit") &&
+			!ValidateExternalGraphWriteDomainPolicy(StepObject, Strategy, OutError))
+		{
 			return false;
 		}
 
@@ -2500,6 +2718,195 @@ public:
 		return true;
 	}
 
+	static bool TryBuildGraphWriteIrExternalMergePayload(
+		const TSharedPtr<FJsonObject>& TaskPlan,
+		const TSharedPtr<FJsonObject>& StepObject,
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString InsertStrategy;
+		if (!OpObject.IsValid() ||
+			!OpObject->TryGetStringField(TEXT("insert_strategy"), InsertStrategy) ||
+			InsertStrategy.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("insert_external_flow requires insert_strategy."),
+				BuildOpFieldPath(0, TEXT("insert_strategy")));
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Anchor;
+		TSharedPtr<FJsonObject> Inserted;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("anchor"), BuildOpFieldPath(0, TEXT("anchor")), Anchor, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("inserted"), BuildOpFieldPath(0, TEXT("inserted")), Inserted, OutError))
+		{
+			return false;
+		}
+
+		TSharedRef<FJsonObject> InsertedPayload = MakeShared<FJsonObject>();
+		CopyObjectFields(Inserted, InsertedPayload);
+		FString InsertedBlockId;
+		if (!InsertedPayload->TryGetStringField(TEXT("block_id"), InsertedBlockId) || InsertedBlockId.IsEmpty())
+		{
+			FString StepId;
+			if (!StepObject.IsValid() || !StepObject->TryGetStringField(TEXT("step_id"), StepId) || StepId.IsEmpty())
+			{
+				StepId = TEXT("step_001");
+			}
+			InsertedPayload->SetStringField(
+				TEXT("block_id"),
+				FString::Printf(TEXT("ExternalMerge_%s"), *ToTaskRuntimeIdSegment(StepId)));
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetStringField(TEXT("insert_strategy"), InsertStrategy);
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+		Payload->SetObjectField(TEXT("inserted"), InsertedPayload);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		FString FeatureName;
+		if (TaskPlan.IsValid() && TaskPlan->TryGetStringField(TEXT("task_name"), FeatureName) && !FeatureName.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("feature_name"), FeatureName);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* SequenceOrder = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("sequence_order"), SequenceOrder) && SequenceOrder)
+		{
+			Payload->SetArrayField(TEXT("sequence_order"), *SequenceOrder);
+		}
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool TryBuildGraphWriteIrExternalPatchPayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		const FString& OpName,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedPtr<FJsonObject> Anchor;
+		TSharedPtr<FJsonObject> ExpectedOldState;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("anchor"), BuildOpFieldPath(0, TEXT("anchor")), Anchor, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("expected_old_state"), BuildOpFieldPath(0, TEXT("expected_old_state")), ExpectedOldState, OutError))
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonValue>* Value = OpObject.IsValid()
+			? OpObject->Values.Find(TEXT("value"))
+			: nullptr;
+		if (!Value || !Value->IsValid())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("External GraphWrite patch requires value."),
+				BuildOpFieldPath(0, TEXT("value")));
+			return false;
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetStringField(TEXT("patch_type"), OpName);
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+		Payload->SetField(TEXT("value"), *Value);
+		Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool TryBuildGraphWriteIrExternalReplaceBodyPayload(
+		const TSharedPtr<FJsonObject>& TaskPlan,
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString ReplaceScope;
+		if (!OpObject.IsValid() ||
+			!OpObject->TryGetStringField(TEXT("replace_scope"), ReplaceScope) ||
+			ReplaceScope.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("replace_external_body requires replace_scope."),
+				BuildOpFieldPath(0, TEXT("replace_scope")));
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Anchor;
+		TSharedPtr<FJsonObject> LogicSpec;
+		if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("anchor"), BuildOpFieldPath(0, TEXT("anchor")), Anchor, OutError) ||
+			!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("logic_spec"), BuildOpFieldPath(0, TEXT("logic_spec")), LogicSpec, OutError))
+		{
+			return false;
+		}
+
+		FString ExpectedBodyFingerprint;
+		if (!OpObject->TryGetStringField(TEXT("expected_body_fingerprint"), ExpectedBodyFingerprint) ||
+			ExpectedBodyFingerprint.IsEmpty())
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("replace_external_body requires expected_body_fingerprint."),
+				BuildOpFieldPath(0, TEXT("expected_body_fingerprint")));
+			return false;
+		}
+
+		bool bRequireFullDryRun = false;
+		if (!OpObject->TryGetBoolField(TEXT("require_full_dry_run"), bRequireFullDryRun) ||
+			!bRequireFullDryRun)
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("replace_external_body requires require_full_dry_run=true."),
+				BuildOpFieldPath(0, TEXT("require_full_dry_run")));
+			return false;
+		}
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("target"), BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName));
+		Payload->SetStringField(TEXT("scope"), ReplaceScope);
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+		Payload->SetObjectField(TEXT("body"), LogicSpec);
+		Payload->SetStringField(TEXT("expected_body_fingerprint"), ExpectedBodyFingerprint);
+		Payload->SetBoolField(TEXT("require_full_dry_run"), true);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		FString FeatureName;
+		if (TaskPlan.IsValid() && TaskPlan->TryGetStringField(TEXT("task_name"), FeatureName) && !FeatureName.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("feature_name"), FeatureName);
+		}
+
+		OutPayload = Payload;
+		return true;
+	}
+
 	static bool TryBuildGraphWriteIrPayload(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		const TSharedPtr<FJsonObject>& StepObject,
@@ -2531,13 +2938,24 @@ public:
 
 		FString Strategy;
 		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), Strategy) ||
-			Strategy != TEXT("owned_graph_edit"))
+			(Strategy != TEXT("owned_graph_edit") && Strategy != TEXT("external_graph_edit")))
 		{
 			OutError = MakeTaskRuntimeError(
 				TEXT("unsupported_graph_write_strategy"),
 				EBlueprintHelperToolStage::ParseInput,
-				TEXT("GraphWrite Task Runtime currently supports owned_graph_edit only."),
+				TEXT("GraphWrite Task Runtime supports owned_graph_edit and external_graph_edit."),
 				BuildStepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+
+		if (Strategy == TEXT("owned_graph_edit") &&
+			!ValidateOwnedGraphWriteDomainPolicy(StepObject, Strategy, OutError))
+		{
+			return false;
+		}
+		if (Strategy == TEXT("external_graph_edit") &&
+			!ValidateExternalGraphWriteDomainPolicy(StepObject, Strategy, OutError))
+		{
 			return false;
 		}
 
@@ -2562,6 +2980,42 @@ public:
 				TEXT("invalid_graph_write_ir_op"),
 				EBlueprintHelperToolStage::ParseInput,
 				TEXT("GraphWrite write.ops entry requires op."),
+				BuildOpFieldPath(0, TEXT("op")));
+			return false;
+		}
+
+		if (Strategy == TEXT("external_graph_edit"))
+		{
+			if (OpsArray->Num() != 1)
+			{
+				OutError = MakeTaskRuntimeError(
+					TEXT("unsupported_graph_write_ir_op_batch"),
+					EBlueprintHelperToolStage::ParseInput,
+					TEXT("external_graph_edit supports one operation per TaskPlan step."),
+					BuildStepFieldPath(TEXT("write.ops")));
+				return false;
+			}
+			if (OpName == TEXT("insert_external_flow"))
+			{
+				OutAdapterOperation = TEXT("merge_external_flow");
+				return TryBuildGraphWriteIrExternalMergePayload(TaskPlan, StepObject, TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
+			}
+			if (OpName == TEXT("set_external_pin_default") ||
+				OpName == TEXT("set_external_node_comment"))
+			{
+				OutAdapterOperation = TEXT("patch_external_graph");
+				return TryBuildGraphWriteIrExternalPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);
+			}
+			if (OpName == TEXT("replace_external_body"))
+			{
+				OutAdapterOperation = TEXT("replace_external_body");
+				return TryBuildGraphWriteIrExternalReplaceBodyPayload(TaskPlan, TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
+			}
+
+			OutError = MakeTaskRuntimeError(
+				TEXT("unsupported_graph_write_ir_op"),
+				EBlueprintHelperToolStage::ParseInput,
+				TEXT("external_graph_edit supports insert_external_flow, external field patches, and replace_external_body only."),
 				BuildOpFieldPath(0, TEXT("op")));
 			return false;
 		}
@@ -4548,10 +5002,7 @@ public:
 };
 
 FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperBlueprintStructureService& InStructureService,
 	const FBlueprintHelperAssetFactoryService& InAssetFactoryService,
@@ -4564,10 +5015,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	const FBlueprintHelperAssetBrowseService& InAssetBrowseService,
 	const FBlueprintHelperDebugEntryService* InDebugEntryService)
 	: ClusterHub(MakeUnique<FBlueprintHelperTaskRuntimeClusterHub>(
-		InAppendGraphService,
-		InReplaceGraphService,
-		InPatchGraphService,
-		InMergeGraphService,
+		InGraphWriteRegistry,
 		InVariableService,
 		InStructureService,
 		InAssetFactoryService,

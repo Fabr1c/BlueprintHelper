@@ -9,6 +9,7 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
+class FBlueprintHelperGraphWriteServiceRegistry;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperAssetFactoryService;
@@ -33,10 +34,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeService
 {
 public:
 	explicit FBlueprintHelperTaskRuntimeService(
-		const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+		const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
 		const FBlueprintHelperBlueprintStructureService& InStructureService,
 		const FBlueprintHelperAssetFactoryService& InAssetFactoryService,

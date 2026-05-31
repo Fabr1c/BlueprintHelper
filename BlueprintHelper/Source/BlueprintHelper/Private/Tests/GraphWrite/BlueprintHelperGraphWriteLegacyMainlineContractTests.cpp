@@ -109,7 +109,9 @@ static bool IsAllowedDiagnosticOnlyMatch(const FString& RelativePath, const FStr
 	{
 		return RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicProcessor.cpp"))
 			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp"))
-			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/BlueprintHelperCallFunctionResolverUtils.cpp"));
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionContextUtils.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/BlueprintHelperCallFunctionResolverUtils.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/GraphWriteFunctionResolutionUtils.cpp"));
 	}
 	return false;
 }
@@ -313,6 +315,52 @@ bool FBlueprintHelperActiveGraphWriteSourceLegacyTokenGateContractTest::RunTest(
 	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("control fallback"), ForbiddenControlFallbackTokens);
 	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("parsed-node mainline"), ForbiddenParsedNodeMainlineTokens);
 	bClean &= AssertActiveGraphWriteSourceHasNoTokens(*this, TEXT("wide-surface fallback"), ForbiddenWideSurfaceFallbackTokens);
+	return bClean;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperOwnedDomainPolicyCentralizedContractTest,
+	"BlueprintHelper.GraphWrite.LegacyMainline.OwnedDomainPolicyCentralized",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperOwnedDomainPolicyCentralizedContractTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
+	bool bClean = true;
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp"),
+		{
+			TEXT("#include \"Systems/ToolClusters/GraphWrite/Policy/BlueprintHelperGraphWriteDomainPolicy.h\""),
+			TEXT("FBlueprintHelperGraphWriteDomainPolicy::ValidateOwnedRequest")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Policy/BlueprintHelperGraphWriteDomainPolicy.cpp"),
+		{
+			TEXT("constraints.allow_modify_user_nodes=true"),
+			TEXT("blueprinthelper_owned")
+		});
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteBlockScopedResolver.cpp"),
+		{
+			TEXT("NodeCommentMentionsBlockId"),
+			TEXT("PathService.ResolveNode(Graph, Anchor.NodeRef"),
+			TEXT("PathService.ResolveLink(Graph, Anchor.LinkRef")
+		});
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.cpp"),
+		{
+			TEXT("NodesToAdoptOwnership.Add(EntryNode)")
+		});
+	bClean &= AssertNoTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.cpp"),
+		{
+			TEXT("Blueprint, CreatedNodes, FullBlockId")
+		});
 	return bClean;
 }
 
@@ -604,8 +652,10 @@ bool FBlueprintHelperEventDelegateDeclaredCapabilityContractTest::RunTest(const 
 {
 	using namespace BlueprintHelperGraphWriteLegacyMainlineContractTests;
 	const FString RelativePath = TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateActionCluster.cpp");
+	const FString UtilsRelativePath = TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionClusterUtils.cpp");
 	FString Source;
-	if (!LoadSource(*this, RelativePath, Source))
+	FString UtilsSource;
+	if (!LoadSource(*this, RelativePath, Source) || !LoadSource(*this, UtilsRelativePath, UtilsSource))
 	{
 		return false;
 	}
@@ -623,7 +673,8 @@ bool FBlueprintHelperEventDelegateDeclaredCapabilityContractTest::RunTest(const 
 	};
 	for (const FString& Token : RequiredTokens)
 	{
-		if (!Source.Contains(Token))
+		const bool bFound = Source.Contains(Token) || UtilsSource.Contains(Token);
+		if (!bFound)
 		{
 			AddError(FString::Printf(TEXT("%s must declare current P5 event/delegate boundary token: %s"), *RelativePath, *Token));
 			bClean = false;

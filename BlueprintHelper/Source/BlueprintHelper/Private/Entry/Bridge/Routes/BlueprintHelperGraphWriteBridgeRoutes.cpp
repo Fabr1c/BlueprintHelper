@@ -1,23 +1,21 @@
-// BlueprintHelper Bridge Layer - GraphWrite static cluster routes
+// BlueprintHelper Bridge Layer - GraphWrite static cluster routes.
 
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
 
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGraphWriteProjectedEvidenceQueryService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 
 class FBlueprintHelperGraphWriteBridgeRoutesLocalUtils
 {
 public:
-	static FBlueprintHelperBridgeResponse MakeGraphWritePayloadMissingResponse(const FBlueprintHelperBridgeRequest& Request)
+	static FBlueprintHelperBridgeResponse MakeGraphWritePayloadMissingResponse(
+		const FBlueprintHelperBridgeRequest& Request)
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Request.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺失。"));
+			TEXT("payload missing."));
 	}
 
 	static FBlueprintHelperBridgeResponse MakeGraphWriteExecutionResponse(
@@ -35,27 +33,17 @@ public:
 		Response.Result = Result.ToJson();
 		return Response;
 	}
-
 };
 
 FBlueprintHelperGraphWriteBridgeRoutes::FBlueprintHelperGraphWriteBridgeRoutes(
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService)
-	: AppendGraphService(InAppendGraphService)
-	, ReplaceGraphService(InReplaceGraphService)
-	, PatchGraphService(InPatchGraphService)
-	, MergeGraphService(InMergeGraphService)
+	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry)
+	: GraphWriteRegistry(InGraphWriteRegistry)
 {
 }
 
 bool FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(const FString& Command)
 {
-	return Command == TEXT("append_blueprint_graph") ||
-		Command == TEXT("replace_blueprint_graph") ||
-		Command == TEXT("patch_blueprint_graph") ||
-		Command == TEXT("merge_blueprint_graph") ||
+	return FBlueprintHelperGraphWriteServiceRegistry::IsKnownOperation(Command) ||
 		Command == TEXT("project_graphwrite_spawner_evidence");
 }
 
@@ -72,33 +60,12 @@ FBlueprintHelperBridgeResponse FBlueprintHelperGraphWriteBridgeRoutes::HandleReq
 		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWritePayloadMissingResponse(Request);
 	}
 
-	if (Request.Command == TEXT("append_blueprint_graph"))
+	if (FBlueprintHelperGraphWriteServiceRegistry::IsKnownOperation(Request.Command))
 	{
 		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
 			Request,
-			AppendGraphService.Execute(Request.Payload),
-			TEXT("append_blueprint_graph 执行失败。"));
-	}
-	if (Request.Command == TEXT("replace_blueprint_graph"))
-	{
-		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
-			Request,
-			ReplaceGraphService.Execute(Request.Payload),
-			TEXT("replace_blueprint_graph 执行失败。"));
-	}
-	if (Request.Command == TEXT("patch_blueprint_graph"))
-	{
-		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
-			Request,
-			PatchGraphService.Execute(Request.Payload),
-			TEXT("patch_blueprint_graph 执行失败。"));
-	}
-	if (Request.Command == TEXT("merge_blueprint_graph"))
-	{
-		return FBlueprintHelperGraphWriteBridgeRoutesLocalUtils::MakeGraphWriteExecutionResponse(
-			Request,
-			MergeGraphService.Execute(Request.Payload),
-			TEXT("merge_blueprint_graph 执行失败。"));
+			GraphWriteRegistry.Execute(Request.Command, Request.Payload.ToSharedRef()),
+			TEXT("GraphWrite operation failed."));
 	}
 
 	if (Request.Command == TEXT("project_graphwrite_spawner_evidence"))
@@ -112,5 +79,5 @@ FBlueprintHelperBridgeResponse FBlueprintHelperGraphWriteBridgeRoutes::HandleReq
 	return FBlueprintHelperBridgeResponse::Error(
 		Request.RequestId,
 		EBlueprintHelperBridgeError::UnknownCommand,
-		FString::Printf(TEXT("未知 GraphWrite 命令: %s"), *Request.Command));
+		FString::Printf(TEXT("Unknown GraphWrite command: %s"), *Request.Command));
 }

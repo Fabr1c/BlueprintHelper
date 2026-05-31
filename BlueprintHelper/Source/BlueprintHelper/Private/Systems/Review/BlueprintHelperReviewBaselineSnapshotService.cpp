@@ -30,6 +30,7 @@
 #include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
 #include "UObject/MetaData.h"
@@ -496,6 +497,152 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			{
 				Json->SetStringField(TEXT("resolve_error_code"), TEXT("block_not_found"));
 			}
+			return Json;
+		}
+
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalBoundary)
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("graph"));
+			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+			Json->SetStringField(TEXT("node_guid"), Target.NodeGuid);
+			Json->SetStringField(TEXT("pin_name"), Target.PinPath);
+
+			const UEdGraph* Graph = UBlueprintHelperReviewUtils::FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+			if (!Graph)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+				return Json;
+			}
+
+			const UEdGraphNode* Node = UBlueprintHelperReviewUtils::FindReviewSnapshotNodeByGuid(Graph, Target.NodeGuid);
+			if (!Node || UBlueprintHelperReviewUtils::IsReviewSnapshotIgnoredGraphNode(Node))
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), Node ? TEXT("node_ignored") : TEXT("node_not_found"));
+				return Json;
+			}
+
+			TSharedRef<FJsonObject> BoundaryNode = BuildNodePinSubsetSnapshot(Node, Target.PinPath);
+			const TArray<TSharedPtr<FJsonValue>>* Pins = nullptr;
+			if (!BoundaryNode->TryGetArrayField(TEXT("pins"), Pins) || !Pins || Pins->Num() == 0)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("pin_not_found"));
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), true);
+			Json->SetObjectField(TEXT("node"), BoundaryNode);
+			return Json;
+		}
+
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode)
+		{
+			const FString FieldKind = Target.PropertyPath;
+			Json->SetStringField(TEXT("surface"), TEXT("graph"));
+			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+			Json->SetStringField(TEXT("node_guid"), Target.NodeGuid);
+			Json->SetStringField(TEXT("field_kind"), FieldKind);
+			Json->SetStringField(TEXT("pin_name"), Target.PinPath);
+
+			const UEdGraph* Graph = UBlueprintHelperReviewUtils::FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+			if (!Graph)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+				return Json;
+			}
+
+			const UEdGraphNode* Node = UBlueprintHelperReviewUtils::FindReviewSnapshotNodeByGuid(Graph, Target.NodeGuid);
+			if (!Node || UBlueprintHelperReviewUtils::IsReviewSnapshotIgnoredGraphNode(Node))
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), Node ? TEXT("node_ignored") : TEXT("node_not_found"));
+				return Json;
+			}
+
+			if (FieldKind == TEXT("pin_default"))
+			{
+				const UEdGraphPin* TargetPin = nullptr;
+				for (const UEdGraphPin* Pin : Node->Pins)
+				{
+					if (Pin && Pin->PinName.ToString().Equals(Target.PinPath, ESearchCase::IgnoreCase))
+					{
+						TargetPin = Pin;
+						break;
+					}
+				}
+				if (!TargetPin)
+				{
+					Json->SetBoolField(TEXT("exists"), false);
+					Json->SetStringField(TEXT("resolve_error_code"), TEXT("pin_not_found"));
+					return Json;
+				}
+				Json->SetBoolField(TEXT("exists"), true);
+				Json->SetStringField(TEXT("value"), TargetPin->DefaultValue);
+				return Json;
+			}
+
+			if (FieldKind == TEXT("node_comment"))
+			{
+				Json->SetBoolField(TEXT("exists"), true);
+				Json->SetStringField(TEXT("value"), Node->NodeComment);
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("field_kind_unsupported"));
+			return Json;
+		}
+
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody)
+		{
+			Json->SetStringField(TEXT("surface"), TEXT("graph"));
+			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+			Json->SetStringField(TEXT("node_guid"), Target.NodeGuid);
+			Json->SetStringField(TEXT("replace_scope"), Target.PropertyPath);
+
+			const UEdGraph* Graph = UBlueprintHelperReviewUtils::FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+			if (!Graph)
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+				return Json;
+			}
+
+			const UEdGraphNode* Node = UBlueprintHelperReviewUtils::FindReviewSnapshotNodeByGuid(Graph, Target.NodeGuid);
+			if (!Node || UBlueprintHelperReviewUtils::IsReviewSnapshotIgnoredGraphNode(Node))
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), Node ? TEXT("node_ignored") : TEXT("node_not_found"));
+				return Json;
+			}
+
+			FBlueprintHelperExternalBodySnapshot BodySnapshot;
+			FString SnapshotError;
+			const FBlueprintHelperExternalBodySnapshotService SnapshotService;
+			if (!SnapshotService.CaptureBody(
+				const_cast<UEdGraph*>(Graph),
+				const_cast<UEdGraphNode*>(Node),
+				BodySnapshot,
+				SnapshotError))
+			{
+				Json->SetBoolField(TEXT("exists"), false);
+				Json->SetStringField(TEXT("resolve_error_code"), SnapshotError.IsEmpty() ? TEXT("external_body_snapshot_failed") : SnapshotError);
+				return Json;
+			}
+
+			Json->SetBoolField(TEXT("exists"), true);
+			const TSharedRef<FJsonObject> BodyJson = BodySnapshot.ToJson();
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : BodyJson->Values)
+			{
+				if (Field.Key != TEXT("schema"))
+				{
+					Json->SetField(Field.Key, Field.Value);
+				}
+			}
+			Json->SetObjectField(TEXT("external_body_snapshot"), BodyJson);
 			return Json;
 		}
 
@@ -1127,6 +1274,55 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 			LinkedPins.Sort();
 			PinJson->SetArrayField(TEXT("linked_to"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::MakeStringArray(LinkedPins));
 			Pins.Add(MakeShared<FJsonValueObject>(PinJson));
+		}
+	}
+	Json->SetArrayField(TEXT("pins"), Pins);
+	return Json;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNodePinSubsetSnapshot(
+	const UEdGraphNode* Node,
+	const FString& PinName)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("name"), Node ? Node->GetName() : FString());
+	Json->SetStringField(TEXT("guid"), Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString());
+	Json->SetStringField(TEXT("class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Node));
+	Json->SetStringField(TEXT("title"), Node ? Node->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString());
+
+	TArray<TSharedPtr<FJsonValue>> Pins;
+	if (Node)
+	{
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || !Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			TSharedRef<FJsonObject> PinJson = MakeShared<FJsonObject>();
+			PinJson->SetStringField(TEXT("name"), Pin->PinName.ToString());
+			PinJson->SetStringField(TEXT("direction"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::PinDirectionToString(Pin->Direction));
+			PinJson->SetStringField(TEXT("pin_category"), Pin->PinType.PinCategory.ToString());
+			PinJson->SetStringField(TEXT("pin_sub_category"), Pin->PinType.PinSubCategory.ToString());
+			PinJson->SetStringField(TEXT("default_value"), Pin->DefaultValue);
+
+			TArray<FString> LinkedPins;
+			for (const UEdGraphPin* LinkedPin : Pin->LinkedTo)
+			{
+				if (!LinkedPin || !LinkedPin->GetOwningNode())
+				{
+					continue;
+				}
+				LinkedPins.Add(FString::Printf(
+					TEXT("%s:%s"),
+					*LinkedPin->GetOwningNode()->NodeGuid.ToString(EGuidFormats::Digits),
+					*LinkedPin->PinName.ToString()));
+			}
+			LinkedPins.Sort();
+			PinJson->SetArrayField(TEXT("linked_to"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::MakeStringArray(LinkedPins));
+			Pins.Add(MakeShared<FJsonValueObject>(PinJson));
+			break;
 		}
 	}
 	Json->SetArrayField(TEXT("pins"), Pins);
