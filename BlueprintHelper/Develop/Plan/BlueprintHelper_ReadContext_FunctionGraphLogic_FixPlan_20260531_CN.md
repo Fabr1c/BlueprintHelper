@@ -6,7 +6,23 @@
 
 **Architecture:** Keep `function` as a first-class ReadContext target. Preserve the exporter rule that raw graph export hides `UK2Node_FunctionEntry` / `UK2Node_FunctionResult` from importable `nodes[]`, and repair the read formatter contract by synthesizing function-entry metadata only inside the non-importable logic read payload when a function graph matches the requested function but has no exported entry node. The fix stays in the reusable LogicGroupBuilder boundary and does not add caller-side special cases.
 
-**Tech Stack:** UE 5.6, BlueprintHelper C++, LogicJson/LogicMd read pipeline, Unreal Automation Tests, PowerShell.
+**Tech Stack:** UE 5.6, BlueprintHelper C++, LogicJson/LogicMd/LogicFlow read pipeline, AgentFace task-core, Unreal Automation Tests, PowerShell.
+
+---
+
+## Execution Result
+
+- Status: implemented.
+- RED evidence: `Automation RunTests BlueprintHelper.ObjectFirst.Logic.FunctionTargetUsesExportedFunctionGraphWithoutEntry` failed before production fix with `Payload.Graph=""`, no entry, and `Nodes=0`; report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_RED_20260531_002\index.json`.
+- Build evidence: `E:\UE_5.6\Engine\Build\BatchFiles\Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload` succeeded, including the final stricter formatter assertions.
+- Boundary RED evidence: after adding `__function_entry__ -> body -> __function_result__` links to the exported-shape fixture, `Automation RunTests BlueprintHelper.ObjectFirst.Logic.FunctionTargetUsesExportedFunctionGraphWithoutEntry` failed because only the body node was returned; report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_Boundary_RED_20260531_001\index.json`.
+- Boundary GREEN evidence: `Automation RunTests BlueprintHelper.ObjectFirst.Logic.FunctionTargetUsesExportedFunctionGraphWithoutEntry` passed, 1 succeeded / 0 failed; report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_Boundary_GREEN_20260531_002\index.json`.
+- Formatter GREEN evidence: `Automation RunTests BlueprintHelper.Read.LogicSnapshotFormatter` passed, 2 succeeded / 0 failed; latest report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_Formatter_GREEN_20260531_002\index.json`.
+- LogicFlow GREEN evidence: `npm run build` succeeded, targeted import `node -e "await import('./build/tool-surface/bridge/read-context/read-context-handler.test.js')"` passed 5 tests / 0 failed, and `npm run test:node` passed 282 tests / 0 failed in `AgentFaceService/task-core`.
+- Focused GREEN evidence: `Automation RunTests BlueprintHelper.ObjectFirst.Logic.FunctionTarget` passed, 3 succeeded / 0 failed; report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_FunctionTarget_GREEN_20260531_002\index.json`.
+- Regression evidence: `Automation RunTests BlueprintHelper.ObjectFirst.Logic` passed, 13 succeeded / 0 failed; latest report path `D:\UEProjects\Template\Saved\Automation\ReadContext_FunctionGraph_ObjectFirstLogic_GREEN_20260531_003\index.json`.
+- Implementation note: `target_type=function` remains the only semantic function read path. The fix synthesizes function entry/result boundary metadata only inside non-importable LogicJson/LogicMd payloads when the requested function name matches the exported function graph and no `FunctionEntry` node exists in `nodes[]`; graph-level links can now bind `__function_entry__` and `__function_result__` endpoints.
+- Review cleanup note: the old explicit `K2Node_FunctionEntry` fixture no longer carries synthetic boundary links; those links stay isolated to the exported-shape fixture that matches real FunctionGraph output.
 
 ---
 
@@ -14,11 +30,15 @@
 
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/BlueprintHelperObjectFirstLogicTests.cpp`
   - Add a red test for the real exporter shape: function graph body nodes exist, but `K2Node_FunctionEntry` is absent from `nodes[]`.
+- Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Tests/Read/BlueprintHelperLogicReadSnapshotFormatterTests.cpp`
+  - Add formatter coverage for the generated `logic_json` boundary node refs/kinds/links and the `logic_md` boundary execution text.
 - Modify: `BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.cpp`
   - Add a focused function-target fallback inside `BuildTargetEntry` when `Scope == TargetFunction`, graph name equals target function name, and no exported entry node exists.
   - The fallback must set `Payload.Entry` as a synthetic function entry and return the graph's body nodes.
 - Modify: `BlueprintHelper/Develop/Plan/BlueprintHelper_ReadContext_FunctionGraphLogic_Audit_20260531_CN.md`
   - Replace the old workaround-oriented recommendation with the implemented semantic fix and verification evidence.
+- Modify: `AgentFaceService/task-core/src/tool-surface/bridge/read-context/read-context-handler.test.ts`
+  - Add `logic_flow` coverage for function-target LogicJson with synthetic `__function_entry__` and `__function_result__` boundaries, both at payload conversion and `read_context` handler level.
 
 ## Non-goals
 

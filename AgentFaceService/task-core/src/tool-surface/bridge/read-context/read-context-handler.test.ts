@@ -76,6 +76,67 @@ function makeLogicJsonWithExternalAnchors(): Record<string, unknown> {
   };
 }
 
+function makeFunctionLogicJsonWithSyntheticBoundaries(): Record<string, unknown> {
+  return {
+    schema: 'LogicJson.v1',
+    format: 'logic_json',
+    importable: false,
+    scope: 'target_function',
+    logic: {
+      asset_path: '/Game/Gameplay/Maze/BP_Maze',
+      graph: 'AddMazeRelativeRotation',
+      function: 'AddMazeRelativeRotation',
+      entry: {
+        kind: 'function',
+        name: 'AddMazeRelativeRotation',
+        node_path: '$.graphs[AddMazeRelativeRotation].__function_entry__',
+        node_ref: '__function_entry__',
+      },
+      nodes: [
+        {
+          node_ref: '__function_entry__',
+          kind: 'function',
+          name: 'AddMazeRelativeRotation',
+          links: [
+            {
+              link_ref: 'links[0]',
+              type: 'exec',
+              from_pin: 'then',
+              to_node: 'nodes[0]',
+              to_pin: 'execute',
+            },
+          ],
+        },
+        {
+          node_ref: 'nodes[0]',
+          kind: 'call_function',
+          name: 'SetRelativeRotation',
+          links: [
+            {
+              link_ref: 'links[1]',
+              type: 'exec',
+              from_pin: 'then',
+              to_node: '__function_result__',
+              to_pin: 'execute',
+            },
+          ],
+        },
+        {
+          node_ref: '__function_result__',
+          kind: 'return',
+          name: 'Return',
+        },
+      ],
+    },
+    stats: {
+      nodes: 3,
+      exec_links: 2,
+      data_links: 0,
+      orphan_nodes: 0,
+    },
+  };
+}
+
 test('logic_flow payload preserves external anchors in deterministic order', () => {
   const payload = buildLogicFlowPayload(makeLogicJsonWithExternalAnchors());
 
@@ -89,6 +150,15 @@ test('logic_flow payload preserves external anchors in deterministic order', () 
   assert.equal(anchors[0]?.['node_guid'], 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(anchors[0]?.['fingerprint'], 'boundaryfp');
   assert.equal(anchors[1]?.['fingerprint'], 'nodefp');
+});
+
+test('logic_flow payload renders function graph synthetic entry and result boundaries', () => {
+  const payload = buildLogicFlowPayload(makeFunctionLogicJsonWithSyntheticBoundaries());
+
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  assert.equal((payload['warnings'] as string[]).length, 0);
+  assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
 });
 
 test('read_context handler records timing around bridge and post-processing stages', async () => {
@@ -209,4 +279,49 @@ test('read_context logic_flow handler returns external anchors from bridge Logic
   assert.equal(anchors.length, 2);
   assert.equal(anchors[0]?.['semantic_role'], 'exec_boundary');
   assert.equal(anchors[1]?.['semantic_role'], 'node');
+});
+
+test('read_context logic_flow handler renders function graph synthetic entry and result boundaries', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'test',
+    success: true,
+    result: makeFunctionLogicJsonWithSyntheticBoundaries(),
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/Gameplay/Maze/BP_Maze',
+      target_type: 'function',
+      target_name: 'AddMazeRelativeRotation',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_blueprint_logic_json');
+  assert.equal(bridgeCalls[0]?.payload?.['target_type'], 'function');
+  assert.equal(bridgeCalls[0]?.payload?.['target_name'], 'AddMazeRelativeRotation');
+  assert.equal(bridgeCalls[0]?.payload?.['function'], 'AddMazeRelativeRotation');
+  assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_function');
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
 });
