@@ -187,6 +187,48 @@ export const CONTAINER_ACTION_REQUIRED_ROLES_BY_KIND_OPERATION = {
   },
 } as const;
 
+export const CONTAINER_ACTION_RESULT_OUTPUT_PIN_BY_KIND_OPERATION: {
+  readonly [K in keyof typeof CONTAINER_ACTION_OPERATIONS_BY_KIND]: Partial<Record<(typeof CONTAINER_ACTION_OPERATIONS_BY_KIND)[K][number], string>>;
+} = {
+  array: {
+    get: 'Item',
+    add: 'ReturnValue',
+    add_unique: 'ReturnValue',
+    remove_item: 'ReturnValue',
+    contains: 'ReturnValue',
+    find: 'ReturnValue',
+    length: 'ReturnValue',
+    identical: 'ReturnValue',
+    is_empty: 'ReturnValue',
+    is_not_empty: 'ReturnValue',
+    last_index: 'ReturnValue',
+    is_valid_index: 'ReturnValue',
+    random: 'OutItem',
+    random_from_stream: 'OutItem',
+  },
+  map: {
+    remove: 'ReturnValue',
+    find: 'Value',
+    contains: 'ReturnValue',
+    keys: 'Keys',
+    values: 'Values',
+    length: 'ReturnValue',
+    is_empty: 'ReturnValue',
+    is_not_empty: 'ReturnValue',
+    get_last_index: 'ReturnValue',
+  },
+  set: {
+    remove: 'ReturnValue',
+    contains: 'ReturnValue',
+    length: 'ReturnValue',
+    to_array: 'Result',
+    is_empty: 'ReturnValue',
+    is_not_empty: 'ReturnValue',
+    get_item_by_index: 'Item',
+    get_last_index: 'ReturnValue',
+  },
+} as const;
+
 export const CONTAINER_ACTION_OPERATION_IDS = Object.entries(CONTAINER_ACTION_OPERATIONS_BY_KIND)
   .flatMap(([containerKind, operations]) => operations.map((operation) => `container.${containerKind}.${operation}`));
 
@@ -208,6 +250,25 @@ export function isExpressionContainerActionOperation(containerKind: string, cont
   return isSupportedContainerActionKind(containerKind)
     ? CONTAINER_ACTION_EXPRESSION_OPERATIONS_BY_KIND[containerKind].includes(containerOperation as never)
     : false;
+}
+
+export function getContainerActionResultOutputPin(containerKind: string, containerOperation: string): string | undefined {
+  const kind = containerKind.trim().toLowerCase();
+  const operation = containerOperation.trim().toLowerCase();
+  if (!isSupportedContainerActionKind(kind)) {
+    return undefined;
+  }
+  const outputPins = CONTAINER_ACTION_RESULT_OUTPUT_PIN_BY_KIND_OPERATION[kind] as Record<string, string | undefined>;
+  return outputPins[operation];
+}
+
+export function isSingleResultContainerActionOperation(containerKind: string, containerOperation: string): boolean {
+  return getContainerActionResultOutputPin(containerKind, containerOperation) !== undefined;
+}
+
+export function isValueExpressionContainerActionOperation(containerKind: string, containerOperation: string): boolean {
+  return isExpressionContainerActionOperation(containerKind, containerOperation)
+    && isSingleResultContainerActionOperation(containerKind, containerOperation);
 }
 
 export function getRequiredContainerActionRoles(
@@ -270,11 +331,11 @@ export const ContainerActionShapeSchema = z.object({
       });
     }
   });
-  if (value.result_symbol !== undefined && !isExpressionContainerActionOperation(containerKind, containerOperation)) {
+  if (value.result_symbol !== undefined && !isValueExpressionContainerActionOperation(containerKind, containerOperation)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['result_symbol'],
-      message: 'result_symbol is only supported for query container_action operations.',
+      message: 'result_symbol is only supported for query container_action operations with a single result output.',
     });
   }
 });

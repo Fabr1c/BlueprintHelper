@@ -13,6 +13,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Character.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_DynamicCast.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -21,7 +22,9 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Subsystems/GameInstanceSubsystem.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperCallFunctionResolverTestsLocalUtils
@@ -442,6 +445,44 @@ public:
 		}
 		return nullptr;
 	}
+
+	static TArray<UK2Node_CallFunction*> FindCallNodes(UEdGraph* Graph, const FName FunctionName)
+	{
+		TArray<UK2Node_CallFunction*> Result;
+		if (!Graph)
+		{
+			return Result;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
+			{
+				if (CallNode->GetFunctionName() == FunctionName)
+				{
+					Result.Add(CallNode);
+				}
+			}
+		}
+		return Result;
+	}
+
+	static UK2Node_DynamicCast* FindDynamicCastNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_DynamicCast* CastNode = Cast<UK2Node_DynamicCast>(Node))
+			{
+				return CastNode;
+			}
+		}
+		return nullptr;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -605,6 +646,228 @@ bool FBlueprintHelperCallFunctionResolverGeneratorQualifiedNameTest::RunTest(con
 	{
 		TestEqual(TEXT("target function"), CallNode->GetFunctionName(), FName(TEXT("PrintString")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.ConvertExpression.DynamicCastIsPure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
+	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+		Graph,
+		TEXT(R"JSON({
+			"logic_spec": {
+				"schema": "BlueprintLogicSpec.v2",
+				"statements": [{
+					"kind": "call",
+					"target": "PrintString",
+					"target_object": {
+						"kind": "convert",
+						"transform_operation": "dynamic_cast",
+						"target_class_path": "/Script/Engine.GameInstanceSubsystem",
+						"args": {
+							"value": {
+								"kind": "call",
+								"target": "/Script/Engine.SubsystemBlueprintLibrary:GetGameInstanceSubsystem",
+								"args": {
+									"Class": {
+										"kind": "literal",
+										"value_type": "class",
+										"value": "/Script/Engine.GameInstanceSubsystem"
+									}
+								}
+							}
+						}
+					},
+					"args": {
+						"InString": { "kind": "literal", "value_type": "string", "value": "probe" }
+					}
+				}]
+			}
+		})JSON"),
+		Unresolved);
+
+	if (!TestTrue(TEXT("generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+
+	UK2Node_DynamicCast* CastNode =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindDynamicCastNode(Graph);
+	TestNotNull(TEXT("dynamic cast expression node generated"), CastNode);
+	if (!CastNode)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("dynamic cast generated for expression context is pure"), CastNode->IsNodePure());
+	TestNull(TEXT("pure dynamic cast has no execute pin"), CastNode->FindPin(UEdGraphSchema_K2::PN_Execute));
+
+	UEdGraphPin* CastResultPin = nullptr;
+	for (UEdGraphPin* Pin : CastNode->Pins)
+	{
+		if (Pin
+			&& Pin->Direction == EGPD_Output
+			&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+			&& Pin->PinName.ToString().StartsWith(TEXT("As")))
+		{
+			CastResultPin = Pin;
+			break;
+		}
+	}
+	TestNotNull(TEXT("dynamic cast result pin"), CastResultPin);
+
+	UK2Node_CallFunction* PrintStringNode =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("PrintString")));
+	TestNotNull(TEXT("receiver PrintString call generated"), PrintStringNode);
+	if (CastResultPin && PrintStringNode)
+	{
+		UEdGraphPin* LinkedTargetPin = nullptr;
+		for (UEdGraphPin* Pin : PrintStringNode->Pins)
+		{
+			if (Pin
+				&& Pin->Direction == EGPD_Input
+				&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+				&& UGraphWriteGraphStatementUtils::IsCallableTargetObjectPin(PrintStringNode, Pin)
+				&& Pin->LinkedTo.Contains(CastResultPin))
+			{
+				LinkedTargetPin = Pin;
+				break;
+			}
+		}
+		TestNotNull(TEXT("pure dynamic cast result feeds receiver call target_object pin"), LinkedTargetPin);
+	}
+
+	UK2Node_CallFunction* SubsystemNode =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("GetGameInstanceSubsystem")));
+	TestNotNull(TEXT("subsystem getter call generated"), SubsystemNode);
+	if (SubsystemNode)
+	{
+		UEdGraphPin* ClassPin = SubsystemNode->FindPin(TEXT("Class"));
+		TestNotNull(TEXT("subsystem getter class pin"), ClassPin);
+		if (ClassPin)
+		{
+			TestTrue(TEXT("subsystem getter class default object"), ClassPin->DefaultObject.Get() == UGameInstanceSubsystem::StaticClass());
+		}
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("dynamic cast expression Blueprint compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionResolverCallLiteralDefaultsPerStatementTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.CallLiteralDefaults.PerStatement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionResolverCallLiteralDefaultsPerStatementTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
+	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+		Graph,
+		TEXT(R"JSON({
+			"logic_spec": {
+				"schema": "BlueprintLogicSpec.v2",
+				"statements": [{
+					"kind": "call",
+					"target": "PrintString",
+					"args": {
+						"InString": { "kind": "literal", "value_type": "string", "value": "first" },
+						"Duration": { "kind": "literal", "value_type": "number", "value": 1.25 }
+					}
+				}, {
+					"kind": "call",
+					"target": "PrintString",
+					"args": {
+						"InString": { "kind": "literal", "value_type": "string", "value": "second" },
+						"Duration": { "kind": "literal", "value_type": "number", "value": 2.5 }
+					}
+				}]
+			}
+		})JSON"),
+		Unresolved);
+
+	if (!TestTrue(TEXT("generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+
+	const TArray<UK2Node_CallFunction*> PrintNodes =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNodes(Graph, FName(TEXT("PrintString")));
+	TestEqual(TEXT("two PrintString nodes generated"), PrintNodes.Num(), 2);
+	if (PrintNodes.Num() != 2)
+	{
+		return false;
+	}
+
+	TSet<FString> SeenStrings;
+	TArray<double> SeenDurations;
+	for (UK2Node_CallFunction* PrintNode : PrintNodes)
+	{
+		UEdGraphPin* InStringPin = PrintNode ? PrintNode->FindPin(TEXT("InString")) : nullptr;
+		UEdGraphPin* DurationPin = PrintNode ? PrintNode->FindPin(TEXT("Duration")) : nullptr;
+		TestNotNull(TEXT("InString pin"), InStringPin);
+		TestNotNull(TEXT("Duration pin"), DurationPin);
+		if (InStringPin)
+		{
+			SeenStrings.Add(InStringPin->DefaultValue);
+		}
+		if (DurationPin)
+		{
+			SeenDurations.Add(FCString::Atod(*DurationPin->DefaultValue));
+		}
+	}
+
+	auto HasDuration = [&SeenDurations](const double Expected)
+	{
+		return SeenDurations.ContainsByPredicate(
+			[Expected](const double Actual)
+			{
+				return FMath::IsNearlyEqual(Actual, Expected, KINDA_SMALL_NUMBER);
+			});
+	};
+
+	TestTrue(TEXT("first call string default preserved"), SeenStrings.Contains(TEXT("first")));
+	TestTrue(TEXT("second call string default preserved"), SeenStrings.Contains(TEXT("second")));
+	TestTrue(TEXT("first call numeric default preserved"), HasDuration(1.25));
+	TestTrue(TEXT("second call numeric default preserved"), HasDuration(2.5));
 	return true;
 }
 

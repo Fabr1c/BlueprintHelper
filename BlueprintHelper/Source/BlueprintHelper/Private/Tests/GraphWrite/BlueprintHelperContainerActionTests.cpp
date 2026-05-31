@@ -15,10 +15,14 @@
 #include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperContainerActionReadbackVerifier.h"
 
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_IfThenElse.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/Package.h"
@@ -213,6 +217,64 @@ static bool RunContainerActionFixture(
 		return false;
 	}
 	return true;
+}
+
+static UK2Node_CallFunction* FindContainerActionCallFunctionNode(UEdGraph* Graph, const TCHAR* FunctionName)
+{
+	if (!Graph || !FunctionName)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+		if (CallNode && CallNode->GetFunctionName().ToString().Equals(FunctionName, ESearchCase::IgnoreCase))
+		{
+			return CallNode;
+		}
+	}
+	return nullptr;
+}
+
+static UK2Node_IfThenElse* FindContainerActionBranchNode(UEdGraph* Graph)
+{
+	if (!Graph)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (UK2Node_IfThenElse* BranchNode = Cast<UK2Node_IfThenElse>(Node))
+		{
+			return BranchNode;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphPin* FindContainerActionExecPinByName(
+	UEdGraphNode* Node,
+	const EEdGraphPinDirection Direction,
+	const TCHAR* PinName)
+{
+	if (!Node || !PinName)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin
+			&& Pin->Direction == Direction
+			&& Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			&& Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+		{
+			return Pin;
+		}
+	}
+	return nullptr;
 }
 } // namespace
 
@@ -531,7 +593,7 @@ bool FBlueprintHelperGraphWriteContainerActionFocusedE2ETest::RunTest(const FStr
 		MakeContainerActionPinType(
 			UEdGraphSchema_K2::PC_String,
 			EPinContainerType::Map,
-			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_String));
 	const FEdGraphPinType TagsType =
 		MakeContainerActionPinType(UEdGraphSchema_K2::PC_String, EPinContainerType::Set);
 
@@ -646,6 +708,134 @@ bool FBlueprintHelperGraphWriteContainerActionFocusedE2ETest::RunTest(const FStr
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	TestFalse(TEXT("container action generated Blueprint compiles"), Blueprint->Status == BS_Error);
 	return bPassed && Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTest,
+	"BlueprintHelper.GraphWrite.ContainerAction.PureQueryPreservesBranchThenFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeContainerActionBlueprint();
+	UEdGraph* Graph = FindContainerActionEventGraph(Blueprint);
+	TestNotNull(TEXT("container action blueprint"), Blueprint);
+	TestNotNull(TEXT("container action graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	const FEdGraphPinType ScoresType =
+		MakeContainerActionPinType(
+			UEdGraphSchema_K2::PC_String,
+			EPinContainerType::Map,
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+	const FEdGraphPinType ConditionType =
+		MakeContainerActionPinType(UEdGraphSchema_K2::PC_Boolean, EPinContainerType::None);
+	TestTrue(TEXT("Scores variable added"), AddContainerActionVariable(Blueprint, TEXT("Scores"), ScoresType));
+	TestTrue(TEXT("bShouldPrint variable added"), AddContainerActionVariable(Blueprint, TEXT("bShouldPrint"), ConditionType));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	if (Blueprint->Status == BS_Error)
+	{
+		AddError(TEXT("container action branch fixture Blueprint failed to compile before generation."));
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			MakeContainerActionLogicJson(TEXT(R"JSON({
+				"id": "stmt_branch",
+				"kind": "branch",
+				"condition": { "kind": "get", "name": "bShouldPrint", "type": "bool" },
+				"then": [{
+					"id": "stmt_find_score",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "find",
+					"target": { "kind": "get", "name": "Scores" },
+					"key": { "kind": "literal", "value": "PlayerA", "type": "string" },
+					"key_type": "string",
+					"value_type": "string",
+					"result_symbol": "FoundScore"
+				}, {
+					"id": "stmt_print_after_find",
+					"kind": "call",
+					"target": "PrintString",
+					"args": {
+						"InString": { "kind": "get", "name": "FoundScore", "type": "string" }
+					}
+				}]
+			})JSON")),
+			Unresolved);
+
+	if (!TestTrue(TEXT("branch pure query generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+	if (!TestEqual(TEXT("branch pure query connection diagnostics"), Result.ConnectionDiagnostics.Num(), 0))
+	{
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("connection diagnostic: %s"), *Diagnostic.Message));
+		}
+		return false;
+	}
+
+	UK2Node_IfThenElse* BranchNode = FindContainerActionBranchNode(Graph);
+	UK2Node_CallFunction* MapFindNode = FindContainerActionCallFunctionNode(Graph, TEXT("Map_Find"));
+	UK2Node_CallFunction* PrintStringNode = FindContainerActionCallFunctionNode(Graph, TEXT("PrintString"));
+	TestNotNull(TEXT("branch node generated"), BranchNode);
+	TestNotNull(TEXT("pure query Map_Find fragment generated"), MapFindNode);
+	TestNotNull(TEXT("executable PrintString call generated"), PrintStringNode);
+	if (!BranchNode || !MapFindNode || !PrintStringNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* BranchThenPin = FindContainerActionExecPinByName(BranchNode, EGPD_Output, TEXT("then"));
+	UEdGraphPin* PrintExecutePin = FindContainerActionExecPinByName(PrintStringNode, EGPD_Input, TEXT("execute"));
+	TestNotNull(TEXT("branch then pin"), BranchThenPin);
+	TestNotNull(TEXT("PrintString execute pin"), PrintExecutePin);
+	if (!BranchThenPin || !PrintExecutePin)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("Branch.Then reaches PrintString Execute after pure query container action"),
+		BranchThenPin->LinkedTo.Contains(PrintExecutePin) && PrintExecutePin->LinkedTo.Contains(BranchThenPin));
+
+	UEdGraphPin* MapFindKeyPin = MapFindNode->FindPin(TEXT("Key"));
+	TestNotNull(TEXT("Map_Find key pin"), MapFindKeyPin);
+	if (MapFindKeyPin)
+	{
+		TestEqual(TEXT("Map_Find key default preserved"), MapFindKeyPin->DefaultValue, FString(TEXT("PlayerA")));
+	}
+
+	UEdGraphPin* MapFindValuePin = MapFindNode->FindPin(TEXT("Value"));
+	UEdGraphPin* PrintInStringPin = PrintStringNode->FindPin(TEXT("InString"));
+	TestNotNull(TEXT("Map_Find value pin"), MapFindValuePin);
+	TestNotNull(TEXT("PrintString InString pin"), PrintInStringPin);
+	if (MapFindValuePin && PrintInStringPin)
+	{
+		TestTrue(
+			TEXT("Map_Find.Value feeds result_symbol consumer"),
+			MapFindValuePin->LinkedTo.Contains(PrintInStringPin) && PrintInStringPin->LinkedTo.Contains(MapFindValuePin));
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("branch pure query generated Blueprint compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

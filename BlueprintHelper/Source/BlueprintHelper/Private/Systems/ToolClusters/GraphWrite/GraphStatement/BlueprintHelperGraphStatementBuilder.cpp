@@ -8,6 +8,7 @@
 #include "Engine/Blueprint.h"
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_DynamicCast.h"
 #include "K2Node_PromotableOperator.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
@@ -550,11 +551,10 @@ static void ApplyPinTypeToNodePin(UEdGraphPin* Pin, const FEdGraphPinType& PinTy
 	Pin->PinType = PinType;
 }
 
-static void ApplyContainerActionResolvedPinTypes(
+static void ApplyContainerActionResolvedPinTypesToNode(
 	const FBlueprintHelperGraphFragmentBuildRequest& Request,
-	FBlueprintHelperNodeFragment& InOutFragment)
+	UK2Node* Node)
 {
-	UK2Node* Node = InOutFragment.PrimaryNode;
 	if (!Node)
 	{
 		return;
@@ -592,6 +592,13 @@ static void ApplyContainerActionResolvedPinTypes(
 			}
 		}
 	}
+}
+
+static void ApplyContainerActionResolvedPinTypes(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FBlueprintHelperNodeFragment& InOutFragment)
+{
+	ApplyContainerActionResolvedPinTypesToNode(Request, InOutFragment.PrimaryNode);
 }
 
 static void ApplyContainerActionRoleBindingDefaults(
@@ -929,6 +936,24 @@ static void ApplyPromotableOperatorLiteralTypes(
 		return;
 	}
 	TryApplyPromotableOperatorLiteralType(Node, 0, Expression.Value);
+}
+
+static void ApplyExpressionNodePolicies(
+	UK2Node* Node,
+	const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	ApplyPromotableOperatorLiteralTypes(Node, Expression);
+
+	if (Expression.Kind != EBlueprintHelperGraphExpressionKind::Convert
+		|| !Expression.TransformOperation.Equals(TEXT("dynamic_cast"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	if (UK2Node_DynamicCast* CastNode = Cast<UK2Node_DynamicCast>(Node))
+	{
+		CastNode->SetPurity(true);
+	}
 }
 
 static bool ResolveActionProviderForExpression(
@@ -1518,6 +1543,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 		TEXT("action provider unavailable: semantic=%s"),
 		*FBlueprintHelperActionResolutionCore::SemanticKindToString(SemanticKind));
 	CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
+	if (SemanticKind == EBlueprintHelperActionSemanticKind::ContainerAction)
+	{
+		CoordinatorRequest.SpawnOptions.PinNormalizationHook =
+			[ContainerRequest = BoundRequest](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&)
+			{
+				ApplyContainerActionResolvedPinTypesToNode(ContainerRequest, &SpawnedNode);
+			};
+	}
 
 	const bool bBuilt = FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
 		CoordinatorRequest,
@@ -1942,7 +1975,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		SpawnOptions.NodeId = ExpressionId;
 		SpawnOptions.PinNormalizationHook = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&)
 		{
-			ApplyPromotableOperatorLiteralTypes(&SpawnedNode, Expression);
+			ApplyExpressionNodePolicies(&SpawnedNode, Expression);
 		};
 		SpawnOptions.DefaultValueProvider = [&Expression](UK2Node& SpawnedNode, const FBlueprintHelperActionNodeSpawnContext&, TMap<FString, FString>& InOutDefaults)
 		{

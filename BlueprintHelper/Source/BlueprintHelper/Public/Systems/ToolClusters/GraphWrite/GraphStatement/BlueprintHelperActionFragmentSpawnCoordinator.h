@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
@@ -22,6 +23,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperActionFragmentSpawnCoordinatorRequest
 	EBlueprintHelperActionFragmentPinProfile PinProfile = EBlueprintHelperActionFragmentPinProfile::ActionProvider;
 	FString CandidateGroupTarget;
 	FString FailurePrefix;
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	bool bAppendSemanticKindOwnershipTag = false;
 };
 
