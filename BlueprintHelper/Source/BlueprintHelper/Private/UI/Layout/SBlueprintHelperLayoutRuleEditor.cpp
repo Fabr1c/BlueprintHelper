@@ -56,12 +56,16 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 		PureInputOffsetX,
 		VariableInputOffsetX,
 		InputPinRowSpacing,
+		CollisionPaddingX,
+		CollisionPaddingY,
+		CollisionStepY,
 		MaxMillisecondsPerFrame
 	};
 
 	enum EIntSetting : int32
 	{
-		MaxNodesPerFrame = 0
+		MaxNodesPerFrame = 0,
+		MaxCollisionAttempts
 	};
 
 	enum EBoolSetting : int32
@@ -153,6 +157,7 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 			.AutoWidth()
 			[
 				SNew(SSpinBox<float>)
+				.ToolTipText(ToolTip)
 				.MinValue(MinValue)
 				.MaxValue(MaxValue)
 				.Delta(Delta)
@@ -188,6 +193,7 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 			.AutoWidth()
 			[
 				SNew(SSpinBox<int32>)
+				.ToolTipText(ToolTip)
 				.MinValue(MinValue)
 				.MaxValue(MaxValue)
 				.Delta(1)
@@ -729,7 +735,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("ImportJson", "Import JSON"),
-					LOCTEXT("ImportJsonTooltip", "通过已绑定的配置入口导入 RuleSet JSON；未绑定时从默认 Saved 文件读取。"),
+					LOCTEXT("ImportJsonTooltip", "通过已绑定的配置入口导入 RuleSet JSON；未绑定时从默认配置文件读取。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnImportJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -738,7 +744,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					LOCTEXT("ExportJson", "Export JSON"),
-					LOCTEXT("ExportJsonTooltip", "通过已绑定的配置入口导出当前 RuleSet JSON；未绑定时写入默认 Saved 文件。"),
+					LOCTEXT("ExportJsonTooltip", "通过已绑定的配置入口导出当前 RuleSet JSON；未绑定时写入默认配置文件。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnExportJsonClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -822,7 +828,6 @@ END_SLATE_FUNCTION_BUILD_OPTIMIZATION
 TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 {
 	using namespace BlueprintHelperLayoutRuleEditorLocal;
-
 	return SNew(SScrollBox)
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 8.0f)
@@ -932,6 +937,58 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsCollisionHeader", "避让"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("CollisionPaddingXLabel", "水平留白"),
+				LOCTEXT("CollisionPaddingXTooltip", "节点避让时在左右方向额外保留的距离，用于减少节点和连线挤在一起。"),
+				[this]() { return SettingsCollisionPaddingX; },
+				[this](float NewValue) { HandleFloatSettingChanged(CollisionPaddingX, NewValue); },
+				1.0f,
+				400.0f,
+				5.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("CollisionPaddingYLabel", "垂直留白"),
+				LOCTEXT("CollisionPaddingYTooltip", "节点避让时在上下方向额外保留的距离，用于避免节点互相压住。"),
+				[this]() { return SettingsCollisionPaddingY; },
+				[this](float NewValue) { HandleFloatSettingChanged(CollisionPaddingY, NewValue); },
+				1.0f,
+				400.0f,
+				5.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("CollisionStepYLabel", "下移步长"),
+				LOCTEXT("CollisionStepYTooltip", "候选位置被占用时，每次向下寻找空位的距离。"),
+				[this]() { return SettingsCollisionStepY; },
+				[this](float NewValue) { HandleFloatSettingChanged(CollisionStepY, NewValue); },
+				8.0f,
+				400.0f,
+				4.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+		[
+			BuildIntSettingRow(
+				LOCTEXT("MaxCollisionAttemptsLabel", "最大尝试"),
+				LOCTEXT("MaxCollisionAttemptsTooltip", "寻找空位时最多尝试的次数，数值越大越能避让复杂图，但求解耗时也会增加。"),
+				[this]() { return SettingsMaxCollisionAttempts; },
+				[this](int32 NewValue) { HandleIntSettingChanged(MaxCollisionAttempts, NewValue); },
+				1,
+				256)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
 			BuildSettingsSectionHeader(LOCTEXT("SettingsApplyHeader", "Apply"))
 		]
 		+ SScrollBox::Slot()
@@ -998,9 +1055,7 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 				[this]() { return bSettingsSaveAfterApply; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(SaveAfterApply, bNewValue); })
 		];
-}
-
-FString SBlueprintHelperLayoutRuleEditor::GetRuleSetJson() const
+}FString SBlueprintHelperLayoutRuleEditor::GetRuleSetJson() const
 {
 	return RuleSetJson;
 }
@@ -1188,6 +1243,10 @@ void SBlueprintHelperLayoutRuleEditor::RefreshSettingsFromJson()
 	SettingsPureInputOffsetX = ParsedRuleSet.PureInputOffsetX;
 	SettingsVariableInputOffsetX = ParsedRuleSet.VariableInputOffsetX;
 	SettingsInputPinRowSpacing = ParsedRuleSet.InputPinRowSpacing;
+	SettingsCollisionPaddingX = ParsedRuleSet.CollisionPaddingX;
+	SettingsCollisionPaddingY = ParsedRuleSet.CollisionPaddingY;
+	SettingsCollisionStepY = ParsedRuleSet.CollisionStepY;
+	SettingsMaxCollisionAttempts = ParsedRuleSet.MaxCollisionAttempts;
 	SettingsMaxNodesPerFrame = ParsedRuleSet.MaxNodesPerFrame;
 	SettingsMaxMillisecondsPerFrame = ParsedRuleSet.MaxMillisecondsPerFrame;
 	bSettingsMoveGeneratedNodes = ParsedRuleSet.bMoveGeneratedNodes;
@@ -1265,6 +1324,15 @@ void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId
 	case InputPinRowSpacing:
 		ParsedRuleSet.InputPinRowSpacing = FMath::Clamp(NewValue, 24.0f, 220.0f);
 		break;
+	case CollisionPaddingX:
+		ParsedRuleSet.CollisionPaddingX = FMath::Clamp(NewValue, 1.0f, 400.0f);
+		break;
+	case CollisionPaddingY:
+		ParsedRuleSet.CollisionPaddingY = FMath::Clamp(NewValue, 1.0f, 400.0f);
+		break;
+	case CollisionStepY:
+		ParsedRuleSet.CollisionStepY = FMath::Clamp(NewValue, 8.0f, 400.0f);
+		break;
 	case MaxMillisecondsPerFrame:
 		ParsedRuleSet.MaxMillisecondsPerFrame = FMath::Clamp(NewValue, 0.25f, 20.0f);
 		break;
@@ -1295,6 +1363,9 @@ void SBlueprintHelperLayoutRuleEditor::HandleIntSettingChanged(int32 SettingId, 
 	{
 	case MaxNodesPerFrame:
 		ParsedRuleSet.MaxNodesPerFrame = FMath::Clamp(NewValue, 1, 256);
+		break;
+	case MaxCollisionAttempts:
+		ParsedRuleSet.MaxCollisionAttempts = FMath::Clamp(NewValue, 1, 256);
 		break;
 	default:
 		return;

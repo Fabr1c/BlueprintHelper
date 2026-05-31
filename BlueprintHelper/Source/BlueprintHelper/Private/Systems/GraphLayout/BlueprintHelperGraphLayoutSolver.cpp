@@ -1,6 +1,8 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutClassifier.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutDataInputPlacement.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
 
 namespace BlueprintHelper::GraphLayout
 {
@@ -10,6 +12,7 @@ struct FWorkingNode
 	ENodeRole Role = ENodeRole::Unknown;
 	FVector2D Target = FVector2D::ZeroVector;
 	bool bHasTarget = false;
+	bool bPinnedToCurrentPosition = false;
 	FString Reason;
 };
 
@@ -20,41 +23,6 @@ static bool IsExecRole(ENodeRole Role)
 		Role == ENodeRole::BranchControl ||
 		Role == ENodeRole::AsyncNode ||
 		Role == ENodeRole::DelegateNode;
-}
-
-static bool IsDataInputRole(ENodeRole Role)
-{
-	return Role == ENodeRole::VariableInput ||
-		Role == ENodeRole::PureFunction ||
-		Role == ENodeRole::OperatorOrCompare;
-}
-
-static float GetDataInputOffsetX(ENodeRole Role, const FRuleSet& RuleSet)
-{
-	return Role == ENodeRole::VariableInput
-		? RuleSet.VariableInputOffsetX
-		: RuleSet.PureInputOffsetX;
-}
-
-static const TCHAR* GetDataInputAlignmentReason(ENodeRole Role)
-{
-	switch (Role)
-	{
-	case ENodeRole::VariableInput:
-		return TEXT("node_input_variable_alignment");
-	case ENodeRole::OperatorOrCompare:
-		return TEXT("node_input_operator_or_compare_alignment");
-	case ENodeRole::PureFunction:
-		return TEXT("node_input_pure_alignment");
-	default:
-		return TEXT("node_input_alignment");
-	}
-}
-
-static const FNodeSnapshot* FindNode(const TMap<FString, FWorkingNode>& Nodes, const FString& NodeId)
-{
-	const FWorkingNode* Node = Nodes.Find(NodeId);
-	return Node ? Node->Snapshot : nullptr;
 }
 
 static TArray<FString> GetExecSuccessors(const FNodeSnapshot& Node)
@@ -103,17 +71,40 @@ static int32 ReserveRow(TMap<int32, TSet<int32>>& UsedRows, int32 Column, int32 
 	return Row;
 }
 
+static int32 GetRowForTargetY(const FVector2D& Target, const FRuleSet& RuleSet)
+{
+	const float RowSpacing = FMath::Max(1.0f, RuleSet.ExecRowSpacing);
+	return FMath::CeilToInt(Target.Y / RowSpacing);
+}
+
 static void SetTarget(
 	TMap<FString, FWorkingNode>& Nodes,
+	FOccupancyResolver& Occupancy,
 	const FString& NodeId,
-	const FVector2D& Target,
+	const FVector2D& DesiredTarget,
 	const FString& Reason)
 {
 	if (FWorkingNode* Node = Nodes.Find(NodeId))
 	{
+		if (Node->bPinnedToCurrentPosition)
+		{
+			if (Node->Snapshot && !Node->bHasTarget)
+			{
+				Node->Target = Node->Snapshot->Position;
+				Node->bHasTarget = true;
+				Node->Reason = TEXT("existing_node_static_anchor");
+			}
+			return;
+		}
+
+		const FVector2D Size = Node->Snapshot ? Node->Snapshot->Size : FVector2D(180.0f, 80.0f);
+		const FVector2D Target = Occupancy.ResolveNearestFreeTarget(NodeId, DesiredTarget, Size);
 		Node->Target = Target;
 		Node->bHasTarget = true;
-		Node->Reason = Reason;
+		Node->Reason = Target.Equals(DesiredTarget)
+			? Reason
+			: FString::Printf(TEXT("%s_avoided_overlap"), *Reason);
+		Occupancy.ReserveTarget(NodeId, Target, Size, true);
 	}
 }
 
@@ -121,6 +112,8 @@ static void LayoutExecChain(
 	const FString& RootNodeId,
 	TMap<FString, FWorkingNode>& Nodes,
 	const FRuleSet& RuleSet,
+	FOccupancyResolver& Occupancy,
+	TMap<int32, TSet<int32>>& UsedRows,
 	int32 RootRow,
 	TSet<FString>& Visited)
 {
@@ -132,7 +125,6 @@ static void LayoutExecChain(
 	};
 
 	TArray<FQueueItem> Queue;
-	TMap<int32, TSet<int32>> UsedRows;
 	Queue.Add({ RootNodeId, 0, RootRow });
 
 	for (int32 QueueIndex = 0; QueueIndex < Queue.Num(); ++QueueIndex)
@@ -151,7 +143,8 @@ static void LayoutExecChain(
 		Visited.Add(Item.NodeId);
 		const int32 Row = ReserveRow(UsedRows, Item.Column, Item.Row);
 		const FVector2D Target(Item.Column * RuleSet.ExecColumnSpacing, Row * RuleSet.ExecRowSpacing);
-		SetTarget(Nodes, Item.NodeId, Target, TEXT("exec_flow"));
+		SetTarget(Nodes, Occupancy, Item.NodeId, Target, TEXT("exec_flow"));
+		const int32 ResolvedRow = GetRowForTargetY(Node->Target, RuleSet);
 
 		const TArray<FString> Successors = GetExecSuccessors(*Node->Snapshot);
 		for (int32 SuccessorIndex = 0; SuccessorIndex < Successors.Num(); ++SuccessorIndex)
@@ -163,8 +156,10 @@ static void LayoutExecChain(
 			}
 
 			const int32 BranchOffset = Node->Role == ENodeRole::BranchControl ? SuccessorIndex : 0;
-			const float RowStep = Node->Role == ENodeRole::BranchControl ? RuleSet.BranchRowSpacing / RuleSet.ExecRowSpacing : 1.0f;
-			Queue.Add({ Successors[SuccessorIndex], Item.Column + 1, Row + FMath::RoundToInt(BranchOffset * RowStep) });
+			const float RowStep = Node->Role == ENodeRole::BranchControl
+				? RuleSet.BranchRowSpacing / FMath::Max(1.0f, RuleSet.ExecRowSpacing)
+				: 1.0f;
+			Queue.Add({ Successors[SuccessorIndex], Item.Column + 1, ResolvedRow + FMath::RoundToInt(BranchOffset * RowStep) });
 		}
 	}
 }
@@ -172,7 +167,8 @@ static void LayoutExecChain(
 static bool AlignInputsToConsumerPinOrder(
 	const FGraphSnapshot& Snapshot,
 	TMap<FString, FWorkingNode>& Nodes,
-	const FRuleSet& RuleSet)
+	const FRuleSet& RuleSet,
+	FOccupancyResolver& Occupancy)
 {
 	bool bChanged = false;
 	for (const FNodeSnapshot& ConsumerSnapshot : Snapshot.Nodes)
@@ -199,12 +195,28 @@ static bool AlignInputsToConsumerPinOrder(
 					continue;
 				}
 
-				if (IsDataInputRole(SourceNode->Role) && !SourceNode->bHasTarget)
+				if (FDataInputPlacement::IsDataInputRole(SourceNode->Role) && !SourceNode->bHasTarget)
 				{
-					const FVector2D Target(
-						ConsumerNode->Target.X - GetDataInputOffsetX(SourceNode->Role, RuleSet),
-						ConsumerNode->Target.Y + InputOrder * RuleSet.InputPinRowSpacing);
-					SetTarget(Nodes, LinkedNodeId, Target, GetDataInputAlignmentReason(SourceNode->Role));
+					const int32 PlacementOrder =
+						SourceNode->Role == ENodeRole::VariableInput && !RuleSet.bUseTargetPinOrderForVariableInputs
+							? 0
+							: InputOrder;
+
+					FDataInputPlacementRequest Request;
+					Request.ConsumerNodeId = ConsumerSnapshot.NodeId;
+					Request.SourceNodeId = LinkedNodeId;
+					Request.SourceRole = SourceNode->Role;
+					Request.InputOrder = PlacementOrder;
+					Request.ConsumerTarget = ConsumerNode->Target;
+					Request.SourceSize = SourceNode->Snapshot->Size;
+
+					const FVector2D DesiredTarget = FDataInputPlacement::BuildDesiredTarget(RuleSet, Request);
+					SetTarget(
+						Nodes,
+						Occupancy,
+						LinkedNodeId,
+						DesiredTarget,
+						FDataInputPlacement::GetReason(SourceNode->Role));
 					bChanged = true;
 				}
 			}
@@ -231,7 +243,23 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		FWorkingNode WorkingNode;
 		WorkingNode.Snapshot = &Node;
 		WorkingNode.Role = RolesById.FindRef(Node.NodeId);
+		WorkingNode.bPinnedToCurrentPosition = Node.bExisting && !RuleSet.bMoveExistingNodes;
+		if (WorkingNode.bPinnedToCurrentPosition)
+		{
+			WorkingNode.Target = Node.Position;
+			WorkingNode.bHasTarget = true;
+			WorkingNode.Reason = TEXT("existing_node_static_anchor");
+		}
 		Nodes.Add(Node.NodeId, WorkingNode);
+	}
+
+	FOccupancyResolver Occupancy(RuleSet);
+	for (const FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		if (Node.bExisting && !RuleSet.bMoveExistingNodes)
+		{
+			Occupancy.ReserveExistingNode(Node);
+		}
 	}
 
 	const TMap<FString, int32> ExecInputCounts = CountExecInputs(Snapshot);
@@ -247,23 +275,30 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 	}
 
 	TSet<FString> VisitedExecNodes;
+	TMap<int32, TSet<int32>> UsedRows;
 	for (int32 RootIndex = 0; RootIndex < Roots.Num(); ++RootIndex)
 	{
-		LayoutExecChain(Roots[RootIndex], Nodes, RuleSet, RootIndex * 3, VisitedExecNodes);
+		LayoutExecChain(Roots[RootIndex], Nodes, RuleSet, Occupancy, UsedRows, RootIndex * 3, VisitedExecNodes);
 	}
 
+	int32 DetachedRootRow = FMath::Max(1, Roots.Num()) * 3;
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		const ENodeRole Role = RolesById.FindRef(Node.NodeId);
 		if (IsExecRole(Role) && !VisitedExecNodes.Contains(Node.NodeId))
 		{
-			LayoutExecChain(Node.NodeId, Nodes, RuleSet, FMath::Max(1, VisitedExecNodes.Num()) * 2, VisitedExecNodes);
+			while (UsedRows.FindOrAdd(0).Contains(DetachedRootRow))
+			{
+				++DetachedRootRow;
+			}
+			LayoutExecChain(Node.NodeId, Nodes, RuleSet, Occupancy, UsedRows, DetachedRootRow, VisitedExecNodes);
+			DetachedRootRow += 3;
 		}
 	}
 
 	for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
 	{
-		if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet))
+		if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet, Occupancy))
 		{
 			break;
 		}

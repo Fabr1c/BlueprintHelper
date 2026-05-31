@@ -203,6 +203,10 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 	TryReadPositiveNumber(Json, TEXT("pure_input_offset_x"), Defaults.PureInputOffsetX, Validation);
 	TryReadPositiveNumber(Json, TEXT("variable_input_offset_x"), Defaults.VariableInputOffsetX, Validation);
 	TryReadPositiveNumber(Json, TEXT("input_pin_row_spacing"), Defaults.InputPinRowSpacing, Validation);
+	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
+	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
+	TryReadPositiveNumber(Json, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
+	TryReadPositiveInt(Json, TEXT("max_collision_attempts"), Defaults.MaxCollisionAttempts, Validation);
 	TryReadPositiveInt(Json, TEXT("max_nodes_per_frame"), Defaults.MaxNodesPerFrame, Validation);
 	TryReadPositiveNumber(Json, TEXT("max_ms_per_frame"), Defaults.MaxMillisecondsPerFrame, Validation);
 
@@ -213,6 +217,10 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 		TryReadPositiveNumber(*SolverObject, TEXT("lane_vertical_spacing"), Defaults.ExecRowSpacing, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("branch_vertical_spacing"), Defaults.BranchRowSpacing, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("data_horizontal_spacing"), Defaults.VariableInputOffsetX, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
+		TryReadPositiveInt(*SolverObject, TEXT("max_collision_attempts"), Defaults.MaxCollisionAttempts, Validation);
 	}
 	const TSharedPtr<FJsonObject>* ApplyObject = nullptr;
 	if (Json->TryGetObjectField(TEXT("apply"), ApplyObject) && ApplyObject && ApplyObject->IsValid())
@@ -280,6 +288,10 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 	TryReadPositiveNumber(Json, TEXT("pure_input_offset_x"), OutRuleSet.PureInputOffsetX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("variable_input_offset_x"), OutRuleSet.VariableInputOffsetX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("input_pin_row_spacing"), OutRuleSet.InputPinRowSpacing, OutValidation);
+	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
+	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
+	TryReadPositiveNumber(Json, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);
+	TryReadPositiveInt(Json, TEXT("max_collision_attempts"), OutRuleSet.MaxCollisionAttempts, OutValidation);
 	Json->TryGetBoolField(TEXT("target_pin_order_variable_input_alignment"), OutRuleSet.bUseTargetPinOrderForVariableInputs);
 	Json->TryGetBoolField(TEXT("move_generated_nodes"), OutRuleSet.bMoveGeneratedNodes);
 	Json->TryGetBoolField(TEXT("move_existing_nodes"), OutRuleSet.bMoveExistingNodes);
@@ -295,6 +307,10 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 		TryReadPositiveNumber(*SolverObject, TEXT("lane_vertical_spacing"), OutRuleSet.ExecRowSpacing, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("branch_vertical_spacing"), OutRuleSet.BranchRowSpacing, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("data_horizontal_spacing"), OutRuleSet.VariableInputOffsetX, OutValidation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
+		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);
+		TryReadPositiveInt(*SolverObject, TEXT("max_collision_attempts"), OutRuleSet.MaxCollisionAttempts, OutValidation);
 		(*SolverObject)->TryGetBoolField(TEXT("move_user_nodes"), OutRuleSet.bMoveExistingNodes);
 	}
 	const TSharedPtr<FJsonObject>* ApplyObject = nullptr;
