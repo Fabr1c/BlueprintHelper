@@ -549,6 +549,60 @@ bool FBlueprintHelperActionContextOpExpressionProjectsCanonicalEvidenceTest::Run
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldExpressionProjectsOwnerEvidenceTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldExpressionProjectsOwnerEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldExpressionProjectsOwnerEvidenceTest::RunTest(const FString& Parameters)
+{
+	const FString OwnerClassPath = TEXT("/Game/Test/BP_Door.BP_Door_C");
+
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> FieldExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	FieldExpression->ExpressionId = TEXT("expr_session_id");
+	FieldExpression->Path = TEXT("$.statements[0].args.InString");
+	FieldExpression->Kind = EBlueprintHelperGraphExpressionKind::Field;
+	FieldExpression->Target = TEXT("SessionId");
+	FieldExpression->FieldOperation = TEXT("get");
+	FieldExpression->FieldScope = TEXT("variable");
+	FieldExpression->ContextEvidence.Add(TEXT("field_owner_class"), OwnerClassPath);
+
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_print");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Call;
+	Statement->Target = TEXT("PrintString");
+	Statement->Args.Add(TEXT("InString"), FieldExpression);
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	const FBlueprintHelperActionContextDemand* FieldDemand = Demands.FindByPredicate([](const FBlueprintHelperActionContextDemand& Demand)
+	{
+		return Demand.StatementId == TEXT("expr_session_id");
+	});
+
+	TestNotNull(TEXT("field demand exists"), FieldDemand);
+	if (!FieldDemand)
+	{
+		return false;
+	}
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("field member name fact"), FieldDemand->CapabilityFacts.FindRef(TEXT("field.member_name")), FString(TEXT("SessionId")));
+	bPassed &= TestEqual(TEXT("field owner class fact"), FieldDemand->CapabilityFacts.FindRef(TEXT("field.owner_class")), OwnerClassPath);
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	const FBlueprintHelperResolvedActionContext Context =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, *FieldDemand);
+	bPassed &= TestEqual(TEXT("projected raw owner evidence"), Context.Evidence.FindRef(TEXT("field_owner_class")), OwnerClassPath);
+	bPassed &= TestEqual(TEXT("projected canonical owner evidence"), Context.Evidence.FindRef(TEXT("field.owner_class")), OwnerClassPath);
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperActionContextSingleDemandSetPropertyMapsToFieldVariableTest,
 	"BlueprintHelper.GraphWrite.ActionContext.SingleDemand.SetPropertyMapsToFieldVariable",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

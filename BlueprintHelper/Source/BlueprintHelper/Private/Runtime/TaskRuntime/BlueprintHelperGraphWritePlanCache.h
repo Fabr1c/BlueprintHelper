@@ -9,10 +9,11 @@ class FJsonObject;
 
 struct FBlueprintHelperGraphWritePlanCacheKey
 {
-	FString CacheSchemaVersion = TEXT("BlueprintHelper.GraphWritePlanCache.v1");
+	FString CacheSchemaVersion = TEXT("BlueprintHelper.GraphWritePlanCache.v2");
 	FString PayloadHash;
 	FString GraphSchemaHash;
 	FString AssetStateHash;
+	FString DryRunPlannedStateHash = TEXT("none");
 
 	bool IsValid() const;
 	FString ToStorageKey() const;

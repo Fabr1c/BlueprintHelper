@@ -28,7 +28,7 @@ namespace
 		Target.Surface = EBlueprintHelperReviewSurface::Graph;
 		Target.GraphName = TEXT("EventGraph");
 		Target.TargetKind = TEXT("graph_block");
-		Target.TargetKey = TEXT("graph_block:EventGraph");
+		Target.TargetKey = TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0");
 		Target.VisualGroupKey = TEXT("graph_body|EventGraph");
 		Target.DisplayLabel = TEXT("append_blueprint_graph EventGraph");
 		Target.LatestEvidenceId = Evidence.EvidenceId;
@@ -169,9 +169,9 @@ bool FBlueprintHelperTaskRuntimePostIoReviewStore_PreservesGraphWriteEvidenceFie
 	TestEqual(TEXT("target kind survives evidence construction"),
 		Target.TargetKind,
 		FString(TEXT("graph_block")));
-	TestEqual(TEXT("target key survives evidence construction"),
+	TestEqual(TEXT("target key preserves concrete graph block ref"),
 		Target.TargetKey,
-		FString(TEXT("graph_block:EventGraph")));
+		FString(TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0")));
 	TestEqual(TEXT("target task step index survives evidence construction"),
 		Target.TaskStepIndex,
 		Evidence.TaskStepIndex);

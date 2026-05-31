@@ -10,13 +10,14 @@ class FJsonValue;
 
 struct FBlueprintHelperPartialPreviewCacheKey
 {
-	FString CacheSchemaVersion = TEXT("BlueprintHelper.PartialPreviewCache.v1");
+	FString CacheSchemaVersion = TEXT("BlueprintHelper.PartialPreviewCache.v2");
 	FString TaskSpecGroupHash;
 	FString StepId;
 	FString StepPayloadHash;
 	FString DependencyClosureHash;
 	FString ExecutionPolicyHash;
 	FString AssetStateHash;
+	FString DryRunPlannedStateHash = TEXT("none");
 
 	bool IsValid() const;
 	FString ToStorageKey() const;

@@ -12,6 +12,7 @@
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
+#include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -31,6 +32,24 @@ static FBlueprintHelperTaskRuntimeLoweredStep MakeLoweredStep(const FString& Cap
 static FBlueprintHelperToolResultBase MakeClusterEvidenceAppliedResult(const FString& Operation)
 {
 	return FBlueprintHelperToolResultBuilder::Applied(Operation, TEXT("trace_cluster_evidence"));
+}
+
+static FBlueprintHelperToolResultBase MakeGraphWriteAppliedResultWithBlockRefs(
+	const FString& Operation,
+	const TArray<FString>& BlockRefs)
+{
+	FBlueprintHelperToolResultBase Result = MakeClusterEvidenceAppliedResult(Operation);
+	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> AppendResult = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> BlockRefValues;
+	for (const FString& BlockRef : BlockRefs)
+	{
+		BlockRefValues.Add(MakeShared<FJsonValueString>(BlockRef));
+	}
+	AppendResult->SetArrayField(TEXT("block_refs"), BlockRefValues);
+	Data->SetObjectField(TEXT("append_result"), AppendResult);
+	Result.Data = Data;
+	return Result;
 }
 
 static FBlueprintHelperToolResultBase MakeClusterEvidenceFailedResult(const FString& Operation)
@@ -314,7 +333,9 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestTrue(TEXT("graph write cluster owns Review evidence production"),
 		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 			GraphWriteStep,
-			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(GraphWriteStep.AdapterOperation),
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeGraphWriteAppliedResultWithBlockRefs(
+				GraphWriteStep.AdapterOperation,
+				{TEXT("CE_DumpGlobalStateForReview0")}),
 			TEXT("archive_cluster_evidence"),
 			TEXT("task_cluster_evidence"),
 			3,
@@ -328,7 +349,7 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestEqual(TEXT("graph write task step index is required"),
 		GraphWriteEvidence.TaskStepIndex,
 		3);
-	TestEqual(TEXT("graph write emits one graph surface target"), GraphWriteEvidence.AtomicTargets.Num(), 1);
+	TestEqual(TEXT("graph write emits one graph block target from result refs"), GraphWriteEvidence.AtomicTargets.Num(), 1);
 	if (GraphWriteEvidence.AtomicTargets.Num() != 1)
 	{
 		return false;
@@ -337,9 +358,12 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestEqual(TEXT("graph write target kind is graph_block"),
 		GraphTarget.TargetKind,
 		FString(TEXT("graph_block")));
-	TestEqual(TEXT("graph write target key is stable"),
+	TestEqual(TEXT("graph write target key uses actual block ref"),
 		GraphTarget.TargetKey,
-		FString(TEXT("graph_block:EventGraph")));
+		FString(TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0")));
+	TestEqual(TEXT("graph write visual group is graph body"),
+		GraphTarget.VisualGroupKey,
+		FString(TEXT("graph_body|EventGraph")));
 	TestEqual(TEXT("graph write target graph name is required"),
 		GraphTarget.GraphName,
 		FString(TEXT("EventGraph")));

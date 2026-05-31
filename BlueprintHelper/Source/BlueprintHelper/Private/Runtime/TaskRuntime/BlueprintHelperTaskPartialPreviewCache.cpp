@@ -14,20 +14,22 @@ bool FBlueprintHelperPartialPreviewCacheKey::IsValid() const
 		!DependencyClosureHash.IsEmpty() &&
 		!ExecutionPolicyHash.IsEmpty() &&
 		!AssetStateHash.IsEmpty() &&
+		!DryRunPlannedStateHash.IsEmpty() &&
 		!CacheSchemaVersion.IsEmpty();
 }
 
 FString FBlueprintHelperPartialPreviewCacheKey::ToStorageKey() const
 {
 	return FString::Printf(
-		TEXT("%s|group=%s|step=%s|payload=%s|deps=%s|policy=%s|asset=%s"),
+		TEXT("%s|group=%s|step=%s|payload=%s|deps=%s|policy=%s|asset=%s|planned=%s"),
 		*CacheSchemaVersion,
 		*TaskSpecGroupHash,
 		*StepId,
 		*StepPayloadHash,
 		*DependencyClosureHash,
 		*ExecutionPolicyHash,
-		*AssetStateHash);
+		*AssetStateHash,
+		*DryRunPlannedStateHash);
 }
 
 FBlueprintHelperTaskPartialPreviewCache::FBlueprintHelperTaskPartialPreviewCache(

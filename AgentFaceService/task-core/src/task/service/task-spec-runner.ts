@@ -708,18 +708,73 @@ function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: Tas
   const data = asRecord(result?.['data']);
   const dryRun = asRecord(data?.['dry_run']) ?? asRecord(result?.['dry_run']);
   const canExecute = dryRun?.['can_execute'];
+  const failedStepIssues = collectFailedPreviewStepIssues(result, data, dryRun);
   const blockedByStatus =
     result?.['status'] === 'failed' ||
     dryRun?.['result'] === 'blocked' ||
-    canExecute === false;
+    canExecute === false ||
+    failedStepIssues.length > 0;
   const dryRunIssues = collectIssues(dryRun);
-  const issues = dryRunIssues.length > 0 || !blockedByStatus
-    ? dryRunIssues
-    : collectBlockedPreviewIssues(result, dryRun);
+  const issues = [
+    ...dryRunIssues,
+    ...failedStepIssues,
+  ];
   return {
-    canExecute: typeof canExecute === 'boolean' ? canExecute : !blockedByStatus,
-    issues,
+    canExecute: typeof canExecute === 'boolean' ? canExecute && !blockedByStatus : !blockedByStatus,
+    issues: issues.length > 0 || !blockedByStatus
+      ? issues
+      : collectBlockedPreviewIssues(result, dryRun),
   };
+}
+
+function collectFailedPreviewStepIssues(
+  result: Record<string, unknown> | undefined,
+  data: Record<string, unknown> | undefined,
+  dryRun: Record<string, unknown> | undefined,
+): TaskIssue[] {
+  const steps = [
+    ...arrayOfRecords(data?.['steps']),
+    ...arrayOfRecords(dryRun?.['steps']),
+    ...arrayOfRecords(result?.['steps']),
+  ];
+
+  const issues: TaskIssue[] = [];
+  const seenIssueKeys = new Set<string>();
+
+  steps.forEach((step, index) => {
+    const stepResult = asRecord(step['result']);
+    const error = asRecord(stepResult?.['error']) ?? asRecord(step['error']);
+    const failed =
+      step['status'] === 'failed' ||
+      stepResult?.['status'] === 'failed' ||
+      stepResult?.['ok'] === false;
+    if (!failed) {
+      return;
+    }
+
+    const stepId = readNonEmptyString(step['step_id']) ?? `steps[${index}]`;
+    const code =
+      readString(error?.['code']) ??
+      readString(stepResult?.['error_code']) ??
+      'preview_step_failed';
+    const path =
+      readString(error?.['field']) ??
+      readString(error?.['path']) ??
+      `preview.steps.${stepId}`;
+    const message =
+      readNonEmptyString(error?.['message']) ??
+      readNonEmptyString(stepResult?.['message']) ??
+      readNonEmptyString(step['message']) ??
+      `Preview step ${stepId} failed.`;
+
+    const issueKey = `${code}\u0000${path}\u0000${message}`;
+    if (!seenIssueKeys.has(issueKey)) {
+      seenIssueKeys.add(issueKey);
+      issues.push({ code, path, message });
+    }
+  });
+
+  return issues;
 }
 
 function collectBlockedPreviewIssues(

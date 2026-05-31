@@ -60,6 +60,49 @@ function createPreviewRunner() {
   });
 }
 
+function createRunnerForPreviewResponse(response: BridgeResponse) {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand() {
+      return response;
+    },
+  };
+
+  return createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+}
+
+function createMissingEvidencePreviewStep() {
+  return {
+    step_id: 'step_003',
+    capability: 'graph_write',
+    result: {
+      ok: false,
+      status: 'failed',
+      error: {
+        code: 'missing_required_evidence',
+        message: 'Field variable action requires explicit owner evidence: semantic=field field_operation=get.',
+        field: 'task_plan.steps[2]',
+      },
+    },
+  };
+}
+
+function assertIssueCodes(value: unknown): string[] {
+  assert.ok(Array.isArray(value));
+  return value.map((issue) => {
+    assert.equal(typeof issue, 'object');
+    assert.notEqual(issue, null);
+    const code = (issue as Record<string, unknown>)['code'];
+    assert.equal(typeof code, 'string');
+    return code as string;
+  });
+}
+
 test('preview task omits cache diagnostics unless develop timing is enabled', async () => {
   const runner = createPreviewRunner();
   const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
@@ -84,4 +127,169 @@ test('preview task includes cache diagnostics when develop timing is enabled', a
       },
     ],
   });
+});
+
+test('preview task fails when a UE preview step failed even if dry_run says can_execute', async () => {
+  const failedStepPreviewBridgeResponse: BridgeResponse = {
+    success: true,
+    request_id: 'preview_failed_step_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_failed_step',
+      status: 'dry_run',
+      modified: false,
+      data: {
+        preview_token: 'fedcba9876543210fedcba9876543210',
+        dry_run: {
+          can_execute: true,
+          result: 'passed',
+          errors: [],
+          conflicts: [],
+        },
+        steps: [
+          {
+            step_id: 'step_003',
+            capability: 'graph_write',
+            result: {
+              ok: false,
+              status: 'failed',
+              error: {
+                code: 'missing_required_evidence',
+                message: 'Field variable action requires explicit owner evidence: semantic=field field_operation=get.',
+                field: 'task_plan.steps[2]',
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  const bridge: TaskRunnerBridge = {
+    async sendCommand() {
+      return failedStepPreviewBridgeResponse;
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.passed, false);
+  assert.equal(result.toolResult.data?.['passed'], false);
+  assert.equal(result.toolResult.data?.['blocked'], true);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0]?.code, 'missing_required_evidence');
+  assert.equal(result.issues[0]?.path, 'task_plan.steps[2]');
+  assert.match(result.issues[0]?.message ?? '', /explicit owner evidence/);
+});
+
+test('preview task deduplicates mirrored failed preview step issues', async () => {
+  const mirroredFailedStepPreviewBridgeResponse: BridgeResponse = {
+    success: true,
+    request_id: 'preview_mirrored_failed_step_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_mirrored_failed_step',
+      status: 'dry_run',
+      modified: false,
+      steps: [
+        createMissingEvidencePreviewStep(),
+      ],
+      data: {
+        preview_token: '00112233445566778899aabbccddeeff',
+        dry_run: {
+          can_execute: true,
+          result: 'passed',
+          errors: [],
+          conflicts: [],
+          warnings: [],
+          steps: [
+            createMissingEvidencePreviewStep(),
+          ],
+        },
+        steps: [
+          createMissingEvidencePreviewStep(),
+        ],
+      },
+    },
+  };
+
+  const runner = createRunnerForPreviewResponse(mirroredFailedStepPreviewBridgeResponse);
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const toolIssueCodes = assertIssueCodes(result.toolResult.data?.['issues']);
+
+  assert.equal(result.issues.filter((issue) => issue.code === 'missing_required_evidence').length, 1);
+  assert.equal(toolIssueCodes.filter((code) => code === 'missing_required_evidence').length, 1);
+});
+
+test('preview task preserves dry run issues while deduplicating failed preview steps', async () => {
+  const dryRunAndFailedStepPreviewBridgeResponse: BridgeResponse = {
+    success: true,
+    request_id: 'preview_dry_run_issues_failed_step_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_dry_run_issues_failed_step',
+      status: 'dry_run',
+      modified: false,
+      data: {
+        preview_token: 'ffeeddccbbaa99887766554433221100',
+        dry_run: {
+          can_execute: true,
+          result: 'passed',
+          errors: [
+            {
+              code: 'dry_run_error',
+              target: 'dry_run.errors[0]',
+              message: 'Dry run error must be preserved.',
+            },
+          ],
+          conflicts: [
+            {
+              code: 'dry_run_conflict',
+              target: 'dry_run.conflicts[0]',
+              message: 'Dry run conflict must be preserved.',
+            },
+          ],
+          warnings: [
+            {
+              code: 'dry_run_warning',
+              target: 'dry_run.warnings[0]',
+              message: 'Dry run warning must be preserved.',
+            },
+          ],
+          steps: [
+            createMissingEvidencePreviewStep(),
+          ],
+        },
+        steps: [
+          createMissingEvidencePreviewStep(),
+        ],
+      },
+    },
+  };
+
+  const runner = createRunnerForPreviewResponse(dryRunAndFailedStepPreviewBridgeResponse);
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const codes = result.issues.map((issue) => issue.code);
+  const toolIssueCodes = assertIssueCodes(result.toolResult.data?.['issues']);
+
+  assert.deepEqual(codes, [
+    'dry_run_error',
+    'dry_run_conflict',
+    'dry_run_warning',
+    'missing_required_evidence',
+  ]);
+  assert.deepEqual(toolIssueCodes, codes);
 });

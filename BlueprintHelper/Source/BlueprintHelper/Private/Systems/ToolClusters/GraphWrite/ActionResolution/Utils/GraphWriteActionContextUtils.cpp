@@ -20,6 +20,35 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 
+namespace
+{
+static FString ReadFieldOwnerClassEvidence(const TMap<FString, FString>& Evidence)
+{
+	return FirstNonEmpty(
+		UGraphWriteActionContextUtils::EvidenceValue(Evidence, TEXT("field_owner_class")),
+		UGraphWriteActionContextUtils::EvidenceValue(Evidence, TEXT("owner_class_path")),
+		UGraphWriteActionContextUtils::EvidenceValue(Evidence, TEXT("owner_class")),
+		UGraphWriteActionContextUtils::EvidenceValue(Evidence, TEXT("field.owner_class"))).TrimStartAndEnd();
+}
+
+static void AddFieldOwnerClassCapabilityFact(
+	FBlueprintHelperActionContextDemand& Demand,
+	const TMap<FString, FString>& Evidence)
+{
+	const FString ExistingOwnerClass = Demand.CapabilityFacts.FindRef(TEXT("field.owner_class")).TrimStartAndEnd();
+	if (!ExistingOwnerClass.IsEmpty())
+	{
+		return;
+	}
+
+	const FString OwnerClass = ReadFieldOwnerClassEvidence(Evidence);
+	if (!OwnerClass.IsEmpty())
+	{
+		Demand.CapabilityFacts.Add(TEXT("field.owner_class"), OwnerClass);
+	}
+}
+}
+
 // ============================================================================
 // From BlueprintHelperActionContextDemandCollector (original named namespace)
 // ============================================================================
@@ -105,6 +134,7 @@ void UGraphWriteActionContextUtils::ApplyStatementCapabilityFacts(
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_type"), UGraphWriteActionContextUtils::EvidenceValue(Statement.ContextEvidence, TEXT("linked_pin_type_category")));
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_object_path"), UGraphWriteActionContextUtils::EvidenceValue(Statement.ContextEvidence, TEXT("linked_pin_type_object_path")));
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), FirstNonEmpty(Statement.ComponentName, UGraphWriteActionContextUtils::EvidenceValue(Statement.ContextEvidence, TEXT("component_name"))));
+	AddFieldOwnerClassCapabilityFact(Demand, Statement.ContextEvidence);
 	if (!Demand.PropertyPath.IsEmpty())
 	{
 		Demand.CapabilityFacts.FindOrAdd(TEXT("field.property_path"), Demand.PropertyPath);
@@ -129,6 +159,7 @@ void UGraphWriteActionContextUtils::ApplyExpressionCapabilityFacts(
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_type"), UGraphWriteActionContextUtils::EvidenceValue(Expression.ContextEvidence, TEXT("linked_pin_type_category")));
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_object_path"), UGraphWriteActionContextUtils::EvidenceValue(Expression.ContextEvidence, TEXT("linked_pin_type_object_path")));
 	Demand.CapabilityFacts.FindOrAdd(TEXT("field.component_name"), UGraphWriteActionContextUtils::EvidenceValue(Expression.ContextEvidence, TEXT("component_name")));
+	AddFieldOwnerClassCapabilityFact(Demand, Expression.ContextEvidence);
 	if (!Demand.PropertyPath.IsEmpty())
 	{
 		Demand.CapabilityFacts.FindOrAdd(TEXT("field.property_path"), Demand.PropertyPath);
