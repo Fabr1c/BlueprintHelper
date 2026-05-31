@@ -417,7 +417,7 @@ function formatEntry(name: string, entry: HelpEntry): string {
     '  --format summary|json|full',
     '  --fields path[,path...] or --select path[,path...]',
     '  --omit path[,path...]',
-    '  --artifact-dir <dir>',
+    '  --artifact-dir <dir> (overrides BPH_CLI_ARTIFACT_DIR and cli.artifacts.default_output_dir)',
     '  --max-bytes <bytes>',
   ].join('\n');
 }

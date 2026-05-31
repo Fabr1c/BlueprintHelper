@@ -57,8 +57,12 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 	const FText DebugExportCategory = LOCTEXT("SettingsCategoryDebugExport", "调试导出");
 	const FText ToolOutputCategory = LOCTEXT("SettingsCategoryToolOutput", "工具输出");
 	const FText DeveloperDryRunCategory = LOCTEXT("SettingsCategoryDeveloperDryRun", "DryRun");
+	const FText DeveloperRuntimeCategory = LOCTEXT("SettingsCategoryDeveloperRuntime", "开发者 Runtime");
+	const FText DeveloperTaskRuntimeCategory = LOCTEXT("SettingsCategoryDeveloperTaskRuntime", "开发者 TaskRuntime");
 	const FText DeveloperToolClusterCategory = LOCTEXT("SettingsCategoryDeveloperToolCluster", "开发者 ToolCluster");
+	const FText DeveloperReviewCategory = LOCTEXT("SettingsCategoryDeveloperReview", "开发者 Review");
 	const FText SafetyCategory = LOCTEXT("SettingsCategorySafety", "安全");
+	const FText DeveloperSafetyCategory = LOCTEXT("SettingsCategoryDeveloperSafety", "开发者安全");
 	const FText DeveloperUiCategory = LOCTEXT("SettingsCategoryDeveloperUi", "开发者 UI");
 	const FText DeveloperGraphLayoutCategory = LOCTEXT("SettingsCategoryDeveloperGraphLayout", "开发者 GraphLayout");
 
@@ -187,6 +191,11 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 		LOCTEXT("ReadContextMaxOutputBytesHint", "控制 Read Context 输出最大字节数，0 表示不限制。"),
 		0,
 		104857600));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+		TEXT("cli.artifacts.default_output_dir"),
+		ToolOutputCategory,
+		LOCTEXT("CliArtifactDefaultOutputDirLabel", "CLI Artifact 默认目录"),
+		LOCTEXT("CliArtifactDefaultOutputDirHint", "控制 CLI 未传 --artifact-dir 且未设置 BPH_CLI_ARTIFACT_DIR 时写入 result.json 的默认目录；相对路径基于项目根目录。")));
 
 	if (UBlueprintHelperSettingsUIUtils::ShouldShowDeveloperSettings())
 	{
@@ -237,6 +246,207 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			DeveloperDryRunCategory,
 			LOCTEXT("GraphWriteDryRunLabel", "GraphWrite DryRun"),
 			LOCTEXT("GraphWriteDryRunHint", "控制 GraphWrite 写入请求的默认 dry_run；开启后默认只预演，不写入蓝图图表。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("active_profile"),
+			DeveloperSafetyCategory,
+			LOCTEXT("ActiveProfileLabel", "当前 Profile"),
+			LOCTEXT("ActiveProfileHint", "选择用于解析 profiles.<name>.safety_profile 的运行时 Profile；默认使用 default。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.bridge.port"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgePortLabel", "Bridge 端口"),
+			LOCTEXT("RuntimeBridgePortHint", "控制 UE Bridge 监听端口。修改后通常需要重启 Bridge 或编辑器。"),
+			1,
+			65535,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.bridge.max_pending_connections"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgeMaxPendingConnectionsLabel", "Bridge 最大等待连接"),
+			LOCTEXT("RuntimeBridgeMaxPendingConnectionsHint", "控制 Bridge socket 允许排队等待的连接数量。"),
+			1,
+			1024,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.bridge.accept_wait_ms"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgeAcceptWaitMsLabel", "Bridge Accept 等待毫秒"),
+			LOCTEXT("RuntimeBridgeAcceptWaitMsHint", "控制 Bridge 接受连接时每轮等待的毫秒数。"),
+			1,
+			60000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("runtime.bridge.idle_timeout_seconds"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgeIdleTimeoutSecondsLabel", "Bridge 空闲超时秒数"),
+			LOCTEXT("RuntimeBridgeIdleTimeoutSecondsHint", "控制 Bridge socket 空闲连接超时。"),
+			0.01,
+			3600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.bridge.max_frame_bytes"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgeMaxFrameBytesLabel", "Bridge 最大帧字节数"),
+			LOCTEXT("RuntimeBridgeMaxFrameBytesHint", "控制 Bridge 单帧消息允许的最大字节数。"),
+			1,
+			2147483647,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.bridge.socket_buffer_bytes"),
+			DeveloperRuntimeCategory,
+			LOCTEXT("RuntimeBridgeSocketBufferBytesLabel", "Bridge Socket 缓冲字节数"),
+			LOCTEXT("RuntimeBridgeSocketBufferBytesHint", "控制 Bridge socket 收发缓冲区大小。"),
+			4096,
+			2147483647,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("runtime.task_runtime.cache.partial_preview.ttl_seconds"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimePartialPreviewTtlLabel", "PartialPreview 缓存 TTL"),
+			LOCTEXT("TaskRuntimePartialPreviewTtlHint", "控制 TaskRuntime partial preview 缓存保留秒数。"),
+			0.0,
+			3600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.partial_preview.max_groups"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimePartialPreviewMaxGroupsLabel", "PartialPreview 最大组数"),
+			LOCTEXT("TaskRuntimePartialPreviewMaxGroupsHint", "控制 partial preview 缓存允许保留的分组数量。"),
+			1,
+			100000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.partial_preview.max_step_entries"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimePartialPreviewMaxStepEntriesLabel", "PartialPreview 最大步骤条目"),
+			LOCTEXT("TaskRuntimePartialPreviewMaxStepEntriesHint", "控制 partial preview 缓存允许保留的步骤条目数量。"),
+			1,
+			100000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.partial_preview.max_bytes"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimePartialPreviewMaxBytesLabel", "PartialPreview 最大字节数"),
+			LOCTEXT("TaskRuntimePartialPreviewMaxBytesHint", "控制 partial preview 缓存允许占用的最大字节数。"),
+			1,
+			2147483647,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("runtime.task_runtime.cache.call_function_fact.ttl_seconds"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeCallFunctionFactTtlLabel", "CallFunctionFact 缓存 TTL"),
+			LOCTEXT("TaskRuntimeCallFunctionFactTtlHint", "控制函数调用事实缓存保留秒数。"),
+			0.0,
+			3600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.call_function_fact.max_entries"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeCallFunctionFactMaxEntriesLabel", "CallFunctionFact 最大条目"),
+			LOCTEXT("TaskRuntimeCallFunctionFactMaxEntriesHint", "控制函数调用事实缓存允许保留的最大条目数。"),
+			1,
+			1000000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.call_function_fact.max_bytes"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeCallFunctionFactMaxBytesLabel", "CallFunctionFact 最大字节数"),
+			LOCTEXT("TaskRuntimeCallFunctionFactMaxBytesHint", "控制函数调用事实缓存允许占用的最大字节数。"),
+			1,
+			2147483647,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("runtime.task_runtime.cache.graph_write_plan.ttl_seconds"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeGraphWritePlanTtlLabel", "GraphWritePlan 缓存 TTL"),
+			LOCTEXT("TaskRuntimeGraphWritePlanTtlHint", "控制 GraphWrite TaskPlan 缓存保留秒数。"),
+			0.0,
+			3600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.graph_write_plan.max_entries"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeGraphWritePlanMaxEntriesLabel", "GraphWritePlan 最大条目"),
+			LOCTEXT("TaskRuntimeGraphWritePlanMaxEntriesHint", "控制 GraphWrite TaskPlan 缓存允许保留的最大条目数。"),
+			1,
+			100000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("runtime.task_runtime.cache.graph_write_plan.max_bytes"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeGraphWritePlanMaxBytesLabel", "GraphWritePlan 最大字节数"),
+			LOCTEXT("TaskRuntimeGraphWritePlanMaxBytesHint", "控制 GraphWrite TaskPlan 缓存允许占用的最大字节数。"),
+			1,
+			2147483647,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("runtime.task_runtime.cache.prune_on_access_min_interval_seconds"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeCachePruneIntervalLabel", "缓存裁剪最小间隔"),
+			LOCTEXT("TaskRuntimeCachePruneIntervalHint", "控制 TaskRuntime 缓存访问时触发裁剪的最小间隔秒数。"),
+			0.0,
+			3600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("runtime.task_runtime.execution_policy.should_compile"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeExecutionPolicyShouldCompileLabel", "TaskRuntime 默认编译"),
+			LOCTEXT("TaskRuntimeExecutionPolicyShouldCompileHint", "控制 TaskPlan 未覆盖时是否默认执行编译后操作。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("runtime.task_runtime.execution_policy.should_save"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeExecutionPolicyShouldSaveLabel", "TaskRuntime 默认保存"),
+			LOCTEXT("TaskRuntimeExecutionPolicyShouldSaveHint", "控制 TaskPlan 未覆盖时是否默认执行保存后操作。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeChoiceRow(
+			TEXT("runtime.task_runtime.execution_policy.dry_run_mode"),
+			DeveloperTaskRuntimeCategory,
+			LOCTEXT("TaskRuntimeExecutionPolicyDryRunModeLabel", "TaskRuntime DryRun 模式"),
+			LOCTEXT("TaskRuntimeExecutionPolicyDryRunModeHint", "控制 TaskPlan 未覆盖时使用的默认 dry_run_mode。"),
+			{
+				{ TEXT("full"), LOCTEXT("TaskRuntimeDryRunModeFull", "完整预演") },
+				{ TEXT("quick"), LOCTEXT("TaskRuntimeDryRunModeQuick", "快速预演") },
+				{ TEXT("none"), LOCTEXT("TaskRuntimeDryRunModeNone", "实际写入") }
+			},
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("review.evidence_required"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewEvidenceRequiredLabel", "要求 Review Evidence"),
+			LOCTEXT("ReviewEvidenceRequiredHint", "控制 Review 写入和回滚流程是否要求 evidence。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("review.artifact.snapshot_root"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewArtifactSnapshotRootLabel", "Review 快照目录"),
+			LOCTEXT("ReviewArtifactSnapshotRootHint", "控制 Review 语义快照写入目录；相对路径基于项目目录解析。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("review.debug_bundle.root_dir"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewDebugBundleRootDirLabel", "DebugBundle 根目录"),
+			LOCTEXT("ReviewDebugBundleRootDirHint", "控制 Review DebugBundle 根目录；相对路径基于项目目录解析。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("review.debug_bundle.sub_dir"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewDebugBundleSubDirLabel", "DebugBundle 子目录"),
+			LOCTEXT("ReviewDebugBundleSubDirHint", "控制 Review DebugBundle 在根目录下使用的子目录名称。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("review.debug_bundle.filename_pattern"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewDebugBundleFilenamePatternLabel", "DebugBundle 文件名模式"),
+			LOCTEXT("ReviewDebugBundleFilenamePatternHint", "控制 Review DebugBundle 导出的文件名格式。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("review.debug_bundle.enforce_root_path"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewDebugBundleEnforceRootPathLabel", "限制 DebugBundle 根路径"),
+			LOCTEXT("ReviewDebugBundleEnforceRootPathHint", "开启后，DebugBundle 输出必须位于配置的根目录内。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.asset_factory.default_parent_class"),
@@ -358,11 +568,115 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			LOCTEXT("GraphWriteSaveLabel", "GraphWrite 校验保存"),
 			LOCTEXT("GraphWriteSaveHint", "GraphWrite 请求完成后是否默认执行保存校验。"),
 			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("tool_clusters.graph_write.action_resolution.max_candidates"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionMaxCandidatesLabel", "ActionResolution 最大候选"),
+			LOCTEXT("GraphWriteActionResolutionMaxCandidatesHint", "控制 GraphWrite 动作解析保留的最大候选数量。"),
+			1,
+			1000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("tool_clusters.graph_write.action_resolution.default_search_mode"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionDefaultSearchModeLabel", "ActionResolution 默认搜索模式"),
+			LOCTEXT("GraphWriteActionResolutionDefaultSearchModeHint", "控制 GraphWrite 动作解析未指定 search_mode 时使用的默认值。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("tool_clusters.graph_write.action_resolution.default_ambiguity_policy"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionDefaultAmbiguityPolicyLabel", "ActionResolution 歧义策略"),
+			LOCTEXT("GraphWriteActionResolutionDefaultAmbiguityPolicyHint", "控制 GraphWrite 动作解析未指定 ambiguity_policy 时使用的默认值。"),
+			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("graph_layout.rules_source"),
 			DeveloperGraphLayoutCategory,
 			LOCTEXT("GraphLayoutRulesSourceLabel", "GraphLayout 规则来源"),
 			LOCTEXT("GraphLayoutRulesSourceHint", "GraphLayout 规则文件路径；允许项目配置目录下的相对路径，或受信任目录内的绝对路径。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.review_panel.main_split_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelMainSplitRatioLabel", "ReviewPanel 主分割比例"),
+			LOCTEXT("ReviewPanelMainSplitRatioHint", "控制 ReviewPanel 左右主区域分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.review_panel.component_blueprint_split"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelComponentBlueprintSplitLabel", "组件/蓝图分割比例"),
+			LOCTEXT("ReviewPanelComponentBlueprintSplitHint", "控制 ReviewPanel 组件视图与蓝图视图分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.review_panel.main_graph_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelMainGraphRatioLabel", "主图区域比例"),
+			LOCTEXT("ReviewPanelMainGraphRatioHint", "控制 ReviewPanel 主图区域布局比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.review_panel.right_bottom_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelRightBottomRatioLabel", "右下区域比例"),
+			LOCTEXT("ReviewPanelRightBottomRatioHint", "控制 ReviewPanel 右下区域分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.review_panel.root_row_padding"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelRootRowPaddingLabel", "Root 行内边距"),
+			LOCTEXT("ReviewPanelRootRowPaddingHint", "控制 ReviewPanel 根行的水平和垂直内边距，格式为 X,Y。"),
+			0.0,
+			128.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.review_panel.row_content_padding"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelRowContentPaddingLabel", "行内容内边距"),
+			LOCTEXT("ReviewPanelRowContentPaddingHint", "控制 ReviewPanel 行内容与边界之间的内边距。"),
+			0.0,
+			128.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.review_panel.flash_tick_decay"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelFlashTickDecayLabel", "Flash 衰减"),
+			LOCTEXT("ReviewPanelFlashTickDecayHint", "控制 ReviewPanel 行高亮 flash 衰减速度。"),
+			0.0,
+			60.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.review_panel.overlay_filter_current_asset_only"),
+			DeveloperUiCategory,
+			LOCTEXT("ReviewPanelOverlayFilterCurrentAssetOnlyLabel", "Overlay 仅当前资产"),
+			LOCTEXT("ReviewPanelOverlayFilterCurrentAssetOnlyHint", "控制 Review overlay 是否只显示当前资产相关的变更。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("ui.main_window.default_tab"),
+			DeveloperUiCategory,
+			LOCTEXT("MainWindowDefaultTabLabel", "主窗口默认 Tab"),
+			LOCTEXT("MainWindowDefaultTabHint", "控制 BlueprintHelper 主窗口初次打开时选中的默认 Tab。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.main_window.tab_bar_padding"),
+			DeveloperUiCategory,
+			LOCTEXT("MainWindowTabBarPaddingLabel", "Tab 栏内边距"),
+			LOCTEXT("MainWindowTabBarPaddingHint", "控制主窗口 Tab 栏整体内边距。"),
+			0.0,
+			64.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeMarginRow(
+			TEXT("ui.main_window.tab_button_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("MainWindowTabButtonSpacingLabel", "Tab 按钮间距"),
+			LOCTEXT("MainWindowTabButtonSpacingHint", "控制主窗口 Tab 按钮之间的间距，格式为左,上,右,下。"),
+			0.0,
+			64.0,
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.main_window.active_tab_color"),
@@ -375,6 +689,242 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			DeveloperUiCategory,
 			LOCTEXT("MainWindowInactiveTabColorLabel", "未激活 Tab 颜色"),
 			LOCTEXT("MainWindowInactiveTabColorHint", "主窗口未激活 Tab 的 RGBA 数组，格式：[R,G,B,A]。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("ui.main_window.cleanup_button_label"),
+			DeveloperUiCategory,
+			LOCTEXT("MainWindowCleanupButtonLabelLabel", "清理按钮文本"),
+			LOCTEXT("MainWindowCleanupButtonLabelHint", "控制主窗口清理 Review 数据按钮显示的文本。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.main_window.cleanup_button_margin_left"),
+			DeveloperUiCategory,
+			LOCTEXT("MainWindowCleanupButtonMarginLeftLabel", "清理按钮左边距"),
+			LOCTEXT("MainWindowCleanupButtonMarginLeftHint", "控制清理 Review 数据按钮左侧留白。"),
+			0.0,
+			128.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.notifications.cleanup_use_throbber"),
+			DeveloperUiCategory,
+			LOCTEXT("NotificationCleanupUseThrobberLabel", "清理通知显示加载动画"),
+			LOCTEXT("NotificationCleanupUseThrobberHint", "控制清理 Review 数据通知是否显示加载动画。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.notifications.cleanup_use_success_fail_icons"),
+			DeveloperUiCategory,
+			LOCTEXT("NotificationCleanupUseSuccessFailIconsLabel", "清理通知显示结果图标"),
+			LOCTEXT("NotificationCleanupUseSuccessFailIconsHint", "控制清理 Review 数据通知是否显示成功或失败图标。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.notifications.cleanup_fire_and_forget"),
+			DeveloperUiCategory,
+			LOCTEXT("NotificationCleanupFireAndForgetLabel", "清理通知异步关闭"),
+			LOCTEXT("NotificationCleanupFireAndForgetHint", "控制清理 Review 数据通知是否按异步完成方式关闭。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.notifications.cleanup_fade_out_seconds"),
+			DeveloperUiCategory,
+			LOCTEXT("NotificationCleanupFadeOutSecondsLabel", "清理通知淡出秒数"),
+			LOCTEXT("NotificationCleanupFadeOutSecondsHint", "控制清理 Review 数据通知淡出动画时长。"),
+			0.0,
+			60.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.notifications.cleanup_expire_seconds"),
+			DeveloperUiCategory,
+			LOCTEXT("NotificationCleanupExpireSecondsLabel", "清理通知过期秒数"),
+			LOCTEXT("NotificationCleanupExpireSecondsHint", "控制清理 Review 数据通知自动过期时间。"),
+			0.0,
+			600.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.layout_rule_editor.canvas_desired_size"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorCanvasDesiredSizeLabel", "LayoutRule 画布尺寸"),
+			LOCTEXT("LayoutRuleEditorCanvasDesiredSizeHint", "控制 Layout Rule Editor 画布期望尺寸，格式为 X,Y。"),
+			1.0,
+			8192.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.layout_rule_editor.node_size"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorNodeSizeLabel", "LayoutRule 节点尺寸"),
+			LOCTEXT("LayoutRuleEditorNodeSizeHint", "控制 Layout Rule Editor 预览节点尺寸，格式为 X,Y。"),
+			1.0,
+			2048.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.canvas_rule_scale"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorCanvasRuleScaleLabel", "LayoutRule 缩放"),
+			LOCTEXT("LayoutRuleEditorCanvasRuleScaleHint", "控制 Layout Rule Editor 规则预览缩放比例。"),
+			0.01,
+			10.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("ui.layout_rule_editor.default_rule_id"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorDefaultRuleIdLabel", "LayoutRule 默认 ID"),
+			LOCTEXT("LayoutRuleEditorDefaultRuleIdHint", "控制 Layout Rule Editor 新规则使用的默认规则 ID。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("ui.layout_rule_editor.default_rule_display_name"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorDefaultRuleDisplayNameLabel", "LayoutRule 默认名称"),
+			LOCTEXT("LayoutRuleEditorDefaultRuleDisplayNameHint", "控制 Layout Rule Editor 新规则显示名称的默认值。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.exec_column_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorExecColumnSpacingLabel", "Exec 列间距"),
+			LOCTEXT("LayoutRuleEditorExecColumnSpacingHint", "控制 Layout Rule Editor 中执行链列间距。"),
+			0.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.exec_row_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorExecRowSpacingLabel", "Exec 行间距"),
+			LOCTEXT("LayoutRuleEditorExecRowSpacingHint", "控制 Layout Rule Editor 中执行链行间距。"),
+			0.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.branch_row_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorBranchRowSpacingLabel", "Branch 行间距"),
+			LOCTEXT("LayoutRuleEditorBranchRowSpacingHint", "控制 Layout Rule Editor 中分支行间距。"),
+			0.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.pure_input_offset_x"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorPureInputOffsetXLabel", "Pure 输入 X 偏移"),
+			LOCTEXT("LayoutRuleEditorPureInputOffsetXHint", "控制纯节点输入列相对主执行链的 X 偏移。"),
+			0.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.variable_input_offset_x"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorVariableInputOffsetXLabel", "变量输入 X 偏移"),
+			LOCTEXT("LayoutRuleEditorVariableInputOffsetXHint", "控制变量输入列相对主执行链的 X 偏移。"),
+			0.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.input_pin_row_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorInputPinRowSpacingLabel", "输入 Pin 行间距"),
+			LOCTEXT("LayoutRuleEditorInputPinRowSpacingHint", "控制 Layout Rule Editor 中输入 Pin 行间距。"),
+			0.0,
+			512.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.layout_rule_editor.max_ms_per_frame"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorMaxMsPerFrameLabel", "每帧最大毫秒数"),
+			LOCTEXT("LayoutRuleEditorMaxMsPerFrameHint", "控制 Layout Rule Editor 应用布局时单帧最多占用时间。"),
+			0.0,
+			1000.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("ui.layout_rule_editor.max_nodes_per_frame"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorMaxNodesPerFrameLabel", "每帧最大节点数"),
+			LOCTEXT("LayoutRuleEditorMaxNodesPerFrameHint", "控制 Layout Rule Editor 应用布局时单帧最多移动节点数。"),
+			1,
+			100000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.layout_rule_editor.move_generated_nodes"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorMoveGeneratedNodesLabel", "移动生成节点"),
+			LOCTEXT("LayoutRuleEditorMoveGeneratedNodesHint", "控制 Layout Rule Editor 是否移动本轮生成的节点。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.layout_rule_editor.move_existing_nodes"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorMoveExistingNodesLabel", "移动已有节点"),
+			LOCTEXT("LayoutRuleEditorMoveExistingNodesHint", "控制 Layout Rule Editor 是否移动图表中已有节点。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.layout_rule_editor.mark_dirty_after_apply"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorMarkDirtyAfterApplyLabel", "应用后标记 Dirty"),
+			LOCTEXT("LayoutRuleEditorMarkDirtyAfterApplyHint", "控制 Layout Rule Editor 应用布局后是否标记资产已修改。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("ui.layout_rule_editor.save_after_apply"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorSaveAfterApplyLabel", "应用后保存"),
+			LOCTEXT("LayoutRuleEditorSaveAfterApplyHint", "控制 Layout Rule Editor 应用布局后是否立即保存资产。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.layout_rule_editor.side_splitter_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("LayoutRuleEditorSideSplitterRatioLabel", "LayoutRule 侧栏比例"),
+			LOCTEXT("LayoutRuleEditorSideSplitterRatioHint", "控制 Layout Rule Editor 左右区域分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.task_spec_workbench.top_padding"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchTopPaddingLabel", "Workbench 顶部间距"),
+			LOCTEXT("WorkbenchTopPaddingHint", "控制 TaskSpec Workbench 顶部工具条间距。"),
+			0.0,
+			128.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeMarginRow(
+			TEXT("ui.task_spec_workbench.button_spacing"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchButtonSpacingLabel", "Workbench 按钮间距"),
+			LOCTEXT("WorkbenchButtonSpacingHint", "控制 TaskSpec Workbench 按钮之间的间距，格式为左,上,右,下。"),
+			0.0,
+			128.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.task_spec_workbench.main_split_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchMainSplitRatioLabel", "Workbench 主分割比例"),
+			LOCTEXT("WorkbenchMainSplitRatioHint", "控制 TaskSpec Workbench 主区域分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
+			TEXT("ui.task_spec_workbench.left_split_ratio"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchLeftSplitRatioLabel", "Workbench 左侧分割比例"),
+			LOCTEXT("WorkbenchLeftSplitRatioHint", "控制 TaskSpec Workbench 左侧区域分割比例，格式为 X,Y。"),
+			0.0,
+			1.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.task_spec_workbench.preview_width"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchPreviewWidthLabel", "Workbench 预览宽度"),
+			LOCTEXT("WorkbenchPreviewWidthHint", "控制 TaskSpec Workbench 预览列宽度。"),
+			1.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.task_spec_workbench.preview_min_height"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchPreviewMinHeightLabel", "Workbench 预览最小高度"),
+			LOCTEXT("WorkbenchPreviewMinHeightHint", "控制 TaskSpec Workbench 预览区域最小高度。"),
+			1.0,
+			4096.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("ui.task_spec_workbench.preview_container_padding"),
+			DeveloperUiCategory,
+			LOCTEXT("WorkbenchPreviewContainerPaddingLabel", "Workbench 预览内边距"),
+			LOCTEXT("WorkbenchPreviewContainerPaddingHint", "控制 TaskSpec Workbench 预览容器内边距。"),
+			0.0,
+			128.0,
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.default"),

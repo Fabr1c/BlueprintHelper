@@ -11,6 +11,8 @@
 bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& DotPath)
 {
 	static const TSet<FString> ExactConsumedPaths = {
+		TEXT("active_profile"),
+		TEXT("cli.artifacts.default_output_dir"),
 		TEXT("ui.review_panel.diff_frame_outer_padding"),
 		TEXT("ui.review_panel.diff_action_padding"),
 		TEXT("ui.review_panel.diff_action_spacing"),
@@ -18,6 +20,7 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 		TEXT("ui.review_panel.surface_overlay_selected_fill_alpha"),
 		TEXT("ui.review_panel.surface_geometry_padding"),
 		TEXT("ui.review_panel.debug_max_messages"),
+		TEXT("review.evidence_required"),
 		TEXT("review.debug_bundle.retention"),
 		TEXT("debug.export_profile"),
 		TEXT("debug.contains_full_settings"),
@@ -52,11 +55,22 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 		return true;
 	}
 
-	return DotPath.StartsWith(TEXT("tool_clusters.asset_factory.")) ||
+	return DotPath.StartsWith(TEXT("runtime.bridge.")) ||
+		DotPath.StartsWith(TEXT("runtime.task_runtime.cache.")) ||
+		DotPath.StartsWith(TEXT("runtime.task_runtime.execution_policy.")) ||
+		DotPath.StartsWith(TEXT("review.artifact.")) ||
+		DotPath.StartsWith(TEXT("review.debug_bundle.")) ||
+		DotPath.StartsWith(TEXT("ui.main_window.")) ||
+		DotPath.StartsWith(TEXT("ui.notifications.")) ||
+		DotPath.StartsWith(TEXT("ui.layout_rule_editor.")) ||
+		DotPath.StartsWith(TEXT("ui.task_spec_workbench.")) ||
+		DotPath.StartsWith(TEXT("ui.review_panel.")) ||
+		DotPath.StartsWith(TEXT("tool_clusters.asset_factory.")) ||
 		DotPath.StartsWith(TEXT("tool_clusters.class_settings.")) ||
 		DotPath.StartsWith(TEXT("tool_clusters.object_property.")) ||
 		DotPath.StartsWith(TEXT("tool_clusters.data_table.")) ||
-		DotPath.StartsWith(TEXT("tool_clusters.umg_widget."));
+		DotPath.StartsWith(TEXT("tool_clusters.umg_widget.")) ||
+		DotPath.StartsWith(TEXT("tool_clusters.graph_write.action_resolution."));
 }
 
 bool UBlueprintHelperSettingsUIUtils::ShouldShowDeveloperSettings()
