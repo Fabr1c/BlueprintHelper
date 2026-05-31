@@ -26,6 +26,7 @@
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
@@ -38,6 +39,8 @@
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelCommandService.h"
+#include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+#include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -7107,5 +7110,169 @@ bool FBlueprintHelperReviewGraphBoundsFullBlockMetadataTest::RunTest(const FStri
 	return true;
 }
 
-#endif
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPresenterTypedStoreChangedEventTest,
+	"BlueprintHelper.Review.Panel.Presenter.ForwardsTypedStoreChangedEvent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+bool FBlueprintHelperReviewPresenterTypedStoreChangedEventTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewPanelPresenter Presenter(&Store, nullptr);
+
+	TArray<FBlueprintHelperReviewStoreChangedEvent> Events;
+	FDelegateHandle Handle = Presenter.AddPendingReviewChangedEventHandler(
+		FBlueprintHelperReviewStoreChangedMulticast::FDelegate::CreateLambda(
+			[&Events](const FBlueprintHelperReviewStoreChangedEvent& Event)
+			{
+				Events.Add(Event);
+			}));
+
+	const FBlueprintHelperReviewStoreChangedEvent SourceEvent =
+		FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+			{ TEXT("record_typed_event") },
+			{ TEXT("change_typed_event") },
+			{ TEXT("/Game/BlueprintHelperReview/BP_TypedEvent") });
+	Store.NotifyPendingReviewChanged(SourceEvent);
+	Presenter.RemovePendingReviewChangedEventHandler(Handle);
+
+	TestEqual(TEXT("typed event is forwarded once"), Events.Num(), 1);
+	if (Events.Num() == 1)
+	{
+		TestFalse(TEXT("typed event is not downgraded to full reload"), Events[0].bRequiresFullReload);
+		TestEqual(TEXT("typed event keeps record id"), Events[0].ReviewRecordIds[0], FString(TEXT("record_typed_event")));
+		TestEqual(TEXT("typed event keeps change id"), Events[0].ChangeIds[0], FString(TEXT("change_typed_event")));
+		TestEqual(TEXT("typed event keeps asset path"),
+			Events[0].AssetPaths[0],
+			FString(TEXT("/Game/BlueprintHelperReview/BP_TypedEvent")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewCommandSingleAcceptPublishesIncrementalEventTest,
+	"BlueprintHelper.Review.Panel.Command.SingleAcceptPublishesIncrementalEvent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewCommandSingleAcceptPublishesIncrementalEventTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewPanelCommandService CommandService(&ActionService, &Store);
+
+	const FString ArchiveId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_single_accept_event"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperReview/BP_SingleAcceptEvent_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	FBlueprintHelperReviewVisibleChange Change =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_single_accept_event"),
+			AssetPath);
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveId, AssetPath);
+	Record.ArchiveSessionId = ArchiveId;
+	Record.AssetPath = AssetPath;
+	Record.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	Record.StorageStatus = EBlueprintHelperReviewStorageStatus::Active;
+	Record.VisibleChanges.Add(Change);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Record.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("record saves before single accept"), Store.SaveReviewRecord(Record, SaveError));
+
+	TArray<FBlueprintHelperReviewStoreChangedEvent> Events;
+	FDelegateHandle Handle = Store.AddPendingReviewChangedEventHandler(
+		FBlueprintHelperReviewStoreChangedMulticast::FDelegate::CreateLambda(
+			[&Events](const FBlueprintHelperReviewStoreChangedEvent& Event)
+			{
+				Events.Add(Event);
+			}));
+
+	const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Accept(
+		FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+			Change,
+			EBlueprintHelperReviewSurface::Unknown,
+			Change.LocationKey),
+		TEXT("test"));
+	const FBlueprintHelperReviewCommandResult Result =
+		CommandService.ExecuteActionIntent(Intent, { Change });
+	Store.RemovePendingReviewChangedEventHandler(Handle);
+
+	TestTrue(TEXT("single accept succeeds"), Result.ActionResult.bSucceeded);
+	TestEqual(TEXT("single accept publishes one event"), Events.Num(), 1);
+	if (Events.Num() == 1)
+	{
+		TestFalse(TEXT("single accept event is incremental"), Events[0].bRequiresFullReload);
+		TestTrue(TEXT("single accept event includes record id"),
+			Events[0].ReviewRecordIds.Contains(Record.ReviewRecordId));
+		TestTrue(TEXT("single accept event includes change id"),
+			Events[0].ChangeIds.Contains(Change.ChangeId));
+		TestTrue(TEXT("single accept event includes asset path"),
+			Events[0].AssetPaths.Contains(AssetPath));
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(Record.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewActionTargetBatchResolveTest,
+	"BlueprintHelper.Review.Panel.Command.BatchResolveUsesSingleIndexPass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewActionTargetBatchResolveTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_batch_resolve"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperReview/BP_BatchResolve_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	TArray<FBlueprintHelperReviewVisibleChange> Changes;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		FBlueprintHelperReviewVisibleChange Change =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+				FString::Printf(TEXT("change_batch_resolve_%d"), Index),
+				AssetPath);
+		Change.AtomicTargets[0].TargetKey = FString::Printf(TEXT("graph_node:BatchResolve_%d"), Index);
+		Changes.Add(Change);
+	}
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveId, AssetPath);
+	Record.ArchiveSessionId = ArchiveId;
+	Record.AssetPath = AssetPath;
+	Record.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	Record.StorageStatus = EBlueprintHelperReviewStorageStatus::Active;
+	Record.VisibleChanges = Changes;
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Record.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("record saves before batch resolve"), Store.SaveReviewRecord(Record, SaveError));
+
+	const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
+		FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
+	TestEqual(TEXT("batch resolve returns one record match"), Matches.Num(), 1);
+	if (Matches.Num() == 1)
+	{
+		TestEqual(TEXT("batch resolve keeps record id"), Matches[0].ReviewRecordId, Record.ReviewRecordId);
+		TestEqual(TEXT("batch resolve keeps all target keys"), Matches[0].TargetKeys.Num(), 3);
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			TestTrue(
+				FString::Printf(TEXT("batch resolve includes target %d"), Index),
+				Matches[0].TargetKeys.Contains(FString::Printf(TEXT("graph_node:BatchResolve_%d"), Index)));
+		}
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(Record.ReviewRecordId, DeleteError);
+	return true;
+}
+
+#endif

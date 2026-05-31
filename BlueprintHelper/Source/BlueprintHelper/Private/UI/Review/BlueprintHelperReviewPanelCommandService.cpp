@@ -6,6 +6,96 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 
+namespace
+{
+	static void BlueprintHelperReviewAddUniqueNonEmpty(TArray<FString>& Values, const FString& Value)
+	{
+		if (!Value.IsEmpty())
+		{
+			Values.AddUnique(Value);
+		}
+	}
+
+	static TMap<FString, TArray<FString>> BlueprintHelperReviewGroupTargetKeysByRecord(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		TMap<FString, TArray<FString>> TargetKeysByRecordId;
+		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
+			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
+		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
+		{
+			if (Match.ReviewRecordId.IsEmpty())
+			{
+				continue;
+			}
+			TArray<FString>& TargetKeys = TargetKeysByRecordId.FindOrAdd(Match.ReviewRecordId);
+			for (const FString& TargetKey : Match.TargetKeys)
+			{
+				if (!TargetKey.IsEmpty())
+				{
+					TargetKeys.AddUnique(TargetKey);
+				}
+			}
+		}
+		return TargetKeysByRecordId;
+	}
+
+	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromMatches(
+		const FBlueprintHelperReviewVisibleChange& Change,
+		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch>& Matches)
+	{
+		TArray<FString> ReviewRecordIds;
+		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
+		{
+			BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
+		}
+		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+			ReviewRecordIds,
+			{ Change.ChangeId },
+			{ Change.AssetPath });
+	}
+
+	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromChanges(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
+			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
+		TArray<FString> ReviewRecordIds;
+		TArray<FString> ChangeIds;
+		TArray<FString> AssetPaths;
+		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
+		{
+			BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
+		}
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
+			BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
+		}
+		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+			ReviewRecordIds,
+			ChangeIds,
+			AssetPaths);
+	}
+
+	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeBatchChangedEvent(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
+		const FBlueprintHelperReviewBatchActionResult& BatchResult)
+	{
+		TArray<FString> ChangeIds;
+		TArray<FString> AssetPaths;
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
+			BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
+		}
+		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+			BatchResult.ChangedReviewRecordIds,
+			ChangeIds,
+			AssetPaths);
+	}
+}
+
 FBlueprintHelperReviewPanelCommandService::FBlueprintHelperReviewPanelCommandService(
 	const FBlueprintHelperReviewActionService* InReviewActionService,
 	const FBlueprintHelperReviewStoreService* InReviewStoreService)
@@ -30,21 +120,31 @@ FBlueprintHelperReviewCommandResult FBlueprintHelperReviewPanelCommandService::E
 
 	if (Intent.Action == EBlueprintHelperReviewActionIntentKind::Accept)
 	{
+		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> MatchesBeforeAction =
+			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatches(Change);
 		CommandResult.ActionResult = AcceptVisibleChange(Change);
-		NotifyStoreChangedIfSucceeded(CommandResult.ActionResult);
+		NotifyStoreChangedIfSucceeded(
+			CommandResult.ActionResult,
+			BlueprintHelperReviewMakeChangedEventFromMatches(Change, MatchesBeforeAction));
 		return CommandResult;
 	}
 
 	if (Change.bIsAssetLifecycleRoot)
 	{
 		CommandResult.bCascade = true;
+		const FBlueprintHelperReviewStoreChangedEvent StoreChangedEvent =
+			BlueprintHelperReviewMakeChangedEventFromChanges(PendingChanges);
 		CommandResult.CascadeActionResult = RejectLifecycleRootVisibleChange(Change, PendingChanges, RejectOptions);
-		NotifyStoreChangedIfSucceeded(CommandResult.CascadeActionResult);
+		NotifyStoreChangedIfSucceeded(CommandResult.CascadeActionResult, StoreChangedEvent);
 		return CommandResult;
 	}
 
+	const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> MatchesBeforeAction =
+		FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatches(Change);
 	CommandResult.ActionResult = RejectVisibleChange(Change, RejectOptions);
-	NotifyStoreChangedIfSucceeded(CommandResult.ActionResult);
+	NotifyStoreChangedIfSucceeded(
+		CommandResult.ActionResult,
+		BlueprintHelperReviewMakeChangedEventFromMatches(Change, MatchesBeforeAction));
 	return CommandResult;
 }
 
@@ -125,20 +225,80 @@ FBlueprintHelperReviewPanelCommandService::RejectLifecycleRootVisibleChange(
 	return Result;
 }
 
-void FBlueprintHelperReviewPanelCommandService::NotifyStoreChangedIfSucceeded(
-	const FBlueprintHelperReviewActionResult& Result) const
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelCommandService::AcceptVisibleChangesBatch(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes) const
 {
-	if (ReviewStoreService && Result.bSucceeded)
+	FBlueprintHelperReviewCommandBatchResult Result;
+	if (!ReviewActionService)
 	{
-		ReviewStoreService->NotifyPendingReviewChanged();
+		Result.BatchActionResult.Message = TEXT("review_action_service_unavailable");
+		return Result;
+	}
+
+	const TMap<FString, TArray<FString>> TargetKeysByRecordId =
+		BlueprintHelperReviewGroupTargetKeysByRecord(Changes);
+	Result.BatchActionResult = ReviewActionService->AcceptReviewTargetsBatch(TargetKeysByRecordId);
+	Result.StoreChangedEvent = BlueprintHelperReviewMakeBatchChangedEvent(Changes, Result.BatchActionResult);
+	NotifyStoreChangedIfSucceeded(Result);
+	return Result;
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelCommandService::RejectVisibleChangesBatch(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	FBlueprintHelperReviewCommandBatchResult Result;
+	if (!ReviewActionService)
+	{
+		Result.BatchActionResult.Message = TEXT("review_action_service_unavailable");
+		return Result;
+	}
+
+	const TMap<FString, TArray<FString>> TargetKeysByRecordId =
+		BlueprintHelperReviewGroupTargetKeysByRecord(Changes);
+	Result.BatchActionResult = ReviewActionService->RejectReviewTargetsBatch(TargetKeysByRecordId, Options);
+	Result.StoreChangedEvent = BlueprintHelperReviewMakeBatchChangedEvent(Changes, Result.BatchActionResult);
+	NotifyStoreChangedIfSucceeded(Result);
+	return Result;
+}
+
+void FBlueprintHelperReviewPanelCommandService::NotifyStoreChangedIfSucceeded(
+	const FBlueprintHelperReviewActionResult& Result,
+	const FBlueprintHelperReviewStoreChangedEvent& Event) const
+{
+	if (ReviewStoreService
+		&& Result.bSucceeded
+		&& (Event.bRequiresFullReload
+			|| Event.ReviewRecordIds.Num() > 0
+			|| Event.ChangeIds.Num() > 0
+			|| Event.AssetPaths.Num() > 0))
+	{
+		ReviewStoreService->NotifyPendingReviewChanged(Event);
 	}
 }
 
 void FBlueprintHelperReviewPanelCommandService::NotifyStoreChangedIfSucceeded(
-	const FBlueprintHelperReviewCascadeActionResult& Result) const
+	const FBlueprintHelperReviewCommandBatchResult& Result) const
 {
-	if (ReviewStoreService && Result.RootResult.bSucceeded)
+	if (ReviewStoreService && Result.BatchActionResult.SucceededCount > 0)
 	{
-		ReviewStoreService->NotifyPendingReviewChanged();
+		ReviewStoreService->NotifyPendingReviewChanged(Result.StoreChangedEvent);
+	}
+}
+
+void FBlueprintHelperReviewPanelCommandService::NotifyStoreChangedIfSucceeded(
+	const FBlueprintHelperReviewCascadeActionResult& Result,
+	const FBlueprintHelperReviewStoreChangedEvent& Event) const
+{
+	if (ReviewStoreService
+		&& Result.RootResult.bSucceeded
+		&& (Event.bRequiresFullReload
+			|| Event.ReviewRecordIds.Num() > 0
+			|| Event.ChangeIds.Num() > 0
+			|| Event.AssetPaths.Num() > 0))
+	{
+		ReviewStoreService->NotifyPendingReviewChanged(Event);
 	}
 }

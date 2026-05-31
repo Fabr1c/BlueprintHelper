@@ -7,6 +7,7 @@
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewPendingLoadCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
@@ -28,6 +29,11 @@ class UEdGraph;
 class SBlueprintHelperReviewPanel : public SCompoundWidget
 {
 public:
+	DECLARE_DELEGATE_TwoParams(
+		FOnValidityCandidatesReady,
+		const FString&,
+		const TArray<FBlueprintHelperReviewValidityCandidate>&);
+
 	SLATE_BEGIN_ARGS(SBlueprintHelperReviewPanel)
 		: _ReviewStoreService(nullptr)
 		, _ReviewActionService(nullptr)
@@ -37,6 +43,7 @@ public:
 	SLATE_ARGUMENT(const FBlueprintHelperReviewStoreService*, ReviewStoreService)
 	SLATE_ARGUMENT(const FBlueprintHelperReviewActionService*, ReviewActionService)
 	SLATE_ARGUMENT(TArray<FBlueprintHelperReviewVisibleChange>, InitialChanges)
+	SLATE_EVENT(FOnValidityCandidatesReady, OnValidityCandidatesReady)
 
 	SLATE_END_ARGS()
 
@@ -190,7 +197,17 @@ private:
 
 	EActiveTimerReturnType TickFlash(double InCurrentTime, float InDeltaTime);
 	void StartFlash();
-	void RefreshFromReviewStoreIfChanged();
+	void RequestPendingReviewLoad(
+		const FString& Reason,
+		const FBlueprintHelperReviewStoreChangedEvent& SourceEvent =
+			FBlueprintHelperReviewStoreChangedEvent::FullReload());
+	void HandlePendingReviewLoadCompleted(const FBlueprintHelperReviewPendingLoadResult& Result);
+	void RefreshFromReviewStoreIfChanged(const FBlueprintHelperReviewStoreChangedEvent& Event);
+	TArray<FBlueprintHelperReviewVisibleChange> BuildVisibleChangesAfterIncrementalLoad(
+		const FBlueprintHelperReviewPendingLoadResult& Result) const;
+	void ApplyVisibleChangesFromPendingLoad(
+		const FBlueprintHelperReviewPendingLoadResult& Result,
+		const TArray<FBlueprintHelperReviewVisibleChange>& NextChanges);
 	void LoadReviewAssetFromSelection();
 	void UpdateDetailsSelection();
 	void OnDetailsDisplayedPropertiesChanged();
@@ -208,6 +225,8 @@ private:
 	UEdGraph* ResolveGraphForSelectedChange() const;
 
 	TSharedPtr<FBlueprintHelperReviewPanelPresenter> ReviewPanelPresenter;
+	TSharedPtr<FBlueprintHelperReviewPendingLoadCoordinator> PendingLoadCoordinator;
+	FOnValidityCandidatesReady OnValidityCandidatesReady;
 
 	TArray<FReviewChangeItem> ChangeItems;
 	FBlueprintHelperReviewPanelState ReviewPanelState;

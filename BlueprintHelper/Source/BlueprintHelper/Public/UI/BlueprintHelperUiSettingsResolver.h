@@ -10,6 +10,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperUiSettingsResolver
 public:
 	static FBlueprintHelperMainWindowSettings LoadMainWindowSettings();
 	static FBlueprintHelperNotificationSettings LoadNotificationSettings();
+	static FBlueprintHelperReviewPerformanceSettings LoadReviewPerformanceSettings();
 	static FBlueprintHelperTaskSpecWorkbenchSettings LoadTaskSpecWorkbenchSettings();
 	static FBlueprintHelperLayoutRuleEditorSettings LoadLayoutRuleEditorSettings();
 };

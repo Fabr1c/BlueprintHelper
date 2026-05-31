@@ -60,6 +60,7 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 		DotPath.StartsWith(TEXT("runtime.task_runtime.execution_policy.")) ||
 		DotPath.StartsWith(TEXT("review.artifact.")) ||
 		DotPath.StartsWith(TEXT("review.debug_bundle.")) ||
+		DotPath.StartsWith(TEXT("review.performance.")) ||
 		DotPath.StartsWith(TEXT("ui.main_window.")) ||
 		DotPath.StartsWith(TEXT("ui.notifications.")) ||
 		DotPath.StartsWith(TEXT("ui.layout_rule_editor.")) ||

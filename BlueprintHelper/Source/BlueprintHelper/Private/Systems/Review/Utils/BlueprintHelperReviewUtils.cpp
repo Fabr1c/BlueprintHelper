@@ -100,8 +100,7 @@ void UBlueprintHelperReviewUtils::NormalizeReviewTargetSemanticSnapshots(
 			Target.BeforeSnapshotJson = BaselineSnapshotJson;
 			Target.BaselineHash = BaselineSnapshotHash;
 		}
-		else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added
-			&& !FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind))
+		else if (Evidence.ChangeKind == EBlueprintHelperReviewChangeKind::Added)
 		{
 			FBlueprintHelperReviewBaselineSnapshotService::MakeMissingTargetSnapshot(
 				Target,

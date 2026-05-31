@@ -25,6 +25,18 @@ struct BLUEPRINTHELPER_API FBlueprintHelperNotificationSettings
 	float CleanupExpireSeconds = 4.0f;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewPerformanceSettings
+{
+	int32 TraceWarningMs = 16;
+	int32 MainWindowPageConstructWarningMs = 8;
+	int32 PendingLoadValidityCandidateBudget = 256;
+	bool bValiditySweepEnabled = true;
+	int32 ValiditySweepMaxRecordHydrationsPerWorkerBatch = 8;
+	int32 ValiditySweepMaxGameThreadTargetsPerFrame = 2;
+	float ValiditySweepMaxGameThreadMillisecondsPerFrame = 1.0f;
+	int32 ValiditySweepMaxInvalidPurgesPerBatch = 32;
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperTaskSpecWorkbenchSettings
 {
 	float TopPadding = 8.0f;

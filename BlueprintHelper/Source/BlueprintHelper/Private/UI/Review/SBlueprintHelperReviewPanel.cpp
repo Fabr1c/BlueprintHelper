@@ -183,9 +183,14 @@ static bool BlueprintHelperReviewTryResolveSignatureGraph(
 
 SBlueprintHelperReviewPanel::~SBlueprintHelperReviewPanel()
 {
+	if (PendingLoadCoordinator.IsValid())
+	{
+		PendingLoadCoordinator->CancelPendingLoads();
+		PendingLoadCoordinator.Reset();
+	}
 	if (ReviewPanelPresenter.IsValid() && PendingReviewChangedHandle.IsValid())
 	{
-		ReviewPanelPresenter->RemovePendingReviewChangedHandler(PendingReviewChangedHandle);
+		ReviewPanelPresenter->RemovePendingReviewChangedEventHandler(PendingReviewChangedHandle);
 	}
 	FBlueprintHelperReviewSlateRowGeometryRegistry::RemoveRowsChangedHandler(RowGeometryChangedHandle);
 	FBlueprintHelperReviewRowHighlightModel::RemoveStateChangedHandler(RowHighlightStateChangedHandle);
@@ -1041,7 +1046,7 @@ FReply SBlueprintHelperReviewPanel::ExecuteAcceptChange(FReviewChangeItem Item)
 		ReviewPanelPresenter.IsValid()
 			? ReviewPanelPresenter->HandleActionIntent(
 				Intent,
-				BuildPendingChangeSnapshot())
+				{ *Item })
 			: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
 				FBlueprintHelperReviewActionResult());
 	const FBlueprintHelperReviewActionResult& Result = PresenterEvent.ActionResult;
@@ -1360,7 +1365,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		ReviewPanelPresenter.IsValid()
 			? ReviewPanelPresenter->HandleActionIntent(
 				Intent,
-				BuildPendingChangeSnapshot(),
+				{ *Item },
 				Options)
 			: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
 				FBlueprintHelperReviewActionResult());
@@ -1449,59 +1454,36 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		AssetPath = SelectedChange->AssetPath;
 	}
 
-	TArray<FReviewChangeItem> AcceptedItems;
+	TArray<FBlueprintHelperReviewVisibleChange> ChangesToAccept;
 	const TArray<FReviewChangeItem> ItemsSnapshot = ChangeItems;
-	int32 TargetCount = 0;
-	int32 FailedCount = 0;
 	for (const FReviewChangeItem& Item : ItemsSnapshot)
 	{
 		if (!Item.IsValid() || (!AssetPath.IsEmpty() && Item->AssetPath != AssetPath))
 		{
 			continue;
 		}
-		++TargetCount;
-
-		const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Accept(
-			FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
-				*Item,
-				EBlueprintHelperReviewSurface::Unknown,
-				Item->LocationKey),
-			TEXT("review_panel_accept_all"));
-		const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
-			ReviewPanelPresenter.IsValid()
-				? ReviewPanelPresenter->HandleActionIntent(
-					Intent,
-					BuildPendingChangeSnapshot())
-				: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(
-					FBlueprintHelperReviewActionResult());
-		const FBlueprintHelperReviewActionResult& Result = PresenterEvent.ActionResult;
-		if (Result.bSucceeded)
-		{
-			AcceptedItems.Add(Item);
-		}
-		else
-		{
-			++FailedCount;
-			FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
-				ReviewPanelState,
-				Item->ChangeId,
-				Result.NewStatus,
-				Result.Message);
-		}
+		ChangesToAccept.Add(*Item);
 	}
+	const FBlueprintHelperReviewCommandBatchResult BatchResult =
+		ReviewPanelPresenter.IsValid()
+			? ReviewPanelPresenter->AcceptVisibleChangesBatch(ChangesToAccept)
+			: FBlueprintHelperReviewCommandBatchResult();
+	const int32 TargetCount = ChangesToAccept.Num();
+	const int32 FailedCount = BatchResult.BatchActionResult.FailedCount;
+	const int32 AcceptedCount = BatchResult.BatchActionResult.SucceededCount;
 
 	AddDebugMessage(FString::Printf(
 		TEXT("AcceptAll asset=\"%s\" accepted=%d failed=%d result=waiting_for_store_refresh"),
 		*AssetPath,
-		AcceptedItems.Num(),
+		AcceptedCount,
 		FailedCount));
 
 	const FString NotificationText = TargetCount == 0
 		? FString(TEXT("Accept all failed: no acceptable review item."))
-		: FailedCount == 0
-			? FString::Printf(TEXT("Accept all succeeded: %d item(s)."), AcceptedItems.Num())
-			: AcceptedItems.Num() > 0
-				? FString::Printf(TEXT("Accept all partially succeeded: %d accepted, %d failed."), AcceptedItems.Num(), FailedCount)
+		: FailedCount == 0 && AcceptedCount > 0
+			? FString::Printf(TEXT("Accept all succeeded: %d target(s)."), AcceptedCount)
+			: AcceptedCount > 0
+				? FString::Printf(TEXT("Accept all partially succeeded: %d accepted, %d failed."), AcceptedCount, FailedCount)
 				: FString::Printf(TEXT("Accept all failed: %d item(s) failed."), FailedCount);
 	ShowReviewActionNotification(
 		TEXT("accept_all:") + AssetPath,
@@ -1522,19 +1504,19 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		AssetPath = SelectedChange->AssetPath;
 	}
 
-	TArray<FReviewChangeItem> ItemsToQueue;
+	TArray<FBlueprintHelperReviewVisibleChange> ChangesToReject;
 	for (const FReviewChangeItem& Item : ChangeItems)
 	{
 		if (Item.IsValid() && (AssetPath.IsEmpty() || Item->AssetPath == AssetPath))
 		{
-			ItemsToQueue.Add(Item);
+			ChangesToReject.Add(*Item);
 		}
 	}
 	const FString BatchKey = FString::Printf(
 		TEXT("reject_all:%s:%lld"),
 		*AssetPath,
 		FDateTime::UtcNow().GetTicks());
-	if (ItemsToQueue.Num() == 0)
+	if (ChangesToReject.Num() == 0)
 	{
 		ShowReviewActionNotification(
 			BatchKey,
@@ -1548,46 +1530,26 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		return FReply::Handled();
 	}
 
-	FReviewActionBatchNotificationState& Batch = RejectBatchNotifications.Add(BatchKey);
-	Batch.NotificationKey = BatchKey;
-	Batch.TotalCount = ItemsToQueue.Num();
-	for (const FReviewChangeItem& Item : ItemsToQueue)
-	{
-		const FString ChangeId = Item.IsValid()
-			? (!Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestEvidenceId)
-			: FString();
-		if (ChangeId.IsEmpty())
-		{
-			++Batch.FinishedCount;
-			++Batch.FailedCount;
-			continue;
-		}
-		RejectBatchKeyByChangeId.Add(ChangeId, BatchKey);
-		QueueRejectChange(Item, false);
-	}
+	const FBlueprintHelperReviewCommandBatchResult BatchResult =
+		ReviewPanelPresenter.IsValid()
+			? ReviewPanelPresenter->RejectVisibleChangesBatch(ChangesToReject)
+			: FBlueprintHelperReviewCommandBatchResult();
 	AddDebugMessage(FString::Printf(
-		TEXT("RejectAll queued asset=\"%s\" count=%d"),
+		TEXT("RejectAll batch asset=\"%s\" requested=%d rejected=%d failed=%d"),
 		*AssetPath,
-		ItemsToQueue.Num()));
-	if (Batch.FinishedCount >= Batch.TotalCount)
-	{
-		ShowReviewActionNotification(
-			BatchKey,
-			FString::Printf(TEXT("Reject all failed: %d item(s) failed."), Batch.FailedCount),
-			EReviewActionNotificationState::Fail,
-			true,
-			false);
-		RejectBatchNotifications.Remove(BatchKey);
-	}
-	else
-	{
-		ShowReviewActionNotification(
-			BatchKey,
-			FString::Printf(TEXT("Reject all queued: %d item(s)."), ItemsToQueue.Num()),
-			EReviewActionNotificationState::Pending,
-			false,
-			true);
-	}
+		BatchResult.BatchActionResult.RequestedCount,
+		BatchResult.BatchActionResult.SucceededCount,
+		BatchResult.BatchActionResult.FailedCount));
+	ShowReviewActionNotification(
+		BatchKey,
+		BatchResult.BatchActionResult.bSucceeded
+			? FString::Printf(TEXT("Reject all succeeded: %d target(s)."), BatchResult.BatchActionResult.SucceededCount)
+			: FString::Printf(TEXT("Reject all failed: %s"), *BatchResult.BatchActionResult.Message),
+		BatchResult.BatchActionResult.bSucceeded
+			? EReviewActionNotificationState::Success
+			: EReviewActionNotificationState::Fail,
+		true,
+		false);
 	return FReply::Handled();
 }
 void SBlueprintHelperReviewPanel::ShowReviewActionNotification(
@@ -1867,16 +1829,59 @@ void SBlueprintHelperReviewPanel::StartFlash()
 	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::TickFlash));
 }
 
-void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged()
+void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged(
+	const FBlueprintHelperReviewStoreChangedEvent& Event)
 {
-	if (!ReviewPanelPresenter.IsValid())
+	RequestPendingReviewLoad(TEXT("store_changed"), Event);
+}
+
+void SBlueprintHelperReviewPanel::RequestPendingReviewLoad(
+	const FString& Reason,
+	const FBlueprintHelperReviewStoreChangedEvent& SourceEvent)
+{
+	if (!PendingLoadCoordinator.IsValid())
 	{
 		return;
 	}
 
-	const TArray<FBlueprintHelperReviewVisibleChange> LatestChanges =
-		ReviewPanelPresenter->LoadPendingVisibleChanges();
-	const FString LatestSignature = BuildVisibleChangeRefreshSignature(LatestChanges);
+	FBlueprintHelperReviewPendingLoadRequest Request;
+	Request.Source = Reason;
+	Request.SourceEvent = !SourceEvent.bRequiresFullReload
+		&& SourceEvent.ChangeIds.Num() == 0
+		&& SourceEvent.AssetPaths.Num() == 0
+			? FBlueprintHelperReviewStoreChangedEvent::FullReload()
+			: SourceEvent;
+	PendingLoadCoordinator->RequestLoad(
+		Request,
+		FBlueprintHelperReviewPendingLoadCompleted::CreateSP(
+			this,
+			&SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted));
+	AddDebugMessage(FString::Printf(TEXT("Review pending load requested reason=%s"), *Reason));
+}
+
+void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
+	const FBlueprintHelperReviewPendingLoadResult& Result)
+{
+	if (Result.bDiscarded)
+	{
+		return;
+	}
+	if (!Result.bSucceeded)
+	{
+		AddDebugMessage(FString::Printf(
+			TEXT("Review pending load failed reason=%s error=%s"),
+			*Result.Source,
+			*Result.Error));
+		return;
+	}
+	if (OnValidityCandidatesReady.IsBound() && Result.ValidityCandidates.Num() > 0)
+	{
+		OnValidityCandidatesReady.Execute(Result.Source, Result.ValidityCandidates);
+	}
+
+	const TArray<FBlueprintHelperReviewVisibleChange> NextChanges =
+		BuildVisibleChangesAfterIncrementalLoad(Result);
+	const FString LatestSignature = BuildVisibleChangeRefreshSignature(NextChanges);
 	if (LatestSignature == LastVisibleChangeRefreshSignature)
 	{
 		return;
@@ -1894,7 +1899,7 @@ void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged()
 		}
 	}
 
-	RefreshVisibleChanges(LatestChanges);
+	ApplyVisibleChangesFromPendingLoad(Result, NextChanges);
 	LastVisibleChangeRefreshSignature = LatestSignature;
 	SelectedChange = FindChangeItemById(PreviousSelectedChangeId);
 	if (!SelectedChange.IsValid())
@@ -1904,8 +1909,119 @@ void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged()
 			PreviousSelectedIndex == INDEX_NONE ? 0 : PreviousSelectedIndex);
 	}
 
-	RefreshReviewUiAfterStateChanged(TEXT("store_refresh"), SelectedChange.IsValid() ? SelectedChange->AssetPath : FString());
-	AddDebugMessage(TEXT("Review store refreshed dynamically."));
+	RefreshChangeTreeWidget();
+	LoadReviewAssetFromSelection();
+	RefreshMainWorkspaceAfterReviewStateChanged();
+	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	AddDebugMessage(FString::Printf(
+		TEXT("Review store refreshed dynamically source=%s pending=%d"),
+		*Result.Source,
+		NextChanges.Num()));
+}
+
+TArray<FBlueprintHelperReviewVisibleChange>
+SBlueprintHelperReviewPanel::BuildVisibleChangesAfterIncrementalLoad(
+	const FBlueprintHelperReviewPendingLoadResult& Result) const
+{
+	if (Result.SourceEvent.bRequiresFullReload)
+	{
+		return Result.Changes;
+	}
+
+	TArray<FBlueprintHelperReviewVisibleChange> NextChanges = BuildPendingChangeSnapshot();
+	const auto EventTargetsChange = [&Result](const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		const bool bChangeMatches = Result.SourceEvent.ChangeIds.Num() == 0
+			|| Result.SourceEvent.ChangeIds.Contains(Change.ChangeId);
+		const bool bAssetMatches = Result.SourceEvent.AssetPaths.Num() == 0
+			|| Result.SourceEvent.AssetPaths.Contains(Change.AssetPath);
+		return bChangeMatches && bAssetMatches;
+	};
+
+	NextChanges.RemoveAll([&Result, &EventTargetsChange](const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		if (EventTargetsChange(Change))
+		{
+			return true;
+		}
+		for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
+		{
+			if (!Incoming.ChangeId.IsEmpty() && Incoming.ChangeId == Change.ChangeId)
+			{
+				return true;
+			}
+		}
+		return false;
+	});
+
+	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
+	{
+		NextChanges.Add(Incoming);
+	}
+	return NextChanges;
+}
+
+void SBlueprintHelperReviewPanel::ApplyVisibleChangesFromPendingLoad(
+	const FBlueprintHelperReviewPendingLoadResult& Result,
+	const TArray<FBlueprintHelperReviewVisibleChange>& NextChanges)
+{
+	if (Result.SourceEvent.bRequiresFullReload)
+	{
+		RefreshVisibleChanges(NextChanges);
+		return;
+	}
+
+	TSet<FString> IncomingChangeIds;
+	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
+	{
+		if (!Incoming.ChangeId.IsEmpty())
+		{
+			IncomingChangeIds.Add(Incoming.ChangeId);
+		}
+	}
+
+	const auto EventTargetsChange = [&Result, &IncomingChangeIds](const FReviewChangeItem& Item)
+	{
+		if (!Item.IsValid())
+		{
+			return true;
+		}
+		if (!Item->ChangeId.IsEmpty() && IncomingChangeIds.Contains(Item->ChangeId))
+		{
+			return true;
+		}
+		const bool bChangeMatches = Result.SourceEvent.ChangeIds.Num() == 0
+			|| Result.SourceEvent.ChangeIds.Contains(Item->ChangeId);
+		const bool bAssetMatches = Result.SourceEvent.AssetPaths.Num() == 0
+			|| Result.SourceEvent.AssetPaths.Contains(Item->AssetPath);
+		return bChangeMatches && bAssetMatches;
+	};
+
+	ChangeItems.RemoveAll(EventTargetsChange);
+	TSet<FString> SeenChangeIds;
+	for (const FReviewChangeItem& Item : ChangeItems)
+	{
+		if (Item.IsValid() && !Item->ChangeId.IsEmpty())
+		{
+			SeenChangeIds.Add(Item->ChangeId);
+		}
+	}
+	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
+	{
+		if (!Incoming.ChangeId.IsEmpty() && SeenChangeIds.Contains(Incoming.ChangeId))
+		{
+			continue;
+		}
+		if (!Incoming.ChangeId.IsEmpty())
+		{
+			SeenChangeIds.Add(Incoming.ChangeId);
+		}
+		ChangeItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Incoming));
+	}
+
+	RebuildReviewPanelStatePreservingTransient();
+	RebuildChangeTreeItems();
+	SyncReviewRowHighlightStates();
 }
 
 void SBlueprintHelperReviewPanel::RefreshDiffStackWidgets()

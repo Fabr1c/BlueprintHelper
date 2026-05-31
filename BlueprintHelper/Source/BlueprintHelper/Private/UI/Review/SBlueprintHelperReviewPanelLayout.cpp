@@ -2,7 +2,9 @@
 
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
+#include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettingsResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
@@ -21,11 +23,21 @@
 
 void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 {
+	const FBlueprintHelperReviewPerformanceSettings ReviewPerformanceSettings =
+		FBlueprintHelperUiSettingsResolver::LoadReviewPerformanceSettings();
+	FBlueprintHelperReviewPerformanceScope Scope(
+		TEXT("ReviewPanel.Construct"),
+		ReviewPerformanceSettings.TraceWarningMs);
+
 	ReviewPanelSettings = FBlueprintHelperReviewPanelSettingsResolver::Load();
 
 	ReviewPanelPresenter = MakeShared<FBlueprintHelperReviewPanelPresenter>(
 		InArgs._ReviewStoreService,
 		InArgs._ReviewActionService);
+	OnValidityCandidatesReady = InArgs._OnValidityCandidatesReady;
+	PendingLoadCoordinator = MakeShared<FBlueprintHelperReviewPendingLoadCoordinator>(
+		InArgs._ReviewStoreService,
+		ReviewPerformanceSettings);
 
 	const auto RatioAt = [](const TArray<float>& Values, const int32 Index, const float DefaultValue)
 	{
@@ -38,16 +50,15 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 		- RatioAt(ReviewPanelSettings.MainGraphRatio, 1, 0.20f));
 
 	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges = InArgs._InitialChanges;
-	if (InitialChanges.Num() == 0 && ReviewPanelPresenter.IsValid())
-	{
-		InitialChanges = ReviewPanelPresenter->LoadPendingVisibleChanges();
-	}
+	Scope.AddCount(TEXT("initial_changes"), InitialChanges.Num());
 	RefreshVisibleChanges(InitialChanges);
 	LastVisibleChangeRefreshSignature = BuildVisibleChangeRefreshSignature(InitialChanges);
 	if (ReviewPanelPresenter.IsValid())
 	{
-		PendingReviewChangedHandle = ReviewPanelPresenter->AddPendingReviewChangedHandler(
-			FSimpleDelegate::CreateSP(this, &SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged));
+		PendingReviewChangedHandle = ReviewPanelPresenter->AddPendingReviewChangedEventHandler(
+			FBlueprintHelperReviewStoreChangedMulticast::FDelegate::CreateSP(
+				this,
+				&SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged));
 	}
 	RowGeometryChangedHandle = FBlueprintHelperReviewSlateRowGeometryRegistry::AddRowsChangedHandler(
 		FBlueprintHelperReviewSlateRowLifecycleChanged::FDelegate::CreateSP(
@@ -133,6 +144,10 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	UpdateDetailsSelection();
 	SyncReviewRowHighlightStates(SelectedChange.IsValid() ? SelectedChange->AssetPath : FString());
 	RefreshDiffStackWidgets();
+	if (InitialChanges.Num() == 0)
+	{
+		RequestPendingReviewLoad(TEXT("construct"));
+	}
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildFinalChangeSidebar()

@@ -74,20 +74,20 @@ FBlueprintHelperReviewPanelPresenter::LoadPendingVisibleChanges() const
 		: TArray<FBlueprintHelperReviewVisibleChange>();
 }
 
-FDelegateHandle FBlueprintHelperReviewPanelPresenter::AddPendingReviewChangedHandler(
-	FSimpleDelegate InDelegate) const
+FDelegateHandle FBlueprintHelperReviewPanelPresenter::AddPendingReviewChangedEventHandler(
+	const FBlueprintHelperReviewStoreChangedMulticast::FDelegate& InDelegate) const
 {
 	return ReviewStoreService
-		? ReviewStoreService->AddPendingReviewChangedHandler(MoveTemp(InDelegate))
+		? ReviewStoreService->AddPendingReviewChangedEventHandler(InDelegate)
 		: FDelegateHandle();
 }
 
-void FBlueprintHelperReviewPanelPresenter::RemovePendingReviewChangedHandler(
+void FBlueprintHelperReviewPanelPresenter::RemovePendingReviewChangedEventHandler(
 	FDelegateHandle& InHandle) const
 {
 	if (ReviewStoreService && InHandle.IsValid())
 	{
-		ReviewStoreService->RemovePendingReviewChangedHandler(InHandle);
+		ReviewStoreService->RemovePendingReviewChangedEventHandler(InHandle);
 		InHandle.Reset();
 	}
 }
@@ -127,6 +127,21 @@ FBlueprintHelperReviewPanelPresenterEvent FBlueprintHelperReviewPanelPresenter::
 	return CommandResult.bCascade
 		? FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(CommandResult.CascadeActionResult)
 		: FBlueprintHelperReviewPanelPresenterEvent::FromActionResult(CommandResult.ActionResult);
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelPresenter::AcceptVisibleChangesBatch(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes) const
+{
+	return CommandService.AcceptVisibleChangesBatch(Changes);
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelPresenter::RejectVisibleChangesBatch(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
+	const FBlueprintHelperReviewRejectOptions& RejectOptions) const
+{
+	return CommandService.RejectVisibleChangesBatch(Changes, RejectOptions);
 }
 
 FBlueprintHelperReviewPanelPresenterEvent

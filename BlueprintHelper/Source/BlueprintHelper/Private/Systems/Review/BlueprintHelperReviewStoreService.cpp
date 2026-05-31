@@ -17,12 +17,54 @@
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
+#include "Systems/Review/BlueprintHelperReviewPendingIndexService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreJsonUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStorePathUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewUtils.h"
+
+namespace
+{
+	DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperReviewStore, Log, All);
+
+	FBlueprintHelperReviewStoreChangedMulticast& BlueprintHelperReviewStoreChangedDelegate()
+	{
+		static FBlueprintHelperReviewStoreChangedMulticast Delegate;
+		return Delegate;
+	}
+
+	void UpdatePendingIndexForSavedRecordBestEffort(const FBlueprintHelperReviewRecord& Record)
+	{
+		FBlueprintHelperReviewPendingIndexService IndexService;
+		FString IndexError;
+		if (!IndexService.ApplyRecordSaved(Record, IndexError))
+		{
+			UE_LOG(
+				LogBlueprintHelperReviewStore,
+				Warning,
+				TEXT("Failed to update pending review index for saved record %s: %s"),
+				*Record.ReviewRecordId,
+				*IndexError);
+		}
+	}
+
+	void UpdatePendingIndexForDeletedRecordBestEffort(const FString& ReviewRecordId)
+	{
+		FBlueprintHelperReviewPendingIndexService IndexService;
+		FString IndexError;
+		if (!IndexService.ApplyRecordDeleted(ReviewRecordId, IndexError))
+		{
+			UE_LOG(
+				LogBlueprintHelperReviewStore,
+				Warning,
+				TEXT("Failed to update pending review index for deleted record %s: %s"),
+				*ReviewRecordId,
+				*IndexError);
+		}
+	}
+}
 
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
 	const FString& GraphName,
@@ -407,6 +449,7 @@ bool FBlueprintHelperReviewStoreService::DeleteReviewRecord(
 	if (!IFileManager::Get().FileExists(*Path))
 	{
 		OutError.Reset();
+		UpdatePendingIndexForDeletedRecordBestEffort(ReviewRecordId);
 		return true;
 	}
 
@@ -417,6 +460,7 @@ bool FBlueprintHelperReviewStoreService::DeleteReviewRecord(
 	}
 
 	OutError.Reset();
+	UpdatePendingIndexForDeletedRecordBestEffort(ReviewRecordId);
 	return true;
 }
 
@@ -654,6 +698,7 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecord(
 		return false;
 	}
 
+	UpdatePendingIndexForSavedRecordBestEffort(RecordToWrite);
 	return true;
 }
 
@@ -720,6 +765,8 @@ bool FBlueprintHelperReviewStoreService::SaveReviewRecords(
 			OutError = FString::Printf(TEXT("failed to write review record: %s"), *Path);
 			return false;
 		}
+
+		UpdatePendingIndexForSavedRecordBestEffort(RecordToWrite);
 	}
 
 	return true;
@@ -870,62 +917,48 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewStoreService::LoadPendingVisibleChanges(
 	const FString& AssetPathFilter) const
 {
-	FBlueprintHelperReviewRecordQuery Query;
+	FBlueprintHelperReviewPendingIndexQuery Query;
 	Query.AssetPathFilter = AssetPathFilter;
 	Query.bPendingOnly = true;
+	Query.bSkipMissingAssetRecords = AssetPathFilter.IsEmpty();
 
 	TArray<FBlueprintHelperReviewVisibleChange> RecordChanges;
-	TArray<FBlueprintHelperReviewRecord> Records = QueryReviewRecords(Query);
-	Records.Sort([](const FBlueprintHelperReviewRecord& Left, const FBlueprintHelperReviewRecord& Right)
+	TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> PendingSummaries;
+	FString QueryError;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	if (!IndexService.QueryPendingVisibleChanges(Query, PendingSummaries, QueryError))
 	{
-		const FString LeftSessionOrder = !Left.SourceReviewSummary.CreatedAtLast.IsEmpty()
-			? Left.SourceReviewSummary.CreatedAtLast
-			: (!Left.SourceReviewSummary.CreatedAtFirst.IsEmpty() ? Left.SourceReviewSummary.CreatedAtFirst : Left.ArchiveSessionId);
-		const FString RightSessionOrder = !Right.SourceReviewSummary.CreatedAtLast.IsEmpty()
-			? Right.SourceReviewSummary.CreatedAtLast
-			: (!Right.SourceReviewSummary.CreatedAtFirst.IsEmpty() ? Right.SourceReviewSummary.CreatedAtFirst : Right.ArchiveSessionId);
-		if (LeftSessionOrder != RightSessionOrder)
-		{
-			return LeftSessionOrder < RightSessionOrder;
-		}
-		return Left.ReviewRecordId < Right.ReviewRecordId;
-	});
-	const bool bSkipMissingAssetRecords = AssetPathFilter.IsEmpty();
-	for (const FBlueprintHelperReviewRecord& Record : Records)
+		UE_LOG(
+			LogBlueprintHelperReviewStore,
+			Warning,
+			TEXT("Failed to query pending review index: %s"),
+			*QueryError);
+		return RecordChanges;
+	}
+
+	for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : PendingSummaries)
 	{
-		if (Record.StorageStatus != EBlueprintHelperReviewStorageStatus::Active)
-		{
-			continue;
-		}
-
-		if (bSkipMissingAssetRecords
-			&& !FBlueprintHelperReviewStoreTargetUtils::DoesReviewAssetPackageExist(Record.AssetPath))
-		{
-			continue;
-		}
-
-		for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
-		{
-			if (bSkipMissingAssetRecords
-				&& !Change.AssetPath.IsEmpty()
-				&& Change.AssetPath != Record.AssetPath
-				&& !FBlueprintHelperReviewStoreTargetUtils::DoesReviewAssetPackageExist(Change.AssetPath))
-			{
-				continue;
-			}
-
-			if (Change.Status == EBlueprintHelperReviewChangeStatus::Pending
-				|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
-				|| Change.Status == EBlueprintHelperReviewChangeStatus::RejectFailed)
-			{
-				RecordChanges.Add(Change);
-			}
-		}
+		RecordChanges.Add(Summary.Change);
 	}
 	FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(RecordChanges);
 	FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots(RecordChanges);
 	FBlueprintHelperReviewStoreTargetUtils::SortVisibleChangesByReviewOrder(RecordChanges);
 	return RecordChanges;
+}
+
+TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>
+FBlueprintHelperReviewStoreService::QueryPendingVisibleChangeSummaries(
+	const FBlueprintHelperReviewPendingIndexQuery& Query) const
+{
+	TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Changes;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	if (!IndexService.QueryPendingVisibleChanges(Query, Changes, Error))
+	{
+		UE_LOG(LogBlueprintHelperReviewStore, Warning, TEXT("Failed to query pending summaries: %s"), *Error);
+		Changes.Reset();
+	}
+	return Changes;
 }
 
 FDelegateHandle FBlueprintHelperReviewStoreService::AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const
@@ -941,16 +974,38 @@ void FBlueprintHelperReviewStoreService::RemovePendingReviewChangedHandler(FDele
 	}
 }
 
+FDelegateHandle FBlueprintHelperReviewStoreService::AddPendingReviewChangedEventHandler(
+	const FBlueprintHelperReviewStoreChangedMulticast::FDelegate& Handler) const
+{
+	return BlueprintHelperReviewStoreChangedDelegate().Add(Handler);
+}
+
+void FBlueprintHelperReviewStoreService::RemovePendingReviewChangedEventHandler(FDelegateHandle Handle) const
+{
+	if (Handle.IsValid())
+	{
+		BlueprintHelperReviewStoreChangedDelegate().Remove(Handle);
+	}
+}
+
 void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged() const
+{
+	NotifyPendingReviewChanged(FBlueprintHelperReviewStoreChangedEvent::FullReload());
+}
+
+void FBlueprintHelperReviewStoreService::NotifyPendingReviewChanged(
+	const FBlueprintHelperReviewStoreChangedEvent& Event) const
 {
 	if (IsInGameThread())
 	{
+		BlueprintHelperReviewStoreChangedDelegate().Broadcast(Event);
 		UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
 		return;
 	}
 
-	AsyncTask(ENamedThreads::GameThread, []()
+	AsyncTask(ENamedThreads::GameThread, [Event]()
 	{
+		BlueprintHelperReviewStoreChangedDelegate().Broadcast(Event);
 		UBlueprintHelperReviewUtils::BlueprintHelperReviewPendingReviewChangedDelegate().Broadcast();
 	});
 }
@@ -989,7 +1044,9 @@ void FBlueprintHelperReviewStoreService::GroupAtomicVisibleChange(
 	}
 
 	const FBlueprintHelperReviewAtomicTarget& Target = AtomicChange.AtomicTargets[0];
-	const FString ScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Target, AtomicChange.LocationKey);
+	const FString ScopeIdentity = !Target.VisualGroupKey.IsEmpty()
+		? Target.VisualGroupKey
+		: FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(Target, AtomicChange.LocationKey);
 	const FString GroupKey = FString::Printf(
 		TEXT("%s|%s"),
 		*AtomicChange.AssetPath,

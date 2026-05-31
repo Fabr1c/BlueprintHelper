@@ -40,6 +40,8 @@ public:
 				const TArray<FString>& TargetKeys);
 	static TArray<FPersistedReviewTargetMatch> ResolvePersistedReviewTargetMatches(
 				const FBlueprintHelperReviewVisibleChange& Change);
+	static TArray<FPersistedReviewTargetMatch> ResolvePersistedReviewTargetMatchesBatch(
+				const TArray<FBlueprintHelperReviewVisibleChange>& Changes);
 	static bool TryResolvePersistedReviewChange(
 				const FBlueprintHelperReviewVisibleChange& Change,
 				FString& OutReviewRecordId,

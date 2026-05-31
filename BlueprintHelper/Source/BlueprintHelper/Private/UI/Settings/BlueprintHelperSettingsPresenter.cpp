@@ -448,6 +448,68 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			LOCTEXT("ReviewDebugBundleEnforceRootPathLabel", "限制 DebugBundle 根路径"),
 			LOCTEXT("ReviewDebugBundleEnforceRootPathHint", "开启后，DebugBundle 输出必须位于配置的根目录内。"),
 			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.trace_warning_ms"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceTraceWarningMsLabel", "Review 性能日志阈值"),
+			LOCTEXT("ReviewPerformanceTraceWarningMsHint", "控制 Review 性能计时超过多少毫秒后写入 Warning 日志；0 表示所有计时都按 Warning 记录。"),
+			0,
+			60000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.main_window_page_construct_warning_ms"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformancePageConstructWarningMsLabel", "页面构造日志阈值"),
+			LOCTEXT("ReviewPerformancePageConstructWarningMsHint", "控制 BlueprintHelper 主窗口懒构造页面超过多少毫秒后写入 Warning 日志。"),
+			0,
+			60000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.pending_load_validity_candidate_budget"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformancePendingLoadValidityCandidateBudgetLabel", "Pending 校验候选数量"),
+			LOCTEXT("ReviewPerformancePendingLoadValidityCandidateBudgetHint", "控制一次 pending load 最多向低速有效性扫描队列提交多少个 ReviewEvent 校验候选。"),
+			0,
+			100000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("review.performance.validity_sweep_enabled"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceValiditySweepEnabledLabel", "启用低速有效性扫描"),
+			LOCTEXT("ReviewPerformanceValiditySweepEnabledHint", "开启后，BlueprintHelperWidget 打开时会低速检查 pending ReviewEvent 对应的真实资产、变量、函数和其他锚点是否仍然存在。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.validity_sweep_max_record_hydrations_per_worker_batch"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceValiditySweepWorkerBatchLabel", "每批读取 ReviewRecord 数"),
+			LOCTEXT("ReviewPerformanceValiditySweepWorkerBatchHint", "控制低速有效性扫描 worker 每批最多读取多少个 ReviewRecord JSON 来生成纯数据候选。"),
+			0,
+			10000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.validity_sweep_max_game_thread_targets_per_frame"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceValiditySweepTargetsPerFrameLabel", "每帧校验目标数"),
+			LOCTEXT("ReviewPerformanceValiditySweepTargetsPerFrameHint", "控制低速有效性扫描每帧最多在 GameThread 校验多少个真实资产锚点。"),
+			0,
+			1000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
+			TEXT("review.performance.validity_sweep_max_game_thread_ms_per_frame"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceValiditySweepMsPerFrameLabel", "每帧校验毫秒数"),
+			LOCTEXT("ReviewPerformanceValiditySweepMsPerFrameHint", "控制低速有效性扫描每帧最多占用多少毫秒 GameThread 时间。"),
+			0.0,
+			100.0,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.validity_sweep_max_invalid_purges_per_batch"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformanceValiditySweepInvalidPurgeBatchLabel", "每批清理无效项数"),
+			LOCTEXT("ReviewPerformanceValiditySweepInvalidPurgeBatchHint", "控制低速有效性扫描一次最多向 ReviewStore 提交多少个无效 ReviewEvent target 清理结果。"),
+			0,
+			10000,
+			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.asset_factory.default_parent_class"),
 			DeveloperToolClusterCategory,

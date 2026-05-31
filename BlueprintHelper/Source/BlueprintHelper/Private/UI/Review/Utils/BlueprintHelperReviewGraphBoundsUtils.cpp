@@ -215,6 +215,10 @@ bool FBlueprintHelperReviewGraphBoundsUtils::TryReadAnchorJson(
 	}
 
 	Json->TryGetStringField(TEXT("anchor_source"), OutRecordedBounds.AnchorSource);
+	if (OutRecordedBounds.AnchorSource.IsEmpty())
+	{
+		OutRecordedBounds.AnchorSource = TEXT("structured");
+	}
 	FVector2D GraphPosition = FVector2D::ZeroVector;
 	FVector2D GraphSize = FVector2D(360.0f, 180.0f);
 	bool bHasGraphBounds = false;

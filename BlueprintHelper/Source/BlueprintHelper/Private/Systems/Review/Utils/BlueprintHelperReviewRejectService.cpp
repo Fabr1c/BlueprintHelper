@@ -84,6 +84,22 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 			{
 				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("missing_anchor"));
 			}
+			UBlueprintHelperReviewUtils::CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
+			if (!CurrentStateDiagnostic.HashGuardTargetKey.IsEmpty()
+				&& !FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
+			{
+				FBlueprintHelperReviewActionResult Result =
+					FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+						Change,
+						EBlueprintHelperReviewChangeStatus::NeedsAction,
+						TEXT("current_state_changed"));
+				Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
+				Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
+				Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
+				Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
+				Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
+				return Result;
+			}
 			if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
 				&& Target.BeforeSnapshotJson.IsEmpty())
 			{
@@ -92,12 +108,25 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 					EBlueprintHelperReviewChangeStatus::NeedsAction,
 					TEXT("missing_recoverable_snapshot"));
 			}
-			UBlueprintHelperReviewUtils::CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
 			if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 			{
 				FString SnapshotRestoreError;
 				if (!FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
 				{
+					if (!CurrentStateDiagnostic.HashGuardTargetKey.IsEmpty())
+					{
+						FBlueprintHelperReviewActionResult Result =
+							FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+								Change,
+								EBlueprintHelperReviewChangeStatus::NeedsAction,
+								TEXT("current_state_changed"));
+						Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
+						Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
+						Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
+						Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
+						Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
+						return Result;
+					}
 					return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
 						Change,
 						SnapshotRestoreError.Contains(TEXT("_recreate_required"))

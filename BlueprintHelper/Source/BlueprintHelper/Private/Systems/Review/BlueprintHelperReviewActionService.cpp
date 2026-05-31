@@ -94,6 +94,11 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptVi
 	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 	Result.Message = TEXT("persisted_review_targets_not_found");
+	Result.bSucceeded = true;
+	Result.NewStatus = EBlueprintHelperReviewChangeStatus::Accepted;
+	Result.Message = TEXT("accepted");
+	Result.bSupersededDataCompactionEligible =
+		Change.SourceEvidenceIds.Num() > FMath::Max(1, Change.LatestEvidenceIds.Num());
 	return Result;
 }
 
@@ -207,6 +212,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			FString SnapshotRestoreError;
 			if (!FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
 			{
+				if (!Result.HashGuardTargetKey.IsEmpty())
+				{
+					Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+					Result.Message = TEXT("current_state_changed");
+					return Result;
+				}
 				Result.NewStatus = SnapshotRestoreError.Contains(TEXT("_recreate_required"))
 					? EBlueprintHelperReviewChangeStatus::NeedsAction
 					: EBlueprintHelperReviewChangeStatus::RejectFailed;
@@ -214,6 +225,12 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 				return Result;
 			}
 			continue;
+		}
+		if (!Result.HashGuardTargetKey.IsEmpty())
+		{
+			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+			Result.Message = TEXT("current_state_changed");
+			return Result;
 		}
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 		Result.Message = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
@@ -345,7 +362,10 @@ void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(
 		DebugInput.EvidenceLinks.Add(EvidenceLink);
 	}
 	DebugInput.Error.Code = DebugInput.Source;
-	DebugInput.Error.Message = RejectMessage;
+	DebugInput.Error.Message = RejectStatus == EBlueprintHelperReviewChangeStatus::RejectFailed
+		&& !RejectMessage.Contains(TEXT("rollback_backend_failed"))
+		? FString::Printf(TEXT("rollback_backend_failed:%s"), *RejectMessage)
+		: RejectMessage;
 	DebugInput.RecommendedNext = TEXT("get_debug_case");
 	DebugInput.ToolResultSummary = ToolSummary;
 
@@ -545,6 +565,77 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	Result.Message = LastMessage;
 	Result.bSupersededDataCompactionEligible = bAllTargetStatusesRejected;
 	return Result;
+}
+
+FBlueprintHelperReviewBatchActionResult FBlueprintHelperReviewActionService::AcceptReviewTargetsBatch(
+	const TMap<FString, TArray<FString>>& TargetKeysByReviewRecordId) const
+{
+	FBlueprintHelperReviewBatchActionResult BatchResult;
+	for (const TPair<FString, TArray<FString>>& Pair : TargetKeysByReviewRecordId)
+	{
+		BatchResult.RequestedCount += Pair.Value.Num();
+		if (Pair.Key.IsEmpty() || Pair.Value.Num() == 0)
+		{
+			continue;
+		}
+
+		const FBlueprintHelperReviewActionResult RecordResult =
+			AcceptReviewTargets(Pair.Key, Pair.Value);
+		BatchResult.Results.Add(RecordResult);
+		if (RecordResult.bSucceeded)
+		{
+			BatchResult.SucceededCount += Pair.Value.Num();
+			BatchResult.ChangedReviewRecordIds.AddUnique(Pair.Key);
+		}
+		else
+		{
+			BatchResult.FailedCount += Pair.Value.Num();
+			BatchResult.Message = RecordResult.Message;
+		}
+	}
+
+	BatchResult.bSucceeded = BatchResult.RequestedCount > 0 && BatchResult.FailedCount == 0;
+	if (BatchResult.Message.IsEmpty())
+	{
+		BatchResult.Message = BatchResult.bSucceeded ? TEXT("accepted_batch") : TEXT("no_pending_review_targets");
+	}
+	return BatchResult;
+}
+
+FBlueprintHelperReviewBatchActionResult FBlueprintHelperReviewActionService::RejectReviewTargetsBatch(
+	const TMap<FString, TArray<FString>>& TargetKeysByReviewRecordId,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	FBlueprintHelperReviewBatchActionResult BatchResult;
+	for (const TPair<FString, TArray<FString>>& Pair : TargetKeysByReviewRecordId)
+	{
+		BatchResult.RequestedCount += Pair.Value.Num();
+		if (Pair.Key.IsEmpty() || Pair.Value.Num() == 0)
+		{
+			continue;
+		}
+
+		const FBlueprintHelperReviewActionResult RecordResult =
+			RejectReviewTargets(Pair.Key, Pair.Value, Options);
+		BatchResult.Results.Add(RecordResult);
+		if (RecordResult.bSucceeded)
+		{
+			BatchResult.SucceededCount += Pair.Value.Num();
+			BatchResult.ChangedReviewRecordIds.AddUnique(Pair.Key);
+		}
+		else
+		{
+			BatchResult.FailedCount += Pair.Value.Num();
+			BatchResult.Message = RecordResult.Message;
+		}
+	}
+
+	BatchResult.bSucceeded = BatchResult.RequestedCount > 0 && BatchResult.FailedCount == 0;
+	if (BatchResult.Message.IsEmpty())
+	{
+		BatchResult.Message = BatchResult.bSucceeded ? TEXT("rejected_batch") : TEXT("no_pending_review_targets");
+	}
+	return BatchResult;
 }
 
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectAll(

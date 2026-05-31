@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/Review/BlueprintHelperReviewPendingIndex.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 class FJsonObject;
@@ -76,9 +77,16 @@ public:
 	TArray<FBlueprintHelperReviewVisibleChange> LoadPendingVisibleChanges(
 		const FString& AssetPathFilter = TEXT("")) const;
 
+	TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> QueryPendingVisibleChangeSummaries(
+		const FBlueprintHelperReviewPendingIndexQuery& Query = FBlueprintHelperReviewPendingIndexQuery()) const;
+
 	FDelegateHandle AddPendingReviewChangedHandler(const FSimpleDelegate& Handler) const;
 	void RemovePendingReviewChangedHandler(FDelegateHandle Handle) const;
+	FDelegateHandle AddPendingReviewChangedEventHandler(
+		const FBlueprintHelperReviewStoreChangedMulticast::FDelegate& Handler) const;
+	void RemovePendingReviewChangedEventHandler(FDelegateHandle Handle) const;
 	void NotifyPendingReviewChanged() const;
+	void NotifyPendingReviewChanged(const FBlueprintHelperReviewStoreChangedEvent& Event) const;
 
 private:
 	FBlueprintHelperReviewVisibleChange MakeVisibleChange(
