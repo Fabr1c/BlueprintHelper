@@ -31,7 +31,7 @@ FBlueprintHelperInputDocument FBlueprintHelperWorkbenchInputClassifier::Classify
 		Document.InputType = EBlueprintHelperWorkbenchInputType::T3D;
 		Document.bRecognized = true;
 		Document.bParseSucceeded = true;
-		Document.StatusText = TEXT("Blueprint T3D detected. Export logicmd or logicjson to clipboard.");
+		Document.StatusText = TEXT("Blueprint T3D detected. Export logicflow, logicmd, or logicjson to clipboard.");
 		return Document;
 	}
 
@@ -81,6 +81,16 @@ FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService
 	if (!UBlueprintHelperTaskSpecWorkbenchUtils::TryDeserializeJsonObject(RawJsonText, RawJsonRoot, Error))
 	{
 		Result.Message = FString::Printf(TEXT("Converted T3D JSON could not be parsed: %s"), *Error);
+		return Result;
+	}
+
+	if (Request.Format == EBlueprintHelperReadContextExportFormat::LogicFlow)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicFlowPayload(RawJsonRoot, Payload);
+		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
+		Result.bSucceeded = true;
+		Result.Message = TEXT("logicflow copied to clipboard.");
 		return Result;
 	}
 

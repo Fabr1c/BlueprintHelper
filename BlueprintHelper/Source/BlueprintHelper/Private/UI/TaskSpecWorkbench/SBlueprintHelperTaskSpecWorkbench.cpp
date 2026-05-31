@@ -21,13 +21,18 @@
 #include "Widgets/Views/STableRow.h"
 
 
-namespace BlueprintHelperTaskSpecWorkbenchLocal
+class FBlueprintHelperTaskSpecWorkbenchLocalSettings
 {
-	TMap<const SBlueprintHelperTaskSpecWorkbench*, FBlueprintHelperTaskSpecWorkbenchSettings> GSettingsByWidget;
-
-	const FBlueprintHelperTaskSpecWorkbenchSettings& GetSettings(const SBlueprintHelperTaskSpecWorkbench* Widget)
+public:
+	static TMap<const SBlueprintHelperTaskSpecWorkbench*, FBlueprintHelperTaskSpecWorkbenchSettings>& SettingsByWidget()
 	{
-		if (const FBlueprintHelperTaskSpecWorkbenchSettings* Settings = GSettingsByWidget.Find(Widget))
+		static TMap<const SBlueprintHelperTaskSpecWorkbench*, FBlueprintHelperTaskSpecWorkbenchSettings> Settings;
+		return Settings;
+	}
+
+	static const FBlueprintHelperTaskSpecWorkbenchSettings& GetSettings(const SBlueprintHelperTaskSpecWorkbench* Widget)
+	{
+		if (const FBlueprintHelperTaskSpecWorkbenchSettings* Settings = SettingsByWidget().Find(Widget))
 		{
 			return *Settings;
 		}
@@ -35,14 +40,16 @@ namespace BlueprintHelperTaskSpecWorkbenchLocal
 		static const FBlueprintHelperTaskSpecWorkbenchSettings DefaultSettings;
 		return DefaultSettings;
 	}
-}
+};
+
 void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 {
 	GraphResolver = InArgs._GraphResolver;
-	BlueprintHelperTaskSpecWorkbenchLocal::GSettingsByWidget.Add(
+	FBlueprintHelperTaskSpecWorkbenchLocalSettings::SettingsByWidget().Add(
 		this,
 		FBlueprintHelperUiSettingsResolver::LoadTaskSpecWorkbenchSettings());
-	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
+	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings =
+		FBlueprintHelperTaskSpecWorkbenchLocalSettings::GetSettings(this);
 	Presenter = MakeShared<FBlueprintHelperTaskSpecWorkbenchPresenter>([this]()
 	{
 		return GetCurrentTargetGraph();
@@ -62,8 +69,17 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 			.Padding(WorkbenchSettings.ButtonSpacing)
 			[
 				SNew(SButton)
+				.Text(FText::FromString(TEXT("Export logicflow")))
+				.ToolTipText(FText::FromString(TEXT("Recommended first: exports compact LogicFlow.v1 execution/data flow for quickly understanding simple entries. Not an anchor source.")))
+				.OnClicked(this, &SBlueprintHelperTaskSpecWorkbench::OnExportLogicFlowClicked)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(WorkbenchSettings.ButtonSpacing)
+			[
+				SNew(SButton)
 				.Text(FText::FromString(TEXT("Export logicmd")))
-				.ToolTipText(FText::FromString(TEXT("Export current T3D input as ReadContext logicmd and copy it to clipboard.")))
+				.ToolTipText(FText::FromString(TEXT("Exports medium-density LogicMD readable nodes and links. Recommended when logicflow is too compact for branched or larger entries.")))
 				.OnClicked(this, &SBlueprintHelperTaskSpecWorkbench::OnExportLogicMdClicked)
 			]
 			+ SHorizontalBox::Slot()
@@ -72,7 +88,7 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Export logicjson")))
-				.ToolTipText(FText::FromString(TEXT("Export current T3D input as ReadContext logicjson and copy it to clipboard.")))
+				.ToolTipText(FText::FromString(TEXT("Exports structured LogicJson with the most detail. Recommended for precise analysis, diff, patch/merge anchors, and debug.")))
 				.OnClicked(this, &SBlueprintHelperTaskSpecWorkbench::OnExportLogicJsonClicked)
 			]
 			+ SHorizontalBox::Slot()
@@ -145,6 +161,15 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 		HandlePresenterEvent(Event);
 	});
 	RefreshFromSnapshot(Presenter->GetSnapshot());
+}
+
+FReply SBlueprintHelperTaskSpecWorkbench::OnExportLogicFlowClicked()
+{
+	return Presenter.IsValid()
+		? Presenter->HandleVisualEvent(
+			FBlueprintHelperTaskSpecWorkbenchVisualEvent::ExportReadContext(
+				EBlueprintHelperReadContextExportFormat::LogicFlow))
+		: FReply::Handled();
 }
 
 FReply SBlueprintHelperTaskSpecWorkbench::OnExportLogicMdClicked()
@@ -342,7 +367,8 @@ void SBlueprintHelperTaskSpecWorkbench::OnCandidateCheckStateChanged(
 
 TSharedRef<SWidget> SBlueprintHelperTaskSpecWorkbench::BuildPreviewContent() const
 {
-		const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
+		const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings =
+			FBlueprintHelperTaskSpecWorkbenchLocalSettings::GetSettings(this);
 TSharedRef<SVerticalBox> NonGraphBox = SNew(SVerticalBox);
 	TSharedRef<SGridPanel> GraphGrid = SNew(SGridPanel);
 	int32 NonGraphCount = 0;
@@ -414,7 +440,8 @@ TSharedRef<SVerticalBox> NonGraphBox = SNew(SVerticalBox);
 TSharedRef<SWidget> SBlueprintHelperTaskSpecWorkbench::BuildPreviewBlockWidget(
 	const FBlueprintHelperTaskSpecPreviewBlock& Block) const
 {
-	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings = BlueprintHelperTaskSpecWorkbenchLocal::GetSettings(this);
+	const FBlueprintHelperTaskSpecWorkbenchSettings& WorkbenchSettings =
+		FBlueprintHelperTaskSpecWorkbenchLocalSettings::GetSettings(this);
 	FLinearColor BlockColor = WorkbenchSettings.DefaultBlockColor;
 	if (Block.Kind == EBlueprintHelperTaskSpecPreviewBlockKind::GraphLogic)
 	{

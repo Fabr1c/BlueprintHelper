@@ -13,6 +13,107 @@
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 
+class FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils
+{
+public:
+	static FString ReadNestedStringField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* ParentField,
+		const TCHAR* ChildField)
+	{
+		const TSharedPtr<FJsonObject>* ParentObject = nullptr;
+		if (!Object.IsValid()
+			|| !Object->TryGetObjectField(ParentField, ParentObject)
+			|| !ParentObject
+			|| !ParentObject->IsValid())
+		{
+			return FString();
+		}
+
+		FString Value;
+		(*ParentObject)->TryGetStringField(ChildField, Value);
+		return Value;
+	}
+
+	static FString ResolveLogicFlowNodeName(const TSharedPtr<FJsonObject>& NodeObject)
+	{
+		if (!NodeObject.IsValid())
+		{
+			return TEXT("(unnamed)");
+		}
+
+		FString NodeName;
+		NodeObject->TryGetStringField(TEXT("name"), NodeName);
+		if (NodeName.IsEmpty())
+		{
+			NodeObject->TryGetStringField(TEXT("function_name"), NodeName);
+		}
+		if (NodeName.IsEmpty())
+		{
+			NodeName = ReadNestedStringField(NodeObject, TEXT("event"), TEXT("event_name"));
+		}
+		if (NodeName.IsEmpty())
+		{
+			NodeName = ReadNestedStringField(NodeObject, TEXT("variable"), TEXT("name"));
+		}
+		if (NodeName.IsEmpty())
+		{
+			NodeObject->TryGetStringField(TEXT("id"), NodeName);
+		}
+		if (NodeName.IsEmpty())
+		{
+			NodeObject->TryGetStringField(TEXT("type"), NodeName);
+		}
+
+		return NodeName.IsEmpty() ? TEXT("(unnamed)") : NodeName;
+	}
+
+	static void AppendUniqueWarning(
+		TArray<TSharedPtr<FJsonValue>>& WarningValues,
+		TSet<FString>& SeenWarnings,
+		const FString& Warning)
+	{
+		if (Warning.IsEmpty() || SeenWarnings.Contains(Warning))
+		{
+			return;
+		}
+
+		SeenWarnings.Add(Warning);
+		WarningValues.Add(MakeShared<FJsonValueString>(Warning));
+	}
+
+	static void AppendFlowNode(
+		const FString& NodeId,
+		const TMap<FString, FString>& NodeNames,
+		TSet<FString>& VisitedNodeIds,
+		TArray<FString>& OrderedNodeNames)
+	{
+		if (NodeId.IsEmpty() || VisitedNodeIds.Contains(NodeId))
+		{
+			return;
+		}
+
+		const FString* NodeName = NodeNames.Find(NodeId);
+		if (!NodeName)
+		{
+			return;
+		}
+
+		VisitedNodeIds.Add(NodeId);
+		OrderedNodeNames.Add(*NodeName);
+	}
+
+	static FString BuildFlowSummary(const TArray<FString>& OrderedNodeNames)
+	{
+		if (OrderedNodeNames.Num() == 0)
+		{
+			return TEXT("(empty)");
+		}
+
+		return FString::Join(OrderedNodeNames, TEXT(" -> "));
+	}
+};
+
 FString UBlueprintHelperTaskSpecWorkbenchUtils::SanitizeIdSegment(const FString& Value)
 {
 	FString Result = Value;
@@ -509,6 +610,194 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(
 	OutPayload->SetStringField(TEXT("source"), TEXT("t3d_clipboard"));
 	OutPayload->SetObjectField(TEXT("logic"), LogicObject);
 	OutPayload->SetObjectField(TEXT("stats"), StatsObject);
+}
+
+void UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicFlowPayload(
+	const TSharedPtr<FJsonObject>& RawJsonRoot,
+	TSharedRef<FJsonObject> OutPayload)
+{
+	const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Links = nullptr;
+	RawJsonRoot->TryGetArrayField(TEXT("nodes"), Nodes);
+	RawJsonRoot->TryGetArrayField(TEXT("links"), Links);
+
+	TMap<FString, FString> NodeNames;
+	TMap<FString, int32> NodeOrder;
+	TArray<FString> NodeIdsInOrder;
+	if (Nodes)
+	{
+		for (int32 Index = 0; Index < Nodes->Num(); ++Index)
+		{
+			const TSharedPtr<FJsonObject> NodeObject = (*Nodes)[Index].IsValid()
+				? (*Nodes)[Index]->AsObject()
+				: nullptr;
+			if (!NodeObject.IsValid())
+			{
+				continue;
+			}
+
+			FString NodeId = ReadStringField(NodeObject, TEXT("id"));
+			if (NodeId.IsEmpty())
+			{
+				NodeId = FString::Printf(TEXT("node_%d"), Index);
+			}
+
+			NodeNames.Add(NodeId, FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::ResolveLogicFlowNodeName(NodeObject));
+			NodeOrder.Add(NodeId, Index);
+			NodeIdsInOrder.Add(NodeId);
+		}
+	}
+
+	int32 ExecLinkCount = 0;
+	int32 DataLinkCount = 0;
+	TMap<FString, TArray<FString>> OutgoingExecLinks;
+	TMap<FString, int32> IncomingExecCounts;
+	TArray<TSharedPtr<FJsonValue>> WarningValues;
+	TSet<FString> SeenWarnings;
+	if (Links)
+	{
+		for (const TSharedPtr<FJsonValue>& LinkValue : *Links)
+		{
+			const TSharedPtr<FJsonObject> LinkObject = LinkValue.IsValid()
+				? LinkValue->AsObject()
+				: nullptr;
+			if (!LinkObject.IsValid())
+			{
+				FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::AppendUniqueWarning(
+					WarningValues,
+					SeenWarnings,
+					TEXT("unknown_link"));
+				continue;
+			}
+
+			const FString LinkKind = ReadStringField(LinkObject, TEXT("kind"));
+			if (LinkKind.Equals(TEXT("exec"), ESearchCase::IgnoreCase))
+			{
+				++ExecLinkCount;
+				const FString FromId = ReadStringField(LinkObject, TEXT("from_id"));
+				const FString ToId = ReadStringField(LinkObject, TEXT("to_id"));
+				if (!FromId.IsEmpty() && !ToId.IsEmpty())
+				{
+					OutgoingExecLinks.FindOrAdd(FromId).Add(ToId);
+					IncomingExecCounts.FindOrAdd(ToId)++;
+				}
+				continue;
+			}
+
+			if (LinkKind.Equals(TEXT("data"), ESearchCase::IgnoreCase))
+			{
+				++DataLinkCount;
+				continue;
+			}
+
+			FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::AppendUniqueWarning(
+				WarningValues,
+				SeenWarnings,
+				TEXT("unknown_link"));
+		}
+	}
+
+	for (TPair<FString, TArray<FString>>& Pair : OutgoingExecLinks)
+	{
+		Pair.Value.Sort([&NodeOrder](const FString& Left, const FString& Right)
+		{
+			const int32* LeftIndexPtr = NodeOrder.Find(Left);
+			const int32* RightIndexPtr = NodeOrder.Find(Right);
+			const int32 LeftIndex = LeftIndexPtr ? *LeftIndexPtr : MAX_int32;
+			const int32 RightIndex = RightIndexPtr ? *RightIndexPtr : MAX_int32;
+			if (LeftIndex != RightIndex)
+			{
+				return LeftIndex < RightIndex;
+			}
+
+			return Left < Right;
+		});
+	}
+
+	TArray<FString> OrderedNodeNames;
+	TSet<FString> VisitedNodeIds;
+	if (ExecLinkCount > 0)
+	{
+		TArray<FString> RootExecNodeIds;
+		for (const FString& NodeId : NodeIdsInOrder)
+		{
+			if (OutgoingExecLinks.Contains(NodeId) && IncomingExecCounts.FindRef(NodeId) == 0)
+			{
+				RootExecNodeIds.Add(NodeId);
+			}
+		}
+
+		if (RootExecNodeIds.Num() == 0)
+		{
+			for (const FString& NodeId : NodeIdsInOrder)
+			{
+				if (OutgoingExecLinks.Contains(NodeId))
+				{
+					RootExecNodeIds.Add(NodeId);
+				}
+			}
+		}
+
+		for (const FString& RootNodeId : RootExecNodeIds)
+		{
+			FString CurrentNodeId = RootNodeId;
+			while (!CurrentNodeId.IsEmpty())
+			{
+				FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::AppendFlowNode(
+					CurrentNodeId,
+					NodeNames,
+					VisitedNodeIds,
+					OrderedNodeNames);
+
+				const TArray<FString>* NextNodeIds = OutgoingExecLinks.Find(CurrentNodeId);
+				if (!NextNodeIds)
+				{
+					break;
+				}
+
+				FString NextNodeId;
+				for (const FString& CandidateNodeId : *NextNodeIds)
+				{
+					if (!VisitedNodeIds.Contains(CandidateNodeId))
+					{
+						NextNodeId = CandidateNodeId;
+						break;
+					}
+				}
+				if (NextNodeId.IsEmpty())
+				{
+					break;
+				}
+
+				CurrentNodeId = NextNodeId;
+			}
+		}
+	}
+
+	for (const FString& NodeId : NodeIdsInOrder)
+	{
+		FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::AppendFlowNode(
+			NodeId,
+			NodeNames,
+			VisitedNodeIds,
+			OrderedNodeNames);
+	}
+
+	TSharedRef<FJsonObject> StatsObject = MakeShared<FJsonObject>();
+	StatsObject->SetNumberField(TEXT("nodes"), Nodes ? Nodes->Num() : 0);
+	StatsObject->SetNumberField(TEXT("exec_links"), ExecLinkCount);
+	StatsObject->SetNumberField(TEXT("data_links"), DataLinkCount);
+	StatsObject->SetNumberField(TEXT("links"), Links ? Links->Num() : 0);
+
+	OutPayload->SetStringField(TEXT("schema"), TEXT("LogicFlow.v1"));
+	OutPayload->SetStringField(
+		TEXT("mode"),
+		ExecLinkCount > 0 ? TEXT("execflow") : TEXT("dataflow"));
+	OutPayload->SetStringField(
+		TEXT("flow"),
+		FBlueprintHelperTaskSpecWorkbenchLogicFlowUtils::BuildFlowSummary(OrderedNodeNames));
+	OutPayload->SetObjectField(TEXT("stats"), StatsObject);
+	OutPayload->SetArrayField(TEXT("warnings"), WarningValues);
 }
 
 FString UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicMdFromRawJson(const TSharedPtr<FJsonObject>& RawJsonRoot)

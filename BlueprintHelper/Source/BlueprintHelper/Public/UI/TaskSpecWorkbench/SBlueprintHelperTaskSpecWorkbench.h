@@ -31,6 +31,7 @@ public:
 	void Construct(const FArguments& InArgs);
 
 private:
+	FReply OnExportLogicFlowClicked();
 	FReply OnExportLogicMdClicked();
 	FReply OnExportLogicJsonClicked();
 	void OnInputTextChanged(const FText& InText);

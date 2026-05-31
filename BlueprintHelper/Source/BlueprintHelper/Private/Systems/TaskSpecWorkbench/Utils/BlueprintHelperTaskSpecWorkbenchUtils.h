@@ -77,6 +77,8 @@ public:
 
 	static void AddTopLevelNonGraphBlock(const TSharedPtr<FJsonObject>& RootObject, const TCHAR* FieldName, FBlueprintHelperTaskSpecPreviewModel& Model);
 
+	static void BuildLogicFlowPayload(const TSharedPtr<FJsonObject>& RawJsonRoot, TSharedRef<FJsonObject> OutPayload);
+
 	static void BuildLogicJsonPayload(const TSharedPtr<FJsonObject>& RawJsonRoot, TSharedRef<FJsonObject> OutPayload);
 
 	static FString BuildLogicMdFromRawJson(const TSharedPtr<FJsonObject>& RawJsonRoot);
