@@ -244,6 +244,10 @@ TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet)
 	Json->SetNumberField(TEXT("pure_input_offset_x"), RuleSet.PureInputOffsetX);
 	Json->SetNumberField(TEXT("variable_input_offset_x"), RuleSet.VariableInputOffsetX);
 	Json->SetNumberField(TEXT("input_pin_row_spacing"), RuleSet.InputPinRowSpacing);
+	Json->SetNumberField(TEXT("collision_padding_x"), RuleSet.CollisionPaddingX);
+	Json->SetNumberField(TEXT("collision_padding_y"), RuleSet.CollisionPaddingY);
+	Json->SetNumberField(TEXT("collision_step_y"), RuleSet.CollisionStepY);
+	Json->SetNumberField(TEXT("max_collision_attempts"), RuleSet.MaxCollisionAttempts);
 	Json->SetBoolField(TEXT("target_pin_order_variable_input_alignment"), RuleSet.bUseTargetPinOrderForVariableInputs);
 	Json->SetBoolField(TEXT("move_generated_nodes"), RuleSet.bMoveGeneratedNodes);
 	Json->SetBoolField(TEXT("move_existing_nodes"), RuleSet.bMoveExistingNodes);

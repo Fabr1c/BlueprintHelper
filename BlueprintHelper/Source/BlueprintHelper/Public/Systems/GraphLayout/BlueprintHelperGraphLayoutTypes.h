@@ -62,6 +62,10 @@ struct FRuleSet
 	float PureInputOffsetX = 300.0f;
 	float VariableInputOffsetX = 260.0f;
 	float InputPinRowSpacing = 44.0f;
+	float CollisionPaddingX = 60.0f;
+	float CollisionPaddingY = 40.0f;
+	float CollisionStepY = 64.0f;
+	int32 MaxCollisionAttempts = 64;
 	bool bUseTargetPinOrderForVariableInputs = true;
 	bool bMoveGeneratedNodes = true;
 	bool bMoveExistingNodes = false;

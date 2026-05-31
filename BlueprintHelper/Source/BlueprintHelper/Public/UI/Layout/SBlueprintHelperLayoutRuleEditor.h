@@ -84,8 +84,12 @@ private:
 	float SettingsPureInputOffsetX = 300.0f;
 	float SettingsVariableInputOffsetX = 260.0f;
 	float SettingsInputPinRowSpacing = 44.0f;
+	float SettingsCollisionPaddingX = 60.0f;
+	float SettingsCollisionPaddingY = 40.0f;
+	float SettingsCollisionStepY = 64.0f;
 	float SettingsMaxMillisecondsPerFrame = 2.0f;
 	int32 SettingsMaxNodesPerFrame = 24;
+	int32 SettingsMaxCollisionAttempts = 64;
 	bool bSettingsMoveGeneratedNodes = true;
 	bool bSettingsMoveExistingNodes = false;
 	bool bSettingsMarkDirtyAfterApply = true;
