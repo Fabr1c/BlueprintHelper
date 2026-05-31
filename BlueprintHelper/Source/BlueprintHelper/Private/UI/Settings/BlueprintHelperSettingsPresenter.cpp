@@ -56,10 +56,11 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 	const FText ReviewDebugCategory = LOCTEXT("SettingsCategoryReviewDebug", "Review 调试");
 	const FText DebugExportCategory = LOCTEXT("SettingsCategoryDebugExport", "调试导出");
 	const FText ToolOutputCategory = LOCTEXT("SettingsCategoryToolOutput", "工具输出");
-	const FText DeveloperToolClusterCategory = LOCTEXT("SettingsCategoryDeveloperToolCluster", "Developer ToolCluster");
-	const FText SafetyCategory = LOCTEXT("SettingsCategorySafety", "Safety");
-	const FText DeveloperUiCategory = LOCTEXT("SettingsCategoryDeveloperUi", "Developer UI");
-	const FText DeveloperGraphLayoutCategory = LOCTEXT("SettingsCategoryDeveloperGraphLayout", "Developer GraphLayout");
+	const FText DeveloperDryRunCategory = LOCTEXT("SettingsCategoryDeveloperDryRun", "DryRun");
+	const FText DeveloperToolClusterCategory = LOCTEXT("SettingsCategoryDeveloperToolCluster", "开发者 ToolCluster");
+	const FText SafetyCategory = LOCTEXT("SettingsCategorySafety", "安全");
+	const FText DeveloperUiCategory = LOCTEXT("SettingsCategoryDeveloperUi", "开发者 UI");
+	const FText DeveloperGraphLayoutCategory = LOCTEXT("SettingsCategoryDeveloperGraphLayout", "开发者 GraphLayout");
 
 	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 		TEXT("ui.review_panel.diff_frame_outer_padding"),
@@ -189,215 +190,215 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 
 	if (UBlueprintHelperSettingsUIUtils::ShouldShowDeveloperSettings())
 	{
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.asset_factory.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("AssetFactoryDryRunLabel", "AssetFactory DryRun"),
+			LOCTEXT("AssetFactoryDryRunHint", "控制 AssetFactory 写入类请求的默认 dry_run；开启后默认只预演，不创建资产。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.component.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("ComponentDryRunLabel", "Component DryRun"),
+			LOCTEXT("ComponentDryRunHint", "控制 Component 写入请求的默认 dry_run；开启后默认只预演，不修改组件。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.class_settings.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("ClassSettingsDryRunLabel", "ClassSettings DryRun"),
+			LOCTEXT("ClassSettingsDryRunHint", "控制 ClassSettings 写入请求的默认 dry_run；开启后默认只预演，不修改类设置。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.blueprint_variables.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("BlueprintVariablesDryRunLabel", "BlueprintVariables DryRun"),
+			LOCTEXT("BlueprintVariablesDryRunHint", "控制 BlueprintVariables 写入请求的默认 dry_run；开启后默认只预演，不修改变量。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.object_property.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("ObjectPropertyDryRunLabel", "ObjectProperty DryRun"),
+			LOCTEXT("ObjectPropertyDryRunHint", "控制 ObjectProperty 写入请求的默认 dry_run；开启后默认只预演，不修改对象属性。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.data_table.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("DataTableDryRunLabel", "DataTable DryRun"),
+			LOCTEXT("DataTableDryRunHint", "控制 DataTable 写入请求的默认 dry_run；开启后默认只预演，不修改表格行。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.umg_widget.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("UmgWidgetDryRunLabel", "UMGWidget DryRun"),
+			LOCTEXT("UmgWidgetDryRunHint", "控制 UMGWidget 写入请求的默认 dry_run；开启后默认只预演，不修改 WidgetTree。"),
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
+			TEXT("tool_clusters.graph_write.dry_run"),
+			DeveloperDryRunCategory,
+			LOCTEXT("GraphWriteDryRunLabel", "GraphWrite DryRun"),
+			LOCTEXT("GraphWriteDryRunHint", "控制 GraphWrite 写入请求的默认 dry_run；开启后默认只预演，不写入蓝图图表。"),
+			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.asset_factory.default_parent_class"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("AssetFactoryDefaultParentClassLabel", "AssetFactory parent class"),
-			LOCTEXT("AssetFactoryDefaultParentClassHint", "Developer-only default parent_class for asset factory requests."),
+			LOCTEXT("AssetFactoryDefaultParentClassLabel", "AssetFactory 默认父类"),
+			LOCTEXT("AssetFactoryDefaultParentClassHint", "AssetFactory 请求未提供 parent_class 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.asset_factory.default_value_type"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("AssetFactoryDefaultValueTypeLabel", "AssetFactory value type"),
-			LOCTEXT("AssetFactoryDefaultValueTypeHint", "Developer-only default value_type for asset factory requests."),
+			LOCTEXT("AssetFactoryDefaultValueTypeLabel", "AssetFactory 默认值类型"),
+			LOCTEXT("AssetFactoryDefaultValueTypeHint", "AssetFactory 请求未提供 value_type 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.asset_factory.default_collision_policy"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("AssetFactoryDefaultCollisionPolicyLabel", "AssetFactory collision policy"),
-			LOCTEXT("AssetFactoryDefaultCollisionPolicyHint", "Developer-only default collision policy for asset factory requests."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.asset_factory.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("AssetFactoryDryRunLabel", "AssetFactory dry run"),
-			LOCTEXT("AssetFactoryDryRunHint", "Developer-only default dry_run for asset factory requests."),
+			LOCTEXT("AssetFactoryDefaultCollisionPolicyLabel", "AssetFactory 默认冲突策略"),
+			LOCTEXT("AssetFactoryDefaultCollisionPolicyHint", "AssetFactory 请求未提供 collision_policy 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.signature.reference_context_search_scope"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("SignatureReferenceContextSearchScopeLabel", "Signature search scope"),
-			LOCTEXT("SignatureReferenceContextSearchScopeHint", "Developer-only default for signature reference-context search_scope."),
+			LOCTEXT("SignatureReferenceContextSearchScopeLabel", "Signature 引用搜索范围"),
+			LOCTEXT("SignatureReferenceContextSearchScopeHint", "Signature 引用上下文未提供 search_scope 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.signature.reference_context_resolution_policy"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("SignatureReferenceContextResolutionPolicyLabel", "Signature resolution policy"),
-			LOCTEXT("SignatureReferenceContextResolutionPolicyHint", "Developer-only default for signature reference-context resolution_policy."),
+			LOCTEXT("SignatureReferenceContextResolutionPolicyLabel", "Signature 解析策略"),
+			LOCTEXT("SignatureReferenceContextResolutionPolicyHint", "Signature 引用上下文未提供 resolution_policy 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.signature.reference_context_detail"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("SignatureReferenceContextDetailLabel", "Signature detail"),
-			LOCTEXT("SignatureReferenceContextDetailHint", "Developer-only default for signature reference-context detail."),
+			LOCTEXT("SignatureReferenceContextDetailLabel", "Signature 详情级别"),
+			LOCTEXT("SignatureReferenceContextDetailHint", "Signature 引用上下文未提供 detail 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.component.default_attach_rule"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("ComponentDefaultAttachRuleLabel", "Component attach rule"),
-			LOCTEXT("ComponentDefaultAttachRuleHint", "Developer-only default for component attach_rule."),
+			LOCTEXT("ComponentDefaultAttachRuleLabel", "Component 默认挂接规则"),
+			LOCTEXT("ComponentDefaultAttachRuleHint", "Component 请求未提供 attach_rule 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.component.default_name_collision_policy"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("ComponentDefaultNameCollisionPolicyLabel", "Component collision policy"),
-			LOCTEXT("ComponentDefaultNameCollisionPolicyHint", "Developer-only default for component name_collision_policy."),
+			LOCTEXT("ComponentDefaultNameCollisionPolicyLabel", "Component 默认命名冲突策略"),
+			LOCTEXT("ComponentDefaultNameCollisionPolicyHint", "Component 请求未提供 name_collision_policy 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.component.default_property_mode"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("ComponentDefaultPropertyModeLabel", "Component property mode"),
-			LOCTEXT("ComponentDefaultPropertyModeHint", "Developer-only default for component property_mode."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.component.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("ComponentDryRunLabel", "Component dry run"),
-			LOCTEXT("ComponentDryRunHint", "Developer-only default for component write dry_run."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.class_settings.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("ClassSettingsDryRunLabel", "Class settings dry run"),
-			LOCTEXT("ClassSettingsDryRunHint", "Developer-only default dry_run for class settings requests."),
+			LOCTEXT("ComponentDefaultPropertyModeLabel", "Component 默认属性模式"),
+			LOCTEXT("ComponentDefaultPropertyModeHint", "Component 请求未提供 property_mode 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.class_settings.validation_should_compile"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("ClassSettingsValidationCompileLabel", "Class settings compile"),
-			LOCTEXT("ClassSettingsValidationCompileHint", "Developer-only validation compile default for class settings requests."),
+			LOCTEXT("ClassSettingsValidationCompileLabel", "ClassSettings 校验编译"),
+			LOCTEXT("ClassSettingsValidationCompileHint", "ClassSettings 请求完成后是否默认执行编译校验。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.class_settings.validation_should_save"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("ClassSettingsValidationSaveLabel", "Class settings save"),
-			LOCTEXT("ClassSettingsValidationSaveHint", "Developer-only validation save default for class settings requests."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.blueprint_variables.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("BlueprintVariablesDryRunLabel", "Blueprint variables dry run"),
-			LOCTEXT("BlueprintVariablesDryRunHint", "Developer-only default for blueprint variable write dry_run."),
+			LOCTEXT("ClassSettingsValidationSaveLabel", "ClassSettings 校验保存"),
+			LOCTEXT("ClassSettingsValidationSaveHint", "ClassSettings 请求完成后是否默认执行保存校验。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.blueprint_variables.read_member_defaults_scope"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("BlueprintVariablesReadMemberDefaultsScopeLabel", "Member defaults scope"),
-			LOCTEXT("BlueprintVariablesReadMemberDefaultsScopeHint", "Developer-only read scope label for member-default reads."),
+			LOCTEXT("BlueprintVariablesReadMemberDefaultsScopeLabel", "成员默认值读取范围"),
+			LOCTEXT("BlueprintVariablesReadMemberDefaultsScopeHint", "读取成员默认值时使用的开发者默认 scope。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("tool_clusters.blueprint_variables.asset_path_fallback"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("BlueprintVariablesAssetPathFallbackLabel", "Asset path fallback"),
-			LOCTEXT("BlueprintVariablesAssetPathFallbackHint", "Developer-only fallback target label when asset_path is omitted for read rows."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.object_property.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("ObjectPropertyDryRunLabel", "Object property dry run"),
-			LOCTEXT("ObjectPropertyDryRunHint", "Developer-only default dry_run for object property requests."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.data_table.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("DataTableDryRunLabel", "DataTable dry run"),
-			LOCTEXT("DataTableDryRunHint", "Developer-only default dry_run for data table requests."),
+			LOCTEXT("BlueprintVariablesAssetPathFallbackLabel", "资产路径兜底策略"),
+			LOCTEXT("BlueprintVariablesAssetPathFallbackHint", "读取请求未提供 asset_path 时使用的开发者默认目标策略。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.data_table.write_requires_row_struct"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("DataTableWriteRequiresRowStructLabel", "DataTable row struct required"),
-			LOCTEXT("DataTableWriteRequiresRowStructHint", "Developer-only row-struct requirement default for data table writes."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
-			TEXT("tool_clusters.umg_widget.dry_run"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("UmgWidgetDryRunLabel", "UMG widget dry run"),
-			LOCTEXT("UmgWidgetDryRunHint", "Developer-only default dry_run for UMG widget requests."),
+			LOCTEXT("DataTableWriteRequiresRowStructLabel", "DataTable 要求 RowStruct"),
+			LOCTEXT("DataTableWriteRequiresRowStructHint", "DataTable 写入时是否默认要求提供行结构。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.umg_widget.asset_path_required"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("UmgWidgetAssetPathRequiredLabel", "UMG asset path required"),
-			LOCTEXT("UmgWidgetAssetPathRequiredHint", "Developer-only asset path requirement default for UMG widget requests."),
+			LOCTEXT("UmgWidgetAssetPathRequiredLabel", "UMGWidget 要求资产路径"),
+			LOCTEXT("UmgWidgetAssetPathRequiredHint", "UMGWidget 请求是否默认要求提供 asset_path。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.graph_write.strict"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteStrictLabel", "GraphWrite strict"),
-			LOCTEXT("GraphWriteStrictHint", "Developer-only default for graph_write strict mode."),
+			LOCTEXT("GraphWriteStrictLabel", "GraphWrite 严格模式"),
+			LOCTEXT("GraphWriteStrictHint", "GraphWrite 请求未提供 strict 时使用的开发者默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.graph_write.create_missing_variables"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteCreateMissingVariablesLabel", "Create missing variables"),
-			LOCTEXT("GraphWriteCreateMissingVariablesHint", "Developer-only graph_write default for variable creation."),
+			LOCTEXT("GraphWriteCreateMissingVariablesLabel", "自动创建缺失变量"),
+			LOCTEXT("GraphWriteCreateMissingVariablesHint", "GraphWrite 遇到缺失变量时是否默认允许自动创建。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.graph_write.reconstruct_existing_nodes"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteReconstructExistingNodesLabel", "Reconstruct existing nodes"),
-			LOCTEXT("GraphWriteReconstructExistingNodesHint", "Developer-only graph_write default for reconstruct_existing_nodes."),
+			LOCTEXT("GraphWriteReconstructExistingNodesLabel", "复用并重建已有节点"),
+			LOCTEXT("GraphWriteReconstructExistingNodesHint", "GraphWrite 是否默认允许复用并重建已有节点。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.graph_write.compile"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteCompileLabel", "GraphWrite compile"),
-			LOCTEXT("GraphWriteCompileHint", "Developer-only graph_write validation compile default."),
+			LOCTEXT("GraphWriteCompileLabel", "GraphWrite 校验编译"),
+			LOCTEXT("GraphWriteCompileHint", "GraphWrite 请求完成后是否默认执行编译校验。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("tool_clusters.graph_write.save"),
 			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteSaveLabel", "GraphWrite save"),
-			LOCTEXT("GraphWriteSaveHint", "Developer-only graph_write validation save default."),
-			true));
-		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
-			TEXT("tool_clusters.graph_write.layout"),
-			DeveloperToolClusterCategory,
-			LOCTEXT("GraphWriteLayoutLabel", "GraphWrite layout"),
-			LOCTEXT("GraphWriteLayoutHint", "Developer-only graph_write layout policy label."),
+			LOCTEXT("GraphWriteSaveLabel", "GraphWrite 校验保存"),
+			LOCTEXT("GraphWriteSaveHint", "GraphWrite 请求完成后是否默认执行保存校验。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("graph_layout.rules_source"),
 			DeveloperGraphLayoutCategory,
-			LOCTEXT("GraphLayoutRulesSourceLabel", "GraphLayout rules source"),
-			LOCTEXT("GraphLayoutRulesSourceHint", "Developer-only relative or safe absolute path for graph layout rules."),
+			LOCTEXT("GraphLayoutRulesSourceLabel", "GraphLayout 规则来源"),
+			LOCTEXT("GraphLayoutRulesSourceHint", "GraphLayout 规则文件路径；允许项目配置目录下的相对路径，或受信任目录内的绝对路径。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.main_window.active_tab_color"),
 			DeveloperUiCategory,
-			LOCTEXT("MainWindowActiveTabColorLabel", "Active tab color"),
-			LOCTEXT("MainWindowActiveTabColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("MainWindowActiveTabColorLabel", "激活 Tab 颜色"),
+			LOCTEXT("MainWindowActiveTabColorHint", "主窗口激活 Tab 的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.main_window.inactive_tab_color"),
 			DeveloperUiCategory,
-			LOCTEXT("MainWindowInactiveTabColorLabel", "Inactive tab color"),
-			LOCTEXT("MainWindowInactiveTabColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("MainWindowInactiveTabColorLabel", "未激活 Tab 颜色"),
+			LOCTEXT("MainWindowInactiveTabColorHint", "主窗口未激活 Tab 的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.default"),
 			DeveloperUiCategory,
-			LOCTEXT("WorkbenchDefaultBlockColorLabel", "Workbench default block color"),
-			LOCTEXT("WorkbenchDefaultBlockColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("WorkbenchDefaultBlockColorLabel", "Workbench 默认块颜色"),
+			LOCTEXT("WorkbenchDefaultBlockColorHint", "TaskSpec Workbench 默认块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.graph_logic"),
 			DeveloperUiCategory,
-			LOCTEXT("WorkbenchGraphLogicBlockColorLabel", "Workbench graph logic color"),
-			LOCTEXT("WorkbenchGraphLogicBlockColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("WorkbenchGraphLogicBlockColorLabel", "Workbench 图逻辑块颜色"),
+			LOCTEXT("WorkbenchGraphLogicBlockColorHint", "TaskSpec Workbench 图逻辑块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.diagnostic"),
 			DeveloperUiCategory,
-			LOCTEXT("WorkbenchDiagnosticBlockColorLabel", "Workbench diagnostic color"),
-			LOCTEXT("WorkbenchDiagnosticBlockColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("WorkbenchDiagnosticBlockColorLabel", "Workbench 诊断块颜色"),
+			LOCTEXT("WorkbenchDiagnosticBlockColorHint", "TaskSpec Workbench 诊断块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.selected"),
 			DeveloperUiCategory,
-			LOCTEXT("WorkbenchSelectedBlockColorLabel", "Workbench selected color"),
-			LOCTEXT("WorkbenchSelectedBlockColorHint", "Developer-only RGBA array. Format: [R,G,B,A]."),
+			LOCTEXT("WorkbenchSelectedBlockColorLabel", "Workbench 选中块颜色"),
+			LOCTEXT("WorkbenchSelectedBlockColorHint", "TaskSpec Workbench 选中块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 	}
 
@@ -542,14 +543,14 @@ bool FBlueprintHelperSettingsPresenter::ValidateRowValue(const FBlueprintHelperS
 		TArray<double> Values;
 		if (!UBlueprintHelperSettingsUIUtils::ParseNumberList(NewValue, 4, Values))
 		{
-			OutErrorText = LOCTEXT("SettingErrorColorArray", "Enter four color values as [R,G,B,A].");
+			OutErrorText = LOCTEXT("SettingErrorColorArray", "请输入四个颜色值，格式为 [R,G,B,A]。");
 			return false;
 		}
 		for (double Value : Values)
 		{
 			if (Value < 0.0 || Value > 1.0)
 			{
-				OutErrorText = LOCTEXT("SettingErrorColorRange", "Color values must be between 0 and 1.");
+				OutErrorText = LOCTEXT("SettingErrorColorRange", "颜色值必须在 0 到 1 之间。");
 				return false;
 			}
 		}

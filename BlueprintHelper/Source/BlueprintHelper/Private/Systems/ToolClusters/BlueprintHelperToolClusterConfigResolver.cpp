@@ -86,7 +86,6 @@ FBlueprintHelperGraphWriteToolClusterPolicy FBlueprintHelperToolClusterConfigRes
 	Policy.bReconstructExistingNodes = FBlueprintHelperRuntimeSettingResolver::GetBool(TEXT("tool_clusters.graph_write.reconstruct_existing_nodes"), Policy.bReconstructExistingNodes);
 	Policy.bCompile = FBlueprintHelperRuntimeSettingResolver::GetBool(TEXT("tool_clusters.graph_write.compile"), Policy.bCompile);
 	Policy.bSave = FBlueprintHelperRuntimeSettingResolver::GetBool(TEXT("tool_clusters.graph_write.save"), Policy.bSave);
-	Policy.Layout = FBlueprintHelperRuntimeSettingResolver::GetString(TEXT("tool_clusters.graph_write.layout"), Policy.Layout);
 	return Policy;
 }
 
@@ -108,8 +107,7 @@ bool FBlueprintHelperReadContextOutputLimiter::IsReadContextCommand(const FStrin
 		TEXT("export_to_json"),
 		TEXT("export_logic"),
 		TEXT("get_asset_info"),
-		TEXT("list_assets"),
-		TEXT("search_assets"),
+		TEXT("find_assets"),
 		TEXT("list_graphs"),
 		TEXT("list_variables"),
 		TEXT("list_event_dispatchers"),
@@ -145,6 +143,12 @@ void FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(const FString
 		const int32 ActualBytes = MeasureJsonUtf8Bytes(ResultJson);
 		if (ActualBytes > Policy.MaxOutputBytes)
 		{
+			if (Command == TEXT("find_assets"))
+			{
+				ReplaceFindAssetsWithByteLimitSummary(ResultJson);
+				return;
+			}
+
 			ReplaceDataWithByteLimitSummary(ResultJson, Policy.MaxOutputBytes, ActualBytes);
 			ResultJson->SetBoolField(TEXT("read_context_output_limited"), true);
 			ResultJson->SetStringField(TEXT("read_context_limit_reason"), TEXT("max_output_bytes"));
@@ -259,4 +263,29 @@ void FBlueprintHelperReadContextOutputLimiter::ReplaceDataWithByteLimitSummary(
 	Summary->SetNumberField(TEXT("max_output_bytes"), MaxBytes);
 	Summary->SetNumberField(TEXT("actual_output_bytes"), ActualBytes);
 	Object->SetObjectField(TEXT("data"), Summary);
+}
+
+void FBlueprintHelperReadContextOutputLimiter::ReplaceFindAssetsWithByteLimitSummary(
+	const TSharedPtr<FJsonObject>& Object)
+{
+	if (!Object.IsValid())
+	{
+		return;
+	}
+
+	double ExistingLimit = 0.0;
+	const TSharedPtr<FJsonObject>* ExistingPage = nullptr;
+	if (Object->TryGetObjectField(TEXT("page"), ExistingPage) && ExistingPage && ExistingPage->IsValid())
+	{
+		(*ExistingPage)->TryGetNumberField(TEXT("limit"), ExistingLimit);
+	}
+
+	Object->Values.Empty();
+	Object->SetStringField(TEXT("schema"), TEXT("FindAssets.v1"));
+	Object->SetArrayField(TEXT("assets"), {});
+
+	TSharedRef<FJsonObject> Page = MakeShared<FJsonObject>();
+	Page->SetNumberField(TEXT("limit"), ExistingLimit);
+	Page->SetBoolField(TEXT("has_more"), true);
+	Object->SetObjectField(TEXT("page"), Page);
 }

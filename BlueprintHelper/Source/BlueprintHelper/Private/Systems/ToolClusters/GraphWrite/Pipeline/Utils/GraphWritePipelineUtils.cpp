@@ -23,6 +23,7 @@
 #include "K2Node_VariableSet.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionVocabulary.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBuildService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
@@ -42,6 +43,21 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
+
+namespace
+{
+bool IsPureQueryContainerActionStatement(const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement)
+{
+	if (!Statement.IsValid() || Statement->Kind != EBlueprintHelperGraphStatementKind::ContainerAction)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperContainerActionSpec* Spec =
+		FBlueprintHelperContainerActionVocabulary::Find(Statement->ContainerKind, Statement->ContainerOperation);
+	return Spec && Spec->bPureQuery;
+}
+}
 
 // ========== From BlueprintGraphLocalVariableService.cpp ==========
 
@@ -842,6 +858,12 @@ FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatement(
 	}
 
 	AddSemanticFragment(StatementFragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
+	if (IsPureQueryContainerActionStatement(Statement))
+	{
+		Flow.bPreservePreviousExits = true;
+		return Flow;
+	}
+
 	if (StatementFragment.ExecEntryPin)
 	{
 		Flow.Entries.Add(StatementFragment.ExecEntryPin);

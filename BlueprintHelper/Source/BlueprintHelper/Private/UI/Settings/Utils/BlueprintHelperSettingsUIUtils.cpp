@@ -43,7 +43,6 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 		TEXT("tool_clusters.graph_write.reconstruct_existing_nodes"),
 		TEXT("tool_clusters.graph_write.compile"),
 		TEXT("tool_clusters.graph_write.save"),
-		TEXT("tool_clusters.graph_write.layout"),
 		TEXT("tool_clusters.graph_write.dry_run"),
 		TEXT("graph_layout.rules_source")
 	};
@@ -97,8 +96,8 @@ FBlueprintHelperSettingRowViewModel UBlueprintHelperSettingsUIUtils::MakeBaseRow
 	Row.bModified = bHasProjectOverride && CurrentValue != DefaultValue;
 	Row.bDeveloperOnly = bDeveloperOnly;
 	Row.bRuntimeConsumed = IsRuntimeConsumedSetting(DotPath);
-	Row.AccessStatusText = bDeveloperOnly ? TEXT("Developer only") : TEXT("User editable");
-	Row.ConsumerStatusText = Row.bRuntimeConsumed ? TEXT("Runtime consumed") : TEXT("Not yet consumed");
+	Row.AccessStatusText = bDeveloperOnly ? TEXT("仅开发者") : TEXT("用户可编辑");
+	Row.ConsumerStatusText = Row.bRuntimeConsumed ? TEXT("运行时已消费") : TEXT("尚未接入运行时");
 	return Row;
 }
 
