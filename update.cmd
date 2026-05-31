@@ -3,11 +3,11 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 if "%~1"=="" goto InteractiveMode
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0InstallScripts\update.ps1" %*
 exit /b !ERRORLEVEL!
 
 :InteractiveMode
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update.ps1" -Interactive
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0InstallScripts\update.ps1" -Interactive
 set BH_UPDATE_EXIT=!ERRORLEVEL!
 if "!BH_UPDATE_EXIT!"=="0" goto UpdateSucceeded
 

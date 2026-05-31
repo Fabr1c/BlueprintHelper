@@ -80,9 +80,11 @@ Run the repository-root installer first:
 
 Add `-InstallClaudePlugin` when you want the installer to register the Claude marketplace through the official Claude plugin entry and install `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
 
-交互式安装在复制 Claude sideAgent 定义前会显示模型/思考等级表单。当前只显示推荐组合 `haiku / high` 与 `sonnet / high`；非交互安装会自动使用推荐默认值，`task-worker` 为 `sonnet / high`。
+Use repository-root `uninstall.cmd` to remove installed Claude plugin entries, Claude sideAgents, Codex companion entries, and CLI links without deleting the source checkout.
 
-Interactive install shows a sideAgent model/reasoning form before copying the Claude definitions. The displayed recommendations are `haiku / high` and `sonnet / high`; non-interactive install uses the recommended defaults automatically, with `task-worker` on `sonnet / high`.
+交互式安装优先使用 Node.js 内置终端交互。复制 Claude sideAgent 定义前，三个 sideAgent 会以表格显示，模型和思考等级是独立字段；模型选项为 `haiku`、`sonnet`，思考等级为 `high`。非交互安装会自动使用推荐默认值，`task-worker` 为 `sonnet / high`。
+
+Interactive install prefers Node.js built-in terminal prompts. Before copying Claude sideAgent definitions, the three sideAgents are shown in a table with separate model and reasoning fields; model options are `haiku` and `sonnet`, with reasoning `high`. Non-interactive install uses the recommended defaults automatically, with `task-worker` on `sonnet / high`.
 
 If no callable Claude plugin CLI is available, the installer prints the official commands to run inside Claude Code:
 

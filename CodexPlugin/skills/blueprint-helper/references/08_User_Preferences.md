@@ -1,7 +1,7 @@
 # 08 - BlueprintHelper User Preferences
 
 schema: BlueprintHelper.UserPreferences.v1
-generated_by: install.ps1
+generated_by: InstallScripts/install.ps1
 saved_at: 2026-05-10
 source: install_default_conservative_profile
 updated_by: CodexPlugin/skills/blueprint-helper-configure/SKILL.md

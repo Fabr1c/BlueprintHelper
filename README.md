@@ -83,6 +83,7 @@ blueprint_get_runtime_profile
 - `AgentFaceService/mcp/`：全局 MCP allowlist 入口，只保留 editor open、editor close lifecycle。
 - `CodexPlugin/`：Codex 插件封装和 skill。
 - `ClaudePlugin/`：Claude Code 插件封装和文档。
+- `InstallScripts/`：`install.cmd`、`upgrade.cmd`、`update.cmd`、`uninstall.cmd` 背后的 PowerShell / Node 实现脚本。
 
 ## 快速开始
 
@@ -97,7 +98,7 @@ cd <PLUGIN_ROOT>
 
 `install.cmd` 会调用底层 PowerShell 安装脚本并规避普通用户直接运行 `.ps1` 时常见的 ExecutionPolicy 问题。安装器会构建 AgentFaceService、链接 `bh` CLI、通过 Codex 官方插件入口注册本地 marketplace 并安装 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。需要 Claude 插件支持时追加 `-InstallClaudePlugin`；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
-交互式安装在安装 Codex subagents 或 Claude sideAgents 时会显示模型/思考等级表单。Codex 只显示推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 与 `gpt-5.4 / high`；Claude 只显示推荐组合 `haiku / high` 与 `sonnet / high`。非交互安装会自动使用推荐默认值，其中两个 explorer 默认轻量模型，`task-worker` 默认更强模型。
+交互式安装优先使用 Node.js 内置终端交互。前置安装选项使用朴素勾选菜单；安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。Codex 模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`，思考等级为 `high`、`xhigh`；Claude 模型选项为 `haiku`、`sonnet`，思考等级为 `high`。非交互安装会自动使用推荐默认值，其中两个 explorer 默认轻量模型，`task-worker` 默认更强模型。
 
 安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
 
@@ -136,13 +137,31 @@ $json | bh blueprinthelper_read_context --stdin --format full
 .\upgrade.cmd -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
+## 卸载 / Uninstall
+
+根目录只保留 `.cmd` 用户入口；安装、升级和卸载的 PowerShell/Node 实现脚本放在 `InstallScripts/`。双击 `uninstall.cmd` 会进入交互式卸载，默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有在卸载器中明确选择或传入对应参数时才会删除。
+
+```powershell
+.\uninstall.cmd
+.\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>
+.\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
+```
+
 Double-click `upgrade.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.2` and `v0.5.4`. `update.cmd` remains available as a compatibility entry, but user-facing docs should prefer `upgrade.cmd`.
 
 Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
 After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex plugin install, Codex subagents, and global MCP allowlist through the official entries. If existing Claude sideAgents are detected, or `-InstallClaudePlugin` is passed explicitly, the updater also refreshes the Claude plugin through the official Claude entry and syncs Claude sideAgents. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
 
-Interactive install shows model/reasoning forms when installing Codex subagents or Claude sideAgents. Codex only shows the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles; Claude only shows the recommended `haiku / high` and `sonnet / high` profiles. Non-interactive install uses the recommended defaults automatically, with lighter explorer models and a stronger `task-worker` model.
+The root keeps only `.cmd` user script entry points. PowerShell and Node implementation scripts live under `InstallScripts/`. Double-click `uninstall.cmd` for interactive uninstall. By default it removes the global `bh` CLI link, Codex/Claude plugin entries, Codex/Claude subagents, and the Codex lifecycle MCP config. Project `.blueprinthelper/agent-profile.json` and Engine-level UE plugin copies are kept unless explicitly selected or passed as command-line options.
+
+```powershell
+.\uninstall.cmd
+.\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>
+.\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
+```
+
+Interactive install prefers Node.js built-in terminal prompts. The first page is a plain checkbox menu for install components. When Codex subagents or Claude sideAgents are selected, the three agents are shown in a table with separate model and reasoning fields. Codex model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`, with reasoning `high` or `xhigh`; Claude model options are `haiku` and `sonnet`, with reasoning `high`. Non-interactive install uses the recommended defaults automatically, with lighter explorer models and a stronger `task-worker` model.
 
 ## 参与贡献
 

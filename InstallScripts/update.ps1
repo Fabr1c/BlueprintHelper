@@ -22,14 +22,57 @@ try {
 } catch {
 }
 
-$Root = $PSScriptRoot
+$ScriptRoot = $PSScriptRoot
+$Root = Split-Path -Parent $ScriptRoot
 $CodexManifestPath = Join-Path $Root 'CodexPlugin\.codex-plugin\plugin.json'
 $UePluginDescriptorPath = Join-Path $Root 'BlueprintHelper\BlueprintHelper.uplugin'
+$script:UpdateProgressActivity = 'BlueprintHelper update'
+$script:UpdateProgressLastPercent = 0
 
 function Write-Step {
   param([Parameter(Mandatory = $true)][string]$Message)
   Write-Host ''
   Write-Host "==> $Message"
+}
+
+function Write-UpdateProgressBar {
+  param(
+    [Parameter(Mandatory = $true)][int]$Percent,
+    [Parameter(Mandatory = $true)][string]$Status
+  )
+
+  $ClampedPercent = [Math]::Max(0, [Math]::Min(100, $Percent))
+  $script:UpdateProgressLastPercent = $ClampedPercent
+  $Width = 30
+  $Filled = [int][Math]::Floor(($ClampedPercent / 100) * $Width)
+  $Empty = $Width - $Filled
+  $Bar = ('#' * $Filled) + ('-' * $Empty)
+
+  Write-Host ("[{0}] {1,3}%  {2}" -f $Bar, $ClampedPercent, $Status)
+  try {
+    Write-Progress -Activity $script:UpdateProgressActivity -Status $Status -PercentComplete $ClampedPercent
+  } catch {
+  }
+}
+
+function Complete-UpdateProgressBar {
+  param([Parameter(Mandatory = $true)][string]$Status)
+
+  Write-UpdateProgressBar -Percent 100 -Status $Status
+  try {
+    Write-Progress -Activity $script:UpdateProgressActivity -Completed
+  } catch {
+  }
+}
+
+function Stop-UpdateProgressBar {
+  param([Parameter(Mandatory = $true)][string]$Status)
+
+  Write-UpdateProgressBar -Percent $script:UpdateProgressLastPercent -Status $Status
+  try {
+    Write-Progress -Activity $script:UpdateProgressActivity -Completed
+  } catch {
+  }
 }
 
 function Get-JsonFromFile {
@@ -241,9 +284,11 @@ function Download-AndExpandRelease {
     $DownloadParams.UseBasicParsing = $true
   }
 
+  Write-UpdateProgressBar -Percent 30 -Status "Downloading release $($ReleaseInfo.tag)"
   Write-Step "Downloading release $($ReleaseInfo.tag)"
   Invoke-WebRequest @DownloadParams
 
+  Write-UpdateProgressBar -Percent 42 -Status 'Expanding release package'
   Write-Step 'Expanding release package'
   Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force
 
@@ -261,12 +306,12 @@ function Find-ExtractedPackageRoot {
 
   $Candidates = Get-ChildItem -LiteralPath $ExtractDir -Directory
   foreach ($Candidate in $Candidates) {
-    $InstallScript = Join-Path $Candidate.FullName 'install.ps1'
+    $InstallScript = Resolve-InstallScriptPath -PackageRoot $Candidate.FullName -AllowLegacyRoot
     $CodexManifest = Join-Path $Candidate.FullName 'CodexPlugin\.codex-plugin\plugin.json'
     $UeDescriptor = Join-Path $Candidate.FullName 'BlueprintHelper\BlueprintHelper.uplugin'
     $AgentFaceService = Join-Path $Candidate.FullName 'AgentFaceService'
 
-    if ((Test-Path -LiteralPath $InstallScript) -and
+    if ($InstallScript -and
         (Test-Path -LiteralPath $CodexManifest) -and
         (Test-Path -LiteralPath $UeDescriptor) -and
         (Test-Path -LiteralPath $AgentFaceService)) {
@@ -286,6 +331,29 @@ function Find-ExtractedPackageRoot {
   throw "Unable to locate a valid BlueprintHelper package inside $ExtractDir."
 }
 
+function Resolve-InstallScriptPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$PackageRoot,
+    [switch]$AllowLegacyRoot
+  )
+
+  $Candidates = @(
+    (Join-Path $PackageRoot 'InstallScripts\install.ps1')
+  )
+  if ($AllowLegacyRoot) {
+    $Candidates += (Join-Path $PackageRoot 'install.ps1')
+  }
+
+  foreach ($Candidate in $Candidates) {
+    if (Test-Path -LiteralPath $Candidate -PathType Leaf) {
+      return $Candidate
+    }
+  }
+
+  return $null
+}
+
 function Test-ClaudeAgentsInstalled {
   $HomeDir = $env:USERPROFILE
   if (-not $HomeDir) {
@@ -303,9 +371,9 @@ function Test-ClaudePluginShouldRefresh {
 }
 
 function Invoke-PostInstallRefresh {
-  $InstallScript = Join-Path $Root 'install.ps1'
-  if (-not (Test-Path -LiteralPath $InstallScript)) {
-    throw "Missing install script after update: $InstallScript"
+  $InstallScript = Resolve-InstallScriptPath -PackageRoot $Root
+  if (-not $InstallScript -or -not (Test-Path -LiteralPath $InstallScript)) {
+    throw "Missing install script after update: $(Join-Path $Root 'InstallScripts\install.ps1')"
   }
 
   $Args = @(
@@ -337,6 +405,7 @@ function Invoke-PostInstallRefresh {
     $Args += '-Force'
   }
 
+  Write-UpdateProgressBar -Percent 86 -Status 'Running post-update install refresh'
   Write-Step 'Running post-update install refresh'
   Write-Host "powershell -NoProfile -ExecutionPolicy Bypass -File `"$InstallScript`" $($Args -join ' ')"
   & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallScript @Args
@@ -359,9 +428,12 @@ function Invoke-BlueprintHelperUpdate {
   Write-Host 'BlueprintHelper updater'
   Write-Host "Source root: $Root"
 
+  Write-UpdateProgressBar -Percent 3 -Status 'Reading local version'
   $CurrentVersion = Get-CurrentBlueprintHelperVersion
+  Write-UpdateProgressBar -Percent 8 -Status 'Checking latest GitHub release'
   $ReleaseInfo = Get-LatestReleaseInfo
   $Comparison = Compare-BlueprintHelperVersion -Left $CurrentVersion -Right $ReleaseInfo.version
+  Write-UpdateProgressBar -Percent 16 -Status 'Comparing versions'
 
   Write-Host ''
   Write-Host "Current version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
@@ -374,24 +446,29 @@ function Invoke-BlueprintHelperUpdate {
   if ($Comparison -eq 0) {
     Write-Host ''
     Write-Host 'BlueprintHelper is already up to date.'
+    Complete-UpdateProgressBar -Status 'Already up to date'
     return
   }
 
   if ($Comparison -gt 0) {
     Write-Host ''
     Write-Host 'Local BlueprintHelper version is newer than the latest GitHub release. No update was applied.' -ForegroundColor Yellow
+    Complete-UpdateProgressBar -Status 'No update applied'
     return
   }
 
   if ($CheckOnly) {
     Write-Host ''
     Write-Host 'An update is available. Re-run without -CheckOnly to apply it.'
+    Complete-UpdateProgressBar -Status 'Update available'
     exit 2
   }
 
+  Write-UpdateProgressBar -Percent 20 -Status 'Waiting for update confirmation'
   if (-not (Read-UpdateConfirmation -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo)) {
     Write-Host ''
     Write-Host 'Update cancelled.'
+    Complete-UpdateProgressBar -Status 'Update cancelled'
     return
   }
 
@@ -403,24 +480,31 @@ function Invoke-BlueprintHelperUpdate {
   try {
     $Package = Download-AndExpandRelease -ReleaseInfo $ReleaseInfo
     $PackageTempDir = $Package.temp_dir
+    Write-UpdateProgressBar -Percent 50 -Status 'Validating downloaded package'
     $PackageRoot = Find-ExtractedPackageRoot -ExtractDir $Package.extract_dir -ReleaseInfo $ReleaseInfo
 
     $BackupDir = Get-BackupDirectory -CurrentVersion $CurrentVersion
+    Write-UpdateProgressBar -Percent 60 -Status 'Backing up current directory'
     Invoke-RobocopyMirror -Source $Root -Destination $BackupDir -Description 'Backing up current BlueprintHelper directory' | Out-Null
 
     $ReplaceStarted = $true
+    Write-UpdateProgressBar -Percent 72 -Status 'Replacing local files'
     $DidReplace = Invoke-RobocopyMirror -Source $PackageRoot -Destination $Root -Description 'Replacing BlueprintHelper with downloaded release'
 
     if ($WhatIfPreference) {
       Write-Host ''
       Write-Host 'WhatIf: update was not applied.'
+      Complete-UpdateProgressBar -Status 'WhatIf complete'
       return
     }
 
     if (-not $SkipPostInstall) {
       Invoke-PostInstallRefresh
+    } else {
+      Write-UpdateProgressBar -Percent 86 -Status 'Skipping post-update install refresh'
     }
 
+    Write-UpdateProgressBar -Percent 96 -Status 'Verifying updated version'
     $UpdatedVersion = Get-CurrentBlueprintHelperVersion
 
     Write-Host ''
@@ -429,12 +513,14 @@ function Invoke-BlueprintHelperUpdate {
     Write-Host "Current version:  v$(Get-NormalizedVersionText -Version $UpdatedVersion)"
     Write-Host "Backup path:      $BackupDir"
     Write-Host 'UE engine plugin copy is updated only when -InstallUePluginToEngine is passed.'
+    Complete-UpdateProgressBar -Status 'Update complete'
   } catch {
     $Failure = $_
     if (($ReplaceStarted -or $DidReplace) -and $BackupDir) {
       Write-Host ''
       Write-Host 'Update failed after replacement. Attempting rollback...' -ForegroundColor Yellow
       try {
+        Write-UpdateProgressBar -Percent 92 -Status 'Rolling back from backup'
         Restore-Backup -BackupDir $BackupDir
         Write-Host "Rollback restored backup: $BackupDir" -ForegroundColor Yellow
       } catch {
@@ -446,6 +532,7 @@ function Invoke-BlueprintHelperUpdate {
     throw $Failure
   } finally {
     if ($PackageTempDir -and (Test-Path -LiteralPath $PackageTempDir)) {
+      Write-UpdateProgressBar -Percent $script:UpdateProgressLastPercent -Status 'Cleaning temporary update files'
       Remove-Item -LiteralPath $PackageTempDir -Recurse -Force
     }
   }
@@ -454,6 +541,7 @@ function Invoke-BlueprintHelperUpdate {
 try {
   Invoke-BlueprintHelperUpdate
 } catch {
+  Stop-UpdateProgressBar -Status 'Update failed'
   Write-Host ''
   Write-Host 'BlueprintHelper update failed.' -ForegroundColor Red
   if ($_.Exception -and $_.Exception.Message) {
