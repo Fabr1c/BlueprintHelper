@@ -58,16 +58,22 @@ class FBlueprintHelperReviewPanelPresenter
 public:
 	FBlueprintHelperReviewPanelPresenter(
 		const FBlueprintHelperReviewStoreService* InReviewStoreService,
-		const FBlueprintHelperReviewActionService* InReviewActionService);
+	const FBlueprintHelperReviewActionService* InReviewActionService);
 
 	TArray<FBlueprintHelperReviewVisibleChange> LoadPendingVisibleChanges() const;
-	FDelegateHandle AddPendingReviewChangedHandler(FSimpleDelegate InDelegate) const;
-	void RemovePendingReviewChangedHandler(FDelegateHandle& InHandle) const;
+	FDelegateHandle AddPendingReviewChangedEventHandler(
+		const FBlueprintHelperReviewStoreChangedMulticast::FDelegate& InDelegate) const;
+	void RemovePendingReviewChangedEventHandler(FDelegateHandle& InHandle) const;
 	FBlueprintHelperReviewPanelPresenterEvent HandleVisualEvent(
 		const FBlueprintHelperReviewPanelVisualEvent& Event) const;
 	FBlueprintHelperReviewPanelPresenterEvent HandleActionIntent(
 		const FBlueprintHelperReviewActionIntent& Intent,
 		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
+		const FBlueprintHelperReviewRejectOptions& RejectOptions = FBlueprintHelperReviewRejectOptions()) const;
+	FBlueprintHelperReviewCommandBatchResult AcceptVisibleChangesBatch(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes) const;
+	FBlueprintHelperReviewCommandBatchResult RejectVisibleChangesBatch(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
 		const FBlueprintHelperReviewRejectOptions& RejectOptions = FBlueprintHelperReviewRejectOptions()) const;
 
 private:

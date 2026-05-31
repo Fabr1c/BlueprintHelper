@@ -184,82 +184,223 @@ TArray<FPersistedReviewTargetMatch> FBlueprintHelperReviewActionTargetUtils::Res
 
 		const TArray<FString> RequestedTargetKeys = CollectTargetKeysFromVisibleChange(Change);
 		const TArray<FString> RequestedScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Change);
-		FBlueprintHelperReviewRecordQuery Query;
-		Query.bPendingOnly = false;
-
 		FBlueprintHelperReviewStoreService Store;
-		const TArray<FBlueprintHelperReviewRecord> Records = Store.QueryReviewRecords(Query);
-		for (const FBlueprintHelperReviewRecord& Record : Records)
+		FBlueprintHelperReviewPendingIndexQuery Query;
+		Query.bPendingOnly = true;
+		Query.bSkipMissingAssetRecords = false;
+		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries =
+			Store.QueryPendingVisibleChangeSummaries(Query);
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
 		{
-			if (!ReviewAssetPathMatches(Change.AssetPath, Record.AssetPath))
+			if (!ReviewAssetPathMatches(Change.AssetPath, Summary.RecordAssetPath)
+				&& !ReviewAssetPathMatches(Change.AssetPath, Summary.Change.AssetPath))
 			{
 				continue;
 			}
 
-			for (const FBlueprintHelperReviewVisibleChange& Candidate : Record.VisibleChanges)
+			const FBlueprintHelperReviewVisibleChange& Candidate = Summary.Change;
+			if (!ReviewAssetPathMatches(Change.AssetPath, Candidate.AssetPath))
 			{
-				if (!ReviewAssetPathMatches(Change.AssetPath, Candidate.AssetPath))
-				{
-					continue;
-				}
-				if (Candidate.Status != EBlueprintHelperReviewChangeStatus::Pending
-					&& Candidate.Status != EBlueprintHelperReviewChangeStatus::NeedsAction
-					&& Candidate.Status != EBlueprintHelperReviewChangeStatus::RejectFailed)
-				{
-					continue;
-				}
+				continue;
+			}
+			if (Candidate.Status != EBlueprintHelperReviewChangeStatus::Pending
+				&& Candidate.Status != EBlueprintHelperReviewChangeStatus::NeedsAction
+				&& Candidate.Status != EBlueprintHelperReviewChangeStatus::RejectFailed)
+			{
+				continue;
+			}
 
-				const TArray<FString> CandidateTargetKeys = CollectTargetKeysFromVisibleChange(Candidate);
-				TArray<FString> MatchedTargetKeys;
-				const bool bHasRequestedTarget = RequestedTargetKeys.Num() > 0
-					&& IntersectTargetKeys(RequestedTargetKeys, CandidateTargetKeys, MatchedTargetKeys);
-				if (RequestedTargetKeys.Num() > 0)
+			const TArray<FString> CandidateTargetKeys = CollectTargetKeysFromVisibleChange(Candidate);
+			TArray<FString> MatchedTargetKeys;
+			const bool bHasRequestedTarget = RequestedTargetKeys.Num() > 0
+				&& IntersectTargetKeys(RequestedTargetKeys, CandidateTargetKeys, MatchedTargetKeys);
+			if (RequestedTargetKeys.Num() > 0)
+			{
+				if (bHasRequestedTarget)
 				{
-					if (bHasRequestedTarget)
+					AddPersistedReviewTargetMatch(Matches, Summary.ReviewRecordId, MatchedTargetKeys);
+				}
+				continue;
+			}
+
+			if (RequestedScopeIdentities.Num() == 0)
+			{
+				continue;
+			}
+
+			const TArray<FString> CandidateScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Candidate);
+			bool bScopeMatched = false;
+			for (const FString& RequestedScopeIdentity : RequestedScopeIdentities)
+			{
+				if (!RequestedScopeIdentity.IsEmpty() && CandidateScopeIdentities.Contains(RequestedScopeIdentity))
+				{
+					bScopeMatched = true;
+					break;
+				}
+			}
+			if (!bScopeMatched)
+			{
+				continue;
+			}
+
+			for (const FBlueprintHelperReviewAtomicTarget& CandidateTarget : Candidate.AtomicTargets)
+			{
+				if (CandidateTarget.Status != EBlueprintHelperReviewChangeStatus::Pending)
+				{
+					continue;
+				}
+				const FString CandidateTargetScopeIdentity =
+					FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
+						CandidateTarget,
+						Candidate.ScopeIdentity);
+				if (!CandidateTargetScopeIdentity.IsEmpty() && RequestedScopeIdentities.Contains(CandidateTargetScopeIdentity))
+				{
+					MatchedTargetKeys.AddUnique(CandidateTarget.TargetKey);
+				}
+			}
+			if (MatchedTargetKeys.Num() == 0)
+			{
+				continue;
+			}
+
+			AddPersistedReviewTargetMatch(Matches, Summary.ReviewRecordId, MatchedTargetKeys);
+		}
+
+		return Matches;
+	}
+TArray<FPersistedReviewTargetMatch> FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		struct FPendingRequest
+		{
+			const FBlueprintHelperReviewVisibleChange* Change = nullptr;
+			TArray<FString> TargetKeys;
+			TArray<FString> ScopeIdentities;
+		};
+
+		TArray<FPendingRequest> Requests;
+		TMap<FString, TArray<int32>> RequestIndicesByTargetKey;
+		TMap<FString, TArray<int32>> RequestIndicesByScopeIdentity;
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			if (Change.AssetPath.IsEmpty())
+			{
+				continue;
+			}
+
+			FPendingRequest Request;
+			Request.Change = &Change;
+			Request.TargetKeys = CollectTargetKeysFromVisibleChange(Change);
+			Request.ScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Change);
+			const int32 RequestIndex = Requests.Add(MoveTemp(Request));
+			for (const FString& TargetKey : Requests[RequestIndex].TargetKeys)
+			{
+				if (!TargetKey.IsEmpty())
+				{
+					RequestIndicesByTargetKey.FindOrAdd(TargetKey).Add(RequestIndex);
+				}
+			}
+			if (Requests[RequestIndex].TargetKeys.Num() == 0)
+			{
+				for (const FString& ScopeIdentity : Requests[RequestIndex].ScopeIdentities)
+				{
+					if (!ScopeIdentity.IsEmpty())
 					{
-						AddPersistedReviewTargetMatch(Matches, Record.ReviewRecordId, MatchedTargetKeys);
+						RequestIndicesByScopeIdentity.FindOrAdd(ScopeIdentity).Add(RequestIndex);
 					}
-					continue;
 				}
+			}
+		}
 
-				if (RequestedScopeIdentities.Num() == 0)
-				{
-					continue;
-				}
+		TArray<FPersistedReviewTargetMatch> Matches;
+		if (Requests.Num() == 0)
+		{
+			return Matches;
+		}
 
-				const TArray<FString> CandidateScopeIdentities = CollectScopeIdentitiesFromVisibleChange(Candidate);
-				bool bScopeMatched = false;
-				for (const FString& RequestedScopeIdentity : RequestedScopeIdentities)
+		FBlueprintHelperReviewStoreService Store;
+		FBlueprintHelperReviewPendingIndexQuery Query;
+		Query.bPendingOnly = true;
+		Query.bSkipMissingAssetRecords = false;
+		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries =
+			Store.QueryPendingVisibleChangeSummaries(Query);
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
+		{
+			const FBlueprintHelperReviewVisibleChange& Candidate = Summary.Change;
+			if (Candidate.Status != EBlueprintHelperReviewChangeStatus::Pending
+				&& Candidate.Status != EBlueprintHelperReviewChangeStatus::NeedsAction
+				&& Candidate.Status != EBlueprintHelperReviewChangeStatus::RejectFailed)
+			{
+				continue;
+			}
+
+			for (const FBlueprintHelperReviewAtomicTarget& CandidateTarget : Candidate.AtomicTargets)
+			{
+				if (!CandidateTarget.TargetKey.IsEmpty())
 				{
-					if (!RequestedScopeIdentity.IsEmpty() && CandidateScopeIdentities.Contains(RequestedScopeIdentity))
+					if (const TArray<int32>* RequestIndices =
+						RequestIndicesByTargetKey.Find(CandidateTarget.TargetKey))
 					{
-						bScopeMatched = true;
-						break;
+						for (const int32 RequestIndex : *RequestIndices)
+						{
+							if (!Requests.IsValidIndex(RequestIndex) || !Requests[RequestIndex].Change)
+							{
+								continue;
+							}
+							const FBlueprintHelperReviewVisibleChange& RequestedChange =
+								*Requests[RequestIndex].Change;
+							if (!ReviewAssetPathMatches(RequestedChange.AssetPath, Summary.RecordAssetPath)
+								&& !ReviewAssetPathMatches(RequestedChange.AssetPath, Candidate.AssetPath))
+							{
+								continue;
+							}
+							AddPersistedReviewTargetMatch(
+								Matches,
+								Summary.ReviewRecordId,
+								{ CandidateTarget.TargetKey });
+						}
 					}
 				}
-				if (!bScopeMatched)
+
+				if (RequestIndicesByScopeIdentity.Num() == 0
+					|| CandidateTarget.Status != EBlueprintHelperReviewChangeStatus::Pending)
 				{
 					continue;
 				}
 
-				for (const FBlueprintHelperReviewAtomicTarget& CandidateTarget : Candidate.AtomicTargets)
+				const FString CandidateTargetScopeIdentity =
+					FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(
+						CandidateTarget,
+						Candidate.ScopeIdentity);
+				if (CandidateTargetScopeIdentity.IsEmpty())
 				{
-					if (CandidateTarget.Status != EBlueprintHelperReviewChangeStatus::Pending)
+					continue;
+				}
+
+				const TArray<int32>* RequestIndices =
+					RequestIndicesByScopeIdentity.Find(CandidateTargetScopeIdentity);
+				if (!RequestIndices)
+				{
+					continue;
+				}
+				for (const int32 RequestIndex : *RequestIndices)
+				{
+					if (!Requests.IsValidIndex(RequestIndex) || !Requests[RequestIndex].Change)
 					{
 						continue;
 					}
-					const FString CandidateTargetScopeIdentity = FBlueprintHelperReviewStoreTargetUtils::MakeReviewScopeIdentity(CandidateTarget, Candidate.ScopeIdentity);
-					if (!CandidateTargetScopeIdentity.IsEmpty() && RequestedScopeIdentities.Contains(CandidateTargetScopeIdentity))
+					const FBlueprintHelperReviewVisibleChange& RequestedChange =
+						*Requests[RequestIndex].Change;
+					if (!ReviewAssetPathMatches(RequestedChange.AssetPath, Summary.RecordAssetPath)
+						&& !ReviewAssetPathMatches(RequestedChange.AssetPath, Candidate.AssetPath))
 					{
-						MatchedTargetKeys.AddUnique(CandidateTarget.TargetKey);
+						continue;
 					}
+					AddPersistedReviewTargetMatch(
+						Matches,
+						Summary.ReviewRecordId,
+						{ CandidateTarget.TargetKey });
 				}
-				if (MatchedTargetKeys.Num() == 0)
-				{
-					continue;
-				}
-
-				AddPersistedReviewTargetMatch(Matches, Record.ReviewRecordId, MatchedTargetKeys);
 			}
 		}
 

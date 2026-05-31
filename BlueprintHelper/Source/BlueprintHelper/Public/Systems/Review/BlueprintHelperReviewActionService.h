@@ -29,6 +29,17 @@ struct FBlueprintHelperReviewCascadeActionResult
 	bool bChildrenRemoved = false;
 };
 
+struct FBlueprintHelperReviewBatchActionResult
+{
+	bool bSucceeded = false;
+	int32 RequestedCount = 0;
+	int32 SucceededCount = 0;
+	int32 FailedCount = 0;
+	TArray<FBlueprintHelperReviewActionResult> Results;
+	TArray<FString> ChangedReviewRecordIds;
+	FString Message;
+};
+
 struct FBlueprintHelperReviewRejectOptions
 {
 	TMap<FString, FString> CurrentHashesByTargetKey;
@@ -66,6 +77,13 @@ public:
 	FBlueprintHelperReviewActionResult RejectReviewTargets(
 		const FString& ReviewRecordId,
 		const TArray<FString>& TargetKeys,
+		const FBlueprintHelperReviewRejectOptions& Options) const;
+
+	FBlueprintHelperReviewBatchActionResult AcceptReviewTargetsBatch(
+		const TMap<FString, TArray<FString>>& TargetKeysByReviewRecordId) const;
+
+	FBlueprintHelperReviewBatchActionResult RejectReviewTargetsBatch(
+		const TMap<FString, TArray<FString>>& TargetKeysByReviewRecordId,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
 	FBlueprintHelperReviewActionResult RejectAll(

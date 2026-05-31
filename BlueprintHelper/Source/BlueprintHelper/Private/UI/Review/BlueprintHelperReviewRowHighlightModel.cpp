@@ -703,13 +703,6 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 	AddStateAssetPath(PreferredAssetPath, AssetPaths);
 	AddStateAssetPath(ContextAssetPath, AssetPaths);
 	AddStateAssetPath(SelectedAssetPath, AssetPaths);
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
-	{
-		if (Item.IsValid())
-		{
-			AddStateAssetPath(Item->AssetPath, AssetPaths);
-		}
-	}
 
 	TSet<FString> DesiredStateKeys;
 	for (const FString& AssetPath : AssetPaths)
@@ -728,7 +721,8 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 		TMap<FString, FString> PrimaryTargetByChangeId;
 		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
 		{
-			if (!Item.IsValid() || Item->AssetPath != AssetPath)
+			const bool bUsesContextAssetScope = !ContextAssetPath.IsEmpty() && AssetPath == ContextAssetPath;
+			if (!Item.IsValid() || (!bUsesContextAssetScope && Item->AssetPath != AssetPath))
 			{
 				continue;
 			}
@@ -862,6 +856,12 @@ TSharedRef<SWidget> FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightOv
 	EBlueprintHelperReviewSurface Surface,
 	bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&))
 {
+	RebuildSurfaceState(
+		Args,
+		Surface,
+		Predicate,
+		Args.AssetContext ? Args.AssetContext->AssetPath : FString(),
+		true);
 	return SNullWidget::NullWidget;
 }
 

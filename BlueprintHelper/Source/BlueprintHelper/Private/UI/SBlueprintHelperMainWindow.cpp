@@ -4,6 +4,8 @@
 
 #include "Framework/Notifications/NotificationManager.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
+#include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
+#include "Systems/Review/BlueprintHelperReviewValiditySweepCoordinator.h"
 #include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/BlueprintHelperMainWindowPresenter.h"
 #include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
@@ -12,8 +14,9 @@
 #include "UI/TaskSpecWorkbench/SBlueprintHelperTaskSpecWorkbench.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Notifications/SNotificationList.h"
+#include "Widgets/SNullWidget.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "UI/Settings/SBlueprintHelperSettingsPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -24,14 +27,20 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 	GraphResolver = InArgs._GraphResolver;
 	ReviewStoreService = InArgs._ReviewStoreService;
 	ReviewActionService = InArgs._ReviewActionService;
-		MainWindowSettings = FBlueprintHelperUiSettingsResolver::LoadMainWindowSettings();
+	MainWindowSettings = FBlueprintHelperUiSettingsResolver::LoadMainWindowSettings();
 	NotificationSettings = FBlueprintHelperUiSettingsResolver::LoadNotificationSettings();
+	ReviewPerformanceSettings = FBlueprintHelperUiSettingsResolver::LoadReviewPerformanceSettings();
 	ActivePageIndex = ResolveDefaultTabIndex();
-MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStoreService);
+	MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStoreService);
 	MainWindowPresenter->SetEventSink([this](const FBlueprintHelperMainWindowPresenterEvent& Event)
 	{
 		HandleMainWindowPresenterEvent(Event);
 	});
+	ReviewValiditySweepCoordinator = MakeShared<FBlueprintHelperReviewValiditySweepCoordinator>(
+		ReviewStoreService,
+		ReviewPerformanceSettings);
+	ReviewValiditySweepCoordinator->StartSweep(TEXT("main_window_open"));
+	ConstructedPages.SetNum(4);
 
 	ChildSlot
 	[
@@ -90,34 +99,20 @@ MainWindowPresenter = MakeShared<FBlueprintHelperMainWindowPresenter>(ReviewStor
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
-			SAssignNew(PageSwitcher, SWidgetSwitcher)
-			.WidgetIndex(ActivePageIndex)
-			+ SWidgetSwitcher::Slot()
-			[
-				SNew(SBlueprintHelperTaskSpecWorkbench)
-				.GraphResolver(GraphResolver)
-			]
-			+ SWidgetSwitcher::Slot()
-			[
-				SNew(SBlueprintHelperReviewPanel)
-				.ReviewStoreService(ReviewStoreService)
-				.ReviewActionService(ReviewActionService)
-			]
-			+ SWidgetSwitcher::Slot()
-			[
-				SNew(SBlueprintHelperLayoutRuleEditor)
-				.InitialRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson())
-				.DefaultRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::GetDefaultRuleSetJson())
-				.OnImportJson(FBlueprintHelperLayoutRuleEditorImportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson))
-				.OnExportJson(FBlueprintHelperLayoutRuleEditorExportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::SaveConfiguredRuleSetJson))
-				.OnValidateJson(FBlueprintHelperLayoutRuleEditorValidateJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::ValidateRuleSetJson))
-			]
-			+ SWidgetSwitcher::Slot()
-			[
-				SNew(SBlueprintHelperSettingsPanel)
-			]
+			SAssignNew(PageHost, SBox)
 		]
 	];
+
+	EnsurePageConstructed(ActivePageIndex);
+}
+
+SBlueprintHelperMainWindow::~SBlueprintHelperMainWindow()
+{
+	if (ReviewValiditySweepCoordinator.IsValid())
+	{
+		ReviewValiditySweepCoordinator->Cancel();
+		ReviewValiditySweepCoordinator.Reset();
+	}
 }
 
 void SBlueprintHelperMainWindow::FlushCleanupTasks()
@@ -130,43 +125,111 @@ void SBlueprintHelperMainWindow::ShutdownCleanupTasks()
 	FBlueprintHelperMainWindowCleanupAsyncUtils::ShutdownCleanupTasks();
 }
 
+void SBlueprintHelperMainWindow::EnsurePageConstructed(int32 PageIndex)
+{
+	FBlueprintHelperReviewPerformanceScope Scope(
+		TEXT("MainWindow.EnsurePageConstructed"),
+		ReviewPerformanceSettings.MainWindowPageConstructWarningMs);
+	Scope.AddCount(TEXT("page"), PageIndex);
+
+	if (!ConstructedPages.IsValidIndex(PageIndex))
+	{
+		return;
+	}
+	if (!ConstructedPages[PageIndex].IsValid())
+	{
+		switch (PageIndex)
+		{
+		case 0:
+			ConstructedPages[PageIndex] = BuildToolsPage();
+			break;
+		case 1:
+			ConstructedPages[PageIndex] = BuildReviewPage();
+			break;
+		case 2:
+			ConstructedPages[PageIndex] = BuildLayoutPage();
+			break;
+		case 3:
+			ConstructedPages[PageIndex] = BuildSettingsPage();
+			break;
+		default:
+			ConstructedPages[PageIndex] = SNullWidget::NullWidget;
+			break;
+		}
+	}
+	if (PageHost.IsValid())
+	{
+		PageHost->SetContent(ConstructedPages[PageIndex].ToSharedRef());
+	}
+}
+
+TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildToolsPage()
+{
+	return SNew(SBlueprintHelperTaskSpecWorkbench)
+		.GraphResolver(GraphResolver);
+}
+
+TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildReviewPage()
+{
+	TSharedRef<SBlueprintHelperReviewPanel> Panel =
+		SNew(SBlueprintHelperReviewPanel)
+		.ReviewStoreService(ReviewStoreService)
+		.ReviewActionService(ReviewActionService)
+		.OnValidityCandidatesReady(
+			SBlueprintHelperReviewPanel::FOnValidityCandidatesReady::CreateSP(
+				this,
+				&SBlueprintHelperMainWindow::HandleReviewValidityCandidatesReady));
+	ReviewPanelWidget = Panel;
+	return Panel;
+}
+
+TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildLayoutPage()
+{
+	return SNew(SBlueprintHelperLayoutRuleEditor)
+		.InitialRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson())
+		.DefaultRuleSetJson(FBlueprintHelperGraphLayoutCoordinator::GetDefaultRuleSetJson())
+		.OnImportJson(FBlueprintHelperLayoutRuleEditorImportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::LoadConfiguredRuleSetJson))
+		.OnExportJson(FBlueprintHelperLayoutRuleEditorExportJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::SaveConfiguredRuleSetJson))
+		.OnValidateJson(FBlueprintHelperLayoutRuleEditorValidateJson::CreateStatic(&FBlueprintHelperGraphLayoutCoordinator::ValidateRuleSetJson));
+}
+
+TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildSettingsPage()
+{
+	return SNew(SBlueprintHelperSettingsPanel);
+}
+
+void SBlueprintHelperMainWindow::ShowPage(int32 PageIndex)
+{
+	if (!ConstructedPages.IsValidIndex(PageIndex))
+	{
+		return;
+	}
+
+	ActivePageIndex = PageIndex;
+	EnsurePageConstructed(ActivePageIndex);
+}
+
 FReply SBlueprintHelperMainWindow::ShowToolsPage()
 {
-	ActivePageIndex = 0;
-	if (PageSwitcher.IsValid())
-	{
-		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
-	}
+	ShowPage(0);
 	return FReply::Handled();
 }
 
 FReply SBlueprintHelperMainWindow::ShowReviewPage()
 {
-	ActivePageIndex = 1;
-	if (PageSwitcher.IsValid())
-	{
-		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
-	}
+	ShowPage(1);
 	return FReply::Handled();
 }
 
 FReply SBlueprintHelperMainWindow::ShowLayoutPage()
 {
-	ActivePageIndex = 2;
-	if (PageSwitcher.IsValid())
-	{
-		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
-	}
+	ShowPage(2);
 	return FReply::Handled();
 }
 
 FReply SBlueprintHelperMainWindow::ShowSettingsPage()
 {
-	ActivePageIndex = 3;
-	if (PageSwitcher.IsValid())
-	{
-		PageSwitcher->SetActiveWidgetIndex(ActivePageIndex);
-	}
+	ShowPage(3);
 	return FReply::Handled();
 }
 
@@ -203,6 +266,18 @@ void SBlueprintHelperMainWindow::HandleMainWindowPresenterEvent(
 			Event.bCleanupSucceeded,
 			Event.bExpireCleanupNotification);
 	}
+}
+
+void SBlueprintHelperMainWindow::HandleReviewValidityCandidatesReady(
+	const FString& Source,
+	const TArray<FBlueprintHelperReviewValidityCandidate>& Candidates)
+{
+	if (!ReviewValiditySweepCoordinator.IsValid() || Candidates.Num() == 0)
+	{
+		return;
+	}
+
+	ReviewValiditySweepCoordinator->EnqueueCandidatesFromPendingLoad(Source, Candidates);
 }
 
 void SBlueprintHelperMainWindow::ShowCleanupNotification(const FString& StatusText)

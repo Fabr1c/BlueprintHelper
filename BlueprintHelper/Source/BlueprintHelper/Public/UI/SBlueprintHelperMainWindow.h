@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/Review/BlueprintHelperReviewTargetValidityTypes.h"
 #include "UI/BlueprintHelperUiSettings.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -11,8 +12,11 @@ class FBlueprintHelperImportService;
 class FBlueprintHelperMainWindowPresenter;
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
+class FBlueprintHelperReviewValiditySweepCoordinator;
+class SBlueprintHelperReviewPanel;
+class SBox;
 class SNotificationItem;
-class SWidgetSwitcher;
+class SWidget;
 struct FBlueprintHelperMainWindowPresenterEvent;
 
 class SBlueprintHelperMainWindow : public SCompoundWidget
@@ -34,6 +38,7 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	~SBlueprintHelperMainWindow();
 	static void FlushCleanupTasks();
 	static void ShutdownCleanupTasks();
 
@@ -43,7 +48,16 @@ private:
 	FReply ShowLayoutPage();
 	FReply ShowSettingsPage();
 	FReply OnCleanupReviewDataClicked();
+	void ShowPage(int32 PageIndex);
+	void EnsurePageConstructed(int32 PageIndex);
+	TSharedRef<SWidget> BuildToolsPage();
+	TSharedRef<SWidget> BuildReviewPage();
+	TSharedRef<SWidget> BuildLayoutPage();
+	TSharedRef<SWidget> BuildSettingsPage();
 	void HandleMainWindowPresenterEvent(const FBlueprintHelperMainWindowPresenterEvent& Event);
+	void HandleReviewValidityCandidatesReady(
+		const FString& Source,
+		const TArray<FBlueprintHelperReviewValidityCandidate>& Candidates);
 	void ShowCleanupNotification(const FString& StatusText);
 	void UpdateCleanupNotification(const FString& StatusText, bool bSucceeded, bool bExpire);
 	int32 ResolveDefaultTabIndex() const;
@@ -58,9 +72,13 @@ private:
 	const FBlueprintHelperReviewStoreService* ReviewStoreService = nullptr;
 	const FBlueprintHelperReviewActionService* ReviewActionService = nullptr;
 	TSharedPtr<FBlueprintHelperMainWindowPresenter> MainWindowPresenter;
-	TSharedPtr<SWidgetSwitcher> PageSwitcher;
+	TSharedPtr<FBlueprintHelperReviewValiditySweepCoordinator> ReviewValiditySweepCoordinator;
+	TSharedPtr<SBox> PageHost;
+	TArray<TSharedPtr<SWidget>> ConstructedPages;
+	TWeakPtr<SBlueprintHelperReviewPanel> ReviewPanelWidget;
 	FBlueprintHelperMainWindowSettings MainWindowSettings;
 	FBlueprintHelperNotificationSettings NotificationSettings;
+	FBlueprintHelperReviewPerformanceSettings ReviewPerformanceSettings;
 	TWeakPtr<SNotificationItem> CleanupNotification;
 	int32 ActivePageIndex = 0;
 };

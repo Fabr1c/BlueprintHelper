@@ -93,6 +93,50 @@ FBlueprintHelperNotificationSettings FBlueprintHelperUiSettingsResolver::LoadNot
 	return Settings;
 }
 
+FBlueprintHelperReviewPerformanceSettings FBlueprintHelperUiSettingsResolver::LoadReviewPerformanceSettings()
+{
+	FBlueprintHelperReviewPerformanceSettings Settings;
+	Settings.TraceWarningMs = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.trace_warning_ms"),
+			Settings.TraceWarningMs));
+	Settings.MainWindowPageConstructWarningMs = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.main_window_page_construct_warning_ms"),
+			Settings.MainWindowPageConstructWarningMs));
+	Settings.PendingLoadValidityCandidateBudget = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.pending_load_validity_candidate_budget"),
+			Settings.PendingLoadValidityCandidateBudget));
+	Settings.bValiditySweepEnabled = FBlueprintHelperRuntimeSettingResolver::GetBool(
+		TEXT("review.performance.validity_sweep_enabled"),
+		Settings.bValiditySweepEnabled);
+	Settings.ValiditySweepMaxRecordHydrationsPerWorkerBatch = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.validity_sweep_max_record_hydrations_per_worker_batch"),
+			Settings.ValiditySweepMaxRecordHydrationsPerWorkerBatch));
+	Settings.ValiditySweepMaxGameThreadTargetsPerFrame = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.validity_sweep_max_game_thread_targets_per_frame"),
+			Settings.ValiditySweepMaxGameThreadTargetsPerFrame));
+	Settings.ValiditySweepMaxGameThreadMillisecondsPerFrame = FMath::Max(
+		0.0f,
+		static_cast<float>(FBlueprintHelperRuntimeSettingResolver::GetDouble(
+			TEXT("review.performance.validity_sweep_max_game_thread_ms_per_frame"),
+			Settings.ValiditySweepMaxGameThreadMillisecondsPerFrame)));
+	Settings.ValiditySweepMaxInvalidPurgesPerBatch = FMath::Max(
+		0,
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.validity_sweep_max_invalid_purges_per_batch"),
+			Settings.ValiditySweepMaxInvalidPurgesPerBatch));
+	return Settings;
+}
+
 FBlueprintHelperTaskSpecWorkbenchSettings FBlueprintHelperUiSettingsResolver::LoadTaskSpecWorkbenchSettings()
 {
 	FBlueprintHelperTaskSpecWorkbenchSettings Settings;
