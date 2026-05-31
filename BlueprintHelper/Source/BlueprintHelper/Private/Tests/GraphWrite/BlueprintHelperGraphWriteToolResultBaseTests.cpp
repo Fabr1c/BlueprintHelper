@@ -45,6 +45,7 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
@@ -654,6 +655,13 @@ public:
 		}
 	}
 
+	static FString MakeGraphWriteEntryBlockId(UBlueprint* Blueprint, UEdGraph* Graph, const FString& EntryName)
+	{
+		FBlueprintHelperBlockIdService BlockIdService;
+		const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, EntryName);
+		return BlockIdService.MakeFullBlockId(Graph ? Graph->GetName() : FString(), BlockRef);
+	}
+
 	static bool NodeHasBlueprintHelperBlockId(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
@@ -981,7 +989,8 @@ public:
 		const FString& TargetPinRef,
 		bool bDryRun,
 		const FString& SourceNodePath = FString(),
-		const FString& SourcePinPath = FString())
+		const FString& SourcePinPath = FString(),
+		const FString& TargetBlockId = FString())
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
@@ -995,6 +1004,10 @@ public:
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
 		TSharedRef<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+		if (!TargetBlockId.IsEmpty())
+		{
+			PatchedRef->SetStringField(TEXT("block_id"), TargetBlockId);
+		}
 		PatchedRef->SetStringField(TEXT("node_ref"), TargetNodeRef);
 		PatchedRef->SetStringField(TEXT("pin_ref"), TargetPinRef);
 		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
@@ -1728,6 +1741,7 @@ public:
 		FBlueprintHelperLogicJsonPathService PathService;
 		FBlueprintHelperPatchBlueprintGraphService PatchGraphService;
 		FBlueprintHelperMergeBlueprintGraphService MergeGraphService;
+		FBlueprintHelperGraphWriteServiceRegistry GraphWriteRegistry;
 		FBlueprintHelperBlueprintStructureService StructureService;
 		FBlueprintHelperBlueprintVariableService VariableService;
 		FBlueprintHelperAssetFactoryService AssetFactoryService;
@@ -1751,10 +1765,7 @@ public:
 			, ClassSettingsService(Resolver)
 			, CompileAssetService(CompileService)
 			, RuntimeService(
-				AppendGraphService,
-				ReplaceGraphService,
-				PatchGraphService,
-				MergeGraphService,
+				GraphWriteRegistry,
 				VariableService,
 				StructureService,
 				AssetFactoryService,
@@ -1766,6 +1777,22 @@ public:
 				CompileAssetService,
 				AssetBrowseService)
 		{
+			GraphWriteRegistry.RegisterHandler(TEXT("append_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return AppendGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("replace_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return ReplaceGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("patch_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return PatchGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("merge_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return MergeGraphService.Execute(Payload);
+			});
 		}
 	};
 
@@ -2303,6 +2330,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunResolvesEndpointsTest::RunT
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsDryRun"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2316,7 +2346,10 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunResolvesEndpointsTest::RunT
 			TEXT("then"),
 			Target->GetName(),
 			TEXT("execute"),
-			true));
+			true,
+			FString(),
+			FString(),
+			BlockId));
 
 	TestTrue(TEXT("connect_pins dry-run succeeds"), Result.bOk);
 	TestEqual(TEXT("operation is patch_blueprint_graph"), Result.Operation, FString(TEXT("patch_blueprint_graph")));
@@ -2347,6 +2380,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunRequiresSourceEndpointTest:
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsMissingSource"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	TSharedRef<FJsonObject> Payload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
 		Blueprint->GetPathName(),
@@ -2355,7 +2391,10 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunRequiresSourceEndpointTest:
 		TEXT(""),
 		Target->GetName(),
 		TEXT("execute"),
-		true);
+		true,
+		FString(),
+		FString(),
+		BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2396,6 +2435,8 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecuteRequiresSourceEndpointTest
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsExecuteMissingSource"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2409,7 +2450,10 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecuteRequiresSourceEndpointTest
 			TEXT(""),
 			Target->GetName(),
 			TEXT("execute"),
-			false));
+			false,
+			FString(),
+			FString(),
+			BlockId));
 
 	TestFalse(TEXT("connect_pins execute fails without source endpoint"), Result.bOk);
 	TestTrue(TEXT("execute carries source endpoint error"), Result.Error.IsSet());
@@ -2446,6 +2490,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePat
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsInvalidSourceNodePath"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2460,7 +2507,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePat
 			Target->GetName(),
 			TEXT("execute"),
 			true,
-			TEXT("MissingSourcePath")));
+			TEXT("MissingSourcePath"),
+			FString(),
+			BlockId));
 
 	TestFalse(TEXT("connect_pins dry-run fails on invalid source node path"), Result.bOk);
 	TestTrue(TEXT("dry-run carries invalid source node path error"), Result.Error.IsSet());
@@ -2496,6 +2545,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPath
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsInvalidSourcePinPath"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2511,7 +2563,8 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPath
 			TEXT("execute"),
 			true,
 			FString(),
-			TEXT("MissingSourcePinPath")));
+			TEXT("MissingSourcePinPath"),
+			BlockId));
 
 	TestFalse(TEXT("connect_pins dry-run fails on invalid source pin path"), Result.bOk);
 	TestTrue(TEXT("dry-run carries invalid source pin path error"), Result.Error.IsSet());
@@ -2549,6 +2602,9 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecutesViaCoordinatorTest::RunTe
 	{
 		return false;
 	}
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsExecute"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperLogicJsonPathService PathService;
@@ -2562,7 +2618,10 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecutesViaCoordinatorTest::RunTe
 			TEXT("then"),
 			Target->GetName(),
 			TEXT("execute"),
-			false));
+			false,
+			FString(),
+			FString(),
+			BlockId));
 
 	TestTrue(TEXT("connect_pins execute succeeds"), Result.bOk);
 	TestEqual(TEXT("source then has one linked pin"), SourceThen->LinkedTo.Num(), 1);
@@ -2714,13 +2773,13 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWriteReplaceCustomEventBodyAdoptsEmptyUnownedEntryTest,
-	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyAdoptsEmptyUnownedEntry",
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyRejectsEmptyUnownedEntryTest,
+	"BlueprintHelper.GraphWrite.Replace.RejectsImplicitUserAuthoredAdoption",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWriteReplaceCustomEventBodyAdoptsEmptyUnownedEntryTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyRejectsEmptyUnownedEntryTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceAdoptsEmptyUnownedEntry"));
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceRejectsEmptyUnownedEntry"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
@@ -2754,31 +2813,22 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyAdoptsEmptyUnownedEntryTest
 			Graph->GetName(),
 			EventName));
 
-	TestTrue(TEXT("replace empty unowned custom event body succeeds"), Result.bOk);
-	TestEqual(TEXT("replace empty unowned custom event status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestFalse(TEXT("replace empty unowned custom event body is rejected"), Result.bOk);
+	TestTrue(TEXT("replace empty unowned custom event reports owned-only policy"),
+		Result.Error.IsSet() && Result.Error->Code == TEXT("owned_replace_target_not_blueprinthelper_owned"));
 
 	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
 	TestNotNull(TEXT("custom event has output exec pin"), EntryExecOut);
-
-	UK2Node_CallFunction* ReplacementPrintNode = nullptr;
 	if (EntryExecOut)
 	{
-		for (UEdGraphPin* LinkedPin : EntryExecOut->LinkedTo)
-		{
-			UK2Node_CallFunction* CallNode = LinkedPin ? Cast<UK2Node_CallFunction>(LinkedPin->GetOwningNode()) : nullptr;
-			if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
-			{
-				ReplacementPrintNode = CallNode;
-				break;
-			}
-		}
+		TestEqual(TEXT("unowned entry remains disconnected after rejected replace"), EntryExecOut->LinkedTo.Num(), 0);
 	}
 
-	TestNotNull(TEXT("empty unowned entry links to replacement PrintString"), ReplacementPrintNode);
-	TestTrue(TEXT("adopted entry keeps BlueprintHelper ownership for future scoped replace"),
+	TestFalse(TEXT("unowned entry is not adopted as BlueprintHelper owned"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::NodeHasBlueprintHelperBlockId(EntryNode, ExpectedBlockId));
-	TestTrue(TEXT("replacement body node keeps adopted BlueprintHelper ownership"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::NodeHasBlueprintHelperBlockId(ReplacementPrintNode, ExpectedBlockId));
+	TestEqual(TEXT("no node receives synthetic ownership after rejected replace"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, ExpectedBlockId),
+		0);
 	return true;
 }
 
@@ -3407,8 +3457,15 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionDisplayNameReadBackTest::R
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeDisplayNameCall");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -3453,8 +3510,15 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionQualifiedNameReadBackTest:
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeQualifiedNameCall");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -3521,8 +3585,15 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPreviewExecute
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeTargetObjectCall");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -3826,8 +3897,15 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverExecuteRevalidatesStableIdTes
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeStableIdCall");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),
@@ -3910,8 +3988,15 @@ bool FBlueprintHelperGraphWriteTaskRuntimeP6EvidenceBackedReadbackCoverageTest::
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeP6ReadbackEvent");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const TSharedRef<FJsonObject> TaskPlanPayload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
 		Blueprint->GetPathName(),

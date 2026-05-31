@@ -7,6 +7,8 @@ type LogicFlowNode = {
   ref: string;
   name: string;
   kind?: string;
+  externalAnchor?: Record<string, unknown>;
+  externalAnchors?: Record<string, unknown>[];
 };
 
 type LogicFlowLink = {
@@ -15,12 +17,14 @@ type LogicFlowLink = {
   fromPin: string;
   toNode: string;
   toPin: string;
+  externalAnchor?: Record<string, unknown>;
 };
 
 type LogicFlowGraph = {
   name?: string;
   nodes: LogicFlowNode[];
   links: LogicFlowLink[];
+  anchors: Record<string, unknown>[];
   stats: Record<string, unknown>;
 };
 
@@ -42,14 +46,19 @@ export function buildLogicFlowPayload(payload: Record<string, unknown>): Record<
   const warnings = uniqueStrings(graphs.flatMap((graph) => buildLogicFlowWarnings(graph)));
   const mode = chooseMode(graphs);
   const flow = graphs.map((graph) => buildGraphFlow(graph, mode)).filter(Boolean).join('\n\n');
+  const anchors = collectLogicFlowAnchors(graphs);
 
-  return {
+  const result: Record<string, unknown> = {
     schema: 'LogicFlow.v1',
     mode,
     flow,
     stats: isRecord(payload['stats']) ? payload['stats'] : buildAggregateStats(graphs),
     warnings,
   };
+  if (anchors.length > 0) {
+    result['anchors'] = anchors;
+  }
+  return result;
 }
 
 function chooseMode(graphs: LogicFlowGraph[]): LogicFlowMode {
@@ -219,7 +228,8 @@ function normalizeGraph(
     : [];
   const links = collectLinks(logic);
   const stats = isRecord(payload['stats']) ? payload['stats'] : buildStats(nodes, links);
-  return { name, nodes, links, stats };
+  const anchors = collectGraphAnchors(logic, nodes, links);
+  return { name, nodes, links, anchors, stats };
 }
 
 function normalizeNode(value: unknown, index: number): LogicFlowNode | undefined {
@@ -232,6 +242,8 @@ function normalizeNode(value: unknown, index: number): LogicFlowNode | undefined
     ref,
     name,
     kind: readString(value, ['kind', 'category']),
+    externalAnchor: readObject(value, ['external_anchor', 'externalAnchor']),
+    externalAnchors: readObjectArray(value, ['external_anchors', 'externalAnchors']),
   };
 }
 
@@ -279,6 +291,7 @@ function normalizeLink(value: unknown, fallbackFromNode = ''): LogicFlowLink | u
     fromPin: readString(value, ['from_pin', 'source_pin', 'fromPin', 'pin_ref']) ?? '',
     toNode,
     toPin: readString(value, ['to_pin', 'target_pin', 'toPin']) ?? '',
+    externalAnchor: readObject(value, ['external_anchor', 'externalAnchor']),
   };
 }
 
@@ -407,6 +420,85 @@ function readString(record: Record<string, unknown> | undefined, keys: string[])
     }
   }
   return undefined;
+}
+
+function readObject(record: Record<string, unknown> | undefined, keys: string[]): Record<string, unknown> | undefined {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (isRecord(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readObjectArray(record: Record<string, unknown> | undefined, keys: string[]): Record<string, unknown>[] {
+  if (!record) {
+    return [];
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is Record<string, unknown> => isRecord(item));
+    }
+  }
+  return [];
+}
+
+function collectLogicFlowAnchors(graphs: LogicFlowGraph[]): Record<string, unknown>[] {
+  return stableUniqueAnchors(graphs.flatMap((graph) => graph.anchors));
+}
+
+function collectGraphAnchors(
+  logic: Record<string, unknown>,
+  nodes: LogicFlowNode[],
+  links: LogicFlowLink[],
+): Record<string, unknown>[] {
+  const anchors: Record<string, unknown>[] = [];
+  anchors.push(...readObjectArray(logic, ['anchors']));
+  for (const node of nodes) {
+    if (node.externalAnchor) {
+      anchors.push(node.externalAnchor);
+    }
+    anchors.push(...(node.externalAnchors ?? []));
+  }
+  for (const link of links) {
+    if (link.externalAnchor) {
+      anchors.push(link.externalAnchor);
+    }
+  }
+  return stableUniqueAnchors(anchors);
+}
+
+function stableUniqueAnchors(anchors: Record<string, unknown>[]): Record<string, unknown>[] {
+  const byKey = new Map<string, Record<string, unknown>>();
+  for (const anchor of anchors) {
+    byKey.set(anchorSortKey(anchor), anchor);
+  }
+  return [...byKey.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, anchor]) => anchor);
+}
+
+function anchorSortKey(anchor: Record<string, unknown>): string {
+  return [
+    readAnchorString(anchor, 'schema'),
+    readAnchorString(anchor, 'asset_path'),
+    readAnchorString(anchor, 'graph_name'),
+    readAnchorString(anchor, 'semantic_role'),
+    readAnchorString(anchor, 'node_guid'),
+    readAnchorString(anchor, 'pin_direction'),
+    readAnchorString(anchor, 'pin_name'),
+    readAnchorString(anchor, 'fingerprint'),
+  ].join('|');
+}
+
+function readAnchorString(anchor: Record<string, unknown>, key: string): string {
+  const value = anchor[key];
+  return typeof value === 'string' ? value : '';
 }
 
 function formatRelativeDataReference(pin: string): string {

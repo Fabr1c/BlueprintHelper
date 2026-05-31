@@ -69,6 +69,18 @@ public:
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,
 				FString& OutError);
+	static bool RestoreExternalBoundaryFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
+	static bool RestoreExternalNodeFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
+	static bool RestoreExternalBodyFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
 	static bool RestoreSignatureFromSnapshot(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,

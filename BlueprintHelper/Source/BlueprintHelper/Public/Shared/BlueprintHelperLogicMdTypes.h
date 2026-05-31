@@ -261,6 +261,7 @@ struct FBlueprintHelperLogicLink
 	FString FromPin;
 	FString ToNode;
 	FString ToPin;
+	TSharedPtr<FJsonObject> ExternalAnchor;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -271,6 +272,7 @@ struct FBlueprintHelperLogicLink
 		Json->SetStringField(TEXT("from_pin"), FromPin);
 		Json->SetStringField(TEXT("to_node"), ToNode);
 		Json->SetStringField(TEXT("to_pin"), ToPin);
+		if (ExternalAnchor.IsValid()) { Json->SetObjectField(TEXT("external_anchor"), ExternalAnchor); }
 		return Json;
 	}
 };
@@ -288,6 +290,8 @@ struct FBlueprintHelperLogicNode
 	TSharedPtr<FJsonObject> InputDefaults;
 	TSharedPtr<FJsonObject> Outputs;
 	TArray<FBlueprintHelperLogicLink> Links;
+	TSharedPtr<FJsonObject> ExternalAnchor;
+	TArray<TSharedPtr<FJsonObject>> ExternalAnchors;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -299,6 +303,22 @@ struct FBlueprintHelperLogicNode
 		if (Inputs.IsValid()) { Json->SetObjectField(TEXT("inputs"), Inputs); }
 		if (InputDefaults.IsValid()) { Json->SetObjectField(TEXT("input_defaults"), InputDefaults); }
 		if (Outputs.IsValid()) { Json->SetObjectField(TEXT("outputs"), Outputs); }
+		if (ExternalAnchor.IsValid()) { Json->SetObjectField(TEXT("external_anchor"), ExternalAnchor); }
+		if (ExternalAnchors.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> AnchorArr;
+			for (const TSharedPtr<FJsonObject>& Anchor : ExternalAnchors)
+			{
+				if (Anchor.IsValid())
+				{
+					AnchorArr.Add(MakeShared<FJsonValueObject>(Anchor));
+				}
+			}
+			if (AnchorArr.Num() > 0)
+			{
+				Json->SetArrayField(TEXT("external_anchors"), AnchorArr);
+			}
+		}
 		if (Links.Num() > 0)
 		{
 			TArray<TSharedPtr<FJsonValue>> Arr;

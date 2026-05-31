@@ -39,6 +39,7 @@ class FBlueprintHelperAppendBlueprintGraphService;
 class FBlueprintHelperReplaceBlueprintGraphService;
 class FBlueprintHelperPatchBlueprintGraphService;
 class FBlueprintHelperMergeBlueprintGraphService;
+class FBlueprintHelperGraphWriteServiceRegistry;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperReviewStoreService;
@@ -69,10 +70,7 @@ public:
 		const FBlueprintHelperAssetFactoryService& InAssetFactory,
 		const FBlueprintHelperComponentService& InComponentService,
 		const FBlueprintHelperClassSettingsService& InClassSettings,
-		const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-		const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-		const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-		const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService,
+		const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
 		const FBlueprintHelperReviewStoreService& InReviewStoreService);

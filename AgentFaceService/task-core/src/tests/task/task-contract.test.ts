@@ -45,11 +45,15 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'target.asset_path',
       'scope_policy.graph_name',
       'scope_policy.allow_modify_user_nodes',
+      'scope_policy.external_mutation_policy for external_graph_edit',
       'behavior.graph_strategy',
       'behavior.entries[] for append_new_owned_graph',
       'behavior.replace for replace_owned_graph',
       'behavior.patches[] for patch_owned_graph',
       'behavior.merges[] for merge_owned_graph',
+      'behavior.external_merges[] for merge_external_flow',
+      'behavior.external_patches[] for patch_external_graph',
+      'behavior.external_replace for replace_external_body',
       'validation.should_compile',
       'validation.should_save',
     ]);
@@ -70,6 +74,8 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'steps[].write.ops[]',
       'steps[].constraints.allow_modify_user_nodes',
       'steps[].constraints.ownership_scope',
+      'steps[].constraints.external_mutation_policy.strategy for external_graph_edit',
+      'steps[].constraints.external_mutation_policy.allowed_mutations[] for external_graph_edit',
     ]);
   });
 
@@ -82,6 +88,9 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'replace_owned_graph',
         'patch_owned_graph',
         'merge_owned_graph',
+        'merge_external_flow',
+        'patch_external_graph',
+        'replace_external_body',
       ],
       entry_types: ['custom_event'],
       statement_kinds: [
@@ -122,8 +131,11 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'replace_blueprint_graph',
         'patch_blueprint_graph',
         'merge_blueprint_graph',
+        'merge_external_flow',
+        'patch_external_graph',
+        'replace_external_body',
       ],
-      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
+      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge/external_merge paths compile to one structural op per step',
     });
 
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.supported_second_slice, {

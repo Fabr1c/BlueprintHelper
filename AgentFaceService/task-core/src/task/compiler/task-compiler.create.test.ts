@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { compileTaskSpecToTaskPlan, taskPlanToAppendBridgePayload } from './task-compiler.js';
 
-function makeCreateSpec(statement: Record<string, unknown>) {
+function makeCreateSpec(statement: Record<string, unknown>, scopePolicy?: Record<string, unknown>) {
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',
     context_id: 'ctx_create_statement_ts',
@@ -16,6 +16,7 @@ function makeCreateSpec(statement: Record<string, unknown>) {
     scope_policy: {
       graph_name: 'EG_CreateFeatureTs',
       allow_modify_user_nodes: false,
+      ...scopePolicy,
     },
     behavior: {
       graph_strategy: 'append_new_owned_graph',
@@ -47,6 +48,13 @@ function compileTaskPlanStatement(statement: Record<string, unknown>) {
   return write.ops[0].body.statements[0];
 }
 
+function compileGraphWriteStep(statement: Record<string, unknown>) {
+  const taskPlan = compileTaskSpecToTaskPlan(makeCreateSpec(statement) as never);
+  const graphWriteStep = taskPlan.steps.find((step) => (step as Record<string, unknown>).capability === 'graph_write') as Record<string, unknown> | undefined;
+  assert.ok(graphWriteStep);
+  return graphWriteStep;
+}
+
 function compileBridgeStatement(statement: Record<string, unknown>) {
   const taskPlan = compileTaskSpecToTaskPlan(makeCreateSpec(statement) as never);
   const bridgePayload = taskPlanToAppendBridgePayload(taskPlan, true) as unknown as Record<string, unknown>;
@@ -70,6 +78,38 @@ test('create statement preserves broad-create evidence', () => {
   const args = statement.args as Record<string, Record<string, unknown>>;
   assert.equal(args.item.kind, 'literal');
   assert.equal(args.item.id, 'ApplyCreate_stmt_1_arg_item');
+});
+
+test('append graph write step carries owned-only constraints', () => {
+  const graphWriteStep = compileGraphWriteStep({
+    kind: 'create',
+    create_operation: 'make_array',
+    pin_type: { category: 'int' },
+    args: {
+      item: { kind: 'literal', value_type: 'number', value: 42 },
+    },
+  });
+
+  assert.deepEqual(graphWriteStep.constraints, {
+    allow_modify_user_nodes: false,
+    ownership_scope: 'blueprinthelper_owned',
+  });
+});
+
+test('append graph write rejects broad user node mutation policy', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeCreateSpec({
+      kind: 'create',
+      create_operation: 'make_array',
+      pin_type: { category: 'int' },
+      args: {
+        item: { kind: 'literal', value_type: 'number', value: 42 },
+      },
+    }, {
+      allow_modify_user_nodes: true,
+    }) as never),
+    /unsupported_scope_policy/,
+  );
 });
 
 test('create expression is preserved inside value expressions', () => {

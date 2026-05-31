@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "GraphWriteGraphStatementUtils.generated.h"
 
+enum class EBlueprintHelperGraphStatementKind : uint8;
 class UBlueprint;
 enum class EBlueprintHelperGraphFragmentPortDirection : uint8;
 enum class EBlueprintHelperActionSemanticKind : uint8;

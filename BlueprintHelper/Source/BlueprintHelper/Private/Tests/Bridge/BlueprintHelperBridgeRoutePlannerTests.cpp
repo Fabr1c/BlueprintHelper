@@ -31,6 +31,9 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 {
 	const TPair<FString, EBlueprintHelperBridgeRouteCluster> Cases[] = {
 		{TEXT("append_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
+		{TEXT("merge_external_flow"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
+		{TEXT("patch_external_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
+		{TEXT("replace_external_body"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 		{TEXT("read_blueprint_member_variables"), EBlueprintHelperBridgeRouteCluster::BlueprintVariables},
 		{TEXT("create_asset"), EBlueprintHelperBridgeRouteCluster::AssetFactory},
 		{TEXT("read_components"), EBlueprintHelperBridgeRouteCluster::Component},
@@ -101,6 +104,9 @@ bool FBlueprintHelperGraphWriteBridgeRoutes_RecognizesOnlyGraphWriteCommands::Ru
 		TEXT("replace_blueprint_graph"),
 		TEXT("patch_blueprint_graph"),
 		TEXT("merge_blueprint_graph"),
+		TEXT("merge_external_flow"),
+		TEXT("patch_external_graph"),
+		TEXT("replace_external_body"),
 	};
 
 	for (const FString& Command : GraphWriteCommands)

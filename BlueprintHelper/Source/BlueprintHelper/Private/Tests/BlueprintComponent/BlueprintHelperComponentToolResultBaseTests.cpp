@@ -22,6 +22,7 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
@@ -50,6 +51,7 @@ public:
 		FBlueprintHelperReplaceBlueprintGraphService ReplaceGraphService;
 		FBlueprintHelperPatchBlueprintGraphService PatchGraphService;
 		FBlueprintHelperMergeBlueprintGraphService MergeGraphService;
+		FBlueprintHelperGraphWriteServiceRegistry GraphWriteRegistry;
 		FBlueprintHelperBlueprintStructureService StructureService;
 		FBlueprintHelperBlueprintVariableService VariableService;
 		FBlueprintHelperAssetFactoryService AssetFactoryService;
@@ -73,10 +75,7 @@ public:
 			, ClassSettingsService(Resolver)
 			, CompileAssetService(CompileService)
 			, TaskRuntimeService(
-				AppendGraphService,
-				ReplaceGraphService,
-				PatchGraphService,
-				MergeGraphService,
+				GraphWriteRegistry,
 				VariableService,
 				StructureService,
 				AssetFactoryService,
@@ -88,6 +87,22 @@ public:
 				CompileAssetService,
 				AssetBrowseService)
 		{
+			GraphWriteRegistry.RegisterHandler(TEXT("append_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return AppendGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("replace_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return ReplaceGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("patch_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return PatchGraphService.Execute(Payload);
+			});
+			GraphWriteRegistry.RegisterHandler(TEXT("merge_blueprint_graph"), [this](const TSharedRef<FJsonObject>& Payload)
+			{
+				return MergeGraphService.Execute(Payload);
+			});
 		}
 	};
 

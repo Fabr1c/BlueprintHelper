@@ -8,6 +8,8 @@
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
+#include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
+#include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 #include "Misc/AutomationTest.h"
@@ -51,6 +53,9 @@ bool FBlueprintHelperTaskRuntimeClusterHub_ResolvesLoweredSteps::RunTest(const F
 {
 	const TPair<FBlueprintHelperTaskRuntimeLoweredStep, EBlueprintHelperTaskRuntimeCluster> Cases[] = {
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("append_blueprint_graph")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
+		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("merge_external_flow")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
+		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("patch_external_graph")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
+		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("replace_external_body")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("blueprint_variable"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::BlueprintVariables},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("asset_factory"), TEXT("asset_factory.create_asset")), EBlueprintHelperTaskRuntimeCluster::AssetFactory},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("blueprint_component"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::Component},
@@ -95,6 +100,9 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster_RecognizesOnlyGraphWriteSteps:
 		TEXT("replace_blueprint_graph"),
 		TEXT("patch_blueprint_graph"),
 		TEXT("merge_blueprint_graph"),
+		TEXT("merge_external_flow"),
+		TEXT("patch_external_graph"),
+		TEXT("replace_external_body"),
 	};
 
 	for (const FString& AdapterOperation : GraphWriteOperations)
@@ -395,6 +403,172 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 			TEXT("task_cluster_evidence"),
 			3,
 			MissingAssetEvidence));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeMergeExternalFlow_BuildsExternalBoundaryReviewEvidence,
+	"BlueprintHelper.TaskRuntime.GraphWrite.MergeExternalFlow.BuildsExternalBoundaryReviewEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeMergeExternalFlow_BuildsExternalBoundaryReviewEvidence::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+	Payload->SetObjectField(TEXT("target"), Target);
+
+	TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+	Anchor->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalGraphAnchor.v1"));
+	Anchor->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+	Anchor->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+	Anchor->SetStringField(TEXT("node_guid"), TEXT("11111111-2222-3333-4444-555555555555"));
+	Anchor->SetStringField(TEXT("node_class"), TEXT("/Script/BlueprintGraph.K2Node_CustomEvent"));
+	Anchor->SetStringField(TEXT("pin_name"), TEXT("then"));
+	Anchor->SetStringField(TEXT("pin_direction"), TEXT("output"));
+	Anchor->SetStringField(TEXT("semantic_role"), TEXT("exec_boundary"));
+	Anchor->SetStringField(TEXT("fingerprint"), TEXT("fingerprint"));
+	Payload->SetObjectField(TEXT("anchor"), Anchor);
+
+	TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
+	Inserted->SetStringField(TEXT("block_id"), TEXT("ExternalMerge_step_1"));
+	Payload->SetObjectField(TEXT("inserted"), Inserted);
+
+	FBlueprintHelperTaskRuntimeLoweredStep Step =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("merge_external_flow"));
+	Step.Payload = Payload;
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+		Step,
+		TEXT("archive_external_flow"),
+		TEXT("task_external_flow"),
+		7,
+		Evidence);
+
+	TestTrue(TEXT("merge_external_flow builds Review evidence"), bBuilt);
+	TestEqual(TEXT("nested target asset path is used"),
+		Evidence.AssetPath,
+		FString(TEXT("/Game/BP_External")));
+	TestEqual(TEXT("operation kind is merge_external_flow"),
+		Evidence.OperationKind,
+		FString(TEXT("merge_external_flow")));
+	TestEqual(TEXT("two atomic targets are emitted"),
+		Evidence.AtomicTargets.Num(),
+		2);
+	if (Evidence.AtomicTargets.Num() != 2)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& BoundaryTarget = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("boundary target kind"),
+		BoundaryTarget.TargetKind,
+		FString(TEXT("graph_external_boundary")));
+	TestEqual(TEXT("boundary handler is external boundary"),
+		static_cast<int32>(FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(BoundaryTarget.TargetKind)),
+		static_cast<int32>(EBlueprintHelperReviewTargetHandlerKind::GraphExternalBoundary));
+	TestEqual(TEXT("boundary target graph"),
+		BoundaryTarget.GraphName,
+		FString(TEXT("EventGraph")));
+	TestEqual(TEXT("boundary ownership is external"),
+		BoundaryTarget.Ownership,
+		FString(TEXT("external_user_authored")));
+	TestEqual(TEXT("boundary node guid is preserved"),
+		BoundaryTarget.NodeGuid,
+		FString(TEXT("11111111-2222-3333-4444-555555555555")));
+	TestEqual(TEXT("boundary pin path is preserved"),
+		BoundaryTarget.PinPath,
+		FString(TEXT("then")));
+	TestTrue(TEXT("boundary anchor stores external anchor schema"),
+		BoundaryTarget.AnchorJson.Contains(TEXT("BlueprintHelper.ExternalGraphAnchor.v1")));
+
+	const FBlueprintHelperReviewAtomicTarget& InsertedBlockTarget = Evidence.AtomicTargets[1];
+	TestEqual(TEXT("inserted target kind"),
+		InsertedBlockTarget.TargetKind,
+		FString(TEXT("graph_block")));
+	TestEqual(TEXT("inserted block target key uses full block id"),
+		InsertedBlockTarget.TargetKey,
+		FString(TEXT("graph_block:block:EventGraph_ExternalMerge_step_1")));
+	TestEqual(TEXT("inserted block ownership is owned"),
+		InsertedBlockTarget.Ownership,
+		FString(TEXT("blueprinthelper_owned")));
+	TestTrue(TEXT("inserted block review payload stores inserted block id"),
+		InsertedBlockTarget.AnchorJson.Contains(TEXT("ExternalMerge_step_1")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimePatchExternalGraph_BuildsExternalNodeReviewEvidence,
+	"BlueprintHelper.TaskRuntime.GraphWrite.PatchExternalGraph.BuildsExternalNodeReviewEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimePatchExternalGraph_BuildsExternalNodeReviewEvidence::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+	Payload->SetObjectField(TEXT("target"), Target);
+	Payload->SetStringField(TEXT("patch_type"), TEXT("set_external_pin_default"));
+
+	TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+	Anchor->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalGraphAnchor.v1"));
+	Anchor->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+	Anchor->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+	Anchor->SetStringField(TEXT("node_guid"), TEXT("11111111-2222-3333-4444-555555555555"));
+	Anchor->SetStringField(TEXT("node_class"), TEXT("/Script/BlueprintGraph.K2Node_CallFunction"));
+	Anchor->SetStringField(TEXT("pin_name"), TEXT("InString"));
+	Anchor->SetStringField(TEXT("pin_direction"), TEXT("input"));
+	Anchor->SetStringField(TEXT("semantic_role"), TEXT("node"));
+	Anchor->SetStringField(TEXT("fingerprint"), TEXT("fingerprint"));
+	Payload->SetObjectField(TEXT("anchor"), Anchor);
+
+	FBlueprintHelperTaskRuntimeLoweredStep Step =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("patch_external_graph"));
+	Step.Payload = Payload;
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+		Step,
+		TEXT("archive_external_patch"),
+		TEXT("task_external_patch"),
+		8,
+		Evidence);
+
+	TestTrue(TEXT("patch_external_graph builds Review evidence"), bBuilt);
+	TestEqual(TEXT("operation kind is patch_external_graph"),
+		Evidence.OperationKind,
+		FString(TEXT("patch_external_graph")));
+	TestEqual(TEXT("one atomic target is emitted"),
+		Evidence.AtomicTargets.Num(),
+		1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& TargetEvidence = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind"),
+		TargetEvidence.TargetKind,
+		FString(TEXT("graph_external_node")));
+	TestEqual(TEXT("handler kind is external node"),
+		static_cast<int32>(FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(TargetEvidence.TargetKind)),
+		static_cast<int32>(EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode));
+	TestEqual(TEXT("ownership is external"),
+		TargetEvidence.Ownership,
+		FString(TEXT("external_user_authored")));
+	TestEqual(TEXT("node guid is preserved"),
+		TargetEvidence.NodeGuid,
+		FString(TEXT("11111111-2222-3333-4444-555555555555")));
+	TestEqual(TEXT("pin path is preserved"),
+		TargetEvidence.PinPath,
+		FString(TEXT("InString")));
+	TestEqual(TEXT("field kind is preserved"),
+		TargetEvidence.PropertyPath,
+		FString(TEXT("pin_default")));
 	return true;
 }
 

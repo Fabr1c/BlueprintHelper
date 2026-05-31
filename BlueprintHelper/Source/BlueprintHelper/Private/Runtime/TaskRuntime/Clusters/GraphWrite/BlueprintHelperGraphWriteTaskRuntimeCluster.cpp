@@ -8,10 +8,8 @@
 #include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
-#include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 
 class FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils
 {
@@ -90,24 +88,15 @@ public:
 };
 
 FBlueprintHelperGraphWriteTaskRuntimeCluster::FBlueprintHelperGraphWriteTaskRuntimeCluster(
-	const FBlueprintHelperAppendBlueprintGraphService& InAppendGraphService,
-	const FBlueprintHelperReplaceBlueprintGraphService& InReplaceGraphService,
-	const FBlueprintHelperPatchBlueprintGraphService& InPatchGraphService,
-	const FBlueprintHelperMergeBlueprintGraphService& InMergeGraphService)
-	: AppendGraphService(InAppendGraphService)
-	, ReplaceGraphService(InReplaceGraphService)
-	, PatchGraphService(InPatchGraphService)
-	, MergeGraphService(InMergeGraphService)
+	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry)
+	: GraphWriteRegistry(InGraphWriteRegistry)
 {
 }
 
 bool FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
-	return LoweredStep.AdapterOperation == TEXT("append_blueprint_graph") ||
-		LoweredStep.AdapterOperation == TEXT("replace_blueprint_graph") ||
-		LoweredStep.AdapterOperation == TEXT("patch_blueprint_graph") ||
-		LoweredStep.AdapterOperation == TEXT("merge_blueprint_graph") ||
+	return FBlueprintHelperGraphWriteServiceRegistry::IsKnownOperation(LoweredStep.AdapterOperation) ||
 		LoweredStep.Capability == TEXT("graph_write");
 }
 
@@ -169,21 +158,9 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 FBlueprintHelperToolResultBase FBlueprintHelperGraphWriteTaskRuntimeCluster::ExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	if (LoweredStep.AdapterOperation == TEXT("append_blueprint_graph"))
+	if (FBlueprintHelperGraphWriteServiceRegistry::IsKnownOperation(LoweredStep.AdapterOperation))
 	{
-		return AppendGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-	}
-	if (LoweredStep.AdapterOperation == TEXT("replace_blueprint_graph"))
-	{
-		return ReplaceGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-	}
-	if (LoweredStep.AdapterOperation == TEXT("patch_blueprint_graph"))
-	{
-		return PatchGraphService.Execute(LoweredStep.Payload.ToSharedRef());
-	}
-	if (LoweredStep.AdapterOperation == TEXT("merge_blueprint_graph"))
-	{
-		return MergeGraphService.Execute(LoweredStep.Payload.ToSharedRef());
+		return GraphWriteRegistry.Execute(LoweredStep.AdapterOperation, LoweredStep.Payload.ToSharedRef());
 	}
 
 	return FBlueprintHelperToolResultBuilder::Failure(

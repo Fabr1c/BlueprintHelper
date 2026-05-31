@@ -34,9 +34,15 @@
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperAppendBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperMergeExternalFlowService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperPatchExternalGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalDependentsAnalysisService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperReplaceExternalBodyService.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -115,6 +121,59 @@ void FBlueprintHelperModule::StartupModule()
 		*GraphResolver, *LogicJsonPathService);
 	MergeGraphService = MakeUnique<FBlueprintHelperMergeBlueprintGraphService>(
 		*GraphResolver, *LogicJsonPathService);
+	MergeExternalFlowService = MakeUnique<FBlueprintHelperMergeExternalFlowService>(
+		*GraphResolver, *BlockIdService, *OwnershipService);
+	PatchExternalGraphService = MakeUnique<FBlueprintHelperPatchExternalGraphService>();
+	ExternalBodySnapshotService = MakeUnique<FBlueprintHelperExternalBodySnapshotService>();
+	ExternalDependentsAnalysisService = MakeUnique<FBlueprintHelperExternalDependentsAnalysisService>();
+	ReplaceExternalBodyService = MakeUnique<FBlueprintHelperReplaceExternalBodyService>(
+		*BlockIdService,
+		*OwnershipService,
+		*ExternalBodySnapshotService,
+		*ExternalDependentsAnalysisService);
+	GraphWriteServiceRegistry = MakeUnique<FBlueprintHelperGraphWriteServiceRegistry>();
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("append_blueprint_graph"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return AppendGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("replace_blueprint_graph"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return ReplaceGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("patch_blueprint_graph"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return PatchGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("merge_blueprint_graph"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return MergeGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("merge_external_flow"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return MergeExternalFlowService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("patch_external_graph"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return PatchExternalGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("replace_external_body"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return ReplaceExternalBodyService->Execute(Payload);
+		});
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService, DebugEntryService.Get());
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);
 	ReviewActionService = MakeUnique<FBlueprintHelperReviewActionService>(DebugEntryService.Get());
@@ -122,7 +181,7 @@ void FBlueprintHelperModule::StartupModule()
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *AppendGraphService, *ReplaceGraphService, *PatchGraphService, *MergeGraphService, *CompileAssetService, *VariableService, *ReviewStoreService);
+		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *GraphWriteServiceRegistry, *CompileAssetService, *VariableService, *ReviewStoreService);
 	const FBlueprintHelperBridgeRuntimeConfig BridgeRuntimeConfig = FBlueprintHelperBridgeRuntimeConfigResolver::Load();
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, BridgeRuntimeConfig, DebugEntryService.Get());
 	BridgeServer->Start();
@@ -152,6 +211,22 @@ void FBlueprintHelperModule::ShutdownModule()
 
 	// ─── Service Layer 销毁（逆序）───
 	ReviewActionService.Reset();
+	VariableService.Reset();
+	CompileAssetService.Reset();
+	GraphWriteServiceRegistry.Reset();
+	ReplaceExternalBodyService.Reset();
+	ExternalDependentsAnalysisService.Reset();
+	ExternalBodySnapshotService.Reset();
+	PatchExternalGraphService.Reset();
+	MergeExternalFlowService.Reset();
+	MergeGraphService.Reset();
+	PatchGraphService.Reset();
+	LogicJsonPathService.Reset();
+	ReplaceGraphService.Reset();
+	AppendGraphService.Reset();
+	SnapshotService.Reset();
+	OwnershipService.Reset();
+	BlockIdService.Reset();
 	DebugEntryService.Reset();
 	ReviewStoreService.Reset();
 	EditorCommandService.Reset();

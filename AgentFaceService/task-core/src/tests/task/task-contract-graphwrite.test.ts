@@ -12,6 +12,9 @@ describe('GraphWrite TaskPlan contract metadata', () => {
         'replace_owned_graph',
         'patch_owned_graph',
         'merge_owned_graph',
+        'merge_external_flow',
+        'patch_external_graph',
+        'replace_external_body',
       ],
       entry_types: ['custom_event'],
       statement_kinds: [
@@ -39,8 +42,11 @@ describe('GraphWrite TaskPlan contract metadata', () => {
         'replace_blueprint_graph',
         'patch_blueprint_graph',
         'merge_blueprint_graph',
+        'merge_external_flow',
+        'patch_external_graph',
+        'replace_external_body',
       ],
-      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
+      step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge/external_merge paths compile to one structural op per step',
     });
   });
 
@@ -148,6 +154,16 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'write.strategy',
       'write.ops[]',
     ]);
+    assert.deepEqual(irContract.step_shape.constraints_required_paths, [
+      'constraints.allow_modify_user_nodes',
+      'constraints.ownership_scope',
+      'constraints.external_mutation_policy.strategy for external_graph_edit',
+      'constraints.external_mutation_policy.allowed_mutations[] for external_graph_edit',
+    ]);
+    assert.deepEqual(irContract.supported_write_strategies, [
+      'owned_graph_edit',
+      'external_graph_edit',
+    ]);
     assert.deepEqual(irContract.supported_structural_ops, [
       'ensure_entry',
       'replace_body',
@@ -155,6 +171,10 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'set_node_comment',
       'set_node_position',
       'insert_flow',
+      'insert_external_flow',
+      'set_external_pin_default',
+      'set_external_node_comment',
+      'replace_external_body',
     ]);
     assert.deepEqual(irContract.runtime_supported_structural_ops, [
       'ensure_entry',
@@ -163,7 +183,28 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'set_node_comment',
       'set_node_position',
       'insert_flow',
+      'insert_external_flow',
+      'set_external_pin_default',
+      'set_external_node_comment',
+      'replace_external_body',
     ]);
+    assert.deepEqual(irContract.external_graph_edit_constraints, {
+      ownership_scope: 'external_user_authored',
+      external_mutation_policy: [
+        {
+          strategy: 'merge_external_flow',
+          allowed_mutations: ['exec_boundary_link'],
+        },
+        {
+          strategy: 'patch_external_graph',
+          allowed_mutations: ['pin_default', 'node_comment'],
+        },
+        {
+          strategy: 'replace_external_body',
+          allowed_mutations: ['body_replace'],
+        },
+      ],
+    });
     assert.equal(irContract.supported_structural_ops.includes('append_blueprint_graph'), false);
     assert.equal(irContract.supported_structural_ops.includes('replace_blueprint_graph'), false);
   });
@@ -177,6 +218,9 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       replace_owned_graph: 'behavior.replace',
       patch_owned_graph: 'behavior.patches[]',
       merge_owned_graph: 'behavior.merges[]',
+      merge_external_flow: 'behavior.external_merges[]',
+      patch_external_graph: 'behavior.external_patches[]',
+      replace_external_body: 'behavior.external_replace',
     });
     assert.deepEqual(taskSpecContract.forbidden_agent_shapes, [
       'replace/patch/merge in behavior.entries[]',
@@ -210,6 +254,51 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'anchor.pin_ref',
       'anchor.link_ref',
     ]);
+    assert.deepEqual(taskSpecContract.merge_external_flow.required_anchor_fields, [
+      'anchor.schema',
+      'anchor.asset_path',
+      'anchor.graph_name',
+      'anchor.node_guid',
+      'anchor.node_class',
+      'anchor.pin_name',
+      'anchor.pin_direction',
+      'anchor.semantic_role',
+      'anchor.fingerprint',
+    ]);
+    assert.deepEqual(taskSpecContract.merge_external_flow.scope_policy_contract, {
+      allow_modify_user_nodes: false,
+      external_mutation_policy: {
+        strategy: 'merge_external_flow',
+        allowed_mutations: ['exec_boundary_link'],
+      },
+    });
+    assert.deepEqual(taskSpecContract.patch_external_graph.kinds, [
+      'set_external_pin_default',
+      'set_external_node_comment',
+    ]);
+    assert.deepEqual(taskSpecContract.patch_external_graph.scope_policy_contract, {
+      allow_modify_user_nodes: false,
+      external_mutation_policy: {
+        strategy: 'patch_external_graph',
+        allowed_mutations: ['pin_default', 'node_comment'],
+      },
+    });
+    assert.deepEqual(taskSpecContract.replace_external_body.scopes, [
+      'custom_event_body',
+      'event_body',
+      'function_body',
+    ]);
+    assert.deepEqual(taskSpecContract.replace_external_body.supported_anchor_shape, {
+      schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+      semantic_role: 'body_entry',
+    });
+    assert.deepEqual(taskSpecContract.replace_external_body.scope_policy_contract, {
+      allow_modify_user_nodes: false,
+      external_mutation_policy: {
+        strategy: 'replace_external_body',
+        allowed_mutations: ['body_replace'],
+      },
+    });
     assert.deepEqual(taskSpecContract.non_blueprinthelper_owned_graph_content, {
       normal_agent_write_contract: 'blocked_until_stable_anchor_contract_exists',
       read_contract: 'read_context/read_reference_context only',
@@ -238,12 +327,18 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'replace_blueprint_graph',
       'patch_blueprint_graph',
       'merge_blueprint_graph',
+      'merge_external_flow',
+      'patch_external_graph',
+      'replace_external_body',
     ]);
     assert.deepEqual(operations.map((entry) => entry.ue_command), [
       'append_blueprint_graph',
       'replace_blueprint_graph',
       'patch_blueprint_graph',
       'merge_blueprint_graph',
+      'merge_external_flow',
+      'patch_external_graph',
+      'replace_external_body',
     ]);
   });
 
@@ -260,6 +355,9 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       replace_blueprint_graph: 'options.dry_run',
       patch_blueprint_graph: 'root.dry_run',
       merge_blueprint_graph: 'root.dry_run',
+      merge_external_flow: 'root.dry_run',
+      patch_external_graph: 'root.dry_run',
+      replace_external_body: 'root.dry_run',
     });
   });
 

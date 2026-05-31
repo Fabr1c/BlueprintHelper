@@ -5,6 +5,91 @@ import type { BridgeResponse } from '../../../bridge/bridge-client.js';
 import { TaskTimingTrace } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
 import { executeReadContext } from './read-context-handler.js';
+import { buildLogicFlowPayload } from './read-context-logic-flow.js';
+
+const nodeAnchor = {
+  schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+  asset_path: '/Game/BP_Test',
+  graph_name: 'EventGraph',
+  node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  node_class: '/Script/BlueprintGraph.K2Node_CustomEvent',
+  semantic_role: 'node',
+  fingerprint: 'nodefp',
+};
+
+const boundaryAnchor = {
+  schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+  asset_path: '/Game/BP_Test',
+  graph_name: 'EventGraph',
+  node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  node_class: '/Script/BlueprintGraph.K2Node_CustomEvent',
+  pin_name: 'then',
+  pin_direction: 'output',
+  semantic_role: 'exec_boundary',
+  fingerprint: 'boundaryfp',
+};
+
+const duplicateBoundaryAnchor = {
+  ...boundaryAnchor,
+};
+
+function makeLogicJsonWithExternalAnchors(): Record<string, unknown> {
+  return {
+    schema: 'LogicJson.v1',
+    format: 'logic_json',
+    importable: false,
+    scope: 'blueprint',
+    logic: {
+      asset_path: '/Game/BP_Test',
+      graph: 'EventGraph',
+      nodes: [
+        {
+          node_ref: 'nodes[0]',
+          kind: 'custom_event',
+          name: 'OpenDoor',
+          external_anchor: nodeAnchor,
+          external_anchors: [boundaryAnchor],
+          links: [
+            {
+              link_ref: 'links[0]',
+              type: 'exec',
+              from_pin: 'then',
+              to_node: 'nodes[1]',
+              to_pin: 'execute',
+              external_anchor: duplicateBoundaryAnchor,
+            },
+          ],
+        },
+        {
+          node_ref: 'nodes[1]',
+          kind: 'call_function',
+          name: 'PrintString',
+        },
+      ],
+    },
+    stats: {
+      nodes: 2,
+      exec_links: 1,
+      data_links: 0,
+      orphan_nodes: 0,
+    },
+  };
+}
+
+test('logic_flow payload preserves external anchors in deterministic order', () => {
+  const payload = buildLogicFlowPayload(makeLogicJsonWithExternalAnchors());
+
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  const anchors = payload['anchors'] as Record<string, unknown>[];
+  assert.ok(Array.isArray(anchors));
+  assert.equal(anchors.length, 2);
+  assert.equal(anchors[0]?.['semantic_role'], 'exec_boundary');
+  assert.equal(anchors[1]?.['semantic_role'], 'node');
+  assert.equal(anchors[0]?.['node_guid'], 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(anchors[0]?.['fingerprint'], 'boundaryfp');
+  assert.equal(anchors[1]?.['fingerprint'], 'nodefp');
+});
 
 test('read_context handler records timing around bridge and post-processing stages', async () => {
   const timing = TaskTimingTrace.start('read_context_test', 'agentface_test');
@@ -83,4 +168,45 @@ test('read_context handler records timing around bridge and post-processing stag
 
   const payload = result.data?.['payload'] as Record<string, unknown>;
   assert.equal(payload['timing'], undefined);
+});
+
+test('read_context logic_flow handler returns external anchors from bridge LogicJson', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'test',
+    success: true,
+    result: makeLogicJsonWithExternalAnchors(),
+  };
+
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => bridgeResponse,
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Test',
+      target_type: 'graph',
+      target_name: 'EventGraph',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicFlow.v1');
+  assert.equal(payload['mode'], 'execflow');
+  assert.match(payload['flow'] as string, /OpenDoor/);
+
+  const anchors = payload['anchors'] as Record<string, unknown>[];
+  assert.ok(Array.isArray(anchors));
+  assert.equal(anchors.length, 2);
+  assert.equal(anchors[0]?.['semantic_role'], 'exec_boundary');
+  assert.equal(anchors[1]?.['semantic_role'], 'node');
 });

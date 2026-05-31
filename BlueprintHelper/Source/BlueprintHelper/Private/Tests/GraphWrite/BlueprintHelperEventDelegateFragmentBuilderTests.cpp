@@ -35,6 +35,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperEventDelegateFragmentBuilderBoundaryTest::RunTest(const FString& Parameters)
 {
 	FString BuilderText;
+	FString StatementUtilsText;
 	FString ResolverHeaderText;
 	FString ResolverText;
 
@@ -42,15 +43,23 @@ bool FBlueprintHelperEventDelegateFragmentBuilderBoundaryTest::RunTest(const FSt
 		TEXT("read event delegate fragment builder"),
 		ReadPluginSourceFile(TEXT("GraphStatement/BlueprintHelperEventDelegateFragmentBuilder.cpp"), BuilderText));
 	TestTrue(
+		TEXT("read graph statement utils"),
+		ReadPluginSourceFile(TEXT("GraphStatement/Utils/GraphWriteGraphStatementUtils.cpp"), StatementUtilsText));
+	TestTrue(
 		TEXT("read binding object resolver header"),
 		ReadPluginSourceFile(TEXT("GraphStatement/BlueprintHelperEventDelegateBindingObjectResolver.h"), ResolverHeaderText));
 	TestTrue(
 		TEXT("read binding object resolver source"),
 		ReadPluginSourceFile(TEXT("GraphStatement/BlueprintHelperEventDelegateBindingObjectResolver.cpp"), ResolverText));
 
-	TestTrue(TEXT("builder consumes binding object resolver"), BuilderText.Contains(TEXT("FBlueprintHelperEventDelegateBindingObjectResolver::Resolve")));
+	TestTrue(TEXT("builder routes projected binding object through statement utils"),
+		BuilderText.Contains(TEXT("ConnectProjectedBindingObjectToPrimaryTarget")));
+	TestTrue(TEXT("statement utils consumes binding object resolver"),
+		StatementUtilsText.Contains(TEXT("FBlueprintHelperEventDelegateBindingObjectResolver::Resolve")));
 	TestFalse(TEXT("builder does not allocate component getter"), BuilderText.Contains(TEXT("NewObject<UK2Node_VariableGet>")));
+	TestFalse(TEXT("statement utils does not allocate component getter"), StatementUtilsText.Contains(TEXT("NewObject<UK2Node_VariableGet>")));
 	TestFalse(TEXT("builder does not include component getter class"), BuilderText.Contains(TEXT("K2Node_VariableGet.h")));
+	TestFalse(TEXT("statement utils does not include component getter class"), StatementUtilsText.Contains(TEXT("K2Node_VariableGet.h")));
 	TestTrue(TEXT("resolver supports self"), ResolverText.Contains(TEXT("self")));
 	TestTrue(TEXT("resolver supports component_ref"), ResolverText.Contains(TEXT("component_ref")));
 	TestTrue(TEXT("resolver supports field_get_ref"), ResolverText.Contains(TEXT("field_get_ref")));

@@ -625,8 +625,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	if (!ResolveReplaceTarget(Request, Blueprint, Resolved, ResolveError))
 	{
 		FBlueprintHelperToolError Error;
-		Error.Code = ResolveError.Contains(TEXT("block")) ? TEXT("target_block_not_found")
-			: (ResolveError.Contains(TEXT("function")) ? TEXT("target_function_not_found") : TEXT("target_not_found"));
+		if (ResolveError.Contains(TEXT("owned_replace_target_not_blueprinthelper_owned")))
+		{
+			Error.Code = TEXT("owned_replace_target_not_blueprinthelper_owned");
+		}
+		else
+		{
+			Error.Code = ResolveError.Contains(TEXT("block")) ? TEXT("target_block_not_found")
+				: (ResolveError.Contains(TEXT("function")) ? TEXT("target_function_not_found") : TEXT("target_not_found"));
+		}
 		Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
 		Error.Message = ResolveError;
 		Error.bRetryable = false;
@@ -952,22 +959,10 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 
 		if (EntryBlockId.IsEmpty())
 		{
-			if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::HasLinkedExecBody(EntryNode))
-			{
-				OutError = FString::Printf(TEXT("Entry %s does not have BlueprintHelper ownership metadata and already has an exec body; scoped body replacement cannot determine a safe owned body boundary."), *Request.EntryName);
-				return false;
-			}
-
-			const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, Request.EntryName);
-			const FString FullBlockId = BlockIdService.MakeFullBlockId(Request.GraphName, BlockRef);
-			OutTarget.OriginalBlockId = FullBlockId.IsEmpty()
-				? FString::Printf(TEXT("%s_%s"), *Request.GraphName, *Request.EntryName)
-				: FullBlockId;
-			OutTarget.OriginalBlockRef = BlockRef.IsEmpty() ? Request.EntryName : BlockRef;
-			OutTarget.TargetRef = Request.EntryName;
-			OutTarget.bIsBlueprintHelperOwned = true;
-			OutTarget.NodesToAdoptOwnership.Add(EntryNode);
-			return true;
+			OutError = FString::Printf(
+				TEXT("owned_replace_target_not_blueprinthelper_owned: Entry %s does not have BlueprintHelper ownership metadata; owned replace cannot adopt user-authored nodes."),
+				*Request.EntryName);
+			return false;
 		}
 
 		OutTarget.OriginalBlockId = EntryBlockId;

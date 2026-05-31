@@ -14,6 +14,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/PrimaryAssetLabel.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -26,6 +27,7 @@
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
@@ -390,6 +392,51 @@ public:
 		return EventNode;
 	}
 
+	static UK2Node_CallFunction* AddReviewDestroyActorCallNode(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		UFunction* Function = AActor::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor));
+		if (!Function)
+		{
+			return nullptr;
+		}
+
+		UK2Node_CallFunction* CallNode = NewObject<UK2Node_CallFunction>(Graph);
+		Graph->AddNode(CallNode, true, false);
+		CallNode->CreateNewGuid();
+		CallNode->SetFromFunction(Function);
+		CallNode->PostPlacedNewNode();
+		CallNode->AllocateDefaultPins();
+		return CallNode;
+	}
+
+	static UEdGraphPin* FindReviewExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool ConnectReviewExecPins(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
+	{
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		return FromPin && ToPin && Schema && Schema->TryCreateConnection(FromPin, ToPin);
+	}
+
 	static void MarkReviewNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
@@ -517,6 +564,204 @@ bool FBlueprintHelperReviewBaselineSemanticHashCapturesGraphBlockTest::RunTest(c
 	TestEqual(TEXT("graph block hash is stable across captures"), FirstSnapshotHash, SecondSnapshotHash);
 	TestTrue(TEXT("graph block snapshot carries block id"), FirstSnapshotJson.Contains(BlockId));
 	TestTrue(TEXT("graph block snapshot carries nodes"), FirstSnapshotJson.Contains(TEXT("\"nodes\"")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewExternalBoundarySnapshotRestoreOnlyRewritesBoundaryPinTest,
+	"BlueprintHelper.Review.Baseline.ExternalBoundarySnapshotRestoreOnlyRewritesBoundaryPin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewExternalBoundarySnapshotRestoreOnlyRewritesBoundaryPinTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ExternalBoundaryRestore"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("BoundaryEntry"));
+	UK2Node_CallFunction* OriginalCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UK2Node_CallFunction* ReplacementCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* OriginalTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(OriginalCall, EGPD_Input);
+	UEdGraphPin* ReplacementTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(ReplacementCall, EGPD_Input);
+	TestTrue(TEXT("initial exec pins connect"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, OriginalTargetPin));
+	if (!EventNode || !SourcePin || !OriginalTargetPin || !ReplacementTargetPin)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_external_boundary");
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_boundary:%s:node:%s:pin:%s"),
+		*Graph->GetName(),
+		*EventNode->NodeGuid.ToString(EGuidFormats::Digits),
+		*SourcePin->PinName.ToString());
+	Target.NodeGuid = EventNode->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.PinPath = SourcePin->PinName.ToString();
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("external boundary target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("external boundary snapshot hash emitted"), SnapshotHash.IsEmpty());
+	TestTrue(TEXT("external boundary snapshot carries single node object"), SnapshotJson.Contains(TEXT("\"node\"")));
+	TestFalse(TEXT("external boundary snapshot does not import graph text"), SnapshotJson.Contains(TEXT("\"restore_text\"")));
+
+	SourcePin->BreakAllPinLinks(true);
+	TestTrue(TEXT("replacement exec pins connect"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, ReplacementTargetPin));
+	TestTrue(TEXT("replacement link exists before restore"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+	TestFalse(TEXT("original link removed before restore"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
+
+	TSharedPtr<FJsonObject> SnapshotObject;
+	FString ParseError;
+	TestTrue(TEXT("external boundary snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(SnapshotJson, SnapshotObject, ParseError));
+
+	FString RestoreError;
+	TestTrue(TEXT("external boundary snapshot restores"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalBoundaryFromSnapshot(Target, SnapshotObject, RestoreError));
+	TestEqual(TEXT("boundary source has one restored link"), SourcePin->LinkedTo.Num(), 1);
+	TestTrue(TEXT("original link restored"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
+	TestFalse(TEXT("replacement link removed"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewExternalBoundarySnapshotRestoreFailsWhenBoundaryPinMissingTest,
+	"BlueprintHelper.Review.Baseline.ExternalBoundarySnapshotRestoreFailsWhenBoundaryPinMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewExternalBoundarySnapshotRestoreFailsWhenBoundaryPinMissingTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ExternalBoundaryMissingPin"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("BoundaryEntryMissingPin"));
+	UK2Node_CallFunction* OriginalCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* OriginalTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(OriginalCall, EGPD_Input);
+	TestTrue(TEXT("initial exec pins connect"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, OriginalTargetPin));
+	if (!EventNode || !SourcePin || !OriginalTargetPin)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_external_boundary");
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_boundary:%s:node:%s:pin:%s"),
+		*Graph->GetName(),
+		*EventNode->NodeGuid.ToString(EGuidFormats::Digits),
+		*SourcePin->PinName.ToString());
+	Target.NodeGuid = EventNode->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.PinPath = SourcePin->PinName.ToString();
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("external boundary target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+
+	SourcePin->PinName = FName(TEXT("RenamedThenPin"));
+
+	TSharedPtr<FJsonObject> SnapshotObject;
+	FString ParseError;
+	TestTrue(TEXT("external boundary snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(SnapshotJson, SnapshotObject, ParseError));
+
+	FString RestoreError;
+	TestFalse(TEXT("external boundary restore fails when boundary pin is missing"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalBoundaryFromSnapshot(Target, SnapshotObject, RestoreError));
+	TestTrue(TEXT("restore error reports missing pin"), RestoreError.Contains(TEXT("pin")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewExternalNodeRejectRestoresSelectedFieldOnlyTest,
+	"BlueprintHelper.Review.ExternalNode.RejectRestoresSelectedFieldOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewExternalNodeRejectRestoresSelectedFieldOnlyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("ExternalNodeFieldRestore"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ExternalNodeFieldEntry"));
+	UK2Node_CallFunction* OriginalCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UK2Node_CallFunction* ReplacementCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* OriginalTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(OriginalCall, EGPD_Input);
+	UEdGraphPin* ReplacementTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(ReplacementCall, EGPD_Input);
+	TestTrue(TEXT("initial exec pins connect"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, OriginalTargetPin));
+	if (!EventNode || !SourcePin || !OriginalTargetPin || !ReplacementTargetPin)
+	{
+		return false;
+	}
+
+	EventNode->NodeComment = TEXT("before comment");
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_external_node");
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_node:%s:node:%s:field:node_comment"),
+		*Graph->GetName(),
+		*EventNode->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.NodeGuid = EventNode->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.PropertyPath = TEXT("node_comment");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("external node field target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("external node field snapshot hash emitted"), SnapshotHash.IsEmpty());
+	TestTrue(TEXT("external node field snapshot carries value"), SnapshotJson.Contains(TEXT("before comment")));
+
+	EventNode->NodeComment = TEXT("after comment");
+	SourcePin->BreakAllPinLinks(true);
+	TestTrue(TEXT("replacement exec pins connect"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, ReplacementTargetPin));
+
+	TSharedPtr<FJsonObject> SnapshotObject;
+	FString ParseError;
+	TestTrue(TEXT("external node field snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(SnapshotJson, SnapshotObject, ParseError));
+
+	FString RestoreError;
+	TestTrue(TEXT("external node field snapshot restores"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalNodeFromSnapshot(Target, SnapshotObject, RestoreError));
+	TestEqual(TEXT("comment restored"), EventNode->NodeComment, FString(TEXT("before comment")));
+	TestTrue(TEXT("replacement link remains"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+	TestFalse(TEXT("original link not restored by field handler"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
 	return true;
 }
 

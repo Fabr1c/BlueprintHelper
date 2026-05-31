@@ -31,11 +31,15 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'target.asset_path',
     'scope_policy.graph_name',
     'scope_policy.allow_modify_user_nodes',
+    'scope_policy.external_mutation_policy for external_graph_edit',
     'behavior.graph_strategy',
     'behavior.entries[] for append_new_owned_graph',
     'behavior.replace for replace_owned_graph',
     'behavior.patches[] for patch_owned_graph',
     'behavior.merges[] for merge_owned_graph',
+    'behavior.external_merges[] for merge_external_flow',
+    'behavior.external_patches[] for patch_external_graph',
+    'behavior.external_replace for replace_external_body',
     'validation.should_compile',
     'validation.should_save',
   ],
@@ -55,6 +59,8 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'steps[].write.ops[]',
     'steps[].constraints.allow_modify_user_nodes',
     'steps[].constraints.ownership_scope',
+    'steps[].constraints.external_mutation_policy.strategy for external_graph_edit',
+    'steps[].constraints.external_mutation_policy.allowed_mutations[] for external_graph_edit',
   ],
   supported_first_slice: {
     task_type: 'edit_blueprint_graph',
@@ -64,6 +70,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'replace_owned_graph',
       'patch_owned_graph',
       'merge_owned_graph',
+      'merge_external_flow',
+      'patch_external_graph',
+      'replace_external_body',
     ],
     entry_types: ['custom_event'],
     statement_kinds: [
@@ -91,8 +100,11 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'replace_blueprint_graph',
       'patch_blueprint_graph',
       'merge_blueprint_graph',
+      'merge_external_flow',
+      'patch_external_graph',
+      'replace_external_body',
     ],
-    step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge paths compile to one structural op per step',
+    step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge/external_merge paths compile to one structural op per step',
   },
   graph_write_taskspec_contract: {
     ownership: 'agent_authored_semantic_protocol',
@@ -101,6 +113,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       replace_owned_graph: 'behavior.replace',
       patch_owned_graph: 'behavior.patches[]',
       merge_owned_graph: 'behavior.merges[]',
+      merge_external_flow: 'behavior.external_merges[]',
+      patch_external_graph: 'behavior.external_patches[]',
+      replace_external_body: 'behavior.external_replace',
     },
     forbidden_agent_shapes: [
       'replace/patch/merge in behavior.entries[]',
@@ -171,6 +186,141 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       ],
       inserted_call_kind_must_match_scope: true,
       sequence_order: 'branch_fork_only',
+    },
+    merge_external_flow: {
+      kind: 'insert_external_flow',
+      insert_strategies: ['append_after', 'insert_between', 'branch_fork'],
+      required_anchor_fields: [
+        'anchor.schema',
+        'anchor.asset_path',
+        'anchor.graph_name',
+        'anchor.node_guid',
+        'anchor.node_class',
+        'anchor.pin_name',
+        'anchor.pin_direction',
+        'anchor.semantic_role',
+        'anchor.fingerprint',
+      ],
+      supported_anchor_shape: {
+        schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+        pin_direction: 'output',
+        semantic_role: 'exec_boundary',
+      },
+      forbidden_anchor_shapes: [
+        'raw LogicJson array indexes such as nodes[0]',
+        'display names as locators',
+        'ad hoc JSONPath strings',
+      ],
+      inserted_body_schema: 'BlueprintLogicSpec.v1 | BlueprintLogicSpec.v2',
+      sequence_order: 'branch_fork_only',
+      scope_policy_contract: {
+        allow_modify_user_nodes: false,
+        external_mutation_policy: {
+          strategy: 'merge_external_flow',
+          allowed_mutations: ['exec_boundary_link'],
+        },
+      },
+    },
+    patch_external_graph: {
+      kinds: ['set_external_pin_default', 'set_external_node_comment'],
+      required_anchor_fields: [
+        'anchor.schema',
+        'anchor.asset_path',
+        'anchor.graph_name',
+        'anchor.node_guid',
+        'anchor.node_class',
+        'anchor.semantic_role',
+        'anchor.fingerprint',
+      ],
+      supported_anchor_shape: {
+        schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+        semantic_role: 'node',
+      },
+      required_patch_fields: [
+        'kind',
+        'anchor',
+        'value',
+        'expected_old_state',
+      ],
+      scope_policy_contract: {
+        allow_modify_user_nodes: false,
+        external_mutation_policy: {
+          strategy: 'patch_external_graph',
+          allowed_mutations: ['pin_default', 'node_comment'],
+        },
+      },
+    },
+    replace_external_body: {
+      scopes: ['custom_event_body', 'event_body', 'function_body'],
+      required_anchor_fields: [
+        'anchor.schema',
+        'anchor.asset_path',
+        'anchor.graph_name',
+        'anchor.node_guid',
+        'anchor.node_class',
+        'anchor.semantic_role',
+        'anchor.fingerprint',
+      ],
+      supported_anchor_shape: {
+        schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+        semantic_role: 'body_entry',
+      },
+      required_replace_fields: [
+        'scope',
+        'anchor',
+        'body',
+        'expected_body_fingerprint',
+        'require_full_dry_run',
+      ],
+      forbidden_scopes: [
+        'graph',
+        'custom_event_definition',
+        'signature mutation',
+      ],
+      scope_policy_contract: {
+        allow_modify_user_nodes: false,
+        external_mutation_policy: {
+          strategy: 'replace_external_body',
+          allowed_mutations: ['body_replace'],
+        },
+      },
+    },
+    task_plan_ir_contract: {
+      owned_graph_edit: {
+        capability: 'graph_write',
+        write_strategy: 'owned_graph_edit',
+        ownership_scope: 'blueprinthelper_owned',
+      },
+      external_graph_edit: {
+        capability: 'graph_write',
+        write_strategy: 'external_graph_edit',
+        op: 'insert_external_flow',
+        ownership_scope: 'external_user_authored',
+        constraints_external_mutation_policy: {
+          strategy: 'merge_external_flow',
+          allowed_mutations: ['exec_boundary_link'],
+        },
+      },
+      external_patch_graph_edit: {
+        capability: 'graph_write',
+        write_strategy: 'external_graph_edit',
+        op: 'set_external_pin_default | set_external_node_comment',
+        ownership_scope: 'external_user_authored',
+        constraints_external_mutation_policy: {
+          strategy: 'patch_external_graph',
+          allowed_mutations: ['pin_default', 'node_comment'],
+        },
+      },
+      external_replace_body_edit: {
+        capability: 'graph_write',
+        write_strategy: 'external_graph_edit',
+        op: 'replace_external_body',
+        ownership_scope: 'external_user_authored',
+        constraints_external_mutation_policy: {
+          strategy: 'replace_external_body',
+          allowed_mutations: ['body_replace'],
+        },
+      },
     },
     non_blueprinthelper_owned_graph_content: {
       normal_agent_write_contract: 'blocked_until_stable_anchor_contract_exists',
@@ -463,10 +613,13 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       constraints_required_paths: [
         'constraints.allow_modify_user_nodes',
         'constraints.ownership_scope',
+        'constraints.external_mutation_policy.strategy for external_graph_edit',
+        'constraints.external_mutation_policy.allowed_mutations[] for external_graph_edit',
       ],
     },
     supported_write_strategies: [
       'owned_graph_edit',
+      'external_graph_edit',
     ],
     supported_structural_ops: [
       'ensure_entry',
@@ -475,6 +628,10 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_node_comment',
       'set_node_position',
       'insert_flow',
+      'insert_external_flow',
+      'set_external_pin_default',
+      'set_external_node_comment',
+      'replace_external_body',
     ],
     runtime_supported_structural_ops: [
       'ensure_entry',
@@ -483,7 +640,28 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_node_comment',
       'set_node_position',
       'insert_flow',
+      'insert_external_flow',
+      'set_external_pin_default',
+      'set_external_node_comment',
+      'replace_external_body',
     ],
+    external_graph_edit_constraints: {
+      ownership_scope: 'external_user_authored',
+      external_mutation_policy: [
+        {
+          strategy: 'merge_external_flow',
+          allowed_mutations: ['exec_boundary_link'],
+        },
+        {
+          strategy: 'patch_external_graph',
+          allowed_mutations: ['pin_default', 'node_comment'],
+        },
+        {
+          strategy: 'replace_external_body',
+          allowed_mutations: ['body_replace'],
+        },
+      ],
+    },
     lowering_policy: 'UE Task Runtime lowers structural GraphWrite IR ops to existing capability cluster commands.',
   },
   graph_write_lowering_adapter_contract: {
@@ -559,6 +737,52 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         ],
         args_optional_paths: [
           'args.sequence_order[]',
+        ],
+        dry_run_bridge_path: 'root.dry_run',
+      },
+      {
+        operation: 'merge_external_flow',
+        ue_command: 'merge_external_flow',
+        target_required_paths: [
+          'target.asset_path',
+          'target.graph',
+        ],
+        args_required_paths: [
+          'args.anchor',
+          'args.inserted.body',
+        ],
+        args_optional_paths: [
+          'args.sequence_order[]',
+        ],
+        dry_run_bridge_path: 'root.dry_run',
+      },
+      {
+        operation: 'patch_external_graph',
+        ue_command: 'patch_external_graph',
+        target_required_paths: [
+          'target.asset_path',
+          'target.graph',
+        ],
+        args_required_paths: [
+          'args.anchor',
+          'args.value',
+          'args.expected_old_state',
+        ],
+        dry_run_bridge_path: 'root.dry_run',
+      },
+      {
+        operation: 'replace_external_body',
+        ue_command: 'replace_external_body',
+        target_required_paths: [
+          'target.asset_path',
+          'target.graph',
+        ],
+        args_required_paths: [
+          'args.scope',
+          'args.anchor',
+          'args.body',
+          'args.expected_body_fingerprint',
+          'args.require_full_dry_run',
         ],
         dry_run_bridge_path: 'root.dry_run',
       },

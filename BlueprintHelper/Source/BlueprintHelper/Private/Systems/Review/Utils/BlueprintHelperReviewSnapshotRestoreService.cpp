@@ -41,6 +41,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/MetaData.h"
@@ -1199,6 +1200,236 @@ static bool BlueprintHelperReviewImportGraphRestoreText(
 	return true;
 }
 
+static bool BlueprintHelperReviewImportGraphRestoreTextWithNodes(
+	UEdGraph* Graph,
+	const FString& RestoreText,
+	TSet<UEdGraphNode*>& OutImportedNodes,
+	FString& OutError)
+{
+	OutImportedNodes.Reset();
+	if (RestoreText.IsEmpty())
+	{
+		OutError = TEXT("graph_snapshot_restore_text_missing");
+		return false;
+	}
+	if (!FEdGraphUtilities::CanImportNodesFromText(Graph, RestoreText))
+	{
+		OutError = TEXT("graph_snapshot_restore_text_not_importable");
+		return false;
+	}
+
+	FEdGraphUtilities::ImportNodesFromText(Graph, RestoreText, OutImportedNodes);
+	if (OutImportedNodes.Num() == 0)
+	{
+		OutError = TEXT("graph_snapshot_restore_imported_no_nodes");
+		return false;
+	}
+	return true;
+}
+
+static UEdGraphPin* BlueprintHelperReviewFindFirstExecPin(
+	UEdGraphNode* Node,
+	EEdGraphPinDirection Direction)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			return Pin;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphNode* BlueprintHelperReviewFindImportedNodeByGuid(
+	const TSet<UEdGraphNode*>& ImportedNodes,
+	const FString& NodeGuid)
+{
+	if (NodeGuid.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const FString NormalizedGuid = BlueprintHelperReviewNormalizeGuidCandidate(NodeGuid);
+	for (UEdGraphNode* Node : ImportedNodes)
+	{
+		if (Node && Node->NodeGuid.ToString(EGuidFormats::Digits).Equals(NormalizedGuid, ESearchCase::IgnoreCase))
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphPin* BlueprintHelperReviewFindPinInImportedNodes(
+	const TSet<UEdGraphNode*>& ImportedNodes,
+	const FString& PinName,
+	EEdGraphPinDirection Direction)
+{
+	for (UEdGraphNode* Node : ImportedNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin &&
+				Pin->Direction == Direction &&
+				Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+			{
+				return Pin;
+			}
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperReviewHasInboundExecFromImportedNode(
+	UEdGraphPin* ExecInputPin,
+	const TSet<UEdGraphNode*>& ImportedNodes)
+{
+	if (!ExecInputPin)
+	{
+		return false;
+	}
+	for (UEdGraphPin* LinkedPin : ExecInputPin->LinkedTo)
+	{
+		if (LinkedPin && ImportedNodes.Contains(LinkedPin->GetOwningNode()))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static UEdGraphNode* BlueprintHelperReviewFindFirstImportedExecutableBodyNode(
+	const TSet<UEdGraphNode*>& ImportedNodes)
+{
+	for (UEdGraphNode* Node : ImportedNodes)
+	{
+		UEdGraphPin* ExecIn = BlueprintHelperReviewFindFirstExecPin(Node, EGPD_Input);
+		if (ExecIn && !BlueprintHelperReviewHasInboundExecFromImportedNode(ExecIn, ImportedNodes))
+		{
+			return Node;
+		}
+	}
+	for (UEdGraphNode* Node : ImportedNodes)
+	{
+		if (BlueprintHelperReviewFindFirstExecPin(Node, EGPD_Input))
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperReviewConnectExternalBodyEntryLinks(
+	UEdGraph* Graph,
+	UEdGraphNode* EntryNode,
+	const TSharedPtr<FJsonObject>& Snapshot,
+	const TSet<UEdGraphNode*>& ImportedNodes)
+{
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema || !Graph || !EntryNode || !Snapshot.IsValid())
+	{
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* LinkValues = nullptr;
+	if (!Snapshot->TryGetArrayField(TEXT("entry_to_body_links"), LinkValues) || !LinkValues)
+	{
+		return false;
+	}
+
+	bool bConnectedAny = false;
+	for (const TSharedPtr<FJsonValue>& LinkValue : *LinkValues)
+	{
+		const TSharedPtr<FJsonObject> LinkObject = LinkValue.IsValid() ? LinkValue->AsObject() : nullptr;
+		const TSharedPtr<FJsonObject>* FromObjectPtr = nullptr;
+		const TSharedPtr<FJsonObject>* ToObjectPtr = nullptr;
+		if (!LinkObject.IsValid() ||
+			!LinkObject->TryGetObjectField(TEXT("from"), FromObjectPtr) ||
+			!FromObjectPtr || !FromObjectPtr->IsValid() ||
+			!LinkObject->TryGetObjectField(TEXT("to"), ToObjectPtr) ||
+			!ToObjectPtr || !ToObjectPtr->IsValid())
+		{
+			continue;
+		}
+
+		FString FromPinName;
+		FString ToNodeGuid;
+		FString ToPinName;
+		(*FromObjectPtr)->TryGetStringField(TEXT("pin_name"), FromPinName);
+		(*ToObjectPtr)->TryGetStringField(TEXT("node_guid"), ToNodeGuid);
+		(*ToObjectPtr)->TryGetStringField(TEXT("pin_name"), ToPinName);
+		UEdGraphPin* FromPin = BlueprintHelperReviewFindPinByName(EntryNode, FromPinName);
+		UEdGraphNode* ToNode = BlueprintHelperReviewFindImportedNodeByGuid(ImportedNodes, ToNodeGuid);
+		UEdGraphPin* ToPin = ToNode
+			? BlueprintHelperReviewFindPinByName(ToNode, ToPinName)
+			: BlueprintHelperReviewFindPinInImportedNodes(ImportedNodes, ToPinName, EGPD_Input);
+		if (!FromPin || !ToPin)
+		{
+			continue;
+		}
+
+		FromPin->Modify();
+		ToPin->Modify();
+		ToPin->BreakAllPinLinks(true);
+		UEdGraphPin* OutputPin = FromPin->Direction == EGPD_Output ? FromPin : ToPin;
+		UEdGraphPin* InputPin = FromPin->Direction == EGPD_Output ? ToPin : FromPin;
+		if (OutputPin && InputPin && Schema->TryCreateConnection(OutputPin, InputPin))
+		{
+			bConnectedAny = true;
+		}
+	}
+	return bConnectedAny;
+}
+
+static bool BlueprintHelperReviewReconnectEntryToFirstImportedBodyNode(
+	UEdGraph* Graph,
+	UEdGraphNode* EntryNode,
+	const TSet<UEdGraphNode*>& ImportedNodes,
+	FString& OutError)
+{
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema || !Graph || !EntryNode)
+	{
+		OutError = TEXT("external_body_restore_schema_or_context_missing");
+		return false;
+	}
+
+	UEdGraphPin* EntryExecOut = BlueprintHelperReviewFindFirstExecPin(EntryNode, EGPD_Output);
+	if (!EntryExecOut)
+	{
+		OutError = TEXT("external_body_entry_exec_output_not_found");
+		return false;
+	}
+
+	UEdGraphNode* FirstBodyNode = BlueprintHelperReviewFindFirstImportedExecutableBodyNode(ImportedNodes);
+	if (!FirstBodyNode)
+	{
+		return true;
+	}
+
+	UEdGraphPin* BodyExecIn = BlueprintHelperReviewFindFirstExecPin(FirstBodyNode, EGPD_Input);
+	if (!BodyExecIn)
+	{
+		OutError = TEXT("external_body_restore_exec_input_not_found");
+		return false;
+	}
+
+	EntryExecOut->Modify();
+	BodyExecIn->Modify();
+	BodyExecIn->BreakAllPinLinks(true);
+	return Schema->TryCreateConnection(EntryExecOut, BodyExecIn);
+}
+
 bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const TSharedPtr<FJsonObject>& Snapshot,
@@ -1295,6 +1526,282 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 
 		OutError = FString::Printf(TEXT("graph_snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
 		return false;
+	}
+
+bool FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalBoundaryFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UEdGraph* Graph = BlueprintHelperReviewFindGraph(Blueprint, Target.GraphName);
+		if (!Graph)
+		{
+			OutError = FString::Printf(TEXT("graph_not_found:%s"), *Target.GraphName);
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		if (!bSnapshotExists)
+		{
+			OutError = TEXT("graph_external_boundary_snapshot_missing");
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject>* NodeSnapshot = nullptr;
+		if (!Snapshot->TryGetObjectField(TEXT("node"), NodeSnapshot) || !NodeSnapshot || !NodeSnapshot->IsValid())
+		{
+			OutError = TEXT("graph_external_boundary_node_snapshot_missing");
+			return false;
+		}
+
+		FString NodeGuid = Target.NodeGuid;
+		if (NodeGuid.IsEmpty())
+		{
+			(*NodeSnapshot)->TryGetStringField(TEXT("guid"), NodeGuid);
+		}
+		UEdGraphNode* Node = BlueprintHelperReviewFindNodeBySnapshotGuid(Graph, NodeGuid);
+		if (!Node)
+		{
+			OutError = FString::Printf(TEXT("graph_external_boundary_node_not_found:%s"), *NodeGuid);
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* PinValues = nullptr;
+		if (!(*NodeSnapshot)->TryGetArrayField(TEXT("pins"), PinValues) || !PinValues || PinValues->Num() == 0)
+		{
+			OutError = TEXT("graph_external_boundary_pin_snapshot_missing");
+			return false;
+		}
+
+		bool bFoundBoundaryPin = false;
+		for (const TSharedPtr<FJsonValue>& PinValue : *PinValues)
+		{
+			const TSharedPtr<FJsonObject> PinSnapshot = PinValue.IsValid() ? PinValue->AsObject() : nullptr;
+			if (!PinSnapshot.IsValid())
+			{
+				continue;
+			}
+
+			FString PinName;
+			PinSnapshot->TryGetStringField(TEXT("name"), PinName);
+			if (BlueprintHelperReviewFindPinByName(Node, PinName))
+			{
+				bFoundBoundaryPin = true;
+				break;
+			}
+		}
+		if (!bFoundBoundaryPin)
+		{
+			OutError = FString::Printf(TEXT("graph_external_boundary_pin_not_found:%s"), *Target.PinPath);
+			return false;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore External Boundary")));
+		Blueprint->Modify();
+		Graph->Modify();
+		Node->Modify();
+		if (!BlueprintHelperReviewRestoreNodePinsFromSnapshot(Graph, Node, *NodeSnapshot, OutError))
+		{
+			return false;
+		}
+
+		MarkBlueprintReviewRestoreModified(Blueprint);
+		Graph->NotifyGraphChanged();
+		return true;
+	}
+
+bool FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalNodeFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UEdGraph* Graph = BlueprintHelperReviewFindGraph(Blueprint, Target.GraphName);
+		if (!Graph)
+		{
+			OutError = FString::Printf(TEXT("graph_not_found:%s"), *Target.GraphName);
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		if (!bSnapshotExists)
+		{
+			OutError = TEXT("graph_external_node_snapshot_missing");
+			return false;
+		}
+
+		FString NodeGuid = Target.NodeGuid;
+		if (NodeGuid.IsEmpty())
+		{
+			Snapshot->TryGetStringField(TEXT("node_guid"), NodeGuid);
+		}
+		UEdGraphNode* Node = BlueprintHelperReviewFindNodeBySnapshotGuid(Graph, NodeGuid);
+		if (!Node)
+		{
+			OutError = FString::Printf(TEXT("graph_external_node_not_found:%s"), *NodeGuid);
+			return false;
+		}
+
+		FString FieldKind = Target.PropertyPath;
+		if (FieldKind.IsEmpty())
+		{
+			Snapshot->TryGetStringField(TEXT("field_kind"), FieldKind);
+		}
+
+		FString Value;
+		Snapshot->TryGetStringField(TEXT("value"), Value);
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore External Node Field")));
+		Blueprint->Modify();
+		Graph->Modify();
+		Node->Modify();
+
+		if (FieldKind == TEXT("pin_default"))
+		{
+			FString PinName = Target.PinPath;
+			if (PinName.IsEmpty())
+			{
+				Snapshot->TryGetStringField(TEXT("pin_name"), PinName);
+			}
+			UEdGraphPin* Pin = BlueprintHelperReviewFindPinByName(Node, PinName);
+			if (!Pin)
+			{
+				OutError = FString::Printf(TEXT("graph_external_node_pin_not_found:%s"), *PinName);
+				return false;
+			}
+			Pin->Modify();
+			Pin->DefaultValue = Value;
+		}
+		else if (FieldKind == TEXT("node_comment"))
+		{
+			Node->NodeComment = Value;
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("graph_external_node_field_unsupported:%s"), *FieldKind);
+			return false;
+		}
+
+		MarkBlueprintReviewRestoreModified(Blueprint);
+		Graph->NotifyGraphChanged();
+		return true;
+	}
+
+bool FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalBodyFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *Target.AssetPath));
+		if (!Blueprint)
+		{
+			OutError = FString::Printf(TEXT("blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+
+		UEdGraph* Graph = BlueprintHelperReviewFindGraph(Blueprint, Target.GraphName);
+		if (!Graph)
+		{
+			OutError = FString::Printf(TEXT("graph_not_found:%s"), *Target.GraphName);
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		if (!bSnapshotExists)
+		{
+			OutError = TEXT("graph_external_body_snapshot_missing");
+			return false;
+		}
+
+		FString EntryNodeGuid = Target.NodeGuid;
+		if (EntryNodeGuid.IsEmpty())
+		{
+			Snapshot->TryGetStringField(TEXT("entry_node_guid"), EntryNodeGuid);
+		}
+		UEdGraphNode* EntryNode = BlueprintHelperReviewFindNodeBySnapshotGuid(Graph, EntryNodeGuid);
+		if (!EntryNode)
+		{
+			OutError = FString::Printf(TEXT("graph_external_body_entry_not_found:%s"), *EntryNodeGuid);
+			return false;
+		}
+
+		FString RestoreText;
+		Snapshot->TryGetStringField(TEXT("restore_text"), RestoreText);
+		const TArray<TSharedPtr<FJsonValue>>* BodyNodeValues = nullptr;
+		const bool bSnapshotHasBodyNodes =
+			Snapshot->TryGetArrayField(TEXT("body_node_guids"), BodyNodeValues) &&
+			BodyNodeValues &&
+			BodyNodeValues->Num() > 0;
+		if (bSnapshotHasBodyNodes && RestoreText.IsEmpty())
+		{
+			OutError = TEXT("graph_external_body_restore_text_missing");
+			return false;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore External Body")));
+		Blueprint->Modify();
+		Graph->Modify();
+		EntryNode->Modify();
+
+		const FBlueprintHelperExternalBodySnapshotService SnapshotService;
+		const TArray<UEdGraphNode*> CurrentBodyNodes = SnapshotService.CollectBodyNodes(Graph, EntryNode);
+		for (UEdGraphNode* Node : CurrentBodyNodes)
+		{
+			if (Node)
+			{
+				Node->Modify();
+			}
+		}
+		for (UEdGraphNode* Node : CurrentBodyNodes)
+		{
+			if (Node)
+			{
+				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+			}
+		}
+
+		for (UEdGraphPin* Pin : EntryNode->Pins)
+		{
+			if (Pin && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				Pin->Modify();
+				Pin->BreakAllPinLinks(true);
+			}
+		}
+
+		TSet<UEdGraphNode*> ImportedNodes;
+		if (!RestoreText.IsEmpty() &&
+			!BlueprintHelperReviewImportGraphRestoreTextWithNodes(Graph, RestoreText, ImportedNodes, OutError))
+		{
+			return false;
+		}
+
+		if (ImportedNodes.Num() > 0 &&
+			!BlueprintHelperReviewConnectExternalBodyEntryLinks(Graph, EntryNode, Snapshot, ImportedNodes) &&
+			!BlueprintHelperReviewReconnectEntryToFirstImportedBodyNode(Graph, EntryNode, ImportedNodes, OutError))
+		{
+			return false;
+		}
+
+		MarkBlueprintReviewRestoreModified(Blueprint);
+		Graph->NotifyGraphChanged();
+		return true;
 	}
 
 bool FBlueprintHelperReviewSnapshotRestoreService::RestoreSignatureFromSnapshot(
@@ -1435,6 +1942,9 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 		{
 			{ EBlueprintHelperReviewTargetHandlerKind::GraphNode, [&Target, &Snapshot, &OutError]() { return RestoreGraphFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::GraphBlock, [&Target, &Snapshot, &OutError]() { return RestoreGraphFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::GraphExternalBoundary, [&Target, &Snapshot, &OutError]() { return RestoreExternalBoundaryFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode, [&Target, &Snapshot, &OutError]() { return RestoreExternalNodeFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody, [&Target, &Snapshot, &OutError]() { return RestoreExternalBodyFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable, [&Target, &Snapshot, &OutError]() { return RestoreBlueprintVariableFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::Component, [&Target, &Snapshot, &OutError]() { return RestoreComponentFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::DataTableRow, [&Target, &Snapshot, &OutError]() { return RestoreDataTableRowFromSnapshot(Target, Snapshot, OutError); } },

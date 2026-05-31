@@ -35,7 +35,7 @@ Recommended upgrade entry:
 .\upgrade.cmd -Force
 ```
 
-`install.ps1` and `update.ps1` remain implementation scripts behind the `.cmd` wrappers. User-facing docs should recommend `install.cmd` and `upgrade.cmd`.
+`InstallScripts/install.ps1` and `InstallScripts/update.ps1` are implementation scripts behind the root `.cmd` wrappers. The repository root keeps user-facing script entry points as `.cmd` files: `install.cmd`, `upgrade.cmd`, `update.cmd`, and `uninstall.cmd`.
 
 ## Agent Rule Archive
 

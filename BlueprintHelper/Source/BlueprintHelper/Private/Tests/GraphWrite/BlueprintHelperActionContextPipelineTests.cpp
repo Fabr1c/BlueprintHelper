@@ -62,6 +62,19 @@ static FString BuildActionContextPrivatePath(const TCHAR* FileName)
 		FileName);
 }
 
+static FString BuildActionResolutionPrivateUtilsPath(const TCHAR* FileName)
+{
+	return FPaths::Combine(
+		BuildBlueprintHelperSourceRoot(),
+		TEXT("Private"),
+		TEXT("Systems"),
+		TEXT("ToolClusters"),
+		TEXT("GraphWrite"),
+		TEXT("ActionResolution"),
+		TEXT("Utils"),
+		FileName);
+}
+
 static bool LoadRequiredSourceFile(FAutomationTestBase& Test, const FString& FilePath, FString& OutText)
 {
 	if (!IFileManager::Get().FileExists(*FilePath))
@@ -213,11 +226,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTest(const FString& Parameters)
 {
 	const FString DemandCollectorPath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextDemandCollector.cpp"));
+	const FString ActionContextUtilsPath = BuildActionResolutionPrivateUtilsPath(TEXT("GraphWriteActionContextUtils.cpp"));
 	const FString InferenceServicePath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextInferenceService.cpp"));
 
 	FString DemandCollectorText;
+	FString ActionContextUtilsText;
 	FString InferenceServiceText;
 	if (!LoadRequiredSourceFile(*this, DemandCollectorPath, DemandCollectorText)
+		|| !LoadRequiredSourceFile(*this, ActionContextUtilsPath, ActionContextUtilsText)
 		|| !LoadRequiredSourceFile(*this, InferenceServicePath, InferenceServiceText))
 	{
 		return false;
@@ -231,6 +247,14 @@ bool FBlueprintHelperActionContextEventDelegateEvidenceSourceContractTest::RunTe
 		{
 			TEXT("ComponentBoundEvent"),
 			TEXT("Delegate"),
+			TEXT("ApplyEventDelegateStatementEvidence"),
+			TEXT("ApplyEventDelegateExpressionEvidence")
+		});
+	bComplete &= RequireTokens(
+		*this,
+		ActionContextUtilsText,
+		ActionContextUtilsPath,
+		{
 			TEXT("ComponentPath"),
 			TEXT("BindingObjectPath"),
 			TEXT("DelegateName"),
@@ -1090,10 +1114,14 @@ bool FBlueprintHelperActionContextBundleProjectionSourceContractTest::RunTest(co
 {
 	const FString HeaderPath = BuildActionContextPublicPath(TEXT("BlueprintHelperActionContextBundleProjector.h"));
 	const FString SourcePath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextBundleProjector.cpp"));
+	const FString ActionContextUtilsPath = BuildActionResolutionPrivateUtilsPath(TEXT("GraphWriteActionContextUtils.cpp"));
 
 	FString HeaderText;
 	FString SourceText;
-	if (!LoadRequiredSourceFile(*this, HeaderPath, HeaderText) || !LoadRequiredSourceFile(*this, SourcePath, SourceText))
+	FString ActionContextUtilsText;
+	if (!LoadRequiredSourceFile(*this, HeaderPath, HeaderText)
+		|| !LoadRequiredSourceFile(*this, SourcePath, SourceText)
+		|| !LoadRequiredSourceFile(*this, ActionContextUtilsPath, ActionContextUtilsText))
 	{
 		return false;
 	}
@@ -1123,7 +1151,13 @@ bool FBlueprintHelperActionContextBundleProjectionSourceContractTest::RunTest(co
 			TEXT("OutRequest.StatementId"),
 			TEXT("OutRequest.ProjectedContextHash"),
 			TEXT("OutRequest.SemanticConstraintsHash"),
-			TEXT("OutRequest.Semantic"),
+			TEXT("OutRequest.Semantic")
+		});
+	bComplete &= RequireTokens(
+		*this,
+		ActionContextUtilsText,
+		ActionContextUtilsPath,
+		{
 			TEXT("Semantic.FunctionOperation"),
 			TEXT("Semantic.TransformOperation"),
 			TEXT("Semantic.ScheduleOperation")

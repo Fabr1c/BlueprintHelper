@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { compileTaskSpecToTaskPlan } from './task-compiler.js';
 
-function makeReplaceSpec(replace: Record<string, unknown>) {
+function makeReplaceSpec(replace: Record<string, unknown>, scopePolicy?: Record<string, unknown>) {
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',
     context_id: 'ctx_replace_scope_ts',
@@ -16,6 +16,7 @@ function makeReplaceSpec(replace: Record<string, unknown>) {
     scope_policy: {
       graph_name: 'EventGraph',
       allow_modify_user_nodes: false,
+      ...scopePolicy,
     },
     behavior: {
       graph_strategy: 'replace_owned_graph',
@@ -117,4 +118,42 @@ test('replace function scope targets the selected function graph', () => {
     asset_path: '/Game/BP/BP_ReplaceScope',
     graph: 'ReplaceFunction',
   });
+});
+
+test('owned replace graph write step carries owned-only constraints', () => {
+  const step = compileReplaceStep({
+    scope: 'custom_event_body',
+    selector: {
+      kind: 'custom_event',
+      name: 'ReplaceEvent',
+    },
+    body: {
+      schema: 'BlueprintLogicSpec.v1',
+      statements: [{ kind: 'call', target: 'PrintString' }],
+    },
+  });
+
+  assert.deepEqual(step.constraints, {
+    allow_modify_user_nodes: false,
+    ownership_scope: 'blueprinthelper_owned',
+  });
+});
+
+test('owned replace rejects broad user node mutation policy', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeReplaceSpec({
+      scope: 'custom_event_body',
+      selector: {
+        kind: 'custom_event',
+        name: 'ReplaceEvent',
+      },
+      body: {
+        schema: 'BlueprintLogicSpec.v1',
+        statements: [{ kind: 'call', target: 'PrintString' }],
+      },
+    }, {
+      allow_modify_user_nodes: true,
+    }) as never),
+    /unsupported_scope_policy/,
+  );
 });

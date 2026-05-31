@@ -101,6 +101,311 @@ static FString ReadTaskRuntimeReviewStringField(
 	return Value;
 }
 
+static TSharedPtr<FJsonObject> ReadTaskRuntimeReviewObjectField(
+	const TSharedPtr<FJsonObject>& Payload,
+	const TCHAR* FieldName)
+{
+	const TSharedPtr<FJsonObject>* ObjectPtr = nullptr;
+	if (Payload.IsValid() &&
+		Payload->TryGetObjectField(FieldName, ObjectPtr) &&
+		ObjectPtr &&
+		ObjectPtr->IsValid())
+	{
+		return *ObjectPtr;
+	}
+	return nullptr;
+}
+
+static FString ReadTaskRuntimeReviewNestedStringField(
+	const TSharedPtr<FJsonObject>& Payload,
+	const TCHAR* ObjectFieldName,
+	const TCHAR* FieldName)
+{
+	return ReadTaskRuntimeReviewStringField(
+		ReadTaskRuntimeReviewObjectField(Payload, ObjectFieldName),
+		FieldName);
+}
+
+static FString ReadTaskRuntimeReviewGraphName(const TSharedPtr<FJsonObject>& Payload)
+{
+	FString GraphName = ReadTaskRuntimeReviewStringField(Payload, TEXT("graph"));
+	if (GraphName.IsEmpty())
+	{
+		GraphName = ReadTaskRuntimeReviewStringField(Payload, TEXT("graph_name"));
+	}
+	if (GraphName.IsEmpty())
+	{
+		GraphName = ReadTaskRuntimeReviewNestedStringField(Payload, TEXT("target"), TEXT("graph"));
+	}
+	if (GraphName.IsEmpty())
+	{
+		GraphName = ReadTaskRuntimeReviewNestedStringField(Payload, TEXT("target"), TEXT("graph_name"));
+	}
+	return GraphName;
+}
+
+static FString MakeTaskRuntimeReviewExternalMergeBlockId(
+	const FString& GraphName,
+	const FString& InsertedBlockId)
+{
+	if (InsertedBlockId.IsEmpty())
+	{
+		return TEXT("");
+	}
+	if (GraphName.IsEmpty())
+	{
+		return InsertedBlockId;
+	}
+
+	const FString GraphPrefix = GraphName + TEXT("_");
+	return InsertedBlockId.StartsWith(GraphPrefix)
+		? InsertedBlockId
+		: FString::Printf(TEXT("%s_%s"), *GraphName, *InsertedBlockId);
+}
+
+static void AddTaskRuntimeMergeExternalFlowReviewTargets(
+	FBlueprintHelperWriteReviewEvidence& Evidence,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	if (!Payload.IsValid())
+	{
+		return;
+	}
+
+	const FString GraphName = ReadTaskRuntimeReviewGraphName(Payload);
+	const TSharedPtr<FJsonObject> Anchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("anchor"));
+	const TSharedPtr<FJsonObject> Inserted = ReadTaskRuntimeReviewObjectField(Payload, TEXT("inserted"));
+	if (GraphName.IsEmpty() || !Anchor.IsValid() || !Inserted.IsValid())
+	{
+		return;
+	}
+
+	FString NodeGuid;
+	FString PinName;
+	Anchor->TryGetStringField(TEXT("node_guid"), NodeGuid);
+	Anchor->TryGetStringField(TEXT("pin_name"), PinName);
+	if (NodeGuid.IsEmpty() || PinName.IsEmpty())
+	{
+		return;
+	}
+
+	const FString AnchorJson = SerializeTaskRuntimeReviewPayload(Anchor);
+	const FString PayloadText = SerializeTaskRuntimeReviewPayload(Payload);
+	const FString SafeGraphName = MakeTaskRuntimeReviewRefSegment(GraphName);
+	const FString SafeNodeGuid = MakeTaskRuntimeReviewRefSegment(NodeGuid);
+	const FString SafePinName = MakeTaskRuntimeReviewRefSegment(PinName);
+
+	FBlueprintHelperReviewAtomicTarget BoundaryTarget;
+	BoundaryTarget.AssetPath = Evidence.AssetPath;
+	BoundaryTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	BoundaryTarget.GraphName = GraphName;
+	BoundaryTarget.TargetKind = TEXT("graph_external_boundary");
+	BoundaryTarget.TargetKey = FString::Printf(
+		TEXT("graph_external_boundary:%s:node:%s:pin:%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafePinName);
+	BoundaryTarget.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_boundary|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafePinName);
+	BoundaryTarget.DisplayLabel = FString::Printf(
+		TEXT("External exec boundary %s.%s"),
+		*GraphName,
+		*PinName);
+	BoundaryTarget.LatestEvidenceId = Evidence.EvidenceId;
+	BoundaryTarget.SourceEvidenceIds.Add(Evidence.EvidenceId);
+	BoundaryTarget.Ownership = TEXT("external_user_authored");
+	BoundaryTarget.NodeGuid = NodeGuid;
+	BoundaryTarget.PinPath = PinName;
+	BoundaryTarget.AnchorJson = AnchorJson;
+	BoundaryTarget.ExecutionOrder = Evidence.TaskStepIndex;
+	BoundaryTarget.TaskStepIndex = Evidence.TaskStepIndex;
+	BoundaryTarget.AtomicIndex = Evidence.AtomicTargets.Num();
+	Evidence.AtomicTargets.Add(BoundaryTarget);
+
+	FString InsertedBlockId;
+	Inserted->TryGetStringField(TEXT("block_id"), InsertedBlockId);
+	const FString FullBlockId = MakeTaskRuntimeReviewExternalMergeBlockId(GraphName, InsertedBlockId);
+	if (FullBlockId.IsEmpty())
+	{
+		return;
+	}
+
+	const FString SafeBlockId = MakeTaskRuntimeReviewRefSegment(FullBlockId);
+	FBlueprintHelperReviewAtomicTarget InsertedBlockTarget;
+	InsertedBlockTarget.AssetPath = Evidence.AssetPath;
+	InsertedBlockTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	InsertedBlockTarget.GraphName = GraphName;
+	InsertedBlockTarget.TargetKind = TEXT("graph_block");
+	InsertedBlockTarget.TargetKey = FString::Printf(TEXT("graph_block:block:%s"), *FullBlockId);
+	InsertedBlockTarget.VisualGroupKey = FString::Printf(
+		TEXT("graph_block:block:%s:%s"),
+		*SafeGraphName,
+		*SafeBlockId);
+	InsertedBlockTarget.DisplayLabel = FString::Printf(
+		TEXT("Inserted external flow %s"),
+		*FullBlockId);
+	InsertedBlockTarget.LatestEvidenceId = Evidence.EvidenceId;
+	InsertedBlockTarget.SourceEvidenceIds.Add(Evidence.EvidenceId);
+	InsertedBlockTarget.Ownership = TEXT("blueprinthelper_owned");
+	InsertedBlockTarget.AnchorJson = PayloadText;
+	InsertedBlockTarget.ExecutionOrder = Evidence.TaskStepIndex;
+	InsertedBlockTarget.TaskStepIndex = Evidence.TaskStepIndex;
+	InsertedBlockTarget.AtomicIndex = Evidence.AtomicTargets.Num();
+	Evidence.AtomicTargets.Add(InsertedBlockTarget);
+}
+
+static void AddTaskRuntimePatchExternalGraphReviewTargets(
+	FBlueprintHelperWriteReviewEvidence& Evidence,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	if (!Payload.IsValid())
+	{
+		return;
+	}
+
+	const FString GraphName = ReadTaskRuntimeReviewGraphName(Payload);
+	const TSharedPtr<FJsonObject> Anchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("anchor"));
+	if (GraphName.IsEmpty() || !Anchor.IsValid())
+	{
+		return;
+	}
+
+	FString PatchType;
+	FString NodeGuid;
+	FString PinName;
+	Payload->TryGetStringField(TEXT("patch_type"), PatchType);
+	Anchor->TryGetStringField(TEXT("node_guid"), NodeGuid);
+	Anchor->TryGetStringField(TEXT("pin_name"), PinName);
+	if (PatchType.IsEmpty() || NodeGuid.IsEmpty())
+	{
+		return;
+	}
+
+	const FString FieldKind = PatchType == TEXT("set_external_pin_default")
+		? TEXT("pin_default")
+		: TEXT("node_comment");
+	if (FieldKind == TEXT("pin_default") && PinName.IsEmpty())
+	{
+		return;
+	}
+
+	const FString AnchorJson = SerializeTaskRuntimeReviewPayload(Anchor);
+	const FString SafeGraphName = MakeTaskRuntimeReviewRefSegment(GraphName);
+	const FString SafeNodeGuid = MakeTaskRuntimeReviewRefSegment(NodeGuid);
+	const FString SafeFieldKind = MakeTaskRuntimeReviewRefSegment(FieldKind);
+	const FString SafePinName = MakeTaskRuntimeReviewRefSegment(PinName);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Evidence.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_node");
+	Target.TargetKey = FieldKind == TEXT("pin_default")
+		? FString::Printf(
+			TEXT("graph_external_node:%s:node:%s:field:%s:pin:%s"),
+			*SafeGraphName,
+			*SafeNodeGuid,
+			*SafeFieldKind,
+			*SafePinName)
+		: FString::Printf(
+			TEXT("graph_external_node:%s:node:%s:field:%s"),
+			*SafeGraphName,
+			*SafeNodeGuid,
+			*SafeFieldKind);
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_node|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeFieldKind);
+	Target.DisplayLabel = FieldKind == TEXT("pin_default")
+		? FString::Printf(TEXT("External pin default %s.%s"), *GraphName, *PinName)
+		: FString::Printf(TEXT("External node comment %s"), *GraphName);
+	Target.LatestEvidenceId = Evidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.NodeGuid = NodeGuid;
+	Target.PinPath = PinName;
+	Target.PropertyPath = FieldKind;
+	Target.AnchorJson = AnchorJson;
+	Target.ExecutionOrder = Evidence.TaskStepIndex;
+	Target.TaskStepIndex = Evidence.TaskStepIndex;
+	Target.AtomicIndex = Evidence.AtomicTargets.Num();
+	Evidence.AtomicTargets.Add(Target);
+}
+
+static void AddTaskRuntimeReplaceExternalBodyReviewTargets(
+	FBlueprintHelperWriteReviewEvidence& Evidence,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	if (!Payload.IsValid())
+	{
+		return;
+	}
+
+	const FString GraphName = ReadTaskRuntimeReviewGraphName(Payload);
+	const TSharedPtr<FJsonObject> Anchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("anchor"));
+	if (GraphName.IsEmpty() || !Anchor.IsValid())
+	{
+		return;
+	}
+
+	FString NodeGuid;
+	Anchor->TryGetStringField(TEXT("node_guid"), NodeGuid);
+	if (NodeGuid.IsEmpty())
+	{
+		return;
+	}
+
+	FString ReplaceScope;
+	Payload->TryGetStringField(TEXT("scope"), ReplaceScope);
+	if (ReplaceScope.IsEmpty())
+	{
+		ReplaceScope = ReadTaskRuntimeReviewNestedStringField(Payload, TEXT("target"), TEXT("replace_scope"));
+	}
+	if (ReplaceScope.IsEmpty())
+	{
+		return;
+	}
+
+	const FString AnchorJson = SerializeTaskRuntimeReviewPayload(Anchor);
+	const FString SafeGraphName = MakeTaskRuntimeReviewRefSegment(GraphName);
+	const FString SafeNodeGuid = MakeTaskRuntimeReviewRefSegment(NodeGuid);
+	const FString SafeScope = MakeTaskRuntimeReviewRefSegment(ReplaceScope);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Evidence.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_body");
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_body:%s:node:%s:scope:%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeScope);
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_body|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeScope);
+	Target.DisplayLabel = FString::Printf(
+		TEXT("External body %s %s"),
+		*GraphName,
+		*ReplaceScope);
+	Target.LatestEvidenceId = Evidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.NodeGuid = NodeGuid;
+	Target.PropertyPath = ReplaceScope;
+	Target.AnchorJson = AnchorJson;
+	Target.ExecutionOrder = Evidence.TaskStepIndex;
+	Target.TaskStepIndex = Evidence.TaskStepIndex;
+	Target.AtomicIndex = Evidence.AtomicTargets.Num();
+	Evidence.AtomicTargets.Add(Target);
+}
+
 static void AddTaskRuntimeReviewTarget(
 	FBlueprintHelperWriteReviewEvidence& Evidence,
 	const TSharedPtr<FJsonObject>& Payload,
@@ -662,6 +967,14 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 	}
 	if (AssetPath.IsEmpty())
 	{
+		AssetPath = ReadTaskRuntimeReviewNestedStringField(LoweredStep.Payload, TEXT("target"), TEXT("asset_path"));
+	}
+	if (AssetPath.IsEmpty())
+	{
+		AssetPath = ReadTaskRuntimeReviewNestedStringField(LoweredStep.Payload, TEXT("target"), TEXT("blueprint_path"));
+	}
+	if (AssetPath.IsEmpty())
+	{
 		return false;
 	}
 
@@ -676,6 +989,22 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 	OutEvidence.DisplayLabel = OutEvidence.OperationKind;
 	OutEvidence.ChangeKind = DeriveTaskRuntimeReviewChangeKind(OutEvidence.OperationKind);
 	OutEvidence.TaskStepIndex = StepIndex;
+
+	if (LoweredStep.AdapterOperation == TEXT("merge_external_flow"))
+	{
+		AddTaskRuntimeMergeExternalFlowReviewTargets(OutEvidence, LoweredStep.Payload);
+		return OutEvidence.AtomicTargets.Num() > 0;
+	}
+	if (LoweredStep.AdapterOperation == TEXT("patch_external_graph"))
+	{
+		AddTaskRuntimePatchExternalGraphReviewTargets(OutEvidence, LoweredStep.Payload);
+		return OutEvidence.AtomicTargets.Num() > 0;
+	}
+	if (LoweredStep.AdapterOperation == TEXT("replace_external_body"))
+	{
+		AddTaskRuntimeReplaceExternalBodyReviewTargets(OutEvidence, LoweredStep.Payload);
+		return OutEvidence.AtomicTargets.Num() > 0;
+	}
 
 	using FEvidencePredicate = TFunction<bool()>;
 	using FEvidenceBuilder = TFunction<void()>;

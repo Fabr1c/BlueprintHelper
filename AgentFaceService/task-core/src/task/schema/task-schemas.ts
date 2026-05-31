@@ -463,18 +463,180 @@ const GraphWriteMergeSchema = z.object({
   }
 });
 
+const ExternalGraphAnchorSchema = z.object({
+  schema: z.literal('BlueprintHelper.ExternalGraphAnchor.v1'),
+  asset_path: z.string().min(1),
+  graph_name: z.string().min(1),
+  node_guid: z.string().min(1),
+  node_class: z.string().min(1),
+  pin_name: z.string().min(1).optional(),
+  pin_direction: z.enum(['input', 'output']).optional(),
+  semantic_role: z.enum(['exec_boundary', 'node', 'body_entry']),
+  fingerprint: z.string().min(1),
+}).strict();
+
+const ExternalExecBoundaryAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
+  if (value.semantic_role !== 'exec_boundary') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'merge_external_flow requires semantic_role="exec_boundary".' });
+  }
+  if (!value.pin_name) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pin_name'], message: 'exec_boundary external anchors require pin_name.' });
+  }
+  if (value.pin_direction !== 'output') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pin_direction'], message: 'exec_boundary external anchors require pin_direction="output".' });
+  }
+});
+
+const ExternalNodeAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
+  if (value.semantic_role !== 'node') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'patch_external_graph requires semantic_role="node".' });
+  }
+});
+
+const ExternalBodyEntryAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
+  if (value.semantic_role !== 'body_entry') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'replace_external_body requires semantic_role="body_entry".' });
+  }
+});
+
+const ExternalGraphWriteInsertedBodySchema = z.object({
+  schema: z.union([z.literal('BlueprintLogicSpec.v1'), z.literal('BlueprintLogicSpec.v2')]),
+  statements: z.array(BlueprintLogicStatementSchema),
+}).passthrough();
+
+const GraphWriteExternalMergeSchema = z.object({
+  kind: z.literal('insert_external_flow'),
+  insert_strategy: z.enum(['append_after', 'insert_between', 'branch_fork']),
+  anchor: ExternalExecBoundaryAnchorSchema,
+  inserted: z.object({
+    body: ExternalGraphWriteInsertedBodySchema,
+  }).passthrough(),
+  sequence_order: z.array(z.enum(['inserted_logic', 'original_successor'])).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  if (value.insert_strategy === 'branch_fork') {
+    if (!value.sequence_order || value.sequence_order.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order'], message: 'branch_fork requires sequence_order.' });
+      return;
+    }
+    const uniqueEntries = new Set(value.sequence_order);
+    if (value.sequence_order.length > 2 || uniqueEntries.size !== value.sequence_order.length || !uniqueEntries.has('inserted_logic')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sequence_order'],
+        message: 'branch_fork sequence_order must contain unique entries and include inserted_logic.',
+      });
+    }
+  } else if (value.sequence_order !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order'], message: 'sequence_order is only valid for branch_fork.' });
+  }
+});
+
+const GraphWriteExternalPatchSchema = z.object({
+  kind: z.enum(['set_external_pin_default', 'set_external_node_comment']),
+  anchor: ExternalNodeAnchorSchema,
+  value: z.unknown(),
+  expected_old_state: z.record(z.unknown()),
+}).strict().superRefine((value, ctx) => {
+  if (value.kind === 'set_external_pin_default' && !value.anchor.pin_name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor', 'pin_name'],
+      message: 'set_external_pin_default requires anchor.pin_name.',
+    });
+  }
+});
+
+const GraphWriteExternalReplaceBodySchema = z.object({
+  scope: z.enum(['custom_event_body', 'event_body', 'function_body']),
+  anchor: ExternalBodyEntryAnchorSchema,
+  body: BlueprintLogicSpecSchema,
+  expected_body_fingerprint: z.string().min(1),
+  require_full_dry_run: z.literal(true),
+}).strict();
+
+const ExternalMutationPolicySchema = z.object({
+  strategy: z.enum(['merge_external_flow', 'patch_external_graph', 'replace_external_body']),
+  allowed_mutations: z.array(z.string().min(1)).min(1),
+}).passthrough();
+
+function validateExactExternalMutationPolicy(input: {
+  strategy: string;
+  scopePolicy: Record<string, unknown>;
+  ctx: z.RefinementCtx;
+}): void {
+  const { strategy, scopePolicy, ctx } = input;
+  const requiredMutationsByStrategy: Record<string, string[]> = {
+    merge_external_flow: ['exec_boundary_link'],
+    patch_external_graph: ['pin_default', 'node_comment'],
+    replace_external_body: ['body_replace'],
+  };
+  const expectedMutations = requiredMutationsByStrategy[strategy];
+  if (!expectedMutations) {
+    return;
+  }
+
+  if (scopePolicy['allow_modify_user_nodes'] === true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope_policy', 'allow_modify_user_nodes'],
+      message: `${strategy} requires allow_modify_user_nodes=false.`,
+    });
+  }
+
+  const rawPolicy = scopePolicy['external_mutation_policy'];
+  const policy = typeof rawPolicy === 'object' && rawPolicy !== null && !Array.isArray(rawPolicy)
+    ? rawPolicy as Record<string, unknown>
+    : undefined;
+  if (!policy) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope_policy', 'external_mutation_policy'],
+      message: `${strategy} requires scope_policy.external_mutation_policy.`,
+    });
+    return;
+  }
+
+  if (policy['strategy'] !== strategy) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope_policy', 'external_mutation_policy', 'strategy'],
+      message: `${strategy} requires external_mutation_policy.strategy="${strategy}".`,
+    });
+  }
+
+  const allowedMutations = Array.isArray(policy['allowed_mutations'])
+    ? policy['allowed_mutations'].filter((value): value is string => typeof value === 'string')
+    : [];
+  const exactMatch = allowedMutations.length === expectedMutations.length
+    && expectedMutations.every((mutation) => allowedMutations.includes(mutation))
+    && allowedMutations.every((mutation) => expectedMutations.includes(mutation));
+  if (!exactMatch) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope_policy', 'external_mutation_policy', 'allowed_mutations'],
+      message: `${strategy} requires external_mutation_policy.allowed_mutations to be exactly [${expectedMutations.map((mutation) => `"${mutation}"`).join(', ')}].`,
+    });
+  }
+}
+
 const GraphWriteBehaviorSchema = z.object({
   graph_strategy: z.string(),
   entries: z.array(GraphWriteAppendEntrySchema).min(1).optional(),
   replace: GraphWriteReplaceSchema.optional(),
   patches: z.array(GraphWritePatchSchema).min(1).optional(),
   merges: z.array(GraphWriteMergeSchema).min(1).optional(),
+  external_merges: z.array(GraphWriteExternalMergeSchema).min(1).optional(),
+  external_patches: z.array(GraphWriteExternalPatchSchema).min(1).optional(),
+  external_replace: GraphWriteExternalReplaceBodySchema.optional(),
 }).passthrough().superRefine((value, ctx) => {
   const requiredFieldByStrategy: Record<string, keyof typeof value> = {
     append_new_owned_graph: 'entries',
     replace_owned_graph: 'replace',
     patch_owned_graph: 'patches',
     merge_owned_graph: 'merges',
+    merge_external_flow: 'external_merges',
+    patch_external_graph: 'external_patches',
+    replace_external_body: 'external_replace',
   };
   const requiredField = requiredFieldByStrategy[value.graph_strategy];
   if (!requiredField) return;
@@ -485,7 +647,7 @@ const GraphWriteBehaviorSchema = z.object({
       message: `${value.graph_strategy} requires behavior.${requiredField}.`,
     });
   }
-  (['entries', 'replace', 'patches', 'merges'] as const)
+  (['entries', 'replace', 'patches', 'merges', 'external_merges', 'external_patches', 'external_replace'] as const)
     .filter((field) => field !== requiredField && value[field] !== undefined)
     .forEach((field) => {
       ctx.addIssue({
@@ -496,14 +658,21 @@ const GraphWriteBehaviorSchema = z.object({
     });
 });
 
-export const GraphWriteTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_graph'),
   scope_policy: z.object({
     graph_name: z.string().min(1),
     allow_modify_user_nodes: z.boolean().optional().default(false),
+    external_mutation_policy: ExternalMutationPolicySchema.optional(),
   }).passthrough(),
   behavior: GraphWriteBehaviorSchema,
-}).passthrough();
+}).passthrough().superRefine((value, ctx) => {
+  validateExactExternalMutationPolicy({
+    strategy: value.behavior.graph_strategy,
+    scopePolicy: value.scope_policy,
+    ctx,
+  });
+});
 
 export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_variables'),
@@ -719,7 +888,7 @@ export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
   });
 });
 
-export const CompositeBlueprintFeatureTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
   task_type: z.literal('create_blueprint_feature'),
   scope_policy: z.object({
     graph_name: z.string().min(1).optional(),

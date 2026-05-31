@@ -26,6 +26,9 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 	static const FBlueprintHelperReviewTargetKindDefinition Definitions[] =
 	{
 		{ TEXT("graph_block"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_block"), EBlueprintHelperReviewTargetHandlerKind::GraphBlock },
+		{ TEXT("graph_external_boundary"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_boundary"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBoundary },
+		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_node"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode },
+		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_body"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_node"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_pin"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_link"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
@@ -65,6 +68,9 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 	static const FBlueprintHelperReviewSurfaceAliasRule Rules[] =
 	{
 		{ TEXT("graph_block"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("graph_external_boundary"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph },
@@ -233,6 +239,18 @@ bool FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(
 	const FString TargetKindLower = BlueprintHelperReviewNormalizeRegistryToken(Target.TargetKind);
 	const FString TargetKeyLower = BlueprintHelperReviewNormalizeRegistryToken(Target.TargetKey);
 	const FString GroupLower = BlueprintHelperReviewNormalizeRegistryToken(Target.VisualGroupKey);
+	if (TargetKindLower.Equals(TEXT("graph_external_boundary"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
+	if (TargetKindLower.Equals(TEXT("graph_external_node"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
+	if (TargetKindLower.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
 	if (IsGraphBlockTarget(Target.TargetKind, Target.TargetKey)
 		|| BlueprintHelperReviewTextContainsToken(TargetKeyLower, TEXT(":block:"))
 		|| BlueprintHelperReviewTextContainsToken(GroupLower, TEXT(":block:")))
@@ -328,7 +346,10 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 {
 	const FString NormalizedTargetKind = BlueprintHelperReviewNormalizeRegistryToken(TargetKind);
 	if (NormalizedTargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
-		|| NormalizedTargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase))
+		|| NormalizedTargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("graph_external_boundary"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("graph_external_node"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase))
 	{
 		return true;
 	}

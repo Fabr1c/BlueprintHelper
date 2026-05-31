@@ -925,24 +925,36 @@ bool FBlueprintHelperActionResolutionGenericScheduleNoSyntheticSpawnerContractTe
 	const FString GenericTransformResolverPath = BuildGraphWritePrivateSourcePath(
 		TEXT("ActionResolution"),
 		TEXT("BlueprintHelperGenericTransformScheduleActionResolver.cpp"));
+	const FString ActionResolverUtilsPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution/Utils"),
+		TEXT("GraphWriteActionResolverUtils.cpp"));
 
 	FString GenericTransformResolverSource;
+	FString ActionResolverUtilsSource;
 	if (!FFileHelper::LoadFileToString(GenericTransformResolverSource, *GenericTransformResolverPath))
 	{
 		AddError(FString::Printf(TEXT("GenericTransformScheduleActionResolver source could not be read: %s"), *GenericTransformResolverPath));
 		return false;
 	}
+	if (!FFileHelper::LoadFileToString(ActionResolverUtilsSource, *ActionResolverUtilsPath))
+	{
+		AddError(FString::Printf(TEXT("GraphWriteActionResolverUtils source could not be read: %s"), *ActionResolverUtilsPath));
+		return false;
+	}
 
-	const int32 ScheduleStart = GenericTransformResolverSource.Find(TEXT("static FBlueprintHelperActionResolutionResult ResolveSchedule"));
-	const int32 ScheduleEnd = GenericTransformResolverSource.Find(TEXT("bool FBlueprintHelperGenericTransformScheduleActionResolver::IsSupportedTransformOperation"));
+	const int32 ScheduleStart = ActionResolverUtilsSource.Find(TEXT("FBlueprintHelperActionResolutionResult UGraphWriteActionResolverUtils::ResolveSchedule"));
+	const int32 ScheduleEnd = ActionResolverUtilsSource.Find(TEXT("BlueprintHelperSingletonControlFlowEvidenceProvider.cpp"));
 	if (ScheduleStart == INDEX_NONE || ScheduleEnd == INDEX_NONE || ScheduleEnd <= ScheduleStart)
 	{
 		AddError(TEXT("Could not isolate ResolveSchedule source section."));
 		return false;
 	}
 
-	const FString ScheduleSource = GenericTransformResolverSource.Mid(ScheduleStart, ScheduleEnd - ScheduleStart);
+	const FString ScheduleSource = ActionResolverUtilsSource.Mid(ScheduleStart, ScheduleEnd - ScheduleStart);
 	bool bClean = true;
+	bClean &= TestTrue(
+		TEXT("Generic schedule resolver routes through resolver utils"),
+		GenericTransformResolverSource.Contains(TEXT("UGraphWriteActionResolverUtils::ResolveSchedule")));
 	bClean &= TestTrue(
 		TEXT("Generic schedule resolver reads projected schedule evidence"),
 		ScheduleSource.Contains(TEXT("ReadScheduleActionEvidence")));
@@ -969,9 +981,13 @@ bool FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractT
 	const FString TypePromotionResolverPath = BuildGraphWritePrivateSourcePath(
 		TEXT("ActionResolution"),
 		TEXT("BlueprintHelperTypePromotionSpawnerEvidenceResolver.cpp"));
+	const FString ActionResolverUtilsPath = BuildGraphWritePrivateSourcePath(
+		TEXT("ActionResolution/Utils"),
+		TEXT("GraphWriteActionResolverUtils.cpp"));
 
 	FString GenericTransformResolverSource;
 	FString TypePromotionResolverSource;
+	FString ActionResolverUtilsSource;
 	bool bClean = true;
 	if (!FFileHelper::LoadFileToString(GenericTransformResolverSource, *GenericTransformResolverPath))
 	{
@@ -983,6 +999,11 @@ bool FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractT
 		AddError(FString::Printf(TEXT("TypePromotionSpawnerEvidenceResolver source could not be read: %s"), *TypePromotionResolverPath));
 		bClean = false;
 	}
+	if (!FFileHelper::LoadFileToString(ActionResolverUtilsSource, *ActionResolverUtilsPath))
+	{
+		AddError(FString::Printf(TEXT("GraphWriteActionResolverUtils source could not be read: %s"), *ActionResolverUtilsPath));
+		bClean = false;
+	}
 	if (!bClean)
 	{
 		return false;
@@ -990,18 +1011,21 @@ bool FBlueprintHelperActionResolutionTypePromotionUsesRegisteredSpawnerContractT
 
 	bClean &= TestTrue(
 		TEXT("Generic transform routes type_promotion through the dedicated resolver"),
-		GenericTransformResolverSource.Contains(TEXT("FBlueprintHelperTypePromotionSpawnerEvidenceResolver::Resolve")));
+		GenericTransformResolverSource.Contains(TEXT("UGraphWriteActionResolverUtils::ResolveConvert"))
+		&& ActionResolverUtilsSource.Contains(TEXT("FBlueprintHelperTypePromotionSpawnerEvidenceResolver::Resolve")));
 	bClean &= TestFalse(
 		TEXT("Dedicated type_promotion resolver does not synthesize node spawners with UBlueprintNodeSpawner::Create"),
 		TypePromotionResolverSource.Contains(TEXT("UBlueprintNodeSpawner::Create")));
 	bClean &= TestTrue(
 		TEXT("Dedicated type_promotion resolver consumes registered FTypePromotion spawners"),
-		TypePromotionResolverSource.Contains(TEXT("FTypePromotion::GetOperatorSpawner"))
-		&& TypePromotionResolverSource.Contains(TEXT("FTypePromotion::Get()"))
-		&& TypePromotionResolverSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()")));
+		TypePromotionResolverSource.Contains(TEXT("FindRegisteredTypePromotionSpawner"))
+		&& ActionResolverUtilsSource.Contains(TEXT("FTypePromotion::GetOperatorSpawner"))
+		&& ActionResolverUtilsSource.Contains(TEXT("FTypePromotion::Get()"))
+		&& ActionResolverUtilsSource.Contains(TEXT("FBlueprintActionDatabase::Get().RefreshAll()")));
 	bClean &= TestTrue(
 		TEXT("Dedicated type_promotion resolver validates typed promotion compatibility"),
-		TypePromotionResolverSource.Contains(TEXT("FTypePromotion::IsValidPromotion")));
+		TypePromotionResolverSource.Contains(TEXT("IsPromotionCompatible"))
+		&& ActionResolverUtilsSource.Contains(TEXT("FTypePromotion::IsValidPromotion")));
 
 	TestTrue(TEXT("type_promotion keeps registered FTypePromotion-only spawner resolution"), bClean);
 	return bClean;
