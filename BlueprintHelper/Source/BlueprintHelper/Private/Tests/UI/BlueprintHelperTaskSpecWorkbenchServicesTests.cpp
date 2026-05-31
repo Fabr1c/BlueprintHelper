@@ -4,11 +4,12 @@
 #include "Systems/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchServices.h"
 #include "UI/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchData.h"
 
-namespace BlueprintHelperTaskSpecWorkbenchServicesTests
+class FBlueprintHelperTaskSpecWorkbenchServicesTestData
 {
-static FString MakeTaskSpecText()
-{
-	return TEXT(R"JSON(
+public:
+	static FString MakeTaskSpecText()
+	{
+		return TEXT(R"JSON(
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_graph",
@@ -51,19 +52,19 @@ static FString MakeTaskSpecText()
   }
 }
 )JSON");
-}
+	}
 
-static FString MakeMinimalT3DText()
-{
-	return TEXT(R"T3D(
+	static FString MakeMinimalT3DText()
+	{
+		return TEXT(R"T3D(
 Begin Object Class=/Script/BlueprintGraph.K2Node_CallFunction Name="K2Node_CallFunction_0"
    NodePosX=0
    NodePosY=0
    FunctionReference=(MemberParent="/Script/Engine.KismetSystemLibrary",MemberName="PrintString")
 End Object
 )T3D");
-}
-}
+	}
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskSpecWorkbenchClassifiesAndPreviewsTaskSpecTest,
@@ -74,7 +75,7 @@ bool FBlueprintHelperTaskSpecWorkbenchClassifiesAndPreviewsTaskSpecTest::RunTest
 {
 	const FBlueprintHelperInputDocument Input =
 		FBlueprintHelperWorkbenchInputClassifier::Classify(
-			BlueprintHelperTaskSpecWorkbenchServicesTests::MakeTaskSpecText());
+			FBlueprintHelperTaskSpecWorkbenchServicesTestData::MakeTaskSpecText());
 
 	TestEqual(TEXT("input type"), Input.InputType, EBlueprintHelperWorkbenchInputType::TaskSpec);
 	TestTrue(TEXT("parse succeeded"), Input.bParseSucceeded);
@@ -105,12 +106,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(const FString& Parameters)
 {
-	const FString T3DText = BlueprintHelperTaskSpecWorkbenchServicesTests::MakeMinimalT3DText();
+	const FString T3DText = FBlueprintHelperTaskSpecWorkbenchServicesTestData::MakeMinimalT3DText();
 	const FBlueprintHelperInputDocument Input =
 		FBlueprintHelperWorkbenchInputClassifier::Classify(T3DText);
 
 	TestEqual(TEXT("input type"), Input.InputType, EBlueprintHelperWorkbenchInputType::T3D);
 	TestTrue(TEXT("parse succeeded"), Input.bParseSucceeded);
+
+	FBlueprintHelperReadContextExportRequest LogicFlowRequest;
+	LogicFlowRequest.SourceText = T3DText;
+	LogicFlowRequest.Format = EBlueprintHelperReadContextExportFormat::LogicFlow;
+	const FBlueprintHelperReadContextExportResult LogicFlowResult =
+		FBlueprintHelperReadContextExportService::Export(LogicFlowRequest);
+
+	TestTrue(TEXT("logicflow export succeeds"), LogicFlowResult.bSucceeded);
+	TestTrue(TEXT("logicflow has schema"), LogicFlowResult.ExportText.Contains(TEXT("LogicFlow.v1")));
+	TestTrue(TEXT("logicflow has flow field"), LogicFlowResult.ExportText.Contains(TEXT("\"flow\"")));
+	TestTrue(TEXT("logicflow has stats"), LogicFlowResult.ExportText.Contains(TEXT("\"stats\"")));
+	TestTrue(TEXT("logicflow status message"), LogicFlowResult.Message.Contains(TEXT("logicflow")));
 
 	FBlueprintHelperReadContextExportRequest LogicJsonRequest;
 	LogicJsonRequest.SourceText = T3DText;

@@ -14,6 +14,7 @@ enum class EBlueprintHelperWorkbenchInputType : uint8
 
 enum class EBlueprintHelperReadContextExportFormat : uint8
 {
+	LogicFlow,
 	LogicMd,
 	LogicJson
 };
