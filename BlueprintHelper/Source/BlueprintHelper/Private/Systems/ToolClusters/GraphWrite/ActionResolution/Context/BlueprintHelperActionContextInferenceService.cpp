@@ -165,6 +165,10 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 	{
 		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
 	}
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(
+		Context,
+		TEXT("field_owner_class"),
+		Demand.CapabilityFacts.FindRef(TEXT("field.owner_class")));
 	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.blocking_reason"), Demand.BlockingReason);
 	if (!Demand.FunctionOperation.IsEmpty())
 	{

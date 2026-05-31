@@ -3,6 +3,7 @@
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
 
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Misc/DateTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -85,6 +86,59 @@ public:
 		return Output;
 	}
 
+	static void AppendStringArrayField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		TArray<FString>& OutValues)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Object.IsValid() || !Object->TryGetArrayField(FieldName, Values) || !Values)
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			if (!Value.IsValid())
+			{
+				continue;
+			}
+
+			FString Text = Value->AsString();
+			Text.TrimStartAndEndInline();
+			if (!Text.IsEmpty())
+			{
+				OutValues.AddUnique(Text);
+			}
+		}
+	}
+
+	static TArray<FString> ReadGraphBlockRefs(const FBlueprintHelperToolResultBase& StepResult)
+	{
+		TArray<FString> BlockRefs;
+		if (!StepResult.Data.IsValid())
+		{
+			return BlockRefs;
+		}
+
+		const TSharedPtr<FJsonObject>* AppendResult = nullptr;
+		if (StepResult.Data->TryGetObjectField(TEXT("append_result"), AppendResult) && AppendResult && AppendResult->IsValid())
+		{
+			AppendStringArrayField(*AppendResult, TEXT("block_refs"), BlockRefs);
+		}
+		AppendStringArrayField(StepResult.Data, TEXT("block_refs"), BlockRefs);
+
+		return BlockRefs;
+	}
+
+	static FString MakeGraphBlockTargetKey(const FString& GraphName, const FString& BlockRef)
+	{
+		const FString FullBlockId = BlockRef.StartsWith(GraphName + TEXT("_"))
+			? BlockRef
+			: FString::Printf(TEXT("%s_%s"), *GraphName, *BlockRef);
+		return FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *FullBlockId);
+	}
+
 };
 
 FBlueprintHelperGraphWriteTaskRuntimeCluster::FBlueprintHelperGraphWriteTaskRuntimeCluster(
@@ -123,7 +177,6 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 	const FString OperationKind = LoweredStep.AdapterOperation.IsEmpty()
 		? LoweredStep.RuntimeOperation
 		: LoweredStep.AdapterOperation;
-	const FString TargetKey = FString::Printf(TEXT("graph_block:%s"), *GraphName);
 
 	OutEvidence = FBlueprintHelperWriteReviewEvidence();
 	OutEvidence.ArchiveSessionId = ArchiveSessionId;
@@ -136,23 +189,38 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 	OutEvidence.DisplayLabel = OperationKind;
 	OutEvidence.TaskStepIndex = StepIndex;
 
-	FBlueprintHelperReviewAtomicTarget Target;
-	Target.AssetPath = AssetPath;
-	Target.Surface = EBlueprintHelperReviewSurface::Graph;
-	Target.GraphName = GraphName;
-	Target.TargetKind = TEXT("graph_block");
-	Target.TargetKey = TargetKey;
-	Target.VisualGroupKey = FString::Printf(TEXT("graph_body|%s"), *GraphName);
-	Target.DisplayLabel = FString::Printf(TEXT("%s %s"), *OperationKind, *GraphName);
-	Target.LatestEvidenceId = OutEvidence.EvidenceId;
-	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
-	Target.Ownership = TEXT("graph_write");
-	Target.AnchorJson = FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::SerializePayloadForAnchor(LoweredStep.Payload);
-	Target.ExecutionOrder = StepIndex;
-	Target.TaskStepIndex = StepIndex;
-	Target.AtomicIndex = 0;
-	OutEvidence.AtomicTargets.Add(Target);
-	return true;
+	const TArray<FString> BlockRefs = FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::ReadGraphBlockRefs(StepResult);
+	TArray<FString> TargetKeys;
+	for (const FString& BlockRef : BlockRefs)
+	{
+		TargetKeys.AddUnique(FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::MakeGraphBlockTargetKey(GraphName, BlockRef));
+	}
+	if (TargetKeys.Num() == 0)
+	{
+		TargetKeys.Add(FString::Printf(TEXT("graph_block:%s"), *GraphName));
+	}
+
+	const FString AnchorJson = FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::SerializePayloadForAnchor(LoweredStep.Payload);
+	for (int32 TargetIndex = 0; TargetIndex < TargetKeys.Num(); ++TargetIndex)
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.AssetPath = AssetPath;
+		Target.Surface = EBlueprintHelperReviewSurface::Graph;
+		Target.GraphName = GraphName;
+		Target.TargetKind = TEXT("graph_block");
+		Target.TargetKey = TargetKeys[TargetIndex];
+		Target.VisualGroupKey = FString::Printf(TEXT("graph_body|%s"), *GraphName);
+		Target.DisplayLabel = FString::Printf(TEXT("%s %s"), *OperationKind, *GraphName);
+		Target.LatestEvidenceId = OutEvidence.EvidenceId;
+		Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+		Target.Ownership = TEXT("graph_write");
+		Target.AnchorJson = AnchorJson;
+		Target.ExecutionOrder = StepIndex;
+		Target.TaskStepIndex = StepIndex;
+		Target.AtomicIndex = TargetIndex;
+		OutEvidence.AtomicTargets.Add(Target);
+	}
+	return OutEvidence.AtomicTargets.Num() > 0;
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperGraphWriteTaskRuntimeCluster::ExecuteStep(

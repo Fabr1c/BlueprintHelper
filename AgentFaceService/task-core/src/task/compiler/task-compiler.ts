@@ -110,7 +110,9 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
 
   assertSupportedTaskSpec(taskSpec);
   const behavior = taskSpec.behavior as Record<string, unknown>;
-  const graphWriteOps = compileGraphWriteOps(behavior);
+  const graphWriteOps = compileGraphWriteOps(behavior, {
+    defaultFieldOwnerClass: defaultFieldOwnerClassForBlueprintAsset(taskSpec.target.asset_path),
+  });
 
   return {
     schema: TASK_PLAN_SCHEMA,
@@ -428,7 +430,9 @@ function compileCompositeGraphWriteSteps(taskSpec: Extract<TaskSpec, { task_type
     behavior,
   } as Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>;
   assertSupportedTaskSpec(graphTaskSpec);
-  return makeGraphWriteTaskPlanSteps(graphTaskSpec, compileGraphWriteOps(behavior));
+  return makeGraphWriteTaskPlanSteps(graphTaskSpec, compileGraphWriteOps(behavior, {
+    defaultFieldOwnerClass: defaultFieldOwnerClassForBlueprintAsset(taskSpec.target.asset_path),
+  }));
 }
 
 function compileCompositeIntegrationSteps(taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>): TaskPlanStep[] {
@@ -1176,6 +1180,9 @@ function graphWriteTaskPlanToAppendBridgePayload(
   const links: AgentImportLink[] = [];
   const logicStatements: BlueprintLogicStatement[] = [];
   let logicEntry: Record<string, unknown> | undefined;
+  const cloneOptions: LogicCloneOptions = {
+    defaultFieldOwnerClass: defaultFieldOwnerClassForBlueprintAsset(step.target.asset_path),
+  };
   step.write.ops.forEach((rawOp, opIndex) => {
     if (rawOp.op !== 'ensure_entry') {
       throw new TaskSpecCompileError('unsupported_graph_write_op', `Unsupported GraphWrite op for append lowering: ${rawOp.op}`, [
@@ -1187,7 +1194,7 @@ function graphWriteTaskPlanToAppendBridgePayload(
       ]);
     }
 
-    logicStatements.push(...compileEnsureEntryOpIntoAppendPayload(nodes, links, rawOp as Record<string, unknown>, `steps[0].write.ops[${opIndex}]`));
+    logicStatements.push(...compileEnsureEntryOpIntoAppendPayload(nodes, links, rawOp as Record<string, unknown>, `steps[0].write.ops[${opIndex}]`, cloneOptions));
     if (!logicEntry && isRecord(rawOp) && rawOp.entry_type === 'custom_event' && typeof rawOp.name === 'string') {
       logicEntry = {
         kind: 'custom_event',
@@ -1438,17 +1445,29 @@ type GraphWriteSignatureSplit = {
   name_collision_policy: string;
 };
 
+interface GraphWriteCompileOptions {
+  defaultFieldOwnerClass?: string;
+}
+
+interface LogicCloneOptions {
+  defaultFieldOwnerClass?: string;
+  graphLocalSymbols?: Set<string>;
+}
+
 function makeCustomEventSignatureEvidenceId(eventName: string): string {
   return `signature:custom_event:${eventName}`;
 }
 
-function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+function compileGraphWriteOps(
+  behavior: Record<string, unknown>,
+  options: GraphWriteCompileOptions = {},
+): GraphWriteCompiledOp[] {
   const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
   if (strategy === 'append_new_owned_graph') {
-    return compileAppendGraphWriteOps(behavior);
+    return compileAppendGraphWriteOps(behavior, options);
   }
   if (strategy === 'replace_owned_graph') {
-    return [compileReplaceGraphWriteOp(behavior)];
+    return [compileReplaceGraphWriteOp(behavior, options)];
   }
   if (strategy === 'patch_owned_graph') {
     return compilePatchGraphWriteOps(behavior);
@@ -1457,13 +1476,13 @@ function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteComp
     return compileMergeGraphWriteOps(behavior);
   }
   if (strategy === 'merge_external_flow') {
-    return compileExternalMergeGraphWriteOps(behavior);
+    return compileExternalMergeGraphWriteOps(behavior, options);
   }
   if (strategy === 'patch_external_graph') {
     return compileExternalPatchGraphWriteOps(behavior);
   }
   if (strategy === 'replace_external_body') {
-    return [compileExternalReplaceBodyGraphWriteOp(behavior)];
+    return [compileExternalReplaceBodyGraphWriteOp(behavior, options)];
   }
 
   throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
@@ -1476,7 +1495,10 @@ function compileGraphWriteOps(behavior: Record<string, unknown>): GraphWriteComp
   ]);
 }
 
-function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+function compileAppendGraphWriteOps(
+  behavior: Record<string, unknown>,
+  options: GraphWriteCompileOptions,
+): GraphWriteCompiledOp[] {
   const entries = requiredNonEmptyArray(behavior, 'entries', 'behavior.entries');
   return entries.map((rawEntry, entryIndex) => {
     if (!isRecord(rawEntry)) {
@@ -1510,7 +1532,7 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
       entry_type: entryType,
       name: entryName,
       signature_evidence_id: makeCustomEventSignatureEvidenceId(entryName),
-      body: compileLogicBodyToSemanticLogicSpec(body, entryName),
+      body: compileLogicBodyToSemanticLogicSpec(body, entryName, options),
       ...(entryInputs
         ? {
             __signature_split: {
@@ -1525,7 +1547,10 @@ function compileAppendGraphWriteOps(behavior: Record<string, unknown>): GraphWri
   });
 }
 
-function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWriteCompiledOp {
+function compileReplaceGraphWriteOp(
+  behavior: Record<string, unknown>,
+  options: GraphWriteCompileOptions,
+): GraphWriteCompiledOp {
   const replace = requiredRecord(behavior, 'replace', 'behavior.replace');
   const replaceScope = getRequiredString(replace, 'scope', 'behavior.replace.scope');
   assertAllowedString(
@@ -1557,7 +1582,7 @@ function compileReplaceGraphWriteOp(behavior: Record<string, unknown>): GraphWri
     op: 'replace_body',
     replace_scope: graphWriteReplaceScope,
     selector,
-    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'replace'),
+    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'replace', options),
     options: isRecord(replace['options']) ? replace['options'] : undefined,
     __signature_split: replaceScope === 'custom_event_definition'
       ? {
@@ -1671,7 +1696,10 @@ function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
   });
 }
 
-function compileExternalMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+function compileExternalMergeGraphWriteOps(
+  behavior: Record<string, unknown>,
+  options: GraphWriteCompileOptions,
+): GraphWriteCompiledOp[] {
   const merges = requiredNonEmptyArray(behavior, 'external_merges', 'behavior.external_merges');
   return merges.map((rawMerge, index) => {
     const path = `behavior.external_merges[${index}]`;
@@ -1713,7 +1741,7 @@ function compileExternalMergeGraphWriteOps(behavior: Record<string, unknown>): G
       insert_strategy: insertStrategy,
       anchor: normalizeExternalExecBoundaryAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
       inserted: {
-        body: compileLogicBodyToSemanticLogicSpec(body, `external_merge_${index}`),
+        body: compileLogicBodyToSemanticLogicSpec(body, `external_merge_${index}`, options),
       },
       sequence_order: normalizeMergeSequenceOrder(merge, insertStrategy, `${path}.sequence_order`),
     }) as GraphWriteCompiledOp;
@@ -1756,7 +1784,10 @@ function compileExternalPatchGraphWriteOps(behavior: Record<string, unknown>): G
   });
 }
 
-function compileExternalReplaceBodyGraphWriteOp(behavior: Record<string, unknown>): GraphWriteCompiledOp {
+function compileExternalReplaceBodyGraphWriteOp(
+  behavior: Record<string, unknown>,
+  options: GraphWriteCompileOptions,
+): GraphWriteCompiledOp {
   const replace = requiredRecord(behavior, 'external_replace', 'behavior.external_replace');
   const scope = getRequiredString(replace, 'scope', 'behavior.external_replace.scope');
   assertAllowedString(
@@ -1794,7 +1825,7 @@ function compileExternalReplaceBodyGraphWriteOp(behavior: Record<string, unknown
       requiredRecord(replace, 'anchor', 'behavior.external_replace.anchor'),
       'behavior.external_replace.anchor',
     ),
-    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'external_body_replace'),
+    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'external_body_replace', options),
     expected_body_fingerprint: getRequiredString(
       replace,
       'expected_body_fingerprint',
@@ -2150,6 +2181,66 @@ function copyContextEvidence(source: Record<string, unknown>, target: Record<str
   const evidence = source['context_evidence'];
   if (isRecord(evidence)) {
     target['context_evidence'] = { ...evidence };
+  }
+}
+
+function defaultFieldOwnerClassForBlueprintAsset(assetPath: string): string | undefined {
+  const normalizedAssetPath = assetPath.trim();
+  if (normalizedAssetPath.length === 0) return undefined;
+  if (/\/[^/]+\.[^/.]+_C$/.test(normalizedAssetPath)) {
+    return normalizedAssetPath;
+  }
+
+  if (normalizedAssetPath.includes('.')) {
+    return `${normalizedAssetPath}_C`;
+  }
+
+  const assetName = normalizedAssetPath.split('/').filter((segment) => segment.length > 0).at(-1);
+  return assetName ? `${normalizedAssetPath}.${assetName}_C` : undefined;
+}
+
+function applyDefaultFieldOwnerEvidence(
+  record: Record<string, unknown>,
+  operation: string,
+  scope: string,
+  options: LogicCloneOptions,
+): void {
+  if (operation !== 'get' || scope !== 'variable' || !options.defaultFieldOwnerClass) {
+    return;
+  }
+  const graphLocalName = fieldGetSymbolName(record);
+  if (graphLocalName && options.graphLocalSymbols?.has(graphLocalName.toLowerCase())) {
+    return;
+  }
+
+  const evidence = isRecord(record.context_evidence) ? { ...record.context_evidence } : {};
+  if (!Object.hasOwn(evidence, 'field_owner_class')) {
+    evidence.field_owner_class = options.defaultFieldOwnerClass;
+  }
+  record.context_evidence = evidence;
+}
+
+function fieldGetSymbolName(record: Record<string, unknown>): string | undefined {
+  return optionalString(record, 'name') ?? optionalString(record, 'target');
+}
+
+function registerGraphLocalSymbols(statement: BlueprintLogicStatement, options: LogicCloneOptions): void {
+  const statementRecord = statement as Record<string, unknown>;
+  if (!options.graphLocalSymbols) {
+    options.graphLocalSymbols = new Set<string>();
+  }
+
+  const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  if (kind === 'let') {
+    const name = optionalString(statementRecord, 'name');
+    if (name) {
+      options.graphLocalSymbols.add(name.toLowerCase());
+    }
+  }
+
+  const resultSymbol = optionalString(statementRecord, 'result_symbol');
+  if (resultSymbol) {
+    options.graphLocalSymbols.add(resultSymbol.toLowerCase());
   }
 }
 
@@ -2608,10 +2699,11 @@ function compileLogicBodyToImportPayload(
 function compileLogicBodyToSemanticLogicSpec(
   body: { statements: BlueprintLogicStatement[] },
   prefix: string,
+  options: LogicCloneOptions = {},
 ): Record<string, unknown> {
   return {
     schema: 'BlueprintLogicSpec.v2',
-    statements: cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(prefix)}_stmt`),
+    statements: cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(prefix)}_stmt`, options),
   };
 }
 
@@ -2662,7 +2754,11 @@ function makeCompileFlowContext(parent?: CompileFlowContext): CompileFlowContext
   };
 }
 
-function cloneContainerActionRoleExpressionWithCompiledIds(expression: unknown, nodeId: string): unknown {
+function cloneContainerActionRoleExpressionWithCompiledIds(
+  expression: unknown,
+  nodeId: string,
+  options: LogicCloneOptions,
+): unknown {
   if (!isRecord(expression)) {
     return expression;
   }
@@ -2671,18 +2767,27 @@ function cloneContainerActionRoleExpressionWithCompiledIds(expression: unknown, 
     copyContextEvidence(expression, out);
     return out;
   }
-  return cloneLogicExpressionWithCompiledIds(expression, nodeId);
+  return cloneLogicExpressionWithCompiledIds(expression, nodeId, { ...options, defaultFieldOwnerClass: undefined });
 }
 
-function cloneContainerActionRoleValue(role: (typeof CONTAINER_ACTION_ROLE_FIELDS)[number], value: unknown, nodeId: string): unknown {
+function cloneContainerActionRoleValue(
+  role: (typeof CONTAINER_ACTION_ROLE_FIELDS)[number],
+  value: unknown,
+  nodeId: string,
+  options: LogicCloneOptions,
+): unknown {
   const normalizedValue = normalizeContainerActionRoleValue(role, value);
   if (Array.isArray(normalizedValue)) {
-    return normalizedValue.map((entry, index) => cloneContainerActionRoleExpressionWithCompiledIds(entry, `${nodeId}_${index + 1}`));
+    return normalizedValue.map((entry, index) => cloneContainerActionRoleExpressionWithCompiledIds(entry, `${nodeId}_${index + 1}`, options));
   }
-  return cloneContainerActionRoleExpressionWithCompiledIds(normalizedValue, nodeId);
+  return cloneContainerActionRoleExpressionWithCompiledIds(normalizedValue, nodeId, options);
 }
 
-function cloneContainerActionWithCompiledIds(record: Record<string, unknown>, nodeId: string): Record<string, unknown> {
+function cloneContainerActionWithCompiledIds(
+  record: Record<string, unknown>,
+  nodeId: string,
+  options: LogicCloneOptions,
+): Record<string, unknown> {
   const { containerKind, containerOperation } = validateContainerActionShape(
     record,
     record.kind === CONTAINER_ACTION_KIND ? nodeId : `${nodeId}.container_action`,
@@ -2694,14 +2799,18 @@ function cloneContainerActionWithCompiledIds(record: Record<string, unknown>, no
   out.container_operation = containerOperation;
   CONTAINER_ACTION_ROLE_FIELDS.forEach((role) => {
     if (Object.hasOwn(record, role)) {
-      out[role] = cloneContainerActionRoleValue(role, record[role], `${nodeId}_${role}`);
+      out[role] = cloneContainerActionRoleValue(role, record[role], `${nodeId}_${role}`, options);
     }
   });
   copyContextEvidence(record, out);
   return out;
 }
 
-function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string): unknown {
+function cloneLogicExpressionWithCompiledIds(
+  expression: unknown,
+  nodeId: string,
+  options: LogicCloneOptions = {},
+): unknown {
   if (!isRecord(expression)) {
     return expression;
   }
@@ -2710,11 +2819,12 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   if (kind === 'get') {
     const out: Record<string, unknown> = { ...expression, id: nodeId };
     copyContextEvidence(expression, out);
+    applyDefaultFieldOwnerEvidence(out, 'get', 'variable', options);
     return out;
   }
   if (kind === CONTAINER_ACTION_KIND) {
     const { containerKind, containerOperation } = validateContainerActionShape(expression, nodeId, 'expression');
-    const out = cloneContainerActionWithCompiledIds(expression, nodeId);
+    const out = cloneContainerActionWithCompiledIds(expression, nodeId, options);
     out.container_kind = containerKind;
     out.container_operation = containerOperation;
     return out;
@@ -2725,6 +2835,7 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   const fieldExpression = FIELD_EXPRESSION_KIND_MAP.get(kind);
   if (fieldExpression) {
     applyFieldTaxonomy(out, fieldExpression.operation, fieldExpression.scope);
+    applyDefaultFieldOwnerEvidence(out, fieldExpression.operation, fieldExpression.scope, options);
     if (kind === 'get' && !Object.hasOwn(out, 'target') && typeof out.name === 'string' && out.name.trim().length > 0) {
       out.target = out.name.trim();
     }
@@ -2736,28 +2847,29 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   } else if (kind === 'field') {
     const { operation, scope } = fieldOperationScope(expression, nodeId);
     applyFieldTaxonomy(out, operation, scope);
+    applyDefaultFieldOwnerEvidence(out, operation, scope, options);
     if (fieldScopeUsesPropertyPath(scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(expression, `${nodeId}.property_path`);
       out.property_path = propertyPath;
       out.property = propertyPath;
     }
   } else if (kind === 'select') {
-    out.condition = cloneLogicExpressionWithCompiledIds(expression.condition, `${nodeId}_index`);
+    out.condition = cloneLogicExpressionWithCompiledIds(expression.condition, `${nodeId}_index`, options);
     if (Array.isArray(expression.options)) {
-      out.options = expression.options.map((option, index) => cloneLogicExpressionWithCompiledIds(option, `${nodeId}_option_${index}`));
+      out.options = expression.options.map((option, index) => cloneLogicExpressionWithCompiledIds(option, `${nodeId}_option_${index}`, options));
     }
   } else if (kind === 'op') {
     if (Object.hasOwn(expression, 'left')) {
-      out.left = cloneLogicExpressionWithCompiledIds(expression.left, `${nodeId}_left`);
+      out.left = cloneLogicExpressionWithCompiledIds(expression.left, `${nodeId}_left`, options);
     }
     if (Object.hasOwn(expression, 'right')) {
-      out.right = cloneLogicExpressionWithCompiledIds(expression.right, `${nodeId}_right`);
+      out.right = cloneLogicExpressionWithCompiledIds(expression.right, `${nodeId}_right`, options);
     }
     if (isRecord(expression.args)) {
       out.args = Object.fromEntries(
         Object.entries(expression.args).map(([argName, argValue]) => [
           argName,
-          cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+          cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`, options),
         ]),
       );
     }
@@ -2765,21 +2877,21 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
     out.args = Object.fromEntries(
       Object.entries(expression.args).map(([argName, argValue]) => [
         argName,
-        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`, options),
       ]),
     );
   } else if (kind === 'deconstruct') {
     if (Object.hasOwn(expression, 'source')) {
-      out.source = cloneLogicExpressionWithCompiledIds(expression.source, `${nodeId}_source`);
+      out.source = cloneLogicExpressionWithCompiledIds(expression.source, `${nodeId}_source`, options);
     }
     if (Object.hasOwn(expression, 'value')) {
-      out.value = cloneLogicExpressionWithCompiledIds(expression.value, `${nodeId}_value`);
+      out.value = cloneLogicExpressionWithCompiledIds(expression.value, `${nodeId}_value`, options);
     }
     if (isRecord(expression.args)) {
       out.args = Object.fromEntries(
         Object.entries(expression.args).map(([argName, argValue]) => [
           argName,
-          cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+          cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`, options),
         ]),
       );
     }
@@ -2787,7 +2899,7 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
     out.args = Object.fromEntries(
       Object.entries(expression.args).map(([argName, argValue]) => [
         argName,
-        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`),
+        cloneLogicExpressionWithCompiledIds(argValue, `${nodeId}_${toIdSegment(argName)}`, options),
       ]),
     );
   }
@@ -2798,13 +2910,17 @@ function cloneLogicExpressionWithCompiledIds(expression: unknown, nodeId: string
   return out;
 }
 
-function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, statementId: string): BlueprintLogicStatement {
+function cloneLogicStatementWithCompiledIds(
+  statement: BlueprintLogicStatement,
+  statementId: string,
+  options: LogicCloneOptions = {},
+): BlueprintLogicStatement {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string'
     ? statementRecord.kind
     : '';
   if (kind === CONTAINER_ACTION_KIND) {
-    return cloneContainerActionWithCompiledIds(statementRecord, statementId) as BlueprintLogicStatement;
+    return cloneContainerActionWithCompiledIds(statementRecord, statementId, options) as BlueprintLogicStatement;
   }
   const out: Record<string, unknown> = { ...statementRecord, id: statementId };
   copyContextEvidence(statementRecord, out);
@@ -2818,7 +2934,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       out.property_path = propertyPath;
       out.property = propertyPath;
     }
-    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`, options);
   } else if (kind === 'field') {
     const { operation, scope } = fieldOperationScope(statementRecord, statementId);
     applyFieldTaxonomy(out, operation, scope);
@@ -2828,7 +2944,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       out.property = propertyPath;
     }
     if (Object.hasOwn(statementRecord, 'value')) {
-      out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+      out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`, options);
     }
   } else if (kind === 'component_bound_event') {
     out.kind = 'component_bound_event';
@@ -2843,18 +2959,18 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       out.args = Object.fromEntries(
         Object.entries(statementRecord.args).map(([argName, argValue]) => [
           argName,
-          cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+          cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`, options),
         ]),
       );
     }
   } else if (kind === 'let') {
-    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+    out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`, options);
   } else if ((kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule') && isRecord(statementRecord.args)) {
     const args = statementRecord.args as Record<string, unknown>;
     out.args = Object.fromEntries(
       Object.entries(args).map(([argName, argValue]) => [
         argName,
-        cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+        cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`, options),
       ]),
     );
     if (kind === 'create') {
@@ -2866,12 +2982,12 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
     if (normalizedControlKind === 'branch') {
       out.kind = normalizedControlKind;
       delete out.control;
-      out.condition = cloneLogicExpressionWithCompiledIds(statementRecord.condition, `${statementId}_condition`);
+      out.condition = cloneLogicExpressionWithCompiledIds(statementRecord.condition, `${statementId}_condition`, options);
       if (Array.isArray(statementRecord.then)) {
-        out.then = cloneLogicStatementSequenceWithCompiledIds(statementRecord.then as BlueprintLogicStatement[], `${statementId}_then`);
+        out.then = cloneLogicStatementSequenceWithCompiledIds(statementRecord.then as BlueprintLogicStatement[], `${statementId}_then`, options);
       }
       if (Array.isArray(statementRecord['else'])) {
-        out.else = cloneLogicStatementSequenceWithCompiledIds(statementRecord['else'] as BlueprintLogicStatement[], `${statementId}_else`);
+        out.else = cloneLogicStatementSequenceWithCompiledIds(statementRecord['else'] as BlueprintLogicStatement[], `${statementId}_else`, options);
       }
     } else if (normalizedControlKind === 'sequence') {
       out.kind = normalizedControlKind;
@@ -2881,7 +2997,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
       out.kind = normalizedControlKind;
       delete out.control;
       if (Object.hasOwn(statementRecord, 'value')) {
-        out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`);
+        out.value = cloneLogicExpressionWithCompiledIds(statementRecord.value, `${statementId}_value`, options);
       }
     } else {
       applyGenericControlSemanticFields(statementRecord, out, normalizedControlKind, statementId);
@@ -2889,7 +3005,7 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
         out.args = Object.fromEntries(
           Object.entries(statementRecord.args).map(([argName, argValue]) => [
             argName,
-            cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`),
+            cloneLogicExpressionWithCompiledIds(argValue, `${statementId}_arg_${toIdSegment(argName)}`, options),
           ]),
         );
       }
@@ -2902,8 +3018,20 @@ function cloneLogicStatementWithCompiledIds(statement: BlueprintLogicStatement, 
   return out as BlueprintLogicStatement;
 }
 
-function cloneLogicStatementSequenceWithCompiledIds(statements: BlueprintLogicStatement[], idPrefix: string): BlueprintLogicStatement[] {
-  return statements.map((statement, statementIndex) => cloneLogicStatementWithCompiledIds(statement, `${idPrefix}_${statementIndex + 1}`));
+function cloneLogicStatementSequenceWithCompiledIds(
+  statements: BlueprintLogicStatement[],
+  idPrefix: string,
+  options: LogicCloneOptions = {},
+): BlueprintLogicStatement[] {
+  const sequenceOptions: LogicCloneOptions = {
+    ...options,
+    graphLocalSymbols: new Set(options.graphLocalSymbols ?? []),
+  };
+  return statements.map((statement, statementIndex) => {
+    const cloned = cloneLogicStatementWithCompiledIds(statement, `${idPrefix}_${statementIndex + 1}`, sequenceOptions);
+    registerGraphLocalSymbols(statement, sequenceOptions);
+    return cloned;
+  });
 }
 
 function compileStatementSequence(
@@ -4418,6 +4546,7 @@ function compileEnsureEntryOpIntoAppendPayload(
   links: AgentImportLink[],
   op: Record<string, unknown>,
   path: string,
+  options: LogicCloneOptions = {},
 ): BlueprintLogicStatement[] {
   const entryType = getRequiredString(op, 'entry_type', `${path}.entry_type`);
   if (entryType !== 'custom_event') {
@@ -4441,7 +4570,7 @@ function compileEnsureEntryOpIntoAppendPayload(
   if (flow.entry) {
     links.push({ kind: 'exec', from: `${entryId}.then`, to: flow.entry });
   }
-  return cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(entryName)}_stmt`);
+  return cloneLogicStatementSequenceWithCompiledIds(body.statements, `${toIdSegment(entryName)}_stmt`, options);
 }
 
 function compileArgs(args: unknown): Record<string, unknown> {

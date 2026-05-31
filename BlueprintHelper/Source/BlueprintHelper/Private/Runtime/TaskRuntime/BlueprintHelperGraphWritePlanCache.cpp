@@ -12,17 +12,19 @@ bool FBlueprintHelperGraphWritePlanCacheKey::IsValid() const
 	return !CacheSchemaVersion.IsEmpty() &&
 		!PayloadHash.IsEmpty() &&
 		!GraphSchemaHash.IsEmpty() &&
-		!AssetStateHash.IsEmpty();
+		!AssetStateHash.IsEmpty() &&
+		!DryRunPlannedStateHash.IsEmpty();
 }
 
 FString FBlueprintHelperGraphWritePlanCacheKey::ToStorageKey() const
 {
 	return FString::Printf(
-		TEXT("%s|payload=%s|schema=%s|asset=%s"),
+		TEXT("%s|payload=%s|schema=%s|asset=%s|planned=%s"),
 		*CacheSchemaVersion,
 		*PayloadHash,
 		*GraphSchemaHash,
-		*AssetStateHash);
+		*AssetStateHash,
+		*DryRunPlannedStateHash);
 }
 
 FBlueprintHelperGraphWritePlanCache::FBlueprintHelperGraphWritePlanCache(

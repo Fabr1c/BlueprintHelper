@@ -51,6 +51,10 @@ bool FBlueprintHelperGraphWritePlanCache_HitRequiresAllKeyParts::RunTest(const F
 	FBlueprintHelperGraphWritePlanCacheKey ChangedSchema = Key;
 	ChangedSchema.GraphSchemaHash = TEXT("schema_hash_2");
 	TestFalse(TEXT("schema mismatch misses"), Cache.TryGet(ChangedSchema, Now, Found));
+
+	FBlueprintHelperGraphWritePlanCacheKey ChangedPlannedState = Key;
+	ChangedPlannedState.DryRunPlannedStateHash = TEXT("planned_state_hash_2");
+	TestFalse(TEXT("planned state mismatch misses"), Cache.TryGet(ChangedPlannedState, Now, Found));
 	return true;
 }
 

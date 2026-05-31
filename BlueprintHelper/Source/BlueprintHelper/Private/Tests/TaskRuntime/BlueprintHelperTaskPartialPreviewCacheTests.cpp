@@ -54,6 +54,10 @@ bool FBlueprintHelperTaskPartialPreviewCache_HitsOnlyForMatchingKey::RunTest(con
 	FBlueprintHelperPartialPreviewCacheKey DependencyChanged = Key;
 	DependencyChanged.DependencyClosureHash = TEXT("deps_changed");
 	TestFalse(TEXT("changed dependency closure misses"), Cache.TryGet(DependencyChanged, Now, Found));
+
+	FBlueprintHelperPartialPreviewCacheKey PlannedStateChanged = Key;
+	PlannedStateChanged.DryRunPlannedStateHash = TEXT("planned_state_changed");
+	TestFalse(TEXT("changed dry-run planned state misses"), Cache.TryGet(PlannedStateChanged, Now, Found));
 	return true;
 }
 

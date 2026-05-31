@@ -25,6 +25,7 @@
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Systems/SharedServices/Utils/BlueprintHelperBlueprintStructureUtils.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintVariables/BlueprintHelperBlueprintVariableTaskPlanAdapter.h"
@@ -78,6 +79,9 @@
 class FBlueprintHelperTaskRuntimeServiceLocalUtils
 {
 public:
+	using FPlannedMemberVariableByName = TMap<FString, TSharedPtr<FJsonObject>>;
+	using FPlannedMemberVariablesByAsset = TMap<FString, FPlannedMemberVariableByName>;
+
 	static FBlueprintHelperToolError MakeTaskRuntimeError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
@@ -3752,6 +3756,351 @@ public:
 		return !OutAssetPath.IsEmpty() && !OutRowName.IsEmpty();
 	}
 
+	static FString NormalizePlannedStateAssetPath(const FString& AssetPath)
+	{
+		FString Key = AssetPath;
+		Key.TrimStartAndEndInline();
+		Key.ToLowerInline();
+		return Key;
+	}
+
+	static FString ReadPayloadAssetPath(const TSharedPtr<FJsonObject>& Payload)
+	{
+		FString AssetPath;
+		if (!Payload.IsValid())
+		{
+			return AssetPath;
+		}
+
+		Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			Payload->TryGetStringField(TEXT("blueprint_path"), AssetPath);
+		}
+		if (AssetPath.IsEmpty())
+		{
+			const TSharedPtr<FJsonObject>* TargetObject = nullptr;
+			if (Payload->TryGetObjectField(TEXT("target"), TargetObject) &&
+				TargetObject && TargetObject->IsValid())
+			{
+				(*TargetObject)->TryGetStringField(TEXT("asset_path"), AssetPath);
+				if (AssetPath.IsEmpty())
+				{
+					(*TargetObject)->TryGetStringField(TEXT("blueprint_path"), AssetPath);
+				}
+			}
+		}
+		AssetPath.TrimStartAndEndInline();
+		return AssetPath;
+	}
+
+	static bool TryReadVariableNameField(
+		const TSharedPtr<FJsonObject>& VariableObject,
+		FString& OutVariableName)
+	{
+		OutVariableName.Reset();
+		if (!VariableObject.IsValid())
+		{
+			return false;
+		}
+
+		VariableObject->TryGetStringField(TEXT("name"), OutVariableName);
+		if (OutVariableName.IsEmpty())
+		{
+			VariableObject->TryGetStringField(TEXT("variable_name"), OutVariableName);
+		}
+		OutVariableName.TrimStartAndEndInline();
+		return !OutVariableName.IsEmpty();
+	}
+
+	static bool BlueprintHasMemberVariable(
+		const UBlueprint* Blueprint,
+		const FString& VariableName)
+	{
+		if (!Blueprint || VariableName.TrimStartAndEnd().IsEmpty())
+		{
+			return false;
+		}
+
+		const FName VariableFName(*VariableName.TrimStartAndEnd());
+		return Blueprint->NewVariables.ContainsByPredicate(
+			[VariableFName](const FBPVariableDescription& Variable)
+			{
+				return Variable.VarName == VariableFName;
+			});
+	}
+
+	static void AddDryRunPlannedMemberVariable(
+		FPlannedMemberVariablesByAsset& PlannedVariablesByAsset,
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& VariableObject)
+	{
+		const FString AssetKey = NormalizePlannedStateAssetPath(AssetPath);
+		FString VariableName;
+		if (AssetKey.IsEmpty() ||
+			!TryReadVariableNameField(VariableObject, VariableName))
+		{
+			return;
+		}
+
+		TSharedPtr<FJsonObject> StoredVariable =
+			FBlueprintHelperTaskRuntimeCacheKeyUtils::CloneJsonObject(VariableObject);
+		if (!StoredVariable.IsValid())
+		{
+			StoredVariable = MakeShared<FJsonObject>();
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : VariableObject->Values)
+			{
+				StoredVariable->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		StoredVariable->SetStringField(TEXT("name"), VariableName);
+
+		FPlannedMemberVariableByName& VariablesByName = PlannedVariablesByAsset.FindOrAdd(AssetKey);
+		VariablesByName.Add(VariableName, StoredVariable);
+	}
+
+	static void RemoveDryRunPlannedMemberVariable(
+		FPlannedMemberVariablesByAsset& PlannedVariablesByAsset,
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& VariableObject)
+	{
+		const FString AssetKey = NormalizePlannedStateAssetPath(AssetPath);
+		FString VariableName;
+		if (AssetKey.IsEmpty() ||
+			!TryReadVariableNameField(VariableObject, VariableName))
+		{
+			return;
+		}
+
+		if (FPlannedMemberVariableByName* VariablesByName = PlannedVariablesByAsset.Find(AssetKey))
+		{
+			VariablesByName->Remove(VariableName);
+			if (VariablesByName->Num() == 0)
+			{
+				PlannedVariablesByAsset.Remove(AssetKey);
+			}
+		}
+	}
+
+	static void TrackDryRunPlannedMemberVariables(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		FPlannedMemberVariablesByAsset& PlannedVariablesByAsset)
+	{
+		const FString AssetPath = ReadPayloadAssetPath(LoweredStep.Payload);
+		if (AssetPath.IsEmpty() || !LoweredStep.Payload.IsValid())
+		{
+			return;
+		}
+
+		if (LoweredStep.AdapterOperation == FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationAddMemberVariables)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Variables = nullptr;
+			if (!LoweredStep.Payload->TryGetArrayField(TEXT("variables"), Variables) || !Variables)
+			{
+				return;
+			}
+
+			for (const TSharedPtr<FJsonValue>& VariableValue : *Variables)
+			{
+				AddDryRunPlannedMemberVariable(
+					PlannedVariablesByAsset,
+					AssetPath,
+					VariableValue.IsValid() ? VariableValue->AsObject() : nullptr);
+			}
+			return;
+		}
+
+		if (LoweredStep.AdapterOperation != FBlueprintHelperBlueprintVariableTaskPlanAdapter::AdapterOperationVariableBatch)
+		{
+			return;
+		}
+
+		FString Strategy;
+		LoweredStep.Payload->TryGetStringField(TEXT("strategy"), Strategy);
+		if (!Strategy.Equals(FBlueprintHelperBlueprintVariableTaskPlanAdapter::StrategyMemberVariables, ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Ops = nullptr;
+		if (!LoweredStep.Payload->TryGetArrayField(TEXT("ops"), Ops) || !Ops)
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& OpValue : *Ops)
+		{
+			const TSharedPtr<FJsonObject> OpObject = OpValue.IsValid()
+				? OpValue->AsObject()
+				: nullptr;
+			if (!OpObject.IsValid())
+			{
+				continue;
+			}
+
+			FString OpName;
+			OpObject->TryGetStringField(TEXT("op"), OpName);
+			if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpEnsureMemberVariable)
+			{
+				AddDryRunPlannedMemberVariable(PlannedVariablesByAsset, AssetPath, OpObject);
+			}
+			else if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveMemberVariable)
+			{
+				RemoveDryRunPlannedMemberVariable(PlannedVariablesByAsset, AssetPath, OpObject);
+			}
+		}
+	}
+
+	static FString BuildDryRunPlannedMemberVariablesStateHash(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FPlannedMemberVariablesByAsset& PlannedVariablesByAsset)
+	{
+		const FString AssetPath = ReadPayloadAssetPath(LoweredStep.Payload);
+		TArray<FString> AssetKeys;
+		if (!AssetPath.IsEmpty())
+		{
+			AssetKeys.Add(NormalizePlannedStateAssetPath(AssetPath));
+		}
+		else
+		{
+			PlannedVariablesByAsset.GetKeys(AssetKeys);
+		}
+		AssetKeys.Sort();
+
+		TArray<TSharedPtr<FJsonValue>> AssetValues;
+		for (const FString& AssetKey : AssetKeys)
+		{
+			const FPlannedMemberVariableByName* VariablesByName = PlannedVariablesByAsset.Find(AssetKey);
+			if (!VariablesByName || VariablesByName->Num() == 0)
+			{
+				continue;
+			}
+
+			TArray<FString> VariableNames;
+			VariablesByName->GetKeys(VariableNames);
+			VariableNames.Sort();
+
+			TArray<TSharedPtr<FJsonValue>> VariableValues;
+			for (const FString& VariableName : VariableNames)
+			{
+				const TSharedPtr<FJsonObject>* VariableObject = VariablesByName->Find(VariableName);
+				if (!VariableObject || !VariableObject->IsValid())
+				{
+					continue;
+				}
+
+				TSharedRef<FJsonObject> VariableEntry = MakeShared<FJsonObject>();
+				VariableEntry->SetStringField(TEXT("name"), VariableName);
+				VariableEntry->SetStringField(
+					TEXT("payload_hash"),
+					FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(*VariableObject));
+				VariableValues.Add(MakeShared<FJsonValueObject>(VariableEntry));
+			}
+
+			if (VariableValues.Num() == 0)
+			{
+				continue;
+			}
+
+			TSharedRef<FJsonObject> AssetEntry = MakeShared<FJsonObject>();
+			AssetEntry->SetStringField(TEXT("asset_key"), AssetKey);
+			AssetEntry->SetArrayField(TEXT("variables"), VariableValues);
+			AssetValues.Add(MakeShared<FJsonValueObject>(AssetEntry));
+		}
+
+		if (AssetValues.Num() == 0)
+		{
+			return TEXT("none");
+		}
+
+		TSharedRef<FJsonObject> State = MakeShared<FJsonObject>();
+		State->SetArrayField(TEXT("planned_member_variables"), AssetValues);
+		return FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(State);
+	}
+
+	struct FScopedDryRunPlannedMemberVariableOverlay
+	{
+		UBlueprint* Blueprint = nullptr;
+		UPackage* Package = nullptr;
+		bool bHadPackageDirty = false;
+		TArray<FString> AddedVariableNames;
+
+		FScopedDryRunPlannedMemberVariableOverlay(
+			const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+			const FPlannedMemberVariablesByAsset& PlannedVariablesByAsset)
+		{
+			if (LoweredStep.Capability != TEXT("graph_write"))
+			{
+				return;
+			}
+
+			const FString AssetPath = ReadPayloadAssetPath(LoweredStep.Payload);
+			const FPlannedMemberVariableByName* VariablesByName =
+				PlannedVariablesByAsset.Find(NormalizePlannedStateAssetPath(AssetPath));
+			if (!VariablesByName || VariablesByName->Num() == 0)
+			{
+				return;
+			}
+
+			Blueprint = ResolveTaskRuntimeBlueprint(AssetPath);
+			if (!Blueprint)
+			{
+				return;
+			}
+
+			Package = Blueprint->GetOutermost();
+			bHadPackageDirty = Package && Package->IsDirty();
+
+			TArray<FString> VariableNames;
+			VariablesByName->GetKeys(VariableNames);
+			VariableNames.Sort();
+			for (const FString& VariableName : VariableNames)
+			{
+				if (BlueprintHasMemberVariable(Blueprint, VariableName))
+				{
+					continue;
+				}
+
+				const TSharedPtr<FJsonObject>* VariableObject = VariablesByName->Find(VariableName);
+				if (!VariableObject || !VariableObject->IsValid())
+				{
+					continue;
+				}
+
+				FString AddError;
+				if (UBlueprintHelperBlueprintStructureUtils::AddMemberVariableDirect(
+					Blueprint,
+					*VariableObject,
+					AddError))
+				{
+					AddedVariableNames.Add(VariableName);
+				}
+			}
+		}
+
+		~FScopedDryRunPlannedMemberVariableOverlay()
+		{
+			if (!Blueprint)
+			{
+				return;
+			}
+
+			for (int32 Index = AddedVariableNames.Num() - 1; Index >= 0; --Index)
+			{
+				FString RemoveError;
+				UBlueprintHelperBlueprintStructureUtils::RemoveMemberVariableDirect(
+					Blueprint,
+					AddedVariableNames[Index],
+					RemoveError);
+			}
+
+			if (Package)
+			{
+				Package->SetDirtyFlag(bHadPackageDirty);
+			}
+		}
+	};
+
 	static bool IsPlannedComponentPropertyDryRun(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
 		const FBlueprintHelperToolResultBase& StepResult,
@@ -5700,6 +6049,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TSet<FString> DryRunPlannedComponentKeys;
 	TSet<FString> DryRunPlannedWidgetKeys;
 	TSet<FString> DryRunPlannedDataTableRowKeys;
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::FPlannedMemberVariablesByAsset DryRunPlannedMemberVariablesByAsset;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewTargetSnapshotCacheValue> ReviewBeforeSnapshotCache;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
@@ -5981,6 +6331,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowKey(PlannedAssetPath, PlannedRowName));
 			}
 		}
+
+		if (LoweredStep.Capability == FBlueprintHelperBlueprintVariableTaskPlanAdapter::CapabilityBlueprintVariable)
+		{
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::TrackDryRunPlannedMemberVariables(
+				LoweredStep,
+				DryRunPlannedMemberVariablesByAsset);
+		}
 	};
 
 	auto BuildPartialPreviewCacheKey = [&](const FBlueprintHelperTaskRuntimePreparedStep& PreparedStep)
@@ -5992,6 +6349,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		Key.DependencyClosureHash = BuildDependencyClosureHash(PreparedStep);
 		Key.ExecutionPolicyHash = ExecutionPolicyHash;
 		Key.AssetStateHash = TargetAssetStateHash;
+		Key.DryRunPlannedStateHash =
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildDryRunPlannedMemberVariablesStateHash(
+				PreparedStep.LoweredStep,
+				DryRunPlannedMemberVariablesByAsset);
 		return Key;
 	};
 
@@ -6129,6 +6490,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			GraphWriteCacheKey.GraphSchemaHash =
 				FBlueprintHelperTaskRuntimeCacheKeyUtils::HashString(GraphWriteAssetPath + TEXT("|") + GraphWriteGraphName);
 			GraphWriteCacheKey.AssetStateHash = TargetAssetStateHash;
+			GraphWriteCacheKey.DryRunPlannedStateHash =
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildDryRunPlannedMemberVariablesStateHash(
+					LoweredStep,
+					DryRunPlannedMemberVariablesByAsset);
 
 			const double GraphWriteCacheLookupStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 			FBlueprintHelperGraphWritePlanCacheEntry GraphWriteCachedPlan;
@@ -6217,7 +6582,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		else
 		{
 			const double ExecuteStepStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
+			TUniquePtr<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay> PlannedMemberVariableOverlay;
+			if (bDryRun && LoweredStep.Capability == TEXT("graph_write"))
+			{
+				PlannedMemberVariableOverlay =
+					MakeUnique<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay>(
+						LoweredStep,
+						DryRunPlannedMemberVariablesByAsset);
+			}
 			StepResult = ExecuteLoweredStep(LoweredStep);
+			PlannedMemberVariableOverlay.Reset();
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
 				FString::Printf(TEXT("step.%s.cluster_execute"), *LoweredStep.StepId),

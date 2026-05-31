@@ -54,6 +54,19 @@ function compileBridgeFirstStatement(statement: Record<string, unknown>) {
   return logicSpec.statements[0];
 }
 
+function compileFirstStatements(statement: Record<string, unknown>) {
+  return [
+    { surface: 'TaskPlan', statement: compileFirstStatement(statement) },
+    { surface: 'bridge', statement: compileBridgeFirstStatement(statement) },
+  ];
+}
+
+function contextEvidence(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  return typeof record.context_evidence === 'object' && record.context_evidence !== null && !Array.isArray(record.context_evidence)
+    ? record.context_evidence as Record<string, unknown>
+    : undefined;
+}
+
 test('set lowers to field variable set', () => {
   const statement = compileFirstStatement({
     kind: 'set',
@@ -65,6 +78,66 @@ test('set lowers to field variable set', () => {
   assert.equal(statement.field_operation, 'set');
   assert.equal(statement.field_scope, 'variable');
   assert.equal(statement.target, 'bIsClosed');
+});
+
+test('member variable get infers target blueprint field owner evidence', () => {
+  const input = {
+    kind: 'set',
+    target: 'CachedSessionId',
+    value: { kind: 'get', name: 'SessionId' },
+  };
+
+  for (const { surface, statement } of compileFirstStatements(input)) {
+    const value = statement.value as Record<string, unknown>;
+    assert.deepEqual(
+      value.context_evidence,
+      { field_owner_class: '/Game/BP/BP_Door.BP_Door_C' },
+      `${surface} should infer the target blueprint generated class`,
+    );
+  }
+});
+
+test('canonical field variable get infers target blueprint field owner evidence', () => {
+  const input = {
+    kind: 'set',
+    target: 'CachedSessionId',
+    value: {
+      kind: 'field',
+      field_operation: 'get',
+      field_scope: 'variable',
+      target: 'SessionId',
+    },
+  };
+
+  for (const { surface, statement } of compileFirstStatements(input)) {
+    const value = statement.value as Record<string, unknown>;
+    assert.deepEqual(
+      value.context_evidence,
+      { field_owner_class: '/Game/BP/BP_Door.BP_Door_C' },
+      `${surface} should infer owner evidence for canonical field variable get`,
+    );
+  }
+});
+
+test('explicit field owner evidence on member variable get is preserved', () => {
+  const input = {
+    kind: 'set',
+    target: 'CachedSessionId',
+    value: {
+      kind: 'get',
+      name: 'SessionId',
+      context_evidence: { field_owner_class: '/Game/BP/BP_ExplicitOwner.BP_ExplicitOwner_C' },
+    },
+  };
+
+  for (const { surface, statement } of compileFirstStatements(input)) {
+    const value = statement.value as Record<string, unknown>;
+    assert.deepEqual(
+      value.context_evidence,
+      { field_owner_class: '/Game/BP/BP_ExplicitOwner.BP_ExplicitOwner_C' },
+      `${surface} should not overwrite explicit field owner evidence`,
+    );
+  }
 });
 
 test('set_property lowers to field property set', () => {
@@ -99,6 +172,43 @@ test('get_property lowers to field property get inside a value expression', () =
   assert.equal(value.field_scope, 'property_path');
   assert.equal(value.target, 'DoorMesh');
   assert.equal(value.property_path, 'RelativeRotation.Yaw');
+});
+
+test('property and component field gets do not infer target blueprint field owner evidence', () => {
+  const inputs = [
+    {
+      kind: 'set',
+      target: 'YawCache',
+      value: {
+        kind: 'get_property',
+        target: 'DoorMesh',
+        property_path: 'RelativeRotation.Yaw',
+      },
+    },
+    {
+      kind: 'field',
+      field_operation: 'set',
+      field_scope: 'variable',
+      target: 'CachedMesh',
+      value: {
+        kind: 'field',
+        field_operation: 'get',
+        field_scope: 'component_ref',
+        target: 'DoorMesh',
+      },
+    },
+  ];
+
+  for (const input of inputs) {
+    for (const { surface, statement } of compileFirstStatements(input)) {
+      const value = statement.value as Record<string, unknown>;
+      assert.equal(
+        contextEvidence(value)?.field_owner_class,
+        undefined,
+        `${surface} should not infer owner evidence for ${String(value.field_scope)}`,
+      );
+    }
+  }
 });
 
 test('explicit component_ref field scope is preserved', () => {

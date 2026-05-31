@@ -4570,6 +4570,91 @@ bool FBlueprintHelperReviewLoadPendingVisibleChangesUsesRecordQueryTest::RunTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewLoadPendingVisibleChangesIncludesGraphWriteBlockAsGraphBodyTest,
+	"BlueprintHelper.Review.UI.LoadPendingVisibleChangesIncludesGraphWriteBlockAsGraphBody",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewLoadPendingVisibleChangesIncludesGraphWriteBlockAsGraphBodyTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_ui_graph_body"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BP_GraphBody_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString GraphName = TEXT("EventGraph");
+	const FString TargetKey = TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0");
+	const FString VisualGroupKey = TEXT("graph_body|EventGraph");
+
+	FBlueprintHelperReviewAtomicTarget GraphBlockTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
+			TargetKey,
+			VisualGroupKey,
+			TEXT("tx_ui_graph_body"),
+			TEXT("after_graph_body"));
+	GraphBlockTarget.AssetPath = AssetPath;
+	GraphBlockTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	GraphBlockTarget.GraphName = GraphName;
+	GraphBlockTarget.TargetKind = TEXT("graph_block");
+	GraphBlockTarget.DisplayLabel = TEXT("append_blueprint_graph EventGraph");
+	GraphBlockTarget.Ownership = TEXT("graph_write");
+
+	FBlueprintHelperWriteReviewEvidence Evidence =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
+			ArchiveSessionId,
+			TEXT("task_ui_graph_body"),
+			TEXT("tx_ui_graph_body"),
+			AssetPath,
+			GraphBlockTarget);
+
+	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence({Evidence});
+	TestEqual(TEXT("one graph body UI query record is built"), Records.Num(), 1);
+	if (Records.Num() != 1)
+	{
+		return false;
+	}
+	TestEqual(TEXT("graph block evidence becomes one graph body visible change"),
+		Records[0].VisibleChanges.Num(),
+		1);
+	if (Records[0].VisibleChanges.Num() != 1 || Records[0].VisibleChanges[0].AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewVisibleChange& BuiltChange = Records[0].VisibleChanges[0];
+	TestEqual(TEXT("graph body change keeps graph group location"), BuiltChange.LocationKey, VisualGroupKey);
+	TestEqual(TEXT("graph body change keeps graph name"), BuiltChange.GraphName, GraphName);
+	TestEqual(TEXT("graph body atomic target keeps concrete block key"),
+		BuiltChange.AtomicTargets[0].TargetKey,
+		TargetKey);
+	TestEqual(TEXT("graph body atomic target keeps graph block kind"),
+		BuiltChange.AtomicTargets[0].TargetKind,
+		FString(TEXT("graph_block")));
+
+	FString SaveError;
+	TestTrue(TEXT("graph body UI query record saves"), Store.SaveReviewRecords(Records, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(AssetPath);
+	const bool bContainsGraphBody = PendingChanges.ContainsByPredicate(
+		[&TargetKey, &VisualGroupKey, &GraphName](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.LocationKey == VisualGroupKey
+				&& Change.GraphName == GraphName
+				&& Change.AtomicTargets.ContainsByPredicate(
+					[&TargetKey](const FBlueprintHelperReviewAtomicTarget& Target)
+					{
+						return Target.TargetKind == TEXT("graph_block")
+							&& Target.TargetKey == TargetKey;
+					});
+		});
+
+	TestTrue(TEXT("pending query exposes graph write block as graph body change"), bContainsGraphBody);
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewLoadPendingVisibleChangesSkipsMissingAssetInGlobalQueryTest,
 	"BlueprintHelper.Review.UI.LoadPendingVisibleChangesSkipsMissingAssetInGlobalQuery",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

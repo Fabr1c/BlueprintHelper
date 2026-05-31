@@ -1450,6 +1450,93 @@ public:
 		return Payload;
 	}
 
+	static TSharedRef<FJsonObject> MakeGraphWritePlannedVariableDryRunPayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OwnerClassPath)
+	{
+		const FString VariableName = TEXT("PlannedSessionId");
+		const FString EventName = TEXT("CE_PlannedVariablePreview");
+
+		TSharedRef<FJsonObject> VariableOp = MakeShared<FJsonObject>();
+		VariableOp->SetStringField(TEXT("op"), TEXT("ensure_member_variable"));
+		VariableOp->SetStringField(TEXT("name"), VariableName);
+		TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+		PinType->SetStringField(TEXT("category"), TEXT("string"));
+		VariableOp->SetObjectField(TEXT("pin_type"), PinType);
+		VariableOp->SetStringField(TEXT("category"), TEXT("BH_Test"));
+
+		TSharedRef<FJsonObject> SignatureOp = MakeShared<FJsonObject>();
+		SignatureOp->SetStringField(TEXT("op"), TEXT("ensure_custom_event"));
+		SignatureOp->SetStringField(TEXT("event_name"), EventName);
+		SignatureOp->SetStringField(TEXT("graph_name"), GraphName);
+		SignatureOp->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
+
+		TSharedRef<FJsonObject> FieldExpression = MakeShared<FJsonObject>();
+		FieldExpression->SetStringField(TEXT("kind"), TEXT("get"));
+		FieldExpression->SetStringField(TEXT("target"), VariableName);
+		TSharedRef<FJsonObject> ContextEvidence = MakeShared<FJsonObject>();
+		ContextEvidence->SetStringField(TEXT("field_owner_class"), OwnerClassPath);
+		FieldExpression->SetObjectField(TEXT("context_evidence"), ContextEvidence);
+
+		TSharedRef<FJsonObject> PrintStatement = MakeShared<FJsonObject>();
+		PrintStatement->SetStringField(TEXT("kind"), TEXT("call"));
+		PrintStatement->SetStringField(TEXT("target"), TEXT("PrintString"));
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), FieldExpression);
+		PrintStatement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(PrintStatement));
+
+		TSharedRef<FJsonObject> GraphWriteOp = MakeShared<FJsonObject>();
+		GraphWriteOp->SetStringField(TEXT("op"), TEXT("ensure_entry"));
+		GraphWriteOp->SetStringField(TEXT("entry_type"), TEXT("custom_event"));
+		GraphWriteOp->SetStringField(TEXT("name"), EventName);
+		GraphWriteOp->SetStringField(TEXT("signature_evidence_id"), TEXT("signature:custom_event:CE_PlannedVariablePreview"));
+		GraphWriteOp->SetObjectField(TEXT("body"), MakeGraphWriteLogicSpec(EventName, Statements));
+
+		TSharedRef<FJsonObject> GraphWriteStep = MakeStructuredStep(
+			TEXT("step_graph"),
+			TEXT("graph_write"),
+			AssetPath,
+			TEXT("owned_graph_edit"),
+			GraphWriteOp);
+		TSharedRef<FJsonObject> GraphTarget = MakeShared<FJsonObject>();
+		GraphTarget->SetStringField(TEXT("asset_path"), AssetPath);
+		GraphTarget->SetStringField(TEXT("graph"), GraphName);
+		GraphWriteStep->SetObjectField(TEXT("target"), GraphTarget);
+		TArray<TSharedPtr<FJsonValue>> DependsOn;
+		DependsOn.Add(MakeShared<FJsonValueString>(TEXT("step_signature")));
+		GraphWriteStep->SetArrayField(TEXT("depends_on"), DependsOn);
+
+		TSharedRef<FJsonObject> Constraints = MakeShared<FJsonObject>();
+		Constraints->SetBoolField(TEXT("allow_modify_user_nodes"), false);
+		Constraints->SetStringField(TEXT("ownership_scope"), TEXT("blueprinthelper_owned"));
+		GraphWriteStep->SetObjectField(TEXT("constraints"), Constraints);
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_variable"),
+			TEXT("blueprint_variable"),
+			AssetPath,
+			TEXT("member_variables"),
+			VariableOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_signature"),
+			TEXT("blueprint_signature"),
+			AssetPath,
+			TEXT("custom_event_signature"),
+			SignatureOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(GraphWriteStep));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("GraphWritePlannedMemberVariableDryRun"),
+			TEXT("create_blueprint_feature"),
+			AssetPath,
+			Steps);
+	}
+
 	static TSharedRef<FJsonObject> MakeWidgetTreeExecutePayload(const FString& AssetPath)
 	{
 		TSharedRef<FJsonObject> AddRootOp = MakeShared<FJsonObject>();
@@ -1593,6 +1680,56 @@ public:
 		Test.TestTrue(TEXT("dry_run.can_execute is present"),
 			DryRun && DryRun->IsValid() && (*DryRun)->TryGetBoolField(TEXT("can_execute"), bCanExecute));
 		Test.TestTrue(TEXT("planned-state dry-run can execute"), bCanExecute);
+	}
+
+	static TSharedPtr<FJsonObject> FindRuntimePreviewStep(
+		const FBlueprintHelperToolResultBase& Result,
+		const FString& StepId)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+		if (!Result.Data.IsValid() ||
+			!Result.Data->TryGetArrayField(TEXT("steps"), Steps) ||
+			!Steps)
+		{
+			return nullptr;
+		}
+
+		for (const TSharedPtr<FJsonValue>& StepValue : *Steps)
+		{
+			const TSharedPtr<FJsonObject> StepObject = StepValue.IsValid()
+				? StepValue->AsObject()
+				: nullptr;
+			FString CandidateStepId;
+			if (StepObject.IsValid() &&
+				StepObject->TryGetStringField(TEXT("step_id"), CandidateStepId) &&
+				CandidateStepId == StepId)
+			{
+				return StepObject;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool TryReadRuntimePreviewStepResultOk(
+		const TSharedPtr<FJsonObject>& StepObject,
+		bool& bOutOk,
+		FString& OutResultJson)
+	{
+		bOutOk = false;
+		OutResultJson.Reset();
+
+		const TSharedPtr<FJsonObject>* ResultObject = nullptr;
+		if (!StepObject.IsValid() ||
+			!StepObject->TryGetObjectField(TEXT("result"), ResultObject) ||
+			!ResultObject ||
+			!ResultObject->IsValid())
+		{
+			return false;
+		}
+
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutResultJson);
+		FJsonSerializer::Serialize((*ResultObject).ToSharedRef(), Writer);
+		return (*ResultObject)->TryGetBoolField(TEXT("ok"), bOutOk);
 	}
 
 	static TSharedRef<FJsonObject> MakeReplaceBodyOp()
@@ -4333,6 +4470,62 @@ bool FBlueprintHelperTaskRuntimeDataTableDryRunUsesPlannedRowStateTest::RunTest(
 			DryRunObject && DryRunObject->IsValid() && (*DryRunObject)->TryGetStringField(TEXT("preview_kind"), PreviewKind));
 		TestEqual(TEXT("planned row preview kind"), PreviewKind, FString(TEXT("task_runtime_planned_data_table_row")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeGraphWriteDryRunUsesPlannedMemberVariableStateTest,
+	"BlueprintHelper.TaskRuntime.GraphWrite.DryRunUsesPlannedMemberVariableState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeGraphWriteDryRunUsesPlannedMemberVariableStateTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeGraphWritePlannedVariable"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	const FString AssetPath = Blueprint->GetPathName();
+	const FString GraphName = Blueprint->UbergraphPages[0]->GetName();
+	const FString OwnerClassPath = Blueprint->GeneratedClass
+		? Blueprint->GeneratedClass->GetPathName()
+		: FString();
+	TestFalse(TEXT("planned variable is not physically present before preview"),
+		Blueprint->NewVariables.ContainsByPredicate([](const FBPVariableDescription& Variable)
+		{
+			return Variable.VarName == FName(TEXT("PlannedSessionId"));
+		}));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWritePlannedVariableDryRunPayload(
+			AssetPath,
+			GraphName,
+			OwnerClassPath));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewCanExecute(*this, Preview, 3);
+	const TSharedPtr<FJsonObject> GraphStep =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindRuntimePreviewStep(Preview, TEXT("step_graph"));
+	TestNotNull(TEXT("planned variable preview records graph_write step"), GraphStep.Get());
+	bool bGraphStepOk = false;
+	FString GraphStepResultJson;
+	TestTrue(TEXT("graph_write step exposes result ok"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::TryReadRuntimePreviewStepResultOk(
+			GraphStep,
+			bGraphStepOk,
+			GraphStepResultJson));
+	if (!bGraphStepOk)
+	{
+		AddError(FString::Printf(TEXT("graph_write planned-variable dry-run failed: %s"), *GraphStepResultJson));
+	}
+	TestTrue(TEXT("graph_write dry-run can resolve the planned member variable"), bGraphStepOk);
+	TestFalse(TEXT("dry-run does not persist planned member variable"),
+		Blueprint->NewVariables.ContainsByPredicate([](const FBPVariableDescription& Variable)
+		{
+			return Variable.VarName == FName(TEXT("PlannedSessionId"));
+		}));
 	return true;
 }
 
