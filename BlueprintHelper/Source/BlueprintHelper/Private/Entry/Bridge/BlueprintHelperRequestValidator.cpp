@@ -132,6 +132,238 @@ public:
 		return true;
 	}
 
+	static bool ValidateStringLiteral(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		const TCHAR* ExpectedValue,
+		bool bRequired,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const FString Field(FieldName);
+		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
+		if (!FoundValue)
+		{
+			if (bRequired)
+			{
+				SetValidationError(
+					OutError,
+					TEXT("payload.") + Field,
+					FString::Printf(TEXT("literal(%s)"), ExpectedValue),
+					TEXT("missing"));
+				return false;
+			}
+			return true;
+		}
+
+		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::String))
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + Field,
+				FString::Printf(TEXT("literal(%s)"), ExpectedValue),
+				ActualJsonTypeToString(*FoundValue));
+			return false;
+		}
+
+		FString Value;
+		(*FoundValue)->TryGetString(Value);
+		if (Value != ExpectedValue)
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + Field,
+				FString::Printf(TEXT("literal(%s)"), ExpectedValue),
+				Value);
+			return false;
+		}
+		return true;
+	}
+
+	static bool ValidateStringArrayField(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const FString Field(FieldName);
+		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
+		if (!FoundValue)
+		{
+			return true;
+		}
+
+		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::Array))
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + Field,
+				TEXT("array<string>"),
+				ActualJsonTypeToString(*FoundValue));
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>& Values = (*FoundValue)->AsArray();
+		for (int32 Index = 0; Index < Values.Num(); ++Index)
+		{
+			const TSharedPtr<FJsonValue>& Value = Values[Index];
+			if (!MatchesExpectedType(Value, EBlueprintHelperJsonExpectedType::String))
+			{
+				SetValidationError(
+					OutError,
+					FString::Printf(TEXT("payload.%s[%d]"), FieldName, Index),
+					TEXT("string"),
+					ActualJsonTypeToString(Value));
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool ValidateIntRangeField(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName,
+		int32 MinValue,
+		int32 MaxValue,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const FString Field(FieldName);
+		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
+		if (!FoundValue)
+		{
+			return true;
+		}
+
+		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::Number))
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + Field,
+				FString::Printf(TEXT("integer[%d..%d]"), MinValue, MaxValue),
+				ActualJsonTypeToString(*FoundValue));
+			return false;
+		}
+
+		const double Number = (*FoundValue)->AsNumber();
+		if (FMath::FloorToDouble(Number) != Number || Number < MinValue || Number > MaxValue)
+		{
+			SetValidationError(
+				OutError,
+				TEXT("payload.") + Field,
+				FString::Printf(TEXT("integer[%d..%d]"), MinValue, MaxValue),
+				FString::SanitizeFloat(Number));
+			return false;
+		}
+		return true;
+	}
+
+	static bool ValidateFindAssetsSemanticTypes(
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Payload->TryGetArrayField(TEXT("asset_types"), Values) || !Values)
+		{
+			return true;
+		}
+
+		for (int32 Index = 0; Index < Values->Num(); ++Index)
+		{
+			FString Value;
+			(*Values)[Index]->TryGetString(Value);
+			if (!IsFindAssetsSemanticType(Value))
+			{
+				SetValidationError(
+					OutError,
+					FString::Printf(TEXT("payload.asset_types[%d]"), Index),
+					TEXT("known_semantic_asset_type"),
+					Value);
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool IsFindAssetsSemanticType(const FString& Value)
+	{
+		static const TCHAR* const AllowedTypes[] = {
+			TEXT("blueprint"),
+			TEXT("widget_blueprint"),
+			TEXT("data_table"),
+			TEXT("data_asset"),
+			TEXT("user_defined_struct"),
+		};
+
+		for (const TCHAR* AllowedType : AllowedTypes)
+		{
+			if (Value.Equals(AllowedType, ESearchCase::CaseSensitive))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool ValidateFindAssetsPathPrefixes(
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Payload->TryGetArrayField(TEXT("path_prefixes"), Values) || !Values)
+		{
+			return true;
+		}
+
+		for (int32 Index = 0; Index < Values->Num(); ++Index)
+		{
+			FString Value;
+			(*Values)[Index]->TryGetString(Value);
+			if (!Value.StartsWith(TEXT("/")))
+			{
+				SetValidationError(
+					OutError,
+					FString::Printf(TEXT("payload.path_prefixes[%d]"), Index),
+					TEXT("slash_prefixed_path"),
+					Value);
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool ValidateFindAssetsClassPaths(
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Payload->TryGetArrayField(TEXT("asset_classes"), Values) || !Values)
+		{
+			return true;
+		}
+
+		for (int32 Index = 0; Index < Values->Num(); ++Index)
+		{
+			FString Value;
+			(*Values)[Index]->TryGetString(Value);
+			FString ModulePath;
+			FString ClassName;
+			if (!Value.StartsWith(TEXT("/Script/"), ESearchCase::CaseSensitive) ||
+				!Value.Split(TEXT("."), &ModulePath, &ClassName, ESearchCase::CaseSensitive, ESearchDir::FromEnd) ||
+				ModulePath.Len() <= FString(TEXT("/Script/")).Len() ||
+				ClassName.IsEmpty() ||
+				ClassName.Contains(TEXT("/"), ESearchCase::CaseSensitive) ||
+				ClassName.Contains(TEXT("."), ESearchCase::CaseSensitive) ||
+				ModulePath.RightChop(FString(TEXT("/Script/")).Len()).Contains(TEXT("."), ESearchCase::CaseSensitive))
+			{
+				SetValidationError(
+					OutError,
+					FString::Printf(TEXT("payload.asset_classes[%d]"), Index),
+					TEXT("full_class_path"),
+					Value);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	static bool RejectFields(
 		const TSharedPtr<FJsonObject>& Payload,
 		TArrayView<const TCHAR* const> FieldNames,
@@ -325,26 +557,44 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("list_assets")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("find_assets")))
 	{
+		if (Payload->HasField(TEXT("cursor")))
+		{
+			OutError.Code = TEXT("cursor_not_supported_in_p0");
+			OutError.Field = TEXT("payload.cursor");
+			OutError.ExpectedType = TEXT("absent");
+			OutError.ActualType = TEXT("present");
+			OutError.Message = TEXT("cursor_not_supported_in_p0: find_assets pagination cursors are not supported in P0.");
+			return false;
+		}
+
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateStringLiteral(
+			Payload,
+			TEXT("schema"),
+			TEXT("BlueprintHelper.FindAssetsRequest.v1"),
+			true,
+			OutError))
+		{
+			return false;
+		}
+
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("class_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("name_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("query"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("recursive"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("limit"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+			{TEXT("include_plugin_content"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_engine_content"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+			{TEXT("include_redirectors"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("search_assets")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("class_filter"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("query"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("max_results"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateIntRangeField(Payload, TEXT("limit"), 1, 100, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("path_prefixes"), OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("asset_types"), OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("asset_classes"), OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateFindAssetsPathPrefixes(Payload, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateFindAssetsSemanticTypes(Payload, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateFindAssetsClassPaths(Payload, OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_variable")))
 	{

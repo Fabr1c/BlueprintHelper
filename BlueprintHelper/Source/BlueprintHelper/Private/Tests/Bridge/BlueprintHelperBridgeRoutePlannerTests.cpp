@@ -1,4 +1,5 @@
 #include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
+#include "Entry/Bridge/Routes/BlueprintHelperAssetDiscoveryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
@@ -7,6 +8,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
+#include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
@@ -16,6 +18,7 @@
 #include "GameFramework/Pawn.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "UObject/Package.h"
@@ -35,6 +38,7 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("patch_external_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 		{TEXT("replace_external_body"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 		{TEXT("read_blueprint_member_variables"), EBlueprintHelperBridgeRouteCluster::BlueprintVariables},
+		{TEXT("find_assets"), EBlueprintHelperBridgeRouteCluster::AssetDiscovery},
 		{TEXT("create_asset"), EBlueprintHelperBridgeRouteCluster::AssetFactory},
 		{TEXT("read_components"), EBlueprintHelperBridgeRouteCluster::Component},
 		{TEXT("read_class_settings"), EBlueprintHelperBridgeRouteCluster::ClassSettings},
@@ -273,6 +277,346 @@ bool FBlueprintHelperFinalBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest(
 	TestFalse(
 		TEXT("ObjectProperty route rejects graph command"),
 		FBlueprintHelperObjectPropertyBridgeRoutes::IsObjectPropertyCommand(TEXT("append_blueprint_graph")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_AcceptsFindAssetsPayload,
+	"BlueprintHelper.AssetDiscovery.Route.AcceptsFindAssetsPayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_AcceptsFindAssetsPayload::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_accepts_payload");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetStringField(TEXT("query"), TEXT("GraphLocalValueProducer"));
+	Request.Payload->SetArrayField(TEXT("path_prefixes"), {MakeShared<FJsonValueString>(TEXT("/Game"))});
+	Request.Payload->SetArrayField(TEXT("asset_types"), {MakeShared<FJsonValueString>(TEXT("blueprint"))});
+	Request.Payload->SetArrayField(TEXT("asset_classes"), {MakeShared<FJsonValueString>(TEXT("/Script/Engine.Blueprint"))});
+	Request.Payload->SetBoolField(TEXT("recursive"), true);
+	Request.Payload->SetNumberField(TEXT("limit"), 1);
+	Request.Payload->SetBoolField(TEXT("include_plugin_content"), false);
+	Request.Payload->SetBoolField(TEXT("include_engine_content"), false);
+	Request.Payload->SetBoolField(TEXT("include_redirectors"), false);
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestTrue(TEXT("find_assets route accepts valid payload"), Response.bSuccess);
+	TestNotNull(TEXT("find_assets route returns result json"), Response.Result.Get());
+	return Response.bSuccess && Response.Result.IsValid();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsCursorInP0,
+	"BlueprintHelper.AssetDiscovery.Route.RejectsCursorInP0",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsCursorInP0::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_rejects_cursor");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetStringField(TEXT("cursor"), TEXT("page-2"));
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("find_assets cursor is rejected in P0"), Response.bSuccess);
+	TestEqual(TEXT("cursor rejection uses invalid request"), Response.ErrorCode, EBlueprintHelperBridgeError::InvalidRequest);
+	TestTrue(
+		TEXT("cursor rejection reports cursor_not_supported_in_p0"),
+		Response.Message.Contains(TEXT("cursor_not_supported_in_p0")));
+	const TSharedPtr<FJsonObject>* ErrorJson = nullptr;
+	TestTrue(TEXT("cursor rejection result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorJson));
+	if (ErrorJson && ErrorJson->IsValid())
+	{
+		FString Field;
+		TestTrue(TEXT("cursor rejection result carries field"), (*ErrorJson)->TryGetStringField(TEXT("field"), Field));
+		TestEqual(TEXT("cursor rejection field is stable"), Field, FString(TEXT("payload.cursor")));
+	}
+	return !Response.bSuccess &&
+		Response.ErrorCode == EBlueprintHelperBridgeError::InvalidRequest &&
+		Response.Message.Contains(TEXT("cursor_not_supported_in_p0"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsInvalidSchema,
+	"BlueprintHelper.AssetDiscovery.Route.RejectsInvalidSchema",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsInvalidSchema::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_rejects_invalid_schema");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("FindAssets.v1"));
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("find_assets rejects invalid request schema"), Response.bSuccess);
+	TestEqual(TEXT("invalid schema uses invalid request"), Response.ErrorCode, EBlueprintHelperBridgeError::InvalidRequest);
+	TestTrue(
+		TEXT("invalid schema message names the required literal"),
+		Response.Message.Contains(TEXT("BlueprintHelper.FindAssetsRequest.v1")));
+	const TSharedPtr<FJsonObject>* ErrorJson = nullptr;
+	TestTrue(TEXT("invalid schema result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorJson));
+	if (ErrorJson && ErrorJson->IsValid())
+	{
+		FString Field;
+		TestTrue(TEXT("invalid schema result carries field"), (*ErrorJson)->TryGetStringField(TEXT("field"), Field));
+		TestEqual(TEXT("invalid schema field is stable"), Field, FString(TEXT("payload.schema")));
+	}
+	return !Response.bSuccess &&
+		Response.ErrorCode == EBlueprintHelperBridgeError::InvalidRequest &&
+		Response.Message.Contains(TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsNonArrayStringListField,
+	"BlueprintHelper.AssetDiscovery.Route.RejectsNonArrayStringListField",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsNonArrayStringListField::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_rejects_non_array_string_list_field");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetNumberField(TEXT("path_prefixes"), 42.0);
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("find_assets rejects non-array path_prefixes"), Response.bSuccess);
+	TestEqual(TEXT("non-array string list uses invalid request"), Response.ErrorCode, EBlueprintHelperBridgeError::InvalidRequest);
+	TestTrue(
+		TEXT("non-array string list identifies the field"),
+		Response.Message.Contains(TEXT("path_prefixes")));
+	const TSharedPtr<FJsonObject>* ErrorJson = nullptr;
+	TestTrue(TEXT("non-array string list result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorJson));
+	if (ErrorJson && ErrorJson->IsValid())
+	{
+		FString Field;
+		TestTrue(TEXT("non-array string list result carries field"), (*ErrorJson)->TryGetStringField(TEXT("field"), Field));
+		TestEqual(TEXT("non-array string list field is stable"), Field, FString(TEXT("payload.path_prefixes")));
+	}
+	return !Response.bSuccess &&
+		Response.ErrorCode == EBlueprintHelperBridgeError::InvalidRequest &&
+		Response.Message.Contains(TEXT("path_prefixes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsNonStringArrayItem,
+	"BlueprintHelper.AssetDiscovery.Route.RejectsNonStringArrayItem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsNonStringArrayItem::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_rejects_non_string_array_item");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetArrayField(TEXT("path_prefixes"), {MakeShared<FJsonValueNumber>(42.0)});
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("find_assets rejects non-string path_prefixes entries"), Response.bSuccess);
+	TestEqual(TEXT("non-string array item uses invalid request"), Response.ErrorCode, EBlueprintHelperBridgeError::InvalidRequest);
+	TestTrue(
+		TEXT("non-string array item identifies the field"),
+		Response.Message.Contains(TEXT("path_prefixes[0]")));
+	const TSharedPtr<FJsonObject>* ErrorJson = nullptr;
+	TestTrue(TEXT("non-string array item result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorJson));
+	if (ErrorJson && ErrorJson->IsValid())
+	{
+		FString Field;
+		TestTrue(TEXT("non-string array item result carries field"), (*ErrorJson)->TryGetStringField(TEXT("field"), Field));
+		TestEqual(TEXT("non-string array item field is stable"), Field, FString(TEXT("payload.path_prefixes[0]")));
+	}
+	return !Response.bSuccess &&
+		Response.ErrorCode == EBlueprintHelperBridgeError::InvalidRequest &&
+		Response.Message.Contains(TEXT("path_prefixes[0]"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsInvalidSemanticTypeCasing,
+	"BlueprintHelper.AssetDiscovery.Route.RejectsInvalidSemanticTypeCasing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_RejectsInvalidSemanticTypeCasing::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_rejects_invalid_semantic_type_casing");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetArrayField(TEXT("asset_types"), {MakeShared<FJsonValueString>(TEXT("Blueprint"))});
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("find_assets route rejects semantic type casing outside task-core enum"), Response.bSuccess);
+	TestEqual(TEXT("semantic type casing uses invalid request"), Response.ErrorCode, EBlueprintHelperBridgeError::InvalidRequest);
+	const TSharedPtr<FJsonObject>* ErrorJson = nullptr;
+	TestTrue(TEXT("semantic type casing result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorJson));
+	if (ErrorJson && ErrorJson->IsValid())
+	{
+		FString Field;
+		TestTrue(TEXT("semantic type casing result carries field"), (*ErrorJson)->TryGetStringField(TEXT("field"), Field));
+		TestEqual(TEXT("semantic type casing field is stable"), Field, FString(TEXT("payload.asset_types[0]")));
+	}
+	return !Response.bSuccess &&
+		Response.ErrorCode == EBlueprintHelperBridgeError::InvalidRequest;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryValidator_RejectsOutOfRangeLimit,
+	"BlueprintHelper.AssetDiscovery.Route.ValidatorRejectsOutOfRangeLimit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryValidator_RejectsOutOfRangeLimit::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Payload->SetNumberField(TEXT("limit"), 101);
+
+	FBlueprintHelperBridgeValidationError Error;
+	TestFalse(
+		TEXT("validator rejects out-of-range limit"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, Error));
+	TestEqual(TEXT("limit error field is stable"), Error.Field, FString(TEXT("payload.limit")));
+	return Error.Field == TEXT("payload.limit");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryValidator_RejectsInvalidPathPrefix,
+	"BlueprintHelper.AssetDiscovery.Route.ValidatorRejectsInvalidPathPrefix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryValidator_RejectsInvalidPathPrefix::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Payload->SetArrayField(TEXT("path_prefixes"), {MakeShared<FJsonValueString>(TEXT("Game"))});
+
+	FBlueprintHelperBridgeValidationError Error;
+	TestFalse(
+		TEXT("validator rejects path prefixes without slash"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, Error));
+	TestEqual(TEXT("path prefix error field is stable"), Error.Field, FString(TEXT("payload.path_prefixes[0]")));
+	return Error.Field == TEXT("payload.path_prefixes[0]");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryValidator_RejectsInvalidSemanticTypeCasing,
+	"BlueprintHelper.AssetDiscovery.Route.ValidatorRejectsInvalidSemanticTypeCasing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryValidator_RejectsInvalidSemanticTypeCasing::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Payload->SetArrayField(TEXT("asset_types"), {MakeShared<FJsonValueString>(TEXT("Blueprint"))});
+
+	FBlueprintHelperBridgeValidationError Error;
+	TestFalse(
+		TEXT("validator rejects semantic type casing outside task-core enum"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, Error));
+	TestEqual(TEXT("semantic type error field is stable"), Error.Field, FString(TEXT("payload.asset_types[0]")));
+	return Error.Field == TEXT("payload.asset_types[0]");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryValidator_RejectsMalformedClassPath,
+	"BlueprintHelper.AssetDiscovery.Route.ValidatorRejectsMalformedClassPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryValidator_RejectsMalformedClassPath::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Payload->SetArrayField(TEXT("asset_classes"), {MakeShared<FJsonValueString>(TEXT("/Script/Engine."))});
+
+	FBlueprintHelperBridgeValidationError Error;
+	TestFalse(
+		TEXT("validator rejects malformed full class path"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, Error));
+	TestEqual(TEXT("class path error field is stable"), Error.Field, FString(TEXT("payload.asset_classes[0]")));
+
+	Payload->SetArrayField(TEXT("asset_classes"), {MakeShared<FJsonValueString>(TEXT("/Script/Foo.Bar.Baz"))});
+	FBlueprintHelperBridgeValidationError MultiDotError;
+	TestFalse(
+		TEXT("validator rejects class paths with more than module and class segments"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, MultiDotError));
+	TestEqual(TEXT("multi-dot class path error field is stable"), MultiDotError.Field, FString(TEXT("payload.asset_classes[0]")));
+	Payload->SetArrayField(TEXT("asset_classes"), {MakeShared<FJsonValueString>(TEXT("/script/Engine.Blueprint"))});
+	FBlueprintHelperBridgeValidationError PrefixCaseError;
+	TestFalse(
+		TEXT("validator rejects class paths whose /Script prefix casing differs from task-core regex"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("find_assets"), Payload, PrefixCaseError));
+	TestEqual(TEXT("prefix case class path error field is stable"), PrefixCaseError.Field, FString(TEXT("payload.asset_classes[0]")));
+	return Error.Field == TEXT("payload.asset_classes[0]") &&
+		MultiDotError.Field == TEXT("payload.asset_classes[0]") &&
+		PrefixCaseError.Field == TEXT("payload.asset_classes[0]");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetDiscoveryBridgeRoute_SerializesFindAssetsResult,
+	"BlueprintHelper.AssetDiscovery.Route.SerializesFindAssetsResult",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperAssetDiscoveryBridgeRoute_SerializesFindAssetsResult::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperAssetDiscoveryService Service;
+	const FBlueprintHelperAssetDiscoveryBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("asset_discovery_serializes_result");
+	Request.Command = TEXT("find_assets");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.FindAssetsRequest.v1"));
+	Request.Payload->SetArrayField(TEXT("path_prefixes"), {MakeShared<FJsonValueString>(TEXT("/Game"))});
+	Request.Payload->SetNumberField(TEXT("limit"), 1);
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestTrue(TEXT("find_assets route succeeds"), Response.bSuccess);
+	TestNotNull(TEXT("find_assets route carries compact result"), Response.Result.Get());
+	if (!Response.bSuccess || !Response.Result.IsValid())
+	{
+		return false;
+	}
+
+	FString Schema;
+	TestTrue(TEXT("result carries schema"), Response.Result->TryGetStringField(TEXT("schema"), Schema));
+	TestEqual(TEXT("result schema is FindAssets.v1"), Schema, FString(TEXT("FindAssets.v1")));
+	TestTrue(TEXT("result carries assets array"), Response.Result->HasTypedField<EJson::Array>(TEXT("assets")));
+	TestTrue(TEXT("result carries page object"), Response.Result->HasTypedField<EJson::Object>(TEXT("page")));
+	TestFalse(TEXT("result is not wrapped in tool result status"), Response.Result->HasField(TEXT("status")));
+	TestFalse(TEXT("result is not wrapped in data"), Response.Result->HasField(TEXT("data")));
 	return true;
 }
 

@@ -33,6 +33,8 @@ Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_
 
 Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them as fallback.
 
+When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
 For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
@@ -44,7 +46,7 @@ On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by t
 1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
 2. Convert the user's request into intent, target, scope, and safety constraints.
 3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
-4. If BlueprintHelper access is required, first confirm the required CLI command is available. Read-only commands such as `bh blueprinthelper_read_context` do not require a write session.
+4. If BlueprintHelper access is required, first confirm the required CLI command is available. Read-only commands such as `bh blueprinthelper_find_assets` and `bh blueprinthelper_read_context` do not require a write session.
 5. Send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`. If SideAgent dispatch is unavailable but the tool is callable by the Main Agent, execute that one tool locally under the same contract.
 6. Review the translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
 
@@ -139,4 +141,4 @@ Stop before write delegation when:
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
 - `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
-- `AgentFaceService/agent-guide/Templates/README.md` - copy-and-edit CLI JSON templates
+- `AgentFaceService/agent-guide/Templates/INDEX.md` - copy-and-edit CLI JSON templates

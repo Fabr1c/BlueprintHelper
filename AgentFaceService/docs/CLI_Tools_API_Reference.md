@@ -1,6 +1,6 @@
 # BlueprintHelper CLI 工具 API 参考
 
-文档版本: `2026-05-22`
+文档版本: `2026-05-31`
 适用实现: `BlueprintHelper v0.5.4`
 
 这份文档只描述当前实现，不保留旧的乱码写法或已废弃的兼容叙述。
@@ -101,6 +101,7 @@
 | `blueprinthelper_read_context_capabilities` | ReadContext 能力矩阵 | `{}` | `Templates/read/blueprinthelper_read_context_capabilities_template.json` | 只读本地能力矩阵，不接触 UE 资产。 |
 | `blueprinthelper_read_reference_context` | 引用 / 依赖上下文 | `ReferenceContextPack.v1` 请求对象 | `Templates/read/SEMANTIC_INDEX.md` + 对应 reference 模板 | 用于重命名、删除、签名变更、依赖风险分析。 |
 | `blueprinthelper_read_function_chain_context` | 函数链索引 | function / event / custom_event 链路请求对象 | `Templates/read/blueprinthelper_read_function_chain_context_template.json` | 只返回紧凑索引，不返回完整函数体。 |
+| `blueprinthelper_find_assets` | 资产路径发现 | `BlueprintHelper.FindAssetsRequest.v1` 请求对象 | `Templates/blueprinthelper_find_assets_template.json` | 在未知 Unreal `asset_path` 时先用 AssetRegistry 缩小候选，再继续读上下文或写流程。 |
 
 `blueprinthelper_read_reference_context` 的模板家族包括:
 
@@ -127,6 +128,25 @@
 ```
 
 `target_type` 只接受 `function`、`event`、`custom_event`。
+
+`blueprinthelper_find_assets` 的典型字段如下:
+
+```json
+{
+  "schema": "BlueprintHelper.FindAssetsRequest.v1",
+  "query": "Player",
+  "path_prefixes": ["/Game"],
+  "asset_types": ["blueprint"],
+  "asset_classes": ["/Script/Engine.Blueprint"],
+  "recursive": true,
+  "limit": 25,
+  "include_plugin_content": false,
+  "include_engine_content": false,
+  "include_redirectors": false
+}
+```
+
+P0 不支持输入 `cursor`，`FindAssets.v1` 结果也不返回 `total_count` 或 `next_cursor`。需要更精确的结果时，缩小 `query`、`path_prefixes`、`asset_types` 或 `asset_classes`。
 
 ### 写入类
 
@@ -215,6 +235,7 @@ Agent 负责的编辑器打开 / 关闭是全局 MCP 生命周期工具，不是
 
 ```text
 bh blueprint_get_runtime_profile
+-> bh blueprinthelper_find_assets when asset_path is unknown
 -> bh blueprinthelper_read_context
 -> author BlueprintHelper.TaskSpec.v1
 -> bh blueprinthelper_preview_task
@@ -226,9 +247,17 @@ bh blueprint_get_runtime_profile
 ### 读上下文优先级
 
 1. 先用 `blueprinthelper_read_context_capabilities` 或 `blueprinthelper_read_agent_guide` 确认环境和入口。
-2. 再用 `blueprinthelper_read_context` 读取目标资产。
-3. 需要影响分析时再上 `blueprinthelper_read_reference_context`。
-4. 需要链路追踪时再上 `blueprinthelper_read_function_chain_context`。
+2. Unreal `asset_path` 未知时，先用 `blueprinthelper_find_assets` 获取候选；已知时直接进入 `blueprinthelper_read_context`。
+3. 拿到一个明确的 Unreal `asset_path` 后，再用 `blueprinthelper_read_context` 读取目标资产。
+4. 需要影响分析时再上 `blueprinthelper_read_reference_context`。
+5. 需要链路追踪时再上 `blueprinthelper_read_function_chain_context`。
+
+### Unknown Asset Path Workflow
+1. Unknown Unreal `asset_path` -> `bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result`
+2. Known Unreal `asset_path` -> `bh blueprinthelper_read_context --file <read-spec.json> --select status,artifacts.full_result`
+3. Write request -> resolve one explicit Unreal `asset_path` before `preview_task`
+4. No filesystem `.uasset` path inference
+5. If multiple candidates are returned, narrow or ask for confirmation before writes
 
 ### 写权限申请规则
 
@@ -258,6 +287,13 @@ bh blueprint_get_runtime_profile --json "{}" --select status,summary
 
 ```powershell
 '{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+```
+
+### 发现未知资产路径
+
+```powershell
+bh blueprinthelper_find_assets --file .\find-assets.json --select status,artifacts.full_result
+bh blueprinthelper_find_assets --help
 ```
 
 ### 预览 TaskSpec

@@ -5,6 +5,7 @@
 ```text
 blueprint_get_runtime_profile
 blueprinthelper_read_agent_guide
+blueprinthelper_find_assets
 blueprinthelper_read_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
@@ -29,6 +30,15 @@ blueprinthelper_diagnostics_runtime
 
 `blueprinthelper_request_write_session` is the ordinary interactive write authorization path. Use it after preview and before execute only when write permission is disabled and the user approves the Editor-side prompt.
 The Editor prompt is intentionally a simple accept/reject dialog. If the user rejects it, stop and report. Approval applies to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can execute BlueprintHelper tools after approval without receiving secret session data. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+
+## Asset Path Routing
+
+- Unknown Unreal `asset_path` -> `blueprinthelper_find_assets`.
+- Known Unreal `asset_path` -> `blueprinthelper_read_context`.
+- Write requests must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+- Do not infer Unreal `asset_path` values from filesystem `.uasset` paths.
+- If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes.
+
 ## Task Tool Arguments
 
 `blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 的工具名入口优先使用 `task_spec` wrapper:

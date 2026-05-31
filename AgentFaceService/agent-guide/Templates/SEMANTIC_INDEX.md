@@ -11,6 +11,7 @@ They do not read asset graph logic and they do not author TaskSpecs.
 | Run static installation/configuration diagnostics | `blueprinthelper_diagnostics_template.json` | `blueprinthelper_diagnostics` |
 | Run Editor/Bridge runtime diagnostics | `blueprinthelper_diagnostics_runtime_template.json` | `blueprinthelper_diagnostics_runtime` |
 | Read the AgentGuide onboarding entry | `blueprinthelper_read_agent_guide_template.json` | `blueprinthelper_read_agent_guide` |
+| Resolve unknown Unreal asset paths before reads or writes | `blueprinthelper_find_assets_template.json` | `blueprinthelper_find_assets` |
 
 ## Authorization And Task Lifecycle
 

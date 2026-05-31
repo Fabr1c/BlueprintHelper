@@ -43,8 +43,8 @@ Use `tools/list` as final authority. Normal Agent-facing tools:
 | Runtime diagnostics | `blueprinthelper_diagnostics_runtime` |
 | Request write session | `blueprinthelper_request_write_session` |
 | AgentGuide index | `blueprinthelper_read_agent_guide` |
+| Asset discovery before a target path is known | `blueprinthelper_find_assets` |
 | ReadSpec context | `blueprinthelper_read_context` |
-| Task context | `blueprinthelper_read_task_context` |
 | Reference context | `blueprinthelper_read_reference_context` |
 | Function chain context | `blueprinthelper_read_function_chain_context` |
 | Preview TaskSpec | `blueprinthelper_preview_task` |
@@ -68,8 +68,8 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
 | `blueprinthelper_diagnostics_runtime` | `{}` |
 | `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
 | `blueprinthelper_read_agent_guide` | `{}` |
+| `blueprinthelper_find_assets` | `BlueprintHelper.FindAssetsRequest.v1` fields at root |
 | `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
-| `blueprinthelper_read_task_context` | `{ "target": { "asset_path": "..." }, "feature_name": "..." }` |
 | `blueprinthelper_read_reference_context` | Reference fields at root |
 | `blueprinthelper_read_function_chain_context` | Function chain fields at root |
 | `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
@@ -80,6 +80,46 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
 | `blueprinthelper_query_review_records` | `{ "asset_path": "...", "task_run_id": "...", "pending_only": true }` |
 
 `blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
+
+Unknown Unreal `asset_path` values must be resolved with `blueprinthelper_find_assets` before `blueprinthelper_read_context` or any write request. Known Unreal `asset_path` values go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes. Every write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+
+## 3.5 Find Assets Template
+
+```json
+{
+  "schema": "required. Literal BlueprintHelper.FindAssetsRequest.v1.",
+  "query": "optional. Free-text asset name or path fragment.",
+  "path_prefixes": "optional. Array of Unreal content roots such as /Game/UI or /PluginName.",
+  "asset_types": "optional. blueprint, widget_blueprint, data_table, data_asset, or user_defined_struct.",
+  "asset_classes": "optional. Full class paths such as /Script/Engine.Blueprint.",
+  "recursive": "optional. Default true for broad discovery workflows.",
+  "limit": "optional. Integer 1-100.",
+  "include_plugin_content": "optional. Include plugin content roots when true.",
+  "include_engine_content": "optional. Include engine content roots when true.",
+  "include_redirectors": "optional. Include redirector assets when true."
+}
+```
+
+Returned compact data schema is `FindAssets.v1`:
+
+```json
+{
+  "schema": "FindAssets.v1",
+  "assets": [
+    {
+      "asset_path": "/Game/Blueprints/BP_Player.BP_Player",
+      "asset_type": "blueprint",
+      "asset_class": "/Script/Engine.Blueprint"
+    }
+  ],
+  "page": {
+    "limit": 25,
+    "has_more": false
+  }
+}
+```
+
+P0 does not accept `cursor` and does not return `total_count`. It also does not return `next_cursor`; use narrower `query`, `path_prefixes`, `asset_types`, or `asset_classes` values instead of pagination fields.
 
 ## 4. Read Context Template
 

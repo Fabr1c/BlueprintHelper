@@ -1,0 +1,18 @@
+{
+  "schema": "BlueprintHelper.FindAssetsRequest.v1",
+  "query": "__SEARCH_TEXT__",
+  "path_prefixes": [
+    "/Game"
+  ],
+  "asset_types": [
+    "blueprint"
+  ],
+  "asset_classes": [
+    "/Script/Engine.Blueprint"
+  ],
+  "recursive": true,
+  "limit": 25,
+  "include_plugin_content": false,
+  "include_engine_content": false,
+  "include_redirectors": false
+}

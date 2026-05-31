@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FindAssetsInputSchema } from './asset-discovery-schema.js';
 import { ReadFunctionChainContextInputSchema } from './function-chain-context-schema.js';
 import { ReadContextCapabilitiesInputSchema } from './read-context/read-context-capabilities.js';
 import { ReadContextInputSchema } from './read-context/read-context-schemas.js';
@@ -33,4 +34,5 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_query_review_records: ReviewRecordQueryInputSchema,
   blueprinthelper_apply_review_action: ReviewActionInputSchema,
   blueprinthelper_read_function_chain_context: ReadFunctionChainContextInputSchema,
+  blueprinthelper_find_assets: FindAssetsInputSchema,
 };

@@ -176,8 +176,8 @@ blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
+blueprinthelper_find_assets
 blueprinthelper_read_context
-blueprinthelper_read_task_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
@@ -202,6 +202,8 @@ mcp__blueprint_helper__blueprint_close_editor
 CLI lifecycle aliases are not Agent execution paths. Do not call `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor`; the CLI rejects Agent-owned lifecycle and points back to global MCP.
 
 Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.
+
+When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 
 ## Read Strategy
 

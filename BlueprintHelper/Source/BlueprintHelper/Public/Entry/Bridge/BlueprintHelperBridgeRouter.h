@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
+#include "Entry/Bridge/Routes/BlueprintHelperAssetDiscoveryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperAssetFactoryBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperBlueprintVariablesBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
@@ -22,6 +23,7 @@ class FBlueprintHelperCompileService;
 class FBlueprintHelperValidationService;
 class FBlueprintHelperContextService;
 class FBlueprintHelperAssetBrowseService;
+class FBlueprintHelperAssetDiscoveryService;
 class FBlueprintHelperBlueprintStructureService;
 class FBlueprintHelperWidgetService;
 class FBlueprintHelperPropertyReflectionService;
@@ -57,6 +59,7 @@ public:
 		const FBlueprintHelperValidationService& InValidation,
 		const FBlueprintHelperContextService& InContext,
 		const FBlueprintHelperAssetBrowseService& InAssetBrowse,
+		const FBlueprintHelperAssetDiscoveryService& InAssetDiscoveryService,
 		const FBlueprintHelperBlueprintStructureService& InStructure,
 		const FBlueprintHelperWidgetService& InWidget,
 		const FBlueprintHelperPropertyReflectionService& InPropertyReflection,
@@ -101,8 +104,6 @@ private:
 
 	// ─── Phase 4: 资产浏览 ───
 	FBlueprintHelperBridgeResponse HandleOpenAsset(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleListAssets(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleSearchAssets(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleSaveAsset(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetAssetInfo(const FBlueprintHelperBridgeRequest& Req) const;
 
@@ -142,6 +143,7 @@ private:
 	const FBlueprintHelperValidationService& ValidationService;
 	const FBlueprintHelperContextService& ContextService;
 	const FBlueprintHelperAssetBrowseService& AssetBrowseService;
+	FBlueprintHelperAssetDiscoveryBridgeRoutes AssetDiscoveryRoutes;
 	const FBlueprintHelperBlueprintStructureService& StructureService;
 	FBlueprintHelperUMGWidgetBridgeRoutes UMGWidgetRoutes;
 	FBlueprintHelperObjectPropertyBridgeRoutes ObjectPropertyRoutes;

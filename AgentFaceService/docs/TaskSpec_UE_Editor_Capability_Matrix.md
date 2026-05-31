@@ -329,7 +329,7 @@ TaskSpec execute 可能产生：
 | `blueprinthelper_read_context`, `blueprinthelper_read_reference_context`, `blueprinthelper_read_function_chain_context` | TaskSpec authoring 前的读链路工具。 |
 | `blueprinthelper_diagnostics`, `blueprinthelper_diagnostics_runtime`, `get_runtime_profile` | 诊断 / profiling 工具，不表达编辑器写入。 |
 | `blueprinthelper_query_review_records`, `blueprinthelper_get_debug_case`, `blueprinthelper_export_debug_bundle` | Review / debug 查询工具，不表达编辑器写入。 |
-| `open_asset`, `list_assets`, `save_asset`, `undo`, `redo`, `play_in_editor`, `exec_console_command` | direct Bridge / editor command surface，不是 AgentFace 写 TaskSpec 的普通路径。 |
+| `open_asset`, `save_asset`, `undo`, `redo`, `play_in_editor`, `exec_console_command` | direct Bridge / editor command surface，不是 AgentFace 写 TaskSpec 的普通路径。 |
 | direct GraphWrite / Component / Widget / DataTable bridge calls | AgentFace 应写 semantic TaskSpec，由 compiler 和 TaskRuntime adapter 转换，不应手写 raw bridge payload。 |
 
 ## 2026-05-26 GraphWrite Field capability matrix
