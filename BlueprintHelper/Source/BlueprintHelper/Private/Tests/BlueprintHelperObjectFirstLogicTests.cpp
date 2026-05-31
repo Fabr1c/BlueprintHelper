@@ -53,6 +53,18 @@ public:
         return Graph;
     }
 
+    static TSharedRef<FJsonObject> MakeLogicTestGraphWithLinks(
+        const FString& GraphName,
+        const TArray<TSharedPtr<FJsonValue>>& Nodes,
+        const TArray<TSharedPtr<FJsonValue>>& Links)
+    {
+        TSharedRef<FJsonObject> Graph = MakeShared<FJsonObject>();
+        Graph->SetStringField(TEXT("graph"), GraphName);
+        Graph->SetArrayField(TEXT("nodes"), Nodes);
+        Graph->SetArrayField(TEXT("links"), Links);
+        return Graph;
+    }
+
     static TSharedPtr<FJsonObject> MakeTestRawJsonObject()
     {
         TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -119,10 +131,10 @@ public:
         SetRelativeRotationNode->SetStringField(TEXT("function_name"), TEXT("SetRelativeRotation"));
         FunctionNodes.Add(MakeShared<FJsonValueObject>(SetRelativeRotationNode));
 
-        TArray<TSharedPtr<FJsonValue>> Graphs;
-        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
-        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("AddMazeRelativeRotation"), FunctionNodes)));
-        Root->SetArrayField(TEXT("graphs"), Graphs);
+		TArray<TSharedPtr<FJsonValue>> Graphs;
+		Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
+		Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("AddMazeRelativeRotation"), FunctionNodes)));
+		Root->SetArrayField(TEXT("graphs"), Graphs);
 
         return Root;
     }
@@ -145,9 +157,27 @@ public:
         SetRelativeRotationNode->SetStringField(TEXT("function_name"), TEXT("SetRelativeRotation"));
         FunctionNodes.Add(MakeShared<FJsonValueObject>(SetRelativeRotationNode));
 
+        TArray<TSharedPtr<FJsonValue>> FunctionLinks;
+        TSharedRef<FJsonObject> EntryToBodyLink = MakeShared<FJsonObject>();
+        EntryToBodyLink->SetStringField(TEXT("from_id"), TEXT("__function_entry__"));
+        EntryToBodyLink->SetStringField(TEXT("from_pin"), TEXT("then"));
+        EntryToBodyLink->SetStringField(TEXT("to_id"), TEXT("set_relative_rotation"));
+        EntryToBodyLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
+        EntryToBodyLink->SetStringField(TEXT("kind"), TEXT("exec"));
+        FunctionLinks.Add(MakeShared<FJsonValueObject>(EntryToBodyLink));
+
+        TSharedRef<FJsonObject> BodyToResultLink = MakeShared<FJsonObject>();
+        BodyToResultLink->SetStringField(TEXT("from_id"), TEXT("set_relative_rotation"));
+        BodyToResultLink->SetStringField(TEXT("from_pin"), TEXT("then"));
+        BodyToResultLink->SetStringField(TEXT("to_id"), TEXT("__function_result__"));
+        BodyToResultLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
+        BodyToResultLink->SetStringField(TEXT("kind"), TEXT("exec"));
+        FunctionLinks.Add(MakeShared<FJsonValueObject>(BodyToResultLink));
+
         TArray<TSharedPtr<FJsonValue>> Graphs;
         Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
-        Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("AddMazeRelativeRotation"), FunctionNodes)));
+        Graphs.Add(MakeShared<FJsonValueObject>(
+            MakeLogicTestGraphWithLinks(TEXT("AddMazeRelativeRotation"), FunctionNodes, FunctionLinks)));
         Root->SetArrayField(TEXT("graphs"), Graphs);
 
         return Root;
@@ -605,13 +635,56 @@ bool FObjectFirstLogic_FunctionTargetUsesExportedFunctionGraphWithoutEntry::RunT
         TestEqual(TEXT("synthetic function entry uses target name"), Payload.Entry->Name, FString(TEXT("AddMazeRelativeRotation")));
         TestEqual(TEXT("synthetic function entry kind is function"), Payload.Entry->Kind, EBlueprintHelperLogicNodeKind::FunctionEntry);
         TestEqual(TEXT("synthetic function entry ref is stable"), Payload.Entry->NodeRef, FString(TEXT("__function_entry__")));
+        TestEqual(
+            TEXT("synthetic function entry path is function scoped"),
+            Payload.Entry->NodePath,
+            FString(TEXT("$.graphs[AddMazeRelativeRotation].__function_entry__")));
     }
-    TestEqual(TEXT("function target returns exported body nodes"), Payload.Nodes.Num(), 1);
-    if (Payload.Nodes.Num() == 1)
+    TestEqual(TEXT("function target returns function boundary and body nodes"), Payload.Nodes.Num(), 3);
+    if (Payload.Nodes.Num() == 3)
     {
-        TestEqual(TEXT("function target includes function body node"), Payload.Nodes[0].Name, FString(TEXT("SetRelativeRotation")));
-        TestEqual(TEXT("function target body node keeps raw node ref"), Payload.Nodes[0].NodeRef, FString(TEXT("nodes[0]")));
+        TestEqual(TEXT("function target includes synthetic entry node"), Payload.Nodes[0].Name, FString(TEXT("AddMazeRelativeRotation")));
+        TestEqual(TEXT("function target synthetic entry node keeps boundary ref"), Payload.Nodes[0].NodeRef, FString(TEXT("__function_entry__")));
+        TestEqual(TEXT("function entry has one exec link"), Payload.Nodes[0].Links.Num(), 1);
+        if (Payload.Nodes[0].Links.Num() == 1)
+        {
+            TestEqual(TEXT("function entry link reaches body node"), Payload.Nodes[0].Links[0].ToNode, FString(TEXT("nodes[0]")));
+        }
+
+        TestEqual(TEXT("function target includes function body node"), Payload.Nodes[1].Name, FString(TEXT("SetRelativeRotation")));
+        TestEqual(TEXT("function target body node keeps raw node ref"), Payload.Nodes[1].NodeRef, FString(TEXT("nodes[0]")));
+        TestEqual(TEXT("function body has one result link"), Payload.Nodes[1].Links.Num(), 1);
+        if (Payload.Nodes[1].Links.Num() == 1)
+        {
+            TestEqual(TEXT("function body link reaches result boundary"), Payload.Nodes[1].Links[0].ToNode, FString(TEXT("__function_result__")));
+        }
+
+        TestEqual(TEXT("function target includes synthetic result node"), Payload.Nodes[2].Name, FString(TEXT("Return")));
+        TestEqual(TEXT("function target synthetic result node keeps boundary ref"), Payload.Nodes[2].NodeRef, FString(TEXT("__function_result__")));
+        TestEqual(TEXT("function target synthetic result kind"), Payload.Nodes[2].Kind, EBlueprintHelperLogicNodeKind::Return);
     }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FObjectFirstLogic_FunctionTargetDoesNotSynthesizeEntryForUnmatchedGraph,
+    "BlueprintHelper.ObjectFirst.Logic.FunctionTargetDoesNotSynthesizeEntryForUnmatchedGraph",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FObjectFirstLogic_FunctionTargetDoesNotSynthesizeEntryForUnmatchedGraph::RunTest(const FString& Parameters)
+{
+    FBlueprintHelperLogicGroupBuilder Builder;
+    const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildTargetEntry(
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeExportedFunctionGraphWithoutEntryRawJsonObject(),
+        TEXT("/Game/Gameplay/Maze/BP_Maze"),
+        TEXT(""),
+        TEXT("MissingFunction"),
+        EBlueprintHelperLogicScope::TargetFunction);
+
+    TestEqual(TEXT("unmatched function target keeps requested function name"), Payload.Function, FString(TEXT("MissingFunction")));
+    TestFalse(TEXT("unmatched function target does not synthesize entry"), Payload.Entry.IsSet());
+    TestEqual(TEXT("unmatched function target does not return unrelated graph nodes"), Payload.Nodes.Num(), 0);
 
     return true;
 }

@@ -120,6 +120,96 @@ public:
 		return FString::Printf(TEXT("$.graphs[%s].%s"), *GraphName, *NodeRef);
 	}
 
+	static const TCHAR* SyntheticFunctionEntryNodeRef()
+	{
+		return TEXT("__function_entry__");
+	}
+
+	static const TCHAR* SyntheticFunctionResultNodeRef()
+	{
+		return TEXT("__function_result__");
+	}
+
+	static bool IsSyntheticFunctionBoundaryNodeRef(const FString& NodeRef)
+	{
+		return NodeRef.Equals(SyntheticFunctionEntryNodeRef(), ESearchCase::IgnoreCase)
+			|| NodeRef.Equals(SyntheticFunctionResultNodeRef(), ESearchCase::IgnoreCase);
+	}
+
+	static bool DoesGraphNameMatchTargetFunction(
+		const FString& EffectiveGraphName,
+		const FString& TargetName)
+	{
+		return !EffectiveGraphName.IsEmpty()
+			&& !TargetName.IsEmpty()
+			&& EffectiveGraphName.Equals(TargetName, ESearchCase::IgnoreCase);
+	}
+
+	static FBlueprintHelperLogicEntry MakeSyntheticFunctionEntry(
+		const FString& EffectiveGraphName,
+		const FString& TargetName)
+	{
+		FBlueprintHelperLogicEntry Entry;
+		Entry.Kind = EBlueprintHelperLogicNodeKind::FunctionEntry;
+		Entry.Name = TargetName;
+		Entry.NodeRef = SyntheticFunctionEntryNodeRef();
+		Entry.NodePath = MakeGraphNodePath(EffectiveGraphName, Entry.NodeRef);
+		return Entry;
+	}
+
+	static FBlueprintHelperLogicNode MakeSyntheticFunctionEntryNode(const FString& TargetName)
+	{
+		FBlueprintHelperLogicNode Node;
+		Node.Kind = EBlueprintHelperLogicNodeKind::FunctionEntry;
+		Node.Name = TargetName;
+		Node.NodeRef = SyntheticFunctionEntryNodeRef();
+		return Node;
+	}
+
+	static FBlueprintHelperLogicNode MakeSyntheticFunctionResultNode()
+	{
+		FBlueprintHelperLogicNode Node;
+		Node.Kind = EBlueprintHelperLogicNodeKind::Return;
+		Node.Name = TEXT("Return");
+		Node.NodeRef = SyntheticFunctionResultNodeRef();
+		return Node;
+	}
+
+	static bool DoesGraphReferenceNodeId(
+		const TSharedPtr<FJsonObject>& GraphObj,
+		const FString& NodeId)
+	{
+		if (!GraphObj.IsValid() || NodeId.IsEmpty())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
+		if (!GraphObj->TryGetArrayField(TEXT("links"), LinksArray) || !LinksArray)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& LinkVal : *LinksArray)
+		{
+			const TSharedPtr<FJsonObject>* LinkObjPtr = nullptr;
+			if (!LinkVal.IsValid() || !LinkVal->TryGetObject(LinkObjPtr) || !LinkObjPtr || !LinkObjPtr->IsValid())
+			{
+				continue;
+			}
+
+			const FString SourceId = ReadFirstStringField(*LinkObjPtr, TEXT("from_id"), TEXT("source_id"), TEXT("from_node"));
+			const FString TargetId = ReadFirstStringField(*LinkObjPtr, TEXT("to_id"), TEXT("target_id"), TEXT("to_node"));
+			if (SourceId.Equals(NodeId, ESearchCase::IgnoreCase)
+				|| TargetId.Equals(NodeId, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	static FString ExtractNodeId(const TSharedPtr<FJsonObject>& NodeObj, int32 NodeIndex)
 	{
 		const FString NodeId = ReadFirstStringField(NodeObj, TEXT("id"), TEXT("node_id"), TEXT("node_guid"));
@@ -455,6 +545,14 @@ public:
 			}
 		};
 
+		for (int32 PayloadIndex = 0; PayloadIndex < Nodes.Num(); ++PayloadIndex)
+		{
+			if (IsSyntheticFunctionBoundaryNodeRef(Nodes[PayloadIndex].NodeRef))
+			{
+				AddNodeAlias(Nodes[PayloadIndex].NodeRef, PayloadIndex, Nodes[PayloadIndex].NodeRef);
+			}
+		}
+
 		for (int32 NodeIndex = 0; NodeIndex < GraphNodesArray->Num(); ++NodeIndex)
 		{
 			const TSharedPtr<FJsonValue>& NodeVal = (*GraphNodesArray)[NodeIndex];
@@ -781,7 +879,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 		return EventName.Equals(TargetName, ESearchCase::IgnoreCase);
 	};
 
-	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName](
+	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName, Scope, &TargetName](
 		const TSharedPtr<FJsonObject>& GraphObj,
 		const FString& EffectiveGraphName) -> bool
 	{
@@ -806,7 +904,12 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 			}
 		}
 
-		if (EntryIndex == INDEX_NONE)
+		const bool bCanSynthesizeFunctionEntry =
+			Scope == EBlueprintHelperLogicScope::TargetFunction
+			&& FBlueprintHelperLogicGroupBuilderLocalUtils::DoesGraphNameMatchTargetFunction(EffectiveGraphName, TargetName)
+			&& NodesArray->Num() > 0;
+
+		if (EntryIndex == INDEX_NONE && !bCanSynthesizeFunctionEntry)
 		{
 			return false;
 		}
@@ -815,6 +918,14 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 		Payload.Entry.Reset();
 		Payload.Nodes.Reset();
 		Payload.Groups.Reset();
+
+		if (EntryIndex == INDEX_NONE && bCanSynthesizeFunctionEntry)
+		{
+			Payload.Entry = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionEntry(
+				EffectiveGraphName,
+				TargetName);
+			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionEntryNode(TargetName));
+		}
 
 		for (int32 i = 0; i < NodesArray->Num(); ++i)
 		{
@@ -833,6 +944,15 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 			}
 
 			Payload.Nodes.Add(ConvertNode(*NodeObjPtr, i));
+		}
+
+		if (EntryIndex == INDEX_NONE
+			&& bCanSynthesizeFunctionEntry
+			&& FBlueprintHelperLogicGroupBuilderLocalUtils::DoesGraphReferenceNodeId(
+				GraphObj,
+				FBlueprintHelperLogicGroupBuilderLocalUtils::SyntheticFunctionResultNodeRef()))
+		{
+			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionResultNode());
 		}
 
 		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(GraphObj, Payload.Nodes);
