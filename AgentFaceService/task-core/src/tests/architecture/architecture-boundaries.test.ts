@@ -180,6 +180,38 @@ test('CLI and MCP production task paths depend on the task compiler service boun
   );
 });
 
+test('GraphWrite runtime does not retain deprecated layout mutation support', () => {
+  const productionFiles = [
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Runtime', 'TaskRuntime', 'BlueprintHelperTaskRuntimeService.cpp'),
+    path.resolve(UE_SOURCE_ROOT, 'Public', 'Shared', 'GraphWrite', 'BlueprintHelperPatchGraphTypes.h'),
+    path.resolve(UE_SOURCE_ROOT, 'Public', 'Systems', 'ToolClusters', 'GraphWrite', 'BlueprintHelperPatchBlueprintGraphService.h'),
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Systems', 'ToolClusters', 'GraphWrite', 'BlueprintHelperPatchBlueprintGraphService.cpp'),
+  ];
+
+  for (const filePath of productionFiles) {
+    const source = fs.readFileSync(filePath, 'utf8');
+    assert.doesNotMatch(source, /set_node_position/u, toRepoRelativePath(filePath));
+    assert.doesNotMatch(source, /\bnode_position\b/u, toRepoRelativePath(filePath));
+    assert.doesNotMatch(source, /\bSetNodePosition\b/u, toRepoRelativePath(filePath));
+    assert.doesNotMatch(source, /\bNodePosition\b/u, toRepoRelativePath(filePath));
+    assert.doesNotMatch(source, /DEPRECATED_LAYOUT/u, toRepoRelativePath(filePath));
+  }
+});
+
+test('Review panel command service does not retain archive-baseline reject fallback', () => {
+  const filePath = path.resolve(
+    UE_SOURCE_ROOT,
+    'Private',
+    'UI',
+    'Review',
+    'BlueprintHelperReviewPanelCommandService.cpp',
+  );
+  const source = fs.readFileSync(filePath, 'utf8');
+
+  assert.doesNotMatch(source, /Reject requires archive-baseline rollback service/u);
+  assert.doesNotMatch(source, /RollbackMode\s*=\s*TEXT\("archive_baseline"\)/u);
+});
+
 function findIncludeViolations(
   roots: string[],
   forbiddenIncludePattern: RegExp,

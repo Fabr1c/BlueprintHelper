@@ -127,8 +127,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 	Result.bSucceeded = false;
 	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-	Result.RollbackMode = TEXT("archive_baseline");
-	Result.Message = TEXT("Archive-baseline rollback backend is not wired in the first Review UI slice.");
+	Result.Message = TEXT("persisted_review_targets_not_found");
 	return Result;
 }
 

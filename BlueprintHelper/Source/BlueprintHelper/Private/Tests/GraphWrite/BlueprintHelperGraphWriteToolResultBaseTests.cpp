@@ -3283,6 +3283,10 @@ bool FBlueprintHelperCompositeCreateBlueprintFeatureExecuteReadBackTest::RunTest
 			ComponentName,
 			VariableName));
 
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("composite create_blueprint_feature execute"),
+		ExecuteResult);
 	TestTrue(TEXT("composite create_blueprint_feature execute succeeds"), ExecuteResult.bOk);
 	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
 	{

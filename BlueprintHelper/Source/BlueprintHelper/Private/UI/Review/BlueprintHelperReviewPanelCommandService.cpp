@@ -102,8 +102,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewPanelCommandService::Re
 	Result.bSucceeded = false;
 	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-	Result.RollbackMode = TEXT("archive_baseline");
-	Result.Message = TEXT("Reject requires archive-baseline rollback service.");
+	Result.Message = TEXT("review_action_service_unavailable");
 	return Result;
 }
 
@@ -122,8 +121,7 @@ FBlueprintHelperReviewPanelCommandService::RejectLifecycleRootVisibleChange(
 	Result.RootResult.bSucceeded = false;
 	Result.RootResult.TargetEvidenceId = Root.LatestEvidenceId;
 	Result.RootResult.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-	Result.RootResult.RollbackMode = TEXT("archive_baseline");
-	Result.RootResult.Message = TEXT("Reject requires archive-baseline rollback service.");
+	Result.RootResult.Message = TEXT("review_action_service_unavailable");
 	return Result;
 }
 

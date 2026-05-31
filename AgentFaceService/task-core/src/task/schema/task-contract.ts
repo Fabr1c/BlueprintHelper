@@ -138,19 +138,17 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         block_implementation: 'block',
       },
       body_schema: 'BlueprintLogicSpec.v1',
-      options: ['strict', 'preserve_layout'],
+      options: ['strict'],
     },
     patch_owned_graph: {
-      kinds: ['set_pin_default', 'set_node_comment', 'set_node_position'],
+      kinds: ['set_pin_default', 'set_node_comment'],
       scope_derivation: {
         set_pin_default: 'pin_default',
         set_node_comment: 'node_comment',
-        set_node_position: 'node_position',
       },
       field_shapes: {
         set_pin_default: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'target_ref.pin_ref', 'target_ref.link_ref', 'value'],
         set_node_comment: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'value'],
-        set_node_position: ['target_ref.block_id', 'target_ref.group_entry_node_path', 'target_ref.node_ref', 'patch.x|patch.y'],
       },
       block_scoped_target_ref_fields: [
         'target_ref.block_id',
@@ -626,7 +624,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'replace_body',
       'set_pin_default',
       'set_node_comment',
-      'set_node_position',
       'insert_flow',
       'insert_external_flow',
       'set_external_pin_default',
@@ -638,7 +635,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'replace_body',
       'set_pin_default',
       'set_node_comment',
-      'set_node_position',
       'insert_flow',
       'insert_external_flow',
       'set_external_pin_default',
@@ -700,7 +696,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         ],
         args_optional_paths: [
           'args.options.strict',
-          'args.options.preserve_layout',
         ],
         dry_run_bridge_path: 'options.dry_run',
       },

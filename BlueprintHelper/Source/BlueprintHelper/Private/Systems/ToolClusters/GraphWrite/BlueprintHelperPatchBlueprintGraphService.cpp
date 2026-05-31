@@ -383,8 +383,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	}
 
 	// 4. 寮€濮嬩慨鏀?
-	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodePosition
-		&& Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
+	const bool bShouldRecordReview = Request.PatchType != EBlueprintHelperPatchType::SetNodeComment;
 	FString PatchTargetKey;
 	FString PatchBeforeSnapshotJson;
 	if (bShouldRecordReview && ResolvedTarget.Node)
@@ -632,8 +631,6 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			Request.PatchPayload->TryGetStringField(TEXT("comment"), Comment);
 		return ApplySetNodeComment(Target.Node, Comment, bOutChanged, OutError);
 	}
-	case EBlueprintHelperPatchType::SetNodePosition:
-		return ApplySetNodePosition(Target.Node, Request.PatchPayload, bOutChanged, OutError);
 	case EBlueprintHelperPatchType::ConnectPins:
 	{
 		// 鐩爣 Pin 浠?patched_ref.pin_ref 瑙ｆ瀽
@@ -739,47 +736,6 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodeComment(
 	Node->Modify();
 	Node->NodeComment = NewComment;
 	bOutChanged = true;
-	return true;
-}
-
-// 鈹€鈹€鈹€ set_node_position 鈹€鈹€鈹€
-
-bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodePosition(
-	UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Payload, bool& bOutChanged, FString& OutError) const
-{
-	if (!Node || !Payload.IsValid())
-	{
-		OutError = TEXT("target_node_not_found");
-		return false;
-	}
-
-	int32 NewX = 0, NewY = 0;
-	bool bHasX = false, bHasY = false;
-	if (Payload->TryGetNumberField(TEXT("x"), NewX)) { bHasX = true; }
-	else if (Payload->TryGetNumberField(TEXT("node_x"), NewX)) { bHasX = true; }
-	if (Payload->TryGetNumberField(TEXT("y"), NewY)) { bHasY = true; }
-	else if (Payload->TryGetNumberField(TEXT("node_y"), NewY)) { bHasY = true; }
-
-	if (!bHasX && !bHasY)
-	{
-		OutError = TEXT("missing x/y position payload.");
-		return false;
-	}
-
-	const int32 OldX = Node->NodePosX;
-	const int32 OldY = Node->NodePosY;
-
-	if (OldX == NewX && OldY == NewY)
-	{
-		bOutChanged = false;
-		return true;
-	}
-
-	Node->Modify();
-	if (bHasX) Node->NodePosX = NewX;
-	if (bHasY) Node->NodePosY = NewY;
-	bOutChanged = true;
-	Node->GetGraph()->NotifyGraphChanged();
 	return true;
 }
 

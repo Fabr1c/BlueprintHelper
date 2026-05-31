@@ -604,7 +604,6 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             },
             options: {
               strict: true,
-              preserve_layout: false,
             },
           },
         },
@@ -752,7 +751,6 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           },
           options: {
             strict: true,
-            preserve_layout: false,
           },
         },
       },
@@ -794,7 +792,6 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         },
         options: {
           strict: true,
-          preserve_layout: false,
         },
       },
     ]);
@@ -857,20 +854,11 @@ describe('TaskSpec GraphWrite Append compiler', () => {
     ]);
   });
 
-  it('compiles node comment and node position patches into runtime-ready structured graph_write IR', () => {
+  it('rejects deprecated node position patches before GraphWrite lowering', () => {
     const spec = makeTaskSpec({
       behavior: {
         graph_strategy: 'patch_owned_graph',
         patches: [
-          {
-            kind: 'set_node_comment',
-            target_ref: {
-              block_id: 'BH_DoorFeature_ToggleDoor',
-              group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'nodes[0]',
-            },
-            value: 'Check whether the door is open.',
-          },
           {
             kind: 'set_node_position',
             target_ref: {
@@ -887,35 +875,10 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       },
     });
 
-    const plan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
-
-    assert.deepEqual((plan.steps as Array<Record<string, any>>).map((step) => step.write.ops[0]), [
-      {
-        op: 'set_node_comment',
-        patch_scope: 'node_comment',
-        patched_ref: {
-          block_id: 'BH_DoorFeature_ToggleDoor',
-          group_entry_node_path: 'logic.groups[0].entry.node_path',
-          node_ref: 'nodes[0]',
-        },
-        patch: {
-          comment: 'Check whether the door is open.',
-        },
-      },
-      {
-        op: 'set_node_position',
-        patch_scope: 'node_position',
-        patched_ref: {
-          block_id: 'BH_DoorFeature_ToggleDoor',
-          group_entry_node_path: 'logic.groups[0].entry.node_path',
-          node_ref: 'nodes[0]',
-        },
-        patch: {
-          x: 320,
-          y: 160,
-        },
-      },
-    ]);
+    assert.throws(
+      () => compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec)),
+      /set_node_position/u,
+    );
   });
 
   it('compiles merge_owned_graph into structured graph_write IR', () => {
