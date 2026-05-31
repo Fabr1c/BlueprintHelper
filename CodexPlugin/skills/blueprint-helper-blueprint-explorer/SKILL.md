@@ -19,7 +19,7 @@ target_asset_path: "<UE asset path>"
 target_graph_or_scope: "<graph/function/event/widget/table/object scope>"
 operation_mode: "create_new | modify_existing | inspect_only | validate_only"
 requested_context: []
-read_strategy: "<summary | bounded_logic_json | task_context | reference_context>"
+read_strategy: "<find_assets | summary | bounded_logic_json | reference_context | function_chain_context>"
 allowed_tools: []
 stop_conditions: []
 reasoning: "maximum_available"

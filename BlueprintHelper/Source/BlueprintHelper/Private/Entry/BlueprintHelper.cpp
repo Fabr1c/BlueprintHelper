@@ -30,6 +30,7 @@
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
+#include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
@@ -105,6 +106,7 @@ void FBlueprintHelperModule::StartupModule()
 	DebugEntryService = MakeUnique<FBlueprintHelperDebugEntryService>(*DebugCaseStoreService, ReviewStoreService.Get());
 	LogicMdReadService = MakeUnique<FBlueprintHelperLogicMdReadService>(*ExportService);
 	LogicJsonReadService = MakeUnique<FBlueprintHelperLogicJsonReadService>(*ExportService);
+	AssetDiscoveryService = MakeUnique<FBlueprintHelperAssetDiscoveryService>();
 	AssetFactoryService = MakeUnique<FBlueprintHelperAssetFactoryService>();
 	ComponentService = MakeUnique<FBlueprintHelperComponentService>(*GraphResolver);
 	ClassSettingsService = MakeUnique<FBlueprintHelperClassSettingsService>(*GraphResolver);
@@ -181,7 +183,7 @@ void FBlueprintHelperModule::StartupModule()
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *GraphWriteServiceRegistry, *CompileAssetService, *VariableService, *ReviewStoreService);
+		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *AssetDiscoveryService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *GraphWriteServiceRegistry, *CompileAssetService, *VariableService, *ReviewStoreService);
 	const FBlueprintHelperBridgeRuntimeConfig BridgeRuntimeConfig = FBlueprintHelperBridgeRuntimeConfigResolver::Load();
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, BridgeRuntimeConfig, DebugEntryService.Get());
 	BridgeServer->Start();
@@ -233,6 +235,7 @@ void FBlueprintHelperModule::ShutdownModule()
 	ClassSettingsService.Reset();
 	ComponentService.Reset();
 	AssetFactoryService.Reset();
+	AssetDiscoveryService.Reset();
 	LogicJsonReadService.Reset();
 	LogicMdReadService.Reset();
 	DiagnosticsService.Reset();

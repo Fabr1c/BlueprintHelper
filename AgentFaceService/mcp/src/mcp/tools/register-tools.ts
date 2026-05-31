@@ -1830,69 +1830,6 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
   );
 
-  // 鈹€鈹€鈹€ 10. list_assets 鈹€鈹€鈹€
-  server.registerTool(
-    'blueprint_list_assets',
-    {
-      description: legacyDebugExpertDescription('List assets in a Content Browser directory with optional class and name filters.'),
-      inputSchema: z.object({
-        path: z.string().optional().default('/Game')
-          .describe('Content directory path, e.g. /Game/Blueprints'),
-        class_filter: z.string().optional()
-          .describe('Filter by asset class name, e.g. Blueprint, DataTable, WidgetBlueprint'),
-        name_filter: z.string().optional()
-          .describe('Filter by asset name substring'),
-        recursive: z.boolean().optional().default(true)
-          .describe('Whether to search subdirectories recursively'),
-        max_results: z.number().optional().default(200)
-          .describe('Maximum number of results to return (0 = unlimited)'),
-      }),
-    },
-    async ({ path, class_filter, name_filter, recursive, max_results }) => {
-      try {
-        const payload: Record<string, unknown> = {};
-        if (path) payload.path = path;
-        if (class_filter) payload.class_filter = class_filter;
-        if (name_filter) payload.name_filter = name_filter;
-        if (recursive !== undefined) payload.recursive = recursive;
-        if (max_results !== undefined) payload.max_results = max_results;
-        const resp = await bridge.sendCommand('list_assets', payload);
-        return toToolResult(resp);
-      } catch (err) {
-        return toErrorResult(err);
-      }
-    },
-  );
-
-  // 鈹€鈹€鈹€ 11. search_assets 鈹€鈹€鈹€
-  server.registerTool(
-    'blueprint_search_assets',
-    {
-      description: legacyDebugExpertDescription('Search for assets by keyword across the project content. Always searches recursively.'),
-      inputSchema: z.object({
-        query: z.string().describe('Search keyword (matches asset name substring)'),
-        path: z.string().optional()
-          .describe('Limit search to this content path, e.g. /Game/Blueprints'),
-        class_filter: z.string().optional()
-          .describe('Filter by asset class name'),
-        max_results: z.number().optional().default(50)
-          .describe('Maximum number of results to return'),
-      }),
-    },
-    async ({ query, path, class_filter, max_results }) => {
-      try {
-        const payload: Record<string, unknown> = { query };
-        if (path) payload.path = path;
-        if (class_filter) payload.class_filter = class_filter;
-        if (max_results !== undefined) payload.max_results = max_results;
-        const resp = await bridge.sendCommand('search_assets', payload);
-        return toToolResult(resp);
-      } catch (err) {
-        return toErrorResult(err);
-      }
-    },
-  );
-
   // 鈹€鈹€鈹€ 12. save_asset 鈹€鈹€鈹€
   server.registerTool(
     'blueprint_save_asset',

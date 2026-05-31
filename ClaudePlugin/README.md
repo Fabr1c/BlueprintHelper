@@ -16,7 +16,8 @@ The intended default flow is:
 
 ```text
 bh blueprint_get_runtime_profile
--> bh blueprinthelper_read_task_context
+-> bh blueprinthelper_find_assets when the Unreal asset path is unknown
+-> bh blueprinthelper_read_context for the resolved asset or scoped graph context
 -> Agent produces BlueprintHelper.TaskSpec.v1
 -> bh task preview
 -> bh task execute

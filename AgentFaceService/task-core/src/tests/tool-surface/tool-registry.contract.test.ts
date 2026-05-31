@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 import { successRead } from '../../result/tool-result.js';
 import { ReadFunctionChainContextInputSchema } from '../../tool-surface/bridge/function-chain-context-schema.js';
+import { bridgeCommandByToolName } from '../../tool-surface/bridge/bridge-tool-command-map.js';
 import { ReadContextInputSchema } from '../../tool-surface/bridge/read-context/read-context-schemas.js';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
@@ -21,6 +22,7 @@ const expectedToolNames = [
   'blueprinthelper_query_review_records',
   'blueprinthelper_apply_review_action',
   'blueprinthelper_read_function_chain_context',
+  'blueprinthelper_find_assets',
   'blueprinthelper_read_context_capabilities',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',
@@ -48,8 +50,6 @@ const frozenToolNames = [
   'blueprint_import_agent_graph',
   'blueprint_compile_blueprint',
   'blueprint_open_asset',
-  'blueprint_list_assets',
-  'blueprint_search_assets',
   'blueprint_save_asset',
   'blueprint_get_asset_info',
   'blueprint_list_graphs',
@@ -100,6 +100,68 @@ test('shared registry does not expose frozen direct tools', () => {
   for (const name of frozenToolNames) {
     assert.equal(names.has(name), false, name);
   }
+});
+
+test('shared bridge command map does not expose removed legacy asset discovery tools', () => {
+  for (const action of ['list', 'search']) {
+    const removedToolName = `blueprint_${action}_assets`;
+    const removedCommandName = `${action}_assets`;
+    assert.equal(frozenToolNames.includes(removedToolName), false, removedToolName);
+    assert.equal(Object.hasOwn(bridgeCommandByToolName, removedToolName), false, removedToolName);
+    assert.equal(Object.values(bridgeCommandByToolName).includes(removedCommandName), false, removedCommandName);
+  }
+});
+
+test('shared bridge command map exposes default find assets tool', () => {
+  assert.equal(bridgeCommandByToolName['blueprinthelper_find_assets'], 'find_assets');
+});
+
+test('find assets registry handler dispatches through the generic Bridge tool path', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_find_assets');
+  assert.ok(tool);
+
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.FindAssetsRequest.v1',
+    query: 'Player',
+    path_prefixes: ['/Game'],
+    asset_types: ['blueprint'],
+    limit: 20,
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>) {
+        assert.equal(command, 'find_assets');
+        assert.deepEqual(payload, {
+          schema: 'BlueprintHelper.FindAssetsRequest.v1',
+          query: 'Player',
+          path_prefixes: ['/Game'],
+          asset_types: ['blueprint'],
+          limit: 20,
+        });
+        return {
+          success: true,
+          request_id: 'find_assets_registry',
+          result: {
+            schema: 'FindAssets.v1',
+            assets: [{
+              asset_path: '/Game/BP_Player.BP_Player',
+              asset_type: 'blueprint',
+              asset_class: '/Script/Engine.Blueprint',
+            }],
+            page: {
+              limit: 20,
+              has_more: false,
+            },
+          },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, 'blueprinthelper_find_assets');
+  assert.equal(result.data?.['schema'], 'FindAssets.v1');
 });
 
 test('read agent guide resolves from task-core cwd through plugin ancestor layout', async () => {

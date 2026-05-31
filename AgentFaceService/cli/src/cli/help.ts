@@ -113,6 +113,26 @@ const helpEntries: Record<string, HelpEntry> = {
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_function_chain_context_template.json`,
     ],
   },
+  blueprinthelper_find_assets: {
+    summary: 'Find Unreal assets through AssetRegistry before a target asset_path is known.',
+    usage: [
+      'bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result',
+      'bh blueprinthelper_find_assets --json "{\\"schema\\":\\"BlueprintHelper.FindAssetsRequest.v1\\",\\"query\\":\\"Player\\",\\"path_prefixes\\":[\\"/Game\\"],\\"asset_types\\":[\\"blueprint\\"],\\"limit\\":25}" --format summary',
+    ],
+    input: [
+      'Root JSON: BlueprintHelper.FindAssetsRequest.v1.',
+      'Use this before blueprinthelper_read_context when the Unreal asset_path is unknown.',
+    ],
+    templates: [
+      ROOT_INDEX,
+      `${TEMPLATE_ROOT}/blueprinthelper_find_assets_template.json`,
+    ],
+    notes: [
+      'Resolve one explicit Unreal asset_path before preview_task or any write request.',
+      'If multiple candidates are returned, narrow the query or ask for confirmation before writes.',
+      'Do not infer Unreal asset_path values from filesystem .uasset paths.',
+    ],
+  },
   blueprinthelper_preview_task: {
     summary: 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.',
     usage: [
@@ -326,6 +346,7 @@ function globalHelpText(): string {
     'blueprinthelper_read_context_capabilities',
     'blueprinthelper_read_reference_context',
     'blueprinthelper_read_function_chain_context',
+    'blueprinthelper_find_assets',
     'blueprinthelper_preview_task',
     'blueprinthelper_request_write_session',
     'blueprinthelper_execute_task',

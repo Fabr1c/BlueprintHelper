@@ -12,6 +12,7 @@
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Systems/Debug/BlueprintHelperContextService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
+#include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
@@ -112,8 +113,7 @@ public:
 			TEXT("export_to_json"),
 			TEXT("export_logic"),
 			TEXT("get_asset_info"),
-			TEXT("list_assets"),
-			TEXT("search_assets"),
+			TEXT("find_assets"),
 			TEXT("list_graphs"),
 			TEXT("list_variables"),
 			TEXT("list_event_dispatchers"),
@@ -400,6 +400,23 @@ public:
 		return Resp;
 	}
 
+	static TSharedRef<FJsonObject> MakeFindAssetsValidationErrorResult(
+		const FBlueprintHelperBridgeValidationError& Error)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("schema"), TEXT("FindAssets.v1"));
+
+		TSharedRef<FJsonObject> ErrorJson = MakeShared<FJsonObject>();
+		ErrorJson->SetStringField(TEXT("code"), Error.Code.IsEmpty() ? TEXT("invalid_request") : Error.Code);
+		ErrorJson->SetStringField(TEXT("message"), Error.Message);
+		if (!Error.Field.IsEmpty())
+		{
+			ErrorJson->SetStringField(TEXT("field"), Error.Field);
+		}
+		Json->SetObjectField(TEXT("error"), ErrorJson);
+		return Json;
+	}
+
 	static EBlueprintHelperBridgeError DiagnosticSetToBridgeError(const FBlueprintHelperDiagnosticSet& Diagnostics)
 	{
 		for (const FBlueprintHelperDiagnosticItem& Item : Diagnostics.Items)
@@ -632,7 +649,6 @@ public:
 			SetBoolDefaultIfMissing(Options, TEXT("reconstruct_existing_nodes"), Policy.bReconstructExistingNodes);
 			SetBoolDefaultIfMissing(Options, TEXT("compile"), Policy.bCompile);
 			SetBoolDefaultIfMissing(Options, TEXT("save"), Policy.bSave);
-			SetStringDefaultIfMissing(Options, TEXT("layout"), Policy.Layout);
 			break;
 		}
 		default:
@@ -699,6 +715,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperValidationService& InValidation,
 	const FBlueprintHelperContextService& InContext,
 	const FBlueprintHelperAssetBrowseService& InAssetBrowse,
+	const FBlueprintHelperAssetDiscoveryService& InAssetDiscoveryService,
 	const FBlueprintHelperBlueprintStructureService& InStructure,
 	const FBlueprintHelperWidgetService& InWidget,
 	const FBlueprintHelperPropertyReflectionService& InPropertyReflection,
@@ -721,6 +738,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ValidationService(InValidation)
 	, ContextService(InContext)
 	, AssetBrowseService(InAssetBrowse)
+	, AssetDiscoveryRoutes(InAssetDiscoveryService)
 	, StructureService(InStructure)
 	, UMGWidgetRoutes(InWidget)
 	, ObjectPropertyRoutes(InPropertyReflection)
@@ -779,6 +797,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 				ValidationError.Field);
 			Resp.Result = Result.ToJson();
 		}
+		else if (Request.Command == TEXT("find_assets"))
+		{
+			Resp.Result = FBlueprintHelperBridgeRouterLocalUtils::MakeFindAssetsValidationErrorResult(ValidationError);
+		}
 		return Resp;
 	}
 	if (!FBlueprintHelperRequestValidator::ValidateAuthorization(Request, ValidationError))
@@ -825,10 +847,14 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("export_logic", SharedServices, HandleExportLogic)
 
 	BLUEPRINTHELPER_ROUTE("open_asset", AssetBrowser, HandleOpenAsset)
-	BLUEPRINTHELPER_ROUTE("list_assets", AssetBrowser, HandleListAssets)
-	BLUEPRINTHELPER_ROUTE("search_assets", AssetBrowser, HandleSearchAssets)
 	BLUEPRINTHELPER_ROUTE("save_asset", AssetBrowser, HandleSaveAsset)
 	BLUEPRINTHELPER_ROUTE("get_asset_info", AssetBrowser, HandleGetAssetInfo)
+
+	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::AssetDiscovery &&
+		FBlueprintHelperAssetDiscoveryBridgeRoutes::IsAssetDiscoveryCommand(Request.Command))
+	{
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return AssetDiscoveryRoutes.HandleRequest(Request); });
+	}
 
 	BLUEPRINTHELPER_ROUTE("list_graphs", BlueprintStructure, HandleListGraphs)
 	BLUEPRINTHELPER_ROUTE("list_variables", BlueprintStructure, HandleListVariables)
@@ -1442,133 +1468,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleOpenAsset(
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = MakeShared<FJsonObject>();
 	Resp.Result->SetStringField(TEXT("opened"), AssetPath);
-	return Resp;
-}
-
-// ─── list_assets ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListAssets(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FBlueprintHelperListAssetsRequest ListReq;
-	if (Req.Payload.IsValid())
-	{
-		FBlueprintHelperBridgeValidationError ParseError;
-		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("path"), false, ListReq.Path, ParseError)
-			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("class_filter"), false, ListReq.ClassFilter, ParseError)
-			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("name_filter"), false, ListReq.NameFilter, ParseError)
-			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolOption(Req.Payload, TEXT("recursive"), ListReq.bRecursive, ParseError))
-		{
-			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-		}
-		if (Req.Payload->HasField(TEXT("max_results")))
-		{
-			double MaxResults = 0.0;
-			if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
-			{
-				return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-			}
-			ListReq.MaxResults = static_cast<int32>(MaxResults);
-		}
-	}
-
-	FBlueprintHelperListAssetsResult ListResult = AssetBrowseService.ListAssets(ListReq);
-
-	if (!ListResult.bSuccess)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ListResult.ErrorMessage);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetNumberField(TEXT("total_count"), ListResult.TotalCount);
-	Resp.Result->SetNumberField(TEXT("returned_count"), ListResult.Assets.Num());
-
-	TArray<TSharedPtr<FJsonValue>> AssetArray;
-	for (const FBlueprintHelperAssetInfo& Info : ListResult.Assets)
-	{
-		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-		Obj->SetStringField(TEXT("path"), Info.AssetPath);
-		Obj->SetStringField(TEXT("name"), Info.AssetName);
-		Obj->SetStringField(TEXT("class"), Info.AssetClass);
-		if (!Info.ParentClass.IsEmpty())
-		{
-			Obj->SetStringField(TEXT("parent_class"), Info.ParentClass);
-		}
-		AssetArray.Add(MakeShared<FJsonValueObject>(Obj));
-	}
-	Resp.Result->SetArrayField(TEXT("assets"), AssetArray);
-
-	return Resp;
-}
-
-// ─── search_assets ───
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSearchAssets(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FBlueprintHelperListAssetsRequest SearchReq;
-	if (Req.Payload.IsValid())
-	{
-		FBlueprintHelperBridgeValidationError ParseError;
-		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("path"), false, SearchReq.Path, ParseError)
-			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("class_filter"), false, SearchReq.ClassFilter, ParseError)
-			|| !FBlueprintHelperBridgeRouterLocalUtils::TryReadStringField(Req.Payload, TEXT("query"), true, SearchReq.NameFilter, ParseError))
-		{
-			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-		}
-		if (Req.Payload->HasField(TEXT("max_results")))
-		{
-			double MaxResults = 0.0;
-			if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadNumberField(Req.Payload, TEXT("max_results"), false, MaxResults, ParseError))
-			{
-				return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
-			}
-			SearchReq.MaxResults = static_cast<int32>(MaxResults);
-		}
-	}
-
-	if (SearchReq.NameFilter.IsEmpty())
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("payload 缺少 query 字段。"));
-	}
-
-	FBlueprintHelperListAssetsResult SearchResult = AssetBrowseService.SearchAssets(SearchReq);
-
-	if (!SearchResult.bSuccess)
-	{
-		return FBlueprintHelperBridgeResponse::Error(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			SearchResult.ErrorMessage);
-	}
-
-	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetNumberField(TEXT("total_count"), SearchResult.TotalCount);
-	Resp.Result->SetNumberField(TEXT("returned_count"), SearchResult.Assets.Num());
-
-	TArray<TSharedPtr<FJsonValue>> AssetArray;
-	for (const FBlueprintHelperAssetInfo& Info : SearchResult.Assets)
-	{
-		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-		Obj->SetStringField(TEXT("path"), Info.AssetPath);
-		Obj->SetStringField(TEXT("name"), Info.AssetName);
-		Obj->SetStringField(TEXT("class"), Info.AssetClass);
-		if (!Info.ParentClass.IsEmpty())
-		{
-			Obj->SetStringField(TEXT("parent_class"), Info.ParentClass);
-		}
-		AssetArray.Add(MakeShared<FJsonValueObject>(Obj));
-	}
-	Resp.Result->SetArrayField(TEXT("assets"), AssetArray);
-
 	return Resp;
 }
 

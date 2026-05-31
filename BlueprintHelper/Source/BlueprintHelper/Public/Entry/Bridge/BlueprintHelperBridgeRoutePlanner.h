@@ -11,6 +11,7 @@ enum class EBlueprintHelperBridgeRouteCluster : uint8
 	Debug,
 	SharedServices,
 	AssetBrowser,
+	AssetDiscovery,
 	TaskRuntime,
 	GraphWrite,
 	BlueprintVariables,

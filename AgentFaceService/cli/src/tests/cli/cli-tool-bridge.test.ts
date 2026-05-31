@@ -67,6 +67,93 @@ test('tool help is specific for preview wrapper and bare TaskSpec templates', as
   assert.match(output, /Grouped command input: bare BlueprintHelper\.TaskSpec\.v1 file/);
 });
 
+test('tool help is specific for find assets and points to the request template', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_find_assets', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_find_assets/);
+  assert.match(output, /bh blueprinthelper_find_assets --file <find-assets\.json> --select status,artifacts\.full_result/);
+  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_find_assets_template\.json/);
+  assert.doesNotMatch(output, /Default tool names:/);
+});
+
+test('direct find assets calls matching Bridge command and returns compact FindAssets payload', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-find-assets-'));
+  const payload = {
+    schema: 'BlueprintHelper.FindAssetsRequest.v1',
+    query: 'Player',
+    path_prefixes: ['/Game'],
+    asset_types: ['blueprint'],
+    limit: 25,
+  };
+  const bridge = {
+    sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
+      calls.push({ command, payload: commandPayload });
+      return {
+        request_id: 'find_assets',
+        success: true,
+        result: {
+          schema: 'FindAssets.v1',
+          assets: [
+            {
+              asset_path: '/Game/Blueprints/BP_Player.BP_Player',
+              asset_name: 'BP_Player',
+              asset_type: 'blueprint',
+              asset_class: '/Script/Engine.Blueprint',
+              package_path: '/Game/Blueprints',
+            },
+          ],
+          page: {
+            limit: 25,
+            has_more: false,
+          },
+        },
+      };
+    },
+  };
+
+  const exitCode = await runCli({
+    argv: [
+      'blueprinthelper_find_assets',
+      '--json',
+      JSON.stringify(payload),
+      '--format',
+      'full',
+      '--artifact-dir',
+      artifactDir,
+    ],
+    cwd: process.cwd(),
+    bridge,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [{ command: 'find_assets', payload }]);
+  const output = JSON.parse(writes.join(''));
+  assert.equal(output.status, 'completed');
+  assert.equal(output.tool_name, 'blueprinthelper_find_assets');
+  assert.equal(output.tool_result.data.schema, 'FindAssets.v1');
+  assert.equal(output.tool_result.data.assets[0].asset_path, '/Game/Blueprints/BP_Player.BP_Player');
+  assert.equal(output.tool_result.data.page.limit, 25);
+  assert.deepEqual(
+    collectForbiddenKeys(output.tool_result.data, new Set(['cursor', 'next_cursor', 'total_count'])),
+    [],
+  );
+});
+
 test('grouped command help includes the matching template path', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
@@ -390,5 +477,24 @@ function restoreEnv(name: string, value: string | undefined): void {
     return;
   }
   process.env[name] = value;
+}
+
+function collectForbiddenKeys(value: unknown, forbidden: ReadonlySet<string>, path = '$'): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectForbiddenKeys(item, forbidden, `${path}[${index}]`));
+  }
+  if (value === null || typeof value !== 'object') {
+    return [];
+  }
+
+  const matches: string[] = [];
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${key}`;
+    if (forbidden.has(key)) {
+      matches.push(childPath);
+    }
+    matches.push(...collectForbiddenKeys(entry, forbidden, childPath));
+  }
+  return matches;
 }
 

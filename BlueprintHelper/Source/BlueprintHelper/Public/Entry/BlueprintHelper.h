@@ -27,6 +27,7 @@ class FBlueprintHelperDebugCaseStoreService;
 class FBlueprintHelperDebugEntryService;
 class FBlueprintHelperLogicMdReadService;
 class FBlueprintHelperLogicJsonReadService;
+class FBlueprintHelperAssetDiscoveryService;
 class FBlueprintHelperAssetFactoryService;
 class FBlueprintHelperComponentService;
 class FBlueprintHelperClassSettingsService;
@@ -138,6 +139,9 @@ private:
 
 	// ─── Logic Json ───
 	TUniquePtr<FBlueprintHelperLogicJsonReadService> LogicJsonReadService;
+
+	// ─── Asset Discovery ───
+	TUniquePtr<FBlueprintHelperAssetDiscoveryService> AssetDiscoveryService;
 
 	// ─── Asset Factory ───
 	TUniquePtr<FBlueprintHelperAssetFactoryService> AssetFactoryService;
