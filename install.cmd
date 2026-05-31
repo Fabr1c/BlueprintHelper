@@ -2,32 +2,75 @@
 setlocal EnableExtensions EnableDelayedExpansion
 if "%~1"=="" goto InteractiveMode
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0InstallScripts\install.ps1" %*
 exit /b !ERRORLEVEL!
 
 :InteractiveMode
-call :SetInstallTips
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" -Interactive -InstallTipsBase64 "!BH_INSTALL_TIPS_B64!"
+set "BH_INSTALL_EXIT=0"
+set "BH_INSTALL_TEMP_BASE=%TEMP%\blueprinthelper-install-%RANDOM%-%RANDOM%"
+set "BH_INSTALL_DEFAULTS=!BH_INSTALL_TEMP_BASE!.defaults.json"
+set "BH_INSTALL_SELECTION=!BH_INSTALL_TEMP_BASE!.selection.json"
+set "BH_INSTALL_NODE_LOG=!BH_INSTALL_TEMP_BASE!.node.log"
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo BlueprintHelper install failed.
+  echo Node.js was not found on PATH.
+  set "BH_INSTALL_EXIT=1"
+  goto InstallFailed
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0InstallScripts\install.ps1" -WriteNodeDefaults "!BH_INSTALL_DEFAULTS!"
+set "BH_INSTALL_EXIT=!ERRORLEVEL!"
+if not "!BH_INSTALL_EXIT!"=="0" goto InstallFailed
+
+node "%~dp0InstallScripts\install-prompts.mjs" --raw-only --defaults "!BH_INSTALL_DEFAULTS!" --out "!BH_INSTALL_SELECTION!" 2>"!BH_INSTALL_NODE_LOG!"
+set "BH_INSTALL_EXIT=!ERRORLEVEL!"
+if "!BH_INSTALL_EXIT!"=="20" goto InstallCancelled
+if "!BH_INSTALL_EXIT!"=="10" goto InstallRawUnavailable
+if not "!BH_INSTALL_EXIT!"=="0" goto InstallFailed
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0InstallScripts\install.ps1" -SelectionFile "!BH_INSTALL_SELECTION!"
 set "BH_INSTALL_EXIT=!ERRORLEVEL!"
 if "!BH_INSTALL_EXIT!"=="0" goto InstallSucceeded
+goto InstallFailed
+
+:InstallCancelled
+call :CleanupTemp
+echo.
+echo BlueprintHelper install cancelled.
+echo Press any key to close this window.
+pause >nul
+exit /b 20
+
+:InstallRawUnavailable
+call :CleanupTemp
+echo.
+echo BlueprintHelper install could not open the arrow-key form UI in this terminal.
+echo Start install.cmd by double-clicking it or from a normal interactive cmd window.
+echo Press any key to close this window.
+pause >nul
+exit /b 10
+
+:InstallFailed
 echo.
 echo BlueprintHelper install failed with exit code !BH_INSTALL_EXIT!.
+if exist "!BH_INSTALL_NODE_LOG!" type "!BH_INSTALL_NODE_LOG!"
+call :CleanupTemp
 echo Review the error above, then press any key to close this window.
 pause >nul
 exit /b !BH_INSTALL_EXIT!
 
 :InstallSucceeded
+call :CleanupTemp
 echo.
 echo BlueprintHelper install completed successfully.
 echo Press any key to close this window.
 pause >nul
 exit /b 0
 
-:SetInstallTips
-set "BH_INSTALL_TIPS_B64="
-set "BH_INSTALL_TIPS_B64=!BH_INSTALL_TIPS_B64!Qmx1ZXByaW50SGVscGVyIOWuieijheaPkOekugotLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0K6L+Z5piv5Lqk5LqS5byP5a6J6KOF5YWl5Y+j44CC55u05o6l5oyJIEVudGVyIOS8muS9v+eUqOW9k+WJjemXrumimOaYvuekuueahOm7mOiupOWAvOOAggrlpoLmnpzlj6rmmK/mg7PlhYjop4Llr5/mtYHnqIvvvIzlj6/ku6XlnKggUG93ZXJTaGVsbCDkuK3ov5DooYzvvJoKICAuXGluc3RhbGwuY21kIC1JbnRlcmFjdGl2ZSAtV2hhdElmCgrkuLvopoHpgInpobnor7TmmI7vvJoKICAxLiBCdWlsZCBBZ2VudEZhY2VTZXJ2aWNlIHBhY2thZ2VzCiAgICAg5a6J6KOF5bm25p6E5bu6IENMSeOAgVB5dGhvbiDnvJbmjpLlsYLlhbHk"
-set "BH_INSTALL_TIPS_B64=!BH_INSTALL_TIPS_B64!uqvmoLjlv4PjgIFNQ1Ag5YW85a655bGC562JIE5vZGUg5YyF44CCCiAgICAg6ZyA6KaB5pys5py6IFBBVEgg5Lit6IO95om+5YiwIE5vZGUuanMg5ZKMIG5wbeOAguiEmuacrOS8muS8mOWFiOS9v+eUqCBucG0uY21k44CCCgogIDIuIExpbmsgdGhlIGJoIENMSSBnbG9iYWxseQogICAgIOaJp+ihjCBucG0gbGlua++8jOiuqSBiaCDlkowgYmx1ZXByaW50aGVscGVyLWNsaSDmiJDkuLrlhajlsYDlkb3ku6TjgIIKICAgICDlpoLmnpzlj6rmg7PlhYjkvb/nlKjmnKzku5PlupPlhoXnmoTlkb3ku6TvvIzlj6/ku6XpgInmi6kgbuOAggoKICAzLiBJbnN0YWxsIENvZGV4IERlc2t0b3AgcGx1Z2luIHN1cHBvcnQKICAgICDkvJrlhpnlhaXnlKjmiLfnm67lvZXkuIvnmoQgQ29kZXgg5o+S5Lu2"
-set "BH_INSTALL_TIPS_B64=!BH_INSTALL_TIPS_B64!5YWl5Y+j44CBc3ViYWdlbnRzIOWSjCBsaWZlY3ljbGUtb25seSBNQ1Ag6YWN572u44CCCiAgICAg5YW45Z6L5L2N572u5YyF5ousICVVU0VSUFJPRklMRSVccGx1Z2luc+OAgSVVU0VSUFJPRklMRSVcLmFnZW50cyDlkowgJVVTRVJQUk9GSUxFJVwuY29kZXjjgIIKCiAgNC4gSW5zdGFsbCBDbGF1ZGUgQ29kZSBwbHVnaW4gc3VwcG9ydAogICAgIOS8mui+k+WHuiBDbGF1ZGUgQ29kZSDnmoQgbWFya2V0cGxhY2Ug5ZKMIGluc3RhbGwg5ZG95Luk77yM5bm25Y+v5a6J6KOFIENsYXVkZSBzaWRlQWdlbnQg5a6a5LmJ44CCCgogIDUuIFdyaXRlIG9yIHVwZGF0ZSBwcm9qZWN0IGFnZW50LXByb2ZpbGUuanNvbgogICAgIOS8muWQkeiHquWKqOWPkeeOsOWIsOeahCAudXByb2plY3Qg5omA5Zyo"
-set "BH_INSTALL_TIPS_B64=!BH_INSTALL_TIPS_B64!6aG555uu5YaZ5YWlIC5ibHVlcHJpbnRoZWxwZXJcYWdlbnQtcHJvZmlsZS5qc29u44CCCiAgICAg5aaC5p6c5LiN56Gu5a6a5b2T5YmN55uu5b2V5a+55bqU5ZOq5LiqIFVFIOmhueebru+8jOW7uuiuruWFiOmAieaLqSBu44CCCgogIDYuIENvcHkgdGhlIFVFIHBsdWdpbiBpbnRvIHRoZSBlbmdpbmUgUGx1Z2lucy9NYXJrZXRwbGFjZSBmb2xkZXIKICAgICDlj6rmnInmg7PmioogVUUg5L6n5o+S5Lu25a6J6KOF5Yiw5byV5pOO55uu5b2V5pe25omN6YCJ5oupIHnjgIIKICAgICDpgInmi6kgeSDlkI7pnIDopoHmj5DkvpsgRW5naW5lIHBsdWdpbiB0YXJnZXQgZGlyZWN0b3J5IOaIliBVRSByb29044CCCgrlpLHotKXmjpLmn6XvvJoKICAtIG5wbSDmiqXplJnml7bvvIzlhYjnnIvnrKzk"
-set "BH_INSTALL_TIPS_B64=!BH_INSTALL_TIPS_B64!uIDmnaHlpLHotKXnmoQgbnBtIOWRveS7pOWSjCBleGl0IGNvZGXjgIIKICAtIENvZGV4IOaPkuS7tui3r+W+hOW3suWtmOWcqOS4lOaMh+WQkeWFtuS7luS9jee9ruaXtu+8jOWPr+ehruiupOWQjuS9v+eUqCAtRm9yY2Ug6YeN6LeR44CCCiAgLSDlronoo4XlpLHotKXml7bmnKznqpflj6PkvJrlgZzkvY/vvIzmlrnkvr/lpI3liLbkuIrmlrnplJnor6/kv6Hmga/jgIIKLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCg=="
+:CleanupTemp
+if exist "!BH_INSTALL_DEFAULTS!" del /q "!BH_INSTALL_DEFAULTS!" >nul 2>nul
+if exist "!BH_INSTALL_SELECTION!" del /q "!BH_INSTALL_SELECTION!" >nul 2>nul
+if exist "!BH_INSTALL_NODE_LOG!" del /q "!BH_INSTALL_NODE_LOG!" >nul 2>nul
 exit /b 0

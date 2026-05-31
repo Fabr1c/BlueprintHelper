@@ -48,7 +48,7 @@ install.cmd
 
 ### Codex Desktop
 
-交互式安装在启用 Codex subagents 时会显示 subagent 模型表单。表单只列出推荐组合：`gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`，并允许分别为 `blueprint-explorer`、`sourcecode-explorer`、`task-worker` 选择。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`task-worker` 使用 `gpt-5.4 / high`。
+交互式安装优先使用 Node.js 内置终端交互。启用 Codex subagents 时，`blueprint-explorer`、`sourcecode-explorer`、`task-worker` 会以表格显示，模型和思考等级是独立字段。模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`；思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`task-worker` 使用 `gpt-5.4 / high`。
 
 当前安装脚本会通过 Codex 官方插件入口注册仓库本地 marketplace，并安装 `blueprint-helper@blueprint-helper-local`。如果当前机器没有可调用的 Codex 官方插件 CLI，脚本会打印可在 Codex Desktop 或官方 CLI 中继续执行的 marketplace/install 命令。
 
@@ -87,7 +87,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudeAgents
 ```
 
-交互式安装在安装 Claude sideAgents 时会显示 sideAgent 模型表单。当前只显示推荐组合 `haiku / high` 与 `sonnet / high`，并分别确认三个 sideAgent。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。
+交互式安装启用 Claude sideAgents 时，也会使用同一个 Node.js 内置终端交互。三个 sideAgent 的模型和思考等级分开选择：模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。
 
 ### Unreal Engine 插件
 
@@ -112,6 +112,21 @@ UE 侧插件是包含 `BlueprintHelper.uplugin` 的 `BlueprintHelper/` 文件夹
 ```
 
 Agent 工作流不依赖 UE 插件是项目级还是引擎级安装。Codex 和 CLI 使用已加载 UE 插件暴露的 Unreal Editor Bridge。请保留此源码 checkout 用于 `AgentFaceService`、`CodexPlugin` 和全局 lifecycle MCP 脚本，或在移动运行时时设置 `BLUEPRINTHELPER_ROOT`。
+
+### 卸载
+
+仓库根目录只保留 `.cmd` 用户入口；底层 PowerShell 和 Node 实现脚本位于 `InstallScripts/`。双击或运行：
+
+```powershell
+.\uninstall.cmd
+```
+
+交互式卸载默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有明确选择或传参时才删除：
+
+```powershell
+.\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>
+.\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
+```
 
 ### 已废弃的 Claude setup 命令
 
@@ -171,7 +186,7 @@ install.cmd
 
 ### Codex Desktop
 
-When Codex subagents are selected in interactive install, the installer shows a subagent model form. It only lists the recommended profiles: `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high`, then lets you choose a profile for `blueprint-explorer`, `sourcecode-explorer`, and `task-worker`. Non-interactive install uses the recommended defaults automatically: lighter models for the two explorers, and `gpt-5.4 / high` for `task-worker`.
+Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, `blueprint-explorer`, `sourcecode-explorer`, and `task-worker` are shown in a table with separate model and reasoning fields. Model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`; reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: lighter models for the two explorers, and `gpt-5.4 / high` for `task-worker`.
 
 The repository includes a local marketplace:
 
@@ -213,7 +228,7 @@ If you only want to copy the sideAgent definitions without validating the Claude
 .\install.cmd -InstallClaudeAgents
 ```
 
-When Claude sideAgents are selected in interactive install, the installer shows a sideAgent model form. The displayed recommendations are `haiku / high` and `sonnet / high`, confirmed separately for the three sideAgents. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`.
+When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and the reasoning option is `high`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`.
 
 ### Unreal Engine Plugin
 
@@ -238,6 +253,21 @@ That copies the plugin to:
 ```
 
 The Agent workflow is not tied to whether the UE plugin is project-installed or engine-installed. Codex and the CLI use the Unreal Editor Bridge exposed by the loaded UE plugin. Keep this source checkout available for `AgentFaceService`, `CodexPlugin`, and the global lifecycle MCP script, or set `BLUEPRINTHELPER_ROOT` if you move the runtime.
+
+### Uninstall
+
+The repository root keeps only `.cmd` user entry points; the underlying PowerShell and Node implementation scripts live under `InstallScripts/`. Double-click or run:
+
+```powershell
+.\uninstall.cmd
+```
+
+Interactive uninstall removes the global `bh` CLI link, Codex/Claude plugin entries, Codex/Claude subagents, and the Codex lifecycle MCP config by default. Project `.blueprinthelper/agent-profile.json` and Engine-level UE plugin copies are kept unless explicitly selected or passed as command-line options:
+
+```powershell
+.\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>
+.\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
+```
 
 ### Retired Claude Setup Command
 

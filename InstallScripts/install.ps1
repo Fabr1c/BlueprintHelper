@@ -12,7 +12,8 @@ param(
   [switch]$InstallUePluginToEngine,
   [switch]$RunDiagnostics,
   [switch]$Interactive,
-  [string]$InstallTipsBase64,
+  [string]$WriteNodeDefaults,
+  [string]$SelectionFile,
   [string]$ProjectFile,
   [string]$EngineRoot,
   [string]$EnginePluginDir,
@@ -36,8 +37,11 @@ $script:NodeCommand = $null
 $script:NpmCommand = $null
 $script:CodexSubagentProfiles = $null
 $script:ClaudeSubagentProfiles = $null
+$script:SubagentProfilesInitialized = $false
+$script:NodeInstallWizardSucceeded = $false
 
-$Root = $PSScriptRoot
+$ScriptRoot = $PSScriptRoot
+$Root = Split-Path -Parent $ScriptRoot
 $CodexPluginRoot = Join-Path $Root 'CodexPlugin'
 $ClaudePluginRoot = Join-Path $Root 'ClaudePlugin'
 $AgentFaceServiceRoot = Join-Path $Root 'AgentFaceService'
@@ -245,39 +249,6 @@ function Repair-BlueprintHelperCliShims {
   }
 }
 
-function Write-InstallTips {
-  param([string]$TipsBase64)
-
-  if (-not $TipsBase64) {
-    return
-  }
-
-  try {
-    $TipsBytes = [System.Convert]::FromBase64String($TipsBase64)
-    $TipsText = [System.Text.Encoding]::UTF8.GetString($TipsBytes)
-  } catch {
-    Write-Warning "Unable to decode install tips. $($_.Exception.Message)"
-    return
-  }
-
-  Write-Host $TipsText
-}
-
-function Read-InstallText {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Prompt,
-    [string]$DefaultValue = ''
-  )
-
-  $Suffix = if ($DefaultValue) { " [$DefaultValue]" } else { '' }
-  $Value = Read-Host "$Prompt$Suffix"
-  if ([string]::IsNullOrWhiteSpace($Value)) {
-    return $DefaultValue
-  }
-  return $Value.Trim()
-}
-
 function Normalize-InstallPathInput {
   param([string]$PathText)
 
@@ -370,64 +341,275 @@ function Get-DefaultClaudeSubagentProfiles {
   }
 }
 
-function Read-SubagentProfileChoice {
+function New-NodeInstallDefaults {
+  $CodexSupport = -not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)
+
+  return [pscustomobject]@{
+    root = $Root
+    options = [pscustomobject]@{
+      build = -not $SkipBuild
+      cliLink = -not $SkipCliLink
+      codexSupport = $CodexSupport
+      codexMarketplace = -not $SkipCodexMarketplace
+      codexAgents = -not $SkipCodexAgents
+      lifecycleMcp = -not $SkipLifecycleMcp
+      claudePlugin = [bool]$InstallClaudePlugin
+      claudeAgents = [bool]($InstallClaudeAgents -or $InstallClaudePlugin)
+      projectProfile = -not $SkipProjectProfile
+      defaultPreferences = -not $SkipDefaultPreferences
+      diagnostics = [bool]$RunDiagnostics
+      ueEnginePlugin = [bool]$InstallUePluginToEngine
+      force = [bool]$Force
+    }
+    paths = [pscustomobject]@{
+      projectFile = $ProjectFile
+      engineRoot = $EngineRoot
+      enginePluginDir = $EnginePluginDir
+    }
+    profiles = [pscustomobject]@{
+      codex = Get-DefaultCodexSubagentProfiles
+      claude = Get-DefaultClaudeSubagentProfiles
+    }
+  }
+}
+
+function Get-SelectionBool {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    [bool]$DefaultValue = $false
+  )
+
+  if (-not $Object) {
+    return $DefaultValue
+  }
+
+  $Value = Get-JsonProperty -Object $Object -Name $Name
+  if ($null -eq $Value) {
+    return $DefaultValue
+  }
+
+  return [System.Convert]::ToBoolean($Value)
+}
+
+function Convert-SubagentProfilesFromSelection {
+  param([AllowNull()][object]$Profile)
+
+  if (-not $Profile) {
+    return $null
+  }
+
+  $ProfileAgents = Get-JsonProperty -Object $Profile -Name 'agents'
+  if (-not $ProfileAgents) {
+    return $null
+  }
+
+  $Agents = [ordered]@{}
+  foreach ($Name in Get-SubagentInstallNames) {
+    $AgentProfile = Get-JsonProperty -Object $ProfileAgents -Name $Name
+    if (-not $AgentProfile) {
+      continue
+    }
+
+    $Model = Get-JsonProperty -Object $AgentProfile -Name 'model'
+    $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'reasoning'
+    if (-not $Reasoning) {
+      $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'reasoning_effort'
+    }
+
+    if ($Model -and $Reasoning) {
+      $Agents[$Name] = New-SubagentInstallProfile -Model ([string]$Model) -Reasoning ([string]$Reasoning)
+    }
+  }
+
+  if ($Agents.Count -eq 0) {
+    return $null
+  }
+
+  return [pscustomobject]@{
+    agents = $Agents
+  }
+}
+
+function Apply-NodeInstallSelection {
+  param([Parameter(Mandatory = $true)][object]$Selection)
+
+  $Options = Get-JsonProperty -Object $Selection -Name 'options'
+  $Paths = Get-JsonProperty -Object $Selection -Name 'paths'
+  $Profiles = Get-JsonProperty -Object $Selection -Name 'profiles'
+  if (-not $Options) {
+    throw 'Node install selection is missing options.'
+  }
+
+  $CodexSupport = Get-SelectionBool -Object $Options -Name 'codexSupport' -DefaultValue:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp))
+  $script:SkipBuild = -not (Get-SelectionBool -Object $Options -Name 'build' -DefaultValue:(-not $SkipBuild))
+  $script:SkipCliLink = -not (Get-SelectionBool -Object $Options -Name 'cliLink' -DefaultValue:(-not $SkipCliLink))
+  $script:SkipCodexMarketplace = -not ($CodexSupport -and (Get-SelectionBool -Object $Options -Name 'codexMarketplace' -DefaultValue:(-not $SkipCodexMarketplace)))
+  $script:SkipCodexAgents = -not ($CodexSupport -and (Get-SelectionBool -Object $Options -Name 'codexAgents' -DefaultValue:(-not $SkipCodexAgents)))
+  $script:SkipLifecycleMcp = -not ($CodexSupport -and (Get-SelectionBool -Object $Options -Name 'lifecycleMcp' -DefaultValue:(-not $SkipLifecycleMcp)))
+  $script:InstallClaudePlugin = Get-SelectionBool -Object $Options -Name 'claudePlugin' -DefaultValue:([bool]$InstallClaudePlugin)
+  $script:InstallClaudeAgents = Get-SelectionBool -Object $Options -Name 'claudeAgents' -DefaultValue:([bool]($InstallClaudeAgents -or $InstallClaudePlugin))
+  $script:SkipProjectProfile = -not (Get-SelectionBool -Object $Options -Name 'projectProfile' -DefaultValue:(-not $SkipProjectProfile))
+  $script:SkipDefaultPreferences = -not (Get-SelectionBool -Object $Options -Name 'defaultPreferences' -DefaultValue:(-not $SkipDefaultPreferences))
+  $script:RunDiagnostics = Get-SelectionBool -Object $Options -Name 'diagnostics' -DefaultValue:([bool]$RunDiagnostics)
+  $script:InstallUePluginToEngine = Get-SelectionBool -Object $Options -Name 'ueEnginePlugin' -DefaultValue:([bool]$InstallUePluginToEngine)
+  $script:Force = Get-SelectionBool -Object $Options -Name 'force' -DefaultValue:([bool]$Force)
+
+  if ($Paths) {
+    $script:ProjectFile = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'projectFile'))
+    $script:EngineRoot = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'engineRoot'))
+    $script:EnginePluginDir = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'enginePluginDir'))
+  }
+
+  $script:CodexSubagentProfiles = $null
+  if (-not $script:SkipCodexAgents) {
+    $CodexProfile = if ($Profiles) { Get-JsonProperty -Object $Profiles -Name 'codex' } else { $null }
+    $script:CodexSubagentProfiles = Convert-SubagentProfilesFromSelection -Profile $CodexProfile
+    if (-not $script:CodexSubagentProfiles) {
+      $script:CodexSubagentProfiles = Get-DefaultCodexSubagentProfiles
+    }
+  }
+
+  $script:ClaudeSubagentProfiles = $null
+  if ($script:InstallClaudeAgents -or $script:InstallClaudePlugin) {
+    $ClaudeProfile = if ($Profiles) { Get-JsonProperty -Object $Profiles -Name 'claude' } else { $null }
+    $script:ClaudeSubagentProfiles = Convert-SubagentProfilesFromSelection -Profile $ClaudeProfile
+    if (-not $script:ClaudeSubagentProfiles) {
+      $script:ClaudeSubagentProfiles = Get-DefaultClaudeSubagentProfiles
+    }
+  }
+
+  $script:SubagentProfilesInitialized = $true
+}
+
+function Invoke-NodeInstallWizard {
+  $script:NodeInstallWizardSucceeded = $false
+  $PromptScript = Join-Path $ScriptRoot 'install-prompts.mjs'
+  if (-not (Test-Path -LiteralPath $PromptScript -PathType Leaf)) {
+    Write-Warning "Node install prompt script was not found: $PromptScript"
+    return
+  }
+
+  try {
+    $NodeCommand = Get-NodeCommand
+  } catch {
+    Write-Warning "Node install prompt is unavailable. $($_.Exception.Message)"
+    return
+  }
+
+  $TempBase = Join-Path ([System.IO.Path]::GetTempPath()) "blueprinthelper-install-$PID-$([System.Guid]::NewGuid().ToString('N'))"
+  $DefaultsPath = "$TempBase.defaults.json"
+  $SelectionPath = "$TempBase.selection.json"
+
+  try {
+    New-NodeInstallDefaults | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $DefaultsPath -Encoding UTF8 -WhatIf:$false
+    & $NodeCommand $PromptScript '--defaults' $DefaultsPath '--out' $SelectionPath
+    $ExitCode = $LASTEXITCODE
+
+    if ($ExitCode -eq 20) {
+      throw 'Install cancelled by user.'
+    }
+    if ($ExitCode -eq 10) {
+      Write-Warning 'Node install prompt is unavailable in this terminal.'
+      return
+    }
+    if ($ExitCode -ne 0) {
+      Write-Warning "Node install prompt exited with code $ExitCode."
+      return
+    }
+    if (-not (Test-Path -LiteralPath $SelectionPath -PathType Leaf)) {
+      Write-Warning 'Node install prompt did not write a selection file.'
+      return
+    }
+
+    $Selection = Get-Content -Raw -LiteralPath $SelectionPath | ConvertFrom-Json
+    Apply-NodeInstallSelection -Selection $Selection
+    Write-Host ''
+    Write-Host 'BlueprintHelper install selections confirmed.'
+    Write-Host "Source root: $Root"
+    Write-Host ''
+    $script:NodeInstallWizardSucceeded = $true
+    return
+  } finally {
+    foreach ($Path in @($DefaultsPath, $SelectionPath)) {
+      if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        Remove-Item -LiteralPath $Path -Force -WhatIf:$false
+      }
+    }
+  }
+}
+
+function Read-SubagentFieldChoice {
   param(
     [Parameter(Mandatory = $true)]
     [string]$AgentName,
     [Parameter(Mandatory = $true)]
     [object[]]$Choices,
     [Parameter(Mandatory = $true)]
-    [int]$DefaultNumber
+    [string]$FieldName,
+    [Parameter(Mandatory = $true)]
+    [string]$DefaultValue
   )
 
   while ($true) {
-    $Raw = Read-Host "  $AgentName profile [$DefaultNumber]"
+    $Raw = Read-Host "  $AgentName $FieldName [$DefaultValue]"
     if ([string]::IsNullOrWhiteSpace($Raw)) {
-      foreach ($Choice in $Choices) {
-        if ($Choice.Number -eq $DefaultNumber) {
-          return $Choice
-        }
+      return $DefaultValue
+    }
+
+    $Trimmed = $Raw.Trim()
+    foreach ($Choice in $Choices) {
+      if ($Trimmed -eq $Choice.Number -or $Trimmed -ieq $Choice.Value) {
+        return $Choice.Value
       }
     }
 
-    $SelectedNumber = 0
-    if ([int]::TryParse($Raw.Trim(), [ref]$SelectedNumber)) {
-      foreach ($Choice in $Choices) {
-        if ($Choice.Number -eq $SelectedNumber) {
-          return $Choice
-        }
-      }
-    }
-
-    $ValidChoices = ($Choices | ForEach-Object { $_.Number }) -join '/'
+    $ValidChoices = ($Choices | ForEach-Object { "$($_.Number)=$($_.Value)" }) -join ', '
     Write-Host "Please choose $ValidChoices, or press Enter for the default."
   }
 }
 
 function Read-CodexSubagentProfiles {
-  $Choices = @(
-    [pscustomobject]@{ Number = 1; Model = 'gpt-5.4-mini'; Reasoning = 'high'; Label = 'gpt-5.4-mini / high' },
-    [pscustomobject]@{ Number = 2; Model = 'gpt-5.3-codex-spark'; Reasoning = 'xhigh'; Label = 'gpt-5.3-codex-spark / xhigh' },
-    [pscustomobject]@{ Number = 3; Model = 'gpt-5.4'; Reasoning = 'high'; Label = 'gpt-5.4 / high' }
+  $ModelChoices = @(
+    [pscustomobject]@{ Number = '1'; Value = 'gpt-5.4-mini'; Label = 'gpt-5.4-mini' },
+    [pscustomobject]@{ Number = '2'; Value = 'gpt-5.3-codex-spark'; Label = 'gpt-5.3-codex-spark' },
+    [pscustomobject]@{ Number = '3'; Value = 'gpt-5.4'; Label = 'gpt-5.4' }
   )
-  $DefaultNumbers = @{
-    'blueprint-explorer' = 1
-    'sourcecode-explorer' = 2
-    'task-worker' = 3
+  $ReasoningChoices = @(
+    [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' },
+    [pscustomobject]@{ Number = '2'; Value = 'xhigh'; Label = 'xhigh' }
+  )
+  $DefaultModels = @{
+    'blueprint-explorer' = 'gpt-5.4-mini'
+    'sourcecode-explorer' = 'gpt-5.3-codex-spark'
+    'task-worker' = 'gpt-5.4'
+  }
+  $DefaultReasoning = @{
+    'blueprint-explorer' = 'high'
+    'sourcecode-explorer' = 'xhigh'
+    'task-worker' = 'high'
   }
   $Agents = [ordered]@{}
 
   Write-Host ''
   Write-Host 'Codex subagent model form'
-  Write-Host 'Tips: only recommended Codex profiles are shown. Press Enter on each row to use the default.'
-  foreach ($Choice in $Choices) {
+  Write-Host 'Tips: model and reasoning are selected separately. Press Enter on each prompt to use the default.'
+  Write-Host 'Models:'
+  foreach ($Choice in $ModelChoices) {
+    Write-Host "  $($Choice.Number). $($Choice.Label)"
+  }
+  Write-Host 'Reasoning:'
+  foreach ($Choice in $ReasoningChoices) {
     Write-Host "  $($Choice.Number). $($Choice.Label)"
   }
   Write-Host ''
 
   foreach ($Name in Get-SubagentInstallNames) {
-    $Choice = Read-SubagentProfileChoice -AgentName $Name -Choices $Choices -DefaultNumber $DefaultNumbers[$Name]
-    $Agents[$Name] = New-SubagentInstallProfile -Model $Choice.Model -Reasoning $Choice.Reasoning
+    $Model = Read-SubagentFieldChoice -AgentName $Name -Choices $ModelChoices -FieldName 'model' -DefaultValue $DefaultModels[$Name]
+    $Reasoning = Read-SubagentFieldChoice -AgentName $Name -Choices $ReasoningChoices -FieldName 'reasoning' -DefaultValue $DefaultReasoning[$Name]
+    $Agents[$Name] = New-SubagentInstallProfile -Model $Model -Reasoning $Reasoning
   }
 
   return [pscustomobject]@{
@@ -436,28 +618,42 @@ function Read-CodexSubagentProfiles {
 }
 
 function Read-ClaudeSubagentProfiles {
-  $Choices = @(
-    [pscustomobject]@{ Number = 1; Model = 'haiku'; Reasoning = 'high'; Label = 'haiku / high' },
-    [pscustomobject]@{ Number = 2; Model = 'sonnet'; Reasoning = 'high'; Label = 'sonnet / high' }
+  $ModelChoices = @(
+    [pscustomobject]@{ Number = '1'; Value = 'haiku'; Label = 'haiku' },
+    [pscustomobject]@{ Number = '2'; Value = 'sonnet'; Label = 'sonnet' }
   )
-  $DefaultNumbers = @{
-    'blueprint-explorer' = 1
-    'sourcecode-explorer' = 1
-    'task-worker' = 2
+  $ReasoningChoices = @(
+    [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' }
+  )
+  $DefaultModels = @{
+    'blueprint-explorer' = 'haiku'
+    'sourcecode-explorer' = 'haiku'
+    'task-worker' = 'sonnet'
+  }
+  $DefaultReasoning = @{
+    'blueprint-explorer' = 'high'
+    'sourcecode-explorer' = 'high'
+    'task-worker' = 'high'
   }
   $Agents = [ordered]@{}
 
   Write-Host ''
   Write-Host 'Claude sideAgent model form'
-  Write-Host 'Tips: Claude shows only recommended profiles. Press Enter on each row to use the default.'
-  foreach ($Choice in $Choices) {
+  Write-Host 'Tips: model and reasoning are selected separately. Press Enter on each prompt to use the default.'
+  Write-Host 'Models:'
+  foreach ($Choice in $ModelChoices) {
+    Write-Host "  $($Choice.Number). $($Choice.Label)"
+  }
+  Write-Host 'Reasoning:'
+  foreach ($Choice in $ReasoningChoices) {
     Write-Host "  $($Choice.Number). $($Choice.Label)"
   }
   Write-Host ''
 
   foreach ($Name in Get-SubagentInstallNames) {
-    $Choice = Read-SubagentProfileChoice -AgentName $Name -Choices $Choices -DefaultNumber $DefaultNumbers[$Name]
-    $Agents[$Name] = New-SubagentInstallProfile -Model $Choice.Model -Reasoning $Choice.Reasoning
+    $Model = Read-SubagentFieldChoice -AgentName $Name -Choices $ModelChoices -FieldName 'model' -DefaultValue $DefaultModels[$Name]
+    $Reasoning = Read-SubagentFieldChoice -AgentName $Name -Choices $ReasoningChoices -FieldName 'reasoning' -DefaultValue $DefaultReasoning[$Name]
+    $Agents[$Name] = New-SubagentInstallProfile -Model $Model -Reasoning $Reasoning
   }
 
   return [pscustomobject]@{
@@ -489,22 +685,24 @@ function Format-SubagentProfileSummary {
 function Initialize-SubagentInstallProfiles {
   param([bool]$PromptUser = $false)
 
-  if (-not $script:SkipCodexAgents) {
-    if ($PromptUser) {
-      $script:CodexSubagentProfiles = Read-CodexSubagentProfiles
-    } else {
-      $script:CodexSubagentProfiles = Get-DefaultCodexSubagentProfiles
+  if ($script:SubagentProfilesInitialized) {
+    if ($script:CodexSubagentProfiles) {
+      Write-Host "Codex subagent profiles: $(Format-SubagentProfileSummary -Profiles $script:CodexSubagentProfiles)"
     }
+    if ($script:ClaudeSubagentProfiles) {
+      Write-Host "Claude sideAgent profiles: $(Format-SubagentProfileSummary -Profiles $script:ClaudeSubagentProfiles)"
+    }
+    return
+  }
+
+  if (-not $script:SkipCodexAgents) {
+    $script:CodexSubagentProfiles = Get-DefaultCodexSubagentProfiles
   } else {
     $script:CodexSubagentProfiles = $null
   }
 
   if ($script:InstallClaudeAgents -or $script:InstallClaudePlugin) {
-    if ($PromptUser) {
-      $script:ClaudeSubagentProfiles = Read-ClaudeSubagentProfiles
-    } else {
-      $script:ClaudeSubagentProfiles = Get-DefaultClaudeSubagentProfiles
-    }
+    $script:ClaudeSubagentProfiles = Get-DefaultClaudeSubagentProfiles
   } else {
     $script:ClaudeSubagentProfiles = $null
   }
@@ -821,19 +1019,20 @@ function Invoke-MenuInstallWizard {
 }
 
 function Invoke-InteractiveInstallWizard {
-  if (Test-InstallMenuSupported) {
-    try {
-      Invoke-MenuInstallWizard
-    } catch {
-      if ($_.Exception.Message -eq 'Install cancelled by user.') {
-        throw
-      }
-      Write-Warning "Interactive menu is unavailable. Falling back to legacy prompts. $($_.Exception.Message)"
-      Invoke-SequentialInstallWizard
+  try {
+    Invoke-NodeInstallWizard
+  } catch {
+    if ($_.Exception.Message -eq 'Install cancelled by user.') {
+      throw
     }
-  } else {
-    Invoke-SequentialInstallWizard
+    throw "Node install prompt failed. $($_.Exception.Message)"
   }
+
+  if ($script:NodeInstallWizardSucceeded) {
+    return
+  }
+
+  throw 'Node install prompt could not start. Run install.cmd from an interactive terminal with Node.js on PATH, or pass explicit install.ps1 switches for non-interactive install. install.cmd no longer falls back to the legacy PowerShell menu.'
 }
 
 function Get-CodexPluginInstallInfo {
@@ -1245,7 +1444,7 @@ function Ensure-DefaultUserPreferences {
 # 08 - BlueprintHelper User Preferences
 
 schema: BlueprintHelper.UserPreferences.v1
-generated_by: install.ps1
+generated_by: InstallScripts/install.ps1
 source: install_default_conservative_profile
 
 ## Purpose
@@ -1385,7 +1584,20 @@ Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\plugin.json') -Na
 Assert-File -Path (Join-Path $ClaudePluginRoot '.claude-plugin\marketplace.json') -Name 'Claude plugin marketplace'
 Assert-File -Path (Join-Path $UePluginRoot 'BlueprintHelper.uplugin') -Name 'UE plugin descriptor'
 
-if ($Interactive) {
+if ($WriteNodeDefaults) {
+  New-NodeInstallDefaults | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $WriteNodeDefaults -Encoding UTF8 -WhatIf:$false
+  exit 0
+}
+
+if ($SelectionFile) {
+  Assert-File -Path $SelectionFile -Name 'BlueprintHelper install selection'
+  $Selection = Get-Content -Raw -LiteralPath $SelectionFile | ConvertFrom-Json
+  Apply-NodeInstallSelection -Selection $Selection
+  Write-Host ''
+  Write-Host 'BlueprintHelper install selections confirmed.'
+  Write-Host "Source root: $Root"
+  Write-Host ''
+} elseif ($Interactive) {
   Invoke-InteractiveInstallWizard
 }
 

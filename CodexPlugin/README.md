@@ -10,9 +10,11 @@ For normal user setup, run the repository-root installer:
 
 See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, and UE engine-install options.
 
-交互式安装会在安装 Codex subagents 时显示模型/思考等级表单，只列出推荐组合 `gpt-5.4-mini / high`、`gpt-5.3-codex-spark / xhigh` 和 `gpt-5.4 / high`。
+Use repository-root `uninstall.cmd` to remove installed Codex plugin entries, Codex subagents, lifecycle MCP config, and CLI links without deleting the source checkout.
 
-Interactive install shows a Codex subagent model/reasoning form and only lists the recommended `gpt-5.4-mini / high`, `gpt-5.3-codex-spark / xhigh`, and `gpt-5.4 / high` profiles.
+交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 时，三个 agent 会以表格显示，模型和思考等级是独立字段；模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`，思考等级为 `high`、`xhigh`。
+
+Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, the three agents are shown in a table with separate model and reasoning fields; model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`, with reasoning `high` or `xhigh`.
 
 The root installer uses the official Codex plugin install entry for this local marketplace:
 
