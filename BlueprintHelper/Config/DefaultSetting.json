@@ -230,12 +230,12 @@
       "reference_context_max_results": 50
     },
     "graph_write": {
+      "dry_run": false,
       "strict": true,
       "create_missing_variables": false,
       "reconstruct_existing_nodes": false,
       "compile": false,
-      "save": false,
-      "layout": "auto"
+      "save": false
     },
     "read_context": {
       "max_output_rows": 0,

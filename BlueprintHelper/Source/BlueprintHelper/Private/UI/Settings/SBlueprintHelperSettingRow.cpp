@@ -120,7 +120,7 @@ TSharedRef<SWidget> SBlueprintHelperSettingRow::BuildValueWidget()
 	case EBlueprintHelperSettingValueType::Margin:
 		return BuildTextValueWidget(LOCTEXT("MarginFormatHint", "格式：左,上,右,下"));
 	case EBlueprintHelperSettingValueType::ColorArray:
-		return BuildTextValueWidget(LOCTEXT("ColorArrayFormatHint", "Format: [R,G,B,A]"));
+		return BuildTextValueWidget(LOCTEXT("ColorArrayFormatHint", "格式：[R,G,B,A]"));
 	case EBlueprintHelperSettingValueType::String:
 	default:
 		return BuildStringWidget();

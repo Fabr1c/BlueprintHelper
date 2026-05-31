@@ -68,7 +68,6 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphWriteToolClusterPolicy
 	bool bReconstructExistingNodes = false;
 	bool bCompile = false;
 	bool bSave = false;
-	FString Layout = TEXT("auto");
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReadContextToolClusterPolicy
@@ -103,4 +102,5 @@ private:
 	static bool LimitArrayRows(TArray<TSharedPtr<FJsonValue>>& Array, int32 MaxRows);
 	static int32 MeasureJsonUtf8Bytes(const TSharedPtr<FJsonObject>& Object);
 	static void ReplaceDataWithByteLimitSummary(const TSharedPtr<FJsonObject>& Object, int32 MaxBytes, int32 ActualBytes);
+	static void ReplaceFindAssetsWithByteLimitSummary(const TSharedPtr<FJsonObject>& Object);
 };
