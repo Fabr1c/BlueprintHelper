@@ -15,8 +15,10 @@ import {
   CONTAINER_ACTION_ROLE_FIELDS,
   CONTAINER_ACTION_TYPE_FIELDS,
   TASK_PLAN_SCHEMA,
+  getContainerActionResultOutputPin,
   getRequiredContainerActionRoles,
   isExpressionContainerActionOperation,
+  isValueExpressionContainerActionOperation,
   isSupportedContainerActionKind,
   isSupportedContainerActionOperation,
 } from '../schema/task-schemas.js';
@@ -2249,12 +2251,12 @@ function validateContainerActionShape(
 ): { containerKind: string; containerOperation: string } {
   const containerKind = normalizeContainerActionKind(record.container_kind, `${path}.container_kind`);
   const containerOperation = normalizeContainerActionOperation(containerKind, record.container_operation, `${path}.container_operation`);
-  if (usage === 'expression' && !isExpressionContainerActionOperation(containerKind, containerOperation)) {
+  if (usage === 'expression' && !isValueExpressionContainerActionOperation(containerKind, containerOperation)) {
     throw new TaskSpecCompileError('unsupported_container_operation', `Unsupported container_operation: ${containerKind}.${containerOperation}`, [
       {
         code: 'unsupported_container_operation',
         path: `${path}.container_operation`,
-        message: 'Unsupported container_operation for expression container_action.',
+        message: 'Unsupported container_operation for expression container_action with a single result output.',
       },
     ]);
   }
@@ -2293,12 +2295,12 @@ function validateContainerActionShape(
   });
   if (Object.hasOwn(record, 'result_symbol')) {
     getRequiredString(record, 'result_symbol', `${path}.result_symbol`);
-    if (!isExpressionContainerActionOperation(containerKind, containerOperation)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'result_symbol is only supported for query container_action operations.', [
+    if (!isValueExpressionContainerActionOperation(containerKind, containerOperation)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'result_symbol is only supported for query container_action operations with a single result output.', [
         {
           code: 'taskspec_semantic_invalid',
           path: `${path}.result_symbol`,
-          message: 'result_symbol is only supported for query container_action operations.',
+          message: 'result_symbol is only supported for query container_action operations with a single result output.',
         },
       ]);
     }
@@ -2635,10 +2637,24 @@ function statementResultOutputPin(kind: string): string | undefined {
   if (kind === 'create' || kind === 'convert' || kind === 'schedule') {
     return 'value';
   }
-  if (kind === 'call' || kind === CONTAINER_ACTION_KIND) {
+  if (kind === 'call') {
     return 'ReturnValue';
   }
   return undefined;
+}
+
+function containerActionResultOutputPin(containerKind: string, containerOperation: string): string {
+  const outputPin = getContainerActionResultOutputPin(containerKind, containerOperation);
+  if (!outputPin) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `container_action ${containerKind}.${containerOperation} has no single result output.`, [
+      {
+        code: 'container_action_no_single_result_output',
+        path: 'container_operation',
+        message: 'Use result_symbol only when the container_action has a single result output.',
+      },
+    ]);
+  }
+  return outputPin;
 }
 
 function makeCompileFlowContext(parent?: CompileFlowContext): CompileFlowContext {
@@ -3015,7 +3031,9 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
     compileContainerActionRoleInputs(statementRecord, nodeId, path, node, nodes, links, context);
     const resultSymbol = optionalString(statementRecord, 'result_symbol');
     if (resultSymbol) {
-      context.symbols.set(resultSymbol.toLowerCase(), { output: `${nodeId}.ReturnValue` });
+      context.symbols.set(resultSymbol.toLowerCase(), {
+        output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}`,
+      });
     }
     if (isContainerActionPureOperation(containerKind, containerOperation)) {
       return {
@@ -3234,7 +3252,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     const nodes: AgentImportNode[] = [node];
     const links: AgentImportLink[] = [];
     compileContainerActionRoleInputs(expression, nodeId, path, node, nodes, links, context);
-    return { nodes, links, output: `${nodeId}.ReturnValue` };
+    return { nodes, links, output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}` };
   }
 
   if (kind === 'get' || kind === 'get_property' || kind === 'field') {

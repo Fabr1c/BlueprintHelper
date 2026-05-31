@@ -438,6 +438,101 @@ describe('Composite create_blueprint_feature compiler', () => {
     ]);
   });
 
+  for (const { title, statement, expectedPin } of [
+    {
+      title: 'map find',
+      expectedPin: 'Value',
+      statement: {
+        kind: 'container_action',
+        container_kind: 'map',
+        container_operation: 'find',
+        target: { kind: 'get', name: 'Scores' },
+        key: { kind: 'literal', value_type: 'string', value: 'PlayerA' },
+        key_type: 'string',
+        value_type: 'int',
+        result_symbol: 'ContainerResult',
+      },
+    },
+    {
+      title: 'map keys',
+      expectedPin: 'Keys',
+      statement: {
+        kind: 'container_action',
+        container_kind: 'map',
+        container_operation: 'keys',
+        target: { kind: 'get', name: 'Scores' },
+        key_type: 'string',
+        value_type: 'int',
+        result_symbol: 'ContainerResult',
+      },
+    },
+    {
+      title: 'array get',
+      expectedPin: 'Item',
+      statement: {
+        kind: 'container_action',
+        container_kind: 'array',
+        container_operation: 'get',
+        target: { kind: 'get', name: 'Items' },
+        index: { kind: 'literal', value_type: 'number', value: 0 },
+        element_type: 'int',
+        result_symbol: 'ContainerResult',
+      },
+    },
+    {
+      title: 'set to array',
+      expectedPin: 'Result',
+      statement: {
+        kind: 'container_action',
+        container_kind: 'set',
+        container_operation: 'to_array',
+        target: { kind: 'get', name: 'Tags' },
+        element_type: 'string',
+        result_symbol: 'ContainerResult',
+      },
+    },
+  ]) {
+    it(`compiles ${title} result symbols to the operation output pin in interface replacement graphs`, () => {
+      const spec = makeCompositePhysicsDoorTaskSpec({
+        class_settings: undefined,
+        integration: {
+          interface: {
+            interface_asset: '/Game/BlueprintHelperTest/Interaction/BPI_BH_Interactable',
+            function: 'Interact',
+            implementation: {
+              body: {
+                schema: 'BlueprintLogicSpec.v1',
+                statements: [statement, {
+                  kind: 'field',
+                  field_operation: 'set',
+                  field_scope: 'variable',
+                  target: 'LastScore',
+                  value: { kind: 'get', name: 'ContainerResult' },
+                }],
+              },
+            },
+          },
+        },
+      });
+
+      const taskPlan = compileTaskSpecToTaskPlan(TaskSpecSchema.parse(spec));
+      const steps = taskPlan.steps as Array<Record<string, any>>;
+      const replacement = steps[9]['write'].ops[0].replacement;
+
+      assert.deepEqual(
+        replacement.links.find((link: Record<string, unknown>) => (
+          link.kind === 'data'
+          && link.to === 'interface_Interact_stmt_2.LastScore'
+        )),
+        {
+          kind: 'data',
+          from: `interface_Interact_stmt_1.${expectedPin}`,
+          to: 'interface_Interact_stmt_2.LastScore',
+        },
+      );
+    });
+  }
+
   it('rejects unsupported composite input integration instead of silently ignoring it', () => {
     const spec = makeCompositePhysicsDoorTaskSpec({
       integration: {

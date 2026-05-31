@@ -71,7 +71,7 @@ bool FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment
 		return false;
 	}
 
-	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
+	FBlueprintHelperActionNodeSpawnOptions SpawnOptions = Request.SpawnOptions;
 	SpawnOptions.NodeId = BuildRequest.FragmentId;
 	SpawnOptions.DefaultValues = BuildRequest.DefaultValues;
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(

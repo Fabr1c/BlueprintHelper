@@ -171,3 +171,19 @@ test('container_action rejects result_symbol on mutating operations', () => {
     /result_symbol is only supported for query container_action operations/,
   );
 });
+
+test('container_action rejects result_symbol when no single result output exists', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeContainerSpec({
+      kind: 'container_action',
+      container_kind: 'map',
+      container_operation: 'get_key_value_by_index',
+      target: { kind: 'get', name: 'Scores' },
+      index: { kind: 'literal', value_type: 'number', value: 0 },
+      key_type: 'string',
+      value_type: 'int',
+      result_symbol: 'PairValue',
+    }) as never),
+    /single result output/,
+  );
+});
