@@ -408,7 +408,6 @@ const GraphWriteReplaceSchema = z.object({
   body: BlueprintLogicSpecSchema,
   options: z.object({
     strict: z.boolean().optional(),
-    preserve_layout: z.boolean().optional(),
   }).passthrough().optional(),
 }).passthrough().superRefine((value, ctx) => {
   const expectedKindByScope: Record<string, string> = {
@@ -448,17 +447,15 @@ const GraphWriteReplaceSchema = z.object({
 });
 
 const GraphWritePatchSchema = z.object({
-  kind: z.enum(['set_pin_default', 'set_node_comment', 'set_node_position']),
+  kind: z.enum(['set_pin_default', 'set_node_comment']),
   scope: z.string().min(1).optional(),
   target_ref: z.record(z.unknown()),
   value: z.unknown().optional(),
-  patch: z.record(z.unknown()).optional(),
   expected_old_state: z.record(z.unknown()).optional(),
 }).passthrough().superRefine((value, ctx) => {
   const expectedScopeByKind: Record<string, string> = {
     set_pin_default: 'pin_default',
     set_node_comment: 'node_comment',
-    set_node_position: 'node_position',
   };
   const expectedScope = expectedScopeByKind[value.kind];
   if (value.scope && value.scope !== expectedScope) {
@@ -474,14 +471,8 @@ const GraphWritePatchSchema = z.object({
   if (value.kind === 'set_pin_default' && (typeof value.target_ref.pin_ref !== 'string' || value.target_ref.pin_ref.length === 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_ref', 'pin_ref'], message: 'set_pin_default requires target_ref.pin_ref.' });
   }
-  if ((value.kind === 'set_pin_default' || value.kind === 'set_node_comment') && !Object.hasOwn(value, 'value')) {
+  if (!Object.hasOwn(value, 'value')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['value'], message: `${value.kind} requires value.` });
-  }
-  if (value.kind === 'set_node_position') {
-    const patch = value.patch;
-    if (!patch || (typeof patch.x !== 'number' && typeof patch.y !== 'number')) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['patch'], message: 'set_node_position requires patch.x and/or patch.y as numbers.' });
-    }
   }
 });
 

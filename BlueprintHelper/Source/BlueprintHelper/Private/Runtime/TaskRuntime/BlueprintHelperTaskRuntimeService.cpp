@@ -2598,12 +2598,6 @@ public:
 		{
 			return TEXT("node_comment");
 		}
-		if (OpName == TEXT("set_node_position"))
-		{
-			// DEPRECATED_LAYOUT: TaskPlan/GraphWrite node_position exists for legacy compatibility only.
-			// New placement must be handled after graph writes by the UE-side GraphLayout system.
-			return TEXT("node_position");
-		}
 		return TEXT("pin_default");
 	}
 
@@ -3042,11 +3036,8 @@ public:
 			return TryBuildGraphWriteIrReplacePayload(TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
 		}
 		if (OpName == TEXT("set_pin_default") ||
-			OpName == TEXT("set_node_comment") ||
-			OpName == TEXT("set_node_position"))
+			OpName == TEXT("set_node_comment"))
 		{
-			// DEPRECATED_LAYOUT: set_node_position should be removed from normal TaskPlan/GraphWrite flow
-			// once GraphLayout owns configurable placement.
 			OutAdapterOperation = TEXT("patch_blueprint_graph");
 			return TryBuildGraphWriteIrPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);
 		}

@@ -73,7 +73,6 @@ private:
 
 	// 銆俻atch_type 瀹炵幇
 	bool ApplySetNodeComment(UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const;
-	bool ApplySetNodePosition(UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Payload, bool& bOutChanged, FString& OutError) const;
 	bool ResolvePatchSourcePin(
 		UEdGraph* Graph,
 		const FPatchRequest& Request,

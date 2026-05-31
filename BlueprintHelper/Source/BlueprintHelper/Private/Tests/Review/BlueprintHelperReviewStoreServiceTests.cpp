@@ -37,6 +37,7 @@
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
+#include "UI/Review/BlueprintHelperReviewPanelCommandService.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -390,6 +391,117 @@ public:
 		EventNode->PostPlacedNewNode();
 		EventNode->AllocateDefaultPins();
 		return EventNode;
+	}
+
+	static bool PopulateReviewNodeCommentTargetFromSnapshot(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		UEdGraphNode* Node,
+		const FString& EvidenceId,
+		FBlueprintHelperReviewAtomicTarget& OutTarget,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph || !Node)
+		{
+			OutError = TEXT("invalid_node_comment_target_fixture");
+			return false;
+		}
+
+		OutTarget = FBlueprintHelperReviewAtomicTarget();
+		OutTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+		OutTarget.AssetPath = Blueprint->GetPathName();
+		OutTarget.GraphName = Graph->GetName();
+		OutTarget.TargetKind = TEXT("graph_external_node");
+		OutTarget.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+		OutTarget.TargetKey = FString::Printf(
+			TEXT("graph_external_node:%s:node:%s:field:node_comment"),
+			*Graph->GetName(),
+			*OutTarget.NodeGuid);
+		OutTarget.PropertyPath = TEXT("node_comment");
+		OutTarget.VisualGroupKey = OutTarget.TargetKey;
+		OutTarget.DisplayLabel = TEXT("Review node comment");
+		OutTarget.LatestEvidenceId = EvidenceId;
+		OutTarget.SourceEvidenceIds.Add(EvidenceId);
+		OutTarget.Ownership = TEXT("blueprinthelper_owned");
+
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		FString BaselineHash;
+		Node->NodeComment = FString::Printf(TEXT("before_%s"), *EvidenceId);
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.BeforeSnapshotJson,
+			BaselineHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.BeforeSnapshotJson.IsEmpty() || BaselineHash.IsEmpty())
+		{
+			OutError = TEXT("empty_node_comment_snapshot_fixture");
+			return false;
+		}
+
+		OutTarget.BaselineHash = BaselineHash;
+		Node->NodeComment = FString::Printf(TEXT("after_%s"), *EvidenceId);
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.AfterSnapshotJson,
+			OutTarget.RecordedAfterHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.AfterSnapshotJson.IsEmpty() || OutTarget.RecordedAfterHash.IsEmpty())
+		{
+			OutError = TEXT("empty_node_comment_after_snapshot_fixture");
+			return false;
+		}
+		return true;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeReviewVisibleChangeForTarget(
+		const FString& ChangeId,
+		const FString& EvidenceId,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = ChangeId;
+		Change.AssetPath = Target.AssetPath;
+		Change.GraphName = Target.GraphName;
+		Change.LocationKey = Target.TargetKey;
+		Change.LatestEvidenceId = EvidenceId;
+		Change.LatestEvidenceIds.Add(EvidenceId);
+		Change.SourceEvidenceIds.Add(EvidenceId);
+		Change.ChangeKind = ChangeKind;
+		Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
+		Change.DisplayLabel = Target.DisplayLabel;
+		Change.BeforeHash = Target.BaselineHash;
+		Change.AfterHash = Target.RecordedAfterHash;
+		Change.BeforeSnapshotJson = Target.BeforeSnapshotJson;
+		Change.AfterSnapshotJson = Target.AfterSnapshotJson;
+		Change.AtomicTargets.Add(Target);
+		return Change;
+	}
+
+	static FBlueprintHelperReviewRecord MakeReviewRecordForVisibleChanges(
+		const FString& ArchiveSessionId,
+		const FString& AssetPath,
+		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+	{
+		FBlueprintHelperReviewRecord Record;
+		Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveSessionId, AssetPath);
+		Record.ArchiveSessionId = ArchiveSessionId;
+		Record.AssetPath = AssetPath;
+		Record.Status = EBlueprintHelperReviewChangeStatus::Pending;
+		Record.SourceReviewSummary.AssetPaths.AddUnique(AssetPath);
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			Record.SourceReviewSummary.EvidenceIds.AddUnique(Change.LatestEvidenceId);
+			Record.VisibleChanges.Add(Change);
+		}
+		Record.SourceReviewSummary.EvidenceCount = Record.SourceReviewSummary.EvidenceIds.Num();
+		return Record;
 	}
 
 	static UK2Node_CallFunction* AddReviewDestroyActorCallNode(UEdGraph* Graph)
@@ -4549,7 +4661,7 @@ bool FBlueprintHelperReviewAcceptVisibleChangeTest::RunTest(const FString& Param
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRejectVisibleChangeTest,
-	"BlueprintHelper.Review.Action.RejectRequestsArchiveBaselineRollback",
+	"BlueprintHelper.Review.Action.RejectReportsPersistedTargetsNotFound",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -4593,14 +4705,79 @@ bool FBlueprintHelperReviewRejectVisibleChangeTest::RunTest(const FString& Param
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change);
 
-	TestFalse(TEXT("first slice does not fake a completed rollback"), Result.bSucceeded);
-	TestEqual(TEXT("reject enters needs action until archive rollback backend is wired"),
+	TestFalse(TEXT("reject without persisted targets does not fake a completed rollback"), Result.bSucceeded);
+	TestEqual(TEXT("reject without persisted targets enters needs action"),
 		Result.NewStatus,
 		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestEqual(TEXT("reject uses archive baseline rollback mode"),
-		Result.RollbackMode,
-		FString(TEXT("archive_baseline")));
-	TestTrue(TEXT("needs action reason explains missing rollback backend"), !Result.Message.IsEmpty());
+	TestEqual(TEXT("reject without persisted targets reports the data-model integrity gap"),
+		Result.Message,
+		FString(TEXT("persisted_review_targets_not_found")));
+	TestTrue(TEXT("reject without persisted targets does not select archive rollback mode"),
+		Result.RollbackMode.IsEmpty());
+	TestFalse(TEXT("reject no longer reports Review UI slice placeholder"),
+		Result.Message.Contains(TEXT("Review UI slice")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelRejectServiceUnavailableTest,
+	"BlueprintHelper.Review.PanelCommand.RejectRequiresActionServiceDiagnostic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelRejectServiceUnavailableTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_panel_reject_missing_service");
+	Change.AssetPath = TEXT("/Game/BP_Door");
+	Change.LatestEvidenceId = TEXT("tx_panel_reject_missing_service");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+	const FBlueprintHelperReviewPanelCommandService CommandService(nullptr);
+	const FBlueprintHelperReviewActionResult Result =
+		CommandService.RejectVisibleChange(Change, FBlueprintHelperReviewRejectOptions());
+
+	TestFalse(TEXT("panel reject without action service does not fake rollback"), Result.bSucceeded);
+	TestEqual(TEXT("panel reject without action service enters needs action"),
+		Result.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestEqual(TEXT("panel reject without action service reports service diagnostic"),
+		Result.Message,
+		FString(TEXT("review_action_service_unavailable")));
+	TestTrue(TEXT("panel reject without action service does not select rollback mode"),
+		Result.RollbackMode.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelRejectLifecycleRootServiceUnavailableTest,
+	"BlueprintHelper.Review.PanelCommand.RejectLifecycleRootRequiresActionServiceDiagnostic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelRejectLifecycleRootServiceUnavailableTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewVisibleChange Root;
+	Root.ChangeId = TEXT("tx_panel_root_missing_service");
+	Root.AssetPath = TEXT("/Game/BP_Door");
+	Root.LatestEvidenceId = TEXT("tx_panel_root_missing_service");
+	Root.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Root.bIsAssetLifecycleRoot = true;
+
+	const FBlueprintHelperReviewPanelCommandService CommandService(nullptr);
+	const FBlueprintHelperReviewCascadeActionResult Result =
+		CommandService.RejectLifecycleRootVisibleChange(
+			Root,
+			TArray<FBlueprintHelperReviewVisibleChange>(),
+			FBlueprintHelperReviewRejectOptions());
+
+	TestFalse(TEXT("panel root reject without action service does not fake rollback"), Result.RootResult.bSucceeded);
+	TestEqual(TEXT("panel root reject without action service enters needs action"),
+		Result.RootResult.NewStatus,
+		EBlueprintHelperReviewChangeStatus::NeedsAction);
+	TestEqual(TEXT("panel root reject without action service reports service diagnostic"),
+		Result.RootResult.Message,
+		FString(TEXT("review_action_service_unavailable")));
+	TestTrue(TEXT("panel root reject without action service does not select rollback mode"),
+		Result.RootResult.RollbackMode.IsEmpty());
 	return true;
 }
 
@@ -4611,19 +4788,50 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewRejectVisibleChangeSuccessTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectVisibleSuccess"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectVisibleSuccessNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.LatestEvidenceId = TEXT("tx_2");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotError;
+	TestTrue(TEXT("reject success target has recoverable before snapshot"),
+		SnapshotService.CaptureTargetSnapshot(Target, Target.BeforeSnapshotJson, Target.RecordedAfterHash, SnapshotError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		return false;
+	}
+	Target.BaselineHash = Target.RecordedAfterHash;
+
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_1");
-	Change.AssetPath = TEXT("/Game/BP_Door");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = Graph->GetName();
 	Change.LatestEvidenceId = TEXT("tx_2");
 	Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
-	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_2"),
-		TEXT("after_2")));
+	Change.AtomicTargets.Add(Target);
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_2"));
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
@@ -4645,28 +4853,69 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewRejectVisibleChangeToctouMismatchTest::RunTest(const FString& Parameters)
 {
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectVisibleHashDiagnostic"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectVisibleHashDiagnosticNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.LatestEvidenceId = TEXT("tx_2");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotError;
+	TestTrue(TEXT("reject hash diagnostic target has recoverable before snapshot"),
+		SnapshotService.CaptureTargetSnapshot(Target, Target.BeforeSnapshotJson, Target.RecordedAfterHash, SnapshotError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		return false;
+	}
+	Target.BaselineHash = Target.RecordedAfterHash;
+	Target.AfterSnapshotJson = Target.BeforeSnapshotJson;
+
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = TEXT("change_1");
-	Change.AssetPath = TEXT("/Game/BP_Door");
+	Change.AssetPath = Blueprint->GetPathName();
+	Change.GraphName = Graph->GetName();
 	Change.LatestEvidenceId = TEXT("tx_2");
-	Change.AtomicTargets.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_2"),
-		TEXT("after_2")));
+	Change.AtomicTargets.Add(Target);
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("user_changed"));
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, TEXT("user_changed"));
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectVisibleChange(Change, Options);
 
-	TestFalse(TEXT("reject does not overwrite user changes"), Result.bSucceeded);
-	TestEqual(TEXT("TOCTOU mismatch needs user action"),
+	TestTrue(TEXT("reject uses evidence-before snapshot even when current hash drift is diagnostic"), Result.bSucceeded);
+	TestEqual(TEXT("hash drift diagnostic still rejects after rollback"),
 		Result.NewStatus,
-		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestTrue(TEXT("message reports current state changed"),
-		Result.Message.Contains(TEXT("current_state_changed")));
+		EBlueprintHelperReviewChangeStatus::Rejected);
+	TestEqual(TEXT("hash guard records target key"),
+		Result.HashGuardTargetKey,
+		Target.TargetKey);
+	TestEqual(TEXT("hash guard records expected latest hash"),
+		Result.HashGuardExpectedHash,
+		Target.RecordedAfterHash);
+	TestEqual(TEXT("hash guard records current drift hash"),
+		Result.HashGuardCurrentHash,
+		FString(TEXT("user_changed")));
+	TestFalse(TEXT("hash guard carries recorded after snapshot for diagnostics"),
+		Result.HashGuardRecordedAfterSnapshotJson.IsEmpty());
 	return true;
 }
 
@@ -4833,36 +5082,66 @@ bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FS
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_targets"));
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_reject_targets"),
-		TEXT("after_reject"));
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_reject_targets"),
-		TEXT("tx_reject_targets"),
-		TEXT("/Game/BP_Door"),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectTargetsPurge"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectTargetsPurgeNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("reject targets purge fixture has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			Node,
+			TEXT("tx_reject_targets"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_targets"),
+					TEXT("tx_reject_targets"),
+					Target)
+			});
 	FString SaveError;
-	TestTrue(TEXT("record saved before reject targets"), Store.SaveReviewRecords(Records, SaveError));
+	TestTrue(TEXT("record saved before reject targets"), Store.SaveReviewRecord(Record, SaveError));
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_reject"));
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
-		Records[0].ReviewRecordId,
-		{TEXT("graph_node:N1")},
+		Record.ReviewRecordId,
+		{Target.TargetKey},
 		Options);
 	TestTrue(TEXT("persisted reject succeeds"), Result.bSucceeded);
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
 	TestFalse(TEXT("successful reject physically removes the review record"),
-		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
 	return true;
 }
 
@@ -4876,28 +5155,54 @@ bool FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest::RunTest(cons
 	FBlueprintHelperReviewStoreService Store;
 	FBlueprintHelperDebugCaseStoreService DebugStore;
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_targets_debug"));
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_reject_targets_debug"),
-		TEXT("after_reject_debug"));
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_reject_targets_debug"),
-		TEXT("tx_reject_targets_debug"),
-		TEXT("/Game/BP_Door"),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
-	if (Records.Num() != 1)
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectTargetsDebugPurge"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
 		return false;
 	}
 
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectTargetsDebugPurgeNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("reject targets debug purge fixture has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			Node,
+			TEXT("tx_reject_targets_debug"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_targets_debug"),
+					TEXT("tx_reject_targets_debug"),
+					Target)
+			});
+
 	const FString DebugCaseId = TEXT("dbg_reject_targets_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
-	Records[0].DebugCaseIds.Add(DebugCaseId);
+	Record.DebugCaseIds.Add(DebugCaseId);
 	FString SaveError;
-	TestTrue(TEXT("record with linked debug case saves"), Store.SaveReviewRecord(Records[0], SaveError));
+	TestTrue(TEXT("record with linked debug case saves"), Store.SaveReviewRecord(Record, SaveError));
 
 	FBlueprintHelperDebugCase DebugCase;
 	DebugCase.DebugCaseId = DebugCaseId;
@@ -4906,25 +5211,25 @@ bool FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest::RunTest(cons
 	DebugCase.Source = TEXT("review_test");
 	DebugCase.Operation = TEXT("reject_review_targets");
 	DebugCase.Stage = TEXT("test");
-	DebugCase.AssetPaths.Add(TEXT("/Game/BP_Door"));
-	DebugCase.ReviewRecordIds.Add(Records[0].ReviewRecordId);
+	DebugCase.AssetPaths.Add(Target.AssetPath);
+	DebugCase.ReviewRecordIds.Add(Record.ReviewRecordId);
 	FString DebugSaveError;
 	TestTrue(TEXT("linked debug case saves"), DebugStore.SaveCase(DebugCase, &DebugSaveError));
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_reject_debug"));
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
-		Records[0].ReviewRecordId,
-		{TEXT("graph_node:N1")},
+		Record.ReviewRecordId,
+		{Target.TargetKey},
 		Options);
 	TestTrue(TEXT("persisted reject succeeds"), Result.bSucceeded);
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
 	TestFalse(TEXT("successful reject removes the review record"),
-		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
 	FBlueprintHelperDebugCase LoadedDebugCase;
 	FString DebugLoadError;
 	TestFalse(TEXT("successful reject removes linked debug case"),
@@ -4942,7 +5247,26 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId =
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_lifecycle_root"));
-	const FString AssetPath = TEXT("/Game/BP_DoorLifecycleReject");
+	const FString PackageName = FString::Printf(
+		TEXT("/Game/BlueprintHelperReview/LifecycleReject_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString AssetName = FPaths::GetBaseFilename(PackageName);
+	UPackage* Package = CreatePackage(*PackageName);
+	if (!Package)
+	{
+		return false;
+	}
+	UObject* CreatedObject = NewObject<UCurveFloat>(
+		Package,
+		*AssetName,
+		RF_Public | RF_Standalone | RF_Transactional);
+	if (!CreatedObject)
+	{
+		return false;
+	}
+	const FString ObjectPath = CreatedObject->GetPathName();
+	Package->SetDirtyFlag(false);
+	const FString AssetPath = PackageName;
 
 	FBlueprintHelperReviewAtomicTarget RootTarget =
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
@@ -4995,6 +5319,9 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	TestNotNull(TEXT("lifecycle root is available for cascade reject"), Root);
 	if (!Root)
 	{
+		TArray<UObject*> ObjectsToDelete;
+		ObjectsToDelete.Add(CreatedObject);
+		ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
 		return false;
 	}
 	const FBlueprintHelperReviewVisibleChange* Child = PendingChanges.FindByPredicate(
@@ -5006,6 +5333,9 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 	if (!Child)
 	{
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+		TArray<UObject*> ObjectsToDelete;
+		ObjectsToDelete.Add(CreatedObject);
+		ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
 		return false;
 	}
 	const FString ChildChangeId = Child->ChangeId;
@@ -5015,7 +5345,7 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewCascadeActionResult Result =
-		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges, Options);
+		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges);
 	TestTrue(TEXT("root reject succeeds"), Result.RootResult.bSucceeded);
 	TestTrue(TEXT("cascade reports child removal"), Result.bChildrenRemoved);
 	TestTrue(TEXT("child change id is returned"),
@@ -5027,6 +5357,12 @@ bool FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest::RunTest(const
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 
 	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Records[0].ReviewRecordId);
+	if (UObject* RemainingObject = FindObject<UObject>(nullptr, *ObjectPath))
+	{
+		TArray<UObject*> ObjectsToDelete;
+		ObjectsToDelete.Add(RemainingObject);
+		ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+	}
 	return true;
 }
 
@@ -5523,61 +5859,79 @@ bool FBlueprintHelperReviewRejectFailedCreatesDebugCaseTest::RunTest(const FStri
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRejectAllPersistsToctouNeedsActionTest,
-	"BlueprintHelper.Review.Action.RejectAllPersistsToctouNeedsAction",
+	FBlueprintHelperReviewRejectAllRecordsHashDiagnosticTest,
+	"BlueprintHelper.Review.Action.RejectAllRecordsHashDiagnostic",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperReviewRejectAllPersistsToctouNeedsActionTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperReviewRejectAllRecordsHashDiagnosticTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_all"));
-	FBlueprintHelperReviewAtomicTarget Target = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_reject_all"),
-		TEXT("after_original"));
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_reject_all"),
-		TEXT("tx_reject_all"),
-		TEXT("/Game/BP_Door"),
-		Target));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectAllHashDiagnostic"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectAllHashDiagnosticNode"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("reject all hash diagnostic fixture has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			Node,
+			TEXT("tx_reject_all"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_all"),
+					TEXT("tx_reject_all"),
+					Target)
+			});
 	FString SaveError;
-	TestTrue(TEXT("record saved before reject all"), Store.SaveReviewRecords(Records, SaveError));
+	TestTrue(TEXT("record saved before reject all"), Store.SaveReviewRecord(Record, SaveError));
 
 	FBlueprintHelperReviewRecordQuery Query;
 	Query.ArchiveSessionIdFilter = ArchiveSessionId;
 	Query.bPendingOnly = true;
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("user_changed"));
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, TEXT("user_changed"));
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectAll(Query, Options);
-	TestFalse(TEXT("reject all reports non-success when target needs action"), Result.bSucceeded);
-	TestEqual(TEXT("reject all reports needs action"),
+	TestTrue(TEXT("reject all succeeds when current hash drift is diagnostic"), Result.bSucceeded);
+	TestEqual(TEXT("reject all reports rejected after snapshot restore"),
 		Result.NewStatus,
-		EBlueprintHelperReviewChangeStatus::NeedsAction);
+		EBlueprintHelperReviewChangeStatus::Rejected);
 
 	FBlueprintHelperReviewRecordQuery LoadQuery;
 	LoadQuery.ArchiveSessionIdFilter = ArchiveSessionId;
 	LoadQuery.bPendingOnly = false;
 	const TArray<FBlueprintHelperReviewRecord> LoadedRecords = Store.QueryReviewRecords(LoadQuery);
-	TestEqual(TEXT("reject all record can be queried"), LoadedRecords.Num(), 1);
-	if (LoadedRecords.Num() != 1)
-	{
-		return false;
-	}
-
-	const FBlueprintHelperReviewRecord& Loaded = LoadedRecords[0];
-	TestEqual(TEXT("record status needs action after mismatch"),
-		Loaded.Status,
-		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestTrue(TEXT("reject action was recorded"), Loaded.ReviewActions.Num() >= 1);
-	TestTrue(TEXT("needs action reason records current state change"),
-		Loaded.VisibleChanges[0].NeedsActionReason.Contains(TEXT("current_state_changed")));
+	TestEqual(TEXT("successful reject all removes completed review record"), LoadedRecords.Num(), 0);
 	return true;
 }
 
@@ -5590,39 +5944,82 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_all_iterates"));
-	FBlueprintHelperReviewAtomicTarget FirstTarget = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestTarget(
-		TEXT("graph_node:N1"),
-		TEXT("graph:EventGraph:block:DoorFlow"),
-		TEXT("tx_reject_all_iterates"),
-		TEXT("after_first"));
-	FBlueprintHelperReviewAtomicTarget SecondTarget = FirstTarget;
-	SecondTarget.TargetKey = TEXT("graph_node:N2");
-	SecondTarget.RecordedAfterHash = TEXT("after_second");
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("RejectAllIterates"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
 
-	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_reject_all_iterates"),
-		TEXT("tx_reject_all_iterates"),
-		TEXT("/Game/BP_Door"),
-		FirstTarget));
-	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
-		ArchiveSessionId,
-		TEXT("task_reject_all_iterates"),
-		TEXT("tx_reject_all_iterates"),
-		TEXT("/Game/BP_Door"),
-		SecondTarget));
-	TArray<FBlueprintHelperReviewRecord> Records = Store.BuildReviewRecordsFromEvidence(Evidences);
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* FirstNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectAllIteratesFirst"));
+	UK2Node_CustomEvent* SecondNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RejectAllIteratesSecond"));
+	TestNotNull(TEXT("first graph node created"), FirstNode);
+	TestNotNull(TEXT("second graph node created"), SecondNode);
+	if (!FirstNode || !SecondNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget FirstTarget;
+	FBlueprintHelperReviewAtomicTarget SecondTarget;
+	FString FirstTargetError;
+	FString SecondTargetError;
+	TestTrue(TEXT("first reject all target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			FirstNode,
+			TEXT("tx_reject_all_iterates"),
+			FirstTarget,
+			FirstTargetError));
+	TestTrue(TEXT("second reject all target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			SecondNode,
+			TEXT("tx_reject_all_iterates"),
+			SecondTarget,
+			SecondTargetError));
+	if (FirstTarget.BeforeSnapshotJson.IsEmpty()
+		|| FirstTarget.RecordedAfterHash.IsEmpty()
+		|| SecondTarget.BeforeSnapshotJson.IsEmpty()
+		|| SecondTarget.RecordedAfterHash.IsEmpty())
+	{
+		if (!FirstTargetError.IsEmpty())
+		{
+			AddError(FirstTargetError);
+		}
+		if (!SecondTargetError.IsEmpty())
+		{
+			AddError(SecondTargetError);
+		}
+		return false;
+	}
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			FirstTarget.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_all_iterates_first"),
+					TEXT("tx_reject_all_iterates"),
+					FirstTarget),
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_all_iterates_second"),
+					TEXT("tx_reject_all_iterates"),
+					SecondTarget)
+			});
 	FString SaveError;
-	TestTrue(TEXT("record saved before reject all iteration"), Store.SaveReviewRecords(Records, SaveError));
+	TestTrue(TEXT("record saved before reject all iteration"), Store.SaveReviewRecord(Record, SaveError));
 
 	FBlueprintHelperReviewRecordQuery Query;
 	Query.ArchiveSessionIdFilter = ArchiveSessionId;
 	Query.bPendingOnly = true;
 
 	FBlueprintHelperReviewRejectOptions Options;
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N1"), TEXT("after_first"));
-	Options.CurrentHashesByTargetKey.Add(TEXT("graph_node:N2"), TEXT("after_second"));
+	Options.CurrentHashesByTargetKey.Add(FirstTarget.TargetKey, FirstTarget.RecordedAfterHash);
+	Options.CurrentHashesByTargetKey.Add(SecondTarget.TargetKey, SecondTarget.RecordedAfterHash);
 
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult Result = ActionService.RejectAll(Query, Options);
@@ -5631,10 +6028,12 @@ bool FBlueprintHelperReviewRejectAllIteratesPendingTargetsTest::RunTest(const FS
 		Result.NewStatus,
 		EBlueprintHelperReviewChangeStatus::Rejected);
 
-	FBlueprintHelperReviewRecord Loaded;
-	FString LoadError;
-	TestFalse(TEXT("successful reject all physically removes the review record"),
-		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
+	FBlueprintHelperReviewRecordQuery LoadQuery;
+	LoadQuery.ArchiveSessionIdFilter = ArchiveSessionId;
+	LoadQuery.bPendingOnly = false;
+	TestEqual(TEXT("successful reject all physically removes matching records"),
+		Store.QueryReviewRecords(LoadQuery).Num(),
+		0);
 	return true;
 }
 

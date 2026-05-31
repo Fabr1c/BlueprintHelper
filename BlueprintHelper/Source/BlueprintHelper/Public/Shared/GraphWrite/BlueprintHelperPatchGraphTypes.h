@@ -15,8 +15,6 @@ enum class EBlueprintHelperPatchScope : uint8
 	PinDefault,
 	NodeProperty,
 	NodeComment,
-	// DEPRECATED_LAYOUT: node_position is a legacy GraphWrite mutation. New layout must go through GraphLayout.
-	NodePosition,
 	ConnectPins,
 	DisconnectLink,
 	ReplaceLink,
@@ -31,7 +29,6 @@ inline const TCHAR* PatchScopeToString(EBlueprintHelperPatchScope Scope)
 	case EBlueprintHelperPatchScope::PinDefault:        return TEXT("pin_default");
 	case EBlueprintHelperPatchScope::NodeProperty:      return TEXT("node_property");
 	case EBlueprintHelperPatchScope::NodeComment:       return TEXT("node_comment");
-	case EBlueprintHelperPatchScope::NodePosition:      return TEXT("node_position");
 	case EBlueprintHelperPatchScope::ConnectPins:       return TEXT("connect_pins");
 	case EBlueprintHelperPatchScope::DisconnectLink:    return TEXT("disconnect_link");
 	case EBlueprintHelperPatchScope::ReplaceLink:       return TEXT("replace_link");
@@ -46,7 +43,6 @@ inline bool ParsePatchScope(const FString& Str, EBlueprintHelperPatchScope& Out)
 	if (Str.Equals(TEXT("pin_default"), ESearchCase::IgnoreCase))       { Out = EBlueprintHelperPatchScope::PinDefault; return true; }
 	if (Str.Equals(TEXT("node_property"), ESearchCase::IgnoreCase))     { Out = EBlueprintHelperPatchScope::NodeProperty; return true; }
 	if (Str.Equals(TEXT("node_comment"), ESearchCase::IgnoreCase))      { Out = EBlueprintHelperPatchScope::NodeComment; return true; }
-	if (Str.Equals(TEXT("node_position"), ESearchCase::IgnoreCase))     { Out = EBlueprintHelperPatchScope::NodePosition; return true; }
 	if (Str.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))      { Out = EBlueprintHelperPatchScope::ConnectPins; return true; }
 	if (Str.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase))   { Out = EBlueprintHelperPatchScope::DisconnectLink; return true; }
 	if (Str.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))      { Out = EBlueprintHelperPatchScope::ReplaceLink; return true; }
@@ -62,8 +58,6 @@ enum class EBlueprintHelperPatchType : uint8
 	SetPinDefault,
 	SetNodeProperty,
 	SetNodeComment,
-	// DEPRECATED_LAYOUT: set_node_position is retained only for legacy compatibility until GraphLayout replaces it.
-	SetNodePosition,
 	ConnectPins,
 	DisconnectLink,
 	ReplaceLink,
@@ -78,7 +72,6 @@ inline const TCHAR* PatchTypeToString(EBlueprintHelperPatchType Type)
 	case EBlueprintHelperPatchType::SetPinDefault:           return TEXT("set_pin_default");
 	case EBlueprintHelperPatchType::SetNodeProperty:         return TEXT("set_node_property");
 	case EBlueprintHelperPatchType::SetNodeComment:          return TEXT("set_node_comment");
-	case EBlueprintHelperPatchType::SetNodePosition:         return TEXT("set_node_position");
 	case EBlueprintHelperPatchType::ConnectPins:             return TEXT("connect_pins");
 	case EBlueprintHelperPatchType::DisconnectLink:          return TEXT("disconnect_link");
 	case EBlueprintHelperPatchType::ReplaceLink:             return TEXT("replace_link");
@@ -93,7 +86,6 @@ inline bool ParsePatchType(const FString& Str, EBlueprintHelperPatchType& Out)
 	if (Str.Equals(TEXT("set_pin_default"), ESearchCase::IgnoreCase))            { Out = EBlueprintHelperPatchType::SetPinDefault; return true; }
 	if (Str.Equals(TEXT("set_node_property"), ESearchCase::IgnoreCase))          { Out = EBlueprintHelperPatchType::SetNodeProperty; return true; }
 	if (Str.Equals(TEXT("set_node_comment"), ESearchCase::IgnoreCase))           { Out = EBlueprintHelperPatchType::SetNodeComment; return true; }
-	if (Str.Equals(TEXT("set_node_position"), ESearchCase::IgnoreCase))          { Out = EBlueprintHelperPatchType::SetNodePosition; return true; }
 	if (Str.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))               { Out = EBlueprintHelperPatchType::ConnectPins; return true; }
 	if (Str.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase))            { Out = EBlueprintHelperPatchType::DisconnectLink; return true; }
 	if (Str.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))               { Out = EBlueprintHelperPatchType::ReplaceLink; return true; }

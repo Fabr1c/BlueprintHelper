@@ -483,7 +483,6 @@ function compileCompositeIntegrationSteps(taskSpec: Extract<TaskSpec, { task_typ
           replacement: compileCompositeInterfaceImplementationReplacement(interfaceIntegration, functionName),
           options: {
             strict: true,
-            preserve_layout: false,
           },
         },
       ],
@@ -1586,12 +1585,12 @@ function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
     }
     const patch = rawPatch as Record<string, unknown>;
     const kind = getRequiredString(patch, 'kind', `${path}.kind`);
-    if (!['set_pin_default', 'set_node_comment', 'set_node_position'].includes(kind)) {
+    if (!['set_pin_default', 'set_node_comment'].includes(kind)) {
       throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
         {
           code: 'unsupported_graph_write_patch',
           path: `${path}.kind`,
-          message: 'Use set_pin_default, set_node_comment, or set_node_position.',
+          message: 'Use set_pin_default or set_node_comment.',
         },
       ]);
     }
@@ -3433,7 +3432,6 @@ function compileExpressionInput(
 
 function defaultPatchScope(kind: string): string {
   if (kind === 'set_node_comment') return 'node_comment';
-  if (kind === 'set_node_position') return 'node_position';
   return 'pin_default';
 }
 
@@ -3509,25 +3507,11 @@ function compilePatchPayload(kind: string, patch: Record<string, unknown>, path:
       comment: patchValueToString(literalValue(patch['value'])),
     };
   }
-  if (kind === 'set_node_position') {
-    const payload = requiredRecord(patch, 'patch', `${path}.patch`);
-    if (typeof payload['x'] !== 'number' && typeof payload['y'] !== 'number') {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'set_node_position requires patch.x or patch.y.', [
-        {
-          code: 'missing_node_position',
-          path: `${path}.patch`,
-          message: 'Provide patch.x and/or patch.y as numbers.',
-        },
-      ]);
-    }
-    return literalRecordValues(payload);
-  }
-
   throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
     {
       code: 'unsupported_graph_write_patch',
       path: `${path}.kind`,
-      message: 'Use set_pin_default, set_node_comment, or set_node_position.',
+      message: 'Use set_pin_default or set_node_comment.',
     },
   ]);
 }

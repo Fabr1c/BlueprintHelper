@@ -222,7 +222,6 @@ export const graphWriteReplaceTaskSpecFixture = {
       },
       options: {
         strict: true,
-        preserve_layout: false,
       },
     },
   },
@@ -287,7 +286,6 @@ export const graphWriteReplaceExpectedTaskPlanFixture = {
             },
             options: {
               strict: true,
-              preserve_layout: false,
             },
           },
         ],
@@ -610,7 +608,6 @@ export const graphWriteReplaceTaskPlanFixture = {
         },
         options: {
           strict: true,
-          preserve_layout: false,
         },
       },
     },
