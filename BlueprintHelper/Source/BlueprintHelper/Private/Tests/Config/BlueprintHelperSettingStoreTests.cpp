@@ -207,6 +207,26 @@ bool FBlueprintHelperSettingsGraphWriteLayoutRetiredTest::RunTest(const FString&
 	TestTrue(TEXT("graph_write.dry_run is boolean"), DryRunValue.IsValid() && DryRunValue->Type == EJson::Boolean);
 	TestFalse(TEXT("graph_write.dry_run defaults false"), DryRunValue.IsValid() && DryRunValue->AsBool());
 
+	TSharedPtr<FJsonValue> CliArtifactDirValue;
+	TestTrue(
+		TEXT("effective settings expose cli artifact output dir"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(TEXT("cli.artifacts.default_output_dir"), CliArtifactDirValue, Error));
+	TestTrue(TEXT("cli artifact dir is a string"), CliArtifactDirValue.IsValid() && CliArtifactDirValue->Type == EJson::String);
+	TestEqual(
+		TEXT("cli artifact dir default"),
+		CliArtifactDirValue.IsValid() ? CliArtifactDirValue->AsString() : FString(),
+		FString(TEXT("Saved/BlueprintHelper/Cli")));
+
+	TSharedPtr<FJsonValue> ActionResolutionMaxCandidates;
+	TestTrue(
+		TEXT("effective settings expose graph_write action resolution max candidates"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(TEXT("tool_clusters.graph_write.action_resolution.max_candidates"), ActionResolutionMaxCandidates, Error));
+	TestTrue(TEXT("action resolution max candidates is numeric"), ActionResolutionMaxCandidates.IsValid() && ActionResolutionMaxCandidates->Type == EJson::Number);
+	TestEqual(
+		TEXT("action resolution max candidates default"),
+		ActionResolutionMaxCandidates.IsValid() ? ActionResolutionMaxCandidates->AsNumber() : 0.0,
+		8.0);
+
 	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
 		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
 	TestFalse(TEXT("GraphWrite policy dry_run default remains false"), Policy.bDryRun);
@@ -287,16 +307,39 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		TEXT("tool_clusters.umg_widget.dry_run"),
 		TEXT("tool_clusters.graph_write.dry_run")
 	};
+	const TArray<FString> ExpectedRuntimeConsumedRows = {
+		TEXT("cli.artifacts.default_output_dir"),
+		TEXT("runtime.bridge.port"),
+		TEXT("runtime.task_runtime.cache.partial_preview.ttl_seconds"),
+		TEXT("runtime.task_runtime.execution_policy.dry_run_mode"),
+		TEXT("review.artifact.snapshot_root"),
+		TEXT("review.debug_bundle.root_dir"),
+		TEXT("review.debug_bundle.enforce_root_path"),
+		TEXT("tool_clusters.graph_write.action_resolution.max_candidates"),
+		TEXT("ui.layout_rule_editor.canvas_desired_size"),
+		TEXT("ui.review_panel.overlay_filter_current_asset_only")
+	};
+	const TArray<FString> HiddenContractMetadataRows = {
+		TEXT("review.version"),
+		TEXT("review.debug_bundle.schema_review_panel"),
+		TEXT("review.debug_bundle.schema_snapshot"),
+		TEXT("review.debug_bundle.hash_source")
+	};
 
 	TArray<FString> DryRunPaths;
 	bool bExitedDryRunCategory = false;
 	bool bSawGraphWriteLayout = false;
+	bool bSawContractMetadataRow = false;
 	bool bSawLegacyDeveloperCopy = false;
 	for (const FBlueprintHelperSettingRowViewModel& Row : Rows)
 	{
 		if (Row.DotPath == TEXT("tool_clusters.graph_write.layout"))
 		{
 			bSawGraphWriteLayout = true;
+		}
+		if (HiddenContractMetadataRows.Contains(Row.DotPath))
+		{
+			bSawContractMetadataRow = true;
 		}
 
 		if (Row.CategoryLabel.ToString() == TEXT("DryRun"))
@@ -324,12 +367,27 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 	}
 
 	TestFalse(TEXT("GraphWrite layout setting row is removed"), bSawGraphWriteLayout);
+	TestFalse(TEXT("contract metadata rows remain hidden"), bSawContractMetadataRow);
 	TestFalse(TEXT("developer rows do not use legacy English explanatory copy"), bSawLegacyDeveloperCopy);
 	TestEqual(TEXT("DryRun row count"), DryRunPaths.Num(), ExpectedDryRunPaths.Num());
 	for (int32 Index = 0; Index < FMath::Min(DryRunPaths.Num(), ExpectedDryRunPaths.Num()); ++Index)
 	{
 		const FString DryRunOrderTestName = FString::Printf(TEXT("DryRun row order %d"), Index);
 		TestEqual(*DryRunOrderTestName, DryRunPaths[Index], ExpectedDryRunPaths[Index]);
+	}
+	for (const FString& ExpectedPath : ExpectedRuntimeConsumedRows)
+	{
+		const FBlueprintHelperSettingRowViewModel* Row = Rows.FindByPredicate([&ExpectedPath](const FBlueprintHelperSettingRowViewModel& Candidate)
+		{
+			return Candidate.DotPath == ExpectedPath;
+		});
+		const FString RowPresentTestName = FString::Printf(TEXT("setting row exists: %s"), *ExpectedPath);
+		TestTrue(*RowPresentTestName, Row != nullptr);
+		if (Row)
+		{
+			const FString RuntimeConsumedTestName = FString::Printf(TEXT("setting row is marked consumed: %s"), *ExpectedPath);
+			TestTrue(*RuntimeConsumedTestName, Row->bRuntimeConsumed);
+		}
 	}
 
 	return true;

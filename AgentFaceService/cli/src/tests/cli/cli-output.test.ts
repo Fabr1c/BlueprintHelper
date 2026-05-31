@@ -1,5 +1,9 @@
 ﻿import { strict as assert } from 'node:assert';
 import test from 'node:test';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { resolveArtifactRoot } from '../../cli/artifacts.js';
 import { buildCliSummary, omitCliFields, projectCliFields } from '../../cli/output.js';
 
 test('summary output omits full task_plan and points to artifacts', () => {
@@ -91,6 +95,46 @@ test('execute summary does not expose preview_id even if the tool result contain
   assert.equal(result.status, 'executed');
   assert.equal(result.task_run_id, 'task_001');
   assert.equal('preview_id' in result, false);
+});
+
+test('artifact root reads project and user setting defaults', () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-artifact-setting-'));
+  const cwd = path.join(projectRoot, 'Plugins', 'BlueprintHelper');
+  fs.mkdirSync(path.join(projectRoot, '.blueprinthelper'), { recursive: true });
+  fs.mkdirSync(path.join(projectRoot, 'Saved', 'BlueprintHelper'), { recursive: true });
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectRoot, '.blueprinthelper', 'setting.json'),
+    JSON.stringify({ cli: { artifacts: { default_output_dir: 'ProjectArtifacts' } } }),
+  );
+  fs.writeFileSync(
+    path.join(projectRoot, 'Saved', 'BlueprintHelper', 'setting.user.json'),
+    JSON.stringify({ cli: { artifacts: { default_output_dir: 'UserArtifacts' } } }),
+  );
+
+  assert.equal(resolveArtifactRoot({ cwd }), path.resolve(projectRoot, 'UserArtifacts'));
+});
+
+test('artifact root keeps explicit CLI and env overrides above setting defaults', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-artifact-priority-'));
+  fs.mkdirSync(path.join(cwd, '.blueprinthelper'), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, '.blueprinthelper', 'setting.json'),
+    JSON.stringify({ cli: { artifacts: { default_output_dir: 'SettingArtifacts' } } }),
+  );
+
+  const previousArtifactDir = process.env['BPH_CLI_ARTIFACT_DIR'];
+  process.env['BPH_CLI_ARTIFACT_DIR'] = 'EnvArtifacts';
+  try {
+    assert.equal(resolveArtifactRoot({ cwd }), 'EnvArtifacts');
+    assert.equal(resolveArtifactRoot({ cwd, cliDir: 'CliArtifacts' }), 'CliArtifacts');
+  } finally {
+    if (previousArtifactDir === undefined) {
+      delete process.env['BPH_CLI_ARTIFACT_DIR'];
+    } else {
+      process.env['BPH_CLI_ARTIFACT_DIR'] = previousArtifactDir;
+    }
+  }
 });
 
 test('field projection keeps only requested top-level and nested fields', () => {
