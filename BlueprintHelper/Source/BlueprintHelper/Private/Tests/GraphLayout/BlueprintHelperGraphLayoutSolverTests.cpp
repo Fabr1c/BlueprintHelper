@@ -26,6 +26,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewTypes.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPureDataSubgraphPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
@@ -104,6 +105,61 @@ static bool RectsOverlap(const FNodePlacement& A, const FVector2D& ASize, const 
 	const FVector2D BMin = B.TargetPosition;
 	const FVector2D BMax = B.TargetPosition + BSize;
 	return AMin.X < BMax.X && AMax.X > BMin.X && AMin.Y < BMax.Y && AMax.Y > BMin.Y;
+}
+
+static FVector2D FindPreviewNodeSize(const FGraphLayoutPreviewSample& Sample, const FString& NodeId)
+{
+	for (const FGraphLayoutPreviewNodeSpec& NodeSpec : Sample.Nodes)
+	{
+		if (NodeSpec.NodeId == NodeId)
+		{
+			return NodeSpec.Size;
+		}
+	}
+	return FVector2D(240.0f, 120.0f);
+}
+
+static const FGraphLayoutPreviewNodeSpec* FindPreviewNodeSpec(const FGraphLayoutPreviewSample& Sample, const FString& NodeId)
+{
+	for (const FGraphLayoutPreviewNodeSpec& NodeSpec : Sample.Nodes)
+	{
+		if (NodeSpec.NodeId == NodeId)
+		{
+			return &NodeSpec;
+		}
+	}
+	return nullptr;
+}
+
+static bool MaterializedNodeMatchesPlacement(
+	const FGraphLayoutPreviewMaterializerResult& Result,
+	const FString& NodeId,
+	const FVector2D& TargetPosition)
+{
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	const FGuid* ExpectedGuid = Result.NodeGuidsById.Find(NodeId);
+	if (!ExpectedGuid)
+	{
+		return false;
+	}
+
+	const int32 ExpectedX = FMath::RoundToInt(TargetPosition.X);
+	const int32 ExpectedY = FMath::RoundToInt(TargetPosition.Y);
+	for (const UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (Node &&
+			Node->NodeGuid == *ExpectedGuid &&
+			Node->NodePosX == ExpectedX &&
+			Node->NodePosY == ExpectedY)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 static bool ExpandedRectsOverlap(
@@ -2148,6 +2204,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::RunTest(const FString& Parameters)
 {
+	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
 
 	for (const FSemanticSceneDefinition& Scene : FSemanticSceneCatalog::GetAllScenes())
@@ -2159,6 +2216,66 @@ bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::R
 		TestTrue(TEXT("sample has nodes"), Sample.Snapshot.Nodes.Num() >= 4);
 		TestTrue(TEXT("sample has materialization nodes"), Sample.Nodes.Num() >= Sample.Snapshot.Nodes.Num());
 		TestTrue(TEXT("sample has links"), Sample.Links.Num() >= 1);
+
+		auto ExpectAnchor = [this, &Sample](const FString& NodeId, const ENodeRole Role)
+		{
+			const FGraphLayoutPreviewNodeSpec* NodeSpec = FindPreviewNodeSpec(Sample, NodeId);
+			TestNotNull(FString::Printf(TEXT("%s anchor node exists"), *NodeId), NodeSpec);
+			if (!NodeSpec)
+			{
+				return;
+			}
+			TestTrue(FString::Printf(TEXT("%s uses preview role anchor"), *NodeId), NodeSpec->bUsePreviewRoleAnchor);
+			TestTrue(FString::Printf(TEXT("%s anchor role matches"), *NodeId), NodeSpec->PreviewAnchorRole == Role);
+		};
+
+		auto ExpectNotAnchor = [this, &Sample](const FString& NodeId)
+		{
+			const FGraphLayoutPreviewNodeSpec* NodeSpec = FindPreviewNodeSpec(Sample, NodeId);
+			TestNotNull(FString::Printf(TEXT("%s non-anchor node exists"), *NodeId), NodeSpec);
+			if (!NodeSpec)
+			{
+				return;
+			}
+			TestFalse(FString::Printf(TEXT("%s is not a draggable role anchor"), *NodeId), NodeSpec->bUsePreviewRoleAnchor);
+			TestTrue(FString::Printf(TEXT("%s has no preview anchor role"), *NodeId), NodeSpec->PreviewAnchorRole == ENodeRole::Unknown);
+		};
+
+		switch (Scene.Scene)
+		{
+		case ESemanticScene::LinearExecChain:
+			ExpectAnchor(TEXT("EventStart"), ENodeRole::EventEntry);
+			ExpectAnchor(TEXT("ResetState"), ENodeRole::ExecNode);
+			ExpectNotAnchor(TEXT("SetCounter"));
+			break;
+		case ESemanticScene::PureDataSubgraph:
+			ExpectAnchor(TEXT("SelfRef"), ENodeRole::VariableInput);
+			ExpectAnchor(TEXT("ComposeKey"), ENodeRole::OperatorOrCompare);
+			ExpectAnchor(TEXT("BuildArray"), ENodeRole::PureFunction);
+			break;
+		case ESemanticScene::NodeInputCluster:
+			ExpectAnchor(TEXT("Consumer"), ENodeRole::ExecNode);
+			ExpectAnchor(TEXT("ContextGet"), ENodeRole::VariableInput);
+			ExpectAnchor(TEXT("IsValidGate"), ENodeRole::OperatorOrCompare);
+			ExpectAnchor(TEXT("ComposePayload"), ENodeRole::PureFunction);
+			break;
+		case ESemanticScene::MultiExecOutput:
+			ExpectAnchor(TEXT("EventStart"), ENodeRole::EventEntry);
+			ExpectAnchor(TEXT("PrimaryPrint"), ENodeRole::ExecNode);
+			ExpectAnchor(TEXT("Branch"), ENodeRole::BranchControl);
+			ExpectNotAnchor(TEXT("BranchPrint"));
+			ExpectNotAnchor(TEXT("CompletedPrint"));
+			break;
+		case ESemanticScene::Occupancy:
+			ExpectAnchor(TEXT("CandidateExec"), ENodeRole::ExecNode);
+			ExpectAnchor(TEXT("DelayAsync"), ENodeRole::AsyncNode);
+			ExpectAnchor(TEXT("CommentBlocker"), ENodeRole::Comment);
+			ExpectNotAnchor(TEXT("FallbackExec"));
+			break;
+		default:
+			AddError(TEXT("unexpected semantic scene in preview sample catalog"));
+			return false;
+		}
 	}
 	return true;
 }
@@ -2201,6 +2318,274 @@ bool FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult::RunTest(con
 	TestTrue(TEXT("result success"), Result.bSuccess);
 	TestEqual(TEXT("scene"), Result.Sample.Scene, ESemanticScene::PureDataSubgraph);
 	TestTrue(TEXT("has layout"), Result.LayoutPlan.Placements.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirstExec,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensEntryToFirstExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirstExec::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState LinearScene;
+	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0f, 120.0f));
+	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(500.0f, 120.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+	RuleSet.ExecColumnSpacing = 360.0f;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.CollisionPaddingX = 240.0f;
+	RuleSet.CollisionPaddingY = 240.0f;
+
+	FGraphLayoutPreviewService Service;
+	FGraphLayoutPreviewRequest Request;
+	Request.Scene = ESemanticScene::LinearExecChain;
+	Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+	FGraphLayoutPreviewBuildResult Result;
+	TestTrue(TEXT("preview builds"), Service.BuildPreviewDataForTest(Request, Result));
+	TestTrue(TEXT("result success"), Result.bSuccess);
+
+	const FNodePlacement* EventPlacement = FindPlacement(Result.LayoutPlan, TEXT("EventStart"));
+	const FNodePlacement* ResetPlacement = FindPlacement(Result.LayoutPlan, TEXT("ResetState"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("reset placement exists"), ResetPlacement);
+	if (!EventPlacement || !ResetPlacement)
+	{
+		return false;
+	}
+
+	const float EventExecOutputY = EventPlacement->TargetPosition.Y + 58.0f;
+	const float ResetExecInputY = ResetPlacement->TargetPosition.Y + 48.0f;
+	TestEqual(TEXT("event output pin and first exec input pin are horizontal"), ResetExecInputY, EventExecOutputY);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors,
+	"BlueprintHelper.GraphLayout.Preview.ServiceUsesCurrentRuleSetSceneAnchors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	auto BuildResultForAnchors = [](const FVector2D& EventAnchor, const FVector2D& ExecAnchor)
+	{
+		FRuleSet RuleSet;
+		FEditorCanvasSceneState LinearScene;
+		LinearScene.RoleCenters.Add(ENodeRole::EventEntry, EventAnchor);
+		LinearScene.RoleCenters.Add(ENodeRole::ExecNode, ExecAnchor);
+		RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+
+		FGraphLayoutPreviewService Service;
+		FGraphLayoutPreviewRequest Request;
+		Request.Scene = ESemanticScene::LinearExecChain;
+		Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+		FGraphLayoutPreviewBuildResult Result;
+		Service.BuildPreviewDataForTest(Request, Result);
+		return Result;
+	};
+
+	const FGraphLayoutPreviewBuildResult FirstResult = BuildResultForAnchors(FVector2D(120.0f, 140.0f), FVector2D(420.0f, 140.0f));
+	const FGraphLayoutPreviewBuildResult SecondResult = BuildResultForAnchors(FVector2D(300.0f, 260.0f), FVector2D(660.0f, 260.0f));
+	TestTrue(TEXT("first result succeeds"), FirstResult.bSuccess);
+	TestTrue(TEXT("second result succeeds"), SecondResult.bSuccess);
+
+	const FNodePlacement* FirstEventPlacement = FindPlacement(FirstResult.LayoutPlan, TEXT("EventStart"));
+	const FNodePlacement* FirstResetPlacement = FindPlacement(FirstResult.LayoutPlan, TEXT("ResetState"));
+	const FNodePlacement* SecondEventPlacement = FindPlacement(SecondResult.LayoutPlan, TEXT("EventStart"));
+	const FNodePlacement* SecondResetPlacement = FindPlacement(SecondResult.LayoutPlan, TEXT("ResetState"));
+	TestNotNull(TEXT("first event placement exists"), FirstEventPlacement);
+	TestNotNull(TEXT("first reset placement exists"), FirstResetPlacement);
+	TestNotNull(TEXT("second event placement exists"), SecondEventPlacement);
+	TestNotNull(TEXT("second reset placement exists"), SecondResetPlacement);
+	if (!FirstEventPlacement || !FirstResetPlacement || !SecondEventPlacement || !SecondResetPlacement)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("first event role center drives preview x"), FirstEventPlacement->TargetPosition.X + 202.0f, 120.0);
+	TestEqual(TEXT("first event role center drives preview y"), FirstEventPlacement->TargetPosition.Y + 58.0f, 140.0);
+	TestEqual(TEXT("first exec role center drives preview x"), FirstResetPlacement->TargetPosition.X + 16.0f, 420.0);
+	TestEqual(TEXT("first exec role center drives preview y"), FirstResetPlacement->TargetPosition.Y + 48.0f, 140.0);
+	TestEqual(TEXT("second event role center drives preview x"), SecondEventPlacement->TargetPosition.X + 202.0f, 300.0);
+	TestEqual(TEXT("second event role center drives preview y"), SecondEventPlacement->TargetPosition.Y + 58.0f, 260.0);
+	TestEqual(TEXT("second exec role center drives preview x"), SecondResetPlacement->TargetPosition.X + 16.0f, 660.0);
+	TestEqual(TEXT("second exec role center drives preview y"), SecondResetPlacement->TargetPosition.Y + 48.0f, 260.0);
+	TestTrue(TEXT("changing scene anchors changes preview event position"), !FirstEventPlacement->TargetPosition.Equals(SecondEventPlacement->TargetPosition));
+	TestTrue(TEXT("changing scene anchors changes preview exec position"), !FirstResetPlacement->TargetPosition.Equals(SecondResetPlacement->TargetPosition));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPreservesRoleOverlap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState LinearScene;
+	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(240.0f, 160.0f));
+	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(240.0f, 160.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+	RuleSet.ExecColumnSpacing = 900.0f;
+	RuleSet.CollisionPaddingX = 400.0f;
+	RuleSet.CollisionPaddingY = 400.0f;
+	RuleSet.CollisionStepY = 400.0f;
+
+	FGraphLayoutPreviewService Service;
+	FGraphLayoutPreviewRequest Request;
+	Request.Scene = ESemanticScene::LinearExecChain;
+	Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+	FGraphLayoutPreviewBuildResult Result;
+	TestTrue(TEXT("preview builds"), Service.BuildPreviewDataForTest(Request, Result));
+	TestTrue(TEXT("result success"), Result.bSuccess);
+
+	const FNodePlacement* EventPlacement = FindPlacement(Result.LayoutPlan, TEXT("EventStart"));
+	const FNodePlacement* ResetPlacement = FindPlacement(Result.LayoutPlan, TEXT("ResetState"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("reset placement exists"), ResetPlacement);
+	if (!EventPlacement || !ResetPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("overlapped role anchors produce overlapping native node bounds"),
+		RectsOverlap(*EventPlacement, FVector2D(220.0f, 88.0f), *ResetPlacement, FVector2D(228.0f, 96.0f)));
+	TestTrue(
+		TEXT("overlap is not removed by solver occupancy"),
+		FMath::Abs(EventPlacement->TargetPosition.X - ResetPlacement->TargetPosition.X) < 260.0f &&
+		FMath::Abs(EventPlacement->TargetPosition.Y - ResetPlacement->TargetPosition.Y) < 140.0f);
+	TestEqual(TEXT("event semantic anchor x remains on dragged role center"), EventPlacement->TargetPosition.X + 202.0f, 240.0);
+	TestEqual(TEXT("event semantic anchor y remains on dragged role center"), EventPlacement->TargetPosition.Y + 58.0f, 160.0);
+	TestEqual(TEXT("exec semantic anchor x remains on dragged role center"), ResetPlacement->TargetPosition.X + 16.0f, 240.0);
+	TestEqual(TEXT("exec semantic anchor y remains on dragged role center"), ResetPlacement->TargetPosition.Y + 48.0f, 160.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesOverlapAcrossScenes,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPreservesOverlapAcrossScenes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesOverlapAcrossScenes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	for (const FSemanticSceneDefinition& SceneDefinition : FSemanticSceneCatalog::GetAllScenes())
+	{
+		FRuleSet RuleSet;
+		FEditorCanvasSceneState SceneState;
+		for (const FSemanticSceneNodeDefinition& NodeDefinition : SceneDefinition.Nodes)
+		{
+			SceneState.RoleCenters.Add(NodeDefinition.Role, FVector2D(320.0f, 180.0f));
+		}
+		RuleSet.EditorCanvasScenes.Add(SceneDefinition.Scene, SceneState);
+
+		FGraphLayoutPreviewService Service;
+		FGraphLayoutPreviewRequest Request;
+		Request.Scene = SceneDefinition.Scene;
+		Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+		FGraphLayoutPreviewBuildResult Result;
+		TestTrue(FString::Printf(TEXT("preview builds for %s"), ToString(SceneDefinition.Scene)), Service.BuildPreviewDataForTest(Request, Result));
+		TestTrue(TEXT("result success"), Result.bSuccess);
+		TestTrue(TEXT("has placements"), Result.LayoutPlan.Placements.Num() > 0);
+
+		int32 OverlapPairCount = 0;
+		for (int32 LeftIndex = 0; LeftIndex < Result.LayoutPlan.Placements.Num(); ++LeftIndex)
+		{
+			for (int32 RightIndex = LeftIndex + 1; RightIndex < Result.LayoutPlan.Placements.Num(); ++RightIndex)
+			{
+				const FNodePlacement& Left = Result.LayoutPlan.Placements[LeftIndex];
+				const FNodePlacement& Right = Result.LayoutPlan.Placements[RightIndex];
+				if (Left.Reason == TEXT("preview_semantic_role_anchor") &&
+					Right.Reason == TEXT("preview_semantic_role_anchor") &&
+					RectsOverlap(
+						Left,
+						FindPreviewNodeSize(Result.Sample, Left.NodeId),
+						Right,
+						FindPreviewNodeSize(Result.Sample, Right.NodeId)))
+				{
+					++OverlapPairCount;
+				}
+			}
+		}
+		TestTrue(
+			FString::Printf(TEXT("anchored preview nodes overlap for %s"), ToString(SceneDefinition.Scene)),
+			OverlapPairCount > 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerPreservesSemanticOverlap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestTrue(TEXT("preview materializer test runs on the game thread"), IsInGameThread());
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState LinearScene;
+	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(260.0f, 180.0f));
+	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(260.0f, 180.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
+	const FNodePlacement* ResetPlacement = FindPlacement(Plan, TEXT("ResetState"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("reset placement exists"), ResetPlacement);
+	if (!EventPlacement || !ResetPlacement)
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer creates graph"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("preview graph valid"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("event materializer uses semantic plan position"),
+		MaterializedNodeMatchesPlacement(Result, TEXT("EventStart"), EventPlacement->TargetPosition));
+	TestTrue(
+		TEXT("reset materializer uses semantic plan position"),
+		MaterializedNodeMatchesPlacement(Result, TEXT("ResetState"), ResetPlacement->TargetPosition));
+	TestTrue(
+		TEXT("materialized semantic placements still overlap"),
+		RectsOverlap(
+			*EventPlacement,
+			FindPreviewNodeSize(Sample, TEXT("EventStart")),
+			*ResetPlacement,
+			FindPreviewNodeSize(Sample, TEXT("ResetState"))));
 	return true;
 }
 

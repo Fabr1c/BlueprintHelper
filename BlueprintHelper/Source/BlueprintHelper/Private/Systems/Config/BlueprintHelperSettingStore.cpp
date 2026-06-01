@@ -377,7 +377,14 @@ FString FBlueprintHelperSettingStore::GetBuiltInDefaultSettingJson()
 		TEXT("      }\n")
 		TEXT("    }\n")
 		TEXT("  },\n")
-		TEXT("  \"debug\": {}\n")
+		TEXT("  \"debug\": {\n")
+		TEXT("    \"screenshot\": {\n")
+		TEXT("      \"output_dir\": \"Screenshots\",\n")
+		TEXT("      \"default_capture_target\": \"active_window\",\n")
+		TEXT("      \"filename_prefix\": \"editor\",\n")
+		TEXT("      \"graph_max_nodes_per_image\": 8\n")
+		TEXT("    }\n")
+		TEXT("  }\n")
 		TEXT("}\n");
 }
 

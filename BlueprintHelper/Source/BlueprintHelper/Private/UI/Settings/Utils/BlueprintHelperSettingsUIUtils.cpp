@@ -58,6 +58,7 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 	return DotPath.StartsWith(TEXT("runtime.bridge.")) ||
 		DotPath.StartsWith(TEXT("runtime.task_runtime.cache.")) ||
 		DotPath.StartsWith(TEXT("runtime.task_runtime.execution_policy.")) ||
+		DotPath.StartsWith(TEXT("debug.screenshot.")) ||
 		DotPath.StartsWith(TEXT("review.artifact.")) ||
 		DotPath.StartsWith(TEXT("review.debug_bundle.")) ||
 		DotPath.StartsWith(TEXT("review.performance.")) ||

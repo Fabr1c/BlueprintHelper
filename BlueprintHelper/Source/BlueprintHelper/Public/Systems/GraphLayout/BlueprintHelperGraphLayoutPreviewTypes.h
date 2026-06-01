@@ -23,6 +23,8 @@ struct FGraphLayoutPreviewNodeSpec
 	FString Title;
 	EGraphLayoutPreviewNodeFactory Factory = EGraphLayoutPreviewNodeFactory::GenericK2;
 	ENodeRole Role = ENodeRole::Unknown;
+	ENodeRole PreviewAnchorRole = ENodeRole::Unknown;
+	bool bUsePreviewRoleAnchor = false;
 	FVector2D Size = FVector2D(220.0f, 96.0f);
 };
 

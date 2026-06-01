@@ -2,8 +2,8 @@
 
 #include "Async/Async.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
-#include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 
 namespace BlueprintHelper::GraphLayout
 {
@@ -93,7 +93,14 @@ bool FGraphLayoutPreviewService::BuildPreviewData(
 		return false;
 	}
 
-	OutResult.LayoutPlan = FSolver::Solve(OutResult.Sample.Snapshot, RuleSet);
+	OutResult.LayoutPlan = FGraphLayoutPreviewSemanticProjector::Project(OutResult.Sample, RuleSet);
+	if (OutResult.LayoutPlan.Issues.Num() > 0)
+	{
+		OutResult.bSuccess = false;
+		OutResult.Error = FString::Join(OutResult.LayoutPlan.Issues, TEXT(" "));
+		return false;
+	}
+
 	if (OutResult.LayoutPlan.Placements.Num() == 0)
 	{
 		OutResult.bSuccess = false;
