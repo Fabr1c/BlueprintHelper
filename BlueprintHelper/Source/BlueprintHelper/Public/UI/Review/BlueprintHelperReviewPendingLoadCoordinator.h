@@ -10,12 +10,23 @@
 
 class FBlueprintHelperReviewStoreService;
 
+enum class EBlueprintHelperReviewPendingLoadMode : uint8
+{
+	ResetToFirstPage,
+	AppendNextPage,
+	RefreshChanged
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingLoadRequest
 {
 	FString AssetPathFilter;
 	FString Source;
 	FBlueprintHelperReviewStoreChangedEvent SourceEvent =
 		FBlueprintHelperReviewStoreChangedEvent::FullReload();
+	EBlueprintHelperReviewPendingLoadMode Mode =
+		EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage;
+	FBlueprintHelperReviewPendingIndexPageCursor Cursor;
+	int32 PageSize = 100;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingLoadResult
@@ -27,6 +38,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingLoadResult
 	FString Error;
 	FBlueprintHelperReviewStoreChangedEvent SourceEvent =
 		FBlueprintHelperReviewStoreChangedEvent::FullReload();
+	EBlueprintHelperReviewPendingLoadMode Mode =
+		EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage;
+	FBlueprintHelperReviewPendingIndexPageCursor NextCursor;
+	int32 TotalMatchingCount = 0;
+	bool bHasMore = false;
 	TArray<FBlueprintHelperReviewVisibleChange> Changes;
 	TArray<FBlueprintHelperReviewValidityCandidate> ValidityCandidates;
 };

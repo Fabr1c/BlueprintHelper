@@ -1454,21 +1454,11 @@ FReply SBlueprintHelperReviewPanel::OnAcceptAll()
 		AssetPath = SelectedChange->AssetPath;
 	}
 
-	TArray<FBlueprintHelperReviewVisibleChange> ChangesToAccept;
-	const TArray<FReviewChangeItem> ItemsSnapshot = ChangeItems;
-	for (const FReviewChangeItem& Item : ItemsSnapshot)
-	{
-		if (!Item.IsValid() || (!AssetPath.IsEmpty() && Item->AssetPath != AssetPath))
-		{
-			continue;
-		}
-		ChangesToAccept.Add(*Item);
-	}
 	const FBlueprintHelperReviewCommandBatchResult BatchResult =
 		ReviewPanelPresenter.IsValid()
-			? ReviewPanelPresenter->AcceptVisibleChangesBatch(ChangesToAccept)
+			? ReviewPanelPresenter->AcceptPendingVisibleChangesForAsset(AssetPath)
 			: FBlueprintHelperReviewCommandBatchResult();
-	const int32 TargetCount = ChangesToAccept.Num();
+	const int32 TargetCount = BatchResult.BatchActionResult.RequestedCount;
 	const int32 FailedCount = BatchResult.BatchActionResult.FailedCount;
 	const int32 AcceptedCount = BatchResult.BatchActionResult.SucceededCount;
 
@@ -1504,35 +1494,14 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		AssetPath = SelectedChange->AssetPath;
 	}
 
-	TArray<FBlueprintHelperReviewVisibleChange> ChangesToReject;
-	for (const FReviewChangeItem& Item : ChangeItems)
-	{
-		if (Item.IsValid() && (AssetPath.IsEmpty() || Item->AssetPath == AssetPath))
-		{
-			ChangesToReject.Add(*Item);
-		}
-	}
 	const FString BatchKey = FString::Printf(
 		TEXT("reject_all:%s:%lld"),
 		*AssetPath,
 		FDateTime::UtcNow().GetTicks());
-	if (ChangesToReject.Num() == 0)
-	{
-		ShowReviewActionNotification(
-			BatchKey,
-			TEXT("Reject all failed: no rejectable review item."),
-			EReviewActionNotificationState::Fail,
-			true,
-			false);
-		AddDebugMessage(FString::Printf(
-			TEXT("RejectAll queued asset=\"%s\" count=0"),
-			*AssetPath));
-		return FReply::Handled();
-	}
 
 	const FBlueprintHelperReviewCommandBatchResult BatchResult =
 		ReviewPanelPresenter.IsValid()
-			? ReviewPanelPresenter->RejectVisibleChangesBatch(ChangesToReject)
+			? ReviewPanelPresenter->RejectPendingVisibleChangesForAsset(AssetPath)
 			: FBlueprintHelperReviewCommandBatchResult();
 	AddDebugMessage(FString::Printf(
 		TEXT("RejectAll batch asset=\"%s\" requested=%d rejected=%d failed=%d"),
@@ -1542,7 +1511,9 @@ FReply SBlueprintHelperReviewPanel::OnRejectAll()
 		BatchResult.BatchActionResult.FailedCount));
 	ShowReviewActionNotification(
 		BatchKey,
-		BatchResult.BatchActionResult.bSucceeded
+		BatchResult.BatchActionResult.RequestedCount == 0
+			? FString(TEXT("Reject all failed: no rejectable review item."))
+			: BatchResult.BatchActionResult.bSucceeded
 			? FString::Printf(TEXT("Reject all succeeded: %d target(s)."), BatchResult.BatchActionResult.SucceededCount)
 			: FString::Printf(TEXT("Reject all failed: %s"), *BatchResult.BatchActionResult.Message),
 		BatchResult.BatchActionResult.bSucceeded
@@ -1839,29 +1810,134 @@ void SBlueprintHelperReviewPanel::RequestPendingReviewLoad(
 	const FString& Reason,
 	const FBlueprintHelperReviewStoreChangedEvent& SourceEvent)
 {
-	if (!PendingLoadCoordinator.IsValid())
-	{
-		return;
-	}
-
-	FBlueprintHelperReviewPendingLoadRequest Request;
-	Request.Source = Reason;
-	Request.SourceEvent = !SourceEvent.bRequiresFullReload
+	const FBlueprintHelperReviewStoreChangedEvent NormalizedEvent = !SourceEvent.bRequiresFullReload
 		&& SourceEvent.ChangeIds.Num() == 0
 		&& SourceEvent.AssetPaths.Num() == 0
 			? FBlueprintHelperReviewStoreChangedEvent::FullReload()
 			: SourceEvent;
-	PendingLoadCoordinator->RequestLoad(
+	const bool bFullReload = NormalizedEvent.bRequiresFullReload
+		|| (NormalizedEvent.ChangeIds.Num() == 0 && NormalizedEvent.AssetPaths.Num() == 0);
+	RequestPendingReviewPage(
+		Reason,
+		bFullReload
+			? EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage
+			: EBlueprintHelperReviewPendingLoadMode::RefreshChanged,
+		NormalizedEvent);
+}
+
+void SBlueprintHelperReviewPanel::RequestPendingReviewPage(
+	const FString& Reason,
+	EBlueprintHelperReviewPendingLoadMode Mode,
+	const FBlueprintHelperReviewStoreChangedEvent& SourceEvent)
+{
+	if (!PendingLoadCoordinator.IsValid())
+	{
+		return;
+	}
+	if (PagedChangeModel.IsPageRequestInFlight())
+	{
+		if (Mode == EBlueprintHelperReviewPendingLoadMode::AppendNextPage)
+		{
+			return;
+		}
+		PendingLoadCoordinator->CancelPendingLoads();
+		PagedChangeModel.MarkPageRequestFinished();
+	}
+
+	FBlueprintHelperReviewPendingLoadRequest Request;
+	Request.Source = Reason;
+	Request.SourceEvent = SourceEvent;
+	Request.Mode = Mode;
+	Request.PageSize = PendingPageSize;
+	Request.Cursor = Mode == EBlueprintHelperReviewPendingLoadMode::AppendNextPage
+		? PagedChangeModel.GetNextCursor()
+		: FBlueprintHelperReviewPendingIndexPageCursor();
+
+	PagedChangeModel.MarkPageRequestStarted();
+	PendingPageRequestId = PendingLoadCoordinator->RequestLoad(
 		Request,
 		FBlueprintHelperReviewPendingLoadCompleted::CreateSP(
 			this,
 			&SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted));
-	AddDebugMessage(FString::Printf(TEXT("Review pending load requested reason=%s"), *Reason));
+	AddDebugMessage(FString::Printf(
+		TEXT("Review pending load requested reason=%s mode=%d page_size=%d"),
+		*Reason,
+		static_cast<int32>(Mode),
+		PendingPageSize));
+}
+
+void SBlueprintHelperReviewPanel::OnChangeTreeScrolled(double ScrollOffset)
+{
+	if (!ChangeTreeView.IsValid())
+	{
+		return;
+	}
+
+	const int32 GeneratedRows = ChangeTreeView->GetNumGeneratedChildren();
+	const int32 LoadedRows = CountLoadedChangeTreeRows();
+	if (PagedChangeModel.ShouldRequestNextPage(
+		ScrollOffset,
+		GeneratedRows,
+		LoadedRows,
+		PendingScrollPrefetchRows))
+	{
+		RequestPendingReviewPage(
+			TEXT("scroll_append"),
+			EBlueprintHelperReviewPendingLoadMode::AppendNextPage);
+	}
+}
+
+int32 SBlueprintHelperReviewPanel::CountLoadedChangeTreeRows() const
+{
+	int32 Count = 0;
+	TArray<FReviewTreeItemPtr> Stack = ChangeTreeRootItems;
+	while (Stack.Num() > 0)
+	{
+		FReviewTreeItemPtr Item = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
+		if (!Item.IsValid())
+		{
+			continue;
+		}
+		++Count;
+		for (const FReviewTreeItemPtr& Child : Item->Children)
+		{
+			Stack.Add(Child);
+		}
+	}
+	return Count;
+}
+
+FText SBlueprintHelperReviewPanel::GetPendingPageStatusText() const
+{
+	const int32 Loaded = PagedChangeModel.GetLoadedChanges().Num();
+	const int32 Total = PagedChangeModel.GetTotalMatchingCount();
+	if (PagedChangeModel.IsPageRequestInFlight())
+	{
+		return FText::FromString(FString::Printf(TEXT("正在加载 %d / %d"), Loaded, Total));
+	}
+	if (PagedChangeModel.HasMorePages())
+	{
+		return FText::FromString(FString::Printf(TEXT("已加载 %d / %d，滚动到底部继续加载"), Loaded, Total));
+	}
+	return FText::FromString(FString::Printf(TEXT("已加载 %d / %d"), Loaded, Total));
+}
+
+FReply SBlueprintHelperReviewPanel::OnLoadMorePendingChanges()
+{
+	RequestPendingReviewPage(
+		TEXT("manual_load_more"),
+		EBlueprintHelperReviewPendingLoadMode::AppendNextPage);
+	return FReply::Handled();
 }
 
 void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 	const FBlueprintHelperReviewPendingLoadResult& Result)
 {
+	if (PendingPageRequestId != 0 && Result.RequestId != PendingPageRequestId)
+	{
+		return;
+	}
+	PagedChangeModel.MarkPageRequestFinished();
 	if (Result.bDiscarded)
 	{
 		return;
@@ -1878,12 +1954,18 @@ void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 	{
 		OnValidityCandidatesReady.Execute(Result.Source, Result.ValidityCandidates);
 	}
+	ensureMsgf(
+		Result.Mode != EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage
+			|| Result.Changes.Num() <= PendingPageSize,
+		TEXT("ReviewPanel reset pending load returned more rows than page size."));
 
-	const TArray<FBlueprintHelperReviewVisibleChange> NextChanges =
-		BuildVisibleChangesAfterIncrementalLoad(Result);
+	PagedChangeModel.ApplyPendingLoadResult(Result);
+	const TArray<FBlueprintHelperReviewVisibleChange>& NextChanges =
+		PagedChangeModel.GetLoadedChanges();
 	const FString LatestSignature = BuildVisibleChangeRefreshSignature(NextChanges);
 	if (LatestSignature == LastVisibleChangeRefreshSignature)
 	{
+		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 		return;
 	}
 
@@ -1909,119 +1991,37 @@ void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 			PreviousSelectedIndex == INDEX_NONE ? 0 : PreviousSelectedIndex);
 	}
 
+	const bool bSelectionChanged = SelectedChange.IsValid()
+		? SelectedChange->ChangeId != PreviousSelectedChangeId
+		: !PreviousSelectedChangeId.IsEmpty();
+	const bool bSelectedChangeRefreshed =
+		Result.Mode == EBlueprintHelperReviewPendingLoadMode::RefreshChanged
+		&& SelectedChange.IsValid()
+		&& SelectedChange->ChangeId == PreviousSelectedChangeId
+		&& FBlueprintHelperReviewPagedChangeModel::PendingLoadResultContainsChange(
+			Result,
+			PreviousSelectedChangeId);
+
 	RefreshChangeTreeWidget();
-	LoadReviewAssetFromSelection();
-	RefreshMainWorkspaceAfterReviewStateChanged();
+	if (bSelectionChanged || bSelectedChangeRefreshed)
+	{
+		LoadReviewAssetFromSelection();
+		RefreshMainWorkspaceAfterReviewStateChanged();
+	}
 	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 	AddDebugMessage(FString::Printf(
-		TEXT("Review store refreshed dynamically source=%s pending=%d"),
+		TEXT("Review store refreshed dynamically source=%s loaded=%d total=%d has_more=%d"),
 		*Result.Source,
-		NextChanges.Num()));
-}
-
-TArray<FBlueprintHelperReviewVisibleChange>
-SBlueprintHelperReviewPanel::BuildVisibleChangesAfterIncrementalLoad(
-	const FBlueprintHelperReviewPendingLoadResult& Result) const
-{
-	if (Result.SourceEvent.bRequiresFullReload)
-	{
-		return Result.Changes;
-	}
-
-	TArray<FBlueprintHelperReviewVisibleChange> NextChanges = BuildPendingChangeSnapshot();
-	const auto EventTargetsChange = [&Result](const FBlueprintHelperReviewVisibleChange& Change)
-	{
-		const bool bChangeMatches = Result.SourceEvent.ChangeIds.Num() == 0
-			|| Result.SourceEvent.ChangeIds.Contains(Change.ChangeId);
-		const bool bAssetMatches = Result.SourceEvent.AssetPaths.Num() == 0
-			|| Result.SourceEvent.AssetPaths.Contains(Change.AssetPath);
-		return bChangeMatches && bAssetMatches;
-	};
-
-	NextChanges.RemoveAll([&Result, &EventTargetsChange](const FBlueprintHelperReviewVisibleChange& Change)
-	{
-		if (EventTargetsChange(Change))
-		{
-			return true;
-		}
-		for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
-		{
-			if (!Incoming.ChangeId.IsEmpty() && Incoming.ChangeId == Change.ChangeId)
-			{
-				return true;
-			}
-		}
-		return false;
-	});
-
-	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
-	{
-		NextChanges.Add(Incoming);
-	}
-	return NextChanges;
+		NextChanges.Num(),
+		PagedChangeModel.GetTotalMatchingCount(),
+		PagedChangeModel.HasMorePages() ? 1 : 0));
 }
 
 void SBlueprintHelperReviewPanel::ApplyVisibleChangesFromPendingLoad(
-	const FBlueprintHelperReviewPendingLoadResult& Result,
+	const FBlueprintHelperReviewPendingLoadResult& /*Result*/,
 	const TArray<FBlueprintHelperReviewVisibleChange>& NextChanges)
 {
-	if (Result.SourceEvent.bRequiresFullReload)
-	{
-		RefreshVisibleChanges(NextChanges);
-		return;
-	}
-
-	TSet<FString> IncomingChangeIds;
-	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
-	{
-		if (!Incoming.ChangeId.IsEmpty())
-		{
-			IncomingChangeIds.Add(Incoming.ChangeId);
-		}
-	}
-
-	const auto EventTargetsChange = [&Result, &IncomingChangeIds](const FReviewChangeItem& Item)
-	{
-		if (!Item.IsValid())
-		{
-			return true;
-		}
-		if (!Item->ChangeId.IsEmpty() && IncomingChangeIds.Contains(Item->ChangeId))
-		{
-			return true;
-		}
-		const bool bChangeMatches = Result.SourceEvent.ChangeIds.Num() == 0
-			|| Result.SourceEvent.ChangeIds.Contains(Item->ChangeId);
-		const bool bAssetMatches = Result.SourceEvent.AssetPaths.Num() == 0
-			|| Result.SourceEvent.AssetPaths.Contains(Item->AssetPath);
-		return bChangeMatches && bAssetMatches;
-	};
-
-	ChangeItems.RemoveAll(EventTargetsChange);
-	TSet<FString> SeenChangeIds;
-	for (const FReviewChangeItem& Item : ChangeItems)
-	{
-		if (Item.IsValid() && !Item->ChangeId.IsEmpty())
-		{
-			SeenChangeIds.Add(Item->ChangeId);
-		}
-	}
-	for (const FBlueprintHelperReviewVisibleChange& Incoming : Result.Changes)
-	{
-		if (!Incoming.ChangeId.IsEmpty() && SeenChangeIds.Contains(Incoming.ChangeId))
-		{
-			continue;
-		}
-		if (!Incoming.ChangeId.IsEmpty())
-		{
-			SeenChangeIds.Add(Incoming.ChangeId);
-		}
-		ChangeItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Incoming));
-	}
-
-	RebuildReviewPanelStatePreservingTransient();
-	RebuildChangeTreeItems();
-	SyncReviewRowHighlightStates();
+	RefreshVisibleChanges(NextChanges);
 }
 
 void SBlueprintHelperReviewPanel::RefreshDiffStackWidgets()

@@ -1302,7 +1302,32 @@ Then run compile:
   - Accept/Reject incremental changed events still update loaded rows even when the affected row is not in the current loaded page.
   - No timer/delay workaround was introduced.
 
-## 4. Suggested Manual Commit Scope
+## 4. Execution Result (2026-06-01)
+
+- Status: 已完成计划内实现，并额外修复最终审计发现的分页后批量 Accept/Reject 语义回归。
+- Pending index 已增加稳定 cursor/page DTO 和 `QueryPendingVisibleChangePage()`；Reset/Append pending load 只返回单页结果。
+- ReviewPanel 已接入 `FBlueprintHelperReviewPagedChangeModel`、`STreeView::OnTreeViewScrolled`、手动“加载更多”按钮、分页状态文本和 page-size/preload-row 设置。
+- `AcceptAll` / `RejectAll` 不再从当前已加载分页行拼批量集合，改为通过 Presenter/CommandService 按资产从 pending index 查询全部 pending visible changes，并复用原有 batch action pipeline。
+- `RefreshChanged` 命中当前选中 change 时会刷新详情区和主工作区，避免 selected identity 未变导致右侧内容停留在旧快照。
+- 未修改 TaskSpec、GraphWrite、GraphLayout、TaskRun、AgentFaceService、CodexPlugin、ClaudePlugin 边界。
+
+Verification:
+
+```text
+Build.bat TemplateEditor Win64 Development -Project='D:\UEProjects\Template\Template.uproject' -WaitMutex
+Automation RunTests BlueprintHelper.Review.PagedChangeModel
+Automation RunTests BlueprintHelper.Review.Panel.Command
+Automation RunTests BlueprintHelper.Review.PendingLoad
+Automation RunTests BlueprintHelper.Review
+Automation RunTests BlueprintHelper.Settings
+git diff --check
+```
+
+Known residual risk:
+
+- `QueryPendingVisibleChangePage()` 当前仍会在 worker 侧读取并排序匹配的 lightweight pending summaries 后切页；本次目标是避免 GameThread/UI/model 全量 apply。若 pending index 本身继续放大，后续可增加 index-level cached page/range scan。
+
+## 5. Suggested Manual Commit Scope
 
 Only include files touched by this plan. Do not include unrelated dirty files such as `AGENT.md`, AgentFaceService task runner changes, GraphWrite runtime files, or unrelated Develop/Gaps docs.
 
@@ -1316,6 +1341,7 @@ Suggested commit message after implementation:
 修复内容：
 1. 修复 async pending load 完成后一次性全量应用所有 pending changes 导致的阻塞卡顿
 2. 修复 Review 变更树一次性重建全部 pending rows 的性能风险
+3. 修复分页后 AcceptAll/RejectAll 只作用于当前已加载页的批量操作回归
 ```
 
 Suggested manual commands after reviewing `git status`:
@@ -1328,6 +1354,10 @@ git add BlueprintHelper/Source/BlueprintHelper/Public/Systems/Review/BlueprintHe
   BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewPendingLoadCoordinator.cpp `
   BlueprintHelper/Source/BlueprintHelper/Public/UI/Review/BlueprintHelperReviewPagedChangeModel.h `
   BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewPagedChangeModel.cpp `
+  BlueprintHelper/Source/BlueprintHelper/Public/UI/Review/BlueprintHelperReviewPanelCommandService.h `
+  BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewPanelCommandService.cpp `
+  BlueprintHelper/Source/BlueprintHelper/Public/UI/Review/BlueprintHelperReviewPanelPresenter.h `
+  BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/BlueprintHelperReviewPanelPresenter.cpp `
   BlueprintHelper/Source/BlueprintHelper/Public/UI/BlueprintHelperUiSettings.h `
   BlueprintHelper/Source/BlueprintHelper/Private/UI/BlueprintHelperUiSettingsResolver.cpp `
   BlueprintHelper/Source/BlueprintHelper/Private/UI/Settings/BlueprintHelperSettingsPresenter.cpp `
@@ -1336,8 +1366,10 @@ git add BlueprintHelper/Source/BlueprintHelper/Public/Systems/Review/BlueprintHe
   BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/SBlueprintHelperReviewPanel.cpp `
   BlueprintHelper/Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewPendingIndexTests.cpp `
   BlueprintHelper/Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewPagedChangeModelTests.cpp `
+  BlueprintHelper/Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewPendingLoadCoordinatorTests.cpp `
   BlueprintHelper/Source/BlueprintHelper/Private/Tests/Review/BlueprintHelperReviewStoreServiceTests.cpp `
   BlueprintHelper/Source/BlueprintHelper/Private/Tests/Config/BlueprintHelperSettingStoreTests.cpp `
+  Debug/BlueprintHelper_ReviewPanel_PagedScrollPendingLoad_20260601.md `
   BlueprintHelper/Develop/Plan/BlueprintHelper_ReviewPanel_PagedScrollPendingLoad_ImplementationPlan_20260601_CN.md
 
 git commit -m "新增内容：ReviewPanel pending 分页滚动加载"

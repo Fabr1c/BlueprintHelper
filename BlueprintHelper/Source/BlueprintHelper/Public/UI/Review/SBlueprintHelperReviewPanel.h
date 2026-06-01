@@ -7,6 +7,7 @@
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
+#include "UI/Review/BlueprintHelperReviewPagedChangeModel.h"
 #include "UI/Review/BlueprintHelperReviewPendingLoadCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
@@ -201,10 +202,17 @@ private:
 		const FString& Reason,
 		const FBlueprintHelperReviewStoreChangedEvent& SourceEvent =
 			FBlueprintHelperReviewStoreChangedEvent::FullReload());
+	void RequestPendingReviewPage(
+		const FString& Reason,
+		EBlueprintHelperReviewPendingLoadMode Mode,
+		const FBlueprintHelperReviewStoreChangedEvent& SourceEvent =
+			FBlueprintHelperReviewStoreChangedEvent::FullReload());
+	void OnChangeTreeScrolled(double ScrollOffset);
+	int32 CountLoadedChangeTreeRows() const;
+	FText GetPendingPageStatusText() const;
+	FReply OnLoadMorePendingChanges();
 	void HandlePendingReviewLoadCompleted(const FBlueprintHelperReviewPendingLoadResult& Result);
 	void RefreshFromReviewStoreIfChanged(const FBlueprintHelperReviewStoreChangedEvent& Event);
-	TArray<FBlueprintHelperReviewVisibleChange> BuildVisibleChangesAfterIncrementalLoad(
-		const FBlueprintHelperReviewPendingLoadResult& Result) const;
 	void ApplyVisibleChangesFromPendingLoad(
 		const FBlueprintHelperReviewPendingLoadResult& Result,
 		const TArray<FBlueprintHelperReviewVisibleChange>& NextChanges);
@@ -227,6 +235,7 @@ private:
 	TSharedPtr<FBlueprintHelperReviewPanelPresenter> ReviewPanelPresenter;
 	TSharedPtr<FBlueprintHelperReviewPendingLoadCoordinator> PendingLoadCoordinator;
 	FOnValidityCandidatesReady OnValidityCandidatesReady;
+	FBlueprintHelperReviewPagedChangeModel PagedChangeModel;
 
 	TArray<FReviewChangeItem> ChangeItems;
 	FBlueprintHelperReviewPanelState ReviewPanelState;
@@ -268,6 +277,9 @@ private:
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
 	FBlueprintHelperReviewSurfaceViewCoordinator SurfaceViewCoordinator;
 	FBlueprintHelperReviewPanelSettings ReviewPanelSettings;
+	int32 PendingPageSize = 100;
+	int32 PendingScrollPrefetchRows = 24;
+	int64 PendingPageRequestId = 0;
 	EBlueprintHelperReviewSurface DetailsSurface = EBlueprintHelperReviewSurface::Unknown;
 	FBlueprintHelperReviewGraphPresenterState GraphPresenterState;
 	FBlueprintHelperReviewBlueprintComponentsPresenter::FState ComponentsPresenterState;

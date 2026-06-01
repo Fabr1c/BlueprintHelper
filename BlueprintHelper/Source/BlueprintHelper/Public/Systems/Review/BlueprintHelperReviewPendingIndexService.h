@@ -27,6 +27,11 @@ public:
 		TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>& OutChanges,
 		FString& OutError) const;
 
+	bool QueryPendingVisibleChangePage(
+		const FBlueprintHelperReviewPendingIndexPageRequest& Request,
+		FBlueprintHelperReviewPendingIndexPage& OutPage,
+		FString& OutError) const;
+
 	bool ApplyRecordSaved(
 		const FBlueprintHelperReviewRecord& Record,
 		FString& OutError) const;

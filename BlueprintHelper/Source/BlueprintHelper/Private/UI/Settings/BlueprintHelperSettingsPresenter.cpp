@@ -465,6 +465,22 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			60000,
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.pending_load_page_size"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformancePendingLoadPageSizeLabel", "Pending 分页大小"),
+			LOCTEXT("ReviewPerformancePendingLoadPageSizeHint", "控制 Review 面板每次从 pending index 加载多少条可见变更。数值越大，滚动次数越少，但单次 GameThread 应用成本越高。"),
+			1,
+			1000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("review.performance.pending_load_scroll_prefetch_rows"),
+			DeveloperReviewCategory,
+			LOCTEXT("ReviewPerformancePendingLoadScrollPrefetchRowsLabel", "Pending 滚动预加载行数"),
+			LOCTEXT("ReviewPerformancePendingLoadScrollPrefetchRowsHint", "控制 Review 变更树距离底部还剩多少行时提前加载下一页。设为 0 表示滚动到当前页末尾才加载。"),
+			0,
+			500,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
 			TEXT("review.performance.pending_load_validity_candidate_budget"),
 			DeveloperReviewCategory,
 			LOCTEXT("ReviewPerformancePendingLoadValidityCandidateBudgetLabel", "Pending 校验候选数量"),

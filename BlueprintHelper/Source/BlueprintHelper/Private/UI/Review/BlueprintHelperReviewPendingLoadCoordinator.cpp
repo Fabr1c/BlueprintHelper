@@ -5,6 +5,7 @@
 #include "Async/Async.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Systems/Review/BlueprintHelperReviewPendingIndex.h"
+#include "Systems/Review/BlueprintHelperReviewPendingIndexService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
 namespace BlueprintHelperReviewPendingLoad
@@ -16,34 +17,19 @@ namespace BlueprintHelperReviewPendingLoad
 			|| Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
 	}
 
-	static TArray<FBlueprintHelperReviewValidityCandidate> BuildValidityCandidates(
-		const FBlueprintHelperReviewStoreService* Store,
-		const FString& AssetPathFilter,
+	static TArray<FBlueprintHelperReviewValidityCandidate> BuildValidityCandidatesFromSummaries(
+		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>& Summaries,
 		const FBlueprintHelperReviewPerformanceSettings& Settings)
 	{
 		TArray<FBlueprintHelperReviewValidityCandidate> Candidates;
-		if (!Settings.bValiditySweepEnabled || !Store)
+		if (!Settings.bValiditySweepEnabled)
 		{
 			return Candidates;
 		}
 
-		FBlueprintHelperReviewPendingIndexQuery Query;
-		Query.AssetPathFilter = AssetPathFilter;
-		Query.bPendingOnly = true;
-		Query.bSkipMissingAssetRecords = false;
-
 		const int32 CandidateBudget = FMath::Max(1, Settings.PendingLoadValidityCandidateBudget);
-		const int32 SourceSummaryBudget = FMath::Max(1, Settings.ValiditySweepMaxRecordHydrationsPerWorkerBatch);
-		int32 ScannedSummaries = 0;
-		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary :
-			Store->QueryPendingVisibleChangeSummaries(Query))
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
 		{
-			if (ScannedSummaries >= SourceSummaryBudget || Candidates.Num() >= CandidateBudget)
-			{
-				break;
-			}
-			++ScannedSummaries;
-
 			if (!IsPendingStatus(Summary.Change.Status))
 			{
 				continue;
@@ -52,7 +38,7 @@ namespace BlueprintHelperReviewPendingLoad
 			{
 				if (Candidates.Num() >= CandidateBudget)
 				{
-					break;
+					return Candidates;
 				}
 				if (!IsPendingStatus(Target.Status))
 				{
@@ -72,21 +58,21 @@ namespace BlueprintHelperReviewPendingLoad
 		return Candidates;
 	}
 
-	static void AddUniqueChange(
-		TArray<FBlueprintHelperReviewVisibleChange>& Changes,
-		const FBlueprintHelperReviewVisibleChange& Change)
+	static void AddUniqueSummary(
+		TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>& Summaries,
+		const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
 	{
-		if (Change.ChangeId.IsEmpty())
+		if (Summary.Change.ChangeId.IsEmpty())
 		{
-			Changes.Add(Change);
+			Summaries.Add(Summary);
 			return;
 		}
-		if (!Changes.ContainsByPredicate([&Change](const FBlueprintHelperReviewVisibleChange& Existing)
+		if (!Summaries.ContainsByPredicate([&Summary](const FBlueprintHelperReviewPendingVisibleChangeSummary& Existing)
 		{
-			return Existing.ChangeId == Change.ChangeId;
+			return Existing.Change.ChangeId == Summary.Change.ChangeId;
 		}))
 		{
-			Changes.Add(Change);
+			Summaries.Add(Summary);
 		}
 	}
 
@@ -104,18 +90,14 @@ namespace BlueprintHelperReviewPendingLoad
 		return bRecordMatches && bChangeMatches && bAssetMatches;
 	}
 
-	static TArray<FBlueprintHelperReviewVisibleChange> LoadChangedVisibleChanges(
+	static TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> LoadChangedVisibleChangeSummaries(
 		const FBlueprintHelperReviewStoreService* Store,
 		const FBlueprintHelperReviewPendingLoadRequest& Request)
 	{
-		TArray<FBlueprintHelperReviewVisibleChange> Changes;
+		TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries;
 		if (!Store)
 		{
-			return Changes;
-		}
-		if (Request.SourceEvent.bRequiresFullReload)
-		{
-			return Store->LoadPendingVisibleChanges(Request.AssetPathFilter);
+			return Summaries;
 		}
 
 		TArray<FString> AssetFilters = Request.SourceEvent.AssetPaths;
@@ -140,9 +122,40 @@ namespace BlueprintHelperReviewPendingLoad
 			{
 				if (EventMatchesSummary(Request.SourceEvent, Summary))
 				{
-					AddUniqueChange(Changes, Summary.Change);
+					AddUniqueSummary(Summaries, Summary);
 				}
 			}
+		}
+		return Summaries;
+	}
+
+	static bool LoadPendingVisibleChangePage(
+		const FBlueprintHelperReviewPendingLoadRequest& Request,
+		FBlueprintHelperReviewPendingIndexPage& OutPage,
+		FString& OutError)
+	{
+		FBlueprintHelperReviewPendingIndexQuery Query;
+		Query.AssetPathFilter = Request.AssetPathFilter;
+		Query.bPendingOnly = true;
+		Query.bSkipMissingAssetRecords = Request.AssetPathFilter.IsEmpty();
+
+		FBlueprintHelperReviewPendingIndexPageRequest PageRequest;
+		PageRequest.Query = Query;
+		PageRequest.Cursor = Request.Cursor;
+		PageRequest.PageSize = Request.PageSize;
+
+		FBlueprintHelperReviewPendingIndexService IndexService;
+		return IndexService.QueryPendingVisibleChangePage(PageRequest, OutPage, OutError);
+	}
+
+	static TArray<FBlueprintHelperReviewVisibleChange> MakeVisibleChangesFromSummaries(
+		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>& Summaries)
+	{
+		TArray<FBlueprintHelperReviewVisibleChange> Changes;
+		Changes.Reserve(Summaries.Num());
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
+		{
+			Changes.Add(Summary.Change);
 		}
 		return Changes;
 	}
@@ -185,6 +198,7 @@ int64 FBlueprintHelperReviewPendingLoadCoordinator::RequestLoad(
 		Result.RequestId = RequestId;
 		Result.Source = Request.Source;
 		Result.SourceEvent = Request.SourceEvent;
+		Result.Mode = Request.Mode;
 
 		if (!SharedState->ReviewStoreService)
 		{
@@ -192,14 +206,43 @@ int64 FBlueprintHelperReviewPendingLoadCoordinator::RequestLoad(
 		}
 		else
 		{
-			Result.Changes = BlueprintHelperReviewPendingLoad::LoadChangedVisibleChanges(
-				SharedState->ReviewStoreService,
-				Request);
-			Result.ValidityCandidates = BlueprintHelperReviewPendingLoad::BuildValidityCandidates(
-				SharedState->ReviewStoreService,
-				Request.AssetPathFilter,
-				SharedState->ReviewPerformanceSettings);
-			Result.bSucceeded = true;
+			if (Request.Mode == EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage
+				|| Request.Mode == EBlueprintHelperReviewPendingLoadMode::AppendNextPage)
+			{
+				FBlueprintHelperReviewPendingIndexPage Page;
+				FString PageError;
+				if (BlueprintHelperReviewPendingLoad::LoadPendingVisibleChangePage(Request, Page, PageError))
+				{
+					Result.Changes = BlueprintHelperReviewPendingLoad::MakeVisibleChangesFromSummaries(Page.Changes);
+					Result.ValidityCandidates =
+						BlueprintHelperReviewPendingLoad::BuildValidityCandidatesFromSummaries(
+							Page.Changes,
+							SharedState->ReviewPerformanceSettings);
+					Result.NextCursor = Page.NextCursor;
+					Result.TotalMatchingCount = Page.TotalMatchingCount;
+					Result.bHasMore = Page.bHasMore;
+					Result.bSucceeded = true;
+				}
+				else
+				{
+					Result.Error = PageError;
+				}
+			}
+			else
+			{
+				const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> ChangedSummaries =
+					BlueprintHelperReviewPendingLoad::LoadChangedVisibleChangeSummaries(
+						SharedState->ReviewStoreService,
+						Request);
+				Result.Changes =
+					BlueprintHelperReviewPendingLoad::MakeVisibleChangesFromSummaries(ChangedSummaries);
+				Result.ValidityCandidates =
+					BlueprintHelperReviewPendingLoad::BuildValidityCandidatesFromSummaries(
+						ChangedSummaries,
+						SharedState->ReviewPerformanceSettings);
+				Result.TotalMatchingCount = Result.Changes.Num();
+				Result.bSucceeded = true;
+			}
 		}
 
 		AsyncTask(ENamedThreads::GameThread, [SharedState, Result, OnCompleted]()

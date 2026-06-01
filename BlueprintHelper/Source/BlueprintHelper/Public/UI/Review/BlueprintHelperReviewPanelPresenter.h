@@ -75,6 +75,11 @@ public:
 	FBlueprintHelperReviewCommandBatchResult RejectVisibleChangesBatch(
 		const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
 		const FBlueprintHelperReviewRejectOptions& RejectOptions = FBlueprintHelperReviewRejectOptions()) const;
+	FBlueprintHelperReviewCommandBatchResult AcceptPendingVisibleChangesForAsset(
+		const FString& AssetPath) const;
+	FBlueprintHelperReviewCommandBatchResult RejectPendingVisibleChangesForAsset(
+		const FString& AssetPath,
+		const FBlueprintHelperReviewRejectOptions& RejectOptions = FBlueprintHelperReviewRejectOptions()) const;
 
 private:
 	FBlueprintHelperReviewPanelPresenterEvent HandleAcceptVisibleChange(
