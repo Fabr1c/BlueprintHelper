@@ -27,15 +27,15 @@ Recommended first-run install entry:
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-Recommended upgrade entry:
+Recommended update entry:
 
 ```cmd
-.\upgrade.cmd
-.\upgrade.cmd -CheckOnly
-.\upgrade.cmd -Force
+.\update.cmd
+.\update.cmd -CheckOnly
+.\update.cmd -Force
 ```
 
-`InstallScripts/install.ps1` and `InstallScripts/update.ps1` are implementation scripts behind the root `.cmd` wrappers. The repository root keeps user-facing script entry points as `.cmd` files: `install.cmd`, `upgrade.cmd`, `update.cmd`, and `uninstall.cmd`.
+`InstallScripts/install.ps1` and `InstallScripts/update.ps1` are implementation scripts behind the root `.cmd` wrappers. The repository root keeps user-facing script entry points as `.cmd` files: `install.cmd`, `update.cmd`, and `uninstall.cmd`.
 
 ## Agent Rule Archive
 
