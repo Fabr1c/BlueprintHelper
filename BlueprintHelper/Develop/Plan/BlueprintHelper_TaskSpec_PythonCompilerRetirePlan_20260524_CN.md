@@ -76,7 +76,7 @@ UE 5.6 TemplateEditor build passes.
   - Responsibility: 将 Agent-facing TaskSpec-first 架构链路中的 `task-core -> Python Task Compiler` 与 “dispatches to the Python compiler” 改为 canonical TS compiler。
 - Archive or rewrite: non-archived historical implementation/smoke plans under `BlueprintHelper/Develop/Plan/*.md` that still contain Python compiler strategy/test paths.
   - Responsibility: 若文档仍是当前计划/状态，改写为 canonical TS；若只是旧执行记录，移动到 `BlueprintHelper/Develop/ArchivedReference/TaskSpecPythonCompilerRetire_20260524/` 或用无 Python compiler 词面的历史指针替代 active copy，保证 active Plan 目录不再保留 Python compiler ownership 残留。
-- Audit only: root command entries and installer implementation scripts (`install.cmd`, `update.cmd`, `upgrade.cmd`, `uninstall.cmd`, `InstallScripts/install.ps1`, `InstallScripts/update.ps1`, `InstallScripts/uninstall.ps1`, `INSTALL.md`) plus plugin docs/scripts.
+- Audit only: root command entries and installer implementation scripts (`install.cmd`, `update.cmd`, `uninstall.cmd`, `InstallScripts/install.ps1`, `InstallScripts/update.ps1`, `InstallScripts/uninstall.ps1`, `INSTALL.md`) plus plugin docs/scripts.
   - Responsibility: 确认安装、更新、bootstrap、global MCP 安装路径没有 Python compiler / `test:python` / `task-core/python` 残留；若扫描发现残留，必须加入本计划修改范围。
 
 ## Task 1: Add Canonical TS Policy Tests
@@ -736,7 +736,6 @@ rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orch
   D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd `
   D:\UEProjects\Template\Plugins\BlueprintHelper\InstallScripts\update.ps1 `
   D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd `
-  D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd `
   D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md `
   D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin `
   D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin `
@@ -773,7 +772,7 @@ Do not edit archived historical reports unless a live status page links to them 
 Run:
 
 ```powershell
-rg -n "Python compiler|Python Task Compiler|dispatches to the Python compiler|TaskSpec -> Python|task-core -> Python|test:python|task-core/python|task-core\\python|blueprinthelper_task|compile-task-spec|canonical_python|ts_fast_path|task-python-orchestrator|task-plan-parity" D:\UEProjects\Template\Plugins\BlueprintHelper\InstallScripts D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\uninstall.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin -g "*.ps1" -g "*.cmd" -g "*.bat" -g "*.md" -g "*.cjs" -g "*.mjs" -g "*.json"
+rg -n "Python compiler|Python Task Compiler|dispatches to the Python compiler|TaskSpec -> Python|task-core -> Python|test:python|task-core/python|task-core\\python|blueprinthelper_task|compile-task-spec|canonical_python|ts_fast_path|task-python-orchestrator|task-plan-parity" D:\UEProjects\Template\Plugins\BlueprintHelper\InstallScripts D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\uninstall.cmd D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin -g "*.ps1" -g "*.cmd" -g "*.bat" -g "*.md" -g "*.cjs" -g "*.mjs" -g "*.json"
 ```
 
 Expected:
@@ -848,7 +847,6 @@ rg -n "canonical_python|python_worker|compileTaskSpecWithPython|task-python-orch
   D:\UEProjects\Template\Plugins\BlueprintHelper\install.cmd `
   D:\UEProjects\Template\Plugins\BlueprintHelper\InstallScripts\update.ps1 `
   D:\UEProjects\Template\Plugins\BlueprintHelper\update.cmd `
-  D:\UEProjects\Template\Plugins\BlueprintHelper\upgrade.cmd `
   D:\UEProjects\Template\Plugins\BlueprintHelper\INSTALL.md `
   D:\UEProjects\Template\Plugins\BlueprintHelper\CodexPlugin `
   D:\UEProjects\Template\Plugins\BlueprintHelper\ClaudePlugin `

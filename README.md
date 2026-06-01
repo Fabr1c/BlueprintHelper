@@ -83,7 +83,7 @@ blueprint_get_runtime_profile
 - `AgentFaceService/mcp/`：全局 MCP allowlist 入口，只保留 editor open、editor close lifecycle。
 - `CodexPlugin/`：Codex 插件封装和 skill。
 - `ClaudePlugin/`：Claude Code 插件封装和文档。
-- `InstallScripts/`：`install.cmd`、`upgrade.cmd`、`update.cmd`、`uninstall.cmd` 背后的 PowerShell / Node 实现脚本。
+- `InstallScripts/`：`install.cmd`、`update.cmd`、`uninstall.cmd` 背后的 PowerShell / Node 实现脚本。
 
 ## 快速开始
 
@@ -123,23 +123,23 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 ## 更新 / Update
 
-双击 `upgrade.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.3`、`v0.5.4`。`update.cmd` 仍保留为旧入口兼容，普通用户文档统一推荐 `upgrade.cmd`。
+双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.3`、`v0.5.4`。
 
 更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.5.3-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
 
 更新成功后会重新构建 AgentFaceService、重新链接 `bh` CLI，并通过官方入口刷新 Codex marketplace、Codex 插件安装、Codex subagents 和全局 MCP allowlist。如果检测到已安装的 Claude sideAgents，或显式传入 `-InstallClaudePlugin`，更新器也会通过 Claude 官方入口刷新 Claude 插件并同步 Claude sideAgents。用户偏好文件和项目 `.blueprinthelper/agent-profile.json` 不会被更新器覆盖。Engine 级 UE 插件副本只会在显式传入 `-InstallUePluginToEngine` 时更新。
 
 ```powershell
-.\upgrade.cmd
-.\upgrade.cmd -CheckOnly
-.\upgrade.cmd -Force
-.\upgrade.cmd -Force -InstallClaudePlugin
-.\upgrade.cmd -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
+.\update.cmd
+.\update.cmd -CheckOnly
+.\update.cmd -Force
+.\update.cmd -Force -InstallClaudePlugin
+.\update.cmd -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
 ## 卸载 / Uninstall
 
-根目录只保留 `.cmd` 用户入口；安装、升级和卸载的 PowerShell/Node 实现脚本放在 `InstallScripts/`。双击 `uninstall.cmd` 会进入交互式卸载，默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有在卸载器中明确选择或传入对应参数时才会删除。
+根目录只保留 `.cmd` 用户入口；安装、更新和卸载的 PowerShell/Node 实现脚本放在 `InstallScripts/`。双击 `uninstall.cmd` 会进入交互式卸载，默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有在卸载器中明确选择或传入对应参数时才会删除。
 
 ```powershell
 .\uninstall.cmd
@@ -147,7 +147,7 @@ $json | bh blueprinthelper_read_context --stdin --format full
 .\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
 ```
 
-Double-click `upgrade.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.2` and `v0.5.4`. `update.cmd` remains available as a compatibility entry, but user-facing docs should prefer `upgrade.cmd`.
+Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.2` and `v0.5.4`.
 
 Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
