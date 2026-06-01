@@ -68,7 +68,7 @@ struct FRuleSet
 
 	FString Schema = RuleSetSchemaV1;
 	FString Id = TEXT("default_readable_exec_with_left_data");
-	FString DisplayName = TEXT("Default Readable Exec With Left Data");
+	FString DisplayName = TEXT("默认可读执行与左侧数据");
 	int32 Version = 1;
 	float ExecColumnSpacing = 360.0f;
 	float ExecRowSpacing = 220.0f;

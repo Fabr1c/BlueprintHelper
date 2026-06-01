@@ -83,6 +83,7 @@ private:
 	void RefreshSettingsFromJson();
 	void HandleTextSettingCommitted(int32 SettingId, const FText& NewValue);
 	void HandleFloatSettingChanged(int32 SettingId, float NewValue);
+	void HandleUiFloatSettingChanged(int32 SettingId, float NewValue);
 	void HandleIntSettingChanged(int32 SettingId, int32 NewValue);
 	void HandleBoolSettingChanged(int32 SettingId, bool bNewValue);
 	void CommitSettingsRuleSetJson(const FString& InUpdatedRuleSetJson);
@@ -112,7 +113,9 @@ private:
 	bool bUpdatingSettingsFromJson = false;
 
 	FString SettingsRuleId = TEXT("default_readable_exec_with_left_data");
-	FString SettingsDisplayName = TEXT("Default Readable Exec With Left Data");
+	FString SettingsDisplayName = TEXT("默认可读执行与左侧数据");
+	float SettingsCanvasWidth = 760.0f;
+	float SettingsCanvasHeight = 460.0f;
 	float SettingsExecColumnSpacing = 360.0f;
 	float SettingsExecRowSpacing = 220.0f;
 	float SettingsBranchRowSpacing = 260.0f;

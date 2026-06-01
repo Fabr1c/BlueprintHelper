@@ -15,6 +15,7 @@
 #include "SlateOptMacros.h"
 #include "Styling/CoreStyle.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "Systems/Config/BlueprintHelperSettingStore.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
@@ -70,6 +71,12 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 		MaxMillisecondsPerFrame
 	};
 
+	enum EUiFloatSetting : int32
+	{
+		CanvasWidth = 0,
+		CanvasHeight
+	};
+
 	enum EIntSetting : int32
 	{
 		MaxNodesPerFrame = 0,
@@ -89,10 +96,24 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 
 	constexpr float MinMillisecondsPerFrame = 0.25f;
 	constexpr float MaxMillisecondsPerFrameSetting = 20.0f;
+	constexpr float MinCanvasWidth = 760.0f;
+	constexpr float MaxCanvasWidth = 2000.0f;
+	constexpr float MinCanvasHeight = 440.0f;
+	constexpr float MaxCanvasHeight = 1600.0f;
 
 	float ClampMillisecondsPerFrame(float Value)
 	{
 		return FMath::Clamp(Value, MinMillisecondsPerFrame, MaxMillisecondsPerFrameSetting);
+	}
+
+	float ClampCanvasWidth(float Value)
+	{
+		return FMath::Clamp(Value, MinCanvasWidth, MaxCanvasWidth);
+	}
+
+	float ClampCanvasHeight(float Value)
+	{
+		return FMath::Clamp(Value, MinCanvasHeight, MaxCanvasHeight);
 	}
 
 	FString GetFallbackDefaultJson()
@@ -323,6 +344,13 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		Invalidate(EInvalidateWidgetReason::Paint);
 	}
 
+	void SetLayoutRuleEditorSettings(const FBlueprintHelperLayoutRuleEditorSettings& InSettings)
+	{
+		LayoutRuleEditorSettings = InSettings;
+		ClampRoleCentersToCanvas(LayoutRuleEditorSettings.CanvasDesiredSize);
+		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	}
+
 	void SetSemanticScene(BlueprintHelper::GraphLayout::ESemanticScene InScene)
 	{
 		if (CurrentScene == InScene)
@@ -462,9 +490,7 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 
 		UpdateHoveredRole({});
 		FVector2D NewCenter = LocalPos - DragOffset;
-		const FVector2D CanvasSize = MyGeometry.GetLocalSize();
-		NewCenter.X = FMath::Clamp(NewCenter.X, 40.0f, FMath::Max(40.0f, CanvasSize.X - 40.0f));
-		NewCenter.Y = FMath::Clamp(NewCenter.Y, 40.0f, FMath::Max(40.0f, CanvasSize.Y - 40.0f));
+		NewCenter = ClampRoleCenterToCanvas(NewCenter, MyGeometry.GetLocalSize());
 		RoleCenters.Add(DraggedRole.GetValue(), NewCenter);
 		Invalidate(EInvalidateWidgetReason::Paint);
 		return FReply::Handled();
@@ -562,7 +588,30 @@ private:
 			BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ResolveSceneState(RuleSet, CurrentScene);
 		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
 		{
-			RoleCenters.Add(NodeDefinition.Role, SceneState.RoleCenters.FindRef(NodeDefinition.Role));
+			RoleCenters.Add(
+				NodeDefinition.Role,
+				ClampRoleCenterToCanvas(SceneState.RoleCenters.FindRef(NodeDefinition.Role), LayoutRuleEditorSettings.CanvasDesiredSize));
+		}
+	}
+
+	FVector2D ClampRoleCenterToCanvas(const FVector2D& Center, const FVector2D& CanvasSize) const
+	{
+		const FVector2D HalfSize = LayoutRuleEditorSettings.NodeSize * 0.5f;
+		constexpr float FooterReserveY = 40.0f;
+		const float MinX = HalfSize.X;
+		const float MaxX = FMath::Max(MinX, CanvasSize.X - HalfSize.X);
+		const float MinY = HalfSize.Y;
+		const float MaxY = FMath::Max(MinY, CanvasSize.Y - FooterReserveY - HalfSize.Y);
+		return FVector2D(
+			FMath::Clamp(Center.X, MinX, MaxX),
+			FMath::Clamp(Center.Y, MinY, MaxY));
+	}
+
+	void ClampRoleCentersToCanvas(const FVector2D& CanvasSize)
+	{
+		for (TPair<BlueprintHelper::GraphLayout::ENodeRole, FVector2D>& Pair : RoleCenters)
+		{
+			Pair.Value = ClampRoleCenterToCanvas(Pair.Value, CanvasSize);
 		}
 	}
 
@@ -726,30 +775,30 @@ private:
 		{
 		case BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain:
 			return FText::Format(
-				LOCTEXT("LinearCanvasFooter", "Linear Exec | align {0} | column {1}px"),
-				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("LinearAlignOn", "on") : LOCTEXT("LinearAlignOff", "off"),
+				LOCTEXT("LinearCanvasFooter", "线性执行 | 对齐 {0} | 列距 {1}px"),
+				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("LinearAlignOn", "开") : LOCTEXT("LinearAlignOff", "关"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.ExecColumnSpacing)));
 		case BlueprintHelper::GraphLayout::ESemanticScene::PureDataSubgraph:
 			return FText::Format(
-				LOCTEXT("PureDataCanvasFooter", "Pure Data Subgraph | pure offset {0}px | leaf offset {1}px | pin row {2}px"),
+				LOCTEXT("PureDataCanvasFooter", "纯数据子图 | 纯节点偏移 {0}px | 叶子偏移 {1}px | Pin 行距 {2}px"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.PureInputOffsetX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.VariableInputOffsetX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
 		case BlueprintHelper::GraphLayout::ESemanticScene::NodeInputCluster:
 			return FText::Format(
-				LOCTEXT("InputClusterCanvasFooter", "Node Input Cluster | data pad {0}/{1}px | pin row {2}px"),
+				LOCTEXT("InputClusterCanvasFooter", "节点输入簇 | 数据边距 {0}/{1}px | Pin 行距 {2}px"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingY)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
 		case BlueprintHelper::GraphLayout::ESemanticScene::MultiExecOutput:
 			return FText::Format(
-				LOCTEXT("MultiExecCanvasFooter", "Multi Exec Output | align {0} | branch row {1}px | padding {2}px"),
-				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("MultiExecAlignOn", "on") : LOCTEXT("MultiExecAlignOff", "off"),
+				LOCTEXT("MultiExecCanvasFooter", "多执行出口 | 对齐 {0} | 分支行距 {1}px | 边距 {2}px"),
+				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("MultiExecAlignOn", "开") : LOCTEXT("MultiExecAlignOff", "关"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowSpacing)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowPaddingY)));
 		case BlueprintHelper::GraphLayout::ESemanticScene::Occupancy:
 			return FText::Format(
-				LOCTEXT("OccupancyCanvasFooter", "Occupancy | padding {0}/{1}px | step {2}px | attempts {3}"),
+				LOCTEXT("OccupancyCanvasFooter", "占位避让 | 边距 {0}/{1}px | 步长 {2}px | 尝试 {3}"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingY)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionStepY)),
@@ -776,10 +825,16 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 	LayoutRuleEditorSettings = FBlueprintHelperUiSettingsResolver::LoadLayoutRuleEditorSettings();
 	LayoutRuleEditorSettings.MaxMillisecondsPerFrame =
 		BlueprintHelperLayoutRuleEditorLocal::ClampMillisecondsPerFrame(LayoutRuleEditorSettings.MaxMillisecondsPerFrame);
+	LayoutRuleEditorSettings.CanvasDesiredSize.X =
+		BlueprintHelperLayoutRuleEditorLocal::ClampCanvasWidth(LayoutRuleEditorSettings.CanvasDesiredSize.X);
+	LayoutRuleEditorSettings.CanvasDesiredSize.Y =
+		BlueprintHelperLayoutRuleEditorLocal::ClampCanvasHeight(LayoutRuleEditorSettings.CanvasDesiredSize.Y);
 	const BlueprintHelper::GraphLayout::FRuleSet DefaultRuleSet;
 
 	SettingsRuleId = LayoutRuleEditorSettings.DefaultRuleId;
 	SettingsDisplayName = LayoutRuleEditorSettings.DefaultRuleDisplayName;
+	SettingsCanvasWidth = LayoutRuleEditorSettings.CanvasDesiredSize.X;
+	SettingsCanvasHeight = LayoutRuleEditorSettings.CanvasDesiredSize.Y;
 	SettingsExecColumnSpacing = LayoutRuleEditorSettings.ExecColumnSpacing;
 	SettingsExecRowSpacing = LayoutRuleEditorSettings.ExecRowSpacing;
 	SettingsBranchRowSpacing = LayoutRuleEditorSettings.BranchRowSpacing;
@@ -849,7 +904,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("ImportJson", "Import JSON"),
+					LOCTEXT("ImportJson", "导入 JSON"),
 					LOCTEXT("ImportJsonTooltip", "通过已绑定的配置入口导入 RuleSet JSON；未绑定时从默认配置文件读取。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnImportJsonClicked))
 			]
@@ -858,7 +913,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("ExportJson", "Export JSON"),
+					LOCTEXT("ExportJson", "导出 JSON"),
 					LOCTEXT("ExportJsonTooltip", "通过已绑定的配置入口导出当前 RuleSet JSON；未绑定时写入默认配置文件。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnExportJsonClicked))
 			]
@@ -867,7 +922,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CopyJson", "Copy JSON"),
+					LOCTEXT("CopyJson", "复制 JSON"),
 					LOCTEXT("CopyJsonTooltip", "将当前 RuleSet JSON 文本复制到剪贴板。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnCopyJsonClicked))
 			]
@@ -876,7 +931,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("PasteJson", "Paste JSON"),
+					LOCTEXT("PasteJson", "粘贴 JSON"),
 					LOCTEXT("PasteJsonTooltip", "用剪贴板内容替换当前 RuleSet JSON 文本。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPasteJsonClicked))
 			]
@@ -885,7 +940,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("Validate", "Validate"),
+					LOCTEXT("Validate", "校验"),
 					LOCTEXT("ValidateTooltip", "校验当前 RuleSet JSON；已绑定的 GraphLayout 校验器会提供 schema 级检查。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnValidateClicked))
 			]
@@ -893,7 +948,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			.AutoWidth()
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("ResetDefault", "Reset to Default"),
+					LOCTEXT("ResetDefault", "恢复默认"),
 					LOCTEXT("ResetDefaultTooltip", "用已配置的默认 RuleSet JSON 替换当前文本。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnResetToDefaultClicked))
 			]
@@ -995,39 +1050,39 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildEditWorkspace()
 			.UseAllottedSize(true)
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleEventEntry", "EventEntry"), FLinearColor(0.42f, 0.2f, 0.78f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleEventEntry", "执行入口"), FLinearColor(0.42f, 0.2f, 0.78f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleExecNode", "ExecNode"), FLinearColor(0.85f, 0.1f, 0.08f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleExecNode", "执行节点"), FLinearColor(0.85f, 0.1f, 0.08f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleBranchControl", "BranchControl"), FLinearColor(0.88f, 0.45f, 0.08f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleBranchControl", "分支控制"), FLinearColor(0.88f, 0.45f, 0.08f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RolePureFunction", "PureFunction"), FLinearColor(0.1f, 0.65f, 0.25f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RolePureFunction", "纯函数"), FLinearColor(0.1f, 0.65f, 0.25f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "OperatorOrCompare"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "运算/比较"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "VariableInput"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "变量输入"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleAsyncNode", "AsyncNode"), FLinearColor(0.0f, 0.68f, 0.78f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleAsyncNode", "异步节点"), FLinearColor(0.0f, 0.68f, 0.78f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "DelegateNode"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "委托节点"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
 			]
 			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleComment", "Comment"), FLinearColor(0.22f, 0.22f, 0.22f, 1.0f))
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleComment", "注释"), FLinearColor(0.22f, 0.22f, 0.22f, 1.0f))
 			]
 		];
 }
@@ -1050,7 +1105,7 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					SceneDefinition.DisplayName,
 					FText::Format(
-						LOCTEXT("CanvasSceneTooltip", "Configure the draggable {0} semantic scene."),
+						LOCTEXT("CanvasSceneTooltip", "配置可拖拽的 {0} 语义场景。"),
 						SceneDefinition.DisplayName),
 					FOnClicked::CreateLambda([this, Scene = SceneDefinition.Scene]()
 					{
@@ -1066,16 +1121,16 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
 		[
 			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-				LOCTEXT("AlignExecRow", "Align Exec Row"),
-				LOCTEXT("AlignExecRowTooltip", "Align the linear exec node to the ExecEntry baseline."),
+				LOCTEXT("AlignExecRow", "对齐执行行"),
+				LOCTEXT("AlignExecRowTooltip", "将线性执行节点对齐到执行入口基线。"),
 				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnAlignExecRowClicked))
 		];
 	SceneToolbar->AddSlot()
 		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
 		[
 			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-				LOCTEXT("PreviewLayoutRule", "Preview"),
-				LOCTEXT("PreviewLayoutRuleTooltip", "Build a read-only native Blueprint graph preview for the active semantic scene."),
+				LOCTEXT("PreviewLayoutRule", "预览"),
+				LOCTEXT("PreviewLayoutRuleTooltip", "为当前语义场景构建只读的原生蓝图图表预览。"),
 				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPreviewClicked))
 		];
 	return SceneToolbar;
@@ -1094,8 +1149,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewWorkspace()
 			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
 			[
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("ReturnToEdit", "Return to Edit"),
-					LOCTEXT("ReturnToEditTooltip", "Cancel the active preview and restore the draggable rule canvas."),
+					LOCTEXT("ReturnToEdit", "返回编辑"),
+					LOCTEXT("ReturnToEditTooltip", "取消当前预览并恢复可拖拽规则画布。"),
 					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnReturnToEditClicked))
 			]
 			+ SHorizontalBox::Slot()
@@ -1153,19 +1208,48 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 8.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsPanelTitle", "Rule Settings"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsPanelTitle", "布局规则设置"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsRuleHeader", "Rule"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsUiHeader", "界面设置"))
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("CanvasWidthLabel", "画布宽度"),
+				LOCTEXT("CanvasWidthTooltip", "可拖拽语义画布的显示宽度，仅影响 LayoutPanel 编辑器界面。"),
+				[this]() { return SettingsCanvasWidth; },
+				[this](float NewValue) { HandleUiFloatSettingChanged(CanvasWidth, NewValue); },
+				760.0f,
+				2000.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+		[
+			BuildFloatSettingRow(
+				LOCTEXT("CanvasHeightLabel", "画布高度"),
+				LOCTEXT("CanvasHeightTooltip", "可拖拽语义画布的显示高度；过低会让多执行出口等场景绘制出界。"),
+				[this]() { return SettingsCanvasHeight; },
+				[this](float NewValue) { HandleUiFloatSettingChanged(CanvasHeight, NewValue); },
+				440.0f,
+				1600.0f,
+				10.0f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildSettingsSectionHeader(LOCTEXT("SettingsRuleHeader", "规则基础"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildTextSettingRow(
 				LOCTEXT("RuleIdLabel", "ID"),
-				LOCTEXT("RuleIdTooltip", "Stable identifier for this GraphLayout RuleSet."),
+				LOCTEXT("RuleIdTooltip", "当前 GraphLayout RuleSet 的稳定标识。"),
 				[this]() { return SettingsRuleId; },
 				[this](const FText& NewValue) { HandleTextSettingCommitted(RuleId, NewValue); })
 		]
@@ -1173,22 +1257,22 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildTextSettingRow(
-				LOCTEXT("DisplayNameLabel", "Display name"),
-				LOCTEXT("DisplayNameTooltip", "User-facing name shown for this GraphLayout RuleSet."),
+				LOCTEXT("DisplayNameLabel", "显示名称"),
+				LOCTEXT("DisplayNameTooltip", "当前 GraphLayout RuleSet 展示给用户的名称。"),
 				[this]() { return SettingsDisplayName; },
 				[this](const FText& NewValue) { HandleTextSettingCommitted(DisplayName, NewValue); })
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsLinearExecHeader", "Linear Exec"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsLinearExecHeader", "线性执行"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("AlignExecNodesHorizontallyLabel", "Exec horizontal alignment"),
-				LOCTEXT("AlignExecNodesHorizontallyTooltip", "Enable RuleSet-driven horizontal exec alignment for branch-capable patterns."),
+				LOCTEXT("AlignExecNodesHorizontallyLabel", "执行节点水平对齐"),
+				LOCTEXT("AlignExecNodesHorizontallyTooltip", "为带分支能力的布局模式启用 RuleSet 驱动的执行节点水平对齐。"),
 				[this]() { return bSettingsAlignExecNodesHorizontally; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(AlignExecNodesHorizontally, bNewValue); })
 		]
@@ -1196,8 +1280,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("ExecColumnSpacingLabel", "Exec column spacing"),
-				LOCTEXT("ExecColumnSpacingTooltip", "Horizontal distance between adjacent exec columns."),
+				LOCTEXT("ExecColumnSpacingLabel", "执行列距"),
+				LOCTEXT("ExecColumnSpacingTooltip", "相邻执行列之间的水平距离。"),
 				[this]() { return SettingsExecColumnSpacing; },
 				[this](float NewValue) { HandleFloatSettingChanged(ExecColumnSpacing, NewValue); },
 				120.0f,
@@ -1208,8 +1292,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("ExecRowSpacingLabel", "Exec row spacing"),
-				LOCTEXT("ExecRowSpacingTooltip", "Vertical distance between linear exec rows."),
+				LOCTEXT("ExecRowSpacingLabel", "执行行距"),
+				LOCTEXT("ExecRowSpacingTooltip", "线性执行行之间的垂直距离。"),
 				[this]() { return SettingsExecRowSpacing; },
 				[this](float NewValue) { HandleFloatSettingChanged(ExecRowSpacing, NewValue); },
 				80.0f,
@@ -1219,14 +1303,14 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsPureDataHeader", "Pure Data"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsPureDataHeader", "纯数据"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("UsePureDataSubgraphLayoutLabel", "Pure data subgraph layout"),
-				LOCTEXT("UsePureDataSubgraphLayoutTooltip", "Enable RuleSet-driven pure-data subgraph measurement and placement."),
+				LOCTEXT("UsePureDataSubgraphLayoutLabel", "纯数据子图布局"),
+				LOCTEXT("UsePureDataSubgraphLayoutTooltip", "启用 RuleSet 驱动的纯数据子图测量与摆放。"),
 				[this]() { return bSettingsUsePureDataSubgraphLayout; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(UsePureDataSubgraphLayout, bNewValue); })
 		]
@@ -1234,8 +1318,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("DataClusterPaddingXLabel", "Data cluster padding X"),
-				LOCTEXT("DataClusterPaddingXTooltip", "Extra horizontal padding reserved around measured pure-data envelopes."),
+				LOCTEXT("DataClusterPaddingXLabel", "数据簇水平边距"),
+				LOCTEXT("DataClusterPaddingXTooltip", "围绕纯数据包围盒预留的额外水平边距。"),
 				[this]() { return SettingsDataClusterPaddingX; },
 				[this](float NewValue) { HandleFloatSettingChanged(DataClusterPaddingX, NewValue); },
 				1.0f,
@@ -1246,8 +1330,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("DataClusterPaddingYLabel", "Data cluster padding Y"),
-				LOCTEXT("DataClusterPaddingYTooltip", "Extra vertical padding reserved around measured pure-data envelopes."),
+				LOCTEXT("DataClusterPaddingYLabel", "数据簇垂直边距"),
+				LOCTEXT("DataClusterPaddingYTooltip", "围绕纯数据包围盒预留的额外垂直边距。"),
 				[this]() { return SettingsDataClusterPaddingY; },
 				[this](float NewValue) { HandleFloatSettingChanged(DataClusterPaddingY, NewValue); },
 				1.0f,
@@ -1258,8 +1342,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("InputPinRowSpacingLabel", "Input pin row spacing"),
-				LOCTEXT("InputPinRowSpacingTooltip", "Vertical spacing between consumer input-pin rows inside pattern data placement."),
+				LOCTEXT("InputPinRowSpacingLabel", "输入 Pin 行距"),
+				LOCTEXT("InputPinRowSpacingTooltip", "模式数据摆放中消费者输入 Pin 行之间的垂直距离。"),
 				[this]() { return SettingsInputPinRowSpacing; },
 				[this](float NewValue) { HandleFloatSettingChanged(InputPinRowSpacing, NewValue); },
 				24.0f,
@@ -1270,8 +1354,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("PureInputOffsetLabel", "Pure input offset X"),
-				LOCTEXT("PureInputOffsetTooltip", "Horizontal offset used for pure-function and operator inputs."),
+				LOCTEXT("PureInputOffsetLabel", "纯输入水平偏移"),
+				LOCTEXT("PureInputOffsetTooltip", "纯函数和运算节点输入使用的水平偏移。"),
 				[this]() { return SettingsPureInputOffsetX; },
 				[this](float NewValue) { HandleFloatSettingChanged(PureInputOffsetX, NewValue); },
 				80.0f,
@@ -1282,8 +1366,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("VariableInputOffsetLabel", "Variable input offset X"),
-				LOCTEXT("VariableInputOffsetTooltip", "Horizontal offset used for variable input nodes."),
+				LOCTEXT("VariableInputOffsetLabel", "变量输入水平偏移"),
+				LOCTEXT("VariableInputOffsetTooltip", "变量输入节点使用的水平偏移。"),
 				[this]() { return SettingsVariableInputOffsetX; },
 				[this](float NewValue) { HandleFloatSettingChanged(VariableInputOffsetX, NewValue); },
 				80.0f,
@@ -1293,14 +1377,14 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsBranchHeader", "Branch"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsBranchHeader", "分支"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("BranchRowSpacingLabel", "Branch row spacing"),
-				LOCTEXT("BranchRowSpacingTooltip", "Vertical spacing used between branch output rows."),
+				LOCTEXT("BranchRowSpacingLabel", "分支行距"),
+				LOCTEXT("BranchRowSpacingTooltip", "分支输出行之间使用的垂直距离。"),
 				[this]() { return SettingsBranchRowSpacing; },
 				[this](float NewValue) { HandleFloatSettingChanged(BranchRowSpacing, NewValue); },
 				80.0f,
@@ -1311,8 +1395,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("BranchRowPaddingYLabel", "Branch row padding Y"),
-				LOCTEXT("BranchRowPaddingYTooltip", "Extra vertical padding inserted between allocated branch rows after row-height budgeting."),
+				LOCTEXT("BranchRowPaddingYLabel", "分支行垂直边距"),
+				LOCTEXT("BranchRowPaddingYTooltip", "行高预算后，在已分配分支行之间插入的额外垂直边距。"),
 				[this]() { return SettingsBranchRowPaddingY; },
 				[this](float NewValue) { HandleFloatSettingChanged(BranchRowPaddingY, NewValue); },
 				1.0f,
@@ -1323,22 +1407,22 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("UsePatternRowHeightBudgetLabel", "Pattern row height budget"),
-				LOCTEXT("UsePatternRowHeightBudgetTooltip", "Allow measured data-cluster height budgets to expand allocated exec row baselines."),
+				LOCTEXT("UsePatternRowHeightBudgetLabel", "模式行高预算"),
+				LOCTEXT("UsePatternRowHeightBudgetTooltip", "允许测量出的数据簇高度预算扩展执行行基线。"),
 				[this]() { return bSettingsUsePatternRowHeightBudget; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(UsePatternRowHeightBudget, bNewValue); })
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsOccupancyHeader", "Occupancy"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsOccupancyHeader", "占位避让"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("CollisionPaddingXLabel", "Collision padding X"),
-				LOCTEXT("CollisionPaddingXTooltip", "Extra horizontal padding reserved while resolving overlap."),
+				LOCTEXT("CollisionPaddingXLabel", "碰撞水平边距"),
+				LOCTEXT("CollisionPaddingXTooltip", "处理重叠时预留的额外水平边距。"),
 				[this]() { return SettingsCollisionPaddingX; },
 				[this](float NewValue) { HandleFloatSettingChanged(CollisionPaddingX, NewValue); },
 				1.0f,
@@ -1349,8 +1433,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("CollisionPaddingYLabel", "Collision padding Y"),
-				LOCTEXT("CollisionPaddingYTooltip", "Extra vertical padding reserved while resolving overlap."),
+				LOCTEXT("CollisionPaddingYLabel", "碰撞垂直边距"),
+				LOCTEXT("CollisionPaddingYTooltip", "处理重叠时预留的额外垂直边距。"),
 				[this]() { return SettingsCollisionPaddingY; },
 				[this](float NewValue) { HandleFloatSettingChanged(CollisionPaddingY, NewValue); },
 				1.0f,
@@ -1361,8 +1445,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("CollisionStepYLabel", "Collision step Y"),
-				LOCTEXT("CollisionStepYTooltip", "Vertical search increment used when resolving overlap."),
+				LOCTEXT("CollisionStepYLabel", "碰撞搜索步长"),
+				LOCTEXT("CollisionStepYTooltip", "处理重叠时使用的垂直搜索增量。"),
 				[this]() { return SettingsCollisionStepY; },
 				[this](float NewValue) { HandleFloatSettingChanged(CollisionStepY, NewValue); },
 				8.0f,
@@ -1373,8 +1457,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildIntSettingRow(
-				LOCTEXT("MaxCollisionAttemptsLabel", "Max collision attempts"),
-				LOCTEXT("MaxCollisionAttemptsTooltip", "Maximum number of overlap-resolution attempts before the solver gives up on a candidate position."),
+				LOCTEXT("MaxCollisionAttemptsLabel", "最大碰撞尝试"),
+				LOCTEXT("MaxCollisionAttemptsTooltip", "求解器放弃候选位置前允许的最大重叠处理次数。"),
 				[this]() { return SettingsMaxCollisionAttempts; },
 				[this](int32 NewValue) { HandleIntSettingChanged(MaxCollisionAttempts, NewValue); },
 				1,
@@ -1383,14 +1467,14 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsApplyHeader", "Apply"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsApplyHeader", "应用"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildIntSettingRow(
-				LOCTEXT("MaxNodesPerFrameLabel", "Nodes / frame"),
-				LOCTEXT("MaxNodesPerFrameTooltip", "Maximum node moves applied in one editor frame."),
+				LOCTEXT("MaxNodesPerFrameLabel", "每帧节点数"),
+				LOCTEXT("MaxNodesPerFrameTooltip", "一个编辑器帧内最多应用的节点移动数量。"),
 				[this]() { return SettingsMaxNodesPerFrame; },
 				[this](int32 NewValue) { HandleIntSettingChanged(MaxNodesPerFrame, NewValue); },
 				1,
@@ -1400,8 +1484,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
-				LOCTEXT("MaxMillisecondsPerFrameLabel", "MS / frame"),
-				LOCTEXT("MaxMillisecondsPerFrameTooltip", "Maximum time budget per frame while applying layout movement."),
+				LOCTEXT("MaxMillisecondsPerFrameLabel", "每帧毫秒数"),
+				LOCTEXT("MaxMillisecondsPerFrameTooltip", "应用布局移动时每帧允许的最大时间预算。"),
 				[this]() { return SettingsMaxMillisecondsPerFrame; },
 				[this](float NewValue) { HandleFloatSettingChanged(MaxMillisecondsPerFrame, NewValue); },
 				0.25f,
@@ -1412,8 +1496,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("MoveGeneratedNodesLabel", "Move generated nodes"),
-				LOCTEXT("MoveGeneratedNodesTooltip", "Allow layout application to move nodes generated by the current task."),
+				LOCTEXT("MoveGeneratedNodesLabel", "移动生成节点"),
+				LOCTEXT("MoveGeneratedNodesTooltip", "允许布局应用移动当前任务生成的节点。"),
 				[this]() { return bSettingsMoveGeneratedNodes; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(MoveGeneratedNodes, bNewValue); })
 		]
@@ -1421,22 +1505,22 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 12.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("MoveExistingNodesLabel", "Move existing nodes"),
-				LOCTEXT("MoveExistingNodesTooltip", "Allow layout application to move pre-existing user nodes."),
+				LOCTEXT("MoveExistingNodesLabel", "移动已有节点"),
+				LOCTEXT("MoveExistingNodesTooltip", "允许布局应用移动用户已有节点。"),
 				[this]() { return bSettingsMoveExistingNodes; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(MoveExistingNodes, bNewValue); })
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			BuildSettingsSectionHeader(LOCTEXT("SettingsPersistenceHeader", "Persistence"))
+			BuildSettingsSectionHeader(LOCTEXT("SettingsPersistenceHeader", "持久化"))
 		]
 		+ SScrollBox::Slot()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("MarkDirtyAfterApplyLabel", "Mark dirty after apply"),
-				LOCTEXT("MarkDirtyAfterApplyTooltip", "Mark the owning package dirty after layout movement is applied."),
+				LOCTEXT("MarkDirtyAfterApplyLabel", "应用后标脏"),
+				LOCTEXT("MarkDirtyAfterApplyTooltip", "布局移动应用后将所属 package 标记为 dirty。"),
 				[this]() { return bSettingsMarkDirtyAfterApply; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(MarkDirtyAfterApply, bNewValue); })
 		]
@@ -1444,8 +1528,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 0.0f)
 		[
 			BuildBoolSettingRow(
-				LOCTEXT("SaveAfterApplyLabel", "Save after apply"),
-				LOCTEXT("SaveAfterApplyTooltip", "Save the owning package after layout movement is applied."),
+				LOCTEXT("SaveAfterApplyLabel", "应用后保存"),
+				LOCTEXT("SaveAfterApplyTooltip", "布局移动应用后保存所属 package。"),
 				[this]() { return bSettingsSaveAfterApply; },
 				[this](bool bNewValue) { HandleBoolSettingChanged(SaveAfterApply, bNewValue); })
 		];
@@ -1497,7 +1581,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnImportJsonClicked()
 	}
 
 	SetRuleSetJson(ImportedJson);
-	SetStatusMessage(TEXT("Imported RuleSet JSON."), true);
+	SetStatusMessage(TEXT("已导入 RuleSet JSON。"), true);
 	return FReply::Handled();
 }
 
@@ -1515,7 +1599,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnExportJsonClicked()
 	if (ExportJsonDelegate.IsBound())
 	{
 		bExported = ExportJsonDelegate.Execute(RuleSetJson);
-		ExportMessage = bExported ? TEXT("Exported RuleSet JSON.") : TEXT("Export RuleSet JSON failed.");
+		ExportMessage = bExported ? TEXT("已导出 RuleSet JSON。") : TEXT("导出 RuleSet JSON 失败。");
 	}
 	else
 	{
@@ -1529,7 +1613,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnExportJsonClicked()
 FReply SBlueprintHelperLayoutRuleEditor::OnCopyJsonClicked()
 {
 	FPlatformApplicationMisc::ClipboardCopy(*RuleSetJson);
-	SetStatusMessage(TEXT("Copied RuleSet JSON to clipboard."), true);
+	SetStatusMessage(TEXT("已复制 RuleSet JSON 到剪贴板。"), true);
 	return FReply::Handled();
 }
 
@@ -1539,7 +1623,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnPasteJsonClicked()
 	FPlatformApplicationMisc::ClipboardPaste(ClipboardText);
 	if (ClipboardText.TrimStartAndEnd().IsEmpty())
 	{
-		SetStatusMessage(TEXT("Clipboard does not contain RuleSet JSON."), false);
+		SetStatusMessage(TEXT("剪贴板中没有 RuleSet JSON。"), false);
 		return FReply::Handled();
 	}
 
@@ -1558,7 +1642,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnValidateClicked()
 FReply SBlueprintHelperLayoutRuleEditor::OnResetToDefaultClicked()
 {
 	SetRuleSetJson(DefaultRuleSetJson);
-	SetStatusMessage(TEXT("Reset RuleSet JSON to default."), true);
+	SetStatusMessage(TEXT("已将 RuleSet JSON 恢复为默认值。"), true);
 	return FReply::Handled();
 }
 
@@ -1580,7 +1664,7 @@ FReply SBlueprintHelperLayoutRuleEditor::OnPreviewClicked()
 		RuleCanvas->CommitCurrentScene();
 	}
 
-	SetPreviewState(EPreviewState::PreviewLoading, TEXT("Building preview data..."));
+	SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在构建预览数据..."));
 	StartPreviewBuild();
 	return FReply::Handled();
 }
@@ -1607,7 +1691,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged(const FText& InT
 	}
 
 	RuleSetJson = InText.ToString();
-	SetStatusMessage(TEXT("RuleSet JSON edited. Validate before export."), false);
+	SetStatusMessage(TEXT("RuleSet JSON 已编辑，请先校验再导出。"), false);
 	RefreshCanvasFromJson();
 	RefreshSettingsFromJson();
 
@@ -1638,8 +1722,8 @@ void SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged(const FString&
 		{
 			bSaved = ExportJsonDelegate.Execute(RuleSetJson);
 			ExportMessage = bSaved
-				? TEXT("RuleSet updated and saved from canvas.")
-				: TEXT("RuleSet updated from canvas, but save failed.");
+				? TEXT("已从画布更新并保存 RuleSet。")
+				: TEXT("已从画布更新 RuleSet，但保存失败。");
 		}
 		else
 		{
@@ -1670,6 +1754,8 @@ void SBlueprintHelperLayoutRuleEditor::RefreshSettingsFromJson()
 	TGuardValue<bool> UpdatingSettingsGuard(bUpdatingSettingsFromJson, true);
 	SettingsRuleId = ParsedRuleSet.Id;
 	SettingsDisplayName = ParsedRuleSet.DisplayName;
+	SettingsCanvasWidth = LayoutRuleEditorSettings.CanvasDesiredSize.X;
+	SettingsCanvasHeight = LayoutRuleEditorSettings.CanvasDesiredSize.Y;
 	SettingsExecColumnSpacing = ParsedRuleSet.ExecColumnSpacing;
 	SettingsExecRowSpacing = ParsedRuleSet.ExecRowSpacing;
 	SettingsBranchRowSpacing = ParsedRuleSet.BranchRowSpacing;
@@ -1708,7 +1794,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleTextSettingCommitted(int32 SettingI
 	BlueprintHelper::GraphLayout::FValidationResult Validation;
 	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
 	{
-		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		SetStatusMessage(TEXT("RuleSet JSON 无效，设置未应用。"), false);
 		return;
 	}
 
@@ -1740,7 +1826,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId
 	BlueprintHelper::GraphLayout::FValidationResult Validation;
 	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
 	{
-		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		SetStatusMessage(TEXT("RuleSet JSON 无效，设置未应用。"), false);
 		return;
 	}
 
@@ -1793,6 +1879,49 @@ void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId
 	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
 }
 
+void SBlueprintHelperLayoutRuleEditor::HandleUiFloatSettingChanged(int32 SettingId, float NewValue)
+{
+	using namespace BlueprintHelperLayoutRuleEditorLocal;
+	switch (SettingId)
+	{
+	case CanvasWidth:
+		LayoutRuleEditorSettings.CanvasDesiredSize.X = ClampCanvasWidth(NewValue);
+		break;
+	case CanvasHeight:
+		LayoutRuleEditorSettings.CanvasDesiredSize.Y = ClampCanvasHeight(NewValue);
+		break;
+	default:
+		return;
+	}
+
+	SettingsCanvasWidth = LayoutRuleEditorSettings.CanvasDesiredSize.X;
+	SettingsCanvasHeight = LayoutRuleEditorSettings.CanvasDesiredSize.Y;
+	if (RuleCanvas.IsValid())
+	{
+		RuleCanvas->SetLayoutRuleEditorSettings(LayoutRuleEditorSettings);
+	}
+	if (WorkspaceBox.IsValid())
+	{
+		WorkspaceBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	}
+	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+
+	const FString CanvasSizeValue = FString::Printf(
+		TEXT("[%s, %s]"),
+		*FString::SanitizeFloat(LayoutRuleEditorSettings.CanvasDesiredSize.X),
+		*FString::SanitizeFloat(LayoutRuleEditorSettings.CanvasDesiredSize.Y));
+	FString SettingError;
+	const bool bSaved = FBlueprintHelperSettingStore::UpdateProjectSettingValue(
+		TEXT("ui.layout_rule_editor.canvas_desired_size"),
+		CanvasSizeValue,
+		SettingError);
+	SetStatusMessage(
+		bSaved
+			? TEXT("已保存界面画布尺寸设置。")
+			: FString::Printf(TEXT("界面画布尺寸已更新，但保存失败：%s"), *SettingError),
+		bSaved);
+}
+
 void SBlueprintHelperLayoutRuleEditor::HandleIntSettingChanged(int32 SettingId, int32 NewValue)
 {
 	if (bUpdatingSettingsFromJson)
@@ -1804,7 +1933,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleIntSettingChanged(int32 SettingId, 
 	BlueprintHelper::GraphLayout::FValidationResult Validation;
 	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
 	{
-		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		SetStatusMessage(TEXT("RuleSet JSON 无效，设置未应用。"), false);
 		return;
 	}
 
@@ -1835,7 +1964,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleBoolSettingChanged(int32 SettingId,
 	BlueprintHelper::GraphLayout::FValidationResult Validation;
 	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
 	{
-		SetStatusMessage(TEXT("RuleSet JSON is invalid; settings were not applied."), false);
+		SetStatusMessage(TEXT("RuleSet JSON 无效，设置未应用。"), false);
 		return;
 	}
 
@@ -1898,7 +2027,7 @@ void SBlueprintHelperLayoutRuleEditor::CommitSettingsRuleSetJson(const FString& 
 			bSaved = SaveJsonToDefaultFile(RuleSetJson, ExportMessage);
 		}
 		SetStatusMessage(
-			bSaved ? TEXT("RuleSet updated and saved from settings.") : TEXT("RuleSet updated from settings, but save failed."),
+			bSaved ? TEXT("已从设置更新并保存 RuleSet。") : TEXT("已从设置更新 RuleSet，但保存失败。"),
 			bSaved);
 	}
 	else
@@ -1935,7 +2064,7 @@ bool SBlueprintHelperLayoutRuleEditor::ValidateRuleSetJson(FString& OutMessage) 
 	const FString TrimmedJson = RuleSetJson.TrimStartAndEnd();
 	if (TrimmedJson.IsEmpty())
 	{
-		OutMessage = TEXT("RuleSet JSON is empty.");
+		OutMessage = TEXT("RuleSet JSON 为空。");
 		return false;
 	}
 
@@ -1943,7 +2072,7 @@ bool SBlueprintHelperLayoutRuleEditor::ValidateRuleSetJson(FString& OutMessage) 
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(TrimmedJson);
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
-		OutMessage = FString::Printf(TEXT("RuleSet JSON parse failed: %s"), *Reader->GetErrorMessage());
+		OutMessage = FString::Printf(TEXT("RuleSet JSON 解析失败：%s"), *Reader->GetErrorMessage());
 		return false;
 	}
 
@@ -1953,16 +2082,16 @@ bool SBlueprintHelperLayoutRuleEditor::ValidateRuleSetJson(FString& OutMessage) 
 	{
 		OutMessage = Validation.Errors.Num() > 0
 			? FString::Join(Validation.Errors, TEXT(" "))
-			: TEXT("RuleSet JSON failed GraphLayout validation.");
+			: TEXT("RuleSet JSON 未通过 GraphLayout 校验。");
 		return false;
 	}
 
 	OutMessage = Validation.Warnings.Num() > 0
-		? FString::Printf(TEXT("RuleSet JSON is valid. Warnings: %s"), *FString::Join(Validation.Warnings, TEXT(" ")))
-		: TEXT("RuleSet JSON is valid.");
+		? FString::Printf(TEXT("RuleSet JSON 有效。警告：%s"), *FString::Join(Validation.Warnings, TEXT(" ")))
+		: TEXT("RuleSet JSON 有效。");
 	return true;
 #else
-	OutMessage = TEXT("RuleSet JSON is valid JSON. Schema-level GraphLayout validation is not bound.");
+	OutMessage = TEXT("RuleSet JSON 是有效 JSON；当前未绑定 GraphLayout schema 级校验。");
 	return true;
 #endif
 }
@@ -2049,12 +2178,12 @@ void SBlueprintHelperLayoutRuleEditor::HandlePreviewBuildCompleted(
 	{
 		SetPreviewState(
 			EPreviewState::PreviewError,
-			Result.Error.IsEmpty() ? TEXT("Preview data build failed.") : Result.Error);
+			Result.Error.IsEmpty() ? TEXT("预览数据构建失败。") : Result.Error);
 		return;
 	}
 
 	PendingPreviewBuildResult = Result;
-	SetPreviewState(EPreviewState::PreviewMaterializing, TEXT("Materializing preview graph..."));
+	SetPreviewState(EPreviewState::PreviewMaterializing, TEXT("正在实例化预览图表..."));
 }
 
 void SBlueprintHelperLayoutRuleEditor::PumpPreviewMaterializer()
@@ -2096,13 +2225,13 @@ void SBlueprintHelperLayoutRuleEditor::PumpPreviewMaterializer()
 		SetPreviewState(
 			EPreviewState::PreviewError,
 			MaterializerResult.Error.IsEmpty()
-				? TEXT("Preview graph materialization failed.")
+				? TEXT("预览图表实例化失败。")
 				: MaterializerResult.Error);
 		return;
 	}
 
 	BuildPreviewGraphEditor(MaterializerResult.PreviewGraph.Get());
-	SetPreviewState(EPreviewState::PreviewReady, TEXT("Preview ready."));
+	SetPreviewState(EPreviewState::PreviewReady, TEXT("预览已就绪。"));
 }
 
 void SBlueprintHelperLayoutRuleEditor::BuildPreviewGraphEditor(UEdGraph* PreviewGraph)
@@ -2114,9 +2243,9 @@ void SBlueprintHelperLayoutRuleEditor::BuildPreviewGraphEditor(UEdGraph* Preview
 	}
 
 	FGraphAppearanceInfo Appearance;
-	Appearance.CornerText = LOCTEXT("LayoutRulePreviewCornerText", "Preview");
-	Appearance.InstructionText = LOCTEXT("LayoutRulePreviewInstruction", "Read-only GraphLayout Preview");
-	Appearance.ReadOnlyText = LOCTEXT("LayoutRulePreviewReadOnly", "Preview Only");
+	Appearance.CornerText = LOCTEXT("LayoutRulePreviewCornerText", "预览");
+	Appearance.InstructionText = LOCTEXT("LayoutRulePreviewInstruction", "只读 GraphLayout 预览");
+	Appearance.ReadOnlyText = LOCTEXT("LayoutRulePreviewReadOnly", "仅预览");
 
 	TSharedRef<SGraphEditor> Editor = SAssignNew(PreviewGraphEditor, SGraphEditor)
 		.IsEditable(false)
@@ -2155,11 +2284,11 @@ FString SBlueprintHelperLayoutRuleEditor::LoadJsonFromDefaultFile(FString& OutMe
 	FString JsonText;
 	if (!FFileHelper::LoadFileToString(JsonText, *DefaultJsonFilePath))
 	{
-		OutMessage = FString::Printf(TEXT("Import failed. No config hook is bound and default file was not readable: %s"), *DefaultJsonFilePath);
+		OutMessage = FString::Printf(TEXT("导入失败：未绑定配置入口，且默认文件不可读：%s"), *DefaultJsonFilePath);
 		return TEXT("");
 	}
 
-	OutMessage = FString::Printf(TEXT("Imported RuleSet JSON from %s"), *DefaultJsonFilePath);
+	OutMessage = FString::Printf(TEXT("已从 %s 导入 RuleSet JSON"), *DefaultJsonFilePath);
 	return JsonText;
 }
 
@@ -2170,11 +2299,11 @@ bool SBlueprintHelperLayoutRuleEditor::SaveJsonToDefaultFile(const FString& Json
 
 	if (!FFileHelper::SaveStringToFile(JsonText, *DefaultJsonFilePath))
 	{
-		OutMessage = FString::Printf(TEXT("Export failed. No config hook is bound and default file was not writable: %s"), *DefaultJsonFilePath);
+		OutMessage = FString::Printf(TEXT("导出失败：未绑定配置入口，且默认文件不可写：%s"), *DefaultJsonFilePath);
 		return false;
 	}
 
-	OutMessage = FString::Printf(TEXT("Exported RuleSet JSON to %s"), *DefaultJsonFilePath);
+	OutMessage = FString::Printf(TEXT("已将 RuleSet JSON 导出到 %s"), *DefaultJsonFilePath);
 	return true;
 }
 

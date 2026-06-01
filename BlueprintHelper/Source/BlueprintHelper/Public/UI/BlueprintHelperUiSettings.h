@@ -56,11 +56,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperTaskSpecWorkbenchSettings
 
 struct BLUEPRINTHELPER_API FBlueprintHelperLayoutRuleEditorSettings
 {
-	FVector2D CanvasDesiredSize = FVector2D(760.0f, 320.0f);
+	FVector2D CanvasDesiredSize = FVector2D(760.0f, 460.0f);
 	FVector2D NodeSize = FVector2D(128.0f, 44.0f);
 	float CanvasRuleScale = 0.45f;
 	FString DefaultRuleId = TEXT("default_readable_exec_with_left_data");
-	FString DefaultRuleDisplayName = TEXT("Default Readable Exec With Left Data");
+	FString DefaultRuleDisplayName = TEXT("默认可读执行与左侧数据");
 	float ExecColumnSpacing = 360.0f;
 	float ExecRowSpacing = 220.0f;
 	float BranchRowSpacing = 260.0f;
