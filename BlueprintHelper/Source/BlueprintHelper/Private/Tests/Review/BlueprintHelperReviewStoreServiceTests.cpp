@@ -1240,6 +1240,57 @@ bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewDebugBundleRejectTimingEventTest,
+	"BlueprintHelper.Review.DebugBundle.RejectTimingEvent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewDebugBundleRejectTimingEventTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBlueprintHelperReviewVisibleChange> Change = MakeShared<FBlueprintHelperReviewVisibleChange>();
+	Change->ChangeId = TEXT("change_reject_timing");
+	Change->AssetPath = TEXT("/Game/BP_RejectTiming");
+	Change->LatestEvidenceId = TEXT("tx_reject_timing");
+
+	const TSharedRef<FJsonObject> Event = FBlueprintHelperReviewDebugBundleService::BuildRejectTimingEvent(
+		TEXT("session_reject_timing"),
+		TEXT("success_feedback_shown"),
+		Change->ChangeId,
+		Change,
+		Change->AssetPath,
+		12.5,
+		123.75,
+		TEXT("rejected"));
+
+	FString EventType;
+	TestTrue(TEXT("event type present"), Event->TryGetStringField(TEXT("event_type"), EventType));
+	TestEqual(TEXT("event type is reject timing"),
+		EventType,
+		FString(TEXT("review_reject_timing")));
+
+	FString Stage;
+	TestTrue(TEXT("stage present"), Event->TryGetStringField(TEXT("stage"), Stage));
+	TestEqual(TEXT("stage captured"), Stage, FString(TEXT("success_feedback_shown")));
+
+	FString ChangeId;
+	TestTrue(TEXT("change id present"), Event->TryGetStringField(TEXT("change_id"), ChangeId));
+	TestEqual(TEXT("change id captured"), ChangeId, Change->ChangeId);
+
+	double StageMs = 0.0;
+	double TotalMs = 0.0;
+	TestTrue(TEXT("stage ms present"), Event->TryGetNumberField(TEXT("stage_ms"), StageMs));
+	TestTrue(TEXT("total ms present"), Event->TryGetNumberField(TEXT("total_ms"), TotalMs));
+	TestEqual(TEXT("stage ms captured"), StageMs, 12.5);
+	TestEqual(TEXT("total ms captured"), TotalMs, 123.75);
+
+	const TSharedPtr<FJsonObject>* SelectedChangePtr = nullptr;
+	TestTrue(TEXT("debug event carries selected change"),
+		Event->TryGetObjectField(TEXT("selected_change"), SelectedChangePtr)
+		&& SelectedChangePtr
+		&& SelectedChangePtr->IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewStoreUsesSemanticHashForSnapshotRestoreTargetTest,
 	"BlueprintHelper.Review.Store.UsesSemanticHashForSnapshotRestoreTarget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

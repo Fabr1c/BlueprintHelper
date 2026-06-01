@@ -11,6 +11,7 @@
 #include "UI/Review/BlueprintHelperReviewPendingLoadCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
+#include "UI/Review/BlueprintHelperReviewRejectTimingModel.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
@@ -185,7 +186,16 @@ private:
 	static FString BuildReviewActionNotificationLabel(FReviewChangeItem Item);
 	void QueueRejectChange(FReviewChangeItem Item, bool bShowIndividualNotification = true);
 	void RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded);
-	void RecordRejectStageElapsed(const FString& ChangeId, const FString& Stage);
+	void EmitRejectTimingSample(const FBlueprintHelperReviewRejectTimingSample& Sample);
+	void RecordRejectStageElapsed(
+		const FString& ChangeId,
+		const FString& Stage,
+		const FString& Detail = FString());
+	void RecordRejectStoreEventTiming(
+		const FBlueprintHelperReviewStoreChangedEvent& Event,
+		const FString& Stage,
+		const FString& Detail,
+		bool bCompleteMatches);
 	void StartNextRejectPrepare();
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void ExecutePreparedRejectMutation(const FString& ChangeId);
@@ -265,8 +275,7 @@ private:
 	FString DebugBundlePath;
 	TArray<FString> PendingRejectChangeIds;
 	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
-	TMap<FString, double> RejectStartedAtSecondsByChangeId;
-	TMap<FString, double> RejectStageStartedAtSecondsByChangeId;
+	FBlueprintHelperReviewRejectTimingModel RejectTimingModel;
 	TMap<FString, TWeakPtr<SNotificationItem>> ReviewActionNotifications;
 	TMap<FString, FString> RejectBatchKeyByChangeId;
 	TMap<FString, FReviewActionBatchNotificationState> RejectBatchNotifications;

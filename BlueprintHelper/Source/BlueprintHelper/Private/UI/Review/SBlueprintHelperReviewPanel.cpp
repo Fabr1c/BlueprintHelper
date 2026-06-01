@@ -750,6 +750,23 @@ FReply SBlueprintHelperReviewPanel::OnReviewActionIntent(const FBlueprintHelperR
 	{
 		return FReply::Handled();
 	}
+	if (Intent.Action == EBlueprintHelperReviewActionIntentKind::Reject)
+	{
+		const FString ChangeId = !Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestEvidenceId;
+		if (!ChangeId.IsEmpty())
+		{
+			FBlueprintHelperReviewVisibleChange TimingChange = *Item;
+			if (TimingChange.ChangeId.IsEmpty())
+			{
+				TimingChange.ChangeId = ChangeId;
+			}
+			RejectTimingModel.Begin(TimingChange, FPlatformTime::Seconds());
+			RecordRejectStageElapsed(
+				ChangeId,
+				TEXT("ui_intent_received"),
+				Intent.SourceWidget);
+		}
+	}
 	return Intent.Action == EBlueprintHelperReviewActionIntentKind::Accept
 		? ExecuteAcceptChange(Item)
 		: ExecuteRejectChange(Item);
@@ -1093,6 +1110,20 @@ FReply SBlueprintHelperReviewPanel::ExecuteRejectChange(FReviewChangeItem Item)
 		return FReply::Handled();
 	}
 
+	const FString ChangeId = !Item->ChangeId.IsEmpty() ? Item->ChangeId : Item->LatestEvidenceId;
+	if (!ChangeId.IsEmpty() && !RejectTimingModel.Contains(ChangeId))
+	{
+		FBlueprintHelperReviewVisibleChange TimingChange = *Item;
+		if (TimingChange.ChangeId.IsEmpty())
+		{
+			TimingChange.ChangeId = ChangeId;
+		}
+		RejectTimingModel.Begin(TimingChange, FPlatformTime::Seconds());
+		RecordRejectStageElapsed(
+			ChangeId,
+			TEXT("execute_reject_change"),
+			TEXT("review_panel_button"));
+	}
 	QueueRejectChange(Item);
 	return FReply::Handled();
 }
@@ -1144,12 +1175,19 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		TEXT("reject_queued"));
 	FBlueprintHelperReviewPanelStateService::ClearPresenterErrorState(ReviewPanelState, ChangeId);
 	PendingRejectChangeIds.Add(ChangeId);
-	RejectStartedAtSecondsByChangeId.Add(ChangeId, FPlatformTime::Seconds());
-	RejectStageStartedAtSecondsByChangeId.Add(ChangeId, FPlatformTime::Seconds());
+	if (!RejectTimingModel.Contains(ChangeId))
+	{
+		FBlueprintHelperReviewVisibleChange TimingChange = *Item;
+		if (TimingChange.ChangeId.IsEmpty())
+		{
+			TimingChange.ChangeId = ChangeId;
+		}
+		RejectTimingModel.Begin(TimingChange, FPlatformTime::Seconds());
+	}
 	SelectedChange = Item;
 	RefreshReviewActionQueueState(TEXT("reject_queued"), Item->AssetPath);
 	AddDebugMessage(FString::Printf(TEXT("Reject queued id=%s"), *ChangeId));
-	RecordRejectStageElapsed(ChangeId, TEXT("queued"));
+	RecordRejectStageElapsed(ChangeId, TEXT("queued"), TEXT("review_panel_action"));
 	if (bShowIndividualNotification)
 	{
 		ShowReviewActionNotification(
@@ -1164,20 +1202,64 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 	StartNextRejectPrepare();
 }
 
-void SBlueprintHelperReviewPanel::RecordRejectStageElapsed(const FString& ChangeId, const FString& Stage)
+void SBlueprintHelperReviewPanel::EmitRejectTimingSample(
+	const FBlueprintHelperReviewRejectTimingSample& Sample)
 {
-	const double NowSeconds = FPlatformTime::Seconds();
-	double* StageStartedAtSeconds = RejectStageStartedAtSecondsByChangeId.Find(ChangeId);
-	const double StageMs = StageStartedAtSeconds ? (NowSeconds - *StageStartedAtSeconds) * 1000.0 : 0.0;
-	const double* TotalStartedAtSeconds = RejectStartedAtSecondsByChangeId.Find(ChangeId);
-	const double TotalMs = TotalStartedAtSeconds ? (NowSeconds - *TotalStartedAtSeconds) * 1000.0 : StageMs;
+	if (!Sample.bValid)
+	{
+		return;
+	}
 	AddDebugMessage(FString::Printf(
-		TEXT("RejectPerf id=%s stage=%s stage_ms=%.2f total_ms=%.2f"),
-		*ChangeId,
-		*Stage,
-		StageMs,
-		TotalMs));
-	RejectStageStartedAtSecondsByChangeId.Add(ChangeId, NowSeconds);
+		TEXT("RejectPerf id=%s stage=%s stage_ms=%.2f total_ms=%.2f detail=%s"),
+		*Sample.ChangeId,
+		*Sample.Stage,
+		Sample.StageMs,
+		Sample.TotalMs,
+		*Sample.Detail));
+	TSharedPtr<FBlueprintHelperReviewVisibleChange> ChangePtr;
+	if (Sample.bHasChangeSnapshot)
+	{
+		ChangePtr = MakeShared<FBlueprintHelperReviewVisibleChange>(Sample.ChangeSnapshot);
+	}
+	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildRejectTimingEvent(
+		DebugBundleSessionId,
+		Sample.Stage,
+		Sample.ChangeId,
+		ChangePtr,
+		Sample.AssetPath,
+		Sample.StageMs,
+		Sample.TotalMs,
+		Sample.Detail));
+}
+
+void SBlueprintHelperReviewPanel::RecordRejectStageElapsed(
+	const FString& ChangeId,
+	const FString& Stage,
+	const FString& Detail)
+{
+	EmitRejectTimingSample(RejectTimingModel.RecordStage(
+		ChangeId,
+		Stage,
+		FPlatformTime::Seconds(),
+		Detail));
+}
+
+void SBlueprintHelperReviewPanel::RecordRejectStoreEventTiming(
+	const FBlueprintHelperReviewStoreChangedEvent& Event,
+	const FString& Stage,
+	const FString& Detail,
+	bool bCompleteMatches)
+{
+	for (const FBlueprintHelperReviewRejectTimingSample& Sample :
+		RejectTimingModel.RecordMatchingStoreEvent(
+			Event,
+			Stage,
+			FPlatformTime::Seconds(),
+			Detail,
+			bCompleteMatches))
+	{
+		EmitRejectTimingSample(Sample);
+	}
 }
 
 void SBlueprintHelperReviewPanel::StartNextRejectPrepare()
@@ -1323,6 +1405,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 				EBlueprintHelperReviewSurface::Unknown,
 				Item->LocationKey),
 			TEXT("review_panel"));
+		RejectTimingModel.MarkWaitingForStoreRefresh(ChangeId);
 		const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 			ReviewPanelPresenter.IsValid()
 				? ReviewPanelPresenter->HandleActionIntent(
@@ -1342,6 +1425,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		}
 		else
 		{
+			RejectTimingModel.CancelWaitingForStoreRefresh(ChangeId);
 			FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
 				ReviewPanelState,
 				Item->ChangeId,
@@ -1374,6 +1458,10 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 				true,
 				false);
 		}
+		RecordRejectStageElapsed(
+			ChangeId,
+			CascadeResult.RootResult.bSucceeded ? TEXT("success_feedback_shown") : TEXT("failure_feedback_shown"),
+			CascadeResult.RootResult.Message);
 		RecordRejectBatchResult(ChangeId, CascadeResult.RootResult.bSucceeded);
 		FinishAsyncReject(ChangeId);
 		return;
@@ -1385,6 +1473,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 			EBlueprintHelperReviewSurface::Unknown,
 			Item->LocationKey),
 		TEXT("review_panel"));
+	RejectTimingModel.MarkWaitingForStoreRefresh(ChangeId);
 	const FBlueprintHelperReviewPanelPresenterEvent PresenterEvent =
 		ReviewPanelPresenter.IsValid()
 			? ReviewPanelPresenter->HandleActionIntent(
@@ -1403,6 +1492,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 	}
 	else
 	{
+		RejectTimingModel.CancelWaitingForStoreRefresh(ChangeId);
 		FBlueprintHelperReviewPanelStateService::SetPresenterErrorState(
 			ReviewPanelState,
 			Item->ChangeId,
@@ -1451,6 +1541,10 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 			true,
 			false);
 	}
+	RecordRejectStageElapsed(
+		ChangeId,
+		Result.bSucceeded ? TEXT("success_feedback_shown") : TEXT("failure_feedback_shown"),
+		Result.Message);
 	RecordRejectBatchResult(ChangeId, Result.bSucceeded);
 	FinishAsyncReject(ChangeId);
 }
@@ -1460,8 +1554,10 @@ void SBlueprintHelperReviewPanel::FinishAsyncReject(const FString& ChangeId)
 	RecordRejectStageElapsed(ChangeId, TEXT("finished"));
 	FBlueprintHelperReviewPanelStateService::ClearTransientActionState(ReviewPanelState, ChangeId);
 	PreparedRejectOptionsByChangeId.Remove(ChangeId);
-	RejectStartedAtSecondsByChangeId.Remove(ChangeId);
-	RejectStageStartedAtSecondsByChangeId.Remove(ChangeId);
+	if (!RejectTimingModel.IsWaitingForStoreRefresh(ChangeId))
+	{
+		RejectTimingModel.Complete(ChangeId);
+	}
 	if (ActiveRejectChangeId == ChangeId)
 	{
 		ActiveRejectChangeId.Reset();
@@ -1831,6 +1927,11 @@ void SBlueprintHelperReviewPanel::StartFlash()
 void SBlueprintHelperReviewPanel::RefreshFromReviewStoreIfChanged(
 	const FBlueprintHelperReviewStoreChangedEvent& Event)
 {
+	RecordRejectStoreEventTiming(
+		Event,
+		TEXT("store_changed_event"),
+		TEXT("review_store_notify"),
+		false);
 	RequestPendingReviewLoad(TEXT("store_changed"), Event);
 }
 
@@ -1887,6 +1988,14 @@ void SBlueprintHelperReviewPanel::RequestPendingReviewPage(
 		FBlueprintHelperReviewPendingLoadCompleted::CreateSP(
 			this,
 			&SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted));
+	if (Reason == TEXT("store_changed"))
+	{
+		RecordRejectStoreEventTiming(
+			SourceEvent,
+			TEXT("pending_load_requested"),
+			Reason,
+			false);
+	}
 	AddDebugMessage(FString::Printf(
 		TEXT("Review pending load requested reason=%s mode=%d page_size=%d"),
 		*Reason,
@@ -1968,10 +2077,20 @@ void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 	PagedChangeModel.MarkPageRequestFinished();
 	if (Result.bDiscarded)
 	{
+		RecordRejectStoreEventTiming(
+			Result.SourceEvent,
+			TEXT("pending_load_discarded"),
+			Result.Source,
+			false);
 		return;
 	}
 	if (!Result.bSucceeded)
 	{
+		RecordRejectStoreEventTiming(
+			Result.SourceEvent,
+			TEXT("pending_load_failed"),
+			Result.Source,
+			true);
 		AddDebugMessage(FString::Printf(
 			TEXT("Review pending load failed reason=%s error=%s"),
 			*Result.Source,
@@ -1994,6 +2113,11 @@ void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 	if (LatestSignature == LastVisibleChangeRefreshSignature)
 	{
 		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+		RecordRejectStoreEventTiming(
+			Result.SourceEvent,
+			TEXT("panel_refresh_no_change"),
+			Result.Source,
+			true);
 		return;
 	}
 
@@ -2037,6 +2161,11 @@ void SBlueprintHelperReviewPanel::HandlePendingReviewLoadCompleted(
 		RefreshMainWorkspaceAfterReviewStateChanged();
 	}
 	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	RecordRejectStoreEventTiming(
+		Result.SourceEvent,
+		TEXT("panel_refresh_applied"),
+		Result.Source,
+		true);
 	AddDebugMessage(FString::Printf(
 		TEXT("Review store refreshed dynamically source=%s loaded=%d total=%d has_more=%d"),
 		*Result.Source,

@@ -200,6 +200,36 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildActionHas
 	return Event;
 }
 
+TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildRejectTimingEvent(
+	const FString& SessionId,
+	const FString& Stage,
+	const FString& ChangeId,
+	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
+	const FString& AssetPath,
+	double StageMs,
+	double TotalMs,
+	const FString& Detail)
+{
+	TSharedRef<FJsonObject> Event = BuildLogEvent(
+		SessionId,
+		FString::Printf(
+			TEXT("Reject timing stage=%s change_id=%s stage_ms=%.2f total_ms=%.2f detail=%s"),
+			*Stage,
+			*ChangeId,
+			StageMs,
+			TotalMs,
+			*Detail),
+		Change,
+		AssetPath);
+	Event->SetStringField(TEXT("event_type"), TEXT("review_reject_timing"));
+	Event->SetStringField(TEXT("stage"), Stage);
+	Event->SetStringField(TEXT("change_id"), ChangeId);
+	Event->SetNumberField(TEXT("stage_ms"), StageMs);
+	Event->SetNumberField(TEXT("total_ms"), TotalMs);
+	Event->SetStringField(TEXT("detail"), FBlueprintHelperReviewDebugBundleUtils::SanitizeText(Detail));
+	return Event;
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::CreateEmptyBundle(const FString& SessionId)
 {
 	TSharedRef<FJsonObject> Bundle = MakeShared<FJsonObject>();
