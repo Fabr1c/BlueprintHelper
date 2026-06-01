@@ -424,6 +424,8 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 	bool bSawGraphWriteLayout = false;
 	bool bSawContractMetadataRow = false;
 	bool bSawLegacyDeveloperCopy = false;
+	TOptional<FString> LayoutRuleEditorCategory;
+	TOptional<FString> TaskSpecWorkbenchCategory;
 	for (const FBlueprintHelperSettingRowViewModel& Row : Rows)
 	{
 		if (Row.DotPath == TEXT("tool_clusters.graph_write.layout"))
@@ -433,6 +435,14 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		if (HiddenContractMetadataRows.Contains(Row.DotPath))
 		{
 			bSawContractMetadataRow = true;
+		}
+		if (Row.DotPath.StartsWith(TEXT("ui.layout_rule_editor.")) && !LayoutRuleEditorCategory.IsSet())
+		{
+			LayoutRuleEditorCategory = Row.CategoryLabel.ToString();
+		}
+		if (Row.DotPath.StartsWith(TEXT("ui.task_spec_workbench.")) && !TaskSpecWorkbenchCategory.IsSet())
+		{
+			TaskSpecWorkbenchCategory = Row.CategoryLabel.ToString();
 		}
 
 		if (Row.CategoryLabel.ToString() == TEXT("DryRun"))
@@ -462,6 +472,21 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 	TestFalse(TEXT("GraphWrite layout setting row is removed"), bSawGraphWriteLayout);
 	TestFalse(TEXT("contract metadata rows remain hidden"), bSawContractMetadataRow);
 	TestFalse(TEXT("developer rows do not use legacy English explanatory copy"), bSawLegacyDeveloperCopy);
+	TestTrue(TEXT("layout rule editor category exists"), LayoutRuleEditorCategory.IsSet());
+	TestTrue(TEXT("task spec workbench category exists"), TaskSpecWorkbenchCategory.IsSet());
+	if (LayoutRuleEditorCategory.IsSet() && TaskSpecWorkbenchCategory.IsSet())
+	{
+		TestNotEqual(
+			TEXT("layout rule editor and task spec workbench settings are split by category"),
+			LayoutRuleEditorCategory.GetValue(),
+			TaskSpecWorkbenchCategory.GetValue());
+		TestTrue(
+			TEXT("layout rule editor category is system-specific"),
+			LayoutRuleEditorCategory.GetValue().Contains(TEXT("布局规则编辑器")));
+		TestTrue(
+			TEXT("task spec workbench category is system-specific"),
+			TaskSpecWorkbenchCategory.GetValue().Contains(TEXT("TaskSpec")));
+	}
 	TestEqual(TEXT("DryRun row count"), DryRunPaths.Num(), ExpectedDryRunPaths.Num());
 	for (int32 Index = 0; Index < FMath::Min(DryRunPaths.Num(), ExpectedDryRunPaths.Num()); ++Index)
 	{

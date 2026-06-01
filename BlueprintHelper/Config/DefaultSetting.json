@@ -35,11 +35,11 @@
       "cleanup_expire_seconds": 4.0
     },
     "layout_rule_editor": {
-      "canvas_desired_size": [760.0, 320.0],
+      "canvas_desired_size": [760.0, 460.0],
       "node_size": [128.0, 44.0],
       "canvas_rule_scale": 0.45,
       "default_rule_id": "default_readable_exec_with_left_data",
-      "default_rule_display_name": "Default Readable Exec With Left Data",
+      "default_rule_display_name": "默认可读执行与左侧数据",
       "exec_column_spacing": 360.0,
       "exec_row_spacing": 220.0,
       "branch_row_spacing": 260.0,

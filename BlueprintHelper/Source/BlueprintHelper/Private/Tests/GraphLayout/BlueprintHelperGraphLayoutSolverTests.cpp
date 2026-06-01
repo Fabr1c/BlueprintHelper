@@ -34,6 +34,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutTopology.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutTypes.h"
+#include "UI/BlueprintHelperUiSettings.h"
 
 #include <initializer_list>
 
@@ -2002,6 +2003,9 @@ bool FBlueprintHelperGraphLayout_SemanticSceneCatalogContainsFiveScenes::RunTest
 
 	const TArray<FSemanticSceneDefinition> Scenes = FSemanticSceneCatalog::GetAllScenes();
 	TestEqual(TEXT("five scenes"), Scenes.Num(), 5);
+	const FBlueprintHelperLayoutRuleEditorSettings EditorSettings;
+	const FVector2D HalfNodeSize = EditorSettings.NodeSize * 0.5f;
+	constexpr float FooterReserveY = 40.0f;
 	TSet<ESemanticScene> SceneIds;
 	for (const FSemanticSceneDefinition& Scene : Scenes)
 	{
@@ -2013,6 +2017,11 @@ bool FBlueprintHelperGraphLayout_SemanticSceneCatalogContainsFiveScenes::RunTest
 		{
 			TestFalse(TEXT("node chinese tooltip is set"), Node.TooltipZh.IsEmpty());
 			TestTrue(TEXT("default center exists"), Scene.DefaultRoleCenters.Contains(Node.Role));
+			if (const FVector2D* Center = Scene.DefaultRoleCenters.Find(Node.Role))
+			{
+				TestTrue(TEXT("default center keeps node inside editor canvas x"), Center->X >= HalfNodeSize.X && Center->X <= EditorSettings.CanvasDesiredSize.X - HalfNodeSize.X);
+				TestTrue(TEXT("default center keeps node inside editor canvas y"), Center->Y >= HalfNodeSize.Y && Center->Y <= EditorSettings.CanvasDesiredSize.Y - FooterReserveY - HalfNodeSize.Y);
+			}
 		}
 	}
 	TestTrue(TEXT("has linear exec scene"), SceneIds.Contains(ESemanticScene::LinearExecChain));

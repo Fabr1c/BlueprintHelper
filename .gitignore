@@ -14,6 +14,7 @@ AgentFaceService/task-core/python/tests
 ClaudePlugin/**/cli
 ClaudePlugin/**/task-core
 ClaudePlugin/**/mcp
+AGENT.md
 *.7z          
 /Saved/
 .tmp/

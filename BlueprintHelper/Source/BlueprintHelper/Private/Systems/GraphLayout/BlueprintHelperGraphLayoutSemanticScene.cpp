@@ -36,15 +36,15 @@ static FSemanticSceneDefinition MakeLinearExecScene()
 {
 	FSemanticSceneDefinition Scene;
 	Scene.Scene = ESemanticScene::LinearExecChain;
-	Scene.DisplayName = LOCTEXT("LinearExecSceneName", "Linear Exec");
+	Scene.DisplayName = LOCTEXT("LinearExecSceneName", "线性执行");
 	Scene.Nodes = {
 		MakeSceneNode(
 			ENodeRole::EventEntry,
-			LOCTEXT("LinearExecEventLabel", "ExecEntry"),
+			LOCTEXT("LinearExecEventLabel", "执行入口"),
 			LOCTEXT("LinearExecEventTipZh", "执行链入口节点，例如 Event 或 Custom Event。拖动会影响语义预览中的入口基线。")),
 		MakeSceneNode(
 			ENodeRole::ExecNode,
-			LOCTEXT("LinearExecNodeLabel", "Next Exec"),
+			LOCTEXT("LinearExecNodeLabel", "下一执行"),
 			LOCTEXT("LinearExecNodeTipZh", "线性执行链中的下一个执行节点。拖动会影响执行列间距和是否保持同一水平线。"))
 	};
 	Scene.Edges = {
@@ -59,19 +59,19 @@ static FSemanticSceneDefinition MakePureDataScene()
 {
 	FSemanticSceneDefinition Scene;
 	Scene.Scene = ESemanticScene::PureDataSubgraph;
-	Scene.DisplayName = LOCTEXT("PureDataSceneName", "Pure Data");
+	Scene.DisplayName = LOCTEXT("PureDataSceneName", "纯数据");
 	Scene.Nodes = {
 		MakeSceneNode(
 			ENodeRole::VariableInput,
-			LOCTEXT("PureDataVariableLabel", "Data Leaf"),
+			LOCTEXT("PureDataVariableLabel", "数据叶子"),
 			LOCTEXT("PureDataVariableTipZh", "数据叶子节点，例如变量 Get、Self 或 Literal。拖动会影响纯数据输入链最左侧节点的位置。")),
 		MakeSceneNode(
 			ENodeRole::OperatorOrCompare,
-			LOCTEXT("PureDataOperatorLabel", "Data Transform"),
+			LOCTEXT("PureDataOperatorLabel", "数据转换"),
 			LOCTEXT("PureDataOperatorTipZh", "纯数据变换节点，例如算子、比较或轻量转换。拖动会影响中间变换枢纽的位置。")),
 		MakeSceneNode(
 			ENodeRole::PureFunction,
-			LOCTEXT("PureDataPureLabel", "Data Aggregate"),
+			LOCTEXT("PureDataPureLabel", "数据聚合"),
 			LOCTEXT("PureDataPureTipZh", "纯函数或聚合节点。拖动会影响纯数据子图输出侧节点的位置。"))
 	};
 	Scene.Edges = {
@@ -88,23 +88,23 @@ static FSemanticSceneDefinition MakeNodeInputClusterScene()
 {
 	FSemanticSceneDefinition Scene;
 	Scene.Scene = ESemanticScene::NodeInputCluster;
-	Scene.DisplayName = LOCTEXT("NodeInputClusterSceneName", "Input Cluster");
+	Scene.DisplayName = LOCTEXT("NodeInputClusterSceneName", "输入簇");
 	Scene.Nodes = {
 		MakeSceneNode(
 			ENodeRole::VariableInput,
-			LOCTEXT("NodeInputVariableLabel", "Data Leaf"),
+			LOCTEXT("NodeInputVariableLabel", "数据叶子"),
 			LOCTEXT("NodeInputVariableTipZh", "输入簇最外层的数据叶子节点。拖动会影响消费节点左下侧数据入口的位置。")),
 		MakeSceneNode(
 			ENodeRole::OperatorOrCompare,
-			LOCTEXT("NodeInputOperatorLabel", "Data Transform"),
+			LOCTEXT("NodeInputOperatorLabel", "数据转换"),
 			LOCTEXT("NodeInputOperatorTipZh", "输入簇中的中间变换节点。拖动会影响数据簇横向展开和包络宽度。")),
 		MakeSceneNode(
 			ENodeRole::PureFunction,
-			LOCTEXT("NodeInputPureLabel", "Input Cluster"),
+			LOCTEXT("NodeInputPureLabel", "输入聚合"),
 			LOCTEXT("NodeInputPureTipZh", "靠近消费节点的纯函数或聚合节点。拖动会影响输入簇与消费节点之间的主偏移。")),
 		MakeSceneNode(
 			ENodeRole::ExecNode,
-			LOCTEXT("NodeInputExecLabel", "Consumer"),
+			LOCTEXT("NodeInputExecLabel", "消费者"),
 			LOCTEXT("NodeInputExecTipZh", "消费输入簇的执行节点。拖动会影响输入簇相对消费节点的距离和行高。"))
 	};
 	Scene.Edges = {
@@ -123,19 +123,19 @@ static FSemanticSceneDefinition MakeMultiExecScene()
 {
 	FSemanticSceneDefinition Scene;
 	Scene.Scene = ESemanticScene::MultiExecOutput;
-	Scene.DisplayName = LOCTEXT("MultiExecSceneName", "Multi Exec");
+	Scene.DisplayName = LOCTEXT("MultiExecSceneName", "多执行出口");
 	Scene.Nodes = {
 		MakeSceneNode(
 			ENodeRole::EventEntry,
-			LOCTEXT("MultiExecEventLabel", "Multi Exec"),
+			LOCTEXT("MultiExecEventLabel", "多出口节点"),
 			LOCTEXT("MultiExecEventTipZh", "具有多个执行输出的源节点，例如 Sequence 或自定义事件。拖动会影响主执行行和分支行的起点。")),
 		MakeSceneNode(
 			ENodeRole::ExecNode,
-			LOCTEXT("MultiExecPrimaryLabel", "Primary Row"),
+			LOCTEXT("MultiExecPrimaryLabel", "主执行行"),
 			LOCTEXT("MultiExecPrimaryTipZh", "多执行输出场景中的主执行行节点。拖动会影响执行列间距和主行对齐状态。")),
 		MakeSceneNode(
 			ENodeRole::BranchControl,
-			LOCTEXT("MultiExecBranchLabel", "Branch Row"),
+			LOCTEXT("MultiExecBranchLabel", "分支行"),
 			LOCTEXT("MultiExecBranchTipZh", "多执行输出场景中的分支或次执行行节点。拖动会影响分支行间距和额外纵向 padding。"))
 	};
 	Scene.Edges = {
@@ -152,19 +152,19 @@ static FSemanticSceneDefinition MakeOccupancyScene()
 {
 	FSemanticSceneDefinition Scene;
 	Scene.Scene = ESemanticScene::Occupancy;
-	Scene.DisplayName = LOCTEXT("OccupancySceneName", "Occupancy");
+	Scene.DisplayName = LOCTEXT("OccupancySceneName", "占位避让");
 	Scene.Nodes = {
 		MakeSceneNode(
 			ENodeRole::ExecNode,
-			LOCTEXT("OccupancyCandidateLabel", "Candidate"),
+			LOCTEXT("OccupancyCandidateLabel", "候选节点"),
 			LOCTEXT("OccupancyCandidateTipZh", "待布局的候选节点。拖动会影响与阻挡物的相对基准位置。")),
 		MakeSceneNode(
 			ENodeRole::Comment,
-			LOCTEXT("OccupancyBlockerLabel", "Existing Blocker"),
+			LOCTEXT("OccupancyBlockerLabel", "已有阻挡"),
 			LOCTEXT("OccupancyBlockerTipZh", "现有阻挡节点或注释块。拖动会影响碰撞避让的水平和垂直 padding。")),
 		MakeSceneNode(
 			ENodeRole::AsyncNode,
-			LOCTEXT("OccupancyFallbackLabel", "Fallback Row"),
+			LOCTEXT("OccupancyFallbackLabel", "避让行"),
 			LOCTEXT("OccupancyFallbackTipZh", "候选节点发生碰撞时使用的后备行。拖动会影响垂直退避步长。"))
 	};
 	Scene.Edges = {

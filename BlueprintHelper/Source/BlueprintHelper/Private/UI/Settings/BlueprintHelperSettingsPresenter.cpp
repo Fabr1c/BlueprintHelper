@@ -64,6 +64,8 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 	const FText SafetyCategory = LOCTEXT("SettingsCategorySafety", "安全");
 	const FText DeveloperSafetyCategory = LOCTEXT("SettingsCategoryDeveloperSafety", "开发者安全");
 	const FText DeveloperUiCategory = LOCTEXT("SettingsCategoryDeveloperUi", "开发者 UI");
+	const FText DeveloperLayoutRuleEditorCategory = LOCTEXT("SettingsCategoryDeveloperLayoutRuleEditor", "开发者 布局规则编辑器");
+	const FText DeveloperTaskSpecWorkbenchCategory = LOCTEXT("SettingsCategoryDeveloperTaskSpecWorkbench", "开发者 TaskSpec 工作台");
 	const FText DeveloperGraphLayoutCategory = LOCTEXT("SettingsCategoryDeveloperGraphLayout", "开发者 GraphLayout");
 
 	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
@@ -818,7 +820,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
 			TEXT("ui.layout_rule_editor.canvas_desired_size"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorCanvasDesiredSizeLabel", "LayoutRule 画布尺寸"),
 			LOCTEXT("LayoutRuleEditorCanvasDesiredSizeHint", "控制 Layout Rule Editor 画布期望尺寸，格式为 X,Y。"),
 			1.0,
@@ -826,7 +828,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
 			TEXT("ui.layout_rule_editor.node_size"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorNodeSizeLabel", "LayoutRule 节点尺寸"),
 			LOCTEXT("LayoutRuleEditorNodeSizeHint", "控制 Layout Rule Editor 预览节点尺寸，格式为 X,Y。"),
 			1.0,
@@ -834,7 +836,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.canvas_rule_scale"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorCanvasRuleScaleLabel", "LayoutRule 缩放"),
 			LOCTEXT("LayoutRuleEditorCanvasRuleScaleHint", "控制 Layout Rule Editor 规则预览缩放比例。"),
 			0.01,
@@ -842,19 +844,19 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("ui.layout_rule_editor.default_rule_id"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorDefaultRuleIdLabel", "LayoutRule 默认 ID"),
 			LOCTEXT("LayoutRuleEditorDefaultRuleIdHint", "控制 Layout Rule Editor 新规则使用的默认规则 ID。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("ui.layout_rule_editor.default_rule_display_name"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorDefaultRuleDisplayNameLabel", "LayoutRule 默认名称"),
 			LOCTEXT("LayoutRuleEditorDefaultRuleDisplayNameHint", "控制 Layout Rule Editor 新规则显示名称的默认值。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.exec_column_spacing"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorExecColumnSpacingLabel", "Exec 列间距"),
 			LOCTEXT("LayoutRuleEditorExecColumnSpacingHint", "控制 Layout Rule Editor 中执行链列间距。"),
 			0.0,
@@ -862,7 +864,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.exec_row_spacing"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorExecRowSpacingLabel", "Exec 行间距"),
 			LOCTEXT("LayoutRuleEditorExecRowSpacingHint", "控制 Layout Rule Editor 中执行链行间距。"),
 			0.0,
@@ -870,7 +872,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.branch_row_spacing"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorBranchRowSpacingLabel", "Branch 行间距"),
 			LOCTEXT("LayoutRuleEditorBranchRowSpacingHint", "控制 Layout Rule Editor 中分支行间距。"),
 			0.0,
@@ -878,7 +880,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.pure_input_offset_x"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorPureInputOffsetXLabel", "Pure 输入 X 偏移"),
 			LOCTEXT("LayoutRuleEditorPureInputOffsetXHint", "控制纯节点输入列相对主执行链的 X 偏移。"),
 			0.0,
@@ -886,7 +888,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.variable_input_offset_x"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorVariableInputOffsetXLabel", "变量输入 X 偏移"),
 			LOCTEXT("LayoutRuleEditorVariableInputOffsetXHint", "控制变量输入列相对主执行链的 X 偏移。"),
 			0.0,
@@ -894,7 +896,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.input_pin_row_spacing"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorInputPinRowSpacingLabel", "输入 Pin 行间距"),
 			LOCTEXT("LayoutRuleEditorInputPinRowSpacingHint", "控制 Layout Rule Editor 中输入 Pin 行间距。"),
 			0.0,
@@ -902,7 +904,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.layout_rule_editor.max_ms_per_frame"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorMaxMsPerFrameLabel", "每帧最大毫秒数"),
 			LOCTEXT("LayoutRuleEditorMaxMsPerFrameHint", "控制 Layout Rule Editor 应用布局时单帧最多占用时间。"),
 			0.0,
@@ -910,7 +912,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
 			TEXT("ui.layout_rule_editor.max_nodes_per_frame"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorMaxNodesPerFrameLabel", "每帧最大节点数"),
 			LOCTEXT("LayoutRuleEditorMaxNodesPerFrameHint", "控制 Layout Rule Editor 应用布局时单帧最多移动节点数。"),
 			1,
@@ -918,31 +920,31 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("ui.layout_rule_editor.move_generated_nodes"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorMoveGeneratedNodesLabel", "移动生成节点"),
 			LOCTEXT("LayoutRuleEditorMoveGeneratedNodesHint", "控制 Layout Rule Editor 是否移动本轮生成的节点。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("ui.layout_rule_editor.move_existing_nodes"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorMoveExistingNodesLabel", "移动已有节点"),
 			LOCTEXT("LayoutRuleEditorMoveExistingNodesHint", "控制 Layout Rule Editor 是否移动图表中已有节点。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("ui.layout_rule_editor.mark_dirty_after_apply"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorMarkDirtyAfterApplyLabel", "应用后标记 Dirty"),
 			LOCTEXT("LayoutRuleEditorMarkDirtyAfterApplyHint", "控制 Layout Rule Editor 应用布局后是否标记资产已修改。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeBooleanRow(
 			TEXT("ui.layout_rule_editor.save_after_apply"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorSaveAfterApplyLabel", "应用后保存"),
 			LOCTEXT("LayoutRuleEditorSaveAfterApplyHint", "控制 Layout Rule Editor 应用布局后是否立即保存资产。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
 			TEXT("ui.layout_rule_editor.side_splitter_ratio"),
-			DeveloperUiCategory,
+			DeveloperLayoutRuleEditorCategory,
 			LOCTEXT("LayoutRuleEditorSideSplitterRatioLabel", "LayoutRule 侧栏比例"),
 			LOCTEXT("LayoutRuleEditorSideSplitterRatioHint", "控制 Layout Rule Editor 左右区域分割比例，格式为 X,Y。"),
 			0.0,
@@ -950,7 +952,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.task_spec_workbench.top_padding"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchTopPaddingLabel", "Workbench 顶部间距"),
 			LOCTEXT("WorkbenchTopPaddingHint", "控制 TaskSpec Workbench 顶部工具条间距。"),
 			0.0,
@@ -958,7 +960,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeMarginRow(
 			TEXT("ui.task_spec_workbench.button_spacing"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchButtonSpacingLabel", "Workbench 按钮间距"),
 			LOCTEXT("WorkbenchButtonSpacingHint", "控制 TaskSpec Workbench 按钮之间的间距，格式为左,上,右,下。"),
 			0.0,
@@ -966,7 +968,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
 			TEXT("ui.task_spec_workbench.main_split_ratio"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchMainSplitRatioLabel", "Workbench 主分割比例"),
 			LOCTEXT("WorkbenchMainSplitRatioHint", "控制 TaskSpec Workbench 主区域分割比例，格式为 X,Y。"),
 			0.0,
@@ -974,7 +976,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeVector2Row(
 			TEXT("ui.task_spec_workbench.left_split_ratio"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchLeftSplitRatioLabel", "Workbench 左侧分割比例"),
 			LOCTEXT("WorkbenchLeftSplitRatioHint", "控制 TaskSpec Workbench 左侧区域分割比例，格式为 X,Y。"),
 			0.0,
@@ -982,7 +984,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.task_spec_workbench.preview_width"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchPreviewWidthLabel", "Workbench 预览宽度"),
 			LOCTEXT("WorkbenchPreviewWidthHint", "控制 TaskSpec Workbench 预览列宽度。"),
 			1.0,
@@ -990,7 +992,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.task_spec_workbench.preview_min_height"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchPreviewMinHeightLabel", "Workbench 预览最小高度"),
 			LOCTEXT("WorkbenchPreviewMinHeightHint", "控制 TaskSpec Workbench 预览区域最小高度。"),
 			1.0,
@@ -998,7 +1000,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeNumberRow(
 			TEXT("ui.task_spec_workbench.preview_container_padding"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchPreviewContainerPaddingLabel", "Workbench 预览内边距"),
 			LOCTEXT("WorkbenchPreviewContainerPaddingHint", "控制 TaskSpec Workbench 预览容器内边距。"),
 			0.0,
@@ -1006,25 +1008,25 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.default"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchDefaultBlockColorLabel", "Workbench 默认块颜色"),
 			LOCTEXT("WorkbenchDefaultBlockColorHint", "TaskSpec Workbench 默认块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.graph_logic"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchGraphLogicBlockColorLabel", "Workbench 图逻辑块颜色"),
 			LOCTEXT("WorkbenchGraphLogicBlockColorHint", "TaskSpec Workbench 图逻辑块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.diagnostic"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchDiagnosticBlockColorLabel", "Workbench 诊断块颜色"),
 			LOCTEXT("WorkbenchDiagnosticBlockColorHint", "TaskSpec Workbench 诊断块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeColorArrayRow(
 			TEXT("ui.task_spec_workbench.block_colors.selected"),
-			DeveloperUiCategory,
+			DeveloperTaskSpecWorkbenchCategory,
 			LOCTEXT("WorkbenchSelectedBlockColorLabel", "Workbench 选中块颜色"),
 			LOCTEXT("WorkbenchSelectedBlockColorHint", "TaskSpec Workbench 选中块的 RGBA 数组，格式：[R,G,B,A]。"),
 			true));
