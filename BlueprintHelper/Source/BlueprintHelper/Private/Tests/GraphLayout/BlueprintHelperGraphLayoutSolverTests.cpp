@@ -7,14 +7,28 @@
 #include "Misc/AutomationTest.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraphNode_Comment.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "Engine/Blueprint.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_IfThenElse.h"
+#include "K2Node_Self.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewTypes.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPureDataSubgraphPolicy.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRowAllocationPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
@@ -107,21 +121,17 @@ static bool ExpandedRectsOverlap(
 	return AMin.X < BMax.X && AMax.X > BMin.X && AMin.Y < BMax.Y && AMax.Y > BMin.Y;
 }
 
-static FRuleSet MakeRuleSetWithCanvasOffsets()
+static FRuleSet MakeRuleSetWithScalarInputOffsets()
 {
 	FRuleSet RuleSet;
 	RuleSet.ExecColumnSpacing = 420.0f;
 	RuleSet.ExecRowSpacing = 220.0f;
 	RuleSet.BranchRowSpacing = 160.0f;
-	RuleSet.PureInputOffsetX = 260.0f;
-	RuleSet.VariableInputOffsetX = 240.0f;
-	RuleSet.InputPinRowSpacing = 48.0f;
+	RuleSet.PureInputOffsetX = 220.0f;
+	RuleSet.VariableInputOffsetX = 230.0f;
+	RuleSet.InputPinRowSpacing = 90.0f;
 	RuleSet.bMoveGeneratedNodes = true;
 	RuleSet.bMoveExistingNodes = false;
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::ExecNode, FVector2D(300.0f, 100.0f));
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::PureFunction, FVector2D(80.0f, 230.0f));
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::OperatorOrCompare, FVector2D(90.0f, 310.0f));
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::VariableInput, FVector2D(70.0f, 190.0f));
 	return RuleSet;
 }
 
@@ -170,14 +180,232 @@ static UEdGraphPin* FindCoordinatorTestPin(UEdGraphNode* Node, const FName PinNa
 	return nullptr;
 }
 
+static FGraphLayoutPreviewSample MakeMaterializerTestSample()
+{
+	FGraphLayoutPreviewSample Sample;
+	Sample.Scene = ESemanticScene::MultiExecOutput;
+	Sample.Snapshot.GraphName = TEXT("Preview_MaterializerTest");
+
+	FNodeSnapshot EventNode;
+	EventNode.NodeId = TEXT("EventStart");
+	EventNode.StableName = EventNode.NodeId;
+	EventNode.ClassPath = TEXT("K2Node_CustomEvent");
+	EventNode.Title = TEXT("On Preview Trigger");
+	EventNode.Position = FVector2D(0.0f, 0.0f);
+	EventNode.Size = FVector2D(220.0f, 88.0f);
+	EventNode.bExisting = false;
+	EventNode.Pins = {
+		MakePin(TEXT("then"), EPinDirection::Output, true, {TEXT("Sequence")})
+	};
+	Sample.Snapshot.Nodes.Add(EventNode);
+
+	FNodeSnapshot SequenceNode;
+	SequenceNode.NodeId = TEXT("Sequence");
+	SequenceNode.StableName = SequenceNode.NodeId;
+	SequenceNode.ClassPath = TEXT("K2Node_ExecutionSequence");
+	SequenceNode.Title = TEXT("Sequence");
+	SequenceNode.Position = FVector2D(40.0f, 0.0f);
+	SequenceNode.Size = FVector2D(236.0f, 104.0f);
+	SequenceNode.bExisting = false;
+	SequenceNode.Pins = {
+		MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("EventStart")}),
+		MakePin(TEXT("Then_0"), EPinDirection::Output, true, {TEXT("Branch")}),
+		MakePin(TEXT("Then_1"), EPinDirection::Output, true, {TEXT("PrintNode")})
+	};
+	Sample.Snapshot.Nodes.Add(SequenceNode);
+
+	FNodeSnapshot BranchNode;
+	BranchNode.NodeId = TEXT("Branch");
+	BranchNode.StableName = BranchNode.NodeId;
+	BranchNode.ClassPath = TEXT("K2Node_IfThenElse");
+	BranchNode.Title = TEXT("Branch");
+	BranchNode.Position = FVector2D(80.0f, 0.0f);
+	BranchNode.Size = FVector2D(228.0f, 104.0f);
+	BranchNode.bExisting = false;
+	BranchNode.Pins = {
+		MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("Sequence")}),
+		MakePin(TEXT("Condition"), EPinDirection::Input, false, {TEXT("GenericData")}),
+		MakePin(TEXT("Then"), EPinDirection::Output, true),
+		MakePin(TEXT("Else"), EPinDirection::Output, true)
+	};
+	Sample.Snapshot.Nodes.Add(BranchNode);
+
+	FNodeSnapshot BuildArrayNode;
+	BuildArrayNode.NodeId = TEXT("BuildArray");
+	BuildArrayNode.StableName = BuildArrayNode.NodeId;
+	BuildArrayNode.ClassPath = TEXT("K2Node_MakeArray");
+	BuildArrayNode.Title = TEXT("Make Array");
+	BuildArrayNode.Position = FVector2D(120.0f, 0.0f);
+	BuildArrayNode.Size = FVector2D(228.0f, 104.0f);
+	BuildArrayNode.bExisting = false;
+	BuildArrayNode.Pins = {
+		MakePin(TEXT("In0"), EPinDirection::Input, false, {TEXT("SelfRef")}),
+		MakePin(TEXT("In1"), EPinDirection::Input, false, {TEXT("SelfRef")}),
+		MakePin(TEXT("Array"), EPinDirection::Output, false, {TEXT("PrintNode")})
+	};
+	Sample.Snapshot.Nodes.Add(BuildArrayNode);
+
+	FNodeSnapshot SelfNode;
+	SelfNode.NodeId = TEXT("SelfRef");
+	SelfNode.StableName = SelfNode.NodeId;
+	SelfNode.ClassPath = TEXT("K2Node_Self");
+	SelfNode.Title = TEXT("Self");
+	SelfNode.Position = FVector2D(160.0f, 0.0f);
+	SelfNode.Size = FVector2D(168.0f, 72.0f);
+	SelfNode.bExisting = false;
+	SelfNode.Pins = {
+		MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("BuildArray")})
+	};
+	Sample.Snapshot.Nodes.Add(SelfNode);
+
+	FNodeSnapshot CommentNode;
+	CommentNode.NodeId = TEXT("CommentBlocker");
+	CommentNode.StableName = CommentNode.NodeId;
+	CommentNode.ClassPath = TEXT("EdGraphNode_Comment");
+	CommentNode.Title = TEXT("Existing Comment");
+	CommentNode.Position = FVector2D(200.0f, 0.0f);
+	CommentNode.Size = FVector2D(340.0f, 120.0f);
+	CommentNode.bExisting = true;
+	Sample.Snapshot.Nodes.Add(CommentNode);
+
+	FNodeSnapshot PrintNode;
+	PrintNode.NodeId = TEXT("PrintNode");
+	PrintNode.StableName = PrintNode.NodeId;
+	PrintNode.ClassPath = TEXT("K2Node_CallFunction");
+	PrintNode.Title = TEXT("Print String");
+	PrintNode.Position = FVector2D(240.0f, 0.0f);
+	PrintNode.Size = FVector2D(232.0f, 96.0f);
+	PrintNode.bExisting = false;
+	PrintNode.Pins = {
+		MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("Sequence")}),
+		MakePin(TEXT("In"), EPinDirection::Input, false, {TEXT("BuildArray")}),
+		MakePin(TEXT("then"), EPinDirection::Output, true)
+	};
+	Sample.Snapshot.Nodes.Add(PrintNode);
+
+	FNodeSnapshot GenericNode;
+	GenericNode.NodeId = TEXT("GenericData");
+	GenericNode.StableName = GenericNode.NodeId;
+	GenericNode.ClassPath = TEXT("K2Node_VariableGet");
+	GenericNode.Title = TEXT("Generic Data");
+	GenericNode.Position = FVector2D(280.0f, 0.0f);
+	GenericNode.Size = FVector2D(180.0f, 72.0f);
+	GenericNode.bExisting = false;
+	GenericNode.Pins = {
+		MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("Branch")})
+	};
+	Sample.Snapshot.Nodes.Add(GenericNode);
+
+	auto AddSpec = [&Sample](const FString& NodeId, const FString& Title, const EGraphLayoutPreviewNodeFactory Factory, const ENodeRole Role, const FVector2D& Size)
+	{
+		FGraphLayoutPreviewNodeSpec Spec;
+		Spec.NodeId = NodeId;
+		Spec.Title = Title;
+		Spec.Factory = Factory;
+		Spec.Role = Role;
+		Spec.Size = Size;
+		Sample.Nodes.Add(Spec);
+	};
+
+	AddSpec(TEXT("EventStart"), TEXT("On Preview Trigger"), EGraphLayoutPreviewNodeFactory::CustomEvent, ENodeRole::EventEntry, FVector2D(220.0f, 88.0f));
+	AddSpec(TEXT("Sequence"), TEXT("Sequence"), EGraphLayoutPreviewNodeFactory::ExecutionSequence, ENodeRole::BranchControl, FVector2D(236.0f, 104.0f));
+	AddSpec(TEXT("Branch"), TEXT("Branch"), EGraphLayoutPreviewNodeFactory::IfThenElse, ENodeRole::BranchControl, FVector2D(228.0f, 104.0f));
+	AddSpec(TEXT("BuildArray"), TEXT("Make Array"), EGraphLayoutPreviewNodeFactory::MakeArray, ENodeRole::PureFunction, FVector2D(228.0f, 104.0f));
+	AddSpec(TEXT("SelfRef"), TEXT("Self"), EGraphLayoutPreviewNodeFactory::Self, ENodeRole::VariableInput, FVector2D(168.0f, 72.0f));
+	AddSpec(TEXT("CommentBlocker"), TEXT("Existing Comment"), EGraphLayoutPreviewNodeFactory::Comment, ENodeRole::Comment, FVector2D(340.0f, 120.0f));
+	AddSpec(TEXT("PrintNode"), TEXT("Print String"), EGraphLayoutPreviewNodeFactory::CallFunction, ENodeRole::ExecNode, FVector2D(232.0f, 96.0f));
+	AddSpec(TEXT("GenericData"), TEXT("Generic Data"), EGraphLayoutPreviewNodeFactory::GenericK2, ENodeRole::VariableInput, FVector2D(180.0f, 72.0f));
+
+	auto AddLink = [&Sample](const FString& FromNodeId, const FString& FromPinName, const FString& ToNodeId, const FString& ToPinName, const bool bExec)
+	{
+		FGraphLayoutPreviewLinkSpec Link;
+		Link.FromNodeId = FromNodeId;
+		Link.FromPinName = FromPinName;
+		Link.ToNodeId = ToNodeId;
+		Link.ToPinName = ToPinName;
+		Link.bExec = bExec;
+		Sample.Links.Add(Link);
+	};
+
+	AddLink(TEXT("EventStart"), TEXT("then"), TEXT("Sequence"), TEXT("execute"), true);
+	AddLink(TEXT("Sequence"), TEXT("Then_0"), TEXT("Branch"), TEXT("execute"), true);
+	AddLink(TEXT("Sequence"), TEXT("Then_1"), TEXT("PrintNode"), TEXT("execute"), true);
+	AddLink(TEXT("GenericData"), TEXT("Value"), TEXT("Branch"), TEXT("Condition"), false);
+	AddLink(TEXT("SelfRef"), TEXT("Value"), TEXT("BuildArray"), TEXT("In0"), false);
+	AddLink(TEXT("SelfRef"), TEXT("Value"), TEXT("BuildArray"), TEXT("In1"), false);
+	AddLink(TEXT("BuildArray"), TEXT("Array"), TEXT("PrintNode"), TEXT("In"), false);
+
+	return Sample;
+}
+
+static FLayoutPlan MakeMaterializerTestPlan()
+{
+	FLayoutPlan Plan;
+
+	auto AddPlacement = [&Plan](const FString& NodeId, const ENodeRole Role, const FVector2D& CurrentPosition, const FVector2D& TargetPosition)
+	{
+		FNodePlacement Placement;
+		Placement.NodeId = NodeId;
+		Placement.Role = Role;
+		Placement.CurrentPosition = CurrentPosition;
+		Placement.TargetPosition = TargetPosition;
+		Placement.bMoveExisting = true;
+		Plan.Placements.Add(Placement);
+	};
+
+	AddPlacement(TEXT("EventStart"), ENodeRole::EventEntry, FVector2D(0.0f, 0.0f), FVector2D(100.0f, 100.0f));
+	AddPlacement(TEXT("Sequence"), ENodeRole::BranchControl, FVector2D(40.0f, 0.0f), FVector2D(420.0f, 100.0f));
+	AddPlacement(TEXT("Branch"), ENodeRole::BranchControl, FVector2D(80.0f, 0.0f), FVector2D(700.0f, 260.0f));
+	AddPlacement(TEXT("BuildArray"), ENodeRole::PureFunction, FVector2D(120.0f, 0.0f), FVector2D(360.0f, 520.0f));
+	AddPlacement(TEXT("SelfRef"), ENodeRole::VariableInput, FVector2D(160.0f, 0.0f), FVector2D(120.0f, 520.0f));
+	AddPlacement(TEXT("CommentBlocker"), ENodeRole::Comment, FVector2D(200.0f, 0.0f), FVector2D(900.0f, 80.0f));
+	AddPlacement(TEXT("PrintNode"), ENodeRole::ExecNode, FVector2D(240.0f, 0.0f), FVector2D(1020.0f, 100.0f));
+	AddPlacement(TEXT("GenericData"), ENodeRole::VariableInput, FVector2D(280.0f, 0.0f), FVector2D(420.0f, 680.0f));
+	return Plan;
+}
+
+static UEdGraphNode* FindNodeByExactClass(const UEdGraph* Graph, UClass* NodeClass)
+{
+	if (!Graph || !NodeClass)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && Node->GetClass() == NodeClass)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphPin* FindPinByNameAndDirection(UEdGraphNode* Node, const FName PinName, const EEdGraphPinDirection Direction)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->PinName == PinName && Pin->Direction == Direction)
+		{
+			return Pin;
+		}
+	}
+	return nullptr;
+}
+
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_DataInputsUseEditorCanvasVerticalOffsets,
-	"BlueprintHelper.GraphLayout.Solver.DataInputsUseEditorCanvasVerticalOffsets",
+	FBlueprintHelperGraphLayout_DataInputsUseScalarVerticalOffsets,
+	"BlueprintHelper.GraphLayout.Solver.DataInputsUseScalarVerticalOffsets",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_DataInputsUseEditorCanvasVerticalOffsets::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_DataInputsUseScalarVerticalOffsets::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -212,7 +440,7 @@ bool FBlueprintHelperGraphLayout_DataInputsUseEditorCanvasVerticalOffsets::RunTe
 		false,
 		{MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("Exec")})}));
 
-	const FLayoutPlan Plan = FSolver::Solve(Snapshot, MakeRuleSetWithCanvasOffsets());
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, MakeRuleSetWithScalarInputOffsets());
 	const FNodePlacement* ExecPlacement = FindPlacement(Plan, TEXT("Exec"));
 	const FNodePlacement* PurePlacement = FindPlacement(Plan, TEXT("Pure"));
 
@@ -223,7 +451,7 @@ bool FBlueprintHelperGraphLayout_DataInputsUseEditorCanvasVerticalOffsets::RunTe
 		return false;
 	}
 
-	TestTrue(TEXT("Pure input is below exec by editor canvas role offset"), PurePlacement->TargetPosition.Y > ExecPlacement->TargetPosition.Y + 80.0f);
+	TestTrue(TEXT("Pure input is below exec by scalar row spacing"), PurePlacement->TargetPosition.Y > ExecPlacement->TargetPosition.Y + 80.0f);
 	TestTrue(TEXT("Pure input remains left of consumer"), PurePlacement->TargetPosition.X < ExecPlacement->TargetPosition.X);
 	return true;
 }
@@ -332,11 +560,11 @@ bool FBlueprintHelperGraphLayout_OffThreadRecordThenFlushAppliesBeforeReturn::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_DataInputCanvasOffsetsAreNormalizedLeftAndBelow,
-	"BlueprintHelper.GraphLayout.Solver.DataInputCanvasOffsetsAreNormalizedLeftAndBelow",
+	FBlueprintHelperGraphLayout_DataInputScalarOffsetsPlaceInputsLeftAndBelow,
+	"BlueprintHelper.GraphLayout.Solver.DataInputScalarOffsetsPlaceInputsLeftAndBelow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_DataInputCanvasOffsetsAreNormalizedLeftAndBelow::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_DataInputScalarOffsetsPlaceInputsLeftAndBelow::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -365,15 +593,13 @@ bool FBlueprintHelperGraphLayout_DataInputCanvasOffsetsAreNormalizedLeftAndBelow
 	Snapshot.Nodes.Add(MakeNode(
 		TEXT("Pure"),
 		TEXT("K2Node_CallFunction"),
-		TEXT("Unsafe Canvas Pure"),
+		TEXT("Scalar Pure"),
 		FVector2D::ZeroVector,
 		FVector2D(200.0f, 80.0f),
 		false,
 		{MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("Exec")})}));
 
-	FRuleSet RuleSet = MakeRuleSetWithCanvasOffsets();
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::ExecNode, FVector2D(300.0f, 100.0f));
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::PureFunction, FVector2D(560.0f, 40.0f));
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
 
 	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
 	const FNodePlacement* ExecPlacement = FindPlacement(Plan, TEXT("Exec"));
@@ -386,8 +612,8 @@ bool FBlueprintHelperGraphLayout_DataInputCanvasOffsetsAreNormalizedLeftAndBelow
 		return false;
 	}
 
-	TestTrue(TEXT("Unsafe right-side canvas input falls back to left side"), PurePlacement->TargetPosition.X < ExecPlacement->TargetPosition.X);
-	TestTrue(TEXT("Unsafe upper canvas input falls back below consumer"), PurePlacement->TargetPosition.Y > ExecPlacement->TargetPosition.Y);
+	TestTrue(TEXT("Scalar input is placed left of consumer"), PurePlacement->TargetPosition.X < ExecPlacement->TargetPosition.X);
+	TestTrue(TEXT("Scalar input is placed below consumer"), PurePlacement->TargetPosition.Y > ExecPlacement->TargetPosition.Y);
 	return true;
 }
 
@@ -439,8 +665,7 @@ bool FBlueprintHelperGraphLayout_GeneratedDataInputsAvoidExistingNodes::RunTest(
 		true,
 		{}));
 
-	FRuleSet RuleSet = MakeRuleSetWithCanvasOffsets();
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::PureFunction, FVector2D(120.0f, 220.0f));
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
 	RuleSet.CollisionPaddingX = 40.0f;
 	RuleSet.CollisionPaddingY = 30.0f;
 	RuleSet.CollisionStepY = 60.0f;
@@ -505,7 +730,7 @@ bool FBlueprintHelperGraphLayout_NonMovableExistingConsumersStayAtCurrentPositio
 		false,
 		{MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("ExistingConsumer")})}));
 
-	FRuleSet RuleSet = MakeRuleSetWithCanvasOffsets();
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
 	RuleSet.bMoveExistingNodes = false;
 	RuleSet.CollisionPaddingX = 20.0f;
 	RuleSet.CollisionPaddingY = 20.0f;
@@ -569,7 +794,7 @@ bool FBlueprintHelperGraphLayout_NonMovableExistingForEachAnchorsGeneratedPureCl
 	Snapshot.Nodes.Add(MakeNode(TEXT("Proxy0"), TEXT("K2Node_VariableGet"), TEXT("Proxy 0"), FVector2D::ZeroVector, FVector2D(160.0f, 40.0f), false, {MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("MakeArray")})}));
 	Snapshot.Nodes.Add(MakeNode(TEXT("Proxy1"), TEXT("K2Node_VariableGet"), TEXT("Proxy 1"), FVector2D::ZeroVector, FVector2D(160.0f, 40.0f), false, {MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("MakeArray")})}));
 
-	FRuleSet RuleSet = MakeRuleSetWithCanvasOffsets();
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
 	RuleSet.bMoveExistingNodes = false;
 	RuleSet.CollisionPaddingX = 0.0f;
 	RuleSet.CollisionPaddingY = 0.0f;
@@ -1030,10 +1255,9 @@ bool FBlueprintHelperGraphLayout_PlacesMakeArrayBetweenLeavesAndForEach::RunTest
 	Snapshot.Nodes.Add(MakeNode(TEXT("Proxy1"), TEXT("K2Node_VariableGet"), TEXT("Proxy 1"), FVector2D::ZeroVector, FVector2D(160.0f, 40.0f), false, {MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("MakeArray")})}));
 	Snapshot.Nodes.Add(MakeNode(TEXT("Proxy2"), TEXT("K2Node_VariableGet"), TEXT("Proxy 2"), FVector2D::ZeroVector, FVector2D(160.0f, 40.0f), false, {MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("MakeArray")})}));
 
-	FRuleSet RuleSet = MakeRuleSetWithCanvasOffsets();
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
 	RuleSet.CollisionPaddingX = 0.0f;
 	RuleSet.CollisionPaddingY = 0.0f;
-	RuleSet.EditorCanvasRoleCenters.Add(ENodeRole::PureFunction, FVector2D(60.0f, 230.0f));
 
 	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
 	const FNodePlacement* ForEachPlacement = FindPlacement(Plan, TEXT("ForEach"));
@@ -1536,6 +1760,580 @@ bool FBlueprintHelperGraphLayout_RowAllocationUsesDataClusterHeight::RunTest(con
 	TestTrue(
 		TEXT("third baseline includes tall cluster height and padding"),
 		Allocations[2].BaselineY >= Allocations[1].BaselineY + 290.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RuleSetJsonRejectsLegacyEditorCanvasRoleCenters,
+	"BlueprintHelper.GraphLayout.RuleSetJson.RejectsLegacyEditorCanvasRoleCenters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RuleSetJsonRejectsLegacyEditorCanvasRoleCenters::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FString LegacyJson = TEXT(R"JSON(
+{
+  "schema": "BlueprintHelper.GraphLayoutRuleSet.v1",
+  "editor_canvas": {
+    "role_centers": {
+      "ExecNode": { "x": 300, "y": 100 }
+    }
+  },
+  "role_rules": []
+}
+)JSON");
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestFalse(TEXT("legacy editor_canvas.role_centers is rejected"), FRuleSetJson::ImportString(LegacyJson, Parsed, Validation));
+	TestTrue(TEXT("validation has errors"), Validation.Errors.Num() > 0);
+	TestTrue(TEXT("validation has an explicit legacy error"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("editor_canvas.role_centers"));
+	}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RuleSetJsonRoundTripsSemanticSceneCenters,
+	"BlueprintHelper.GraphLayout.RuleSetJson.RoundTripsSemanticSceneCenters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RuleSetJsonRoundTripsSemanticSceneCenters::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState PureDataScene;
+	PureDataScene.RoleCenters.Add(ENodeRole::VariableInput, FVector2D(91.0f, 120.0f));
+	PureDataScene.RoleCenters.Add(ENodeRole::OperatorOrCompare, FVector2D(355.0f, 164.0f));
+	PureDataScene.RoleCenters.Add(ENodeRole::PureFunction, FVector2D(682.0f, 212.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::PureDataSubgraph, PureDataScene);
+
+	const FString Json = FRuleSetJson::ExportString(RuleSet);
+	TSharedPtr<FJsonObject> RootObject;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+	TestTrue(TEXT("exports valid json"), FJsonSerializer::Deserialize(Reader, RootObject) && RootObject.IsValid());
+
+	const TSharedPtr<FJsonObject>* EditorCanvasObject = nullptr;
+	TestTrue(
+		TEXT("exports editor_canvas object"),
+		RootObject.IsValid() && RootObject->TryGetObjectField(TEXT("editor_canvas"), EditorCanvasObject) && EditorCanvasObject && EditorCanvasObject->IsValid());
+	if (EditorCanvasObject && EditorCanvasObject->IsValid())
+	{
+		const TSharedPtr<FJsonObject>* ScenesObject = nullptr;
+		TestTrue(
+			TEXT("exports editor_canvas.scenes"),
+			(*EditorCanvasObject)->TryGetObjectField(TEXT("scenes"), ScenesObject) && ScenesObject && ScenesObject->IsValid());
+		TestFalse(TEXT("does not export legacy role_centers at editor_canvas root"), (*EditorCanvasObject)->HasField(TEXT("role_centers")));
+	}
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestTrue(TEXT("scene json imports"), FRuleSetJson::ImportString(Json, Parsed, Validation));
+	const FEditorCanvasSceneState* ParsedScene = Parsed.EditorCanvasScenes.Find(ESemanticScene::PureDataSubgraph);
+	TestNotNull(TEXT("pure data scene exists"), ParsedScene);
+	if (ParsedScene)
+	{
+		TestEqual(TEXT("variable input x"), ParsedScene->RoleCenters.FindRef(ENodeRole::VariableInput).X, 91.0);
+		TestEqual(TEXT("variable input y"), ParsedScene->RoleCenters.FindRef(ENodeRole::VariableInput).Y, 120.0);
+		TestEqual(TEXT("operator x"), ParsedScene->RoleCenters.FindRef(ENodeRole::OperatorOrCompare).X, 355.0);
+		TestEqual(TEXT("operator y"), ParsedScene->RoleCenters.FindRef(ENodeRole::OperatorOrCompare).Y, 164.0);
+		TestEqual(TEXT("pure function x"), ParsedScene->RoleCenters.FindRef(ENodeRole::PureFunction).X, 682.0);
+		TestEqual(TEXT("pure function y"), ParsedScene->RoleCenters.FindRef(ENodeRole::PureFunction).Y, 212.0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RuleSetJsonRejectsInvalidSemanticSceneEntries,
+	"BlueprintHelper.GraphLayout.RuleSetJson.RejectsInvalidSemanticSceneEntries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RuleSetJsonRejectsInvalidSemanticSceneEntries::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FString InvalidScenesJson = TEXT(R"JSON(
+{
+  "schema": "BlueprintHelper.GraphLayoutRuleSet.v1",
+  "editor_canvas": {
+    "scenes": {
+      "bogus_scene": {
+        "role_centers": {}
+      },
+      "pure_data_subgraph": 42,
+      "node_input_cluster": {},
+      "multi_exec_output": {
+        "role_centers": 42
+      },
+      "occupancy": {
+        "role_centers": {
+          "BogusRole": { "x": 11, "y": 17 },
+          "ExecNode": { "x": "bad", "y": 29 },
+          "Reroute": { "x": 3, "y": 5 }
+        }
+      }
+    }
+  },
+  "role_rules": []
+}
+)JSON");
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestFalse(TEXT("invalid scene entries are rejected"), FRuleSetJson::ImportString(InvalidScenesJson, Parsed, Validation));
+	TestTrue(TEXT("invalid scene entries add validation errors"), Validation.Errors.Num() > 0);
+	TestTrue(TEXT("unknown scene key is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("bogus_scene")) && Error.Contains(TEXT("unsupported scene"));
+	}));
+	TestTrue(TEXT("non-object scene value is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("pure_data_subgraph")) && Error.Contains(TEXT("must be an object"));
+	}));
+	TestTrue(TEXT("missing role_centers is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("node_input_cluster")) && Error.Contains(TEXT("role_centers")) && Error.Contains(TEXT("required"));
+	}));
+	TestTrue(TEXT("non-object role_centers is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("multi_exec_output")) && Error.Contains(TEXT("role_centers")) && Error.Contains(TEXT("must be an object"));
+	}));
+	TestTrue(TEXT("unknown role is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("BogusRole")) && Error.Contains(TEXT("unsupported role"));
+	}));
+	TestTrue(TEXT("invalid vector object is reported"), Validation.Errors.ContainsByPredicate([](const FString& Error)
+	{
+		return Error.Contains(TEXT("ExecNode")) && Error.Contains(TEXT("numeric x and y"));
+	}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RuleSetJsonSkipsInvalidSemanticSceneKeysOnExport,
+	"BlueprintHelper.GraphLayout.RuleSetJson.SkipsInvalidSemanticSceneKeysOnExport",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RuleSetJsonSkipsInvalidSemanticSceneKeysOnExport::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestEqual(TEXT("invalid scene string is explicit"), FString(ToString(static_cast<ESemanticScene>(255))), FString(TEXT("unknown")));
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState InvalidScene;
+	InvalidScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(100.0f, 120.0f));
+	RuleSet.EditorCanvasScenes.Add(static_cast<ESemanticScene>(255), InvalidScene);
+
+	FEditorCanvasSceneState ValidScene;
+	ValidScene.RoleCenters.Add(ENodeRole::PureFunction, FVector2D(260.0f, 140.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::PureDataSubgraph, ValidScene);
+
+	const FString Json = FRuleSetJson::ExportString(RuleSet);
+	TSharedPtr<FJsonObject> RootObject;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+	TestTrue(TEXT("exports valid json"), FJsonSerializer::Deserialize(Reader, RootObject) && RootObject.IsValid());
+
+	const TSharedPtr<FJsonObject>* EditorCanvasObject = nullptr;
+	TestTrue(
+		TEXT("exports editor_canvas object"),
+		RootObject.IsValid() && RootObject->TryGetObjectField(TEXT("editor_canvas"), EditorCanvasObject) && EditorCanvasObject && EditorCanvasObject->IsValid());
+	if (!EditorCanvasObject || !EditorCanvasObject->IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* ScenesObject = nullptr;
+	TestTrue(
+		TEXT("exports editor_canvas.scenes"),
+		(*EditorCanvasObject)->TryGetObjectField(TEXT("scenes"), ScenesObject) && ScenesObject && ScenesObject->IsValid());
+	if (!ScenesObject || !ScenesObject->IsValid())
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("valid scene key is exported"), (*ScenesObject)->HasField(TEXT("pure_data_subgraph")));
+	TestFalse(TEXT("invalid scene does not serialize as linear_exec_chain"), (*ScenesObject)->HasField(TEXT("linear_exec_chain")));
+	TestFalse(TEXT("invalid scene key is skipped instead of exported as unknown"), (*ScenesObject)->HasField(TEXT("unknown")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RuleSetJsonExportsSemanticScenesDeterministically,
+	"BlueprintHelper.GraphLayout.RuleSetJson.ExportsSemanticScenesDeterministically",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RuleSetJsonExportsSemanticScenesDeterministically::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FEditorCanvasSceneState LinearScene;
+	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(420.0f, 126.0f));
+	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(92.0f, 126.0f));
+
+	FEditorCanvasSceneState OccupancyScene;
+	OccupancyScene.RoleCenters.Add(ENodeRole::AsyncNode, FVector2D(300.0f, 220.0f));
+	OccupancyScene.RoleCenters.Add(ENodeRole::Comment, FVector2D(300.0f, 156.0f));
+	OccupancyScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(220.0f, 116.0f));
+
+	FRuleSet FirstRuleSet;
+	FirstRuleSet.EditorCanvasScenes.Add(ESemanticScene::Occupancy, OccupancyScene);
+	FirstRuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+
+	FRuleSet SecondRuleSet;
+	SecondRuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
+	SecondRuleSet.EditorCanvasScenes.Add(ESemanticScene::Occupancy, OccupancyScene);
+
+	TestEqual(TEXT("scene export does not depend on insertion order"), FRuleSetJson::ExportString(FirstRuleSet), FRuleSetJson::ExportString(SecondRuleSet));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SemanticSceneCatalogContainsFiveScenes,
+	"BlueprintHelper.GraphLayout.SemanticScene.CatalogContainsFiveScenes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SemanticSceneCatalogContainsFiveScenes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	const TArray<FSemanticSceneDefinition> Scenes = FSemanticSceneCatalog::GetAllScenes();
+	TestEqual(TEXT("five scenes"), Scenes.Num(), 5);
+	TSet<ESemanticScene> SceneIds;
+	for (const FSemanticSceneDefinition& Scene : Scenes)
+	{
+		SceneIds.Add(Scene.Scene);
+		TestFalse(TEXT("scene display name is set"), Scene.DisplayName.IsEmpty());
+		TestTrue(TEXT("scene has nodes"), Scene.Nodes.Num() >= 2);
+		TestTrue(TEXT("scene has directed edges"), Scene.Edges.Num() >= 1);
+		for (const FSemanticSceneNodeDefinition& Node : Scene.Nodes)
+		{
+			TestFalse(TEXT("node chinese tooltip is set"), Node.TooltipZh.IsEmpty());
+			TestTrue(TEXT("default center exists"), Scene.DefaultRoleCenters.Contains(Node.Role));
+		}
+	}
+	TestTrue(TEXT("has linear exec scene"), SceneIds.Contains(ESemanticScene::LinearExecChain));
+	TestTrue(TEXT("has pure data scene"), SceneIds.Contains(ESemanticScene::PureDataSubgraph));
+	TestTrue(TEXT("has node input cluster scene"), SceneIds.Contains(ESemanticScene::NodeInputCluster));
+	TestTrue(TEXT("has multi exec output scene"), SceneIds.Contains(ESemanticScene::MultiExecOutput));
+	TestTrue(TEXT("has occupancy scene"), SceneIds.Contains(ESemanticScene::Occupancy));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SemanticSceneProjectsPureDataCenters,
+	"BlueprintHelper.GraphLayout.SemanticScene.ProjectsPureDataCenters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SemanticSceneProjectsPureDataCenters::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState State;
+	State.RoleCenters.Add(ENodeRole::VariableInput, FVector2D(100.0f, 100.0f));
+	State.RoleCenters.Add(ENodeRole::OperatorOrCompare, FVector2D(360.0f, 150.0f));
+	State.RoleCenters.Add(ENodeRole::PureFunction, FVector2D(660.0f, 210.0f));
+
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::PureDataSubgraph, State, RuleSet, 1.0f);
+
+	TestEqual(TEXT("variable offset projected"), RuleSet.VariableInputOffsetX, 260.0f);
+	TestEqual(TEXT("pure offset projected"), RuleSet.PureInputOffsetX, 300.0f);
+	TestEqual(TEXT("pin row projected"), RuleSet.InputPinRowSpacing, 60.0f);
+	TestTrue(TEXT("scene state stored"), RuleSet.EditorCanvasScenes.Contains(ESemanticScene::PureDataSubgraph));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SemanticSceneProjectsAllScenes,
+	"BlueprintHelper.GraphLayout.SemanticScene.ProjectsAllScenes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SemanticSceneProjectsAllScenes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet LinearRuleSet;
+	FEditorCanvasSceneState LinearState;
+	LinearState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0f, 100.0f));
+	LinearState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(500.0f, 106.0f));
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::LinearExecChain, LinearState, LinearRuleSet, 2.0f);
+	TestEqual(TEXT("linear exec column projected"), LinearRuleSet.ExecColumnSpacing, 200.0f);
+	TestTrue(TEXT("linear exec alignment projected"), LinearRuleSet.bAlignExecNodesHorizontally);
+
+	FRuleSet NodeInputRuleSet;
+	FEditorCanvasSceneState NodeInputState;
+	NodeInputState.RoleCenters.Add(ENodeRole::VariableInput, FVector2D(100.0f, 360.0f));
+	NodeInputState.RoleCenters.Add(ENodeRole::OperatorOrCompare, FVector2D(300.0f, 220.0f));
+	NodeInputState.RoleCenters.Add(ENodeRole::PureFunction, FVector2D(340.0f, 160.0f));
+	NodeInputState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(620.0f, 220.0f));
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::NodeInputCluster, NodeInputState, NodeInputRuleSet, 2.0f);
+	TestEqual(TEXT("node input pure offset projected"), NodeInputRuleSet.PureInputOffsetX, 140.0f);
+	TestEqual(TEXT("node input variable offset projected"), NodeInputRuleSet.VariableInputOffsetX, 260.0f);
+	TestEqual(TEXT("node input row spacing projected"), NodeInputRuleSet.InputPinRowSpacing, 70.0f);
+	TestEqual(TEXT("node input padding x projected"), NodeInputRuleSet.DataClusterPaddingX, 20.0f);
+	TestEqual(TEXT("node input padding y projected"), NodeInputRuleSet.DataClusterPaddingY, 100.0f);
+
+	FRuleSet MultiExecRuleSet;
+	FEditorCanvasSceneState MultiExecState;
+	MultiExecState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0f, 100.0f));
+	MultiExecState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(700.0f, 116.0f));
+	MultiExecState.RoleCenters.Add(ENodeRole::BranchControl, FVector2D(700.0f, 620.0f));
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::MultiExecOutput, MultiExecState, MultiExecRuleSet, 2.0f);
+	TestEqual(TEXT("multi exec column projected"), MultiExecRuleSet.ExecColumnSpacing, 300.0f);
+	TestFalse(TEXT("multi exec misalignment projected"), MultiExecRuleSet.bAlignExecNodesHorizontally);
+	TestEqual(TEXT("multi exec branch row projected"), MultiExecRuleSet.BranchRowSpacing, 260.0f);
+	TestEqual(TEXT("multi exec branch padding projected"), MultiExecRuleSet.BranchRowPaddingY, 252.0f);
+
+	FRuleSet OccupancyRuleSet;
+	FEditorCanvasSceneState OccupancyState;
+	OccupancyState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(200.0f, 100.0f));
+	OccupancyState.RoleCenters.Add(ENodeRole::Comment, FVector2D(500.0f, 220.0f));
+	OccupancyState.RoleCenters.Add(ENodeRole::AsyncNode, FVector2D(500.0f, 340.0f));
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::Occupancy, OccupancyState, OccupancyRuleSet, 2.0f);
+	TestEqual(TEXT("occupancy padding x projected"), OccupancyRuleSet.CollisionPaddingX, 150.0f);
+	TestEqual(TEXT("occupancy padding y projected"), OccupancyRuleSet.CollisionPaddingY, 60.0f);
+	TestEqual(TEXT("occupancy step projected"), OccupancyRuleSet.CollisionStepY, 60.0f);
+
+	FRuleSet SanitizedScaleRuleSet;
+	FEditorCanvasSceneState SanitizedScaleState;
+	SanitizedScaleState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0f, 100.0f));
+	SanitizedScaleState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(2100.0f, 100.0f));
+	FSemanticSceneAdapter::ApplySceneStateToRuleSet(ESemanticScene::LinearExecChain, SanitizedScaleState, SanitizedScaleRuleSet, 0.0f);
+	TestEqual(TEXT("zero scale clamps instead of dividing unsafely"), SanitizedScaleRuleSet.ExecColumnSpacing, 900.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SemanticSceneResolveSceneStateUsesSavedOverrides,
+	"BlueprintHelper.GraphLayout.SemanticScene.ResolveSceneStateUsesSavedOverrides",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SemanticSceneResolveSceneStateUsesSavedOverrides::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FEditorCanvasSceneState DefaultState = FSemanticSceneAdapter::ResolveSceneState(FRuleSet(), ESemanticScene::LinearExecChain);
+	TestTrue(TEXT("default state contains event entry"), DefaultState.RoleCenters.Contains(ENodeRole::EventEntry));
+	TestTrue(TEXT("default state contains exec node"), DefaultState.RoleCenters.Contains(ENodeRole::ExecNode));
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState SavedState;
+	SavedState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(522.0f, 188.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, SavedState);
+
+	const FEditorCanvasSceneState ResolvedState = FSemanticSceneAdapter::ResolveSceneState(RuleSet, ESemanticScene::LinearExecChain);
+	TestEqual(TEXT("missing saved event entry uses default x"), ResolvedState.RoleCenters.FindRef(ENodeRole::EventEntry).X, DefaultState.RoleCenters.FindRef(ENodeRole::EventEntry).X);
+	TestEqual(TEXT("missing saved event entry uses default y"), ResolvedState.RoleCenters.FindRef(ENodeRole::EventEntry).Y, DefaultState.RoleCenters.FindRef(ENodeRole::EventEntry).Y);
+	TestEqual(TEXT("saved exec node x"), ResolvedState.RoleCenters.FindRef(ENodeRole::ExecNode).X, 522.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples,
+	"BlueprintHelper.GraphLayout.Preview.SampleFactoryBuildsFiveComplexSamples",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	for (const FSemanticSceneDefinition& Scene : FSemanticSceneCatalog::GetAllScenes())
+	{
+		FGraphLayoutPreviewSample Sample;
+		FString Error;
+		TestTrue(FString::Printf(TEXT("sample builds for %s"), ToString(Scene.Scene)), FGraphLayoutPreviewSampleFactory::BuildSample(Scene.Scene, Sample, Error));
+		TestTrue(TEXT("sample scene matches request"), Sample.Scene == Scene.Scene);
+		TestTrue(TEXT("sample has nodes"), Sample.Snapshot.Nodes.Num() >= 4);
+		TestTrue(TEXT("sample has materialization nodes"), Sample.Nodes.Num() >= Sample.Snapshot.Nodes.Num());
+		TestTrue(TEXT("sample has links"), Sample.Links.Num() >= 1);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSampleFactoryProducesLayoutPlan,
+	"BlueprintHelper.GraphLayout.Preview.SampleFactoryProducesLayoutPlan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSampleFactoryProducesLayoutPlan::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("pure data sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::PureDataSubgraph, Sample, Error));
+	const FLayoutPlan Plan = FSolver::Solve(Sample.Snapshot, RuleSet);
+	TestTrue(TEXT("layout produces placements"), Plan.Placements.Num() >= 4);
+	TestEqual(TEXT("no issues"), Plan.Issues.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult,
+	"BlueprintHelper.GraphLayout.Preview.ServiceBuildsPureDataResult",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewService Service;
+	FGraphLayoutPreviewRequest Request;
+	Request.Scene = ESemanticScene::PureDataSubgraph;
+	Request.RuleSetJson = FRuleSetJson::ExportString(FRuleSet());
+
+	FGraphLayoutPreviewBuildResult Result;
+	TestTrue(TEXT("sync test helper builds"), Service.BuildPreviewDataForTest(Request, Result));
+	TestTrue(TEXT("result success"), Result.bSuccess);
+	TestEqual(TEXT("scene"), Result.Sample.Scene, ESemanticScene::PureDataSubgraph);
+	TestTrue(TEXT("has layout"), Result.LayoutPlan.Placements.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewServiceCancelsStaleJob,
+	"BlueprintHelper.GraphLayout.Preview.ServiceCancelsStaleJob",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewServiceCancelsStaleJob::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewService Service;
+	const uint64 FirstJob = Service.StartPreviewBuild(FGraphLayoutPreviewRequest{ ESemanticScene::LinearExecChain, FRuleSetJson::ExportString(FRuleSet()) });
+	Service.Cancel(FirstJob);
+	TestTrue(TEXT("job marked stale"), Service.IsJobCancelledForTest(FirstJob));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerCreatesTransientGraph,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerCreatesTransientGraph",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesTransientGraph::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestTrue(TEXT("preview materializer test runs on the game thread"), IsInGameThread());
+
+	const FGraphLayoutPreviewSample Sample = MakeMaterializerTestSample();
+	const FLayoutPlan Plan = MakeMaterializerTestPlan();
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	Materializer.Begin(Sample, Plan);
+
+	int32 TickGuard = 0;
+	while (Materializer.Tick(0.01f))
+	{
+		++TickGuard;
+		if (TickGuard > 128)
+		{
+			AddError(TEXT("preview materializer tick loop exceeded guard"));
+			return false;
+		}
+	}
+
+	TestTrue(TEXT("materializer completes"), Materializer.IsComplete());
+	const FGraphLayoutPreviewMaterializerResult& Result = Materializer.GetResult();
+	TestTrue(TEXT("materializer result has no error"), Result.Error.IsEmpty());
+	TestTrue(TEXT("preview blueprint is valid"), Result.PreviewBlueprint.IsValid());
+	TestTrue(TEXT("preview graph is valid"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewBlueprint.IsValid() || !Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	UBlueprint* PreviewBlueprint = Result.PreviewBlueprint.Get();
+	UEdGraph* PreviewGraph = Result.PreviewGraph.Get();
+	TestTrue(TEXT("preview blueprint is transient"), PreviewBlueprint->HasAnyFlags(RF_Transient));
+	TestTrue(TEXT("preview graph is transient"), PreviewGraph->HasAnyFlags(RF_Transient));
+	TestFalse(TEXT("preview graph is read only"), PreviewGraph->bEditable);
+	TestTrue(TEXT("preview graph is attached to blueprint ubergraph pages"), PreviewBlueprint->UbergraphPages.Contains(PreviewGraph));
+	TestTrue(TEXT("preview graph uses K2 schema"), PreviewGraph->Schema == UEdGraphSchema_K2::StaticClass());
+	TestEqual(TEXT("preview graph materializes all requested nodes"), PreviewGraph->Nodes.Num(), Sample.Nodes.Num());
+
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	UK2Node_CustomEvent* EventNode = Cast<UK2Node_CustomEvent>(FindNodeByExactClass(PreviewGraph, UK2Node_CustomEvent::StaticClass()));
+	TestNotNull(TEXT("custom event node is materialized"), EventNode);
+	if (EventNode && EventPlacement)
+	{
+		TestEqual<int32>(TEXT("custom event uses plan x"), EventNode->NodePosX, static_cast<int32>(EventPlacement->TargetPosition.X));
+		TestEqual<int32>(TEXT("custom event uses plan y"), EventNode->NodePosY, static_cast<int32>(EventPlacement->TargetPosition.Y));
+	}
+
+	UEdGraphNode* GenericNode = FindNodeByExactClass(PreviewGraph, UEdGraphNode::StaticClass());
+	TestNotNull(TEXT("generic fallback node is materialized"), GenericNode);
+	UEdGraphPin* GenericValuePin = FindPinByNameAndDirection(GenericNode, FName(TEXT("Value")), EGPD_Output);
+	TestNotNull(TEXT("generic fallback node creates preview output pin"), GenericValuePin);
+
+	UK2Node_Self* SelfNode = Cast<UK2Node_Self>(FindNodeByExactClass(PreviewGraph, UK2Node_Self::StaticClass()));
+	TestNotNull(TEXT("self node is materialized"), SelfNode);
+	UEdGraphPin* SelfValuePin = FindPinByNameAndDirection(SelfNode, FName(TEXT("Value")), EGPD_Output);
+	TestNotNull(TEXT("self node creates preview-only value pin when default pin names differ"), SelfValuePin);
+
+	UK2Node_CallFunction* CallFunctionNode = Cast<UK2Node_CallFunction>(FindNodeByExactClass(PreviewGraph, UK2Node_CallFunction::StaticClass()));
+	TestNotNull(TEXT("call function node is materialized"), CallFunctionNode);
+	UEdGraphPin* PreviewInputPin = FindPinByNameAndDirection(CallFunctionNode, FName(TEXT("In")), EGPD_Input);
+	TestNotNull(TEXT("call function node creates preview-only input pin when sample pin is missing"), PreviewInputPin);
+
+	UK2Node_ExecutionSequence* SequenceNode = Cast<UK2Node_ExecutionSequence>(FindNodeByExactClass(PreviewGraph, UK2Node_ExecutionSequence::StaticClass()));
+	TestNotNull(TEXT("sequence node is materialized"), SequenceNode);
+	UEdGraphPin* EventThenPin = FindPinByNameAndDirection(EventNode, FName(TEXT("then")), EGPD_Output);
+	UEdGraphPin* SequenceExecPin = FindPinByNameAndDirection(SequenceNode, FName(TEXT("execute")), EGPD_Input);
+	TestNotNull(TEXT("event exec pin exists"), EventThenPin);
+	TestNotNull(TEXT("sequence exec pin exists"), SequenceExecPin);
+	if (EventThenPin && SequenceExecPin)
+	{
+		TestTrue(TEXT("event is linked to sequence"), EventThenPin->LinkedTo.Contains(SequenceExecPin));
+	}
+
+	UEdGraphNode_Comment* CommentNode = Cast<UEdGraphNode_Comment>(FindNodeByExactClass(PreviewGraph, UEdGraphNode_Comment::StaticClass()));
+	TestNotNull(TEXT("comment node is materialized"), CommentNode);
+
+	FGraphLayoutPreviewMaterializerResult SyncResult;
+	TestTrue(TEXT("sync helper materializes preview graph"), Materializer.MaterializeForTest(Sample, Plan, SyncResult));
+	TestTrue(TEXT("sync helper returns valid graph"), SyncResult.PreviewGraph.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerUsesOneStepFallbackForInvalidBudget,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerUsesOneStepFallbackForInvalidBudget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerUsesOneStepFallbackForInvalidBudget::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestTrue(TEXT("preview materializer budget test runs on the game thread"), IsInGameThread());
+
+	const FGraphLayoutPreviewSample Sample = MakeMaterializerTestSample();
+	const FLayoutPlan Plan = MakeMaterializerTestPlan();
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	Materializer.Begin(Sample, Plan);
+
+	TestTrue(TEXT("first invalid-budget tick leaves more work"), Materializer.Tick(-1.0f));
+	const FGraphLayoutPreviewMaterializerResult& FirstTickResult = Materializer.GetResult();
+	TestTrue(TEXT("preview graph exists after first tick"), FirstTickResult.PreviewGraph.IsValid());
+	if (!FirstTickResult.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+	TestEqual(TEXT("invalid budget materializes only one node on first tick"), FirstTickResult.PreviewGraph->Nodes.Num(), 1);
+	TestFalse(TEXT("materializer is not complete after one invalid-budget tick"), Materializer.IsComplete());
+
+	TestTrue(TEXT("second invalid-budget tick leaves more work"), Materializer.Tick(-1.0f));
+	TestEqual(TEXT("invalid budget materializes one additional node per tick"), FirstTickResult.PreviewGraph->Nodes.Num(), 2);
 	return true;
 }
 

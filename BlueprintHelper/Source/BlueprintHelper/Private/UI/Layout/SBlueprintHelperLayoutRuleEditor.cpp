@@ -2,6 +2,8 @@
 
 #include "UI/Layout/SBlueprintHelperLayoutRuleEditor.h"
 
+#include "EdGraph/EdGraph.h"
+#include "GraphEditor.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "InputCoreTypes.h"
@@ -13,16 +15,22 @@
 #include "SlateOptMacros.h"
 #include "Styling/CoreStyle.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
 #include "UI/BlueprintHelperUiSettingsResolver.h"
+#include "Widgets/SToolTip.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SLeafWidget.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 #if __has_include("Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h")
@@ -38,9 +46,6 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 {
 	const FLinearColor ValidStatusColor(0.1f, 0.65f, 0.25f, 1.0f);
 	const FLinearColor InvalidStatusColor(0.9f, 0.2f, 0.12f, 1.0f);
-	const FVector2D CanvasDesiredSize(760.0f, 320.0f);
-	const FVector2D CanvasNodeSize(128.0f, 44.0f);
-	const float CanvasRuleScale = 0.45f;
 
 	enum ETextSetting : int32
 	{
@@ -82,15 +87,13 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 		SaveAfterApply
 	};
 
-	enum class ECanvasPage : uint8
+	constexpr float MinMillisecondsPerFrame = 0.25f;
+	constexpr float MaxMillisecondsPerFrameSetting = 20.0f;
+
+	float ClampMillisecondsPerFrame(float Value)
 	{
-		RoleOverview,
-		LinearExecChain,
-		PureDataSubgraph,
-		NodeInputCluster,
-		MultiExecOutput,
-		Occupancy
-	};
+		return FMath::Clamp(Value, MinMillisecondsPerFrame, MaxMillisecondsPerFrameSetting);
+	}
 
 	FString GetFallbackDefaultJson()
 	{
@@ -279,6 +282,7 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 	{
 		BlueprintHelper::GraphLayout::ENodeRole Role = BlueprintHelper::GraphLayout::ENodeRole::Unknown;
 		FText Label;
+		FText Tooltip;
 		FVector2D Center = FVector2D::ZeroVector;
 		bool bDraggable = true;
 	};
@@ -319,21 +323,28 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		Invalidate(EInvalidateWidgetReason::Paint);
 	}
 
-	void SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage InCanvasPage)
+	void SetSemanticScene(BlueprintHelper::GraphLayout::ESemanticScene InScene)
 	{
-		if (CanvasPage == InCanvasPage)
+		if (CurrentScene == InScene)
 		{
 			return;
 		}
 
-		CanvasPage = InCanvasPage;
+		ExportCanvasToRuleSet();
+		CurrentScene = InScene;
+		UpdateHoveredRole({});
 		BuildCanvasFromRuleSet();
 		Invalidate(EInvalidateWidgetReason::Paint);
 	}
 
-	BlueprintHelperLayoutRuleEditorLocal::ECanvasPage GetCanvasPage() const
+	BlueprintHelper::GraphLayout::ESemanticScene GetCurrentScene() const
 	{
-		return CanvasPage;
+		return CurrentScene;
+	}
+
+	void CommitCurrentScene()
+	{
+		ExportCanvasToRuleSet();
 	}
 
 	void AlignExecRowToEntry()
@@ -376,94 +387,12 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 			ESlateDrawEffect::None,
 			FLinearColor(0.035f, 0.035f, 0.04f, 1.0f));
 
-		switch (CanvasPage)
+		if (const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition())
 		{
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::EventEntry,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.85f, 0.18f, 0.14f, 1.0f));
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::VariableInput,
-				BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
-				FLinearColor(0.0f, 0.62f, 0.9f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
-				BlueprintHelper::GraphLayout::ENodeRole::PureFunction,
-				FLinearColor(0.42f, 0.84f, 0.12f, 1.0f));
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::VariableInput,
-				BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
-				FLinearColor(0.0f, 0.62f, 0.9f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
-				BlueprintHelper::GraphLayout::ENodeRole::PureFunction,
-				FLinearColor(0.42f, 0.84f, 0.12f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::PureFunction,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.1f, 0.75f, 0.32f, 1.0f));
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::EventEntry,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.85f, 0.18f, 0.14f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::EventEntry,
-				BlueprintHelper::GraphLayout::ENodeRole::BranchControl,
-				FLinearColor(0.95f, 0.55f, 0.12f, 1.0f));
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				BlueprintHelper::GraphLayout::ENodeRole::Comment,
-				FLinearColor(0.65f, 0.65f, 0.65f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				BlueprintHelper::GraphLayout::ENodeRole::AsyncNode,
-				FLinearColor(0.0f, 0.72f, 0.85f, 1.0f));
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview:
-		default:
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::EventEntry,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.85f, 0.18f, 0.14f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				BlueprintHelper::GraphLayout::ENodeRole::BranchControl,
-				FLinearColor(0.85f, 0.18f, 0.14f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::PureFunction,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.1f, 0.75f, 0.32f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.42f, 0.84f, 0.12f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::VariableInput,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				FLinearColor(0.0f, 0.62f, 0.9f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::ExecNode,
-				BlueprintHelper::GraphLayout::ENodeRole::AsyncNode,
-				FLinearColor(0.0f, 0.72f, 0.85f, 1.0f));
-			DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1,
-				BlueprintHelper::GraphLayout::ENodeRole::AsyncNode,
-				BlueprintHelper::GraphLayout::ENodeRole::DelegateNode,
-				FLinearColor(0.78f, 0.66f, 0.08f, 1.0f));
-			break;
+			for (const BlueprintHelper::GraphLayout::FSemanticSceneEdgeDefinition& Edge : Definition->Edges)
+			{
+				DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1, Edge);
+			}
 		}
 
 		const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 10);
@@ -517,18 +446,21 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		}
 
 		DraggedRole = HitRole.GetValue();
+		UpdateHoveredRole(HitRole);
 		DragOffset = LocalPos - RoleCenters.FindRef(DraggedRole.GetValue());
 		return FReply::Handled().CaptureMouse(AsShared());
 	}
 
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
 	{
+		const FVector2D LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
 		if (!DraggedRole.IsSet() || !HasMouseCapture())
 		{
+			UpdateHoveredRole(HitTestRole(LocalPos));
 			return FReply::Unhandled();
 		}
 
-		const FVector2D LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+		UpdateHoveredRole({});
 		FVector2D NewCenter = LocalPos - DragOffset;
 		const FVector2D CanvasSize = MyGeometry.GetLocalSize();
 		NewCenter.X = FMath::Clamp(NewCenter.X, 40.0f, FMath::Max(40.0f, CanvasSize.X - 40.0f));
@@ -538,7 +470,7 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		return FReply::Handled();
 	}
 
-	virtual FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent& MouseEvent) override
+	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
 	{
 		if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !DraggedRole.IsSet())
 		{
@@ -546,8 +478,15 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 		}
 
 		DraggedRole.Reset();
+		UpdateHoveredRole(HitTestRole(MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition())));
 		ExportCanvasToRuleSet();
 		return FReply::Handled().ReleaseMouseCapture();
+	}
+
+	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override
+	{
+		UpdateHoveredRole({});
+		SLeafWidget::OnMouseLeave(MouseEvent);
 	}
 
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override
@@ -561,143 +500,69 @@ RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
 private:
 	FBlueprintHelperLayoutRuleEditorSettings LayoutRuleEditorSettings;
 
+	const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* GetCurrentSceneDefinition() const
+	{
+		return BlueprintHelper::GraphLayout::FSemanticSceneCatalog::FindScene(CurrentScene);
+	}
+
+	const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition* FindCurrentSceneNodeDefinition(
+		const BlueprintHelper::GraphLayout::ENodeRole Role) const
+	{
+		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
+		if (!Definition)
+		{
+			return nullptr;
+		}
+
+		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& Node : Definition->Nodes)
+		{
+			if (Node.Role == Role)
+			{
+				return &Node;
+			}
+		}
+
+		return nullptr;
+	}
+
 	TArray<BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode> BuildRoleNodes() const
 	{
-		using namespace BlueprintHelper::GraphLayout;
-		switch (CanvasPage)
+		TArray<BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode> Nodes;
+		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
+		if (!Definition)
 		{
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain:
-			return {
-				{ENodeRole::EventEntry, LOCTEXT("LinearCanvasExecEntry", "ExecEntry"), RoleCenters.FindRef(ENodeRole::EventEntry), true},
-				{ENodeRole::ExecNode, LOCTEXT("LinearCanvasExecNode", "Next Exec"), RoleCenters.FindRef(ENodeRole::ExecNode), true}
-			};
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph:
-			return {
-				{ENodeRole::VariableInput, LOCTEXT("PureDataCanvasLeaf", "Data Leaf"), RoleCenters.FindRef(ENodeRole::VariableInput), true},
-				{ENodeRole::OperatorOrCompare, LOCTEXT("PureDataCanvasTransform", "Data Transform"), RoleCenters.FindRef(ENodeRole::OperatorOrCompare), true},
-				{ENodeRole::PureFunction, LOCTEXT("PureDataCanvasAggregate", "Data Aggregate"), RoleCenters.FindRef(ENodeRole::PureFunction), true}
-			};
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster:
-			return {
-				{ENodeRole::VariableInput, LOCTEXT("InputClusterCanvasLeaf", "Data Leaf"), RoleCenters.FindRef(ENodeRole::VariableInput), true},
-				{ENodeRole::OperatorOrCompare, LOCTEXT("InputClusterCanvasTransform", "Data Transform"), RoleCenters.FindRef(ENodeRole::OperatorOrCompare), true},
-				{ENodeRole::PureFunction, LOCTEXT("InputClusterCanvasCluster", "Input Cluster"), RoleCenters.FindRef(ENodeRole::PureFunction), true},
-				{ENodeRole::ExecNode, LOCTEXT("InputClusterCanvasConsumer", "Consumer"), RoleCenters.FindRef(ENodeRole::ExecNode), true}
-			};
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput:
-			return {
-				{ENodeRole::EventEntry, LOCTEXT("MultiExecCanvasSource", "Multi Exec"), RoleCenters.FindRef(ENodeRole::EventEntry), true},
-				{ENodeRole::ExecNode, LOCTEXT("MultiExecCanvasPrimaryRow", "Primary Row"), RoleCenters.FindRef(ENodeRole::ExecNode), true},
-				{ENodeRole::BranchControl, LOCTEXT("MultiExecCanvasBranchRow", "Branch Row"), RoleCenters.FindRef(ENodeRole::BranchControl), true}
-			};
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy:
-			return {
-				{ENodeRole::ExecNode, LOCTEXT("OccupancyCanvasCandidate", "Candidate"), RoleCenters.FindRef(ENodeRole::ExecNode), true},
-				{ENodeRole::Comment, LOCTEXT("OccupancyCanvasBlocker", "Existing Blocker"), RoleCenters.FindRef(ENodeRole::Comment), true},
-				{ENodeRole::AsyncNode, LOCTEXT("OccupancyCanvasFallback", "Fallback Row"), RoleCenters.FindRef(ENodeRole::AsyncNode), true}
-			};
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview:
-		default:
-			return {
-				{ENodeRole::Comment, LOCTEXT("CanvasComment", "Comment"), RoleCenters.FindRef(ENodeRole::Comment), false},
-				{ENodeRole::EventEntry, LOCTEXT("CanvasEventEntry", "EventEntry"), RoleCenters.FindRef(ENodeRole::EventEntry), true},
-				{ENodeRole::ExecNode, LOCTEXT("CanvasExecNode", "ExecNode"), RoleCenters.FindRef(ENodeRole::ExecNode), true},
-				{ENodeRole::BranchControl, LOCTEXT("CanvasBranchControl", "BranchControl"), RoleCenters.FindRef(ENodeRole::BranchControl), true},
-				{ENodeRole::PureFunction, LOCTEXT("CanvasPureFunction", "PureFunction"), RoleCenters.FindRef(ENodeRole::PureFunction), true},
-				{ENodeRole::OperatorOrCompare, LOCTEXT("CanvasOperatorOrCompare", "OperatorOrCompare"), RoleCenters.FindRef(ENodeRole::OperatorOrCompare), true},
-				{ENodeRole::VariableInput, LOCTEXT("CanvasVariableInput", "VariableInput"), RoleCenters.FindRef(ENodeRole::VariableInput), true},
-				{ENodeRole::AsyncNode, LOCTEXT("CanvasAsyncNode", "AsyncNode"), RoleCenters.FindRef(ENodeRole::AsyncNode), true},
-				{ENodeRole::DelegateNode, LOCTEXT("CanvasDelegateNode", "DelegateNode"), RoleCenters.FindRef(ENodeRole::DelegateNode), true}
-			};
+			return Nodes;
 		}
+
+		Nodes.Reserve(Definition->Nodes.Num());
+		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
+		{
+			BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode Node;
+			Node.Role = NodeDefinition.Role;
+			Node.Label = NodeDefinition.Label;
+			Node.Tooltip = NodeDefinition.TooltipZh;
+			Node.Center = RoleCenters.FindRef(NodeDefinition.Role);
+			Node.bDraggable = NodeDefinition.bDraggable;
+			Nodes.Add(Node);
+		}
+
+		return Nodes;
 	}
 
 	void BuildCanvasFromRuleSet()
 	{
-		using namespace BlueprintHelper::GraphLayout;
-		const float Scale = LayoutRuleEditorSettings.CanvasRuleScale;
 		RoleCenters.Reset();
+		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
+		if (!Definition)
+		{
+			return;
+		}
 
-		const FVector2D EventCenter(92.0f, 126.0f);
-		const FVector2D ExecCenter = EventCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, 0.0f);
-		switch (CanvasPage)
+		const BlueprintHelper::GraphLayout::FEditorCanvasSceneState SceneState =
+			BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ResolveSceneState(RuleSet, CurrentScene);
+		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
 		{
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain:
-		{
-			const FVector2D LinearExecCenter = EventCenter + FVector2D(
-				RuleSet.ExecColumnSpacing * Scale,
-				RuleSet.bAlignExecNodesHorizontally ? 0.0f : RuleSet.InputPinRowSpacing * Scale);
-			RoleCenters.Add(ENodeRole::EventEntry, EventCenter);
-			RoleCenters.Add(ENodeRole::ExecNode, LinearExecCenter);
-			break;
-		}
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph:
-		{
-			const FVector2D TransformCenter(356.0f, 150.0f);
-			RoleCenters.Add(ENodeRole::VariableInput, TransformCenter - FVector2D(RuleSet.VariableInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale));
-			RoleCenters.Add(ENodeRole::OperatorOrCompare, TransformCenter);
-			RoleCenters.Add(ENodeRole::PureFunction, TransformCenter + FVector2D(RuleSet.PureInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale));
-			break;
-		}
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster:
-		{
-			const FVector2D ConsumerCenter(548.0f, 158.0f);
-			RoleCenters.Add(ENodeRole::ExecNode, ConsumerCenter);
-			RoleCenters.Add(ENodeRole::VariableInput, ConsumerCenter - FVector2D(RuleSet.VariableInputOffsetX * Scale, -RuleSet.InputPinRowSpacing * Scale));
-			RoleCenters.Add(ENodeRole::OperatorOrCompare, ConsumerCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, 0.0f));
-			RoleCenters.Add(ENodeRole::PureFunction, ConsumerCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale));
-			break;
-		}
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput:
-		{
-			RoleCenters.Add(ENodeRole::EventEntry, EventCenter);
-			RoleCenters.Add(ENodeRole::ExecNode, EventCenter + FVector2D(
-				RuleSet.ExecColumnSpacing * Scale,
-				RuleSet.bAlignExecNodesHorizontally ? 0.0f : RuleSet.InputPinRowSpacing * Scale));
-			RoleCenters.Add(ENodeRole::BranchControl, EventCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.BranchRowSpacing * Scale));
-			break;
-		}
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy:
-		{
-			const FVector2D CandidateCenter(220.0f, 116.0f);
-			const FVector2D BlockerCenter = CandidateCenter + FVector2D(RuleSet.CollisionPaddingX * Scale, RuleSet.CollisionPaddingY * Scale);
-			RoleCenters.Add(ENodeRole::ExecNode, CandidateCenter);
-			RoleCenters.Add(ENodeRole::Comment, BlockerCenter);
-			RoleCenters.Add(ENodeRole::AsyncNode, BlockerCenter + FVector2D(0.0f, RuleSet.CollisionStepY * Scale));
-			break;
-		}
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview:
-		default:
-		{
-			const FVector2D BranchCenter = ExecCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.BranchRowSpacing * Scale);
-			const FVector2D PureCenter = ExecCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale);
-			const FVector2D OperatorCenter = ExecCenter - FVector2D(RuleSet.PureInputOffsetX * Scale, 0.0f);
-			const FVector2D VariableCenter = ExecCenter + FVector2D(-RuleSet.VariableInputOffsetX * Scale, RuleSet.InputPinRowSpacing * Scale);
-			const FVector2D AsyncCenter = ExecCenter + FVector2D(RuleSet.ExecColumnSpacing * Scale, RuleSet.ExecRowSpacing * Scale);
-			RoleCenters.Add(ENodeRole::Comment, FVector2D(92.0f, 36.0f));
-			RoleCenters.Add(ENodeRole::EventEntry, EventCenter);
-			RoleCenters.Add(ENodeRole::ExecNode, ExecCenter);
-			RoleCenters.Add(ENodeRole::BranchControl, BranchCenter);
-			RoleCenters.Add(ENodeRole::PureFunction, PureCenter);
-			RoleCenters.Add(ENodeRole::OperatorOrCompare, OperatorCenter);
-			RoleCenters.Add(ENodeRole::VariableInput, VariableCenter);
-			RoleCenters.Add(ENodeRole::AsyncNode, AsyncCenter);
-			RoleCenters.Add(ENodeRole::DelegateNode, AsyncCenter + FVector2D(0.0f, 58.0f));
-
-			for (const TPair<ENodeRole, FVector2D>& SavedCenter : RuleSet.EditorCanvasRoleCenters)
-			{
-				if (RoleCenters.Contains(SavedCenter.Key))
-				{
-					RoleCenters.Add(SavedCenter.Key, SavedCenter.Value);
-				}
-			}
-			break;
-		}
+			RoleCenters.Add(NodeDefinition.Role, SceneState.RoleCenters.FindRef(NodeDefinition.Role));
 		}
 	}
 
@@ -720,158 +585,135 @@ private:
 		return {};
 	}
 
+	void UpdateHoveredRole(const TOptional<BlueprintHelper::GraphLayout::ENodeRole> InHoveredRole)
+	{
+		if (HoveredRole == InHoveredRole)
+		{
+			return;
+		}
+
+		HoveredRole = InHoveredRole;
+		if (!HoveredRole.IsSet())
+		{
+			SetToolTip(TSharedPtr<IToolTip>());
+			return;
+		}
+
+		const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition* NodeDefinition =
+			FindCurrentSceneNodeDefinition(HoveredRole.GetValue());
+		if (!NodeDefinition || NodeDefinition->TooltipZh.IsEmpty())
+		{
+			SetToolTip(TSharedPtr<IToolTip>());
+			return;
+		}
+
+		SetToolTip(
+			SNew(SToolTip)
+			[
+				SNew(STextBlock)
+				.Text(NodeDefinition->TooltipZh)
+				.WrapTextAt(280.0f)
+			]);
+	}
+
+	FVector2D GetNodeBoundaryPoint(const FVector2D& Center, const FVector2D& Direction) const
+	{
+		const FVector2D HalfSize = LayoutRuleEditorSettings.NodeSize * 0.5f;
+		const float DistanceToVerticalEdge = FMath::Abs(Direction.X) > KINDA_SMALL_NUMBER
+			? HalfSize.X / FMath::Abs(Direction.X)
+			: TNumericLimits<float>::Max();
+		const float DistanceToHorizontalEdge = FMath::Abs(Direction.Y) > KINDA_SMALL_NUMBER
+			? HalfSize.Y / FMath::Abs(Direction.Y)
+			: TNumericLimits<float>::Max();
+		return Center + Direction * FMath::Min(DistanceToVerticalEdge, DistanceToHorizontalEdge);
+	}
+
 	void DrawRelationship(
 		FSlateWindowElementList& OutDrawElements,
 		const FGeometry& AllottedGeometry,
 		int32 LayerId,
-		BlueprintHelper::GraphLayout::ENodeRole FromRole,
-		BlueprintHelper::GraphLayout::ENodeRole ToRole,
-		const FLinearColor& Color) const
+		const BlueprintHelper::GraphLayout::FSemanticSceneEdgeDefinition& Edge) const
 	{
-		const FVector2D From = RoleCenters.FindRef(FromRole);
-		const FVector2D To = RoleCenters.FindRef(ToRole);
+		const FVector2D From = RoleCenters.FindRef(Edge.FromRole);
+		const FVector2D To = RoleCenters.FindRef(Edge.ToRole);
 		if (From.IsZero() || To.IsZero())
 		{
 			return;
 		}
 
+		const FVector2D Direction = (To - From).GetSafeNormal();
+		if (Direction.IsNearlyZero())
+		{
+			return;
+		}
+
+		const FVector2D Start = GetNodeBoundaryPoint(From, Direction);
+		const FVector2D Tip = GetNodeBoundaryPoint(To, -Direction);
+
 		TArray<FVector2D> Points;
-		Points.Add(From);
-		Points.Add(To);
+		Points.Add(Start);
+		Points.Add(Tip);
 		FSlateDrawElement::MakeLines(
 			OutDrawElements,
 			LayerId,
 			AllottedGeometry.ToPaintGeometry(),
 			Points,
 			ESlateDrawEffect::None,
-			Color,
+			Edge.Color,
+			true,
+			2.0f);
+
+		const FVector2D Perpendicular(-Direction.Y, Direction.X);
+		const float ArrowLength = 12.0f;
+		const float ArrowWidth = 5.0f;
+		TArray<FVector2D> ArrowA;
+		ArrowA.Add(Tip);
+		ArrowA.Add(Tip - Direction * ArrowLength + Perpendicular * ArrowWidth);
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			ArrowA,
+			ESlateDrawEffect::None,
+			Edge.Color,
+			true,
+			2.0f);
+
+		TArray<FVector2D> ArrowB;
+		ArrowB.Add(Tip);
+		ArrowB.Add(Tip - Direction * ArrowLength - Perpendicular * ArrowWidth);
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			ArrowB,
+			ESlateDrawEffect::None,
+			Edge.Color,
 			true,
 			2.0f);
 	}
 
 	void ExportCanvasToRuleSet()
 	{
-		using namespace BlueprintHelper::GraphLayout;
-		const float Scale = LayoutRuleEditorSettings.CanvasRuleScale;
-		const FVector2D EventCenter = RoleCenters.FindRef(ENodeRole::EventEntry);
-		const FVector2D ExecCenter = RoleCenters.FindRef(ENodeRole::ExecNode);
-		const FVector2D BranchCenter = RoleCenters.FindRef(ENodeRole::BranchControl);
-		const FVector2D PureCenter = RoleCenters.FindRef(ENodeRole::PureFunction);
-		const FVector2D OperatorCenter = RoleCenters.FindRef(ENodeRole::OperatorOrCompare);
-		const FVector2D VariableCenter = RoleCenters.FindRef(ENodeRole::VariableInput);
-		const FVector2D CommentCenter = RoleCenters.FindRef(ENodeRole::Comment);
-		const FVector2D AsyncCenter = RoleCenters.FindRef(ENodeRole::AsyncNode);
-
-		switch (CanvasPage)
+		BlueprintHelper::GraphLayout::FEditorCanvasSceneState SceneState;
+		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
+		if (Definition)
 		{
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain:
-			if (ExecCenter.X > EventCenter.X)
+			for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
 			{
-				RuleSet.ExecColumnSpacing = FMath::Clamp((ExecCenter.X - EventCenter.X) / Scale, 120.0f, 900.0f);
-			}
-			RuleSet.bAlignExecNodesHorizontally = FMath::Abs(ExecCenter.Y - EventCenter.Y) <= 8.0f;
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph:
-			if (OperatorCenter.X > VariableCenter.X)
-			{
-				RuleSet.VariableInputOffsetX = FMath::Clamp((OperatorCenter.X - VariableCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			if (PureCenter.X > OperatorCenter.X)
-			{
-				RuleSet.PureInputOffsetX = FMath::Clamp((PureCenter.X - OperatorCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			RuleSet.InputPinRowSpacing = FMath::Clamp(
-				FMath::Max(FMath::Abs(OperatorCenter.Y - VariableCenter.Y), FMath::Abs(PureCenter.Y - OperatorCenter.Y)) / Scale,
-				24.0f,
-				180.0f);
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster:
-			if (ExecCenter.X > PureCenter.X)
-			{
-				RuleSet.PureInputOffsetX = FMath::Clamp((ExecCenter.X - PureCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			if (ExecCenter.X > VariableCenter.X)
-			{
-				RuleSet.VariableInputOffsetX = FMath::Clamp((ExecCenter.X - VariableCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			RuleSet.InputPinRowSpacing = FMath::Clamp(
-				FMath::Max(FMath::Abs(VariableCenter.Y - ExecCenter.Y), FMath::Abs(PureCenter.Y - ExecCenter.Y)) / Scale,
-				24.0f,
-				180.0f);
-			RuleSet.DataClusterPaddingX = FMath::Clamp(FMath::Abs(OperatorCenter.X - PureCenter.X) / Scale, 8.0f, 240.0f);
-			RuleSet.DataClusterPaddingY = FMath::Clamp(FMath::Abs(VariableCenter.Y - PureCenter.Y) / Scale, 8.0f, 240.0f);
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput:
-			if (ExecCenter.X > EventCenter.X)
-			{
-				RuleSet.ExecColumnSpacing = FMath::Clamp((ExecCenter.X - EventCenter.X) / Scale, 120.0f, 900.0f);
-			}
-			RuleSet.bAlignExecNodesHorizontally = FMath::Abs(ExecCenter.Y - EventCenter.Y) <= 8.0f;
-			RuleSet.BranchRowSpacing = FMath::Clamp(FMath::Abs(BranchCenter.Y - EventCenter.Y) / Scale, 80.0f, 640.0f);
-			RuleSet.BranchRowPaddingY = FMath::Clamp(FMath::Abs(BranchCenter.Y - ExecCenter.Y) / Scale, 16.0f, 320.0f);
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy:
-			RuleSet.CollisionPaddingX = FMath::Clamp(FMath::Abs(CommentCenter.X - ExecCenter.X) / Scale, 8.0f, 240.0f);
-			RuleSet.CollisionPaddingY = FMath::Clamp(FMath::Abs(CommentCenter.Y - ExecCenter.Y) / Scale, 8.0f, 240.0f);
-			RuleSet.CollisionStepY = FMath::Clamp(FMath::Abs(AsyncCenter.Y - CommentCenter.Y) / Scale, 16.0f, 240.0f);
-			break;
-
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview:
-		default:
-		{
-			TArray<float> HorizontalSamples;
-			if (ExecCenter.X > EventCenter.X)
-			{
-				HorizontalSamples.Add((ExecCenter.X - EventCenter.X) / Scale);
-			}
-			if (BranchCenter.X > ExecCenter.X)
-			{
-				HorizontalSamples.Add((BranchCenter.X - ExecCenter.X) / Scale);
-			}
-			if (AsyncCenter.X > ExecCenter.X)
-			{
-				HorizontalSamples.Add((AsyncCenter.X - ExecCenter.X) / Scale);
-			}
-			if (HorizontalSamples.Num() > 0)
-			{
-				float Sum = 0.0f;
-				for (float Sample : HorizontalSamples)
+				if (NodeDefinition.Role != BlueprintHelper::GraphLayout::ENodeRole::Unknown)
 				{
-					Sum += Sample;
-				}
-				RuleSet.ExecColumnSpacing = FMath::Clamp(Sum / HorizontalSamples.Num(), 120.0f, 900.0f);
-			}
-
-			RuleSet.BranchRowSpacing = FMath::Clamp(FMath::Abs(BranchCenter.Y - ExecCenter.Y) / Scale, 80.0f, 640.0f);
-			RuleSet.ExecRowSpacing = FMath::Clamp(FMath::Abs(AsyncCenter.Y - ExecCenter.Y) / Scale, 80.0f, 640.0f);
-			if (ExecCenter.X > PureCenter.X)
-			{
-				RuleSet.PureInputOffsetX = FMath::Clamp((ExecCenter.X - PureCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			if (ExecCenter.X > VariableCenter.X)
-			{
-				RuleSet.VariableInputOffsetX = FMath::Clamp((ExecCenter.X - VariableCenter.X) / Scale, 80.0f, 720.0f);
-			}
-			RuleSet.InputPinRowSpacing = FMath::Clamp(FMath::Abs(VariableCenter.Y - PureCenter.Y) / (2.0f * Scale), 24.0f, 180.0f);
-
-			RuleSet.EditorCanvasRoleCenters.Reset();
-			for (const TPair<ENodeRole, FVector2D>& Pair : RoleCenters)
-			{
-				if (Pair.Key != ENodeRole::Unknown)
-				{
-					RuleSet.EditorCanvasRoleCenters.Add(Pair.Key, Pair.Value);
+					SceneState.RoleCenters.Add(NodeDefinition.Role, RoleCenters.FindRef(NodeDefinition.Role));
 				}
 			}
-			break;
-		}
+			BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ApplySceneStateToRuleSet(
+				CurrentScene,
+				SceneState,
+				RuleSet,
+				LayoutRuleEditorSettings.CanvasRuleScale);
 		}
 
-
-		const FString UpdatedJson = FRuleSetJson::ExportString(RuleSet);
+		const FString UpdatedJson = BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(RuleSet);
 		if (RuleSetChangedDelegate.IsBound())
 		{
 			RuleSetChangedDelegate.Execute(UpdatedJson);
@@ -880,55 +722,49 @@ private:
 
 	FText BuildFooterText() const
 	{
-		switch (CanvasPage)
+		switch (CurrentScene)
 		{
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain:
+		case BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain:
 			return FText::Format(
 				LOCTEXT("LinearCanvasFooter", "Linear Exec | align {0} | column {1}px"),
 				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("LinearAlignOn", "on") : LOCTEXT("LinearAlignOff", "off"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.ExecColumnSpacing)));
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph:
+		case BlueprintHelper::GraphLayout::ESemanticScene::PureDataSubgraph:
 			return FText::Format(
 				LOCTEXT("PureDataCanvasFooter", "Pure Data Subgraph | pure offset {0}px | leaf offset {1}px | pin row {2}px"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.PureInputOffsetX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.VariableInputOffsetX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster:
+		case BlueprintHelper::GraphLayout::ESemanticScene::NodeInputCluster:
 			return FText::Format(
 				LOCTEXT("InputClusterCanvasFooter", "Node Input Cluster | data pad {0}/{1}px | pin row {2}px"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingY)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput:
+		case BlueprintHelper::GraphLayout::ESemanticScene::MultiExecOutput:
 			return FText::Format(
 				LOCTEXT("MultiExecCanvasFooter", "Multi Exec Output | align {0} | branch row {1}px | padding {2}px"),
 				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("MultiExecAlignOn", "on") : LOCTEXT("MultiExecAlignOff", "off"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowSpacing)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowPaddingY)));
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy:
+		case BlueprintHelper::GraphLayout::ESemanticScene::Occupancy:
 			return FText::Format(
 				LOCTEXT("OccupancyCanvasFooter", "Occupancy | padding {0}/{1}px | step {2}px | attempts {3}"),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingX)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingY)),
 				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionStepY)),
 				FText::AsNumber(RuleSet.MaxCollisionAttempts));
-		case BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview:
 		default:
-			return FText::Format(
-				LOCTEXT("CanvasFooter", "Role Overview | exec {0}px | data {1}px | pin row {2}px | apply {3}/frame {4}ms | save_after_apply {5}"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.ExecColumnSpacing)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.VariableInputOffsetX)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)),
-				FText::AsNumber(RuleSet.MaxNodesPerFrame),
-				FText::AsNumber(RuleSet.MaxMillisecondsPerFrame),
-				RuleSet.bSaveAfterApply ? LOCTEXT("SaveAfterApplyOn", "on") : LOCTEXT("SaveAfterApplyOff", "off"));
+			return FText::GetEmpty();
 		}
 	}
 
 	BlueprintHelper::GraphLayout::FRuleSet RuleSet;
 	TMap<BlueprintHelper::GraphLayout::ENodeRole, FVector2D> RoleCenters;
 	TOptional<BlueprintHelper::GraphLayout::ENodeRole> DraggedRole;
-	BlueprintHelperLayoutRuleEditorLocal::ECanvasPage CanvasPage = BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview;
+	TOptional<BlueprintHelper::GraphLayout::ENodeRole> HoveredRole;
+	BlueprintHelper::GraphLayout::ESemanticScene CurrentScene =
+		BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;
 	FVector2D DragOffset = FVector2D::ZeroVector;
 	FBlueprintHelperLayoutRuleCanvasChanged RuleSetChangedDelegate;
 };
@@ -938,6 +774,8 @@ BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 {
 	LayoutRuleEditorSettings = FBlueprintHelperUiSettingsResolver::LoadLayoutRuleEditorSettings();
+	LayoutRuleEditorSettings.MaxMillisecondsPerFrame =
+		BlueprintHelperLayoutRuleEditorLocal::ClampMillisecondsPerFrame(LayoutRuleEditorSettings.MaxMillisecondsPerFrame);
 	const BlueprintHelper::GraphLayout::FRuleSet DefaultRuleSet;
 
 	SettingsRuleId = LayoutRuleEditorSettings.DefaultRuleId;
@@ -981,6 +819,9 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 
 	FString InitialStatus;
 	bLastValidationPassed = ValidateRuleSetJson(InitialStatus);
+	PreviewService = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService>();
+	PreviewMaterializer = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer>();
+	PreviewState = EPreviewState::Edit;
 
 	ChildSlot
 	[
@@ -991,162 +832,11 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(8.0f, 8.0f, 8.0f, 4.0f)
+		.Padding(0.0f)
 		[
-			SNew(SWrapBox)
-			.UseAllottedSize(true)
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			SAssignNew(WorkspaceBox, SBox)
 			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPageRoleOverview", "Role Overview"),
-					LOCTEXT("CanvasPageRoleOverviewTooltip", "Show the original draggable role overview canvas."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::RoleOverview);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPageLinearExec", "Linear Exec"),
-					LOCTEXT("CanvasPageLinearExecTooltip", "Configure the draggable linear exec chain scene."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPagePureData", "Pure Data"),
-					LOCTEXT("CanvasPagePureDataTooltip", "Configure the draggable pure data subgraph scene."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::PureDataSubgraph);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPageInputCluster", "Input Cluster"),
-					LOCTEXT("CanvasPageInputClusterTooltip", "Configure the draggable node input cluster scene."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::NodeInputCluster);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPageMultiExec", "Multi Exec"),
-					LOCTEXT("CanvasPageMultiExecTooltip", "Configure the draggable multi-exec output row scene."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::MultiExecOutput);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("CanvasPageOccupancy", "Occupancy"),
-					LOCTEXT("CanvasPageOccupancyTooltip", "Configure the draggable occupancy and collision scene."),
-					FOnClicked::CreateLambda([this]()
-					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::Occupancy);
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SWrapBox::Slot()
-			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("AlignExecRow", "Align Exec Row"),
-					LOCTEXT("AlignExecRowTooltip", "Align the linear exec node to the ExecEntry baseline."),
-					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnAlignExecRowClicked))
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(8.0f, 0.0f, 8.0f, 6.0f)
-		[
-			SNew(SBorder)
-			.Padding(1.0f)
-			[
-				SAssignNew(RuleCanvas, SBlueprintHelperLayoutRuleCanvas)
-				.LayoutRuleEditorSettings(LayoutRuleEditorSettings)
-				.OnRuleSetChanged(FBlueprintHelperLayoutRuleCanvasChanged::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged))
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(8.0f, 0.0f, 8.0f, 8.0f)
-		[
-			SNew(SWrapBox)
-			.UseAllottedSize(true)
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleEventEntry", "EventEntry"), FLinearColor(0.42f, 0.2f, 0.78f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleExecNode", "ExecNode"), FLinearColor(0.85f, 0.1f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleBranchControl", "BranchControl"), FLinearColor(0.88f, 0.45f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RolePureFunction", "PureFunction"), FLinearColor(0.1f, 0.65f, 0.25f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "OperatorOrCompare"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "VariableInput"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleAsyncNode", "AsyncNode"), FLinearColor(0.0f, 0.68f, 0.78f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "DelegateNode"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleComment", "Comment"), FLinearColor(0.22f, 0.22f, 0.22f, 1.0f))
+				BuildEditWorkspace()
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -1249,6 +939,212 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 }
 
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION
+
+SBlueprintHelperLayoutRuleEditor::~SBlueprintHelperLayoutRuleEditor()
+{
+	CancelActivePreview();
+	if (PreviewService.IsValid())
+	{
+		PreviewService->CancelAll();
+	}
+}
+
+void SBlueprintHelperLayoutRuleEditor::Tick(
+	const FGeometry& AllottedGeometry,
+	const double InCurrentTime,
+	const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	PumpPreviewMaterializer();
+}
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildEditWorkspace()
+{
+	if (!RuleCanvas.IsValid())
+	{
+		RuleCanvas = SNew(SBlueprintHelperLayoutRuleCanvas)
+			.LayoutRuleEditorSettings(LayoutRuleEditorSettings)
+			.OnRuleSetChanged(FBlueprintHelperLayoutRuleCanvasChanged::CreateSP(
+				this,
+				&SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged));
+		RuleCanvas->SetRuleSetJson(RuleSetJson);
+	}
+
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 8.0f, 8.0f, 4.0f)
+		[
+			BuildSceneToolbar()
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f, 8.0f, 6.0f)
+		[
+			SNew(SBorder)
+			.Padding(1.0f)
+			[
+				RuleCanvas.ToSharedRef()
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f, 8.0f, 8.0f)
+		[
+			SNew(SWrapBox)
+			.UseAllottedSize(true)
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleEventEntry", "EventEntry"), FLinearColor(0.42f, 0.2f, 0.78f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleExecNode", "ExecNode"), FLinearColor(0.85f, 0.1f, 0.08f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleBranchControl", "BranchControl"), FLinearColor(0.88f, 0.45f, 0.08f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RolePureFunction", "PureFunction"), FLinearColor(0.1f, 0.65f, 0.25f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "OperatorOrCompare"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "VariableInput"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleAsyncNode", "AsyncNode"), FLinearColor(0.0f, 0.68f, 0.78f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "DelegateNode"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
+			]
+			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleComment", "Comment"), FLinearColor(0.22f, 0.22f, 0.22f, 1.0f))
+			]
+		];
+}
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
+{
+	if (PreviewState != EPreviewState::Edit)
+	{
+		return SNullWidget::NullWidget;
+	}
+
+	TSharedRef<SWrapBox> SceneToolbar = SNew(SWrapBox)
+		.UseAllottedSize(true);
+	for (const BlueprintHelper::GraphLayout::FSemanticSceneDefinition& SceneDefinition :
+		BlueprintHelper::GraphLayout::FSemanticSceneCatalog::GetAllScenes())
+	{
+		SceneToolbar->AddSlot()
+			.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+					SceneDefinition.DisplayName,
+					FText::Format(
+						LOCTEXT("CanvasSceneTooltip", "Configure the draggable {0} semantic scene."),
+						SceneDefinition.DisplayName),
+					FOnClicked::CreateLambda([this, Scene = SceneDefinition.Scene]()
+					{
+						if (RuleCanvas.IsValid())
+						{
+							RuleCanvas->SetSemanticScene(Scene);
+						}
+						return FReply::Handled();
+					}))
+			];
+	}
+	SceneToolbar->AddSlot()
+		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+		[
+			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+				LOCTEXT("AlignExecRow", "Align Exec Row"),
+				LOCTEXT("AlignExecRowTooltip", "Align the linear exec node to the ExecEntry baseline."),
+				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnAlignExecRowClicked))
+		];
+	SceneToolbar->AddSlot()
+		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+		[
+			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+				LOCTEXT("PreviewLayoutRule", "Preview"),
+				LOCTEXT("PreviewLayoutRuleTooltip", "Build a read-only native Blueprint graph preview for the active semantic scene."),
+				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPreviewClicked))
+		];
+	return SceneToolbar;
+}
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewWorkspace()
+{
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 8.0f, 8.0f, 6.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+			[
+				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+					LOCTEXT("ReturnToEdit", "Return to Edit"),
+					LOCTEXT("ReturnToEditTooltip", "Cancel the active preview and restore the draggable rule canvas."),
+					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnReturnToEditClicked))
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(PreviewStatusMessage))
+				.AutoWrapText(true)
+				.ColorAndOpacity(PreviewState == EPreviewState::PreviewError
+					? BlueprintHelperLayoutRuleEditorLocal::InvalidStatusColor
+					: FLinearColor(0.78f, 0.78f, 0.78f, 1.0f))
+			]
+		]
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		.Padding(8.0f, 0.0f, 8.0f, 8.0f)
+		[
+			BuildPreviewContent()
+		];
+}
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewContent()
+{
+	if (PreviewState == EPreviewState::PreviewReady && PreviewGraphEditor.IsValid())
+	{
+		return SNew(SBorder)
+			.Padding(1.0f)
+			[
+				PreviewGraphEditor.ToSharedRef()
+			];
+	}
+
+	return BuildPreviewStatusWidget();
+}
+
+TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewStatusWidget() const
+{
+	return SNew(SBorder)
+		.Padding(14.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(PreviewStatusMessage))
+			.AutoWrapText(true)
+			.ColorAndOpacity(PreviewState == EPreviewState::PreviewError
+				? BlueprintHelperLayoutRuleEditorLocal::InvalidStatusColor
+				: FLinearColor(0.78f, 0.78f, 0.78f, 1.0f))
+		];
+}
 
 TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 {
@@ -1670,9 +1566,36 @@ FReply SBlueprintHelperLayoutRuleEditor::OnAlignExecRowClicked()
 {
 	if (RuleCanvas.IsValid())
 	{
-		RuleCanvas->SetCanvasPage(BlueprintHelperLayoutRuleEditorLocal::ECanvasPage::LinearExecChain);
+		RuleCanvas->SetSemanticScene(BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain);
 		RuleCanvas->AlignExecRowToEntry();
 	}
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperLayoutRuleEditor::OnPreviewClicked()
+{
+	if (RuleCanvas.IsValid())
+	{
+		EditSceneBeforePreview = RuleCanvas->GetCurrentScene();
+		RuleCanvas->CommitCurrentScene();
+	}
+
+	SetPreviewState(EPreviewState::PreviewLoading, TEXT("Building preview data..."));
+	StartPreviewBuild();
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperLayoutRuleEditor::OnReturnToEditClicked()
+{
+	CancelActivePreview();
+	SetPreviewState(EPreviewState::Edit, TEXT(""));
+
+	if (RuleCanvas.IsValid() && RuleCanvas->GetCurrentScene() != EditSceneBeforePreview)
+	{
+		RuleCanvas->SetSemanticScene(EditSceneBeforePreview);
+	}
+
+	RefreshCanvasFromJson();
 	return FReply::Handled();
 }
 
@@ -1764,7 +1687,9 @@ void SBlueprintHelperLayoutRuleEditor::RefreshSettingsFromJson()
 	SettingsCollisionStepY = ParsedRuleSet.CollisionStepY;
 	SettingsMaxCollisionAttempts = ParsedRuleSet.MaxCollisionAttempts;
 	SettingsMaxNodesPerFrame = ParsedRuleSet.MaxNodesPerFrame;
-	SettingsMaxMillisecondsPerFrame = ParsedRuleSet.MaxMillisecondsPerFrame;
+	SettingsMaxMillisecondsPerFrame =
+		BlueprintHelperLayoutRuleEditorLocal::ClampMillisecondsPerFrame(ParsedRuleSet.MaxMillisecondsPerFrame);
+	LayoutRuleEditorSettings.MaxMillisecondsPerFrame = SettingsMaxMillisecondsPerFrame;
 	bSettingsMoveGeneratedNodes = ParsedRuleSet.bMoveGeneratedNodes;
 	bSettingsMoveExistingNodes = ParsedRuleSet.bMoveExistingNodes;
 	bSettingsMarkDirtyAfterApply = ParsedRuleSet.bMarkDirtyAfterApply;
@@ -1859,7 +1784,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId
 		ParsedRuleSet.CollisionStepY = FMath::Clamp(NewValue, 8.0f, 400.0f);
 		break;
 	case MaxMillisecondsPerFrame:
-		ParsedRuleSet.MaxMillisecondsPerFrame = FMath::Clamp(NewValue, 0.25f, 20.0f);
+		ParsedRuleSet.MaxMillisecondsPerFrame = BlueprintHelperLayoutRuleEditorLocal::ClampMillisecondsPerFrame(NewValue);
 		break;
 	default:
 		return;
@@ -2056,6 +1981,172 @@ void SBlueprintHelperLayoutRuleEditor::RefreshCanvasFromJson()
 #endif
 		RuleCanvas->SetRuleSetJson(RuleSetJson);
 	}
+}
+
+void SBlueprintHelperLayoutRuleEditor::SetPreviewState(
+	const EPreviewState InPreviewState,
+	const FString& InStatusMessage)
+{
+	PreviewState = InPreviewState;
+	PreviewStatusMessage = InStatusMessage;
+	RefreshWorkspace();
+}
+
+void SBlueprintHelperLayoutRuleEditor::RefreshWorkspace()
+{
+	if (!WorkspaceBox.IsValid())
+	{
+		return;
+	}
+
+	WorkspaceBox->SetContent(IsPreviewMode()
+		? BuildPreviewWorkspace()
+		: BuildEditWorkspace());
+}
+
+void SBlueprintHelperLayoutRuleEditor::StartPreviewBuild()
+{
+	if (!PreviewService.IsValid())
+	{
+		PreviewService = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService>();
+	}
+
+	if (ActivePreviewJobId != 0)
+	{
+		PreviewService->Cancel(ActivePreviewJobId);
+		ActivePreviewJobId = 0;
+	}
+
+	PendingPreviewBuildResult.Reset();
+	PreviewGraphEditor.Reset();
+	PreviewMaterializer = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer>();
+
+	BlueprintHelper::GraphLayout::FGraphLayoutPreviewRequest Request;
+	Request.Scene = RuleCanvas.IsValid() ? RuleCanvas->GetCurrentScene() : EditSceneBeforePreview;
+	Request.RuleSetJson = RuleSetJson;
+	const uint64 PreviewGeneration = ++ActivePreviewGeneration;
+	ActivePreviewJobId = PreviewService->StartPreviewBuild(
+		Request,
+		BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildCompleted::CreateSP(
+			this,
+			&SBlueprintHelperLayoutRuleEditor::HandlePreviewBuildCompleted,
+			PreviewGeneration));
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandlePreviewBuildCompleted(
+	const BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult& Result,
+	const uint64 ExpectedPreviewGeneration)
+{
+	if (ExpectedPreviewGeneration != ActivePreviewGeneration ||
+		(Result.JobId != 0 && Result.JobId != ActivePreviewJobId) ||
+		PreviewState != EPreviewState::PreviewLoading)
+	{
+		return;
+	}
+
+	ActivePreviewJobId = 0;
+	if (!Result.bSuccess)
+	{
+		SetPreviewState(
+			EPreviewState::PreviewError,
+			Result.Error.IsEmpty() ? TEXT("Preview data build failed.") : Result.Error);
+		return;
+	}
+
+	PendingPreviewBuildResult = Result;
+	SetPreviewState(EPreviewState::PreviewMaterializing, TEXT("Materializing preview graph..."));
+}
+
+void SBlueprintHelperLayoutRuleEditor::PumpPreviewMaterializer()
+{
+	if (PreviewState != EPreviewState::PreviewMaterializing)
+	{
+		return;
+	}
+
+	if (!PreviewMaterializer.IsValid())
+	{
+		PreviewMaterializer = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer>();
+	}
+
+	if (PendingPreviewBuildResult.IsSet())
+	{
+		const BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult& BuildResult =
+			PendingPreviewBuildResult.GetValue();
+		PreviewMaterializer->Begin(
+			BuildResult.Sample,
+			BuildResult.LayoutPlan);
+		PendingPreviewBuildResult.Reset();
+	}
+
+	if (!PreviewMaterializer->IsComplete())
+	{
+		PreviewMaterializer->Tick(LayoutRuleEditorSettings.MaxMillisecondsPerFrame);
+	}
+
+	if (!PreviewMaterializer->IsComplete())
+	{
+		return;
+	}
+
+	const BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializerResult& MaterializerResult =
+		PreviewMaterializer->GetResult();
+	if (!MaterializerResult.Error.IsEmpty() || !MaterializerResult.PreviewGraph.IsValid())
+	{
+		SetPreviewState(
+			EPreviewState::PreviewError,
+			MaterializerResult.Error.IsEmpty()
+				? TEXT("Preview graph materialization failed.")
+				: MaterializerResult.Error);
+		return;
+	}
+
+	BuildPreviewGraphEditor(MaterializerResult.PreviewGraph.Get());
+	SetPreviewState(EPreviewState::PreviewReady, TEXT("Preview ready."));
+}
+
+void SBlueprintHelperLayoutRuleEditor::BuildPreviewGraphEditor(UEdGraph* PreviewGraph)
+{
+	if (!PreviewGraph)
+	{
+		PreviewGraphEditor.Reset();
+		return;
+	}
+
+	FGraphAppearanceInfo Appearance;
+	Appearance.CornerText = LOCTEXT("LayoutRulePreviewCornerText", "Preview");
+	Appearance.InstructionText = LOCTEXT("LayoutRulePreviewInstruction", "Read-only GraphLayout Preview");
+	Appearance.ReadOnlyText = LOCTEXT("LayoutRulePreviewReadOnly", "Preview Only");
+
+	TSharedRef<SGraphEditor> Editor = SAssignNew(PreviewGraphEditor, SGraphEditor)
+		.IsEditable(false)
+		.DisplayAsReadOnly(false)
+		.GraphToEdit(PreviewGraph)
+		.Appearance(Appearance)
+		.ShowGraphStateOverlay(false);
+	Editor->NotifyGraphChanged();
+}
+
+void SBlueprintHelperLayoutRuleEditor::CancelActivePreview()
+{
+	if (PreviewService.IsValid() && ActivePreviewJobId != 0)
+	{
+		PreviewService->Cancel(ActivePreviewJobId);
+	}
+
+	ActivePreviewJobId = 0;
+	++ActivePreviewGeneration;
+	PendingPreviewBuildResult.Reset();
+	PreviewGraphEditor.Reset();
+	if (PreviewMaterializer.IsValid())
+	{
+		PreviewMaterializer->Cancel();
+	}
+}
+
+bool SBlueprintHelperLayoutRuleEditor::IsPreviewMode() const
+{
+	return PreviewState != EPreviewState::Edit;
 }
 
 FString SBlueprintHelperLayoutRuleEditor::LoadJsonFromDefaultFile(FString& OutMessage) const

@@ -77,6 +77,117 @@ static bool IsDeprecatedIgnoredRoleText(const FString& Value)
 		Value.Equals(TEXT("K2Node_Knot"), ESearchCase::IgnoreCase);
 }
 
+static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanvasObject, FValidationResult& Validation)
+{
+	if (!EditorCanvasObject.IsValid())
+	{
+		return;
+	}
+
+	if (EditorCanvasObject->HasField(TEXT("role_centers")))
+	{
+		Validation.AddError(TEXT("Legacy field 'editor_canvas.role_centers' is not supported. Use 'editor_canvas.scenes.<scene>.role_centers'."));
+	}
+
+	if (!EditorCanvasObject->HasField(TEXT("scenes")))
+	{
+		return;
+	}
+
+	const TSharedPtr<FJsonObject>* ScenesObject = nullptr;
+	if (!EditorCanvasObject->TryGetObjectField(TEXT("scenes"), ScenesObject) || !ScenesObject || !ScenesObject->IsValid())
+	{
+		Validation.AddError(TEXT("Field 'editor_canvas.scenes' must be an object."));
+		return;
+	}
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& ScenePair : (*ScenesObject)->Values)
+	{
+		ESemanticScene Scene = ESemanticScene::LinearExecChain;
+		if (!LexTryParseString(Scene, ScenePair.Key))
+		{
+			Validation.AddError(FString::Printf(
+				TEXT("Field 'editor_canvas.scenes.%s' uses an unsupported scene key."),
+				*ScenePair.Key));
+			continue;
+		}
+
+		if (!ScenePair.Value.IsValid() || ScenePair.Value->Type != EJson::Object)
+		{
+			Validation.AddError(FString::Printf(
+				TEXT("Field 'editor_canvas.scenes.%s' must be an object."),
+				*ScenePair.Key));
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject> SceneObject = ScenePair.Value->AsObject();
+		if (!SceneObject.IsValid())
+		{
+			Validation.AddError(FString::Printf(
+				TEXT("Field 'editor_canvas.scenes.%s' must be an object."),
+				*ScenePair.Key));
+			continue;
+		}
+
+		if (!SceneObject->HasField(TEXT("role_centers")))
+		{
+			Validation.AddError(FString::Printf(
+				TEXT("Field 'editor_canvas.scenes.%s.role_centers' is required."),
+				*ScenePair.Key));
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject>* RoleCentersObject = nullptr;
+		if (!SceneObject->TryGetObjectField(TEXT("role_centers"), RoleCentersObject) || !RoleCentersObject || !RoleCentersObject->IsValid())
+		{
+			Validation.AddError(FString::Printf(
+				TEXT("Field 'editor_canvas.scenes.%s.role_centers' must be an object."),
+				*ScenePair.Key));
+			continue;
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& RolePair : (*RoleCentersObject)->Values)
+		{
+			if (IsDeprecatedIgnoredRoleText(RolePair.Key))
+			{
+				Validation.Warnings.Add(FString::Printf(
+					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' uses deprecated Reroute/Knot role and will be ignored."),
+					*ScenePair.Key,
+					*RolePair.Key));
+				continue;
+			}
+
+			ENodeRole Role = ENodeRole::Unknown;
+			if (!LexTryParseString(Role, RolePair.Key) || Role == ENodeRole::Unknown)
+			{
+				Validation.AddError(FString::Printf(
+					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' uses an unsupported role."),
+					*ScenePair.Key,
+					*RolePair.Key));
+				continue;
+			}
+
+			if (!RolePair.Value.IsValid() || RolePair.Value->Type != EJson::Object)
+			{
+				Validation.AddError(FString::Printf(
+					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' must be an object with numeric x and y fields."),
+					*ScenePair.Key,
+					*RolePair.Key));
+				continue;
+			}
+
+			FVector2D Center;
+			if (!TryReadVector2D(RolePair.Value->AsObject(), Center))
+			{
+				Validation.AddError(FString::Printf(
+					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' must be an object with numeric x and y fields."),
+					*ScenePair.Key,
+					*RolePair.Key));
+			}
+		}
+	}
+}
+
 static void ReadStringArrayOrScalar(
 	const TSharedPtr<FJsonObject>& Json,
 	const TCHAR* FieldName,
@@ -235,6 +346,21 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 		TryReadPositiveNumber(*ApplyObject, TEXT("max_ms_per_frame"), Defaults.MaxMillisecondsPerFrame, Validation);
 	}
 
+	const TSharedPtr<FJsonObject>* EditorCanvasObjectForValidation = nullptr;
+	if (Json->HasField(TEXT("editor_canvas")))
+	{
+		if (!Json->TryGetObjectField(TEXT("editor_canvas"), EditorCanvasObjectForValidation) ||
+			!EditorCanvasObjectForValidation ||
+			!EditorCanvasObjectForValidation->IsValid())
+		{
+			Validation.AddError(TEXT("Field 'editor_canvas' must be an object."));
+		}
+		else
+		{
+			ValidateEditorCanvasScenes(*EditorCanvasObjectForValidation, Validation);
+		}
+	}
+
 	if (const TArray<TSharedPtr<FJsonValue>>* RoleRules = FindRoleRulesArray(Json))
 	{
 		for (int32 Index = 0; Index < RoleRules->Num(); ++Index)
@@ -347,23 +473,46 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 	const TSharedPtr<FJsonObject>* EditorCanvasObject = nullptr;
 	if (Json->TryGetObjectField(TEXT("editor_canvas"), EditorCanvasObject) && EditorCanvasObject && EditorCanvasObject->IsValid())
 	{
-		const TSharedPtr<FJsonObject>* RoleCentersObject = nullptr;
-		if ((*EditorCanvasObject)->TryGetObjectField(TEXT("role_centers"), RoleCentersObject) && RoleCentersObject && RoleCentersObject->IsValid())
+		const TSharedPtr<FJsonObject>* ScenesObject = nullptr;
+		if ((*EditorCanvasObject)->TryGetObjectField(TEXT("scenes"), ScenesObject) && ScenesObject && ScenesObject->IsValid())
 		{
-			OutRuleSet.EditorCanvasRoleCenters.Reset();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*RoleCentersObject)->Values)
+			OutRuleSet.EditorCanvasScenes.Reset();
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& ScenePair : (*ScenesObject)->Values)
 			{
-				ENodeRole Role = ENodeRole::Unknown;
-				if (IsDeprecatedIgnoredRoleText(Pair.Key) || !LexTryParseString(Role, Pair.Key) || Role == ENodeRole::Unknown)
+				ESemanticScene Scene = ESemanticScene::LinearExecChain;
+				if (!LexTryParseString(Scene, ScenePair.Key))
 				{
 					continue;
 				}
 
-				FVector2D Center;
-				if (TryReadVector2D(Pair.Value.IsValid() ? Pair.Value->AsObject() : nullptr, Center))
+				const TSharedPtr<FJsonObject> SceneObject = ScenePair.Value.IsValid() ? ScenePair.Value->AsObject() : nullptr;
+				if (!SceneObject.IsValid())
 				{
-					OutRuleSet.EditorCanvasRoleCenters.Add(Role, Center);
+					continue;
 				}
+
+				const TSharedPtr<FJsonObject>* RoleCentersObject = nullptr;
+				if (!SceneObject->TryGetObjectField(TEXT("role_centers"), RoleCentersObject) || !RoleCentersObject || !RoleCentersObject->IsValid())
+				{
+					continue;
+				}
+
+				FEditorCanvasSceneState SceneState;
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& RolePair : (*RoleCentersObject)->Values)
+				{
+					ENodeRole Role = ENodeRole::Unknown;
+					if (IsDeprecatedIgnoredRoleText(RolePair.Key) || !LexTryParseString(Role, RolePair.Key) || Role == ENodeRole::Unknown)
+					{
+						continue;
+					}
+
+					FVector2D Center;
+					if (TryReadVector2D(RolePair.Value.IsValid() ? RolePair.Value->AsObject() : nullptr, Center))
+					{
+						SceneState.RoleCenters.Add(Role, Center);
+					}
+				}
+				OutRuleSet.EditorCanvasScenes.Add(Scene, SceneState);
 			}
 		}
 	}
