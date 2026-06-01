@@ -3,6 +3,7 @@
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
 #include "Async/Async.h"
+#include "HAL/PlatformTime.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Misc/DateTime.h"
 #include "IDetailsView.h"
@@ -1143,9 +1144,12 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 		TEXT("reject_queued"));
 	FBlueprintHelperReviewPanelStateService::ClearPresenterErrorState(ReviewPanelState, ChangeId);
 	PendingRejectChangeIds.Add(ChangeId);
+	RejectStartedAtSecondsByChangeId.Add(ChangeId, FPlatformTime::Seconds());
+	RejectStageStartedAtSecondsByChangeId.Add(ChangeId, FPlatformTime::Seconds());
 	SelectedChange = Item;
-	RefreshReviewUiAfterStateChanged(TEXT("reject_queued"), Item->AssetPath);
+	RefreshReviewActionQueueState(TEXT("reject_queued"), Item->AssetPath);
 	AddDebugMessage(FString::Printf(TEXT("Reject queued id=%s"), *ChangeId));
+	RecordRejectStageElapsed(ChangeId, TEXT("queued"));
 	if (bShowIndividualNotification)
 	{
 		ShowReviewActionNotification(
@@ -1158,6 +1162,22 @@ void SBlueprintHelperReviewPanel::QueueRejectChange(FReviewChangeItem Item, bool
 			true);
 	}
 	StartNextRejectPrepare();
+}
+
+void SBlueprintHelperReviewPanel::RecordRejectStageElapsed(const FString& ChangeId, const FString& Stage)
+{
+	const double NowSeconds = FPlatformTime::Seconds();
+	double* StageStartedAtSeconds = RejectStageStartedAtSecondsByChangeId.Find(ChangeId);
+	const double StageMs = StageStartedAtSeconds ? (NowSeconds - *StageStartedAtSeconds) * 1000.0 : 0.0;
+	const double* TotalStartedAtSeconds = RejectStartedAtSecondsByChangeId.Find(ChangeId);
+	const double TotalMs = TotalStartedAtSeconds ? (NowSeconds - *TotalStartedAtSeconds) * 1000.0 : StageMs;
+	AddDebugMessage(FString::Printf(
+		TEXT("RejectPerf id=%s stage=%s stage_ms=%.2f total_ms=%.2f"),
+		*ChangeId,
+		*Stage,
+		StageMs,
+		TotalMs));
+	RejectStageStartedAtSecondsByChangeId.Add(ChangeId, NowSeconds);
 }
 
 void SBlueprintHelperReviewPanel::StartNextRejectPrepare()
@@ -1196,7 +1216,8 @@ void SBlueprintHelperReviewPanel::StartNextRejectPrepare()
 			EBlueprintHelperReviewActionIntentKind::Reject,
 			EBlueprintHelperReviewChangeStatus::NeedsAction,
 			TEXT("reject_preparing_rollback_journal"));
-		RefreshReviewUiAfterStateChanged(TEXT("reject_preparing"), Item->AssetPath);
+		RefreshReviewActionQueueState(TEXT("reject_preparing"), Item->AssetPath);
+		RecordRejectStageElapsed(ChangeId, TEXT("prepare_started"));
 
 		const FBlueprintHelperReviewVisibleChange ChangeSnapshot = *Item;
 		TWeakPtr<SBlueprintHelperReviewPanel> WeakPanel =
@@ -1228,6 +1249,7 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 {
 	bAsyncRejectPrepareActive = false;
 	PreparedRejectOptionsByChangeId.Add(ChangeId, PreparedOptions);
+	RecordRejectStageElapsed(ChangeId, TEXT("prepare_finished"));
 	if (FReviewChangeItem Item = FindChangeItemById(ChangeId))
 	{
 		FBlueprintHelperReviewPanelStateService::SetTransientActionState(
@@ -1236,7 +1258,7 @@ void SBlueprintHelperReviewPanel::HandlePreparedRejectReady(
 			EBlueprintHelperReviewActionIntentKind::Reject,
 			EBlueprintHelperReviewChangeStatus::NeedsAction,
 			TEXT("reject_mutation_scheduled"));
-		RefreshReviewUiAfterStateChanged(TEXT("reject_mutation_scheduled"), Item->AssetPath);
+		RefreshReviewActionQueueState(TEXT("reject_mutation_scheduled"), Item->AssetPath);
 		if (!RejectBatchKeyByChangeId.Contains(ChangeId))
 		{
 			ShowReviewActionNotification(
@@ -1285,7 +1307,8 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		EBlueprintHelperReviewActionIntentKind::Reject,
 		EBlueprintHelperReviewChangeStatus::NeedsAction,
 		TEXT("reject_mutating_single_frame"));
-	RefreshReviewUiAfterStateChanged(TEXT("reject_mutating"), Item->AssetPath);
+	RefreshReviewActionQueueState(TEXT("reject_mutating"), Item->AssetPath);
+	RecordRejectStageElapsed(ChangeId, TEXT("mutation_started"));
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject mutation started id=%s mode=archive_baseline_snapshot"),
 		*ChangeId));
@@ -1330,6 +1353,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		{
 			RefreshReviewUiAfterStateChanged(TEXT("reject_lifecycle_root_failed"), Item->AssetPath);
 		}
+		RecordRejectStageElapsed(ChangeId, TEXT("mutation_finished"));
 		AddDebugMessage(FString::Printf(
 			TEXT("Reject lifecycle root id=%s success=%d removedChildren=%d status=%s message=\"%s\""),
 			*Item->ChangeId,
@@ -1390,6 +1414,7 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 		RefreshReviewUiAfterStateChanged(TEXT("reject_change_failed"), Item->AssetPath);
 	}
 
+	RecordRejectStageElapsed(ChangeId, TEXT("mutation_finished"));
 	AddDebugMessage(FString::Printf(
 		TEXT("Reject change id=%s success=%d status=%s message=\"%s\""),
 		*Item->ChangeId,
@@ -1432,8 +1457,11 @@ void SBlueprintHelperReviewPanel::ExecutePreparedRejectMutation(const FString& C
 
 void SBlueprintHelperReviewPanel::FinishAsyncReject(const FString& ChangeId)
 {
+	RecordRejectStageElapsed(ChangeId, TEXT("finished"));
 	FBlueprintHelperReviewPanelStateService::ClearTransientActionState(ReviewPanelState, ChangeId);
 	PreparedRejectOptionsByChangeId.Remove(ChangeId);
+	RejectStartedAtSecondsByChangeId.Remove(ChangeId);
+	RejectStageStartedAtSecondsByChangeId.Remove(ChangeId);
 	if (ActiveRejectChangeId == ChangeId)
 	{
 		ActiveRejectChangeId.Reset();
@@ -2067,6 +2095,18 @@ void SBlueprintHelperReviewPanel::RefreshReviewUiAfterStateChanged(
 		*PreferredAssetPath,
 		SelectedChange.IsValid() ? *SelectedChange->ChangeId : TEXT(""),
 		ChangeItems.Num()));
+}
+
+void SBlueprintHelperReviewPanel::RefreshReviewActionQueueState(
+	const FString& Reason,
+	const FString& PreferredAssetPath)
+{
+	(void)Reason;
+	(void)PreferredAssetPath;
+	RebuildReviewPanelStatePreservingTransient();
+	RebuildChangeTreeItems();
+	RefreshChangeTreeWidget();
+	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }
 
 void SBlueprintHelperReviewPanel::RebuildReviewPanelStatePreservingTransient()

@@ -107,6 +107,7 @@ private:
 	void OnDebugBundlePathCommitted(const FText& Text, ETextCommit::Type CommitType);
 	FReply OnCopyDebugMessages() const;
 	FReply OnCopyDebugBundlePath() const;
+	FReply OnClearDebugMessages();
 	FReply OnLoadDebugBundle();
 	FReply OnCaptureFocusDebugBundle();
 	void AdvanceDebugFocusTraversal();
@@ -141,6 +142,7 @@ private:
 	void RefreshDiffStackWidgets();
 	void RefreshMainWorkspaceAfterReviewStateChanged();
 	void RefreshReviewUiAfterStateChanged(const FString& Reason, const FString& PreferredAssetPath = FString());
+	void RefreshReviewActionQueueState(const FString& Reason, const FString& PreferredAssetPath = FString());
 	void RebuildReviewPanelStatePreservingTransient();
 	void SyncReviewRowHighlightStates(const FString& PreferredAssetPath = FString());
 	void OnRowHighlightStateChanged(
@@ -183,6 +185,7 @@ private:
 	static FString BuildReviewActionNotificationLabel(FReviewChangeItem Item);
 	void QueueRejectChange(FReviewChangeItem Item, bool bShowIndividualNotification = true);
 	void RecordRejectBatchResult(const FString& ChangeId, bool bSucceeded);
+	void RecordRejectStageElapsed(const FString& ChangeId, const FString& Stage);
 	void StartNextRejectPrepare();
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void ExecutePreparedRejectMutation(const FString& ChangeId);
@@ -262,6 +265,8 @@ private:
 	FString DebugBundlePath;
 	TArray<FString> PendingRejectChangeIds;
 	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
+	TMap<FString, double> RejectStartedAtSecondsByChangeId;
+	TMap<FString, double> RejectStageStartedAtSecondsByChangeId;
 	TMap<FString, TWeakPtr<SNotificationItem>> ReviewActionNotifications;
 	TMap<FString, FString> RejectBatchKeyByChangeId;
 	TMap<FString, FReviewActionBatchNotificationState> RejectBatchNotifications;

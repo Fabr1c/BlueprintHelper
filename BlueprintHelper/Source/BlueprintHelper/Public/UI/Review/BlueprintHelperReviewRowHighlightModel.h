@@ -113,6 +113,15 @@ private:
 	static bool IsSameChange(
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Left,
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Right);
+	static bool AreBindingsEquivalent(
+		const FBlueprintHelperReviewRowBinding& Left,
+		const FBlueprintHelperReviewRowBinding& Right);
+	static bool AreEntriesEquivalent(
+		const FRowHighlightEntry& Left,
+		const FRowHighlightEntry& Right);
+	static bool AreSurfaceStatesEquivalent(
+		const FRowHighlightSurfaceState& Left,
+		const FRowHighlightSurfaceState& Right);
 	static FString BuildRowHighlightStateKey(const FString& AssetPath, EBlueprintHelperReviewSurface Surface);
 	static void AddStateAssetPath(const FString& AssetPath, TArray<FString>& OutAssetPaths);
 	static FString ExtractReadableTail(FString Text);

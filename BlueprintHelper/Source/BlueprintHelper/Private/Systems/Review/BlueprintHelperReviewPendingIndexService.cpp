@@ -14,6 +14,7 @@
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreJsonUtils.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 
 namespace BlueprintHelperReviewPendingIndex
@@ -36,6 +37,31 @@ namespace BlueprintHelperReviewPendingIndex
 			return Record.SourceReviewSummary.CreatedAtFirst;
 		}
 		return Record.ArchiveSessionId;
+	}
+
+	static FString MakePageOrderSortKey(
+		const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+	{
+		const FBlueprintHelperReviewVisibleChange& Change = Summary.Change;
+		const FString AssetKey = FBlueprintHelperReviewStoreTargetUtils::MakeReviewAssetLinkKey(
+			Change.AssetPath.IsEmpty() ? Summary.RecordAssetPath : Change.AssetPath);
+		const int32 ExecutionOrder =
+			FBlueprintHelperReviewStoreTargetUtils::GetReviewSortValue(Change.ExecutionOrder);
+		const int32 TaskStepIndex =
+			FBlueprintHelperReviewStoreTargetUtils::GetReviewSortValue(Change.TaskStepIndex);
+		const int32 AtomicIndex =
+			FBlueprintHelperReviewStoreTargetUtils::GetReviewSortValue(Change.AtomicIndex);
+		const int32 LifecycleRootRank = Change.bIsAssetLifecycleRoot ? 0 : 1;
+		return FString::Printf(
+			TEXT("%s|%010d|%010d|%010d|%d|%s|%s|%s"),
+			*AssetKey,
+			ExecutionOrder,
+			TaskStepIndex,
+			AtomicIndex,
+			LifecycleRootRank,
+			*Change.LocationKey,
+			*Summary.ReviewRecordId,
+			*Change.ChangeId);
 	}
 
 	static void StripSnapshotPayload(FBlueprintHelperReviewVisibleChange& Change)
@@ -374,6 +400,63 @@ namespace BlueprintHelperReviewPendingIndex
 		return IsPendingVisibleChange(Summary.Change);
 	}
 
+	static void NormalizePendingSummariesForReviewModel(
+		TArray<FBlueprintHelperReviewPendingVisibleChangeSummary>& Summaries)
+	{
+		if (Summaries.Num() == 0)
+		{
+			return;
+		}
+
+		TMap<FString, FBlueprintHelperReviewPendingVisibleChangeSummary> SummaryByChangeId;
+		TArray<FBlueprintHelperReviewVisibleChange> Changes;
+		Changes.Reserve(Summaries.Num());
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
+		{
+			if (!Summary.Change.ChangeId.IsEmpty())
+			{
+				SummaryByChangeId.Add(Summary.Change.ChangeId, Summary);
+			}
+			Changes.Add(Summary.Change);
+		}
+
+		FBlueprintHelperReviewStoreMergeUtils::CollapseVisibleChangesLatestWins(Changes);
+		FBlueprintHelperReviewStoreTargetUtils::LinkPendingChildrenToLifecycleRoots(Changes);
+		FBlueprintHelperReviewStoreTargetUtils::SortVisibleChangesByReviewOrder(Changes);
+
+		TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> NormalizedSummaries;
+		NormalizedSummaries.Reserve(Changes.Num());
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			FBlueprintHelperReviewPendingVisibleChangeSummary Summary;
+			if (const FBlueprintHelperReviewPendingVisibleChangeSummary* Existing =
+				SummaryByChangeId.Find(Change.ChangeId))
+			{
+				Summary = *Existing;
+			}
+			Summary.Change = Change;
+			Summary.SortKey = MakePageOrderSortKey(Summary);
+			NormalizedSummaries.Add(MoveTemp(Summary));
+		}
+
+		NormalizedSummaries.Sort([](
+			const FBlueprintHelperReviewPendingVisibleChangeSummary& Left,
+			const FBlueprintHelperReviewPendingVisibleChangeSummary& Right)
+		{
+			if (Left.SortKey != Right.SortKey)
+			{
+				return Left.SortKey < Right.SortKey;
+			}
+			if (Left.ReviewRecordId != Right.ReviewRecordId)
+			{
+				return Left.ReviewRecordId < Right.ReviewRecordId;
+			}
+			return Left.Change.ChangeId < Right.Change.ChangeId;
+		});
+
+		Summaries = MoveTemp(NormalizedSummaries);
+	}
+
 	static int32 ComparePendingSummaryForPage(
 		const FBlueprintHelperReviewPendingVisibleChangeSummary& Left,
 		const FBlueprintHelperReviewPendingIndexPageCursor& Cursor)
@@ -564,20 +647,7 @@ bool FBlueprintHelperReviewPendingIndexService::QueryPendingVisibleChanges(
 		}
 	}
 
-	OutChanges.Sort([](
-		const FBlueprintHelperReviewPendingVisibleChangeSummary& Left,
-		const FBlueprintHelperReviewPendingVisibleChangeSummary& Right)
-	{
-		if (Left.SortKey != Right.SortKey)
-		{
-			return Left.SortKey < Right.SortKey;
-		}
-		if (Left.ReviewRecordId != Right.ReviewRecordId)
-		{
-			return Left.ReviewRecordId < Right.ReviewRecordId;
-		}
-		return Left.Change.ChangeId < Right.Change.ChangeId;
-	});
+	BlueprintHelperReviewPendingIndex::NormalizePendingSummariesForReviewModel(OutChanges);
 
 	OutError.Reset();
 	return true;

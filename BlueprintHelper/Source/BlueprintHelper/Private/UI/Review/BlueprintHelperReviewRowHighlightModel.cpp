@@ -192,6 +192,50 @@ bool FBlueprintHelperReviewRowHighlightModel::IsSameChange(
 	return Left.IsValid() && Right.IsValid() && Left->ChangeId == Right->ChangeId;
 }
 
+bool FBlueprintHelperReviewRowHighlightModel::AreBindingsEquivalent(
+	const FBlueprintHelperReviewRowBinding& Left,
+	const FBlueprintHelperReviewRowBinding& Right)
+{
+	return Left.AssetPath == Right.AssetPath
+		&& Left.ChangeId == Right.ChangeId
+		&& Left.AtomicTargetId == Right.AtomicTargetId
+		&& Left.TargetKey == Right.TargetKey
+		&& Left.Surface == Right.Surface;
+}
+
+bool FBlueprintHelperReviewRowHighlightModel::AreEntriesEquivalent(
+	const FRowHighlightEntry& Left,
+	const FRowHighlightEntry& Right)
+{
+	return Left.ChangeId == Right.ChangeId
+		&& Left.TargetKey == Right.TargetKey
+		&& Left.ChangeKind == Right.ChangeKind
+		&& Left.bSelected == Right.bSelected
+		&& AreBindingsEquivalent(Left.Binding, Right.Binding);
+}
+
+bool FBlueprintHelperReviewRowHighlightModel::AreSurfaceStatesEquivalent(
+	const FRowHighlightSurfaceState& Left,
+	const FRowHighlightSurfaceState& Right)
+{
+	if (Left.AssetPath != Right.AssetPath
+		|| Left.Surface != Right.Surface
+		|| Left.TargetKeyToHighlight.Num() != Right.TargetKeyToHighlight.Num())
+	{
+		return false;
+	}
+
+	for (const TPair<FString, FRowHighlightEntry>& Pair : Left.TargetKeyToHighlight)
+	{
+		const FRowHighlightEntry* RightEntry = Right.TargetKeyToHighlight.Find(Pair.Key);
+		if (!RightEntry || !AreEntriesEquivalent(Pair.Value, *RightEntry))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 FString FBlueprintHelperReviewRowHighlightModel::BuildRowHighlightStateKey(
 	const FString& AssetPath,
 	EBlueprintHelperReviewSurface Surface)
@@ -713,7 +757,6 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 		FRowHighlightSurfaceState State;
 		State.AssetPath = AssetPath;
 		State.Surface = Surface;
-		State.Revision = NextStateRevision();
 		State.OnReviewActionIntent = Args.OnReviewActionIntent;
 		State.GetChangeColor = Args.GetChangeColor;
 
@@ -779,8 +822,27 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 			HighlightedItems.Add(Item);
 		}
 
-		GetRowHighlightSurfaceStates().Add(StateKey, State);
-		BroadcastStateChanged(AssetPath, Surface, State.Revision);
+		if (FRowHighlightSurfaceState* ExistingState = GetRowHighlightSurfaceStates().Find(StateKey))
+		{
+			if (AreSurfaceStatesEquivalent(*ExistingState, State))
+			{
+				const uint64 ExistingRevision = ExistingState->Revision;
+				*ExistingState = MoveTemp(State);
+				ExistingState->Revision = ExistingRevision;
+			}
+			else
+			{
+				State.Revision = NextStateRevision();
+				GetRowHighlightSurfaceStates().Add(StateKey, State);
+				BroadcastStateChanged(AssetPath, Surface, State.Revision);
+			}
+		}
+		else
+		{
+			State.Revision = NextStateRevision();
+			GetRowHighlightSurfaceStates().Add(StateKey, State);
+			BroadcastStateChanged(AssetPath, Surface, State.Revision);
+		}
 
 		const bool bShouldEmitGeometryDiagnostics =
 			bEmitGeometryDiagnostics

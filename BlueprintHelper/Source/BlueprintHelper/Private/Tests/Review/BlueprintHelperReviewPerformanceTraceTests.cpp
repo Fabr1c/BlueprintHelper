@@ -13,10 +13,12 @@ bool FBlueprintHelperReviewPerformanceTraceCountersTest::RunTest(const FString& 
 	FBlueprintHelperReviewPerformanceScope Scope(TEXT("ReviewPerf.Test"), 100000);
 	Scope.AddCount(TEXT("records"), 3);
 	Scope.AddBytes(TEXT("payload"), 4096);
+	Scope.AddText(TEXT("target_kind"), TEXT("graph_block"));
 
 	TestEqual(TEXT("Warn threshold is readable"), Scope.GetWarnThresholdMs(), 100000);
 	TestTrue(TEXT("Count counter is readable"), Scope.GetCounterText().Contains(TEXT("records=3")));
 	TestTrue(TEXT("Byte counter is readable"), Scope.GetCounterText().Contains(TEXT("payload_bytes=4096")));
+	TestTrue(TEXT("Text counter is readable"), Scope.GetCounterText().Contains(TEXT("target_kind=\"graph_block\"")));
 	TestTrue(TEXT("Elapsed time is non-negative"), Scope.GetElapsedMilliseconds() >= 0.0);
 
 	return true;

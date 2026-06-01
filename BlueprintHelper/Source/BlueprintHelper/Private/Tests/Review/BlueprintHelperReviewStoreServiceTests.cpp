@@ -13,6 +13,7 @@
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
 #include "Engine/PrimaryAssetLabel.h"
+#include "HAL/PlatformTime.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
@@ -457,6 +458,160 @@ public:
 		if (OutTarget.AfterSnapshotJson.IsEmpty() || OutTarget.RecordedAfterHash.IsEmpty())
 		{
 			OutError = TEXT("empty_node_comment_after_snapshot_fixture");
+			return false;
+		}
+		return true;
+	}
+
+	static bool PopulateReviewVariableTargetFromSnapshot(
+		UBlueprint* Blueprint,
+		const FString& VariableName,
+		const FString& EvidenceId,
+		FBlueprintHelperReviewAtomicTarget& OutTarget,
+		FString& OutError)
+	{
+		if (!Blueprint || VariableName.IsEmpty())
+		{
+			OutError = TEXT("invalid_variable_target_fixture");
+			return false;
+		}
+
+		const FName VariableFName(*VariableName);
+		FEdGraphPinType IntPinType;
+		IntPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+		if (FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableFName) == INDEX_NONE
+			&& !FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableFName, IntPinType))
+		{
+			OutError = TEXT("variable_fixture_add_failed");
+			return false;
+		}
+
+		const int32 VariableIndex =
+			FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableFName);
+		if (VariableIndex == INDEX_NONE)
+		{
+			OutError = TEXT("variable_fixture_missing_after_add");
+			return false;
+		}
+
+		OutTarget = FBlueprintHelperReviewAtomicTarget();
+		OutTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+		OutTarget.AssetPath = Blueprint->GetPathName();
+		OutTarget.TargetKind = TEXT("blueprint_variable");
+		OutTarget.TargetKey = FString::Printf(TEXT("blueprint_variable:%s"), *VariableName);
+		OutTarget.VisualGroupKey = OutTarget.TargetKey;
+		OutTarget.DisplayLabel = VariableName;
+		OutTarget.LatestEvidenceId = EvidenceId;
+		OutTarget.SourceEvidenceIds.Add(EvidenceId);
+
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		FString BaselineHash;
+		Blueprint->NewVariables[VariableIndex].DefaultValue = TEXT("11");
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.BeforeSnapshotJson,
+			BaselineHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.BeforeSnapshotJson.IsEmpty() || BaselineHash.IsEmpty())
+		{
+			OutError = TEXT("empty_variable_before_snapshot_fixture");
+			return false;
+		}
+
+		OutTarget.BaselineHash = BaselineHash;
+		Blueprint->NewVariables[VariableIndex].DefaultValue = TEXT("22");
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.AfterSnapshotJson,
+			OutTarget.RecordedAfterHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.AfterSnapshotJson.IsEmpty() || OutTarget.RecordedAfterHash.IsEmpty())
+		{
+			OutError = TEXT("empty_variable_after_snapshot_fixture");
+			return false;
+		}
+		return true;
+	}
+
+	static bool PopulateReviewGraphBlockTargetFromSnapshot(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FString& BlockLabel,
+		const FString& EvidenceId,
+		FBlueprintHelperReviewAtomicTarget& OutTarget,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph || BlockLabel.IsEmpty())
+		{
+			OutError = TEXT("invalid_graph_block_target_fixture");
+			return false;
+		}
+
+		const FString BlockId =
+			FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), BlockLabel);
+		UK2Node_CustomEvent* FirstNode = AddReviewConversionEventNode(Graph, BlockLabel + TEXT("_A"));
+		UK2Node_CustomEvent* SecondNode = AddReviewConversionEventNode(Graph, BlockLabel + TEXT("_B"));
+		if (!FirstNode || !SecondNode)
+		{
+			OutError = TEXT("graph_block_fixture_node_create_failed");
+			return false;
+		}
+		MarkReviewNodeAsBlueprintHelperOwned(FirstNode, BlockId);
+		MarkReviewNodeAsBlueprintHelperOwned(SecondNode, BlockId);
+
+		OutTarget = FBlueprintHelperReviewAtomicTarget();
+		OutTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+		OutTarget.AssetPath = Blueprint->GetPathName();
+		OutTarget.GraphName = Graph->GetName();
+		OutTarget.TargetKind = TEXT("graph_block");
+		OutTarget.TargetKey = FString::Printf(TEXT("graph:%s:block:%s"), *Graph->GetName(), *BlockId);
+		OutTarget.VisualGroupKey = OutTarget.TargetKey;
+		OutTarget.DisplayLabel = BlockLabel;
+		OutTarget.LatestEvidenceId = EvidenceId;
+		OutTarget.SourceEvidenceIds.Add(EvidenceId);
+		OutTarget.Ownership = TEXT("blueprinthelper_owned");
+
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		FString BaselineHash;
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.BeforeSnapshotJson,
+			BaselineHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.BeforeSnapshotJson.IsEmpty() || BaselineHash.IsEmpty())
+		{
+			OutError = TEXT("empty_graph_block_before_snapshot_fixture");
+			return false;
+		}
+
+		OutTarget.BaselineHash = BaselineHash;
+		UK2Node_CustomEvent* ThirdNode = AddReviewConversionEventNode(Graph, BlockLabel + TEXT("_C"));
+		if (!ThirdNode)
+		{
+			OutError = TEXT("graph_block_fixture_after_node_create_failed");
+			return false;
+		}
+		MarkReviewNodeAsBlueprintHelperOwned(ThirdNode, BlockId);
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.AfterSnapshotJson,
+			OutTarget.RecordedAfterHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.AfterSnapshotJson.IsEmpty() || OutTarget.RecordedAfterHash.IsEmpty())
+		{
+			OutError = TEXT("empty_graph_block_after_snapshot_fixture");
 			return false;
 		}
 		return true;
@@ -2088,6 +2243,71 @@ bool FBlueprintHelperReviewDebugDedupesRepeatedGeometryPendingMessagesTest::RunT
 	}
 
 	TestEqual(TEXT("duplicate pending row highlight debug message is emitted once"), PendingMessageCount, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRowHighlightSkipsUnchangedStateBroadcastTest,
+	"BlueprintHelper.Review.UI.RowHighlightSkipsUnchangedStateBroadcast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRowHighlightSkipsUnchangedStateBroadcastTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAssetRevisionLoopGuard");
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> Items;
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("tx_revision_loop_guard");
+	Change.AssetPath = AssetPath;
+	Change.DisplayLabel = TEXT("SmokeHP");
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKind = TEXT("blueprint_variable");
+	Target.TargetKey = TEXT("blueprint_variable:SmokeHP");
+	Target.DisplayLabel = TEXT("SmokeHP");
+	Change.AtomicTargets.Add(Target);
+	Items.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+
+	FBlueprintHelperReviewAssetContext Context;
+	Context.AssetPath = AssetPath;
+	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &Items;
+	Args.SelectedChange = Items[0];
+	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
+	{
+		return FSlateColor(FLinearColor::Yellow);
+	};
+
+	int32 BroadcastCount = 0;
+	FDelegateHandle Handle = FBlueprintHelperReviewRowHighlightModel::AddStateChangedHandler(
+		FBlueprintHelperReviewRowHighlightStateChanged::FDelegate::CreateLambda(
+			[&BroadcastCount, &AssetPath](
+				const FString& ChangedAssetPath,
+				EBlueprintHelperReviewSurface Surface,
+				uint64)
+			{
+				if (ChangedAssetPath == AssetPath && Surface == EBlueprintHelperReviewSurface::MyBlueprint)
+				{
+					++BroadcastCount;
+				}
+			}));
+
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::MyBlueprint,
+		&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
+		AssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::MyBlueprint,
+		&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
+		AssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RemoveStateChangedHandler(Handle);
+
+	TestEqual(TEXT("unchanged row highlight state broadcasts once"), BroadcastCount, 1);
 	return true;
 }
 
@@ -5230,6 +5450,147 @@ bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FS
 	FString LoadError;
 	TestFalse(TEXT("successful reject physically removes the review record"),
 		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectVariableBenchmarkTest,
+	"BlueprintHelper.Review.Performance.RejectVariableBenchmark",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectVariableBenchmarkTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_variable_benchmark"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("RejectVariableBenchmark"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("variable benchmark target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewVariableTargetFromSnapshot(
+			Blueprint,
+			TEXT("RejectPerfValue"),
+			TEXT("tx_reject_variable_benchmark"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_variable_benchmark"),
+					TEXT("tx_reject_variable_benchmark"),
+					Target,
+					EBlueprintHelperReviewChangeKind::VariableModified)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saved before variable benchmark"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
+
+	FBlueprintHelperReviewActionService ActionService;
+	const double StartedAtSeconds = FPlatformTime::Seconds();
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Record.ReviewRecordId,
+		{Target.TargetKey},
+		Options);
+	const double RejectMs = (FPlatformTime::Seconds() - StartedAtSeconds) * 1000.0;
+	UE_LOG(LogTemp, Warning,
+		TEXT("BlueprintHelperRejectBenchmark sample=variable reject_targets_ms=%.2f succeeded=%d message=\"%s\""),
+		RejectMs,
+		Result.bSucceeded ? 1 : 0,
+		*Result.Message);
+
+	TestTrue(TEXT("variable benchmark reject succeeds"), Result.bSucceeded);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectGraphBlockBenchmarkTest,
+	"BlueprintHelper.Review.Performance.RejectGraphBlockBenchmark",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectGraphBlockBenchmarkTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_graph_block_benchmark"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("RejectGraphBlockBenchmark"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("graph block benchmark target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewGraphBlockTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			TEXT("RejectPerfBlock"),
+			TEXT("tx_reject_graph_block_benchmark"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_graph_block_benchmark"),
+					TEXT("tx_reject_graph_block_benchmark"),
+					Target)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saved before graph block benchmark"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
+
+	FBlueprintHelperReviewActionService ActionService;
+	const double StartedAtSeconds = FPlatformTime::Seconds();
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Record.ReviewRecordId,
+		{Target.TargetKey},
+		Options);
+	const double RejectMs = (FPlatformTime::Seconds() - StartedAtSeconds) * 1000.0;
+	UE_LOG(LogTemp, Warning,
+		TEXT("BlueprintHelperRejectBenchmark sample=graph_block reject_targets_ms=%.2f succeeded=%d message=\"%s\""),
+		RejectMs,
+		Result.bSucceeded ? 1 : 0,
+		*Result.Message);
+
+	TestTrue(TEXT("graph block benchmark reject succeeds"), Result.bSucceeded);
 	return true;
 }
 

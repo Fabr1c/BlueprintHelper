@@ -14,12 +14,13 @@ public:
 
 	void AddCount(const TCHAR* Key, int64 Value);
 	void AddBytes(const TCHAR* Key, int64 Value);
+	void AddText(const TCHAR* Key, const FString& Value);
 	int32 GetWarnThresholdMs() const;
 	double GetElapsedMilliseconds() const;
 	FString GetCounterText() const;
 
 private:
-	const TCHAR* Name = TEXT("ReviewPerf");
+	FString Name;
 	double StartSeconds = 0.0;
 	int32 WarnThresholdMs = 16;
 	TArray<FString> Counters;
