@@ -52,6 +52,7 @@ private:
 	FReply OnPasteJsonClicked();
 	FReply OnValidateClicked();
 	FReply OnResetToDefaultClicked();
+	FReply OnAlignExecRowClicked();
 
 	void HandleRuleSetTextChanged(const FText& InText);
 	void HandleCanvasRuleSetChanged(const FString& InRuleSetJson);
@@ -84,6 +85,12 @@ private:
 	float SettingsPureInputOffsetX = 300.0f;
 	float SettingsVariableInputOffsetX = 260.0f;
 	float SettingsInputPinRowSpacing = 44.0f;
+	bool bSettingsAlignExecNodesHorizontally = true;
+	bool bSettingsUsePureDataSubgraphLayout = true;
+	bool bSettingsUsePatternRowHeightBudget = true;
+	float SettingsDataClusterPaddingX = 40.0f;
+	float SettingsDataClusterPaddingY = 40.0f;
+	float SettingsBranchRowPaddingY = 80.0f;
 	float SettingsCollisionPaddingX = 60.0f;
 	float SettingsCollisionPaddingY = 40.0f;
 	float SettingsCollisionStepY = 64.0f;

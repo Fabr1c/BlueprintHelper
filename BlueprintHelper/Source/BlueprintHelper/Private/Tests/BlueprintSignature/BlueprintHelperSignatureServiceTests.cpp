@@ -18,6 +18,7 @@
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperSignatureServiceTestsLocalUtils
@@ -131,6 +132,48 @@ public:
 			}
 		}
 		return nullptr;
+	}
+
+	static UEdGraph* FindUbergraphPage(UBlueprint* Blueprint, const FString& GraphName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+		{
+			if (Graph && Graph->GetName() == GraphName)
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
+	static FString MakeCustomEventBlockId(UBlueprint* Blueprint, UEdGraph* Graph, const FString& EventName)
+	{
+		FBlueprintHelperBlockIdService BlockIdService;
+		const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, EventName);
+		return BlockIdService.MakeFullBlockId(Graph ? Graph->GetName() : FString(), BlockRef);
+	}
+
+	static bool NodeHasBlueprintHelperOwnership(UEdGraphNode* Node, const FString& BlockId)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		UPackage* Package = Node->GetOutermost();
+		if (!Package)
+		{
+			return false;
+		}
+
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true") &&
+			MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
 	}
 
 	static UFunction* ResolveSignatureEventDeclarationFunction(UFunction* EventFunction)
@@ -516,6 +559,49 @@ bool FBlueprintHelperSignatureServiceEnsureCustomEventExecuteTest::RunTest(const
 	UK2Node_CustomEvent* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName);
 	TestNotNull(TEXT("custom event node created"), EventNode);
 	TestTrue(TEXT("input pin added"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasUserDefinedPin(EventNode, TEXT("bPressed")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureCustomEventMissingGraphWritesOwnershipTest,
+	"BlueprintHelper.Signature.Service.EnsureCustomEventMissingGraphWritesOwnership",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureCustomEventMissingGraphWritesOwnershipTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("CustomEventMissingGraphOwnership"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString GraphName = TEXT("EG_CustomEventOwnedMissingGraph");
+	const FString EventName = TEXT("BH_CustomEventOwnedMissingGraph");
+	TestNull(TEXT("target graph starts missing"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindUbergraphPage(Blueprint, GraphName));
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureCustomEvent(
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureCustomEventRequest(Blueprint, GraphName, EventName, false));
+
+	TestTrue(TEXT("custom event execute succeeds"), Result.bOk);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("execute modifies"), Result.bModified);
+
+	UEdGraph* NewGraph = FBlueprintHelperSignatureServiceTestsLocalUtils::FindUbergraphPage(Blueprint, GraphName);
+	TestNotNull(TEXT("missing graph created"), NewGraph);
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(NewGraph, EventName);
+	TestNotNull(TEXT("custom event node created in missing graph"), EventNode);
+	TestTrue(TEXT("missing-graph custom event entry is BlueprintHelper-owned"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::NodeHasBlueprintHelperOwnership(
+			EventNode,
+			FBlueprintHelperSignatureServiceTestsLocalUtils::MakeCustomEventBlockId(Blueprint, NewGraph, EventName)));
 	return true;
 }
 

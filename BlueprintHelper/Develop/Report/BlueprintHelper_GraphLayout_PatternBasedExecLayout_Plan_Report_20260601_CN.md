@@ -2,7 +2,36 @@
 
 Date: 2026-06-01
 
-Status: planning report plus Task 1 through Task 8 implementation evidence, including Task 6 quality-review fix evidence and Task 7 full GraphLayout regression evidence.
+Status: planning report plus Task 1 through Task 10 final implementation evidence, including full GraphLayout automation, long E2E logic_json/logic_flow readback, signature-owned handoff closure, and broad TaskRuntime regression evidence.
+
+## Final Closure Update
+
+### 改动原因
+
+最终审计发现本报告顶部状态仍停留在 Task 1-8，且 Task 6 历史段落仍写着不要标记完成；同时 Debug 文档内旧的 TaskRuntime ownership failure 和 terminal macro link failure 没有明确标记为已被后续 GREEN 证据 supersede。
+
+### 改动过程
+
+1. 保留 Task 1-8 的历史分阶段证据，不重写当时的 RED/GREEN 过程。
+2. 将本报告状态更新为 Task 1-10 final implementation evidence。
+3. 明确 Task 6 历史段落中的 “不要标记完成” 已被后续 quality review、full GraphLayout automation 和最终 implementation plan 勾选状态 supersede。
+4. 将最终验证证据同步到 implementation plan 和 Debug 文档。
+
+### 改动结果
+
+- Full GraphLayout：`D:\UEProjects\Template\Saved\Automation\GraphLayout_Final_20260601_006\index.json`，`succeeded=23`，`failed=0`。
+- Long E2E readback：raw export、`logic_json`、`logic_flow` 已确认 terminal `then -> Exec` link；`macro_boundary_ambiguous` 只保留为展示层 warning。
+- Signature ownership handoff：
+  - RED：`D:\UEProjects\Template\Saved\Automation\Signature_MissingGraphOwnership_RED_20260601_001\index.json`，`failed=1`。
+  - GREEN：`D:\UEProjects\Template\Saved\Automation\Signature_MissingGraphOwnership_GREEN_20260601_001\index.json`，`succeeded=1`，`failed=0`。
+  - Signature suite：`D:\UEProjects\Template\Saved\Automation\Signature_Service_GREEN_20260601_001\index.json`，`succeeded=19`，`succeededWithWarnings=1`，`failed=0`。
+  - Broad TaskRuntime：`D:\UEProjects\Template\Saved\Automation\TaskRuntime_GraphLayoutRegression_20260601_007\index.json`，`succeeded=37`，`succeededWithWarnings=4`，`failed=0`。
+
+### 审计结论
+
+- Task 6 已由后续 review 和 final verification 收束；本报告中早期 “不要标记完成” 是历史 checkpoint，不再代表最终状态。
+- Task 9/10 已在 implementation plan 中标记完成，并附有真实 E2E/readback/automation 证据。
+- `AGENT.md` 不属于本任务改动范围，也不在建议 stage 命令内。
 
 ## Task 7: Disabled Setting And Existing ForEach Regression
 
@@ -159,7 +188,7 @@ Task 6 要求把前序已经独立完成的 topology、pure data subgraph、node
 - `FSolver` 只编排 GraphLayout policy；没有改动 UI、TaskRuntime、GraphWrite、Review、AgentFaceService、ClaudePlugin 或 CodexPlugin。
 - `FDataInputPlacement` 没有新增 DAG traversal。
 - 没有执行 `git add`、`git commit`、`git push`，也没有删除或修改 `.git` 文件。
-- 不在 implementation plan 中标记 Task 6 完成；该状态留给 controller/review。
+- Historical checkpoint: 当时不在 implementation plan 中标记 Task 6 完成；该状态留给 controller/review。Final Closure Update 已 supersede 该 checkpoint。
 
 ## Task 6 Quality Review Fix: Row Reflow Baseline Bump Propagation
 
@@ -198,7 +227,7 @@ Task 6 质量复审指出 `ReflowExecTargetsToAllocatedRows` 仍按 exec 节点�
 - 本次只修复 Task 6 solver reflow 行传播问题，没有重写 solver 架构。
 - 没有改动 UI、TaskRuntime、GraphWrite、Review、AgentFaceService、ClaudePlugin、CodexPlugin 或 AGENT.md。
 - 没有执行 `git add`、`git commit`、`git push`，也没有删除或修改 `.git` 文件。
-- 不在 implementation plan 中标记 Task 6 完成；该状态继续留给 controller/review。
+- Historical checkpoint: 当时不在 implementation plan 中标记 Task 6 完成；该状态继续留给 controller/review。Final Closure Update 已 supersede 该 checkpoint。
 
 ## Task 5 Review Approval
 
@@ -382,7 +411,7 @@ Task 4 质量 review 指出了两个真实缺口：
 - 这次 follow-up 扩展了 Task 4 write scope，因为 reviewer 指定的 clean fix 需要新增 source-specific pure-data measurement API。
 - 没有改动 `FSolver`、UI、TaskRuntime、GraphWrite、Review、AgentFaceService、ClaudePlugin 或 CodexPlugin。
 - 没有执行 `git add`、`git commit`、`git push`，也没有删除或修改 `.git` 文件。
-- implementation plan 中的 Task 4 仍然不要标记完成。
+- Historical checkpoint: 当时 implementation plan 中的 Task 4 仍然不要标记完成。Final Closure Update 已 supersede 该 checkpoint。
 
 ### 质量复审结果
 

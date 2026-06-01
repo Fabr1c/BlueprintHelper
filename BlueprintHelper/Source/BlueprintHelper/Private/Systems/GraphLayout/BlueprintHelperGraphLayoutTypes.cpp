@@ -244,6 +244,12 @@ TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet)
 	Json->SetNumberField(TEXT("pure_input_offset_x"), RuleSet.PureInputOffsetX);
 	Json->SetNumberField(TEXT("variable_input_offset_x"), RuleSet.VariableInputOffsetX);
 	Json->SetNumberField(TEXT("input_pin_row_spacing"), RuleSet.InputPinRowSpacing);
+	Json->SetBoolField(TEXT("exec_node_horizontal_alignment_enabled"), RuleSet.bAlignExecNodesHorizontally);
+	Json->SetBoolField(TEXT("pure_data_subgraph_layout_enabled"), RuleSet.bUsePureDataSubgraphLayout);
+	Json->SetBoolField(TEXT("pattern_row_height_budget_enabled"), RuleSet.bUsePatternRowHeightBudget);
+	Json->SetNumberField(TEXT("data_cluster_padding_x"), RuleSet.DataClusterPaddingX);
+	Json->SetNumberField(TEXT("data_cluster_padding_y"), RuleSet.DataClusterPaddingY);
+	Json->SetNumberField(TEXT("branch_row_padding_y"), RuleSet.BranchRowPaddingY);
 	Json->SetNumberField(TEXT("collision_padding_x"), RuleSet.CollisionPaddingX);
 	Json->SetNumberField(TEXT("collision_padding_y"), RuleSet.CollisionPaddingY);
 	Json->SetNumberField(TEXT("collision_step_y"), RuleSet.CollisionStepY);

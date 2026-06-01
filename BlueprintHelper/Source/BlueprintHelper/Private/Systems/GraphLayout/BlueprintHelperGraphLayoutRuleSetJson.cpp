@@ -203,6 +203,9 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 	TryReadPositiveNumber(Json, TEXT("pure_input_offset_x"), Defaults.PureInputOffsetX, Validation);
 	TryReadPositiveNumber(Json, TEXT("variable_input_offset_x"), Defaults.VariableInputOffsetX, Validation);
 	TryReadPositiveNumber(Json, TEXT("input_pin_row_spacing"), Defaults.InputPinRowSpacing, Validation);
+	TryReadPositiveNumber(Json, TEXT("data_cluster_padding_x"), Defaults.DataClusterPaddingX, Validation);
+	TryReadPositiveNumber(Json, TEXT("data_cluster_padding_y"), Defaults.DataClusterPaddingY, Validation);
+	TryReadPositiveNumber(Json, TEXT("branch_row_padding_y"), Defaults.BranchRowPaddingY, Validation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
 	TryReadPositiveNumber(Json, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
@@ -217,6 +220,9 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 		TryReadPositiveNumber(*SolverObject, TEXT("lane_vertical_spacing"), Defaults.ExecRowSpacing, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("branch_vertical_spacing"), Defaults.BranchRowSpacing, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("data_horizontal_spacing"), Defaults.VariableInputOffsetX, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("data_cluster_padding_x"), Defaults.DataClusterPaddingX, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("data_cluster_padding_y"), Defaults.DataClusterPaddingY, Validation);
+		TryReadPositiveNumber(*SolverObject, TEXT("branch_row_padding_y"), Defaults.BranchRowPaddingY, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
@@ -288,6 +294,12 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 	TryReadPositiveNumber(Json, TEXT("pure_input_offset_x"), OutRuleSet.PureInputOffsetX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("variable_input_offset_x"), OutRuleSet.VariableInputOffsetX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("input_pin_row_spacing"), OutRuleSet.InputPinRowSpacing, OutValidation);
+	Json->TryGetBoolField(TEXT("exec_node_horizontal_alignment_enabled"), OutRuleSet.bAlignExecNodesHorizontally);
+	Json->TryGetBoolField(TEXT("pure_data_subgraph_layout_enabled"), OutRuleSet.bUsePureDataSubgraphLayout);
+	Json->TryGetBoolField(TEXT("pattern_row_height_budget_enabled"), OutRuleSet.bUsePatternRowHeightBudget);
+	TryReadPositiveNumber(Json, TEXT("data_cluster_padding_x"), OutRuleSet.DataClusterPaddingX, OutValidation);
+	TryReadPositiveNumber(Json, TEXT("data_cluster_padding_y"), OutRuleSet.DataClusterPaddingY, OutValidation);
+	TryReadPositiveNumber(Json, TEXT("branch_row_padding_y"), OutRuleSet.BranchRowPaddingY, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);
@@ -307,6 +319,12 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 		TryReadPositiveNumber(*SolverObject, TEXT("lane_vertical_spacing"), OutRuleSet.ExecRowSpacing, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("branch_vertical_spacing"), OutRuleSet.BranchRowSpacing, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("data_horizontal_spacing"), OutRuleSet.VariableInputOffsetX, OutValidation);
+		(*SolverObject)->TryGetBoolField(TEXT("exec_node_horizontal_alignment_enabled"), OutRuleSet.bAlignExecNodesHorizontally);
+		(*SolverObject)->TryGetBoolField(TEXT("pure_data_subgraph_layout_enabled"), OutRuleSet.bUsePureDataSubgraphLayout);
+		(*SolverObject)->TryGetBoolField(TEXT("pattern_row_height_budget_enabled"), OutRuleSet.bUsePatternRowHeightBudget);
+		TryReadPositiveNumber(*SolverObject, TEXT("data_cluster_padding_x"), OutRuleSet.DataClusterPaddingX, OutValidation);
+		TryReadPositiveNumber(*SolverObject, TEXT("data_cluster_padding_y"), OutRuleSet.DataClusterPaddingY, OutValidation);
+		TryReadPositiveNumber(*SolverObject, TEXT("branch_row_padding_y"), OutRuleSet.BranchRowPaddingY, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);

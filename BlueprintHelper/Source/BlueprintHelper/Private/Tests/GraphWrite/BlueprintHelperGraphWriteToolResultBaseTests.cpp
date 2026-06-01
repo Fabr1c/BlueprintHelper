@@ -3453,6 +3453,11 @@ bool FBlueprintHelperCompositeCreateBlueprintFeatureExecuteReadBackTest::RunTest
 	TestEqual(TEXT("read-back finds one custom event"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountCustomEventsByName(Graph, EventName),
 		1);
+	TestEqual(TEXT("signature-created custom event body is BlueprintHelper-owned"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(
+			Graph,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName)),
+		2);
 	TestTrue(TEXT("read-back finds custom event body graph write"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
 

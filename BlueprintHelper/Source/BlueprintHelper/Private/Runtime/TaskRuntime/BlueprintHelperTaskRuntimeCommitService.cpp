@@ -95,7 +95,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeCommitService::MakeSki
 	return Result;
 }
 
-void FBlueprintHelperTaskRuntimeCommitService::FlushGraphLayout() const
+bool FBlueprintHelperTaskRuntimeCommitService::FlushGraphLayout() const
 {
-	FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
+	return FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
 }

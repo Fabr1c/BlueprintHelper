@@ -62,6 +62,12 @@ struct FRuleSet
 	float PureInputOffsetX = 300.0f;
 	float VariableInputOffsetX = 260.0f;
 	float InputPinRowSpacing = 44.0f;
+	bool bAlignExecNodesHorizontally = true;
+	bool bUsePureDataSubgraphLayout = true;
+	bool bUsePatternRowHeightBudget = true;
+	float DataClusterPaddingX = 40.0f;
+	float DataClusterPaddingY = 40.0f;
+	float BranchRowPaddingY = 80.0f;
 	float CollisionPaddingX = 60.0f;
 	float CollisionPaddingY = 40.0f;
 	float CollisionStepY = 64.0f;
