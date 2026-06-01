@@ -26,7 +26,15 @@ FString FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(const TSharedPtr
 	case EJson::String:
 		return Value->AsString();
 	case EJson::Number:
-		return LexToString(Value->AsNumber());
+	{
+		const double Number = Value->AsNumber();
+		const double Rounded = FMath::RoundToDouble(Number);
+		if (FMath::IsNearlyEqual(Number, Rounded))
+		{
+			return FString::Printf(TEXT("%.0f"), Rounded);
+		}
+		return FString::SanitizeFloat(Number);
+	}
 	case EJson::Boolean:
 		return Value->AsBool() ? TEXT("true") : TEXT("false");
 	case EJson::Null:

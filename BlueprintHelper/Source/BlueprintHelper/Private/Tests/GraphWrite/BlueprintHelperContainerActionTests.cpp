@@ -22,7 +22,9 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/Package.h"
@@ -165,6 +167,166 @@ static FString MakeContainerActionLogicJson(const FString& StatementJson)
 	})JSON"), *StatementJson);
 }
 
+static FString MakeRestoreDeviceSequentialTaskPlanLogicJson()
+{
+	return TEXT(R"JSON({
+		"logic_spec": {
+			"schema": "BlueprintLogicSpec.v2",
+			"statements": [{
+				"id": "stmt_restore_branch_1",
+				"kind": "branch",
+				"condition": {
+					"id": "stmt_restore_branch_1_condition",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "contains",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 1, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int"
+				},
+				"then": [{
+					"id": "stmt_restore_find_1",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "find",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 1, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int",
+					"result_symbol": "RestoredDeviceId1"
+				}, {
+					"id": "stmt_restore_set_device_1",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastDeviceId",
+					"value": { "kind": "get", "name": "RestoredDeviceId1" }
+				}, {
+					"id": "stmt_restore_set_index_1",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastLocalPlayerIndex",
+					"value": { "kind": "literal", "value": 1, "value_type": "int" }
+				}],
+				"else": []
+			}, {
+				"id": "stmt_restore_branch_2",
+				"kind": "branch",
+				"condition": {
+					"id": "stmt_restore_branch_2_condition",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "contains",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 2, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int"
+				},
+				"then": [{
+					"id": "stmt_restore_find_2",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "find",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 2, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int",
+					"result_symbol": "RestoredDeviceId2"
+				}, {
+					"id": "stmt_restore_set_device_2",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastDeviceId",
+					"value": { "kind": "get", "name": "RestoredDeviceId2" }
+				}, {
+					"id": "stmt_restore_set_index_2",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastLocalPlayerIndex",
+					"value": { "kind": "literal", "value": 2, "value_type": "int" }
+				}],
+				"else": []
+			}, {
+				"id": "stmt_restore_branch_3",
+				"kind": "branch",
+				"condition": {
+					"id": "stmt_restore_branch_3_condition",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "contains",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 3, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int"
+				},
+				"then": [{
+					"id": "stmt_restore_find_3",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "find",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 3, "value_type": "int" },
+					"key_type": "int",
+					"value_type": "int",
+					"result_symbol": "RestoredDeviceId3"
+				}, {
+					"id": "stmt_restore_set_device_3",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastDeviceId",
+					"value": { "kind": "get", "name": "RestoredDeviceId3" }
+				}, {
+					"id": "stmt_restore_set_index_3",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastLocalPlayerIndex",
+					"value": { "kind": "literal", "value": 3, "value_type": "int" }
+				}],
+				"else": []
+			}]
+		}
+	})JSON");
+}
+
+static FString MakeRestoreDeviceSequentialTaskPlanPayloadWithExistingEntry(const FString& EntryName)
+{
+	FString Payload = MakeRestoreDeviceSequentialTaskPlanLogicJson();
+	const FString EntryJson = FString::Printf(
+		TEXT("\"schema\": \"BlueprintLogicSpec.v2\",\n\t\t\t\"entry\": { \"kind\": \"custom_event\", \"name\": \"%s\", \"id\": \"%s_entry\", \"signature_evidence_id\": \"signature:custom_event:%s\", \"signature_dependency\": true, \"source\": \"signature_dependency\", \"source_cluster\": \"blueprint_signature\" },"),
+		*EntryName,
+		*EntryName,
+		*EntryName);
+	Payload.ReplaceInline(TEXT("\"schema\": \"BlueprintLogicSpec.v2\","), *EntryJson);
+	Payload.ReplaceInline(
+		TEXT("{\n\t\t\"logic_spec\""),
+		TEXT("{\n\t\t\"options\": { \"reconstruct_existing_nodes\": true },\n\t\t\"logic_spec\""));
+	return Payload;
+}
+
+static UK2Node_CustomEvent* AddContainerActionCustomEvent(UEdGraph* Graph, const FString& EventName)
+{
+	if (!Graph || EventName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(Graph);
+	Graph->AddNode(EventNode, true, false);
+	EventNode->CreateNewGuid();
+	EventNode->PostPlacedNewNode();
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->NodePosX = 0;
+	EventNode->NodePosY = 0;
+	EventNode->AllocateDefaultPins();
+	return EventNode;
+}
+
 static bool RunContainerActionFixture(
 	FAutomationTestBase& Test,
 	UBlueprint* Blueprint,
@@ -254,6 +416,24 @@ static UK2Node_IfThenElse* FindContainerActionBranchNode(UEdGraph* Graph)
 	return nullptr;
 }
 
+static UK2Node_VariableSet* FindContainerActionVariableSetNode(UEdGraph* Graph, const TCHAR* VariableName)
+{
+	if (!Graph || !VariableName)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UK2Node_VariableSet* VariableSetNode = Cast<UK2Node_VariableSet>(Node);
+		if (VariableSetNode && VariableSetNode->GetVarName().ToString().Equals(VariableName, ESearchCase::IgnoreCase))
+		{
+			return VariableSetNode;
+		}
+	}
+	return nullptr;
+}
+
 static UEdGraphPin* FindContainerActionExecPinByName(
 	UEdGraphNode* Node,
 	const EEdGraphPinDirection Direction,
@@ -332,6 +512,14 @@ bool FBlueprintHelperGraphWriteContainerActionSemanticIRTest::RunTest(const FStr
 	TestEqual(TEXT("element type alias"), Statement.PinType, FString(TEXT("int")));
 	TestTrue(TEXT("target role expression"), Statement.TargetObject.IsValid());
 	TestTrue(TEXT("item role expression"), Statement.Args.Contains(TEXT("item")));
+	if (const TSharedPtr<FBlueprintHelperGraphExpressionIR>* ItemExpression = Statement.Args.Find(TEXT("item")))
+	{
+		TestTrue(TEXT("item literal expression present"), ItemExpression->IsValid());
+		if (ItemExpression->IsValid())
+		{
+			TestEqual(TEXT("numeric literal is stored as integer import text"), (*ItemExpression)->LiteralValue, FString(TEXT("7")));
+		}
+	}
 
 	const TSharedPtr<FBlueprintHelperGraphExpressionIR> Expression = IR.Statements[1]->Value;
 	TestTrue(TEXT("container expression present"), Expression.IsValid());
@@ -835,6 +1023,390 @@ bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTe
 
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	TestFalse(TEXT("branch pure query generated Blueprint compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteContainerActionMapFindResultSymbolValuePinTest,
+	"BlueprintHelper.GraphWrite.ContainerAction.MapFindResultSymbolValuePin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteContainerActionMapFindResultSymbolValuePinTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeContainerActionBlueprint();
+	UEdGraph* Graph = FindContainerActionEventGraph(Blueprint);
+	TestNotNull(TEXT("container action blueprint"), Blueprint);
+	TestNotNull(TEXT("container action graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	const FEdGraphPinType ScoresType =
+		MakeContainerActionPinType(
+			UEdGraphSchema_K2::PC_String,
+			EPinContainerType::Map,
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+	const FEdGraphPinType ScoreType =
+		MakeContainerActionPinType(UEdGraphSchema_K2::PC_Int, EPinContainerType::None);
+	TestTrue(TEXT("Scores variable added"), AddContainerActionVariable(Blueprint, TEXT("Scores"), ScoresType));
+	TestTrue(TEXT("LastScore variable added"), AddContainerActionVariable(Blueprint, TEXT("LastScore"), ScoreType));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	if (Blueprint->Status == BS_Error)
+	{
+		AddError(TEXT("map find result symbol fixture Blueprint failed to compile before generation."));
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			MakeContainerActionLogicJson(TEXT(R"JSON({
+				"id": "stmt_find_score",
+				"kind": "container_action",
+				"container_kind": "map",
+				"container_operation": "find",
+				"target": { "kind": "get", "name": "Scores" },
+				"key": { "kind": "literal", "value": "PlayerA", "type": "string" },
+				"key_type": "string",
+				"value_type": "int",
+				"result_symbol": "FoundScore"
+			}, {
+				"id": "stmt_set_score",
+				"kind": "field",
+				"field_operation": "set",
+				"field_scope": "variable",
+				"target": "LastScore",
+				"value": { "kind": "get", "name": "FoundScore", "type": "int" }
+			})JSON")),
+			Unresolved);
+
+	if (!TestTrue(TEXT("map find result symbol generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+	if (!TestEqual(TEXT("map find result symbol connection diagnostics"), Result.ConnectionDiagnostics.Num(), 0))
+	{
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("connection diagnostic: %s"), *Diagnostic.Message));
+		}
+		return false;
+	}
+
+	UK2Node_CallFunction* MapFindNode = FindContainerActionCallFunctionNode(Graph, TEXT("Map_Find"));
+	UK2Node_VariableSet* SetScoreNode = FindContainerActionVariableSetNode(Graph, TEXT("LastScore"));
+	TestNotNull(TEXT("Map_Find node generated"), MapFindNode);
+	TestNotNull(TEXT("LastScore set node generated"), SetScoreNode);
+	if (!MapFindNode || !SetScoreNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* MapFindValuePin = MapFindNode->FindPin(TEXT("Value"));
+	UEdGraphPin* MapFindReturnValuePin = MapFindNode->FindPin(TEXT("ReturnValue"));
+	UEdGraphPin* LastScorePin = SetScoreNode->FindPin(TEXT("LastScore"));
+	TestNotNull(TEXT("Map_Find Value pin"), MapFindValuePin);
+	TestNotNull(TEXT("Map_Find ReturnValue pin"), MapFindReturnValuePin);
+	TestNotNull(TEXT("LastScore set value pin"), LastScorePin);
+	if (MapFindValuePin && MapFindReturnValuePin && LastScorePin)
+	{
+		TestTrue(
+			TEXT("Map_Find.Value feeds result_symbol variable set"),
+			MapFindValuePin->LinkedTo.Contains(LastScorePin) && LastScorePin->LinkedTo.Contains(MapFindValuePin));
+		TestFalse(
+			TEXT("Map_Find.ReturnValue does not feed result_symbol variable set"),
+			MapFindReturnValuePin->LinkedTo.Contains(LastScorePin) || LastScorePin->LinkedTo.Contains(MapFindReturnValuePin));
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("map find result symbol generated Blueprint compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest,
+	"BlueprintHelper.GraphWrite.ContainerAction.RestoreDeviceShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeContainerActionBlueprint();
+	UEdGraph* Graph = FindContainerActionEventGraph(Blueprint);
+	TestNotNull(TEXT("container action blueprint"), Blueprint);
+	TestNotNull(TEXT("container action graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	const FEdGraphPinType DeviceMapType =
+		MakeContainerActionPinType(
+			UEdGraphSchema_K2::PC_Int,
+			EPinContainerType::Map,
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+	const FEdGraphPinType IntType =
+		MakeContainerActionPinType(UEdGraphSchema_K2::PC_Int, EPinContainerType::None);
+	TestTrue(TEXT("ControllerDeviceMap variable added"), AddContainerActionVariable(Blueprint, TEXT("ControllerDeviceMap"), DeviceMapType));
+	TestTrue(TEXT("LastDeviceId variable added"), AddContainerActionVariable(Blueprint, TEXT("LastDeviceId"), IntType));
+	TestTrue(TEXT("LastLocalPlayerIndex variable added"), AddContainerActionVariable(Blueprint, TEXT("LastLocalPlayerIndex"), IntType));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	if (Blueprint->Status == BS_Error)
+	{
+		AddError(TEXT("RestoreDevice-shape fixture Blueprint failed to compile before generation."));
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			MakeContainerActionLogicJson(TEXT(R"JSON({
+				"id": "stmt_restore_branch",
+				"kind": "branch",
+				"condition": {
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "contains",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 1, "type": "int" },
+					"key_type": "int",
+					"value_type": "int"
+				},
+				"then": [{
+					"id": "stmt_restore_find",
+					"kind": "container_action",
+					"container_kind": "map",
+					"container_operation": "find",
+					"target": { "kind": "get", "name": "ControllerDeviceMap" },
+					"key": { "kind": "literal", "value": 1, "type": "int" },
+					"key_type": "int",
+					"value_type": "int",
+					"result_symbol": "RestoredDeviceId"
+				}, {
+					"id": "stmt_restore_set_device",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastDeviceId",
+					"value": { "kind": "get", "name": "RestoredDeviceId" }
+				}, {
+					"id": "stmt_restore_set_index",
+					"kind": "field",
+					"field_operation": "set",
+					"field_scope": "variable",
+					"target": "LastLocalPlayerIndex",
+					"value": { "kind": "literal", "value": 1, "type": "int" }
+				}],
+				"else": [{
+					"id": "stmt_restore_branch_2",
+					"kind": "branch",
+					"condition": {
+						"kind": "container_action",
+						"container_kind": "map",
+						"container_operation": "contains",
+						"target": { "kind": "get", "name": "ControllerDeviceMap" },
+						"key": { "kind": "literal", "value": 2, "type": "int" },
+						"key_type": "int",
+						"value_type": "int"
+					},
+					"then": [{
+						"id": "stmt_restore_find_2",
+						"kind": "container_action",
+						"container_kind": "map",
+						"container_operation": "find",
+						"target": { "kind": "get", "name": "ControllerDeviceMap" },
+						"key": { "kind": "literal", "value": 2, "type": "int" },
+						"key_type": "int",
+						"value_type": "int",
+						"result_symbol": "RestoredDeviceId2"
+					}, {
+						"id": "stmt_restore_set_device_2",
+						"kind": "field",
+						"field_operation": "set",
+						"field_scope": "variable",
+						"target": "LastDeviceId",
+						"value": { "kind": "get", "name": "RestoredDeviceId2" }
+					}, {
+						"id": "stmt_restore_set_index_2",
+						"kind": "field",
+						"field_operation": "set",
+						"field_scope": "variable",
+						"target": "LastLocalPlayerIndex",
+						"value": { "kind": "literal", "value": 2, "type": "int" }
+					}],
+					"else": [{
+						"id": "stmt_restore_branch_3",
+						"kind": "branch",
+						"condition": {
+							"kind": "container_action",
+							"container_kind": "map",
+							"container_operation": "contains",
+							"target": { "kind": "get", "name": "ControllerDeviceMap" },
+							"key": { "kind": "literal", "value": 3, "type": "int" },
+							"key_type": "int",
+							"value_type": "int"
+						},
+						"then": [{
+							"id": "stmt_restore_find_3",
+							"kind": "container_action",
+							"container_kind": "map",
+							"container_operation": "find",
+							"target": { "kind": "get", "name": "ControllerDeviceMap" },
+							"key": { "kind": "literal", "value": 3, "type": "int" },
+							"key_type": "int",
+							"value_type": "int",
+							"result_symbol": "RestoredDeviceId3"
+						}, {
+							"id": "stmt_restore_set_device_3",
+							"kind": "field",
+							"field_operation": "set",
+							"field_scope": "variable",
+							"target": "LastDeviceId",
+							"value": { "kind": "get", "name": "RestoredDeviceId3" }
+						}, {
+							"id": "stmt_restore_set_index_3",
+							"kind": "field",
+							"field_operation": "set",
+							"field_scope": "variable",
+							"target": "LastLocalPlayerIndex",
+							"value": { "kind": "literal", "value": 3, "type": "int" }
+						}]
+					}]
+				}]
+			})JSON")),
+			Unresolved);
+
+	if (!TestTrue(TEXT("RestoreDevice-shape generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+	if (!TestEqual(TEXT("RestoreDevice-shape connection diagnostics"), Result.ConnectionDiagnostics.Num(), 0))
+	{
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("connection diagnostic: %s"), *Diagnostic.Message));
+		}
+		return false;
+	}
+
+	UK2Node_CallFunction* MapFindNode = FindContainerActionCallFunctionNode(Graph, TEXT("Map_Find"));
+	UK2Node_VariableSet* SetDeviceNode = FindContainerActionVariableSetNode(Graph, TEXT("LastDeviceId"));
+	UK2Node_VariableSet* SetIndexNode = FindContainerActionVariableSetNode(Graph, TEXT("LastLocalPlayerIndex"));
+	TestNotNull(TEXT("Map_Find node generated"), MapFindNode);
+	TestNotNull(TEXT("LastDeviceId set node generated"), SetDeviceNode);
+	TestNotNull(TEXT("LastLocalPlayerIndex set node generated"), SetIndexNode);
+	if (!MapFindNode || !SetDeviceNode || !SetIndexNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* MapFindValuePin = MapFindNode->FindPin(TEXT("Value"));
+	UEdGraphPin* MapFindReturnValuePin = MapFindNode->FindPin(TEXT("ReturnValue"));
+	UEdGraphPin* LastDeviceIdPin = SetDeviceNode->FindPin(TEXT("LastDeviceId"));
+	UEdGraphPin* LastLocalPlayerIndexPin = SetIndexNode->FindPin(TEXT("LastLocalPlayerIndex"));
+	TestNotNull(TEXT("Map_Find Value pin"), MapFindValuePin);
+	TestNotNull(TEXT("Map_Find ReturnValue pin"), MapFindReturnValuePin);
+	TestNotNull(TEXT("LastDeviceId set value pin"), LastDeviceIdPin);
+	TestNotNull(TEXT("LastLocalPlayerIndex set value pin"), LastLocalPlayerIndexPin);
+	if (MapFindValuePin && MapFindReturnValuePin && LastDeviceIdPin)
+	{
+		TestTrue(
+			TEXT("Map_Find.Value feeds RestoreDevice result_symbol variable set"),
+			MapFindValuePin->LinkedTo.Contains(LastDeviceIdPin) && LastDeviceIdPin->LinkedTo.Contains(MapFindValuePin));
+		TestFalse(
+			TEXT("Map_Find.ReturnValue does not feed RestoreDevice result_symbol variable set"),
+			MapFindReturnValuePin->LinkedTo.Contains(LastDeviceIdPin) || LastDeviceIdPin->LinkedTo.Contains(MapFindReturnValuePin));
+	}
+	if (LastLocalPlayerIndexPin)
+	{
+		TestEqual(TEXT("LastLocalPlayerIndex literal default is preserved"), LastLocalPlayerIndexPin->DefaultValue, FString(TEXT("1")));
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("RestoreDevice-shape generated Blueprint compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteContainerActionRestoreDeviceSequentialTaskPlanShapeTest,
+	"BlueprintHelper.GraphWrite.ContainerAction.RestoreDeviceSequentialTaskPlanShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceSequentialTaskPlanShapeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeContainerActionBlueprint();
+	UEdGraph* Graph = FindContainerActionEventGraph(Blueprint);
+	TestNotNull(TEXT("container action blueprint"), Blueprint);
+	TestNotNull(TEXT("container action graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	const FEdGraphPinType DeviceMapType =
+		MakeContainerActionPinType(
+			UEdGraphSchema_K2::PC_Int,
+			EPinContainerType::Map,
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+	const FEdGraphPinType IntType =
+		MakeContainerActionPinType(UEdGraphSchema_K2::PC_Int, EPinContainerType::None);
+	TestTrue(TEXT("ControllerDeviceMap variable added"), AddContainerActionVariable(Blueprint, TEXT("ControllerDeviceMap"), DeviceMapType));
+	TestTrue(TEXT("LastDeviceId variable added"), AddContainerActionVariable(Blueprint, TEXT("LastDeviceId"), IntType));
+	TestTrue(TEXT("LastLocalPlayerIndex variable added"), AddContainerActionVariable(Blueprint, TEXT("LastLocalPlayerIndex"), IntType));
+	const FString EventName = TEXT("CE_RestoreDeviceSequentialTaskPlanShape");
+	TestNotNull(TEXT("existing custom event added"), AddContainerActionCustomEvent(Graph, EventName));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	if (Blueprint->Status == BS_Error)
+	{
+		AddError(TEXT("sequential RestoreDevice fixture Blueprint failed to compile before generation."));
+		return false;
+	}
+
+	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			MakeRestoreDeviceSequentialTaskPlanPayloadWithExistingEntry(EventName),
+			Unresolved);
+
+	if (!TestTrue(TEXT("sequential RestoreDevice generation succeeds"), Result.bSucceed))
+	{
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (Item.IsValid())
+			{
+				AddError(FString::Printf(TEXT("unresolved: %s - %s"), *Item->DisplayText, *Item->Reason));
+			}
+		}
+		return false;
+	}
+	if (!TestEqual(TEXT("sequential RestoreDevice connection diagnostics"), Result.ConnectionDiagnostics.Num(), 0))
+	{
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("connection diagnostic: %s"), *Diagnostic.Message));
+		}
+		return false;
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("sequential RestoreDevice generated Blueprint compiles"), Blueprint->Status == BS_Error);
 	return Blueprint->Status != BS_Error;
 }
 

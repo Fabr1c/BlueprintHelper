@@ -358,14 +358,19 @@ static void ApplyContainerActionRequestOverrides(
 static void AddPinAlias(
 	const FString& Alias,
 	const FString& CanonicalPinName,
-	TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap)
+	TMap<FString, FBlueprintHelperFragmentPinRef>& PinMap,
+	const bool bOverrideExisting = false)
 {
-	if (Alias.IsEmpty() || CanonicalPinName.IsEmpty() || PinMap.Contains(Alias))
+	if (Alias.IsEmpty() || CanonicalPinName.IsEmpty())
 	{
 		return;
 	}
 	if (const FBlueprintHelperFragmentPinRef* Canonical = PinMap.Find(CanonicalPinName))
 	{
+		if (PinMap.Contains(Alias) && !bOverrideExisting)
+		{
+			return;
+		}
 		FBlueprintHelperFragmentPinRef AliasRef = *Canonical;
 		PinMap.Add(Alias, MoveTemp(AliasRef));
 		return;
@@ -374,6 +379,10 @@ static void AddPinAlias(
 	{
 		if (Pair.Key.Equals(CanonicalPinName, ESearchCase::IgnoreCase))
 		{
+			if (PinMap.Contains(Alias) && !bOverrideExisting)
+			{
+				return;
+			}
 			FBlueprintHelperFragmentPinRef AliasRef = Pair.Value;
 			PinMap.Add(Alias, MoveTemp(AliasRef));
 			return;
@@ -393,8 +402,16 @@ static void ApplyContainerActionRolePinAliases(
 	}
 	for (const FBlueprintHelperContainerActionRoleBinding& Binding : Spec->RoleBindings)
 	{
-		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.PinBindings);
-		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataInputs);
+		const bool bOutputRole = !Binding.bProjectToCallableRequest;
+		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.PinBindings, bOutputRole);
+		if (bOutputRole)
+		{
+			AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataOutputs, true);
+		}
+		else
+		{
+			AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataInputs);
+		}
 	}
 }
 
@@ -449,6 +466,10 @@ static bool TryBuildContainerActionTargetPinType(
 	return false;
 }
 
+static bool TryBuildContainerActionReturnPinType(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	FEdGraphPinType& OutPinType);
+
 static bool TryBuildContainerActionRolePinType(
 	const FBlueprintHelperGraphFragmentBuildRequest& Request,
 	const FString& RoleName,
@@ -484,6 +505,10 @@ static bool TryBuildContainerActionRolePinType(
 	{
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
 		return true;
+	}
+	if (Role == TEXT("result"))
+	{
+		return TryBuildContainerActionReturnPinType(Request, OutPinType);
 	}
 	return false;
 }
@@ -576,20 +601,12 @@ static void ApplyContainerActionResolvedPinTypesToNode(
 		}
 	}
 
-	if (Spec->bReturnsValue)
+	if (Spec->ResultKind == EBlueprintHelperContainerActionResultKind::ReturnValue)
 	{
 		FEdGraphPinType ReturnPinType;
 		if (TryBuildContainerActionReturnPinType(Request, ReturnPinType))
 		{
-			for (UEdGraphPin* Pin : Node->Pins)
-			{
-				if (Pin
-					&& Pin->Direction == EGPD_Output
-					&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
-				{
-					ApplyPinTypeToNodePin(Pin, ReturnPinType);
-				}
-			}
+			ApplyPinTypeToNodePin(Node->FindPin(TEXT("ReturnValue")), ReturnPinType);
 		}
 	}
 }

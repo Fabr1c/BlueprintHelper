@@ -122,3 +122,121 @@ Confirmed still failing:
 - Literal/default propagation still collapses later player index values to `0`.
 
 Next fix should target the UE GraphWrite/runtime node binding path used by real execute/readback, not only the TypeScript lowering fixture path.
+
+## Follow-up Fix and Verification (2026-06-01)
+
+The two remaining failures above have now been reproduced with focused automation, fixed, and re-verified through a fresh real CLI E2E.
+
+### Root Cause 1: integer literals became invalid int pin defaults
+
+Evidence:
+
+- Failing focused test before the fix: `BlueprintHelper.GraphWrite.ContainerAction.SemanticIR`.
+- Symptom: JSON number literals were stored as UE import text such as `7.000000`.
+- Real E2E symptom: `Set LastLocalPlayerIndex` pins read back as `["0", "0", "0"]` instead of `["1", "2", "3"]`.
+
+Cause:
+
+- `FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(EJson::Number)` used `LexToString(Value->AsNumber())`.
+- JSON numbers are read as `double`, so integer values were serialized with a fractional suffix.
+- UE int pins did not accept that import text and kept their default `0`.
+
+Fix:
+
+- Integer-valued JSON numbers are now emitted without a fractional suffix.
+- Non-integer numbers still use sanitized float formatting.
+
+### Root Cause 2: `map.find.result_symbol` used the wrong output pin on existing-entry TaskRuntime flows
+
+Evidence:
+
+- Failing real E2E before the fix: `.tmp/restore_device_e2e_20260601_103936/feature.execute.full.json`.
+- Compile error repeated three times:
+
+```text
+整数类型的 Return Value 和属性ReturnValue（属于BoolProperty类型）不匹配
+```
+
+- Readback of that failed graph showed the integer defaults were already correct, so this was independent from the literal-default bug.
+- New focused RED test: `BlueprintHelper.GraphWrite.ContainerAction.RestoreDeviceSequentialTaskPlanShape`.
+  - It creates an existing CustomEvent entry.
+  - It uses `options.reconstruct_existing_nodes=true`.
+  - It uses the same sequential three-branch shape emitted by TaskRuntime `ensure_entry`.
+
+Cause:
+
+- Container vocabulary correctly defines `map.find` as `result -> Value`.
+- `ApplyContainerActionRolePinAliases` only projected role aliases to `PinBindings` and `DataInputs`, not `DataOutputs`.
+- The generic output alias `result` could therefore remain bound to `ReturnValue`.
+- `ApplyContainerActionResolvedPinTypesToNode` also applied the resolved result type to every output pin whenever `bReturnsValue` was true. For `map.find`, this incorrectly changed the bool `ReturnValue` pin to int.
+
+Fix:
+
+- Output role aliases now project to `DataOutputs` and can override generic aliases.
+- `result` role pin typing now resolves through the container result type.
+- Generic return-pin typing is restricted to specs whose result kind is `ReturnValue`; output-pin result operations such as `map.find` no longer rewrite every output pin.
+
+### Verification
+
+Focused automation after the fix:
+
+```text
+BlueprintHelper.GraphWrite.ContainerAction.SemanticIR -> exit 0
+BlueprintHelper.GraphWrite.ContainerAction.RestoreDeviceShape -> exit 0
+BlueprintHelper.GraphWrite.ContainerAction.MapFindResultSymbolValuePin -> exit 0
+BlueprintHelper.GraphWrite.ContainerAction.RestoreDeviceSequentialTaskPlanShape -> exit 0
+```
+
+Build gate:
+
+```text
+Build.bat TemplateEditor Win64 Development -Project=D:\UEProjects\Template\Template.uproject -WaitMutex -NoHotReload
+Result: Succeeded
+```
+
+Fresh real CLI E2E:
+
+- Asset: `/Game/BlueprintHelperTemp/BP_RestoreDevice_E2E_20260601_105744`
+- Artifacts:
+  - `.tmp/restore_device_e2e_20260601_105744/create_asset.preview.full.json`
+  - `.tmp/restore_device_e2e_20260601_105744/create_asset.execute.full.json`
+  - `.tmp/restore_device_e2e_20260601_105744/feature.preview.full.json`
+  - `.tmp/restore_device_e2e_20260601_105744/feature.execute.full.json`
+  - `.tmp/restore_device_e2e_20260601_105744/read_graph_logic_json.full.json`
+  - `.tmp/restore_device_e2e_20260601_105744/e2e_readback_summary.json`
+  - `.tmp/restore_device_e2e_20260601_105744/query_review_records_by_asset.full.json`
+
+E2E result:
+
+```json
+[
+  { "file": "create_asset.preview.full.json", "exit_code": 0, "ok": true, "status": "preview_passed" },
+  { "file": "create_asset.execute.full.json", "exit_code": 0, "ok": true, "status": "executed" },
+  { "file": "feature.preview.full.json", "exit_code": 0, "ok": true, "status": "preview_passed" },
+  { "file": "feature.execute.full.json", "exit_code": 0, "ok": true, "status": "executed" }
+]
+```
+
+Readback summary:
+
+```json
+{
+  "read_exit_code": 0,
+  "read_ok": true,
+  "read_status": "completed",
+  "last_player_defaults": ["1", "2", "3"],
+  "map_find_nodes": 3,
+  "set_last_device_nodes": 3
+}
+```
+
+Review evidence:
+
+- `blueprinthelper_query_review_records` by asset returned `record_count=2`.
+
+### Updated Conclusion
+
+The two remaining bugs from the earlier E2E are now fixed in the local verified path:
+
+1. `LastLocalPlayerIndex` literal defaults no longer collapse to `0`.
+2. `map.find.result_symbol` no longer compiles as an int `ReturnValue` / bool `ReturnValue` mismatch in the real existing-entry TaskRuntime path.
