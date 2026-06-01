@@ -9,6 +9,7 @@
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_DynamicCast.h"
+#include "K2Node_MakeContainer.h"
 #include "K2Node_PromotableOperator.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
@@ -30,6 +31,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperSelectFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentWrappers.h"
@@ -219,18 +221,36 @@ static void ApplyFieldCapabilityActionRequestOverrides(
 
 static FBlueprintHelperCallFunctionPinType MakePinTypeFromCreateToken(const FString& Token)
 {
-	FBlueprintHelperCallFunctionPinType PinType;
+	return FBlueprintHelperGraphStatementPinTypeParser::ParsePinTypeToken(Token);
+}
+
+static FString DescribeCreatePinTypeEvidence(
+	const FBlueprintHelperCallFunctionPinType& PinType,
+	const FString& Fallback)
+{
+	if (!PinType.IsValid())
+	{
+		return Fallback.TrimStartAndEnd();
+	}
+
 	TArray<FString> Parts;
-	Token.TrimStartAndEnd().ParseIntoArray(Parts, TEXT("|"), true);
-	if (Parts.Num() > 0)
+	if (!PinType.Category.IsEmpty())
 	{
-		PinType.Category = Parts[0];
+		Parts.Add(PinType.Category);
 	}
-	if (Parts.Num() > 1)
+	if (!PinType.SubCategory.IsEmpty())
 	{
-		PinType.ObjectPath = Parts[1];
+		Parts.Add(PinType.SubCategory);
 	}
-	return PinType;
+	if (!PinType.ObjectPath.IsEmpty())
+	{
+		Parts.Add(PinType.ObjectPath);
+	}
+	if (!PinType.ContainerType.IsEmpty())
+	{
+		Parts.Add(PinType.ContainerType);
+	}
+	return FString::Join(Parts, TEXT("|"));
 }
 
 static void ApplyCreateActionRequestOverrides(
@@ -256,18 +276,21 @@ static void ApplyCreateActionRequestOverrides(
 	}
 	if (!BoundRequest.PinType.TrimStartAndEnd().IsEmpty())
 	{
-		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("element"), BoundRequest.PinType.TrimStartAndEnd());
-		InOutRequest.Semantic.ContainerElementPinType = MakePinTypeFromCreateToken(BoundRequest.PinType);
+		const FBlueprintHelperCallFunctionPinType ElementPinType = MakePinTypeFromCreateToken(BoundRequest.PinType);
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("element"), DescribeCreatePinTypeEvidence(ElementPinType, BoundRequest.PinType));
+		InOutRequest.Semantic.ContainerElementPinType = ElementPinType;
 	}
 	if (!BoundRequest.KeyPinType.TrimStartAndEnd().IsEmpty())
 	{
-		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("key"), BoundRequest.KeyPinType.TrimStartAndEnd());
-		InOutRequest.Semantic.ContainerKeyPinType = MakePinTypeFromCreateToken(BoundRequest.KeyPinType);
+		const FBlueprintHelperCallFunctionPinType KeyPinType = MakePinTypeFromCreateToken(BoundRequest.KeyPinType);
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("key"), DescribeCreatePinTypeEvidence(KeyPinType, BoundRequest.KeyPinType));
+		InOutRequest.Semantic.ContainerKeyPinType = KeyPinType;
 	}
 	if (!BoundRequest.ValuePinType.TrimStartAndEnd().IsEmpty())
 	{
-		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("value"), BoundRequest.ValuePinType.TrimStartAndEnd());
-		InOutRequest.Semantic.ContainerValuePinType = MakePinTypeFromCreateToken(BoundRequest.ValuePinType);
+		const FBlueprintHelperCallFunctionPinType ValuePinType = MakePinTypeFromCreateToken(BoundRequest.ValuePinType);
+		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("value"), DescribeCreatePinTypeEvidence(ValuePinType, BoundRequest.ValuePinType));
+		InOutRequest.Semantic.ContainerValuePinType = ValuePinType;
 	}
 }
 
@@ -908,6 +931,67 @@ static bool TryBuildLiteralPromotablePinType(const FString& Type, FEdGraphPinTyp
 	return false;
 }
 
+static bool TryBuildCreateElementPinType(const FString& Type, FEdGraphPinType& OutPinType)
+{
+	const FBlueprintHelperCallFunctionPinType ParsedType = MakePinTypeFromCreateToken(Type);
+	const FString ElementType = ParsedType.Category.IsEmpty() ? Type.TrimStartAndEnd() : ParsedType.Category;
+	return TryBuildLiteralPromotablePinType(ElementType, OutPinType);
+}
+
+static void ApplyMakeContainerCreatePinType(
+	const FBlueprintHelperGraphFragmentBuildRequest& Request,
+	UK2Node* Node)
+{
+	UK2Node_MakeContainer* MakeContainer = Cast<UK2Node_MakeContainer>(Node);
+	if (!MakeContainer)
+	{
+		return;
+	}
+
+	const FString Operation = NormalizeContainerToken(Request.CreateOperation);
+	if (Operation != TEXT("make_array") && Operation != TEXT("make_set"))
+	{
+		return;
+	}
+
+	FEdGraphPinType ElementPinType;
+	if (!TryBuildCreateElementPinType(FirstNonEmptyContainerType(Request.ElementType, Request.PinType), ElementPinType))
+	{
+		return;
+	}
+
+	UEdGraphPin* OutputPin = MakeContainer->GetOutputPin();
+	const EPinContainerType OutputContainerType = OutputPin ? OutputPin->PinType.ContainerType : EPinContainerType::None;
+	if (OutputPin)
+	{
+		OutputPin->PinType = ElementPinType;
+		OutputPin->PinType.ContainerType = OutputContainerType == EPinContainerType::None
+			? (Operation == TEXT("make_array") ? EPinContainerType::Array : EPinContainerType::Set)
+			: OutputContainerType;
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	for (UEdGraphPin* Pin : MakeContainer->Pins)
+	{
+		if (!Pin || Pin->Direction != EGPD_Input || Pin->ParentPin)
+		{
+			continue;
+		}
+
+		Pin->PinType = ElementPinType;
+		if (Schema)
+		{
+			Schema->SetPinAutogeneratedDefaultValueBasedOnType(Pin);
+		}
+	}
+
+	MakeContainer->NodeConnectionListChanged();
+	if (UEdGraph* Graph = MakeContainer->GetGraph())
+	{
+		Graph->NotifyNodeChanged(MakeContainer);
+	}
+}
+
 static bool TryApplyPromotableOperatorLiteralType(
 	UK2Node* Node,
 	const int32 InputIndex,
@@ -1490,6 +1574,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 	OutFragment.SourceStatementId = Request.SourceStatementId.IsEmpty() ? Request.FragmentId : Request.SourceStatementId;
 	OutFragment.PrimaryNode = SpawnedNode;
 	OutFragment.Nodes.Add(SpawnedNode);
+	ApplyMakeContainerCreatePinType(Request, SpawnedNode);
 	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SpawnedNode, OutFragment);
 	FBlueprintHelperActionFragmentBuildUtils::PopulateCommonMetadata(Request, OutFragment);
 	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("create"));
