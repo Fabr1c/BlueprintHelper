@@ -51,6 +51,7 @@ FBlueprintHelperSettingsRowsChanged& FBlueprintHelperSettingsPresenter::OnRowsCh
 void FBlueprintHelperSettingsPresenter::ReloadRows()
 {
 	Rows.Reset();
+	const FText DebugScreenshotCategory = LOCTEXT("SettingsCategoryDebugScreenshot", "截图证据");
 
 	const FText ReviewVisualCategory = LOCTEXT("SettingsCategoryReviewVisual", "Review 可视化");
 	const FText ReviewDebugCategory = LOCTEXT("SettingsCategoryReviewDebug", "Review 调试");
@@ -142,6 +143,32 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 		DebugExportCategory,
 		LOCTEXT("DebugContainsFullSettingsLabel", "导出完整设置"),
 		LOCTEXT("DebugContainsFullSettingsHint", "控制 DebugBundle 是否包含完整设置快照。")));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+		TEXT("debug.screenshot.output_dir"),
+		DebugScreenshotCategory,
+		LOCTEXT("DebugScreenshotOutputDirLabel", "截图输出目录"),
+		LOCTEXT("DebugScreenshotOutputDirHint", "编辑器截图证据在 BlueprintHelper Debug 根目录下使用的相对目录。")));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeChoiceRow(
+		TEXT("debug.screenshot.default_capture_target"),
+		DebugScreenshotCategory,
+		LOCTEXT("DebugScreenshotDefaultTargetLabel", "默认截图目标"),
+		LOCTEXT("DebugScreenshotDefaultTargetHint", "capture_editor_screenshot 未指定 target 时使用的默认截图目标。"),
+		{
+			{ TEXT("active_window"), LOCTEXT("DebugScreenshotTargetActiveWindow", "活动窗口") },
+			{ TEXT("active_viewport"), LOCTEXT("DebugScreenshotTargetActiveViewport", "活动视口") }
+		}));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+		TEXT("debug.screenshot.filename_prefix"),
+		DebugScreenshotCategory,
+		LOCTEXT("DebugScreenshotFilenamePrefixLabel", "截图文件名前缀"),
+		LOCTEXT("DebugScreenshotFilenamePrefixHint", "请求未提供 label 时使用的默认安全文件名前缀。")));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+		TEXT("debug.screenshot.graph_max_nodes_per_image"),
+		DebugScreenshotCategory,
+		LOCTEXT("DebugScreenshotGraphMaxNodesPerImageLabel", "Graph max nodes per PNG"),
+		LOCTEXT("DebugScreenshotGraphMaxNodesPerImageHint", "Maximum selected Graph nodes captured in one independent PNG."),
+		1,
+		64));
 	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeChoiceRow(
 		TEXT("profiles.default.safety_profile"),
 		SafetyCategory,

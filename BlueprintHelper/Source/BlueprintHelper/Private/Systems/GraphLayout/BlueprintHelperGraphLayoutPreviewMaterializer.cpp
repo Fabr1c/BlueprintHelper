@@ -282,6 +282,7 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 	}
 
 	MaterializedNodesById.Add(NodeSpec.NodeId, Node);
+	Result.NodeGuidsById.Add(NodeSpec.NodeId, Node->NodeGuid);
 	++NextNodeIndex;
 	return true;
 }

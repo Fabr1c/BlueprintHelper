@@ -31,7 +31,8 @@ static void AddPreviewNode(
 	const FVector2D& Position,
 	const FVector2D& Size,
 	const bool bExisting,
-	std::initializer_list<FPinSnapshot> Pins)
+	std::initializer_list<FPinSnapshot> Pins,
+	const ENodeRole PreviewAnchorRole = ENodeRole::Unknown)
 {
 	FNodeSnapshot SnapshotNode;
 	SnapshotNode.NodeId = NodeId;
@@ -52,6 +53,8 @@ static void AddPreviewNode(
 	NodeSpec.Title = Title;
 	NodeSpec.Factory = Factory;
 	NodeSpec.Role = Role;
+	NodeSpec.PreviewAnchorRole = PreviewAnchorRole;
+	NodeSpec.bUsePreviewRoleAnchor = PreviewAnchorRole != ENodeRole::Unknown;
 	NodeSpec.Size = Size;
 	Sample.Nodes.Add(NodeSpec);
 }
@@ -146,7 +149,8 @@ static bool BuildLinearExecSample(FGraphLayoutPreviewSample& OutSample, FString&
 		FVector2D(0.0f, 0.0f),
 		FVector2D(220.0f, 88.0f),
 		false,
-		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)});
+		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)},
+		ENodeRole::EventEntry);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ResetState"),
@@ -160,7 +164,8 @@ static bool BuildLinearExecSample(FGraphLayoutPreviewSample& OutSample, FString&
 		{
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::ExecNode);
 	AddPreviewNode(
 		OutSample,
 		TEXT("SetCounter"),
@@ -237,7 +242,8 @@ static bool BuildPureDataSample(FGraphLayoutPreviewSample& OutSample, FString& O
 		FVector2D(24.0f, 200.0f),
 		FVector2D(168.0f, 72.0f),
 		false,
-		{MakePreviewPin(TEXT("Value"), EPinDirection::Output, false)});
+		{MakePreviewPin(TEXT("Value"), EPinDirection::Output, false)},
+		ENodeRole::VariableInput);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ItemName"),
@@ -263,7 +269,8 @@ static bool BuildPureDataSample(FGraphLayoutPreviewSample& OutSample, FString& O
 			MakePreviewPin(TEXT("A"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("B"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("ReturnValue"), EPinDirection::Output, false)
-		});
+		},
+		ENodeRole::OperatorOrCompare);
 	AddPreviewNode(
 		OutSample,
 		TEXT("BuildArray"),
@@ -278,7 +285,8 @@ static bool BuildPureDataSample(FGraphLayoutPreviewSample& OutSample, FString& O
 			MakePreviewPin(TEXT("In0"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("In1"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("Array"), EPinDirection::Output, false, TEXT("array"))
-		});
+		},
+		ENodeRole::PureFunction);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ConsumeArray"),
@@ -334,7 +342,8 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 			MakePreviewPin(TEXT("Condition"), EPinDirection::Input, false, TEXT("bool")),
 			MakePreviewPin(TEXT("Payload"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::ExecNode);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ContextGet"),
@@ -345,7 +354,8 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		FVector2D(120.0f, 320.0f),
 		FVector2D(188.0f, 72.0f),
 		false,
-		{MakePreviewPin(TEXT("Value"), EPinDirection::Output, false)});
+		{MakePreviewPin(TEXT("Value"), EPinDirection::Output, false)},
+		ENodeRole::VariableInput);
 	AddPreviewNode(
 		OutSample,
 		TEXT("FlagGet"),
@@ -370,7 +380,8 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		{
 			MakePreviewPin(TEXT("Value"), EPinDirection::Input, false, TEXT("bool")),
 			MakePreviewPin(TEXT("ReturnValue"), EPinDirection::Output, false, TEXT("bool"))
-		});
+		},
+		ENodeRole::OperatorOrCompare);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ValueGet"),
@@ -409,7 +420,8 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		{
 			MakePreviewPin(TEXT("In"), EPinDirection::Input, false),
 			MakePreviewPin(TEXT("ReturnValue"), EPinDirection::Output, false)
-		});
+		},
+		ENodeRole::PureFunction);
 
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("Consumer"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ContextGet"), TEXT("Value"), TEXT("Consumer"), TEXT("Context"), false, OutError) &&
@@ -434,7 +446,8 @@ static bool BuildMultiExecSample(FGraphLayoutPreviewSample& OutSample, FString& 
 		FVector2D(0.0f, 0.0f),
 		FVector2D(220.0f, 88.0f),
 		false,
-		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)});
+		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)},
+		ENodeRole::EventEntry);
 	AddPreviewNode(
 		OutSample,
 		TEXT("Sequence"),
@@ -463,7 +476,8 @@ static bool BuildMultiExecSample(FGraphLayoutPreviewSample& OutSample, FString& 
 		{
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::ExecNode);
 	AddPreviewNode(
 		OutSample,
 		TEXT("Branch"),
@@ -479,7 +493,8 @@ static bool BuildMultiExecSample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("Condition"), EPinDirection::Input, false, TEXT("bool")),
 			MakePreviewPin(TEXT("Then"), EPinDirection::Output, true),
 			MakePreviewPin(TEXT("Else"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::BranchControl);
 	AddPreviewNode(
 		OutSample,
 		TEXT("BranchCondition"),
@@ -556,7 +571,8 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 		{
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::ExecNode);
 	AddPreviewNode(
 		OutSample,
 		TEXT("FallbackExec"),
@@ -584,7 +600,8 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 		{
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("Completed"), EPinDirection::Output, true)
-		});
+		},
+		ENodeRole::AsyncNode);
 	AddPreviewNode(
 		OutSample,
 		TEXT("CommentBlocker"),
@@ -595,7 +612,8 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 		FVector2D(360.0f, 0.0f),
 		FVector2D(340.0f, 120.0f),
 		true,
-		{});
+		{},
+		ENodeRole::Comment);
 	AddPreviewNode(
 		OutSample,
 		TEXT("ExistingGuard"),
