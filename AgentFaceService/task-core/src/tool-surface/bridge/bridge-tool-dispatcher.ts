@@ -4,6 +4,7 @@ import { bridgeCommandByToolName } from './bridge-tool-command-map.js';
 import { executeGenericBridgeTool } from './generic-bridge-tool-handler.js';
 import { executeReadContextCapabilities } from './read-context/read-context-capabilities.js';
 import { executeReadContext } from './read-context/read-context-handler.js';
+import { executeCaptureScreenshot } from './screenshot/capture-screenshot-handler.js';
 import { executeWriteSessionRequest } from './write-session-handler.js';
 
 export async function executeBridgeTool(
@@ -19,6 +20,9 @@ export async function executeBridgeTool(
   }
   if (toolName === 'blueprinthelper_request_write_session') {
     return executeWriteSessionRequest(input, context);
+  }
+  if (toolName === 'blueprinthelper_capture_screenshot') {
+    return executeCaptureScreenshot(input, context);
   }
 
   const bridgeCommand = bridgeCommandByToolName[toolName];

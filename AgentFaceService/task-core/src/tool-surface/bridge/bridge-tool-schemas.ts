@@ -3,6 +3,7 @@ import { FindAssetsInputSchema } from './asset-discovery-schema.js';
 import { ReadFunctionChainContextInputSchema } from './function-chain-context-schema.js';
 import { ReadContextCapabilitiesInputSchema } from './read-context/read-context-capabilities.js';
 import { ReadContextInputSchema } from './read-context/read-context-schemas.js';
+import { CaptureScreenshotInputSchema } from './screenshot/capture-screenshot-schema.js';
 
 const DebugCaseInputSchema = z.object({
   debug_case_id: z.string().min(1),
@@ -35,4 +36,5 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_apply_review_action: ReviewActionInputSchema,
   blueprinthelper_read_function_chain_context: ReadFunctionChainContextInputSchema,
   blueprinthelper_find_assets: FindAssetsInputSchema,
+  blueprinthelper_capture_screenshot: CaptureScreenshotInputSchema,
 };

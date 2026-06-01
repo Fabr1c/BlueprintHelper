@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
 import { successRead } from '../../result/tool-result.js';
+import { bridgeToolSchemas } from '../../tool-surface/bridge/bridge-tool-schemas.js';
 import { ReadFunctionChainContextInputSchema } from '../../tool-surface/bridge/function-chain-context-schema.js';
 import { bridgeCommandByToolName } from '../../tool-surface/bridge/bridge-tool-command-map.js';
 import { ReadContextInputSchema } from '../../tool-surface/bridge/read-context/read-context-schemas.js';
@@ -23,6 +24,7 @@ const expectedToolNames = [
   'blueprinthelper_apply_review_action',
   'blueprinthelper_read_function_chain_context',
   'blueprinthelper_find_assets',
+  'blueprinthelper_capture_screenshot',
   'blueprinthelper_read_context_capabilities',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',
@@ -114,6 +116,69 @@ test('shared bridge command map does not expose removed legacy asset discovery t
 
 test('shared bridge command map exposes default find assets tool', () => {
   assert.equal(bridgeCommandByToolName['blueprinthelper_find_assets'], 'find_assets');
+});
+
+test('capture screenshot is a custom orchestration tool, not a single Bridge command map entry', () => {
+  assert.equal(bridgeCommandByToolName['blueprinthelper_capture_screenshot'], undefined);
+  assert.equal(Boolean(bridgeToolSchemas['blueprinthelper_capture_screenshot']), true);
+});
+
+test('capture screenshot registry handler orchestrates open, focus, and graph-only screenshot capture', async () => {
+  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_capture_screenshot');
+  assert.ok(tool);
+
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const sleeps: number[] = [];
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.CaptureScreenshotRequest.v1',
+    asset_path: '/Game/BP_Player.BP_Player',
+    graph_name: 'EventGraph',
+    node_ref: 'nodes[0]',
+    label: 'registry_capture',
+    settle_delay_ms: 10,
+  }, {
+    cwd: process.cwd(),
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>) {
+        calls.push({ command, payload });
+        return {
+          success: true,
+          request_id: `capture_${command}`,
+          result: command === 'capture_focused_graph_screenshot'
+            ? {
+              schema: 'BlueprintHelper.GraphScreenshotResult.v1',
+              screenshots: [{
+                screenshot_path: 'D:/UEProjects/Template/Saved/BlueprintHelper/Debug/Screenshots/registry_capture.png',
+                width: 800,
+                height: 600,
+              }],
+            }
+            : { status: 'completed' },
+        };
+      },
+    } as never,
+    taskRunner: {} as TaskSpecRunner,
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    { command: 'open_asset', payload: { asset_path: '/Game/BP_Player.BP_Player' } },
+    {
+      command: 'focus_blueprint_editor_target',
+      payload: {
+        asset_path: '/Game/BP_Player.BP_Player',
+        graph_name: 'EventGraph',
+        node_ref: 'nodes[0]',
+      },
+    },
+    { command: 'capture_focused_graph_screenshot', payload: { label: 'registry_capture' } },
+  ]);
+  assert.deepEqual(sleeps, [10]);
+  assert.equal(result.data?.['schema'], 'BlueprintHelper.ScreenshotEvidence.v1');
+  assert.equal(result.data?.['capture_scope'], 'graph');
 });
 
 test('find assets registry handler dispatches through the generic Bridge tool path', async () => {

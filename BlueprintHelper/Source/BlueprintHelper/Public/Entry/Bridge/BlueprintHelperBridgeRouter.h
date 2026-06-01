@@ -12,6 +12,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperScreenshotBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 #include "Entry/Bridge/BlueprintHelperBridgeTypes.h"
 #include "Shared/Safety/BlueprintHelperDependencyAnalysisService.h"
@@ -45,6 +46,8 @@ class FBlueprintHelperGraphWriteServiceRegistry;
 class FBlueprintHelperCompileAssetService;
 class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperReviewStoreService;
+class FBlueprintHelperEditorFocusService;
+class FBlueprintHelperScreenshotCaptureService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的静态簇或系统层入口。
@@ -76,7 +79,9 @@ public:
 		const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 		const FBlueprintHelperCompileAssetService& InCompileAssetService,
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
-		const FBlueprintHelperReviewStoreService& InReviewStoreService);
+		const FBlueprintHelperReviewStoreService& InReviewStoreService,
+		const FBlueprintHelperEditorFocusService& InEditorFocusService,
+		const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -158,6 +163,7 @@ private:
 	FBlueprintHelperComponentBridgeRoutes ComponentRoutes;
 	FBlueprintHelperClassSettingsBridgeRoutes ClassSettingsRoutes;
 	FBlueprintHelperGraphWriteBridgeRoutes GraphWriteRoutes;
+	FBlueprintHelperScreenshotBridgeRoutes ScreenshotRoutes;
 	const FBlueprintHelperBlueprintVariableService& VariableService;
 	FBlueprintHelperBlueprintVariablesBridgeRoutes BlueprintVariablesRoutes;
 	FBlueprintHelperDependencyAnalysisService DependencyAnalysisService;

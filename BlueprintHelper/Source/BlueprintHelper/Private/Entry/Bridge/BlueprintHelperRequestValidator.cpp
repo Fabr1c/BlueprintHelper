@@ -302,6 +302,22 @@ public:
 		return false;
 	}
 
+	static bool IsSafeScreenshotLabel(const FString& Value)
+	{
+		if (Value.IsEmpty())
+		{
+			return true;
+		}
+		for (const TCHAR Ch : Value)
+		{
+			if (!(FChar::IsAlnum(Ch) || Ch == TEXT('_') || Ch == TEXT('-') || Ch == TEXT('.')))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	static bool ValidateFindAssetsPathPrefixes(
 		const TSharedPtr<FJsonObject>& Payload,
 		FBlueprintHelperBridgeValidationError& OutError)
@@ -556,6 +572,91 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("focus_blueprint_editor_target")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("graph_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("block_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("node_ref"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		const bool bRequiresGraphName = Payload->HasField(TEXT("block_ref")) || Payload->HasField(TEXT("node_ref"));
+		FString GraphName;
+		if (bRequiresGraphName && (!Payload->TryGetStringField(TEXT("graph_name"), GraphName) || GraphName.IsEmpty()))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.graph_name"),
+				TEXT("non_empty_string"),
+				TEXT("missing"));
+			return false;
+		}
+		return true;
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("capture_editor_screenshot")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("label"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		const TSet<FString> AllowedTargets = {
+			TEXT("active_window"),
+			TEXT("active_viewport"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("target"), AllowedTargets, OutError))
+		{
+			return false;
+		}
+		FString Label;
+		if (Payload->TryGetStringField(TEXT("label"), Label) &&
+			!FBlueprintHelperRequestValidatorLocalUtils::IsSafeScreenshotLabel(Label))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.label"),
+				TEXT("safe_filename_label"),
+				Label);
+			return false;
+		}
+		return true;
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("capture_focused_graph_screenshot")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("label"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("max_nodes_per_image"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		FString Label;
+		if (Payload->TryGetStringField(TEXT("label"), Label) &&
+			!FBlueprintHelperRequestValidatorLocalUtils::IsSafeScreenshotLabel(Label))
+		{
+			FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+				OutError,
+				TEXT("payload.label"),
+				TEXT("safe_filename_label"),
+				Label);
+			return false;
+		}
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateIntRangeField(
+			Payload,
+			TEXT("max_nodes_per_image"),
+			1,
+			64,
+			OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("find_assets")))
 	{

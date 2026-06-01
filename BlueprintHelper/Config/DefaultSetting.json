@@ -200,7 +200,13 @@
   },
   "debug": {
     "export_profile": "standard",
-    "contains_full_settings": false
+    "contains_full_settings": false,
+    "screenshot": {
+      "output_dir": "Screenshots",
+      "default_capture_target": "active_window",
+      "filename_prefix": "editor",
+      "graph_max_nodes_per_image": 8
+    }
   },
   "graph_layout": {
     "rules_source": "GraphLayoutRules.json"

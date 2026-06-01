@@ -108,6 +108,9 @@ public:
 			TEXT("list_debug_cases"),
 			TEXT("export_debug_bundle"),
 			TEXT("read_reference_context"),
+			TEXT("focus_blueprint_editor_target"),
+			TEXT("capture_editor_screenshot"),
+			TEXT("capture_focused_graph_screenshot"),
 			TEXT("read_function_chain_context"),
 			TEXT("read_blueprint_logic_md"),
 			TEXT("read_blueprint_logic_json"),
@@ -733,7 +736,9 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperGraphWriteServiceRegistry& InGraphWriteRegistry,
 	const FBlueprintHelperCompileAssetService& InCompileAssetService,
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
-	const FBlueprintHelperReviewStoreService& InReviewStoreService)
+	const FBlueprintHelperReviewStoreService& InReviewStoreService,
+	const FBlueprintHelperEditorFocusService& InEditorFocusService,
+	const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService)
 	: ExportService(InExport)
 	, CompileService(InCompile)
 	, ValidationService(InValidation)
@@ -754,6 +759,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, ComponentRoutes(InComponentService)
 	, ClassSettingsRoutes(InClassSettings)
 	, GraphWriteRoutes(InGraphWriteRegistry)
+	, ScreenshotRoutes(InEditorFocusService, InScreenshotCaptureService)
 	, VariableService(InVariableService)
 	, BlueprintVariablesRoutes(InVariableService)
 	, TaskRuntimeService(
@@ -836,6 +842,13 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("export_debug_bundle", Debug, HandleExportDebugBundle)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint", Debug, HandleCompileBlueprint)
 	BLUEPRINTHELPER_ROUTE("compile_blueprint_asset", Debug, HandleCompileBlueprintAsset)
+
+	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::Debug &&
+		FBlueprintHelperScreenshotBridgeRoutes::IsScreenshotCommand(Request.Command))
+	{
+		return FBlueprintHelperBridgeRouterLocalUtils::ExecuteRouteWithTiming(Request, [&]() { return ScreenshotRoutes.HandleRequest(Request); });
+	}
+
 	BLUEPRINTHELPER_ROUTE("query_review_records", Review, HandleQueryReviewRecords)
 	BLUEPRINTHELPER_ROUTE("apply_review_action", Review, HandleApplyReviewAction)
 

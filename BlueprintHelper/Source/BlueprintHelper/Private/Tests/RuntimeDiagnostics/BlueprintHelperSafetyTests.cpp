@@ -35,6 +35,8 @@
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Systems/Debug/BlueprintHelperEditorFocusService.h"
+#include "Systems/Debug/BlueprintHelperScreenshotCaptureService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
@@ -511,6 +513,12 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 	FBlueprintHelperCompileAssetService CompileAssetService(CompileService);
 	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
 	FBlueprintHelperReviewStoreService ReviewStoreService;
+	FBlueprintHelperEditorFocusService EditorFocusService(
+		AssetBrowseService,
+		GraphResolver,
+		BlockIdService,
+		LogicJsonPathService);
+	FBlueprintHelperScreenshotCaptureService ScreenshotCaptureService;
 	FBlueprintHelperBridgeRouter Router(
 		ExportService,
 		CompileService,
@@ -534,7 +542,9 @@ bool FBlueprintHelperBridgeExportEffectiveScopeTest::RunTest(const FString& Para
 		GraphWriteRegistry,
 		CompileAssetService,
 		VariableService,
-		ReviewStoreService);
+		ReviewStoreService,
+		EditorFocusService,
+		ScreenshotCaptureService);
 
 	FBlueprintHelperBridgeRequest Request;
 	Request.RequestId = TEXT("effective-scope-test");
