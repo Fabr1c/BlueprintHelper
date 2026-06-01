@@ -98,12 +98,21 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
   if (taskSpec.task_type === 'edit_blueprint_class_settings') {
     return compileBlueprintClassSettingsTaskSpecToTaskPlan(taskSpec);
   }
+  if (taskSpec.task_type === 'edit_blueprint_components') {
+    return compileBlueprintComponentsTaskSpecToTaskPlan(taskSpec);
+  }
+  if (taskSpec.task_type === 'edit_umg_widget') {
+    return compileUMGWidgetTaskSpecToTaskPlan(taskSpec);
+  }
+  if (taskSpec.task_type === 'edit_data_table') {
+    return compileDataTableTaskSpecToTaskPlan(taskSpec);
+  }
   if (taskSpec.task_type !== 'edit_blueprint_graph') {
     throw new TaskSpecCompileError('unsupported_task_type', `Unsupported TaskSpec task_type: ${taskSpec.task_type}`, [
       {
         code: 'unsupported_task_type',
         path: 'task_type',
-        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, ClassSettings, and composite feature slices.',
+        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, ClassSettings, Components, UMG Widget, DataTable, and composite feature slices.',
       },
     ]);
   }
@@ -843,6 +852,290 @@ function compileObjectPropertiesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, {
     [op],
     { property_scope: 'uobject' },
   );
+}
+
+function compileBlueprintComponentsTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_components' }>,
+): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'component_strategy',
+    'component_tree',
+    'behavior.component_strategy',
+    'Use component_strategy="component_tree".',
+  );
+
+  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
+  const steps: TaskPlanStep[] = [];
+
+  changes.forEach((rawChange, changeIndex) => {
+    const path = `behavior.changes[${changeIndex}]`;
+    if (!isRecord(rawChange)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+        { code: 'invalid_component_change', path, message: 'Provide a component change object.' },
+      ]);
+    }
+
+    const change = rawChange as Record<string, unknown>;
+    const kind = getRequiredString(change, 'kind', `${path}.kind`);
+    if (kind === 'ensure_component_present') {
+      const addOp = omitUndefined({
+        op: 'add_component',
+        component_name: getRequiredString(change, 'name', `${path}.name`),
+        component_class: getRequiredString(change, 'class', `${path}.class`),
+        parent_component: componentParent(change),
+        socket_name: componentSocket(change),
+        attach_rule: componentAttachRule(change),
+        name_collision_policy: normalizeComponentCollisionPolicy(change['on_name_conflict']),
+      });
+      const addStep = makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [addOp],
+      );
+      steps.push(addStep);
+
+      const settings = propertySettingsArray(change['properties'], `${path}.properties`, false, 'component');
+      if (settings.length > 0) {
+        steps.push({
+          ...makeCompositeCapabilityStep(
+            steps.length + 1,
+            'blueprint_component',
+            taskSpec.target.asset_path,
+            'component_tree',
+            [{
+              op: 'set_component_properties',
+              component_name: addOp.component_name,
+              settings,
+            }],
+          ),
+          depends_on: [addStep.step_id],
+        } as TaskPlanStep);
+      }
+      return;
+    }
+
+    if (kind === 'configure_component') {
+      const settings = propertySettingsArray(change['properties'], `${path}.properties`, true, 'component');
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [{
+          op: 'set_component_properties',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          settings,
+        }],
+      ));
+      return;
+    }
+
+    if (kind === 'remove_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [{
+          op: 'remove_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+        }],
+      ));
+      return;
+    }
+
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported component change kind: ${kind}`, [
+      {
+        code: 'unsupported_component_change_kind',
+        path: `${path}.kind`,
+        message: 'Use ensure_component_present, configure_component, or remove_component.',
+      },
+    ]);
+  });
+
+  return makeTaskPlanWithSteps(taskSpec, steps);
+}
+
+function compileUMGWidgetTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_umg_widget' }>,
+): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'widget_strategy',
+    'widget_blueprint_edit',
+    'behavior.widget_strategy',
+    'Use widget_strategy="widget_blueprint_edit".',
+  );
+
+  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
+  const steps = changes.map((rawChange, index) => {
+    const path = `behavior.changes[${index}]`;
+    if (!isRecord(rawChange)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+        { code: 'invalid_umg_widget_change', path, message: 'Provide a UMG widget change object.' },
+      ]);
+    }
+
+    const change = rawChange as Record<string, unknown>;
+    const kind = getRequiredString(change, 'kind', `${path}.kind`);
+    if (kind === 'create_widget') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'umg_widget',
+        taskSpec.target.asset_path,
+        'widget_tree_edit',
+        [omitUndefined({
+          op: 'add_widget',
+          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
+          widget_class: getRequiredString(change, 'widget_class', `${path}.widget_class`),
+          parent_widget_name: optionalString(change, 'parent_widget_name'),
+          parent_name: optionalString(change, 'parent_name'),
+        })],
+      );
+    }
+
+    if (kind === 'update_widget_property') {
+      if (!Object.hasOwn(change, 'value')) {
+        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
+          {
+            code: 'missing_umg_widget_property_value',
+            path: `${path}.value`,
+            message: 'Provide value for update_widget_property.',
+          },
+        ]);
+      }
+      const propertyPath = optionalString(change, 'property_path');
+      const propertyName = optionalString(change, 'property_name');
+      if (!propertyPath && !propertyName) {
+        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.property_path is required.`, [
+          {
+            code: 'missing_umg_widget_property_path',
+            path: `${path}.property_path`,
+            message: 'Provide property_path or property_name.',
+          },
+        ]);
+      }
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'umg_widget',
+        taskSpec.target.asset_path,
+        'widget_property_edit',
+        [omitUndefined({
+          op: 'set_widget_property',
+          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
+          property_path: propertyPath,
+          property_name: propertyName,
+          value: literalValue(change['value']),
+        })],
+      );
+    }
+
+    if (kind === 'delete_widget') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'umg_widget',
+        taskSpec.target.asset_path,
+        'widget_tree_edit',
+        [{
+          op: 'remove_widget',
+          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
+        }],
+      );
+    }
+
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported UMG widget change kind: ${kind}`, [
+      {
+        code: 'unsupported_umg_widget_change_kind',
+        path: `${path}.kind`,
+        message: 'Use create_widget, update_widget_property, or delete_widget.',
+      },
+    ]);
+  });
+
+  return makeTaskPlanWithSteps(taskSpec, steps);
+}
+
+function compileDataTableTaskSpecToTaskPlan(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_data_table' }>,
+): TaskPlan {
+  const behavior = taskSpec.behavior as Record<string, unknown>;
+  assertExactString(
+    behavior,
+    'row_strategy',
+    'row_edit',
+    'behavior.row_strategy',
+    'Use row_strategy="row_edit".',
+  );
+
+  const rows = requiredArray(behavior, 'rows', 'behavior.rows');
+  const steps = rows.map((rawRow, index) => {
+    const path = `behavior.rows[${index}]`;
+    if (!isRecord(rawRow)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
+        { code: 'invalid_data_table_row', path, message: 'Provide a DataTable row object.' },
+      ]);
+    }
+
+    const row = rawRow as Record<string, unknown>;
+    const action = getRequiredString(row, 'action', `${path}.action`);
+    const rowName = getRequiredString(row, 'row_name', `${path}.row_name`);
+
+    if (action === 'add') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'data_table',
+        taskSpec.target.asset_path,
+        'row_edit',
+        [omitUndefined({
+          op: 'add_row',
+          row_name: rowName,
+          fields: optionalFieldsObject(row['fields'], `${path}.fields`, false),
+        })],
+      );
+    }
+
+    if (action === 'update') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'data_table',
+        taskSpec.target.asset_path,
+        'row_edit',
+        [{
+          op: 'update_row',
+          row_name: rowName,
+          fields: optionalFieldsObject(row['fields'], `${path}.fields`, true),
+        }],
+      );
+    }
+
+    if (action === 'delete') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'data_table',
+        taskSpec.target.asset_path,
+        'row_edit',
+        [{
+          op: 'delete_row',
+          row_name: rowName,
+        }],
+      );
+    }
+
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported DataTable row action: ${action}`, [
+      {
+        code: 'unsupported_data_table_row_action',
+        path: `${path}.action`,
+        message: 'Use add, update, or delete.',
+      },
+    ]);
+  });
+
+  return makeTaskPlanWithSteps(taskSpec, steps);
 }
 
 function compileBlueprintClassSettingsTaskSpecToTaskPlan(
@@ -4660,6 +4953,18 @@ function compositeComponentAttachRule(component: Record<string, unknown>): unkno
   return typeof attach?.['rule'] === 'string' && attach['rule'].length > 0 ? attach['rule'] : undefined;
 }
 
+function componentParent(component: Record<string, unknown>): unknown {
+  return compositeComponentParent(component);
+}
+
+function componentSocket(component: Record<string, unknown>): unknown {
+  return compositeComponentSocket(component);
+}
+
+function componentAttachRule(component: Record<string, unknown>): unknown {
+  return compositeComponentAttachRule(component);
+}
+
 function normalizeComponentCollisionPolicy(value: unknown): string | undefined {
   if (value === 'reuse_existing') return 'reuse_if_exists';
   if (value === 'reuse_if_type_matches' || value === 'reuse_if_exists') return 'reuse_if_exists';
@@ -4674,6 +4979,108 @@ function compositeVariablePinType(record: Record<string, unknown>, path: string)
     return { category: record['type'] };
   }
   throwMissingVariableType(`${path}.type`);
+}
+
+function propertySettingsArray(
+  rawSettings: unknown,
+  path: string,
+  requireNonEmpty: boolean,
+  owner: 'component' | 'property' = 'property',
+): Record<string, unknown>[] {
+  if (rawSettings === undefined || rawSettings === null) {
+    if (requireNonEmpty) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is required.`, [
+        {
+          code: owner === 'component' ? 'missing_component_properties' : 'missing_property_settings',
+          path,
+          message: 'Provide at least one property setting.',
+        },
+      ]);
+    }
+    return [];
+  }
+
+  const settings = Array.isArray(rawSettings)
+    ? rawSettings.map((rawSetting, index) => {
+        if (!isRecord(rawSetting)) {
+          throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Property setting must be an object.', [
+            {
+              code: 'invalid_property_setting',
+              path: `${path}[${index}]`,
+              message: 'Use { "property_path": "...", "value": ... }.',
+            },
+          ]);
+        }
+        const setting = rawSetting as Record<string, unknown>;
+        if (!Object.hasOwn(setting, 'value')) {
+          throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Property setting requires value.', [
+            {
+              code: 'missing_property_value',
+              path: `${path}[${index}].value`,
+              message: 'Provide value.',
+            },
+          ]);
+        }
+        return {
+          property_path: getRequiredString(setting, 'property_path', `${path}[${index}].property_path`),
+          value: literalValue(setting['value']),
+        };
+      })
+    : isRecord(rawSettings)
+      ? Object.entries(rawSettings).map(([propertyPath, value]) => ({
+          property_path: propertyPath,
+          value: literalValue(value),
+        }))
+      : undefined;
+
+  if (!settings) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object or array.`, [
+      {
+        code: 'invalid_property_settings',
+        path,
+        message: 'Use an object map or an array of { property_path, value } settings.',
+      },
+    ]);
+  }
+
+  if (requireNonEmpty && settings.length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must not be empty.`, [
+      {
+        code: owner === 'component' ? 'missing_component_properties' : 'missing_property_settings',
+        path,
+        message: 'Provide at least one property setting.',
+      },
+    ]);
+  }
+
+  return settings;
+}
+
+function optionalFieldsObject(value: unknown, path: string, requireNonEmpty: boolean): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
+    if (requireNonEmpty) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is required.`, [
+        {
+          code: 'missing_data_table_row_fields',
+          path,
+          message: 'DataTable update rows require a non-empty fields object.',
+        },
+      ]);
+    }
+    return undefined;
+  }
+
+  if (!isRecord(value) || Object.keys(value).length === 0) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be a non-empty object.`, [
+      {
+        code: requireNonEmpty ? 'missing_data_table_row_fields' : 'invalid_data_table_row_fields',
+        path,
+        message: 'Use a non-empty object keyed by row field name.',
+      },
+    ]);
+  }
+
+  return value;
 }
 
 function compositeSettingsArray(
