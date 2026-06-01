@@ -133,6 +133,28 @@ const helpEntries: Record<string, HelpEntry> = {
       'Do not infer Unreal asset_path values from filesystem .uasset paths.',
     ],
   },
+  blueprinthelper_capture_screenshot: {
+    summary: 'Open an asset, optionally focus graph_name plus block_ref or node_ref, and capture editor screenshot evidence.',
+    usage: [
+      'bh blueprinthelper_capture_screenshot --file <capture-screenshot.json> --select status,artifacts.full_result',
+      '$json | bh blueprinthelper_capture_screenshot --stdin --format full --select status,artifacts.full_result',
+    ],
+    input: [
+      'Root JSON: BlueprintHelper.CaptureScreenshotRequest.v1.',
+      'Required: asset_path.',
+      'Optional: graph_name, block_ref, node_ref, label, capture_target, settle_delay_ms.',
+      'graph_name is required when block_ref or node_ref is provided.',
+      'Use capture_target:auto for graph_name/block_ref/node_ref requests; graph targets capture Graph-only PNGs.',
+    ],
+    templates: [
+      ROOT_INDEX,
+      `${TEMPLATE_ROOT}/blueprinthelper_capture_screenshot_template.json`,
+    ],
+    notes: [
+      'This CLI tool orchestrates open_asset, optional focus_blueprint_editor_target, and then either capture_focused_graph_screenshot or capture_editor_screenshot.',
+      'Only asset-only requests capture the current editor window; graph/block/node requests capture Graph-only independent PNGs.',
+    ],
+  },
   blueprinthelper_preview_task: {
     summary: 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.',
     usage: [
@@ -347,6 +369,7 @@ function globalHelpText(): string {
     'blueprinthelper_read_reference_context',
     'blueprinthelper_read_function_chain_context',
     'blueprinthelper_find_assets',
+    'blueprinthelper_capture_screenshot',
     'blueprinthelper_preview_task',
     'blueprinthelper_request_write_session',
     'blueprinthelper_execute_task',

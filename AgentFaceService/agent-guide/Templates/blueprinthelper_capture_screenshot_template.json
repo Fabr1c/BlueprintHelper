@@ -1,0 +1,9 @@
+{
+  "schema": "BlueprintHelper.CaptureScreenshotRequest.v1",
+  "asset_path": "/Game/Blueprints/BP_Player.BP_Player",
+  "graph_name": "EventGraph",
+  "node_ref": "nodes[0]",
+  "label": "bp_player_eventgraph",
+  "capture_target": "auto",
+  "settle_delay_ms": 250
+}

@@ -4,6 +4,7 @@
 #include "Misc/Paths.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
+#include "Systems/Debug/BlueprintHelperScreenshotSettings.h"
 
 namespace
 {
@@ -67,6 +68,7 @@ bool FBlueprintHelperRuntimeSettingResolverTest::RunTest(const FString& Paramete
 			TEXT("\"overlay_filter_current_asset_only\":\"false\"")
 			TEXT("}},")
 			TEXT("\"runtime\":{\"bridge\":{\"port\":\"6000\"}}")
+			TEXT(",\"debug\":{\"screenshot\":{\"output_dir\":\"EvidenceShots\",\"default_capture_target\":\"active_viewport\",\"filename_prefix\":\"shot\",\"graph_max_nodes_per_image\":3}}")
 			TEXT("}"),
 			Error));
 	TestTrue(TEXT("user setting fixture clears overrides"), UserSettingBackup.Write(TEXT("{}"), Error));
@@ -116,6 +118,15 @@ bool FBlueprintHelperRuntimeSettingResolverTest::RunTest(const FString& Paramete
 		&Diagnostics);
 	TestTrue(TEXT("json value reads array index"), JsonValue.IsValid() && JsonValue->Type == EJson::Number);
 	TestEqual(TEXT("json array index value"), JsonValue->AsNumber(), 10.0);
+
+	const FBlueprintHelperScreenshotSettings ScreenshotSettings =
+		FBlueprintHelperScreenshotSettings::Load();
+	TestEqual(TEXT("screenshot output dir comes from settings"), ScreenshotSettings.OutputDir, FString(TEXT("EvidenceShots")));
+	TestTrue(
+		TEXT("screenshot default target comes from settings"),
+		ScreenshotSettings.DefaultCaptureTarget == EBlueprintHelperScreenshotTarget::ActiveViewport);
+	TestEqual(TEXT("screenshot filename prefix comes from settings"), ScreenshotSettings.FilenamePrefix, FString(TEXT("shot")));
+	TestEqual(TEXT("screenshot graph tile node cap comes from settings"), ScreenshotSettings.GraphMaxNodesPerImage, 3);
 
 	return true;
 }

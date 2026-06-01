@@ -86,6 +86,25 @@ test('tool help is specific for find assets and points to the request template',
   assert.doesNotMatch(output, /Default tool names:/);
 });
 
+test('tool help is specific for capture screenshot and points to the request template', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_capture_screenshot', '--help'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_capture_screenshot/);
+  assert.match(output, /graph_name is required when block_ref or node_ref is provided/);
+  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_capture_screenshot_template\.json/);
+  assert.doesNotMatch(output, /Default tool names:/);
+});
+
 test('direct find assets calls matching Bridge command and returns compact FindAssets payload', async () => {
   const writes: string[] = [];
   const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
@@ -151,6 +170,88 @@ test('direct find assets calls matching Bridge command and returns compact FindA
   assert.deepEqual(
     collectForbiddenKeys(output.tool_result.data, new Set(['cursor', 'next_cursor', 'total_count'])),
     [],
+  );
+});
+
+test('direct capture screenshot orchestrates open, focus, and graph-only screenshot capture', async () => {
+  const writes: string[] = [];
+  const calls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const sleeps: number[] = [];
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-cli-capture-screenshot-'));
+  const payload = {
+    schema: 'BlueprintHelper.CaptureScreenshotRequest.v1',
+    asset_path: '/Game/Blueprints/BP_Player.BP_Player',
+    graph_name: 'EventGraph',
+    node_ref: 'nodes[0]',
+    label: 'bp_player_eventgraph',
+    settle_delay_ms: 25,
+  };
+  const bridge = {
+    sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
+      calls.push({ command, payload: commandPayload });
+      return {
+        request_id: `capture_${command}`,
+        success: true,
+        result: command === 'capture_focused_graph_screenshot'
+          ? {
+            schema: 'BlueprintHelper.GraphScreenshotResult.v1',
+            screenshots: [{
+              schema: 'BlueprintHelper.EditorScreenshotResult.v1',
+              screenshot_path: 'D:/UEProjects/Template/Saved/BlueprintHelper/Debug/Screenshots/bp_player_eventgraph.png',
+              relative_path: 'Screenshots/bp_player_eventgraph.png',
+              width: 1600,
+              height: 900,
+            }],
+          }
+          : { status: 'completed' },
+      };
+    },
+  };
+
+  const exitCode = await runCli({
+    argv: [
+      'blueprinthelper_capture_screenshot',
+      '--json',
+      JSON.stringify(payload),
+      '--format',
+      'full',
+      '--artifact-dir',
+      artifactDir,
+    ],
+    cwd: process.cwd(),
+    bridge,
+    runner: {} as never,
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [
+    { command: 'open_asset', payload: { asset_path: '/Game/Blueprints/BP_Player.BP_Player' } },
+    {
+      command: 'focus_blueprint_editor_target',
+      payload: {
+        asset_path: '/Game/Blueprints/BP_Player.BP_Player',
+        graph_name: 'EventGraph',
+        node_ref: 'nodes[0]',
+      },
+    },
+    { command: 'capture_focused_graph_screenshot', payload: { label: 'bp_player_eventgraph' } },
+  ]);
+  assert.deepEqual(sleeps, [25]);
+
+  const output = JSON.parse(writes.join(''));
+  assert.equal(output.status, 'completed');
+  assert.equal(output.tool_name, 'blueprinthelper_capture_screenshot');
+  assert.equal(output.tool_result.data.asset_path, '/Game/Blueprints/BP_Player.BP_Player');
+  assert.equal(output.tool_result.data.graph_name, 'EventGraph');
+  assert.equal(output.tool_result.data.capture_scope, 'graph');
+  assert.equal(
+    output.tool_result.data.screenshot.screenshot_path,
+    'D:/UEProjects/Template/Saved/BlueprintHelper/Debug/Screenshots/bp_player_eventgraph.png',
   );
 });
 

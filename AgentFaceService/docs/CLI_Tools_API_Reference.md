@@ -102,6 +102,7 @@
 | `blueprinthelper_read_reference_context` | 引用 / 依赖上下文 | `ReferenceContextPack.v1` 请求对象 | `Templates/read/SEMANTIC_INDEX.md` + 对应 reference 模板 | 用于重命名、删除、签名变更、依赖风险分析。 |
 | `blueprinthelper_read_function_chain_context` | 函数链索引 | function / event / custom_event 链路请求对象 | `Templates/read/blueprinthelper_read_function_chain_context_template.json` | 只返回紧凑索引，不返回完整函数体。 |
 | `blueprinthelper_find_assets` | 资产路径发现 | `BlueprintHelper.FindAssetsRequest.v1` 请求对象 | `Templates/blueprinthelper_find_assets_template.json` | 在未知 Unreal `asset_path` 时先用 AssetRegistry 缩小候选，再继续读上下文或写流程。 |
+| `blueprinthelper_capture_screenshot` | 编辑器截图证据 | `BlueprintHelper.CaptureScreenshotRequest.v1` 请求对象 | `Templates/blueprinthelper_capture_screenshot_template.json` | 打开资产、可选定位 `graph_name + block_ref/node_ref`，然后保存真实编辑器截图证据。 |
 
 `blueprinthelper_read_reference_context` 的模板家族包括:
 
@@ -145,6 +146,22 @@
   "include_redirectors": false
 }
 ```
+
+`blueprinthelper_capture_screenshot` 的典型字段如下:
+
+```json
+{
+  "schema": "BlueprintHelper.CaptureScreenshotRequest.v1",
+  "asset_path": "/Game/Blueprints/BP_Player.BP_Player",
+  "graph_name": "EventGraph",
+  "node_ref": "nodes[0]",
+  "label": "bp_player_eventgraph",
+  "capture_target": "auto",
+  "settle_delay_ms": 250
+}
+```
+
+`block_ref` 和 `node_ref` 是 Agent-facing 的可读定位字段。只要提供 `block_ref` 或 `node_ref`，就必须同时提供 `graph_name`。这个 CLI 工具是整合工具簇，会串联 `open_asset`、可选的 `focus_blueprint_editor_target`，然后按请求类型调用截图 primitive：asset-only 请求调用 `capture_editor_screenshot` 截当前 Window；Graph / Block / Node 请求调用 `capture_focused_graph_screenshot`，只输出 Graph 区域的多张独立 PNG。结果会返回 `screenshots[]`、`screenshot_count`、`capture_scope`，并用 `screenshot` 作为第一张 PNG 的兼容别名。
 
 P0 不支持输入 `cursor`，`FindAssets.v1` 结果也不返回 `total_count` 或 `next_cursor`。需要更精确的结果时，缩小 `query`、`path_prefixes`、`asset_types` 或 `asset_classes`。
 

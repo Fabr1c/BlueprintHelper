@@ -219,6 +219,36 @@ bool FBlueprintHelperSettingsGraphWriteLayoutRetiredTest::RunTest(const FString&
 		CliArtifactDirValue.IsValid() ? CliArtifactDirValue->AsString() : FString(),
 		FString(TEXT("Saved/BlueprintHelper/Cli")));
 
+	TSharedPtr<FJsonValue> ScreenshotOutputDirValue;
+	TestTrue(
+		TEXT("effective settings expose screenshot output dir"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(TEXT("debug.screenshot.output_dir"), ScreenshotOutputDirValue, Error));
+	TestTrue(TEXT("screenshot output dir is a string"), ScreenshotOutputDirValue.IsValid() && ScreenshotOutputDirValue->Type == EJson::String);
+	TestEqual(
+		TEXT("screenshot output dir default"),
+		ScreenshotOutputDirValue.IsValid() ? ScreenshotOutputDirValue->AsString() : FString(),
+		FString(TEXT("Screenshots")));
+
+	TSharedPtr<FJsonValue> ScreenshotTargetValue;
+	TestTrue(
+		TEXT("effective settings expose screenshot default target"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(TEXT("debug.screenshot.default_capture_target"), ScreenshotTargetValue, Error));
+	TestTrue(TEXT("screenshot target is a string"), ScreenshotTargetValue.IsValid() && ScreenshotTargetValue->Type == EJson::String);
+	TestEqual(
+		TEXT("screenshot default target"),
+		ScreenshotTargetValue.IsValid() ? ScreenshotTargetValue->AsString() : FString(),
+		FString(TEXT("active_window")));
+
+	TSharedPtr<FJsonValue> ScreenshotGraphMaxNodesValue;
+	TestTrue(
+		TEXT("effective settings expose screenshot graph max nodes per image"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(TEXT("debug.screenshot.graph_max_nodes_per_image"), ScreenshotGraphMaxNodesValue, Error));
+	TestTrue(TEXT("screenshot graph max nodes is numeric"), ScreenshotGraphMaxNodesValue.IsValid() && ScreenshotGraphMaxNodesValue->Type == EJson::Number);
+	TestEqual(
+		TEXT("screenshot graph max nodes default"),
+		ScreenshotGraphMaxNodesValue.IsValid() ? ScreenshotGraphMaxNodesValue->AsNumber() : 0.0,
+		8.0);
+
 	TSharedPtr<FJsonValue> ActionResolutionMaxCandidates;
 	TestTrue(
 		TEXT("effective settings expose graph_write action resolution max candidates"),
@@ -409,6 +439,10 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		TEXT("review.performance.validity_sweep_max_game_thread_ms_per_frame"),
 		TEXT("review.performance.validity_sweep_max_invalid_purges_per_batch"),
 		TEXT("tool_clusters.graph_write.action_resolution.max_candidates"),
+		TEXT("debug.screenshot.output_dir"),
+		TEXT("debug.screenshot.default_capture_target"),
+		TEXT("debug.screenshot.filename_prefix"),
+		TEXT("debug.screenshot.graph_max_nodes_per_image"),
 		TEXT("ui.layout_rule_editor.canvas_desired_size"),
 		TEXT("ui.review_panel.overlay_filter_current_asset_only")
 	};

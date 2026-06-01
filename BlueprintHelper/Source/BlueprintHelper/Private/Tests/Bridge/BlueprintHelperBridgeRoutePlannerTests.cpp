@@ -7,6 +7,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperDataTableBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperGraphWriteBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
+#include "Entry/Bridge/Routes/BlueprintHelperScreenshotBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 
@@ -48,6 +49,9 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
+		{TEXT("focus_blueprint_editor_target"), EBlueprintHelperBridgeRouteCluster::Debug},
+		{TEXT("capture_editor_screenshot"), EBlueprintHelperBridgeRouteCluster::Debug},
+		{TEXT("capture_focused_graph_screenshot"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("read_function_chain_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 		{TEXT("query_review_records"), EBlueprintHelperBridgeRouteCluster::Review},
 	};
@@ -175,6 +179,97 @@ bool FBlueprintHelperSecondBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest
 	TestFalse(
 		TEXT("ClassSettings route rejects graph command"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("append_blueprint_graph")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperScreenshotBridgeRoutes_RecognizeOnlyOwnedCommands,
+	"BlueprintHelper.Router.Cluster.ScreenshotRoutesRecognizeOnlyOwnedCommands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperScreenshotBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest(const FString& Parameters)
+{
+	TestTrue(
+		TEXT("Screenshot route recognizes editor focus"),
+		FBlueprintHelperScreenshotBridgeRoutes::IsScreenshotCommand(TEXT("focus_blueprint_editor_target")));
+	TestTrue(
+		TEXT("Screenshot route recognizes editor screenshot capture"),
+		FBlueprintHelperScreenshotBridgeRoutes::IsScreenshotCommand(TEXT("capture_editor_screenshot")));
+	TestTrue(
+		TEXT("Screenshot route recognizes focused graph screenshot capture"),
+		FBlueprintHelperScreenshotBridgeRoutes::IsScreenshotCommand(TEXT("capture_focused_graph_screenshot")));
+	TestFalse(
+		TEXT("Screenshot route rejects asset open"),
+		FBlueprintHelperScreenshotBridgeRoutes::IsScreenshotCommand(TEXT("open_asset")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperScreenshotBridgeValidator_ValidatesSemanticInputs,
+	"BlueprintHelper.Router.Cluster.ScreenshotValidatorValidatesSemanticInputs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperScreenshotBridgeValidator_ValidatesSemanticInputs::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeValidationError Error;
+
+	TSharedPtr<FJsonObject> FocusPayload = MakeShared<FJsonObject>();
+	FocusPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	FocusPayload->SetStringField(TEXT("block_ref"), TEXT("BeginPlaySetup0"));
+	TestFalse(
+		TEXT("focus target requires graph_name with block_ref"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("focus_blueprint_editor_target"),
+			FocusPayload,
+			Error));
+	TestEqual(TEXT("focus validation field"), Error.Field, FString(TEXT("payload.graph_name")));
+
+	TSharedPtr<FJsonObject> CapturePayload = MakeShared<FJsonObject>();
+	CapturePayload->SetStringField(TEXT("target"), TEXT("active_window"));
+	CapturePayload->SetStringField(TEXT("label"), TEXT("bp_test"));
+	TestTrue(
+		TEXT("capture screenshot accepts safe target and label"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("capture_editor_screenshot"),
+			CapturePayload,
+			Error));
+
+	CapturePayload->SetStringField(TEXT("label"), TEXT("../escape"));
+	TestFalse(
+		TEXT("capture screenshot rejects unsafe label"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("capture_editor_screenshot"),
+			CapturePayload,
+			Error));
+	TestEqual(TEXT("capture label validation field"), Error.Field, FString(TEXT("payload.label")));
+
+	TSharedPtr<FJsonObject> GraphCapturePayload = MakeShared<FJsonObject>();
+	GraphCapturePayload->SetStringField(TEXT("label"), TEXT("bp_test_graph"));
+	GraphCapturePayload->SetNumberField(TEXT("max_nodes_per_image"), 2);
+	TestTrue(
+		TEXT("graph screenshot capture accepts tile cap and safe label"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("capture_focused_graph_screenshot"),
+			GraphCapturePayload,
+			Error));
+
+	GraphCapturePayload->SetNumberField(TEXT("max_nodes_per_image"), 0);
+	TestFalse(
+		TEXT("graph screenshot capture rejects invalid tile cap"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("capture_focused_graph_screenshot"),
+			GraphCapturePayload,
+			Error));
+	TestEqual(TEXT("graph capture max nodes validation field"), Error.Field, FString(TEXT("payload.max_nodes_per_image")));
+	TestFalse(
+		TEXT("capture screenshot is read/debug classified"),
+		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("capture_editor_screenshot")));
+	TestFalse(
+		TEXT("graph capture screenshot is read/debug classified"),
+		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("capture_focused_graph_screenshot")));
+	TestFalse(
+		TEXT("focus screenshot is read/debug classified"),
+		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("focus_blueprint_editor_target")));
 	return true;
 }
 
