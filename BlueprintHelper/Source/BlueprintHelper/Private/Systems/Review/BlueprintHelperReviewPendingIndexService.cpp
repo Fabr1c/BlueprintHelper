@@ -373,6 +373,35 @@ namespace BlueprintHelperReviewPendingIndex
 		}
 		return IsPendingVisibleChange(Summary.Change);
 	}
+
+	static int32 ComparePendingSummaryForPage(
+		const FBlueprintHelperReviewPendingVisibleChangeSummary& Left,
+		const FBlueprintHelperReviewPendingIndexPageCursor& Cursor)
+	{
+		if (Left.SortKey != Cursor.SortKey)
+		{
+			return Left.SortKey < Cursor.SortKey ? -1 : 1;
+		}
+		if (Left.ReviewRecordId != Cursor.ReviewRecordId)
+		{
+			return Left.ReviewRecordId < Cursor.ReviewRecordId ? -1 : 1;
+		}
+		if (Left.Change.ChangeId != Cursor.ChangeId)
+		{
+			return Left.Change.ChangeId < Cursor.ChangeId ? -1 : 1;
+		}
+		return 0;
+	}
+
+	static FBlueprintHelperReviewPendingIndexPageCursor MakePendingPageCursor(
+		const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+	{
+		FBlueprintHelperReviewPendingIndexPageCursor Cursor;
+		Cursor.SortKey = Summary.SortKey;
+		Cursor.ReviewRecordId = Summary.ReviewRecordId;
+		Cursor.ChangeId = Summary.Change.ChangeId;
+		return Cursor;
+	}
 }
 
 FString FBlueprintHelperReviewPendingIndexService::GetIndexPath() const
@@ -550,6 +579,46 @@ bool FBlueprintHelperReviewPendingIndexService::QueryPendingVisibleChanges(
 		return Left.Change.ChangeId < Right.Change.ChangeId;
 	});
 
+	OutError.Reset();
+	return true;
+}
+
+bool FBlueprintHelperReviewPendingIndexService::QueryPendingVisibleChangePage(
+	const FBlueprintHelperReviewPendingIndexPageRequest& Request,
+	FBlueprintHelperReviewPendingIndexPage& OutPage,
+	FString& OutError) const
+{
+	OutPage = FBlueprintHelperReviewPendingIndexPage();
+
+	TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> AllMatches;
+	if (!QueryPendingVisibleChanges(Request.Query, AllMatches, OutError))
+	{
+		return false;
+	}
+
+	OutPage.TotalMatchingCount = AllMatches.Num();
+	const int32 ClampedPageSize = FMath::Clamp(Request.PageSize, 1, 1000);
+	int32 StartIndex = 0;
+	if (Request.Cursor.IsSet())
+	{
+		while (StartIndex < AllMatches.Num()
+			&& BlueprintHelperReviewPendingIndex::ComparePendingSummaryForPage(AllMatches[StartIndex], Request.Cursor) <= 0)
+		{
+			++StartIndex;
+		}
+	}
+
+	for (int32 Index = StartIndex; Index < AllMatches.Num() && OutPage.Changes.Num() < ClampedPageSize; ++Index)
+	{
+		OutPage.Changes.Add(AllMatches[Index]);
+	}
+
+	const int32 NextIndex = StartIndex + OutPage.Changes.Num();
+	OutPage.bHasMore = NextIndex < AllMatches.Num();
+	if (OutPage.Changes.Num() > 0)
+	{
+		OutPage.NextCursor = BlueprintHelperReviewPendingIndex::MakePendingPageCursor(OutPage.Changes.Last());
+	}
 	OutError.Reset();
 	return true;
 }

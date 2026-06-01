@@ -144,6 +144,21 @@ FBlueprintHelperReviewPanelPresenter::RejectVisibleChangesBatch(
 	return CommandService.RejectVisibleChangesBatch(Changes, RejectOptions);
 }
 
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelPresenter::AcceptPendingVisibleChangesForAsset(
+	const FString& AssetPath) const
+{
+	return CommandService.AcceptPendingVisibleChangesForAsset(AssetPath);
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelPresenter::RejectPendingVisibleChangesForAsset(
+	const FString& AssetPath,
+	const FBlueprintHelperReviewRejectOptions& RejectOptions) const
+{
+	return CommandService.RejectPendingVisibleChangesForAsset(AssetPath, RejectOptions);
+}
+
 FBlueprintHelperReviewPanelPresenterEvent
 FBlueprintHelperReviewPanelPresenter::HandleAcceptVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Change) const

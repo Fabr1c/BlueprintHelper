@@ -94,6 +94,25 @@ namespace
 			ChangeIds,
 			AssetPaths);
 	}
+
+	static TArray<FBlueprintHelperReviewVisibleChange> BlueprintHelperReviewQueryPendingVisibleChangesForAsset(
+		const FBlueprintHelperReviewStoreService& Store,
+		const FString& AssetPath)
+	{
+		FBlueprintHelperReviewPendingIndexQuery Query;
+		Query.AssetPathFilter = AssetPath;
+		Query.bPendingOnly = true;
+		Query.bSkipMissingAssetRecords = AssetPath.IsEmpty();
+
+		TArray<FBlueprintHelperReviewVisibleChange> Changes;
+		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries =
+			Store.QueryPendingVisibleChangeSummaries(Query);
+		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
+		{
+			Changes.Add(Summary.Change);
+		}
+		return Changes;
+	}
 }
 
 FBlueprintHelperReviewPanelCommandService::FBlueprintHelperReviewPanelCommandService(
@@ -262,6 +281,38 @@ FBlueprintHelperReviewPanelCommandService::RejectVisibleChangesBatch(
 	Result.StoreChangedEvent = BlueprintHelperReviewMakeBatchChangedEvent(Changes, Result.BatchActionResult);
 	NotifyStoreChangedIfSucceeded(Result);
 	return Result;
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelCommandService::AcceptPendingVisibleChangesForAsset(
+	const FString& AssetPath) const
+{
+	FBlueprintHelperReviewCommandBatchResult Result;
+	if (!ReviewStoreService)
+	{
+		Result.BatchActionResult.Message = TEXT("review_store_service_unavailable");
+		return Result;
+	}
+
+	return AcceptVisibleChangesBatch(
+		BlueprintHelperReviewQueryPendingVisibleChangesForAsset(*ReviewStoreService, AssetPath));
+}
+
+FBlueprintHelperReviewCommandBatchResult
+FBlueprintHelperReviewPanelCommandService::RejectPendingVisibleChangesForAsset(
+	const FString& AssetPath,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	FBlueprintHelperReviewCommandBatchResult Result;
+	if (!ReviewStoreService)
+	{
+		Result.BatchActionResult.Message = TEXT("review_store_service_unavailable");
+		return Result;
+	}
+
+	return RejectVisibleChangesBatch(
+		BlueprintHelperReviewQueryPendingVisibleChangesForAsset(*ReviewStoreService, AssetPath),
+		Options);
 }
 
 void FBlueprintHelperReviewPanelCommandService::NotifyStoreChangedIfSucceeded(

@@ -28,6 +28,8 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	FBlueprintHelperReviewPerformanceScope Scope(
 		TEXT("ReviewPanel.Construct"),
 		ReviewPerformanceSettings.TraceWarningMs);
+	PendingPageSize = FMath::Max(1, ReviewPerformanceSettings.PendingLoadPageSize);
+	PendingScrollPrefetchRows = FMath::Max(0, ReviewPerformanceSettings.PendingLoadScrollPrefetchRows);
 
 	ReviewPanelSettings = FBlueprintHelperReviewPanelSettingsResolver::Load();
 
@@ -52,6 +54,15 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges = InArgs._InitialChanges;
 	Scope.AddCount(TEXT("initial_changes"), InitialChanges.Num());
 	RefreshVisibleChanges(InitialChanges);
+	if (InitialChanges.Num() > 0)
+	{
+		FBlueprintHelperReviewPendingLoadResult InitialPage;
+		InitialPage.Mode = EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage;
+		InitialPage.Changes = InitialChanges;
+		InitialPage.TotalMatchingCount = InitialChanges.Num();
+		InitialPage.bHasMore = false;
+		PagedChangeModel.ApplyPendingLoadResult(InitialPage);
+	}
 	LastVisibleChangeRefreshSignature = BuildVisibleChangeRefreshSignature(InitialChanges);
 	if (ReviewPanelPresenter.IsValid())
 	{
@@ -146,7 +157,9 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 	RefreshDiffStackWidgets();
 	if (InitialChanges.Num() == 0)
 	{
-		RequestPendingReviewLoad(TEXT("construct"));
+		RequestPendingReviewPage(
+			TEXT("construct"),
+			EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage);
 	}
 }
 
@@ -174,6 +187,30 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildFinalChangeSidebar()
 				.OnGenerateRow(this, &SBlueprintHelperReviewPanel::GenerateChangeTreeRow)
 				.OnGetChildren(this, &SBlueprintHelperReviewPanel::GetChangeTreeChildren)
 				.OnSelectionChanged(this, &SBlueprintHelperReviewPanel::OnChangeTreeSelectionChanged)
+				.OnTreeViewScrolled(this, &SBlueprintHelperReviewPanel::OnChangeTreeScrolled)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(6.0f, 2.0f)
+			[
+				SNew(STextBlock)
+				.Text(this, &SBlueprintHelperReviewPanel::GetPendingPageStatusText)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(6.0f, 2.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("加载更多")))
+				.Visibility_Lambda([this]()
+				{
+					return PagedChangeModel.HasMorePages() ? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				.IsEnabled_Lambda([this]()
+				{
+					return !PagedChangeModel.IsPageRequestInFlight();
+				})
+				.OnClicked(this, &SBlueprintHelperReviewPanel::OnLoadMorePendingChanges)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

@@ -53,6 +53,13 @@ public:
 		const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
+	FBlueprintHelperReviewCommandBatchResult AcceptPendingVisibleChangesForAsset(
+		const FString& AssetPath) const;
+
+	FBlueprintHelperReviewCommandBatchResult RejectPendingVisibleChangesForAsset(
+		const FString& AssetPath,
+		const FBlueprintHelperReviewRejectOptions& Options) const;
+
 private:
 	void NotifyStoreChangedIfSucceeded(
 		const FBlueprintHelperReviewActionResult& Result,

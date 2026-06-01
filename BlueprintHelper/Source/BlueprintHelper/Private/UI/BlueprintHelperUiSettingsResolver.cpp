@@ -106,6 +106,18 @@ FBlueprintHelperReviewPerformanceSettings FBlueprintHelperUiSettingsResolver::Lo
 		FBlueprintHelperRuntimeSettingResolver::GetInt(
 			TEXT("review.performance.main_window_page_construct_warning_ms"),
 			Settings.MainWindowPageConstructWarningMs));
+	Settings.PendingLoadPageSize = FMath::Clamp(
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.pending_load_page_size"),
+			Settings.PendingLoadPageSize),
+		1,
+		1000);
+	Settings.PendingLoadScrollPrefetchRows = FMath::Clamp(
+		FBlueprintHelperRuntimeSettingResolver::GetInt(
+			TEXT("review.performance.pending_load_scroll_prefetch_rows"),
+			Settings.PendingLoadScrollPrefetchRows),
+		0,
+		500);
 	Settings.PendingLoadValidityCandidateBudget = FMath::Max(
 		0,
 		FBlueprintHelperRuntimeSettingResolver::GetInt(

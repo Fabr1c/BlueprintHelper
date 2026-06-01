@@ -231,4 +231,80 @@ bool FBlueprintHelperReviewPendingIndexLoadPendingUsesIndexTest::RunTest(const F
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexQueryPageUsesStableCursorTest,
+	"BlueprintHelper.Review.PendingIndex.QueryPageUsesStableCursor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexQueryPageUsesStableCursorTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveId = BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_page"));
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexPage"));
+	const FString TaskRunId = TEXT("task_pending_index_page");
+	TArray<FString> ReviewRecordIds;
+
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		const FString ChangeId = FString::Printf(TEXT("tx_pending_index_page_%02d"), Index);
+		FBlueprintHelperReviewRecord Record = BlueprintHelperReviewPendingIndexTests::MakeRecord(
+			ArchiveId,
+			AssetPath,
+			TaskRunId,
+			ChangeId);
+		Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(
+			ArchiveId + FString::Printf(TEXT("_%02d"), Index),
+			AssetPath);
+		Record.VisibleChanges[0].ChangeId = ChangeId;
+		Record.VisibleChanges[0].LatestEvidenceId = ChangeId;
+		Record.VisibleChanges[0].DisplayLabel = ChangeId;
+		ReviewRecordIds.Add(Record.ReviewRecordId);
+
+		FString SaveError;
+		TestTrue(TEXT("record saves before page query"), Store.SaveReviewRecord(Record, SaveError));
+	}
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.TaskRunIdFilter = TaskRunId;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest FirstRequest;
+	FirstRequest.Query = Query;
+	FirstRequest.PageSize = 2;
+
+	FBlueprintHelperReviewPendingIndexPage FirstPage;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("first page query succeeds"), IndexService.QueryPendingVisibleChangePage(FirstRequest, FirstPage, Error));
+	TestEqual(TEXT("first page returns requested page size"), FirstPage.Changes.Num(), 2);
+	TestTrue(TEXT("first page reports more rows"), FirstPage.bHasMore);
+	TestTrue(TEXT("first page emits cursor"), FirstPage.NextCursor.IsSet());
+	TestEqual(TEXT("first page total count is all matching rows"), FirstPage.TotalMatchingCount, 5);
+
+	FBlueprintHelperReviewPendingIndexPageRequest SecondRequest = FirstRequest;
+	SecondRequest.Cursor = FirstPage.NextCursor;
+	FBlueprintHelperReviewPendingIndexPage SecondPage;
+	TestTrue(TEXT("second page query succeeds"), IndexService.QueryPendingVisibleChangePage(SecondRequest, SecondPage, Error));
+	TestEqual(TEXT("second page returns requested page size"), SecondPage.Changes.Num(), 2);
+	TestNotEqual(TEXT("second page starts after first page cursor"),
+		SecondPage.Changes[0].Change.ChangeId,
+		FirstPage.Changes[0].Change.ChangeId);
+	TestTrue(TEXT("second page still reports more rows"), SecondPage.bHasMore);
+
+	FBlueprintHelperReviewPendingIndexPageRequest ThirdRequest = FirstRequest;
+	ThirdRequest.Cursor = SecondPage.NextCursor;
+	FBlueprintHelperReviewPendingIndexPage ThirdPage;
+	TestTrue(TEXT("third page query succeeds"), IndexService.QueryPendingVisibleChangePage(ThirdRequest, ThirdPage, Error));
+	TestEqual(TEXT("third page returns remaining row"), ThirdPage.Changes.Num(), 1);
+	TestFalse(TEXT("third page has no more rows"), ThirdPage.bHasMore);
+
+	for (const FString& ReviewRecordId : ReviewRecordIds)
+	{
+		FString DeleteError;
+		Store.DeleteReviewRecord(ReviewRecordId, DeleteError);
+	}
+	return true;
+}
+
 #endif

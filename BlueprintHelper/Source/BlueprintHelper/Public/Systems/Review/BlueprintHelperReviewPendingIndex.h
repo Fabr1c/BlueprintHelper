@@ -42,6 +42,33 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingIndexQuery
 	bool bSkipMissingAssetRecords = true;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingIndexPageCursor
+{
+	FString SortKey;
+	FString ReviewRecordId;
+	FString ChangeId;
+
+	bool IsSet() const
+	{
+		return !SortKey.IsEmpty() || !ReviewRecordId.IsEmpty() || !ChangeId.IsEmpty();
+	}
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingIndexPageRequest
+{
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	FBlueprintHelperReviewPendingIndexPageCursor Cursor;
+	int32 PageSize = 100;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewPendingIndexPage
+{
+	TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Changes;
+	int32 TotalMatchingCount = 0;
+	bool bHasMore = false;
+	FBlueprintHelperReviewPendingIndexPageCursor NextCursor;
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewStoreChangedEvent
 {
 	TArray<FString> ReviewRecordIds;

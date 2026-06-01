@@ -7304,6 +7304,190 @@ bool FBlueprintHelperReviewCommandSingleAcceptPublishesIncrementalEventTest::Run
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewCommandAssetAcceptUsesPendingIndexTest,
+	"BlueprintHelper.Review.Panel.Command.AssetAcceptUsesPendingIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewCommandAssetAcceptUsesPendingIndexTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewPanelCommandService CommandService(&ActionService, &Store);
+
+	const FString ArchiveId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_asset_accept_index"));
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperReview/BP_AssetAcceptIndex_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	TArray<FBlueprintHelperReviewVisibleChange> Changes;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		FBlueprintHelperReviewVisibleChange Change =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+				FString::Printf(TEXT("change_asset_accept_index_%d"), Index),
+				AssetPath);
+		const FString TargetKey = FString::Printf(TEXT("graph_node:AssetAcceptIndex_%d"), Index);
+		Change.LocationKey = TargetKey;
+		Change.AtomicTargets[0].TargetKey = TargetKey;
+		Change.AtomicTargets[0].VisualGroupKey = TargetKey;
+		Changes.Add(Change);
+	}
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = FBlueprintHelperReviewStoreService::MakeReviewRecordId(ArchiveId, AssetPath);
+	Record.ArchiveSessionId = ArchiveId;
+	Record.AssetPath = AssetPath;
+	Record.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	Record.StorageStatus = EBlueprintHelperReviewStorageStatus::Active;
+	Record.VisibleChanges = Changes;
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(Record.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("record saves before asset accept index batch"), Store.SaveReviewRecord(Record, SaveError));
+
+	TArray<FBlueprintHelperReviewStoreChangedEvent> Events;
+	FDelegateHandle Handle = Store.AddPendingReviewChangedEventHandler(
+		FBlueprintHelperReviewStoreChangedMulticast::FDelegate::CreateLambda(
+			[&Events](const FBlueprintHelperReviewStoreChangedEvent& Event)
+			{
+				Events.Add(Event);
+			}));
+
+	const FBlueprintHelperReviewCommandBatchResult Result =
+		CommandService.AcceptPendingVisibleChangesForAsset(AssetPath);
+	Store.RemovePendingReviewChangedEventHandler(Handle);
+
+	TestTrue(TEXT("asset accept index batch succeeds"), Result.BatchActionResult.bSucceeded);
+	TestEqual(TEXT("asset accept index batch covers unloaded pending changes"),
+		Result.BatchActionResult.RequestedCount,
+		3);
+	TestEqual(TEXT("asset accept index batch accepts all changes"),
+		Result.BatchActionResult.SucceededCount,
+		3);
+	TestEqual(TEXT("asset accept index batch emits one store event"), Events.Num(), 1);
+	if (Events.Num() == 1)
+	{
+		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
+		{
+			TestTrue(TEXT("asset accept index event includes each change id"),
+				Events[0].ChangeIds.Contains(Change.ChangeId));
+		}
+	}
+	TestEqual(TEXT("asset accept index batch clears pending changes"),
+		Store.LoadPendingVisibleChanges(AssetPath).Num(),
+		0);
+	FString DeleteError;
+	Store.DeleteReviewRecord(Record.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewCommandAssetRejectUsesPendingIndexTest,
+	"BlueprintHelper.Review.Panel.Command.AssetRejectUsesPendingIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewCommandAssetRejectUsesPendingIndexTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_asset_reject_index"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("AssetRejectIndex"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* FirstNode =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("AssetRejectIndexFirst"));
+	UK2Node_CustomEvent* SecondNode =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("AssetRejectIndexSecond"));
+	TestNotNull(TEXT("first graph node created"), FirstNode);
+	TestNotNull(TEXT("second graph node created"), SecondNode);
+	if (!FirstNode || !SecondNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget FirstTarget;
+	FBlueprintHelperReviewAtomicTarget SecondTarget;
+	FString FirstTargetError;
+	FString SecondTargetError;
+	TestTrue(TEXT("first asset reject index target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			FirstNode,
+			TEXT("tx_asset_reject_index"),
+			FirstTarget,
+			FirstTargetError));
+	TestTrue(TEXT("second asset reject index target has recoverable snapshot"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewNodeCommentTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			SecondNode,
+			TEXT("tx_asset_reject_index"),
+			SecondTarget,
+			SecondTargetError));
+	if (FirstTarget.BeforeSnapshotJson.IsEmpty()
+		|| FirstTarget.RecordedAfterHash.IsEmpty()
+		|| SecondTarget.BeforeSnapshotJson.IsEmpty()
+		|| SecondTarget.RecordedAfterHash.IsEmpty())
+	{
+		if (!FirstTargetError.IsEmpty())
+		{
+			AddError(FirstTargetError);
+		}
+		if (!SecondTargetError.IsEmpty())
+		{
+			AddError(SecondTargetError);
+		}
+		return false;
+	}
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveId,
+			FirstTarget.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_asset_reject_index_first"),
+					TEXT("tx_asset_reject_index"),
+					FirstTarget),
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_asset_reject_index_second"),
+					TEXT("tx_asset_reject_index"),
+					SecondTarget)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saves before asset reject index batch"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(FirstTarget.TargetKey, FirstTarget.RecordedAfterHash);
+	Options.CurrentHashesByTargetKey.Add(SecondTarget.TargetKey, SecondTarget.RecordedAfterHash);
+
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewPanelCommandService CommandService(&ActionService, &Store);
+	const FBlueprintHelperReviewCommandBatchResult Result =
+		CommandService.RejectPendingVisibleChangesForAsset(FirstTarget.AssetPath, Options);
+
+	TestTrue(TEXT("asset reject index batch succeeds"), Result.BatchActionResult.bSucceeded);
+	TestEqual(TEXT("asset reject index batch covers unloaded pending changes"),
+		Result.BatchActionResult.RequestedCount,
+		2);
+	TestEqual(TEXT("asset reject index batch rejects all changes"),
+		Result.BatchActionResult.SucceededCount,
+		2);
+	TestEqual(TEXT("asset reject index batch clears pending changes"),
+		Store.LoadPendingVisibleChanges(FirstTarget.AssetPath).Num(),
+		0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewActionTargetBatchResolveTest,
 	"BlueprintHelper.Review.Panel.Command.BatchResolveUsesSingleIndexPass",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

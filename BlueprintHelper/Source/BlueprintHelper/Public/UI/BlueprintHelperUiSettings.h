@@ -29,6 +29,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPerformanceSettings
 {
 	int32 TraceWarningMs = 16;
 	int32 MainWindowPageConstructWarningMs = 8;
+	int32 PendingLoadPageSize = 100;
+	int32 PendingLoadScrollPrefetchRows = 24;
 	int32 PendingLoadValidityCandidateBudget = 256;
 	bool bValiditySweepEnabled = true;
 	int32 ValiditySweepMaxRecordHydrationsPerWorkerBatch = 8;

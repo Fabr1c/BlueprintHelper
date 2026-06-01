@@ -5,6 +5,7 @@
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
 #include "Systems/Config/BlueprintHelperSettingStore.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
+#include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/Settings/BlueprintHelperSettingsPresenter.h"
 
 namespace
@@ -249,6 +250,39 @@ bool FBlueprintHelperSettingsGraphWriteLayoutRetiredTest::RunTest(const FString&
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSettingsReviewPerformancePendingPagingTest,
+	"BlueprintHelper.Settings.ReviewPerformancePendingPaging",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSettingsReviewPerformancePendingPagingTest::RunTest(const FString& Parameters)
+{
+	FString Error;
+	const FScopedBlueprintHelperSettingFileBackup ProjectSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetProjectSettingPath());
+	const FScopedBlueprintHelperSettingFileBackup UserSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath());
+
+	TestTrue(TEXT("project setting fixture writes paging settings"),
+		ProjectSettingBackup.Write(
+			TEXT("{")
+			TEXT("\"review\":{\"performance\":{")
+			TEXT("\"pending_load_page_size\":37,")
+			TEXT("\"pending_load_scroll_prefetch_rows\":9")
+			TEXT("}}")
+			TEXT("}"),
+			Error));
+	TestTrue(TEXT("user setting fixture clears overrides"), UserSettingBackup.Write(TEXT("{}"), Error));
+
+	const FBlueprintHelperReviewPerformanceSettings Settings =
+		FBlueprintHelperUiSettingsResolver::LoadReviewPerformanceSettings();
+	TestEqual(TEXT("pending page size comes from settings"), Settings.PendingLoadPageSize, 37);
+	TestEqual(TEXT("pending scroll prefetch rows comes from settings"),
+		Settings.PendingLoadScrollPrefetchRows,
+		9);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSettingsDeveloperWidgetCopySourceHygieneTest,
 	"BlueprintHelper.Settings.DeveloperWidgetCopySourceHygiene",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -317,6 +351,8 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		TEXT("review.debug_bundle.enforce_root_path"),
 		TEXT("review.performance.trace_warning_ms"),
 		TEXT("review.performance.main_window_page_construct_warning_ms"),
+		TEXT("review.performance.pending_load_page_size"),
+		TEXT("review.performance.pending_load_scroll_prefetch_rows"),
 		TEXT("review.performance.pending_load_validity_candidate_budget"),
 		TEXT("review.performance.validity_sweep_enabled"),
 		TEXT("review.performance.validity_sweep_max_record_hydrations_per_worker_batch"),
