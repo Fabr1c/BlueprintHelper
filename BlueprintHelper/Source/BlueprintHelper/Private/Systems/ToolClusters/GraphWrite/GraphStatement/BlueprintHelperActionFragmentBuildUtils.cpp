@@ -81,13 +81,46 @@ void FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPin
 {
 	OutFragment.ExecEntryPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("execute"));
 	OutFragment.ExecExitPin = FBlueprintGraphWriteFacade::FindPinByAlias(Node, TEXT("then"));
+	auto AddExecPinBinding = [&OutFragment](const FString& Alias, UEdGraphPin* Pin)
+	{
+		if (!Pin || Alias.IsEmpty() || OutFragment.PinBindings.Contains(Alias))
+		{
+			return;
+		}
+		OutFragment.PinBindings.Add(Alias, FBlueprintHelperFragmentPinRef{ TEXT("primary"), Alias, TEXT("exec"), Pin });
+	};
+	if (Node)
+	{
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			const FString PinName = Pin->PinName.ToString();
+			AddExecPinBinding(PinName, Pin);
+			AddExecPinBinding(PinName.ToLower(), Pin);
+			if (Pin->Direction == EGPD_Input && !OutFragment.ExecEntryPin)
+			{
+				OutFragment.ExecEntryPin = Pin;
+			}
+			else if (Pin->Direction == EGPD_Output
+				&& PinName.Equals(TEXT("then"), ESearchCase::IgnoreCase)
+				&& !OutFragment.ExecExitPin)
+			{
+				OutFragment.ExecExitPin = Pin;
+			}
+		}
+	}
 	if (OutFragment.ExecEntryPin)
 	{
-		OutFragment.PinBindings.Add(TEXT("execute"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("execute"), TEXT("exec"), OutFragment.ExecEntryPin });
+		AddExecPinBinding(TEXT("execute"), OutFragment.ExecEntryPin);
+		AddExecPinBinding(TEXT("exec"), OutFragment.ExecEntryPin);
 	}
 	if (OutFragment.ExecExitPin)
 	{
-		OutFragment.PinBindings.Add(TEXT("then"), FBlueprintHelperFragmentPinRef{ TEXT("primary"), TEXT("then"), TEXT("exec"), OutFragment.ExecExitPin });
+		AddExecPinBinding(TEXT("then"), OutFragment.ExecExitPin);
 	}
 	if (!Node)
 	{
