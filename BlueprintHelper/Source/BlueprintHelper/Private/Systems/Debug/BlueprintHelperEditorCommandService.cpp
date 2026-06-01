@@ -278,8 +278,17 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 	// their normal CanCloseManager teardown before the engine exit request.
 	// QUIT_EDITOR goes straight to UUnrealEdEngine::CloseEditor and can bypass
 	// enough tab teardown to trip BlueprintEditor PreviewScene assertions.
-	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float)
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([bSaveAll](float)
 	{
+		if (!bSaveAll)
+		{
+			const int32 DiscardedPackageCount = FBlueprintHelperEditorCommandService::DiscardAllDirtyPackagesForClose();
+			if (DiscardedPackageCount > 0)
+			{
+				UE_LOG(LogTemp, Display, TEXT("[BlueprintHelper] CloseEditor: discarded %d dirty package(s) before no-save shutdown."), DiscardedPackageCount);
+			}
+		}
+
 		if (GEngine)
 		{
 			GEngine->DeferredCommands.AddUnique(TEXT("CLOSE_SLATE_MAINFRAME"));
@@ -290,6 +299,30 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 	Result.bSuccess = true;
 	Result.Message = bSaveAll
 		? TEXT("Saved dirty packages and scheduled delayed editor shutdown.")
-		: TEXT("Scheduled delayed editor shutdown without saving.");
+		: TEXT("Scheduled delayed editor shutdown and will discard dirty packages without saving.");
 	return Result;
+}
+
+int32 FBlueprintHelperEditorCommandService::DiscardDirtyPackages(TConstArrayView<UPackage*> Packages)
+{
+	int32 DiscardedPackageCount = 0;
+	for (UPackage* Package : Packages)
+	{
+		if (!IsValid(Package) || !Package->IsDirty())
+		{
+			continue;
+		}
+
+		Package->SetDirtyFlag(false);
+		++DiscardedPackageCount;
+	}
+
+	return DiscardedPackageCount;
+}
+
+int32 FBlueprintHelperEditorCommandService::DiscardAllDirtyPackagesForClose()
+{
+	TArray<UPackage*> DirtyPackages;
+	FEditorFileUtils::GetDirtyPackages(DirtyPackages);
+	return DiscardDirtyPackages(DirtyPackages);
 }

@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 
+class UPackage;
+
 // ─── 通用命令结果 ───
 
 struct BLUEPRINTHELPER_API FBlueprintHelperCommandResult
@@ -65,6 +67,12 @@ public:
 	 * @param bSaveAll 是否在退出前保存所有脏包（默认 true）
 	 */
 	FBlueprintHelperCommandResult CloseEditor(bool bSaveAll = true) const;
+
+	/** Clear dirty flags for packages that should be discarded during an explicit no-save editor shutdown. */
+	static int32 DiscardDirtyPackages(TConstArrayView<UPackage*> Packages);
+
+	/** Collect all current dirty packages and mark them clean before a no-save editor shutdown. */
+	static int32 DiscardAllDirtyPackagesForClose();
 
 private:
 	/** 根据类名查找 UClass。 */
