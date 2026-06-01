@@ -54,6 +54,20 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "BlueprintHelperReviewUtils.h"
 
+namespace
+{
+	static void BlueprintHelperReviewCopyHashGuardDiagnostic(
+		FBlueprintHelperReviewActionResult& Result,
+		const FBlueprintHelperReviewActionResult& Diagnostic)
+	{
+		Result.HashGuardTargetKey = Diagnostic.HashGuardTargetKey;
+		Result.HashGuardExpectedHash = Diagnostic.HashGuardExpectedHash;
+		Result.HashGuardCurrentHash = Diagnostic.HashGuardCurrentHash;
+		Result.HashGuardCurrentSnapshotJson = Diagnostic.HashGuardCurrentSnapshotJson;
+		Result.HashGuardRecordedAfterSnapshotJson = Diagnostic.HashGuardRecordedAfterSnapshotJson;
+	}
+}
+
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
 		const FBlueprintHelperReviewVisibleChange& Change,
 		const FBlueprintHelperReviewRejectOptions* Options)
@@ -85,61 +99,41 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(Change, EBlueprintHelperReviewChangeStatus::NeedsAction, TEXT("missing_anchor"));
 			}
 			UBlueprintHelperReviewUtils::CaptureReviewRejectCurrentStateDiagnostic(Target, CurrentStateDiagnostic);
-			if (!CurrentStateDiagnostic.HashGuardTargetKey.IsEmpty()
-				&& !FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
+			if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
+				&& Target.BeforeSnapshotJson.IsEmpty())
 			{
 				FBlueprintHelperReviewActionResult Result =
 					FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
 						Change,
 						EBlueprintHelperReviewChangeStatus::NeedsAction,
-						TEXT("current_state_changed"));
-				Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
-				Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
-				Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
-				Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
-				Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
+						TEXT("missing_recoverable_snapshot"));
+				BlueprintHelperReviewCopyHashGuardDiagnostic(Result, CurrentStateDiagnostic);
 				return Result;
-			}
-			if (FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(Target.TargetKind)
-				&& Target.BeforeSnapshotJson.IsEmpty())
-			{
-				return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-					Change,
-					EBlueprintHelperReviewChangeStatus::NeedsAction,
-					TEXT("missing_recoverable_snapshot"));
 			}
 			if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
 			{
 				FString SnapshotRestoreError;
 				if (!FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
 				{
-					if (!CurrentStateDiagnostic.HashGuardTargetKey.IsEmpty())
-					{
-						FBlueprintHelperReviewActionResult Result =
-							FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-								Change,
-								EBlueprintHelperReviewChangeStatus::NeedsAction,
-								TEXT("current_state_changed"));
-						Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
-						Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
-						Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
-						Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
-						Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
-						return Result;
-					}
-					return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-						Change,
-						SnapshotRestoreError.Contains(TEXT("_recreate_required"))
-							? EBlueprintHelperReviewChangeStatus::NeedsAction
-							: EBlueprintHelperReviewChangeStatus::RejectFailed,
-						SnapshotRestoreError);
+					FBlueprintHelperReviewActionResult Result =
+						FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+							Change,
+							SnapshotRestoreError.Contains(TEXT("_recreate_required"))
+								? EBlueprintHelperReviewChangeStatus::NeedsAction
+								: EBlueprintHelperReviewChangeStatus::RejectFailed,
+							SnapshotRestoreError);
+					BlueprintHelperReviewCopyHashGuardDiagnostic(Result, CurrentStateDiagnostic);
+					return Result;
 				}
 				continue;
 			}
-			return FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
-				Change,
-				EBlueprintHelperReviewChangeStatus::NeedsAction,
-				FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind));
+			FBlueprintHelperReviewActionResult Result =
+				FBlueprintHelperReviewActionRecordUtils::MakeRejectFailureResult(
+					Change,
+					EBlueprintHelperReviewChangeStatus::NeedsAction,
+					FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind));
+			BlueprintHelperReviewCopyHashGuardDiagnostic(Result, CurrentStateDiagnostic);
+			return Result;
 		}
 
 		FBlueprintHelperReviewActionResult Result;
@@ -149,12 +143,100 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::Rejected;
 		Result.Message = TEXT("rejected");
 		Result.bSupersededDataCompactionEligible = true;
-		Result.HashGuardTargetKey = CurrentStateDiagnostic.HashGuardTargetKey;
-		Result.HashGuardExpectedHash = CurrentStateDiagnostic.HashGuardExpectedHash;
-		Result.HashGuardCurrentHash = CurrentStateDiagnostic.HashGuardCurrentHash;
-		Result.HashGuardCurrentSnapshotJson = CurrentStateDiagnostic.HashGuardCurrentSnapshotJson;
-		Result.HashGuardRecordedAfterSnapshotJson = CurrentStateDiagnostic.HashGuardRecordedAfterSnapshotJson;
+		BlueprintHelperReviewCopyHashGuardDiagnostic(Result, CurrentStateDiagnostic);
 		return Result;
+	}
+
+namespace
+{
+	static bool BlueprintHelperReviewIsCascadeActionable(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending
+			|| Change.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
+			|| Change.Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
+	}
+
+	static int32 BlueprintHelperReviewDescendingOrderValue(int32 Value)
+	{
+		return Value == INDEX_NONE ? MIN_int32 : Value;
+	}
+}
+
+TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewRejectService::CollectLifecycleDescendantsDeepestFirst(
+		const FBlueprintHelperReviewVisibleChange& Root,
+		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges)
+	{
+		TArray<FBlueprintHelperReviewVisibleChange> Descendants;
+		if (Root.ChangeId.IsEmpty())
+		{
+			return Descendants;
+		}
+
+		TSet<FString> CollectedChangeIds;
+		TMap<FString, int32> DepthByChangeId;
+		CollectedChangeIds.Add(Root.ChangeId);
+		DepthByChangeId.Add(Root.ChangeId, 0);
+
+		bool bAddedThisPass = true;
+		while (bAddedThisPass)
+		{
+			bAddedThisPass = false;
+			for (const FBlueprintHelperReviewVisibleChange& PendingChange : PendingChanges)
+			{
+				if (!BlueprintHelperReviewIsCascadeActionable(PendingChange)
+					|| PendingChange.ChangeId.IsEmpty()
+					|| CollectedChangeIds.Contains(PendingChange.ChangeId)
+					|| PendingChange.ParentChangeId.IsEmpty()
+					|| !CollectedChangeIds.Contains(PendingChange.ParentChangeId))
+				{
+					continue;
+				}
+
+				const int32 ParentDepth = DepthByChangeId.Contains(PendingChange.ParentChangeId)
+					? DepthByChangeId[PendingChange.ParentChangeId]
+					: 0;
+				CollectedChangeIds.Add(PendingChange.ChangeId);
+				DepthByChangeId.Add(PendingChange.ChangeId, ParentDepth + 1);
+				Descendants.Add(PendingChange);
+				bAddedThisPass = true;
+			}
+		}
+
+		Descendants.Sort([&DepthByChangeId](
+			const FBlueprintHelperReviewVisibleChange& Left,
+			const FBlueprintHelperReviewVisibleChange& Right)
+		{
+			const int32 LeftDepth = DepthByChangeId.Contains(Left.ChangeId) ? DepthByChangeId[Left.ChangeId] : 0;
+			const int32 RightDepth = DepthByChangeId.Contains(Right.ChangeId) ? DepthByChangeId[Right.ChangeId] : 0;
+			if (LeftDepth != RightDepth)
+			{
+				return LeftDepth > RightDepth;
+			}
+
+			const int32 LeftExecutionOrder = BlueprintHelperReviewDescendingOrderValue(Left.ExecutionOrder);
+			const int32 RightExecutionOrder = BlueprintHelperReviewDescendingOrderValue(Right.ExecutionOrder);
+			if (LeftExecutionOrder != RightExecutionOrder)
+			{
+				return LeftExecutionOrder > RightExecutionOrder;
+			}
+
+			const int32 LeftTaskStep = BlueprintHelperReviewDescendingOrderValue(Left.TaskStepIndex);
+			const int32 RightTaskStep = BlueprintHelperReviewDescendingOrderValue(Right.TaskStepIndex);
+			if (LeftTaskStep != RightTaskStep)
+			{
+				return LeftTaskStep > RightTaskStep;
+			}
+
+			const int32 LeftAtomic = BlueprintHelperReviewDescendingOrderValue(Left.AtomicIndex);
+			const int32 RightAtomic = BlueprintHelperReviewDescendingOrderValue(Right.AtomicIndex);
+			if (LeftAtomic != RightAtomic)
+			{
+				return LeftAtomic > RightAtomic;
+			}
+
+			return Left.ChangeId > Right.ChangeId;
+		});
+		return Descendants;
 	}
 FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::CascadeRejectLifecycleChildrenAfterRootResult(
 		const FBlueprintHelperReviewVisibleChange& Root,
@@ -184,9 +266,6 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::C
 			bAddedChildThisPass = false;
 			for (const FBlueprintHelperReviewVisibleChange& PendingChange : PendingChanges)
 			{
-				const bool bActionable =
-					PendingChange.Status == EBlueprintHelperReviewChangeStatus::Pending
-					|| PendingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction;
 				const bool bLinkedChild =
 					!bRootIsAssetFactory
 					&& CascadeRootChangeIds.Contains(PendingChange.ParentChangeId);
@@ -194,7 +273,7 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewRejectService::C
 					bRootIsAssetFactory
 					&& PendingChange.AssetPath == Root.AssetPath
 					&& PendingChange.ChangeId != Root.ChangeId;
-				if (!bActionable
+				if (!BlueprintHelperReviewIsCascadeActionable(PendingChange)
 					|| PendingChange.ChangeId.IsEmpty()
 					|| ChildChangeIds.Contains(PendingChange.ChangeId)
 					|| (!bLinkedChild && !bAssetLifecycleChild))

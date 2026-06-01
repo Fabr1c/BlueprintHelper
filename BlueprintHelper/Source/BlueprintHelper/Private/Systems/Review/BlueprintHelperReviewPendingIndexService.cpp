@@ -66,6 +66,7 @@ namespace BlueprintHelperReviewPendingIndex
 
 	static void StripSnapshotPayload(FBlueprintHelperReviewVisibleChange& Change)
 	{
+		FBlueprintHelperReviewStoreTargetUtils::EnsureLifecycleMetadata(Change);
 		Change.BeforeSnapshotJson.Reset();
 		Change.AfterSnapshotJson.Reset();
 		for (FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)

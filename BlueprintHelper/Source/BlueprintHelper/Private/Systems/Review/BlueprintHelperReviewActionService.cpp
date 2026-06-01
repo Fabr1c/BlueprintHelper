@@ -57,6 +57,34 @@
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 
+namespace
+{
+	static bool BlueprintHelperReviewVisibleChangeHasAssetFactoryTarget(const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		return Change.AtomicTargets.ContainsByPredicate(
+			[](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(Target.TargetKind);
+			});
+	}
+
+	static FBlueprintHelperReviewActionResult BlueprintHelperReviewMakeCascadeChildFailure(
+		const FBlueprintHelperReviewVisibleChange& Root,
+		const FBlueprintHelperReviewVisibleChange& Child,
+		const FString& Message)
+	{
+		FBlueprintHelperReviewActionResult Result;
+		Result.bSucceeded = false;
+		Result.TargetEvidenceId = Root.LatestEvidenceId;
+		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
+		Result.Message = FString::Printf(
+			TEXT("cascade_child_reject_failed:%s:%s"),
+			*Child.ChangeId,
+			*Message);
+		return Result;
+	}
+}
+
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService() = default;
 
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService(
@@ -218,12 +246,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			FString SnapshotRestoreError;
 			if (!FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
 			{
-				if (!Result.HashGuardTargetKey.IsEmpty())
-				{
-					Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-					Result.Message = TEXT("current_state_changed");
-					return Result;
-				}
 				Result.NewStatus = SnapshotRestoreError.Contains(TEXT("_recreate_required"))
 					? EBlueprintHelperReviewChangeStatus::NeedsAction
 					: EBlueprintHelperReviewChangeStatus::RejectFailed;
@@ -231,12 +253,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 				return Result;
 			}
 			continue;
-		}
-		if (!Result.HashGuardTargetKey.IsEmpty())
-		{
-			Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-			Result.Message = TEXT("current_state_changed");
-			return Result;
 		}
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
 		Result.Message = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
@@ -254,24 +270,8 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 	const FBlueprintHelperReviewVisibleChange& Root,
 	const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges) const
 {
-	FBlueprintHelperReviewActionResult RootResult;
-	FString ReviewRecordId;
-	TArray<FString> TargetKeys;
-	if (FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(Root, ReviewRecordId, TargetKeys))
-	{
-		FBlueprintHelperReviewRejectOptions Options;
-		RootResult = RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
-	}
-	else
-	{
-		RootResult = RejectVisibleChange(Root);
-	}
-
-	return FBlueprintHelperReviewRejectService::CascadeRejectLifecycleChildrenAfterRootResult(
-		Root,
-		PendingChanges,
-		RootResult,
-		ReviewRecordId);
+	FBlueprintHelperReviewRejectOptions Options;
+	return RejectLifecycleRootVisibleChange(Root, PendingChanges, Options);
 }
 
 FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::RejectLifecycleRootVisibleChange(
@@ -279,6 +279,57 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 	const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
+	if (!BlueprintHelperReviewVisibleChangeHasAssetFactoryTarget(Root))
+	{
+		FBlueprintHelperReviewCascadeActionResult CascadeResult;
+		const TArray<FBlueprintHelperReviewVisibleChange> Descendants =
+			FBlueprintHelperReviewRejectService::CollectLifecycleDescendantsDeepestFirst(Root, PendingChanges);
+		for (const FBlueprintHelperReviewVisibleChange& Descendant : Descendants)
+		{
+			FString ChildReviewRecordId;
+			TArray<FString> ChildTargetKeys;
+			if (!FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(
+				Descendant,
+				ChildReviewRecordId,
+				ChildTargetKeys)
+				|| ChildReviewRecordId.IsEmpty()
+				|| ChildTargetKeys.Num() == 0)
+			{
+				CascadeResult.RootResult = BlueprintHelperReviewMakeCascadeChildFailure(
+					Root,
+					Descendant,
+					TEXT("child_review_target_not_found"));
+				return CascadeResult;
+			}
+
+			const FBlueprintHelperReviewActionResult ChildResult =
+				RejectReviewTargets(ChildReviewRecordId, ChildTargetKeys, Options);
+			if (!ChildResult.bSucceeded)
+			{
+				CascadeResult.RootResult = BlueprintHelperReviewMakeCascadeChildFailure(
+					Root,
+					Descendant,
+					ChildResult.Message);
+				return CascadeResult;
+			}
+
+			CascadeResult.RemovedChildChangeIds.Add(Descendant.ChangeId);
+		}
+
+		FString RootReviewRecordId;
+		TArray<FString> RootTargetKeys;
+		if (FBlueprintHelperReviewActionTargetUtils::TryResolvePersistedReviewChange(Root, RootReviewRecordId, RootTargetKeys))
+		{
+			CascadeResult.RootResult = RejectReviewTargets(RootReviewRecordId, RootTargetKeys, Options);
+		}
+		else
+		{
+			CascadeResult.RootResult = RejectVisibleChange(Root, Options);
+		}
+		CascadeResult.bChildrenRemoved = CascadeResult.RemovedChildChangeIds.Num() > 0;
+		return CascadeResult;
+	}
+
 	FBlueprintHelperReviewActionResult RootResult;
 	FString ReviewRecordId;
 	TArray<FString> TargetKeys;
@@ -296,6 +347,16 @@ FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::R
 		PendingChanges,
 		RootResult,
 		ReviewRecordId);
+}
+
+FBlueprintHelperReviewCascadeActionResult FBlueprintHelperReviewActionService::RejectLifecycleRootVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& Root,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
+	FBlueprintHelperReviewStoreService Store;
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(Root.AssetPath);
+	return RejectLifecycleRootVisibleChange(Root, PendingChanges, Options);
 }
 
 void FBlueprintHelperReviewActionService::RecordRejectDebugCaseBestEffort(

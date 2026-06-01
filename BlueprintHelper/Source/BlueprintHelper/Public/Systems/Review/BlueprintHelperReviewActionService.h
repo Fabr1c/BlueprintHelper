@@ -70,6 +70,10 @@ public:
 		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
+	FBlueprintHelperReviewCascadeActionResult RejectLifecycleRootVisibleChange(
+		const FBlueprintHelperReviewVisibleChange& Root,
+		const FBlueprintHelperReviewRejectOptions& Options) const;
+
 	FBlueprintHelperReviewActionResult AcceptReviewTargets(
 		const FString& ReviewRecordId,
 		const TArray<FString>& TargetKeys) const;

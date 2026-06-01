@@ -17,3 +17,4 @@ ClaudePlugin/**/mcp
 *.7z          
 /Saved/
 .tmp/
+/Debug/

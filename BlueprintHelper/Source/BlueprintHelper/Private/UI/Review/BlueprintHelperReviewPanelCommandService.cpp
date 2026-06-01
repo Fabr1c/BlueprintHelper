@@ -153,7 +153,7 @@ FBlueprintHelperReviewCommandResult FBlueprintHelperReviewPanelCommandService::E
 		CommandResult.bCascade = true;
 		const FBlueprintHelperReviewStoreChangedEvent StoreChangedEvent =
 			BlueprintHelperReviewMakeChangedEventFromChanges(PendingChanges);
-		CommandResult.CascadeActionResult = RejectLifecycleRootVisibleChange(Change, PendingChanges, RejectOptions);
+		CommandResult.CascadeActionResult = RejectLifecycleRootVisibleChange(Change, RejectOptions);
 		NotifyStoreChangedIfSucceeded(CommandResult.CascadeActionResult, StoreChangedEvent);
 		return CommandResult;
 	}
@@ -228,12 +228,11 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewPanelCommandService::Re
 FBlueprintHelperReviewCascadeActionResult
 FBlueprintHelperReviewPanelCommandService::RejectLifecycleRootVisibleChange(
 	const FBlueprintHelperReviewVisibleChange& Root,
-	const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
 	if (ReviewActionService)
 	{
-		return ReviewActionService->RejectLifecycleRootVisibleChange(Root, PendingChanges, Options);
+		return ReviewActionService->RejectLifecycleRootVisibleChange(Root, Options);
 	}
 
 	FBlueprintHelperReviewCascadeActionResult Result;

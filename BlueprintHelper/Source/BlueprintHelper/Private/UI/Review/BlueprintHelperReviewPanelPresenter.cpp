@@ -183,5 +183,5 @@ FBlueprintHelperReviewPanelPresenter::HandleRejectLifecycleRootVisibleChange(
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
 	return FBlueprintHelperReviewPanelPresenterEvent::FromCascadeActionResult(
-		CommandService.RejectLifecycleRootVisibleChange(Change, DataSnapshot.PendingChanges, Options));
+		CommandService.RejectLifecycleRootVisibleChange(Change, Options));
 }
