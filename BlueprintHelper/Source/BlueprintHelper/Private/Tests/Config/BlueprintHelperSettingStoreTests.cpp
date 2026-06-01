@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/Settings/BlueprintHelperSettingsPresenter.h"
+#include "UI/Settings/Utils/BlueprintHelperSettingsUIUtils.h"
 
 namespace
 {
@@ -279,6 +280,54 @@ bool FBlueprintHelperSettingsReviewPerformancePendingPagingTest::RunTest(const F
 	TestEqual(TEXT("pending scroll prefetch rows comes from settings"),
 		Settings.PendingLoadScrollPrefetchRows,
 		9);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSettingsReviewPerformanceDefaultsVisibleTest,
+	"BlueprintHelper.Settings.ReviewPerformanceDefaultsVisible",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSettingsReviewPerformanceDefaultsVisibleTest::RunTest(const FString& Parameters)
+{
+	FString Error;
+	const FScopedBlueprintHelperSettingFileBackup ProjectSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetProjectSettingPath());
+	const FScopedBlueprintHelperSettingFileBackup UserSettingBackup(
+		FBlueprintHelperProjectConfigPaths::GetUserSettingOverridePath());
+
+	TestTrue(TEXT("project setting fixture clears overrides"), ProjectSettingBackup.Write(TEXT("{}"), Error));
+	TestTrue(TEXT("user setting fixture clears overrides"), UserSettingBackup.Write(TEXT("{}"), Error));
+
+	const TArray<FString> ExpectedPerformanceDefaults = {
+		TEXT("review.performance.trace_warning_ms"),
+		TEXT("review.performance.main_window_page_construct_warning_ms"),
+		TEXT("review.performance.pending_load_page_size"),
+		TEXT("review.performance.pending_load_scroll_prefetch_rows"),
+		TEXT("review.performance.pending_load_validity_candidate_budget"),
+		TEXT("review.performance.validity_sweep_enabled"),
+		TEXT("review.performance.validity_sweep_max_record_hydrations_per_worker_batch"),
+		TEXT("review.performance.validity_sweep_max_game_thread_targets_per_frame"),
+		TEXT("review.performance.validity_sweep_max_game_thread_ms_per_frame"),
+		TEXT("review.performance.validity_sweep_max_invalid_purges_per_batch")
+	};
+
+	for (const FString& DotPath : ExpectedPerformanceDefaults)
+	{
+		FString DefaultValue;
+		bool bHasProjectOverride = false;
+		const FString CurrentValue =
+			UBlueprintHelperSettingsUIUtils::ReadSettingValueOrDefault(DotPath, DefaultValue, bHasProjectOverride);
+		TestFalse(
+			FString::Printf(TEXT("%s has visible current value"), *DotPath),
+			CurrentValue.IsEmpty());
+		TestFalse(
+			FString::Printf(TEXT("%s has visible default value"), *DotPath),
+			DefaultValue.IsEmpty());
+		TestFalse(
+			FString::Printf(TEXT("%s is not project-overridden"), *DotPath),
+			bHasProjectOverride);
+	}
 	return true;
 }
 

@@ -112,6 +112,80 @@ namespace BlueprintHelperReviewTargetValidity
 		return FString();
 	}
 
+	static FString ResolveGraphBlockId(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		const auto ExtractBlockSegment = [](const FString& Value) -> FString
+		{
+			static const FString BlockToken = TEXT(":block:");
+			int32 TokenIndex = INDEX_NONE;
+			TokenIndex = Value.Find(BlockToken, ESearchCase::IgnoreCase);
+			if (TokenIndex != INDEX_NONE)
+			{
+				FString BlockId = Value.Mid(TokenIndex + BlockToken.Len());
+				int32 SeparatorIndex = INDEX_NONE;
+				if (BlockId.FindChar(TEXT(':'), SeparatorIndex))
+				{
+					BlockId = BlockId.Left(SeparatorIndex);
+				}
+				BlockId.TrimStartAndEndInline();
+				return BlockId;
+			}
+
+			static const FString GraphBlockPrefix = TEXT("graph_block:");
+			if (Value.StartsWith(GraphBlockPrefix, ESearchCase::IgnoreCase))
+			{
+				FString BlockId = Value.Mid(GraphBlockPrefix.Len());
+				int32 SeparatorIndex = INDEX_NONE;
+				if (BlockId.FindChar(TEXT(':'), SeparatorIndex))
+				{
+					BlockId = BlockId.Left(SeparatorIndex);
+				}
+				BlockId.TrimStartAndEndInline();
+				return BlockId;
+			}
+			return FString();
+		};
+
+		FString BlockId = ExtractBlockSegment(Target.TargetKey);
+		if (!BlockId.IsEmpty())
+		{
+			return BlockId;
+		}
+		return ExtractBlockSegment(Target.VisualGroupKey);
+	}
+
+	static bool GraphHasBlueprintHelperBlock(const UEdGraph* Graph, const FString& GraphName, const FString& BlockId)
+	{
+		if (!Graph || BlockId.IsEmpty())
+		{
+			return false;
+		}
+
+		TArray<FString> CandidateBlockIds;
+		CandidateBlockIds.Add(BlockId);
+		if (!GraphName.IsEmpty() && !BlockId.StartsWith(GraphName + TEXT("_"), ESearchCase::IgnoreCase))
+		{
+			CandidateBlockIds.Add(GraphName + TEXT("_") + BlockId);
+		}
+
+		for (const UEdGraphNode* Node : Graph->Nodes)
+		{
+			const FString NodeBlockId = UBlueprintHelperReviewUtils::GetReviewSnapshotNodeBlockId(Node);
+			if (NodeBlockId.IsEmpty())
+			{
+				continue;
+			}
+			for (const FString& CandidateBlockId : CandidateBlockIds)
+			{
+				if (NodeBlockId.Equals(CandidateBlockId, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	static bool TargetLooksLike(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const FString& Token)
@@ -202,11 +276,27 @@ FBlueprintHelperReviewValidityResult FBlueprintHelperReviewTargetValidityResolve
 			}
 		}
 
+		if (FBlueprintHelperReviewTargetKindRegistry::IsGraphBlockTarget(Target.TargetKind, Target.TargetKey))
+		{
+			const FString BlockId = BlueprintHelperReviewTargetValidity::ResolveGraphBlockId(Target);
+			if (!BlockId.IsEmpty())
+			{
+				const UEdGraph* Graph = UBlueprintHelperReviewUtils::FindReviewSnapshotGraph(Blueprint, Target.GraphName);
+				if (!BlueprintHelperReviewTargetValidity::GraphHasBlueprintHelperBlock(Graph, Target.GraphName, BlockId))
+				{
+					return BlueprintHelperReviewTargetValidity::Invalid(
+						Candidate,
+						EBlueprintHelperReviewInvalidReason::GraphNodeMissing,
+						TEXT("review_graph_block_missing"));
+				}
+			}
+		}
+
 		if (BlueprintHelperReviewTargetValidity::TargetLooksLike(Target, TEXT("variable")))
 		{
 			const FString VariableName = BlueprintHelperReviewTargetValidity::ResolveTargetName(
 				Target,
-				{ TEXT("variable"), TEXT("member_variable"), TEXT("local_variable") });
+				{ TEXT("blueprint_variable"), TEXT("variable"), TEXT("member_variable"), TEXT("local_variable") });
 			if (!VariableName.IsEmpty()
 				&& !BlueprintHelperReviewTargetValidity::BlueprintHasVariable(Blueprint, VariableName))
 			{
