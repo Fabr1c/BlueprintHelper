@@ -27,6 +27,15 @@ enum class EPinDirection : uint8
 	Output
 };
 
+enum class ESemanticScene : uint8
+{
+	LinearExecChain,
+	PureDataSubgraph,
+	NodeInputCluster,
+	MultiExecOutput,
+	Occupancy
+};
+
 struct FValidationResult
 {
 	bool bValid = true;
@@ -46,6 +55,11 @@ struct FRoleRule
 	bool bHasExecPinMatcher = false;
 	bool bMatchHasExecPin = false;
 	ENodeRole Role = ENodeRole::Unknown;
+};
+
+struct FEditorCanvasSceneState
+{
+	TMap<ENodeRole, FVector2D> RoleCenters;
 };
 
 struct FRuleSet
@@ -80,7 +94,7 @@ struct FRuleSet
 	bool bMarkDirtyAfterApply = true;
 	bool bSaveAfterApply = false;
 	TArray<FRoleRule> RoleRules;
-	TMap<ENodeRole, FVector2D> EditorCanvasRoleCenters;
+	TMap<ESemanticScene, FEditorCanvasSceneState> EditorCanvasScenes;
 };
 
 struct FPinSnapshot
@@ -139,6 +153,8 @@ struct FLayoutPlan
 BLUEPRINTHELPER_API const TCHAR* ToString(ENodeRole Role);
 BLUEPRINTHELPER_API bool LexTryParseString(ENodeRole& OutRole, const FString& Value);
 BLUEPRINTHELPER_API const TCHAR* ToString(EPinDirection Direction);
+BLUEPRINTHELPER_API const TCHAR* ToString(ESemanticScene Scene);
+BLUEPRINTHELPER_API bool LexTryParseString(ESemanticScene& OutScene, const FString& Value);
 
 BLUEPRINTHELPER_API TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet);
 BLUEPRINTHELPER_API TSharedRef<FJsonObject> ToJson(const FLayoutPlan& Plan);

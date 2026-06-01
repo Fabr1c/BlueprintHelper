@@ -223,6 +223,49 @@ const TCHAR* ToString(EPinDirection Direction)
 	return Direction == EPinDirection::Output ? TEXT("output") : TEXT("input");
 }
 
+const TCHAR* ToString(ESemanticScene Scene)
+{
+	switch (Scene)
+	{
+	case ESemanticScene::LinearExecChain: return TEXT("linear_exec_chain");
+	case ESemanticScene::PureDataSubgraph: return TEXT("pure_data_subgraph");
+	case ESemanticScene::NodeInputCluster: return TEXT("node_input_cluster");
+	case ESemanticScene::MultiExecOutput: return TEXT("multi_exec_output");
+	case ESemanticScene::Occupancy: return TEXT("occupancy");
+	default: return TEXT("unknown");
+	}
+}
+
+bool LexTryParseString(ESemanticScene& OutScene, const FString& Value)
+{
+	if (Value.Equals(TEXT("linear_exec_chain"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("LinearExecChain"), ESearchCase::IgnoreCase))
+	{
+		OutScene = ESemanticScene::LinearExecChain;
+		return true;
+	}
+	if (Value.Equals(TEXT("pure_data_subgraph"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("PureDataSubgraph"), ESearchCase::IgnoreCase))
+	{
+		OutScene = ESemanticScene::PureDataSubgraph;
+		return true;
+	}
+	if (Value.Equals(TEXT("node_input_cluster"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("NodeInputCluster"), ESearchCase::IgnoreCase))
+	{
+		OutScene = ESemanticScene::NodeInputCluster;
+		return true;
+	}
+	if (Value.Equals(TEXT("multi_exec_output"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("MultiExecOutput"), ESearchCase::IgnoreCase))
+	{
+		OutScene = ESemanticScene::MultiExecOutput;
+		return true;
+	}
+	if (Value.Equals(TEXT("occupancy"), ESearchCase::IgnoreCase) || Value.Equals(TEXT("Occupancy"), ESearchCase::IgnoreCase))
+	{
+		OutScene = ESemanticScene::Occupancy;
+		return true;
+	}
+	return false;
+}
+
 static TSharedRef<FJsonObject> VectorToJson(const FVector2D& Value)
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -262,19 +305,55 @@ TSharedRef<FJsonObject> ToJson(const FRuleSet& RuleSet)
 	Json->SetBoolField(TEXT("mark_dirty_after_apply"), RuleSet.bMarkDirtyAfterApply);
 	Json->SetBoolField(TEXT("save_after_apply"), RuleSet.bSaveAfterApply);
 
-	if (RuleSet.EditorCanvasRoleCenters.Num() > 0)
+	if (RuleSet.EditorCanvasScenes.Num() > 0)
 	{
 		TSharedRef<FJsonObject> EditorCanvasJson = MakeShared<FJsonObject>();
-		TSharedRef<FJsonObject> RoleCentersJson = MakeShared<FJsonObject>();
-		for (const TPair<ENodeRole, FVector2D>& Pair : RuleSet.EditorCanvasRoleCenters)
+		TSharedRef<FJsonObject> ScenesJson = MakeShared<FJsonObject>();
+		TArray<ESemanticScene> SceneKeys;
+		RuleSet.EditorCanvasScenes.GetKeys(SceneKeys);
+		SceneKeys.Sort([](const ESemanticScene Left, const ESemanticScene Right)
 		{
-			if (Pair.Key != ENodeRole::Unknown)
+			return FString(ToString(Left)) < FString(ToString(Right));
+		});
+
+		for (const ESemanticScene SceneKey : SceneKeys)
+		{
+			const TCHAR* SceneName = ToString(SceneKey);
+			if (FCString::Strcmp(SceneName, TEXT("unknown")) == 0)
 			{
-				RoleCentersJson->SetObjectField(ToString(Pair.Key), VectorToJson(Pair.Value));
+				continue;
 			}
+
+			const FEditorCanvasSceneState* SceneState = RuleSet.EditorCanvasScenes.Find(SceneKey);
+			if (!SceneState)
+			{
+				continue;
+			}
+
+			TSharedRef<FJsonObject> SceneJson = MakeShared<FJsonObject>();
+			TSharedRef<FJsonObject> RoleCentersJson = MakeShared<FJsonObject>();
+			TArray<ENodeRole> RoleKeys;
+			SceneState->RoleCenters.GetKeys(RoleKeys);
+			RoleKeys.Sort([](const ENodeRole Left, const ENodeRole Right)
+			{
+				return FString(ToString(Left)) < FString(ToString(Right));
+			});
+
+			for (const ENodeRole RoleKey : RoleKeys)
+			{
+				if (RoleKey != ENodeRole::Unknown)
+				{
+					RoleCentersJson->SetObjectField(ToString(RoleKey), VectorToJson(SceneState->RoleCenters.FindRef(RoleKey)));
+				}
+			}
+			SceneJson->SetObjectField(TEXT("role_centers"), RoleCentersJson);
+			ScenesJson->SetObjectField(SceneName, SceneJson);
 		}
-		EditorCanvasJson->SetObjectField(TEXT("role_centers"), RoleCentersJson);
-		Json->SetObjectField(TEXT("editor_canvas"), EditorCanvasJson);
+		if (ScenesJson->Values.Num() > 0)
+		{
+			EditorCanvasJson->SetObjectField(TEXT("scenes"), ScenesJson);
+			Json->SetObjectField(TEXT("editor_canvas"), EditorCanvasJson);
+		}
 	}
 
 	TArray<TSharedPtr<FJsonValue>> RulesJson;

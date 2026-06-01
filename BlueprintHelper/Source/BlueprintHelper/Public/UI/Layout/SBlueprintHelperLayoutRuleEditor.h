@@ -3,13 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "UI/BlueprintHelperUiSettings.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SMultiLineEditableTextBox;
 class SBlueprintHelperLayoutRuleCanvas;
+class SBox;
+class SGraphEditor;
 class STextBlock;
 class SWidget;
+class UEdGraph;
 
 DECLARE_DELEGATE_RetVal(FString, FBlueprintHelperLayoutRuleEditorImportJson);
 DECLARE_DELEGATE_RetVal_OneParam(bool, FBlueprintHelperLayoutRuleEditorExportJson, const FString&);
@@ -41,11 +46,22 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	virtual ~SBlueprintHelperLayoutRuleEditor() override;
+	virtual void Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) override;
 
 	FString GetRuleSetJson() const;
 	void SetRuleSetJson(const FString& InRuleSetJson);
 
 private:
+	enum class EPreviewState : uint8
+	{
+		Edit,
+		PreviewLoading,
+		PreviewMaterializing,
+		PreviewReady,
+		PreviewError
+	};
+
 	FReply OnImportJsonClicked();
 	FReply OnExportJsonClicked();
 	FReply OnCopyJsonClicked();
@@ -53,9 +69,16 @@ private:
 	FReply OnValidateClicked();
 	FReply OnResetToDefaultClicked();
 	FReply OnAlignExecRowClicked();
+	FReply OnPreviewClicked();
+	FReply OnReturnToEditClicked();
 
 	void HandleRuleSetTextChanged(const FText& InText);
 	void HandleCanvasRuleSetChanged(const FString& InRuleSetJson);
+	TSharedRef<SWidget> BuildEditWorkspace();
+	TSharedRef<SWidget> BuildSceneToolbar();
+	TSharedRef<SWidget> BuildPreviewWorkspace();
+	TSharedRef<SWidget> BuildPreviewContent();
+	TSharedRef<SWidget> BuildPreviewStatusWidget() const;
 	TSharedRef<SWidget> BuildSettingsPanel();
 	void RefreshSettingsFromJson();
 	void HandleTextSettingCommitted(int32 SettingId, const FText& NewValue);
@@ -70,6 +93,17 @@ private:
 	FString LoadJsonFromDefaultFile(FString& OutMessage) const;
 	bool SaveJsonToDefaultFile(const FString& JsonText, FString& OutMessage) const;
 	FString GetDefaultJsonFilePath() const;
+
+	void SetPreviewState(EPreviewState InPreviewState, const FString& InStatusMessage);
+	void RefreshWorkspace();
+	void StartPreviewBuild();
+	void HandlePreviewBuildCompleted(
+		const BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult& Result,
+		uint64 ExpectedPreviewGeneration);
+	void PumpPreviewMaterializer();
+	void BuildPreviewGraphEditor(UEdGraph* PreviewGraph);
+	void CancelActivePreview();
+	bool IsPreviewMode() const;
 
 	FString RuleSetJson;
 	FString DefaultRuleSetJson;
@@ -109,6 +143,18 @@ private:
 	FBlueprintHelperLayoutRuleEditorJsonChanged RuleSetJsonChangedDelegate;
 
 	TSharedPtr<SBlueprintHelperLayoutRuleCanvas> RuleCanvas;
+	TSharedPtr<SBox> WorkspaceBox;
+	TSharedPtr<SGraphEditor> PreviewGraphEditor;
 	TSharedPtr<SMultiLineEditableTextBox> RuleSetTextBox;
 	TSharedPtr<STextBlock> ValidationStatusTextBlock;
+
+	TUniquePtr<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService> PreviewService;
+	TUniquePtr<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer> PreviewMaterializer;
+	TOptional<BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult> PendingPreviewBuildResult;
+	BlueprintHelper::GraphLayout::ESemanticScene EditSceneBeforePreview =
+		BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;
+	EPreviewState PreviewState = EPreviewState::Edit;
+	FString PreviewStatusMessage;
+	uint64 ActivePreviewJobId = 0;
+	uint64 ActivePreviewGeneration = 0;
 };
