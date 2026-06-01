@@ -2,7 +2,10 @@
 
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutClassifier.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutDataInputPlacement.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutRowAllocationPolicy.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutTopology.h"
 
 namespace BlueprintHelper::GraphLayout
 {
@@ -13,6 +16,7 @@ struct FWorkingNode
 	FVector2D Target = FVector2D::ZeroVector;
 	bool bHasTarget = false;
 	bool bPinnedToCurrentPosition = false;
+	int32 SemanticRow = INDEX_NONE;
 	FString Reason;
 };
 
@@ -23,40 +27,6 @@ static bool IsExecRole(ENodeRole Role)
 		Role == ENodeRole::BranchControl ||
 		Role == ENodeRole::AsyncNode ||
 		Role == ENodeRole::DelegateNode;
-}
-
-static TArray<FString> GetExecSuccessors(const FNodeSnapshot& Node)
-{
-	TArray<FString> Result;
-	for (const FPinSnapshot& Pin : Node.Pins)
-	{
-		if (Pin.Direction == EPinDirection::Output && Pin.bExec)
-		{
-			for (const FString& LinkedNodeId : Pin.LinkedNodeIds)
-			{
-				Result.AddUnique(LinkedNodeId);
-			}
-		}
-	}
-	return Result;
-}
-
-static TMap<FString, int32> CountExecInputs(const FGraphSnapshot& Snapshot)
-{
-	TMap<FString, int32> Counts;
-	for (const FNodeSnapshot& Node : Snapshot.Nodes)
-	{
-		Counts.FindOrAdd(Node.NodeId) = 0;
-	}
-
-	for (const FNodeSnapshot& Node : Snapshot.Nodes)
-	{
-		for (const FString& Successor : GetExecSuccessors(Node))
-		{
-			++Counts.FindOrAdd(Successor);
-		}
-	}
-	return Counts;
 }
 
 static int32 ReserveRow(TMap<int32, TSet<int32>>& UsedRows, int32 Column, int32 PreferredRow)
@@ -108,8 +78,23 @@ static void SetTarget(
 	}
 }
 
+static void ReserveImmovableExistingNodes(
+	const FGraphSnapshot& Snapshot,
+	const FRuleSet& RuleSet,
+	FOccupancyResolver& Occupancy)
+{
+	for (const FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		if (Node.bExisting && !RuleSet.bMoveExistingNodes)
+		{
+			Occupancy.ReserveExistingNode(Node);
+		}
+	}
+}
+
 static void LayoutExecChain(
 	const FString& RootNodeId,
+	const FGraphTopology& Topology,
 	TMap<FString, FWorkingNode>& Nodes,
 	const FRuleSet& RuleSet,
 	FOccupancyResolver& Occupancy,
@@ -145,21 +130,30 @@ static void LayoutExecChain(
 		const FVector2D Target(Item.Column * RuleSet.ExecColumnSpacing, Row * RuleSet.ExecRowSpacing);
 		SetTarget(Nodes, Occupancy, Item.NodeId, Target, TEXT("exec_flow"));
 		const int32 ResolvedRow = GetRowForTargetY(Node->Target, RuleSet);
+		Node->SemanticRow = ResolvedRow;
 
-		const TArray<FString> Successors = GetExecSuccessors(*Node->Snapshot);
-		for (int32 SuccessorIndex = 0; SuccessorIndex < Successors.Num(); ++SuccessorIndex)
+		const bool bBranchLike = RuleSet.bAlignExecNodesHorizontally
+			? Topology.IsMultiExecOutputNode(Item.NodeId)
+			: Node->Role == ENodeRole::BranchControl;
+		const float RowStep = bBranchLike
+			? RuleSet.BranchRowSpacing / FMath::Max(1.0f, RuleSet.ExecRowSpacing)
+			: 0.0f;
+
+		const TArray<FExecEdge> Successors = Topology.GetExecOutputEdges(Item.NodeId);
+		for (const FExecEdge& SuccessorEdge : Successors)
 		{
-			const FWorkingNode* Successor = Nodes.Find(Successors[SuccessorIndex]);
+			const FWorkingNode* Successor = Nodes.Find(SuccessorEdge.TargetNodeId);
 			if (!Successor || !IsExecRole(Successor->Role))
 			{
 				continue;
 			}
 
-			const int32 BranchOffset = Node->Role == ENodeRole::BranchControl ? SuccessorIndex : 0;
-			const float RowStep = Node->Role == ENodeRole::BranchControl
-				? RuleSet.BranchRowSpacing / FMath::Max(1.0f, RuleSet.ExecRowSpacing)
-				: 1.0f;
-			Queue.Add({ Successors[SuccessorIndex], Item.Column + 1, ResolvedRow + FMath::RoundToInt(BranchOffset * RowStep) });
+			const int32 BranchOffset = bBranchLike ? SuccessorEdge.SourceOutputOrdinal : 0;
+			Queue.Add({
+				SuccessorEdge.TargetNodeId,
+				Item.Column + 1,
+				ResolvedRow + FMath::RoundToInt(BranchOffset * RowStep)
+			});
 		}
 	}
 }
@@ -226,10 +220,206 @@ static bool AlignInputsToConsumerPinOrder(
 	return bChanged;
 }
 
+static TMap<int32, float> BuildAllocatedRowBaselines(
+	const FGraphSnapshot& Snapshot,
+	const FGraphTopology& Topology,
+	const TMap<FString, FWorkingNode>& Nodes,
+	const FRuleSet& RuleSet)
+{
+	TMap<int32, float> MinHeightByRow;
+	int32 MaxRow = INDEX_NONE;
+
+	for (const TPair<FString, FWorkingNode>& Pair : Nodes)
+	{
+		const FWorkingNode& Node = Pair.Value;
+		if (!Node.bHasTarget || Node.SemanticRow == INDEX_NONE || !IsExecRole(Node.Role))
+		{
+			continue;
+		}
+
+		MaxRow = FMath::Max(MaxRow, Node.SemanticRow);
+		MinHeightByRow.FindOrAdd(Node.SemanticRow) = RuleSet.ExecRowSpacing;
+	}
+
+	if (MaxRow == INDEX_NONE)
+	{
+		return {};
+	}
+
+	for (const TPair<FString, FWorkingNode>& Pair : Nodes)
+	{
+		const FWorkingNode& Node = Pair.Value;
+		if (!Node.bHasTarget || Node.SemanticRow == INDEX_NONE || !IsExecRole(Node.Role))
+		{
+			continue;
+		}
+
+		const FNodeInputClusterBudget ClusterBudget =
+			FNodeInputClusterPolicy::MeasureForConsumer(Snapshot, Topology, Pair.Key, RuleSet);
+		float& RowMinHeight = MinHeightByRow.FindOrAdd(Node.SemanticRow);
+		RowMinHeight = FMath::Max(RowMinHeight, ClusterBudget.Height);
+	}
+
+	TArray<FExecRowBudget> RowBudgets;
+	RowBudgets.Reserve(MaxRow + 1);
+	for (int32 Row = 0; Row <= MaxRow; ++Row)
+	{
+		FExecRowBudget& Budget = RowBudgets.AddDefaulted_GetRef();
+		Budget.RowId = Row;
+		Budget.MinHeight = MinHeightByRow.FindRef(Row);
+	}
+
+	TMap<int32, float> BaselinesByRow;
+	for (const FExecRowAllocation& Allocation : FGraphLayoutRowAllocationPolicy::Allocate(RowBudgets, RuleSet))
+	{
+		BaselinesByRow.Add(Allocation.RowId, Allocation.BaselineY);
+	}
+	return BaselinesByRow;
+}
+
+static void ReflowExecTargetsToAllocatedRows(
+	const FGraphSnapshot& Snapshot,
+	const TMap<int32, float>& BaselinesByRow,
+	TMap<FString, FWorkingNode>& Nodes,
+	const FRuleSet& RuleSet,
+	FOccupancyResolver& Occupancy)
+{
+	TArray<int32> OrderedRows;
+	BaselinesByRow.GetKeys(OrderedRows);
+	OrderedRows.Sort();
+
+	TMap<int32, TArray<FString>> MovableExecNodeIdsByRow;
+	for (const FNodeSnapshot& NodeSnapshot : Snapshot.Nodes)
+	{
+		FWorkingNode* Node = Nodes.Find(NodeSnapshot.NodeId);
+		if (!Node || !Node->bHasTarget || !IsExecRole(Node->Role) || Node->SemanticRow == INDEX_NONE)
+		{
+			continue;
+		}
+
+		if (Node->bPinnedToCurrentPosition)
+		{
+			continue;
+		}
+
+		MovableExecNodeIdsByRow.FindOrAdd(Node->SemanticRow).Add(NodeSnapshot.NodeId);
+	}
+
+	float CumulativeBaselineBumpY = 0.0f;
+	for (const int32 RowId : OrderedRows)
+	{
+		const float AllocatedBaselineY = BaselinesByRow.FindRef(RowId);
+		const float DesiredBaselineY = AllocatedBaselineY + CumulativeBaselineBumpY;
+		const TArray<FString>* RowNodeIds = MovableExecNodeIdsByRow.Find(RowId);
+		if (!RowNodeIds || RowNodeIds->Num() == 0)
+		{
+			continue;
+		}
+
+		float ResolvedBaselineY = DesiredBaselineY;
+		const int32 MaxBaselineRefinementPasses =
+			FMath::Max(1, RuleSet.MaxCollisionAttempts * FMath::Max(1, RowNodeIds->Num()) + 1);
+		for (int32 PassIndex = 0; PassIndex < MaxBaselineRefinementPasses; ++PassIndex)
+		{
+			float NextBaselineY = ResolvedBaselineY;
+			for (const FString& NodeId : *RowNodeIds)
+			{
+				const FWorkingNode* Node = Nodes.Find(NodeId);
+				if (!Node || !Node->Snapshot)
+				{
+					continue;
+				}
+
+				const FVector2D ResolvedTarget = Occupancy.ResolveNearestFreeTarget(
+					NodeId,
+					FVector2D(Node->Target.X, ResolvedBaselineY),
+					Node->Snapshot->Size);
+				NextBaselineY = FMath::Max(NextBaselineY, ResolvedTarget.Y);
+			}
+
+			if (FMath::IsNearlyEqual(NextBaselineY, ResolvedBaselineY))
+			{
+				break;
+			}
+			ResolvedBaselineY = NextBaselineY;
+		}
+
+		float FinalBaselineY = ResolvedBaselineY;
+		for (const FString& NodeId : *RowNodeIds)
+		{
+			const FWorkingNode* Node = Nodes.Find(NodeId);
+			if (!Node)
+			{
+				continue;
+			}
+
+			SetTarget(
+				Nodes,
+				Occupancy,
+				NodeId,
+				FVector2D(Node->Target.X, ResolvedBaselineY),
+				TEXT("exec_flow"));
+
+			if (FWorkingNode* UpdatedNode = Nodes.Find(NodeId))
+			{
+				FinalBaselineY = FMath::Max(FinalBaselineY, UpdatedNode->Target.Y);
+				UpdatedNode->SemanticRow = GetRowForTargetY(UpdatedNode->Target, RuleSet);
+			}
+		}
+
+		CumulativeBaselineBumpY = FMath::Max(CumulativeBaselineBumpY, FinalBaselineY - AllocatedBaselineY);
+	}
+}
+
+static bool PlaceInputClusters(
+	const FGraphSnapshot& Snapshot,
+	const FGraphTopology& Topology,
+	TMap<FString, FWorkingNode>& Nodes,
+	const FRuleSet& RuleSet,
+	FOccupancyResolver& Occupancy)
+{
+	bool bChanged = false;
+	for (const FNodeSnapshot& ConsumerSnapshot : Snapshot.Nodes)
+	{
+		const FWorkingNode* ConsumerNode = Nodes.Find(ConsumerSnapshot.NodeId);
+		if (!ConsumerNode || !ConsumerNode->bHasTarget)
+		{
+			continue;
+		}
+
+		const FNodeInputClusterBudget ClusterBudget =
+			FNodeInputClusterPolicy::MeasureForConsumer(Snapshot, Topology, ConsumerSnapshot.NodeId, RuleSet);
+		for (const FString& ClusterNodeId : ClusterBudget.NodeIds)
+		{
+			FWorkingNode* ClusterNode = Nodes.Find(ClusterNodeId);
+			if (!ClusterNode || !ClusterNode->Snapshot || ClusterNode->bHasTarget)
+			{
+				continue;
+			}
+
+			const FVector2D* RelativeTarget = ClusterBudget.RelativeTargets.Find(ClusterNodeId);
+			if (!RelativeTarget)
+			{
+				continue;
+			}
+
+			SetTarget(
+				Nodes,
+				Occupancy,
+				ClusterNodeId,
+				ConsumerNode->Target + *RelativeTarget,
+				TEXT("pure_data_subgraph_alignment"));
+			bChanged = true;
+		}
+	}
+	return bChanged;
+}
+
 FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleSet)
 {
 	FLayoutPlan Plan;
 	Plan.Classifications = FClassifier::ClassifyGraph(Snapshot, RuleSet);
+	const FGraphTopology Topology = FGraphLayoutTopology::Build(Snapshot);
 
 	TMap<FString, ENodeRole> RolesById;
 	for (const FNodeClassification& Classification : Plan.Classifications)
@@ -253,21 +443,14 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		Nodes.Add(Node.NodeId, WorkingNode);
 	}
 
-	FOccupancyResolver Occupancy(RuleSet);
-	for (const FNodeSnapshot& Node : Snapshot.Nodes)
-	{
-		if (Node.bExisting && !RuleSet.bMoveExistingNodes)
-		{
-			Occupancy.ReserveExistingNode(Node);
-		}
-	}
+	FOccupancyResolver ExecOccupancy(RuleSet);
+	ReserveImmovableExistingNodes(Snapshot, RuleSet, ExecOccupancy);
 
-	const TMap<FString, int32> ExecInputCounts = CountExecInputs(Snapshot);
 	TArray<FString> Roots;
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		const ENodeRole Role = RolesById.FindRef(Node.NodeId);
-		const int32 InputCount = ExecInputCounts.FindRef(Node.NodeId);
+		const int32 InputCount = Topology.CountExecInputs(Node.NodeId);
 		if (Role == ENodeRole::EventEntry || (IsExecRole(Role) && InputCount == 0))
 		{
 			Roots.Add(Node.NodeId);
@@ -278,7 +461,7 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 	TMap<int32, TSet<int32>> UsedRows;
 	for (int32 RootIndex = 0; RootIndex < Roots.Num(); ++RootIndex)
 	{
-		LayoutExecChain(Roots[RootIndex], Nodes, RuleSet, Occupancy, UsedRows, RootIndex * 3, VisitedExecNodes);
+		LayoutExecChain(Roots[RootIndex], Topology, Nodes, RuleSet, ExecOccupancy, UsedRows, RootIndex * 3, VisitedExecNodes);
 	}
 
 	int32 DetachedRootRow = FMath::Max(1, Roots.Num()) * 3;
@@ -291,16 +474,46 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 			{
 				++DetachedRootRow;
 			}
-			LayoutExecChain(Node.NodeId, Nodes, RuleSet, Occupancy, UsedRows, DetachedRootRow, VisitedExecNodes);
+			LayoutExecChain(Node.NodeId, Topology, Nodes, RuleSet, ExecOccupancy, UsedRows, DetachedRootRow, VisitedExecNodes);
 			DetachedRootRow += 3;
 		}
 	}
 
-	for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
+	if (RuleSet.bUsePatternRowHeightBudget)
 	{
-		if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet, Occupancy))
+		const TMap<int32, float> BaselinesByRow = BuildAllocatedRowBaselines(Snapshot, Topology, Nodes, RuleSet);
+
+		FOccupancyResolver PatternOccupancy(RuleSet);
+		ReserveImmovableExistingNodes(Snapshot, RuleSet, PatternOccupancy);
+		ReflowExecTargetsToAllocatedRows(Snapshot, BaselinesByRow, Nodes, RuleSet, PatternOccupancy);
+
+		if (RuleSet.bUsePureDataSubgraphLayout)
 		{
-			break;
+			PlaceInputClusters(Snapshot, Topology, Nodes, RuleSet, PatternOccupancy);
+		}
+		else
+		{
+			for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
+			{
+				if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet, PatternOccupancy))
+				{
+					break;
+				}
+			}
+		}
+	}
+	else if (RuleSet.bUsePureDataSubgraphLayout)
+	{
+		PlaceInputClusters(Snapshot, Topology, Nodes, RuleSet, ExecOccupancy);
+	}
+	else
+	{
+		for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
+		{
+			if (!AlignInputsToConsumerPinOrder(Snapshot, Nodes, RuleSet, ExecOccupancy))
+			{
+				break;
+			}
 		}
 	}
 

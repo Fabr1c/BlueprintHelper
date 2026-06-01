@@ -1,13 +1,13 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 
 #include "Async/Async.h"
-#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "FileHelpers.h"
+#include "HAL/Event.h"
 #include "HAL/FileManager.h"
-#include "HAL/PlatformTime.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonSerializer.h"
@@ -17,6 +17,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSnapshotBuilder.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
+#include "Templates/Atomic.h"
 #include "UObject/Package.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperGraphLayout, Log, All);
@@ -29,19 +30,55 @@ struct FPendingGraphLayout
 	TSet<FString> GeneratedNodeIds;
 };
 
-struct FQueuedApply
+static TArray<FPendingGraphLayout> GPendingLayouts;
+static bool bShuttingDown = false;
+static constexpr uint32 SyncFlushWaitTimeoutMs = 30000;
+
+struct FFlushCompletionSignal
 {
-	TWeakObjectPtr<UEdGraph> Graph;
-	BlueprintHelper::GraphLayout::FLayoutPlan Plan;
-	BlueprintHelper::GraphLayout::FRuleSet RuleSet;
-	int32 NextPlacementIndex = 0;
-	bool bChangedGraph = false;
+	FFlushCompletionSignal()
+		: Event(FPlatformProcess::GetSynchEventFromPool(true))
+	{
+	}
+
+	~FFlushCompletionSignal()
+	{
+		if (Event)
+		{
+			FPlatformProcess::ReturnSynchEventToPool(Event);
+			Event = nullptr;
+		}
+	}
+
+	void Trigger() const
+	{
+		if (Event)
+		{
+			Event->Trigger();
+		}
+	}
+
+	bool Wait(const uint32 TimeoutMs) const
+	{
+		return Event ? Event->Wait(TimeoutMs) : true;
+	}
+
+private:
+	FEvent* Event = nullptr;
 };
 
-static TArray<FPendingGraphLayout> GPendingLayouts;
-static TArray<TSharedPtr<FQueuedApply>> GApplyQueue;
-static FTSTicker::FDelegateHandle GApplyTickerHandle;
-static bool bShuttingDown = false;
+struct FGameThreadOperationState
+{
+	FGameThreadOperationState()
+		: bSuccess(false)
+		, bCancelled(false)
+	{
+	}
+
+	FFlushCompletionSignal Completion;
+	TAtomic<bool> bSuccess;
+	TAtomic<bool> bCancelled;
+};
 
 static FString MakeNodeId(const UEdGraphNode* Node)
 {
@@ -138,154 +175,95 @@ static bool ApplyOnePlacement(UEdGraph* Graph, const BlueprintHelper::GraphLayou
 	return true;
 }
 
-static void FinishApplyJob(const TSharedPtr<FQueuedApply>& ApplyJob)
+static void FinishChangedGraph(
+	UEdGraph* Graph,
+	const bool bChangedGraph,
+	const BlueprintHelper::GraphLayout::FRuleSet& RuleSet)
 {
-	if (!ApplyJob.IsValid())
-	{
-		return;
-	}
-
-	UEdGraph* Graph = ApplyJob->Graph.Get();
-	if (Graph && ApplyJob->bChangedGraph)
+	if (Graph && bChangedGraph)
 	{
 		Graph->NotifyGraphChanged();
 		UPackage* Package = Graph->GetOutermost();
-		if ((ApplyJob->RuleSet.bMarkDirtyAfterApply || ApplyJob->RuleSet.bSaveAfterApply) && Package)
+		if ((RuleSet.bMarkDirtyAfterApply || RuleSet.bSaveAfterApply) && Package)
 		{
 			Package->MarkPackageDirty();
 		}
-		if (ApplyJob->RuleSet.bSaveAfterApply && Package)
+		if (RuleSet.bSaveAfterApply && Package)
 		{
-			const bool bSaved = UEditorLoadingAndSavingUtils::SavePackages({Package}, true);
-			if (!bSaved)
-			{
-				UE_LOG(LogBlueprintHelperGraphLayout, Warning, TEXT("GraphLayout save_after_apply failed for package %s."), *Package->GetName());
-			}
+			UE_LOG(LogBlueprintHelperGraphLayout, Verbose,
+				TEXT("GraphLayout save_after_apply requested for %s; task flush defers saving to TaskRuntime post-operations."),
+				*Package->GetName());
 		}
 	}
 }
 
-static bool TickApplyQueue(float)
-{
-	if (bShuttingDown)
-	{
-		GApplyQueue.Reset();
-		GApplyTickerHandle.Reset();
-		return false;
-	}
-
-	const double FrameStartSeconds = FPlatformTime::Seconds();
-	for (int32 QueueIndex = 0; QueueIndex < GApplyQueue.Num();)
-	{
-		TSharedPtr<FQueuedApply> ApplyJob = GApplyQueue[QueueIndex];
-		if (!ApplyJob.IsValid() || !ApplyJob->Graph.IsValid())
-		{
-			GApplyQueue.RemoveAt(QueueIndex);
-			continue;
-		}
-
-		UEdGraph* Graph = ApplyJob->Graph.Get();
-		const int32 MaxNodesThisFrame = FMath::Max(1, ApplyJob->RuleSet.MaxNodesPerFrame);
-		const double MaxSecondsThisFrame = FMath::Max(0.25f, ApplyJob->RuleSet.MaxMillisecondsPerFrame) / 1000.0;
-		int32 MovedThisFrame = 0;
-
-		while (ApplyJob->NextPlacementIndex < ApplyJob->Plan.Placements.Num())
-		{
-			const BlueprintHelper::GraphLayout::FNodePlacement& Placement =
-				ApplyJob->Plan.Placements[ApplyJob->NextPlacementIndex++];
-			if (ApplyOnePlacement(Graph, Placement))
-			{
-				ApplyJob->bChangedGraph = true;
-				++MovedThisFrame;
-			}
-
-			const double ElapsedSeconds = FPlatformTime::Seconds() - FrameStartSeconds;
-			if (MovedThisFrame >= MaxNodesThisFrame || ElapsedSeconds >= MaxSecondsThisFrame)
-			{
-				break;
-			}
-		}
-
-		if (ApplyJob->NextPlacementIndex >= ApplyJob->Plan.Placements.Num())
-		{
-			FinishApplyJob(ApplyJob);
-			GApplyQueue.RemoveAt(QueueIndex);
-			continue;
-		}
-
-		++QueueIndex;
-		const double ElapsedSeconds = FPlatformTime::Seconds() - FrameStartSeconds;
-		if (ElapsedSeconds >= MaxSecondsThisFrame)
-		{
-			break;
-		}
-	}
-
-	if (GApplyQueue.Num() == 0)
-	{
-		GApplyTickerHandle.Reset();
-		return false;
-	}
-	return true;
-}
-
-static void EnsureApplyTicker()
-{
-	if (!GApplyTickerHandle.IsValid())
-	{
-		GApplyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateStatic(&TickApplyQueue));
-	}
-}
-
-static void EnqueueApply(
-	TWeakObjectPtr<UEdGraph> Graph,
+static void ApplyPlanImmediately(
+	UEdGraph* Graph,
 	const BlueprintHelper::GraphLayout::FLayoutPlan& Plan,
 	const BlueprintHelper::GraphLayout::FRuleSet& RuleSet)
 {
-	if (bShuttingDown || !Graph.IsValid())
+	bool bChangedGraph = false;
+	for (const BlueprintHelper::GraphLayout::FNodePlacement& Placement : Plan.Placements)
+	{
+		bChangedGraph = ApplyOnePlacement(Graph, Placement) || bChangedGraph;
+	}
+	FinishChangedGraph(Graph, bChangedGraph, RuleSet);
+}
+
+static void SnapshotSolveAndApplyNow(const FPendingGraphLayout& Pending)
+{
+	if (bShuttingDown || !Pending.Graph.IsValid())
 	{
 		return;
 	}
 
-	TSharedPtr<FQueuedApply> ApplyJob = MakeShared<FQueuedApply>();
-	ApplyJob->Graph = Graph;
-	ApplyJob->Plan = Plan;
-	ApplyJob->RuleSet = RuleSet;
-	GApplyQueue.Add(ApplyJob);
-	EnsureApplyTicker();
+	UEdGraph* Graph = Pending.Graph.Get();
+	BlueprintHelper::GraphLayout::FGraphSnapshot Snapshot =
+		BlueprintHelper::GraphLayout::FSnapshotBuilder::CaptureGraph(Graph);
+	for (BlueprintHelper::GraphLayout::FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		Node.bExisting = !Pending.GeneratedNodeIds.Contains(Node.NodeId);
+	}
+
+	BlueprintHelper::GraphLayout::FRuleSet RuleSet = LoadConfiguredRuleSet();
+	const BlueprintHelper::GraphLayout::FLayoutPlan Plan =
+		BlueprintHelper::GraphLayout::FSolver::Solve(Snapshot, RuleSet);
+	ApplyPlanImmediately(Graph, Plan, RuleSet);
 }
 
-static void StartSnapshotAndSolve(const FPendingGraphLayout& Pending)
+static void SnapshotSolveAndApplyNow(TArray<FPendingGraphLayout>& PendingLayouts)
 {
-	TWeakObjectPtr<UEdGraph> Graph = Pending.Graph;
-	const TSet<FString> GeneratedNodeIds = Pending.GeneratedNodeIds;
-
-	AsyncTask(ENamedThreads::GameThread, [Graph, GeneratedNodeIds]()
+	for (const FPendingGraphLayout& Pending : PendingLayouts)
 	{
-		if (bShuttingDown || !Graph.IsValid())
+		if (Pending.Graph.IsValid() && Pending.GeneratedNodeIds.Num() > 0)
 		{
-			return;
+			SnapshotSolveAndApplyNow(Pending);
 		}
+	}
+}
 
-		BlueprintHelper::GraphLayout::FGraphSnapshot Snapshot =
-			BlueprintHelper::GraphLayout::FSnapshotBuilder::CaptureGraph(Graph.Get());
-		for (BlueprintHelper::GraphLayout::FNodeSnapshot& Node : Snapshot.Nodes)
-		{
-			Node.bExisting = !GeneratedNodeIds.Contains(Node.NodeId);
-		}
+static bool FlushPendingTaskLayoutsOnGameThread()
+{
+	if (!IsInGameThread())
+	{
+		return false;
+	}
 
-		BlueprintHelper::GraphLayout::FRuleSet RuleSet = LoadConfiguredRuleSet();
-		Async(EAsyncExecution::ThreadPool, [Graph, Snapshot = MoveTemp(Snapshot), RuleSet]()
-		{
-			const BlueprintHelper::GraphLayout::FLayoutPlan Plan =
-				BlueprintHelper::GraphLayout::FSolver::Solve(Snapshot, RuleSet);
-			AsyncTask(ENamedThreads::GameThread, [Graph, Plan, RuleSet]()
-			{
-				EnqueueApply(Graph, Plan, RuleSet);
-			});
-		});
-	});
+	if (bShuttingDown)
+	{
+		GPendingLayouts.Reset();
+		return true;
+	}
+
+	if (GPendingLayouts.Num() == 0)
+	{
+		return true;
+	}
+
+	TArray<FPendingGraphLayout> PendingLayouts = MoveTemp(GPendingLayouts);
+	GPendingLayouts.Reset();
+	SnapshotSolveAndApplyNow(PendingLayouts);
+	return true;
 }
 }
 
@@ -295,12 +273,6 @@ void FBlueprintHelperGraphLayoutCoordinator::Startup()
 
 	bShuttingDown = false;
 	GPendingLayouts.Reset();
-	GApplyQueue.Reset();
-	if (GApplyTickerHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(GApplyTickerHandle);
-		GApplyTickerHandle.Reset();
-	}
 }
 
 void FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(
@@ -322,8 +294,16 @@ void FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(
 		{
 			NodeWeakRefs.Add(Node);
 		}
-		AsyncTask(ENamedThreads::GameThread, [GraphWeak, NodeWeakRefs]()
+		TSharedRef<FGameThreadOperationState, ESPMode::ThreadSafe> OperationState =
+			MakeShared<FGameThreadOperationState, ESPMode::ThreadSafe>();
+		AsyncTask(ENamedThreads::GameThread, [GraphWeak, NodeWeakRefs, OperationState]()
 		{
+			if (OperationState->bCancelled.Load())
+			{
+				OperationState->Completion.Trigger();
+				return;
+			}
+
 			TArray<UEdGraphNode*> Nodes;
 			for (const TWeakObjectPtr<UEdGraphNode>& NodeWeak : NodeWeakRefs)
 			{
@@ -333,7 +313,16 @@ void FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(
 				}
 			}
 			FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(GraphWeak.Get(), Nodes);
+			OperationState->bSuccess.Store(true);
+			OperationState->Completion.Trigger();
 		});
+		if (!OperationState->Completion.Wait(SyncFlushWaitTimeoutMs))
+		{
+			OperationState->bCancelled.Store(true);
+			UE_LOG(LogBlueprintHelperGraphLayout, Warning,
+				TEXT("GraphLayout generated-node registration timed out after %u ms while waiting for the game thread."),
+				SyncFlushWaitTimeoutMs);
+		}
 		return;
 	}
 
@@ -360,31 +349,67 @@ void FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(
 	}
 }
 
-void FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts()
+bool FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts()
 {
 	using namespace BlueprintHelperGraphLayoutCoordinatorLocal;
 
-	if (bShuttingDown || GPendingLayouts.Num() == 0)
+	if (IsInGameThread())
 	{
-		return;
+		return FlushPendingTaskLayoutsOnGameThread();
 	}
 
-	TArray<FPendingGraphLayout> PendingLayouts = MoveTemp(GPendingLayouts);
-	GPendingLayouts.Reset();
-	for (const FPendingGraphLayout& Pending : PendingLayouts)
+	TSharedRef<FGameThreadOperationState, ESPMode::ThreadSafe> OperationState =
+		MakeShared<FGameThreadOperationState, ESPMode::ThreadSafe>();
+	AsyncTask(ENamedThreads::GameThread, [OperationState]()
 	{
-		if (Pending.Graph.IsValid() && Pending.GeneratedNodeIds.Num() > 0)
+		if (OperationState->bCancelled.Load())
 		{
-			StartSnapshotAndSolve(Pending);
+			OperationState->Completion.Trigger();
+			return;
 		}
+
+		OperationState->bSuccess.Store(FlushPendingTaskLayoutsOnGameThread());
+		OperationState->Completion.Trigger();
+	});
+	if (!OperationState->Completion.Wait(SyncFlushWaitTimeoutMs))
+	{
+		OperationState->bCancelled.Store(true);
+		UE_LOG(LogBlueprintHelperGraphLayout, Warning,
+			TEXT("GraphLayout synchronous flush timed out after %u ms while waiting for the game thread."),
+			SyncFlushWaitTimeoutMs);
+		return false;
 	}
+	return OperationState->bSuccess.Load();
 }
 
 void FBlueprintHelperGraphLayoutCoordinator::DiscardPendingTaskLayouts()
 {
 	using namespace BlueprintHelperGraphLayoutCoordinatorLocal;
 
-	GPendingLayouts.Reset();
+	if (IsInGameThread())
+	{
+		GPendingLayouts.Reset();
+		return;
+	}
+
+	TSharedRef<FGameThreadOperationState, ESPMode::ThreadSafe> OperationState =
+		MakeShared<FGameThreadOperationState, ESPMode::ThreadSafe>();
+	AsyncTask(ENamedThreads::GameThread, [OperationState]()
+	{
+		if (!OperationState->bCancelled.Load())
+		{
+			GPendingLayouts.Reset();
+			OperationState->bSuccess.Store(true);
+		}
+		OperationState->Completion.Trigger();
+	});
+	if (!OperationState->Completion.Wait(SyncFlushWaitTimeoutMs))
+	{
+		OperationState->bCancelled.Store(true);
+		UE_LOG(LogBlueprintHelperGraphLayout, Warning,
+			TEXT("GraphLayout discard timed out after %u ms while waiting for the game thread."),
+			SyncFlushWaitTimeoutMs);
+	}
 }
 
 void FBlueprintHelperGraphLayoutCoordinator::Shutdown()
@@ -393,12 +418,6 @@ void FBlueprintHelperGraphLayoutCoordinator::Shutdown()
 
 	bShuttingDown = true;
 	GPendingLayouts.Reset();
-	GApplyQueue.Reset();
-	if (GApplyTickerHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(GApplyTickerHandle);
-		GApplyTickerHandle.Reset();
-	}
 }
 
 FString FBlueprintHelperGraphLayoutCoordinator::GetDefaultRuleSetJson()

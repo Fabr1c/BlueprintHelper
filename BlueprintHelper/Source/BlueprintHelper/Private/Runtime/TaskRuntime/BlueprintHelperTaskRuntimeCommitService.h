@@ -28,7 +28,7 @@ public:
 		const FString& Operation,
 		const FString& AssetPath,
 		const FString& Reason) const;
-	void FlushGraphLayout() const;
+	bool FlushGraphLayout() const;
 
 private:
 	const FBlueprintHelperTaskRuntimeClusterHub& ClusterHub;

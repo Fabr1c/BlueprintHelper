@@ -9,6 +9,8 @@
 #include "Engine/Blueprint.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
@@ -835,6 +837,36 @@ public:
 		FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Graph, GeneratedNodes);
 	}
 
+	static bool WriteCreatedCustomEventOwnership(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		UK2Node_CustomEvent* EventNode,
+		const FString& EventName,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph || !EventNode || EventName.IsEmpty())
+		{
+			OutError = TEXT("custom_event_ownership_target_invalid");
+			return false;
+		}
+
+		const FBlueprintHelperBlockIdService BlockIdService;
+		const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, EventName);
+		FString BlockId = BlockIdService.MakeFullBlockId(Graph->GetName(), BlockRef);
+		if (BlockId.IsEmpty())
+		{
+			BlockId = BlockRef;
+		}
+		if (BlockId.IsEmpty())
+		{
+			OutError = TEXT("custom_event_ownership_block_id_empty");
+			return false;
+		}
+
+		const FBlueprintHelperOwnershipService OwnershipService;
+		return OwnershipService.WriteNodeOwnership(Blueprint, EventNode, BlockId, EventName, OutError);
+	}
+
 	static FName ResolveNativeOrOverrideEventName(const FString& InEventName)
 	{
 		const FString Lower = InEventName.ToLower();
@@ -1233,6 +1265,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 					CreateEventError.IsEmpty() ? TEXT("Failed to create custom event signature.") : CreateEventError,
 					TEXT("event_name"));
 			}
+			if (!FBlueprintHelperSignatureServiceLocalUtils::WriteCreatedCustomEventOwnership(
+				Blueprint,
+				NewGraph,
+				EventNode,
+				Request.EventName,
+				CreateEventError))
+			{
+				Mutation.Rollback();
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_custom_event"),
+					TEXT("custom_event_ownership_write_failed"),
+					EBlueprintHelperToolStage::Execute,
+					CreateEventError.IsEmpty() ? TEXT("Failed to write custom event ownership metadata.") : CreateEventError,
+					TEXT("event_name"));
+			}
 
 			NewGraph->NotifyGraphChanged();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -1354,6 +1401,22 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 				TEXT("custom_event_create_failed"),
 				EBlueprintHelperToolStage::Execute,
 				Error.IsEmpty() ? TEXT("Failed to create custom event signature.") : Error,
+				TEXT("event_name"));
+		}
+
+		if (!FBlueprintHelperSignatureServiceLocalUtils::WriteCreatedCustomEventOwnership(
+			Target.Blueprint,
+			Target.Graph,
+			EventNode,
+			Request.EventName,
+			Error))
+		{
+			Mutation.Rollback();
+			return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+				TEXT("ensure_custom_event"),
+				TEXT("custom_event_ownership_write_failed"),
+				EBlueprintHelperToolStage::Execute,
+				Error.IsEmpty() ? TEXT("Failed to write custom event ownership metadata.") : Error,
 				TEXT("event_name"));
 		}
 	}

@@ -148,15 +148,16 @@ public:
 			}
 		}
 
-		void FlushAndComplete()
+		bool FlushAndComplete()
 		{
 			if (!bActive || bCompleted)
 			{
-				return;
+				return true;
 			}
 
-			FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
-			bCompleted = true;
+			const bool bFlushSucceeded = FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
+			bCompleted = bFlushSucceeded;
+			return bFlushSucceeded;
 		}
 
 		bool bActive = false;
@@ -6687,9 +6688,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	if (!bDryRun)
 	{
 		const double GraphLayoutStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		CommitService.FlushGraphLayout();
-		GraphLayoutTask.bCompleted = true;
+		const bool bGraphLayoutFlushed = CommitService.FlushGraphLayout();
+		GraphLayoutTask.bCompleted = bGraphLayoutFlushed;
 		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("graph_layout_flush"), GraphLayoutStageStart);
+		if (!bGraphLayoutFlushed)
+		{
+			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
+				TEXT("graph_layout_flush_failed"),
+				EBlueprintHelperToolStage::Execute,
+				TEXT("GraphLayout flush did not complete before compile/save post-operations.")));
+		}
 	}
 
 	if (!bDryRun)

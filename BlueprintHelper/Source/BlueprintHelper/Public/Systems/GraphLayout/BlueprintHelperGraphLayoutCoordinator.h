@@ -10,7 +10,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperGraphLayoutCoordinator
 public:
 	static void Startup();
 	static void RecordGeneratedNodes(UEdGraph* Graph, const TArray<UEdGraphNode*>& GeneratedNodes);
-	static void FlushPendingTaskLayouts();
+	static bool FlushPendingTaskLayouts();
 	static void DiscardPendingTaskLayouts();
 	static void Shutdown();
 
