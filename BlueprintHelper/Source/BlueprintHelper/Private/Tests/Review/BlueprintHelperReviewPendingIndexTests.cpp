@@ -69,6 +69,85 @@ namespace BlueprintHelperReviewPendingIndexTests
 		return Change;
 	}
 
+	static FBlueprintHelperReviewVisibleChange MakeAssetFactoryRootChange(
+		const FString& ChangeId,
+		const FString& AssetPath)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeVisibleChange(
+			ChangeId,
+			AssetPath,
+			TEXT("asset_factory:create_asset"));
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+		Change.DisplayLabel = TEXT("blueprint_class");
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.ParentChangeId.Reset();
+		Change.AtomicTargets[0].TargetKind = TEXT("asset_factory");
+		Change.AtomicTargets[0].TargetKey = TEXT("asset_factory:create_asset");
+		Change.AtomicTargets[0].DisplayLabel = TEXT("blueprint_class");
+		Change.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::Unknown;
+		return Change;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeVariableChange(
+		const FString& ChangeId,
+		const FString& AssetPath,
+		const FString& VariableName)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeVisibleChange(
+			ChangeId,
+			AssetPath,
+			FString::Printf(TEXT("blueprint_variable:%s"), *VariableName));
+		Change.DisplayLabel = FString::Printf(TEXT("variable %s"), *VariableName);
+		Change.AtomicTargets[0].TargetKind = TEXT("blueprint_variable");
+		Change.AtomicTargets[0].TargetKey = FString::Printf(TEXT("blueprint_variable:%s"), *VariableName);
+		Change.AtomicTargets[0].DisplayLabel = Change.DisplayLabel;
+		Change.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+		return Change;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeComponentRootChange(
+		const FString& ChangeId,
+		const FString& AssetPath,
+		const FString& ComponentName)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeVisibleChange(
+			ChangeId,
+			AssetPath,
+			FString::Printf(TEXT("component:%s"), *ComponentName));
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+		Change.DisplayLabel = ComponentName;
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.AtomicTargets[0].TargetKind = TEXT("component");
+		Change.AtomicTargets[0].TargetKey = FString::Printf(TEXT("component:%s"), *ComponentName);
+		Change.AtomicTargets[0].ComponentPath = ComponentName;
+		Change.AtomicTargets[0].DisplayLabel = ComponentName;
+		Change.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::Components;
+		return Change;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeWidgetRootChange(
+		const FString& ChangeId,
+		const FString& AssetPath,
+		const FString& WidgetName)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeVisibleChange(
+			ChangeId,
+			AssetPath,
+			FString::Printf(TEXT("umg_widget:%s"), *WidgetName));
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+		Change.DisplayLabel = WidgetName;
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.AtomicTargets[0].TargetKind = TEXT("umg_widget");
+		Change.AtomicTargets[0].TargetKey = FString::Printf(TEXT("umg_widget:%s"), *WidgetName);
+		Change.AtomicTargets[0].PropertyPath = WidgetName;
+		Change.AtomicTargets[0].DisplayLabel = WidgetName;
+		Change.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::UMGWidgetTree;
+		return Change;
+	}
+
 	static FBlueprintHelperReviewRecord MakeRecord(
 		const FString& ArchiveId,
 		const FString& AssetPath,
@@ -89,6 +168,24 @@ namespace BlueprintHelperReviewPendingIndexTests
 		Record.SourceReviewSummary.CreatedAtFirst = TEXT("2026-05-31T01:02:03Z");
 		Record.SourceReviewSummary.CreatedAtLast = TEXT("2026-05-31T01:02:04Z");
 		Record.VisibleChanges.Add(MakeVisibleChange(ChangeId, AssetPath, TEXT("graph_node:PendingIndex")));
+		return Record;
+	}
+
+	static FBlueprintHelperReviewRecord MakeRecordWithChange(
+		const FString& ArchiveId,
+		const FString& AssetPath,
+		const FString& TaskRunId,
+		const FBlueprintHelperReviewVisibleChange& Change)
+	{
+		FBlueprintHelperReviewRecord Record = MakeRecord(
+			ArchiveId,
+			AssetPath,
+			TaskRunId,
+			Change.ChangeId);
+		Record.VisibleChanges.Reset();
+		Record.VisibleChanges.Add(Change);
+		Record.SourceReviewSummary.EvidenceIds.Reset();
+		Record.SourceReviewSummary.EvidenceIds.Add(Change.ChangeId);
 		return Record;
 	}
 
@@ -304,6 +401,153 @@ bool FBlueprintHelperReviewPendingIndexQueryPageUsesStableCursorTest::RunTest(co
 		FString DeleteError;
 		Store.DeleteReviewRecord(ReviewRecordId, DeleteError);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexPageLinksCrossRecordAssetRootTest,
+	"BlueprintHelper.Review.PendingIndex.PageLinksCrossRecordAssetRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexPageLinksCrossRecordAssetRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexAssetRoot"));
+
+	FBlueprintHelperReviewRecord RootRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_root")),
+		AssetPath,
+		TEXT("task_pending_index_root"),
+		BlueprintHelperReviewPendingIndexTests::MakeAssetFactoryRootChange(TEXT("tx_pending_index_asset_root"), AssetPath));
+	RootRecord.SourceReviewSummary.CreatedAtFirst.Reset();
+	RootRecord.SourceReviewSummary.CreatedAtLast.Reset();
+
+	FBlueprintHelperReviewRecord ChildRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_child")),
+		AssetPath,
+		TEXT("task_pending_index_child"),
+		BlueprintHelperReviewPendingIndexTests::MakeVariableChange(
+			TEXT("tx_pending_index_child_variable"),
+			AssetPath,
+			TEXT("PendingIndexChild")));
+	ChildRecord.SourceReviewSummary.CreatedAtFirst = TEXT("2026-06-01T01:02:03Z");
+	ChildRecord.SourceReviewSummary.CreatedAtLast = TEXT("2026-06-01T01:02:04Z");
+
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(RootRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("root record saves"), Store.SaveReviewRecord(RootRecord, SaveError));
+	TestTrue(TEXT("child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest Request;
+	Request.Query = Query;
+	Request.PageSize = 10;
+
+	FBlueprintHelperReviewPendingIndexPage Page;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("page query succeeds"), IndexService.QueryPendingVisibleChangePage(Request, Page, Error));
+	TestEqual(TEXT("page includes root and child"), Page.Changes.Num(), 2);
+	if (Page.Changes.Num() == 2)
+	{
+		TestEqual(TEXT("asset lifecycle root sorts before same-asset child"),
+			Page.Changes[0].Change.ChangeId,
+			FString(TEXT("tx_pending_index_asset_root")));
+		TestEqual(TEXT("child points to asset lifecycle root"),
+			Page.Changes[1].Change.ParentChangeId,
+			FString(TEXT("tx_pending_index_asset_root")));
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(RootRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(ChildRecord.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexPageLinksComponentAndWidgetRootsToAssetRootTest,
+	"BlueprintHelper.Review.PendingIndex.PageLinksComponentAndWidgetRootsToAssetRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexPageLinksComponentAndWidgetRootsToAssetRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexStructureRoots"));
+
+	FBlueprintHelperReviewRecord AssetRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_asset_root")),
+		AssetPath,
+		TEXT("task_pending_index_asset_root"),
+		BlueprintHelperReviewPendingIndexTests::MakeAssetFactoryRootChange(TEXT("tx_pending_index_asset_root_structure"), AssetPath));
+	AssetRecord.SourceReviewSummary.CreatedAtFirst.Reset();
+	AssetRecord.SourceReviewSummary.CreatedAtLast.Reset();
+
+	FBlueprintHelperReviewRecord ComponentRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_component_root")),
+		AssetPath,
+		TEXT("task_pending_index_component_root"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChange(
+			TEXT("tx_pending_index_component_root"),
+			AssetPath,
+			TEXT("PendingIndexComp")));
+	ComponentRecord.SourceReviewSummary.CreatedAtFirst = TEXT("2026-06-01T02:02:03Z");
+	ComponentRecord.SourceReviewSummary.CreatedAtLast = TEXT("2026-06-01T02:02:04Z");
+
+	FBlueprintHelperReviewRecord WidgetRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_widget_root")),
+		AssetPath,
+		TEXT("task_pending_index_widget_root"),
+		BlueprintHelperReviewPendingIndexTests::MakeWidgetRootChange(
+			TEXT("tx_pending_index_widget_root"),
+			AssetPath,
+			TEXT("PendingIndexWidget")));
+	WidgetRecord.SourceReviewSummary.CreatedAtFirst = TEXT("2026-06-01T02:03:03Z");
+	WidgetRecord.SourceReviewSummary.CreatedAtLast = TEXT("2026-06-01T02:03:04Z");
+
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(AssetRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ComponentRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(WidgetRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("asset root record saves"), Store.SaveReviewRecord(AssetRecord, SaveError));
+	TestTrue(TEXT("component root record saves"), Store.SaveReviewRecord(ComponentRecord, SaveError));
+	TestTrue(TEXT("widget root record saves"), Store.SaveReviewRecord(WidgetRecord, SaveError));
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest Request;
+	Request.Query = Query;
+	Request.PageSize = 10;
+
+	FBlueprintHelperReviewPendingIndexPage Page;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("page query succeeds"), IndexService.QueryPendingVisibleChangePage(Request, Page, Error));
+	TestEqual(TEXT("page includes asset, component, and widget roots"), Page.Changes.Num(), 3);
+	if (Page.Changes.Num() == 3)
+	{
+		TestEqual(TEXT("asset lifecycle root sorts first"),
+			Page.Changes[0].Change.ChangeId,
+			FString(TEXT("tx_pending_index_asset_root_structure")));
+		TestEqual(TEXT("component root falls back to asset root parent"),
+			Page.Changes[1].Change.ParentChangeId,
+			FString(TEXT("tx_pending_index_asset_root_structure")));
+		TestEqual(TEXT("widget root falls back to asset root parent"),
+			Page.Changes[2].Change.ParentChangeId,
+			FString(TEXT("tx_pending_index_asset_root_structure")));
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(AssetRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(ComponentRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(WidgetRecord.ReviewRecordId, DeleteError);
 	return true;
 }
 

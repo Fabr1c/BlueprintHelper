@@ -37,6 +37,7 @@
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
@@ -1925,10 +1926,23 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		FString& OutError)
 	{
+		FBlueprintHelperReviewPerformanceScope Scope(TEXT("ReviewReject.ExecuteSnapshotRestore"));
+		Scope.AddText(TEXT("target_kind"), Target.TargetKind);
+		Scope.AddText(TEXT("target_key"), Target.TargetKey);
+		Scope.AddText(TEXT("asset"), Target.AssetPath);
+		Scope.AddBytes(TEXT("before_snapshot"), Target.BeforeSnapshotJson.Len());
+
 		TSharedPtr<FJsonObject> Snapshot;
-		if (!ParseReviewSnapshotJson(Target.BeforeSnapshotJson, Snapshot, OutError))
 		{
-			return false;
+			FBlueprintHelperReviewPerformanceScope ParseScope(TEXT("ReviewReject.ParseSnapshotJson"));
+			ParseScope.AddText(TEXT("target_kind"), Target.TargetKind);
+			ParseScope.AddBytes(TEXT("before_snapshot"), Target.BeforeSnapshotJson.Len());
+			if (!ParseReviewSnapshotJson(Target.BeforeSnapshotJson, Snapshot, OutError))
+			{
+				Scope.AddText(TEXT("result"), TEXT("parse_failed"));
+				Scope.AddText(TEXT("error"), OutError);
+				return false;
+			}
 		}
 
 		using FSnapshotRestoreHandler = TFunction<bool()>;
@@ -1957,15 +1971,24 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 
 		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
 			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+		Scope.AddCount(TEXT("handler_kind"), static_cast<int64>(HandlerKind));
 		for (const FSnapshotRestoreRoute& Route : Routes)
 		{
 			if (Route.HandlerKind == HandlerKind)
 			{
-				return Route.Handler();
+				const bool bRestored = Route.Handler();
+				Scope.AddText(TEXT("result"), bRestored ? TEXT("restored") : TEXT("failed"));
+				if (!bRestored)
+				{
+					Scope.AddText(TEXT("error"), OutError);
+				}
+				return bRestored;
 			}
 		}
 
 		OutError = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
+		Scope.AddText(TEXT("result"), TEXT("unsupported"));
+		Scope.AddText(TEXT("error"), OutError);
 		return false;
 	}
 bool FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(const FBlueprintHelperReviewAtomicTarget& Target)

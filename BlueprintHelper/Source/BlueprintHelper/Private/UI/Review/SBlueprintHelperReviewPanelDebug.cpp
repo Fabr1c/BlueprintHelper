@@ -60,6 +60,11 @@ void SBlueprintHelperReviewPanel::AppendDebugBundleEvent(const TSharedRef<FJsonO
 
 void SBlueprintHelperReviewPanel::AddDebugMessage(const FString& Message)
 {
+	if (DebugMessages.Num() > 0 && DebugMessages[0].EndsWith(TEXT("] ") + Message))
+	{
+		return;
+	}
+
 	DebugMessages.Insert(FString::Printf(
 		TEXT("[%s] %s"),
 		*FDateTime::Now().ToString(TEXT("%H:%M:%S")),
@@ -117,6 +122,19 @@ FReply SBlueprintHelperReviewPanel::OnCopyDebugMessages() const
 FReply SBlueprintHelperReviewPanel::OnCopyDebugBundlePath() const
 {
 	FPlatformApplicationMisc::ClipboardCopy(*DebugBundlePath);
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperReviewPanel::OnClearDebugMessages()
+{
+	DebugMessages.Reset();
+	DebugMessages.Add(FString::Printf(
+		TEXT("[%s] Review debug panel cleared."),
+		*FDateTime::Now().ToString(TEXT("%H:%M:%S"))));
+	if (DebugMessageTextBox.IsValid())
+	{
+		DebugMessageTextBox->SetText(GetDebugMessagesText());
+	}
 	return FReply::Handled();
 }
 
@@ -383,6 +401,15 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDebugPanel()
 					.HAlign(HAlign_Center)
 					.Text(FText::FromString(TEXT("CopyPath")))
 					.OnClicked(this, &SBlueprintHelperReviewPanel::OnCopyDebugBundlePath)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+				[
+					SNew(SButton)
+					.HAlign(HAlign_Center)
+					.Text(FText::FromString(TEXT("Clear")))
+					.OnClicked(this, &SBlueprintHelperReviewPanel::OnClearDebugMessages)
 				]
 				+ SHorizontalBox::Slot()
 				.AutoWidth()

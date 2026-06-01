@@ -41,6 +41,16 @@ public:
 		const FString& CurrentSnapshotJson,
 		const FString& RecordedAfterSnapshotJson);
 
+	static TSharedRef<FJsonObject> BuildRejectTimingEvent(
+		const FString& SessionId,
+		const FString& Stage,
+		const FString& ChangeId,
+		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Change,
+		const FString& AssetPath,
+		double StageMs,
+		double TotalMs,
+		const FString& Detail = FString());
+
 	static bool AppendEvent(
 		const FString& BundlePath,
 		const FString& SessionId,

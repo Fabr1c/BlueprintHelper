@@ -2,6 +2,7 @@
 
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
+#include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
 #include "Dom/JsonObject.h"
@@ -140,10 +141,15 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 	const FBlueprintHelperReviewVisibleChange& Change,
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
+	FBlueprintHelperReviewPerformanceScope Scope(TEXT("ReviewReject.RejectVisibleChange"));
+	Scope.AddText(TEXT("change_id"), Change.ChangeId);
+	Scope.AddText(TEXT("asset"), Change.AssetPath);
+	Scope.AddCount(TEXT("atomic_targets"), Change.AtomicTargets.Num());
 	if (!FBlueprintHelperReviewActionRecordUtils::HasInjectedRejectOptions(Options))
 	{
 		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
 			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatches(Change);
+		Scope.AddCount(TEXT("persisted_matches"), Matches.Num());
 		if (Matches.Num() > 0)
 		{
 			FBlueprintHelperReviewActionResult LastResult;
@@ -440,15 +446,31 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	const TArray<FString>& TargetKeys,
 	const FBlueprintHelperReviewRejectOptions& Options) const
 {
+	FBlueprintHelperReviewPerformanceScope Scope(TEXT("ReviewReject.RejectReviewTargets"));
+	Scope.AddText(TEXT("record"), ReviewRecordId);
+	Scope.AddCount(TEXT("target_keys"), TargetKeys.Num());
+
 	FBlueprintHelperReviewActionResult Result;
 	FBlueprintHelperReviewStoreService Store;
 	FBlueprintHelperReviewRecord Record;
 	FString Error;
-	if (!Store.LoadReviewRecordById(ReviewRecordId, Record, Error))
 	{
-		Result.Message = Error;
-		return Result;
+		FBlueprintHelperReviewPerformanceScope LoadScope(TEXT("ReviewReject.LoadReviewRecord"));
+		LoadScope.AddText(TEXT("record"), ReviewRecordId);
+		if (!Store.LoadReviewRecordById(ReviewRecordId, Record, Error))
+		{
+			Result.Message = Error;
+			return Result;
+		}
 	}
+
+	Scope.AddCount(TEXT("visible_changes"), Record.VisibleChanges.Num());
+	int64 AtomicTargetCount = 0;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
+	{
+		AtomicTargetCount += Change.AtomicTargets.Num();
+	}
+	Scope.AddCount(TEXT("record_atomic_targets"), AtomicTargetCount);
 
 	bool bMatchedAny = false;
 	bool bAllRejected = true;
@@ -488,11 +510,20 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 				TargetForReject.RecordedAfterHash = Change.AfterHash;
 			}
 			TargetChange.AtomicTargets.Add(TargetForReject);
-			const FBlueprintHelperReviewActionResult TargetResult = bUseInjectedOptions
-				? RejectVisibleChange(TargetChange, Options)
-				: FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
-					TargetChange,
-					&Options);
+			FBlueprintHelperReviewActionResult TargetResult;
+			{
+				FBlueprintHelperReviewPerformanceScope TargetScope(TEXT("ReviewReject.TargetRollback"));
+				TargetScope.AddText(TEXT("target_kind"), TargetForReject.TargetKind);
+				TargetScope.AddText(TEXT("target_key"), TargetForReject.TargetKey);
+				TargetScope.AddBytes(TEXT("before_snapshot"), TargetForReject.BeforeSnapshotJson.Len());
+				TargetResult = bUseInjectedOptions
+					? RejectVisibleChange(TargetChange, Options)
+					: FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
+						TargetChange,
+						&Options);
+				TargetScope.AddText(TEXT("status"), BlueprintHelperReviewChangeStatusToString(TargetResult.NewStatus));
+				TargetScope.AddText(TEXT("message"), TargetResult.Message);
+			}
 			const bool bTargetStatusRejected = TargetResult.NewStatus == EBlueprintHelperReviewChangeStatus::Rejected;
 			Target.Status = TargetResult.NewStatus;
 			Change.NeedsActionReason = bTargetStatusRejected ? FString() : TargetResult.Message;
@@ -514,10 +545,17 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	{
 		TArray<FString> DebugCaseIdsToDelete;
 		bool bRecordDeleted = false;
-		if (!Store.PurgeReviewTargets(ReviewRecordId, TargetKeys, DebugCaseIdsToDelete, bRecordDeleted, Error))
 		{
-			Result.Message = Error;
-			return Result;
+			FBlueprintHelperReviewPerformanceScope PurgeScope(TEXT("ReviewReject.PurgeReviewTargets"));
+			PurgeScope.AddText(TEXT("record"), ReviewRecordId);
+			PurgeScope.AddCount(TEXT("target_keys"), TargetKeys.Num());
+			if (!Store.PurgeReviewTargets(ReviewRecordId, TargetKeys, DebugCaseIdsToDelete, bRecordDeleted, Error))
+			{
+				Result.Message = Error;
+				return Result;
+			}
+			PurgeScope.AddCount(TEXT("debug_cases"), DebugCaseIdsToDelete.Num());
+			PurgeScope.AddCount(TEXT("record_deleted"), bRecordDeleted ? 1 : 0);
 		}
 		if (bRecordDeleted
 			&& !FBlueprintHelperReviewActionRecordUtils::DeleteDebugCasesForReviewRecord(
@@ -552,10 +590,14 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		bAllTargetStatusesRejected ? EBlueprintHelperReviewChangeStatus::Rejected : LastStatus,
 		LastMessage);
 
-	if (!Store.SaveReviewRecord(Record, Error))
 	{
-		Result.Message = Error;
-		return Result;
+		FBlueprintHelperReviewPerformanceScope SaveScope(TEXT("ReviewReject.SaveReviewRecord"));
+		SaveScope.AddText(TEXT("record"), ReviewRecordId);
+		if (!Store.SaveReviewRecord(Record, Error))
+		{
+			Result.Message = Error;
+			return Result;
+		}
 	}
 
 	Result.bSucceeded = bAllTargetStatusesRejected;

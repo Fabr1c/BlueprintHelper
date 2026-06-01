@@ -21,11 +21,11 @@ FBlueprintHelperReviewPerformanceScope::~FBlueprintHelperReviewPerformanceScope(
 	const FString CounterText = GetCounterText();
 	if (ElapsedMs >= WarnThresholdMs)
 	{
-		UE_LOG(LogBlueprintHelperReviewPerf, Warning, TEXT("%s ms=%.2f %s"), Name, ElapsedMs, *CounterText);
+		UE_LOG(LogBlueprintHelperReviewPerf, Warning, TEXT("%s ms=%.2f %s"), *Name, ElapsedMs, *CounterText);
 		return;
 	}
 
-	UE_LOG(LogBlueprintHelperReviewPerf, Verbose, TEXT("%s ms=%.2f %s"), Name, ElapsedMs, *CounterText);
+	UE_LOG(LogBlueprintHelperReviewPerf, Verbose, TEXT("%s ms=%.2f %s"), *Name, ElapsedMs, *CounterText);
 }
 
 void FBlueprintHelperReviewPerformanceScope::AddCount(const TCHAR* Key, int64 Value)
@@ -36,6 +36,11 @@ void FBlueprintHelperReviewPerformanceScope::AddCount(const TCHAR* Key, int64 Va
 void FBlueprintHelperReviewPerformanceScope::AddBytes(const TCHAR* Key, int64 Value)
 {
 	Counters.Add(FString::Printf(TEXT("%s_bytes=%lld"), Key ? Key : TEXT("value"), Value));
+}
+
+void FBlueprintHelperReviewPerformanceScope::AddText(const TCHAR* Key, const FString& Value)
+{
+	Counters.Add(FString::Printf(TEXT("%s=\"%s\""), Key ? Key : TEXT("text"), *Value));
 }
 
 int32 FBlueprintHelperReviewPerformanceScope::GetWarnThresholdMs() const
