@@ -1552,6 +1552,43 @@ Suggested checkpoint message:
 
 ---
 
+## 2026-06-01 最新状态 / 验证结果
+
+### 已落地性能优化
+
+- Paged pending load / 分页滚动加载已补入 ReviewPanel pending load 链路：async worker 完成后不再一次性把全部 `ChangeItems` 应用到 UI，滚动分页继续加载后续 rows；`AcceptAll` / `RejectAll` 通过完整 pending 数据源执行，避免只处理当前已加载页。
+- Pending load worker 与低速 validity sweep 已继续收敛：pending load 走 worker 侧轻量 summary query / sort，GameThread 只做分页 model apply；validity sweep 继续保持 service/coordinator 生命周期，真实资产、变量、函数、graph block 等 anchor 检查按预算回到 GameThread 执行，不放入 Slate widget 本地分支。
+- RowHighlight no-op broadcast 已跳过：`FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState` 先比较语义状态，未变化时保留 revision 且不广播；Reject queue 状态刷新不再重建 surface highlight。该修复用于消除 Detail diff/graph 区域 flicker，以及 DebugBundle `Revision` 刷屏。
+- Reject service benchmark 当前样本未复现 10s 到 1min 级后端耗时：`graph_block` `reject_targets_ms` 约 `60.29ms`，`variable` `reject_targets_ms` 约 `64.80ms`。
+- 已新增真实 ReviewPanel Reject click timing 链路，并写入结构化 DebugBundle 事件 `review_reject_timing`；同时保留 `RejectPerf ...` 文本日志，覆盖从 UI intent、queued、prepare、mutation、store changed、pending load、success feedback 到 panel refresh 的阶段耗时。
+
+### DebugBundle 只读分析结果
+
+- 最近 DebugBundle：`D:/UEProjects/Template/Saved/BlueprintHelper/Debug/ReviewPanelBundles/review_panel_20260601_062934.json`
+- `updated_at`: `2026-06-01T06:30:34.852Z`
+- 本地文件时间：`2026-06-01 14:30:34.884 +08:00`
+- 事件计数：找到 `55` 条 `review_reject_timing` 和 `55` 条 `RejectPerf`，对应 `5` 个 `change_id`。
+
+| Change | Final total | 最慢单阶段 |
+|---|---:|---|
+| `variable RPTimingCounter` | `1142.23ms` | `panel_refresh_applied 292.01ms` |
+| `graph body task_E37... step_4` | `2188.77ms` | `mutation_started 631.94ms` |
+| `graph body task_3480... step_6` | `3610.74ms` | `mutation_started 1041.20ms` |
+| `variable RPTimingThreshold` | `1504.42ms` | `panel_refresh_applied 315.18ms` |
+| `asset_factory create asset` | `2307.54ms` | `store_changed_event 934.40ms` |
+
+- 全局最慢单阶段：`mutation_started 1041.20ms`，对应 `graph body task_3480... step_6`。
+- 按阶段累计耗时最高项：`mutation_started 2239.64ms`、`panel_refresh_applied 1993.06ms`、`store_changed_event 1565.45ms`。
+- 当前证据说明真实点击耗时已经可分段定位：后端 service benchmark 约 60ms，但真实 ReviewPanel 链路仍在 `mutation_started`、`panel_refresh_applied`、`store_changed_event` 阶段出现更高墙钟耗时；后续优化应继续沿 `review_reject_timing` 分段，而不是只看 service benchmark。
+
+### 组件层级测试进度
+
+- 当前组件层级测试已创建/执行到二级组件。
+- 三级组件在同一 TaskPlan 内的父子依赖 preview 被 `parent_component_not_found: CH_A_GrandChildScene` 阻断。
+- 下一步不应在同一大 TaskPlan 内继续堆叠父子依赖；应拆成更细粒度任务，让父组件创建、保存、读回后再执行子组件 preview / execute。
+
+---
+
 ## Final Verification Matrix
 
 Run after all five tasks:

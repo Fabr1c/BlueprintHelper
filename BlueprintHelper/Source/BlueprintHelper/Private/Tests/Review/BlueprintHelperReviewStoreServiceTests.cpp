@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/SceneComponent.h"
 #include "Components/TextBlock.h"
 #include "Curves/CurveFloat.h"
 #include "EdGraph/EdGraph.h"
@@ -47,6 +48,8 @@
 #include "Widgets/Text/STextBlock.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Runtime/Launch/Resources/Version.h"
 #if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 #include "StructUtils/UserDefinedStruct.h"
@@ -242,6 +245,110 @@ public:
 			TEXT("BlueprintHelperReviewStoreServiceTests"));
 		Package->SetDirtyFlag(false);
 		return Blueprint;
+	}
+
+	static USCS_Node* AddReviewSceneComponentNode(
+		UBlueprint* Blueprint,
+		const FString& ComponentName,
+		USCS_Node* ParentNode = nullptr)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript || ComponentName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		USCS_Node* Node = Blueprint->SimpleConstructionScript->CreateNode(
+			USceneComponent::StaticClass(),
+			FName(*ComponentName));
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		if (ParentNode)
+		{
+			ParentNode->AddChildNode(Node);
+		}
+		else
+		{
+			Blueprint->SimpleConstructionScript->AddNode(Node);
+		}
+		return Node;
+	}
+
+	static FString MakeComponentBeforeAddedSnapshot(const FString& ComponentName)
+	{
+		return FString::Printf(
+			TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v2\",\"target_kind\":\"component\",\"target_key\":\"component:%s\",\"exists\":false,\"name\":\"%s\"}"),
+			*ComponentName,
+			*ComponentName);
+	}
+
+	static FString MakeComponentAfterAddedSnapshot(
+		const FString& ComponentName,
+		const FString& ParentComponentName = FString())
+	{
+		if (ParentComponentName.IsEmpty())
+		{
+			return FString::Printf(
+				TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v2\",\"target_kind\":\"component\",\"target_key\":\"component:%s\",\"exists\":true,\"name\":\"%s\"}"),
+				*ComponentName,
+				*ComponentName);
+		}
+
+		return FString::Printf(
+			TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v2\",\"target_kind\":\"component\",\"target_key\":\"component:%s\",\"exists\":true,\"name\":\"%s\",\"parent_component\":\"%s\"}"),
+			*ComponentName,
+			*ComponentName,
+			*ParentComponentName);
+	}
+
+	static FBlueprintHelperReviewAtomicTarget MakeAddedComponentTarget(
+		UBlueprint* Blueprint,
+		const FString& ComponentName,
+		const FString& EvidenceId,
+		const FString& ParentComponentName = FString())
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.Surface = EBlueprintHelperReviewSurface::Components;
+		Target.AssetPath = Blueprint ? Blueprint->GetPathName() : FString();
+		Target.TargetKind = TEXT("component");
+		Target.TargetKey = FString::Printf(TEXT("component:%s"), *ComponentName);
+		Target.VisualGroupKey = Target.TargetKey;
+		Target.DisplayLabel = ComponentName;
+		Target.ComponentPath = ComponentName;
+		Target.LatestEvidenceId = EvidenceId;
+		Target.SourceEvidenceIds.Add(EvidenceId);
+		Target.BaselineHash = FString::Printf(TEXT("before_%s"), *ComponentName);
+		Target.RecordedAfterHash = FString::Printf(TEXT("after_%s"), *ComponentName);
+		Target.BeforeSnapshotJson = MakeComponentBeforeAddedSnapshot(ComponentName);
+		Target.AfterSnapshotJson = MakeComponentAfterAddedSnapshot(ComponentName, ParentComponentName);
+		if (!ParentComponentName.IsEmpty())
+		{
+			Target.AnchorJson = FString::Printf(
+				TEXT("{\"component_name\":\"%s\",\"parent_component\":\"%s\"}"),
+				*ComponentName,
+				*ParentComponentName);
+		}
+		return Target;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeAddedComponentChange(
+		const FString& ChangeId,
+		const FString& EvidenceId,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		int32 ExecutionOrder = INDEX_NONE)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeReviewVisibleChangeForTarget(
+			ChangeId,
+			EvidenceId,
+			Target,
+			EBlueprintHelperReviewChangeKind::Added);
+		Change.ExecutionOrder = ExecutionOrder;
+		Change.bIsAssetLifecycleRoot = true;
+		Change.bRejectRemovesChildren = true;
+		Change.ParentChangeId.Reset();
+		return Change;
 	}
 
 	static UDataTable* MakeReviewDataTable(const FString& Prefix)
@@ -1136,12 +1243,16 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	FBlueprintHelperReviewRejectOptions Options;
 	const FBlueprintHelperReviewActionResult DirectResult =
 		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, &Options);
-	TestFalse(TEXT("legacy hash blocks default reject"), DirectResult.bSucceeded);
-	TestEqual(TEXT("legacy hash mismatch requires user action"),
+	TestFalse(TEXT("legacy graph record without recoverable snapshot still needs action"), DirectResult.bSucceeded);
+	TestEqual(TEXT("legacy graph record without recoverable snapshot enters needs action"),
 		DirectResult.NewStatus,
 		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestTrue(TEXT("semantic guard reports current state changed"),
-		DirectResult.Message.Contains(TEXT("current_state_changed")));
+	TestEqual(TEXT("semantic hash drift is diagnostic, not the blocking reason"),
+		DirectResult.Message,
+		FString(TEXT("missing_recoverable_snapshot")));
+	TestEqual(TEXT("semantic guard still records target key"),
+		DirectResult.HashGuardTargetKey,
+		Target.TargetKey);
 	return true;
 }
 
@@ -1395,12 +1506,16 @@ bool FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest::RunTest(cons
 
 	const FBlueprintHelperReviewActionResult Result =
 		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
-	TestFalse(TEXT("semantic hash mismatch blocks reject"), Result.bSucceeded);
-	TestEqual(TEXT("semantic hash mismatch enters needs action"),
+	TestFalse(TEXT("missing recoverable snapshot blocks reject"), Result.bSucceeded);
+	TestEqual(TEXT("missing recoverable snapshot enters needs action"),
 		Result.NewStatus,
 		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestTrue(TEXT("message reports current state changed"),
-		Result.Message.Contains(TEXT("current_state_changed")));
+	TestEqual(TEXT("semantic hash drift is diagnostic, not the blocking reason"),
+		Result.Message,
+		FString(TEXT("missing_recoverable_snapshot")));
+	TestEqual(TEXT("semantic guard still records target key"),
+		Result.HashGuardTargetKey,
+		Target.TargetKey);
 	return true;
 }
 
@@ -1479,12 +1594,16 @@ bool FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest::RunTest(const FSt
 
 	const FBlueprintHelperReviewActionResult Result =
 		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
-	TestFalse(TEXT("legacy hash record is not auto-compatible"), Result.bSucceeded);
+	TestFalse(TEXT("legacy hash record without recoverable snapshot is not auto-compatible"), Result.bSucceeded);
 	TestEqual(TEXT("legacy hash record enters needs action"),
 		Result.NewStatus,
 		EBlueprintHelperReviewChangeStatus::NeedsAction);
-	TestTrue(TEXT("legacy hash record reports current state changed"),
-		Result.Message.Contains(TEXT("current_state_changed")));
+	TestEqual(TEXT("legacy hash drift is diagnostic, not the blocking reason"),
+		Result.Message,
+		FString(TEXT("missing_recoverable_snapshot")));
+	TestEqual(TEXT("legacy hash diagnostic records target key"),
+		Result.HashGuardTargetKey,
+		Target.TargetKey);
 	return true;
 }
 
@@ -5125,7 +5244,6 @@ bool FBlueprintHelperReviewPanelRejectLifecycleRootServiceUnavailableTest::RunTe
 	const FBlueprintHelperReviewCascadeActionResult Result =
 		CommandService.RejectLifecycleRootVisibleChange(
 			Root,
-			TArray<FBlueprintHelperReviewVisibleChange>(),
 			FBlueprintHelperReviewRejectOptions());
 
 	TestFalse(TEXT("panel root reject without action service does not fake rollback"), Result.RootResult.bSucceeded);
@@ -5137,6 +5255,121 @@ bool FBlueprintHelperReviewPanelRejectLifecycleRootServiceUnavailableTest::RunTe
 		FString(TEXT("review_action_service_unavailable")));
 	TestTrue(TEXT("panel root reject without action service does not select rollback mode"),
 		Result.RootResult.RollbackMode.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelRejectLifecycleRootLoadsFullPendingGraphTest,
+	"BlueprintHelper.Review.PanelCommand.RejectLifecycleRootLoadsFullPendingGraph",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelRejectLifecycleRootLoadsFullPendingGraphTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewPanelCommandService CommandService(&ActionService, &Store);
+
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_panel_lifecycle_full_graph"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(
+		TEXT("PanelLifecycleFullGraph"));
+	TestNotNull(TEXT("panel lifecycle blueprint created"), Blueprint);
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return false;
+	}
+
+	USCS_Node* ParentNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("PanelParent"));
+	USCS_Node* ChildNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("PanelChild"),
+		ParentNode);
+	TestNotNull(TEXT("panel parent component exists"), ParentNode);
+	TestNotNull(TEXT("panel child component exists"), ChildNode);
+	if (!ParentNode || !ChildNode)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewVisibleChange ParentChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentChange(
+			TEXT("change_panel_parent"),
+			TEXT("tx_panel_parent"),
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+				Blueprint,
+				TEXT("PanelParent"),
+				TEXT("tx_panel_parent")),
+			1);
+	const FBlueprintHelperReviewVisibleChange ChildChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentChange(
+			TEXT("change_panel_child"),
+			TEXT("tx_panel_child"),
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+				Blueprint,
+				TEXT("PanelChild"),
+				TEXT("tx_panel_child"),
+				TEXT("PanelParent")),
+			2);
+
+	FBlueprintHelperReviewRecord ParentRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId + TEXT("_parent"),
+			Blueprint->GetPathName(),
+			{ParentChange});
+	FBlueprintHelperReviewRecord ChildRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId + TEXT("_child"),
+			Blueprint->GetPathName(),
+			{ChildChange});
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("panel parent record saves"), Store.SaveReviewRecord(ParentRecord, SaveError));
+	TestTrue(TEXT("panel child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> FullPendingChanges =
+		Store.LoadPendingVisibleChanges(Blueprint->GetPathName());
+	const FBlueprintHelperReviewVisibleChange* Root = FullPendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("change_panel_parent");
+		});
+	TestNotNull(TEXT("panel lifecycle root is available"), Root);
+	if (!Root)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
+		return false;
+	}
+
+	const FBlueprintHelperReviewActionIntent Intent = FBlueprintHelperReviewActionIntent::Reject(
+		FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
+			*Root,
+			EBlueprintHelperReviewSurface::Components,
+			Root->LocationKey),
+		TEXT("test"));
+	const FBlueprintHelperReviewCommandResult Result =
+		CommandService.ExecuteActionIntent(Intent, { *Root });
+
+	TestTrue(TEXT("panel lifecycle command uses cascade result"), Result.bCascade);
+	TestTrue(TEXT("panel lifecycle root reject succeeds"), Result.CascadeActionResult.RootResult.bSucceeded);
+	TestTrue(TEXT("panel command removed child from full pending graph"),
+		Result.CascadeActionResult.RemovedChildChangeIds.Contains(TEXT("change_panel_child")));
+	TestNull(TEXT("panel parent component removed"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("PanelParent")));
+	TestNull(TEXT("panel child component removed"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("PanelChild")));
+
+	FBlueprintHelperReviewRecord LoadedChildRecord;
+	FString LoadError;
+	TestFalse(TEXT("single-child record is pruned"),
+		Store.LoadReviewRecordById(ChildRecord.ReviewRecordId, LoadedChildRecord, LoadError));
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
 	return true;
 }
 
@@ -5738,6 +5971,265 @@ bool FBlueprintHelperReviewRejectTargetsPurgesLinkedDebugCasesTest::RunTest(cons
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewComponentSnapshotRestoreRefusesParentWithChildrenTest,
+	"BlueprintHelper.Review.Action.ComponentSnapshotRestoreRefusesParentWithChildren",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewComponentSnapshotRestoreRefusesParentWithChildrenTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(
+		TEXT("ComponentRestoreGuard"));
+	TestNotNull(TEXT("component restore guard blueprint created"), Blueprint);
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return false;
+	}
+
+	USCS_Node* ParentNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("GuardParent"));
+	USCS_Node* ChildNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("GuardChild"),
+		ParentNode);
+	TestNotNull(TEXT("parent component node exists"), ParentNode);
+	TestNotNull(TEXT("child component node exists"), ChildNode);
+	if (!ParentNode || !ChildNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+			Blueprint,
+			TEXT("GuardParent"),
+			TEXT("tx_component_restore_guard"));
+	TSharedPtr<FJsonObject> Snapshot;
+	FString Error;
+	TestTrue(TEXT("component before snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(
+			Target.BeforeSnapshotJson,
+			Snapshot,
+			Error));
+
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
+		Target,
+		Snapshot,
+		Error);
+	TestFalse(TEXT("component restore refuses to remove parent with children"), bRestored);
+	TestTrue(TEXT("error reports children guard"),
+		Error.Contains(TEXT("snapshot_restore_component_has_children")));
+	TestNotNull(TEXT("parent component remains after refused restore"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("GuardParent")));
+	TestNotNull(TEXT("child component remains after refused restore"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("GuardChild")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectComponentLifecycleRootKeepsUnrelatedMixedRecordBranchTest,
+	"BlueprintHelper.Review.Action.RejectComponentLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewCollectLifecycleDescendantsDeepestFirstTest,
+	"BlueprintHelper.Review.Action.CollectLifecycleDescendantsDeepestFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewCollectLifecycleDescendantsDeepestFirstTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelperReview/BP_DescendantOrder");
+	FBlueprintHelperReviewVisibleChange Root =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_order_root"),
+			AssetPath);
+	Root.DisplayLabel = TEXT("Root");
+	Root.bIsAssetLifecycleRoot = true;
+	Root.bRejectRemovesChildren = true;
+	Root.ExecutionOrder = 1;
+
+	FBlueprintHelperReviewVisibleChange Child =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_order_child"),
+			AssetPath);
+	Child.DisplayLabel = TEXT("Child");
+	Child.ParentChangeId = Root.ChangeId;
+	Child.bIsAssetLifecycleRoot = true;
+	Child.bRejectRemovesChildren = true;
+	Child.ExecutionOrder = 2;
+
+	FBlueprintHelperReviewVisibleChange Grandchild =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_order_grandchild"),
+			AssetPath);
+	Grandchild.DisplayLabel = TEXT("Grandchild");
+	Grandchild.ParentChangeId = Child.ChangeId;
+	Grandchild.bIsAssetLifecycleRoot = true;
+	Grandchild.bRejectRemovesChildren = true;
+	Grandchild.Status = EBlueprintHelperReviewChangeStatus::RejectFailed;
+	Grandchild.ExecutionOrder = 3;
+
+	const TArray<FBlueprintHelperReviewVisibleChange> Descendants =
+		FBlueprintHelperReviewRejectService::CollectLifecycleDescendantsDeepestFirst(
+			Root,
+			{ Child, Grandchild, Root });
+
+	TestEqual(TEXT("two descendants collected"), Descendants.Num(), 2);
+	if (Descendants.Num() == 2)
+	{
+		TestEqual(TEXT("grandchild is rejected before child"),
+			Descendants[0].ChangeId,
+			FString(TEXT("change_order_grandchild")));
+		TestEqual(TEXT("child is rejected after grandchild"),
+			Descendants[1].ChangeId,
+			FString(TEXT("change_order_child")));
+	}
+	return true;
+}
+
+bool FBlueprintHelperReviewRejectComponentLifecycleRootKeepsUnrelatedMixedRecordBranchTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_component_lifecycle"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewNamedBlueprint(
+		TEXT("RejectComponentLifecycle"));
+	TestNotNull(TEXT("component lifecycle blueprint created"), Blueprint);
+	if (!Blueprint || !Blueprint->SimpleConstructionScript)
+	{
+		return false;
+	}
+
+	USCS_Node* ParentA = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("ParentA"));
+	USCS_Node* ParentB = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("ParentB"));
+	USCS_Node* ChildA = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("ChildA"),
+		ParentA);
+	USCS_Node* ChildB = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewSceneComponentNode(
+		Blueprint,
+		TEXT("ChildB"),
+		ParentB);
+	TestNotNull(TEXT("ParentA component exists"), ParentA);
+	TestNotNull(TEXT("ParentB component exists"), ParentB);
+	TestNotNull(TEXT("ChildA component exists"), ChildA);
+	TestNotNull(TEXT("ChildB component exists"), ChildB);
+	if (!ParentA || !ParentB || !ChildA || !ChildB)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget ParentATarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+			Blueprint,
+			TEXT("ParentA"),
+			TEXT("tx_component_parent_a"));
+	const FBlueprintHelperReviewAtomicTarget ChildATarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+			Blueprint,
+			TEXT("ChildA"),
+			TEXT("tx_component_child_a"),
+			TEXT("ParentA"));
+	const FBlueprintHelperReviewAtomicTarget ChildBTarget =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentTarget(
+			Blueprint,
+			TEXT("ChildB"),
+			TEXT("tx_component_child_b"),
+			TEXT("ParentB"));
+
+	const FBlueprintHelperReviewVisibleChange ParentAChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentChange(
+			TEXT("change_component_parent_a"),
+			TEXT("tx_component_parent_a"),
+			ParentATarget,
+			1);
+	const FBlueprintHelperReviewVisibleChange ChildAChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentChange(
+			TEXT("change_component_child_a"),
+			TEXT("tx_component_child_a"),
+			ChildATarget,
+			2);
+	const FBlueprintHelperReviewVisibleChange ChildBChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeAddedComponentChange(
+			TEXT("change_component_child_b"),
+			TEXT("tx_component_child_b"),
+			ChildBTarget,
+			3);
+
+	FBlueprintHelperReviewRecord ParentRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId + TEXT("_parent"),
+			Blueprint->GetPathName(),
+			{ParentAChange});
+	FBlueprintHelperReviewRecord ChildRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId + TEXT("_children"),
+			Blueprint->GetPathName(),
+			{ChildAChange, ChildBChange});
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("component lifecycle parent record saves"), Store.SaveReviewRecord(ParentRecord, SaveError));
+	TestTrue(TEXT("component lifecycle child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	const TArray<FBlueprintHelperReviewVisibleChange> PendingChanges =
+		Store.LoadPendingVisibleChanges(Blueprint->GetPathName());
+	const FBlueprintHelperReviewVisibleChange* Root = PendingChanges.FindByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.DisplayLabel == TEXT("ParentA");
+		});
+	TestNotNull(TEXT("component lifecycle root is available"), Root);
+	if (!Root)
+	{
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
+		return false;
+	}
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewCascadeActionResult Result =
+		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges);
+	TestTrue(TEXT("component lifecycle root reject succeeds"), Result.RootResult.bSucceeded);
+	TestTrue(TEXT("ChildA removed by cascade"), Result.RemovedChildChangeIds.Contains(TEXT("change_component_child_a")));
+	TestFalse(TEXT("ChildB remains outside rejected branch"), Result.RemovedChildChangeIds.Contains(TEXT("change_component_child_b")));
+
+	FBlueprintHelperReviewRecord LoadedChildRecord;
+	FString LoadError;
+	TestTrue(TEXT("mixed child record remains after branch reject"),
+		Store.LoadReviewRecordById(ChildRecord.ReviewRecordId, LoadedChildRecord, LoadError));
+	const bool bChildAStillPending = LoadedChildRecord.VisibleChanges.ContainsByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("change_component_child_a");
+		});
+	const bool bChildBStillPending = LoadedChildRecord.VisibleChanges.ContainsByPredicate(
+		[](const FBlueprintHelperReviewVisibleChange& Change)
+		{
+			return Change.ChangeId == TEXT("change_component_child_b");
+		});
+	TestFalse(TEXT("ChildA review event is pruned"), bChildAStillPending);
+	TestTrue(TEXT("ChildB review event remains"), bChildBStillPending);
+	TestNull(TEXT("ParentA component removed"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("ParentA")));
+	TestNull(TEXT("ChildA component removed"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("ChildA")));
+	TestNotNull(TEXT("ParentB component remains"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("ParentB")));
+	TestNotNull(TEXT("ChildB component remains"),
+		FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(Blueprint, TEXT("ChildB")));
+
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ParentRecord.ReviewRecordId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::DeleteReviewRecordFile(ChildRecord.ReviewRecordId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewRejectLifecycleRootRemovesChildrenTest,
 	"BlueprintHelper.Review.Action.RejectLifecycleRootRemovesChildren",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -6215,6 +6707,7 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 		TEXT("graph:EventGraph:block:DoorFlow"),
 		TEXT("tx_reject_debug_needs_action"),
 		TEXT("after_original"));
+	Target.TargetKind = TEXT("unsupported_review_target");
 	TArray<FBlueprintHelperWriteReviewEvidence> Evidences;
 	Evidences.Add(FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestEvidence(
 		ArchiveSessionId,
@@ -6274,6 +6767,8 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 			FString(TEXT("review_reject_failed")));
 	}
 	TestTrue(TEXT("debug case message carries reject reason"),
+		DebugCase.Error.Message.Contains(TEXT("snapshot_restore_unsupported_target_kind")));
+	TestFalse(TEXT("debug case message does not treat hash drift as blocking"),
 		DebugCase.Error.Message.Contains(TEXT("current_state_changed")));
 	IFileManager::Get().Delete(*FBlueprintHelperDebugCaseStoreService::GetCasePath(Loaded.DebugCaseIds[0]), false, true);
 	return true;

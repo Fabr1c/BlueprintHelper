@@ -896,6 +896,8 @@ void FBlueprintHelperReviewStoreService::AddAtomicTargetsForInput(
 		ExistingTarget.PinPath = Target.PinPath;
 		ExistingTarget.PropertyPath = Target.PropertyPath;
 		ExistingTarget.ComponentPath = Target.ComponentPath;
+		ExistingTarget.LifecycleObjectKey = Target.LifecycleObjectKey;
+		ExistingTarget.LifecycleParentKey = Target.LifecycleParentKey;
 		ExistingTarget.bHasGraphBounds = Target.bHasGraphBounds;
 		ExistingTarget.GraphPosition = Target.GraphPosition;
 		ExistingTarget.GraphSize = Target.GraphSize;

@@ -112,6 +112,8 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.PinPath.IsEmpty()) Json->SetStringField(TEXT("pin_path"), Target.PinPath);
 		if (!Target.PropertyPath.IsEmpty()) Json->SetStringField(TEXT("property_path"), Target.PropertyPath);
 		if (!Target.ComponentPath.IsEmpty()) Json->SetStringField(TEXT("component_path"), Target.ComponentPath);
+		if (!Target.LifecycleObjectKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
+		if (!Target.LifecycleParentKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 		if (!Target.AnchorJson.IsEmpty()) Json->SetStringField(TEXT("anchor"), Target.AnchorJson);
 		if (!Target.RecordedAfterHash.IsEmpty()) Json->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
@@ -398,6 +400,8 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("pin_path"), Target.PinPath);
 						TargetJson->TryGetStringField(TEXT("property_path"), Target.PropertyPath);
 						TargetJson->TryGetStringField(TEXT("component_path"), Target.ComponentPath);
+						TargetJson->TryGetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
+						TargetJson->TryGetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 						TargetJson->TryGetStringField(TEXT("anchor"), Target.AnchorJson);
 						TargetJson->TryGetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);

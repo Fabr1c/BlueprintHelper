@@ -356,6 +356,13 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
 		{
 			if (Node)
 			{
+				if (Node->GetChildNodes().Num() > 0)
+				{
+					OutError = FString::Printf(
+						TEXT("snapshot_restore_component_has_children:%s"),
+						*ComponentName);
+					return false;
+				}
 				Node->Modify();
 				Blueprint->SimpleConstructionScript->RemoveNode(Node);
 				MarkBlueprintReviewRestoreModified(Blueprint);

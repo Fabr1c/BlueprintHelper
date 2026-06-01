@@ -195,6 +195,8 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString PinPath;
 	FString PropertyPath;
 	FString ComponentPath;
+	FString LifecycleObjectKey;
+	FString LifecycleParentKey;
 	FString AnchorJson;
 	FString BeforeSnapshotJson;
 	FString AfterSnapshotJson;

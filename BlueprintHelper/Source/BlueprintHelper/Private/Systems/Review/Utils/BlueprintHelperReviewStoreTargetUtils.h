@@ -46,6 +46,8 @@ public:
 	static bool IsAssetLifecycleRootTarget(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				EBlueprintHelperReviewChangeKind ChangeKind);
+	static void EnsureLifecycleMetadata(FBlueprintHelperReviewAtomicTarget& Target);
+	static void EnsureLifecycleMetadata(FBlueprintHelperReviewVisibleChange& Change);
 	static void ApplyAssetLifecycleRootMetadata(FBlueprintHelperReviewVisibleChange& Change);
 	static bool IsPendingLifecycleLinkCandidate(const FBlueprintHelperReviewVisibleChange& Change);
 	static void LinkPendingChildrenToLifecycleRoots(TArray<FBlueprintHelperReviewVisibleChange>& Changes);

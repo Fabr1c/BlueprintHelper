@@ -127,6 +127,27 @@ namespace BlueprintHelperReviewPendingIndexTests
 		return Change;
 	}
 
+	static FBlueprintHelperReviewVisibleChange MakeComponentRootChangeWithParent(
+		const FString& ChangeId,
+		const FString& AssetPath,
+		const FString& ComponentName,
+		const FString& ParentComponentName)
+	{
+		FBlueprintHelperReviewVisibleChange Change = MakeComponentRootChange(ChangeId, AssetPath, ComponentName);
+		const FString AfterSnapshot = FString::Printf(
+			TEXT("{\"schema\":\"BlueprintHelper.ReviewTargetSnapshot.v2\",\"target_kind\":\"component\",\"target_key\":\"component:%s\",\"exists\":true,\"name\":\"%s\",\"parent_component\":\"%s\"}"),
+			*ComponentName,
+			*ComponentName,
+			*ParentComponentName);
+		Change.AfterSnapshotJson = AfterSnapshot;
+		Change.AtomicTargets[0].AfterSnapshotJson = AfterSnapshot;
+		Change.AtomicTargets[0].AnchorJson = FString::Printf(
+			TEXT("{\"component_name\":\"%s\",\"parent_component\":\"%s\"}"),
+			*ComponentName,
+			*ParentComponentName);
+		return Change;
+	}
+
 	static FBlueprintHelperReviewVisibleChange MakeWidgetRootChange(
 		const FString& ChangeId,
 		const FString& AssetPath,
@@ -548,6 +569,255 @@ bool FBlueprintHelperReviewPendingIndexPageLinksComponentAndWidgetRootsToAssetRo
 	Store.DeleteReviewRecord(AssetRecord.ReviewRecordId, DeleteError);
 	Store.DeleteReviewRecord(ComponentRecord.ReviewRecordId, DeleteError);
 	Store.DeleteReviewRecord(WidgetRecord.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexPageLinksCrossRecordComponentParentAfterSnapshotStripTest,
+	"BlueprintHelper.Review.PendingIndex.PageLinksCrossRecordComponentParentAfterSnapshotStrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexPageLinksCrossRecordComponentParentAfterSnapshotStripTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexComponentParent"));
+
+	FBlueprintHelperReviewRecord ParentRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_parent_component")),
+		AssetPath,
+		TEXT("task_pending_index_parent_component"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChange(
+			TEXT("tx_pending_index_parent_component"),
+			AssetPath,
+			TEXT("ParentComp")));
+
+	FBlueprintHelperReviewRecord ChildRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_child_component")),
+		AssetPath,
+		TEXT("task_pending_index_child_component"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChangeWithParent(
+			TEXT("tx_pending_index_child_component"),
+			AssetPath,
+			TEXT("ChildComp"),
+			TEXT("ParentComp")));
+
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ParentRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("parent record saves"), Store.SaveReviewRecord(ParentRecord, SaveError));
+	TestTrue(TEXT("child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest Request;
+	Request.Query = Query;
+	Request.PageSize = 10;
+
+	FBlueprintHelperReviewPendingIndexPage Page;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("page query succeeds"), IndexService.QueryPendingVisibleChangePage(Request, Page, Error));
+	TestEqual(TEXT("page includes parent and child"), Page.Changes.Num(), 2);
+	if (Page.Changes.Num() == 2)
+	{
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ParentSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ParentComp");
+			});
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ChildSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ChildComp");
+			});
+		const FBlueprintHelperReviewVisibleChange* Parent = ParentSummary ? &ParentSummary->Change : nullptr;
+		const FBlueprintHelperReviewVisibleChange* Child = ChildSummary ? &ChildSummary->Change : nullptr;
+
+		TestNotNull(TEXT("parent exists"), Parent);
+		TestNotNull(TEXT("child exists"), Child);
+		if (Parent && Child)
+		{
+			TestEqual(TEXT("child keeps parent change id after pending index snapshot strip"),
+				Child->ParentChangeId,
+				Parent->ChangeId);
+		}
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(ParentRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(ChildRecord.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexPageLinksRejectFailedLifecycleRootTest,
+	"BlueprintHelper.Review.PendingIndex.PageLinksRejectFailedLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexPageLinksRejectFailedLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexRejectFailedRoot"));
+
+	FBlueprintHelperReviewRecord ParentRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_reject_failed_parent")),
+		AssetPath,
+		TEXT("task_pending_index_reject_failed_parent"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChange(
+			TEXT("tx_pending_index_reject_failed_parent"),
+			AssetPath,
+			TEXT("ParentComp")));
+	ParentRecord.Status = EBlueprintHelperReviewChangeStatus::RejectFailed;
+	ParentRecord.VisibleChanges[0].Status = EBlueprintHelperReviewChangeStatus::RejectFailed;
+	ParentRecord.VisibleChanges[0].AtomicTargets[0].Status = EBlueprintHelperReviewChangeStatus::RejectFailed;
+	ParentRecord.VisibleChanges[0].NeedsActionReason = TEXT("snapshot_restore_component_has_children:ParentComp");
+
+	FBlueprintHelperReviewRecord ChildRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_reject_failed_child")),
+		AssetPath,
+		TEXT("task_pending_index_reject_failed_child"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChangeWithParent(
+			TEXT("tx_pending_index_reject_failed_child"),
+			AssetPath,
+			TEXT("ChildComp"),
+			TEXT("ParentComp")));
+
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ParentRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("reject failed parent record saves"), Store.SaveReviewRecord(ParentRecord, SaveError));
+	TestTrue(TEXT("child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest Request;
+	Request.Query = Query;
+	Request.PageSize = 10;
+
+	FBlueprintHelperReviewPendingIndexPage Page;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("page query succeeds"), IndexService.QueryPendingVisibleChangePage(Request, Page, Error));
+	TestEqual(TEXT("page includes reject failed parent and child"), Page.Changes.Num(), 2);
+	if (Page.Changes.Num() == 2)
+	{
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ParentSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ParentComp");
+			});
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ChildSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ChildComp");
+			});
+		const FBlueprintHelperReviewVisibleChange* Parent = ParentSummary ? &ParentSummary->Change : nullptr;
+		const FBlueprintHelperReviewVisibleChange* Child = ChildSummary ? &ChildSummary->Change : nullptr;
+
+		TestNotNull(TEXT("reject failed parent exists"), Parent);
+		TestNotNull(TEXT("child exists"), Child);
+		if (Parent && Child)
+		{
+			TestEqual(TEXT("child links to reject failed lifecycle root"),
+				Child->ParentChangeId,
+				Parent->ChangeId);
+		}
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(ParentRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(ChildRecord.ReviewRecordId, DeleteError);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPendingIndexPageLinksComponentParentFromSnapshotOnlyTest,
+	"BlueprintHelper.Review.PendingIndex.PageLinksComponentParentFromSnapshotOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPendingIndexPageLinksComponentParentFromSnapshotOnlyTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString AssetPath = BlueprintHelperReviewPendingIndexTests::MakeUniqueAssetPath(TEXT("BP_PendingIndexSnapshotOnlyParent"));
+
+	FBlueprintHelperReviewRecord ParentRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_snapshot_parent")),
+		AssetPath,
+		TEXT("task_pending_index_snapshot_parent"),
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChange(
+			TEXT("tx_pending_index_snapshot_parent"),
+			AssetPath,
+			TEXT("ParentComp")));
+
+	FBlueprintHelperReviewVisibleChange SnapshotOnlyChild =
+		BlueprintHelperReviewPendingIndexTests::MakeComponentRootChangeWithParent(
+			TEXT("tx_pending_index_snapshot_child"),
+			AssetPath,
+			TEXT("ChildComp"),
+			TEXT("ParentComp"));
+	SnapshotOnlyChild.AtomicTargets[0].AnchorJson.Reset();
+	SnapshotOnlyChild.AtomicTargets[0].LifecycleObjectKey.Reset();
+	SnapshotOnlyChild.AtomicTargets[0].LifecycleParentKey.Reset();
+	FBlueprintHelperReviewRecord ChildRecord = BlueprintHelperReviewPendingIndexTests::MakeRecordWithChange(
+		BlueprintHelperReviewPendingIndexTests::MakeUniqueArchiveId(TEXT("archive_pending_index_snapshot_child")),
+		AssetPath,
+		TEXT("task_pending_index_snapshot_child"),
+		SnapshotOnlyChild);
+
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ParentRecord.ReviewRecordId);
+	BlueprintHelperReviewPendingIndexTests::DeleteRecordFile(ChildRecord.ReviewRecordId);
+
+	FString SaveError;
+	TestTrue(TEXT("snapshot-only parent record saves"), Store.SaveReviewRecord(ParentRecord, SaveError));
+	TestTrue(TEXT("snapshot-only child record saves"), Store.SaveReviewRecord(ChildRecord, SaveError));
+
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bSkipMissingAssetRecords = false;
+
+	FBlueprintHelperReviewPendingIndexPageRequest Request;
+	Request.Query = Query;
+	Request.PageSize = 10;
+
+	FBlueprintHelperReviewPendingIndexPage Page;
+	FString Error;
+	FBlueprintHelperReviewPendingIndexService IndexService;
+	TestTrue(TEXT("page query succeeds"), IndexService.QueryPendingVisibleChangePage(Request, Page, Error));
+	TestEqual(TEXT("page includes snapshot-only parent and child"), Page.Changes.Num(), 2);
+	if (Page.Changes.Num() == 2)
+	{
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ParentSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ParentComp");
+			});
+		const FBlueprintHelperReviewPendingVisibleChangeSummary* ChildSummary = Page.Changes.FindByPredicate(
+			[](const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary)
+			{
+				return Summary.Change.DisplayLabel == TEXT("ChildComp");
+			});
+		const FBlueprintHelperReviewVisibleChange* Parent = ParentSummary ? &ParentSummary->Change : nullptr;
+		const FBlueprintHelperReviewVisibleChange* Child = ChildSummary ? &ChildSummary->Change : nullptr;
+
+		TestNotNull(TEXT("snapshot-only parent exists"), Parent);
+		TestNotNull(TEXT("snapshot-only child exists"), Child);
+		if (Parent && Child)
+		{
+			TestEqual(TEXT("snapshot-only child links to parent after pending index strip"),
+				Child->ParentChangeId,
+				Parent->ChangeId);
+		}
+	}
+
+	FString DeleteError;
+	Store.DeleteReviewRecord(ParentRecord.ReviewRecordId, DeleteError);
+	Store.DeleteReviewRecord(ChildRecord.ReviewRecordId, DeleteError);
 	return true;
 }
 

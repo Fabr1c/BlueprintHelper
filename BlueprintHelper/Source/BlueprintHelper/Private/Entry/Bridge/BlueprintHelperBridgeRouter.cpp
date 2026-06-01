@@ -47,6 +47,7 @@
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
 #include "Shared/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
@@ -1342,42 +1343,70 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleApplyReviewAc
 	const FBlueprintHelperBridgeRequest& Req) const
 {
 	FString Action;
-	FString ChangeId;
-	FString AssetPath;
+	FString ReviewRecordId;
 	if (Req.Payload.IsValid())
 	{
 		Req.Payload->TryGetStringField(TEXT("action"), Action);
-		Req.Payload->TryGetStringField(TEXT("change_id"), ChangeId);
-		Req.Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
+		Req.Payload->TryGetStringField(TEXT("review_record_id"), ReviewRecordId);
 	}
 
-	TArray<FBlueprintHelperReviewVisibleChange> Changes = ReviewStoreService.LoadPendingVisibleChanges(AssetPath);
-	const FBlueprintHelperReviewVisibleChange* MatchedChange = nullptr;
-	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
-	{
-		if (Change.ChangeId == ChangeId)
-		{
-			MatchedChange = &Change;
-			break;
-		}
-	}
-	if (!MatchedChange)
+	TArray<FString> TargetKeys = UBlueprintHelperBridgeUtils::ReadStringArrayField(Req.Payload, TEXT("target_keys"));
+	FBlueprintHelperReviewRecord Record;
+	FString Error;
+	if (!ReviewStoreService.LoadReviewRecordById(ReviewRecordId, Record, Error))
 	{
 		return FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId,
 			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("review change not found"));
+			Error);
+	}
+	if (TargetKeys.Num() == 0)
+	{
+		TargetKeys = FBlueprintHelperReviewActionTargetUtils::CollectPendingTargetKeys(Record);
 	}
 
 	FBlueprintHelperReviewActionService ActionService(&DebugEntryService);
 	FBlueprintHelperReviewActionResult Result;
 	if (Action.Equals(TEXT("accept"), ESearchCase::IgnoreCase))
 	{
-		Result = ActionService.AcceptVisibleChange(*MatchedChange);
+		Result = ActionService.AcceptReviewTargets(ReviewRecordId, TargetKeys);
 	}
 	else if (Action.Equals(TEXT("reject"), ESearchCase::IgnoreCase))
 	{
-		Result = ActionService.RejectVisibleChange(*MatchedChange);
+		FBlueprintHelperReviewRejectOptions Options;
+		const FBlueprintHelperReviewVisibleChange* LifecycleRoot = nullptr;
+		TArray<FBlueprintHelperReviewVisibleChange> PendingChanges;
+		if (TargetKeys.Num() == 1)
+		{
+			PendingChanges = ReviewStoreService.LoadPendingVisibleChanges(Record.AssetPath);
+			for (const FBlueprintHelperReviewVisibleChange& Change : PendingChanges)
+			{
+				if (!Change.bIsAssetLifecycleRoot || !Change.bRejectRemovesChildren)
+				{
+					continue;
+				}
+				for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+				{
+					if (Target.TargetKey == TargetKeys[0])
+					{
+						LifecycleRoot = &Change;
+						break;
+					}
+				}
+				if (LifecycleRoot)
+				{
+					break;
+				}
+			}
+		}
+		if (LifecycleRoot)
+		{
+			Result = ActionService.RejectLifecycleRootVisibleChange(*LifecycleRoot, Options).RootResult;
+		}
+		else
+		{
+			Result = ActionService.RejectReviewTargets(ReviewRecordId, TargetKeys, Options);
+		}
 	}
 	else
 	{

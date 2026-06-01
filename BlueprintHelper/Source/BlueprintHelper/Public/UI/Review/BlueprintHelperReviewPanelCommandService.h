@@ -43,7 +43,6 @@ public:
 
 	FBlueprintHelperReviewCascadeActionResult RejectLifecycleRootVisibleChange(
 		const FBlueprintHelperReviewVisibleChange& Root,
-		const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
 	FBlueprintHelperReviewCommandBatchResult AcceptVisibleChangesBatch(

@@ -22,6 +22,9 @@ public:
 	static FBlueprintHelperReviewActionResult RejectVisibleChangeWithDefaultDispatcher(
 				const FBlueprintHelperReviewVisibleChange& Change,
 				const FBlueprintHelperReviewRejectOptions* Options);
+	static TArray<FBlueprintHelperReviewVisibleChange> CollectLifecycleDescendantsDeepestFirst(
+				const FBlueprintHelperReviewVisibleChange& Root,
+				const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges);
 	static FBlueprintHelperReviewCascadeActionResult CascadeRejectLifecycleChildrenAfterRootResult(
 				const FBlueprintHelperReviewVisibleChange& Root,
 				const TArray<FBlueprintHelperReviewVisibleChange>& PendingChanges,
