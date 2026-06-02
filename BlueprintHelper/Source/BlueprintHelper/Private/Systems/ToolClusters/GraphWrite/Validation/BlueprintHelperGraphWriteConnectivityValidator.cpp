@@ -5,6 +5,7 @@
 #include "EdGraphNode_Comment.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_Knot.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 namespace BlueprintHelperGraphWriteConnectivityValidation
 {
@@ -89,7 +90,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 
 		while (PendingNodes.Num() > 0)
 		{
-			const UEdGraphNode* Node = PendingNodes.Pop(EAllowShrinking::No);
+			const UEdGraphNode* Node = FBlueprintHelperVersionCompat::PopNoShrink(PendingNodes);
 			if (!Node)
 			{
 				continue;

@@ -24,7 +24,7 @@ bh blueprint_get_runtime_profile
 -> bh blueprinthelper_get_task_result when needed
 ```
 
-Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/Plan/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
+Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/v0.4.1/ArchivedReference/RetiredPlanDocs_20260517/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).
 
 Agents submit `BlueprintHelper.TaskSpec.v1` only; they do not submit TaskPlan. The canonical AgentFace task-core TypeScript compiler owns TaskPlan generation, and UE Task Runtime executes the compiled TaskPlan.
 
@@ -36,10 +36,10 @@ Current source metadata:
 
 | Component | Current value |
 |---|---|
-| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.5.4 |
-| CLI `AgentFaceService/cli/package.json` | 0.5.4 |
-| Shared task core `AgentFaceService/task-core/package.json` | 0.5.4 |
-| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.5.4 |
+| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.5.7 |
+| CLI `AgentFaceService/cli/package.json` | 0.5.7 |
+| Shared task core `AgentFaceService/task-core/package.json` | 0.5.7 |
+| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.5.7 |
 | Documentation batch | 2026-05-17 implementation sync: CLI ordinary tools + MCP allowlist |
 | Intended UE version | UE 5.3 or newer |
 

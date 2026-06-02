@@ -13,6 +13,7 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "SGraphPanel.h"
+#include "Shared/BlueprintHelperGraphEditorVersionCompat.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperScreenshotSettings.h"
 #include "UnrealClient.h"
@@ -38,7 +39,7 @@ public:
 			return;
 		}
 		OriginalSelection = GraphEditor->GetSelectedNodes();
-		GraphEditor->GetViewLocation(OriginalLocation, OriginalZoomAmount);
+		FBlueprintHelperGraphEditorVersionCompat::GetViewLocation(GraphEditor, OriginalLocation, OriginalZoomAmount);
 		GraphEditor->GetViewBookmark(OriginalBookmarkId);
 		bHasState = true;
 	}
@@ -63,14 +64,18 @@ public:
 				GraphEditor->SetNodeSelection(Node, true);
 			}
 		}
-		GraphEditor->SetViewLocation(OriginalLocation, OriginalZoomAmount, OriginalBookmarkId);
+		FBlueprintHelperGraphEditorVersionCompat::SetViewLocation(
+			GraphEditor,
+			OriginalLocation,
+			OriginalZoomAmount,
+			OriginalBookmarkId);
 		bHasState = false;
 	}
 
 private:
 	TSharedPtr<SGraphEditor> GraphEditor;
 	FGraphPanelSelectionSet OriginalSelection;
-	FVector2f OriginalLocation = FVector2f::ZeroVector;
+	FBlueprintHelperGraphEditorViewLocation OriginalLocation = FBlueprintHelperGraphEditorVersionCompat::ZeroViewLocation();
 	float OriginalZoomAmount = 1.0f;
 	FGuid OriginalBookmarkId;
 	bool bHasState = false;

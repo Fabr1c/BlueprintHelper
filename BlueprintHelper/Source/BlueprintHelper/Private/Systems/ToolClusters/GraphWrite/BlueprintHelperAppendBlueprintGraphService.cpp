@@ -12,6 +12,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 #include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityDiagnosticsJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -155,7 +156,7 @@ public:
 		Stack.Add(EntryNode);
 		while (Stack.Num() > 0)
 		{
-			UEdGraphNode* Current = Stack.Pop(EAllowShrinking::No);
+			UEdGraphNode* Current = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
 			if (!Current || Visited.Contains(Current))
 			{
 				continue;

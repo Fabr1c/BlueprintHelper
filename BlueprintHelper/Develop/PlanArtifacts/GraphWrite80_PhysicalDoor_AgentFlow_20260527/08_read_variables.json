@@ -1,8 +1,0 @@
-{
-  "schema": "BlueprintHelper.ReadSpec.v1",
-  "read_type": "variable_context",
-  "target": {
-    "asset_path": "/Game/BlueprintHelper/PhysicalDoor/BP_PhysicalDoor_AgentFlow_20260527_001",
-    "target_type": "member_variable"
-  }
-}
