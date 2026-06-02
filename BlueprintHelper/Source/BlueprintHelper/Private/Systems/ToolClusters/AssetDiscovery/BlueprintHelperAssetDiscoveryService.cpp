@@ -271,8 +271,7 @@ FBlueprintHelperFindAssetsResult FBlueprintHelperAssetDiscoveryService::FindAsse
 			}
 
 			return true;
-		},
-		UE::AssetRegistry::EEnumerateAssetsFlags::OnlyOnDiskAssets);
+		});
 
 	Result.bSuccess = true;
 	return Result;
