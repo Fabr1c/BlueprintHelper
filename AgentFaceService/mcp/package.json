@@ -1,6 +1,6 @@
 {
   "name": "blueprint-helper-mcp-server",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "MCP Server bridging IDE AI to BlueprintHelper UE5 plugin",
   "type": "module",
   "main": "build/index.js",

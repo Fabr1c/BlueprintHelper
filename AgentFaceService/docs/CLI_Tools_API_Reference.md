@@ -1,7 +1,7 @@
 # BlueprintHelper CLI 工具 API 参考
 
 文档版本: `2026-05-31`
-适用实现: `BlueprintHelper v0.5.7`
+适用实现: `BlueprintHelper v0.5.8`
 
 这份文档只描述当前实现，不保留旧的乱码写法或已废弃的兼容叙述。
 

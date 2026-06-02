@@ -2,7 +2,7 @@
 
 BlueprintHelper 是一个面向 Unreal Engine 编辑器资产的辅助插件，核心目标是让 AI Agent 能够通过本地 CLI 和 Unreal Editor Bridge 安全地读取、预览和修改蓝图相关资产。
 
-当前版本：`v0.5.7`
+当前版本：`v0.5.8`
 
 ## 插件用途
 
@@ -123,7 +123,7 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 ## 更新 / Update
 
-双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.5.7`。
+双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.5.8`。
 
 更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.5.3-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
 
@@ -147,7 +147,7 @@ $json | bh blueprinthelper_read_context --stdin --format full
 .\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
 ```
 
-Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.5.7`.
+Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.5.8`.
 
 Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
 
@@ -171,7 +171,7 @@ BlueprintHelper 当前优先接收来自真实 Unreal Editor 项目使用过程�
 
 ## 版本同步
 
-`v0.5.7` 同步到以下层级：
+`v0.5.8` 同步到以下层级：
 
 - Unreal 插件：`BlueprintHelper/BlueprintHelper.uplugin`
 - CLI：`AgentFaceService/cli/package.json`

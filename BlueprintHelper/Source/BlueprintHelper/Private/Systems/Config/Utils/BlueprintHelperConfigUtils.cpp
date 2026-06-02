@@ -194,7 +194,7 @@ const TCHAR* UBlueprintHelperConfigUtils::GetSettingSchema()
 
 const TCHAR* UBlueprintHelperConfigUtils::GetSettingVersion()
 {
-	return TEXT("0.5.7");
+	return TEXT("0.5.8");
 }
 
 bool UBlueprintHelperConfigUtils::SplitDotPath(const FString& DotPath, TArray<FString>& OutParts, FString& OutError)
