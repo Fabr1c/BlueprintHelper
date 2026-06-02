@@ -1,5 +1,5 @@
 {
-  "reason": "__WRITE_REASON__",
+  "reason": "__REQUIRED_WRITE_REASON__",
   "scope": "project",
   "ttl_seconds": 900
 }

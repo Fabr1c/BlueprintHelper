@@ -116,6 +116,9 @@ struct FNodeSnapshot
 	FVector2D Position = FVector2D::ZeroVector;
 	FVector2D Size = FVector2D(180.0f, 80.0f);
 	bool bExisting = true;
+	FString LayoutBlockId;
+	int32 LayoutBlockOrder = INDEX_NONE;
+	int32 LayoutNodeOrder = INDEX_NONE;
 	TArray<FPinSnapshot> Pins;
 };
 

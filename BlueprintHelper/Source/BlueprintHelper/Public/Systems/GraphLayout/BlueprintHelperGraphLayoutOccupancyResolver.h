@@ -21,6 +21,10 @@ public:
 	void ReserveExistingNode(const FNodeSnapshot& Node);
 	void ReserveTarget(const FString& NodeId, const FVector2D& TargetPosition, const FVector2D& Size, bool bMovable);
 	FVector2D ResolveNearestFreeTarget(const FString& NodeId, const FVector2D& DesiredPosition, const FVector2D& Size) const;
+	FVector2D ResolveNearestFreeTargetPreferSameRow(
+		const FString& NodeId,
+		const FVector2D& DesiredPosition,
+		const FVector2D& Size) const;
 	bool WouldOverlap(const FString& NodeId, const FVector2D& TargetPosition, const FVector2D& Size) const;
 
 private:

@@ -58,7 +58,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperLayoutRuleEditorSettings
 {
 	FVector2D CanvasDesiredSize = FVector2D(760.0f, 460.0f);
 	FVector2D NodeSize = FVector2D(128.0f, 44.0f);
-	float CanvasRuleScale = 0.45f;
+	float CanvasRuleScale = 1.0f;
 	FString DefaultRuleId = TEXT("default_readable_exec_with_left_data");
 	FString DefaultRuleDisplayName = TEXT("默认可读执行与左侧数据");
 	float ExecColumnSpacing = 360.0f;

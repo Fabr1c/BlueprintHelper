@@ -1,8 +1,8 @@
 {
-  "reason": "__WRITE_REASON__",
+  "reason": "__REQUIRED_WRITE_REASON__",
   "scope": "asset_list",
   "ttl_seconds": 900,
   "asset_paths": [
-    "__ASSET_PATH__"
+    "__REQUIRED_ASSET_PATH__"
   ]
 }

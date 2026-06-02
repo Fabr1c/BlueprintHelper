@@ -92,4 +92,24 @@ FVector2D FOccupancyResolver::ResolveNearestFreeTarget(
 	}
 	return EmergencyTarget;
 }
+
+FVector2D FOccupancyResolver::ResolveNearestFreeTargetPreferSameRow(
+	const FString& NodeId,
+	const FVector2D& DesiredPosition,
+	const FVector2D& Size) const
+{
+	const int32 MaxAttempts = FMath::Max(1, RuleSet.MaxCollisionAttempts);
+	const float StepX = FMath::Max(1.0f, FMath::Max(RuleSet.CollisionPaddingX, Size.X));
+
+	for (int32 Attempt = 0; Attempt < MaxAttempts; ++Attempt)
+	{
+		const FVector2D Candidate = DesiredPosition + FVector2D(Attempt * StepX, 0.0f);
+		if (!WouldOverlap(NodeId, Candidate, Size))
+		{
+			return Candidate;
+		}
+	}
+
+	return ResolveNearestFreeTarget(NodeId, DesiredPosition, Size);
+}
 }

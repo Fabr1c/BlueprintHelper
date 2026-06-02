@@ -325,6 +325,7 @@ SLATE_EVENT(FBlueprintHelperLayoutRuleCanvasChanged, OnRuleSetChanged)
 	{
 				LayoutRuleEditorSettings = InArgs._LayoutRuleEditorSettings;
 RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
+		SetClipping(EWidgetClipping::ClipToBounds);
 		SetRuleSetJson(BlueprintHelperLayoutRuleEditorLocal::GetFallbackDefaultJson());
 	}
 
@@ -886,7 +887,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 		[
 			SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
-		.AutoHeight()
+		.FillHeight(0.64f)
 		.Padding(0.0f)
 		[
 			SAssignNew(WorkspaceBox, SBox)
@@ -954,7 +955,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 			]
 		]
 		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
+		.FillHeight(0.36f)
 		.Padding(8.0f, 0.0f)
 		[
 			SNew(SBorder)
@@ -1033,13 +1034,26 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildEditWorkspace()
 			BuildSceneToolbar()
 		]
 		+ SVerticalBox::Slot()
-		.AutoHeight()
+		.FillHeight(1.0f)
 		.Padding(8.0f, 0.0f, 8.0f, 6.0f)
 		[
 			SNew(SBorder)
+			.Clipping(EWidgetClipping::ClipToBounds)
 			.Padding(1.0f)
 			[
-				RuleCanvas.ToSharedRef()
+				SNew(SScrollBox)
+				.Orientation(Orient_Horizontal)
+				.ScrollBarAlwaysVisible(true)
+				+ SScrollBox::Slot()
+				[
+					SNew(SScrollBox)
+					.Orientation(Orient_Vertical)
+					.ScrollBarAlwaysVisible(true)
+					+ SScrollBox::Slot()
+					[
+						RuleCanvas.ToSharedRef()
+					]
+				]
 			]
 		]
 		+ SVerticalBox::Slot()
