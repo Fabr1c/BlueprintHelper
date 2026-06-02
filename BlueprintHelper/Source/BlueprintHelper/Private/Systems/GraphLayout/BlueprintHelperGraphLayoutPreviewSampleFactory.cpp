@@ -322,7 +322,7 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		TEXT("On Preview Trigger"),
 		EGraphLayoutPreviewNodeFactory::CustomEvent,
 		ENodeRole::EventEntry,
-		FVector2D(0.0f, 0.0f),
+		FVector2D(-300.0f, 0.0f),
 		FVector2D(220.0f, 88.0f),
 		false,
 		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)});
@@ -396,9 +396,9 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 	AddPreviewNode(
 		OutSample,
 		TEXT("NormalizeValue"),
-		TEXT("K2Node_CallFunction"),
+		TEXT("EdGraphNode"),
 		TEXT("Normalize Label"),
-		EGraphLayoutPreviewNodeFactory::CallFunction,
+		EGraphLayoutPreviewNodeFactory::GenericK2,
 		ENodeRole::PureFunction,
 		FVector2D(360.0f, 540.0f),
 		FVector2D(220.0f, 92.0f),
@@ -410,9 +410,9 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 	AddPreviewNode(
 		OutSample,
 		TEXT("ComposePayload"),
-		TEXT("K2Node_CallFunction"),
+		TEXT("EdGraphNode"),
 		TEXT("Compose Payload"),
-		EGraphLayoutPreviewNodeFactory::CallFunction,
+		EGraphLayoutPreviewNodeFactory::GenericK2,
 		ENodeRole::PureFunction,
 		FVector2D(600.0f, 520.0f),
 		FVector2D(232.0f, 100.0f),
@@ -554,7 +554,7 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 		TEXT("On Preview Trigger"),
 		EGraphLayoutPreviewNodeFactory::CustomEvent,
 		ENodeRole::EventEntry,
-		FVector2D(0.0f, 0.0f),
+		FVector2D(-300.0f, 0.0f),
 		FVector2D(220.0f, 88.0f),
 		false,
 		{MakePreviewPin(TEXT("then"), EPinDirection::Output, true)});
@@ -580,7 +580,7 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 		TEXT("Fallback Step"),
 		EGraphLayoutPreviewNodeFactory::GenericK2,
 		ENodeRole::ExecNode,
-		FVector2D(120.0f, 0.0f),
+		FVector2D(360.0f, 0.0f),
 		FVector2D(228.0f, 96.0f),
 		false,
 		{
@@ -631,7 +631,8 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("CandidateExec"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("CandidateExec"), TEXT("then"), TEXT("FallbackExec"), TEXT("execute"), true, OutError) &&
-		AddPreviewLink(OutSample, TEXT("FallbackExec"), TEXT("then"), TEXT("DelayAsync"), TEXT("execute"), true, OutError);
+		AddPreviewLink(OutSample, TEXT("FallbackExec"), TEXT("then"), TEXT("DelayAsync"), TEXT("execute"), true, OutError) &&
+		AddPreviewLink(OutSample, TEXT("DelayAsync"), TEXT("Completed"), TEXT("ExistingGuard"), TEXT("execute"), true, OutError);
 }
 
 bool FGraphLayoutPreviewSampleFactory::BuildSample(

@@ -1,6 +1,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
 
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutClassifier.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutExecPinAnchor.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
 
 namespace BlueprintHelper::GraphLayout
@@ -10,23 +11,7 @@ FVector2D FGraphLayoutPreviewSemanticProjector::GetAnchorOffset(
 	const ENodeRole AnchorRole)
 {
 	const FVector2D Size = NodeSpec.Size;
-	switch (AnchorRole)
-	{
-	case ENodeRole::EventEntry:
-		return FVector2D(FMath::Max(0.0f, Size.X - 18.0f), 58.0f);
-	case ENodeRole::ExecNode:
-	case ENodeRole::BranchControl:
-	case ENodeRole::AsyncNode:
-	case ENodeRole::DelegateNode:
-		return FVector2D(16.0f, 48.0f);
-	case ENodeRole::PureFunction:
-	case ENodeRole::OperatorOrCompare:
-	case ENodeRole::VariableInput:
-	case ENodeRole::Comment:
-	case ENodeRole::Unknown:
-	default:
-		return Size * 0.5f;
-	}
+	return FGraphLayoutExecPinAnchor::GetPrimaryExecAnchorOffset(Size, AnchorRole);
 }
 
 FVector2D FGraphLayoutPreviewSemanticProjector::BuildTopLeftFromAnchor(
@@ -164,6 +149,106 @@ void FGraphLayoutPreviewSemanticProjector::ProjectRemainingNodesBySampleOffset(
 	}
 }
 
+bool FGraphLayoutPreviewSemanticProjector::TryBuildSampleRelativeTarget(
+	const FGraphLayoutPreviewSample& Sample,
+	const FLayoutPlan& Plan,
+	const FString& NodeId,
+	FVector2D& OutTargetPosition)
+{
+	if (const FNodePlacement* ExistingPlacement = FindPlacement(Plan, NodeId))
+	{
+		OutTargetPosition = ExistingPlacement->TargetPosition;
+		return true;
+	}
+
+	const FNodeSnapshot* TargetSnapshot = FindSnapshotNode(Sample, NodeId);
+	if (!TargetSnapshot)
+	{
+		return false;
+	}
+
+	FVector2D Translation = FVector2D::ZeroVector;
+	bool bHasTranslation = false;
+	for (const FGraphLayoutPreviewNodeSpec& NodeSpec : Sample.Nodes)
+	{
+		const FNodePlacement* Placement = FindPlacement(Plan, NodeSpec.NodeId);
+		const FNodeSnapshot* SnapshotNode = FindSnapshotNode(Sample, NodeSpec.NodeId);
+		if (Placement && SnapshotNode)
+		{
+			Translation = Placement->TargetPosition - SnapshotNode->Position;
+			bHasTranslation = true;
+			break;
+		}
+	}
+
+	OutTargetPosition = bHasTranslation
+		? TargetSnapshot->Position + Translation
+		: TargetSnapshot->Position;
+	return true;
+}
+
+void FGraphLayoutPreviewSemanticProjector::ProjectExecContextLink(
+	const FGraphLayoutPreviewSample& Sample,
+	FLayoutPlan& Plan,
+	const FString& EventNodeId,
+	const FString& ConsumerNodeId)
+{
+	const FGraphLayoutPreviewNodeSpec* EventSpec = FindNodeSpec(Sample, EventNodeId);
+	const FGraphLayoutPreviewNodeSpec* ConsumerSpec = FindNodeSpec(Sample, ConsumerNodeId);
+	if (!EventSpec || !ConsumerSpec)
+	{
+		Plan.Issues.Add(FString::Printf(
+			TEXT("preview exec context is missing node spec: %s -> %s"),
+			*EventNodeId,
+			*ConsumerNodeId));
+		return;
+	}
+
+	FVector2D EventTarget = FVector2D::ZeroVector;
+	FVector2D ConsumerTarget = FVector2D::ZeroVector;
+	if (!TryBuildSampleRelativeTarget(Sample, Plan, EventNodeId, EventTarget) ||
+		!TryBuildSampleRelativeTarget(Sample, Plan, ConsumerNodeId, ConsumerTarget))
+	{
+		Plan.Issues.Add(FString::Printf(
+			TEXT("preview exec context is missing snapshot node: %s -> %s"),
+			*EventNodeId,
+			*ConsumerNodeId));
+		return;
+	}
+
+	const bool bEventPlaced = HasPlacementForNode(Plan, EventNodeId);
+	const bool bConsumerPlaced = HasPlacementForNode(Plan, ConsumerNodeId);
+	if (bConsumerPlaced && !bEventPlaced)
+	{
+		EventTarget.Y = ConsumerTarget.Y + GetAnchorOffset(*ConsumerSpec, ENodeRole::ExecNode).Y -
+			GetAnchorOffset(*EventSpec, ENodeRole::EventEntry).Y;
+	}
+	else
+	{
+		ConsumerTarget.Y = EventTarget.Y + GetAnchorOffset(*EventSpec, ENodeRole::EventEntry).Y -
+			GetAnchorOffset(*ConsumerSpec, ENodeRole::ExecNode).Y;
+	}
+
+	if (!bEventPlaced)
+	{
+		AddPlacement(
+			Plan,
+			Sample,
+			*EventSpec,
+			EventTarget,
+			TEXT("preview_exec_context_straighten"));
+	}
+	if (!bConsumerPlaced)
+	{
+		AddPlacement(
+			Plan,
+			Sample,
+			*ConsumerSpec,
+			ConsumerTarget,
+			TEXT("preview_exec_context_straighten"));
+	}
+}
+
 void FGraphLayoutPreviewSemanticProjector::ProjectLinearExec(
 	const FGraphLayoutPreviewSample& Sample,
 	const FRuleSet& RuleSet,
@@ -286,6 +371,73 @@ void FGraphLayoutPreviewSemanticProjector::ProjectMultiExec(
 	}
 }
 
+void FGraphLayoutPreviewSemanticProjector::ProjectOccupancy(
+	const FGraphLayoutPreviewSample& Sample,
+	const FRuleSet& RuleSet,
+	const FEditorCanvasSceneState& SceneState,
+	FLayoutPlan& Plan)
+{
+	const FGraphLayoutPreviewNodeSpec* CandidateSpec = FindNodeSpec(Sample, TEXT("CandidateExec"));
+	const FGraphLayoutPreviewNodeSpec* CommentSpec = FindNodeSpec(Sample, TEXT("CommentBlocker"));
+	const FVector2D* CandidateAnchor = SceneState.RoleCenters.Find(ENodeRole::ExecNode);
+	const FVector2D* CommentAnchor = SceneState.RoleCenters.Find(ENodeRole::Comment);
+	const FVector2D* FallbackRowAnchor = SceneState.RoleCenters.Find(ENodeRole::AsyncNode);
+	if (!CandidateSpec || !CommentSpec || !CandidateAnchor || !CommentAnchor || !FallbackRowAnchor)
+	{
+		Plan.Issues.Add(TEXT("occupancy preview sample is missing required semantic anchors"));
+		ProjectAnchoredNodesByRole(Sample, SceneState, Plan);
+		return;
+	}
+
+	AddPlacement(
+		Plan,
+		Sample,
+		*CandidateSpec,
+		BuildTopLeftFromAnchor(*CandidateSpec, ENodeRole::ExecNode, *CandidateAnchor),
+		TEXT("preview_semantic_role_anchor"));
+	AddPlacement(
+		Plan,
+		Sample,
+		*CommentSpec,
+		BuildTopLeftFromAnchor(*CommentSpec, ENodeRole::Comment, *CommentAnchor),
+		TEXT("preview_semantic_role_anchor"));
+
+	const float Step = FMath::Max(RuleSet.ExecColumnSpacing, CandidateSpec->Size.X + 32.0f);
+	FVector2D ChainAnchor(CandidateAnchor->X + Step, FallbackRowAnchor->Y);
+
+	if (const FGraphLayoutPreviewNodeSpec* FallbackSpec = FindNodeSpec(Sample, TEXT("FallbackExec")))
+	{
+		AddPlacement(
+			Plan,
+			Sample,
+			*FallbackSpec,
+			BuildTopLeftFromAnchor(*FallbackSpec, ENodeRole::ExecNode, ChainAnchor),
+			TEXT("preview_occupancy_fallback_row"));
+		ChainAnchor.X += Step;
+	}
+
+	if (const FGraphLayoutPreviewNodeSpec* DelaySpec = FindNodeSpec(Sample, TEXT("DelayAsync")))
+	{
+		AddPlacement(
+			Plan,
+			Sample,
+			*DelaySpec,
+			BuildTopLeftFromAnchor(*DelaySpec, ENodeRole::AsyncNode, ChainAnchor),
+			TEXT("preview_occupancy_fallback_row"));
+		ChainAnchor.X += Step;
+	}
+
+	if (const FGraphLayoutPreviewNodeSpec* ExistingGuardSpec = FindNodeSpec(Sample, TEXT("ExistingGuard")))
+	{
+		AddPlacement(
+			Plan,
+			Sample,
+			*ExistingGuardSpec,
+			BuildTopLeftFromAnchor(*ExistingGuardSpec, ENodeRole::ExecNode, ChainAnchor),
+			TEXT("preview_occupancy_fallback_row"));
+	}
+}
+
 FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(
 	const FGraphLayoutPreviewSample& Sample,
 	const FRuleSet& RuleSet)
@@ -303,8 +455,16 @@ FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(
 		ProjectMultiExec(Sample, RuleSet, SceneState, Plan);
 		break;
 	case ESemanticScene::PureDataSubgraph:
+		ProjectAnchoredNodesByRole(Sample, SceneState, Plan);
+		ProjectExecContextLink(Sample, Plan, TEXT("EventStart"), TEXT("ConsumeArray"));
+		break;
 	case ESemanticScene::NodeInputCluster:
+		ProjectAnchoredNodesByRole(Sample, SceneState, Plan);
+		ProjectExecContextLink(Sample, Plan, TEXT("EventStart"), TEXT("Consumer"));
+		break;
 	case ESemanticScene::Occupancy:
+		ProjectOccupancy(Sample, RuleSet, SceneState, Plan);
+		break;
 	default:
 		ProjectAnchoredNodesByRole(Sample, SceneState, Plan);
 		break;

@@ -216,7 +216,12 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: [
       'bh blueprinthelper_request_write_session --file <write-session-request.json> --select status,summary',
     ],
-    input: ['Root JSON: project-scoped or asset-list-scoped write-session request.'],
+    input: [
+      'Root JSON: project-scoped or asset-list-scoped write-session request.',
+      'Required: reason.',
+      'Required for scope=asset_list: asset_paths with at least one Unreal asset path.',
+      'Optional: scope defaults to project; ttl_seconds defaults to 900.',
+    ],
     templates: [
       ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_request_write_session_project_template.json`,

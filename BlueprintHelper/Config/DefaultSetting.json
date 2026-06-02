@@ -37,7 +37,7 @@
     "layout_rule_editor": {
       "canvas_desired_size": [760.0, 460.0],
       "node_size": [128.0, 44.0],
-      "canvas_rule_scale": 0.45,
+      "canvas_rule_scale": 1.0,
       "default_rule_id": "default_readable_exec_with_left_data",
       "default_rule_display_name": "默认可读执行与左侧数据",
       "exec_column_spacing": 360.0,

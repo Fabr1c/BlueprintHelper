@@ -455,6 +455,59 @@ static UEdGraphPin* FindPinByNameAndDirection(UEdGraphNode* Node, const FName Pi
 	return nullptr;
 }
 
+static UEdGraphNode* FindMaterializedNodeById(
+	const FGraphLayoutPreviewMaterializerResult& Result,
+	const FString& NodeId)
+{
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return nullptr;
+	}
+
+	const FGuid* ExpectedGuid = Result.NodeGuidsById.Find(NodeId);
+	if (!ExpectedGuid)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == *ExpectedGuid)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+static int32 CountExecPins(const UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		return 0;
+	}
+
+	int32 ExecPinCount = 0;
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			++ExecPinCount;
+		}
+	}
+	return ExecPinCount;
+}
+
+static float ExpectedExecBaselineOffsetY(const ENodeRole Role)
+{
+	return Role == ENodeRole::EventEntry ? 62.5f : 48.0f;
+}
+
+static float ExpectedExecBaselineY(const FNodePlacement& Placement, const ENodeRole Role)
+{
+	return Placement.TargetPosition.Y + ExpectedExecBaselineOffsetY(Role);
+}
+
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -671,6 +724,87 @@ bool FBlueprintHelperGraphLayout_DataInputScalarOffsetsPlaceInputsLeftAndBelow::
 
 	TestTrue(TEXT("Scalar input is placed left of consumer"), PurePlacement->TargetPosition.X < ExecPlacement->TargetPosition.X);
 	TestTrue(TEXT("Scalar input is placed below consumer"), PurePlacement->TargetPosition.Y > ExecPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SolverAlignsExecPinBaselines,
+	"BlueprintHelper.GraphLayout.Solver.AlignsExecPinBaselines",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SolverAlignsExecPinBaselines::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Event"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event"),
+		FVector2D::ZeroVector,
+		FVector2D(220.0f, 88.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("Branch")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Branch"),
+		TEXT("K2Node_IfThenElse"),
+		TEXT("Branch"),
+		FVector2D::ZeroVector,
+		FVector2D(228.0f, 104.0f),
+		false,
+		{
+			MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("Event")}),
+			MakePin(TEXT("Condition"), EPinDirection::Input, false, {TEXT("Condition")}),
+			MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("ThenPrint")}),
+			MakePin(TEXT("Else"), EPinDirection::Output, true, {TEXT("ElsePrint")})
+		}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("ThenPrint"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Print String"),
+		FVector2D::ZeroVector,
+		FVector2D(232.0f, 96.0f),
+		false,
+		{MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("Branch")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("ElsePrint"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Print String"),
+		FVector2D::ZeroVector,
+		FVector2D(232.0f, 96.0f),
+		false,
+		{MakePin(TEXT("execute"), EPinDirection::Input, true, {TEXT("Branch")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Condition"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("In Range"),
+		FVector2D::ZeroVector,
+		FVector2D(260.0f, 180.0f),
+		false,
+		{MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("Branch")})}));
+
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
+	RuleSet.bUsePatternRowHeightBudget = true;
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("Event"));
+	const FNodePlacement* BranchPlacement = FindPlacement(Plan, TEXT("Branch"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("branch placement exists"), BranchPlacement);
+	if (!EventPlacement || !BranchPlacement)
+	{
+		return false;
+	}
+
+	const float EventBaselineY =
+		EventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry);
+	const float BranchBaselineY =
+		BranchPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::BranchControl);
+	TestEqual(TEXT("event output and branch input exec pins share a baseline"), BranchBaselineY, EventBaselineY);
 	return true;
 }
 
@@ -912,6 +1046,192 @@ bool FBlueprintHelperGraphLayout_OccupancyResolverReturnsNonOverlappingEmergency
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_OccupancyResolverPrefersSameRowHorizontalCandidate,
+	"BlueprintHelper.GraphLayout.Solver.OccupancyResolverPrefersSameRowHorizontalCandidate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_OccupancyResolverPrefersSameRowHorizontalCandidate::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 240.0f;
+	RuleSet.CollisionPaddingY = 8.0f;
+	RuleSet.CollisionStepY = 240.0f;
+	RuleSet.MaxCollisionAttempts = 4;
+
+	FOccupancyResolver Occupancy(RuleSet);
+	Occupancy.ReserveTarget(TEXT("Entry"), FVector2D::ZeroVector, FVector2D(180.0f, 80.0f), true);
+
+	const FVector2D DesiredTarget(360.0f, 0.0f);
+	const FVector2D ResolvedTarget = Occupancy.ResolveNearestFreeTargetPreferSameRow(
+		TEXT("Branch"),
+		DesiredTarget,
+		FVector2D(228.0f, 104.0f));
+
+	TestEqual(TEXT("same-row preference keeps target y"), ResolvedTarget.Y, DesiredTarget.Y);
+	TestTrue(TEXT("same-row preference shifts right when padded rect overlaps"), ResolvedTarget.X > DesiredTarget.X);
+	TestFalse(
+		TEXT("same-row target does not overlap reserved entry"),
+		Occupancy.WouldOverlap(TEXT("Branch"), ResolvedTarget, FVector2D(228.0f, 104.0f)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_OccupancyResolverFallsBackDownWhenSameRowBlocked,
+	"BlueprintHelper.GraphLayout.Solver.OccupancyResolverFallsBackDownWhenSameRowBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_OccupancyResolverFallsBackDownWhenSameRowBlocked::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+	RuleSet.CollisionStepY = 100.0f;
+	RuleSet.MaxCollisionAttempts = 2;
+
+	FOccupancyResolver Occupancy(RuleSet);
+	Occupancy.ReserveTarget(TEXT("BlockerA"), FVector2D(0.0f, 0.0f), FVector2D(100.0f, 100.0f), false);
+	Occupancy.ReserveTarget(TEXT("BlockerB"), FVector2D(100.0f, 0.0f), FVector2D(100.0f, 100.0f), false);
+
+	const FVector2D ResolvedTarget = Occupancy.ResolveNearestFreeTargetPreferSameRow(
+		TEXT("Candidate"),
+		FVector2D::ZeroVector,
+		FVector2D(100.0f, 100.0f));
+
+	TestEqual(TEXT("fallback keeps semantic x column"), ResolvedTarget.X, 0.0);
+	TestTrue(TEXT("fallback moves down only after same-row candidates are blocked"), ResolvedTarget.Y > 0.0f);
+	TestFalse(
+		TEXT("fallback target does not overlap blockers"),
+		Occupancy.WouldOverlap(TEXT("Candidate"), ResolvedTarget, FVector2D(100.0f, 100.0f)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_RootExecSuccessorPrefersSameRowHorizontalAvoidance,
+	"BlueprintHelper.GraphLayout.Solver.RootExecSuccessorPrefersSameRowHorizontalAvoidance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_RootExecSuccessorPrefersSameRowHorizontalAvoidance::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Event"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("Branch")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Branch"),
+		TEXT("K2Node_IfThenElse"),
+		TEXT("Branch"),
+		FVector2D::ZeroVector,
+		FVector2D(228.0f, 104.0f),
+		false,
+		{
+			MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Event")}),
+			MakePin(TEXT("Then"), EPinDirection::Output, true),
+			MakePin(TEXT("Else"), EPinDirection::Output, true)
+		}));
+
+	FRuleSet RuleSet;
+	RuleSet.ExecColumnSpacing = 360.0f;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.CollisionPaddingX = 240.0f;
+	RuleSet.CollisionPaddingY = 8.0f;
+	RuleSet.CollisionStepY = 240.0f;
+	RuleSet.MaxCollisionAttempts = 8;
+	RuleSet.bAlignExecNodesHorizontally = true;
+	RuleSet.bUsePatternRowHeightBudget = true;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("Event"));
+	const FNodePlacement* BranchPlacement = FindPlacement(Plan, TEXT("Branch"));
+
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("branch placement exists"), BranchPlacement);
+	if (!EventPlacement || !BranchPlacement)
+	{
+		return false;
+	}
+
+	TestEqual(
+		TEXT("first exec successor keeps root exec pin baseline"),
+		ExpectedExecBaselineY(*BranchPlacement, ENodeRole::BranchControl),
+		ExpectedExecBaselineY(*EventPlacement, ENodeRole::EventEntry));
+	TestTrue(TEXT("first exec successor shifts horizontally instead of vertically"), BranchPlacement->TargetPosition.X > RuleSet.ExecColumnSpacing);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_DisabledExecHorizontalAlignmentKeepsDownwardOverlapAvoidance,
+	"BlueprintHelper.GraphLayout.Solver.DisabledExecHorizontalAlignmentKeepsDownwardOverlapAvoidance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_DisabledExecHorizontalAlignmentKeepsDownwardOverlapAvoidance::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Event"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("Branch")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Branch"),
+		TEXT("K2Node_IfThenElse"),
+		TEXT("Branch"),
+		FVector2D::ZeroVector,
+		FVector2D(228.0f, 104.0f),
+		false,
+		{
+			MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Event")}),
+			MakePin(TEXT("Then"), EPinDirection::Output, true),
+			MakePin(TEXT("Else"), EPinDirection::Output, true)
+		}));
+
+	FRuleSet RuleSet;
+	RuleSet.ExecColumnSpacing = 360.0f;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.CollisionPaddingX = 240.0f;
+	RuleSet.CollisionPaddingY = 8.0f;
+	RuleSet.CollisionStepY = 240.0f;
+	RuleSet.MaxCollisionAttempts = 8;
+	RuleSet.bAlignExecNodesHorizontally = false;
+	RuleSet.bUsePatternRowHeightBudget = true;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("Event"));
+	const FNodePlacement* BranchPlacement = FindPlacement(Plan, TEXT("Branch"));
+
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("branch placement exists"), BranchPlacement);
+	if (!EventPlacement || !BranchPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("disabled exec horizontal alignment uses downward overlap avoidance"),
+		BranchPlacement->TargetPosition.Y > EventPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_ExecSuccessorsFollowResolvedParentRow,
 	"BlueprintHelper.GraphLayout.Solver.ExecSuccessorsFollowResolvedParentRow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1048,7 +1368,160 @@ bool FBlueprintHelperGraphLayout_RowReflowPropagatesPinnedBaselineBlocker::RunTe
 	TestEqual(TEXT("pinned blocker stays at current y"), PinnedBlockerPlacement->TargetPosition.Y, 450.0);
 	TestTrue(TEXT("parent row is bumped by pinned blocker during row reflow"), EventPlacement->TargetPosition.Y > PinnedBlockerPlacement->TargetPosition.Y);
 	TestTrue(TEXT("child successor is not above the bumped parent row"), ExecPlacement->TargetPosition.Y >= EventPlacement->TargetPosition.Y);
-	TestEqual(TEXT("single-output exec chain remains row-aligned after propagated bump"), ExecPlacement->TargetPosition.Y, EventPlacement->TargetPosition.Y);
+	TestEqual(
+		TEXT("single-output exec chain remains pin-baseline aligned after propagated bump"),
+		ExpectedExecBaselineY(*ExecPlacement, ENodeRole::ExecNode),
+		ExpectedExecBaselineY(*EventPlacement, ENodeRole::EventEntry));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_IntraBlockDataInputsInheritExecPriority,
+	"BlueprintHelper.GraphLayout.Solver.IntraBlockDataInputsInheritExecPriority",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_IntraBlockDataInputsInheritExecPriority::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("Event"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event"),
+		FVector2D::ZeroVector,
+		FVector2D(20.0f, 20.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("HighExec")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("LowExec"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Low Exec"),
+		FVector2D::ZeroVector,
+		FVector2D(20.0f, 20.0f),
+		false,
+		{
+			MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("HighExec")}),
+			MakePin(TEXT("Value"), EPinDirection::Input, false, {TEXT("LowData")})
+		}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("LowData"),
+		TEXT("K2Node_VariableGet"),
+		TEXT("Low Data"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 72.0f),
+		false,
+		{MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("LowExec")})}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("HighExec"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("High Exec"),
+		FVector2D::ZeroVector,
+		FVector2D(20.0f, 20.0f),
+		false,
+		{
+			MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Event")}),
+			MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("LowExec")}),
+			MakePin(TEXT("Value"), EPinDirection::Input, false, {TEXT("HighData")})
+		}));
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("HighData"),
+		TEXT("K2Node_VariableGet"),
+		TEXT("High Data"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 72.0f),
+		false,
+		{MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("HighExec")})}));
+
+	FRuleSet RuleSet;
+	RuleSet.ExecColumnSpacing = 100.0f;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.VariableInputOffsetX = 300.0f;
+	RuleSet.InputPinRowSpacing = 60.0f;
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+	RuleSet.CollisionStepY = 180.0f;
+	RuleSet.MaxCollisionAttempts = 8;
+	RuleSet.bAlignExecNodesHorizontally = true;
+	RuleSet.bUsePatternRowHeightBudget = true;
+	RuleSet.bUsePureDataSubgraphLayout = true;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* HighDataPlacement = FindPlacement(Plan, TEXT("HighData"));
+	const FNodePlacement* LowDataPlacement = FindPlacement(Plan, TEXT("LowData"));
+	TestNotNull(TEXT("high-priority data placement exists"), HighDataPlacement);
+	TestNotNull(TEXT("low-priority data placement exists"), LowDataPlacement);
+	if (!HighDataPlacement || !LowDataPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("input data inherits earlier exec priority and is placed before later exec data"),
+		HighDataPlacement->TargetPosition.Y <= LowDataPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_InterBlockOrderOverridesSnapshotRootOrder,
+	"BlueprintHelper.GraphLayout.Solver.InterBlockOrderOverridesSnapshotRootOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_InterBlockOrderOverridesSnapshotRootOrder::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FNodeSnapshot NewEntry = MakeNode(
+		TEXT("NewEntry"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("New Entry"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{});
+	NewEntry.LayoutBlockId = TEXT("NewBlock");
+	NewEntry.LayoutBlockOrder = 1;
+	NewEntry.LayoutNodeOrder = 0;
+
+	FNodeSnapshot OldEntry = MakeNode(
+		TEXT("OldEntry"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Old Entry"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{});
+	OldEntry.LayoutBlockId = TEXT("OldBlock");
+	OldEntry.LayoutBlockOrder = 0;
+	OldEntry.LayoutNodeOrder = 0;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	Snapshot.Nodes.Add(NewEntry);
+	Snapshot.Nodes.Add(OldEntry);
+
+	FRuleSet RuleSet;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+	RuleSet.bUsePatternRowHeightBudget = false;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* OldPlacement = FindPlacement(Plan, TEXT("OldEntry"));
+	const FNodePlacement* NewPlacement = FindPlacement(Plan, TEXT("NewEntry"));
+	TestNotNull(TEXT("old block entry placement exists"), OldPlacement);
+	TestNotNull(TEXT("new block entry placement exists"), NewPlacement);
+	if (!OldPlacement || !NewPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("older block entry keeps priority over later block even when snapshot order is reversed"),
+		OldPlacement->TargetPosition.Y < NewPlacement->TargetPosition.Y);
 	return true;
 }
 
@@ -2060,6 +2533,7 @@ bool FBlueprintHelperGraphLayout_SemanticSceneCatalogContainsFiveScenes::RunTest
 	const TArray<FSemanticSceneDefinition> Scenes = FSemanticSceneCatalog::GetAllScenes();
 	TestEqual(TEXT("five scenes"), Scenes.Num(), 5);
 	const FBlueprintHelperLayoutRuleEditorSettings EditorSettings;
+	TestEqual(TEXT("layout rule editor uses 1:1 graph-unit authoring scale"), EditorSettings.CanvasRuleScale, 1.0f);
 	const FVector2D HalfNodeSize = EditorSettings.NodeSize * 0.5f;
 	constexpr float FooterReserveY = 40.0f;
 	TSet<ESemanticScene> SceneIds;
@@ -2322,6 +2796,49 @@ bool FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult::RunTest(con
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerKeepsPureDataNodesExecFree,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerKeepsPureDataNodesExecFree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerKeepsPureDataNodesExecFree::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestTrue(TEXT("preview materializer test runs on the game thread"), IsInGameThread());
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("node input sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::NodeInputCluster, Sample, Error));
+
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer creates node input preview graph"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("materializer result has no error"), Result.Error.IsEmpty());
+	TestTrue(TEXT("preview graph valid"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	UEdGraphNode* NormalizeValueNode = FindMaterializedNodeById(Result, TEXT("NormalizeValue"));
+	UEdGraphNode* ComposePayloadNode = FindMaterializedNodeById(Result, TEXT("ComposePayload"));
+	TestNotNull(TEXT("normalize pure node materialized"), NormalizeValueNode);
+	TestNotNull(TEXT("compose pure node materialized"), ComposePayloadNode);
+	if (!NormalizeValueNode || !ComposePayloadNode)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("normalize pure preview node has no exec pins"), CountExecPins(NormalizeValueNode), 0);
+	TestEqual(TEXT("compose pure preview node has no exec pins"), CountExecPins(ComposePayloadNode), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirstExec,
 	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensEntryToFirstExec",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2359,9 +2876,247 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirst
 		return false;
 	}
 
-	const float EventExecOutputY = EventPlacement->TargetPosition.Y + 58.0f;
-	const float ResetExecInputY = ResetPlacement->TargetPosition.Y + 48.0f;
+	const float EventExecOutputY =
+		EventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry);
+	const float ResetExecInputY =
+		ResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode);
 	TestEqual(TEXT("event output pin and first exec input pin are horizontal"), ResetExecInputY, EventExecOutputY);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecChain,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensLinearExecChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecChain::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const TArray<TPair<FString, ENodeRole>> Chain = {
+		{TEXT("EventStart"), ENodeRole::EventEntry},
+		{TEXT("ResetState"), ENodeRole::ExecNode},
+		{TEXT("SetCounter"), ENodeRole::ExecNode},
+		{TEXT("PrintLabel"), ENodeRole::ExecNode},
+		{TEXT("DelayAsync"), ENodeRole::AsyncNode}
+	};
+
+	float ExpectedBaselineY = 0.0f;
+	for (int32 NodeIndex = 0; NodeIndex < Chain.Num(); ++NodeIndex)
+	{
+		const FNodePlacement* Placement = FindPlacement(Plan, Chain[NodeIndex].Key);
+		TestNotNull(
+			FString::Printf(TEXT("%s placement exists"), *Chain[NodeIndex].Key),
+			Placement);
+		if (!Placement)
+		{
+			return false;
+		}
+
+		const float BaselineY = Placement->TargetPosition.Y + ExpectedExecBaselineOffsetY(Chain[NodeIndex].Value);
+		if (NodeIndex == 0)
+		{
+			ExpectedBaselineY = BaselineY;
+			continue;
+		}
+
+		TestEqual(
+			FString::Printf(TEXT("%s exec pin is on the linear chain baseline"), *Chain[NodeIndex].Key),
+			BaselineY,
+			ExpectedBaselineY);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensDataSceneEntryToConsumer,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensDataSceneEntryToConsumer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensDataSceneEntryToConsumer::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	struct FSceneExpectation
+	{
+		ESemanticScene Scene;
+		FString ConsumerNodeId;
+	};
+
+	const TArray<FSceneExpectation> Expectations = {
+		{ESemanticScene::PureDataSubgraph, TEXT("ConsumeArray")},
+		{ESemanticScene::NodeInputCluster, TEXT("Consumer")}
+	};
+
+	for (const FSceneExpectation& Expectation : Expectations)
+	{
+		FGraphLayoutPreviewSample Sample;
+		FString Error;
+		TestTrue(
+			FString::Printf(TEXT("sample builds for %s"), ToString(Expectation.Scene)),
+			FGraphLayoutPreviewSampleFactory::BuildSample(Expectation.Scene, Sample, Error));
+
+		FRuleSet RuleSet;
+		const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+		const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
+		const FNodePlacement* ConsumerPlacement = FindPlacement(Plan, Expectation.ConsumerNodeId);
+		TestNotNull(FString::Printf(TEXT("%s event placement exists"), ToString(Expectation.Scene)), EventPlacement);
+		TestNotNull(FString::Printf(TEXT("%s consumer placement exists"), ToString(Expectation.Scene)), ConsumerPlacement);
+		if (!EventPlacement || !ConsumerPlacement)
+		{
+			return false;
+		}
+
+		const float EventExecOutputY =
+			EventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry);
+		const float ConsumerExecInputY =
+			ConsumerPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode);
+		TestEqual(
+			FString::Printf(TEXT("%s event output and consumer input pins are horizontal"), ToString(Expectation.Scene)),
+			ConsumerExecInputY,
+			EventExecOutputY);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerConnectsOccupancyExistingGuard,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerConnectsOccupancyExistingGuard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerConnectsOccupancyExistingGuard::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	TestTrue(TEXT("preview materializer test runs on the game thread"), IsInGameThread());
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer creates occupancy preview graph"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("materializer result has no error"), Result.Error.IsEmpty());
+	TestTrue(TEXT("preview graph valid"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	UEdGraphNode* DelayNode = FindMaterializedNodeById(Result, TEXT("DelayAsync"));
+	UEdGraphNode* ExistingGuardNode = FindMaterializedNodeById(Result, TEXT("ExistingGuard"));
+	TestNotNull(TEXT("delay async preview node materialized"), DelayNode);
+	TestNotNull(TEXT("existing guard preview node materialized"), ExistingGuardNode);
+	if (!DelayNode || !ExistingGuardNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* DelayCompletedPin = FindPinByNameAndDirection(DelayNode, FName(TEXT("Completed")), EGPD_Output);
+	UEdGraphPin* ExistingGuardExecPin = FindPinByNameAndDirection(ExistingGuardNode, UEdGraphSchema_K2::PN_Execute, EGPD_Input);
+	TestNotNull(TEXT("delay async completed pin exists"), DelayCompletedPin);
+	TestNotNull(TEXT("existing guard exec input pin exists"), ExistingGuardExecPin);
+	if (!DelayCompletedPin || !ExistingGuardExecPin)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("delay async completed exec links to existing guard"), DelayCompletedPin->LinkedTo.Contains(ExistingGuardExecPin));
+	TestTrue(TEXT("existing guard exec input links back to delay async"), ExistingGuardExecPin->LinkedTo.Contains(DelayCompletedPin));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySeparate,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorKeepsOccupancyEntrySeparate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySeparate::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
+	const FNodePlacement* CandidatePlacement = FindPlacement(Plan, TEXT("CandidateExec"));
+	const FNodePlacement* FallbackPlacement = FindPlacement(Plan, TEXT("FallbackExec"));
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("candidate placement exists"), CandidatePlacement);
+	TestNotNull(TEXT("fallback placement exists"), FallbackPlacement);
+	if (!EventPlacement || !CandidatePlacement || !FallbackPlacement)
+	{
+		return false;
+	}
+
+	const FVector2D EventSize = FindPreviewNodeSize(Sample, TEXT("EventStart"));
+	const FVector2D CandidateSize = FindPreviewNodeSize(Sample, TEXT("CandidateExec"));
+	const FVector2D FallbackSize = FindPreviewNodeSize(Sample, TEXT("FallbackExec"));
+	TestFalse(
+		TEXT("occupancy preview event entry does not overlap candidate exec node"),
+		RectsOverlap(*EventPlacement, EventSize, *CandidatePlacement, CandidateSize));
+	TestFalse(
+		TEXT("occupancy preview candidate exec node does not overlap fallback exec node"),
+		RectsOverlap(*CandidatePlacement, CandidateSize, *FallbackPlacement, FallbackSize));
+	TestFalse(
+		TEXT("occupancy preview event entry does not overlap fallback exec node"),
+		RectsOverlap(*EventPlacement, EventSize, *FallbackPlacement, FallbackSize));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackClearOfBlocker,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorKeepsOccupancyFallbackClearOfBlocker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackClearOfBlocker::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState OccupancyScene;
+	OccupancyScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(216.0f, 128.0f));
+	OccupancyScene.RoleCenters.Add(ENodeRole::AsyncNode, FVector2D(636.0f, 308.0f));
+	OccupancyScene.RoleCenters.Add(ENodeRole::Comment, FVector2D(730.0f, 130.0f));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::Occupancy, OccupancyScene);
+
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FNodePlacement* FallbackPlacement = FindPlacement(Plan, TEXT("FallbackExec"));
+	const FNodePlacement* CommentPlacement = FindPlacement(Plan, TEXT("CommentBlocker"));
+	TestNotNull(TEXT("fallback placement exists"), FallbackPlacement);
+	TestNotNull(TEXT("comment blocker placement exists"), CommentPlacement);
+	if (!FallbackPlacement || !CommentPlacement)
+	{
+		return false;
+	}
+
+	const FVector2D FallbackSize = FindPreviewNodeSize(Sample, TEXT("FallbackExec"));
+	const FVector2D CommentSize = FindPreviewNodeSize(Sample, TEXT("CommentBlocker"));
+	TestFalse(
+		TEXT("occupancy preview fallback exec node does not overlap existing comment blocker"),
+		RectsOverlap(*FallbackPlacement, FallbackSize, *CommentPlacement, CommentSize));
 	return true;
 }
 
@@ -2412,13 +3167,25 @@ bool FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors::R
 	}
 
 	TestEqual(TEXT("first event role center drives preview x"), FirstEventPlacement->TargetPosition.X + 202.0f, 120.0);
-	TestEqual(TEXT("first event role center drives preview y"), FirstEventPlacement->TargetPosition.Y + 58.0f, 140.0);
+	TestEqual(
+		TEXT("first event role center drives preview y"),
+		FirstEventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
+		140.0);
 	TestEqual(TEXT("first exec role center drives preview x"), FirstResetPlacement->TargetPosition.X + 16.0f, 420.0);
-	TestEqual(TEXT("first exec role center drives preview y"), FirstResetPlacement->TargetPosition.Y + 48.0f, 140.0);
+	TestEqual(
+		TEXT("first exec role center drives preview y"),
+		FirstResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
+		140.0);
 	TestEqual(TEXT("second event role center drives preview x"), SecondEventPlacement->TargetPosition.X + 202.0f, 300.0);
-	TestEqual(TEXT("second event role center drives preview y"), SecondEventPlacement->TargetPosition.Y + 58.0f, 260.0);
+	TestEqual(
+		TEXT("second event role center drives preview y"),
+		SecondEventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
+		260.0);
 	TestEqual(TEXT("second exec role center drives preview x"), SecondResetPlacement->TargetPosition.X + 16.0f, 660.0);
-	TestEqual(TEXT("second exec role center drives preview y"), SecondResetPlacement->TargetPosition.Y + 48.0f, 260.0);
+	TestEqual(
+		TEXT("second exec role center drives preview y"),
+		SecondResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
+		260.0);
 	TestTrue(TEXT("changing scene anchors changes preview event position"), !FirstEventPlacement->TargetPosition.Equals(SecondEventPlacement->TargetPosition));
 	TestTrue(TEXT("changing scene anchors changes preview exec position"), !FirstResetPlacement->TargetPosition.Equals(SecondResetPlacement->TargetPosition));
 	return true;
@@ -2470,9 +3237,15 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap::R
 		FMath::Abs(EventPlacement->TargetPosition.X - ResetPlacement->TargetPosition.X) < 260.0f &&
 		FMath::Abs(EventPlacement->TargetPosition.Y - ResetPlacement->TargetPosition.Y) < 140.0f);
 	TestEqual(TEXT("event semantic anchor x remains on dragged role center"), EventPlacement->TargetPosition.X + 202.0f, 240.0);
-	TestEqual(TEXT("event semantic anchor y remains on dragged role center"), EventPlacement->TargetPosition.Y + 58.0f, 160.0);
+	TestEqual(
+		TEXT("event semantic anchor y remains on dragged role center"),
+		EventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
+		160.0);
 	TestEqual(TEXT("exec semantic anchor x remains on dragged role center"), ResetPlacement->TargetPosition.X + 16.0f, 240.0);
-	TestEqual(TEXT("exec semantic anchor y remains on dragged role center"), ResetPlacement->TargetPosition.Y + 48.0f, 160.0);
+	TestEqual(
+		TEXT("exec semantic anchor y remains on dragged role center"),
+		ResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
+		160.0);
 	return true;
 }
 

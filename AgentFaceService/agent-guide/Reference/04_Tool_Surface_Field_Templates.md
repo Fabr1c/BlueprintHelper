@@ -85,6 +85,15 @@ Lifecycle companion tools are available only through the global MCP allowlist fo
 
 `blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
+Write-session required fields:
+
+| Field | Required | Purpose |
+|---|---|---|
+| `reason` | Required | Human-readable reason shown to the Editor approval prompt. Do not call this tool with `{}`. |
+| `scope` | Optional | `project` or `asset_list`; defaults to `project`. |
+| `ttl_seconds` | Optional | Approval lifetime, clamped by the Editor service. |
+| `asset_paths` | Required for `scope=asset_list` | Unreal asset paths covered by the approval. |
+
 Unknown Unreal `asset_path` values must be resolved with `blueprinthelper_find_assets` before `blueprinthelper_read_context` or any write request. Known Unreal `asset_path` values go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes. Every write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 
 ## 3.5 Find Assets Template

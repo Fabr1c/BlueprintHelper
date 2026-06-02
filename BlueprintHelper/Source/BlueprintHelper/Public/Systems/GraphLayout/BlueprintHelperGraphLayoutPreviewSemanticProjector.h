@@ -41,12 +41,27 @@ private:
 	static void ProjectRemainingNodesBySampleOffset(
 		const FGraphLayoutPreviewSample& Sample,
 		FLayoutPlan& Plan);
+	static bool TryBuildSampleRelativeTarget(
+		const FGraphLayoutPreviewSample& Sample,
+		const FLayoutPlan& Plan,
+		const FString& NodeId,
+		FVector2D& OutTargetPosition);
+	static void ProjectExecContextLink(
+		const FGraphLayoutPreviewSample& Sample,
+		FLayoutPlan& Plan,
+		const FString& EventNodeId,
+		const FString& ConsumerNodeId);
 	static void ProjectLinearExec(
 		const FGraphLayoutPreviewSample& Sample,
 		const FRuleSet& RuleSet,
 		const FEditorCanvasSceneState& SceneState,
 		FLayoutPlan& Plan);
 	static void ProjectMultiExec(
+		const FGraphLayoutPreviewSample& Sample,
+		const FRuleSet& RuleSet,
+		const FEditorCanvasSceneState& SceneState,
+		FLayoutPlan& Plan);
+	static void ProjectOccupancy(
 		const FGraphLayoutPreviewSample& Sample,
 		const FRuleSet& RuleSet,
 		const FEditorCanvasSceneState& SceneState,

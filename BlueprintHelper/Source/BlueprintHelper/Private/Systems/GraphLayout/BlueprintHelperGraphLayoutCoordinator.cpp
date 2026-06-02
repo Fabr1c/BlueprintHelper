@@ -27,7 +27,14 @@ namespace BlueprintHelperGraphLayoutCoordinatorLocal
 struct FPendingGraphLayout
 {
 	TWeakObjectPtr<UEdGraph> Graph;
-	TSet<FString> GeneratedNodeIds;
+	struct FGeneratedNodeOrder
+	{
+		int32 BlockOrder = INDEX_NONE;
+		int32 NodeOrder = INDEX_NONE;
+	};
+
+	TMap<FString, FGeneratedNodeOrder> GeneratedNodeOrders;
+	int32 NextGeneratedBlockOrder = 1;
 };
 
 static TArray<FPendingGraphLayout> GPendingLayouts;
@@ -222,7 +229,20 @@ static void SnapshotSolveAndApplyNow(const FPendingGraphLayout& Pending)
 		BlueprintHelper::GraphLayout::FSnapshotBuilder::CaptureGraph(Graph);
 	for (BlueprintHelper::GraphLayout::FNodeSnapshot& Node : Snapshot.Nodes)
 	{
-		Node.bExisting = !Pending.GeneratedNodeIds.Contains(Node.NodeId);
+		if (const FPendingGraphLayout::FGeneratedNodeOrder* GeneratedOrder = Pending.GeneratedNodeOrders.Find(Node.NodeId))
+		{
+			Node.bExisting = false;
+			Node.LayoutBlockId = FString::Printf(TEXT("generated_block_%d"), GeneratedOrder->BlockOrder);
+			Node.LayoutBlockOrder = GeneratedOrder->BlockOrder;
+			Node.LayoutNodeOrder = GeneratedOrder->NodeOrder;
+		}
+		else
+		{
+			Node.bExisting = true;
+			Node.LayoutBlockId = TEXT("existing_graph");
+			Node.LayoutBlockOrder = 0;
+			Node.LayoutNodeOrder = INDEX_NONE;
+		}
 	}
 
 	BlueprintHelper::GraphLayout::FRuleSet RuleSet = LoadConfiguredRuleSet();
@@ -235,7 +255,7 @@ static void SnapshotSolveAndApplyNow(TArray<FPendingGraphLayout>& PendingLayouts
 {
 	for (const FPendingGraphLayout& Pending : PendingLayouts)
 	{
-		if (Pending.Graph.IsValid() && Pending.GeneratedNodeIds.Num() > 0)
+		if (Pending.Graph.IsValid() && Pending.GeneratedNodeOrders.Num() > 0)
 		{
 			SnapshotSolveAndApplyNow(Pending);
 		}
@@ -340,12 +360,27 @@ void FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(
 		Pending = &GPendingLayouts.Last();
 	}
 
+	int32 NodeOrder = 0;
+	bool bRecordedAnyNode = false;
 	for (UEdGraphNode* Node : GeneratedNodes)
 	{
 		if (Node)
 		{
-			Pending->GeneratedNodeIds.Add(MakeNodeId(Node));
+			const FString NodeId = MakeNodeId(Node);
+			if (!Pending->GeneratedNodeOrders.Contains(NodeId))
+			{
+				FPendingGraphLayout::FGeneratedNodeOrder GeneratedOrder;
+				GeneratedOrder.BlockOrder = Pending->NextGeneratedBlockOrder;
+				GeneratedOrder.NodeOrder = NodeOrder;
+				Pending->GeneratedNodeOrders.Add(NodeId, GeneratedOrder);
+				bRecordedAnyNode = true;
+			}
 		}
+		++NodeOrder;
+	}
+	if (bRecordedAnyNode)
+	{
+		++Pending->NextGeneratedBlockOrder;
 	}
 }
 
