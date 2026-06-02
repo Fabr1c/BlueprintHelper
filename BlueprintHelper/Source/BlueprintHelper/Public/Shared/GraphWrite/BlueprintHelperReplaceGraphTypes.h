@@ -83,6 +83,7 @@ struct FBlueprintHelperReplaceGraphResultData
 	FString Schema = TEXT("ReplaceBlueprintGraph.v1");
 	FBlueprintHelperReplaceGraphResult ReplaceResult;
 	FBlueprintHelperWriteRef WriteRef;
+	TArray<FString> BlockRefs;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -90,6 +91,12 @@ struct FBlueprintHelperReplaceGraphResultData
 		Json->SetStringField(TEXT("schema"), Schema);
 		Json->SetObjectField(TEXT("replace_result"), ReplaceResult.ToJson());
 		Json->SetObjectField(TEXT("write_ref"), WriteRef.ToJson());
+		if (BlockRefs.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FString& Ref : BlockRefs) { Arr.Add(MakeShared<FJsonValueString>(Ref)); }
+			Json->SetArrayField(TEXT("block_refs"), Arr);
+		}
 		return Json;
 	}
 };

@@ -22,6 +22,9 @@ import {
   isSupportedContainerActionKind,
   isSupportedContainerActionOperation,
 } from '../schema/task-schemas.js';
+import {
+  collectGraphWriteConnectivityPreflightIssues,
+} from './graphwrite-connectivity-preflight.js';
 
 export const TASK_COMPILER_RESULT_SCHEMA = 'BlueprintHelper.TaskCompilerResult.v1';
 
@@ -1788,6 +1791,30 @@ function compileGraphWriteOps(
   ]);
 }
 
+function assertGraphWriteConnectivityPreflight(
+  statements: BlueprintLogicStatement[],
+  basePath: string,
+): void {
+  const issues = collectGraphWriteConnectivityPreflightIssues(
+    statements as unknown as Record<string, unknown>[],
+    basePath,
+  );
+  if (issues.length === 0) {
+    return;
+  }
+
+  const taskIssues: TaskIssue[] = issues.map((issue) => ({
+    code: issue.code,
+    path: issue.path,
+    message: issue.message,
+  }));
+  throw new TaskSpecCompileError(
+    'taskspec_semantic_invalid',
+    `GraphWrite connectivity static preflight failed: ${taskIssues[0]?.code ?? 'unknown_issue'}.`,
+    taskIssues,
+  );
+}
+
 function compileAppendGraphWriteOps(
   behavior: Record<string, unknown>,
   options: GraphWriteCompileOptions,
@@ -1818,6 +1845,10 @@ function compileAppendGraphWriteOps(
 
     const body = getRequiredLogicBody(entry, 'body', `behavior.entries[${entryIndex}].body`);
     validateSupportedStatements(body.statements, `behavior.entries[${entryIndex}].body.statements`);
+    assertGraphWriteConnectivityPreflight(
+      body.statements,
+      `behavior.entries[${entryIndex}].body.statements`,
+    );
     const entryName = getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`);
     const entryInputs = Array.isArray(entry['inputs']) ? entry['inputs'] : undefined;
     return {
@@ -1861,6 +1892,7 @@ function compileReplaceGraphWriteOp(
   );
   const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
   validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
+  assertGraphWriteConnectivityPreflight(body.statements, 'behavior.replace.body.statements');
   if (body.statements.length === 0) {
     throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_owned_graph requires at least one replacement statement.', [
       {
@@ -2028,6 +2060,7 @@ function compileExternalMergeGraphWriteOps(
     const inserted = requiredRecord(merge, 'inserted', `${path}.inserted`);
     const body = getRequiredLogicBody(inserted, 'body', `${path}.inserted.body`);
     validateSupportedStatements(body.statements, `${path}.inserted.body.statements`);
+    assertGraphWriteConnectivityPreflight(body.statements, `${path}.inserted.body.statements`);
 
     return omitUndefined({
       op: 'insert_external_flow',
@@ -2101,6 +2134,7 @@ function compileExternalReplaceBodyGraphWriteOp(
 
   const body = getRequiredLogicBody(replace, 'body', 'behavior.external_replace.body');
   validateSupportedStatements(body.statements, 'behavior.external_replace.body.statements');
+  assertGraphWriteConnectivityPreflight(body.statements, 'behavior.external_replace.body.statements');
   if (body.statements.length === 0) {
     throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_external_body requires at least one replacement statement.', [
       {

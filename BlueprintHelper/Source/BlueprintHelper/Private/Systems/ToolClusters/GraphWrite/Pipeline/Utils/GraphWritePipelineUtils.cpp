@@ -43,8 +43,9 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphNodeUtility.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityValidator.h"
 
-namespace
+namespace BlueprintHelperGraphWritePipelineUtilsLocal
 {
 bool IsPureQueryContainerActionStatement(const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement)
 {
@@ -858,7 +859,7 @@ FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatement(
 	}
 
 	AddSemanticFragment(StatementFragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
-	if (IsPureQueryContainerActionStatement(Statement))
+	if (BlueprintHelperGraphWritePipelineUtilsLocal::IsPureQueryContainerActionStatement(Statement))
 	{
 		Flow.bPreservePreviousExits = true;
 		return Flow;
@@ -1012,6 +1013,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 
 	TArray<FBlueprintHelperNodeFragment> GeneratedFragments;
 	TSet<FString> GeneratedFragmentIds;
+	TSet<FString> EntryFragmentIds;
 	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
 	int32 GeneratedNodeCount = 0;
 	int32 CreatedConnectionCount = 0;
@@ -1042,6 +1044,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 		{
 			FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);
 			AddSemanticFragment(EntryFragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
+			EntryFragmentIds.Add(EntryFragment.FragmentId);
 			if (EntryFragment.ExecExitPin)
 			{
 				InitialExits.Add(EntryFragment.ExecExitPin);
@@ -1060,6 +1063,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 				{
 					FBlueprintHelperNodeFragment EntryFragment = BuildDataOnlyFragment(EntryId, EntryNode);
 					AddSemanticFragment(EntryFragment, GeneratedFragments, GeneratedFragmentIds, GeneratedNodeCount);
+					EntryFragmentIds.Add(EntryFragment.FragmentId);
 					if (EntryFragment.ExecExitPin)
 					{
 						InitialExits.Add(EntryFragment.ExecExitPin);
@@ -1096,19 +1100,38 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	{
 		if (Fragment.PrimaryNode)
 		{
-			GraphWriteContext.RegisterNode(Fragment.FragmentId, Fragment.PrimaryNode, true);
+			GraphWriteContext.RegisterNode(
+				Fragment.FragmentId,
+				Fragment.PrimaryNode,
+				true,
+				EntryFragmentIds.Contains(Fragment.FragmentId));
 		}
 	}
 	Result.ExecutionStats.BuildContextMs += GraphWriteElapsedMs(ContextIndexStart);
 
 	const TArray<FBlueprintHelperGraphFragmentDataEdge> DataEdges = FilterSemanticDataEdges(FragmentDag, GeneratedFragmentIds);
 	const double ConnectLinksStart = FPlatformTime::Seconds();
-	CreatedConnectionCount += FBlueprintGraphLinker::ConnectFragmentDataEdges(
+	const int32 CreatedDataConnectionCount = FBlueprintGraphLinker::ConnectFragmentDataEdges(
 		TargetGraph,
 		GeneratedFragments,
 		DataEdges,
 		ConnectionDiagnostics);
+	CreatedConnectionCount += CreatedDataConnectionCount;
 	Result.ExecutionStats.ConnectLinksMs = GraphWriteElapsedMs(ConnectLinksStart);
+
+	const double ConnectivityStart = FPlatformTime::Seconds();
+	FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput;
+	ConnectivityInput.TargetGraph = TargetGraph;
+	ConnectivityInput.GeneratedNodes = GraphWriteContext.GetGeneratedNodes();
+	ConnectivityInput.EntryRootNodes = GraphWriteContext.GetEntryRootNodes();
+	ConnectivityInput.RequestedConnectionCount = DataEdges.Num();
+	ConnectivityInput.CreatedConnectionCount = CreatedDataConnectionCount;
+	const FBlueprintGraphWriteConnectivityValidationResult Connectivity =
+		FBlueprintHelperGraphWriteConnectivityValidator::Validate(ConnectivityInput);
+	Result.ConnectivityDiagnostics = Connectivity.Diagnostics;
+	Result.ConnectivityViolationCount = Connectivity.Diagnostics.Num();
+	Result.ExecutionStats.ConnectivityViolationCount = Result.ConnectivityViolationCount;
+	Result.ExecutionStats.ConnectivityValidationMs = GraphWriteElapsedMs(ConnectivityStart);
 
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 
@@ -1120,9 +1143,16 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	Result.ExecutionStats.CreatedLinkCount = CreatedConnectionCount;
 	Result.ConnectionDiagnostics = ConnectionDiagnostics;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-	Result.bSucceed = Result.UnresolvedNodeCount == 0 && GeneratedNodeCount > 0;
-	Result.Message = Result.bSucceed
-		? FString::Printf(TEXT("SemanticIR generation completed: spawned %d nodes, linked %d pins."), GeneratedNodeCount, CreatedConnectionCount)
-		: FString::Printf(TEXT("SemanticIR generation completed with %d unresolved items."), Result.UnresolvedNodeCount);
+	Result.bSucceed = Result.UnresolvedNodeCount == 0 && GeneratedNodeCount > 0 && Connectivity.bPassed;
+	if (!Connectivity.bPassed)
+	{
+		Result.Message = TEXT("GraphWrite connectivity validation failed.");
+	}
+	else
+	{
+		Result.Message = Result.bSucceed
+			? FString::Printf(TEXT("SemanticIR generation completed: spawned %d nodes, linked %d pins."), GeneratedNodeCount, CreatedConnectionCount)
+			: FString::Printf(TEXT("SemanticIR generation completed with %d unresolved items."), Result.UnresolvedNodeCount);
+	}
 	return Result;
 }

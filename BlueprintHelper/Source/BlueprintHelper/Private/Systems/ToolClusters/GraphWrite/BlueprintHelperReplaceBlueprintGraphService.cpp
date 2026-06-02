@@ -14,11 +14,13 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityDiagnosticsJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
+#include "EdGraphUtilities.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -37,6 +39,13 @@
 class FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils
 {
 public:
+	struct FReplaceRollbackExecBoundary
+	{
+		FGuid EntryNodeGuid;
+		FGuid BodyNodeGuid;
+		bool bValid = false;
+	};
+
 	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		if (!Node)
@@ -206,6 +215,431 @@ public:
 		Data->SetObjectField(
 			TEXT("graph_write_execution_stats"),
 			FBlueprintGraphWriteExecutionStatsSerializer::ToJson(Stats));
+	}
+
+	static void AddGuidVariants(TSet<FString>& OutGuids, const FString& GuidText)
+	{
+		if (GuidText.IsEmpty())
+		{
+			return;
+		}
+
+		OutGuids.Add(GuidText);
+		FString Compact = GuidText;
+		Compact.ReplaceInline(TEXT("-"), TEXT(""));
+		Compact.ReplaceInline(TEXT("{"), TEXT(""));
+		Compact.ReplaceInline(TEXT("}"), TEXT(""));
+		if (!Compact.IsEmpty())
+		{
+			OutGuids.Add(Compact);
+		}
+	}
+
+	static bool SnapshotContainsNodeGuid(
+		const FBlueprintHelperGraphSnapshot& Snapshot,
+		const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		TSet<FString> SnapshotGuids;
+		for (const FString& NodeGuid : Snapshot.NodeGuids)
+		{
+			AddGuidVariants(SnapshotGuids, NodeGuid);
+		}
+
+		TSet<FString> CurrentGuids;
+		AddGuidVariants(CurrentGuids, Node->NodeGuid.ToString());
+		AddGuidVariants(CurrentGuids, Node->NodeGuid.ToString(EGuidFormats::Digits));
+		for (const FString& CurrentGuid : CurrentGuids)
+		{
+			if (SnapshotGuids.Contains(CurrentGuid))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static const FBlueprintHelperGraphSnapshotOwnershipEntry* FindSnapshotOwnershipEntry(
+		const FBlueprintHelperGraphSnapshot& Snapshot,
+		const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		TSet<FString> CurrentGuids;
+		AddGuidVariants(CurrentGuids, Node->NodeGuid.ToString());
+		AddGuidVariants(CurrentGuids, Node->NodeGuid.ToString(EGuidFormats::Digits));
+
+		for (const FBlueprintHelperGraphSnapshotOwnershipEntry& Entry : Snapshot.OwnershipEntries)
+		{
+			TSet<FString> EntryGuids;
+			AddGuidVariants(EntryGuids, Entry.NodeGuid);
+			for (const FString& CurrentGuid : CurrentGuids)
+			{
+				if (EntryGuids.Contains(CurrentGuid))
+				{
+					return &Entry;
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	static void RestoreSnapshotOwnershipMetadata(
+		const FBlueprintHelperGraphSnapshot& Snapshot,
+		const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+
+			const FBlueprintHelperGraphSnapshotOwnershipEntry* Entry = FindSnapshotOwnershipEntry(Snapshot, Node);
+			if (!Entry)
+			{
+				continue;
+			}
+
+			UPackage* Package = Node->GetOutermost();
+			if (!Package)
+			{
+				continue;
+			}
+
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			if (!Entry->Owned.IsEmpty())
+			{
+				MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), *Entry->Owned);
+			}
+			else
+			{
+				MetaData.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
+			}
+
+			if (!Entry->BlockId.IsEmpty())
+			{
+				MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *Entry->BlockId);
+			}
+			else
+			{
+				MetaData.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
+			}
+
+			if (!Entry->FeatureName.IsEmpty())
+			{
+				MetaData.SetValue(Node, TEXT("BlueprintHelperFeatureName"), *Entry->FeatureName);
+			}
+			else
+			{
+				MetaData.RemoveValue(Node, TEXT("BlueprintHelperFeatureName"));
+			}
+
+			if (!Entry->Tool.IsEmpty())
+			{
+				MetaData.SetValue(Node, TEXT("BlueprintHelperTool"), *Entry->Tool);
+			}
+			else
+			{
+				MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
+			}
+		}
+	}
+
+	static void RemoveNodesNotInSnapshot(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesToKeep)
+	{
+		if (!Blueprint || !Graph)
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> NodesToRemove;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && !NodesToKeep.Contains(Node))
+			{
+				NodesToRemove.Add(Node);
+			}
+		}
+		for (UEdGraphNode* Node : NodesToRemove)
+		{
+			FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+		}
+	}
+
+	static bool RestoreSnapshotNodes(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FBlueprintHelperGraphSnapshot& Snapshot,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph)
+		{
+			OutError = TEXT("graph_snapshot_restore_target_missing");
+			return false;
+		}
+		if (Snapshot.ExportedText.IsEmpty())
+		{
+			return true;
+		}
+
+		TArray<UEdGraphNode*> ExistingSnapshotNodes;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (SnapshotContainsNodeGuid(Snapshot, Node))
+			{
+				ExistingSnapshotNodes.Add(Node);
+			}
+		}
+		for (UEdGraphNode* Node : ExistingSnapshotNodes)
+		{
+			FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+		}
+
+		if (!FEdGraphUtilities::CanImportNodesFromText(Graph, Snapshot.ExportedText))
+		{
+			OutError = TEXT("graph_snapshot_restore_text_not_importable");
+			return false;
+		}
+
+		TSet<UEdGraphNode*> ImportedNodes;
+		FEdGraphUtilities::ImportNodesFromText(Graph, Snapshot.ExportedText, ImportedNodes);
+		if (ImportedNodes.Num() == 0)
+		{
+			OutError = TEXT("graph_snapshot_restore_imported_no_nodes");
+			return false;
+		}
+
+		RestoreSnapshotOwnershipMetadata(Snapshot, ImportedNodes);
+		Graph->NotifyGraphChanged();
+		return true;
+	}
+
+	static FReplaceRollbackExecBoundary CaptureRollbackExecBoundary(
+		const TArray<UEdGraphNode*>& EntryCandidates,
+		const TArray<UEdGraphNode*>& BodyNodes)
+	{
+		FReplaceRollbackExecBoundary Boundary;
+		TSet<UEdGraphNode*> BodyNodeSet;
+		for (UEdGraphNode* BodyNode : BodyNodes)
+		{
+			if (BodyNode)
+			{
+				BodyNodeSet.Add(BodyNode);
+			}
+		}
+
+		for (UEdGraphNode* EntryCandidate : EntryCandidates)
+		{
+			if (!EntryCandidate)
+			{
+				continue;
+			}
+			for (UEdGraphPin* Pin : EntryCandidate->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedNode && BodyNodeSet.Contains(LinkedNode))
+					{
+						Boundary.EntryNodeGuid = EntryCandidate->NodeGuid;
+						Boundary.BodyNodeGuid = LinkedNode->NodeGuid;
+						Boundary.bValid = true;
+						return Boundary;
+					}
+				}
+			}
+		}
+		return Boundary;
+	}
+
+	static UEdGraphNode* FindNodeByGuid(UEdGraph* Graph, const FGuid& NodeGuid)
+	{
+		if (!Graph || !NodeGuid.IsValid())
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->NodeGuid == NodeGuid)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool RestoreRollbackExecBoundary(
+		UEdGraph* Graph,
+		const FReplaceRollbackExecBoundary& Boundary,
+		FString& OutError)
+	{
+		if (!Boundary.bValid)
+		{
+			return true;
+		}
+
+		UEdGraphNode* EntryNode = FindNodeByGuid(Graph, Boundary.EntryNodeGuid);
+		UEdGraphNode* BodyNode = FindNodeByGuid(Graph, Boundary.BodyNodeGuid);
+		UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+		UEdGraphPin* BodyExecIn = FindFirstExecPin(BodyNode, EGPD_Input);
+		if (!EntryExecOut || !BodyExecIn)
+		{
+			OutError = TEXT("graph_snapshot_restore_exec_boundary_missing");
+			return false;
+		}
+		if (EntryExecOut->LinkedTo.Contains(BodyExecIn))
+		{
+			return true;
+		}
+
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		if (!Schema || !Schema->TryCreateConnection(EntryExecOut, BodyExecIn))
+		{
+			OutError = TEXT("graph_snapshot_restore_exec_boundary_connect_failed");
+			return false;
+		}
+		if (Graph)
+		{
+			Graph->NotifyGraphChanged();
+		}
+		return true;
+	}
+
+	static bool RestoreOwnedEntryBodyBoundary(
+		UEdGraph* Graph,
+		const EBlueprintHelperReplaceScope Scope,
+		const FString& EntryName,
+		const FString& EventTaxonomy,
+		const FString& SignatureEvidenceId,
+		const FString& BlockId,
+		FString& OutError)
+	{
+		if (!Graph || BlockId.IsEmpty())
+		{
+			return true;
+		}
+
+		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+		EntryResolveRequest.Scope = Scope;
+		EntryResolveRequest.EntryName = EntryName;
+		EntryResolveRequest.EventTaxonomy = EventTaxonomy;
+		EntryResolveRequest.SignatureEvidenceId = SignatureEvidenceId;
+
+		UEdGraphNode* EntryNode = nullptr;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
+			{
+				EntryNode = Node;
+				break;
+			}
+		}
+		if (!EntryNode)
+		{
+			OutError = TEXT("graph_snapshot_restore_owned_entry_missing");
+			return false;
+		}
+
+		UEdGraphNode* BodyNode = nullptr;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node || Node == EntryNode || !FindFirstExecPin(Node, EGPD_Input))
+			{
+				continue;
+			}
+
+			FString NodeBlockId;
+			if (TryReadBlueprintHelperBlockId(Node, NodeBlockId) &&
+				NodeBlockId.Equals(BlockId, ESearchCase::IgnoreCase))
+			{
+				BodyNode = Node;
+				break;
+			}
+		}
+		if (!BodyNode)
+		{
+			OutError = TEXT("graph_snapshot_restore_owned_body_missing");
+			return false;
+		}
+
+		UEdGraphPin* EntryExecOut = FindFirstExecPin(EntryNode, EGPD_Output);
+		UEdGraphPin* BodyExecIn = FindFirstExecPin(BodyNode, EGPD_Input);
+		if (!EntryExecOut || !BodyExecIn)
+		{
+			OutError = TEXT("graph_snapshot_restore_owned_boundary_missing");
+			return false;
+		}
+		if (EntryExecOut->LinkedTo.Contains(BodyExecIn))
+		{
+			return true;
+		}
+
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		if (!Schema || !Schema->TryCreateConnection(EntryExecOut, BodyExecIn))
+		{
+			OutError = TEXT("graph_snapshot_restore_owned_boundary_connect_failed");
+			return false;
+		}
+		Graph->NotifyGraphChanged();
+		return true;
+	}
+
+	static TSharedPtr<FJsonObject> BuildLogicSpecWithCustomEventEntryReference(
+		const TSharedPtr<FJsonObject>& LogicSpec,
+		const EBlueprintHelperReplaceScope Scope,
+		const FString& GraphName,
+		const FString& EntryName,
+		const FString& EventTaxonomy,
+		const FString& SignatureEvidenceId)
+	{
+		if (!LogicSpec.IsValid() ||
+			Scope != EBlueprintHelperReplaceScope::CustomEventBody ||
+			EntryName.TrimStartAndEnd().IsEmpty())
+		{
+			return LogicSpec;
+		}
+
+		const TSharedPtr<FJsonObject>* ExistingEntryObject = nullptr;
+		if (LogicSpec->TryGetObjectField(TEXT("entry"), ExistingEntryObject) &&
+			ExistingEntryObject &&
+			ExistingEntryObject->IsValid())
+		{
+			return LogicSpec;
+		}
+
+		TSharedRef<FJsonObject> AugmentedLogicSpec = MakeShared<FJsonObject>();
+		AugmentedLogicSpec->Values = LogicSpec->Values;
+
+		TSharedRef<FJsonObject> EntryObject = MakeShared<FJsonObject>();
+		EntryObject->SetStringField(TEXT("id"), EntryName + TEXT("_entry"));
+		EntryObject->SetStringField(TEXT("kind"), TEXT("custom_event"));
+		EntryObject->SetStringField(TEXT("name"), EntryName);
+		EntryObject->SetStringField(TEXT("graph"), GraphName);
+		EntryObject->SetStringField(
+			TEXT("event_taxonomy"),
+			EventTaxonomy.IsEmpty() ? TEXT("custom_event") : EventTaxonomy);
+		EntryObject->SetStringField(TEXT("source_cluster"), TEXT("blueprint_signature"));
+		EntryObject->SetStringField(
+			TEXT("signature_evidence_id"),
+			SignatureEvidenceId.IsEmpty() ? EntryName + TEXT("_signature_evidence") : SignatureEvidenceId);
+		AugmentedLogicSpec->SetObjectField(TEXT("entry"), EntryObject);
+		return AugmentedLogicSpec;
 	}
 
 };
@@ -644,6 +1078,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	// 4. 鎹曡幏 before snapshot
 	FBlueprintHelperGraphSnapshot BeforeSnapshot = SnapshotService.CaptureNodeSnapshot(
 		Resolved.Graph, Resolved.NodesToDelete);
+	const FBlueprintHelperGraphSnapshot RollbackSnapshot = SnapshotService.CaptureNodeSnapshot(
+		Resolved.Graph, Resolved.NodesToDelete);
 	BeforeSnapshot.OwnerBlockId = Resolved.OriginalBlockId;
 	BeforeSnapshot.EntryIdentity = Request.EntryName.IsEmpty() ? Resolved.TargetRef : Request.EntryName;
 	BeforeSnapshot.ReplaceScope = ReplaceScopeToString(Request.Scope);
@@ -669,9 +1105,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	}
 
 	// 5. 寮€濮嬩慨鏀?
+	const bool bPackageWasDirtyBeforeWrite = Blueprint->GetOutermost()
+		? Blueprint->GetOutermost()->IsDirty()
+		: false;
 	FBlueprintHelperScopedAssetMutation Mutation(
 		FText::FromString(TEXT("BlueprintHelper Replace Blueprint Graph")), Blueprint);
 	Mutation.Modify(Resolved.Graph);
+	const FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FReplaceRollbackExecBoundary RollbackExecBoundary =
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::CaptureRollbackExecBoundary(
+			Resolved.NodesToPreserve,
+			Resolved.NodesToDelete);
 
 	// 6. 鍒犻櫎鏃у疄鐜?
 	if (!DeleteOldImplementation(Blueprint, Resolved.Graph, Resolved.NodesToDelete))
@@ -705,7 +1148,40 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 
 	if (!GenerateResult.bSucceed)
 	{
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RemoveNodesNotInSnapshot(
+			Blueprint,
+			Resolved.Graph,
+			NodesBeforeImport);
 		Mutation.Rollback();
+		FString RestoreError;
+		bool bRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreSnapshotNodes(
+			Blueprint,
+			Resolved.Graph,
+			RollbackSnapshot,
+			RestoreError);
+		if (bRestored)
+		{
+			bool bBoundaryRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreRollbackExecBoundary(
+				Resolved.Graph,
+				RollbackExecBoundary,
+				RestoreError);
+			if (!bBoundaryRestored || (!RollbackExecBoundary.bValid && Resolved.NodesToDelete.Num() > 0))
+			{
+				bBoundaryRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreOwnedEntryBodyBoundary(
+					Resolved.Graph,
+					Request.Scope,
+					Request.EntryName,
+					Request.EventTaxonomy,
+					Request.SignatureEvidenceId,
+					Resolved.OriginalBlockId,
+					RestoreError);
+			}
+			bRestored = bBoundaryRestored;
+		}
+		if (Blueprint->GetOutermost())
+		{
+			Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirtyBeforeWrite);
+		}
 
 		FString ErrorMessage = GenerateResult.Message.IsEmpty()
 			? TEXT("Failed to create replacement implementation through SemanticIR.")
@@ -717,14 +1193,35 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 				*UnresolvedNodes[0]->DisplayText,
 				*UnresolvedNodes[0]->Reason);
 		}
+		if (!bRestored && !RestoreError.IsEmpty())
+		{
+			ErrorMessage += FString::Printf(TEXT(" Rollback restore failed: %s"), *RestoreError);
+		}
 
 		FBlueprintHelperToolError Error;
-		Error.Code = TEXT("semantic_graph_write_failed");
+		Error.Code = GenerateResult.ConnectivityViolationCount > 0
+			? TEXT("graphwrite_connectivity_failed")
+			: TEXT("semantic_graph_write_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
 		Error.Message = ErrorMessage;
 		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
-		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
+		Error.RollbackResult = bRestored
+			? EBlueprintHelperRollbackResult::RolledBack
+			: EBlueprintHelperRollbackResult::Failed;
+
+		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("replace_blueprint_graph"), TraceId, Error);
+		FailResult.Data = MakeShared<FJsonObject>();
+		FBlueprintHelperGraphWriteConnectivityDiagnosticsJson::Attach(
+			FailResult.Data,
+			GenerateResult.ConnectivityDiagnostics);
+		if (Request.bIncludeTiming)
+		{
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+				FailResult.Data,
+				ExecutionStats);
+		}
+		return FailResult;
 	}
 	FString ReconnectError;
 	if (!ReconnectPreservedEntryToNewBody(Request, Resolved, NodesBeforeImport, ReconnectError))
@@ -799,6 +1296,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	FBlueprintHelperReplaceGraphResultData Data;
 	Data.ReplaceResult.ReplacedRef.GraphId = Resolved.GraphId.IsEmpty() ? Request.GraphName : Resolved.GraphId;
 	Data.ReplaceResult.ReplacedRef.TargetRef = Resolved.TargetRef;
+	if (!Resolved.OriginalBlockId.IsEmpty())
+	{
+		Data.BlockRefs.Add(Resolved.OriginalBlockId);
+	}
 	SuccessResult.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
 
@@ -1191,7 +1692,17 @@ FString FBlueprintHelperReplaceBlueprintGraphService::BuildSemanticGraphWritePay
 	Payload.bStrict = Request.bStrict;
 	Payload.bDryRun = Request.bDryRun;
 	Payload.bCreateMissingVariables = Policy.bCreateMissingVariables;
-	Payload.bReconstructExistingNodes = Policy.bReconstructExistingNodes;
-	Payload.LogicSpec = Request.LogicSpec;
+	Payload.bReconstructExistingNodes =
+		(Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody && !Request.EntryName.TrimStartAndEnd().IsEmpty())
+			? true
+			: Policy.bReconstructExistingNodes;
+	Payload.LogicSpec =
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BuildLogicSpecWithCustomEventEntryReference(
+			Request.LogicSpec,
+			Request.Scope,
+			Request.GraphName,
+			Request.EntryName,
+			Request.EventTaxonomy,
+			Request.SignatureEvidenceId);
 	return Payload.ToJsonString();
 }

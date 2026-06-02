@@ -10,6 +10,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityDiagnosticsJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
@@ -659,6 +660,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 				}
 				else
 				{
+					const bool bConnectivityFailure = GenerateResult.ConnectivityViolationCount > 0;
+					const FString FailureCode = bConnectivityFailure
+						? TEXT("graphwrite_connectivity_failed")
+						: TEXT("semantic_graph_write_failed");
 					FString ImportMessage = GenerateResult.Message;
 					if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
 					{
@@ -668,9 +673,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 					FBlueprintHelperAppendDryRunData DryRunData;
 					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
 					DryRunData.DryRun.bCanExecute = false;
-					DryRunData.DryRun.BlockedBy.Add(TEXT("semantic_graph_write_failed"));
+					DryRunData.DryRun.BlockedBy.Add(FailureCode);
 					FBlueprintHelperDryRunIssue SemanticIssue{
-						TEXT("semantic_graph_write_failed"),
+						FailureCode,
 						ImportMessage,
 						TEXT("logic_spec"),
 						TEXT("logic_spec")
@@ -692,7 +697,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 					DryRunData.DryRun.Errors.Add(MoveTemp(SemanticIssue));
 
 					FBlueprintHelperToolError Error;
-					Error.Code = TEXT("semantic_graph_write_failed");
+					Error.Code = FailureCode;
 					Error.Stage = EBlueprintHelperToolStage::Preflight;
 					Error.Message = ImportMessage;
 					Error.Field = TEXT("logic_spec");
@@ -703,6 +708,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 						TEXT("append_blueprint_graph"), TraceId, Error);
 					Result.Target = TargetRef;
 					Result.Data = DryRunData.ToJson();
+					FBlueprintHelperGraphWriteConnectivityDiagnosticsJson::Attach(
+						Result.Data,
+						GenerateResult.ConnectivityDiagnostics);
 					if (Request.bIncludeTiming)
 					{
 						FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
@@ -803,6 +811,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	}
 
 	// 3. 快照 + 开始事务
+	const bool bPackageWasDirtyBeforeWrite = Blueprint->GetOutermost()
+		? Blueprint->GetOutermost()->IsDirty()
+		: false;
 	const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
 
 
@@ -837,7 +848,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, GraphWritePayload, UnresolvedNodes);
 	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 	const bool bImportSuccess = GenerateResult.bSucceed;
-	FString ImportErrorCode = GenerateResult.bSucceed ? TEXT("") : TEXT("semantic_graph_write_failed");
+	const bool bConnectivityFailure = GenerateResult.ConnectivityViolationCount > 0;
+	FString ImportErrorCode = GenerateResult.bSucceed
+		? TEXT("")
+		: (bConnectivityFailure ? TEXT("graphwrite_connectivity_failed") : TEXT("semantic_graph_write_failed"));
 	FString ImportMessage = GenerateResult.Message;
 	if (!bImportSuccess && UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
 	{
@@ -867,6 +881,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
 			}
 		}
+		if (Blueprint->GetOutermost())
+		{
+			Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirtyBeforeWrite);
+		}
 
 		FBlueprintHelperToolError Error;
 		Error.Code = ImportErrorCode.IsEmpty() ? TEXT("node_create_failed") : ImportErrorCode;
@@ -884,6 +902,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		FailTarget.TargetType = EBlueprintHelperTargetType::Graph;
 		FailTarget.Graph = Request.GraphName;
 		FailResult.Target = FailTarget;
+		FailResult.Data = MakeShared<FJsonObject>();
+		FBlueprintHelperGraphWriteConnectivityDiagnosticsJson::Attach(
+			FailResult.Data,
+			GenerateResult.ConnectivityDiagnostics);
+		if (Request.bIncludeTiming)
+		{
+			FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+				FailResult.Data,
+				ExecutionStats);
+		}
 
 		return FailResult;
 	}

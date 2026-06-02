@@ -12,12 +12,14 @@ struct BLUEPRINTHELPER_API FBlueprintGraphWriteExecutionStats
 	int32 AppliedDefaultValueCount = 0;
 	int32 RequestedLinkCount = 0;
 	int32 CreatedLinkCount = 0;
+	int32 ConnectivityViolationCount = 0;
 	int32 LayoutRecordNodeCount = 0;
 	double BuildContextMs = 0.0;
 	double BuildPlanMs = 0.0;
 	double SpawnNodesMs = 0.0;
 	double ApplyDefaultsMs = 0.0;
 	double ConnectLinksMs = 0.0;
+	double ConnectivityValidationMs = 0.0;
 	double RecordLayoutMs = 0.0;
 };
 
