@@ -13,6 +13,7 @@
 #include "Dom/JsonValue.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorResolver.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
@@ -20,6 +21,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Utils/GraphWriteCoreUtils.h"
 
@@ -427,10 +429,12 @@ namespace BlueprintHelperMergeExternalFlow
 FBlueprintHelperMergeExternalFlowService::FBlueprintHelperMergeExternalFlowService(
 	const FBlueprintHelperGraphResolver& InResolver,
 	const FBlueprintHelperBlockIdService& InBlockIdService,
-	const FBlueprintHelperOwnershipService& InOwnershipService)
+	const FBlueprintHelperOwnershipService& InOwnershipService,
+	const FBlueprintHelperLogicJsonPathService& InPathService)
 	: Resolver(InResolver)
 	, BlockIdService(InBlockIdService)
 	, OwnershipService(InOwnershipService)
+	, PathService(InPathService)
 {
 }
 
@@ -474,12 +478,28 @@ FBlueprintHelperMergeExternalFlowService::ParseRequest(const TSharedPtr<FJsonObj
 
 	const TSharedPtr<FJsonObject>* AnchorObject = nullptr;
 	if (!Payload->TryGetObjectField(TEXT("anchor"), AnchorObject) ||
-		!AnchorObject || !AnchorObject->IsValid() ||
-		!FBlueprintHelperExternalGraphAnchor::FromJson(*AnchorObject, Request.Anchor, Request.AnchorParseError))
+		!AnchorObject || !AnchorObject->IsValid())
 	{
-		if (Request.AnchorParseError.IsEmpty())
+		Request.AnchorParseError = TEXT("external_anchor_schema_unsupported");
+	}
+	else
+	{
+		FString AnchorSchema;
+		(*AnchorObject)->TryGetStringField(TEXT("schema"), AnchorSchema);
+		if (AnchorSchema == FBlueprintHelperLogicJsonAnchorSelector::SchemaString)
 		{
-			Request.AnchorParseError = TEXT("external_anchor_schema_unsupported");
+			Request.bHasAnchorSelector = true;
+			FBlueprintHelperLogicJsonAnchorSelector::FromJson(
+				*AnchorObject,
+				Request.AnchorSelector,
+				Request.AnchorParseError);
+		}
+		else if (!FBlueprintHelperExternalGraphAnchor::FromJson(*AnchorObject, Request.Anchor, Request.AnchorParseError))
+		{
+			if (Request.AnchorParseError.IsEmpty())
+			{
+				Request.AnchorParseError = TEXT("external_anchor_schema_unsupported");
+			}
 		}
 	}
 
@@ -573,6 +593,118 @@ bool FBlueprintHelperMergeExternalFlowService::ResolveTarget(
 	return true;
 }
 
+bool FBlueprintHelperMergeExternalFlowService::ResolveRequestAnchor(
+	const FMergeExternalFlowRequest& Request,
+	const FMergeExternalFlowContext& Context,
+	FBlueprintHelperExternalGraphAnchor& OutAnchor,
+	FString& OutErrorCode,
+	FString& OutErrorMessage,
+	FString& OutErrorTarget,
+	FString& OutErrorSource,
+	bool& bOutConflict) const
+{
+	bOutConflict = false;
+	OutAnchor = FBlueprintHelperExternalGraphAnchor();
+	if (!Request.AnchorParseError.IsEmpty())
+	{
+		OutErrorCode = Request.AnchorParseError;
+		OutErrorMessage = Request.bHasAnchorSelector
+			? TEXT("merge_external_flow requires a valid BlueprintHelper.LogicJsonAnchorSelector.v1 anchor selector.")
+			: TEXT("merge_external_flow requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor.");
+		OutErrorTarget = TEXT("anchor");
+		OutErrorSource = TEXT("payload.anchor");
+		return false;
+	}
+
+	if (!Request.bHasAnchorSelector)
+	{
+		OutAnchor = Request.Anchor;
+		return true;
+	}
+
+	const FBlueprintHelperLogicJsonAnchorSelector& Selector = Request.AnchorSelector;
+	if (!Selector.AssetPath.Equals(Request.AssetPath, ESearchCase::IgnoreCase) ||
+		!Selector.GraphName.Equals(Request.GraphName, ESearchCase::IgnoreCase))
+	{
+		OutErrorCode = TEXT("external_anchor_target_mismatch");
+		OutErrorMessage = TEXT("logic_json anchor selector asset_path and graph_name must match target.");
+		OutErrorTarget = TEXT("anchor");
+		OutErrorSource = TEXT("payload.anchor");
+		return false;
+	}
+
+	UEdGraphPin* SelectedPin = nullptr;
+	if (!Selector.NodeRef.IsEmpty())
+	{
+		UEdGraphNode* SelectedNode = nullptr;
+		FBlueprintHelperPatchResolveError ResolveError;
+		if (!PathService.ResolveNode(Context.Graph, Selector.NodeRef, FString(), SelectedNode, ResolveError) || !SelectedNode)
+		{
+			bOutConflict = true;
+			OutErrorCode = ResolveError.Code.IsEmpty() ? TEXT("target_node_not_found") : ResolveError.Code;
+			OutErrorMessage = ResolveError.Message.IsEmpty()
+				? TEXT("logic_json anchor selector node_ref could not be resolved.")
+				: ResolveError.Message;
+			OutErrorTarget = TEXT("anchor.node_ref");
+			OutErrorSource = TEXT("payload.anchor.node_ref");
+			return false;
+		}
+
+		ResolveError = FBlueprintHelperPatchResolveError();
+		if (!PathService.ResolvePin(Context.Graph, SelectedNode, Selector.PinRef, FString(), SelectedPin, ResolveError) || !SelectedPin)
+		{
+			bOutConflict = true;
+			OutErrorCode = ResolveError.Code.IsEmpty() ? TEXT("target_pin_not_found") : ResolveError.Code;
+			OutErrorMessage = ResolveError.Message.IsEmpty()
+				? TEXT("logic_json anchor selector pin_ref could not be resolved.")
+				: ResolveError.Message;
+			OutErrorTarget = TEXT("anchor.pin_ref");
+			OutErrorSource = TEXT("payload.anchor.pin_ref");
+			return false;
+		}
+	}
+	else if (!Selector.LinkRef.IsEmpty())
+	{
+		FBlueprintHelperResolvedLink ResolvedLink;
+		FBlueprintHelperPatchResolveError ResolveError;
+		if (!PathService.ResolveLink(Context.Graph, Selector.LinkRef, FString(), ResolvedLink, ResolveError) ||
+			!ResolvedLink.SourcePin)
+		{
+			bOutConflict = true;
+			OutErrorCode = ResolveError.Code.IsEmpty() ? TEXT("target_link_not_found") : ResolveError.Code;
+			OutErrorMessage = ResolveError.Message.IsEmpty()
+				? TEXT("logic_json anchor selector link_ref could not be resolved.")
+				: ResolveError.Message;
+			OutErrorTarget = TEXT("anchor.link_ref");
+			OutErrorSource = TEXT("payload.anchor.link_ref");
+			return false;
+		}
+		SelectedPin = ResolvedLink.SourcePin;
+	}
+	else
+	{
+		OutErrorCode = TEXT("external_anchor_selector_invalid");
+		OutErrorMessage = TEXT("logic_json anchor selector requires node_ref or link_ref.");
+		OutErrorTarget = TEXT("anchor");
+		OutErrorSource = TEXT("payload.anchor");
+		return false;
+	}
+
+	FString BuildError;
+	const FBlueprintHelperExternalGraphAnchorService AnchorService;
+	if (!AnchorService.BuildExecBoundaryAnchor(Request.AssetPath, Request.GraphName, SelectedPin, OutAnchor, BuildError))
+	{
+		bOutConflict = true;
+		OutErrorCode = BuildError.IsEmpty() ? TEXT("external_anchor_pin_not_found") : BuildError;
+		OutErrorMessage = TEXT("logic_json anchor selector must resolve to an external exec output pin.");
+		OutErrorTarget = TEXT("anchor.pin_ref");
+		OutErrorSource = TEXT("payload.anchor");
+		return false;
+	}
+
+	return true;
+}
+
 bool FBlueprintHelperMergeExternalFlowService::Preflight(
 	const FMergeExternalFlowRequest& Request,
 	FMergeExternalFlowContext& Context,
@@ -583,22 +715,52 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 		return false;
 	}
 
-	Context.Relation.Anchor = Request.Anchor;
 	Context.Relation.InsertedBlockId = Request.InsertedBlockId;
 
-	if (!Request.AnchorParseError.IsEmpty())
+	FBlueprintHelperExternalGraphAnchor EffectiveAnchor;
+	FString AnchorErrorCode;
+	FString AnchorErrorMessage;
+	FString AnchorErrorTarget;
+	FString AnchorErrorSource;
+	bool bAnchorConflict = false;
+	if (!ResolveRequestAnchor(
+		Request,
+		Context,
+		EffectiveAnchor,
+		AnchorErrorCode,
+		AnchorErrorMessage,
+		AnchorErrorTarget,
+		AnchorErrorSource,
+		bAnchorConflict))
 	{
-		BlueprintHelperMergeExternalFlow::AddError(
-			OutResult,
-			Request.AnchorParseError,
-			TEXT("merge_external_flow requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor."),
-			TEXT("anchor"),
-			TEXT("payload.anchor"));
+		if (bAnchorConflict)
+		{
+			BlueprintHelperMergeExternalFlow::AddConflict(
+				OutResult,
+				AnchorErrorCode.IsEmpty() ? TEXT("external_anchor_pin_not_found") : AnchorErrorCode,
+				AnchorErrorMessage.IsEmpty()
+					? TEXT("external anchor selector could not be resolved.")
+					: AnchorErrorMessage,
+				AnchorErrorTarget.IsEmpty() ? TEXT("anchor") : AnchorErrorTarget,
+				AnchorErrorSource.IsEmpty() ? TEXT("payload.anchor") : AnchorErrorSource);
+		}
+		else
+		{
+			BlueprintHelperMergeExternalFlow::AddError(
+				OutResult,
+				AnchorErrorCode.IsEmpty() ? TEXT("external_anchor_schema_unsupported") : AnchorErrorCode,
+				AnchorErrorMessage.IsEmpty()
+					? TEXT("merge_external_flow requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor.")
+					: AnchorErrorMessage,
+				AnchorErrorTarget.IsEmpty() ? TEXT("anchor") : AnchorErrorTarget,
+				AnchorErrorSource.IsEmpty() ? TEXT("payload.anchor") : AnchorErrorSource);
+		}
 		return false;
 	}
+	Context.Relation.Anchor = EffectiveAnchor;
 
-	if (!Request.Anchor.AssetPath.Equals(Request.AssetPath, ESearchCase::IgnoreCase) ||
-		!Request.Anchor.GraphName.Equals(Request.GraphName, ESearchCase::IgnoreCase))
+	if (!EffectiveAnchor.AssetPath.Equals(Request.AssetPath, ESearchCase::IgnoreCase) ||
+		!EffectiveAnchor.GraphName.Equals(Request.GraphName, ESearchCase::IgnoreCase))
 	{
 		BlueprintHelperMergeExternalFlow::AddError(
 			OutResult,
@@ -609,8 +771,8 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 		return false;
 	}
 
-	if (Request.Anchor.SemanticRole != EBlueprintHelperExternalGraphAnchorRole::ExecBoundary ||
-		!Request.Anchor.PinDirection.Equals(TEXT("output"), ESearchCase::IgnoreCase))
+	if (EffectiveAnchor.SemanticRole != EBlueprintHelperExternalGraphAnchorRole::ExecBoundary ||
+		!EffectiveAnchor.PinDirection.Equals(TEXT("output"), ESearchCase::IgnoreCase))
 	{
 		BlueprintHelperMergeExternalFlow::AddError(
 			OutResult,
@@ -623,7 +785,7 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 
 	FString AnchorResolveError;
 	FBlueprintHelperExternalGraphAnchorResolver AnchorResolver;
-	if (!AnchorResolver.ResolvePin(Request.Anchor, Context.AnchorPin, AnchorResolveError) || !Context.AnchorPin)
+	if (!AnchorResolver.ResolvePin(EffectiveAnchor, Context.AnchorPin, AnchorResolveError) || !Context.AnchorPin)
 	{
 		BlueprintHelperMergeExternalFlow::AddConflict(
 			OutResult,

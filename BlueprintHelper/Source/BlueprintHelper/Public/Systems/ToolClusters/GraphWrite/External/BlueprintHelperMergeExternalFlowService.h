@@ -11,6 +11,7 @@
 
 class FBlueprintHelperBlockIdService;
 class FBlueprintHelperGraphResolver;
+class FBlueprintHelperLogicJsonPathService;
 class FBlueprintHelperOwnershipService;
 class FJsonObject;
 class UBlueprint;
@@ -25,7 +26,8 @@ public:
 	FBlueprintHelperMergeExternalFlowService(
 		const FBlueprintHelperGraphResolver& InResolver,
 		const FBlueprintHelperBlockIdService& InBlockIdService,
-		const FBlueprintHelperOwnershipService& InOwnershipService);
+		const FBlueprintHelperOwnershipService& InOwnershipService,
+		const FBlueprintHelperLogicJsonPathService& InPathService);
 
 	FBlueprintHelperToolResultBase Execute(const TSharedPtr<FJsonObject>& Payload) const;
 
@@ -35,12 +37,14 @@ public:
 		FString GraphName;
 		EBlueprintHelperInsertStrategy InsertStrategy = EBlueprintHelperInsertStrategy::AppendAfter;
 		FBlueprintHelperExternalGraphAnchor Anchor;
+		FBlueprintHelperLogicJsonAnchorSelector AnchorSelector;
 		FString AnchorParseError;
 		FString InsertedBlockId;
 		FString FeatureName;
 		TSharedPtr<FJsonObject> LogicSpec;
 		TArray<FString> SequenceOrder;
 		bool bSequenceOrderHadInvalidEntry = false;
+		bool bHasAnchorSelector = false;
 		bool bDryRun = false;
 	};
 
@@ -77,6 +81,15 @@ private:
 		const FMergeExternalFlowRequest& Request,
 		FMergeExternalFlowContext& Context,
 		FMergeExternalFlowPreflightResult& OutResult) const;
+	bool ResolveRequestAnchor(
+		const FMergeExternalFlowRequest& Request,
+		const FMergeExternalFlowContext& Context,
+		FBlueprintHelperExternalGraphAnchor& OutAnchor,
+		FString& OutErrorCode,
+		FString& OutErrorMessage,
+		FString& OutErrorTarget,
+		FString& OutErrorSource,
+		bool& bOutConflict) const;
 	bool Preflight(
 		const FMergeExternalFlowRequest& Request,
 		FMergeExternalFlowContext& Context,
@@ -90,4 +103,5 @@ private:
 	const FBlueprintHelperGraphResolver& Resolver;
 	const FBlueprintHelperBlockIdService& BlockIdService;
 	const FBlueprintHelperOwnershipService& OwnershipService;
+	const FBlueprintHelperLogicJsonPathService& PathService;
 };

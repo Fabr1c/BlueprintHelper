@@ -188,7 +188,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     merge_external_flow: {
       kind: 'insert_external_flow',
       insert_strategies: ['append_after', 'insert_between', 'branch_fork'],
-      required_anchor_fields: [
+      executable_anchor_required_fields: [
         'anchor.schema',
         'anchor.asset_path',
         'anchor.graph_name',
@@ -199,13 +199,20 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'anchor.semantic_role',
         'anchor.fingerprint',
       ],
-      supported_anchor_shape: {
-        schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
-        pin_direction: 'output',
-        semantic_role: 'exec_boundary',
-      },
+      supported_anchor_shapes: [
+        {
+          schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+          pin_direction: 'output',
+          semantic_role: 'exec_boundary',
+        },
+        {
+          schema: 'BlueprintHelper.LogicJsonAnchorSelector.v1',
+          required_fields: ['asset_path', 'graph_name or graph', 'node_ref + pin_ref or link_ref'],
+          normalized_output: 'graph alias is lowered to graph_name; preview/runtime resolves selector to ExternalGraphAnchor.v1',
+        },
+      ],
       forbidden_anchor_shapes: [
-        'raw LogicJson array indexes such as nodes[0]',
+        'bare unscoped LogicJson array indexes outside BlueprintHelper.LogicJsonAnchorSelector.v1',
         'display names as locators',
         'ad hoc JSONPath strings',
       ],

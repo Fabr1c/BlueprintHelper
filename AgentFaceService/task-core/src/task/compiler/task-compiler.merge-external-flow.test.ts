@@ -15,6 +15,15 @@ const externalAnchor = {
   fingerprint: 'boundaryfp',
 };
 
+const logicJsonAnchorSelector = {
+  schema: 'BlueprintHelper.LogicJsonAnchorSelector.v1',
+  asset_path: '/Game/BP/BP_Door',
+  graph_name: 'EventGraph',
+  entry_name: 'ReloadTips',
+  node_ref: 'nodes[7]',
+  pin_ref: 'then',
+};
+
 function makeMergeExternalFlowSpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   merge?: Record<string, unknown>;
@@ -91,6 +100,50 @@ test('merge_external_flow lowers to external graph edit with explicit mutation p
       allowed_mutations: ['exec_boundary_link'],
     },
   });
+});
+
+test('merge_external_flow accepts LogicJson node_ref selector as authoring anchor', () => {
+  const step = compileMergeExternalStep({
+    merge: {
+      anchor: logicJsonAnchorSelector,
+    },
+  });
+  const write = step.write as { strategy: string; ops: Array<Record<string, unknown>> };
+
+  assert.equal(write.strategy, 'external_graph_edit');
+  assert.deepEqual(write.ops[0]?.anchor, logicJsonAnchorSelector);
+});
+
+test('merge_external_flow normalizes LogicJson selector graph alias', () => {
+  const step = compileMergeExternalStep({
+    merge: {
+      anchor: {
+        schema: 'BlueprintHelper.LogicJsonAnchorSelector.v1',
+        asset_path: '/Game/BP/BP_Door',
+        graph: 'EventGraph',
+        entry_name: 'ReloadTips',
+        node_ref: 'nodes[7]',
+        pin_ref: 'then',
+      },
+    },
+  });
+  const write = step.write as { strategy: string; ops: Array<Record<string, unknown>> };
+
+  assert.deepEqual(write.ops[0]?.anchor, logicJsonAnchorSelector);
+});
+
+test('merge_external_flow rejects conflicting LogicJson selector graph aliases', () => {
+  assert.throws(
+    () => compileMergeExternalStep({
+      merge: {
+        anchor: {
+          ...logicJsonAnchorSelector,
+          graph: 'OtherGraph',
+        },
+      },
+    }),
+    /graph and graph_name must match/,
+  );
 });
 
 test('merge_external_flow requires external mutation policy allowlist', () => {

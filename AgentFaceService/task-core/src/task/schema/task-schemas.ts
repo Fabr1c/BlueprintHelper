@@ -539,6 +539,48 @@ const ExternalExecBoundaryAnchorSchema = ExternalGraphAnchorSchema.superRefine((
   }
 });
 
+const LogicJsonAnchorSelectorSchema = z.object({
+  schema: z.literal('BlueprintHelper.LogicJsonAnchorSelector.v1'),
+  asset_path: z.string().min(1),
+  graph_name: z.string().min(1).optional(),
+  graph: z.string().min(1).optional(),
+  entry_name: z.string().min(1).optional(),
+  node_ref: z.string().min(1).optional(),
+  link_ref: z.string().min(1).optional(),
+  pin_ref: z.string().min(1).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.graph_name && !value.graph) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['graph_name'],
+      message: 'LogicJson anchor selector requires graph_name or graph.',
+    });
+  }
+  if (value.graph_name && value.graph && value.graph_name !== value.graph) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['graph'],
+      message: 'LogicJson anchor selector graph and graph_name must match when both are provided.',
+    });
+  }
+  const hasNodeRef = typeof value.node_ref === 'string' && value.node_ref.length > 0;
+  const hasLinkRef = typeof value.link_ref === 'string' && value.link_ref.length > 0;
+  if (hasNodeRef === hasLinkRef) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['node_ref'],
+      message: 'LogicJson anchor selector requires exactly one of node_ref or link_ref.',
+    });
+  }
+  if (hasNodeRef && !value.pin_ref) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['pin_ref'],
+      message: 'LogicJson node_ref selector requires pin_ref for merge_external_flow.',
+    });
+  }
+});
+
 const ExternalNodeAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
   if (value.semantic_role !== 'node') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'patch_external_graph requires semantic_role="node".' });
@@ -559,7 +601,7 @@ const ExternalGraphWriteInsertedBodySchema = z.object({
 const GraphWriteExternalMergeSchema = z.object({
   kind: z.literal('insert_external_flow'),
   insert_strategy: z.enum(['append_after', 'insert_between', 'branch_fork']),
-  anchor: ExternalExecBoundaryAnchorSchema,
+  anchor: z.union([ExternalExecBoundaryAnchorSchema, LogicJsonAnchorSelectorSchema]),
   inserted: z.object({
     body: ExternalGraphWriteInsertedBodySchema,
   }).passthrough(),

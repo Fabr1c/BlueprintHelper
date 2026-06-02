@@ -4047,7 +4047,76 @@ function normalizeExternalGraphAnchorBase(anchor: Record<string, unknown>, path:
   return out;
 }
 
+function normalizeLogicJsonAnchorSelector(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  const schema = getRequiredString(anchor, 'schema', `${path}.schema`);
+  if (schema !== 'BlueprintHelper.LogicJsonAnchorSelector.v1') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'External GraphWrite requires BlueprintHelper.ExternalGraphAnchor.v1 or BlueprintHelper.LogicJsonAnchorSelector.v1.', [
+      {
+        code: 'unsupported_external_graph_anchor',
+        path: `${path}.schema`,
+        message: 'Use an external_anchor or LogicJson anchor selector emitted by blueprinthelper_read_context.',
+      },
+    ]);
+  }
+
+  const nodeRef = optionalString(anchor, 'node_ref');
+  const linkRef = optionalString(anchor, 'link_ref');
+  if (Boolean(nodeRef) === Boolean(linkRef)) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'LogicJson anchor selector requires exactly one of node_ref or link_ref.', [
+      {
+        code: 'unsupported_logic_json_anchor_selector',
+        path,
+        message: 'Set exactly one of node_ref or link_ref.',
+      },
+    ]);
+  }
+  if (nodeRef && !optionalString(anchor, 'pin_ref')) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'LogicJson node_ref selector requires pin_ref for merge_external_flow.', [
+      {
+        code: 'unsupported_logic_json_anchor_selector',
+        path: `${path}.pin_ref`,
+        message: 'Set pin_ref to identify the exec output boundary on the selected node.',
+      },
+    ]);
+  }
+  const graphNameField = optionalString(anchor, 'graph_name');
+  const graphAliasField = optionalString(anchor, 'graph');
+  if (graphNameField && graphAliasField && graphNameField !== graphAliasField) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'LogicJson anchor selector graph and graph_name must match when both are provided.', [
+      {
+        code: 'unsupported_logic_json_anchor_selector',
+        path: `${path}.graph`,
+        message: 'Remove one field or make graph and graph_name match.',
+      },
+    ]);
+  }
+  const graphName = graphNameField ?? graphAliasField;
+  if (!graphName) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'LogicJson anchor selector requires graph_name or graph.', [
+      {
+        code: 'unsupported_logic_json_anchor_selector',
+        path: `${path}.graph_name`,
+        message: 'Set graph_name, or pass the graph field from logic_json.',
+      },
+    ]);
+  }
+
+  return omitUndefined({
+    schema,
+    asset_path: getRequiredString(anchor, 'asset_path', `${path}.asset_path`),
+    graph_name: graphName,
+    entry_name: optionalString(anchor, 'entry_name'),
+    node_ref: nodeRef,
+    link_ref: linkRef,
+    pin_ref: optionalString(anchor, 'pin_ref'),
+  });
+}
+
 function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  if (anchor['schema'] === 'BlueprintHelper.LogicJsonAnchorSelector.v1') {
+    return normalizeLogicJsonAnchorSelector(anchor, path);
+  }
+
   const out = normalizeExternalGraphAnchorBase(anchor, path);
   if (out['semantic_role'] !== 'exec_boundary') {
     throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'merge_external_flow requires an exec_boundary external anchor.', [

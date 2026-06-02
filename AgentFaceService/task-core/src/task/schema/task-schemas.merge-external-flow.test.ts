@@ -15,6 +15,15 @@ const externalAnchor = {
   fingerprint: 'boundaryfp',
 };
 
+const logicJsonAnchorSelector = {
+  schema: 'BlueprintHelper.LogicJsonAnchorSelector.v1',
+  asset_path: '/Game/BP/BP_Door',
+  graph: 'EventGraph',
+  entry_name: 'ReloadTips',
+  node_ref: 'nodes[7]',
+  pin_ref: 'then',
+};
+
 function makeMergeExternalFlowSpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   merge?: Record<string, unknown>;
@@ -63,6 +72,41 @@ describe('GraphWrite merge_external_flow task schema', () => {
   it('accepts the exact P2 external mutation policy', () => {
     const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec());
     assert.equal(result.success, true);
+  });
+
+  it('accepts a LogicJson anchor selector as an authoring anchor', () => {
+    const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec({
+      merge: {
+        anchor: logicJsonAnchorSelector,
+      },
+    }));
+    assert.equal(result.success, true);
+  });
+
+  it('rejects ambiguous LogicJson selector refs', () => {
+    const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec({
+      merge: {
+        anchor: {
+          ...logicJsonAnchorSelector,
+          link_ref: 'Call.Then->Next.Execute',
+        },
+      },
+    }));
+    assert.equal(result.success, false);
+    assert.match(result.error.issues.map((issue) => issue.message).join('\n'), /exactly one of node_ref or link_ref/i);
+  });
+
+  it('rejects conflicting LogicJson selector graph aliases', () => {
+    const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec({
+      merge: {
+        anchor: {
+          ...logicJsonAnchorSelector,
+          graph_name: 'OtherGraph',
+        },
+      },
+    }));
+    assert.equal(result.success, false);
+    assert.match(result.error.issues.map((issue) => issue.message).join('\n'), /graph and graph_name must match/i);
   });
 
   it('rejects missing or extra allowed external mutations', () => {

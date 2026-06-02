@@ -251,7 +251,7 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'anchor.pin_ref',
       'anchor.link_ref',
     ]);
-    assert.deepEqual(taskSpecContract.merge_external_flow.required_anchor_fields, [
+    assert.deepEqual(taskSpecContract.merge_external_flow.executable_anchor_required_fields, [
       'anchor.schema',
       'anchor.asset_path',
       'anchor.graph_name',
@@ -261,6 +261,18 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'anchor.pin_direction',
       'anchor.semantic_role',
       'anchor.fingerprint',
+    ]);
+    assert.deepEqual(taskSpecContract.merge_external_flow.supported_anchor_shapes, [
+      {
+        schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+        pin_direction: 'output',
+        semantic_role: 'exec_boundary',
+      },
+      {
+        schema: 'BlueprintHelper.LogicJsonAnchorSelector.v1',
+        required_fields: ['asset_path', 'graph_name or graph', 'node_ref + pin_ref or link_ref'],
+        normalized_output: 'graph alias is lowered to graph_name; preview/runtime resolves selector to ExternalGraphAnchor.v1',
+      },
     ]);
     assert.deepEqual(taskSpecContract.merge_external_flow.scope_policy_contract, {
       allow_modify_user_nodes: false,

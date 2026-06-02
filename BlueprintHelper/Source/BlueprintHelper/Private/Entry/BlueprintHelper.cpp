@@ -126,7 +126,7 @@ void FBlueprintHelperModule::StartupModule()
 	MergeGraphService = MakeUnique<FBlueprintHelperMergeBlueprintGraphService>(
 		*GraphResolver, *LogicJsonPathService);
 	MergeExternalFlowService = MakeUnique<FBlueprintHelperMergeExternalFlowService>(
-		*GraphResolver, *BlockIdService, *OwnershipService);
+		*GraphResolver, *BlockIdService, *OwnershipService, *LogicJsonPathService);
 	PatchExternalGraphService = MakeUnique<FBlueprintHelperPatchExternalGraphService>();
 	ExternalBodySnapshotService = MakeUnique<FBlueprintHelperExternalBodySnapshotService>();
 	ExternalDependentsAnalysisService = MakeUnique<FBlueprintHelperExternalDependentsAnalysisService>();

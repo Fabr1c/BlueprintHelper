@@ -5,6 +5,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Dom/JsonObject.h"
@@ -125,10 +126,32 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayloadWithAnchorObject(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TSharedRef<FJsonObject>& AnchorJson,
+		const FString& InsertStrategy,
+		const TArray<FString>& SequenceOrder);
+
 	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayload(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const FBlueprintHelperExternalGraphAnchor& Anchor,
+		const TArray<FString>& SequenceOrder)
+	{
+		return MakeMergeExternalFlowPayloadWithAnchorObject(
+			Blueprint,
+			Graph,
+			Anchor.ToJson(),
+			TEXT("branch_fork"),
+			SequenceOrder);
+	}
+
+	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayloadWithAnchorObject(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TSharedRef<FJsonObject>& AnchorJson,
+		const FString& InsertStrategy,
 		const TArray<FString>& SequenceOrder)
 	{
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
@@ -147,8 +170,8 @@ namespace BlueprintHelperExternalGraphAnchorTests
 
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetObjectField(TEXT("target"), Target);
-		Payload->SetStringField(TEXT("insert_strategy"), TEXT("branch_fork"));
-		Payload->SetObjectField(TEXT("anchor"), Anchor.ToJson());
+		Payload->SetStringField(TEXT("insert_strategy"), InsertStrategy);
+		Payload->SetObjectField(TEXT("anchor"), AnchorJson);
 		Payload->SetObjectField(TEXT("inserted"), Inserted);
 		Payload->SetArrayField(TEXT("sequence_order"), SequenceValues);
 		Payload->SetBoolField(TEXT("dry_run"), true);
@@ -496,7 +519,8 @@ bool FBlueprintHelperMergeExternalFlowRejectsDuplicateSequenceOrderTest::RunTest
 	FBlueprintHelperGraphResolver Resolver;
 	FBlueprintHelperBlockIdService BlockIdService;
 	FBlueprintHelperOwnershipService OwnershipService;
-	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService);
+	FBlueprintHelperLogicJsonPathService PathService;
+	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService, PathService);
 
 	const FBlueprintHelperToolResultBase DuplicateInserted = Service.Execute(MakeMergeExternalFlowPayload(
 		Blueprint,
@@ -517,6 +541,97 @@ bool FBlueprintHelperMergeExternalFlowRejectsDuplicateSequenceOrderTest::RunTest
 	TestEqual(TEXT("duplicate original_successor error code"),
 		DuplicateOriginal.Error.IsSet() ? DuplicateOriginal.Error->Code : FString(),
 		FString(TEXT("sequence_order_invalid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMergeExternalFlowLogicJsonSelectorResolvesNodeRefTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.MergeExternalFlowLogicJsonSelectorResolvesNodeRef",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperMergeExternalFlowLogicJsonSelectorResolvesNodeRefTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("MergeExternalFlowLogicJsonSelector"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CallFunction* FirstCallNode = AddDestroyActorCallNode(Graph);
+	UK2Node_CallFunction* SecondCallNode = AddDestroyActorCallNode(Graph);
+	UEdGraphPin* SecondExecOut = FindExecPin(SecondCallNode, EGPD_Output);
+	TestNotNull(TEXT("first duplicate call node exists"), FirstCallNode);
+	TestNotNull(TEXT("second duplicate call node exists"), SecondCallNode);
+	TestNotNull(TEXT("second duplicate call node output exec exists"), SecondExecOut);
+	if (!Blueprint || !Graph || !FirstCallNode || !SecondCallNode || !SecondExecOut)
+	{
+		return false;
+	}
+
+	const int32 SecondNodeIndex = Graph->Nodes.Find(SecondCallNode);
+	TestTrue(TEXT("second duplicate node is in graph index"), SecondNodeIndex != INDEX_NONE);
+	if (SecondNodeIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+	Selector->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.LogicJsonAnchorSelector.v1"));
+	Selector->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	Selector->SetStringField(TEXT("graph"), Graph->GetName());
+	Selector->SetStringField(TEXT("entry_name"), TEXT("ReloadTips"));
+	Selector->SetStringField(TEXT("node_ref"), FString::Printf(TEXT("nodes[%d]"), SecondNodeIndex));
+	Selector->SetStringField(TEXT("pin_ref"), SecondExecOut->PinName.ToString());
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperLogicJsonPathService PathService;
+	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService, PathService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeMergeExternalFlowPayloadWithAnchorObject(
+		Blueprint,
+		Graph,
+		Selector,
+		TEXT("append_after"),
+		{}));
+	TestTrue(TEXT("selector dry-run passes"), Result.bOk);
+	if (!Result.bOk || !Result.Data.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* Relation = nullptr;
+	TestTrue(TEXT("dry-run returns boundary relation"),
+		Result.Data->TryGetObjectField(TEXT("external_boundary_relation"), Relation) && Relation && Relation->IsValid());
+	if (!Relation || !Relation->IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* Anchor = nullptr;
+	TestTrue(TEXT("boundary relation returns resolved anchor"),
+		(*Relation)->TryGetObjectField(TEXT("anchor"), Anchor) && Anchor && Anchor->IsValid());
+	if (!Anchor || !Anchor->IsValid())
+	{
+		return false;
+	}
+
+	FString Schema;
+	FString NodeGuid;
+	FString PinName;
+	FString Fingerprint;
+	(*Anchor)->TryGetStringField(TEXT("schema"), Schema);
+	(*Anchor)->TryGetStringField(TEXT("node_guid"), NodeGuid);
+	(*Anchor)->TryGetStringField(TEXT("pin_name"), PinName);
+	(*Anchor)->TryGetStringField(TEXT("fingerprint"), Fingerprint);
+	TestEqual(TEXT("selector resolves to ExternalGraphAnchor schema"),
+		Schema,
+		FString(FBlueprintHelperExternalGraphAnchor::SchemaString));
+	TestEqual(TEXT("selector resolves graph index to second duplicate node"),
+		NodeGuid,
+		SecondCallNode->NodeGuid.ToString(EGuidFormats::Digits));
+	TestEqual(TEXT("selector resolves requested pin"), PinName, SecondExecOut->PinName.ToString());
+	TestFalse(TEXT("resolved anchor has fingerprint"), Fingerprint.IsEmpty());
+	TestFalse(TEXT("resolved anchor does not leak node_ref"), (*Anchor)->HasField(TEXT("node_ref")));
 	return true;
 }
 

@@ -30,3 +30,21 @@ struct BLUEPRINTHELPER_API FBlueprintHelperExternalGraphAnchor
 	static bool TryRoleFromString(const FString& Value, EBlueprintHelperExternalGraphAnchorRole& OutRole);
 	static bool FromJson(const TSharedPtr<FJsonObject>& Json, FBlueprintHelperExternalGraphAnchor& OutAnchor, FString& OutError);
 };
+
+struct BLUEPRINTHELPER_API FBlueprintHelperLogicJsonAnchorSelector
+{
+	static constexpr const TCHAR* SchemaString = TEXT("BlueprintHelper.LogicJsonAnchorSelector.v1");
+
+	FString Schema = SchemaString;
+	FString AssetPath;
+	FString GraphName;
+	FString EntryName;
+	FString NodeRef;
+	FString LinkRef;
+	FString PinRef;
+
+	static bool FromJson(
+		const TSharedPtr<FJsonObject>& Json,
+		FBlueprintHelperLogicJsonAnchorSelector& OutSelector,
+		FString& OutError);
+};
