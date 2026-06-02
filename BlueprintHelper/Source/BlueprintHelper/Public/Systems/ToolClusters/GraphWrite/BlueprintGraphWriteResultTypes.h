@@ -58,6 +58,8 @@ struct FBlueprintGenerateResult
 	int32 RequestedConnectionCount = 0;
 	int32 CreatedConnectionCount = 0;
 	TArray<FBlueprintGeneratorDiagnostic> ConnectionDiagnostics;
+	int32 ConnectivityViolationCount = 0;
+	TArray<FBlueprintGeneratorDiagnostic> ConnectivityDiagnostics;
 	int32 UnresolvedNodeCount = 0;
 	FString Message;
 	FBlueprintGraphWriteExecutionStats ExecutionStats;

@@ -12,6 +12,7 @@ void FBlueprintGraphWriteContext::Initialize(UEdGraph* InGraph)
 	IdToNode.Empty();
 	PinIndexByNodeKey.Empty();
 	GeneratedNodes.Empty();
+	EntryRootNodes.Empty();
 }
 
 bool FBlueprintGraphWriteContext::IsValid() const
@@ -24,7 +25,11 @@ UEdGraph* FBlueprintGraphWriteContext::GetGraph() const
 	return Graph;
 }
 
-void FBlueprintGraphWriteContext::RegisterNode(const FString& NodeId, UK2Node* Node, bool bGenerated)
+void FBlueprintGraphWriteContext::RegisterNode(
+	const FString& NodeId,
+	UK2Node* Node,
+	bool bGenerated,
+	bool bEntryRoot)
 {
 	if (NodeId.IsEmpty() || !Node)
 	{
@@ -35,6 +40,10 @@ void FBlueprintGraphWriteContext::RegisterNode(const FString& NodeId, UK2Node* N
 	if (bGenerated)
 	{
 		GeneratedNodes.AddUnique(Node);
+	}
+	if (bEntryRoot)
+	{
+		EntryRootNodes.Add(Node);
 	}
 	BuildPinIndex(Node);
 }
@@ -78,6 +87,11 @@ UEdGraphPin* FBlueprintGraphWriteContext::FindPinByAlias(
 const TArray<UEdGraphNode*>& FBlueprintGraphWriteContext::GetGeneratedNodes() const
 {
 	return GeneratedNodes;
+}
+
+const TSet<UEdGraphNode*>& FBlueprintGraphWriteContext::GetEntryRootNodes() const
+{
+	return EntryRootNodes;
 }
 
 void FBlueprintGraphWriteContext::BuildPinIndex(UK2Node* Node)

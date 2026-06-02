@@ -68,6 +68,10 @@ export function buildCliSummary(input: {
   const issues = arrayOfRecords(data?.['issues']);
   const targetAssets = collectTargetAssets(input.toolResult, data, task, taskPlan);
   const taskType = readString(taskPlan?.task_type) ?? readString(data?.['task_type']) ?? readString(task?.['task_type']);
+  const violations = collectConnectivityViolations(data, input.toolResult.error);
+  const status = mapStatus(input.command, input.toolResult, data);
+  const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
+  const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
   const previewId = isPreviewCommand(input.command)
     ? readString(extra['previewId'])
       ?? readString(data?.['preview_id'])
@@ -87,7 +91,7 @@ export function buildCliSummary(input: {
     schema: CLI_RESULT_SCHEMA,
     operation: input.command.kind,
     tool_name: input.command.toolName,
-    status: mapStatus(input.command, input.toolResult, data),
+    status,
     task_run_id: taskRunId,
     preview_id: previewId,
     preview_token: previewToken,
@@ -100,8 +104,9 @@ export function buildCliSummary(input: {
       modified: input.toolResult.modified,
     }),
     artifacts: input.artifactRefs,
-    error_code: input.toolResult.ok ? undefined : input.toolResult.error?.code,
-    message: input.toolResult.ok ? undefined : input.toolResult.error?.message,
+    error_code: input.toolResult.ok ? blockedIssueCode : input.toolResult.error?.code,
+    message: input.toolResult.ok ? blockedIssueMessage : input.toolResult.error?.message,
+    violations: violations.length > 0 ? violations : undefined,
   });
 }
 
@@ -339,6 +344,58 @@ function countIssues(issues: Array<Record<string, unknown>>, kind: 'warning' | '
     return issues.filter((issue) => readString(issue['severity']) === 'warning').length;
   }
   return issues.filter((issue) => readString(issue['severity']) !== 'warning').length;
+}
+
+function collectConnectivityViolations(
+  data: Record<string, unknown> | undefined,
+  error: unknown,
+): Array<Record<string, unknown>> {
+  const connectivity = asRecord(data?.['connectivity']);
+  const dataViolations = arrayOfRecords(connectivity?.['violations']).map(toConciseViolation).filter(isRecord);
+  if (dataViolations.length > 0) {
+    return dataViolations;
+  }
+
+  const dataIssues = arrayOfRecords(data?.['issues'])
+    .filter((issue) => isConnectivityViolationCode(readString(issue['code'])))
+    .map(toConciseViolation)
+    .filter(isRecord);
+  if (dataIssues.length > 0) {
+    return dataIssues;
+  }
+
+  const errorIssues = arrayOfRecords(asRecord(error)?.['issues'])
+    .filter((issue) => isConnectivityViolationCode(readString(issue['code'])))
+    .map(toConciseViolation)
+    .filter(isRecord);
+  return errorIssues;
+}
+
+function toConciseViolation(value: Record<string, unknown>): Record<string, unknown> | undefined {
+  const code = readString(value['code']);
+  const message = readString(value['message']);
+  if (!code || !message) {
+    return undefined;
+  }
+
+  return omitUndefined({
+    code,
+    node_id: readString(value['node_id']),
+    path: readString(value['path']),
+    message,
+  });
+}
+
+function isConnectivityViolationCode(code: string | undefined): boolean {
+  return code === 'missing_expected_link'
+    || code === 'graphwrite_connectivity_failed'
+    || code === 'unreachable_exec_node'
+    || code === 'unconsumed_pure_data_node'
+    || code === 'unreachable_pure_data_chain'
+    || code === 'invalid_expression_exec_node'
+    || code === 'unregistered_generated_node'
+    || code === 'unregistered_generated_link'
+    || code === 'external_boundary_not_connected';
 }
 
 function asTaskPlanLike(value: unknown): Record<string, unknown> | undefined {

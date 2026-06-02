@@ -237,6 +237,43 @@ public:
 		return MakeGraphWriteLogicSpec(EventName, Statements);
 	}
 
+	static TSharedRef<FJsonObject> MakeUnconsumedPureDataLogicSpec(const FString& EventName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_unconsumed_bool"));
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("/Script/Engine.KismetMathLibrary:InRange_IntInt"));
+		Statement->SetStringField(TEXT("value_type"), TEXT("bool"));
+		Statement->SetStringField(TEXT("result_symbol"), TEXT("UnusedBool"));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> Value = MakeShared<FJsonObject>();
+		Value->SetStringField(TEXT("kind"), TEXT("literal"));
+		Value->SetStringField(TEXT("value_type"), TEXT("int"));
+		Value->SetNumberField(TEXT("value"), 1);
+		Args->SetObjectField(TEXT("Value"), Value);
+
+		TSharedRef<FJsonObject> Min = MakeShared<FJsonObject>();
+		Min->SetStringField(TEXT("kind"), TEXT("literal"));
+		Min->SetStringField(TEXT("value_type"), TEXT("int"));
+		Min->SetNumberField(TEXT("value"), 0);
+		Args->SetObjectField(TEXT("Min"), Min);
+
+		TSharedRef<FJsonObject> Max = MakeShared<FJsonObject>();
+		Max->SetStringField(TEXT("kind"), TEXT("literal"));
+		Max->SetStringField(TEXT("value_type"), TEXT("int"));
+		Max->SetNumberField(TEXT("value"), 2);
+		Args->SetObjectField(TEXT("Max"), Max);
+
+		Args->SetObjectField(TEXT("InclusiveMin"), MakeBoolLiteralExpression(true));
+		Args->SetObjectField(TEXT("InclusiveMax"), MakeBoolLiteralExpression(true));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
 	static TSharedRef<FJsonObject> MakeSetSimulatePhysicsTargetObjectLogicSpec(
 		const FString& TargetObjectTypeOverride = FString(),
 		const FString& TargetObjectPinObjectPathOverride = FString())
@@ -290,6 +327,23 @@ public:
 		Payload->SetObjectField(
 			TEXT("logic_spec"),
 			MakeCallLogicSpec(TEXT("SmokeCustomEvent"), TEXT("PrintString"), TEXT("append reuse")));
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeAppendUnconsumedPureDataExecutePayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeAppendExecutePayload(AssetPath, GraphName);
+		Payload->SetBoolField(TEXT("reuse_existing_entries"), true);
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeUnconsumedPureDataLogicSpec(TEXT("SmokeCustomEvent")));
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeAppendUnconsumedPureDataPreviewPayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeAppendUnconsumedPureDataExecutePayload(AssetPath, GraphName);
+		Payload->SetBoolField(TEXT("dry_run"), true);
 		return Payload;
 	}
 
@@ -368,6 +422,30 @@ public:
 		const FString& EventName)
 	{
 		TSharedRef<FJsonObject> Payload = MakeReplaceExecutePayload(AssetPath, GraphName);
+
+		const TSharedPtr<FJsonObject>* Selector = nullptr;
+		if (Payload->TryGetObjectField(TEXT("selector"), Selector) && Selector && Selector->IsValid())
+		{
+			(*Selector)->SetStringField(TEXT("entry_name"), EventName);
+		}
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceUnconsumedPureDataExecutePayload(const FString& AssetPath, const FString& GraphName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceExecutePayload(AssetPath, GraphName);
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeUnconsumedPureDataLogicSpec(FString()));
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceCustomEventUnconsumedPureDataExecutePayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& EventName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceUnconsumedPureDataExecutePayload(AssetPath, GraphName);
 
 		const TSharedPtr<FJsonObject>* Selector = nullptr;
 		if (Payload->TryGetObjectField(TEXT("selector"), Selector) && Selector && Selector->IsValid())
@@ -846,6 +924,57 @@ public:
 		return false;
 	}
 
+	static FString DescribeGraphExecLinks(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return TEXT("graph=null");
+		}
+
+		TArray<FString> Lines;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+
+			FString NodeLabel = Node->GetName();
+			if (const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+			{
+				NodeLabel += FString::Printf(TEXT(":event=%s"), *CustomEvent->CustomFunctionName.ToString());
+			}
+			if (const UK2Node_CallFunction* CallFunction = Cast<UK2Node_CallFunction>(Node))
+			{
+				NodeLabel += FString::Printf(TEXT(":function=%s"), *CallFunction->GetFunctionName().ToString());
+			}
+
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+				if (Pin->LinkedTo.Num() == 0)
+				{
+					Lines.Add(FString::Printf(TEXT("%s.%s -> <none>"), *NodeLabel, *Pin->PinName.ToString()));
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					Lines.Add(FString::Printf(
+						TEXT("%s.%s -> %s.%s"),
+						*NodeLabel,
+						*Pin->PinName.ToString(),
+						LinkedNode ? *LinkedNode->GetName() : TEXT("<null>"),
+						LinkedPin ? *LinkedPin->PinName.ToString() : TEXT("<null>")));
+				}
+			}
+		}
+		return FString::Join(Lines, TEXT(" | "));
+	}
+
 	static bool GraphHasVariableGetLinkedToFunctionInput(
 		FAutomationTestBase& Test,
 		UEdGraph* Graph,
@@ -1084,6 +1213,61 @@ public:
 			Test.TestEqual(TEXT("dry_run result is blocked"), DryRunResult, FString(TEXT("blocked")));
 			Test.TestFalse(TEXT("blocked dry-run cannot execute"), bCanExecute);
 		}
+	}
+
+	static void AssertConnectivityFailureData(
+		FAutomationTestBase& Test,
+		const FBlueprintHelperToolResultBase& Result,
+		const FString& ExpectedOperation,
+		const FString& ExpectedStageLabel)
+	{
+		Test.TestFalse(TEXT("connectivity failure returns failure"), Result.bOk);
+		Test.TestEqual(TEXT("connectivity failure operation is preserved"), Result.Operation, ExpectedOperation);
+		Test.TestTrue(TEXT("connectivity failure carries top-level error"), Result.Error.IsSet());
+		if (Result.Error.IsSet())
+		{
+			Test.TestEqual(TEXT("connectivity failure code"), Result.Error->Code, FString(TEXT("graphwrite_connectivity_failed")));
+			Test.TestFalse(TEXT("connectivity failure message is readable"), Result.Error->Message.IsEmpty());
+		}
+
+		const TSharedPtr<FJsonObject>* Connectivity = nullptr;
+		Test.TestTrue(
+			TEXT("connectivity failure data contains connectivity object"),
+			Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("connectivity"), Connectivity) && Connectivity && Connectivity->IsValid());
+		if (!Connectivity || !Connectivity->IsValid())
+		{
+			return;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Violations = nullptr;
+		Test.TestTrue(
+			TEXT("connectivity failure exposes concise violations"),
+			(*Connectivity)->TryGetArrayField(TEXT("violations"), Violations) && Violations && Violations->Num() > 0);
+		if (!Violations || Violations->Num() == 0 || !(*Violations)[0].IsValid())
+		{
+			return;
+		}
+
+		const TSharedPtr<FJsonObject> FirstViolation = (*Violations)[0]->AsObject();
+		Test.TestTrue(TEXT("connectivity violation object is valid"), FirstViolation.IsValid());
+		if (!FirstViolation.IsValid())
+		{
+			return;
+		}
+
+		Test.TestEqual(
+			*FString::Printf(TEXT("%s connectivity violation code"), *ExpectedStageLabel),
+			FirstViolation->GetStringField(TEXT("code")),
+			FString(TEXT("unconsumed_pure_data_node")));
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s connectivity violation has node_id"), *ExpectedStageLabel),
+			FirstViolation->HasTypedField<EJson::String>(TEXT("node_id")));
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s connectivity violation has message"), *ExpectedStageLabel),
+			FirstViolation->HasTypedField<EJson::String>(TEXT("message")));
+		Test.TestFalse(
+			*FString::Printf(TEXT("%s connectivity ordinary output omits pin details"), *ExpectedStageLabel),
+			FirstViolation->HasField(TEXT("pin_name")));
 	}
 
 	static TSharedRef<FJsonObject> MakeGraphWriteTaskPlanPayload(
@@ -2903,9 +3087,195 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 	}
 	TestTrue(TEXT("custom event output exec links to replacement PrintString"), bLinkedToPrintString);
 	TestTrue(TEXT("replacement body node keeps BlueprintHelper ownership"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::NodeHasBlueprintHelperBlockId(ReplacementPrintNode, BlockId));
+	const TArray<TSharedPtr<FJsonValue>>* ReplaceBlockRefs = nullptr;
+	TestTrue(TEXT("replace result publishes block refs"),
+		Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("block_refs"), ReplaceBlockRefs));
+	TestEqual(TEXT("replace result publishes replaced block id"),
+		ReplaceBlockRefs && ReplaceBlockRefs->Num() > 0 ? (*ReplaceBlockRefs)[0]->AsString() : FString(),
+		BlockId);
 	TestTrue(TEXT("exported graph contains event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyConnectsSignatureCreatedEntryTest,
+	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyConnectsSignatureCreatedEntry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyConnectsSignatureCreatedEntryTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceSignatureCreatedEntry"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("SignatureCreatedEvent");
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("signature-created custom event entry is created"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), *EventName);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryNode, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceCustomEventExecutePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			EventName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace signature-created custom event body"),
+		Result);
+	TestTrue(TEXT("replace signature-created custom event body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace signature-created custom event status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestEqual(TEXT("signature-created custom event block is entry plus replacement body"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, BlockId),
+		2);
+	TestTrue(TEXT("signature-created custom event links to replacement PrintString"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, EventName, TEXT("PrintString")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceCustomEventBodyConnectivityFailureSkipsMissingOldBodyRollbackTest,
+	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyConnectivityFailureSkipsMissingOldBodyRollback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceCustomEventBodyConnectivityFailureSkipsMissingOldBodyRollbackTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceEmptyBodyConnectivityRollback"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("SignatureCreatedRollbackEvent");
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("signature-created custom event entry is created"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), *EventName);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryNode, BlockId);
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceCustomEventUnconsumedPureDataExecutePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			EventName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertConnectivityFailureData(
+		*this,
+		Result,
+		TEXT("replace_blueprint_graph"),
+		TEXT("replace empty-body connectivity failure"));
+	TestTrue(TEXT("connectivity failure rollback succeeds"),
+		Result.Error.IsSet() && Result.Error->RollbackResult == EBlueprintHelperRollbackResult::RolledBack);
+	TestFalse(TEXT("empty old body rollback does not require missing owned body"),
+		Result.Error.IsSet() && Result.Error->Message.Contains(TEXT("graph_snapshot_restore_owned_body_missing")));
+	TestEqual(TEXT("replace connectivity rollback restores signature-created entry-only graph"), Graph->Nodes.Num(), NodeCountBefore);
+	TestEqual(TEXT("signature-created entry remains the only owned block node after rollback"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, BlockId),
+		1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceExecuteConnectivityFailureEnvelopeTest,
+	"BlueprintHelper.GraphWrite.Replace.ExecuteConnectivityFailureEnvelope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceExecuteConnectivityFailureEnvelopeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceConnectivityFailure"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("custom event entry is created"), EntryNode);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old custom event body is linked before replace"),
+		EntryNode && OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+	if (!EntryNode || !OldPrintNode)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("SmokeCustomEvent"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(EntryNode, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldPrintNode, BlockId);
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceUnconsumedPureDataExecutePayload(Blueprint->GetPathName(), Graph->GetName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertConnectivityFailureData(
+		*this,
+		Result,
+		TEXT("replace_blueprint_graph"),
+		TEXT("replace execute"));
+	TestEqual(TEXT("replace connectivity rollback restores node count"), Graph->Nodes.Num(), NodeCountBefore);
+	const bool bRollbackPreservedBody =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString"));
+	if (!bRollbackPreservedBody)
+	{
+		AddInfo(FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::DescribeGraphExecLinks(Graph));
+	}
+	TestTrue(TEXT("replace rollback preserves old custom event body"), bRollbackPreservedBody);
+	TestEqual(TEXT("replace rollback preserves old body ownership metadata"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::CountNodesWithBlueprintHelperBlockId(Graph, BlockId),
+		2);
 	return true;
 }
 
@@ -3341,6 +3711,104 @@ bool FBlueprintHelperGraphWriteAppendReusesSignatureEntryTest::RunTest(const FSt
 	TestTrue(TEXT("append reuse connects existing custom event to imported body"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAppendPreviewConnectivityFailureEnvelopeTest,
+	"BlueprintHelper.GraphWrite.Append.PreviewConnectivityFailureEnvelope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAppendPreviewConnectivityFailureEnvelopeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("AppendPreviewConnectivityFailure"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("signature-created custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const bool bDirtyBefore = Blueprint->GetOutermost()->IsDirty();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperAppendBlueprintGraphService AppendService(
+		Resolver,
+		BlockIdService,
+		OwnershipService);
+	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendUnconsumedPureDataPreviewPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertConnectivityFailureData(
+		*this,
+		Result,
+		TEXT("append_blueprint_graph"),
+		TEXT("append preview"));
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("append preview connectivity failure is preflight-stage"), Result.Error->Stage, EBlueprintHelperToolStage::Preflight);
+	}
+	TestEqual(TEXT("append preview connectivity cleanup removes preview nodes"), Graph->Nodes.Num(), NodeCountBefore);
+	TestEqual(TEXT("append preview connectivity cleanup restores package dirty flag"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAppendExecuteConnectivityFailureEnvelopeTest,
+	"BlueprintHelper.GraphWrite.Append.ExecuteConnectivityFailureEnvelope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAppendExecuteConnectivityFailureEnvelopeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("AppendConnectivityFailure"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("SmokeCustomEvent"));
+	TestNotNull(TEXT("signature-created custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const bool bDirtyBefore = Blueprint->GetOutermost()->IsDirty();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperAppendBlueprintGraphService AppendService(
+		Resolver,
+		BlockIdService,
+		OwnershipService);
+	const FBlueprintHelperToolResultBase Result = AppendService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAppendUnconsumedPureDataExecutePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertConnectivityFailureData(
+		*this,
+		Result,
+		TEXT("append_blueprint_graph"),
+		TEXT("append execute"));
+	TestEqual(TEXT("append connectivity rollback removes generated nodes"), Graph->Nodes.Num(), NodeCountBefore);
+	TestEqual(TEXT("append connectivity rollback restores package dirty flag"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
 	return true;
 }
 

@@ -11,6 +11,7 @@
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteOwnershipValidator.h"
 
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
@@ -48,6 +49,22 @@ static FBlueprintHelperToolResultBase MakeGraphWriteAppliedResultWithBlockRefs(
 	}
 	AppendResult->SetArrayField(TEXT("block_refs"), BlockRefValues);
 	Data->SetObjectField(TEXT("append_result"), AppendResult);
+	Result.Data = Data;
+	return Result;
+}
+
+static FBlueprintHelperToolResultBase MakeGraphWriteAppliedResultWithTopLevelBlockRefs(
+	const FString& Operation,
+	const TArray<FString>& BlockRefs)
+{
+	FBlueprintHelperToolResultBase Result = MakeClusterEvidenceAppliedResult(Operation);
+	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> BlockRefValues;
+	for (const FString& BlockRef : BlockRefs)
+	{
+		BlockRefValues.Add(MakeShared<FJsonValueString>(BlockRef));
+	}
+	Data->SetArrayField(TEXT("block_refs"), BlockRefValues);
 	Result.Data = Data;
 	return Result;
 }
@@ -390,6 +407,23 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 	TestTrue(TEXT("graph write anchor preserves asset action operation"),
 		GraphTarget.AnchorJson.Contains(TEXT("create_operation")));
 
+	FBlueprintHelperTaskRuntimeLoweredStep ReplaceGraphWriteStep = GraphWriteStep;
+	ReplaceGraphWriteStep.AdapterOperation = TEXT("replace_blueprint_graph");
+	FBlueprintHelperWriteReviewEvidence ReplaceGraphWriteEvidence;
+	TestTrue(TEXT("replace graph write cluster reads top-level block refs"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			ReplaceGraphWriteStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeGraphWriteAppliedResultWithTopLevelBlockRefs(
+				ReplaceGraphWriteStep.AdapterOperation,
+				{TEXT("EventGraph_CE_DumpGlobalStateForReview0")}),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			4,
+			ReplaceGraphWriteEvidence));
+	TestEqual(TEXT("replace graph write evidence uses actual top-level block ref"),
+		ReplaceGraphWriteEvidence.AtomicTargets.Num() == 1 ? ReplaceGraphWriteEvidence.AtomicTargets[0].TargetKey : FString(),
+		FString(TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0")));
+
 	FBlueprintHelperWriteReviewEvidence FailedGraphWriteEvidence;
 	TestFalse(TEXT("failed graph write step does not produce Review evidence"),
 		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
@@ -427,6 +461,31 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 			TEXT("task_cluster_evidence"),
 			3,
 			MissingAssetEvidence));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeGraphWriteOwnershipValidatorRejectsMissingAtomicTargetTest,
+	"BlueprintHelper.TaskRuntime.GraphWrite.OwnershipValidation.RejectsMissingAtomicTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeGraphWriteOwnershipValidatorRejectsMissingAtomicTargetTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphWriteOwnershipValidationInput Input;
+	Input.GeneratedBlockRefs.Add(TEXT("EventGraph_CE_Orphan"));
+
+	const FBlueprintHelperGraphWriteOwnershipValidationResult Result =
+		FBlueprintHelperGraphWriteOwnershipValidator::Validate(Input);
+
+	TestFalse(TEXT("missing atomic target fails ownership validation"), Result.bPassed);
+	TestEqual(TEXT("one missing ownership diagnostic"), Result.Diagnostics.Num(), 1);
+	if (Result.Diagnostics.Num() != 1)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("missing target diagnostic code"), Result.Diagnostics[0].Code, FString(TEXT("unregistered_generated_node")));
+	TestEqual(TEXT("missing target diagnostic node id"), Result.Diagnostics[0].NodeId, FString(TEXT("EventGraph_CE_Orphan")));
 	return true;
 }
 

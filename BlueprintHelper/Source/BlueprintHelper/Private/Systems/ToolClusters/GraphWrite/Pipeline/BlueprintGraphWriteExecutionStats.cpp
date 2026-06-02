@@ -12,12 +12,14 @@ TSharedRef<FJsonObject> FBlueprintGraphWriteExecutionStatsSerializer::ToJson(
 	Json->SetNumberField(TEXT("applied_default_value_count"), Stats.AppliedDefaultValueCount);
 	Json->SetNumberField(TEXT("requested_link_count"), Stats.RequestedLinkCount);
 	Json->SetNumberField(TEXT("created_link_count"), Stats.CreatedLinkCount);
+	Json->SetNumberField(TEXT("connectivity_violation_count"), Stats.ConnectivityViolationCount);
 	Json->SetNumberField(TEXT("layout_record_node_count"), Stats.LayoutRecordNodeCount);
 	Json->SetNumberField(TEXT("build_context_ms"), Stats.BuildContextMs);
 	Json->SetNumberField(TEXT("build_plan_ms"), Stats.BuildPlanMs);
 	Json->SetNumberField(TEXT("spawn_nodes_ms"), Stats.SpawnNodesMs);
 	Json->SetNumberField(TEXT("apply_defaults_ms"), Stats.ApplyDefaultsMs);
 	Json->SetNumberField(TEXT("connect_links_ms"), Stats.ConnectLinksMs);
+	Json->SetNumberField(TEXT("connectivity_validation_ms"), Stats.ConnectivityValidationMs);
 	Json->SetNumberField(TEXT("record_layout_ms"), Stats.RecordLayoutMs);
 	return Json;
 }

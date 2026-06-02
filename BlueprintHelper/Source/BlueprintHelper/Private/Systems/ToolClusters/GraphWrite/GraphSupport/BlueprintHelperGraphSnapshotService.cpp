@@ -62,8 +62,17 @@ FBlueprintHelperGraphSnapshot FBlueprintHelperGraphSnapshotService::CaptureNodeS
 			if (!OwnedStr.IsEmpty())
 			{
 				const FString BlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+				const FString FeatureName = MetaData.GetValue(Node, TEXT("BlueprintHelperFeatureName"));
+				const FString Tool = MetaData.GetValue(Node, TEXT("BlueprintHelperTool"));
 				Snapshot.OwnershipMetadata.Add(FString::Printf(TEXT("%s:owned=%s,block=%s"),
 					*Node->GetName(), *OwnedStr, *BlockId));
+				FBlueprintHelperGraphSnapshotOwnershipEntry Entry;
+				Entry.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+				Entry.Owned = OwnedStr;
+				Entry.BlockId = BlockId;
+				Entry.FeatureName = FeatureName;
+				Entry.Tool = Tool;
+				Snapshot.OwnershipEntries.Add(Entry);
 			}
 		}
 	}

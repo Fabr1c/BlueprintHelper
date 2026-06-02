@@ -60,7 +60,7 @@ export type TaskRunnerBridge = {
 
 export interface TaskPreviewOutcome {
   previewId: string;
-  taskPlan: TaskPlan;
+  taskPlan?: TaskPlan;
   previewToken?: TaskPreviewToken;
   passed: boolean;
   issues: TaskIssue[];
@@ -117,9 +117,18 @@ export function createTaskSpecRunner(input: {
             preview.issues,
           ), timing);
         }
+        if (!preview.taskPlan) {
+          return attachTaskTiming(taskFailure(
+            'execute_task',
+            'task_plan_missing_after_preview',
+            'internal_error',
+            'Task preview passed without a compiled TaskPlan.',
+          ), timing);
+        }
+        const taskPlan = preview.taskPlan;
 
         const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
-          task_plan: preview.taskPlan,
+          task_plan: taskPlan,
           ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
         }, {
           timing,
@@ -143,20 +152,20 @@ export function createTaskSpecRunner(input: {
           const modified = isBridgeResultModified(bridgeResult);
           storeTaskResult({
             taskRunId,
-            taskPlan: preview.taskPlan,
+            taskPlan,
             status: 'completed',
             bridgeResult,
           });
 
           const toolResult = successRead(
             'execute_task',
-            { target_type: 'blueprint', asset_path: preview.taskPlan.target_assets[0] },
+            { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] },
             {
               task_run_id: taskRunId,
               task: {
-                feature_name: preview.taskPlan.task_name,
-                applied_steps: preview.taskPlan.steps.length,
-                modified_assets: preview.taskPlan.target_assets.length,
+                feature_name: taskPlan.task_name,
+                applied_steps: taskPlan.steps.length,
+                modified_assets: taskPlan.target_assets.length,
               },
               ...extractDevelopExecuteDiagnostics(writeResponse, timing),
             },
@@ -222,7 +231,15 @@ async function runPreviewTask(
   taskCompiler: TaskCompiler,
   timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
-  const compiled = await compileTaskSpecForRunner(taskSpec, taskCompiler, timing);
+  let compiled: CompiledTaskPlan;
+  try {
+    compiled = await compileTaskSpecForRunner(taskSpec, taskCompiler, timing);
+  } catch (err) {
+    if (err instanceof TaskSpecCompileError) {
+      return compileFailurePreviewOutcome(taskSpec, err, timing);
+    }
+    throw err;
+  }
   return await runPreviewTaskFromPlan(bridge, taskSpec, compiled.taskPlan, timing);
 }
 
@@ -251,6 +268,44 @@ async function compileTaskSpecForRunner(
   }));
   recordTaskCompileTiming(timing, compiled);
   return compiled;
+}
+
+function compileFailurePreviewOutcome(
+  taskSpec: TaskSpec,
+  err: TaskSpecCompileError,
+  timing?: TaskTimingTrace,
+): TaskPreviewOutcome {
+  const previewId = measureTaskTiming(timing, 'preview_token.allocate_preview_id', () => nextPreviewId());
+  const targetAsset = readTaskSpecAssetPath(taskSpec);
+  const toolResult = taskFailure(
+    'preview_task',
+    err.code,
+    'semantic_error',
+    err.message,
+    err.issues,
+    {
+      stage: 'preflight',
+      retryable: true,
+    },
+  );
+  toolResult.target = { target_type: 'blueprint', ...(targetAsset ? { asset_path: targetAsset } : {}) };
+  toolResult.data = {
+    schema: TASK_PREVIEW_SCHEMA,
+    preview_id: previewId,
+    passed: false,
+    blocked: true,
+    task_type: readString((taskSpec as Record<string, unknown>)['task_type']),
+    ...(readTaskSpecFeatureName(taskSpec) ? { feature_name: readTaskSpecFeatureName(taskSpec) } : {}),
+    ...(targetAsset ? { target_assets: [targetAsset] } : {}),
+    issues: err.issues,
+  };
+
+  return {
+    previewId,
+    passed: false,
+    issues: err.issues,
+    toolResult,
+  };
 }
 
 function recordTaskCompileTiming(timing: TaskTimingTrace | undefined, compiled: CompiledTaskPlan): void {

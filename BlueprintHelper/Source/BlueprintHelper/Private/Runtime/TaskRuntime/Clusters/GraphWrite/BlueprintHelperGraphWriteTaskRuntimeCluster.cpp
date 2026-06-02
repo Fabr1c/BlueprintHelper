@@ -11,6 +11,7 @@
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteOwnershipValidator.h"
 
 class FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils
 {
@@ -220,7 +221,13 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Target.AtomicIndex = TargetIndex;
 		OutEvidence.AtomicTargets.Add(Target);
 	}
-	return OutEvidence.AtomicTargets.Num() > 0;
+
+	FBlueprintHelperGraphWriteOwnershipValidationInput OwnershipValidationInput;
+	OwnershipValidationInput.GeneratedBlockRefs = BlockRefs;
+	OwnershipValidationInput.AtomicTargets = OutEvidence.AtomicTargets;
+	const FBlueprintHelperGraphWriteOwnershipValidationResult OwnershipValidation =
+		FBlueprintHelperGraphWriteOwnershipValidator::Validate(OwnershipValidationInput);
+	return OutEvidence.AtomicTargets.Num() > 0 && OwnershipValidation.bPassed;
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperGraphWriteTaskRuntimeCluster::ExecuteStep(

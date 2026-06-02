@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import { TOOL_RESULT_SCHEMA } from '../../result/tool-result.js';
-import { createCompiledTaskPlan } from '../compiler/task-compiler.js';
+import { TaskSpecCompileError, createCompiledTaskPlan } from '../compiler/task-compiler.js';
 import {
   graphWriteAppendExpectedTaskPlanFixture,
   graphWriteAppendTaskSpecFixture,
@@ -127,6 +127,42 @@ test('preview task includes cache diagnostics when develop timing is enabled', a
       },
     ],
   });
+});
+
+test('preview task reports TaskSpec compile failures as structured preview blockers', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand() {
+      throw new Error('Bridge should not be called for compile failures.');
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => {
+      throw new TaskSpecCompileError(
+        'taskspec_semantic_invalid',
+        'GraphWrite connectivity static preflight failed: unconsumed_pure_data_node.',
+        [{
+          code: 'unconsumed_pure_data_node',
+          path: 'behavior.entries[0].body.statements[0]',
+          message: 'PureData producer is not consumed.',
+        }],
+      );
+    },
+  });
+
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.passed, false);
+  assert.equal(result.taskPlan, undefined);
+  assert.equal(result.toolResult.ok, false);
+  assert.equal(result.toolResult.error?.code, 'taskspec_semantic_invalid');
+  assert.equal(result.toolResult.data?.['passed'], false);
+  assert.equal(result.toolResult.data?.['blocked'], true);
+  assert.deepEqual(result.toolResult.data?.['issues'], [{
+    code: 'unconsumed_pure_data_node',
+    path: 'behavior.entries[0].body.statements[0]',
+    message: 'PureData producer is not consumed.',
+  }]);
 });
 
 test('preview task fails when a UE preview step failed even if dry_run says can_execute', async () => {

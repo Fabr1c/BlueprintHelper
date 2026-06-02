@@ -99,6 +99,7 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 	int32 TotalResolvedPinTypes = 0;
 	int32 TotalRequestedConnections = 0;
 	int32 TotalCreatedConnections = 0;
+	int32 TotalConnectivityViolations = 0;
 	const TArray<TSharedPtr<FJsonValue>>* GraphsArray = nullptr;
 	if (JsonObject->TryGetArrayField(TEXT("graphs"), GraphsArray) && GraphsArray && GraphsArray->Num() > 0)
 	{
@@ -138,6 +139,9 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 			TotalRequestedConnections += GraphResult.RequestedConnectionCount;
 			TotalCreatedConnections += GraphResult.CreatedConnectionCount;
 			Result.ConnectionDiagnostics.Append(GraphResult.ConnectionDiagnostics);
+			TotalConnectivityViolations += GraphResult.ConnectivityViolationCount;
+			Result.ConnectivityDiagnostics.Append(GraphResult.ConnectivityDiagnostics);
+			Result.ExecutionStats.ConnectivityValidationMs += GraphResult.ExecutionStats.ConnectivityValidationMs;
 		}
 	}
 	else if (JsonObject->HasField(TEXT("nodes")) || JsonObject->HasField(TEXT("links")))
@@ -146,7 +150,6 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 		return Result;
 	}
 
-	Result.bSucceed = TotalGenerated > 0;
 	Result.GeneratedNodeCount = TotalGenerated;
 	Result.RequestedDefaultValueCount = TotalRequestedDefaultValues;
 	Result.AppliedDefaultValueCount = TotalAppliedDefaultValues;
@@ -154,8 +157,15 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 	Result.ResolvedPinTypeCount = TotalResolvedPinTypes;
 	Result.RequestedConnectionCount = TotalRequestedConnections;
 	Result.CreatedConnectionCount = TotalCreatedConnections;
+	Result.ConnectivityViolationCount = TotalConnectivityViolations;
+	Result.ExecutionStats.ConnectivityViolationCount = TotalConnectivityViolations;
 	Result.UnresolvedNodeCount = OutUnresolvedNodes.Num();
-	if (Result.bSucceed)
+	Result.bSucceed = TotalGenerated > 0 && TotalConnectivityViolations == 0;
+	if (TotalConnectivityViolations > 0)
+	{
+		Result.Message = TEXT("GraphWrite connectivity validation failed.");
+	}
+	else if (Result.bSucceed)
 	{
 		Result.Message = FString::Printf(TEXT("多图生成完成：成功 %d 个节点，未匹配 %d 个。"), Result.GeneratedNodeCount, Result.UnresolvedNodeCount);
 	}

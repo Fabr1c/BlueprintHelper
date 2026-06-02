@@ -11,6 +11,15 @@ class UBlueprint;
 class UEdGraph;
 class UEdGraphNode;
 
+struct FBlueprintHelperGraphSnapshotOwnershipEntry
+{
+	FString NodeGuid;
+	FString Owned;
+	FString BlockId;
+	FString FeatureName;
+	FString Tool;
+};
+
 /**
  * 图表快照服务。
  * 用于在 Replace 操作前捕获目标节点快照，失败时可通过快照恢复。
@@ -27,6 +36,7 @@ struct FBlueprintHelperGraphSnapshot
 	TArray<FString> LinkSummaries;
 	TArray<FString> NodeComments;
 	TArray<FString> OwnershipMetadata;
+	TArray<FBlueprintHelperGraphSnapshotOwnershipEntry> OwnershipEntries;
 	FString OwnerBlockId;
 	FString EntryIdentity;
 	FString ReplaceScope;
@@ -57,6 +67,21 @@ struct FBlueprintHelperGraphSnapshot
 		StringArray(TEXT("link_summaries"), LinkSummaries, Json);
 		StringArray(TEXT("node_comments"), NodeComments, Json);
 		StringArray(TEXT("ownership_metadata"), OwnershipMetadata, Json);
+		if (OwnershipEntries.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> EntryValues;
+			for (const FBlueprintHelperGraphSnapshotOwnershipEntry& Entry : OwnershipEntries)
+			{
+				TSharedRef<FJsonObject> EntryJson = MakeShared<FJsonObject>();
+				EntryJson->SetStringField(TEXT("node_guid"), Entry.NodeGuid);
+				if (!Entry.Owned.IsEmpty()) EntryJson->SetStringField(TEXT("owned"), Entry.Owned);
+				if (!Entry.BlockId.IsEmpty()) EntryJson->SetStringField(TEXT("block_id"), Entry.BlockId);
+				if (!Entry.FeatureName.IsEmpty()) EntryJson->SetStringField(TEXT("feature_name"), Entry.FeatureName);
+				if (!Entry.Tool.IsEmpty()) EntryJson->SetStringField(TEXT("tool"), Entry.Tool);
+				EntryValues.Add(MakeShared<FJsonValueObject>(EntryJson));
+			}
+			Json->SetArrayField(TEXT("ownership_entries"), EntryValues);
+		}
 
 		return Json;
 	}
