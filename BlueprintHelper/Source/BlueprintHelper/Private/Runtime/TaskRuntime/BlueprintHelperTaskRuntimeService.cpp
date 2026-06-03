@@ -41,6 +41,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheDiagnostics.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCacheKeyUtils.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCommitService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeContextRevisionManifest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.h"
@@ -1697,6 +1698,7 @@ public:
 		const FString& StepId,
 		bool bDryRun,
 		const FString& AssetStateHash,
+		const FString& ContextRevisionManifestHash,
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache& ResolutionCache,
 		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
 		FBlueprintHelperToolError& OutError,
@@ -1814,6 +1816,7 @@ public:
 				const bool bCacheHit = ResolutionCache.TryGet(
 					ResolutionKey,
 					AssetStateHash,
+					ContextRevisionManifestHash,
 					FDateTime::UtcNow(),
 					CachedResolution);
 				if (!bCacheHit || !IsCachedCallFunctionResolutionStillAvailable(CachedResolution))
@@ -1825,6 +1828,7 @@ public:
 					CachedResolution.Message = ResolveResult.Message;
 					CachedResolution.CandidateFunctions = ResolveResult.CandidateFunctions;
 					CachedResolution.AssetStateHash = AssetStateHash;
+					CachedResolution.ContextRevisionManifestHash = ContextRevisionManifestHash;
 					CachedResolution.ResolverVersion =
 						FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion();
 					if (ResolveResult.IsResolved())
@@ -3605,6 +3609,18 @@ public:
 				TEXT(""))));
 		}
 		Journal->SetArrayField(TEXT("steps"), Steps);
+
+		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
+		{
+			const TSharedPtr<FJsonObject>* ContextRevisionPtr = nullptr;
+			if (StepRecord.Result.Data.IsValid() &&
+				StepRecord.Result.Data->TryGetObjectField(TEXT("current_context_revision"), ContextRevisionPtr) &&
+				ContextRevisionPtr && ContextRevisionPtr->IsValid())
+			{
+				Journal->SetObjectField(TEXT("context_revision"), *ContextRevisionPtr);
+				break;
+			}
+		}
 
 		const bool bHasPartialFailure =
 			bRuntimeFailed ||
@@ -5734,6 +5750,10 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 	StoreRequest.TaskPlanHash = TaskPlanHash;
 	StoreRequest.ExecutionPolicyHash = ExecutionPolicyHash;
 	StoreRequest.AssetStateHash = FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildTargetAssetStateHash(*TaskPlanPtr);
+	const FBlueprintHelperTaskRuntimeContextRevisionManifest ContextRevisionManifest =
+		FBlueprintHelperTaskRuntimeContextRevisionManifestBuilder::BuildFromTaskPlan(*TaskPlanPtr);
+	StoreRequest.ActionContextRevisionManifestHash = ContextRevisionManifest.ManifestHash;
+	StoreRequest.ActionContextRevisionManifestJson = ContextRevisionManifest.ToJson();
 	StoreRequest.bPassed = FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPreviewResultExecutable(Result);
 
 	const FString Token = PreviewStore->Store(StoreRequest);
@@ -5800,6 +5820,42 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecutePrevie
 			EBlueprintHelperToolStage::Preflight,
 			TEXT("Stored preview token did not contain a valid TaskPlan."),
 			TEXT("preview_token"));
+	}
+
+	const FBlueprintHelperTaskRuntimeContextRevisionManifest ExpectedContextRevisionManifest =
+		FBlueprintHelperTaskRuntimeContextRevisionManifestBuilder::BuildFromJson(
+			ResolveResult.ActionContextRevisionManifestJson);
+	const FBlueprintHelperTaskRuntimeContextRevisionManifest CurrentContextRevisionManifest =
+		FBlueprintHelperTaskRuntimeContextRevisionManifestBuilder::BuildFromTaskPlan(ResolveResult.TaskPlan);
+	FBlueprintHelperTaskRuntimeContextRevisionMismatch RevisionMismatch;
+	if (!FBlueprintHelperTaskRuntimeContextRevisionManifest::Compare(
+		ExpectedContextRevisionManifest,
+		CurrentContextRevisionManifest,
+		RevisionMismatch))
+	{
+		FBlueprintHelperToolError Error = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
+			RevisionMismatch.Code,
+			EBlueprintHelperToolStage::Preflight,
+			RevisionMismatch.Message,
+			RevisionMismatch.Field);
+		Error.bRetryable = true;
+		FBlueprintHelperToolResultBase Failure = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("execute_task_plan"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+		Failure.Data = MakeShared<FJsonObject>();
+		Failure.Data->SetStringField(TEXT("detail_code"), RevisionMismatch.DetailCode);
+		if (RevisionMismatch.Expected.IsValid())
+		{
+			Failure.Data->SetObjectField(TEXT("expected_context_revision"), RevisionMismatch.Expected);
+		}
+		if (RevisionMismatch.Current.IsValid())
+		{
+			Failure.Data->SetObjectField(TEXT("current_context_revision"), RevisionMismatch.Current);
+		}
+		Failure.Data->SetStringField(TEXT("refresh_hint"), TEXT("run preview_task again"));
+		Failure.Data->SetStringField(TEXT("agent_action"), TEXT("refresh_context_and_preview"));
+		return Failure;
 	}
 
 	const FString CurrentAssetStateHash =
@@ -5903,6 +5959,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	}
 	const FString TargetAssetStateHash =
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildTargetAssetStateHash(*TaskPlanPtr);
+	const FBlueprintHelperTaskRuntimeContextRevisionManifest TargetContextRevisionManifest =
+		FBlueprintHelperTaskRuntimeContextRevisionManifestBuilder::BuildFromTaskPlan(*TaskPlanPtr);
+	const FString TargetContextRevisionManifestHash = TargetContextRevisionManifest.ManifestHash;
 
 	auto BuildExecutionPolicyHash = [&]() -> FString
 	{
@@ -6354,6 +6413,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		Key.DependencyClosureHash = BuildDependencyClosureHash(PreparedStep);
 		Key.ExecutionPolicyHash = ExecutionPolicyHash;
 		Key.AssetStateHash = TargetAssetStateHash;
+		Key.ContextRevisionManifestHash = TargetContextRevisionManifestHash;
 		Key.DryRunPlannedStateHash =
 			FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildDryRunPlannedMemberVariablesStateHash(
 				PreparedStep.LoweredStep,
@@ -6451,6 +6511,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			LoweredStep.StepId,
 			bDryRun,
 			TargetAssetStateHash,
+			TargetContextRevisionManifestHash,
 			*CallFunctionResolutionCache,
 			StepResolvedCallFunctionFacts,
 			CallFunctionResolutionError,
@@ -6495,6 +6556,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			GraphWriteCacheKey.GraphSchemaHash =
 				FBlueprintHelperTaskRuntimeCacheKeyUtils::HashString(GraphWriteAssetPath + TEXT("|") + GraphWriteGraphName);
 			GraphWriteCacheKey.AssetStateHash = TargetAssetStateHash;
+			GraphWriteCacheKey.ContextRevisionManifestHash = TargetContextRevisionManifestHash;
 			GraphWriteCacheKey.DryRunPlannedStateHash =
 				FBlueprintHelperTaskRuntimeServiceLocalUtils::BuildDryRunPlannedMemberVariablesStateHash(
 					LoweredStep,

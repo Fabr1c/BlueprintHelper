@@ -154,14 +154,41 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_TtlAndAssetState::Ru
 	Stored.DisplayName = TEXT("Print String");
 	Stored.OwnerClassPath = TEXT("/Script/Engine.KismetSystemLibrary");
 	Stored.AssetStateHash = TEXT("asset_v1");
+	Stored.ContextRevisionManifestHash = TEXT("ctx_v1");
 	Cache.Store(Key, Stored, Now);
 
 	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Found;
-	TestTrue(TEXT("hit before ttl"), Cache.TryGet(Key, TEXT("asset_v1"), Now, Found));
-	TestFalse(TEXT("asset hash mismatch misses"), Cache.TryGet(Key, TEXT("asset_v2"), Now, Found));
+	TestTrue(TEXT("hit before ttl"), Cache.TryGet(Key, TEXT("asset_v1"), TEXT("ctx_v1"), Now, Found));
+	TestFalse(TEXT("asset hash mismatch misses"), Cache.TryGet(Key, TEXT("asset_v2"), TEXT("ctx_v1"), Now, Found));
+	TestFalse(TEXT("context revision mismatch misses"), Cache.TryGet(Key, TEXT("asset_v1"), TEXT("ctx_v2"), Now, Found));
 	TestFalse(
 		TEXT("expired entry misses"),
-		Cache.TryGet(Key, TEXT("asset_v1"), Now + FTimespan::FromSeconds(181.0), Found));
+		Cache.TryGet(Key, TEXT("asset_v1"), TEXT("ctx_v1"), Now + FTimespan::FromSeconds(181.0), Found));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_ContextRevisionMismatch,
+	"BlueprintHelper.TaskRuntime.CallFunctionResolutionCache.ContextRevisionMismatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_ContextRevisionMismatch::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache Cache;
+	const FString Key = TEXT("call_ctx_key");
+	const FDateTime Now = FDateTime::UtcNow();
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Stored;
+	Stored.bResolved = true;
+	Stored.StableId = TEXT("/Script/Engine.KismetSystemLibrary:PrintString");
+	Stored.NativeName = TEXT("PrintString");
+	Stored.OwnerClassPath = TEXT("/Script/Engine.KismetSystemLibrary");
+	Stored.AssetStateHash = TEXT("asset_v1");
+	Stored.ContextRevisionManifestHash = TEXT("ctx_a");
+	Cache.Store(Key, Stored, Now);
+
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution Found;
+	TestFalse(TEXT("context revision mismatch misses call-function cache"), Cache.TryGet(Key, TEXT("asset_v1"), TEXT("ctx_b"), Now, Found));
 	return true;
 }
 

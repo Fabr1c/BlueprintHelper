@@ -1127,10 +1127,17 @@ bool FBlueprintHelperActionContextRevisionGuardSourceContractTest::RunTest(const
 {
 	const FString HeaderPath = BuildActionContextPublicPath(TEXT("BlueprintHelperActionContextRevisionGuard.h"));
 	const FString SourcePath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextRevisionGuard.cpp"));
+	const FString ServiceHeaderPath = BuildActionContextPublicPath(TEXT("BlueprintHelperActionContextRevisionService.h"));
+	const FString ServiceSourcePath = BuildActionContextPrivatePath(TEXT("BlueprintHelperActionContextRevisionService.cpp"));
 
 	FString HeaderText;
 	FString SourceText;
-	if (!LoadRequiredSourceFile(*this, HeaderPath, HeaderText) || !LoadRequiredSourceFile(*this, SourcePath, SourceText))
+	FString ServiceHeaderText;
+	FString ServiceSourceText;
+	if (!LoadRequiredSourceFile(*this, HeaderPath, HeaderText)
+		|| !LoadRequiredSourceFile(*this, SourcePath, SourceText)
+		|| !LoadRequiredSourceFile(*this, ServiceHeaderPath, ServiceHeaderText)
+		|| !LoadRequiredSourceFile(*this, ServiceSourcePath, ServiceSourceText))
 	{
 		return false;
 	}
@@ -1153,6 +1160,25 @@ bool FBlueprintHelperActionContextRevisionGuardSourceContractTest::RunTest(const
 			TEXT("Expected.IsCompatibleWith(Current)"),
 			TEXT("action_context_stale"),
 			TEXT("OutError")
+		});
+	bComplete &= RequireTokens(
+		*this,
+		ServiceHeaderText,
+		ServiceHeaderPath,
+		{
+			TEXT("BuildRevisionToken"),
+			TEXT("BuildBlueprintRevision"),
+			TEXT("BuildGraphRevision")
+		});
+	bComplete &= RequireTokens(
+		*this,
+		ServiceSourceText,
+		ServiceSourcePath,
+		{
+			TEXT("BlueprintHelperActionContextRevisionService.h"),
+			TEXT("FBlueprintHelperActionContextRevisionService::BuildRevisionToken"),
+			TEXT("FBlueprintHelperActionContextRevisionService::BuildBlueprintRevision"),
+			TEXT("FBlueprintHelperActionContextRevisionService::BuildGraphRevision")
 		});
 
 	TestTrue(TEXT("ActionContext revision guard source contract is complete"), bComplete);

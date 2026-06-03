@@ -25,12 +25,22 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::TryGet(
 	const FString& Key,
 	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& OutValue)
 {
-	return TryGet(Key, TEXT(""), FDateTime::UtcNow(), OutValue);
+	return TryGet(Key, TEXT(""), TEXT(""), FDateTime::UtcNow(), OutValue);
 }
 
 bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::TryGet(
 	const FString& Key,
 	const FString& AssetStateHash,
+	const FDateTime& NowUtc,
+	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& OutValue)
+{
+	return TryGet(Key, AssetStateHash, TEXT(""), NowUtc, OutValue);
+}
+
+bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::TryGet(
+	const FString& Key,
+	const FString& AssetStateHash,
+	const FString& ContextRevisionManifestHash,
 	const FDateTime& NowUtc,
 	FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& OutValue)
 {
@@ -45,6 +55,12 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::TryGet(
 			return false;
 		}
 		if (!AssetStateHash.IsEmpty() && Found->AssetStateHash != AssetStateHash)
+		{
+			++RequestStats.Misses;
+			return false;
+		}
+		if (!ContextRevisionManifestHash.IsEmpty() &&
+			Found->ContextRevisionManifestHash != ContextRevisionManifestHash)
 		{
 			++RequestStats.Misses;
 			return false;
@@ -256,6 +272,7 @@ int64 FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::EstimateBytes(
 		Value.DisplayName +
 		Value.OwnerClassPath +
 		Value.AssetStateHash +
+		Value.ContextRevisionManifestHash +
 		Value.ResolverVersion;
 	Bytes += FTCHARToUTF8(*Scalars).Length();
 	for (const FBlueprintHelperCallFunctionCandidateInfo& Candidate : Value.CandidateFunctions)

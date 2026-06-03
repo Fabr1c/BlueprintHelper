@@ -5,6 +5,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextRevisionGuard.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextRevisionService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextSnapshotBuilder.h"
 
 FBlueprintHelperActionContextRevisionToken FBlueprintHelperActionContextScope::MakeRevision(
@@ -13,12 +14,11 @@ FBlueprintHelperActionContextRevisionToken FBlueprintHelperActionContextScope::M
 	const FString& TaskRunId,
 	const FString& PlanHash)
 {
-	FBlueprintHelperActionContextRevisionToken Revision;
-	Revision.AssetPath = Blueprint ? Blueprint->GetPathName() : FString();
-	Revision.GraphName = Graph ? Graph->GetName() : FString();
-	Revision.TaskRunId = TaskRunId;
-	Revision.PlanHash = PlanHash;
-	return Revision;
+	return FBlueprintHelperActionContextRevisionService::BuildRevisionToken(
+		Blueprint,
+		Graph,
+		TaskRunId,
+		PlanHash);
 }
 
 bool FBlueprintHelperActionContextScope::Build(

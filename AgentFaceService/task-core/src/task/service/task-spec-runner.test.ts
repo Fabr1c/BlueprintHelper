@@ -437,6 +437,101 @@ test('execute task records pending_confirmation when success has no validation/r
   assert.equal(JSON.stringify(result).includes('BlueprintHelper.MetricsEvent.v1'), false);
 });
 
+test('execute task with preview token preserves context_stale refresh action', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      assert.equal(command, 'execute_task_plan');
+      return {
+        success: false,
+        request_id: 'context_stale_request',
+        error: {
+          code: 'context_stale',
+          message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+          field: 'preview_token.context_revision',
+          retryable: true,
+          agent_action: 'refresh_context_and_preview',
+        },
+      } as unknown as BridgeResponse;
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(
+    graphWriteAppendTaskSpecFixture,
+    undefined,
+    { previewToken: '0123456789abcdef0123456789abcdef' },
+  );
+
+  assert.equal(result.ok, false);
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+  assert.equal(result.error?.code, 'context_stale');
+  assert.equal(errorRecord['category'], 'bridge_error');
+  assert.equal(result.error?.retryable, true);
+  assert.equal(result.error?.field, 'preview_token.context_revision');
+  assert.equal(errorRecord['agent_action'], 'refresh_context_and_preview');
+});
+
+test('execute task with preview token preserves context_stale from failed UE ToolResult', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      assert.equal(command, 'execute_task_plan');
+      return {
+        success: true,
+        request_id: 'context_stale_tool_result_request',
+        result: {
+          ok: false,
+          operation: 'execute_task_plan',
+          status: 'failed',
+          modified: false,
+          error: {
+            code: 'execution_failed',
+            message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+            field: 'bridge.execute_task_plan',
+            retryable: false,
+            agent_action: 'refresh_context_and_preview',
+            issues: [
+              {
+                code: 'context_stale',
+                path: 'preview_token.context_revision',
+                message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+              },
+            ],
+          },
+        },
+      } as unknown as BridgeResponse;
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(
+    graphWriteAppendTaskSpecFixture,
+    undefined,
+    { previewToken: '0123456789abcdef0123456789abcdef' },
+  );
+
+  assert.equal(result.ok, false);
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+  assert.equal(result.error?.code, 'context_stale');
+  assert.equal(errorRecord['category'], 'bridge_error');
+  assert.equal(result.error?.retryable, true);
+  assert.equal(result.error?.field, 'preview_token.context_revision');
+  assert.equal(errorRecord['agent_action'], 'refresh_context_and_preview');
+});
+
 test('metrics sink failures do not change preview or execute results', async () => {
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {

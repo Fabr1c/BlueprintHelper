@@ -179,6 +179,15 @@ export function createTaskSpecRunner(input: {
             'bridge.execute_task_plan',
           ), taskPlan);
         }
+        if (isFailedBridgeToolResult(writeResponse)) {
+          return await recordAndReturn(taskFailureFromBridgeResponse(
+            'execute_task',
+            writeResponse,
+            'execution_failed',
+            'Bridge execute returned a failed ToolResult.',
+            'bridge.execute_task_plan',
+          ), taskPlan);
+        }
 
         const result = measureTaskTiming(timing, 'result_wrap', () => {
           const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
@@ -700,6 +709,15 @@ async function executeTaskWithPreviewToken(
       'bridge.execute_task_plan',
     ), timing);
   }
+  if (isFailedBridgeToolResult(writeResponse)) {
+    return attachTaskTiming(taskFailureFromBridgeResponse(
+      'execute_task',
+      writeResponse,
+      'execution_failed',
+      'Bridge execute returned a failed ToolResult.',
+      'bridge.execute_task_plan',
+    ), timing);
+  }
 
   const result = measureTaskTiming(timing, 'result_wrap', () => {
     const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
@@ -852,6 +870,7 @@ function taskFailure(
   errorDetails: Partial<ToolResultError> = {},
 ): ToolResultBase {
   const message = error instanceof Error ? error.message : String(error);
+  const errorDetailRecord = errorDetails as Partial<ToolResultError> & { agent_action?: string };
   const toolError = {
     code,
     category,
@@ -859,7 +878,8 @@ function taskFailure(
     message,
     retryable: errorDetails.retryable ?? category !== 'internal_error',
     rollback_result: errorDetails.rollback_result ?? 'not_needed',
-    agent_action: category === 'semantic_error' ? 'fix_taskspec_and_retry' : 'stop_and_report',
+    agent_action: errorDetailRecord.agent_action
+      ?? (category === 'semantic_error' ? 'fix_taskspec_and_retry' : 'stop_and_report'),
     issues,
     ...(errorDetails.field ? { field: errorDetails.field } : {}),
     ...(errorDetails.expected ? { expected: errorDetails.expected } : {}),
@@ -878,36 +898,73 @@ function bridgeFailureFromResponse(
   code: string;
   message: string;
   issues: TaskIssue[];
-  error: Partial<ToolResultError>;
+  error: Partial<ToolResultError> & { agent_action?: string };
 } {
   const result = asRecord(response.result);
-  const nestedError = asRecord(result?.['error']);
-  const code = readString(nestedError?.['code']) ?? response.error_code ?? fallbackCode;
-  const responseMessage = readNonEmptyString(response.message);
-  const message = readNonEmptyString(nestedError?.['message']) ?? responseMessage ?? fallbackMessage;
-  const field = readString(nestedError?.['field']);
+  const topLevelResponse = response as unknown as Record<string, unknown>;
+  const responseError = asRecord(topLevelResponse['error']);
+  const resultError = asRecord(result?.['error']);
+  const data = asRecord(result?.['data']);
+  const errorRecord = responseError ?? resultError;
+  const rawCode = readString(errorRecord?.['code']) ?? response.error_code ?? fallbackCode;
+  const agentAction = readString(errorRecord?.['agent_action']) ?? readString(data?.['agent_action']);
+  const explicitIssues = collectErrorRecordIssues(errorRecord);
   const dryRunIssues = extractDryRun(response).issues;
-  const issues = dryRunIssues.length > 0
-    ? dryRunIssues
+  const issues = explicitIssues.length > 0
+    ? explicitIssues
+    : dryRunIssues.length > 0
+      ? dryRunIssues
+      : [];
+  const primaryIssue = issues.length === 1 ? issues[0] : undefined;
+  const bPromotePrimaryIssue =
+    primaryIssue?.code !== undefined &&
+    (rawCode === fallbackCode || rawCode === 'execution_failed' || rawCode === 'bridge_error');
+  const code = bPromotePrimaryIssue && primaryIssue?.code ? primaryIssue.code : rawCode;
+  const responseMessage = readNonEmptyString(response.message);
+  const message =
+    readNonEmptyString(errorRecord?.['message']) ??
+    responseMessage ??
+    primaryIssue?.message ??
+    fallbackMessage;
+  const field =
+    bPromotePrimaryIssue && primaryIssue?.path
+      ? primaryIssue.path
+      : readString(errorRecord?.['field']) ?? primaryIssue?.path ?? fallbackIssuePath;
+  const retryable = code === 'context_stale'
+    ? true
+    : typeof errorRecord?.['retryable'] === 'boolean'
+      ? errorRecord['retryable']
+      : false;
+  const normalizedIssues = issues.length > 0
+    ? issues
     : [{
       code,
-      path: field ?? fallbackIssuePath,
+      path: field,
       message,
     }];
 
   return {
     code,
     message,
-    issues,
+    issues: normalizedIssues,
     error: {
-      stage: readToolStage(nestedError?.['stage']) ?? 'bridge',
-      retryable: typeof nestedError?.['retryable'] === 'boolean' ? nestedError['retryable'] : false,
-      rollback_result: readRollbackResult(nestedError?.['rollback_result']) ?? 'not_needed',
+      stage: readToolStage(errorRecord?.['stage']) ?? 'bridge',
+      retryable,
+      rollback_result: readRollbackResult(errorRecord?.['rollback_result']) ?? 'not_needed',
+      ...(agentAction ? { agent_action: agentAction } : {}),
       ...(field ? { field } : {}),
-      ...(readString(nestedError?.['expected']) ? { expected: readString(nestedError?.['expected']) } : {}),
-      ...(readString(nestedError?.['actual']) ? { actual: readString(nestedError?.['actual']) } : {}),
+      ...(readString(errorRecord?.['expected']) ? { expected: readString(errorRecord?.['expected']) } : {}),
+      ...(readString(errorRecord?.['actual']) ? { actual: readString(errorRecord?.['actual']) } : {}),
     },
   };
+}
+
+function collectErrorRecordIssues(errorRecord: Record<string, unknown> | undefined): TaskIssue[] {
+  return arrayOfRecords(errorRecord?.['issues']).map((issue, index) => ({
+    code: readString(issue['code']) ?? 'bridge_issue',
+    path: readString(issue['path']) ?? readString(issue['field']) ?? `bridge.error.issues[${index}]`,
+    message: readNonEmptyString(issue['message']) ?? JSON.stringify(issue),
+  }));
 }
 
 function extractUeTaskRunId(writeResponse: BridgeResponse): string | undefined {
@@ -917,6 +974,11 @@ function extractUeTaskRunId(writeResponse: BridgeResponse): string | undefined {
   return typeof taskRunId === 'string' && taskRunId.length > 0
     ? taskRunId
     : undefined;
+}
+
+function isFailedBridgeToolResult(response: BridgeResponse): boolean {
+  const result = asRecord(response.result);
+  return result?.['ok'] === false;
 }
 
 function extractPreviewToken(response: BridgeResponse): TaskPreviewToken | undefined {

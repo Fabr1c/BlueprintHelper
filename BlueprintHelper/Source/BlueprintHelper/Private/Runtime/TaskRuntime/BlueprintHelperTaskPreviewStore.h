@@ -13,6 +13,8 @@ struct FBlueprintHelperTaskPreviewStoreCreateRequest
 	FString TaskPlanHash;
 	FString ExecutionPolicyHash;
 	FString AssetStateHash;
+	FString ActionContextRevisionManifestHash;
+	TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 	bool bPassed = false;
 };
 
@@ -22,6 +24,8 @@ struct FBlueprintHelperTaskPreviewStoreResolveResult
 	bool bPassed = false;
 	TSharedPtr<FJsonObject> TaskPlan;
 	FString AssetStateHash;
+	FString ActionContextRevisionManifestHash;
+	TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 	FString ErrorCode;
 	FString ErrorMessage;
 	FString ErrorField;
@@ -48,6 +52,8 @@ private:
 		FString TaskPlanHash;
 		FString ExecutionPolicyHash;
 		FString AssetStateHash;
+		FString ActionContextRevisionManifestHash;
+		TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 		FString CreatedAtIso;
 		FDateTime ExpiresAtUtc;
 		FDateTime LastAccessedAtUtc;
@@ -60,6 +66,7 @@ private:
 	void PruneExpired();
 	void TrimToBounds();
 	TSharedPtr<FJsonObject> CloneTaskPlan(const TSharedPtr<FJsonObject>& Source) const;
+	TSharedPtr<FJsonObject> CloneJsonObject(const TSharedPtr<FJsonObject>& Source) const;
 
 	int32 MaxEntries = 64;
 	FTimespan TimeToLive = FTimespan::FromMinutes(10.0);

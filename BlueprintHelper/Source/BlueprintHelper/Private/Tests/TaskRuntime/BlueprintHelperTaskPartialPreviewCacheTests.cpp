@@ -16,6 +16,7 @@ public:
 		Key.DependencyClosureHash = TEXT("deps_hash");
 		Key.ExecutionPolicyHash = TEXT("policy_hash");
 		Key.AssetStateHash = TEXT("asset_state_hash");
+		Key.ContextRevisionManifestHash = TEXT("ctx_hash");
 		return Key;
 	}
 
@@ -58,6 +59,33 @@ bool FBlueprintHelperTaskPartialPreviewCache_HitsOnlyForMatchingKey::RunTest(con
 	FBlueprintHelperPartialPreviewCacheKey PlannedStateChanged = Key;
 	PlannedStateChanged.DryRunPlannedStateHash = TEXT("planned_state_changed");
 	TestFalse(TEXT("changed dry-run planned state misses"), Cache.TryGet(PlannedStateChanged, Now, Found));
+
+	FBlueprintHelperPartialPreviewCacheKey ContextChanged = Key;
+	ContextChanged.ContextRevisionManifestHash = TEXT("ctx_hash_2");
+	TestFalse(TEXT("changed context revision misses"), Cache.TryGet(ContextChanged, Now, Found));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperPartialPreviewCacheContextRevisionMismatchTest,
+	"BlueprintHelper.TaskRuntime.PartialPreviewCache.ContextRevisionMismatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperPartialPreviewCacheContextRevisionMismatchTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPartialPreviewCache Cache;
+	FBlueprintHelperPartialPreviewCacheKey StoreKey =
+		FBlueprintHelperTaskPartialPreviewCacheTestsLocalUtils::MakeKey(TEXT("step_ctx"));
+	StoreKey.ContextRevisionManifestHash = TEXT("ctx_a");
+
+	FBlueprintHelperPartialPreviewCacheEntry Entry =
+		FBlueprintHelperTaskPartialPreviewCacheTestsLocalUtils::MakeEntry(TEXT("step_ctx"));
+	Cache.Store(StoreKey, Entry, FDateTime::UtcNow());
+
+	FBlueprintHelperPartialPreviewCacheKey LookupKey = StoreKey;
+	LookupKey.ContextRevisionManifestHash = TEXT("ctx_b");
+	FBlueprintHelperPartialPreviewCacheEntry Found;
+	TestFalse(TEXT("context revision mismatch misses partial preview cache"), Cache.TryGet(LookupKey, FDateTime::UtcNow(), Found));
 	return true;
 }
 

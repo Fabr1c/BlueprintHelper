@@ -27,6 +27,7 @@ struct FBlueprintHelperTaskRuntimeCachedCallFunctionResolution
 	FString OwnerClassPath;
 	TArray<FBlueprintHelperCallFunctionCandidateInfo> CandidateFunctions;
 	FString AssetStateHash;
+	FString ContextRevisionManifestHash;
 	FString ResolverVersion;
 	FDateTime CreatedAtUtc;
 	FDateTime ExpiresAtUtc;
@@ -44,6 +45,12 @@ public:
 	bool TryGet(
 		const FString& Key,
 		const FString& AssetStateHash,
+		const FDateTime& NowUtc,
+		FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& OutValue);
+	bool TryGet(
+		const FString& Key,
+		const FString& AssetStateHash,
+		const FString& ContextRevisionManifestHash,
 		const FDateTime& NowUtc,
 		FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& OutValue);
 	void Store(const FString& Key, const FBlueprintHelperTaskRuntimeCachedCallFunctionResolution& Value);

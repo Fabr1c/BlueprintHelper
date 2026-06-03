@@ -17,6 +17,7 @@ struct FBlueprintHelperPartialPreviewCacheKey
 	FString DependencyClosureHash;
 	FString ExecutionPolicyHash;
 	FString AssetStateHash;
+	FString ContextRevisionManifestHash;
 	FString DryRunPlannedStateHash = TEXT("none");
 
 	bool IsValid() const;

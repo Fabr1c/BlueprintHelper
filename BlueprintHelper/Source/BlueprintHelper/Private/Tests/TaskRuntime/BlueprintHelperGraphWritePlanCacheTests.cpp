@@ -13,6 +13,7 @@ public:
 		Key.PayloadHash = TEXT("payload_hash");
 		Key.GraphSchemaHash = TEXT("schema_hash");
 		Key.AssetStateHash = TEXT("asset_state_hash");
+		Key.ContextRevisionManifestHash = TEXT("ctx_hash");
 		return Key;
 	}
 
@@ -55,6 +56,30 @@ bool FBlueprintHelperGraphWritePlanCache_HitRequiresAllKeyParts::RunTest(const F
 	FBlueprintHelperGraphWritePlanCacheKey ChangedPlannedState = Key;
 	ChangedPlannedState.DryRunPlannedStateHash = TEXT("planned_state_hash_2");
 	TestFalse(TEXT("planned state mismatch misses"), Cache.TryGet(ChangedPlannedState, Now, Found));
+
+	FBlueprintHelperGraphWritePlanCacheKey ChangedContext = Key;
+	ChangedContext.ContextRevisionManifestHash = TEXT("ctx_hash_2");
+	TestFalse(TEXT("context revision mismatch misses"), Cache.TryGet(ChangedContext, Now, Found));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePlanCacheContextRevisionMismatchTest,
+	"BlueprintHelper.TaskRuntime.GraphWritePlanCache.ContextRevisionMismatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePlanCacheContextRevisionMismatchTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphWritePlanCache Cache;
+	FBlueprintHelperGraphWritePlanCacheKey StoreKey =
+		FBlueprintHelperGraphWritePlanCacheTestsLocalUtils::MakeKey();
+	StoreKey.ContextRevisionManifestHash = TEXT("ctx_a");
+	Cache.Store(StoreKey, FBlueprintHelperGraphWritePlanCacheTestsLocalUtils::MakeEntry(), FDateTime::UtcNow());
+
+	FBlueprintHelperGraphWritePlanCacheKey LookupKey = StoreKey;
+	LookupKey.ContextRevisionManifestHash = TEXT("ctx_b");
+	FBlueprintHelperGraphWritePlanCacheEntry Found;
+	TestFalse(TEXT("context revision mismatch misses graph write plan cache"), Cache.TryGet(LookupKey, FDateTime::UtcNow(), Found));
 	return true;
 }
 

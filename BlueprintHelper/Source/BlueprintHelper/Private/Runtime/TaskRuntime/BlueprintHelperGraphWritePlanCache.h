@@ -13,6 +13,7 @@ struct FBlueprintHelperGraphWritePlanCacheKey
 	FString PayloadHash;
 	FString GraphSchemaHash;
 	FString AssetStateHash;
+	FString ContextRevisionManifestHash;
 	FString DryRunPlannedStateHash = TEXT("none");
 
 	bool IsValid() const;

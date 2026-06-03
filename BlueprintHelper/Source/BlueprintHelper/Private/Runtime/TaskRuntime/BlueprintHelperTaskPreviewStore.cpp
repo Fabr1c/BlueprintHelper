@@ -33,6 +33,8 @@ FString FBlueprintHelperTaskPreviewStore::Store(const FBlueprintHelperTaskPrevie
 	Entry.TaskPlanHash = Request.TaskPlanHash;
 	Entry.ExecutionPolicyHash = Request.ExecutionPolicyHash;
 	Entry.AssetStateHash = Request.AssetStateHash;
+	Entry.ActionContextRevisionManifestHash = Request.ActionContextRevisionManifestHash;
+	Entry.ActionContextRevisionManifestJson = CloneJsonObject(Request.ActionContextRevisionManifestJson);
 	Entry.CreatedAtIso = Now.ToIso8601();
 	Entry.ExpiresAtUtc = Now + TimeToLive;
 	Entry.LastAccessedAtUtc = Now;
@@ -81,6 +83,8 @@ FBlueprintHelperTaskPreviewStoreResolveResult FBlueprintHelperTaskPreviewStore::
 	Result.bPassed = Entry->bPassed;
 	Result.TaskPlan = CloneTaskPlan(Entry->TaskPlan);
 	Result.AssetStateHash = Entry->AssetStateHash;
+	Result.ActionContextRevisionManifestHash = Entry->ActionContextRevisionManifestHash;
+	Result.ActionContextRevisionManifestJson = CloneJsonObject(Entry->ActionContextRevisionManifestJson);
 	return Result;
 }
 
@@ -150,6 +154,11 @@ void FBlueprintHelperTaskPreviewStore::TrimToBounds()
 }
 
 TSharedPtr<FJsonObject> FBlueprintHelperTaskPreviewStore::CloneTaskPlan(const TSharedPtr<FJsonObject>& Source) const
+{
+	return CloneJsonObject(Source);
+}
+
+TSharedPtr<FJsonObject> FBlueprintHelperTaskPreviewStore::CloneJsonObject(const TSharedPtr<FJsonObject>& Source) const
 {
 	if (!Source.IsValid())
 	{

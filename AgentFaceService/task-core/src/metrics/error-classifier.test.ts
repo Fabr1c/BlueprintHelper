@@ -245,6 +245,19 @@ test('classifyMetricsError treats target-scoped issues as context errors', () =>
   });
 });
 
+test('classifyMetricsError maps context_stale to context_error', () => {
+  const result = classifyMetricsError({
+    issue_code: 'context_stale',
+    path: 'preview_token.context_revision',
+  });
+
+  assert.deepEqual(result, {
+    category: 'context_error',
+    code: 'context_stale',
+    issue_path: 'preview_token.context_revision',
+  });
+});
+
 test('classifyMetricsError falls back to unknown when no rule matches', () => {
   const result = classifyMetricsError({
     error_code: 'totally_new_error',
