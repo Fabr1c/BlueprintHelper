@@ -1,5 +1,15 @@
 import type { BridgeClient, BridgeResponse, BridgeSendCommandOptions } from '../../bridge/bridge-client.js';
 import {
+  createMetricsCollector,
+  type MetricsCollector,
+} from '../../metrics/metrics-collector.js';
+import { classifyMetricsError } from '../../metrics/error-classifier.js';
+import type {
+  MetricsEventSink,
+  MetricsOperationIdentity,
+} from '../../metrics/metrics-types.js';
+import { extractTaskPlanMetricOperations } from '../../metrics/operation-extractor.js';
+import {
   TaskSpecCompileError,
   type CompiledTaskPlan,
   summarizeTaskPlan,
@@ -50,6 +60,11 @@ import {
 export type { TaskPreviewToken } from '../schema/task-schemas.js';
 export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
+export type TaskSpecRunnerMetrics =
+  | MetricsEventSink
+  | MetricsCollector
+  | { collector: MetricsCollector };
+
 export type TaskRunnerBridge = {
   sendCommand(
     command: string,
@@ -81,9 +96,11 @@ export interface TaskSpecRunner {
 export function createTaskSpecRunner(input: {
   bridge: TaskRunnerBridge;
   taskCompiler?: TaskCompiler;
+  metrics?: TaskSpecRunnerMetrics;
 }): TaskSpecRunner {
   const bridge = input.bridge;
   const taskCompiler = input.taskCompiler ?? createTaskSpecCompiler();
+  const metrics = createTaskSpecRunnerMetrics(input.metrics);
 
   return {
     async readReferenceContext(rawInput) {
@@ -96,34 +113,51 @@ export function createTaskSpecRunner(input: {
     },
 
     async previewTask(taskSpec, timing) {
+      const startedAt = Date.now();
       const outcome = await runPreviewTask(bridge, taskSpec, taskCompiler, timing);
       outcome.toolResult = attachTaskTiming(outcome.toolResult, timing);
+      await recordPreviewMetrics(metrics, taskSpec, outcome, startedAt);
       return outcome;
     },
 
     async executeTask(taskSpec, timing, options) {
+      const startedAt = Date.now();
+      const recordAndReturn = async (
+        result: ToolResultBase,
+        taskPlan?: TaskPlan,
+        alreadyAttached = false,
+      ): Promise<ToolResultBase> => {
+        const finalResult = alreadyAttached ? result : attachTaskTiming(result, timing);
+        await recordExecuteMetrics(metrics, taskSpec, finalResult, startedAt, taskPlan);
+        return finalResult;
+      };
+
       try {
         if (options?.previewToken) {
-          return await executeTaskWithPreviewToken(bridge, taskSpec, options.previewToken, timing);
+          return await recordAndReturn(
+            await executeTaskWithPreviewToken(bridge, taskSpec, options.previewToken, timing),
+            undefined,
+            true,
+          );
         }
 
         const preview = await runPreviewTaskForExecute(bridge, taskSpec, taskCompiler, timing);
         if (!preview.passed) {
-          return attachTaskTiming(taskFailure(
+          return await recordAndReturn(taskFailure(
             'execute_task',
             'task_preview_blocked',
             'preview_error',
             'Task preview was blocked; execute_task did not write assets.',
             preview.issues,
-          ), timing);
+          ), preview.taskPlan);
         }
         if (!preview.taskPlan) {
-          return attachTaskTiming(taskFailure(
+          return await recordAndReturn(taskFailure(
             'execute_task',
             'task_plan_missing_after_preview',
             'internal_error',
             'Task preview passed without a compiled TaskPlan.',
-          ), timing);
+          ));
         }
         const taskPlan = preview.taskPlan;
 
@@ -137,13 +171,13 @@ export function createTaskSpecRunner(input: {
         addNestedTaskTiming(timing, 'bridge.execute_task_plan', extractBridgeTransportTiming(writeResponse));
         addNestedTaskTiming(timing, 'ue.execute_task_plan', extractBridgeTiming(writeResponse.result));
         if (!writeResponse.success) {
-          return attachTaskTiming(taskFailureFromBridgeResponse(
+          return await recordAndReturn(taskFailureFromBridgeResponse(
             'execute_task',
             writeResponse,
             'bridge_error',
             'Bridge write failed.',
             'bridge.execute_task_plan',
-          ), timing);
+          ), taskPlan);
         }
 
         const result = measureTaskTiming(timing, 'result_wrap', () => {
@@ -178,9 +212,9 @@ export function createTaskSpecRunner(input: {
           toolResult.modified = modified;
           return toolResult;
         });
-        return attachTaskTiming(result, timing);
+        return await recordAndReturn(result, taskPlan);
       } catch (err) {
-        return attachTaskTiming(taskErrorFromUnknown('execute_task', err), timing);
+        return await recordAndReturn(taskErrorFromUnknown('execute_task', err));
       }
     },
 
@@ -204,6 +238,171 @@ export function createTaskSpecRunner(input: {
       );
     },
   };
+}
+
+function createTaskSpecRunnerMetrics(metrics: TaskSpecRunnerMetrics | undefined): MetricsCollector | undefined {
+  if (metrics === undefined) {
+    return undefined;
+  }
+
+  const metricsRecord = asRecord(metrics);
+  const serviceCollector = metricsRecord?.['collector'];
+  if (isMetricsCollector(serviceCollector)) {
+    return serviceCollector;
+  }
+
+  if (isMetricsCollector(metrics)) {
+    return metrics;
+  }
+
+  return createMetricsCollector({ sink: metrics as MetricsEventSink });
+}
+
+function isMetricsCollector(value: unknown): value is MetricsCollector {
+  const raw = asRecord(value);
+  return raw !== undefined
+    && typeof raw['recordTaskPreviewCompleted'] === 'function'
+    && typeof raw['recordTaskExecuteCompleted'] === 'function';
+}
+
+async function recordPreviewMetrics(
+  metrics: MetricsCollector | undefined,
+  taskSpec: TaskSpec,
+  outcome: TaskPreviewOutcome,
+  startedAt: number,
+): Promise<void> {
+  if (metrics === undefined) {
+    return;
+  }
+
+  try {
+    await metrics.recordTaskPreviewCompleted({
+      taskSpec,
+      passed: outcome.passed,
+      toolResult: createMetricsToolResultSource(outcome.toolResult),
+      duration_ms: elapsedMs(startedAt),
+      ...selectPrimaryMetricOperation(outcome.taskPlan),
+    });
+  } catch {
+    return;
+  }
+}
+
+async function recordExecuteMetrics(
+  metrics: MetricsCollector | undefined,
+  taskSpec: TaskSpec,
+  toolResult: ToolResultBase,
+  startedAt: number,
+  taskPlan?: TaskPlan,
+): Promise<void> {
+  if (metrics === undefined) {
+    return;
+  }
+
+  try {
+    await metrics.recordTaskExecuteCompleted({
+      taskSpec,
+      passed: toolResult.ok === true,
+      toolResult: createMetricsToolResultSource(toolResult),
+      duration_ms: elapsedMs(startedAt),
+      ...selectPrimaryMetricOperation(taskPlan),
+      ...extractExecuteEvidence(toolResult),
+    });
+  } catch {
+    return;
+  }
+}
+
+function selectPrimaryMetricOperation(taskPlan: TaskPlan | undefined): MetricsOperationIdentity {
+  const operations = extractTaskPlanMetricOperations(taskPlan);
+  return operations.find((operation) => operation.capability !== 'blueprint_signature')
+    ?? operations[0]
+    ?? {};
+}
+
+function createMetricsToolResultSource(toolResult: ToolResultBase): Record<string, unknown> {
+  const classification = classifyMetricsError(toolResult);
+  const issue = readPrimaryMetricsIssue(toolResult);
+
+  return removeUndefined({
+    error_category: classification.category,
+    error_code: classification.code ?? issue?.code,
+    issue,
+  });
+}
+
+function readPrimaryMetricsIssue(toolResult: ToolResultBase): Record<string, unknown> | undefined {
+  const error = asRecord(toolResult.error);
+  const issue = arrayOfRecords(error?.['issues'])[0] ?? asRecord(toolResult.data?.['issue']);
+  if (issue === undefined) {
+    return undefined;
+  }
+
+  return removeUndefined({
+    code: readString(issue['code']),
+    path: readString(issue['path']) ?? readString(issue['field']) ?? readString(issue['target']),
+    message: readString(issue['message']),
+  });
+}
+
+function extractExecuteEvidence(toolResult: ToolResultBase): {
+  validationPassed?: boolean;
+  readbackPassed?: boolean;
+} {
+  const bridgeResult = asRecord(toolResult.debug?.['bridge_result']);
+  const sources = [
+    toolResult,
+    asRecord(toolResult.data),
+    bridgeResult,
+    asRecord(bridgeResult?.['data']),
+  ].filter((source): source is Record<string, unknown> => source !== undefined);
+
+  return removeUndefined({
+    validationPassed: readSuccessEvidence(sources, ['validation_success', 'validation_passed'], ['validation', 'validation_result']),
+    readbackPassed: readSuccessEvidence(sources, ['readback_success', 'readback_passed'], ['readback', 'readback_result']),
+  });
+}
+
+function readSuccessEvidence(
+  sources: Array<Record<string, unknown>>,
+  booleanKeys: string[],
+  nestedKeys: string[],
+): boolean | undefined {
+  for (const source of sources) {
+    for (const key of booleanKeys) {
+      if (source[key] === true) {
+        return true;
+      }
+    }
+
+    for (const key of nestedKeys) {
+      const nested = asRecord(source[key]);
+      if (nested && isSuccessEvidenceRecord(nested)) {
+        return true;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function isSuccessEvidenceRecord(value: Record<string, unknown>): boolean {
+  for (const key of ['success', 'passed', 'ok']) {
+    if (value[key] === true) {
+      return true;
+    }
+  }
+
+  const status = readString(value['status']) ?? readString(value['result']);
+  return status === 'success' || status === 'passed';
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
+}
+
+function removeUndefined<T extends object>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }
 
 async function getBridgeTaskRunJournal(

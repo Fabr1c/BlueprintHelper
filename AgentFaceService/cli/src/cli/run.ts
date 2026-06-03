@@ -24,6 +24,14 @@ import {
   type CliFormat,
 } from './output.js';
 import { buildHelpText } from './help.js';
+import { runMetricsCommand, type MetricsCliCommand } from './metrics-command.js';
+import {
+  createCliMetricsService,
+  recordCliToolCompletion,
+  recordCliToolThrownError,
+  resolveCliMetricsRoot,
+  type CreateCliMetricsServiceOptions,
+} from './metrics-runtime.js';
 import { invokeCliTool } from './tool-command.js';
 import {
   TOOL_RESULT_SCHEMA,
@@ -38,6 +46,7 @@ export interface CliRuntime {
   argv: string[];
   cwd: string;
   runner?: TaskSpecRunner;
+  metrics?: ReturnType<typeof createCliMetricsService>;
   bridge?: TaskRunnerBridge;
   readStdin?: () => Promise<string> | string;
   runLocalProcess?: (command: string, args: string[], options?: {
@@ -67,6 +76,8 @@ const DEFAULT_WAIT_HINT_INITIAL_MS = 30000;
 const DEFAULT_WAIT_HINT_INTERVAL_MS = 30000;
 
 const runtimeBridgeCache = new WeakMap<CliRuntime, CliBridge>();
+const runtimeRunnerCache = new WeakMap<CliRuntime, TaskSpecRunner>();
+const runtimeMetricsCache = new WeakMap<CliRuntime, ReturnType<typeof createCliMetricsService>>();
 
 const READ_ONLY_BRIDGE_COMMANDS = new Set([
   'get_editor_context',
@@ -102,17 +113,17 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
 
   try {
     if (command.kind === 'tool.invoke') {
-      const toolResult = await measureTaskTimingAsync(timing, 'cli.invoke_tool', () => invokeCliTool({
-        command,
-        cwd: runtime.cwd,
-        bridge: getBridge(runtime) as BridgeClient,
-        taskRunner: getRunner(runtime),
-        timing,
-        readStdin: runtime.readStdin ?? readProcessStdin,
-        runLocalProcess: runtime.runLocalProcess,
-        sleep: runtime.sleep,
-      }));
+      const toolResult = await runDirectCliTool(runtime, command, timing, 'cli.invoke_tool');
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
+      return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
+    }
+
+    if (command.kind === 'metrics.report') {
+      const metricsCommand = resolveMetricsCommand(command, runtime.cwd);
+      const toolResult = await measureTaskTimingAsync(timing, 'cli.metrics_report', () => runMetricsCommand({
+        command: metricsCommand,
+      }));
+      const outcome = writeTimedCliResult(runtime, metricsCommand, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
@@ -147,16 +158,7 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'context.read') {
-      const toolResult = await measureTaskTimingAsync(timing, 'cli.read_context', () => invokeCliTool({
-        command,
-        cwd: runtime.cwd,
-        bridge: getBridge(runtime) as BridgeClient,
-        taskRunner: getRunner(runtime),
-        timing,
-        readStdin: runtime.readStdin ?? readProcessStdin,
-        runLocalProcess: runtime.runLocalProcess,
-        sleep: runtime.sleep,
-      }));
+      const toolResult = await runDirectCliTool(runtime, command, timing, 'cli.read_context');
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
@@ -225,6 +227,47 @@ function attachCliTiming(
   return attachTaskTiming(toolResult, timing);
 }
 
+async function runDirectCliTool(
+  runtime: CliRuntime,
+  command: CliCommand,
+  timing: TaskTimingTrace | undefined,
+  stageName: string,
+): Promise<ToolResultBase> {
+  const startedAt = Date.now();
+  const metrics = getMetrics(runtime);
+
+  try {
+    const result = await measureTaskTimingAsync(timing, stageName, () => invokeCliTool({
+      command,
+      cwd: runtime.cwd,
+      bridge: getBridge(runtime) as BridgeClient,
+      taskRunner: getRunner(runtime),
+      metrics,
+      timing,
+      readStdin: runtime.readStdin ?? readProcessStdin,
+      runLocalProcess: runtime.runLocalProcess,
+      sleep: runtime.sleep,
+    }));
+    await recordCliToolCompletion({
+      metrics,
+      command,
+      toolResult: result.toolResult,
+      durationMs: elapsedMs(startedAt),
+      rawParams: result.rawParams,
+      parsedParams: result.parsedParams,
+    });
+    return result.toolResult;
+  } catch (err) {
+    await recordCliToolThrownError({
+      metrics,
+      command,
+      error: err,
+      durationMs: elapsedMs(startedAt),
+    });
+    throw err;
+  }
+}
+
 function parseArgs(argv: string[]): ParseResult {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     return { ok: true, help: true, helpTarget: parseHelpTarget(argv) };
@@ -241,6 +284,8 @@ function parseArgs(argv: string[]): ParseResult {
     expert?: boolean;
     previewToken?: string;
     format?: CliFormat;
+    window?: '1d' | '7d' | '30d' | 'all';
+    limit?: number;
     artifactDir?: string;
     maxBytes?: number;
     fields?: string[];
@@ -267,10 +312,23 @@ function parseArgs(argv: string[]): ParseResult {
       options.previewToken = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
       const format = readOptionValue(argv, ++index, arg);
-      if (!['summary', 'json', 'full'].includes(format)) {
+      if (!['summary', 'json', 'full', 'markdown'].includes(format)) {
         return { ok: false, message: `Unsupported --format value: ${format}` };
       }
       options.format = format as CliFormat;
+    } else if (arg === '--window') {
+      const window = readOptionValue(argv, ++index, arg);
+      if (!['1d', '7d', '30d', 'all'].includes(window)) {
+        return { ok: false, message: `Unsupported --window value: ${window}` };
+      }
+      options.window = window as '1d' | '7d' | '30d' | 'all';
+    } else if (arg === '--limit') {
+      const rawLimit = readOptionValue(argv, ++index, arg);
+      const limit = Number(rawLimit);
+      if (!Number.isInteger(limit) || limit <= 0) {
+        return { ok: false, message: `--limit must be a positive integer: ${rawLimit}` };
+      }
+      options.limit = limit;
     } else if (arg === '--artifact-dir') {
       options.artifactDir = readOptionValue(argv, ++index, arg);
     } else if (arg === '--max-bytes') {
@@ -311,6 +369,10 @@ function parseArgs(argv: string[]): ParseResult {
     expert: options.expert,
   };
   const [group, action] = positionals;
+  const metricsOnlyOptionError = group === 'metrics' ? undefined : readMetricsOnlyOptionError(options);
+  if (metricsOnlyOptionError) {
+    return { ok: false, message: metricsOnlyOptionError };
+  }
 
   if (positionals.length === 1 && (group === 'open_editor' || group === 'close_editor')) {
     const toolName = group === 'open_editor' ? 'blueprint_open_editor' : 'blueprint_close_editor';
@@ -375,6 +437,26 @@ function parseArgs(argv: string[]): ParseResult {
   if (group === 'context' && action === 'read' && options.file) {
     return { ok: true, command: { ...base, kind: 'context.read', toolName: 'blueprinthelper_read_context', file: options.file } };
   }
+  if (group === 'metrics' && isMetricsAction(action)) {
+    if (options.format !== undefined && options.format !== 'json' && options.format !== 'markdown') {
+      return { ok: false, message: `Unsupported --format value for bh metrics ${action}: ${options.format}` };
+    }
+    return {
+      ok: true,
+      command: {
+        kind: 'metrics.report',
+        format: options.format ?? 'json',
+        metricsKind: action,
+        window: options.window ?? '7d',
+        limit: options.limit ?? 20,
+        artifactDir: options.artifactDir,
+        maxBytes: options.maxBytes,
+        fields: options.fields,
+        omitFields: options.omitFields,
+        develop: options.develop,
+      },
+    };
+  }
 
   return { ok: false, message: `Unsupported BlueprintHelper CLI command: ${argv.join(' ')}` };
 }
@@ -415,10 +497,17 @@ function getRunner(runtime: CliRuntime): TaskSpecRunner {
   if (runtime.runner) {
     return runtime.runner;
   }
+  const cached = runtimeRunnerCache.get(runtime);
+  if (cached) {
+    return cached;
+  }
   const bridge = getBridge(runtime);
-  return createTaskSpecRunner({
+  const runner = createTaskSpecRunner({
     bridge,
+    metrics: getMetrics(runtime),
   });
+  runtimeRunnerCache.set(runtime, runner);
+  return runner;
 }
 
 function parseHelpTarget(argv: string[]): string[] {
@@ -435,6 +524,8 @@ function parseHelpTarget(argv: string[]): string[] {
     '--omit',
     '--preview-token',
     '--select',
+    '--limit',
+    '--window',
   ]);
   const target: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -471,6 +562,24 @@ function getBridge(runtime: CliRuntime): CliBridge {
   const bridge = createWaitHintBridge(baseBridge, runtime);
   runtimeBridgeCache.set(runtime, bridge);
   return bridge;
+}
+
+function getMetrics(runtime: CliRuntime): ReturnType<typeof createCliMetricsService> {
+  if (runtime.metrics) {
+    return runtime.metrics;
+  }
+
+  const cached = runtimeMetricsCache.get(runtime);
+  if (cached) {
+    return cached;
+  }
+
+  const options: CreateCliMetricsServiceOptions = {
+    cwd: runtime.cwd,
+  };
+  const metrics = createCliMetricsService(options);
+  runtimeMetricsCache.set(runtime, metrics);
+  return metrics;
 }
 
 async function closeCliOwnedBridge(runtime: CliRuntime): Promise<void> {
@@ -594,4 +703,47 @@ function isBridgeUnavailable(err: unknown): boolean {
     return false;
   }
   return /Bridge connection|ECONNREFUSED|timed out|closed|ended/i.test(err.message);
+}
+
+function isMetricsAction(value: string | undefined): value is MetricsCliCommand['metricsKind'] {
+  return value === 'report'
+    || value === 'top-errors'
+    || value === 'tool-usage'
+    || value === 'task-health';
+}
+
+function readMetricsOnlyOptionError(options: {
+  format?: CliFormat;
+  window?: '1d' | '7d' | '30d' | 'all';
+  limit?: number;
+}): string | undefined {
+  if (options.window !== undefined) {
+    return '--window is only supported for bh metrics ...';
+  }
+  if (options.limit !== undefined) {
+    return '--limit is only supported for bh metrics ...';
+  }
+  if (options.format === 'markdown') {
+    return '--format markdown is only supported for bh metrics ...';
+  }
+  return undefined;
+}
+
+function resolveMetricsCommand(command: CliCommand, cwd: string): MetricsCliCommand {
+  return {
+    kind: 'metrics.report',
+    format: command.format === 'markdown' ? 'markdown' : 'json',
+    metricsKind: command.metricsKind ?? 'report',
+    metricsRoot: command.metricsRoot ?? resolveMetricsRoot(cwd),
+    window: command.window ?? '7d',
+    limit: command.limit ?? 20,
+  };
+}
+
+function resolveMetricsRoot(cwd: string): string {
+  return resolveCliMetricsRoot(cwd);
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
 }

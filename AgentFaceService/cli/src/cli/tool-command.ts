@@ -6,17 +6,25 @@ import type { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-clie
 import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import type { TaskTimingTrace } from '@blueprinthelper/task-core/task/service/task-timing';
 import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
+import type { TaskSpecRunnerMetrics } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import {
   getBlueprintHelperTool,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { readCliInputObject } from './input.js';
 import type { CliCommand } from './output.js';
 
+export interface CliToolInvocationResult {
+  toolResult: ToolResultBase;
+  rawParams?: Record<string, unknown>;
+  parsedParams?: Record<string, unknown>;
+}
+
 export async function invokeCliTool(input: {
   command: CliCommand;
   cwd: string;
   bridge: BridgeClient;
   taskRunner: TaskSpecRunner;
+  metrics?: TaskSpecRunnerMetrics;
   timing?: TaskTimingTrace;
   readStdin?: () => Promise<string> | string;
   runLocalProcess?: (command: string, args: string[], options?: {
@@ -25,26 +33,30 @@ export async function invokeCliTool(input: {
     env?: NodeJS.ProcessEnv;
   }) => Promise<LocalProcessResult>;
   sleep?: (ms: number) => Promise<void>;
-}): Promise<ToolResultBase> {
+}): Promise<CliToolInvocationResult> {
   const toolName = input.command.toolName ?? '';
   const tool = getBlueprintHelperTool(toolName);
   if (!tool) {
-    return failureResult('tool.invoke', {
-      code: 'unknown_tool',
-      stage: 'parse_input',
-      message: `Unknown BlueprintHelper tool: ${toolName}`,
-      retryable: false,
-      rollback_result: 'not_needed',
-    });
+    return {
+      toolResult: failureResult('tool.invoke', {
+        code: 'unknown_tool',
+        stage: 'parse_input',
+        message: `Unknown BlueprintHelper tool: ${toolName}`,
+        retryable: false,
+        rollback_result: 'not_needed',
+      }),
+    };
   }
   if (tool.requiresExpert && !input.command.expert) {
-    return failureResult(toolName, {
-      code: 'expert_flag_required',
-      stage: 'parse_input',
-      message: `${toolName} requires --expert because it is ${tool.risk} risk.`,
-      retryable: false,
-      rollback_result: 'not_needed',
-    });
+    return {
+      toolResult: failureResult(toolName, {
+        code: 'expert_flag_required',
+        stage: 'parse_input',
+        message: `${toolName} requires --expert because it is ${tool.risk} risk.`,
+        retryable: false,
+        rollback_result: 'not_needed',
+      }),
+    };
   }
 
   const rawParams = input.command.params ?? await readCliInputObject({
@@ -56,14 +68,19 @@ export async function invokeCliTool(input: {
   });
   const params = applyDevelopFlag(toolName, rawParams, input.command.develop === true);
   const parsed = tool.inputSchema.parse(params) as Record<string, unknown>;
-  return await tool.execute(parsed, {
-    cwd: input.cwd,
-    bridge: input.bridge,
-    taskRunner: input.taskRunner,
-    timing: input.timing,
-    runLocalProcess: input.runLocalProcess,
-    sleep: input.sleep,
-  });
+  return {
+    rawParams,
+    parsedParams: parsed,
+    toolResult: await tool.execute(parsed, {
+      cwd: input.cwd,
+      bridge: input.bridge,
+      taskRunner: input.taskRunner,
+      metrics: input.metrics,
+      timing: input.timing,
+      runLocalProcess: input.runLocalProcess,
+      sleep: input.sleep,
+    }),
+  };
 }
 
 function applyDevelopFlag(toolName: string, params: unknown, develop: boolean): unknown {

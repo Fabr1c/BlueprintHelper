@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
+import type { MetricsEvent } from '../../metrics/metrics-types.js';
 import { TOOL_RESULT_SCHEMA } from '../../result/tool-result.js';
 import { TaskSpecCompileError, createCompiledTaskPlan } from '../compiler/task-compiler.js';
 import {
@@ -329,3 +330,168 @@ test('preview task preserves dry run issues while deduplicating failed preview s
   ]);
   assert.deepEqual(toolIssueCodes, codes);
 });
+
+test('preview task records metrics with task identity and extracted operation', async () => {
+  const events: MetricsEvent[] = [];
+  const runner = createTaskSpecRunner({
+    bridge: {
+      async sendCommand() {
+        return previewBridgeResponse;
+      },
+    },
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+    metrics: {
+      record(event) {
+        events.push(event);
+      },
+    },
+  });
+
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.passed, true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.event_type, 'taskspec_preview_completed');
+  assert.equal(events[0]?.status, 'success');
+  assert.equal(events[0]?.tool_name, 'blueprinthelper_preview_task');
+  assert.equal(events[0]?.task_key?.task_type, 'edit_blueprint_graph');
+  assert.equal(events[0]?.task_key?.feature_name, 'StoneGateActivation');
+  assert.match(events[0]?.task_spec_hash ?? '', /^sha256:[a-f0-9]{64}$/);
+  assert.equal(events[0]?.capability, 'graph_write');
+  assert.equal(events[0]?.semantic_operation, 'ensure_entry');
+  assert.equal(JSON.stringify(result.toolResult).includes('BlueprintHelper.MetricsEvent.v1'), false);
+});
+
+test('preview task records compile failure metrics without calling bridge', async () => {
+  const events: MetricsEvent[] = [];
+  const runner = createTaskSpecRunner({
+    bridge: {
+      async sendCommand() {
+        throw new Error('Bridge should not be called for compile failures.');
+      },
+    },
+    taskCompiler: async () => {
+      throw new TaskSpecCompileError(
+        'taskspec_semantic_invalid',
+        'GraphWrite connectivity static preflight failed: unconsumed_pure_data_node.',
+        [{
+          code: 'unconsumed_pure_data_node',
+          path: 'behavior.entries[0].body.statements[0]',
+          message: 'PureData producer is not consumed.',
+        }],
+      );
+    },
+    metrics: {
+      record(event) {
+        events.push(event);
+      },
+    },
+  });
+
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.passed, false);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.event_type, 'taskspec_preview_completed');
+  assert.equal(events[0]?.status, 'failed');
+});
+
+test('execute task records pending_confirmation when success has no validation/readback evidence', async () => {
+  const events: MetricsEvent[] = [];
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'execute_task_plan') {
+        return executeBridgeResponse();
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+    metrics: {
+      record(event) {
+        events.push(event);
+      },
+    },
+  });
+
+  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.ok, true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.event_type, 'taskspec_execute_completed');
+  assert.equal(events[0]?.status, 'success');
+  assert.equal(events[0]?.correctness_basis, 'pending_confirmation');
+  assert.equal(events[0]?.capability, 'graph_write');
+  assert.equal(events[0]?.semantic_operation, 'ensure_entry');
+  assert.equal(JSON.stringify(result).includes('BlueprintHelper.MetricsEvent.v1'), false);
+});
+
+test('metrics sink failures do not change preview or execute results', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'execute_task_plan') {
+        return executeBridgeResponse();
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+    metrics: {
+      record() {
+        throw new Error('metrics store unavailable');
+      },
+    },
+  });
+
+  const preview = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const execute = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(preview.passed, true);
+  assert.equal(preview.toolResult.ok, true);
+  assert.equal(execute.ok, true);
+  assert.equal(execute.operation, 'execute_task');
+});
+
+function executeBridgeResponse(): BridgeResponse {
+  return {
+    success: true,
+    request_id: 'execute_metrics_test_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'execute_task_plan',
+      trace_id: 'trace_execute_metrics_test',
+      status: 'completed',
+      modified: true,
+      data: {
+        task_run_id: 'run_metrics_test',
+        target_assets: ['/Game/Blueprints/BP_StoneGate'],
+        steps: [
+          {
+            step_id: 'step_001',
+            modified: true,
+          },
+        ],
+      },
+    },
+  };
+}

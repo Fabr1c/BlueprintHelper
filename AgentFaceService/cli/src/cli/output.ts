@@ -3,13 +3,15 @@ import {
   sanitizeAgentFacingValue,
   type ToolResultBase,
 } from '@blueprinthelper/task-core/result/tool-result';
+import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
+import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
 
 export const CLI_RESULT_SCHEMA = 'BlueprintHelper.CliResult.v1';
 export const CLI_FULL_RESULT_SCHEMA = 'BlueprintHelper.CliFullResult.v1';
 export const CLI_DEBUG_RESULT_SCHEMA = 'BlueprintHelper.CliDebugResult.v1';
 
-export type CliFormat = 'summary' | 'json' | 'full';
+export type CliFormat = 'summary' | 'json' | 'full' | 'markdown';
 
 export type CliCommandKind =
   | 'tool.invoke'
@@ -19,6 +21,7 @@ export type CliCommandKind =
   | 'bridge.ping'
   | 'bridge.call'
   | 'context.read'
+  | 'metrics.report'
   | 'output';
 
 export interface CliCommand {
@@ -34,6 +37,10 @@ export interface CliCommand {
   previewToken?: string;
   taskRunId?: string;
   bridgeCommand?: string;
+  metricsKind?: MetricsReportKind;
+  metricsRoot?: string;
+  window?: MetricsWindow;
+  limit?: number;
   artifactDir?: string;
   maxBytes?: number;
   fields?: string[];
@@ -248,6 +255,20 @@ function buildOutput(
   artifactRefs: Record<string, string>,
   extra: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (command.kind === 'metrics.report') {
+    const data = asRecord(toolResult.data) ?? {};
+    return omitUndefined({
+      ok: toolResult.ok,
+      schema: CLI_RESULT_SCHEMA,
+      operation: command.kind,
+      status: mapStatus(command, toolResult, data),
+      data: command.format === 'markdown' ? compactMetricsOutput(data) : data,
+      artifacts: artifactRefs,
+      error_code: toolResult.error?.code,
+      message: toolResult.error?.message,
+    });
+  }
+
   return {
     ok: toolResult.ok,
     schema: CLI_RESULT_SCHEMA,
@@ -276,6 +297,9 @@ function mapStatus(
   toolResult: ToolResultBase,
   data: Record<string, unknown> | undefined,
 ): string {
+  if (command.kind === 'metrics.report') {
+    return toolResult.ok ? 'reported' : 'report_failed';
+  }
   if (command.kind === 'task.preview') {
     return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
   }
@@ -305,6 +329,10 @@ function inferRunId(
   toolResult: ToolResultBase,
   extra: Record<string, unknown>,
 ): string {
+  if (command.kind === 'metrics.report') {
+    return `metrics_${Date.now()}`;
+  }
+
   const data = asRecord(toolResult.data);
   const task = asRecord(data?.['task']);
   const taskRunId = readString(data?.['task_run_id'])
@@ -497,6 +525,16 @@ function compactCliExtra(extra: Record<string, unknown>): Record<string, unknown
 
 function compactCliExtraForOutput(extra: Record<string, unknown>): Record<string, unknown> {
   return compactCliExtra(extra);
+}
+
+function compactMetricsOutput(data: Record<string, unknown>): Record<string, unknown> {
+  return omitUndefined({
+    schema: readString(data['schema']),
+    kind: readString(data['kind']),
+    window: readString(data['window']),
+    summary: asRecord(data['summary']),
+    markdown_report_path: readString(data['markdown_report_path']),
+  });
 }
 
 function compactTaskSpecExecutionData(value: unknown): unknown {

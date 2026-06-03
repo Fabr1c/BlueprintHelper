@@ -22,6 +22,10 @@
       "types": "./build/task/*.d.ts",
       "import": "./build/task/*.js"
     },
+    "./metrics/*": {
+      "types": "./build/metrics/*.d.ts",
+      "import": "./build/metrics/*.js"
+    },
     "./tool-surface/*": {
       "types": "./build/tool-surface/*.d.ts",
       "import": "./build/tool-surface/*.js"

@@ -12,6 +12,7 @@ type HelpEntry = {
   templates?: string[];
   examples?: string[];
   notes?: string[];
+  commonOptions?: string[];
 };
 
 const helpEntries: Record<string, HelpEntry> = {
@@ -276,6 +277,30 @@ const helpEntries: Record<string, HelpEntry> = {
 };
 
 const groupHelpEntries: Record<string, HelpEntry> = {
+  metrics: {
+    summary: 'Build standalone BlueprintHelper metrics reports from the local metrics store.',
+    usage: [
+      'bh metrics report --window 7d --format json',
+      'bh metrics top-errors --window 7d --limit 20 --format markdown',
+      'bh metrics tool-usage --window 30d --limit 50 --format json',
+      'bh metrics task-health --window all --limit 20 --format markdown',
+    ],
+    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or cwd/Saved/BlueprintHelper/Metrics.'],
+    notes: [
+      'Markdown reports are written under metricsRoot/reports.',
+      'JSON stdout returns report data; markdown stdout returns a compact result plus artifact paths.',
+      'Only bh metrics ... commands emit metrics reports.',
+    ],
+    commonOptions: [
+      '  --format json|markdown',
+      '  --window 1d|7d|30d|all',
+      '  --limit <N>',
+    ],
+  },
+  'metrics report': metricsHelpEntry('report', 'Build the full metrics report with all sections.'),
+  'metrics top-errors': metricsHelpEntry('top-errors', 'Build a metrics report focused on top error rows.'),
+  'metrics tool-usage': metricsHelpEntry('tool-usage', 'Build a metrics report focused on tool usage rows.'),
+  'metrics task-health': metricsHelpEntry('task-health', 'Build a metrics report focused on task health rows.'),
   'task preview': {
     summary: 'Preview a bare BlueprintHelper.TaskSpec.v1 file through the grouped CLI command.',
     usage: ['bh task preview --file <bare-task-spec.json> --format summary'],
@@ -397,6 +422,10 @@ function globalHelpText(): string {
     '  bh context read --file <read-spec.json>',
     '  bh bridge ping',
     '  bh bridge call --command <read_only_command>',
+    '  bh metrics report --window 7d --format json',
+    '  bh metrics top-errors --window 7d --format markdown',
+    '  bh metrics tool-usage --window 30d --limit 50 --format json',
+    '  bh metrics task-health --window all --limit 20 --format markdown',
     '',
     'Template-first input:',
     `  Start at ${TEMPLATE_ROOT}/INDEX.md`,
@@ -442,11 +471,13 @@ function formatEntry(name: string, entry: HelpEntry): string {
     ...formatOptionalSection('Notes:', entry.notes),
     '',
     'Common options:',
-    '  --format summary|json|full',
-    '  --fields path[,path...] or --select path[,path...]',
-    '  --omit path[,path...]',
-    '  --artifact-dir <dir> (overrides BPH_CLI_ARTIFACT_DIR and cli.artifacts.default_output_dir)',
-    '  --max-bytes <bytes>',
+    ...(entry.commonOptions ?? [
+      '  --format summary|json|full',
+      '  --fields path[,path...] or --select path[,path...]',
+      '  --omit path[,path...]',
+      '  --artifact-dir <dir> (overrides BPH_CLI_ARTIFACT_DIR and cli.artifacts.default_output_dir)',
+      '  --max-bytes <bytes>',
+    ]),
   ].join('\n');
 }
 
@@ -504,6 +535,23 @@ function lifecycleHelp(action: 'open' | 'close'): HelpEntry {
       'Ordinary reads, writes, diagnostics, preview, execute, and result lookup stay on the CLI.',
       'Do not use CLI lifecycle aliases as Agent compatibility paths.',
       'CLI lifecycle invocation is blocked for Agents; report lifecycle_mcp_unavailable when the global MCP lifecycle tools are unavailable.',
+    ],
+  };
+}
+
+function metricsHelpEntry(kind: 'report' | 'top-errors' | 'tool-usage' | 'task-health', summary: string): HelpEntry {
+  return {
+    summary,
+    usage: [`bh metrics ${kind} --window 7d --limit 20 --format json`],
+    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or cwd/Saved/BlueprintHelper/Metrics.'],
+    notes: [
+      'Markdown writes the rendered report under metricsRoot/reports.',
+      'Use --format json for machine-readable stdout.',
+    ],
+    commonOptions: [
+      '  --format json|markdown',
+      '  --window 1d|7d|30d|all',
+      '  --limit <N>',
     ],
   };
 }
