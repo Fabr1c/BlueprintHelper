@@ -53,3 +53,4 @@ GraphWrite coverage notes:
 3. Use `taskspec_graph_append_generic_schedule_template.json` for `timer_delegate_node` or `latent_or_async_node`; do not add `function_operation` to those generic schedule statements.
 4. Use `taskspec_graph_append_generic_ops_template.json` for representative op, convert, construct/select, create, and branch examples. Remove unused example statements before preview.
 5. Use `taskspec_edit_blueprint_class_settings_template.json` for interfaces, class defaults, and `behavior.reparent.new_parent_class`.
+6. Use `taskspec_graph_merge_external_flow_template.json` only when read context exposes a stable external exec boundary in user-authored graph logic. Keep `scope_policy.allow_modify_user_nodes=false`, keep `external_mutation_policy.allowed_mutations=["exec_boundary_link"]`, and do not mix owned `merges[]` with `external_merges[]`.

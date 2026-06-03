@@ -255,12 +255,12 @@ GraphWrite is Agent-facing only through semantic `TaskSpec.behavior.graph_strate
 |---|---|
 | `task_type` | `edit_blueprint_graph` |
 | `target.target_type` | `blueprint` |
-| `behavior.graph_strategy` | `append_new_owned_graph`, `replace_owned_graph`, `patch_owned_graph`, `merge_owned_graph` |
+| `behavior.graph_strategy` | `append_new_owned_graph`, `replace_owned_graph`, `patch_owned_graph`, `merge_owned_graph`, `merge_external_flow`, `patch_external_graph`, `replace_external_body` |
 | `TaskPlan.steps[].capability` | `graph_write` |
-| `TaskPlan.steps[].write.strategy` | `owned_graph_edit` |
-| `TaskPlan.steps[].write.ops[].op` | `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `set_node_position`, `insert_flow` |
+| `TaskPlan.steps[].write.strategy` | `owned_graph_edit` or `external_graph_edit` |
+| `TaskPlan.steps[].write.ops[].op` | owned: `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `set_node_position`, `insert_flow`; external: `insert_external_flow`, `set_external_pin_default`, `set_external_node_comment`, `replace_external_body` |
 | `TaskPlan.steps[].constraints.allow_modify_user_nodes` | `false` |
-| Step batching | append entries may share one step; replace/patch/merge compile to one structural op per step |
+| Step batching | append entries may share one step; replace/patch/merge/external strategies compile to one structural op per step |
 
 `append_new_owned_graph` uses `behavior.entries[]`:
 
@@ -424,17 +424,19 @@ Merge anchor rules verified by smoke:
 - `link_ref` alone is never enough; it selects the old connection but does not identify the source node/pin anchor required by compiler and UE resolver validation.
 - `branch_fork` remains contract-defined but still needs a UE smoke fixture.
 
-Current implementation note, 2026-05-06 Rerun 4:
+Current owned-graph implementation note, 2026-05-06 Rerun 4:
 
 ```text
 Contract/compiler coverage: append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph.
 Confirmed execute coverage: append_new_owned_graph with a fresh graph name, replace_owned_graph, patch_owned_graph on a BlueprintHelper-owned block, merge_owned_graph insert_between + function_call, merge_owned_graph append_after + function_call, and merge_owned_graph insert_between + custom_event_call.
 Confirmed read/write anchor coverage: LogicJson grouped block output includes block_id and group_entry_node_path; Patch/Merge resolve group-local node_ref / pin_ref / link_ref within that owned block.
 Ownership metadata write target: new writes store machine ownership fields in FMetaData, not NodeComment.
-Remaining gaps: append_after + custom_event_call currently returns an empty preview error; branch_fork is not smoke-tested; non-BlueprintHelper-owned graph anchors still need a separate contract.
+Remaining owned-graph gaps at that checkpoint: append_after + custom_event_call currently returns an empty preview error; branch_fork is not smoke-tested.
 ```
 
-Ordinary Agents should still prefer `append_new_owned_graph` with a new BlueprintHelper-owned graph for new isolated logic. When modifying BlueprintHelper-owned blocks, use `replace_owned_graph`, `patch_owned_graph`, or `merge_owned_graph` only with block-scoped LogicJson anchors and always preview first. If preview blocks, stop and report instead of attempting a lower-level write tool fallback.
+External user-authored graph strategies are separate contracts, not owned merge aliases. `merge_external_flow` uses `behavior.external_merges[]`, lowers to `external_graph_edit` / `insert_external_flow`, and requires `scope_policy.external_mutation_policy = { strategy: "merge_external_flow", allowed_mutations: ["exec_boundary_link"] }` with `allow_modify_user_nodes=false`.
+
+Ordinary Agents should still prefer `append_new_owned_graph` with a new BlueprintHelper-owned graph for new isolated logic. When modifying BlueprintHelper-owned blocks, use `replace_owned_graph`, `patch_owned_graph`, or `merge_owned_graph` only with block-scoped LogicJson anchors. When connecting new BlueprintHelper-owned logic into user-authored execution flow, use `merge_external_flow` only with stable external exec-boundary anchors or `BlueprintHelper.LogicJsonAnchorSelector.v1`. Always preview first. If preview blocks, stop and report instead of attempting a lower-level write tool fallback.
 
 Ownership metadata and NodeComment migration decision, 2026-05-07: new BlueprintHelper-owned graph writes must store machine ownership fields such as `block_id`, transaction ids, and other resolver metadata in UE `FMetaData`. They must not serialize `block_id` or `tx` into `NodeComment`.
 

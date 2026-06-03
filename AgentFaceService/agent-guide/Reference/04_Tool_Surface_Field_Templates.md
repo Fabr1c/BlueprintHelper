@@ -438,14 +438,18 @@ For `replace_owned_graph` with `replace.scope=custom_event_definition`, the comp
 {
   "scope_policy": {
     "graph_name": "required. Target graph name.",
-    "allow_modify_user_nodes": "optional, default false."
+    "allow_modify_user_nodes": "optional, default false.",
+    "external_mutation_policy": "required for merge_external_flow, patch_external_graph, and replace_external_body. Must match the selected external strategy allowlist exactly."
   },
   "behavior": {
-    "graph_strategy": "required. append_new_owned_graph, replace_owned_graph, patch_owned_graph, or merge_owned_graph.",
+    "graph_strategy": "required. append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph, merge_external_flow, patch_external_graph, or replace_external_body.",
     "entries": "required for append_new_owned_graph.",
     "replace": "required for replace_owned_graph.",
     "patches": "required for patch_owned_graph.",
-    "merges": "required for merge_owned_graph."
+    "merges": "required for merge_owned_graph.",
+    "external_merges": "required for merge_external_flow.",
+    "external_patches": "required for patch_external_graph.",
+    "external_replace": "required for replace_external_body."
   }
 }
 ```
@@ -459,6 +463,43 @@ Block-scoped anchors must come from `blueprinthelper_read_context` with `view.fo
   "node_ref": "required. Node reference.",
   "pin_ref": "required for pin anchors.",
   "link_ref": "required for insert_between, optional for append_after."
+}
+```
+
+External anchors for `merge_external_flow` can use a stable external anchor produced by read context, or the authoring selector form below. The selector must identify exactly one exec boundary; `node_ref` requires `pin_ref`, while `link_ref` is used instead of `node_ref` for link-based anchors.
+
+```json
+{
+  "scope_policy": {
+    "allow_modify_user_nodes": false,
+    "external_mutation_policy": {
+      "strategy": "merge_external_flow",
+      "allowed_mutations": [
+        "exec_boundary_link"
+      ]
+    }
+  },
+  "behavior": {
+    "graph_strategy": "merge_external_flow",
+    "external_merges": [
+      {
+        "kind": "insert_external_flow",
+        "insert_strategy": "append_after",
+        "anchor": {
+          "schema": "BlueprintHelper.LogicJsonAnchorSelector.v1",
+          "asset_path": "required. Blueprint asset path.",
+          "graph_name": "required. Target graph name.",
+          "entry_name": "optional. Source entry name from logic_json.",
+          "node_ref": "required unless link_ref is used.",
+          "pin_ref": "required when node_ref is used.",
+          "link_ref": "required when node_ref is not used."
+        },
+        "inserted": {
+          "body": "required. BlueprintLogicSpec.v1 or BlueprintLogicSpec.v2."
+        }
+      }
+    ]
+  }
 }
 ```
 

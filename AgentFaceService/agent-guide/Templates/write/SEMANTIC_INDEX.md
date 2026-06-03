@@ -57,6 +57,7 @@ write permission is disabled, and read back the target context after execute.
 | Merge by appending after an owned anchor | `taskspec_graph_merge_append_after_template.json` |
 | Merge by inserting between owned flow links | `taskspec_graph_merge_insert_between_template.json` |
 | Merge by branching from an owned flow anchor | `taskspec_graph_merge_branch_fork_template.json` |
+| Merge a new BlueprintHelper-owned body into an external user-authored exec flow | `taskspec_graph_merge_external_flow_template.json` |
 
 ## UMG, Data, And UObject Edits
 
