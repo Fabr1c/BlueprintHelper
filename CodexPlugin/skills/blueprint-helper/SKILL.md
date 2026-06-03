@@ -67,9 +67,11 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 ## Mandatory Codex Subagent Workflow
 
-When the request involves BlueprintHelper, Unreal Engine Blueprint assets, UMG, DataAsset, DataTable, graph edits, editor asset diagnostics, Bridge/runtime checks, preview, execute, compile, save, or UE editor asset writes, the Main Agent must use the Codex subagent workflow.
+When the request involves BlueprintHelper, Unreal Engine Blueprint assets, UMG, DataAsset, DataTable, graph edits, editor asset diagnostics, Bridge/runtime checks, preview, execute, compile, save, or UE editor asset writes, the Main Agent must use the Codex subagent workflow. This includes read-only inspection and summarization of UE editor assets.
 
 Do not expose this mandatory subagent workflow as a configure-time preference. Do not fall back to local Main Agent execution for BlueprintHelper editor-asset work. If Codex cannot dispatch subagents, stop and report `sideagent_unavailable`.
+
+The Main Agent may run only bounded preflight CLI commands before dispatch, such as `blueprint_get_runtime_profile` and diagnostics. It must not satisfy UE asset discovery or context reads locally with `blueprinthelper_find_assets`, `blueprinthelper_read_context`, `blueprinthelper_read_reference_context`, `blueprinthelper_read_function_chain_context`, or ad hoc shell/source reads. Delegate UE asset context reads to `blueprint-explorer`, source/schema/template context to `sourcecode-explorer`, and TaskSpec preview/execute work to `task-worker`.
 
 Configured subagents:
 
@@ -100,6 +102,84 @@ mcp__blueprint_helper__blueprint_close_editor
 ```
 
 Subagents must not call MCP tools.
+
+### Main Agent flow
+
+1. Read `references/08_User_Preferences.md`, `references/00_Agent_Onboarding_Index_20260504.md`, and `references/CODEX_ADAPTER.md` when BlueprintHelper guidance is needed.
+2. Convert the user's request into intent, target, scope, operation mode, and safety constraints.
+3. If the target asset, target graph/scope, or create-vs-modify strategy is unclear, ask the user before any write delegation.
+4. Run only bounded preflight checks locally: CLI availability, runtime profile, diagnostics/Bridge status, and global MCP editor lifecycle when explicitly needed.
+5. Dispatch the smallest required Codex sideAgent task package:
+   - `blueprint-explorer` for Blueprint/UMG/DataAsset/DataTable/editor-asset reads.
+   - `sourcecode-explorer` for source/schema/template context when the user task truly requires repository context.
+   - `task-worker` after context is sufficient for preview/execute or validation.
+6. Review each compact sideAgent result, update the Main Agent context ledger, and decide whether to answer, ask the user, dispatch one bounded follow-up, or stop with a blocker.
+
+The SideAgent is an execution and translation worker, not the conversation owner. Do not pass the full conversation or full `SKILL.md`; pass only the semantic task package and the reference paths it must read.
+
+### Main Agent context ledger
+
+Before dispatching any follow-up sideAgent:
+
+- check accumulated sideAgent results for the same asset, graph/scope, view format, target name, and validation evidence;
+- answer directly if existing translated evidence is enough;
+- if more data is needed, identify the exact missing field, target slice, validation result, or template/schema constraint;
+- delegate one atomic BlueprintHelper tool step for that missing data, not a broad repeat read or a second full-graph analysis.
+
+The Main Agent owns context reuse. SideAgents do not decide whether previous sideAgent evidence is sufficient.
+
+### SideAgent delegation package
+
+When delegating, use compact semantic fields instead of dumping rules:
+
+```yaml
+user_goal: "<what the user wants in gameplay/editor terms>"
+main_agent_decision: "<why this requires BlueprintHelper tool access>"
+operation_mode: "create_new | modify_existing | inspect_only | validate_only"
+target_asset_path: "<UE asset path, or unknown>"
+target_graph_or_scope: "<graph/function/event/widget/table/object scope, or unknown>"
+safety_constraints:
+  allow_modify_user_nodes: false
+  require_preview: true
+  require_write_session_if_disabled: true
+  write_session_scope: "running Editor/Bridge, usable by delegated sideAgents within approved scope and lifetime"
+read_strategy:
+  avoid_full_logic_md_when_graph_size_unknown: true
+  large_graph_node_threshold: 80
+  large_graph_policy: "estimate size first, then read summary, logic_flow, bounded logic_json, or block-scoped slices"
+tool_call_intent:
+  tool_name: "<single BlueprintHelper CLI/tool step this sideAgent should execute>"
+  missing_field_reason: "<why Main Agent cannot answer from accumulated sideAgent results>"
+references_to_read:
+  - "references/09_SideAgent_Tool_Execution.md"
+  - "<workflow/template reference if needed>"
+allowed_tools: []
+stop_conditions:
+  - "missing target asset or create/modify strategy"
+  - "Bridge unavailable"
+  - "runtime_profile blocks write"
+  - "preview blocked"
+  - "write session rejected"
+  - "tool unavailable"
+return_format: "Chinese compact YAML summary with tool names, key arguments, status, blockers, validation, and next step"
+```
+
+For read-only user requests, still dispatch `blueprint-explorer` with `operation_mode: inspect_only` or `validate_only`. The Main Agent should summarize the sideAgent result for the user instead of calling the asset read command directly.
+
+### SideAgent responsibility
+
+The sideAgent task package must make these responsibilities explicit:
+
+- construct valid BlueprintHelper tool parameters from the user's goal, target, and Main Agent context;
+- read `references/09_SideAgent_Tool_Execution.md` and only the workflow/template references needed for the assigned step;
+- call only the assigned BlueprintHelper tool or one atomic CLI step;
+- avoid broad investigation, adjacent repeated reads, full conversation analysis, or deciding whether prior context is sufficient;
+- treat missing commands as `tool_unavailable`, a CLI installation or registration problem;
+- never replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, local JSON parsing, plugin source inspection, or deprecated MCP ordinary tools;
+- estimate graph size before requesting full graph `logic_md`; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
+- run preview, write-session request, execute, and result lookup only when the Main Agent assigned that step;
+- treat an approved write session as running Editor/Bridge permission, not a single-agent secret; never request, pass, print, or reveal `auth_session`;
+- return concise translated evidence to the Main Agent and stop instead of asking the user directly.
 
 ### Preflight before dispatch
 
@@ -178,6 +258,7 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_find_assets
 blueprinthelper_read_context
+blueprinthelper_read_context_capabilities
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
@@ -203,7 +284,7 @@ CLI lifecycle aliases are not Agent execution paths. Do not call `bh open_editor
 
 Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.
 
-When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+When the Unreal `asset_path` is unknown, dispatch `blueprint-explorer` to call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, dispatch `blueprint-explorer` to call `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, the Main Agent must narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 
 ## Read Strategy
 

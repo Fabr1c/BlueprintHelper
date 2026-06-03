@@ -2,7 +2,7 @@
 
 # BlueprintHelper Agent Onboarding Index
 
-If the current Agent environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
+If the current Codex environment cannot dispatch the required BlueprintHelper sideAgent, the Main Agent must stop and report `sideagent_unavailable`. Do not execute BlueprintHelper editor-asset reads or writes locally as a Main Agent fallback. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not installed or callable.
 
 CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor. Do not use plugin-local MCP or deprecated MCP ordinary tools for lifecycle or asset workflows.
 
@@ -24,6 +24,8 @@ blueprint_get_runtime_profile
 -> report summary
 ```
 
+For Codex, the Main Agent owns preflight, lifecycle MCP, context ledger, and final decisions. UE asset discovery/read steps in this loop are executed by `blueprint-explorer`, source/schema/template context by `sourcecode-explorer`, and preview/execute/result steps by `task-worker`. Do not interpret this loop as permission for local Main Agent fallback execution.
+
 允许的 Agent-facing 工具:
 
 ```text
@@ -34,6 +36,7 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_request_write_session
 blueprinthelper_find_assets
 blueprinthelper_read_context
+blueprinthelper_read_context_capabilities
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_preview_task
@@ -51,7 +54,7 @@ Write authorization is running Editor/Bridge based: use `blueprinthelper_request
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
-Read-only commands such as `bh blueprinthelper_find_assets`, `bh blueprinthelper_read_context`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
+Read-only commands such as `bh blueprinthelper_find_assets`, `bh blueprinthelper_read_context`, `bh blueprinthelper_read_context_capabilities`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
 
 When the Unreal `asset_path` is unknown, call `bh blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `bh blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 

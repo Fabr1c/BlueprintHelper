@@ -2,7 +2,7 @@
 
 # BlueprintHelper Agent Onboarding Index
 
-If the current Agent environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, the Main Agent may execute one command locally under the SideAgent single-command contract and mark the result as `main_agent_direct_fallback`. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not available.
+SideAgent unavailability is controlled by the active installed plugin skill, not by this shared guide. Codex must report `sideagent_unavailable` when required Codex sideAgents cannot be dispatched and must not use local Main Agent execution as a fallback. Claude may use `main_agent_direct_fallback` only when the Claude skill explicitly permits a single-command fallback under the SideAgent contract. Report `tool_unavailable` only when the required BlueprintHelper CLI command is not installed or callable.
 
 CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor lifecycle when an Agent must open or close Unreal Editor. Do not use plugin-local MCP or deprecated MCP ordinary tools for lifecycle or asset workflows.
 

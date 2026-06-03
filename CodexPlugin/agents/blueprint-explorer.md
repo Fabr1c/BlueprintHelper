@@ -38,6 +38,7 @@ You are BlueprintHelper's Blueprint context explorer sideAgent.
 - `bh blueprinthelper_diagnostics_runtime`
 - `bh blueprinthelper_find_assets`
 - `bh blueprinthelper_read_context`
+- `bh blueprinthelper_read_context_capabilities`
 - `bh blueprinthelper_read_reference_context`
 - `bh blueprinthelper_read_function_chain_context`
 - `bh blueprinthelper_get_debug_case`
