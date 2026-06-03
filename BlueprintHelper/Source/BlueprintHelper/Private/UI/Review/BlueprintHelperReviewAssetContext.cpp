@@ -10,9 +10,9 @@
 #include "Runtime/Launch/Resources/Version.h"
 #include "UI/Review/Utils/BlueprintHelperReviewAssetContextUtils.h"
 #if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
-#include "StructUtils/UserDefinedStruct.h"
+#include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
 #else
-#include "Engine/UserDefinedStruct.h"
+#include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
 #endif
 #include "UObject/UObjectGlobals.h"
 #include "WidgetBlueprint.h"

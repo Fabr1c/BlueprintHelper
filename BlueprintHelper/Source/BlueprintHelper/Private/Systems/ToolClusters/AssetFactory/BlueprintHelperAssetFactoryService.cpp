@@ -9,7 +9,7 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
-#include "Engine/UserDefinedStruct.h"
+#include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
 #include "Factories/BlueprintFactory.h"
 #include "Factories/DataAssetFactory.h"
 #include "Factories/DataTableFactory.h"

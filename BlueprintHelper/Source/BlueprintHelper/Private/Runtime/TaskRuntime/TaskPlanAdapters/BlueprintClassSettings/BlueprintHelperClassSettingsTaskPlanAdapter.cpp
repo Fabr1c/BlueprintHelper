@@ -5,6 +5,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 
 class FBlueprintHelperClassSettingsTaskPlanAdapterLocalUtils
@@ -222,9 +223,9 @@ public:
 			}
 
 			TSharedRef<FJsonObject> CopiedSetting = MakeShared<FJsonObject>();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : SettingObject->Values)
+			for (const auto& Field : SettingObject->Values)
 			{
-				CopiedSetting->SetField(Field.Key, Field.Value);
+				CopiedSetting->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
 			}
 			OutArray.Add(MakeShared<FJsonValueObject>(CopiedSetting));
 		}

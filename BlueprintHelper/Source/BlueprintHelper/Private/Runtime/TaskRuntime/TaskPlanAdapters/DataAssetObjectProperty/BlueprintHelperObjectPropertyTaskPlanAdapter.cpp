@@ -4,6 +4,7 @@
 
 #include "Dom/JsonValue.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperObjectPropertyTaskPlanAdapterLocalUtils
 {
@@ -74,27 +75,25 @@ public:
 		FBlueprintHelperToolError& OutError)
 	{
 		OutValue.Empty();
-		const TSharedPtr<FJsonValue>* FoundValue = Object.IsValid()
-			? Object->Values.Find(FieldName)
-			: nullptr;
-		if (!FoundValue || !FoundValue->IsValid())
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			OutError = MakeObjectPropertyTaskPlanError(ErrorCode, ErrorMessage, FieldPath);
 			return false;
 		}
-		if ((*FoundValue)->Type != EJson::String)
+		if (FoundValue->Type != EJson::String)
 		{
 			OutError = MakeObjectPropertyTaskPlanError(
 				ErrorCode,
 				FString::Printf(
 					TEXT("object_property field %s must be a string; actual type is %s."),
 					FieldName,
-					*ObjectPropertyJsonValueTypeToString(*FoundValue)),
+					*ObjectPropertyJsonValueTypeToString(FoundValue)),
 				FieldPath);
 			return false;
 		}
 
-		OutValue = (*FoundValue)->AsString();
+		OutValue = FoundValue->AsString();
 		if (OutValue.IsEmpty())
 		{
 			OutError = MakeObjectPropertyTaskPlanError(
@@ -114,12 +113,10 @@ public:
 		FBlueprintHelperToolError& OutError)
 	{
 		OutValue.Reset();
-		const TSharedPtr<FJsonValue>* FoundValue = Object.IsValid()
-			? Object->Values.Find(TEXT("value"))
-			: nullptr;
-		if (!FoundValue || !FoundValue->IsValid() ||
-			(*FoundValue)->Type == EJson::None ||
-			(*FoundValue)->Type == EJson::Null)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, TEXT("value"));
+		if (!FoundValue.IsValid() ||
+			FoundValue->Type == EJson::None ||
+			FoundValue->Type == EJson::Null)
 		{
 			OutError = MakeObjectPropertyTaskPlanError(
 				ErrorCode,
@@ -128,7 +125,7 @@ public:
 			return false;
 		}
 
-		OutValue = *FoundValue;
+		OutValue = FoundValue;
 		return true;
 	}
 

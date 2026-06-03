@@ -18,6 +18,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 bool FBlueprintHelperGraphResolvedTarget::IsResolved() const
 {
@@ -523,19 +524,21 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction)
 	{
-		if (const TSharedPtr<FJsonValue>* Target = StatementObject->Values.Find(TEXT("target")))
+		const TSharedPtr<FJsonValue> Target = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, TEXT("target"));
+		if (Target.IsValid())
 		{
-			if (Target->IsValid() && (*Target)->Type == EJson::Object)
+			if (Target->Type == EJson::Object)
 			{
-				Statement->TargetObject = ParseExpression(*Target, Path + TEXT(".target"), OutIR);
+				Statement->TargetObject = ParseExpression(Target, Path + TEXT(".target"), OutIR);
 			}
 		}
 
 		auto ReadContainerRole = [&](const TCHAR* FieldName)
 		{
-			if (const TSharedPtr<FJsonValue>* RoleValue = StatementObject->Values.Find(FieldName))
+			const TSharedPtr<FJsonValue> RoleValue = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, FieldName);
+			if (RoleValue.IsValid())
 			{
-				Statement->Args.Add(FieldName, ParseExpression(*RoleValue, Path + TEXT(".") + FieldName, OutIR));
+				Statement->Args.Add(FieldName, ParseExpression(RoleValue, Path + TEXT(".") + FieldName, OutIR));
 			}
 		};
 		ReadContainerRole(TEXT("item"));
@@ -551,21 +554,24 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 		ReadContainerRole(TEXT("random_stream"));
 		ReadContainerRole(TEXT("filter_class"));
 	}
-	if (const TSharedPtr<FJsonValue>* TargetObject = StatementObject->Values.Find(TEXT("target_object")))
+	const TSharedPtr<FJsonValue> TargetObject = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, TEXT("target_object"));
+	if (TargetObject.IsValid())
 	{
-		Statement->TargetObject = ParseExpression(*TargetObject, Path + TEXT(".target_object"), OutIR);
+		Statement->TargetObject = ParseExpression(TargetObject, Path + TEXT(".target_object"), OutIR);
 	}
 
-	if (const TSharedPtr<FJsonValue>* Value = StatementObject->Values.Find(TEXT("value")))
+	const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, TEXT("value"));
+	if (Value.IsValid())
 	{
 		if (Statement->Kind != EBlueprintHelperGraphStatementKind::ContainerAction)
 		{
-			Statement->Value = ParseExpression(*Value, Path + TEXT(".value"), OutIR);
+			Statement->Value = ParseExpression(Value, Path + TEXT(".value"), OutIR);
 		}
 	}
-	if (const TSharedPtr<FJsonValue>* Condition = StatementObject->Values.Find(TEXT("condition")))
+	const TSharedPtr<FJsonValue> Condition = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, TEXT("condition"));
+	if (Condition.IsValid())
 	{
-		Statement->Condition = ParseExpression(*Condition, Path + TEXT(".condition"), OutIR);
+		Statement->Condition = ParseExpression(Condition, Path + TEXT(".condition"), OutIR);
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* ThenValues = nullptr;
@@ -721,55 +727,59 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 	}
 	UGraphWriteGraphStatementUtils::CanonicalizeOpExpressionEvidence(*Expression);
 
-	if (const TSharedPtr<FJsonValue>* LiteralValue = ExpressionObject->Values.Find(TEXT("value")))
+	const TSharedPtr<FJsonValue> LiteralValue = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("value"));
+	if (LiteralValue.IsValid())
 	{
 		if (Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction)
 		{
-			Expression->Args.Add(TEXT("value"), ParseExpression(*LiteralValue, Path + TEXT(".value"), OutIR));
+			Expression->Args.Add(TEXT("value"), ParseExpression(LiteralValue, Path + TEXT(".value"), OutIR));
 		}
 		else if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
-			|| !LiteralValue->IsValid()
-			|| (*LiteralValue)->Type != EJson::Object)
+			|| LiteralValue->Type != EJson::Object)
 		{
-			Expression->LiteralValue = FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(*LiteralValue);
+			Expression->LiteralValue = FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(LiteralValue);
 			if (Expression->Type.IsEmpty())
 			{
-				Expression->Type = FBlueprintHelperGraphSemanticIRUtils::JsonValueToSemanticType(*LiteralValue);
+				Expression->Type = FBlueprintHelperGraphSemanticIRUtils::JsonValueToSemanticType(LiteralValue);
 			}
 		}
 		else
 		{
-			Expression->Value = ParseExpression(*LiteralValue, Path + TEXT(".value"), OutIR);
+			Expression->Value = ParseExpression(LiteralValue, Path + TEXT(".value"), OutIR);
 		}
 	}
-	if (const TSharedPtr<FJsonValue>* Left = ExpressionObject->Values.Find(TEXT("left")))
+	const TSharedPtr<FJsonValue> Left = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("left"));
+	if (Left.IsValid())
 	{
-		Expression->Left = ParseExpression(*Left, Path + TEXT(".left"), OutIR);
+		Expression->Left = ParseExpression(Left, Path + TEXT(".left"), OutIR);
 	}
-	if (const TSharedPtr<FJsonValue>* Right = ExpressionObject->Values.Find(TEXT("right")))
+	const TSharedPtr<FJsonValue> Right = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("right"));
+	if (Right.IsValid())
 	{
-		Expression->Right = ParseExpression(*Right, Path + TEXT(".right"), OutIR);
+		Expression->Right = ParseExpression(Right, Path + TEXT(".right"), OutIR);
 	}
 
 	ParseExpressionMap(ExpressionObject, TEXT("args"), Path + TEXT(".args"), Expression->Args, OutIR);
 	ParseExpressionMap(ExpressionObject, TEXT("fields"), Path + TEXT(".fields"), Expression->Fields, OutIR);
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction)
 	{
-		if (const TSharedPtr<FJsonValue>* Target = ExpressionObject->Values.Find(TEXT("target")))
+		const TSharedPtr<FJsonValue> Target = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("target"));
+		if (Target.IsValid())
 		{
-			if (Target->IsValid() && (*Target)->Type == EJson::Object)
+			if (Target->Type == EJson::Object)
 			{
-				Expression->TargetObject = ParseExpression(*Target, Path + TEXT(".target"), OutIR);
+				Expression->TargetObject = ParseExpression(Target, Path + TEXT(".target"), OutIR);
 			}
 		}
 
 		auto ReadContainerRole = [&](const TCHAR* FieldName)
 		{
-			if (const TSharedPtr<FJsonValue>* RoleValue = ExpressionObject->Values.Find(FieldName))
+			const TSharedPtr<FJsonValue> RoleValue = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, FieldName);
+			if (RoleValue.IsValid())
 			{
 				if (!Expression->Args.Contains(FieldName))
 				{
-					Expression->Args.Add(FieldName, ParseExpression(*RoleValue, Path + TEXT(".") + FieldName, OutIR));
+					Expression->Args.Add(FieldName, ParseExpression(RoleValue, Path + TEXT(".") + FieldName, OutIR));
 				}
 			}
 		};
@@ -818,32 +828,37 @@ TSharedPtr<FBlueprintHelperGraphExpressionIR> FBlueprintHelperGraphSemanticIRBui
 			}
 		}
 	}
-	if (const TSharedPtr<FJsonValue>* TargetObject = ExpressionObject->Values.Find(TEXT("target_object")))
+	const TSharedPtr<FJsonValue> TargetObject = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("target_object"));
+	if (TargetObject.IsValid())
 	{
-		Expression->TargetObject = ParseExpression(*TargetObject, Path + TEXT(".target_object"), OutIR);
+		Expression->TargetObject = ParseExpression(TargetObject, Path + TEXT(".target_object"), OutIR);
 	}
-	if (const TSharedPtr<FJsonValue>* Condition = ExpressionObject->Values.Find(TEXT("condition")))
+	const TSharedPtr<FJsonValue> Condition = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("condition"));
+	if (Condition.IsValid())
 	{
-		Expression->Condition = ParseExpression(*Condition, Path + TEXT(".condition"), OutIR);
+		Expression->Condition = ParseExpression(Condition, Path + TEXT(".condition"), OutIR);
 		Expression->Args.Add(TEXT("condition"), Expression->Condition);
 	}
 	else if (Expression->Kind != EBlueprintHelperGraphExpressionKind::ContainerAction)
 	{
-		if (const TSharedPtr<FJsonValue>* Index = ExpressionObject->Values.Find(TEXT("index")))
+		const TSharedPtr<FJsonValue> Index = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("index"));
+		if (Index.IsValid())
 		{
-			Expression->Condition = ParseExpression(*Index, Path + TEXT(".index"), OutIR);
+			Expression->Condition = ParseExpression(Index, Path + TEXT(".index"), OutIR);
 			Expression->Args.Add(TEXT("condition"), Expression->Condition);
 		}
 	}
-	if (const TSharedPtr<FJsonValue>* Then = ExpressionObject->Values.Find(TEXT("then")))
+	const TSharedPtr<FJsonValue> Then = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("then"));
+	if (Then.IsValid())
 	{
-		Expression->ThenValue = ParseExpression(*Then, Path + TEXT(".then"), OutIR);
+		Expression->ThenValue = ParseExpression(Then, Path + TEXT(".then"), OutIR);
 		Expression->Args.Add(TEXT("then"), Expression->ThenValue);
 		Expression->Options.Add(Expression->ThenValue);
 	}
-	if (const TSharedPtr<FJsonValue>* Else = ExpressionObject->Values.Find(TEXT("else")))
+	const TSharedPtr<FJsonValue> Else = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, TEXT("else"));
+	if (Else.IsValid())
 	{
-		Expression->ElseValue = ParseExpression(*Else, Path + TEXT(".else"), OutIR);
+		Expression->ElseValue = ParseExpression(Else, Path + TEXT(".else"), OutIR);
 		Expression->Args.Add(TEXT("else"), Expression->ElseValue);
 		Expression->Options.Add(Expression->ElseValue);
 	}
@@ -873,9 +888,10 @@ void FBlueprintHelperGraphSemanticIRBuilder::ParseExpressionMap(
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ArgsObject)->Values)
+	for (const auto& Pair : (*ArgsObject)->Values)
 	{
-		OutExpressions.Add(Pair.Key, ParseExpression(Pair.Value, Path + TEXT(".") + Pair.Key, OutIR));
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+		OutExpressions.Add(Key, ParseExpression(Pair.Value, Path + TEXT(".") + Key, OutIR));
 	}
 }
 

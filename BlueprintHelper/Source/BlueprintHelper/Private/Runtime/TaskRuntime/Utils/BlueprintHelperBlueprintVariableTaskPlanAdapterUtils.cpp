@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FBlueprintHelperToolError FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 	const FString& Code,
@@ -100,7 +101,7 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::TryRequireValueField
 	const FString& FieldPath,
 	FBlueprintHelperToolError& OutError)
 {
-	if (!Object.IsValid() || !Object->Values.Contains(TEXT("value")))
+	if (!FBlueprintHelperVersionCompat::FindJsonValue(Object, TEXT("value")).IsValid())
 	{
 		OutError = MakeVariableTaskPlanError(
 			TEXT("invalid_variable_op"),
@@ -120,11 +121,12 @@ void FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::CopyObjectFieldsExce
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+	for (const auto& Field : Source->Values)
 	{
-		if (Field.Key != TEXT("op"))
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key);
+		if (Key != TEXT("op"))
 		{
-			Destination->SetField(Field.Key, Field.Value);
+			Destination->SetField(Key, Field.Value);
 		}
 	}
 }
@@ -136,9 +138,9 @@ TSharedRef<FJsonObject> FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::C
 	TSharedRef<FJsonObject> Destination = MakeShared<FJsonObject>();
 	if (Source.IsValid())
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+		for (const auto& Field : Source->Values)
 		{
-			Destination->SetField(Field.Key, Field.Value);
+			Destination->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
 		}
 	}
 	if (!LocalFunctionName.IsEmpty() && !Destination->HasField(TEXT("function_name")))

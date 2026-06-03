@@ -162,13 +162,14 @@ TSharedPtr<FJsonObject> UBlueprintHelperReviewUtils::CloneReviewSnapshotObjectFo
 		return Clone;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+	for (const auto& Field : Source->Values)
 	{
-		if (Field.Key.Equals(TEXT("restore_text"), ESearchCase::IgnoreCase))
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key);
+		if (Key.Equals(TEXT("restore_text"), ESearchCase::IgnoreCase))
 		{
 			continue;
 		}
-		Clone->SetField(Field.Key, UBlueprintHelperReviewUtils::CloneReviewSnapshotValueForHash(Field.Value));
+		Clone->SetField(Key, UBlueprintHelperReviewUtils::CloneReviewSnapshotValueForHash(Field.Value));
 	}
 	return Clone;
 }
@@ -656,7 +657,7 @@ void UBlueprintHelperReviewUtils::AppendCanonicalJsonObject(const TSharedPtr<FJs
 	}
 
 	TArray<FString> Keys;
-	Object->Values.GetKeys(Keys);
+	FBlueprintHelperVersionCompat::GetJsonObjectKeys(Object, Keys);
 	Keys.RemoveAll([](const FString& Key)
 	{
 		return UBlueprintHelperReviewUtils::ShouldOmitCanonicalReviewSnapshotField(Key);
@@ -667,8 +668,8 @@ void UBlueprintHelperReviewUtils::AppendCanonicalJsonObject(const TSharedPtr<FJs
 	bool bFirst = true;
 	for (const FString& Key : Keys)
 	{
-		const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(Key);
-		if (!FieldValue)
+		const TSharedPtr<FJsonValue> FieldValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, Key);
+		if (!FieldValue.IsValid())
 		{
 			continue;
 		}
@@ -680,7 +681,7 @@ void UBlueprintHelperReviewUtils::AppendCanonicalJsonObject(const TSharedPtr<FJs
 		bFirst = false;
 		UBlueprintHelperReviewUtils::AppendCanonicalJsonString(Key, Out);
 		Out.AppendChar(TEXT(':'));
-		UBlueprintHelperReviewUtils::AppendCanonicalJsonValue(*FieldValue, Out);
+		UBlueprintHelperReviewUtils::AppendCanonicalJsonValue(FieldValue, Out);
 	}
 	Out.AppendChar(TEXT('}'));
 }

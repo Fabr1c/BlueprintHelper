@@ -6,6 +6,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/Package.h"
 
@@ -101,16 +102,16 @@ bool FBlueprintHelperObjectPropertyAdapterSetSinglePropertyTest::RunTest(const F
 	FString AssetPath;
 	FString PropertyPath;
 	bool bDryRun = false;
-	const TSharedPtr<FJsonValue>* Value = nullptr;
+	TSharedPtr<FJsonValue> Value;
 	TestTrue(TEXT("payload carries asset_path"), BuiltPayload.Payload->TryGetStringField(TEXT("asset_path"), AssetPath));
 	TestTrue(TEXT("payload carries property_path"), BuiltPayload.Payload->TryGetStringField(TEXT("property_path"), PropertyPath));
-	TestTrue(TEXT("payload carries value"), BuiltPayload.Payload->Values.Contains(TEXT("value")));
-	Value = BuiltPayload.Payload->Values.Find(TEXT("value"));
+	Value = FBlueprintHelperVersionCompat::FindJsonValue(BuiltPayload.Payload, TEXT("value"));
+	TestTrue(TEXT("payload carries value"), Value.IsValid());
 	TestTrue(TEXT("payload carries dry_run"), BuiltPayload.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
 
 	TestEqual(TEXT("asset_path matches target"), AssetPath, FString(TEXT("/Game/Data/DA_CombatTuning")));
 	TestEqual(TEXT("property_path preserved"), PropertyPath, FString(TEXT("CombatRules.DamageScale")));
-	TestTrue(TEXT("numeric value is preserved for service validation"), Value && Value->IsValid() && (*Value)->Type == EJson::Number);
+	TestTrue(TEXT("numeric value is preserved for service validation"), Value.IsValid() && Value->Type == EJson::Number);
 	TestTrue(TEXT("preview dry_run is recorded"), bDryRun);
 
 	return true;

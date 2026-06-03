@@ -4,6 +4,7 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/Config/BlueprintHelperRuntimeSettingResolver.h"
 
 FBlueprintHelperAssetFactoryToolClusterPolicy FBlueprintHelperToolClusterConfigResolver::LoadAssetFactoryPolicy()
@@ -172,18 +173,18 @@ bool FBlueprintHelperReadContextOutputLimiter::LimitObjectRows(const TSharedPtr<
 
 	bool bLimited = false;
 	TArray<FString> Keys;
-	Object->Values.GetKeys(Keys);
+	FBlueprintHelperVersionCompat::GetJsonObjectKeys(Object, Keys);
 	for (const FString& Key : Keys)
 	{
-		TSharedPtr<FJsonValue>* ValuePtr = Object->Values.Find(Key);
-		if (!ValuePtr || !ValuePtr->IsValid())
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Object, Key);
+		if (!Value.IsValid())
 		{
 			continue;
 		}
 
-		if ((*ValuePtr)->Type == EJson::Array)
+		if (Value->Type == EJson::Array)
 		{
-			TArray<TSharedPtr<FJsonValue>> Array = (*ValuePtr)->AsArray();
+			TArray<TSharedPtr<FJsonValue>> Array = Value->AsArray();
 			if (LimitArrayRows(Array, MaxRows))
 			{
 				Object->SetArrayField(Key, Array);
@@ -192,9 +193,9 @@ bool FBlueprintHelperReadContextOutputLimiter::LimitObjectRows(const TSharedPtr<
 			continue;
 		}
 
-		if ((*ValuePtr)->Type == EJson::Object)
+		if (Value->Type == EJson::Object)
 		{
-			bLimited |= LimitObjectRows((*ValuePtr)->AsObject(), MaxRows);
+			bLimited |= LimitObjectRows(Value->AsObject(), MaxRows);
 		}
 	}
 	return bLimited;

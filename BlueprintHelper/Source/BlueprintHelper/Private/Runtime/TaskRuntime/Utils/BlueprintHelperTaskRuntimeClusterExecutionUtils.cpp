@@ -10,6 +10,7 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
@@ -683,9 +684,9 @@ static TMap<FString, FString> ReadTaskRuntimeStringFieldsObject(const TSharedPtr
 		return Fields;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : (*FieldsObject)->Values)
+	for (const auto& Field : (*FieldsObject)->Values)
 	{
-		Fields.Add(Field.Key, JsonValueToString(Field.Value));
+		Fields.Add(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), JsonValueToString(Field.Value));
 	}
 	return Fields;
 }
@@ -758,11 +759,12 @@ static TSharedRef<FJsonObject> MakeBlueprintVariableOpPayload(
 	TSharedRef<FJsonObject> OpPayload = MakeShared<FJsonObject>();
 	if (OpObject.IsValid())
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : OpObject->Values)
+		for (const auto& Field : OpObject->Values)
 		{
-			if (Field.Key != TEXT("op"))
+			const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key);
+			if (Key != TEXT("op"))
 			{
-				OpPayload->SetField(Field.Key, Field.Value);
+				OpPayload->SetField(Key, Field.Value);
 			}
 		}
 	}
@@ -896,14 +898,14 @@ static bool TryBuildObjectPropertyRequest(
 				return false;
 			}
 
-			const TSharedPtr<FJsonValue>* Value = SettingObject->Values.Find(TEXT("value"));
-			if (!Value || !Value->IsValid())
+			const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(SettingObject, TEXT("value"));
+			if (!Value.IsValid())
 			{
 				OutError = TEXT("object_property settings entries require value.");
 				return false;
 			}
 
-			Setting.Value = *Value;
+			Setting.Value = Value;
 			OutRequest.Settings.Add(MoveTemp(Setting));
 		}
 		if (OutRequest.Settings.Num() == 0)
@@ -922,14 +924,14 @@ static bool TryBuildObjectPropertyRequest(
 		return false;
 	}
 
-	const TSharedPtr<FJsonValue>* Value = Payload->Values.Find(TEXT("value"));
-	if (!Value || !Value->IsValid())
+	const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Payload, TEXT("value"));
+	if (!Value.IsValid())
 	{
 		OutError = TEXT("object_property adapter payload requires value.");
 		return false;
 	}
 
-	Setting.Value = *Value;
+	Setting.Value = Value;
 	OutRequest.Settings.Add(MoveTemp(Setting));
 	return true;
 }

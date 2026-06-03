@@ -27,6 +27,7 @@
 #include "Shared/BlueprintHelperLogicMdTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
@@ -226,8 +227,8 @@ public:
 			return true;
 		}
 
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			if (bRequired)
 			{
@@ -237,9 +238,9 @@ public:
 			return true;
 		}
 
-		if (!(*FoundValue).IsValid() || !(*FoundValue)->TryGetString(OutValue))
+		if (!FoundValue->TryGetString(OutValue))
 		{
-			OutError = MakePayloadFieldError(FieldName, TEXT("string"), JsonValueTypeToString(*FoundValue));
+			OutError = MakePayloadFieldError(FieldName, TEXT("string"), JsonValueTypeToString(FoundValue));
 			return false;
 		}
 
@@ -291,8 +292,8 @@ public:
 			return true;
 		}
 
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			if (bRequired)
 			{
@@ -302,9 +303,9 @@ public:
 			return true;
 		}
 
-		if (!(*FoundValue).IsValid() || !(*FoundValue)->TryGetBool(OutValue))
+		if (!FoundValue->TryGetBool(OutValue))
 		{
-			OutError = MakePayloadFieldError(FieldName, TEXT("bool"), JsonValueTypeToString(*FoundValue));
+			OutError = MakePayloadFieldError(FieldName, TEXT("bool"), JsonValueTypeToString(FoundValue));
 			return false;
 		}
 
@@ -328,8 +329,8 @@ public:
 			return true;
 		}
 
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			if (bRequired)
 			{
@@ -339,9 +340,9 @@ public:
 			return true;
 		}
 
-		if (!(*FoundValue).IsValid() || !(*FoundValue)->TryGetNumber(OutValue))
+		if (!FoundValue->TryGetNumber(OutValue))
 		{
-			OutError = MakePayloadFieldError(FieldName, TEXT("number"), JsonValueTypeToString(*FoundValue));
+			OutError = MakePayloadFieldError(FieldName, TEXT("number"), JsonValueTypeToString(FoundValue));
 			return false;
 		}
 

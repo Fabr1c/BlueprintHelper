@@ -4,6 +4,7 @@
 
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/ActorComponent.h"
@@ -635,11 +636,12 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 			Json->SetBoolField(TEXT("exists"), true);
 			const TSharedRef<FJsonObject> BodyJson = BodySnapshot.ToJson();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : BodyJson->Values)
+			for (const auto& Field : BodyJson->Values)
 			{
-				if (Field.Key != TEXT("schema"))
+				const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key);
+				if (Key != TEXT("schema"))
 				{
-					Json->SetField(Field.Key, Field.Value);
+					Json->SetField(Key, Field.Value);
 				}
 			}
 			Json->SetObjectField(TEXT("external_body_snapshot"), BodyJson);
@@ -985,9 +987,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			if (UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(VariableObject, TEXT("name"), TargetName))
 			{
 				Json->SetBoolField(TEXT("exists"), true);
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : VariableObject->Values)
+				for (const auto& Field : VariableObject->Values)
 				{
-					Json->SetField(Field.Key, Field.Value);
+					Json->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
 				}
 				return Json;
 			}
@@ -1005,9 +1007,9 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			if (UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(ComponentObject, TEXT("name"), TargetName))
 			{
 				Json->SetBoolField(TEXT("exists"), true);
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : ComponentObject->Values)
+				for (const auto& Field : ComponentObject->Values)
 				{
-					Json->SetField(Field.Key, Field.Value);
+					Json->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
 				}
 				return Json;
 			}

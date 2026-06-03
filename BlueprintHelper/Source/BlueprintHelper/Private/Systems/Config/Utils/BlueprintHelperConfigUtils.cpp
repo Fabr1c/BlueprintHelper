@@ -10,6 +10,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/Config/BlueprintHelperSettingStore.h"
 
 // ─── Diagnostics helpers (from BlueprintHelperRuntimeSettingResolver) ───
@@ -400,20 +401,20 @@ void UBlueprintHelperConfigUtils::MergeJsonObjectInto(TSharedPtr<FJsonObject> Ta
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Source->Values)
+	for (const auto& Pair : Source->Values)
 	{
-		const TSharedPtr<FJsonValue>* ExistingValue = Target->Values.Find(Pair.Key);
-		if (ExistingValue
-			&& ExistingValue->IsValid()
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+		const TSharedPtr<FJsonValue> ExistingValue = FBlueprintHelperVersionCompat::FindJsonValue(Target, Key);
+		if (ExistingValue.IsValid()
 			&& Pair.Value.IsValid()
-			&& (*ExistingValue)->Type == EJson::Object
+			&& ExistingValue->Type == EJson::Object
 			&& Pair.Value->Type == EJson::Object)
 		{
-			MergeJsonObjectInto((*ExistingValue)->AsObject(), Pair.Value->AsObject());
+			MergeJsonObjectInto(ExistingValue->AsObject(), Pair.Value->AsObject());
 			continue;
 		}
 
-		Target->SetField(Pair.Key, Pair.Value);
+		Target->SetField(Key, Pair.Value);
 	}
 }
 

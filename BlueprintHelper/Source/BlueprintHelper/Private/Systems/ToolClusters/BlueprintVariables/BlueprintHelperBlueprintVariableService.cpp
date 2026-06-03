@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 #include "Dom/JsonValue.h"
 #include "Dom/JsonObject.h"
@@ -1159,10 +1160,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 		const TSharedPtr<FJsonObject>* ValuesObject = nullptr;
 		if (Payload->TryGetObjectField(TEXT("values"), ValuesObject) && ValuesObject && ValuesObject->IsValid())
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ValuesObject)->Values)
+			for (const auto& Pair : (*ValuesObject)->Values)
 			{
+				const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 				FBlueprintHelperMemberDefaultMutation Change;
-				Change.VariableName = Pair.Key;
+				Change.VariableName = Key;
 				if (!FBlueprintHelperMemberVariableMutationHandler::TryScalarJsonToBlueprintDefaultString(
 					Pair.Value,
 					Change.DefaultValue))
@@ -1173,7 +1175,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 						TEXT("invalid_member_default_settings"),
 						EBlueprintHelperToolStage::ParseInput,
 						TEXT("values entries must be scalar JSON values."),
-						FString::Printf(TEXT("values.%s"), *Pair.Key));
+						FString::Printf(TEXT("values.%s"), *Key));
 				}
 				Changes.Add(MoveTemp(Change));
 			}

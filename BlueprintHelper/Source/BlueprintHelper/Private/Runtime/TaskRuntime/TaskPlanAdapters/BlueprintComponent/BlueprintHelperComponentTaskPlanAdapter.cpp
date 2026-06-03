@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::CapabilityBlueprintComponent = TEXT("blueprint_component");
@@ -78,10 +79,8 @@ public:
 		FBlueprintHelperToolError& OutError)
 	{
 		OutValue.Empty();
-		const TSharedPtr<FJsonValue>* FoundValue = Object.IsValid()
-			? Object->Values.Find(FieldName)
-			: nullptr;
-		if (!FoundValue || !FoundValue->IsValid())
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_op"),
@@ -89,7 +88,7 @@ public:
 				FieldPath);
 			return false;
 		}
-		if ((*FoundValue)->Type != EJson::String)
+		if (FoundValue->Type != EJson::String)
 		{
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_op"),
@@ -98,7 +97,7 @@ public:
 			return false;
 		}
 
-		OutValue = (*FoundValue)->AsString();
+		OutValue = FoundValue->AsString();
 		if (OutValue.IsEmpty())
 		{
 			OutError = MakeComponentTaskPlanError(
@@ -117,26 +116,24 @@ public:
 		const TSharedRef<FJsonObject>& Destination,
 		FBlueprintHelperToolError& OutError)
 	{
-		const TSharedPtr<FJsonValue>* FoundValue = Source.IsValid()
-			? Source->Values.Find(FieldName)
-			: nullptr;
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Source, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			return true;
 		}
-		if (!FoundValue->IsValid() || (*FoundValue)->Type != EJson::String)
+		if (FoundValue->Type != EJson::String)
 		{
 			OutError = MakeComponentTaskPlanError(
 				TEXT("invalid_blueprint_component_op"),
 				FString::Printf(
 					TEXT("Blueprint component op %s must be a string when present; actual type is %s."),
 					FieldName,
-					*ComponentJsonValueTypeToString(FoundValue ? *FoundValue : TSharedPtr<FJsonValue>())),
+					*ComponentJsonValueTypeToString(FoundValue)),
 				FieldPath);
 			return false;
 		}
 
-		Destination->SetStringField(FieldName, (*FoundValue)->AsString());
+		Destination->SetStringField(FieldName, FoundValue->AsString());
 		return true;
 	}
 
@@ -330,7 +327,7 @@ public:
 				return false;
 			}
 
-			if (!SettingObject->Values.Contains(TEXT("value")))
+			if (!FBlueprintHelperVersionCompat::FindJsonValue(SettingObject, TEXT("value")).IsValid())
 			{
 				OutError = MakeComponentTaskPlanError(
 					TEXT("invalid_blueprint_component_property_setting"),

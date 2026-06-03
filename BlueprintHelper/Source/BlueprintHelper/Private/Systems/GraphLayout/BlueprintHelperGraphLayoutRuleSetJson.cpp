@@ -4,6 +4,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 namespace BlueprintHelper::GraphLayout
 {
@@ -101,14 +102,15 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& ScenePair : (*ScenesObject)->Values)
+	for (const auto& ScenePair : (*ScenesObject)->Values)
 	{
+		const FString SceneKey = FBlueprintHelperVersionCompat::JsonKeyToString(ScenePair.Key);
 		ESemanticScene Scene = ESemanticScene::LinearExecChain;
-		if (!LexTryParseString(Scene, ScenePair.Key))
+		if (!LexTryParseString(Scene, SceneKey))
 		{
 			Validation.AddError(FString::Printf(
 				TEXT("Field 'editor_canvas.scenes.%s' uses an unsupported scene key."),
-				*ScenePair.Key));
+				*SceneKey));
 			continue;
 		}
 
@@ -116,7 +118,7 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 		{
 			Validation.AddError(FString::Printf(
 				TEXT("Field 'editor_canvas.scenes.%s' must be an object."),
-				*ScenePair.Key));
+				*SceneKey));
 			continue;
 		}
 
@@ -125,7 +127,7 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 		{
 			Validation.AddError(FString::Printf(
 				TEXT("Field 'editor_canvas.scenes.%s' must be an object."),
-				*ScenePair.Key));
+				*SceneKey));
 			continue;
 		}
 
@@ -133,7 +135,7 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 		{
 			Validation.AddError(FString::Printf(
 				TEXT("Field 'editor_canvas.scenes.%s.role_centers' is required."),
-				*ScenePair.Key));
+				*SceneKey));
 			continue;
 		}
 
@@ -142,28 +144,29 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 		{
 			Validation.AddError(FString::Printf(
 				TEXT("Field 'editor_canvas.scenes.%s.role_centers' must be an object."),
-				*ScenePair.Key));
+				*SceneKey));
 			continue;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& RolePair : (*RoleCentersObject)->Values)
+		for (const auto& RolePair : (*RoleCentersObject)->Values)
 		{
-			if (IsDeprecatedIgnoredRoleText(RolePair.Key))
+			const FString RoleKey = FBlueprintHelperVersionCompat::JsonKeyToString(RolePair.Key);
+			if (IsDeprecatedIgnoredRoleText(RoleKey))
 			{
 				Validation.Warnings.Add(FString::Printf(
 					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' uses deprecated Reroute/Knot role and will be ignored."),
-					*ScenePair.Key,
-					*RolePair.Key));
+					*SceneKey,
+					*RoleKey));
 				continue;
 			}
 
 			ENodeRole Role = ENodeRole::Unknown;
-			if (!LexTryParseString(Role, RolePair.Key) || Role == ENodeRole::Unknown)
+			if (!LexTryParseString(Role, RoleKey) || Role == ENodeRole::Unknown)
 			{
 				Validation.AddError(FString::Printf(
 					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' uses an unsupported role."),
-					*ScenePair.Key,
-					*RolePair.Key));
+					*SceneKey,
+					*RoleKey));
 				continue;
 			}
 
@@ -171,8 +174,8 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 			{
 				Validation.AddError(FString::Printf(
 					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' must be an object with numeric x and y fields."),
-					*ScenePair.Key,
-					*RolePair.Key));
+					*SceneKey,
+					*RoleKey));
 				continue;
 			}
 
@@ -181,8 +184,8 @@ static void ValidateEditorCanvasScenes(const TSharedPtr<FJsonObject>& EditorCanv
 			{
 				Validation.AddError(FString::Printf(
 					TEXT("Field 'editor_canvas.scenes.%s.role_centers.%s' must be an object with numeric x and y fields."),
-					*ScenePair.Key,
-					*RolePair.Key));
+					*SceneKey,
+					*RoleKey));
 			}
 		}
 	}
@@ -477,10 +480,11 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 		if ((*EditorCanvasObject)->TryGetObjectField(TEXT("scenes"), ScenesObject) && ScenesObject && ScenesObject->IsValid())
 		{
 			OutRuleSet.EditorCanvasScenes.Reset();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& ScenePair : (*ScenesObject)->Values)
+			for (const auto& ScenePair : (*ScenesObject)->Values)
 			{
+				const FString SceneKey = FBlueprintHelperVersionCompat::JsonKeyToString(ScenePair.Key);
 				ESemanticScene Scene = ESemanticScene::LinearExecChain;
-				if (!LexTryParseString(Scene, ScenePair.Key))
+				if (!LexTryParseString(Scene, SceneKey))
 				{
 					continue;
 				}
@@ -498,10 +502,11 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 				}
 
 				FEditorCanvasSceneState SceneState;
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& RolePair : (*RoleCentersObject)->Values)
+				for (const auto& RolePair : (*RoleCentersObject)->Values)
 				{
+					const FString RoleKey = FBlueprintHelperVersionCompat::JsonKeyToString(RolePair.Key);
 					ENodeRole Role = ENodeRole::Unknown;
-					if (IsDeprecatedIgnoredRoleText(RolePair.Key) || !LexTryParseString(Role, RolePair.Key) || Role == ENodeRole::Unknown)
+					if (IsDeprecatedIgnoredRoleText(RoleKey) || !LexTryParseString(Role, RoleKey) || Role == ENodeRole::Unknown)
 					{
 						continue;
 					}

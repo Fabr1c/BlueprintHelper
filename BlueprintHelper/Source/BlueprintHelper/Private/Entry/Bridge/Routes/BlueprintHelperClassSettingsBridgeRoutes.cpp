@@ -2,6 +2,7 @@
 
 #include "Entry/Bridge/Routes/BlueprintHelperClassSettingsBridgeRoutes.h"
 
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 
 class FBlueprintHelperClassSettingsBridgeRoutesLocalUtils
@@ -145,10 +146,10 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 		if (Request.Payload.IsValid())
 		{
 			Request.Payload->TryGetStringField(TEXT("property_path"), PropertyPath);
-			const TSharedPtr<FJsonValue>* FoundValue = Request.Payload->Values.Find(TEXT("value"));
-			if (FoundValue)
+			const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Request.Payload, TEXT("value"));
+			if (FoundValue.IsValid())
 			{
-				Value = *FoundValue;
+				Value = FoundValue;
 			}
 		}
 		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(

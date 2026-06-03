@@ -9,6 +9,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
@@ -227,11 +228,11 @@ namespace BlueprintHelperPatchExternalGraph
 			return true;
 		}
 
-		const TSharedPtr<FJsonValue>* Value = Payload->Values.Find(TEXT("value"));
-		if (Value && Value->IsValid())
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Payload, TEXT("value"));
+		if (Value.IsValid())
 		{
-			OutValue = (*Value)->AsString();
-			return !OutValue.IsEmpty() || (*Value)->Type == EJson::String;
+			OutValue = Value->AsString();
+			return !OutValue.IsEmpty() || Value->Type == EJson::String;
 		}
 		return false;
 	}

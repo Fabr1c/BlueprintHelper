@@ -5,6 +5,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintMemberVariableMutationHandlerLocalUtils
 {
@@ -259,10 +260,10 @@ bool FBlueprintHelperMemberVariableMutationHandler::Execute(
 			const TSharedPtr<FJsonObject>* ValuesObject = nullptr;
 			if (OpPayload->TryGetObjectField(TEXT("values"), ValuesObject) && ValuesObject && ValuesObject->IsValid())
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ValuesObject)->Values)
+				for (const auto& Pair : (*ValuesObject)->Values)
 				{
 					FBlueprintHelperMemberDefaultMutation Change;
-					Change.VariableName = Pair.Key;
+					Change.VariableName = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 					if (!TryScalarJsonToBlueprintDefaultString(Pair.Value, Change.DefaultValue))
 					{
 						OutError = TEXT("set_member_defaults values entries must be scalar JSON values.");

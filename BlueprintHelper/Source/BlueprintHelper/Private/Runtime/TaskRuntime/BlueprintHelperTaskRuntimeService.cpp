@@ -59,6 +59,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementPinTypeParser.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -328,9 +329,9 @@ public:
 			return;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+		for (const auto& Field : Source->Values)
 		{
-			Destination->SetField(Field.Key, Field.Value);
+			Destination->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
 		}
 	}
 
@@ -648,9 +649,9 @@ public:
 			return;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Arg : ArgsObject->Values)
+		for (const auto& Arg : ArgsObject->Values)
 		{
-			InputsObject->SetField(Arg.Key, GetLiteralJsonValue(Arg.Value));
+			InputsObject->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Arg.Key), GetLiteralJsonValue(Arg.Value));
 		}
 	}
 
@@ -1261,12 +1262,13 @@ public:
 		if (ExpressionObject->TryGetObjectField(TEXT("args"), ArgsObjectPtr) &&
 			ArgsObjectPtr && ArgsObjectPtr->IsValid())
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ArgsObjectPtr)->Values)
+			for (const auto& Pair : (*ArgsObjectPtr)->Values)
 			{
+				const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 				CollectCallFunctionExpressionValue(
 					Pair.Value,
-					ExpressionPath + TEXT(".args.") + Pair.Key,
-					SemanticExpressionPath + TEXT(".args.") + Pair.Key,
+					ExpressionPath + TEXT(".args.") + Key,
+					SemanticExpressionPath + TEXT(".args.") + Key,
 					OutStatements);
 			}
 		}
@@ -1282,10 +1284,11 @@ public:
 		};
 		for (const TCHAR* FieldName : ExpressionFieldNames)
 		{
-			if (const TSharedPtr<FJsonValue>* FieldValue = ExpressionObject->Values.Find(FieldName))
+			const TSharedPtr<FJsonValue> FieldValue = FBlueprintHelperVersionCompat::FindJsonValue(ExpressionObject, FieldName);
+			if (FieldValue.IsValid())
 			{
 				CollectCallFunctionExpressionValue(
-					*FieldValue,
+					FieldValue,
 					ExpressionPath + TEXT(".") + FieldName,
 					SemanticExpressionPath + TEXT(".") + FieldName,
 					OutStatements);
@@ -1321,12 +1324,13 @@ public:
 			return;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObjectPtr)->Values)
+		for (const auto& Pair : (*MapObjectPtr)->Values)
 		{
+			const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 			CollectCallFunctionExpressionValue(
 				Pair.Value,
-				ExpressionPath + TEXT(".") + FieldName + TEXT(".") + Pair.Key,
-				SemanticExpressionPath + TEXT(".") + FieldName + TEXT(".") + Pair.Key,
+				ExpressionPath + TEXT(".") + FieldName + TEXT(".") + Key,
+				SemanticExpressionPath + TEXT(".") + FieldName + TEXT(".") + Key,
 				OutStatements);
 		}
 	}
@@ -1343,10 +1347,11 @@ public:
 			return;
 		}
 
-		if (const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName))
+		const TSharedPtr<FJsonValue> FieldValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, FieldName);
+		if (FieldValue.IsValid())
 		{
 			CollectCallFunctionExpressionValue(
-				*FieldValue,
+				FieldValue,
 				ExpressionPath + TEXT(".") + FieldName,
 				SemanticExpressionPath + TEXT(".") + FieldName,
 				OutStatements);
@@ -1791,7 +1796,7 @@ public:
 				if (CallStatement.StatementObject->TryGetObjectField(TEXT("args"), ArgsObjectPtr) &&
 					ArgsObjectPtr && ArgsObjectPtr->IsValid())
 				{
-					(*ArgsObjectPtr)->Values.GetKeys(ResolveRequest.ArgumentNames);
+					FBlueprintHelperVersionCompat::GetJsonObjectKeys(*ArgsObjectPtr, ResolveRequest.ArgumentNames);
 				}
 				if (CallStatement.bExpression)
 				{
@@ -2806,10 +2811,8 @@ public:
 			return false;
 		}
 
-		const TSharedPtr<FJsonValue>* Value = OpObject.IsValid()
-			? OpObject->Values.Find(TEXT("value"))
-			: nullptr;
-		if (!Value || !Value->IsValid())
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(OpObject, TEXT("value"));
+		if (!Value.IsValid())
 		{
 			OutError = MakeTaskRuntimeError(
 				TEXT("invalid_graph_write_ir_op"),
@@ -2824,7 +2827,7 @@ public:
 		Payload->SetObjectField(TEXT("target"), BridgeTarget);
 		Payload->SetStringField(TEXT("patch_type"), OpName);
 		Payload->SetObjectField(TEXT("anchor"), Anchor);
-		Payload->SetField(TEXT("value"), *Value);
+		Payload->SetField(TEXT("value"), Value);
 		Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
@@ -3849,9 +3852,9 @@ public:
 		if (!StoredVariable.IsValid())
 		{
 			StoredVariable = MakeShared<FJsonObject>();
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : VariableObject->Values)
+			for (const auto& Pair : VariableObject->Values)
 			{
-				StoredVariable->SetField(Pair.Key, Pair.Value);
+				StoredVariable->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key), Pair.Value);
 			}
 		}
 		StoredVariable->SetStringField(TEXT("name"), VariableName);
@@ -4582,9 +4585,9 @@ public:
 			return Fields;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : (*FieldsObject)->Values)
+		for (const auto& Field : (*FieldsObject)->Values)
 		{
-			Fields.Add(Field.Key, JsonValueToString(Field.Value));
+			Fields.Add(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), JsonValueToString(Field.Value));
 		}
 		return Fields;
 	}
@@ -4657,11 +4660,12 @@ public:
 		TSharedRef<FJsonObject> OpPayload = MakeShared<FJsonObject>();
 		if (OpObject.IsValid())
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : OpObject->Values)
+			for (const auto& Field : OpObject->Values)
 			{
-				if (Field.Key != TEXT("op"))
+				const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key);
+				if (Key != TEXT("op"))
 				{
-					OpPayload->SetField(Field.Key, Field.Value);
+					OpPayload->SetField(Key, Field.Value);
 				}
 			}
 		}
@@ -5116,14 +5120,14 @@ public:
 					return false;
 				}
 
-				const TSharedPtr<FJsonValue>* Value = SettingObject->Values.Find(TEXT("value"));
-				if (!Value || !Value->IsValid())
+				const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(SettingObject, TEXT("value"));
+				if (!Value.IsValid())
 				{
 					OutError = TEXT("object_property settings entries require value.");
 					return false;
 				}
 
-				Setting.Value = *Value;
+				Setting.Value = Value;
 				OutRequest.Settings.Add(MoveTemp(Setting));
 			}
 			if (OutRequest.Settings.Num() == 0)
@@ -5142,14 +5146,14 @@ public:
 			return false;
 		}
 
-		const TSharedPtr<FJsonValue>* Value = Payload->Values.Find(TEXT("value"));
-		if (!Value || !Value->IsValid())
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Payload, TEXT("value"));
+		if (!Value.IsValid())
 		{
 			OutError = TEXT("object_property adapter payload requires value.");
 			return false;
 		}
 
-		Setting.Value = *Value;
+		Setting.Value = Value;
 		OutRequest.Settings.Add(MoveTemp(Setting));
 		return true;
 	}

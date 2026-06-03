@@ -1,6 +1,7 @@
 #include "Entry/Bridge/Routes/BlueprintHelperScreenshotBridgeRoutes.h"
 
 #include "Dom/JsonObject.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Debug/BlueprintHelperScreenshotTypes.h"
 #include "Systems/Debug/BlueprintHelperEditorFocusService.h"
 #include "Systems/Debug/BlueprintHelperScreenshotCaptureService.h"
@@ -65,15 +66,15 @@ public:
 			OutActualType = TEXT("missing");
 			return !bRequired;
 		}
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			OutActualType = TEXT("missing");
 			return !bRequired;
 		}
-		if (!FoundValue->IsValid() || !(*FoundValue)->TryGetString(OutValue))
+		if (!FoundValue->TryGetString(OutValue))
 		{
-			OutActualType = JsonValueTypeToString(*FoundValue);
+			OutActualType = JsonValueTypeToString(FoundValue);
 			return false;
 		}
 		return true;
@@ -93,17 +94,17 @@ public:
 			OutActualType = TEXT("missing");
 			return !bRequired;
 		}
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			OutActualType = TEXT("missing");
 			return !bRequired;
 		}
 		double NumberValue = 0.0;
-		if (!FoundValue->IsValid() || !(*FoundValue)->TryGetNumber(NumberValue) ||
+		if (!FoundValue->TryGetNumber(NumberValue) ||
 			FMath::FloorToDouble(NumberValue) != NumberValue)
 		{
-			OutActualType = JsonValueTypeToString(*FoundValue);
+			OutActualType = JsonValueTypeToString(FoundValue);
 			return false;
 		}
 		OutValue = static_cast<int32>(NumberValue);

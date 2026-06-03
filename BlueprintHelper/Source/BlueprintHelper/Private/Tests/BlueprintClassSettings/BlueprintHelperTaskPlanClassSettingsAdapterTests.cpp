@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintClassSettings/BlueprintHelperClassSettingsTaskPlanAdapter.h"
@@ -273,13 +274,13 @@ bool FBlueprintHelperTaskPlanClassSettingsAdapterSetDefaultsTest::RunTest(const 
 	TestTrue(TEXT("setting carries property_path"), Setting->TryGetStringField(TEXT("property_path"), PropertyPath));
 	TestEqual(TEXT("property_path preserved"), PropertyPath, FString(TEXT("OpenKickImpulse")));
 
-	const TSharedPtr<FJsonValue>* Value = Setting->Values.Find(TEXT("value"));
-	TestNotNull(TEXT("setting keeps value field"), Value ? Value->Get() : nullptr);
-	if (!Value)
+	const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Setting, TEXT("value"));
+	TestNotNull(TEXT("setting keeps value field"), Value.Get());
+	if (!Value.IsValid())
 	{
 		return false;
 	}
-	TestEqual(TEXT("numeric value preserved"), (*Value)->AsNumber(), 1200.0);
+	TestEqual(TEXT("numeric value preserved"), Value->AsNumber(), 1200.0);
 
 	return true;
 }

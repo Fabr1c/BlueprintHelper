@@ -8,6 +8,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperTaskRuntimeCacheKeyLocalUtils
 {
@@ -93,18 +94,18 @@ FString FBlueprintHelperTaskRuntimeCacheKeyUtils::StableSerializeJsonObject(
 	}
 
 	TArray<FString> Keys;
-	Object->Values.GetKeys(Keys);
+	FBlueprintHelperVersionCompat::GetJsonObjectKeys(Object, Keys);
 	Keys.Sort();
 
 	TArray<FString> Parts;
 	Parts.Reserve(Keys.Num());
 	for (const FString& Key : Keys)
 	{
-		const TSharedPtr<FJsonValue>* Value = Object->Values.Find(Key);
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Object, Key);
 		Parts.Add(FString::Printf(
 			TEXT("%s=%s"),
 			*FBlueprintHelperTaskRuntimeCacheKeyLocalUtils::EscapeStableString(Key),
-			Value ? *StableSerializeJsonValue(*Value) : TEXT("null")));
+			Value.IsValid() ? *StableSerializeJsonValue(Value) : TEXT("null")));
 	}
 	return TEXT("{") + FString::Join(Parts, TEXT("|")) + TEXT("}");
 }

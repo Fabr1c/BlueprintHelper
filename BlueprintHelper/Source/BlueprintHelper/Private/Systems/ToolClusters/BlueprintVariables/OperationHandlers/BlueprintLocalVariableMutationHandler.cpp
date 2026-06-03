@@ -12,6 +12,7 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/Class.h"
 
 class FBlueprintLocalVariableMutationHandlerLocalUtils
@@ -972,18 +973,19 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 			return false;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*PropertiesObject)->Values)
+		for (const auto& Pair : (*PropertiesObject)->Values)
 		{
+			const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 			FString ValidationError;
-			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Pair.Key, ValidationError))
+			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Key, ValidationError))
 			{
 				OutError = ValidationError;
-				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("properties.%s"), *Pair.Key));
+				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("properties.%s"), *Key));
 				return false;
 			}
 
 			FBlueprintHelperLocalVariablePropertyMutation Setting;
-			Setting.PropertyPath = Pair.Key;
+			Setting.PropertyPath = Key;
 			Setting.Value = Pair.Value;
 			OutSettings.Add(MoveTemp(Setting));
 		}

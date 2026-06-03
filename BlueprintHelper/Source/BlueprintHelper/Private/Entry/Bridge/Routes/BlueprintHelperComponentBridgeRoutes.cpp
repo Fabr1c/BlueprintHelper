@@ -2,6 +2,7 @@
 
 #include "Entry/Bridge/Routes/BlueprintHelperComponentBridgeRoutes.h"
 
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
 
 class FBlueprintHelperComponentBridgeRoutesLocalUtils
@@ -41,10 +42,10 @@ public:
 		{
 			FBlueprintHelperComponentPropertySetting Setting;
 			Payload->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
-			const TSharedPtr<FJsonValue>* Value = Payload->Values.Find(TEXT("value"));
-			if (Value)
+			const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Payload, TEXT("value"));
+			if (Value.IsValid())
 			{
-				Setting.Value = *Value;
+				Setting.Value = Value;
 			}
 			Request.Settings.Add(MoveTemp(Setting));
 			return Request;
@@ -65,10 +66,10 @@ public:
 
 				FBlueprintHelperComponentPropertySetting Setting;
 				ItemObject->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
-				const TSharedPtr<FJsonValue>* Value = ItemObject->Values.Find(TEXT("value"));
-				if (Value)
+				const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(ItemObject, TEXT("value"));
+				if (Value.IsValid())
 				{
-					Setting.Value = *Value;
+					Setting.Value = Value;
 				}
 				Request.Settings.Add(MoveTemp(Setting));
 			}

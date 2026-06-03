@@ -27,6 +27,7 @@
 #include "UObject/UObjectIterator.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
@@ -459,9 +460,10 @@ FString UGraphWriteGraphStatementUtils::ReadOptionalJsonValueAsString(const TSha
         return FString();
     }
 
-    if (const TSharedPtr<FJsonValue>* Value = Object->Values.Find(FieldName))
+    const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(Object, FieldName);
+    if (Value.IsValid())
     {
-        return FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(*Value).TrimStartAndEnd();
+        return FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Value).TrimStartAndEnd();
     }
 
     return FString();
@@ -538,9 +540,9 @@ void UGraphWriteGraphStatementUtils::ReadOptionalStringMapField(
         return;
     }
 
-    for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
+    for (const auto& Pair : (*MapObject)->Values)
     {
-        OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
+        OutMap.Add(FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key), FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value));
     }
 }
 
@@ -2511,11 +2513,12 @@ void UGraphWriteGraphStatementUtils::ReadStringMapField(
         return;
     }
 
-    for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
+    for (const auto& Pair : (*MapObject)->Values)
     {
-        if (!Pair.Key.IsEmpty())
+        const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+        if (!Key.IsEmpty())
         {
-            OutMap.Add(Pair.Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value).TrimStartAndEnd());
+            OutMap.Add(Key, FBlueprintHelperGraphSemanticIRUtils::JsonValueToString(Pair.Value).TrimStartAndEnd());
         }
     }
 }

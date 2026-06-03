@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 
 class FBlueprintHelperDataTableBridgeRoutesLocalUtils
@@ -49,12 +50,12 @@ public:
 			return Fields;
 		}
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*FieldsObject)->Values)
+		for (const auto& Pair : (*FieldsObject)->Values)
 		{
 			FString Value;
 			if (Pair.Value.IsValid() && Pair.Value->TryGetString(Value))
 			{
-				Fields.Add(Pair.Key, MoveTemp(Value));
+				Fields.Add(FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key), MoveTemp(Value));
 			}
 		}
 		return Fields;

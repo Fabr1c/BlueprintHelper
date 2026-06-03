@@ -8,6 +8,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FString FBlueprintHelperGraphPatternRegistryUtils::NormalizePatternKey(const FString& PatternName)
 {
@@ -48,14 +49,15 @@ void FBlueprintHelperGraphPatternRegistryUtils::ReadStringMapField(
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*MapObject)->Values)
+	for (const auto& Pair : (*MapObject)->Values)
 	{
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 		const FString ValueString = JsonValueToBindingString(Pair.Value);
 		if (ValueString.IsEmpty())
 		{
 			continue;
 		}
 
-		OutMap.Add(bNormalizeKeys ? NormalizeLookupKey(Pair.Key) : Pair.Key, ValueString);
+		OutMap.Add(bNormalizeKeys ? NormalizeLookupKey(Key) : Key, ValueString);
 	}
 }

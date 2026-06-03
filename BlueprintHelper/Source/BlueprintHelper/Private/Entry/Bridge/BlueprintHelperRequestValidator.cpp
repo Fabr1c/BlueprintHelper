@@ -6,6 +6,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Parse.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperRequestValidatorLocalUtils
 {
@@ -97,8 +98,8 @@ public:
 		FBlueprintHelperBridgeValidationError& OutError)
 	{
 		const FString FieldName(Rule.FieldName);
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(FieldName);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			if (Rule.bRequired)
 			{
@@ -108,10 +109,10 @@ public:
 			return true;
 		}
 
-		if (!MatchesExpectedType(*FoundValue, Rule.Type))
+		if (!MatchesExpectedType(FoundValue, Rule.Type))
 		{
 			SetValidationError(OutError, TEXT("payload.") + FieldName,
-				ExpectedTypeToString(Rule.Type), ActualJsonTypeToString(*FoundValue));
+				ExpectedTypeToString(Rule.Type), ActualJsonTypeToString(FoundValue));
 			return false;
 		}
 		return true;
@@ -140,8 +141,8 @@ public:
 		FBlueprintHelperBridgeValidationError& OutError)
 	{
 		const FString Field(FieldName);
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, Field);
+		if (!FoundValue.IsValid())
 		{
 			if (bRequired)
 			{
@@ -155,18 +156,18 @@ public:
 			return true;
 		}
 
-		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::String))
+		if (!MatchesExpectedType(FoundValue, EBlueprintHelperJsonExpectedType::String))
 		{
 			SetValidationError(
 				OutError,
 				TEXT("payload.") + Field,
 				FString::Printf(TEXT("literal(%s)"), ExpectedValue),
-				ActualJsonTypeToString(*FoundValue));
+				ActualJsonTypeToString(FoundValue));
 			return false;
 		}
 
 		FString Value;
-		(*FoundValue)->TryGetString(Value);
+		FoundValue->TryGetString(Value);
 		if (Value != ExpectedValue)
 		{
 			SetValidationError(
@@ -185,23 +186,23 @@ public:
 		FBlueprintHelperBridgeValidationError& OutError)
 	{
 		const FString Field(FieldName);
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, Field);
+		if (!FoundValue.IsValid())
 		{
 			return true;
 		}
 
-		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::Array))
+		if (!MatchesExpectedType(FoundValue, EBlueprintHelperJsonExpectedType::Array))
 		{
 			SetValidationError(
 				OutError,
 				TEXT("payload.") + Field,
 				TEXT("array<string>"),
-				ActualJsonTypeToString(*FoundValue));
+				ActualJsonTypeToString(FoundValue));
 			return false;
 		}
 
-		const TArray<TSharedPtr<FJsonValue>>& Values = (*FoundValue)->AsArray();
+		const TArray<TSharedPtr<FJsonValue>>& Values = FoundValue->AsArray();
 		for (int32 Index = 0; Index < Values.Num(); ++Index)
 		{
 			const TSharedPtr<FJsonValue>& Value = Values[Index];
@@ -226,23 +227,23 @@ public:
 		FBlueprintHelperBridgeValidationError& OutError)
 	{
 		const FString Field(FieldName);
-		const TSharedPtr<FJsonValue>* FoundValue = Payload->Values.Find(Field);
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Payload, Field);
+		if (!FoundValue.IsValid())
 		{
 			return true;
 		}
 
-		if (!MatchesExpectedType(*FoundValue, EBlueprintHelperJsonExpectedType::Number))
+		if (!MatchesExpectedType(FoundValue, EBlueprintHelperJsonExpectedType::Number))
 		{
 			SetValidationError(
 				OutError,
 				TEXT("payload.") + Field,
 				FString::Printf(TEXT("integer[%d..%d]"), MinValue, MaxValue),
-				ActualJsonTypeToString(*FoundValue));
+				ActualJsonTypeToString(FoundValue));
 			return false;
 		}
 
-		const double Number = (*FoundValue)->AsNumber();
+		const double Number = FoundValue->AsNumber();
 		if (FMath::FloorToDouble(Number) != Number || Number < MinValue || Number > MaxValue)
 		{
 			SetValidationError(

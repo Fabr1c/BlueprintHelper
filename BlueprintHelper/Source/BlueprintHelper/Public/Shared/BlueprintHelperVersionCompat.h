@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "UObject/Class.h"
 #include "UObject/MetaData.h"
@@ -37,13 +38,62 @@ public:
 	}
 
 	template<typename ArrayType>
-	static FORCEINLINE auto PopNoShrink(ArrayType& Array) -> decltype(Array.Pop(false))
+	static FORCEINLINE decltype(auto) PopNoShrink(ArrayType& Array)
 	{
 #if BLUEPRINTHELPER_UE_HAS_EALLOW_SHRINKING
 		return Array.Pop(EAllowShrinking::No);
 #else
 		return Array.Pop(false);
 #endif
+	}
+
+	template<typename JsonKeyType>
+	static FORCEINLINE FString JsonKeyToString(const JsonKeyType& Key)
+	{
+		return FString(*Key);
+	}
+
+	static FORCEINLINE TSharedPtr<FJsonValue> FindJsonValue(
+		const FJsonObject* Object,
+		const FString& FieldName)
+	{
+		if (!Object)
+		{
+			return TSharedPtr<FJsonValue>();
+		}
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4)
+		return Object->TryGetField(FStringView(FieldName));
+#else
+		return Object->TryGetField(FieldName);
+#endif
+	}
+
+	static FORCEINLINE TSharedPtr<FJsonValue> FindJsonValue(
+		const TSharedPtr<FJsonObject>& Object,
+		const FString& FieldName)
+	{
+		return FindJsonValue(Object.Get(), FieldName);
+	}
+
+	static FORCEINLINE TSharedPtr<FJsonValue> FindJsonValue(
+		const TSharedRef<FJsonObject>& Object,
+		const FString& FieldName)
+	{
+		return FindJsonValue(&Object.Get(), FieldName);
+	}
+
+	static FORCEINLINE void GetJsonObjectKeys(const TSharedPtr<FJsonObject>& Object, TArray<FString>& OutKeys)
+	{
+		OutKeys.Reset();
+		if (!Object.IsValid())
+		{
+			return;
+		}
+
+		for (auto It = Object->Values.CreateConstIterator(); It; ++It)
+		{
+			OutKeys.Add(JsonKeyToString(It.Key()));
+		}
 	}
 
 	static FORCEINLINE void LeftInlineNoShrink(FString& String, const int32 Count)

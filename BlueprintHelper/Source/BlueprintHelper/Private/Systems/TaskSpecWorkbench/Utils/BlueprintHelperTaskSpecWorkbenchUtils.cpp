@@ -10,6 +10,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 
@@ -276,7 +277,7 @@ FString UBlueprintHelperTaskSpecWorkbenchUtils::ResolveStatementDetail(const TSh
 	if (Object.IsValid() && Object->TryGetObjectField(TEXT("args"), ArgsObject) && ArgsObject && ArgsObject->IsValid())
 	{
 		TArray<FString> Args;
-		(*ArgsObject)->Values.GetKeys(Args);
+		FBlueprintHelperVersionCompat::GetJsonObjectKeys(*ArgsObject, Args);
 		return FString::Printf(TEXT("args: %s"), *FString::Join(Args, TEXT(", ")));
 	}
 	return FString();
@@ -356,13 +357,14 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::ReadCallArguments(
 		return;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*ArgsObject)->Values)
+	for (const auto& Pair : (*ArgsObject)->Values)
 	{
-		Descriptor.ArgumentNames.Add(Pair.Key);
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+		Descriptor.ArgumentNames.Add(Key);
 		const FString Type = InferExpressionType(Pair.Value);
 		if (!Type.IsEmpty())
 		{
-			Descriptor.ArgumentTypes.Add(Pair.Key, Type);
+			Descriptor.ArgumentTypes.Add(Key, Type);
 		}
 	}
 }
@@ -392,9 +394,10 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::CollectCallStatementsFromObject(
 		}
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+	for (const auto& Pair : Object->Values)
 	{
-		CollectCallStatementsFromValue(Pair.Value, Path + TEXT(".") + Pair.Key, OutCalls);
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+		CollectCallStatementsFromValue(Pair.Value, Path + TEXT(".") + Key, OutCalls);
 	}
 }
 
@@ -525,9 +528,10 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::CollectPreviewBlocksFromObject(
 			ResolveStatementDetail(Object));
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+	for (const auto& Pair : Object->Values)
 	{
-		CollectPreviewBlocksFromValue(Pair.Value, Path + TEXT(".") + Pair.Key, Model);
+		const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
+		CollectPreviewBlocksFromValue(Pair.Value, Path + TEXT(".") + Key, Model);
 	}
 }
 
@@ -570,8 +574,8 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::AddTopLevelNonGraphBlock(
 		return;
 	}
 
-	const TSharedPtr<FJsonValue>* FieldValue = RootObject->Values.Find(FieldName);
-	if (!FieldValue || !FieldValue->IsValid())
+	const TSharedPtr<FJsonValue> FieldValue = FBlueprintHelperVersionCompat::FindJsonValue(RootObject, FieldName);
+	if (!FieldValue.IsValid())
 	{
 		return;
 	}
@@ -581,7 +585,7 @@ void UBlueprintHelperTaskSpecWorkbenchUtils::AddTopLevelNonGraphBlock(
 		EBlueprintHelperTaskSpecPreviewBlockKind::NonGraphLogic,
 		FString::Printf(TEXT("$.%s"), FieldName),
 		FieldName,
-		JsonValueToDisplayString(*FieldValue));
+		JsonValueToDisplayString(FieldValue));
 }
 
 void UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(

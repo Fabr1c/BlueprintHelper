@@ -11,6 +11,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 
@@ -234,10 +235,10 @@ FBlueprintHelperTaskSpecPreviewModel FBlueprintHelperTaskSpecPreviewModelBuilder
 	UBlueprintHelperTaskSpecWorkbenchUtils::AddTopLevelNonGraphBlock(RootObject, TEXT("class_settings"), Model);
 	UBlueprintHelperTaskSpecWorkbenchUtils::AddTopLevelNonGraphBlock(RootObject, TEXT("integration"), Model);
 
-	const TSharedPtr<FJsonValue>* BehaviorValue = RootObject->Values.Find(TEXT("behavior"));
-	if (BehaviorValue && BehaviorValue->IsValid())
+	const TSharedPtr<FJsonValue> BehaviorValue = FBlueprintHelperVersionCompat::FindJsonValue(RootObject, TEXT("behavior"));
+	if (BehaviorValue.IsValid())
 	{
-		const TSharedPtr<FJsonObject> BehaviorObject = (*BehaviorValue)->AsObject();
+		const TSharedPtr<FJsonObject> BehaviorObject = BehaviorValue->AsObject();
 		FString Strategy = BehaviorObject.IsValid()
 			? UBlueprintHelperTaskSpecWorkbenchUtils::ReadStringField(BehaviorObject, TEXT("graph_strategy"))
 			: FString();
@@ -247,7 +248,7 @@ FBlueprintHelperTaskSpecPreviewModel FBlueprintHelperTaskSpecPreviewModelBuilder
 			TEXT("$.behavior"),
 			TEXT("behavior"),
 			Strategy);
-		UBlueprintHelperTaskSpecWorkbenchUtils::CollectPreviewBlocksFromValue(*BehaviorValue, TEXT("$.behavior"), Model);
+		UBlueprintHelperTaskSpecWorkbenchUtils::CollectPreviewBlocksFromValue(BehaviorValue, TEXT("$.behavior"), Model);
 	}
 
 	if (Model.Blocks.Num() == 0)

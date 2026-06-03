@@ -5,6 +5,7 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperWidgetTaskPlanAdapterLocalUtils
 {
@@ -68,27 +69,25 @@ public:
 		FBlueprintHelperToolError& OutError)
 	{
 		OutValue.Empty();
-		const TSharedPtr<FJsonValue>* FoundValue = Object.IsValid()
-			? Object->Values.Find(FieldName)
-			: nullptr;
-		if (!FoundValue || !FoundValue->IsValid())
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Object, FieldName);
+		if (!FoundValue.IsValid())
 		{
 			OutError = MakeWidgetTaskPlanError(ErrorCode, ErrorMessage, FieldPath);
 			return false;
 		}
-		if ((*FoundValue)->Type != EJson::String)
+		if (FoundValue->Type != EJson::String)
 		{
 			OutError = MakeWidgetTaskPlanError(
 				ErrorCode,
 				FString::Printf(
 					TEXT("UMG widget field %s must be a string; actual type is %s."),
 					FieldName,
-					*WidgetJsonValueTypeToString(*FoundValue)),
+					*WidgetJsonValueTypeToString(FoundValue)),
 				FieldPath);
 			return false;
 		}
 
-		OutValue = (*FoundValue)->AsString();
+		OutValue = FoundValue->AsString();
 		if (OutValue.IsEmpty())
 		{
 			OutError = MakeWidgetTaskPlanError(
@@ -133,26 +132,24 @@ public:
 		const TSharedRef<FJsonObject>& Destination,
 		FBlueprintHelperToolError& OutError)
 	{
-		const TSharedPtr<FJsonValue>* FoundValue = Source.IsValid()
-			? Source->Values.Find(SourceFieldName)
-			: nullptr;
-		if (!FoundValue)
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Source, SourceFieldName);
+		if (!FoundValue.IsValid())
 		{
 			return true;
 		}
-		if (!FoundValue->IsValid() || (*FoundValue)->Type != EJson::String)
+		if (FoundValue->Type != EJson::String)
 		{
 			OutError = MakeWidgetTaskPlanError(
 				TEXT("invalid_umg_widget_op"),
 				FString::Printf(
 					TEXT("UMG widget op %s must be a string when present; actual type is %s."),
 					SourceFieldName,
-					*WidgetJsonValueTypeToString(FoundValue ? *FoundValue : nullptr)),
+					*WidgetJsonValueTypeToString(FoundValue)),
 				SourceFieldPath);
 			return false;
 		}
 
-		Destination->SetStringField(DestinationFieldName, (*FoundValue)->AsString());
+		Destination->SetStringField(DestinationFieldName, FoundValue->AsString());
 		return true;
 	}
 
@@ -161,7 +158,7 @@ public:
 		FString& OutPropertyName,
 		FBlueprintHelperToolError& OutError)
 	{
-		if (OpObject.IsValid() && OpObject->Values.Contains(TEXT("property_name")))
+		if (FBlueprintHelperVersionCompat::FindJsonValue(OpObject, TEXT("property_name")).IsValid())
 		{
 			return WidgetTryReadRequiredString(
 				OpObject,
@@ -367,7 +364,7 @@ public:
 			return false;
 		}
 
-		if (OpObject.IsValid() && OpObject->Values.Contains(TEXT("parent_widget_name")))
+		if (FBlueprintHelperVersionCompat::FindJsonValue(OpObject, TEXT("parent_widget_name")).IsValid())
 		{
 			if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_widget_name"), WidgetBuildOpFieldPath(TEXT("parent_widget_name")), TEXT("parent_name"), Payload, OutError))
 			{
@@ -406,12 +403,10 @@ public:
 		}
 		Payload->SetStringField(TEXT("property_name"), PropertyName);
 
-		const TSharedPtr<FJsonValue>* Value = OpObject.IsValid()
-			? OpObject->Values.Find(TEXT("value"))
-			: nullptr;
+		const TSharedPtr<FJsonValue> Value = FBlueprintHelperVersionCompat::FindJsonValue(OpObject, TEXT("value"));
 		FString ImportText;
 		if (!WidgetTryJsonValueToServiceImportText(
-			Value ? *Value : nullptr,
+			Value,
 			WidgetBuildOpFieldPath(TEXT("value")),
 			ImportText,
 			OutError))
