@@ -126,12 +126,111 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeStringLiteralExpression(const FString& Value)
+	{
+		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+		Literal->SetStringField(TEXT("value_type"), TEXT("string"));
+		Literal->SetStringField(TEXT("value"), Value);
+		return Literal;
+	}
+
+	static TSharedRef<FJsonObject> MakeIntLiteralExpression(int32 Value)
+	{
+		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+		Literal->SetStringField(TEXT("value_type"), TEXT("int"));
+		Literal->SetNumberField(TEXT("value"), Value);
+		return Literal;
+	}
+
+	static TSharedRef<FJsonObject> MakeBoolLiteralExpression(bool bValue)
+	{
+		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
+		Literal->SetStringField(TEXT("kind"), TEXT("literal"));
+		Literal->SetStringField(TEXT("value_type"), TEXT("bool"));
+		Literal->SetBoolField(TEXT("value"), bValue);
+		return Literal;
+	}
+
+	static TSharedRef<FJsonObject> MakePrintStringLogicSpec(const FString& Message)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("PrintString"));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), MakeStringLiteralExpression(Message));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakePrintStringWithUnconsumedPureDataLogicSpec()
+	{
+		TSharedRef<FJsonObject> PrintStatement = MakeShared<FJsonObject>();
+		PrintStatement->SetStringField(TEXT("kind"), TEXT("call"));
+		PrintStatement->SetStringField(TEXT("target"), TEXT("PrintString"));
+
+		TSharedRef<FJsonObject> PrintArgs = MakeShared<FJsonObject>();
+		PrintArgs->SetObjectField(TEXT("InString"), MakeStringLiteralExpression(TEXT("anchor resolved body")));
+		PrintStatement->SetObjectField(TEXT("args"), PrintArgs);
+
+		TSharedRef<FJsonObject> PureStatement = MakeShared<FJsonObject>();
+		PureStatement->SetStringField(TEXT("kind"), TEXT("call"));
+		PureStatement->SetStringField(TEXT("target"), TEXT("/Script/Engine.KismetMathLibrary:InRange_IntInt"));
+		PureStatement->SetStringField(TEXT("value_type"), TEXT("bool"));
+		PureStatement->SetStringField(TEXT("result_symbol"), TEXT("UnusedBool"));
+
+		TSharedRef<FJsonObject> PureArgs = MakeShared<FJsonObject>();
+		PureArgs->SetObjectField(TEXT("Value"), MakeIntLiteralExpression(1));
+		PureArgs->SetObjectField(TEXT("Min"), MakeIntLiteralExpression(0));
+		PureArgs->SetObjectField(TEXT("Max"), MakeIntLiteralExpression(2));
+		PureArgs->SetObjectField(TEXT("InclusiveMin"), MakeBoolLiteralExpression(true));
+		PureArgs->SetObjectField(TEXT("InclusiveMax"), MakeBoolLiteralExpression(true));
+		PureStatement->SetObjectField(TEXT("args"), PureArgs);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(PrintStatement));
+		Statements.Add(MakeShared<FJsonValueObject>(PureStatement));
+
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayloadWithAnchorObject(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
 		const TSharedRef<FJsonObject>& AnchorJson,
 		const FString& InsertStrategy,
-		const TArray<FString>& SequenceOrder);
+		const TArray<FString>& SequenceOrder,
+		const TSharedRef<FJsonObject>& BodySpec,
+		bool bDryRun);
+
+	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayloadWithAnchorObject(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TSharedRef<FJsonObject>& AnchorJson,
+		const FString& InsertStrategy,
+		const TArray<FString>& SequenceOrder)
+	{
+		return MakeMergeExternalFlowPayloadWithAnchorObject(
+			Blueprint,
+			Graph,
+			AnchorJson,
+			InsertStrategy,
+			SequenceOrder,
+			MakeEmptyLogicSpec(),
+			true);
+	}
 
 	static TSharedRef<FJsonObject> MakeMergeExternalFlowPayload(
 		UBlueprint* Blueprint,
@@ -152,7 +251,9 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		UEdGraph* Graph,
 		const TSharedRef<FJsonObject>& AnchorJson,
 		const FString& InsertStrategy,
-		const TArray<FString>& SequenceOrder)
+		const TArray<FString>& SequenceOrder,
+		const TSharedRef<FJsonObject>& BodySpec,
+		bool bDryRun)
 	{
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
 		Target->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : FString());
@@ -160,7 +261,7 @@ namespace BlueprintHelperExternalGraphAnchorTests
 
 		TSharedRef<FJsonObject> Inserted = MakeShared<FJsonObject>();
 		Inserted->SetStringField(TEXT("block_id"), TEXT("ExternalMergeTest"));
-		Inserted->SetObjectField(TEXT("body"), MakeEmptyLogicSpec());
+		Inserted->SetObjectField(TEXT("body"), BodySpec);
 
 		TArray<TSharedPtr<FJsonValue>> SequenceValues;
 		for (const FString& Item : SequenceOrder)
@@ -174,7 +275,7 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		Payload->SetObjectField(TEXT("anchor"), AnchorJson);
 		Payload->SetObjectField(TEXT("inserted"), Inserted);
 		Payload->SetArrayField(TEXT("sequence_order"), SequenceValues);
-		Payload->SetBoolField(TEXT("dry_run"), true);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 		return Payload;
 	}
 
@@ -256,6 +357,26 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			if (Node.ExternalAnchor.IsValid())
 			{
 				return &Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_CallFunction* FindCallFunctionNode(UEdGraph* Graph, const FName FunctionName)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node))
+			{
+				if (CallNode->GetFunctionName() == FunctionName)
+				{
+					return CallNode;
+				}
 			}
 		}
 		return nullptr;
@@ -541,6 +662,130 @@ bool FBlueprintHelperMergeExternalFlowRejectsDuplicateSequenceOrderTest::RunTest
 	TestEqual(TEXT("duplicate original_successor error code"),
 		DuplicateOriginal.Error.IsSet() ? DuplicateOriginal.Error->Code : FString(),
 		FString(TEXT("sequence_order_invalid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMergeExternalFlowExecuteAllowsAnchorResolvedBodyConnectivityTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.MergeExternalFlowExecuteAllowsAnchorResolvedBodyConnectivity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperMergeExternalFlowExecuteAllowsAnchorResolvedBodyConnectivityTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("MergeExternalFlowAnchorResolvedConnectivity"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("OpenDoor"));
+	UEdGraphPin* SourcePin = FindExecPin(EventNode, EGPD_Output);
+	if (!Blueprint || !Graph || !EventNode || !SourcePin)
+	{
+		return false;
+	}
+
+	FString Error;
+	FBlueprintHelperExternalGraphAnchor Anchor;
+	TestTrue(TEXT("boundary anchor builds"), BuildBoundaryAnchor(Blueprint, Graph, SourcePin, Anchor, Error));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperLogicJsonPathService PathService;
+	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService, PathService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeMergeExternalFlowPayloadWithAnchorObject(
+		Blueprint,
+		Graph,
+		Anchor.ToJson(),
+		TEXT("append_after"),
+		{},
+		MakePrintStringLogicSpec(TEXT("anchor resolved body")),
+		false));
+	TestTrue(TEXT("merge external flow execute succeeds"), Result.bOk);
+	if (!Result.bOk)
+	{
+		AddError(FString::Printf(
+			TEXT("merge_external_flow failed: %s - %s"),
+			Result.Error.IsSet() ? *Result.Error->Code : TEXT("no_error_code"),
+			Result.Error.IsSet() ? *Result.Error->Message : TEXT("no_error_message")));
+		return false;
+	}
+
+	UK2Node_CallFunction* PrintStringNode = FindCallFunctionNode(Graph, FName(TEXT("PrintString")));
+	TestNotNull(TEXT("PrintString body node generated"), PrintStringNode);
+	if (!PrintStringNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* BodyEntryPin = FindExecPin(PrintStringNode, EGPD_Input);
+	TestNotNull(TEXT("PrintString execute input"), BodyEntryPin);
+	if (!BodyEntryPin)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("anchor exec links to inserted body entry"),
+		SourcePin->LinkedTo.Contains(BodyEntryPin) && BodyEntryPin->LinkedTo.Contains(SourcePin));
+
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(EventNode->GetOutermost());
+	TestTrue(TEXT("external anchor event remains user-authored"),
+		MetaData.GetValue(EventNode, TEXT("BlueprintHelperOwned")).IsEmpty());
+	TestTrue(TEXT("external anchor event does not receive inserted block id"),
+		MetaData.GetValue(EventNode, TEXT("BlueprintHelperBlockId")).IsEmpty());
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("merged graph compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMergeExternalFlowExecuteKeepsNonAnchorConnectivityBlockedTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.MergeExternalFlowExecuteKeepsNonAnchorConnectivityBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperMergeExternalFlowExecuteKeepsNonAnchorConnectivityBlockedTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("MergeExternalFlowNonAnchorConnectivityBlocked"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("OpenDoor"));
+	UEdGraphPin* SourcePin = FindExecPin(EventNode, EGPD_Output);
+	if (!Blueprint || !Graph || !EventNode || !SourcePin)
+	{
+		return false;
+	}
+
+	FString Error;
+	FBlueprintHelperExternalGraphAnchor Anchor;
+	TestTrue(TEXT("boundary anchor builds"), BuildBoundaryAnchor(Blueprint, Graph, SourcePin, Anchor, Error));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperLogicJsonPathService PathService;
+	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService, PathService);
+
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeMergeExternalFlowPayloadWithAnchorObject(
+		Blueprint,
+		Graph,
+		Anchor.ToJson(),
+		TEXT("append_after"),
+		{},
+		MakePrintStringWithUnconsumedPureDataLogicSpec(),
+		false));
+	TestFalse(TEXT("non-anchor connectivity issue remains blocked"), Result.bOk);
+	const FString ErrorCode = Result.Error.IsSet() ? Result.Error->Code : FString();
+	const FString ErrorMessage = Result.Error.IsSet() ? Result.Error->Message : FString();
+	TestTrue(TEXT("blocked error is a graph connectivity generation failure"),
+		ErrorCode == TEXT("node_create_failed") || ErrorCode == TEXT("graphwrite_connectivity_failed"));
+	TestTrue(TEXT("blocked error message reports connectivity validation failure"),
+		ErrorMessage.Contains(TEXT("GraphWrite connectivity validation failed")));
+	TestEqual(TEXT("anchor links remain rolled back"), SourcePin->LinkedTo.Num(), 0);
+	TestEqual(TEXT("failed body leaves no residual graph nodes"), Graph->Nodes.Num(), NodeCountBefore);
+	TestNull(TEXT("failed body is removed"), FindCallFunctionNode(Graph, FName(TEXT("PrintString"))));
 	return true;
 }
 

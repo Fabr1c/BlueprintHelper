@@ -365,6 +365,123 @@ namespace BlueprintHelperMergeExternalFlow
 		return ExitPins;
 	}
 
+	static bool HasExecPin(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (UGraphWriteCoreUtils::IsExecPin(Pin))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static void CollectExecReachableFromBodyEntry(
+		UEdGraphPin* BodyEntryPin,
+		const TSet<UEdGraphNode*>& GeneratedSet,
+		TSet<UEdGraphNode*>& OutReachable)
+	{
+		UEdGraphNode* RootNode = BodyEntryPin ? BodyEntryPin->GetOwningNode() : nullptr;
+		if (!RootNode || !GeneratedSet.Contains(RootNode))
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> Stack;
+		Stack.Add(RootNode);
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Node = Stack.Pop(EAllowShrinking::No);
+			if (!Node || OutReachable.Contains(Node) || !GeneratedSet.Contains(Node))
+			{
+				continue;
+			}
+
+			OutReachable.Add(Node);
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || !UGraphWriteCoreUtils::IsExecPin(Pin))
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedPin
+						&& LinkedPin->Direction == EGPD_Input
+						&& UGraphWriteCoreUtils::IsExecPin(LinkedPin)
+						&& LinkedNode
+						&& GeneratedSet.Contains(LinkedNode)
+						&& !OutReachable.Contains(LinkedNode))
+					{
+						Stack.Add(LinkedNode);
+					}
+				}
+			}
+		}
+	}
+
+	static bool AreGeneratedExecNodesReachableFromBodyEntry(
+		const TArray<UEdGraphNode*>& GeneratedNodes,
+		UEdGraphPin* BodyEntryPin)
+	{
+		TSet<UEdGraphNode*> GeneratedSet;
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (Node)
+			{
+				GeneratedSet.Add(Node);
+			}
+		}
+		if (!BodyEntryPin || !GeneratedSet.Contains(BodyEntryPin->GetOwningNode()))
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> Reachable;
+		CollectExecReachableFromBodyEntry(BodyEntryPin, GeneratedSet, Reachable);
+		if (Reachable.Num() == 0)
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (HasExecPin(Node) && !Reachable.Contains(Node))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool CanDeferAnchorResolvedConnectivityFailure(
+		const FBlueprintGenerateResult& GenerateResult,
+		const TArray<UEdGraphNode*>& GeneratedNodes,
+		UEdGraphPin* BodyEntryPin)
+	{
+		if (GenerateResult.bSucceed
+			|| GenerateResult.UnresolvedNodeCount != 0
+			|| GenerateResult.ConnectivityDiagnostics.Num() == 0)
+		{
+			return false;
+		}
+
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : GenerateResult.ConnectivityDiagnostics)
+		{
+			if (Diagnostic.Code != TEXT("unreachable_exec_node"))
+			{
+				return false;
+			}
+		}
+		return AreGeneratedExecNodesReachableFromBodyEntry(GeneratedNodes, BodyEntryPin);
+	}
+
 	static void RemoveGeneratedNodes(
 		UBlueprint* Blueprint,
 		const FBlueprintHelperMergeExternalFlowService::FMergeExternalFlowContext& Context)
@@ -1032,38 +1149,45 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeExternalFlowService::Execute
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Context.Graph, GraphWritePayload, UnresolvedNodes);
-	if (!GenerateResult.bSucceed)
-	{
-		Context.GeneratedNodes = BlueprintHelperMergeExternalFlow::CollectNewNodes(Context.Graph, NodeSnapshot);
-		BlueprintHelperMergeExternalFlow::RemoveGeneratedNodes(Context.Blueprint, Context);
-		Mutation.Rollback();
-
-		FString Message = GenerateResult.Message;
-		if (Message.IsEmpty())
-		{
-			Message = TEXT("inserted body graph generation failed.");
-		}
-		if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
-		{
-			Message += FString::Printf(
-				TEXT(" First unresolved: %s - %s"),
-				*UnresolvedNodes[0]->DisplayText,
-				*UnresolvedNodes[0]->Reason);
-		}
-		return FBlueprintHelperToolResultBuilder::Failure(
-			BlueprintHelperMergeExternalFlow::OperationName,
-			TraceId,
-			BlueprintHelperMergeExternalFlow::MakeToolError(
-				TEXT("node_create_failed"),
-				EBlueprintHelperToolStage::Execute,
-				Message,
-				TEXT("payload.inserted.body"),
-				EBlueprintHelperRollbackResult::RolledBack));
-	}
-
 	Context.GeneratedNodes = BlueprintHelperMergeExternalFlow::CollectNewNodes(Context.Graph, NodeSnapshot);
 	Context.BodyEntryPin = BlueprintHelperMergeExternalFlow::FindBodyEntryPin(Context.GeneratedNodes);
 	Context.BodyExitPins = BlueprintHelperMergeExternalFlow::FindBodyExitPins(Context.GeneratedNodes);
+	if (!GenerateResult.bSucceed)
+	{
+		const bool bCanDeferConnectivityFailure =
+			BlueprintHelperMergeExternalFlow::CanDeferAnchorResolvedConnectivityFailure(
+				GenerateResult,
+				Context.GeneratedNodes,
+				Context.BodyEntryPin);
+		if (!bCanDeferConnectivityFailure)
+		{
+			BlueprintHelperMergeExternalFlow::RemoveGeneratedNodes(Context.Blueprint, Context);
+			Mutation.Rollback();
+
+			FString Message = GenerateResult.Message;
+			if (Message.IsEmpty())
+			{
+				Message = TEXT("inserted body graph generation failed.");
+			}
+			if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
+			{
+				Message += FString::Printf(
+					TEXT(" First unresolved: %s - %s"),
+					*UnresolvedNodes[0]->DisplayText,
+					*UnresolvedNodes[0]->Reason);
+			}
+			return FBlueprintHelperToolResultBuilder::Failure(
+				BlueprintHelperMergeExternalFlow::OperationName,
+				TraceId,
+				BlueprintHelperMergeExternalFlow::MakeToolError(
+					TEXT("node_create_failed"),
+					EBlueprintHelperToolStage::Execute,
+					Message,
+					TEXT("payload.inserted.body"),
+					EBlueprintHelperRollbackResult::RolledBack));
+		}
+	}
+
 	if (!Context.BodyEntryPin)
 	{
 		BlueprintHelperMergeExternalFlow::RemoveGeneratedNodes(Context.Blueprint, Context);
