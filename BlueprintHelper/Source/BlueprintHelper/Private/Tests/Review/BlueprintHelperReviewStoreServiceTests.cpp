@@ -945,6 +945,167 @@ bool FBlueprintHelperReviewBaselineSemanticHashCapturesGraphBlockTest::RunTest(c
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewVariableMetadataSnapshotTest,
+	"BlueprintHelper.Review.Snapshot.BlueprintVariableMetadata",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewVariableMetadataSnapshotTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("VariableMetadataSnapshot"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FName VariableName(TEXT("DoorPrompt"));
+	FEdGraphPinType StringPinType;
+	StringPinType.PinCategory = UEdGraphSchema_K2::PC_String;
+	TestTrue(TEXT("DoorPrompt variable added"),
+		FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableName, StringPinType));
+
+	const int32 VariableIndex =
+		FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableName);
+	TestTrue(TEXT("DoorPrompt variable exists"), VariableIndex != INDEX_NONE);
+	if (VariableIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	Blueprint->NewVariables[VariableIndex].PropertyFlags &= ~CPF_DisableEditOnInstance;
+	FBlueprintEditorUtils::SetBlueprintVariableCategory(Blueprint, VariableName, nullptr, FText::FromString(TEXT("Door")));
+	FBlueprintEditorUtils::SetBlueprintVariableMetaData(
+		Blueprint,
+		VariableName,
+		nullptr,
+		FBlueprintMetadata::MD_Tooltip,
+		TEXT("Prompt displayed near the door."));
+	FBlueprintEditorUtils::SetBlueprintVariableMetaData(
+		Blueprint,
+		VariableName,
+		nullptr,
+		FBlueprintMetadata::MD_ExposeOnSpawn,
+		TEXT("true"));
+
+	const FBlueprintHelperReviewAtomicTarget Target =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
+			TEXT("asset_factory:VariableMetadataSnapshot"),
+			TEXT("evidence_variable_metadata_snapshot"),
+			Blueprint->GetPathName());
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("asset target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("asset target snapshot hash emitted"), SnapshotHash.IsEmpty());
+
+	TSharedPtr<FJsonObject> TargetSnapshot;
+	FString ParseError;
+	TestTrue(TEXT("asset target snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(SnapshotJson, TargetSnapshot, ParseError));
+	if (!TargetSnapshot.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* AssetSnapshot = nullptr;
+	TestTrue(TEXT("target snapshot has asset"),
+		TargetSnapshot->TryGetObjectField(TEXT("asset"), AssetSnapshot) && AssetSnapshot && AssetSnapshot->IsValid());
+	if (!AssetSnapshot || !AssetSnapshot->IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* BlueprintSnapshot = nullptr;
+	TestTrue(TEXT("asset snapshot has blueprint"),
+		(*AssetSnapshot)->TryGetObjectField(TEXT("blueprint"), BlueprintSnapshot) && BlueprintSnapshot && BlueprintSnapshot->IsValid());
+	if (!BlueprintSnapshot || !BlueprintSnapshot->IsValid())
+	{
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Variables = nullptr;
+	TestTrue(TEXT("snapshot has variables"), (*BlueprintSnapshot)->TryGetArrayField(TEXT("variables"), Variables));
+	if (!Variables)
+	{
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> DoorPromptJson;
+	for (const TSharedPtr<FJsonValue>& VariableValue : *Variables)
+	{
+		const TSharedPtr<FJsonObject> VariableJson = VariableValue.IsValid() ? VariableValue->AsObject() : nullptr;
+		FString SnapshotVariableName;
+		if (VariableJson.IsValid()
+			&& VariableJson->TryGetStringField(TEXT("name"), SnapshotVariableName)
+			&& SnapshotVariableName == TEXT("DoorPrompt"))
+		{
+			DoorPromptJson = VariableJson;
+			break;
+		}
+	}
+
+	TestTrue(TEXT("DoorPrompt appears in snapshot"), DoorPromptJson.IsValid());
+	if (!DoorPromptJson.IsValid())
+	{
+		return false;
+	}
+
+	FString Tooltip;
+	bool bInstanceEditable = false;
+	bool bExposeOnSpawn = false;
+	TestTrue(TEXT("DoorPrompt tooltip is present"), DoorPromptJson->TryGetStringField(TEXT("tooltip"), Tooltip));
+	TestEqual(TEXT("DoorPrompt tooltip matches"), Tooltip, FString(TEXT("Prompt displayed near the door.")));
+	TestTrue(TEXT("DoorPrompt instance_editable is present"), DoorPromptJson->TryGetBoolField(TEXT("instance_editable"), bInstanceEditable));
+	TestTrue(TEXT("DoorPrompt instance_editable matches"), bInstanceEditable);
+	TestTrue(TEXT("DoorPrompt expose_on_spawn is present"), DoorPromptJson->TryGetBoolField(TEXT("expose_on_spawn"), bExposeOnSpawn));
+	TestTrue(TEXT("DoorPrompt expose_on_spawn matches"), bExposeOnSpawn);
+
+	FBlueprintHelperReviewAtomicTarget VariableTarget;
+	VariableTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	VariableTarget.AssetPath = Blueprint->GetPathName();
+	VariableTarget.TargetKind = TEXT("blueprint_variable");
+	VariableTarget.TargetKey = TEXT("blueprint_variable:DoorPrompt");
+	VariableTarget.VisualGroupKey = VariableTarget.TargetKey;
+	VariableTarget.DisplayLabel = TEXT("DoorPrompt");
+
+	FString VariableSnapshotJson;
+	FString VariableSnapshotHash;
+	FString VariableSnapshotError;
+	TestTrue(TEXT("variable target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(
+			VariableTarget,
+			VariableSnapshotJson,
+			VariableSnapshotHash,
+			VariableSnapshotError));
+	TestFalse(TEXT("variable target snapshot hash emitted"), VariableSnapshotHash.IsEmpty());
+
+	TSharedPtr<FJsonObject> VariableSnapshot;
+	FString VariableSnapshotParseError;
+	TestTrue(TEXT("variable target snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(
+			VariableSnapshotJson,
+			VariableSnapshot,
+			VariableSnapshotParseError));
+	if (!VariableSnapshot.IsValid())
+	{
+		return false;
+	}
+
+	FString TargetTooltip;
+	bool bTargetInstanceEditable = false;
+	bool bTargetExposeOnSpawn = false;
+	TestTrue(TEXT("variable target tooltip is present"), VariableSnapshot->TryGetStringField(TEXT("tooltip"), TargetTooltip));
+	TestEqual(TEXT("variable target tooltip matches"), TargetTooltip, FString(TEXT("Prompt displayed near the door.")));
+	TestTrue(TEXT("variable target instance_editable is present"), VariableSnapshot->TryGetBoolField(TEXT("instance_editable"), bTargetInstanceEditable));
+	TestTrue(TEXT("variable target instance_editable matches"), bTargetInstanceEditable);
+	TestTrue(TEXT("variable target expose_on_spawn is present"), VariableSnapshot->TryGetBoolField(TEXT("expose_on_spawn"), bTargetExposeOnSpawn));
+	TestTrue(TEXT("variable target expose_on_spawn matches"), bTargetExposeOnSpawn);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewExternalBoundarySnapshotRestoreOnlyRewritesBoundaryPinTest,
 	"BlueprintHelper.Review.Baseline.ExternalBoundarySnapshotRestoreOnlyRewritesBoundaryPin",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

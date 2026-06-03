@@ -21,6 +21,7 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "HAL/FileManager.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/Crc.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
@@ -40,6 +41,50 @@
 #include "UObject/UnrealType.h"
 #include "WidgetBlueprint.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewUtils.h"
+
+
+class FBlueprintHelperReviewVariableMetadataSnapshotHelper
+{
+public:
+	static void AttachVariableMetadata(
+		const UBlueprint* Blueprint,
+		const FBPVariableDescription& Variable,
+		const TSharedRef<FJsonObject>& VariableJson)
+	{
+		const FString Tooltip = GetVariableMetadataValue(Blueprint, Variable.VarName, FBlueprintMetadata::MD_Tooltip);
+		if (!Tooltip.IsEmpty())
+		{
+			VariableJson->SetStringField(TEXT("tooltip"), Tooltip);
+		}
+
+		VariableJson->SetBoolField(TEXT("instance_editable"), !(Variable.PropertyFlags & CPF_DisableEditOnInstance));
+
+		const FString ExposeOnSpawn =
+			GetVariableMetadataValue(Blueprint, Variable.VarName, FBlueprintMetadata::MD_ExposeOnSpawn);
+		VariableJson->SetBoolField(TEXT("expose_on_spawn"), ExposeOnSpawn.Equals(TEXT("true"), ESearchCase::IgnoreCase));
+	}
+
+private:
+	static FString GetVariableMetadataValue(
+		const UBlueprint* Blueprint,
+		const FName& VariableName,
+		const FName& MetadataKey)
+	{
+		if (!Blueprint)
+		{
+			return FString();
+		}
+
+		FString Value;
+		FBlueprintEditorUtils::GetBlueprintVariableMetaData(
+			const_cast<UBlueprint*>(Blueprint),
+			VariableName,
+			nullptr,
+			MetadataKey,
+			Value);
+		return Value;
+	}
+};
 
 
 TArray<FString> FBlueprintHelperReviewBaselineSnapshotService::CaptureSemanticBaselineSnapshots(
@@ -328,6 +373,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBlue
 			VariableJson->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
 			VariableJson->SetStringField(TEXT("pin_sub_category_object"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
 			VariableJson->SetStringField(TEXT("default_value"), Variable.DefaultValue);
+			FBlueprintHelperReviewVariableMetadataSnapshotHelper::AttachVariableMetadata(Blueprint, Variable, VariableJson);
 			Variables.Add(MakeShared<FJsonValueObject>(VariableJson));
 		}
 	}
@@ -666,6 +712,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				Json->SetStringField(TEXT("pin_sub_category"), Variable.VarType.PinSubCategory.ToString());
 				Json->SetStringField(TEXT("pin_sub_category_object"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectPathNameSafe(Variable.VarType.PinSubCategoryObject.Get()));
 				Json->SetStringField(TEXT("default_value"), Variable.DefaultValue);
+				FBlueprintHelperReviewVariableMetadataSnapshotHelper::AttachVariableMetadata(Blueprint, Variable, Json);
 				return Json;
 			}
 

@@ -204,6 +204,24 @@ static bool JsonArrayContainsVariableName(
 	return false;
 }
 
+static TSharedPtr<FJsonObject> FindVariableObjectByName(
+	const TArray<TSharedPtr<FJsonValue>>& Values,
+	const FString& VariableName)
+{
+	for (const TSharedPtr<FJsonValue>& Value : Values)
+	{
+		const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+		FString FoundName;
+		if (Object.IsValid() &&
+			Object->TryGetStringField(TEXT("variable_name"), FoundName) &&
+			FoundName == VariableName)
+		{
+			return Object;
+		}
+	}
+	return nullptr;
+}
+
 static bool IsRemoveDryRunCompatibleStatus(const EBlueprintHelperToolStatus Status)
 {
 	return Status == EBlueprintHelperToolStatus::DryRun ||
@@ -676,6 +694,79 @@ bool FBlueprintHelperBlueprintVariableAddMemberStringIntMapVariableTest::RunTest
 	TestEqual(TEXT("map key pin category is string"), Variable->VarType.PinCategory, UEdGraphSchema_K2::PC_String);
 	TestEqual(TEXT("variable container is map"), Variable->VarType.ContainerType, EPinContainerType::Map);
 	TestEqual(TEXT("map value terminal category is int"), Variable->VarType.PinValueType.TerminalCategory, UEdGraphSchema_K2::PC_Int);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBlueprintVariableReadMemberVariablesMetadataTest,
+	"BlueprintHelper.Safety.BlueprintVariable.ReadMemberVariablesReturnsMetadata",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperBlueprintVariableReadMemberVariablesMetadataTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("ReadMemberVariablesMetadata"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+
+	FBlueprintHelperGraphResolver GraphResolver;
+	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
+	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
+
+	TSharedRef<FJsonObject> AddPayload = MakeShared<FJsonObject>();
+	AddPayload->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : TEXT(""));
+	AddPayload->SetStringField(TEXT("name"), TEXT("DoorPrompt"));
+	AddPayload->SetObjectField(TEXT("pin_type"), FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakePinType(TEXT("string")));
+
+	const FBlueprintHelperToolResultBase AddResult = VariableService.AddMemberVariable(AddPayload);
+	TestTrue(TEXT("member variable is added before metadata write"), AddResult.bOk);
+
+	TArray<TSharedPtr<FJsonValue>> Settings;
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("category"), MakeShared<FJsonValueString>(TEXT("Door"))));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("tooltip"), MakeShared<FJsonValueString>(TEXT("Prompt displayed near the door."))));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("instance_editable"), MakeShared<FJsonValueBoolean>(true)));
+	Settings.Add(FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::MakeSetting(TEXT("expose_on_spawn"), MakeShared<FJsonValueBoolean>(true)));
+
+	TSharedRef<FJsonObject> SetPayload = MakeShared<FJsonObject>();
+	SetPayload->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : TEXT(""));
+	SetPayload->SetStringField(TEXT("name"), TEXT("DoorPrompt"));
+	SetPayload->SetArrayField(TEXT("settings"), Settings);
+
+	const FBlueprintHelperToolResultBase SetResult = VariableService.SetMemberVariableProperties(SetPayload);
+	TestTrue(TEXT("member metadata write succeeds"), SetResult.bOk);
+
+	TSharedRef<FJsonObject> ReadPayload = MakeShared<FJsonObject>();
+	ReadPayload->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : TEXT(""));
+	const FBlueprintHelperToolResultBase ReadResult = VariableService.ReadMemberVariables(ReadPayload);
+	TestTrue(TEXT("read member variables succeeds"), ReadResult.bOk);
+
+	const TArray<TSharedPtr<FJsonValue>>* MemberVariables = nullptr;
+	TestTrue(TEXT("read result has member_variables"),
+		ReadResult.Data.IsValid() && ReadResult.Data->TryGetArrayField(TEXT("member_variables"), MemberVariables));
+	if (!MemberVariables)
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> VariableJson =
+		FBlueprintHelperBlueprintVariableServiceTestsLocalUtils::FindVariableObjectByName(*MemberVariables, TEXT("DoorPrompt"));
+	TestTrue(TEXT("DoorPrompt appears in readback"), VariableJson.IsValid());
+	if (!VariableJson.IsValid())
+	{
+		return false;
+	}
+
+	FString Category;
+	FString Tooltip;
+	bool bInstanceEditable = false;
+	bool bExposeOnSpawn = false;
+	TestTrue(TEXT("readback has category"), VariableJson->TryGetStringField(TEXT("category"), Category));
+	TestTrue(TEXT("readback has tooltip"), VariableJson->TryGetStringField(TEXT("tooltip"), Tooltip));
+	TestTrue(TEXT("readback has instance_editable"), VariableJson->TryGetBoolField(TEXT("instance_editable"), bInstanceEditable));
+	TestTrue(TEXT("readback has expose_on_spawn"), VariableJson->TryGetBoolField(TEXT("expose_on_spawn"), bExposeOnSpawn));
+
+	TestEqual(TEXT("category readback"), Category, FString(TEXT("Door")));
+	TestEqual(TEXT("tooltip readback"), Tooltip, FString(TEXT("Prompt displayed near the door.")));
+	TestTrue(TEXT("instance_editable readback"), bInstanceEditable);
+	TestTrue(TEXT("expose_on_spawn readback"), bExposeOnSpawn);
 	return true;
 }
 

@@ -28,6 +28,34 @@ FBlueprintHelperBlueprintStructureService::FBlueprintHelperBlueprintStructureSer
 
 // ─── 辅助 ───
 
+class FBlueprintHelperBlueprintStructureVariableMetadataUtils
+{
+public:
+	static FString GetTooltip(UBlueprint* Blueprint, const FName& VariableName)
+	{
+		return GetMetaDataValue(Blueprint, VariableName, FBlueprintMetadata::MD_Tooltip);
+	}
+
+	static bool IsExposeOnSpawn(UBlueprint* Blueprint, const FName& VariableName)
+	{
+		const FString Value = GetMetaDataValue(Blueprint, VariableName, FBlueprintMetadata::MD_ExposeOnSpawn);
+		return Value.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
+
+private:
+	static FString GetMetaDataValue(UBlueprint* Blueprint, const FName& VariableName, const FName& Key)
+	{
+		if (!Blueprint)
+		{
+			return FString();
+		}
+
+		FString Value;
+		FBlueprintEditorUtils::GetBlueprintVariableMetaData(Blueprint, VariableName, nullptr, Key, Value);
+		return Value;
+	}
+};
+
 UBlueprint* FBlueprintHelperBlueprintStructureService::ResolveBP(
 	const FBlueprintHelperGraphTarget& Target, FString& OutError) const
 {
@@ -152,7 +180,9 @@ FBlueprintHelperListVariablesResult FBlueprintHelperBlueprintStructureService::L
 
 		Info.DefaultValue = Var.DefaultValue;
 		Info.Category = Var.Category.ToString();
+		Info.Tooltip = FBlueprintHelperBlueprintStructureVariableMetadataUtils::GetTooltip(BP, Var.VarName);
 		Info.bIsEditable = !(Var.PropertyFlags & CPF_DisableEditOnInstance);
+		Info.bExposeOnSpawn = FBlueprintHelperBlueprintStructureVariableMetadataUtils::IsExposeOnSpawn(BP, Var.VarName);
 
 		Result.Variables.Add(Info);
 	}

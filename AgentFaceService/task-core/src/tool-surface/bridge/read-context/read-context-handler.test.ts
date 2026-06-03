@@ -161,6 +161,69 @@ test('logic_flow payload renders function graph synthetic entry and result bound
   assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
 });
 
+test('read_context variable filter preserves member variable metadata fields', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'variable_metadata',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'ReadMemberVariables.v1',
+        member_variables: [
+          {
+            variable_name: 'DoorPrompt',
+            variable_type: { category: 'string', container: 'single' },
+            category: 'Door',
+            tooltip: 'Prompt displayed near the door.',
+            instance_editable: true,
+            expose_on_spawn: true,
+          },
+          {
+            variable_name: 'InternalCounter',
+            variable_type: { category: 'int', container: 'single' },
+            instance_editable: false,
+            expose_on_spawn: false,
+          },
+        ],
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'variable_context',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'member_variable',
+      target_name: 'DoorPrompt',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'list_variables');
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  const variables = payload['member_variables'] as Record<string, unknown>[];
+  assert.equal(variables.length, 1);
+  assert.equal(variables[0]?.['variable_name'], 'DoorPrompt');
+  assert.equal(variables[0]?.['category'], 'Door');
+  assert.equal(variables[0]?.['tooltip'], 'Prompt displayed near the door.');
+  assert.equal(variables[0]?.['instance_editable'], true);
+  assert.equal(variables[0]?.['expose_on_spawn'], true);
+});
+
 test('read_context handler records timing around bridge and post-processing stages', async () => {
   const timing = TaskTimingTrace.start('read_context_test', 'agentface_test');
   const bridgeResponse: BridgeResponse = {

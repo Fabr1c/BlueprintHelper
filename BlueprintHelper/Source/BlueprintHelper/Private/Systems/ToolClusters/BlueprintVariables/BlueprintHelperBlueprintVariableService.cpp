@@ -407,6 +407,9 @@ FBlueprintHelperMemberVariableItem FBlueprintHelperBlueprintVariableService::Con
 		Item.VariableType.Subtype = Info.SubCategoryObject;
 	Item.VariableType.Container = Info.ContainerType.IsEmpty() ? TEXT("single") : Info.ContainerType;
 	if (!Info.Category.IsEmpty()) Item.Category = Info.Category;
+	if (!Info.Tooltip.IsEmpty()) Item.Tooltip = Info.Tooltip;
+	Item.bInstanceEditable = Info.bIsEditable;
+	Item.bExposeOnSpawn = Info.bExposeOnSpawn;
 	return Item;
 }
 

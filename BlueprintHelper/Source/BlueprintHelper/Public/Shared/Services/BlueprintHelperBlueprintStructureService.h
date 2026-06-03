@@ -50,8 +50,14 @@ struct BLUEPRINTHELPER_API FBlueprintHelperVariableInfo
 	/** 分类标签。 */
 	FString Category;
 
+	/** Tooltip 元数据。 */
+	FString Tooltip;
+
 	/** 是否可在蓝图中编辑。 */
 	bool bIsEditable = true;
+
+	/** 是否暴露在 Spawn 参数上。 */
+	bool bExposeOnSpawn = false;
 };
 
 // ─── 事件分发器摘要 ───
