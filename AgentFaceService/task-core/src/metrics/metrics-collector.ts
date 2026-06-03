@@ -2,6 +2,7 @@ import type { TaskSpec } from '../task/schema/task-schemas.js';
 import type {
   MetricsEvent,
   MetricsEventSink,
+  MetricsIoSummary,
   MetricsIssueSummary,
   MetricsOperationIdentity,
   MetricsStatus,
@@ -28,6 +29,7 @@ export interface MetricsCollector {
   recordToolCompleted(input: RecordToolCompletedInput): Promise<void>;
   recordValidationCompleted(input: RecordTaskEvidenceCompletedInput): Promise<void>;
   recordReadbackCompleted(input: RecordTaskEvidenceCompletedInput): Promise<void>;
+  recordCliIoCompleted(input: RecordCliIoCompletedInput): Promise<void>;
 }
 
 export interface RecordTaskSpecCompletedInput extends MetricsOperationIdentity {
@@ -60,6 +62,12 @@ export interface RecordTaskEvidenceCompletedInput {
   toolResult?: unknown;
   duration_ms?: number;
   tool_name?: string;
+}
+
+export interface RecordCliIoCompletedInput extends MetricsOperationIdentity {
+  tool_name?: string;
+  status: MetricsStatus;
+  io: MetricsIoSummary;
 }
 
 export function createMetricsCollector(options: CreateMetricsCollectorOptions = {}): MetricsCollector {
@@ -157,6 +165,20 @@ export function createMetricsCollector(options: CreateMetricsCollectorOptions = 
         ...errorFields(input.passed, input.toolResult),
       });
     },
+
+    async recordCliIoCompleted(input) {
+      await emit({
+        schema: 'BlueprintHelper.MetricsEvent.v1',
+        timestamp: now().toISOString(),
+        event_type: 'cli_io_completed',
+        tool_name: input.tool_name,
+        status: input.status,
+        correctness_basis: 'not_applicable',
+        capability: input.capability,
+        semantic_operation: input.semantic_operation,
+        io: sanitizeIoSummary(input.io),
+      });
+    },
   };
 
   async function emit(event: MetricsEvent): Promise<void> {
@@ -169,6 +191,25 @@ export function createMetricsCollector(options: CreateMetricsCollectorOptions = 
       return;
     }
   }
+}
+
+function sanitizeIoSummary(io: MetricsIoSummary): MetricsIoSummary {
+  return removeUndefined({
+    input_source: io.input_source,
+    input_chars: readNonNegativeInteger(io.input_chars),
+    input_utf8_bytes: readNonNegativeInteger(io.input_utf8_bytes),
+    output_chars: readNonNegativeInteger(io.output_chars),
+    output_utf8_bytes: readNonNegativeInteger(io.output_utf8_bytes),
+    estimated_input_tokens: readNonNegativeInteger(io.estimated_input_tokens),
+    estimated_output_tokens: readNonNegativeInteger(io.estimated_output_tokens),
+  });
+}
+
+function readNonNegativeInteger(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    return undefined;
+  }
+  return value;
 }
 
 function createTaskSpecEventBase(taskSpec: TaskSpec, now: Date): Omit<MetricsEvent, 'event_type' | 'status'> {

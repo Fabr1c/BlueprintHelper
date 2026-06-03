@@ -1,5 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
+import { createInputIoSummary } from './io-stats.js';
 
 export interface CliInputOptions {
   cwd: string;
@@ -9,7 +11,16 @@ export interface CliInputOptions {
   readStdin?: () => Promise<string> | string;
 }
 
+export interface CliInputObjectWithStats {
+  value: Record<string, unknown>;
+  io: MetricsIoSummary;
+}
+
 export async function readCliInputObject(options: CliInputOptions): Promise<Record<string, unknown>> {
+  return (await readCliInputObjectWithStats(options)).value;
+}
+
+export async function readCliInputObjectWithStats(options: CliInputOptions): Promise<CliInputObjectWithStats> {
   const sourceCount = [options.file, options.json, options.stdin ? 'stdin' : undefined]
     .filter((value) => value !== undefined).length;
   if (sourceCount !== 1) {
@@ -23,7 +34,10 @@ export async function readCliInputObject(options: CliInputOptions): Promise<Reco
   if (!isRecord(parsed)) {
     throw new Error('CLI params must be a JSON object.');
   }
-  return parsed;
+  return {
+    value: parsed,
+    io: createInputIoSummary(options.json !== undefined ? 'json' : options.file ? 'file' : 'stdin', text),
+  };
 }
 
 function parseJsonInput(text: string, source: '--file' | '--json' | '--stdin'): unknown {

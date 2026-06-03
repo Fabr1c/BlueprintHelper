@@ -7,16 +7,18 @@ import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/tas
 import type { TaskTimingTrace } from '@blueprinthelper/task-core/task/service/task-timing';
 import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
 import type { TaskSpecRunnerMetrics } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
 import {
   getBlueprintHelperTool,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
-import { readCliInputObject } from './input.js';
+import { readCliInputObjectWithStats } from './input.js';
 import type { CliCommand } from './output.js';
 
 export interface CliToolInvocationResult {
   toolResult: ToolResultBase;
   rawParams?: Record<string, unknown>;
   parsedParams?: Record<string, unknown>;
+  inputIo?: MetricsIoSummary;
 }
 
 export async function invokeCliTool(input: {
@@ -59,18 +61,22 @@ export async function invokeCliTool(input: {
     };
   }
 
-  const rawParams = input.command.params ?? await readCliInputObject({
-    cwd: input.cwd,
-    file: input.command.file,
-    json: input.command.json,
-    stdin: input.command.stdin,
-    readStdin: input.readStdin,
-  });
+  const inputObject = input.command.params
+    ? { value: input.command.params, io: undefined }
+    : await readCliInputObjectWithStats({
+      cwd: input.cwd,
+      file: input.command.file,
+      json: input.command.json,
+      stdin: input.command.stdin,
+      readStdin: input.readStdin,
+    });
+  const rawParams = inputObject.value;
   const params = applyDevelopFlag(toolName, rawParams, input.command.develop === true);
   const parsed = tool.inputSchema.parse(params) as Record<string, unknown>;
   return {
     rawParams,
     parsedParams: parsed,
+    inputIo: inputObject.io,
     toolResult: await tool.execute(parsed, {
       cwd: input.cwd,
       bridge: input.bridge,

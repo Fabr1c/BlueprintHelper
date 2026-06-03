@@ -40,6 +40,24 @@ test('buildMetricsReport summarizes tool usage errors health and visible unknown
           error_category: 'parameter_error',
           error_code: 'missing_required_field',
         }),
+        createCliIoEvent({
+          tool_name: 'blueprinthelper_read_context',
+          input_chars: 100,
+          input_utf8_bytes: 120,
+          output_chars: 300,
+          output_utf8_bytes: 320,
+          estimated_input_tokens: 25,
+          estimated_output_tokens: 75,
+        }),
+        createCliIoEvent({
+          tool_name: 'blueprinthelper_read_context',
+          input_chars: 50,
+          input_utf8_bytes: 55,
+          output_chars: 40,
+          output_utf8_bytes: 50,
+          estimated_input_tokens: 13,
+          estimated_output_tokens: 10,
+        }),
       ];
     },
     async readOpenEpisodes() {
@@ -75,12 +93,20 @@ test('buildMetricsReport summarizes tool usage errors health and visible unknown
 
   assert.equal(report.schema, 'BlueprintHelper.MetricsReport.v1');
   assert.equal(report.tool_usage.find((entry) => entry.tool_name === 'blueprinthelper_preview_task')?.total, 3);
+  assert.equal(report.tool_usage.find((entry) => entry.tool_name === 'blueprinthelper_read_context'), undefined);
+  assert.equal(report.operation_usage.find((entry) => entry.capability === 'read_context'), undefined);
+  assert.equal(report.io_usage.find((entry) => entry.tool_name === 'blueprinthelper_read_context')?.total, 2);
+  assert.equal(report.io_usage.find((entry) => entry.tool_name === 'blueprinthelper_read_context')?.input_chars_total, 150);
+  assert.equal(report.io_usage.find((entry) => entry.tool_name === 'blueprinthelper_read_context')?.output_utf8_bytes_total, 370);
   assert.equal(report.top_errors.find((entry) => entry.error_category === 'unknown')?.error_code, 'mystery_preview_failure');
   assert.equal(report.error_category_distribution.find((entry) => entry.error_category === 'unknown')?.count, 2);
   assert.equal(report.operation_usage.find((entry) => entry.capability === 'graph_write')?.semantic_operation, 'call');
   assert.equal(report.task_health[0]?.attempts_to_success, 3);
   assert.equal(report.summary.unknown_errors, 2);
   assert.match(markdown, /## Tool Usage/);
+  assert.match(markdown, /## IO Usage/);
+  assert.match(markdown, /input_utf8_bytes_total/);
+  assert.match(markdown, /output_chars_avg/);
   assert.match(markdown, /mystery_preview_failure/);
   assert.match(markdown, /attempts_to_success/);
 });
@@ -99,12 +125,14 @@ test('top-errors report kind keeps error sections and omits unrelated large sect
   assert.ok(report.error_category_distribution.length > 0);
   assert.deepEqual(report.tool_usage, []);
   assert.deepEqual(report.operation_usage, []);
+  assert.deepEqual(report.io_usage, []);
   assert.deepEqual(report.task_health, []);
   assert.match(markdown, /## Top Errors/);
   assert.match(markdown, /## Unknown Errors/);
   assert.match(markdown, /## Error Category Distribution/);
   assert.doesNotMatch(markdown, /## Tool Usage/);
   assert.doesNotMatch(markdown, /## Operation Usage/);
+  assert.doesNotMatch(markdown, /## IO Usage/);
   assert.doesNotMatch(markdown, /## Task Health/);
 });
 
@@ -119,12 +147,14 @@ test('tool-usage report kind keeps usage sections and omits unrelated large sect
 
   assert.ok(report.tool_usage.length > 0);
   assert.ok(report.operation_usage.length > 0);
+  assert.ok(report.io_usage.length > 0);
   assert.deepEqual(report.top_errors, []);
   assert.deepEqual(report.unknown_errors, []);
   assert.deepEqual(report.error_category_distribution, []);
   assert.deepEqual(report.task_health, []);
   assert.match(markdown, /## Tool Usage/);
   assert.match(markdown, /## Operation Usage/);
+  assert.match(markdown, /## IO Usage/);
   assert.doesNotMatch(markdown, /## Top Errors/);
   assert.doesNotMatch(markdown, /## Task Health/);
 });
@@ -151,10 +181,12 @@ test('task-health report kind counts all stale_open episodes before limiting the
   assert.ok(report.task_health.length <= 2);
   assert.deepEqual(report.tool_usage, []);
   assert.deepEqual(report.operation_usage, []);
+  assert.deepEqual(report.io_usage, []);
   assert.deepEqual(report.top_errors, []);
   assert.match(markdown, /## Task Health/);
   assert.match(markdown, /## Stale Open/);
   assert.doesNotMatch(markdown, /## Tool Usage/);
+  assert.doesNotMatch(markdown, /## IO Usage/);
   assert.doesNotMatch(markdown, /## Top Errors/);
 });
 
@@ -170,9 +202,11 @@ test('report kind keeps the full report section set', async () => {
   assertReportKind(report.kind, 'report');
   assert.ok(report.tool_usage.length > 0);
   assert.ok(report.operation_usage.length > 0);
+  assert.ok(report.io_usage.length > 0);
   assert.ok(report.top_errors.length > 0);
   assert.ok(report.task_health.length > 0);
   assert.match(markdown, /## Tool Usage/);
+  assert.match(markdown, /## IO Usage/);
   assert.match(markdown, /## Top Errors/);
   assert.match(markdown, /## Task Health/);
   assert.match(markdown, /## Operation Usage/);
@@ -210,6 +244,33 @@ function createEvent(overrides: Partial<MetricsEvent> = {}): MetricsEvent {
   };
 }
 
+function createCliIoEvent(input: {
+  tool_name: string;
+  input_chars: number;
+  input_utf8_bytes: number;
+  output_chars: number;
+  output_utf8_bytes: number;
+  estimated_input_tokens: number;
+  estimated_output_tokens: number;
+}): MetricsEvent {
+  return createEvent({
+    event_type: 'cli_io_completed',
+    tool_name: input.tool_name,
+    capability: 'read_context',
+    semantic_operation: 'blueprint_logic.logic_flow',
+    status: 'success',
+    io: {
+      input_source: 'stdin',
+      input_chars: input.input_chars,
+      input_utf8_bytes: input.input_utf8_bytes,
+      output_chars: input.output_chars,
+      output_utf8_bytes: input.output_utf8_bytes,
+      estimated_input_tokens: input.estimated_input_tokens,
+      estimated_output_tokens: input.estimated_output_tokens,
+    },
+  });
+}
+
 function createReportStore(overrides: {
   events?: MetricsEvent[];
   openEpisodes?: MetricsEpisode[];
@@ -240,6 +301,15 @@ function createReportStore(overrides: {
       status: 'failed',
       error_category: 'parameter_error',
       error_code: 'missing_required_field',
+    }),
+    createCliIoEvent({
+      tool_name: 'blueprinthelper_read_context',
+      input_chars: 100,
+      input_utf8_bytes: 120,
+      output_chars: 300,
+      output_utf8_bytes: 320,
+      estimated_input_tokens: 25,
+      estimated_output_tokens: 75,
     }),
   ];
   const closedEpisodes = overrides.closedEpisodes ?? [

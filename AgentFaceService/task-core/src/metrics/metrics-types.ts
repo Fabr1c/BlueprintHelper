@@ -7,7 +7,8 @@ export type MetricsEventType =
   | 'taskspec_execute_completed'
   | 'taskstep_completed'
   | 'validation_completed'
-  | 'readback_completed';
+  | 'readback_completed'
+  | 'cli_io_completed';
 
 export type MetricsErrorCategory =
   | 'capability_boundary'
@@ -41,6 +42,23 @@ export interface MetricsIssueSummary {
   message_digest?: string;
 }
 
+export type MetricsIoInputSource =
+  | 'json'
+  | 'stdin'
+  | 'file'
+  | 'task_file'
+  | 'none';
+
+export interface MetricsIoSummary {
+  input_source?: MetricsIoInputSource;
+  input_chars?: number;
+  input_utf8_bytes?: number;
+  output_chars?: number;
+  output_utf8_bytes?: number;
+  estimated_input_tokens?: number;
+  estimated_output_tokens?: number;
+}
+
 export interface MetricsEvent extends MetricsOperationIdentity {
   schema: 'BlueprintHelper.MetricsEvent.v1';
   timestamp: string;
@@ -52,6 +70,7 @@ export interface MetricsEvent extends MetricsOperationIdentity {
   error_category?: MetricsErrorCategory;
   error_code?: string;
   issue?: MetricsIssueSummary;
+  io?: MetricsIoSummary;
   duration_ms?: number;
   correctness_basis?: 'validation_readback' | 'pending_confirmation' | 'not_applicable';
 }

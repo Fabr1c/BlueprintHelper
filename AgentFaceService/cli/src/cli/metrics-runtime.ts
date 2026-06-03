@@ -5,7 +5,10 @@ import {
   type MetricsService,
 } from '@blueprinthelper/task-core/metrics/metrics-service';
 import { extractReadToolOperation } from '@blueprinthelper/task-core/metrics/operation-extractor';
-import type { MetricsOperationIdentity } from '@blueprinthelper/task-core/metrics/metrics-types';
+import type {
+  MetricsIoSummary,
+  MetricsOperationIdentity,
+} from '@blueprinthelper/task-core/metrics/metrics-types';
 import {
   failureResult,
   type ToolResultBase,
@@ -32,6 +35,14 @@ export interface RecordCliToolThrownErrorOptions {
   command: Pick<CliCommand, 'toolName'>;
   error: unknown;
   durationMs: number;
+}
+
+export interface RecordCliIoCompletedOptions {
+  metrics: MetricsService;
+  command: Pick<CliCommand, 'kind' | 'toolName'>;
+  inputIo?: MetricsIoSummary;
+  outputIo?: MetricsIoSummary;
+  operationInput?: unknown;
 }
 
 const HOUR_IN_MS = 60 * 60 * 1000;
@@ -98,6 +109,27 @@ export async function recordCliToolThrownError(options: RecordCliToolThrownError
   }
 }
 
+export async function recordCliIoCompleted(options: RecordCliIoCompletedOptions): Promise<void> {
+  const toolName = resolveCliIoToolName(options.command);
+  if (!toolName || (options.inputIo === undefined && options.outputIo === undefined)) {
+    return;
+  }
+
+  try {
+    await options.metrics.collector.recordCliIoCompleted({
+      tool_name: toolName,
+      status: 'success',
+      io: {
+        ...options.inputIo,
+        ...options.outputIo,
+      },
+      ...resolveCliToolOperation(toolName, options.operationInput),
+    });
+  } catch {
+    return;
+  }
+}
+
 function resolveCliMetricsEpisodeTtlMs(env: NodeJS.ProcessEnv): number | undefined {
   const hours = readPositiveInteger(env['BPH_METRICS_EPISODE_TTL_HOURS']) ?? DEFAULT_EPISODE_TTL_HOURS;
   return hours * HOUR_IN_MS;
@@ -112,6 +144,22 @@ function resolveCliToolOperation(toolName: string, input: unknown): MetricsOpera
     capability: toolName,
     semantic_operation: toolName,
   };
+}
+
+function resolveCliIoToolName(command: Pick<CliCommand, 'kind' | 'toolName'>): string | undefined {
+  if (command.toolName) {
+    return command.toolName;
+  }
+  if (command.kind === 'task.preview') {
+    return 'blueprinthelper_preview_task';
+  }
+  if (command.kind === 'task.execute') {
+    return 'blueprinthelper_execute_task';
+  }
+  if (command.kind === 'task.result') {
+    return 'blueprinthelper_get_task_result';
+  }
+  return undefined;
 }
 
 function classifyCliToolErrorCode(error: unknown): string {

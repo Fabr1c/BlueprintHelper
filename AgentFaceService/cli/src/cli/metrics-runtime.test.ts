@@ -108,14 +108,15 @@ test('runCli direct read_context records tool_completed with extracted semantic 
   const workspace = await createTempDir(t, 'blueprinthelper-cli-read-context-');
   const metricsRoot = path.join(workspace, 'metrics');
   const readSpecPath = path.join(workspace, 'read-spec.json');
-  await writeFile(readSpecPath, JSON.stringify({
+  const readSpecText = JSON.stringify({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'blueprint_logic',
     target: {
       asset_path: '/Game/BP/BP_Metrics',
       target_type: 'blueprint',
     },
-  }, null, 2));
+  }, null, 2);
+  await writeFile(readSpecPath, readSpecText);
 
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -150,12 +151,25 @@ test('runCli direct read_context records tool_completed with extracted semantic 
   assert.deepEqual(stderr, []);
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'context.read');
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'tool_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_read_context');
   assert.equal(events[0]?.capability, 'read_context');
   assert.equal(events[0]?.semantic_operation, 'blueprint_logic.logic_flow');
   assert.equal(events[0]?.status, 'success');
+  assert.equal(events[1]?.event_type, 'cli_io_completed');
+  assert.equal(events[1]?.tool_name, 'blueprinthelper_read_context');
+  assert.equal(events[1]?.capability, 'read_context');
+  assert.equal(events[1]?.semantic_operation, 'blueprint_logic.logic_flow');
+  assert.deepEqual(events[1]?.io, {
+    input_source: 'file',
+    input_chars: readSpecText.length,
+    input_utf8_bytes: Buffer.byteLength(readSpecText, 'utf8'),
+    output_chars: stdout.join('').length,
+    output_utf8_bytes: Buffer.byteLength(stdout.join(''), 'utf8'),
+    estimated_input_tokens: Math.ceil(readSpecText.length / 4),
+    estimated_output_tokens: Math.ceil(stdout.join('').length / 4),
+  });
 });
 
 test('runCli direct tool success records metrics without changing stdout payload', async (t) => {
@@ -181,10 +195,21 @@ test('runCli direct tool success records metrics without changing stdout payload
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'tool.invoke');
   assert.equal(output.tool_name, 'blueprinthelper_diagnostics');
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0]?.tool_name, 'blueprinthelper_diagnostics');
   assert.equal(events[0]?.semantic_operation, 'blueprinthelper_diagnostics');
   assert.equal(events[0]?.status, 'success');
+  assert.equal(events[1]?.event_type, 'cli_io_completed');
+  assert.equal(events[1]?.tool_name, 'blueprinthelper_diagnostics');
+  assert.deepEqual(events[1]?.io, {
+    input_source: 'json',
+    input_chars: 2,
+    input_utf8_bytes: 2,
+    output_chars: stdout.join('').length,
+    output_utf8_bytes: Buffer.byteLength(stdout.join(''), 'utf8'),
+    estimated_input_tokens: 1,
+    estimated_output_tokens: Math.ceil(stdout.join('').length / 4),
+  });
 });
 
 test('runCli direct tool malformed --json records failed metrics event with input guidance', async (t) => {
@@ -210,12 +235,23 @@ test('runCli direct tool malformed --json records failed metrics event with inpu
   assert.equal(output.ok, false);
   assert.equal(output.status, 'cli_error');
   assert.match(output.message, /pipe JSON through --stdin/);
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'tool_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_diagnostics');
   assert.equal(events[0]?.status, 'failed');
   assert.equal(events[0]?.error_category, 'parameter_error');
   assert.equal(events[0]?.error_code, 'malformed_json');
+  assert.equal(events[1]?.event_type, 'cli_io_completed');
+  assert.equal(events[1]?.tool_name, 'blueprinthelper_diagnostics');
+  assert.deepEqual(events[1]?.io, {
+    input_source: 'json',
+    input_chars: 4,
+    input_utf8_bytes: 4,
+    output_chars: stdout.join('').length,
+    output_utf8_bytes: Buffer.byteLength(stdout.join(''), 'utf8'),
+    estimated_input_tokens: 1,
+    estimated_output_tokens: Math.ceil(stdout.join('').length / 4),
+  });
 });
 
 test('runCli direct tools do not write metrics when BPH_METRICS_DISABLED=1', async (t) => {
@@ -243,7 +279,8 @@ test('runCli direct tools do not write metrics when BPH_METRICS_DISABLED=1', asy
 test('runCli task preview records taskspec preview metrics through the default runner', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-task-preview-');
   const metricsRoot = path.join(workspace, 'metrics');
-  await writeFile(path.join(workspace, 'task-spec.json'), JSON.stringify(createTaskSpec(), null, 2));
+  const taskSpecText = JSON.stringify(createTaskSpec(), null, 2);
+  await writeFile(path.join(workspace, 'task-spec.json'), taskSpecText);
 
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -290,16 +327,23 @@ test('runCli task preview records taskspec preview metrics through the default r
   assert.deepEqual(stderr, []);
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'task.preview');
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'taskspec_preview_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_preview_task');
   assert.equal(events[0]?.status, 'success');
+  assert.equal(events[1]?.event_type, 'cli_io_completed');
+  assert.equal(events[1]?.tool_name, 'blueprinthelper_preview_task');
+  const io = events[1]?.io as Record<string, unknown> | undefined;
+  assert.equal(io?.['input_source'], 'task_file');
+  assert.equal(io?.['input_chars'], taskSpecText.length);
+  assert.equal(io?.['output_chars'], stdout.join('').length);
 });
 
 test('runCli task execute records taskspec execute metrics through the default runner', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-task-execute-');
   const metricsRoot = path.join(workspace, 'metrics');
-  await writeFile(path.join(workspace, 'task-spec.json'), JSON.stringify(createTaskSpec(), null, 2));
+  const taskSpecText = JSON.stringify(createTaskSpec(), null, 2);
+  await writeFile(path.join(workspace, 'task-spec.json'), taskSpecText);
 
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -368,11 +412,75 @@ test('runCli task execute records taskspec execute metrics through the default r
   assert.deepEqual(bridgeCommands, ['preview_task_plan', 'execute_task_plan']);
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'task.execute');
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'taskspec_execute_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_execute_task');
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[0]?.correctness_basis, 'pending_confirmation');
+  assert.equal(events[1]?.event_type, 'cli_io_completed');
+  assert.equal(events[1]?.tool_name, 'blueprinthelper_execute_task');
+  const io = events[1]?.io as Record<string, unknown> | undefined;
+  assert.equal(io?.['input_source'], 'task_file');
+  assert.equal(io?.['input_chars'], taskSpecText.length);
+  assert.equal(io?.['output_chars'], stdout.join('').length);
+});
+
+test('runCli task result records CLI output IO metrics', async (t) => {
+  const workspace = await createTempDir(t, 'blueprinthelper-cli-task-result-');
+  const metricsRoot = path.join(workspace, 'metrics');
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+
+  const exitCode = await withEnv({
+    BPH_METRICS_DIR: metricsRoot,
+  }, () => runCli({
+    argv: ['task', 'result', '--id', 'task_cli_metrics_result', '--format', 'json'],
+    cwd: workspace,
+    runner: {
+      async readReferenceContext() {
+        throw new Error('readReferenceContext should not be called.');
+      },
+      async previewTask() {
+        throw new Error('previewTask should not be called.');
+      },
+      async executeTask() {
+        throw new Error('executeTask should not be called.');
+      },
+      async getTaskResult(taskRunId) {
+        assert.equal(taskRunId, 'task_cli_metrics_result');
+        return {
+          ok: true,
+          schema: 'BlueprintHelper.ToolResult.v1',
+          operation: 'get_task_result',
+          trace_id: 'trace_task_cli_metrics_result',
+          status: 'completed',
+          modified: false,
+          data: {
+            task_run_id: taskRunId,
+            status: 'completed',
+          },
+        };
+      },
+    },
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  }));
+
+  const events = await readEvents(metricsRoot);
+  const output = JSON.parse(stdout.join(''));
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(stderr, []);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, 'task.result');
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.event_type, 'cli_io_completed');
+  assert.equal(events[0]?.tool_name, 'blueprinthelper_get_task_result');
+  assert.deepEqual(events[0]?.io, {
+    output_chars: stdout.join('').length,
+    output_utf8_bytes: Buffer.byteLength(stdout.join(''), 'utf8'),
+    estimated_output_tokens: Math.ceil(stdout.join('').length / 4),
+  });
 });
 
 async function createTempDir(

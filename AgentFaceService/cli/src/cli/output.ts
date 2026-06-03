@@ -6,6 +6,7 @@ import {
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
 import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
+import { createOutputIoSummary } from './io-stats.js';
 
 export const CLI_RESULT_SCHEMA = 'BlueprintHelper.CliResult.v1';
 export const CLI_FULL_RESULT_SCHEMA = 'BlueprintHelper.CliFullResult.v1';
@@ -55,6 +56,9 @@ export interface CliOutputRuntime {
 export interface CliWriteOutcome {
   outputTooLarge: boolean;
   artifactRefs: Record<string, string>;
+  outputChars: number;
+  outputUtf8Bytes: number;
+  estimatedOutputTokens: number;
 }
 
 export function buildCliSummary(input: {
@@ -173,12 +177,28 @@ export function writeCliResult(
   const text = `${JSON.stringify(output)}\n`;
   if (command.maxBytes !== undefined && Buffer.byteLength(text, 'utf8') > command.maxBytes) {
     const budgetResult = outputTooLargeResult(command, artifactRefs);
-    runtime.stdout(`${JSON.stringify(budgetResult)}\n`);
-    return { outputTooLarge: true, artifactRefs };
+    const budgetText = `${JSON.stringify(budgetResult)}\n`;
+    runtime.stdout(budgetText);
+    return createWriteOutcome(true, artifactRefs, budgetText);
   }
 
   runtime.stdout(text);
-  return { outputTooLarge: false, artifactRefs };
+  return createWriteOutcome(false, artifactRefs, text);
+}
+
+function createWriteOutcome(
+  outputTooLarge: boolean,
+  artifactRefs: Record<string, string>,
+  text: string,
+): CliWriteOutcome {
+  const outputIo = createOutputIoSummary(text);
+  return {
+    outputTooLarge,
+    artifactRefs,
+    outputChars: outputIo.output_chars ?? 0,
+    outputUtf8Bytes: outputIo.output_utf8_bytes ?? 0,
+    estimatedOutputTokens: outputIo.estimated_output_tokens ?? 0,
+  };
 }
 
 export function buildCliError(input: {

@@ -224,6 +224,52 @@ test('collector classifies errors through the shared metrics classifier', async 
   assert.doesNotMatch(serialized, /SECRET_NESTED_ISSUE/);
 });
 
+test('collector records CLI IO sizes without raw payload content', async () => {
+  const events: MetricsEvent[] = [];
+  const collector = createMetricsCollector({
+    sink: {
+      record(event) {
+        events.push(event);
+      },
+    },
+    now: () => new Date('2026-06-04T08:00:00.000Z'),
+  });
+
+  await collector.recordCliIoCompleted({
+    tool_name: 'blueprinthelper_read_context',
+    status: 'success',
+    capability: 'read_context',
+    semantic_operation: 'blueprint_logic.logic_flow',
+    io: {
+      input_source: 'stdin',
+      input_chars: 19,
+      input_utf8_bytes: 21,
+      output_chars: 41,
+      output_utf8_bytes: 43,
+      estimated_input_tokens: 5,
+      estimated_output_tokens: 11,
+    },
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.event_type, 'cli_io_completed');
+  assert.equal(events[0]?.tool_name, 'blueprinthelper_read_context');
+  assert.equal(events[0]?.status, 'success');
+  assert.deepEqual(events[0]?.io, {
+    input_source: 'stdin',
+    input_chars: 19,
+    input_utf8_bytes: 21,
+    output_chars: 41,
+    output_utf8_bytes: 43,
+    estimated_input_tokens: 5,
+    estimated_output_tokens: 11,
+  });
+
+  const serialized = JSON.stringify(events[0]);
+  assert.doesNotMatch(serialized, /SECRET/);
+  assert.doesNotMatch(serialized, /raw_payload/);
+});
+
 function createSecretTaskSpec(): never {
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',

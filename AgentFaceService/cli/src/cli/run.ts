@@ -19,20 +19,23 @@ import {
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
   buildCliError,
+  type CliWriteOutcome,
   writeCliResult,
   type CliCommand,
   type CliFormat,
 } from './output.js';
+import { createInputIoSummary, createOutputIoSummary } from './io-stats.js';
 import { buildHelpText } from './help.js';
 import { runMetricsCommand, type MetricsCliCommand } from './metrics-command.js';
 import {
   createCliMetricsService,
+  recordCliIoCompleted,
   recordCliToolCompletion,
   recordCliToolThrownError,
   resolveCliMetricsRoot,
   type CreateCliMetricsServiceOptions,
 } from './metrics-runtime.js';
-import { invokeCliTool } from './tool-command.js';
+import { invokeCliTool, type CliToolInvocationResult } from './tool-command.js';
 import {
   TOOL_RESULT_SCHEMA,
   failureResult,
@@ -41,6 +44,7 @@ import {
   type ToolResultBase,
 } from '@blueprinthelper/task-core/result/tool-result';
 import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
+import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
 
 export interface CliRuntime {
   argv: string[];
@@ -113,9 +117,10 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
 
   try {
     if (command.kind === 'tool.invoke') {
-      const toolResult = await runDirectCliTool(runtime, command, timing, 'cli.invoke_tool');
-      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
-      return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
+      const result = await runDirectCliTool(runtime, command, timing, 'cli.invoke_tool');
+      const outcome = writeTimedCliResult(runtime, command, result.toolResult, timing);
+      await recordCliIo(runtime, command, outcome, result.inputIo, result.parsedParams ?? result.rawParams);
+      return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'metrics.report') {
@@ -128,9 +133,10 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
 
     if (command.kind === 'task.preview') {
-      const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
-        TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
+      const taskSpecInput = measureTaskTiming(timing, 'taskspec_file_read_parse', () => readTaskSpecInput(
+        path.resolve(runtime.cwd, required(command.file)),
       ));
+      const taskSpec = TaskSpecSchema.parse(taskSpecInput.value);
       const preview = await getRunner(runtime).previewTask(taskSpec, timing);
       const outcome = writeTimedCliResult(runtime, command, preview.toolResult, timing, {
         previewId: preview.previewId,
@@ -139,28 +145,33 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         passed: preview.passed,
         issues: preview.issues,
       });
+      await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : preview.passed ? 0 : 2;
     }
 
     if (command.kind === 'task.execute') {
-      const taskSpec = measureTaskTiming(timing, 'taskspec_file_read_parse', () => (
-        TaskSpecSchema.parse(readJsonFile(path.resolve(runtime.cwd, required(command.file))))
+      const taskSpecInput = measureTaskTiming(timing, 'taskspec_file_read_parse', () => readTaskSpecInput(
+        path.resolve(runtime.cwd, required(command.file)),
       ));
+      const taskSpec = TaskSpecSchema.parse(taskSpecInput.value);
       const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, { previewToken: command.previewToken });
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
+      await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'task.result') {
       const toolResult = await measureTaskTimingAsync(timing, 'cli.get_task_result', () => getRunner(runtime).getTaskResult(required(command.taskRunId)));
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
+      await recordCliIo(runtime, command, outcome, undefined, { task_run_id: command.taskRunId });
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'context.read') {
-      const toolResult = await runDirectCliTool(runtime, command, timing, 'cli.read_context');
-      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
-      return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
+      const result = await runDirectCliTool(runtime, command, timing, 'cli.read_context');
+      const outcome = writeTimedCliResult(runtime, command, result.toolResult, timing);
+      await recordCliIo(runtime, command, outcome, result.inputIo, result.parsedParams ?? result.rawParams);
+      return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
     }
 
     if (command.kind === 'bridge.ping') {
@@ -188,13 +199,21 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
     }
   } catch (err) {
     const status = isBridgeUnavailable(err) ? 'bridge_unavailable' : 'cli_error';
-    runtime.stdout(`${JSON.stringify(buildCliError({
+    const errorText = `${JSON.stringify(buildCliError({
       operation: command.kind,
       status,
       message: err instanceof Error ? err.message : String(err),
       fields: command.fields,
       omitFields: command.omitFields,
-    }))}\n`);
+    }))}\n`;
+    runtime.stdout(errorText);
+    await recordCliIoCompleted({
+      metrics: getMetrics(runtime),
+      command,
+      inputIo: readCommandInputIoBestEffort(runtime, command),
+      outputIo: createOutputIoSummary(errorText),
+      operationInput: undefined,
+    });
     return status === 'bridge_unavailable' ? 2 : 1;
   } finally {
     await closeCliOwnedBridge(runtime);
@@ -232,7 +251,7 @@ async function runDirectCliTool(
   command: CliCommand,
   timing: TaskTimingTrace | undefined,
   stageName: string,
-): Promise<ToolResultBase> {
+): Promise<CliToolInvocationResult> {
   const startedAt = Date.now();
   const metrics = getMetrics(runtime);
 
@@ -256,7 +275,7 @@ async function runDirectCliTool(
       rawParams: result.rawParams,
       parsedParams: result.parsedParams,
     });
-    return result.toolResult;
+    return result;
   } catch (err) {
     await recordCliToolThrownError({
       metrics,
@@ -266,6 +285,26 @@ async function runDirectCliTool(
     });
     throw err;
   }
+}
+
+async function recordCliIo(
+  runtime: CliRuntime,
+  command: CliCommand,
+  outcome: CliWriteOutcome,
+  inputIo: MetricsIoSummary | undefined,
+  operationInput: unknown,
+): Promise<void> {
+  await recordCliIoCompleted({
+    metrics: getMetrics(runtime),
+    command,
+    inputIo,
+    outputIo: {
+      output_chars: outcome.outputChars,
+      output_utf8_bytes: outcome.outputUtf8Bytes,
+      estimated_output_tokens: outcome.estimatedOutputTokens,
+    },
+    operationInput,
+  });
 }
 
 function parseArgs(argv: string[]): ParseResult {
@@ -673,8 +712,32 @@ function readPositiveEnvInt(name: string, fallback: number): number {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-function readJsonFile(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+function readTaskSpecInput(filePath: string): { value: unknown; io: MetricsIoSummary } {
+  const text = fs.readFileSync(filePath, 'utf8');
+  return {
+    value: JSON.parse(text),
+    io: createInputIoSummary('task_file', text),
+  };
+}
+
+function readCommandInputIoBestEffort(runtime: CliRuntime, command: CliCommand): MetricsIoSummary | undefined {
+  if (command.json !== undefined) {
+    return createInputIoSummary('json', command.json);
+  }
+  if (!command.file) {
+    return undefined;
+  }
+
+  try {
+    const text = fs.readFileSync(path.resolve(runtime.cwd, command.file), 'utf8');
+    return createInputIoSummary(isTaskFileCommand(command) ? 'task_file' : 'file', text);
+  } catch {
+    return undefined;
+  }
+}
+
+function isTaskFileCommand(command: CliCommand): boolean {
+  return command.kind === 'task.preview' || command.kind === 'task.execute';
 }
 
 function required(value: string | undefined): string {

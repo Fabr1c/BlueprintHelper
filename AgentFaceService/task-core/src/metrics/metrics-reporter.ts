@@ -17,6 +17,7 @@ export interface MetricsReport {
   kind: MetricsReportKind;
   summary: MetricsReportSummary;
   tool_usage: MetricsUsageRow[];
+  io_usage: MetricsIoUsageRow[];
   top_errors: MetricsTopErrorRow[];
   task_health: MetricsTaskHealthRow[];
   operation_usage: MetricsOperationUsageRow[];
@@ -39,6 +40,19 @@ export interface MetricsUsageRow {
   success: number;
   failed: number;
   success_rate: number;
+}
+
+export interface MetricsIoUsageRow {
+  tool_name: string;
+  total: number;
+  input_chars_total: number;
+  input_utf8_bytes_total: number;
+  output_chars_total: number;
+  output_utf8_bytes_total: number;
+  estimated_input_tokens_total: number;
+  estimated_output_tokens_total: number;
+  input_chars_avg: number;
+  output_chars_avg: number;
 }
 
 export interface MetricsTopErrorRow {
@@ -108,6 +122,7 @@ export async function buildMetricsReport(options: BuildMetricsReportOptions): Pr
       stale_open_episodes: allStaleOpenEpisodes.length,
     },
     tool_usage: includeUsage ? limitRows(buildToolUsage(events), limit) : [],
+    io_usage: includeUsage ? limitRows(buildIoUsage(events), limit) : [],
     top_errors: includeErrors ? limitRows(allTopErrors, limit) : [],
     task_health: includeTaskHealth ? limitRows(allTaskHealth, limit) : [],
     operation_usage: includeUsage ? limitRows(buildOperationUsage(events), limit) : [],
@@ -145,6 +160,29 @@ export function renderMetricsMarkdown(report: MetricsReport): string {
       row.success,
       row.failed,
       formatRate(row.success_rate),
+    ])));
+    lines.push(renderTable('IO Usage', [
+      'tool_name',
+      'total',
+      'input_chars_total',
+      'input_utf8_bytes_total',
+      'output_chars_total',
+      'output_utf8_bytes_total',
+      'estimated_input_tokens_total',
+      'estimated_output_tokens_total',
+      'input_chars_avg',
+      'output_chars_avg',
+    ], report.io_usage.map((row) => [
+      row.tool_name,
+      row.total,
+      row.input_chars_total,
+      row.input_utf8_bytes_total,
+      row.output_chars_total,
+      row.output_utf8_bytes_total,
+      row.estimated_input_tokens_total,
+      row.estimated_output_tokens_total,
+      formatNumber(row.input_chars_avg),
+      formatNumber(row.output_chars_avg),
     ])));
   }
 
@@ -230,6 +268,9 @@ function buildToolUsage(events: MetricsEvent[]): MetricsUsageRow[] {
   const groups = new Map<string, MetricsUsageRow>();
 
   for (const event of events) {
+    if (isIoEvent(event)) {
+      continue;
+    }
     if (event.tool_name === undefined) {
       continue;
     }
@@ -251,6 +292,9 @@ function buildOperationUsage(events: MetricsEvent[]): MetricsOperationUsageRow[]
   const groups = new Map<string, MetricsOperationUsageRow>();
 
   for (const event of events) {
+    if (isIoEvent(event)) {
+      continue;
+    }
     if (event.capability === undefined && event.semantic_operation === undefined) {
       continue;
     }
@@ -270,6 +314,49 @@ function buildOperationUsage(events: MetricsEvent[]): MetricsOperationUsageRow[]
   }
 
   return sortUsageRows([...groups.values()].map(finalizeUsageRow));
+}
+
+function buildIoUsage(events: MetricsEvent[]): MetricsIoUsageRow[] {
+  const groups = new Map<string, MetricsIoUsageRow>();
+
+  for (const event of events) {
+    if (!isIoEvent(event) || event.io === undefined) {
+      continue;
+    }
+    const toolName = event.tool_name ?? 'unknown_tool';
+    const row = groups.get(toolName) ?? {
+      tool_name: toolName,
+      total: 0,
+      input_chars_total: 0,
+      input_utf8_bytes_total: 0,
+      output_chars_total: 0,
+      output_utf8_bytes_total: 0,
+      estimated_input_tokens_total: 0,
+      estimated_output_tokens_total: 0,
+      input_chars_avg: 0,
+      output_chars_avg: 0,
+    };
+    row.total += 1;
+    row.input_chars_total += readMetricNumber(event.io.input_chars);
+    row.input_utf8_bytes_total += readMetricNumber(event.io.input_utf8_bytes);
+    row.output_chars_total += readMetricNumber(event.io.output_chars);
+    row.output_utf8_bytes_total += readMetricNumber(event.io.output_utf8_bytes);
+    row.estimated_input_tokens_total += readMetricNumber(event.io.estimated_input_tokens);
+    row.estimated_output_tokens_total += readMetricNumber(event.io.estimated_output_tokens);
+    groups.set(toolName, row);
+  }
+
+  return [...groups.values()]
+    .map(finalizeIoUsageRow)
+    .sort((left, right) => {
+      const totalBytesDiff =
+        (right.input_utf8_bytes_total + right.output_utf8_bytes_total)
+        - (left.input_utf8_bytes_total + left.output_utf8_bytes_total);
+      if (totalBytesDiff !== 0) {
+        return totalBytesDiff;
+      }
+      return compareText(left.tool_name, right.tool_name);
+    });
 }
 
 function buildTopErrors(events: MetricsEvent[]): MetricsTopErrorRow[] {
@@ -365,6 +452,20 @@ function sortUsageRows<T extends { total: number; success_rate: number }>(rows: 
   });
 }
 
+function finalizeIoUsageRow(row: MetricsIoUsageRow): MetricsIoUsageRow {
+  row.input_chars_avg = row.total === 0 ? 0 : row.input_chars_total / row.total;
+  row.output_chars_avg = row.total === 0 ? 0 : row.output_chars_total / row.total;
+  return row;
+}
+
+function readMetricNumber(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function isIoEvent(event: MetricsEvent): boolean {
+  return event.event_type === 'cli_io_completed';
+}
+
 function normalizeCategory(value: MetricsErrorCategory | undefined): MetricsErrorCategory {
   return value ?? 'unknown';
 }
@@ -387,6 +488,10 @@ function limitRows<T>(rows: T[], limit: number): T[] {
 
 function formatRate(value: number): string {
   return value.toFixed(3);
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function renderTable(title: string, headers: string[], rows: Array<Array<string | number>>): string {
