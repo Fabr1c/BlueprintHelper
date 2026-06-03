@@ -55,5 +55,6 @@ public:
 		const TArray<FBlueprintHelperMemberPropertyMutation>& Settings,
 		FBlueprintHelperVariableMutationCounts& OutCounts,
 		FString& OutError,
-		FString* OutField = nullptr);
+		FString* OutField = nullptr,
+		FString* OutErrorCode = nullptr);
 };

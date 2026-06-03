@@ -930,8 +930,20 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableMemberChangesLoweringTe
 	Setting->SetStringField(TEXT("property_path"), TEXT("Tooltip"));
 	Setting->SetStringField(TEXT("value"), TEXT("Door open state."));
 
+	TSharedPtr<FJsonObject> ReplicationValue = MakeShared<FJsonObject>();
+	ReplicationValue->SetStringField(TEXT("mode"), TEXT("rep_notify"));
+	ReplicationValue->SetStringField(TEXT("condition"), TEXT("owner_only"));
+	ReplicationValue->SetStringField(TEXT("notify_function"), TEXT("OnRep_DoorOpen"));
+	ReplicationValue->SetBoolField(TEXT("create_notify_function"), true);
+	ReplicationValue->SetBoolField(TEXT("reuse_existing_notify_function"), false);
+
+	TSharedPtr<FJsonObject> ReplicationSetting = MakeShared<FJsonObject>();
+	ReplicationSetting->SetStringField(TEXT("property_path"), TEXT("replication"));
+	ReplicationSetting->SetObjectField(TEXT("value"), ReplicationValue);
+
 	TArray<TSharedPtr<FJsonValue>> Settings;
 	Settings.Add(MakeShared<FJsonValueObject>(Setting.ToSharedRef()));
+	Settings.Add(MakeShared<FJsonValueObject>(ReplicationSetting.ToSharedRef()));
 
 	TSharedPtr<FJsonObject> ConfigureOp = MakeShared<FJsonObject>();
 	ConfigureOp->SetStringField(TEXT("op"), TEXT("set_member_variable_properties"));
@@ -981,6 +993,106 @@ bool FBlueprintHelperContractTaskRuntimeBlueprintVariableMemberChangesLoweringTe
 	TestEqual(TEXT("member change strategy preserved"), Strategy, FString(TEXT("member_variables")));
 	TestTrue(TEXT("member change dry_run preserved"), bDryRun);
 	TestEqual(TEXT("member change op count preserved"), PayloadOps ? PayloadOps->Num() : 0, 3);
+	if (PayloadOps && PayloadOps->Num() >= 2)
+	{
+		const TSharedPtr<FJsonObject> PayloadConfigureOp = (*PayloadOps)[1].IsValid()
+			? (*PayloadOps)[1]->AsObject()
+			: nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* PayloadSettings = nullptr;
+		TestTrue(TEXT("configure op keeps settings"),
+			PayloadConfigureOp.IsValid() &&
+			PayloadConfigureOp->TryGetArrayField(TEXT("settings"), PayloadSettings) &&
+			PayloadSettings);
+		TestEqual(TEXT("configure op keeps metadata and replication settings"), PayloadSettings ? PayloadSettings->Num() : 0, 2);
+		if (PayloadSettings && PayloadSettings->Num() >= 2)
+		{
+			const TSharedPtr<FJsonObject> PayloadReplicationSetting = (*PayloadSettings)[1].IsValid()
+				? (*PayloadSettings)[1]->AsObject()
+				: nullptr;
+			FString PropertyPath;
+			const TSharedPtr<FJsonObject>* PayloadReplicationValue = nullptr;
+			TestTrue(TEXT("replication setting path is preserved"),
+				PayloadReplicationSetting.IsValid() &&
+				PayloadReplicationSetting->TryGetStringField(TEXT("property_path"), PropertyPath));
+			TestEqual(TEXT("replication property path"), PropertyPath, FString(TEXT("replication")));
+			TestTrue(TEXT("replication setting value is preserved"),
+				PayloadReplicationSetting.IsValid() &&
+				PayloadReplicationSetting->TryGetObjectField(TEXT("value"), PayloadReplicationValue) &&
+				PayloadReplicationValue &&
+				PayloadReplicationValue->IsValid());
+			if (PayloadReplicationValue && PayloadReplicationValue->IsValid())
+			{
+				FString Mode;
+				FString Condition;
+				FString NotifyFunction;
+				TestTrue(TEXT("replication mode is preserved"), (*PayloadReplicationValue)->TryGetStringField(TEXT("mode"), Mode));
+				TestTrue(TEXT("replication condition is preserved"), (*PayloadReplicationValue)->TryGetStringField(TEXT("condition"), Condition));
+				TestTrue(TEXT("replication notify function is preserved"), (*PayloadReplicationValue)->TryGetStringField(TEXT("notify_function"), NotifyFunction));
+				TestEqual(TEXT("replication mode value"), Mode, FString(TEXT("rep_notify")));
+				TestEqual(TEXT("replication condition value"), Condition, FString(TEXT("owner_only")));
+				TestEqual(TEXT("replication notify function value"), NotifyFunction, FString(TEXT("OnRep_DoorOpen")));
+			}
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeBlueprintVariableReplicationRejectsHiddenConditionTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeBlueprintVariableReplicationRejectsHiddenCondition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeBlueprintVariableReplicationRejectsHiddenConditionTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
+	Step->SetStringField(TEXT("step_id"), TEXT("step_variable_replication"));
+	Step->SetStringField(TEXT("capability"), TEXT("blueprint_variable"));
+
+	TSharedPtr<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/Blueprints/BP_StoneGate"));
+	Step->SetObjectField(TEXT("target"), Target);
+
+	TSharedPtr<FJsonObject> ReplicationValue = MakeShared<FJsonObject>();
+	ReplicationValue->SetStringField(TEXT("mode"), TEXT("replicated"));
+	ReplicationValue->SetStringField(TEXT("condition"), TEXT("dynamic"));
+
+	TSharedPtr<FJsonObject> ReplicationSetting = MakeShared<FJsonObject>();
+	ReplicationSetting->SetStringField(TEXT("property_path"), TEXT("replication"));
+	ReplicationSetting->SetObjectField(TEXT("value"), ReplicationValue);
+
+	TArray<TSharedPtr<FJsonValue>> Settings;
+	Settings.Add(MakeShared<FJsonValueObject>(ReplicationSetting.ToSharedRef()));
+
+	TSharedPtr<FJsonObject> ConfigureOp = MakeShared<FJsonObject>();
+	ConfigureOp->SetStringField(TEXT("op"), TEXT("set_member_variable_properties"));
+	ConfigureOp->SetStringField(TEXT("name"), TEXT("DoorState"));
+	ConfigureOp->SetArrayField(TEXT("settings"), Settings);
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(ConfigureOp.ToSharedRef()));
+
+	TSharedPtr<FJsonObject> Write = MakeShared<FJsonObject>();
+	Write->SetStringField(TEXT("strategy"), TEXT("member_variables"));
+	Write->SetArrayField(TEXT("ops"), Ops);
+	Step->SetObjectField(TEXT("write"), Write);
+
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteTaskPlan(Step);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("hidden replication condition is rejected"), bLowered);
+	TestEqual(TEXT("hidden replication condition error code"), Error.Code, FString(TEXT("invalid_replication_condition")));
+	TestEqual(TEXT("hidden replication condition field"),
+		Error.Field,
+		FString(TEXT("task_plan.steps[0].write.ops[0].settings[0].value.condition")));
 
 	return true;
 }

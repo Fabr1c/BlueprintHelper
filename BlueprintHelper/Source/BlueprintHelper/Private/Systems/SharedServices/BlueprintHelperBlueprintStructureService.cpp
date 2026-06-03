@@ -5,6 +5,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/SharedServices/Utils/BlueprintHelperBlueprintStructureUtils.h"
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
@@ -183,6 +184,7 @@ FBlueprintHelperListVariablesResult FBlueprintHelperBlueprintStructureService::L
 		Info.Tooltip = FBlueprintHelperBlueprintStructureVariableMetadataUtils::GetTooltip(BP, Var.VarName);
 		Info.bIsEditable = !(Var.PropertyFlags & CPF_DisableEditOnInstance);
 		Info.bExposeOnSpawn = FBlueprintHelperBlueprintStructureVariableMetadataUtils::IsExposeOnSpawn(BP, Var.VarName);
+		Info.Replication = FBlueprintHelperVariableReplicationService::ReadMemberVariableFacts(*BP, Var);
 
 		Result.Variables.Add(Info);
 	}

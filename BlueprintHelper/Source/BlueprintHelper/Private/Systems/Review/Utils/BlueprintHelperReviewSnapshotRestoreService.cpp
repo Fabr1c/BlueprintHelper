@@ -43,6 +43,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/MetaData.h"
@@ -62,6 +63,83 @@ static FText BlueprintHelperReviewCategoryTextFromSnapshot(const FString& Catego
 	}
 
 	return FText::FromString(Category);
+}
+
+static bool BlueprintHelperRestoreVariableReplicationFromSnapshot(
+	UBlueprint* Blueprint,
+	const FName VariableName,
+	const TSharedPtr<FJsonObject>& Snapshot,
+	FString& OutError)
+{
+	const TSharedPtr<FJsonObject>* ReplicationObject = nullptr;
+	if (!Blueprint ||
+		!Snapshot.IsValid() ||
+		!Snapshot->TryGetObjectField(TEXT("replication"), ReplicationObject) ||
+		!ReplicationObject ||
+		!ReplicationObject->IsValid())
+	{
+		return true;
+	}
+
+	const int32 VariableIndex =
+		FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableName);
+	if (VariableIndex == INDEX_NONE)
+	{
+		OutError = FString::Printf(TEXT("snapshot_restore_variable_replication_missing:%s"), *VariableName.ToString());
+		return false;
+	}
+
+	FString ModeString;
+	if (!(*ReplicationObject)->TryGetStringField(TEXT("mode"), ModeString))
+	{
+		OutError = FString::Printf(TEXT("snapshot_restore_variable_replication_missing_mode:%s"), *VariableName.ToString());
+		return false;
+	}
+
+	FBlueprintHelperVariableReplicationRequest Request;
+	if (!FBlueprintHelperVariableReplicationService::TryStringToMode(ModeString, Request.Mode))
+	{
+		OutError = FString::Printf(TEXT("snapshot_restore_variable_replication_invalid_mode:%s"), *ModeString);
+		return false;
+	}
+
+	FString ConditionString;
+	if (!(*ReplicationObject)->TryGetStringField(TEXT("condition"), ConditionString))
+	{
+		ConditionString = TEXT("none");
+	}
+	if (!FBlueprintHelperVariableReplicationService::TryStringToCondition(ConditionString, Request.Condition))
+	{
+		OutError = FString::Printf(TEXT("snapshot_restore_variable_replication_invalid_condition:%s"), *ConditionString);
+		return false;
+	}
+
+	FString NotifyFunctionName;
+	(*ReplicationObject)->TryGetStringField(TEXT("notify_function"), NotifyFunctionName);
+	if (!NotifyFunctionName.IsEmpty())
+	{
+		Request.NotifyFunctionName = FName(*NotifyFunctionName);
+	}
+	Request.bCreateNotifyFunction = true;
+	Request.bReuseExistingNotifyFunction = true;
+
+	bool bReplicationChanged = false;
+	FBlueprintHelperVariableReplicationError ReplicationError;
+	if (!FBlueprintHelperVariableReplicationService::ApplyToMemberVariable(
+		Blueprint,
+		VariableName,
+		Blueprint->NewVariables[VariableIndex],
+		Request,
+		bReplicationChanged,
+		ReplicationError))
+	{
+		OutError = ReplicationError.Code.IsEmpty()
+			? ReplicationError.Message
+			: FString::Printf(TEXT("%s:%s"), *ReplicationError.Code, *ReplicationError.Message);
+		return false;
+	}
+
+	return true;
 }
 
 bool FBlueprintHelperReviewSnapshotRestoreService::IsAssetFactoryTarget(const FBlueprintHelperReviewAtomicTarget& Target)
@@ -256,6 +334,10 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreBlueprintVariableFromS
 			{
 				Blueprint->NewVariables[NewVariableIndex].DefaultValue = DefaultValue;
 			}
+			if (!BlueprintHelperRestoreVariableReplicationFromSnapshot(Blueprint, VariableFName, Snapshot, OutError))
+			{
+				return false;
+			}
 			MarkBlueprintReviewRestoreModified(Blueprint);
 			return true;
 		}
@@ -264,6 +346,10 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreBlueprintVariableFromS
 		if (Snapshot->TryGetStringField(TEXT("default_value"), DefaultValue))
 		{
 			Blueprint->NewVariables[VariableIndex].DefaultValue = DefaultValue;
+		}
+		if (!BlueprintHelperRestoreVariableReplicationFromSnapshot(Blueprint, VariableFName, Snapshot, OutError))
+		{
+			return false;
 		}
 		MarkBlueprintReviewRestoreModified(Blueprint);
 		return true;

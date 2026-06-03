@@ -13,6 +13,17 @@ TSharedRef<FJsonObject> FBlueprintHelperVariableType::ToJson() const
 	return J;
 }
 
+TSharedRef<FJsonObject> FBlueprintHelperVariableReplicationFacts::ToJson() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	J->SetStringField(TEXT("mode"), Mode);
+	J->SetStringField(TEXT("condition"), Condition);
+	J->SetStringField(TEXT("condition_engine_name"), ConditionEngineName);
+	J->SetStringField(TEXT("notify_function"), NotifyFunctionName);
+	J->SetBoolField(TEXT("notify_graph_exists"), bNotifyGraphExists);
+	return J;
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperMemberVariableItem::ToJson() const
 {
 	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
@@ -22,6 +33,7 @@ TSharedRef<FJsonObject> FBlueprintHelperMemberVariableItem::ToJson() const
 	if (Tooltip.IsSet()) J->SetStringField(TEXT("tooltip"), *Tooltip);
 	J->SetBoolField(TEXT("instance_editable"), bInstanceEditable);
 	J->SetBoolField(TEXT("expose_on_spawn"), bExposeOnSpawn);
+	J->SetObjectField(TEXT("replication"), Replication.ToJson());
 	return J;
 }
 

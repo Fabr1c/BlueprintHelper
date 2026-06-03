@@ -80,7 +80,8 @@ static bool RejectUnsupportedLocalFields(
 	const TSharedPtr<FJsonObject>& Payload,
 	const TArray<FString>& FieldNames,
 	FString& OutError,
-	FString* OutField)
+	FString* OutField,
+	FString* OutErrorCode = nullptr)
 {
 	if (!Payload.IsValid())
 	{
@@ -93,6 +94,10 @@ static bool RejectUnsupportedLocalFields(
 		{
 			OutError = FString::Printf(TEXT("Local variables do not support '%s'."), *FieldName);
 			SetOptionalField(OutField, FieldName);
+			if (FieldName.Equals(TEXT("replication"), ESearchCase::IgnoreCase))
+			{
+				SetOptionalField(OutErrorCode, TEXT("local_variable_replication_unsupported"));
+			}
 			return false;
 		}
 	}
@@ -227,12 +232,16 @@ static bool IsLocalVariablePropertyUnsupportedMemberOnly(const FString& Normaliz
 	return false;
 }
 
-static bool ValidateLocalVariablePropertyPath(const FString& PropertyPath, FString& OutError)
+static bool ValidateLocalVariablePropertyPath(const FString& PropertyPath, FString& OutError, FString* OutErrorCode = nullptr)
 {
 	const FString NormalizedPath = NormalizePropertyPath(PropertyPath);
 	if (IsLocalVariablePropertyUnsupportedRenameOrType(NormalizedPath, OutError) ||
 		IsLocalVariablePropertyUnsupportedMemberOnly(NormalizedPath, OutError))
 	{
+		if (NormalizedPath == TEXT("replication"))
+		{
+			SetOptionalField(OutErrorCode, TEXT("local_variable_replication_unsupported"));
+		}
 		return false;
 	}
 
@@ -907,9 +916,11 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 	const TSharedPtr<FJsonObject>& Payload,
 	TArray<FBlueprintHelperLocalVariablePropertyMutation>& OutSettings,
 	FString& OutError,
-	FString* OutField)
+	FString* OutField,
+	FString* OutErrorCode)
 {
 	OutSettings.Reset();
+	FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutErrorCode, TEXT(""));
 	if (!Payload.IsValid())
 	{
 		OutError = TEXT("payload is required.");
@@ -929,7 +940,8 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 			TEXT("class_default")
 		},
 		OutError,
-		OutField))
+		OutField,
+		OutErrorCode))
 	{
 		return false;
 	}
@@ -953,7 +965,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 			}
 
 			FString ValidationError;
-			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError))
+			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Setting.PropertyPath, ValidationError, OutErrorCode))
 			{
 				OutError = ValidationError;
 				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("settings[%d].property_path"), Index));
@@ -977,7 +989,7 @@ bool FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 		{
 			const FString Key = FBlueprintHelperVersionCompat::JsonKeyToString(Pair.Key);
 			FString ValidationError;
-			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Key, ValidationError))
+			if (!FBlueprintLocalVariableMutationHandlerLocalUtils::ValidateLocalVariablePropertyPath(Key, ValidationError, OutErrorCode))
 			{
 				OutError = ValidationError;
 				FBlueprintLocalVariableMutationHandlerLocalUtils::SetOptionalField(OutField, FString::Printf(TEXT("properties.%s"), *Key));

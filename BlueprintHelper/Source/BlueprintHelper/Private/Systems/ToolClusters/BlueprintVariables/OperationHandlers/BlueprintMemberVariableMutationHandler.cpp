@@ -6,6 +6,7 @@
 #include "Engine/Blueprint.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 
 class FBlueprintMemberVariableMutationHandlerLocalUtils
 {
@@ -51,6 +52,36 @@ static bool ApplyVariableMetadataSetting(
 {
 	bOutChanged = false;
 	const FString NormalizedPath = Setting.PropertyPath.ToLower();
+
+	if (NormalizedPath == TEXT("replication"))
+	{
+		const TSharedPtr<FJsonObject> ReplicationObject = Setting.Value.IsValid() ? Setting.Value->AsObject() : nullptr;
+		FBlueprintHelperVariableReplicationRequest Request;
+		FBlueprintHelperVariableReplicationError Error;
+		if (!FBlueprintHelperVariableReplicationService::TryParseRequest(
+			ReplicationObject,
+			VariableName,
+			Request,
+			Error))
+		{
+			OutError = Error.Message;
+			return false;
+		}
+
+		if (!FBlueprintHelperVariableReplicationService::ApplyToMemberVariable(
+			Blueprint,
+			VariableName,
+			Variable,
+			Request,
+			bOutChanged,
+			Error))
+		{
+			OutError = Error.Message;
+			return false;
+		}
+
+		return true;
+	}
 
 	if (NormalizedPath == TEXT("category"))
 	{
@@ -485,7 +516,8 @@ bool FBlueprintHelperMemberVariableMutationHandler::ApplyPropertySettings(
 	const TArray<FBlueprintHelperMemberPropertyMutation>& Settings,
 	FBlueprintHelperVariableMutationCounts& OutCounts,
 	FString& OutError,
-	FString* OutField)
+	FString* OutField,
+	FString* OutErrorCode)
 {
 	OutCounts = {};
 	OutCounts.RequestedCount = Settings.Num();
@@ -510,16 +542,50 @@ bool FBlueprintHelperMemberVariableMutationHandler::ApplyPropertySettings(
 		bool bChanged = false;
 		FString SettingError;
 		FBPVariableDescription& Variable = Blueprint->NewVariables[VariableIndex];
-		if (!FBlueprintMemberVariableMutationHandlerLocalUtils::ApplyVariableMetadataSetting(
-			Blueprint,
-			VariableFName,
-			Variable,
-			Settings[Index],
-			bChanged,
-			SettingError))
+		const FString NormalizedPath = Settings[Index].PropertyPath.ToLower();
+		if (NormalizedPath == TEXT("replication"))
+		{
+			const TSharedPtr<FJsonObject> ReplicationObject = Settings[Index].Value.IsValid() ? Settings[Index].Value->AsObject() : nullptr;
+			FBlueprintHelperVariableReplicationRequest Request;
+			FBlueprintHelperVariableReplicationError ReplicationError;
+			if (!FBlueprintHelperVariableReplicationService::TryParseRequest(
+				ReplicationObject,
+				VariableFName,
+				Request,
+				ReplicationError) ||
+				!FBlueprintHelperVariableReplicationService::ApplyToMemberVariable(
+					Blueprint,
+					VariableFName,
+					Variable,
+					Request,
+					bChanged,
+					ReplicationError))
+			{
+				OutError = ReplicationError.Message;
+				if (OutField)
+				{
+					*OutField = ReplicationError.Field.IsEmpty()
+						? FString::Printf(TEXT("settings[%d].value"), Index)
+						: FString::Printf(TEXT("settings[%d].%s"), Index, *ReplicationError.Field);
+				}
+				if (OutErrorCode)
+				{
+					*OutErrorCode = ReplicationError.Code;
+				}
+				return false;
+			}
+		}
+		else if (!FBlueprintMemberVariableMutationHandlerLocalUtils::ApplyVariableMetadataSetting(
+				Blueprint,
+				VariableFName,
+				Variable,
+				Settings[Index],
+				bChanged,
+				SettingError))
 		{
 			OutError = SettingError;
 			if (OutField) *OutField = FString::Printf(TEXT("settings[%d].property_path"), Index);
+			if (OutErrorCode) *OutErrorCode = TEXT("invalid_member_variable_settings");
 			return false;
 		}
 

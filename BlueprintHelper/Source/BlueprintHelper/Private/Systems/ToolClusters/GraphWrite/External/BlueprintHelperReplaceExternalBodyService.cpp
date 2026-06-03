@@ -316,6 +316,125 @@ namespace BlueprintHelperReplaceExternalBody
 		return nullptr;
 	}
 
+	static bool HasExecPin(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (UGraphWriteCoreUtils::IsExecPin(Pin))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static void CollectExecReachableFromBodyEntry(
+		UEdGraphPin* BodyEntryPin,
+		const TSet<UEdGraphNode*>& GeneratedSet,
+		TSet<UEdGraphNode*>& OutReachable)
+	{
+		UEdGraphNode* RootNode = BodyEntryPin ? BodyEntryPin->GetOwningNode() : nullptr;
+		if (!RootNode || !GeneratedSet.Contains(RootNode))
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> Stack;
+		Stack.Add(RootNode);
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Node = Stack.Pop(EAllowShrinking::No);
+			if (!Node || OutReachable.Contains(Node) || !GeneratedSet.Contains(Node))
+			{
+				continue;
+			}
+
+			OutReachable.Add(Node);
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || !UGraphWriteCoreUtils::IsExecPin(Pin))
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedPin
+						&& LinkedPin->Direction == EGPD_Input
+						&& UGraphWriteCoreUtils::IsExecPin(LinkedPin)
+						&& LinkedNode
+						&& GeneratedSet.Contains(LinkedNode)
+						&& !OutReachable.Contains(LinkedNode))
+					{
+						Stack.Add(LinkedNode);
+					}
+				}
+			}
+		}
+	}
+
+	static bool AreGeneratedExecNodesReachableFromBodyEntry(
+		const TArray<UEdGraphNode*>& GeneratedNodes,
+		UEdGraphPin* BodyEntryPin)
+	{
+		TSet<UEdGraphNode*> GeneratedSet;
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (Node)
+			{
+				GeneratedSet.Add(Node);
+			}
+		}
+		if (!BodyEntryPin || !GeneratedSet.Contains(BodyEntryPin->GetOwningNode()))
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> Reachable;
+		CollectExecReachableFromBodyEntry(BodyEntryPin, GeneratedSet, Reachable);
+		if (Reachable.Num() == 0)
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (HasExecPin(Node) && !Reachable.Contains(Node))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool CanDeferEntryResolvedConnectivityFailure(
+		const FBlueprintGenerateResult& GenerateResult,
+		const TArray<UEdGraphNode*>& GeneratedNodes)
+	{
+		if (GenerateResult.bSucceed
+			|| GenerateResult.UnresolvedNodeCount != 0
+			|| GenerateResult.ConnectivityDiagnostics.Num() == 0)
+		{
+			return false;
+		}
+
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : GenerateResult.ConnectivityDiagnostics)
+		{
+			if (Diagnostic.Code != TEXT("unreachable_exec_node"))
+			{
+				return false;
+			}
+		}
+
+		UEdGraphNode* BodyEntryNode = FindFirstImportedExecutableBodyNode(GeneratedNodes);
+		UEdGraphPin* BodyEntryPin = UGraphWriteCoreUtils::FindFirstExecPin(BodyEntryNode, EGPD_Input);
+		return AreGeneratedExecNodesReachableFromBodyEntry(GeneratedNodes, BodyEntryPin);
+	}
+
 	static bool ReconnectEntryToGeneratedBody(
 		UEdGraph* Graph,
 		UEdGraphNode* EntryNode,
@@ -684,7 +803,9 @@ bool FBlueprintHelperReplaceExternalBodyService::ApplyReplacement(
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Context.Graph, GraphWritePayload, UnresolvedNodes);
-	if (!GenerateResult.bSucceed)
+	Context.GeneratedNodes = BlueprintHelperReplaceExternalBody::CollectNewNodes(Context.Graph, NodesBeforeImport);
+	if (!GenerateResult.bSucceed &&
+		!BlueprintHelperReplaceExternalBody::CanDeferEntryResolvedConnectivityFailure(GenerateResult, Context.GeneratedNodes))
 	{
 		Mutation.Rollback();
 		OutErrorCode = TEXT("semantic_graph_write_failed");
@@ -701,7 +822,6 @@ bool FBlueprintHelperReplaceExternalBodyService::ApplyReplacement(
 		return false;
 	}
 
-	Context.GeneratedNodes = BlueprintHelperReplaceExternalBody::CollectNewNodes(Context.Graph, NodesBeforeImport);
 	FString ReconnectError;
 	if (!BlueprintHelperReplaceExternalBody::ReconnectEntryToGeneratedBody(
 		Context.Graph,

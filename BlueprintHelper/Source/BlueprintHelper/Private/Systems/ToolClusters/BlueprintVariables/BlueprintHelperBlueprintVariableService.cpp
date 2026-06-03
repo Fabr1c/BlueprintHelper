@@ -410,6 +410,7 @@ FBlueprintHelperMemberVariableItem FBlueprintHelperBlueprintVariableService::Con
 	if (!Info.Tooltip.IsEmpty()) Item.Tooltip = Info.Tooltip;
 	Item.bInstanceEditable = Info.bIsEditable;
 	Item.bExposeOnSpawn = Info.bExposeOnSpawn;
+	Item.Replication = Info.Replication;
 	return Item;
 }
 
@@ -697,7 +698,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 			if (Path != TEXT("category") &&
 				Path != TEXT("tooltip") &&
 				Path != TEXT("instance_editable") &&
-				Path != TEXT("expose_on_spawn"))
+				Path != TEXT("expose_on_spawn") &&
+				Path != TEXT("replication"))
 			{
 				return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 					TEXT("set_blueprint_member_variable_properties"),
@@ -725,18 +727,21 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetMemb
 	FBlueprintHelperVariableMutationCounts Counts;
 	FString SettingError;
 	FString SettingField;
+	FString SettingErrorCode;
 	if (!FBlueprintHelperMemberVariableMutationHandler::ApplyPropertySettings(
 		Blueprint,
 		VariableName,
 		Settings,
 		Counts,
 		SettingError,
-		&SettingField))
+		&SettingField,
+		&SettingErrorCode))
 	{
 		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_member_variable_properties"),
 			TraceId,
-			SettingField == TEXT("name") ? TEXT("variable_not_found") : TEXT("invalid_member_variable_settings"),
+			SettingField == TEXT("name") ? TEXT("variable_not_found") :
+				(!SettingErrorCode.IsEmpty() ? SettingErrorCode : TEXT("invalid_member_variable_settings")),
 			SettingField == TEXT("name") ? EBlueprintHelperToolStage::ResolveTarget : EBlueprintHelperToolStage::ParseInput,
 			SettingError,
 			SettingField);
@@ -1665,16 +1670,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperBlueprintVariableService::SetLoca
 	TArray<FBlueprintHelperLocalVariablePropertyMutation> Settings;
 	FString ParseError;
 	FString ParseField;
+	FString ParseErrorCode;
 	if (!FBlueprintHelperLocalVariableMutationHandler::TryReadPropertySettings(
 		Payload,
 		Settings,
 		ParseError,
-		&ParseField))
+		&ParseField,
+		&ParseErrorCode))
 	{
 		return FBlueprintHelperBlueprintVariableServiceLocalUtils::MakeBlueprintVariableFailure(
 			TEXT("set_blueprint_local_variable_properties"),
 			TraceId,
-			TEXT("invalid_local_variable_settings"),
+			ParseErrorCode.IsEmpty() ? TEXT("invalid_local_variable_settings") : ParseErrorCode,
 			EBlueprintHelperToolStage::ParseInput,
 			ParseError,
 			ParseField);

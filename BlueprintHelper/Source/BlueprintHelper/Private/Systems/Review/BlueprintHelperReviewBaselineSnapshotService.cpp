@@ -32,6 +32,7 @@
 #include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
@@ -62,6 +63,13 @@ public:
 		const FString ExposeOnSpawn =
 			GetVariableMetadataValue(Blueprint, Variable.VarName, FBlueprintMetadata::MD_ExposeOnSpawn);
 		VariableJson->SetBoolField(TEXT("expose_on_spawn"), ExposeOnSpawn.Equals(TEXT("true"), ESearchCase::IgnoreCase));
+
+		if (Blueprint)
+		{
+			VariableJson->SetObjectField(
+				TEXT("replication"),
+				FBlueprintHelperVariableReplicationService::ReadMemberVariableFacts(*Blueprint, Variable).ToJson());
+		}
 	}
 
 private:

@@ -21,6 +21,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Net/UnrealNetwork.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
@@ -51,6 +52,7 @@
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperBlueprintVariableService.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
@@ -290,6 +292,24 @@ static FBPVariableDescription* FindSafetyMemberVariable(UBlueprint* Blueprint, c
 		if (Variable.VarName == VariableFName)
 		{
 			return &Variable;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraph* FindSafetyFunctionGraphByName(UBlueprint* Blueprint, const FString& FunctionName)
+{
+	if (!Blueprint)
+	{
+		return nullptr;
+	}
+
+	const FName FunctionFName(*FunctionName);
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (Graph && Graph->GetFName() == FunctionFName)
+		{
+			return Graph;
 		}
 	}
 	return nullptr;
@@ -698,6 +718,172 @@ bool FBlueprintHelperBlueprintVariableSetMemberVariablePropertiesTest::RunTest(c
 	TestTrue(TEXT("set member variable properties returns data schema"),
 		SetResult.Data.IsValid() && SetResult.Data->TryGetStringField(TEXT("schema"), DataSchema));
 	TestEqual(TEXT("set member variable properties data schema"), DataSchema, FString(TEXT("SetMemberVariableProperties.v1")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBlueprintVariableSetMemberVariableReplicationPropertiesTest,
+	"BlueprintHelper.Safety.BlueprintVariable.SetMemberVariablePropertiesWritesReplication",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperBlueprintVariableSetMemberVariableReplicationPropertiesTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("VariableReplicationProperties"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+
+	FBlueprintHelperGraphResolver GraphResolver;
+	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
+	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
+
+	TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+	PinType->SetStringField(TEXT("category"), TEXT("int"));
+
+	TSharedRef<FJsonObject> AddPayload = MakeShared<FJsonObject>();
+	AddPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	AddPayload->SetStringField(TEXT("name"), TEXT("DoorState"));
+	AddPayload->SetObjectField(TEXT("pin_type"), PinType);
+	TestTrue(TEXT("member variable is added"), VariableService.AddMemberVariable(AddPayload).bOk);
+
+	TSharedRef<FJsonObject> Replication = MakeShared<FJsonObject>();
+	Replication->SetStringField(TEXT("mode"), TEXT("rep_notify"));
+	Replication->SetStringField(TEXT("condition"), TEXT("owner_only"));
+	Replication->SetStringField(TEXT("notify_function"), TEXT("OnRep_DoorState"));
+	Replication->SetBoolField(TEXT("create_notify_function"), true);
+	Replication->SetBoolField(TEXT("reuse_existing_notify_function"), false);
+
+	TSharedRef<FJsonObject> Setting = MakeShared<FJsonObject>();
+	Setting->SetStringField(TEXT("property_path"), TEXT("replication"));
+	Setting->SetObjectField(TEXT("value"), Replication);
+
+	TArray<TSharedPtr<FJsonValue>> Settings;
+	Settings.Add(MakeShared<FJsonValueObject>(Setting));
+
+	TSharedRef<FJsonObject> SetPayload = MakeShared<FJsonObject>();
+	SetPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	SetPayload->SetStringField(TEXT("name"), TEXT("DoorState"));
+	SetPayload->SetArrayField(TEXT("settings"), Settings);
+
+	const FBlueprintHelperToolResultBase SetResult = VariableService.SetMemberVariableProperties(SetPayload);
+	TestTrue(TEXT("set member variable replication succeeds"), SetResult.bOk);
+	TestEqual(TEXT("set member variable replication applies change"), SetResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("set member variable replication requests compile"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldCompile);
+	TestTrue(TEXT("set member variable replication requests save"), SetResult.Validation.IsSet() && SetResult.Validation->bShouldSave);
+
+	const FBPVariableDescription* DoorStateVariable = FBlueprintHelperSafetyTestsLocalUtils::FindSafetyMemberVariable(Blueprint, TEXT("DoorState"));
+	TestNotNull(TEXT("DoorState variable still exists"), DoorStateVariable);
+	if (DoorStateVariable)
+	{
+		TestTrue(TEXT("DoorState has CPF_Net"), (DoorStateVariable->PropertyFlags & CPF_Net) != 0);
+		TestTrue(TEXT("DoorState has CPF_RepNotify"), (DoorStateVariable->PropertyFlags & CPF_RepNotify) != 0);
+		TestEqual(TEXT("DoorState condition is owner only"), static_cast<ELifetimeCondition>(DoorStateVariable->ReplicationCondition.GetValue()), COND_OwnerOnly);
+	}
+
+	TestEqual(TEXT("DoorState RepNotify function is assigned"),
+		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, FName(TEXT("DoorState"))),
+		FName(TEXT("OnRep_DoorState")));
+	TestNotNull(TEXT("RepNotify function graph is created"),
+		FBlueprintHelperSafetyTestsLocalUtils::FindSafetyFunctionGraphByName(Blueprint, TEXT("OnRep_DoorState")));
+
+	TSharedRef<FJsonObject> ReadPayload = MakeShared<FJsonObject>();
+	ReadPayload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	const FBlueprintHelperToolResultBase ReadResult = VariableService.ReadMemberVariables(ReadPayload);
+	TestTrue(TEXT("read member variables succeeds"), ReadResult.bOk);
+
+	const TArray<TSharedPtr<FJsonValue>>* MemberVariables = nullptr;
+	TestTrue(TEXT("read result has member_variables"),
+		ReadResult.Data.IsValid() && ReadResult.Data->TryGetArrayField(TEXT("member_variables"), MemberVariables));
+
+	TSharedPtr<FJsonObject> DoorStateJson;
+	if (MemberVariables)
+	{
+		for (const TSharedPtr<FJsonValue>& MemberValue : *MemberVariables)
+		{
+			const TSharedPtr<FJsonObject> MemberObject = MemberValue.IsValid() ? MemberValue->AsObject() : nullptr;
+			FString VariableName;
+			if (MemberObject.IsValid() &&
+				MemberObject->TryGetStringField(TEXT("variable_name"), VariableName) &&
+				VariableName == TEXT("DoorState"))
+			{
+				DoorStateJson = MemberObject;
+				break;
+			}
+		}
+	}
+
+	TestTrue(TEXT("DoorState readback entry exists"), DoorStateJson.IsValid());
+	if (DoorStateJson.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* ReplicationJson = nullptr;
+		TestTrue(TEXT("DoorState readback includes replication"),
+			DoorStateJson->TryGetObjectField(TEXT("replication"), ReplicationJson) && ReplicationJson && ReplicationJson->IsValid());
+		if (ReplicationJson && ReplicationJson->IsValid())
+		{
+			FString Mode;
+			FString Condition;
+			FString EngineName;
+			FString NotifyFunction;
+			bool bNotifyGraphExists = false;
+			TestTrue(TEXT("readback replication mode exists"), (*ReplicationJson)->TryGetStringField(TEXT("mode"), Mode));
+			TestTrue(TEXT("readback replication condition exists"), (*ReplicationJson)->TryGetStringField(TEXT("condition"), Condition));
+			TestTrue(TEXT("readback replication condition engine name exists"), (*ReplicationJson)->TryGetStringField(TEXT("condition_engine_name"), EngineName));
+			TestTrue(TEXT("readback replication notify function exists"), (*ReplicationJson)->TryGetStringField(TEXT("notify_function"), NotifyFunction));
+			TestTrue(TEXT("readback replication notify graph flag exists"), (*ReplicationJson)->TryGetBoolField(TEXT("notify_graph_exists"), bNotifyGraphExists));
+			TestEqual(TEXT("readback replication mode"), Mode, FString(TEXT("rep_notify")));
+			TestEqual(TEXT("readback replication condition"), Condition, FString(TEXT("owner_only")));
+			TestEqual(TEXT("readback replication engine condition"), EngineName, FString(TEXT("COND_OwnerOnly")));
+			TestEqual(TEXT("readback replication notify function"), NotifyFunction, FString(TEXT("OnRep_DoorState")));
+			TestTrue(TEXT("readback replication notify graph exists"), bNotifyGraphExists);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBlueprintVariableSetLocalVariableReplicationRejectedTest,
+	"BlueprintHelper.Safety.BlueprintVariable.SetLocalVariableReplicationRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperBlueprintVariableSetLocalVariableReplicationRejectedTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperSafetyTestsLocalUtils::MakeSafetyActorBlueprint(TEXT("LocalVariableReplicationRejected"));
+	TestNotNull(TEXT("test Blueprint is created"), Blueprint);
+
+	FBlueprintHelperGraphResolver GraphResolver;
+	FBlueprintHelperBlueprintStructureService StructureService(GraphResolver);
+	FBlueprintHelperBlueprintVariableService VariableService(GraphResolver, StructureService);
+
+	TSharedRef<FJsonObject> Replication = MakeShared<FJsonObject>();
+	Replication->SetStringField(TEXT("mode"), TEXT("rep_notify"));
+
+	TSharedRef<FJsonObject> Setting = MakeShared<FJsonObject>();
+	Setting->SetStringField(TEXT("property_path"), TEXT("replication"));
+	Setting->SetObjectField(TEXT("value"), Replication);
+
+	TArray<TSharedPtr<FJsonValue>> Settings;
+	Settings.Add(MakeShared<FJsonValueObject>(Setting));
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	Payload->SetStringField(TEXT("function_name"), TEXT("SomeFunction"));
+	Payload->SetStringField(TEXT("name"), TEXT("TempState"));
+	Payload->SetArrayField(TEXT("settings"), Settings);
+
+	const FBlueprintHelperToolResultBase Result = VariableService.SetLocalVariableProperties(Payload);
+	TestFalse(TEXT("local variable replication is rejected"), Result.bOk);
+	TestTrue(TEXT("local variable replication reports an error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("local variable replication error code"),
+			Result.Error->Code,
+			FString(TEXT("local_variable_replication_unsupported")));
+		TestEqual(TEXT("local variable replication error field"),
+			Result.Error->Field,
+			FString(TEXT("settings[0].property_path")));
+		TestTrue(TEXT("local variable replication error mentions replication"),
+			Result.Error->Message.Contains(TEXT("replication")));
+	}
+
 	return true;
 }
 

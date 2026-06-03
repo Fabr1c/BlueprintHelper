@@ -17,6 +17,19 @@
           "subcategory": "__PIN_SUBCATEGORY__"
         },
         "default": "__DEFAULT_VALUE__"
+      },
+      {
+        "kind": "configure_member_variable",
+        "name": "__VARIABLE_NAME__",
+        "properties": [
+          {
+            "property_path": "replication",
+            "value": {
+              "mode": "replicated",
+              "condition": "owner_only"
+            }
+          }
+        ]
       }
     ]
   },

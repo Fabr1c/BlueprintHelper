@@ -5,6 +5,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 
 FBlueprintHelperToolError FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
 	const FString& Code,
@@ -150,6 +151,92 @@ TSharedRef<FJsonObject> FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::C
 	return Destination;
 }
 
+class FBlueprintHelperBlueprintVariableTaskPlanAdapterLocalUtils
+{
+public:
+static bool TryValidateMemberSettings(
+	const TSharedPtr<FJsonObject>& OpObject,
+	const FString& VariableName,
+	const int32 OpIndex,
+	FBlueprintHelperToolError& OutError)
+{
+	const TArray<TSharedPtr<FJsonValue>>* SettingsArray = nullptr;
+	if (!OpObject.IsValid() ||
+		!OpObject->TryGetArrayField(TEXT("settings"), SettingsArray) ||
+		!SettingsArray)
+	{
+		return false;
+	}
+
+	for (int32 SettingIndex = 0; SettingIndex < SettingsArray->Num(); ++SettingIndex)
+	{
+		const TSharedPtr<FJsonObject> SettingObject =
+			(*SettingsArray)[SettingIndex].IsValid()
+				? (*SettingsArray)[SettingIndex]->AsObject()
+				: nullptr;
+		if (!SettingObject.IsValid())
+		{
+			OutError = FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("set_member_variable_properties settings entries must be objects."),
+				FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(
+					OpIndex,
+					FString::Printf(TEXT("settings[%d]"), SettingIndex)));
+			return false;
+		}
+
+		FString PropertyPath;
+		if (!SettingObject->TryGetStringField(TEXT("property_path"), PropertyPath) || PropertyPath.IsEmpty())
+		{
+			OutError = FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("set_member_variable_properties settings entries require property_path."),
+				FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(
+					OpIndex,
+					FString::Printf(TEXT("settings[%d].property_path"), SettingIndex)));
+			return false;
+		}
+
+		if (!FBlueprintHelperVersionCompat::FindJsonValue(SettingObject, TEXT("value")).IsValid())
+		{
+			OutError = FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
+				TEXT("invalid_variable_op"),
+				TEXT("set_member_variable_properties settings entries require value."),
+				FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(
+					OpIndex,
+					FString::Printf(TEXT("settings[%d].value"), SettingIndex)));
+			return false;
+		}
+
+		if (PropertyPath.Equals(TEXT("replication"), ESearchCase::IgnoreCase))
+		{
+			const TSharedPtr<FJsonObject> ReplicationObject =
+				FBlueprintHelperVersionCompat::FindJsonValue(SettingObject, TEXT("value"))->AsObject();
+			FBlueprintHelperVariableReplicationRequest Request;
+			FBlueprintHelperVariableReplicationError Error;
+			if (!FBlueprintHelperVariableReplicationService::TryParseRequest(
+				ReplicationObject,
+				FName(*VariableName),
+				Request,
+				Error))
+			{
+				OutError = FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::MakeVariableTaskPlanError(
+					Error.Code.IsEmpty() ? FString(TEXT("invalid_replication_setting")) : Error.Code,
+					Error.Message,
+					FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::BuildOpFieldPath(
+						OpIndex,
+						Error.Field.IsEmpty()
+							? FString::Printf(TEXT("settings[%d].value"), SettingIndex)
+							: FString::Printf(TEXT("settings[%d].%s"), SettingIndex, *Error.Field)));
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+};
+
 bool FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::TryValidateMemberVariableOp(
 	const FString& OpName,
 	const TSharedPtr<FJsonObject>& OpObject,
@@ -165,7 +252,12 @@ bool FBlueprintHelperBlueprintVariableTaskPlanAdapterUtils::TryValidateMemberVar
 	if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpSetMemberVariableProperties)
 	{
 		return TryReadRequiredString(OpObject, TEXT("name"), BuildOpFieldPath(OpIndex, TEXT("name")), Ignored, OutError) &&
-			TryReadRequiredArray(OpObject, TEXT("settings"), BuildOpFieldPath(OpIndex, TEXT("settings")), OutError);
+			TryReadRequiredArray(OpObject, TEXT("settings"), BuildOpFieldPath(OpIndex, TEXT("settings")), OutError) &&
+			FBlueprintHelperBlueprintVariableTaskPlanAdapterLocalUtils::TryValidateMemberSettings(
+				OpObject,
+				Ignored,
+				OpIndex,
+				OutError);
 	}
 	if (OpName == FBlueprintHelperBlueprintVariableTaskPlanAdapter::OpRemoveMemberVariable)
 	{

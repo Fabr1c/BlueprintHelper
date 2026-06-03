@@ -33,6 +33,26 @@ profile
 
 用 `edit_blueprint_variables` 描述变量名、类型、默认值、分类和提示文本。已存在变量通过 policy 表达 reuse 或 fail，不在 execute 后猜测。
 
+Member-variable replication stays nested under `configure_member_variable.properties[]`:
+
+```json
+{
+  "kind": "configure_member_variable",
+  "name": "DoorState",
+  "properties": [
+    {
+      "property_path": "replication",
+      "value": {
+        "mode": "rep_notify",
+        "condition": "owner_only"
+      }
+    }
+  ]
+}
+```
+
+Local-variable replication is unsupported. Do not place `property_path: "replication"` under `configure_local_variable`.
+
 ## Graph Logic
 
 用 `edit_blueprint_graph` 描述入口、逻辑 body、资源引用和插入策略。锚点必须来自 `logic_json` grouped block。

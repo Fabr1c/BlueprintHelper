@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Shared/BlueprintVariables/BlueprintHelperBlueprintVariableTypes.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
 class FBlueprintHelperGraphResolver;
@@ -58,6 +59,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperVariableInfo
 
 	/** 是否暴露在 Spawn 参数上。 */
 	bool bExposeOnSpawn = false;
+
+	/** Replication / RepNotify facts. */
+	FBlueprintHelperVariableReplicationFacts Replication;
 };
 
 // ─── 事件分发器摘要 ───

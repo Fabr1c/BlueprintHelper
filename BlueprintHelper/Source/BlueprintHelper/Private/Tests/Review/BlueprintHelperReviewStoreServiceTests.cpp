@@ -32,6 +32,7 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewRejectService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
+#include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
@@ -986,6 +987,20 @@ bool FBlueprintHelperReviewVariableMetadataSnapshotTest::RunTest(const FString& 
 		nullptr,
 		FBlueprintMetadata::MD_ExposeOnSpawn,
 		TEXT("true"));
+	UEdGraph* NotifyGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(TEXT("OnRep_DoorPrompt")),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	TestNotNull(TEXT("OnRep_DoorPrompt graph created"), NotifyGraph);
+	if (NotifyGraph)
+	{
+		FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, NotifyGraph, false, nullptr);
+	}
+	Blueprint->NewVariables[VariableIndex].PropertyFlags |= CPF_Net;
+	Blueprint->NewVariables[VariableIndex].PropertyFlags |= CPF_RepNotify;
+	Blueprint->NewVariables[VariableIndex].ReplicationCondition = COND_OwnerOnly;
+	FBlueprintEditorUtils::SetBlueprintVariableRepNotifyFunc(Blueprint, VariableName, FName(TEXT("OnRep_DoorPrompt")));
 
 	const FBlueprintHelperReviewAtomicTarget Target =
 		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewAssetFactoryTarget(
@@ -1061,6 +1076,27 @@ bool FBlueprintHelperReviewVariableMetadataSnapshotTest::RunTest(const FString& 
 	TestTrue(TEXT("DoorPrompt instance_editable matches"), bInstanceEditable);
 	TestTrue(TEXT("DoorPrompt expose_on_spawn is present"), DoorPromptJson->TryGetBoolField(TEXT("expose_on_spawn"), bExposeOnSpawn));
 	TestTrue(TEXT("DoorPrompt expose_on_spawn matches"), bExposeOnSpawn);
+	const TSharedPtr<FJsonObject>* ReplicationJson = nullptr;
+	TestTrue(TEXT("DoorPrompt replication is present"),
+		DoorPromptJson->TryGetObjectField(TEXT("replication"), ReplicationJson) && ReplicationJson && ReplicationJson->IsValid());
+	if (ReplicationJson && ReplicationJson->IsValid())
+	{
+		FString Mode;
+		FString Condition;
+		FString EngineCondition;
+		FString NotifyFunction;
+		bool bNotifyGraphExists = false;
+		TestTrue(TEXT("DoorPrompt replication mode present"), (*ReplicationJson)->TryGetStringField(TEXT("mode"), Mode));
+		TestTrue(TEXT("DoorPrompt replication condition present"), (*ReplicationJson)->TryGetStringField(TEXT("condition"), Condition));
+		TestTrue(TEXT("DoorPrompt replication engine condition present"), (*ReplicationJson)->TryGetStringField(TEXT("condition_engine_name"), EngineCondition));
+		TestTrue(TEXT("DoorPrompt replication notify function present"), (*ReplicationJson)->TryGetStringField(TEXT("notify_function"), NotifyFunction));
+		TestTrue(TEXT("DoorPrompt replication notify graph flag present"), (*ReplicationJson)->TryGetBoolField(TEXT("notify_graph_exists"), bNotifyGraphExists));
+		TestEqual(TEXT("DoorPrompt replication mode matches"), Mode, FString(TEXT("rep_notify")));
+		TestEqual(TEXT("DoorPrompt replication condition matches"), Condition, FString(TEXT("owner_only")));
+		TestEqual(TEXT("DoorPrompt replication engine condition matches"), EngineCondition, FString(TEXT("COND_OwnerOnly")));
+		TestEqual(TEXT("DoorPrompt replication notify function matches"), NotifyFunction, FString(TEXT("OnRep_DoorPrompt")));
+		TestTrue(TEXT("DoorPrompt replication notify graph exists"), bNotifyGraphExists);
+	}
 
 	FBlueprintHelperReviewAtomicTarget VariableTarget;
 	VariableTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
@@ -1102,6 +1138,134 @@ bool FBlueprintHelperReviewVariableMetadataSnapshotTest::RunTest(const FString& 
 	TestTrue(TEXT("variable target instance_editable matches"), bTargetInstanceEditable);
 	TestTrue(TEXT("variable target expose_on_spawn is present"), VariableSnapshot->TryGetBoolField(TEXT("expose_on_spawn"), bTargetExposeOnSpawn));
 	TestTrue(TEXT("variable target expose_on_spawn matches"), bTargetExposeOnSpawn);
+	const TSharedPtr<FJsonObject>* TargetReplicationJson = nullptr;
+	TestTrue(TEXT("variable target replication is present"),
+		VariableSnapshot->TryGetObjectField(TEXT("replication"), TargetReplicationJson) && TargetReplicationJson && TargetReplicationJson->IsValid());
+	if (TargetReplicationJson && TargetReplicationJson->IsValid())
+	{
+		FString TargetMode;
+		FString TargetCondition;
+		FString TargetEngineCondition;
+		FString TargetNotifyFunction;
+		bool bTargetNotifyGraphExists = false;
+		TestTrue(TEXT("variable target replication mode present"), (*TargetReplicationJson)->TryGetStringField(TEXT("mode"), TargetMode));
+		TestTrue(TEXT("variable target replication condition present"), (*TargetReplicationJson)->TryGetStringField(TEXT("condition"), TargetCondition));
+		TestTrue(TEXT("variable target replication engine condition present"), (*TargetReplicationJson)->TryGetStringField(TEXT("condition_engine_name"), TargetEngineCondition));
+		TestTrue(TEXT("variable target replication notify function present"), (*TargetReplicationJson)->TryGetStringField(TEXT("notify_function"), TargetNotifyFunction));
+		TestTrue(TEXT("variable target replication notify graph flag present"), (*TargetReplicationJson)->TryGetBoolField(TEXT("notify_graph_exists"), bTargetNotifyGraphExists));
+		TestEqual(TEXT("variable target replication mode matches"), TargetMode, FString(TEXT("rep_notify")));
+		TestEqual(TEXT("variable target replication condition matches"), TargetCondition, FString(TEXT("owner_only")));
+		TestEqual(TEXT("variable target replication engine condition matches"), TargetEngineCondition, FString(TEXT("COND_OwnerOnly")));
+		TestEqual(TEXT("variable target replication notify function matches"), TargetNotifyFunction, FString(TEXT("OnRep_DoorPrompt")));
+		TestTrue(TEXT("variable target replication notify graph exists"), bTargetNotifyGraphExists);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewVariableReplicationRestoreTest,
+	"BlueprintHelper.Review.Snapshot.BlueprintVariableReplicationRestore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewVariableReplicationRestoreTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("VariableReplicationRestore"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FName VariableName(TEXT("DoorState"));
+	FEdGraphPinType IntPinType;
+	IntPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+	TestTrue(TEXT("DoorState variable added"),
+		FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableName, IntPinType));
+
+	const int32 BaselineVariableIndex =
+		FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableName);
+	TestTrue(TEXT("DoorState baseline variable exists"), BaselineVariableIndex != INDEX_NONE);
+	if (BaselineVariableIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	Blueprint->NewVariables[BaselineVariableIndex].PropertyFlags |= CPF_Net;
+	Blueprint->NewVariables[BaselineVariableIndex].PropertyFlags &= ~CPF_RepNotify;
+	Blueprint->NewVariables[BaselineVariableIndex].ReplicationCondition = COND_SkipOwner;
+	FBlueprintEditorUtils::SetBlueprintVariableRepNotifyFunc(Blueprint, VariableName, NAME_None);
+
+	FBlueprintHelperReviewAtomicTarget VariableTarget;
+	VariableTarget.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	VariableTarget.AssetPath = Blueprint->GetPathName();
+	VariableTarget.TargetKind = TEXT("blueprint_variable");
+	VariableTarget.TargetKey = TEXT("blueprint_variable:DoorState");
+	VariableTarget.VisualGroupKey = VariableTarget.TargetKey;
+	VariableTarget.DisplayLabel = TEXT("DoorState");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString BaselineSnapshotJson;
+	FString BaselineSnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("baseline variable target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(
+			VariableTarget,
+			BaselineSnapshotJson,
+			BaselineSnapshotHash,
+			SnapshotError));
+	TestFalse(TEXT("baseline snapshot hash emitted"), BaselineSnapshotHash.IsEmpty());
+
+	TSharedPtr<FJsonObject> BaselineSnapshot;
+	FString ParseError;
+	TestTrue(TEXT("baseline snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(
+			BaselineSnapshotJson,
+			BaselineSnapshot,
+			ParseError));
+	if (!BaselineSnapshot.IsValid())
+	{
+		return false;
+	}
+
+	UEdGraph* NotifyGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(TEXT("OnRep_DoorState")),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	TestNotNull(TEXT("OnRep_DoorState graph created"), NotifyGraph);
+	if (NotifyGraph)
+	{
+		FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, NotifyGraph, false, nullptr);
+	}
+	Blueprint->NewVariables[BaselineVariableIndex].PropertyFlags |= CPF_Net;
+	Blueprint->NewVariables[BaselineVariableIndex].PropertyFlags |= CPF_RepNotify;
+	Blueprint->NewVariables[BaselineVariableIndex].ReplicationCondition = COND_OwnerOnly;
+	FBlueprintEditorUtils::SetBlueprintVariableRepNotifyFunc(Blueprint, VariableName, FName(TEXT("OnRep_DoorState")));
+
+	FString RestoreError;
+	TestTrue(TEXT("restore from baseline snapshot succeeds"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreBlueprintVariableFromSnapshot(
+			VariableTarget,
+			BaselineSnapshot,
+			RestoreError));
+
+	const int32 RestoredVariableIndex =
+		FBlueprintHelperReviewSnapshotRestoreService::FindBlueprintVariableIndex(Blueprint, VariableName);
+	TestTrue(TEXT("DoorState restored variable exists"), RestoredVariableIndex != INDEX_NONE);
+	if (RestoredVariableIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const FBPVariableDescription& RestoredVariable = Blueprint->NewVariables[RestoredVariableIndex];
+	TestTrue(TEXT("restored variable remains replicated"), (RestoredVariable.PropertyFlags & CPF_Net) != 0);
+	TestTrue(TEXT("restored variable clears rep notify"), (RestoredVariable.PropertyFlags & CPF_RepNotify) == 0);
+	TestEqual(TEXT("restored variable clears notify function"),
+		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, VariableName),
+		NAME_None);
+	TestEqual(TEXT("restored variable restores skip owner condition"),
+		static_cast<ELifetimeCondition>(RestoredVariable.ReplicationCondition.GetValue()),
+		COND_SkipOwner);
 	return true;
 }
 

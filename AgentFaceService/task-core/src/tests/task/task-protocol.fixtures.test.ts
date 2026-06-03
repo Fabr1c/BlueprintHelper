@@ -71,16 +71,20 @@ describe('Task protocol fixtures', () => {
   });
 
   it('keeps Blueprint Variable fixtures as compiler-owned structural IR, not adapter calls', () => {
-    const expected = new Map([
-      ['member_variables', [
+    const expectedByTaskName = new Map([
+      ['P1BlueprintVariables', [
         'ensure_member_variable',
         'set_member_variable_properties',
         'remove_member_variable',
       ]],
-      ['member_defaults', [
+      ['P1BlueprintVariableDefaults', [
         'set_member_default',
       ]],
-      ['local_variables', [
+      ['P0CBlueprintVariableReplication', [
+        'ensure_member_variable',
+        'set_member_variable_properties',
+      ]],
+      ['P1BlueprintLocalVariables', [
         'ensure_local_variable',
         'set_local_variable_properties',
         'remove_local_variable',
@@ -95,9 +99,13 @@ describe('Task protocol fixtures', () => {
       assert.equal(Object.hasOwn(step as Record<string, unknown>, 'operation'), false, parsedTaskPlan.task_name);
       assert.equal(Object.hasOwn(step.write as Record<string, unknown>, 'operation'), false, parsedTaskPlan.task_name);
 
-      const expectedOps = expected.get(step.write.strategy);
-      assert.ok(expectedOps, step.write.strategy);
-      assert.deepEqual(step.write.ops.map((op) => op.op), expectedOps);
+      const taskName = parsedTaskPlan.task_name;
+      assert.equal(typeof taskName, 'string');
+      const resolvedTaskName = taskName as string;
+      const expectedOps = expectedByTaskName.get(resolvedTaskName);
+      assert.ok(expectedOps, resolvedTaskName);
+      const resolvedExpectedOps = expectedOps as string[];
+      assert.deepEqual(step.write.ops.map((op) => op.op), resolvedExpectedOps);
 
       if (step.write.strategy === 'local_variables') {
         assert.equal((step.target as Record<string, unknown>).function_name, 'CalculateDamage');

@@ -32,6 +32,44 @@ write permission is disabled, and read back the target context after execute.
 | Edit Blueprint member variables | `taskspec_edit_blueprint_variables_template.json` |
 | Edit Blueprint class settings, interfaces, class defaults, or reparenting | `taskspec_edit_blueprint_class_settings_template.json` |
 
+## Blueprint Variable Replication
+
+Use `taskspec_edit_blueprint_variables_template.json` and keep replication nested
+under `behavior.changes[]` with `kind: "configure_member_variable"`.
+Replication does not introduce a new top-level task type or a new behavior
+field.
+
+```json
+{
+  "kind": "configure_member_variable",
+  "name": "DoorState",
+  "properties": [
+    {
+      "property_path": "replication",
+      "value": {
+        "mode": "rep_notify",
+        "condition": "owner_only"
+      }
+    }
+  ]
+}
+```
+
+Accepted replication modes:
+`none`, `replicated`, `rep_notify`
+
+Accepted public replication conditions:
+`none`, `initial_only`, `owner_only`, `skip_owner`, `simulated_only`,
+`autonomous_only`, `simulated_or_physics`, `initial_or_owner`, `custom`,
+`replay_or_owner`, `replay_only`, `simulated_only_no_replay`,
+`simulated_or_physics_no_replay`, `skip_replay`
+
+Do not treat editor-hidden/internal aliases such as `dynamic`, `never`,
+`net_group`, `max`, or `COND_*` variants as accepted input.
+
+Local-variable replication is unsupported. Do not place
+`property_path: "replication"` under `configure_local_variable`.
+
 ## Signature Authoring
 
 | Intent | Template |

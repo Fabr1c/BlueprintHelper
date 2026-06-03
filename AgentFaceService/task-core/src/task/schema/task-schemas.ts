@@ -768,6 +768,60 @@ export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend(
   });
 });
 
+export const BLUEPRINT_VARIABLE_REPLICATION_MODES = ['none', 'replicated', 'rep_notify'] as const;
+
+export const BLUEPRINT_VARIABLE_REPLICATION_CONDITIONS = [
+  'none',
+  'initial_only',
+  'owner_only',
+  'skip_owner',
+  'simulated_only',
+  'autonomous_only',
+  'simulated_or_physics',
+  'initial_or_owner',
+  'custom',
+  'replay_or_owner',
+  'replay_only',
+  'simulated_only_no_replay',
+  'simulated_or_physics_no_replay',
+  'skip_replay',
+] as const;
+
+const BlueprintVariableReplicationSettingSchema = z.object({
+  mode: z.enum(BLUEPRINT_VARIABLE_REPLICATION_MODES),
+  condition: z.enum(BLUEPRINT_VARIABLE_REPLICATION_CONDITIONS).optional(),
+  notify_function: z.string().min(1).optional(),
+  create_notify_function: z.boolean().optional(),
+  reuse_existing_notify_function: z.boolean().optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.mode === 'none' && value.condition !== undefined && value.condition !== 'none') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['condition'],
+      message: 'Replication condition is accepted only for replicated and rep_notify modes.',
+    });
+  }
+});
+
+const BlueprintVariablePropertySettingSchema = z.object({
+  property_path: z.string().min(1),
+  value: z.unknown(),
+}).passthrough().superRefine((value, ctx) => {
+  if (value.property_path !== 'replication') {
+    return;
+  }
+  const result = BlueprintVariableReplicationSettingSchema.safeParse(value.value);
+  if (result.success) {
+    return;
+  }
+  for (const issue of result.error.issues) {
+    ctx.addIssue({
+      ...issue,
+      path: ['value', ...issue.path],
+    });
+  }
+});
+
 export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_variables'),
   behavior: z.object({
@@ -779,7 +833,7 @@ export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
       name: z.string().min(1),
       pin_type: z.record(z.unknown()).optional(),
       variable_type: z.record(z.unknown()).optional(),
-      properties: z.array(z.record(z.unknown())).optional(),
+      properties: z.array(BlueprintVariablePropertySettingSchema).optional(),
       value: z.unknown().optional(),
     }).passthrough()).optional(),
     changes: z.array(z.object({
@@ -787,7 +841,7 @@ export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
       name: z.string().min(1),
       pin_type: z.record(z.unknown()).optional(),
       variable_type: z.record(z.unknown()).optional(),
-      properties: z.array(z.record(z.unknown())).optional(),
+      properties: z.array(BlueprintVariablePropertySettingSchema).optional(),
       value: z.unknown().optional(),
     }).passthrough()).optional(),
     defaults: z.array(z.object({

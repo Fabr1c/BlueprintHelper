@@ -81,7 +81,8 @@ public:
 		const TSharedPtr<FJsonObject>& Payload,
 		TArray<FBlueprintHelperLocalVariablePropertyMutation>& OutSettings,
 		FString& OutError,
-		FString* OutField = nullptr);
+		FString* OutField = nullptr,
+		FString* OutErrorCode = nullptr);
 	static bool TryReadRemoveRequest(
 		const TSharedPtr<FJsonObject>& Payload,
 		FBlueprintHelperLocalVariableRemoveRequest& OutRequest,

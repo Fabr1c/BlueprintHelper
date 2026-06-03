@@ -78,6 +78,17 @@ struct FBlueprintHelperVariableType
 	TSharedRef<FJsonObject> ToJson() const;
 };
 
+struct FBlueprintHelperVariableReplicationFacts
+{
+	FString Mode = TEXT("none");
+	FString Condition = TEXT("none");
+	FString ConditionEngineName = TEXT("COND_None");
+	FString NotifyFunctionName;
+	bool bNotifyGraphExists = false;
+
+	TSharedRef<FJsonObject> ToJson() const;
+};
+
 // ─── MemberVariable 摘要 ───
 
 struct FBlueprintHelperMemberVariableItem
@@ -88,6 +99,7 @@ struct FBlueprintHelperMemberVariableItem
 	TOptional<FString> Tooltip;
 	bool bInstanceEditable = false;
 	bool bExposeOnSpawn = false;
+	FBlueprintHelperVariableReplicationFacts Replication;
 
 	TSharedRef<FJsonObject> ToJson() const;
 };

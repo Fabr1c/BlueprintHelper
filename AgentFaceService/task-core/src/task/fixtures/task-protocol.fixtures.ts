@@ -971,6 +971,106 @@ export const blueprintVariableMemberDefaultsTaskPlanFixture = {
   ],
 } satisfies TaskPlan;
 
+export const blueprintVariableMemberReplicationTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_p0c_blueprint_variable_replication',
+  task_type: 'edit_blueprint_variables',
+  feature_name: 'P0CBlueprintVariableReplication',
+  target: {
+    asset_path: '/Game/BH/P0C/BP_Door',
+    target_type: 'blueprint',
+  },
+  behavior: {
+    variable_strategy: 'member_variables',
+    changes: [
+      {
+        kind: 'ensure_member_variable',
+        name: 'DoorState',
+        variable_type: {
+          category: 'bool',
+        },
+        category: 'Network',
+      },
+      {
+        kind: 'configure_member_variable',
+        name: 'DoorState',
+        properties: [
+          {
+            property_path: 'replication',
+            value: {
+              mode: 'rep_notify',
+              condition: 'owner_only',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: true,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const blueprintVariableMemberReplicationTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'P0CBlueprintVariableReplication',
+  task_type: 'edit_blueprint_variables',
+  context_id: 'ctx_p0c_blueprint_variable_replication',
+  target_assets: ['/Game/BH/P0C/BP_Door'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'blueprint_variable',
+      target: {
+        asset_path: '/Game/BH/P0C/BP_Door',
+      },
+      write: {
+        strategy: 'member_variables',
+        ops: [
+          {
+            op: 'ensure_member_variable',
+            name: 'DoorState',
+            pin_type: {
+              category: 'bool',
+            },
+            category: 'Network',
+          },
+          {
+            op: 'set_member_variable_properties',
+            name: 'DoorState',
+            settings: [
+              {
+                property_path: 'replication',
+                value: {
+                  mode: 'rep_notify',
+                  condition: 'owner_only',
+                  notify_function: 'OnRep_DoorState',
+                  create_notify_function: true,
+                  reuse_existing_notify_function: false,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      constraints: {
+        allow_remove_referenced_variables: false,
+      },
+    },
+  ],
+} satisfies TaskPlan;
+
 export const blueprintVariableLocalChangesTaskSpecFixture = {
   schema: 'BlueprintHelper.TaskSpec.v1',
   context_id: 'ctx_p1_blueprint_local_variables',
@@ -1076,12 +1176,14 @@ export const blueprintVariableLocalChangesTaskPlanFixture = {
 export const blueprintVariableTaskSpecFixtures = [
   blueprintVariableMemberChangesTaskSpecFixture,
   blueprintVariableMemberDefaultsTaskSpecFixture,
+  blueprintVariableMemberReplicationTaskSpecFixture,
   blueprintVariableLocalChangesTaskSpecFixture,
 ] satisfies TaskSpec[];
 
 export const blueprintVariableTaskPlanFixtures = [
   blueprintVariableMemberChangesTaskPlanFixture,
   blueprintVariableMemberDefaultsTaskPlanFixture,
+  blueprintVariableMemberReplicationTaskPlanFixture,
   blueprintVariableLocalChangesTaskPlanFixture,
 ] satisfies TaskPlan[];
 
