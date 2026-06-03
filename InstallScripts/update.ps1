@@ -103,7 +103,7 @@ function Get-CurrentBlueprintHelperVersion {
   throw 'Unable to resolve current BlueprintHelper version.'
 }
 
-function Get-NormalizedVersionText {
+function Get-BlueprintHelperReleaseTagParts {
   param([Parameter(Mandatory = $true)][string]$Version)
 
   $Text = $Version.Trim()
@@ -111,12 +111,29 @@ function Get-NormalizedVersionText {
     $Text = $Text.Substring(1)
   }
 
-  $Text = ($Text -split '[-+]')[0]
-  if ($Text -notmatch '^\d+(\.\d+){0,2}$') {
+  $Match = [regex]::Match($Text, '^(?<base>\d+(\.\d+){0,2})(?<suffix>-.+)?(?:\+.*)?$')
+  if (-not $Match.Success) {
     throw "Unsupported version format: $Version"
   }
 
-  return $Text
+  $Suffix = $Match.Groups['suffix'].Value
+  return [pscustomobject]@{
+    base_version = $Match.Groups['base'].Value
+    suffix = if ([string]::IsNullOrWhiteSpace($Suffix)) { $null } else { $Suffix }
+    has_update_suffix = -not [string]::IsNullOrWhiteSpace($Suffix)
+  }
+}
+
+function Get-NormalizedVersionText {
+  param([Parameter(Mandatory = $true)][string]$Version)
+
+  return (Get-BlueprintHelperReleaseTagParts -Version $Version).base_version
+}
+
+function Test-ReleaseTagHasUpdateSuffix {
+  param([Parameter(Mandatory = $true)][string]$Tag)
+
+  return (Get-BlueprintHelperReleaseTagParts -Version $Tag).has_update_suffix
 }
 
 function Get-VersionParts {
@@ -156,6 +173,149 @@ function Compare-BlueprintHelperVersion {
   }
 
   return 0
+}
+
+function Get-StableTextHash {
+  param([Parameter(Mandatory = $true)][string]$Text)
+
+  $Bytes = [Text.Encoding]::UTF8.GetBytes($Text.ToLowerInvariant())
+  $Sha256 = [Security.Cryptography.SHA256]::Create()
+  try {
+    $Hash = $Sha256.ComputeHash($Bytes)
+  } finally {
+    $Sha256.Dispose()
+  }
+
+  return -join ($Hash | ForEach-Object { $_.ToString('x2') })
+}
+
+function Get-UpdateStatePaths {
+  $LocalAppData = [Environment]::GetFolderPath('LocalApplicationData')
+  $RootHash = Get-StableTextHash -Text (Resolve-Path -LiteralPath $Root).Path
+  $Paths = New-Object System.Collections.Generic.List[string]
+
+  if (-not [string]::IsNullOrWhiteSpace($LocalAppData)) {
+    $StateRoot = Join-Path $LocalAppData 'BlueprintHelper\UpdateState'
+    $Paths.Add((Join-Path $StateRoot "$RootHash.json"))
+  }
+
+  $FallbackStateRoot = Join-Path $Root '.blueprinthelper'
+  $Paths.Add((Join-Path $FallbackStateRoot 'update-state.json'))
+  return @($Paths)
+}
+
+function Get-UpdateStatePath {
+  return @(Get-UpdateStatePaths)[0]
+}
+
+function Get-UpdateState {
+  $StatePaths = @(Get-UpdateStatePaths)
+  foreach ($StatePath in $StatePaths) {
+    if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) {
+      continue
+    }
+
+    try {
+      $State = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json
+      return [pscustomobject]@{
+        path = $StatePath
+        state_paths = $StatePaths
+        applied_release_tag = if ($State.applied_release_tag) { [string]$State.applied_release_tag } else { $null }
+        applied_base_version = if ($State.applied_base_version) { [string]$State.applied_base_version } else { $null }
+      }
+    } catch {
+      Write-Host "Warning: unable to read update state: $StatePath" -ForegroundColor Yellow
+    }
+  }
+
+  return [pscustomobject]@{
+    path = $StatePaths[0]
+    state_paths = $StatePaths
+    applied_release_tag = $null
+    applied_base_version = $null
+  }
+}
+
+function Write-UpdateState {
+  param(
+    [Parameter(Mandatory = $true)][object]$ReleaseInfo,
+    [Parameter(Mandatory = $true)][string]$InstalledVersion
+  )
+
+  $StatePaths = @(Get-UpdateStatePaths)
+  $State = [ordered]@{
+    schema = 'BlueprintHelper.UpdateState.v1'
+    source_root = (Resolve-Path -LiteralPath $Root).Path
+    applied_release_tag = [string]$ReleaseInfo.tag
+    applied_base_version = [string]$ReleaseInfo.version
+    installed_version = (Get-NormalizedVersionText -Version $InstalledVersion)
+    updated_at = (Get-Date).ToUniversalTime().ToString('o')
+  }
+
+  $WrittenPaths = @()
+  foreach ($StatePath in $StatePaths) {
+    try {
+      $StateRoot = Split-Path -Parent $StatePath
+      New-Item -ItemType Directory -Path $StateRoot -Force | Out-Null
+      ($State | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $StatePath -Encoding UTF8
+      $WrittenPaths += $StatePath
+    } catch {
+      Write-Host "Warning: update state could not be written: $StatePath" -ForegroundColor Yellow
+      Write-Host "Warning: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+  }
+
+  if ($WrittenPaths.Count -eq 0) {
+    return
+  }
+
+  return $WrittenPaths
+}
+
+function Get-BlueprintHelperUpdateDecision {
+  param(
+    [Parameter(Mandatory = $true)][string]$CurrentVersion,
+    [Parameter(Mandatory = $true)][object]$ReleaseInfo,
+    [Parameter(Mandatory = $true)][object]$UpdateState
+  )
+
+  $Comparison = Compare-BlueprintHelperVersion -Left $CurrentVersion -Right $ReleaseInfo.version
+  if ($Comparison -lt 0) {
+    return [pscustomobject]@{
+      should_update = $true
+      status = 'newer_base_version'
+      message = 'Remote base version is newer than the local version.'
+    }
+  }
+  if ($Comparison -gt 0) {
+    return [pscustomobject]@{
+      should_update = $false
+      status = 'local_newer'
+      message = 'Local BlueprintHelper version is newer than the latest GitHub release.'
+    }
+  }
+
+  if (Test-ReleaseTagHasUpdateSuffix -Tag $ReleaseInfo.tag) {
+    if ($UpdateState.applied_release_tag -eq $ReleaseInfo.tag -and $UpdateState.applied_base_version -eq $ReleaseInfo.version) {
+      return [pscustomobject]@{
+        should_update = $false
+        status = 'suffix_tag_already_applied'
+        message = 'Latest same-version patch release tag is already applied.'
+      }
+    }
+
+    return [pscustomobject]@{
+      should_update = $true
+      status = 'same_base_patch_tag'
+      message = 'Latest release tag has a same-version patch suffix that has not been applied.'
+    }
+  }
+
+  return [pscustomobject]@{
+    should_update = $false
+    status = 'same_base_version'
+    message = 'Local BlueprintHelper version matches the latest release base version.'
+  }
 }
 
 function Invoke-GitHubRest {
@@ -210,6 +370,7 @@ function Read-UpdateConfirmation {
   Write-Host 'Update available.'
   Write-Host "Current version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
   Write-Host "Latest version:  v$($ReleaseInfo.version)"
+  Write-Host "Release tag:     $($ReleaseInfo.tag)"
   if ($ReleaseInfo.url) {
     Write-Host "Release page:    $($ReleaseInfo.url)"
   }
@@ -233,6 +394,92 @@ function Get-BackupDirectory {
   }
 
   return $Candidate
+}
+
+function Get-BackupArchiveRoot {
+  $Current = Get-Item -LiteralPath $Root
+  $Ancestor = $Current.Parent
+  while ($Ancestor) {
+    if ($Ancestor.Name -ieq 'Plugins' -and $Ancestor.Parent) {
+      return Join-Path $Ancestor.Parent.FullName 'BlueprintHelperBackups'
+    }
+    $Ancestor = $Ancestor.Parent
+  }
+
+  $Parent = Split-Path -Parent $Root
+  return Join-Path $Parent 'BlueprintHelperBackups'
+}
+
+function Get-FallbackBackupArchiveRoot {
+  $LocalAppData = [Environment]::GetFolderPath('LocalApplicationData')
+  if ([string]::IsNullOrWhiteSpace($LocalAppData)) {
+    $LocalAppData = [System.IO.Path]::GetTempPath()
+  }
+
+  return Join-Path $LocalAppData 'BlueprintHelper\Backups'
+}
+
+function Get-UniqueDirectoryPath {
+  param([Parameter(Mandatory = $true)][string]$BasePath)
+
+  if (-not (Test-Path -LiteralPath $BasePath)) {
+    return $BasePath
+  }
+
+  for ($Index = 1; $Index -le 99; $Index++) {
+    $Candidate = "$BasePath-$Index"
+    if (-not (Test-Path -LiteralPath $Candidate)) {
+      return $Candidate
+    }
+  }
+
+  throw "Unable to find an unused backup archive directory for: $BasePath"
+}
+
+function Move-BackupToArchiveRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$BackupDir,
+    [Parameter(Mandatory = $true)][string]$ArchiveRoot,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $ArchiveDir = Get-UniqueDirectoryPath -BasePath (Join-Path $ArchiveRoot (Split-Path -Leaf $BackupDir))
+
+  Write-Step $Description
+  Write-Host "move `"$BackupDir`" `"$ArchiveDir`""
+  if ($PSCmdlet.ShouldProcess($ArchiveDir, $Description)) {
+    New-Item -ItemType Directory -Path $ArchiveRoot -Force | Out-Null
+    Move-Item -LiteralPath $BackupDir -Destination $ArchiveDir -Force
+  }
+
+  return $ArchiveDir
+}
+
+function Move-BackupOutsidePluginScanPath {
+  param([Parameter(Mandatory = $true)][string]$BackupDir)
+
+  if (-not (Test-Path -LiteralPath $BackupDir -PathType Container)) {
+    return $null
+  }
+
+  $PrimaryRoot = Get-BackupArchiveRoot
+  try {
+    return Move-BackupToArchiveRoot -BackupDir $BackupDir -ArchiveRoot $PrimaryRoot -Description 'Moving backup outside Unreal Plugins scan path'
+  } catch {
+    $PrimaryFailure = $_
+    Write-Host "Primary backup archive failed: $($PrimaryFailure.Exception.Message)" -ForegroundColor Yellow
+  }
+
+  $FallbackRoot = Get-FallbackBackupArchiveRoot
+  if ($FallbackRoot -ieq $PrimaryRoot) {
+    throw $PrimaryFailure
+  }
+
+  try {
+    return Move-BackupToArchiveRoot -BackupDir $BackupDir -ArchiveRoot $FallbackRoot -Description 'Moving backup to local fallback archive'
+  } catch {
+    throw "Failed to move backup outside the Unreal Plugins scan path. Primary failure: $($PrimaryFailure.Exception.Message). Fallback failure: $($_.Exception.Message)."
+  }
 }
 
 function Invoke-RobocopyMirror {
@@ -319,9 +566,12 @@ function Find-ExtractedPackageRoot {
       if (-not $PackageManifest.version) {
         throw "Downloaded package manifest has no version: $CodexManifest"
       }
+      if ($PackageManifest.name -and ([string]$PackageManifest.name -ne 'blueprint-helper')) {
+        throw "Downloaded package manifest name $($PackageManifest.name) is not blueprint-helper."
+      }
 
       if ((Compare-BlueprintHelperVersion -Left ([string]$PackageManifest.version) -Right $ReleaseInfo.version) -ne 0) {
-        throw "Downloaded package version $($PackageManifest.version) does not match release tag $($ReleaseInfo.tag)."
+        throw "Downloaded package base version $($PackageManifest.version) does not match release base version $($ReleaseInfo.version) from tag $($ReleaseInfo.tag)."
       }
 
       return $Candidate.FullName
@@ -432,34 +682,39 @@ function Invoke-BlueprintHelperUpdate {
   $CurrentVersion = Get-CurrentBlueprintHelperVersion
   Write-UpdateProgressBar -Percent 8 -Status 'Checking latest GitHub release'
   $ReleaseInfo = Get-LatestReleaseInfo
-  $Comparison = Compare-BlueprintHelperVersion -Left $CurrentVersion -Right $ReleaseInfo.version
+  $UpdateState = Get-UpdateState
+  $UpdateDecision = Get-BlueprintHelperUpdateDecision -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo -UpdateState $UpdateState
   Write-UpdateProgressBar -Percent 16 -Status 'Comparing versions'
 
   Write-Host ''
   Write-Host "Current version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
   Write-Host "Latest version:  v$($ReleaseInfo.version)"
   Write-Host "Release tag:     $($ReleaseInfo.tag)"
+  if ($UpdateState.applied_release_tag) {
+    Write-Host "Applied tag:     $($UpdateState.applied_release_tag)"
+  }
   if ($ReleaseInfo.url) {
     Write-Host "Release page:    $($ReleaseInfo.url)"
   }
+  Write-Host "Update status:   $($UpdateDecision.status)"
 
-  if ($Comparison -eq 0) {
+  if (-not $UpdateDecision.should_update) {
     Write-Host ''
-    Write-Host 'BlueprintHelper is already up to date.'
-    Complete-UpdateProgressBar -Status 'Already up to date'
-    return
-  }
-
-  if ($Comparison -gt 0) {
-    Write-Host ''
-    Write-Host 'Local BlueprintHelper version is newer than the latest GitHub release. No update was applied.' -ForegroundColor Yellow
-    Complete-UpdateProgressBar -Status 'No update applied'
+    if ($UpdateDecision.status -eq 'local_newer') {
+      Write-Host "$($UpdateDecision.message) No update was applied." -ForegroundColor Yellow
+      Complete-UpdateProgressBar -Status 'No update applied'
+    } else {
+      Write-Host 'BlueprintHelper is already up to date.'
+      Write-Host $UpdateDecision.message
+      Complete-UpdateProgressBar -Status 'Already up to date'
+    }
     return
   }
 
   if ($CheckOnly) {
     Write-Host ''
     Write-Host 'An update is available. Re-run without -CheckOnly to apply it.'
+    Write-Host $UpdateDecision.message
     Complete-UpdateProgressBar -Status 'Update available'
     exit 2
   }
@@ -476,6 +731,8 @@ function Invoke-BlueprintHelperUpdate {
   $PackageTempDir = $null
   $ReplaceStarted = $false
   $DidReplace = $false
+  $UpdateVerified = $false
+  $ArchivedBackupDir = $null
 
   try {
     $Package = Download-AndExpandRelease -ReleaseInfo $ReleaseInfo
@@ -504,19 +761,30 @@ function Invoke-BlueprintHelperUpdate {
       Write-UpdateProgressBar -Percent 86 -Status 'Skipping post-update install refresh'
     }
 
-    Write-UpdateProgressBar -Percent 96 -Status 'Verifying updated version'
+    Write-UpdateProgressBar -Percent 92 -Status 'Verifying updated version'
     $UpdatedVersion = Get-CurrentBlueprintHelperVersion
+    $UpdateVerified = $true
+
+    Write-UpdateProgressBar -Percent 96 -Status 'Moving backup outside Plugins'
+    $ArchivedBackupDir = Move-BackupOutsidePluginScanPath -BackupDir $BackupDir
 
     Write-Host ''
     Write-Host 'BlueprintHelper update finished.'
     Write-Host "Previous version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
     Write-Host "Current version:  v$(Get-NormalizedVersionText -Version $UpdatedVersion)"
-    Write-Host "Backup path:      $BackupDir"
+    Write-Host "Backup archive:   $ArchivedBackupDir"
     Write-Host 'UE engine plugin copy is updated only when -InstallUePluginToEngine is passed.'
+    $StatePaths = @(Write-UpdateState -ReleaseInfo $ReleaseInfo -InstalledVersion $UpdatedVersion | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($StatePaths.Count -gt 0) {
+      Write-Host 'Applied tag state:'
+      foreach ($StatePath in $StatePaths) {
+        Write-Host "  $StatePath"
+      }
+    }
     Complete-UpdateProgressBar -Status 'Update complete'
   } catch {
     $Failure = $_
-    if (($ReplaceStarted -or $DidReplace) -and $BackupDir) {
+    if ((-not $UpdateVerified) -and ($ReplaceStarted -or $DidReplace) -and $BackupDir) {
       Write-Host ''
       Write-Host 'Update failed after replacement. Attempting rollback...' -ForegroundColor Yellow
       try {
@@ -527,6 +795,11 @@ function Invoke-BlueprintHelperUpdate {
         Write-Host "Rollback failed: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Backup path: $BackupDir" -ForegroundColor Red
       }
+    }
+    if ($UpdateVerified -and $BackupDir -and (Test-Path -LiteralPath $BackupDir -PathType Container)) {
+      Write-Host ''
+      Write-Host 'Update files were installed, but the backup could not be moved out of the Plugins scan path.' -ForegroundColor Red
+      Write-Host "Move this backup directory outside Plugins before starting Unreal Editor: $BackupDir" -ForegroundColor Red
     }
 
     throw $Failure

@@ -123,9 +123,9 @@ $json | bh blueprinthelper_read_context --stdin --format full
 
 ## 更新 / Update
 
-双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.5.8`。
+双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.5.8`。同版本补丁可以发布为 `v0.5.8-fix`、`v0.5.8-hotfix1` 这类带 `-` 后缀的 tag；包内 manifest 版本仍可保持 `0.5.8`，updater 会优先应用该补丁 release，并在 `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` 与插件根目录 `.blueprinthelper\update-state.json` 记录已应用 tag，避免重复提示同一个补丁。
 
-更新流程会先把当前插件目录备份到同级目录，例如 `BlueprintHelper.backup-v0.5.3-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从备份目录回滚当前插件目录。
+更新流程会先把当前插件目录临时备份到同级目录，例如 `BlueprintHelper.backup-v0.5.3-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从临时备份目录回滚当前插件目录。更新成功后，备份会移动到最近的 `Plugins` 祖先目录之外，例如 `<ProjectRoot>\BlueprintHelperBackups\...` 或 `<EngineRoot>\BlueprintHelperBackups\...`，避免 Unreal Editor 把备份目录当作第二个插件扫描；如果该归档位置不可写，会改用 `%LOCALAPPDATA%\BlueprintHelper\Backups\...`。
 
 更新成功后会重新构建 AgentFaceService、重新链接 `bh` CLI，并通过官方入口刷新 Codex marketplace、Codex 插件安装、Codex subagents 和全局 MCP allowlist。如果检测到已安装的 Claude sideAgents，或显式传入 `-InstallClaudePlugin`，更新器也会通过 Claude 官方入口刷新 Claude 插件并同步 Claude sideAgents。用户偏好文件和项目 `.blueprinthelper/agent-profile.json` 不会被更新器覆盖。Engine 级 UE 插件副本只会在显式传入 `-InstallUePluginToEngine` 时更新。
 
@@ -137,6 +137,8 @@ $json | bh blueprinthelper_read_context --stdin --format full
 .\update.cmd -Force -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
+`.\update.cmd -CheckOnly` 的退出码语义：`0` 表示已是最新或本地版本更高，`2` 表示发现可更新 Release，`1` 表示检查失败。
+
 ## 卸载 / Uninstall
 
 根目录只保留 `.cmd` 用户入口；安装、更新和卸载的 PowerShell/Node 实现脚本放在 `InstallScripts/`。双击 `uninstall.cmd` 会进入交互式卸载，默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有在卸载器中明确选择或传入对应参数时才会删除。
@@ -147,11 +149,13 @@ $json | bh blueprinthelper_read_context --stdin --format full
 .\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
 ```
 
-Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.5.8`.
+Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.5.8`. Same-version patch releases can use tags such as `v0.5.8-fix` or `v0.5.8-hotfix1`; package manifests may remain at `0.5.8`, and the updater will prioritize applying that patch tag. Applied tags are recorded under `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` and the plugin-root `.blueprinthelper\update-state.json` fallback so the same patch release is not offered repeatedly.
 
-Before replacing files, the updater backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that backup.
+Before replacing files, the updater temporarily backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that temporary backup. After a successful update, the backup is moved outside the nearest `Plugins` ancestor, for example `<ProjectRoot>\BlueprintHelperBackups\...` or `<EngineRoot>\BlueprintHelperBackups\...`, so Unreal Editor does not scan it as a second plugin. If that archive location is not writable, the updater falls back to `%LOCALAPPDATA%\BlueprintHelper\Backups\...`.
 
 After a successful update, the updater rebuilds AgentFaceService, relinks the `bh` CLI, and refreshes the Codex marketplace, Codex plugin install, Codex subagents, and global MCP allowlist through the official entries. If existing Claude sideAgents are detected, or `-InstallClaudePlugin` is passed explicitly, the updater also refreshes the Claude plugin through the official Claude entry and syncs Claude sideAgents. User preference files and project `.blueprinthelper/agent-profile.json` are not overwritten. Engine-level UE plugin copies are updated only when `-InstallUePluginToEngine` is explicitly passed.
+
+`.\update.cmd -CheckOnly` exits with `0` when the local install is already current or newer, `2` when an update is available, and `1` when the check fails.
 
 The root keeps only `.cmd` user script entry points. PowerShell and Node implementation scripts live under `InstallScripts/`. Double-click `uninstall.cmd` for interactive uninstall. By default it removes the global `bh` CLI link, Codex/Claude plugin entries, Codex/Claude subagents, and the Codex lifecycle MCP config. Project `.blueprinthelper/agent-profile.json` and Engine-level UE plugin copies are kept unless explicitly selected or passed as command-line options.
 
