@@ -6898,6 +6898,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	"BlueprintHelper.Review.Action.CollectLifecycleDescendantsDeepestFirst",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewFindLifecycleRootUsesRequestedRecordOnlyTest,
+	"BlueprintHelper.Review.Action.FindLifecycleRootUsesRequestedRecordOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
 bool FBlueprintHelperReviewCollectLifecycleDescendantsDeepestFirstTest::RunTest(const FString& Parameters)
 {
 	const FString AssetPath = TEXT("/Game/BlueprintHelperReview/BP_DescendantOrder");
@@ -6946,6 +6951,68 @@ bool FBlueprintHelperReviewCollectLifecycleDescendantsDeepestFirstTest::RunTest(
 			Descendants[1].ChangeId,
 			FString(TEXT("change_order_child")));
 	}
+	return true;
+}
+
+bool FBlueprintHelperReviewFindLifecycleRootUsesRequestedRecordOnlyTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BlueprintHelperReview/BP_FindLifecycleRootRequestedRecordOnly");
+	const FString TargetKey = TEXT("component:E2E_DefaultsComponent");
+
+	FBlueprintHelperReviewVisibleChange LifecycleRoot =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_setup_component_root"),
+			AssetPath);
+	LifecycleRoot.DisplayLabel = TEXT("E2E_DefaultsComponent");
+	LifecycleRoot.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	LifecycleRoot.bIsAssetLifecycleRoot = true;
+	LifecycleRoot.bRejectRemovesChildren = true;
+	LifecycleRoot.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::Components;
+	LifecycleRoot.AtomicTargets[0].TargetKind = TEXT("component");
+	LifecycleRoot.AtomicTargets[0].TargetKey = TargetKey;
+	LifecycleRoot.AtomicTargets[0].DisplayLabel = TEXT("E2E_DefaultsComponent");
+
+	FBlueprintHelperReviewVisibleChange DefaultsChange =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewTestVisibleChange(
+			TEXT("change_defaults_component"),
+			AssetPath);
+	DefaultsChange.DisplayLabel = TEXT("E2E_DefaultsComponent");
+	DefaultsChange.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	DefaultsChange.bIsAssetLifecycleRoot = false;
+	DefaultsChange.bRejectRemovesChildren = false;
+	DefaultsChange.AtomicTargets[0].Surface = EBlueprintHelperReviewSurface::Components;
+	DefaultsChange.AtomicTargets[0].TargetKind = TEXT("component");
+	DefaultsChange.AtomicTargets[0].TargetKey = TargetKey;
+	DefaultsChange.AtomicTargets[0].DisplayLabel = TEXT("E2E_DefaultsComponent");
+
+	FBlueprintHelperReviewRecord RootRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			TEXT("archive_find_lifecycle_root_requested_record_root"),
+			AssetPath,
+			{ LifecycleRoot });
+	FBlueprintHelperReviewRecord DefaultsRecord =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			TEXT("archive_find_lifecycle_root_requested_record_defaults"),
+			AssetPath,
+			{ DefaultsChange });
+
+	const FBlueprintHelperReviewVisibleChange* FoundRoot =
+		FBlueprintHelperReviewActionTargetUtils::FindLifecycleRootInRecordForTargets(
+			RootRecord,
+			{ TargetKey });
+	TestNotNull(TEXT("requested lifecycle-root record resolves its own root"), FoundRoot);
+	if (FoundRoot)
+	{
+		TestEqual(TEXT("resolved root comes from requested record"),
+			FoundRoot->ChangeId,
+			FString(TEXT("change_setup_component_root")));
+	}
+
+	const FBlueprintHelperReviewVisibleChange* FoundDefaultsRoot =
+		FBlueprintHelperReviewActionTargetUtils::FindLifecycleRootInRecordForTargets(
+			DefaultsRecord,
+			{ TargetKey });
+	TestNull(TEXT("plain defaults record does not borrow lifecycle root from another record"), FoundDefaultsRoot);
 	return true;
 }
 

@@ -224,6 +224,78 @@ test('read_context variable filter preserves member variable metadata fields', a
   assert.equal(variables[0]?.['expose_on_spawn'], true);
 });
 
+test('read_context component filter preserves component readback facts', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'component_facts',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'BlueprintComponent.v1',
+        components: [
+          {
+            component_name: 'DoorMesh',
+            component_class: 'StaticMeshComponent',
+            class_path: '/Script/Engine.StaticMeshComponent',
+            component_template_path: '/Game/BP_Door.BP_Door_C:DoorMesh',
+            component_id: '/Game/BP_Door.BP_Door::SCS::DoorMesh',
+            parent: 'DoorRoot',
+            children: ['DoorHandle'],
+            selected_defaults: {
+              mobility: 'movable',
+            },
+            readback_revision: 'BlueprintComponentFacts.v1',
+            readback_fingerprint: 'abcdef0123456789',
+            is_owned_scs: true,
+            can_reparent: true,
+          },
+          {
+            component_name: 'OtherMesh',
+            component_id: '/Game/BP_Door.BP_Door::SCS::OtherMesh',
+          },
+        ],
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'component_context',
+    target: {
+      asset_path: '/Game/BP_Door',
+      target_type: 'component',
+      target_name: 'DoorMesh',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_components');
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  const components = payload['components'] as Record<string, unknown>[];
+  assert.equal(components.length, 1);
+  assert.equal(components[0]?.['component_name'], 'DoorMesh');
+  assert.equal(components[0]?.['component_template_path'], '/Game/BP_Door.BP_Door_C:DoorMesh');
+  assert.equal(components[0]?.['component_id'], '/Game/BP_Door.BP_Door::SCS::DoorMesh');
+  assert.equal(components[0]?.['parent'], 'DoorRoot');
+  assert.deepEqual(components[0]?.['children'], ['DoorHandle']);
+  assert.deepEqual(components[0]?.['selected_defaults'], { mobility: 'movable' });
+  assert.equal(components[0]?.['readback_fingerprint'], 'abcdef0123456789');
+  assert.equal(components[0]?.['can_reparent'], true);
+});
+
 test('read_context handler records timing around bridge and post-processing stages', async () => {
   const timing = TaskTimingTrace.start('read_context_test', 'agentface_test');
   const bridgeResponse: BridgeResponse = {

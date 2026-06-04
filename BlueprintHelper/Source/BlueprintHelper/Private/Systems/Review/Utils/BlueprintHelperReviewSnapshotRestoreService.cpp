@@ -43,6 +43,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
+#include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentFacts.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
@@ -232,6 +233,22 @@ USCS_Node* FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByName(UBlue
 		}
 		return nullptr;
 	}
+USCS_Node* FBlueprintHelperReviewSnapshotRestoreService::FindScsNodeByTemplatePath(UBlueprint* Blueprint, const FString& ComponentTemplatePath)
+	{
+		if (!Blueprint || !Blueprint->SimpleConstructionScript || ComponentTemplatePath.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+		{
+			if (Node && Node->ComponentTemplate && Node->ComponentTemplate->GetPathName() == ComponentTemplatePath)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
 void FBlueprintHelperReviewSnapshotRestoreService::MarkBlueprintReviewRestoreModified(UBlueprint* Blueprint)
 	{
 		if (!Blueprint)
@@ -386,26 +403,43 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentPropertiesFro
 			}
 
 			FString PropertyName;
+			FString PropertyPath;
 			FString ValueText;
-			if (!PropertyJson->TryGetStringField(TEXT("name"), PropertyName) ||
-				!PropertyJson->TryGetStringField(TEXT("value"), ValueText) ||
-				PropertyName.IsEmpty())
+			PropertyJson->TryGetStringField(TEXT("property_path"), PropertyPath);
+			PropertyJson->TryGetStringField(TEXT("name"), PropertyName);
+			if (PropertyPath.IsEmpty())
+			{
+				PropertyPath = PropertyName;
+			}
+			if (!PropertyJson->TryGetStringField(TEXT("value"), ValueText) ||
+				PropertyPath.IsEmpty())
 			{
 				continue;
 			}
 
-			FProperty* Property = ComponentTemplate->GetClass()
-				? ComponentTemplate->GetClass()->FindPropertyByName(FName(*PropertyName))
-				: nullptr;
-			if (!Property)
+			FProperty* Property = nullptr;
+			void* ValuePtr = nullptr;
+			FString ExpectedType;
+			FString ErrorCode;
+			FString ErrorMessage;
+			if (!FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+				ComponentTemplate,
+				PropertyPath,
+				Property,
+				ValuePtr,
+				ExpectedType,
+				ErrorCode,
+				ErrorMessage) ||
+				!Property ||
+				!ValuePtr)
 			{
-				continue;
+				OutError = FString::Printf(TEXT("component_property_restore_missing:%s:%s"), *PropertyPath, *ErrorCode);
+				return false;
 			}
 
-			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(ComponentTemplate);
 			if (!Property->ImportText_Direct(*ValueText, ValuePtr, ComponentTemplate, PPF_None))
 			{
-				OutError = FString::Printf(TEXT("component_property_restore_failed:%s"), *PropertyName);
+				OutError = FString::Printf(TEXT("component_property_restore_failed:%s"), *PropertyPath);
 				return false;
 			}
 		}
@@ -424,8 +458,27 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
 			return false;
 		}
 
-		const FString ComponentName = ExtractTargetName(Target);
-		if (ComponentName.IsEmpty())
+		FString ComponentName = ExtractTargetName(Target);
+		FString ComponentTemplatePath = Target.ComponentTemplatePath;
+		if (ComponentTemplatePath.IsEmpty() && Snapshot.IsValid())
+		{
+			Snapshot->TryGetStringField(TEXT("component_template_path"), ComponentTemplatePath);
+		}
+		FString SnapshotComponentName;
+		if (Snapshot.IsValid())
+		{
+			Snapshot->TryGetStringField(TEXT("component_name"), SnapshotComponentName);
+		}
+		if (!SnapshotComponentName.IsEmpty())
+		{
+			ComponentName = SnapshotComponentName;
+		}
+		FString ExpectedComponentId = Target.ComponentId;
+		if (ExpectedComponentId.IsEmpty() && Snapshot.IsValid())
+		{
+			Snapshot->TryGetStringField(TEXT("component_id"), ExpectedComponentId);
+		}
+		if (ComponentName.IsEmpty() && ComponentTemplatePath.IsEmpty())
 		{
 			OutError = TEXT("missing_component_name");
 			return false;
@@ -433,7 +486,45 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
 
 		bool bSnapshotExists = false;
 		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
-		USCS_Node* Node = FindScsNodeByName(Blueprint, ComponentName);
+		USCS_Node* Node = ComponentTemplatePath.IsEmpty()
+			? nullptr
+			: FindScsNodeByTemplatePath(Blueprint, ComponentTemplatePath);
+		if (!Node &&
+			!Target.ComponentTemplatePath.IsEmpty() &&
+			Target.ComponentTemplatePath != ComponentTemplatePath)
+		{
+			Node = FindScsNodeByTemplatePath(Blueprint, Target.ComponentTemplatePath);
+		}
+		if (!Node && !ComponentTemplatePath.IsEmpty() && bSnapshotExists)
+		{
+			if (!ComponentName.IsEmpty() && FindScsNodeByName(Blueprint, ComponentName))
+			{
+				OutError = FString::Printf(TEXT("component_template_path_not_found:%s"), *ComponentTemplatePath);
+				return false;
+			}
+		}
+		if (!Node && !ComponentName.IsEmpty())
+		{
+			Node = FindScsNodeByName(Blueprint, ComponentName);
+		}
+
+		if (Node && !ExpectedComponentId.IsEmpty())
+		{
+			const FBlueprintHelperComponentInfo Info =
+				FBlueprintHelperComponentFacts::BuildReadbackFact(*Blueprint, *Node);
+			if (Info.ComponentId != ExpectedComponentId)
+			{
+				OutError = FString::Printf(
+					TEXT("component_id_mismatch:%s:%s"),
+					*ExpectedComponentId,
+					*Info.ComponentId);
+				return false;
+			}
+		}
+		if (Node && ComponentName.IsEmpty())
+		{
+			ComponentName = Node->GetVariableName().ToString();
+		}
 
 		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Component")));
 		Blueprint->Modify();
@@ -487,6 +578,9 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
 				{
 					ParentNode->Modify();
 					ParentNode->AddChildNode(Node);
+					Node->ParentComponentOrVariableName = ParentNode->GetVariableName();
+					Node->ParentComponentOwnerClassName = NAME_None;
+					Node->bIsParentComponentNative = false;
 				}
 				else
 				{
@@ -501,6 +595,59 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreComponentFromSnapshot(
 
 		Node->Modify();
 		Node->ComponentTemplate->Modify();
+		if (!ComponentName.IsEmpty() && Node->GetVariableName().ToString() != ComponentName)
+		{
+			FBlueprintEditorUtils::RenameComponentMemberVariable(Blueprint, Node, FName(*ComponentName));
+		}
+
+		FString SnapshotParentComponentName;
+		Snapshot->TryGetStringField(TEXT("parent_component"), SnapshotParentComponentName);
+		FString SnapshotSocketName;
+		Snapshot->TryGetStringField(TEXT("socket_name"), SnapshotSocketName);
+		USCS_Node* CurrentParentNode = Blueprint->SimpleConstructionScript->FindParentNode(Node);
+		const FString CurrentParentComponentName = CurrentParentNode
+			? CurrentParentNode->GetVariableName().ToString()
+			: TEXT("");
+		if (CurrentParentComponentName != SnapshotParentComponentName)
+		{
+			if (SnapshotParentComponentName.IsEmpty())
+			{
+				Blueprint->SimpleConstructionScript->RemoveNode(Node, false);
+				Node->ParentComponentOrVariableName = NAME_None;
+				Node->ParentComponentOwnerClassName = NAME_None;
+				Node->bIsParentComponentNative = false;
+				Node->AttachToName = NAME_None;
+				Blueprint->SimpleConstructionScript->AddNode(Node);
+			}
+			else
+			{
+				USCS_Node* SnapshotParentNode = FindScsNodeByName(Blueprint, SnapshotParentComponentName);
+				if (!SnapshotParentNode)
+				{
+					OutError = FString::Printf(
+						TEXT("snapshot_restore_component_parent_not_found:%s"),
+						*SnapshotParentComponentName);
+					return false;
+				}
+				if (SnapshotParentNode == Node || SnapshotParentNode->IsChildOf(Node))
+				{
+					OutError = FString::Printf(
+						TEXT("snapshot_restore_component_parent_cycle:%s"),
+						*SnapshotParentComponentName);
+					return false;
+				}
+				SnapshotParentNode->Modify();
+				Blueprint->SimpleConstructionScript->RemoveNode(Node, false);
+				SnapshotParentNode->AddChildNode(Node);
+				Node->ParentComponentOrVariableName = SnapshotParentNode->GetVariableName();
+				Node->ParentComponentOwnerClassName = NAME_None;
+				Node->bIsParentComponentNative = false;
+			}
+		}
+		if (Node->AttachToName.ToString() != SnapshotSocketName)
+		{
+			Node->AttachToName = SnapshotSocketName.IsEmpty() ? NAME_None : FName(*SnapshotSocketName);
+		}
 		if (!RestoreComponentPropertiesFromSnapshot(Node->ComponentTemplate, Snapshot, OutError))
 		{
 			return false;

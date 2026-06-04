@@ -17,6 +17,30 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreTargetUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 
+class FBlueprintHelperReviewStoreJsonLocalUtils
+{
+public:
+	static bool TryParseJsonArrayString(const FString& JsonText, TArray<TSharedPtr<FJsonValue>>& OutValues)
+	{
+		OutValues.Reset();
+		if (JsonText.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		return FJsonSerializer::Deserialize(Reader, OutValues);
+	}
+
+	static FString SerializeJsonArray(const TArray<TSharedPtr<FJsonValue>>& Values)
+	{
+		FString JsonText;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
+		FJsonSerializer::Serialize(Values, Writer);
+		return JsonText;
+	}
+};
+
 EBlueprintHelperReviewChangeStatus FBlueprintHelperReviewStoreJsonUtils::ParseReviewChangeStatus(const FString& Status)
 	{
 		return FBlueprintHelperReviewEnumUtils::ParseChangeStatus(Status);
@@ -117,6 +141,58 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.PinPath.IsEmpty()) Json->SetStringField(TEXT("pin_path"), Target.PinPath);
 		if (!Target.PropertyPath.IsEmpty()) Json->SetStringField(TEXT("property_path"), Target.PropertyPath);
 		if (!Target.ComponentPath.IsEmpty()) Json->SetStringField(TEXT("component_path"), Target.ComponentPath);
+		if (!Target.ComponentId.IsEmpty()) Json->SetStringField(TEXT("component_id"), Target.ComponentId);
+		if (!Target.ComponentTemplatePath.IsEmpty()) Json->SetStringField(TEXT("component_template_path"), Target.ComponentTemplatePath);
+		if (!Target.ComponentOrigin.IsEmpty()) Json->SetStringField(TEXT("component_origin"), Target.ComponentOrigin);
+		if (!Target.BeforeParent.IsEmpty()) Json->SetStringField(TEXT("before_parent"), Target.BeforeParent);
+		if (!Target.AfterParent.IsEmpty()) Json->SetStringField(TEXT("after_parent"), Target.AfterParent);
+		if (!Target.BeforeRoot.IsEmpty()) Json->SetStringField(TEXT("before_root"), Target.BeforeRoot);
+		if (!Target.AfterRoot.IsEmpty()) Json->SetStringField(TEXT("after_root"), Target.AfterRoot);
+		if (!Target.DeletePolicy.IsEmpty()) Json->SetStringField(TEXT("delete_policy"), Target.DeletePolicy);
+		if (!Target.DeletedComponentIdsJson.IsEmpty())
+		{
+			TArray<TSharedPtr<FJsonValue>> DeletedComponentIds;
+			if (FBlueprintHelperReviewStoreJsonLocalUtils::TryParseJsonArrayString(
+				Target.DeletedComponentIdsJson,
+				DeletedComponentIds))
+			{
+				Json->SetArrayField(TEXT("deleted_component_ids"), DeletedComponentIds);
+			}
+			else
+			{
+				Json->SetStringField(TEXT("deleted_component_ids_json"), Target.DeletedComponentIdsJson);
+			}
+		}
+		if (!Target.MovedComponentIdsJson.IsEmpty())
+		{
+			TArray<TSharedPtr<FJsonValue>> MovedComponentIds;
+			if (FBlueprintHelperReviewStoreJsonLocalUtils::TryParseJsonArrayString(
+				Target.MovedComponentIdsJson,
+				MovedComponentIds))
+			{
+				Json->SetArrayField(TEXT("moved_component_ids"), MovedComponentIds);
+			}
+			else
+			{
+				Json->SetStringField(TEXT("moved_component_ids_json"), Target.MovedComponentIdsJson);
+			}
+		}
+		if (!Target.ChangedPropertiesJson.IsEmpty())
+		{
+			TArray<TSharedPtr<FJsonValue>> ChangedProperties;
+			if (FBlueprintHelperReviewStoreJsonLocalUtils::TryParseJsonArrayString(
+				Target.ChangedPropertiesJson,
+				ChangedProperties))
+			{
+				Json->SetArrayField(TEXT("changed_properties"), ChangedProperties);
+			}
+			else
+			{
+				Json->SetStringField(TEXT("changed_properties_json"), Target.ChangedPropertiesJson);
+			}
+		}
+		if (!Target.ReadbackFingerprintBefore.IsEmpty()) Json->SetStringField(TEXT("readback_fingerprint_before"), Target.ReadbackFingerprintBefore);
+		if (!Target.ReadbackFingerprintAfter.IsEmpty()) Json->SetStringField(TEXT("readback_fingerprint_after"), Target.ReadbackFingerprintAfter);
 		if (!Target.LifecycleObjectKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
 		if (!Target.LifecycleParentKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 		if (!Target.AnchorJson.IsEmpty()) Json->SetStringField(TEXT("anchor"), Target.AnchorJson);
@@ -410,6 +486,46 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("pin_path"), Target.PinPath);
 						TargetJson->TryGetStringField(TEXT("property_path"), Target.PropertyPath);
 						TargetJson->TryGetStringField(TEXT("component_path"), Target.ComponentPath);
+						TargetJson->TryGetStringField(TEXT("component_id"), Target.ComponentId);
+						TargetJson->TryGetStringField(TEXT("component_template_path"), Target.ComponentTemplatePath);
+						TargetJson->TryGetStringField(TEXT("component_origin"), Target.ComponentOrigin);
+						TargetJson->TryGetStringField(TEXT("before_parent"), Target.BeforeParent);
+						TargetJson->TryGetStringField(TEXT("after_parent"), Target.AfterParent);
+						TargetJson->TryGetStringField(TEXT("before_root"), Target.BeforeRoot);
+						TargetJson->TryGetStringField(TEXT("after_root"), Target.AfterRoot);
+						TargetJson->TryGetStringField(TEXT("delete_policy"), Target.DeletePolicy);
+						const TArray<TSharedPtr<FJsonValue>>* DeletedComponentIds = nullptr;
+						if (TargetJson->TryGetArrayField(TEXT("deleted_component_ids"), DeletedComponentIds) && DeletedComponentIds)
+						{
+							Target.DeletedComponentIdsJson =
+								FBlueprintHelperReviewStoreJsonLocalUtils::SerializeJsonArray(*DeletedComponentIds);
+						}
+						else
+						{
+							TargetJson->TryGetStringField(TEXT("deleted_component_ids_json"), Target.DeletedComponentIdsJson);
+						}
+						const TArray<TSharedPtr<FJsonValue>>* MovedComponentIds = nullptr;
+						if (TargetJson->TryGetArrayField(TEXT("moved_component_ids"), MovedComponentIds) && MovedComponentIds)
+						{
+							Target.MovedComponentIdsJson =
+								FBlueprintHelperReviewStoreJsonLocalUtils::SerializeJsonArray(*MovedComponentIds);
+						}
+						else
+						{
+							TargetJson->TryGetStringField(TEXT("moved_component_ids_json"), Target.MovedComponentIdsJson);
+						}
+						const TArray<TSharedPtr<FJsonValue>>* ChangedProperties = nullptr;
+						if (TargetJson->TryGetArrayField(TEXT("changed_properties"), ChangedProperties) && ChangedProperties)
+						{
+							Target.ChangedPropertiesJson =
+								FBlueprintHelperReviewStoreJsonLocalUtils::SerializeJsonArray(*ChangedProperties);
+						}
+						else
+						{
+							TargetJson->TryGetStringField(TEXT("changed_properties_json"), Target.ChangedPropertiesJson);
+						}
+						TargetJson->TryGetStringField(TEXT("readback_fingerprint_before"), Target.ReadbackFingerprintBefore);
+						TargetJson->TryGetStringField(TEXT("readback_fingerprint_after"), Target.ReadbackFingerprintAfter);
 						TargetJson->TryGetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
 						TargetJson->TryGetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 						TargetJson->TryGetStringField(TEXT("anchor"), Target.AnchorJson);

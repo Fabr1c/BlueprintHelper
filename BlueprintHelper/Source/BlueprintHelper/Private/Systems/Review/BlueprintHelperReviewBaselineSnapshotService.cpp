@@ -32,6 +32,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentFacts.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
@@ -734,17 +735,45 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			Json->SetStringField(TEXT("surface"), TEXT("components"));
 			if (Blueprint->SimpleConstructionScript)
 			{
+				USCS_Node* MatchedNode = nullptr;
 				for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
 				{
-					if (!Node || Node->GetVariableName().ToString() != TargetName)
+					if (!Node || !Node->ComponentTemplate || Target.ComponentTemplatePath.IsEmpty())
 					{
 						continue;
 					}
+					if (Node->ComponentTemplate->GetPathName() == Target.ComponentTemplatePath)
+					{
+						MatchedNode = Node;
+						break;
+					}
+				}
 
+				if (!MatchedNode)
+				{
+					for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+					{
+						if (Node && Node->GetVariableName().ToString() == TargetName)
+						{
+							MatchedNode = Node;
+							break;
+						}
+					}
+				}
+
+				if (MatchedNode)
+				{
+					const FBlueprintHelperComponentInfo Info =
+						FBlueprintHelperComponentFacts::BuildReadbackFact(*Blueprint, *MatchedNode);
 					Json->SetBoolField(TEXT("exists"), true);
-					Json->SetStringField(TEXT("name"), Node->GetVariableName().ToString());
-					Json->SetStringField(TEXT("parent_component"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::FindScsParentComponentName(Blueprint, Node));
-					const UActorComponent* ComponentTemplate = Node->ComponentTemplate;
+					Json->SetStringField(TEXT("name"), MatchedNode->GetVariableName().ToString());
+					Json->SetStringField(TEXT("component_name"), MatchedNode->GetVariableName().ToString());
+					Json->SetStringField(TEXT("component_id"), Info.ComponentId);
+					Json->SetStringField(TEXT("component_template_path"), Info.ComponentTemplatePath);
+					Json->SetStringField(TEXT("component_origin"), Info.bIsOwnedSCS ? TEXT("owned_scs") : TEXT("unknown"));
+					Json->SetStringField(TEXT("readback_fingerprint"), Info.ReadbackFingerprint);
+					Json->SetStringField(TEXT("parent_component"), Info.ParentComponent);
+					const UActorComponent* ComponentTemplate = MatchedNode->ComponentTemplate;
 					Json->SetStringField(
 						TEXT("component_class"),
 						ComponentTemplate && ComponentTemplate->GetClass() ? ComponentTemplate->GetClass()->GetPathName() : FString());

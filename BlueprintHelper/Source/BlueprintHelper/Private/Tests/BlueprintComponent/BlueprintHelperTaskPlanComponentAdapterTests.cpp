@@ -3,7 +3,10 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
+#include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
+#include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 
 class FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils
 {
@@ -115,6 +118,37 @@ bool FBlueprintHelperTaskPlanComponentAdapterAddComponentTest::RunTest(const FSt
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanComponentAdapterClassMismatchPolicyTest,
+	"BlueprintHelper.TaskPlan.ComponentAdapter.ClassMismatchPolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanComponentAdapterClassMismatchPolicyTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+	TestNotNull(TEXT("component op exists"), Op.Get());
+
+	Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+	Op->SetStringField(TEXT("component_class"), TEXT("StaticMeshComponent"));
+	Op->SetStringField(TEXT("name_collision_policy"), TEXT("block_if_class_mismatch"));
+
+	FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+	FBlueprintHelperToolError Error;
+	const bool bBuilt = FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
+		Step,
+		true,
+		BuiltPayload,
+		Error);
+
+	TestTrue(TEXT("class mismatch policy lowers successfully"), bBuilt);
+	FString NameCollisionPolicy;
+	TestTrue(TEXT("payload carries name_collision_policy"),
+		BuiltPayload.Payload.IsValid() && BuiltPayload.Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy));
+	TestEqual(TEXT("block_if_class_mismatch preserved"), NameCollisionPolicy, FString(TEXT("block_if_class_mismatch")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanComponentAdapterSetPropertiesTest,
 	"BlueprintHelper.TaskPlan.ComponentAdapter.SetComponentProperties",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -214,6 +248,38 @@ bool FBlueprintHelperTaskPlanComponentAdapterRemoveComponentTest::RunTest(const 
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanComponentRuntimeRejectsInvalidDeletePolicyTest,
+	"BlueprintHelper.TaskPlan.ComponentAdapter.RuntimeRejectsInvalidDeletePolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanComponentRuntimeRejectsInvalidDeletePolicyTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/Missing/BP_Door"));
+	Payload->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+	Payload->SetStringField(TEXT("delete_policy"), TEXT("silently_default"));
+	Payload->SetBoolField(TEXT("dry_run"), true);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperComponentService ComponentService(Resolver);
+	const FBlueprintHelperToolResultBase Result =
+		FBlueprintHelperTaskRuntimeClusterExecutionUtils::ExecuteComponentTaskPlanStep(
+			ComponentService,
+			FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationRemoveComponent,
+			Payload);
+
+	TestFalse(TEXT("invalid runtime delete_policy is rejected before service execution"), Result.bOk);
+	TestTrue(TEXT("parse failure is reported"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("runtime invalid delete policy code"), Result.Error->Code, FString(TEXT("unsupported_blueprint_component_policy")));
+		TestEqual(TEXT("runtime invalid delete policy stage"), Result.Error->Stage, EBlueprintHelperToolStage::ParseInput);
+		TestEqual(TEXT("runtime invalid delete policy field"), Result.Error->Field, FString(TEXT("payload.delete_policy")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskPlanComponentAdapterRejectsOperationFieldTest,
 	"BlueprintHelper.TaskPlan.ComponentAdapter.RejectsOperationField",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -234,6 +300,120 @@ bool FBlueprintHelperTaskPlanComponentAdapterRejectsOperationFieldTest::RunTest(
 	TestFalse(TEXT("blueprint_component IR rejects adapter operation field"), bBuilt);
 	TestEqual(TEXT("operation field error code"), Error.Code, FString(TEXT("unsupported_blueprint_component_operation_field")));
 	TestEqual(TEXT("operation field points at TaskPlan step operation"), Error.Field, FString(TEXT("task_plan.steps[0].operation")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanComponentAdapterHierarchyOpsTest,
+	"BlueprintHelper.TaskPlan.ComponentAdapter.HierarchyOps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanComponentAdapterHierarchyOpsTest::RunTest(const FString& Parameters)
+{
+	{
+		TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpRenameComponent);
+		TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+		Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+		Op->SetStringField(TEXT("new_component_name"), TEXT("DoorVisual"));
+
+		FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+		FBlueprintHelperToolError Error;
+		TestTrue(TEXT("rename_component lowers"), FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(Step, true, BuiltPayload, Error));
+		TestEqual(TEXT("rename adapter op"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationRenameComponent));
+		FString NewComponentName;
+		TestTrue(TEXT("rename payload carries new_component_name"), BuiltPayload.Payload->TryGetStringField(TEXT("new_component_name"), NewComponentName));
+		TestEqual(TEXT("new_component_name preserved"), NewComponentName, FString(TEXT("DoorVisual")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpReparentComponent);
+		TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+		Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+		Op->SetStringField(TEXT("new_parent_component"), TEXT("DoorRoot"));
+		Op->SetStringField(TEXT("socket_name"), TEXT("DoorSocket"));
+		Op->SetStringField(TEXT("attach_rule"), TEXT("snap_to_target"));
+		Op->SetStringField(TEXT("transform_policy"), TEXT("reset_relative"));
+
+		FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+		FBlueprintHelperToolError Error;
+		TestTrue(TEXT("reparent_component lowers"), FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(Step, false, BuiltPayload, Error));
+		TestEqual(TEXT("reparent adapter op"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationReparentComponent));
+		FString ParentComponent;
+		FString TransformPolicy;
+		TestTrue(TEXT("reparent payload carries new_parent_component"), BuiltPayload.Payload->TryGetStringField(TEXT("new_parent_component"), ParentComponent));
+		TestTrue(TEXT("reparent payload carries transform_policy"), BuiltPayload.Payload->TryGetStringField(TEXT("transform_policy"), TransformPolicy));
+		TestEqual(TEXT("new_parent_component preserved"), ParentComponent, FString(TEXT("DoorRoot")));
+		TestEqual(TEXT("transform_policy preserved"), TransformPolicy, FString(TEXT("reset_relative")));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpAttachComponent);
+		TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+		Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+		Op->SetStringField(TEXT("parent_component"), TEXT("DoorRoot"));
+		Op->SetStringField(TEXT("transform_policy"), TEXT("preserve_world"));
+
+		FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+		FBlueprintHelperToolError Error;
+		TestTrue(TEXT("attach_component lowers"), FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(Step, false, BuiltPayload, Error));
+		TestEqual(TEXT("attach adapter op"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAttachComponent));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpDetachComponent);
+		TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+		Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+		Op->SetStringField(TEXT("default_root_policy"), TEXT("create_default_scene_root_when_needed"));
+
+		FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+		FBlueprintHelperToolError Error;
+		TestTrue(TEXT("detach_component lowers"), FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(Step, false, BuiltPayload, Error));
+		TestEqual(TEXT("detach adapter op"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationDetachComponent));
+	}
+
+	{
+		TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpSetRootComponent);
+		TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+		Op->SetStringField(TEXT("component_name"), TEXT("DoorRoot"));
+		Op->SetStringField(TEXT("old_root_policy"), TEXT("remove_default_scene_root_when_empty"));
+		Op->SetStringField(TEXT("default_root_policy"), TEXT("require_scene_component"));
+
+		FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+		FBlueprintHelperToolError Error;
+		TestTrue(TEXT("set_root_component lowers"), FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(Step, false, BuiltPayload, Error));
+		TestEqual(TEXT("set root adapter op"), BuiltPayload.AdapterOperation, FString(FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationSetRootComponent));
+		FString OldRootPolicy;
+		TestTrue(TEXT("set root payload carries old_root_policy"), BuiltPayload.Payload->TryGetStringField(TEXT("old_root_policy"), OldRootPolicy));
+		TestEqual(TEXT("old_root_policy preserved"), OldRootPolicy, FString(TEXT("remove_default_scene_root_when_empty")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanComponentAdapterRejectsUnsupportedDeletePolicyTest,
+	"BlueprintHelper.TaskPlan.ComponentAdapter.RejectsUnsupportedDeletePolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanComponentAdapterRejectsUnsupportedDeletePolicyTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::MakeComponentTaskPlanStep(FBlueprintHelperComponentTaskPlanAdapter::OpRemoveComponent);
+	TSharedPtr<FJsonObject> Op = FBlueprintHelperTaskPlanComponentAdapterTestsLocalUtils::GetFirstComponentOp(Step);
+	Op->SetStringField(TEXT("component_name"), TEXT("DoorMesh"));
+	Op->SetStringField(TEXT("delete_policy"), TEXT("delete_everything"));
+
+	FBlueprintHelperComponentTaskPlanPayload BuiltPayload;
+	FBlueprintHelperToolError Error;
+	const bool bBuilt = FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
+		Step,
+		false,
+		BuiltPayload,
+		Error);
+
+	TestFalse(TEXT("unsupported delete_policy is rejected"), bBuilt);
+	TestEqual(TEXT("delete_policy error code"), Error.Code, FString(TEXT("unsupported_delete_policy")));
+	TestEqual(TEXT("delete_policy error field"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[0].delete_policy")));
 
 	return true;
 }

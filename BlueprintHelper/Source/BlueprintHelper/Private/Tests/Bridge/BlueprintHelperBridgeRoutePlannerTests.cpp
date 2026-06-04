@@ -274,6 +274,64 @@ bool FBlueprintHelperScreenshotBridgeValidator_ValidatesSemanticInputs::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperComponentBridgeValidatorRejectsInvalidPolicyEnums,
+	"BlueprintHelper.Router.Cluster.ComponentValidatorRejectsInvalidPolicyEnums",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperComponentBridgeValidatorRejectsInvalidPolicyEnums::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeValidationError Error;
+
+	TSharedPtr<FJsonObject> ReparentPayload = MakeShared<FJsonObject>();
+	ReparentPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	ReparentPayload->SetStringField(TEXT("component_name"), TEXT("Door"));
+	ReparentPayload->SetStringField(TEXT("new_parent_component"), TEXT("Root"));
+	ReparentPayload->SetStringField(TEXT("transform_policy"), TEXT("teleport_somewhere"));
+	TestFalse(
+		TEXT("reparent rejects invalid transform_policy"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("reparent_component"), ReparentPayload, Error));
+	TestEqual(TEXT("reparent transform policy field"), Error.Field, FString(TEXT("payload.transform_policy")));
+
+	TSharedPtr<FJsonObject> AttachPayload = MakeShared<FJsonObject>();
+	AttachPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	AttachPayload->SetStringField(TEXT("component_name"), TEXT("Door"));
+	AttachPayload->SetStringField(TEXT("parent_component"), TEXT("Root"));
+	AttachPayload->SetStringField(TEXT("attach_rule"), TEXT("teleport"));
+	TestFalse(
+		TEXT("attach rejects invalid attach_rule"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("attach_component"), AttachPayload, Error));
+	TestEqual(TEXT("attach rule field"), Error.Field, FString(TEXT("payload.attach_rule")));
+
+	TSharedPtr<FJsonObject> DetachPayload = MakeShared<FJsonObject>();
+	DetachPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	DetachPayload->SetStringField(TEXT("component_name"), TEXT("Door"));
+	DetachPayload->SetStringField(TEXT("default_root_policy"), TEXT("invent_root"));
+	TestFalse(
+		TEXT("detach rejects invalid default_root_policy"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("detach_component"), DetachPayload, Error));
+	TestEqual(TEXT("detach default root policy field"), Error.Field, FString(TEXT("payload.default_root_policy")));
+
+	TSharedPtr<FJsonObject> SetRootPayload = MakeShared<FJsonObject>();
+	SetRootPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	SetRootPayload->SetStringField(TEXT("component_name"), TEXT("Door"));
+	SetRootPayload->SetStringField(TEXT("old_root_policy"), TEXT("delete_everything"));
+	TestFalse(
+		TEXT("set root rejects invalid old_root_policy"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("set_root_component"), SetRootPayload, Error));
+	TestEqual(TEXT("set root old root policy field"), Error.Field, FString(TEXT("payload.old_root_policy")));
+
+	TSharedPtr<FJsonObject> RemovePayload = MakeShared<FJsonObject>();
+	RemovePayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	RemovePayload->SetStringField(TEXT("component_name"), TEXT("Door"));
+	RemovePayload->SetStringField(TEXT("delete_policy"), TEXT("silently_default"));
+	TestFalse(
+		TEXT("remove rejects invalid delete_policy"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("remove_component"), RemovePayload, Error));
+	TestEqual(TEXT("remove delete policy field"), Error.Field, FString(TEXT("payload.delete_policy")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperClassSettingsBridgeRoutes_ReparentForwardsPayload,
 	"BlueprintHelper.Router.Cluster.ClassSettingsReparentForwardsPayload",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

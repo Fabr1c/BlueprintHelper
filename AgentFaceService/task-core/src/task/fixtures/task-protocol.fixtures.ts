@@ -1362,6 +1362,250 @@ export const componentTaskPlanFixture = {
   ],
 } satisfies TaskPlan;
 
+export const componentExpansionTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_component_expansion',
+  task_type: 'edit_blueprint_components',
+  feature_name: 'ComponentExpansion',
+  target: {
+    asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+    target_type: 'blueprint',
+  },
+  behavior: {
+    component_strategy: 'component_tree',
+    changes: [
+      {
+        kind: 'ensure_component_present',
+        name: 'DoorRoot',
+        class: '/Script/Engine.SceneComponent',
+        name_collision_policy: 'block_if_class_mismatch',
+      },
+      {
+        kind: 'configure_component',
+        name: 'DoorRoot',
+        properties: [
+          {
+            property_path: 'Mobility',
+            value: 'Movable',
+          },
+        ],
+      },
+      {
+        kind: 'rename_component',
+        name: 'DoorMesh',
+        new_name: 'DoorVisual',
+      },
+      {
+        kind: 'reparent_component',
+        name: 'DoorVisual',
+        new_parent: 'DoorRoot',
+        socket: 'DoorSocket',
+        attach_rule: 'keep_world',
+        transform_policy: 'preserve_world',
+      },
+      {
+        kind: 'attach_component',
+        name: 'DoorVisual',
+        parent: 'DoorRoot',
+        socket: 'DoorSocket',
+        attach_rule: 'snap_to_target',
+        transform_policy: 'reset_relative',
+      },
+      {
+        kind: 'detach_component',
+        name: 'DoorVisual',
+        transform_policy: 'preserve_relative',
+        default_root_policy: 'create_default_scene_root_when_needed',
+      },
+      {
+        kind: 'set_root_component',
+        name: 'DoorRoot',
+        old_root_policy: 'remove_default_scene_root_when_empty',
+        default_root_policy: 'require_scene_component',
+      },
+      {
+        kind: 'remove_component',
+        name: 'DeprecatedMarker',
+        delete_policy: 'promote_children',
+      },
+    ],
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: true,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const componentExpansionExpectedTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'ComponentExpansion',
+  task_type: 'edit_blueprint_components',
+  context_id: 'ctx_component_expansion',
+  target_assets: ['/Game/Blueprints/BP_ComponentExpansion'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'add_component',
+            component_name: 'DoorRoot',
+            component_class: '/Script/Engine.SceneComponent',
+            name_collision_policy: 'block_if_class_mismatch',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_002',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'set_component_properties',
+            component_name: 'DoorRoot',
+            settings: [
+              {
+                property_path: 'Mobility',
+                value: 'Movable',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_003',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'rename_component',
+            component_name: 'DoorMesh',
+            new_component_name: 'DoorVisual',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_004',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'reparent_component',
+            component_name: 'DoorVisual',
+            new_parent_component: 'DoorRoot',
+            socket_name: 'DoorSocket',
+            attach_rule: 'keep_world',
+            transform_policy: 'preserve_world',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_005',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'attach_component',
+            component_name: 'DoorVisual',
+            parent_component: 'DoorRoot',
+            socket_name: 'DoorSocket',
+            attach_rule: 'snap_to_target',
+            transform_policy: 'reset_relative',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_006',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'detach_component',
+            component_name: 'DoorVisual',
+            transform_policy: 'preserve_relative',
+            default_root_policy: 'create_default_scene_root_when_needed',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_007',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'set_root_component',
+            component_name: 'DoorRoot',
+            old_root_policy: 'remove_default_scene_root_when_empty',
+            default_root_policy: 'require_scene_component',
+          },
+        ],
+      },
+    },
+    {
+      step_id: 'step_008',
+      capability: 'blueprint_component',
+      target: {
+        asset_path: '/Game/Blueprints/BP_ComponentExpansion',
+      },
+      write: {
+        strategy: 'component_tree',
+        ops: [
+          {
+            op: 'remove_component',
+            component_name: 'DeprecatedMarker',
+            delete_policy: 'promote_children',
+          },
+        ],
+      },
+    },
+  ],
+} satisfies TaskPlan;
+
 export const classSettingsTaskSpecFixture = {
   schema: 'BlueprintHelper.TaskSpec.v1',
   context_id: 'ctx_p1_blueprint_class_settings',

@@ -122,6 +122,19 @@ void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 			: (!Existing.LatestEvidenceId.IsEmpty() ? Existing.LatestEvidenceId : Incoming.LatestEvidenceId);
 		Target.BaselineHash = !Existing.BaselineHash.IsEmpty() ? Existing.BaselineHash : Incoming.BaselineHash;
 		Target.BeforeSnapshotJson = !Existing.BeforeSnapshotJson.IsEmpty() ? Existing.BeforeSnapshotJson : Incoming.BeforeSnapshotJson;
+		Target.ComponentId = !Incoming.ComponentId.IsEmpty() ? Incoming.ComponentId : Existing.ComponentId;
+		Target.ComponentTemplatePath = !Incoming.ComponentTemplatePath.IsEmpty() ? Incoming.ComponentTemplatePath : Existing.ComponentTemplatePath;
+		Target.ComponentOrigin = !Incoming.ComponentOrigin.IsEmpty() ? Incoming.ComponentOrigin : Existing.ComponentOrigin;
+		Target.BeforeParent = !Incoming.BeforeParent.IsEmpty() ? Incoming.BeforeParent : Existing.BeforeParent;
+		Target.AfterParent = !Incoming.AfterParent.IsEmpty() ? Incoming.AfterParent : Existing.AfterParent;
+		Target.BeforeRoot = !Incoming.BeforeRoot.IsEmpty() ? Incoming.BeforeRoot : Existing.BeforeRoot;
+		Target.AfterRoot = !Incoming.AfterRoot.IsEmpty() ? Incoming.AfterRoot : Existing.AfterRoot;
+		Target.DeletePolicy = !Incoming.DeletePolicy.IsEmpty() ? Incoming.DeletePolicy : Existing.DeletePolicy;
+		Target.DeletedComponentIdsJson = !Incoming.DeletedComponentIdsJson.IsEmpty() ? Incoming.DeletedComponentIdsJson : Existing.DeletedComponentIdsJson;
+		Target.MovedComponentIdsJson = !Incoming.MovedComponentIdsJson.IsEmpty() ? Incoming.MovedComponentIdsJson : Existing.MovedComponentIdsJson;
+		Target.ChangedPropertiesJson = !Incoming.ChangedPropertiesJson.IsEmpty() ? Incoming.ChangedPropertiesJson : Existing.ChangedPropertiesJson;
+		Target.ReadbackFingerprintBefore = !Incoming.ReadbackFingerprintBefore.IsEmpty() ? Incoming.ReadbackFingerprintBefore : Existing.ReadbackFingerprintBefore;
+		Target.ReadbackFingerprintAfter = !Incoming.ReadbackFingerprintAfter.IsEmpty() ? Incoming.ReadbackFingerprintAfter : Existing.ReadbackFingerprintAfter;
 		Target.LifecycleObjectKey = !Incoming.LifecycleObjectKey.IsEmpty()
 			? Incoming.LifecycleObjectKey
 			: Existing.LifecycleObjectKey;

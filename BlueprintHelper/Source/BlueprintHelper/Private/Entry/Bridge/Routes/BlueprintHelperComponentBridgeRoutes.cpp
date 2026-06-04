@@ -23,6 +23,17 @@ public:
 		return Response;
 	}
 
+	static FBlueprintHelperBridgeResponse MakeInvalidComponentPolicyResponse(
+		const FBlueprintHelperBridgeRequest& Request,
+		const TCHAR* FieldName,
+		const FString& Value)
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Request.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			FString::Printf(TEXT("Unsupported component %s value: %s"), FieldName, *Value));
+	}
+
 	static FBlueprintHelperSetComponentPropertiesRequest ReadComponentPropertiesRequest(
 		const TSharedPtr<FJsonObject>& Payload,
 		EBlueprintHelperComponentPropertyMode Mode)
@@ -91,6 +102,11 @@ bool FBlueprintHelperComponentBridgeRoutes::IsComponentCommand(const FString& Co
 		Command == TEXT("add_component") ||
 		Command == TEXT("set_component_property") ||
 		Command == TEXT("set_component_properties") ||
+		Command == TEXT("rename_component") ||
+		Command == TEXT("reparent_component") ||
+		Command == TEXT("attach_component") ||
+		Command == TEXT("detach_component") ||
+		Command == TEXT("set_root_component") ||
 		Command == TEXT("remove_component");
 }
 
@@ -125,12 +141,24 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 			FString AttachRule;
 			if (Request.Payload->TryGetStringField(TEXT("attach_rule"), AttachRule))
 			{
-				TryParseAttachRule(AttachRule, ServiceRequest.AttachRule);
+				if (!TryParseAttachRule(AttachRule, ServiceRequest.AttachRule))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("attach_rule"),
+						AttachRule);
+				}
 			}
 			FString NameCollisionPolicy;
 			if (Request.Payload->TryGetStringField(TEXT("name_collision_policy"), NameCollisionPolicy))
 			{
-				TryParseNameCollisionPolicy(NameCollisionPolicy, ServiceRequest.NameCollisionPolicy);
+				if (!TryParseNameCollisionPolicy(NameCollisionPolicy, ServiceRequest.NameCollisionPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("name_collision_policy"),
+						NameCollisionPolicy);
+				}
 			}
 		}
 		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
@@ -157,6 +185,174 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 			TEXT("set_component_properties 执行失败。"));
 	}
 
+	if (Request.Command == TEXT("rename_component"))
+	{
+		FBlueprintHelperRenameComponentRequest ServiceRequest;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
+			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
+			Request.Payload->TryGetStringField(TEXT("new_component_name"), ServiceRequest.NewComponentName);
+			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+		}
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
+			Request,
+			ComponentService.RenameComponent(ServiceRequest),
+			TEXT("rename_component failed."));
+	}
+
+	if (Request.Command == TEXT("reparent_component"))
+	{
+		FBlueprintHelperReparentComponentRequest ServiceRequest;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
+			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
+			Request.Payload->TryGetStringField(TEXT("new_parent_component"), ServiceRequest.NewParentComponent);
+			Request.Payload->TryGetStringField(TEXT("socket_name"), ServiceRequest.SocketName);
+			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+			FString AttachRule;
+			if (Request.Payload->TryGetStringField(TEXT("attach_rule"), AttachRule))
+			{
+				if (!TryParseAttachRule(AttachRule, ServiceRequest.AttachRule))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("attach_rule"),
+						AttachRule);
+				}
+			}
+			FString TransformPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("transform_policy"), TransformPolicy))
+			{
+				if (!TryParseComponentTransformPolicy(TransformPolicy, ServiceRequest.TransformPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("transform_policy"),
+						TransformPolicy);
+				}
+			}
+		}
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
+			Request,
+			ComponentService.ReparentComponent(ServiceRequest),
+			TEXT("reparent_component failed."));
+	}
+
+	if (Request.Command == TEXT("attach_component"))
+	{
+		FBlueprintHelperAttachComponentRequest ServiceRequest;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
+			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
+			Request.Payload->TryGetStringField(TEXT("parent_component"), ServiceRequest.ParentComponent);
+			Request.Payload->TryGetStringField(TEXT("socket_name"), ServiceRequest.SocketName);
+			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+			FString AttachRule;
+			if (Request.Payload->TryGetStringField(TEXT("attach_rule"), AttachRule))
+			{
+				if (!TryParseAttachRule(AttachRule, ServiceRequest.AttachRule))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("attach_rule"),
+						AttachRule);
+				}
+			}
+			FString TransformPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("transform_policy"), TransformPolicy))
+			{
+				if (!TryParseComponentTransformPolicy(TransformPolicy, ServiceRequest.TransformPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("transform_policy"),
+						TransformPolicy);
+				}
+			}
+		}
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
+			Request,
+			ComponentService.AttachComponent(ServiceRequest),
+			TEXT("attach_component failed."));
+	}
+
+	if (Request.Command == TEXT("detach_component"))
+	{
+		FBlueprintHelperDetachComponentRequest ServiceRequest;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
+			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
+			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+			FString TransformPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("transform_policy"), TransformPolicy))
+			{
+				if (!TryParseComponentTransformPolicy(TransformPolicy, ServiceRequest.TransformPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("transform_policy"),
+						TransformPolicy);
+				}
+			}
+			FString DefaultRootPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("default_root_policy"), DefaultRootPolicy))
+			{
+				if (!TryParseComponentDefaultRootPolicy(DefaultRootPolicy, ServiceRequest.DefaultRootPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("default_root_policy"),
+						DefaultRootPolicy);
+				}
+			}
+		}
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
+			Request,
+			ComponentService.DetachComponent(ServiceRequest),
+			TEXT("detach_component failed."));
+	}
+
+	if (Request.Command == TEXT("set_root_component"))
+	{
+		FBlueprintHelperSetRootComponentRequest ServiceRequest;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
+			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
+			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+			FString OldRootPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("old_root_policy"), OldRootPolicy))
+			{
+				if (!TryParseComponentOldRootPolicy(OldRootPolicy, ServiceRequest.OldRootPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("old_root_policy"),
+						OldRootPolicy);
+				}
+			}
+			FString DefaultRootPolicy;
+			if (Request.Payload->TryGetStringField(TEXT("default_root_policy"), DefaultRootPolicy))
+			{
+				if (!TryParseComponentDefaultRootPolicy(DefaultRootPolicy, ServiceRequest.DefaultRootPolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("default_root_policy"),
+						DefaultRootPolicy);
+				}
+			}
+		}
+		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
+			Request,
+			ComponentService.SetRootComponent(ServiceRequest),
+			TEXT("set_root_component failed."));
+	}
+
 	if (Request.Command == TEXT("remove_component"))
 	{
 		FBlueprintHelperRemoveComponentRequest ServiceRequest;
@@ -165,6 +361,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperComponentBridgeRoutes::HandleRequ
 			Request.Payload->TryGetStringField(TEXT("asset_path"), ServiceRequest.AssetPath);
 			Request.Payload->TryGetStringField(TEXT("component_name"), ServiceRequest.ComponentName);
 			Request.Payload->TryGetBoolField(TEXT("dry_run"), ServiceRequest.bDryRun);
+			FString DeletePolicy;
+			if (Request.Payload->TryGetStringField(TEXT("delete_policy"), DeletePolicy))
+			{
+				if (!TryParseComponentDeletePolicy(DeletePolicy, ServiceRequest.DeletePolicy))
+				{
+					return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeInvalidComponentPolicyResponse(
+						Request,
+						TEXT("delete_policy"),
+						DeletePolicy);
+				}
+			}
 		}
 		return FBlueprintHelperComponentBridgeRoutesLocalUtils::MakeComponentResponse(
 			Request,

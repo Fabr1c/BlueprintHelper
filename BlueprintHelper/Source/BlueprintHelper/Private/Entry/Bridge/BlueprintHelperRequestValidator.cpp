@@ -431,6 +431,55 @@ public:
 		return true;
 	}
 
+	static const TSet<FString>& AttachRuleValues()
+	{
+		static const TSet<FString> Values = {
+			TEXT("keep_relative"),
+			TEXT("keep_world"),
+			TEXT("snap_to_target"),
+		};
+		return Values;
+	}
+
+	static const TSet<FString>& ComponentTransformPolicyValues()
+	{
+		static const TSet<FString> Values = {
+			TEXT("preserve_world"),
+			TEXT("preserve_relative"),
+			TEXT("reset_relative"),
+		};
+		return Values;
+	}
+
+	static const TSet<FString>& ComponentDefaultRootPolicyValues()
+	{
+		static const TSet<FString> Values = {
+			TEXT("require_scene_component"),
+			TEXT("create_default_scene_root_when_needed"),
+		};
+		return Values;
+	}
+
+	static const TSet<FString>& ComponentOldRootPolicyValues()
+	{
+		static const TSet<FString> Values = {
+			TEXT("keep_as_child"),
+			TEXT("remove_default_scene_root_when_empty"),
+		};
+		return Values;
+	}
+
+	static const TSet<FString>& ComponentDeletePolicyValues()
+	{
+		static const TSet<FString> Values = {
+			TEXT("block_if_children"),
+			TEXT("promote_children"),
+			TEXT("delete_owned_children"),
+			TEXT("reattach_children_to_parent"),
+		};
+		return Values;
+	}
+
 };
 
 bool FBlueprintHelperRequestValidator::NormalizeExportScope(
@@ -872,7 +921,29 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("attach_rule"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 			{TEXT("name_collision_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		const TSet<FString> AttachRules = {
+			TEXT("keep_relative"),
+			TEXT("keep_world"),
+			TEXT("snap_to_target"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("attach_rule"), AttachRules, OutError))
+		{
+			return false;
+		}
+		const TSet<FString> NameCollisionPolicies = {
+			TEXT("fail_if_exists"),
+			TEXT("reuse_if_exists"),
+			TEXT("block_if_class_mismatch"),
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+			Payload,
+			TEXT("name_collision_policy"),
+			NameCollisionPolicies,
+			OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_component_property")))
 	{
@@ -900,15 +971,150 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("settings"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, true},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		const TSet<FString> AttachRules = {
+			TEXT("keep_relative"),
+			TEXT("keep_world"),
+			TEXT("snap_to_target"),
+		};
+		const TSet<FString> TransformPolicies = {
+			TEXT("preserve_world"),
+			TEXT("preserve_relative"),
+			TEXT("reset_relative"),
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("attach_rule"), AttachRules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("transform_policy"), TransformPolicies, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("rename_component")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("new_component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		const TSet<FString> AttachRules = {
+			TEXT("keep_relative"),
+			TEXT("keep_world"),
+			TEXT("snap_to_target"),
+		};
+		const TSet<FString> TransformPolicies = {
+			TEXT("preserve_world"),
+			TEXT("preserve_relative"),
+			TEXT("reset_relative"),
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("attach_rule"), AttachRules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("transform_policy"), TransformPolicies, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("reparent_component")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("new_parent_component"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("socket_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("attach_rule"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("transform_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("attach_rule"),
+				FBlueprintHelperRequestValidatorLocalUtils::AttachRuleValues(),
+				OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("transform_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentTransformPolicyValues(),
+				OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("attach_component")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parent_component"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("socket_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("attach_rule"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("transform_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("attach_rule"),
+				FBlueprintHelperRequestValidatorLocalUtils::AttachRuleValues(),
+				OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("transform_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentTransformPolicyValues(),
+				OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("detach_component")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("transform_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("default_root_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("transform_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentTransformPolicyValues(),
+				OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("default_root_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentDefaultRootPolicyValues(),
+				OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_root_component")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("old_root_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("default_root_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("old_root_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentOldRootPolicyValues(),
+				OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("default_root_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentDefaultRootPolicyValues(),
+				OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_component")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 			{TEXT("component_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("delete_policy"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
 		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError)
+			&& FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(
+				Payload,
+				TEXT("delete_policy"),
+				FBlueprintHelperRequestValidatorLocalUtils::ComponentDeletePolicyValues(),
+				OutError);
 	}
 
 	// ─── Phase 9: Blueprint Class Settings ───
@@ -1376,6 +1582,11 @@ TEXT("create_blueprint"),
 	TEXT("add_component"),
 	TEXT("set_component_property"),
 	TEXT("set_component_properties"),
+	TEXT("rename_component"),
+	TEXT("reparent_component"),
+	TEXT("attach_component"),
+	TEXT("detach_component"),
+	TEXT("set_root_component"),
 	TEXT("remove_component"),
 	TEXT("add_implemented_interface"),
 	TEXT("add_implemented_interfaces"),

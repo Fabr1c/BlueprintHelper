@@ -84,6 +84,15 @@ export function createCompiledTaskPlan(input: {
 }
 
 type TaskPlanStep = TaskPlan['steps'][number];
+const COMPONENT_TRANSFORM_POLICIES = ['preserve_world', 'preserve_relative', 'reset_relative'] as const;
+const COMPONENT_OLD_ROOT_POLICIES = ['keep_as_child', 'remove_default_scene_root_when_empty'] as const;
+const COMPONENT_DEFAULT_ROOT_POLICIES = ['require_scene_component', 'create_default_scene_root_when_needed'] as const;
+const COMPONENT_DELETE_POLICIES = [
+  'block_if_children',
+  'promote_children',
+  'delete_owned_children',
+  'reattach_children_to_parent',
+] as const;
 
 export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
   if (taskSpec.task_type === 'create_asset') {
@@ -893,7 +902,8 @@ function compileBlueprintComponentsTaskSpecToTaskPlan(
         parent_component: componentParent(change),
         socket_name: componentSocket(change),
         attach_rule: componentAttachRule(change),
-        name_collision_policy: normalizeComponentCollisionPolicy(change['on_name_conflict']),
+        name_collision_policy: normalizeComponentCollisionPolicy(change['name_collision_policy'])
+          ?? normalizeComponentCollisionPolicy(change['on_name_conflict']),
       });
       const addStep = makeCompositeCapabilityStep(
         steps.length + 1,
@@ -940,16 +950,100 @@ function compileBlueprintComponentsTaskSpecToTaskPlan(
       return;
     }
 
+    if (kind === 'rename_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [omitUndefined({
+          op: 'rename_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          new_component_name: getRequiredString(change, 'new_name', `${path}.new_name`),
+        })],
+      ));
+      return;
+    }
+
+    if (kind === 'reparent_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [omitUndefined({
+          op: 'reparent_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          new_parent_component: requiredComponentHierarchyParent(change, `${path}.new_parent`, ['new_parent']),
+          socket_name: componentSocket(change),
+          attach_rule: componentAttachRule(change),
+          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
+        })],
+      ));
+      return;
+    }
+
+    if (kind === 'attach_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [omitUndefined({
+          op: 'attach_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          parent_component: requiredComponentHierarchyParent(change, `${path}.parent`, ['parent']),
+          socket_name: componentSocket(change),
+          attach_rule: componentAttachRule(change),
+          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
+        })],
+      ));
+      return;
+    }
+
+    if (kind === 'detach_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [omitUndefined({
+          op: 'detach_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
+          default_root_policy: optionalComponentPolicyValue(change, 'default_root_policy', COMPONENT_DEFAULT_ROOT_POLICIES, `${path}.default_root_policy`, 'unsupported_default_root_policy'),
+        })],
+      ));
+      return;
+    }
+
+    if (kind === 'set_root_component') {
+      steps.push(makeCompositeCapabilityStep(
+        steps.length + 1,
+        'blueprint_component',
+        taskSpec.target.asset_path,
+        'component_tree',
+        [omitUndefined({
+          op: 'set_root_component',
+          component_name: getRequiredString(change, 'name', `${path}.name`),
+          old_root_policy: optionalComponentPolicyValue(change, 'old_root_policy', COMPONENT_OLD_ROOT_POLICIES, `${path}.old_root_policy`, 'unsupported_old_root_policy'),
+          default_root_policy: optionalComponentPolicyValue(change, 'default_root_policy', COMPONENT_DEFAULT_ROOT_POLICIES, `${path}.default_root_policy`, 'unsupported_default_root_policy'),
+        })],
+      ));
+      return;
+    }
+
     if (kind === 'remove_component') {
       steps.push(makeCompositeCapabilityStep(
         steps.length + 1,
         'blueprint_component',
         taskSpec.target.asset_path,
         'component_tree',
-        [{
+        [omitUndefined({
           op: 'remove_component',
           component_name: getRequiredString(change, 'name', `${path}.name`),
-        }],
+          delete_policy: optionalComponentPolicyValue(change, 'delete_policy', COMPONENT_DELETE_POLICIES, `${path}.delete_policy`, 'unsupported_delete_policy'),
+        })],
       ));
       return;
     }
@@ -958,7 +1052,7 @@ function compileBlueprintComponentsTaskSpecToTaskPlan(
       {
         code: 'unsupported_component_change_kind',
         path: `${path}.kind`,
-        message: 'Use ensure_component_present, configure_component, or remove_component.',
+        message: 'Use ensure_component_present, configure_component, rename_component, reparent_component, attach_component, detach_component, set_root_component, or remove_component.',
       },
     ]);
   });
@@ -5526,9 +5620,6 @@ function getRequiredLogicBody(record: Record<string, unknown>, field: string, pa
 }
 
 function compositeComponentParent(component: Record<string, unknown>): unknown {
-  if (typeof component['attach_to'] === 'string' && component['attach_to'].length > 0) {
-    return component['attach_to'];
-  }
   const attach = asRecord(component['attach']);
   return typeof attach?.['parent'] === 'string' && attach['parent'].length > 0 ? attach['parent'] : undefined;
 }
@@ -5547,10 +5638,16 @@ function compositeComponentAttachRule(component: Record<string, unknown>): unkno
 }
 
 function componentParent(component: Record<string, unknown>): unknown {
+  if (typeof component['parent'] === 'string' && component['parent'].length > 0) {
+    return component['parent'];
+  }
   return compositeComponentParent(component);
 }
 
 function componentSocket(component: Record<string, unknown>): unknown {
+  if (typeof component['socket'] === 'string' && component['socket'].length > 0) {
+    return component['socket'];
+  }
   return compositeComponentSocket(component);
 }
 
@@ -5562,7 +5659,56 @@ function normalizeComponentCollisionPolicy(value: unknown): string | undefined {
   if (value === 'reuse_existing') return 'reuse_if_exists';
   if (value === 'reuse_if_type_matches' || value === 'reuse_if_exists') return 'reuse_if_exists';
   if (value === 'fail_if_exists') return 'fail_if_exists';
+  if (value === 'block_if_class_mismatch') return 'block_if_class_mismatch';
   return undefined;
+}
+
+function optionalComponentPolicyValue<T extends readonly string[]>(
+  change: Record<string, unknown>,
+  field: string,
+  allowedValues: T,
+  path: string,
+  errorCode: string,
+): T[number] | undefined {
+  const value = change[field];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'string' && allowedValues.includes(value as T[number])) {
+    return value as T[number];
+  }
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is not supported.`, [
+    {
+      code: errorCode,
+      path,
+      message: `Supported values: ${allowedValues.join(', ')}.`,
+    },
+  ]);
+}
+
+function requiredComponentHierarchyParent(
+  change: Record<string, unknown>,
+  path: string,
+  fieldCandidates: readonly string[],
+): string {
+  for (const field of fieldCandidates) {
+    if (typeof change[field] === 'string' && change[field].length > 0) {
+      return change[field] as string;
+    }
+  }
+
+  const fallbackParent = componentParent(change);
+  if (typeof fallbackParent === 'string' && fallbackParent.length > 0) {
+    return fallbackParent;
+  }
+
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is required.`, [
+    {
+      code: 'parent_component_not_found',
+      path,
+      message: 'Provide a parent component before lowering hierarchy mutations.',
+    },
+  ]);
 }
 
 function compositeVariablePinType(record: Record<string, unknown>, path: string): Record<string, unknown> {

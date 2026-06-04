@@ -96,6 +96,31 @@ TArray<FString> FBlueprintHelperReviewActionTargetUtils::CollectScopeIdentitiesF
 		}
 		return ScopeIdentities;
 	}
+const FBlueprintHelperReviewVisibleChange* FBlueprintHelperReviewActionTargetUtils::FindLifecycleRootInRecordForTargets(
+		const FBlueprintHelperReviewRecord& Record,
+		const TArray<FString>& TargetKeys)
+	{
+		if (TargetKeys.Num() == 0)
+		{
+			return nullptr;
+		}
+
+		for (const FBlueprintHelperReviewVisibleChange& Change : Record.VisibleChanges)
+		{
+			if (!Change.bIsAssetLifecycleRoot || !Change.bRejectRemovesChildren)
+			{
+				continue;
+			}
+			for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+			{
+				if (FBlueprintHelperReviewStatusUtils::ReviewTargetMatches(Target, TargetKeys))
+				{
+					return &Change;
+				}
+			}
+		}
+		return nullptr;
+	}
 FString FBlueprintHelperReviewActionTargetUtils::MakeReviewPackageKey(FString AssetPath)
 	{
 		AssetPath.TrimStartAndEndInline();

@@ -1389,29 +1389,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleApplyReviewAc
 	{
 		FBlueprintHelperReviewRejectOptions Options;
 		const FBlueprintHelperReviewVisibleChange* LifecycleRoot = nullptr;
-		TArray<FBlueprintHelperReviewVisibleChange> PendingChanges;
 		if (TargetKeys.Num() == 1)
 		{
-			PendingChanges = ReviewStoreService.LoadPendingVisibleChanges(Record.AssetPath);
-			for (const FBlueprintHelperReviewVisibleChange& Change : PendingChanges)
-			{
-				if (!Change.bIsAssetLifecycleRoot || !Change.bRejectRemovesChildren)
-				{
-					continue;
-				}
-				for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
-				{
-					if (Target.TargetKey == TargetKeys[0])
-					{
-						LifecycleRoot = &Change;
-						break;
-					}
-				}
-				if (LifecycleRoot)
-				{
-					break;
-				}
-			}
+			LifecycleRoot = FBlueprintHelperReviewActionTargetUtils::FindLifecycleRootInRecordForTargets(
+				Record,
+				TargetKeys);
 		}
 		if (LifecycleRoot)
 		{

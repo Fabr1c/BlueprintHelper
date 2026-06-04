@@ -28,6 +28,9 @@ public:
 	static TArray<FString> CollectPendingTargetKeys(const FBlueprintHelperReviewRecord& Record);
 	static TArray<FString> CollectTargetKeysFromVisibleChange(const FBlueprintHelperReviewVisibleChange& Change);
 	static TArray<FString> CollectScopeIdentitiesFromVisibleChange(const FBlueprintHelperReviewVisibleChange& Change);
+	static const FBlueprintHelperReviewVisibleChange* FindLifecycleRootInRecordForTargets(
+				const FBlueprintHelperReviewRecord& Record,
+				const TArray<FString>& TargetKeys);
 	static FString MakeReviewPackageKey(FString AssetPath);
 	static bool ReviewAssetPathMatches(const FString& Left, const FString& Right);
 	static bool IntersectTargetKeys(

@@ -31,6 +31,7 @@ public:
 				FString& OutError);
 	static int32 FindBlueprintVariableIndex(UBlueprint* Blueprint, const FName VariableName);
 	static USCS_Node* FindScsNodeByName(UBlueprint* Blueprint, const FString& ComponentName);
+	static USCS_Node* FindScsNodeByTemplatePath(UBlueprint* Blueprint, const FString& ComponentTemplatePath);
 	static void MarkBlueprintReviewRestoreModified(UBlueprint* Blueprint);
 	static bool RestoreBlueprintVariableFromSnapshot(
 				const FBlueprintHelperReviewAtomicTarget& Target,

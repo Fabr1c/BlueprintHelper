@@ -13,10 +13,20 @@ const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::StrategyComponentTree = T
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::RuntimeOperationBlueprintComponent = TEXT("blueprint_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAddComponent = TEXT("add_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationSetComponentProperties = TEXT("set_component_properties");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationRenameComponent = TEXT("rename_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationReparentComponent = TEXT("reparent_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationAttachComponent = TEXT("attach_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationDetachComponent = TEXT("detach_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationSetRootComponent = TEXT("set_root_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::AdapterOperationRemoveComponent = TEXT("remove_component");
 
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpAddComponent = TEXT("add_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpSetComponentProperties = TEXT("set_component_properties");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpRenameComponent = TEXT("rename_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpReparentComponent = TEXT("reparent_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpAttachComponent = TEXT("attach_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpDetachComponent = TEXT("detach_component");
+const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpSetRootComponent = TEXT("set_root_component");
 const TCHAR* FBlueprintHelperComponentTaskPlanAdapter::OpRemoveComponent = TEXT("remove_component");
 
 class FBlueprintHelperComponentTaskPlanAdapterLocalUtils
@@ -154,6 +164,44 @@ public:
 		{
 			OutError = MakeComponentTaskPlanError(
 				TEXT("unsupported_blueprint_component_op_field"),
+				FString::Printf(TEXT("Unsupported blueprint component %s value: %s."), FieldName, *Value),
+				FieldPath);
+			return false;
+		}
+		return true;
+	}
+
+	static TArray<FString> ComponentAllowedValues(
+		const TCHAR* A,
+		const TCHAR* B,
+		const TCHAR* C = nullptr,
+		const TCHAR* D = nullptr)
+	{
+		TArray<FString> Values;
+		if (A) Values.Add(A);
+		if (B) Values.Add(B);
+		if (C) Values.Add(C);
+		if (D) Values.Add(D);
+		return Values;
+	}
+
+	static bool ComponentTryValidateStringEnumValues(
+		const TSharedPtr<FJsonObject>& Source,
+		const TCHAR* FieldName,
+		const FString& FieldPath,
+		const TArray<FString>& AllowedValues,
+		const FString& ErrorCode,
+		FBlueprintHelperToolError& OutError)
+	{
+		FString Value;
+		if (!Source.IsValid() || !Source->TryGetStringField(FieldName, Value))
+		{
+			return true;
+		}
+		if (!AllowedValues.Contains(Value))
+		{
+			OutError = MakeComponentTaskPlanError(
+				ErrorCode,
 				FString::Printf(TEXT("Unsupported blueprint component %s value: %s."), FieldName, *Value),
 				FieldPath);
 			return false;
@@ -365,19 +413,25 @@ public:
 			OpObject->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
 		}
 
-		if (!ComponentTryValidateStringEnum(
+		if (!ComponentTryValidateStringEnumValues(
 				OpObject,
 				TEXT("attach_rule"),
 				ComponentBuildOpFieldPath(TEXT("attach_rule")),
-				TEXT("keep_relative"),
-				TEXT("snap_to_target"),
+				ComponentAllowedValues(
+					TEXT("keep_relative"),
+					TEXT("keep_world"),
+					TEXT("snap_to_target")),
+				TEXT("unsupported_attach_rule"),
 				OutError) ||
-			!ComponentTryValidateStringEnum(
+			!ComponentTryValidateStringEnumValues(
 				OpObject,
 				TEXT("name_collision_policy"),
 				ComponentBuildOpFieldPath(TEXT("name_collision_policy")),
-				TEXT("fail_if_exists"),
-				TEXT("reuse_if_exists"),
+				ComponentAllowedValues(
+					TEXT("fail_if_exists"),
+					TEXT("reuse_if_exists"),
+					TEXT("block_if_class_mismatch")),
+				TEXT("unsupported_name_collision_policy"),
 				OutError))
 		{
 			return false;
@@ -442,6 +496,191 @@ public:
 		return true;
 	}
 
+	static bool ComponentTryCopyTransformPolicy(
+		const TSharedPtr<FJsonObject>& OpObject,
+		const TSharedRef<FJsonObject>& Payload,
+		FBlueprintHelperToolError& OutError)
+	{
+		if (!ComponentTryValidateStringEnumValues(
+			OpObject,
+			TEXT("transform_policy"),
+			ComponentBuildOpFieldPath(TEXT("transform_policy")),
+			ComponentAllowedValues(TEXT("preserve_world"), TEXT("preserve_relative"), TEXT("reset_relative")),
+			TEXT("unsupported_transform_policy"),
+			OutError))
+		{
+			return false;
+		}
+		return ComponentTryCopyOptionalString(
+			OpObject,
+			TEXT("transform_policy"),
+			ComponentBuildOpFieldPath(TEXT("transform_policy")),
+			Payload,
+			OutError);
+	}
+
+	static bool ComponentTryCopyDefaultRootPolicy(
+		const TSharedPtr<FJsonObject>& OpObject,
+		const TSharedRef<FJsonObject>& Payload,
+		FBlueprintHelperToolError& OutError)
+	{
+		if (!ComponentTryValidateStringEnumValues(
+			OpObject,
+			TEXT("default_root_policy"),
+			ComponentBuildOpFieldPath(TEXT("default_root_policy")),
+			ComponentAllowedValues(TEXT("require_scene_component"), TEXT("create_default_scene_root_when_needed")),
+			TEXT("unsupported_default_root_policy"),
+			OutError))
+		{
+			return false;
+		}
+		return ComponentTryCopyOptionalString(
+			OpObject,
+			TEXT("default_root_policy"),
+			ComponentBuildOpFieldPath(TEXT("default_root_policy")),
+			Payload,
+			OutError);
+	}
+
+	static bool ComponentTryBuildRenamePayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
+			!ComponentTryCopyStringField(OpObject, TEXT("new_component_name"), ComponentBuildOpFieldPath(TEXT("new_component_name")), Payload, OutError))
+		{
+			return false;
+		}
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool ComponentTryBuildReparentPayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
+			!ComponentTryCopyStringField(OpObject, TEXT("new_parent_component"), ComponentBuildOpFieldPath(TEXT("new_parent_component")), Payload, OutError))
+		{
+			return false;
+		}
+		if (!ComponentTryValidateStringEnumValues(
+				OpObject,
+				TEXT("attach_rule"),
+				ComponentBuildOpFieldPath(TEXT("attach_rule")),
+				ComponentAllowedValues(
+					TEXT("keep_relative"),
+					TEXT("keep_world"),
+					TEXT("snap_to_target")),
+				TEXT("unsupported_attach_rule"),
+				OutError) ||
+			!ComponentTryCopyTransformPolicy(OpObject, Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("socket_name"), ComponentBuildOpFieldPath(TEXT("socket_name")), Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("attach_rule"), ComponentBuildOpFieldPath(TEXT("attach_rule")), Payload, OutError))
+		{
+			return false;
+		}
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool ComponentTryBuildAttachPayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
+			!ComponentTryCopyStringField(OpObject, TEXT("parent_component"), ComponentBuildOpFieldPath(TEXT("parent_component")), Payload, OutError))
+		{
+			return false;
+		}
+		if (!ComponentTryValidateStringEnumValues(
+				OpObject,
+				TEXT("attach_rule"),
+				ComponentBuildOpFieldPath(TEXT("attach_rule")),
+				ComponentAllowedValues(
+					TEXT("keep_relative"),
+					TEXT("keep_world"),
+					TEXT("snap_to_target")),
+				TEXT("unsupported_attach_rule"),
+				OutError) ||
+			!ComponentTryCopyTransformPolicy(OpObject, Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("socket_name"), ComponentBuildOpFieldPath(TEXT("socket_name")), Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("attach_rule"), ComponentBuildOpFieldPath(TEXT("attach_rule")), Payload, OutError))
+		{
+			return false;
+		}
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool ComponentTryBuildDetachPayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError) ||
+			!ComponentTryCopyTransformPolicy(OpObject, Payload, OutError) ||
+			!ComponentTryCopyDefaultRootPolicy(OpObject, Payload, OutError))
+		{
+			return false;
+		}
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool ComponentTryBuildSetRootPayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError))
+		{
+			return false;
+		}
+		if (!ComponentTryValidateStringEnumValues(
+				OpObject,
+				TEXT("old_root_policy"),
+				ComponentBuildOpFieldPath(TEXT("old_root_policy")),
+				ComponentAllowedValues(TEXT("keep_as_child"), TEXT("remove_default_scene_root_when_empty")),
+				TEXT("unsupported_old_root_policy"),
+				OutError) ||
+			!ComponentTryCopyDefaultRootPolicy(OpObject, Payload, OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("old_root_policy"), ComponentBuildOpFieldPath(TEXT("old_root_policy")), Payload, OutError))
+		{
+			return false;
+		}
+		OutPayload = Payload;
+		return true;
+	}
+
 	static bool ComponentTryBuildRemovePayload(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
@@ -454,6 +693,17 @@ public:
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 
 		if (!ComponentTryCopyStringField(OpObject, TEXT("component_name"), ComponentBuildOpFieldPath(TEXT("component_name")), Payload, OutError))
+		{
+			return false;
+		}
+		if (!ComponentTryValidateStringEnumValues(
+			OpObject,
+			TEXT("delete_policy"),
+			ComponentBuildOpFieldPath(TEXT("delete_policy")),
+			ComponentAllowedValues(TEXT("block_if_children"), TEXT("promote_children"), TEXT("delete_owned_children"), TEXT("reattach_children_to_parent")),
+			TEXT("unsupported_delete_policy"),
+			OutError) ||
+			!ComponentTryCopyOptionalString(OpObject, TEXT("delete_policy"), ComponentBuildOpFieldPath(TEXT("delete_policy")), Payload, OutError))
 		{
 			return false;
 		}
@@ -520,6 +770,46 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 			return false;
 		}
 	}
+	else if (OpName == OpRenameComponent)
+	{
+		AdapterOperation = AdapterOperationRenameComponent;
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildRenamePayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == OpReparentComponent)
+	{
+		AdapterOperation = AdapterOperationReparentComponent;
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildReparentPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == OpAttachComponent)
+	{
+		AdapterOperation = AdapterOperationAttachComponent;
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildAttachPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == OpDetachComponent)
+	{
+		AdapterOperation = AdapterOperationDetachComponent;
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildDetachPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == OpSetRootComponent)
+	{
+		AdapterOperation = AdapterOperationSetRootComponent;
+		if (!FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentTryBuildSetRootPayload(AssetPath, OpObject, bEffectiveDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
 	else if (OpName == OpRemoveComponent)
 	{
 		AdapterOperation = AdapterOperationRemoveComponent;
@@ -532,7 +822,7 @@ bool FBlueprintHelperComponentTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	{
 		OutError = FBlueprintHelperComponentTaskPlanAdapterLocalUtils::MakeComponentTaskPlanError(
 			TEXT("unsupported_blueprint_component_op"),
-			TEXT("Blueprint component adapter currently supports add_component, set_component_properties, and remove_component only."),
+			TEXT("Blueprint component adapter supports add_component, set_component_properties, rename_component, reparent_component, attach_component, detach_component, set_root_component, and remove_component."),
 			FBlueprintHelperComponentTaskPlanAdapterLocalUtils::ComponentBuildOpFieldPath(TEXT("op")));
 		return false;
 	}

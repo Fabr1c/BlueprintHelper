@@ -1020,18 +1020,103 @@ export const AssetFactoryTaskSpecSchema = TaskSpecBaseSchema.extend({
   }
 });
 
+const COMPONENT_NAME_COLLISION_POLICY_VALUES = ['reuse_if_exists', 'fail_if_exists', 'block_if_class_mismatch'] as const;
+const COMPONENT_ON_NAME_CONFLICT_VALUES = [
+  'reuse_existing',
+  'reuse_if_type_matches',
+  'reuse_if_exists',
+  'fail_if_exists',
+  'block_if_class_mismatch',
+] as const;
+const COMPONENT_TRANSFORM_POLICY_VALUES = ['preserve_world', 'preserve_relative', 'reset_relative'] as const;
+const COMPONENT_OLD_ROOT_POLICY_VALUES = ['keep_as_child', 'remove_default_scene_root_when_empty'] as const;
+const COMPONENT_DEFAULT_ROOT_POLICY_VALUES = ['require_scene_component', 'create_default_scene_root_when_needed'] as const;
+const COMPONENT_DELETE_POLICY_VALUES = [
+  'block_if_children',
+  'promote_children',
+  'delete_owned_children',
+  'reattach_children_to_parent',
+] as const;
+const FORBIDDEN_AGENT_COMPONENT_FIELDS = [
+  'op',
+  'attach_to',
+  'class_spec',
+  'component_name',
+  'component_class',
+  'parent_component',
+  'new_parent_component',
+  'socket_name',
+  'new_component_name',
+  'component_id',
+  'component_template_path',
+  'component_origin',
+  'class_path',
+  'is_root',
+  'is_default_scene_root',
+  'is_owned_scs',
+  'is_inherited',
+  'is_native',
+  'can_delete',
+  'can_rename',
+  'can_reparent',
+  'children',
+  'relative_transform',
+  'selected_defaults',
+  'readback_revision',
+  'readback_fingerprint',
+  'readback_fingerprint_before',
+  'readback_fingerprint_after',
+  'before_parent',
+  'after_parent',
+  'before_root',
+  'after_root',
+  'changed_properties',
+] as const;
+
+const BlueprintComponentChangeSchema = z.object({
+  kind: z.enum([
+    'ensure_component_present',
+    'configure_component',
+    'rename_component',
+    'reparent_component',
+    'attach_component',
+    'detach_component',
+    'set_root_component',
+    'remove_component',
+  ]),
+  name: z.string().min(1).optional(),
+  class: z.string().min(1).optional(),
+  parent: z.string().min(1).optional(),
+  new_parent: z.string().min(1).optional(),
+  socket: z.string().min(1).optional(),
+  attach_rule: z.string().min(1).optional(),
+  name_collision_policy: z.enum(COMPONENT_NAME_COLLISION_POLICY_VALUES).optional(),
+  on_name_conflict: z.enum(COMPONENT_ON_NAME_CONFLICT_VALUES).optional(),
+  properties: z.array(z.record(z.unknown())).optional(),
+  attach: z.record(z.unknown()).optional(),
+  new_name: z.string().min(1).optional(),
+  transform_policy: z.enum(COMPONENT_TRANSFORM_POLICY_VALUES).optional(),
+  old_root_policy: z.enum(COMPONENT_OLD_ROOT_POLICY_VALUES).optional(),
+  default_root_policy: z.enum(COMPONENT_DEFAULT_ROOT_POLICY_VALUES).optional(),
+  delete_policy: z.enum(COMPONENT_DELETE_POLICY_VALUES).optional(),
+}).passthrough().superRefine((value, ctx) => {
+  FORBIDDEN_AGENT_COMPONENT_FIELDS.forEach((field) => {
+    if (!Object.hasOwn(value, field)) {
+      return;
+    }
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [field],
+      message: `${field} is runtime or internal component metadata and is not allowed in agent-authored component changes.`,
+    });
+  });
+});
+
 export const BlueprintComponentTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_components'),
   behavior: z.object({
     component_strategy: z.literal('component_tree'),
-    changes: z.array(z.object({
-      kind: z.string().min(1),
-      name: z.string().min(1).optional(),
-      class: z.string().min(1).optional(),
-      attach: z.record(z.unknown()).optional(),
-      on_name_conflict: z.string().min(1).optional(),
-      properties: z.array(z.record(z.unknown())).optional(),
-    }).passthrough()).min(1),
+    changes: z.array(BlueprintComponentChangeSchema).min(1),
   }).passthrough(),
 }).passthrough();
 

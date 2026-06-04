@@ -26,10 +26,20 @@ public:
 	static const TCHAR* RuntimeOperationBlueprintComponent;
 	static const TCHAR* AdapterOperationAddComponent;
 	static const TCHAR* AdapterOperationSetComponentProperties;
+	static const TCHAR* AdapterOperationRenameComponent;
+	static const TCHAR* AdapterOperationReparentComponent;
+	static const TCHAR* AdapterOperationAttachComponent;
+	static const TCHAR* AdapterOperationDetachComponent;
+	static const TCHAR* AdapterOperationSetRootComponent;
 	static const TCHAR* AdapterOperationRemoveComponent;
 
 	static const TCHAR* OpAddComponent;
 	static const TCHAR* OpSetComponentProperties;
+	static const TCHAR* OpRenameComponent;
+	static const TCHAR* OpReparentComponent;
+	static const TCHAR* OpAttachComponent;
+	static const TCHAR* OpDetachComponent;
+	static const TCHAR* OpSetRootComponent;
 	static const TCHAR* OpRemoveComponent;
 
 	static bool TryBuildPayloadFromTaskPlanStep(
