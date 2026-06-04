@@ -1119,14 +1119,15 @@ public:
 		bool bDryRun,
 		const FString& SourceNodePath = FString(),
 		const FString& SourcePinPath = FString(),
-		const FString& TargetBlockId = FString())
+		const FString& TargetBlockId = FString(),
+		const FString& SourceBlockId = FString())
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
 		Target->SetStringField(TEXT("asset_path"), AssetPath);
 		Target->SetStringField(TEXT("graph"), GraphName);
-		Target->SetStringField(TEXT("patch_scope"), TEXT("pin"));
+		Target->SetStringField(TEXT("patch_scope"), TEXT("connect_pins"));
 		Payload->SetObjectField(TEXT("target"), Target);
 
 		Payload->SetStringField(TEXT("patch_type"), TEXT("connect_pins"));
@@ -1142,6 +1143,11 @@ public:
 		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
 
 		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
+		const FString EffectiveSourceBlockId = SourceBlockId.IsEmpty() ? TargetBlockId : SourceBlockId;
+		if (!EffectiveSourceBlockId.IsEmpty())
+		{
+			Patch->SetStringField(TEXT("source_block_id"), EffectiveSourceBlockId);
+		}
 		Patch->SetStringField(TEXT("source_node_ref"), SourceNodeRef);
 		Patch->SetStringField(TEXT("source_pin_ref"), SourcePinRef);
 		if (!SourceNodePath.IsEmpty())
@@ -1152,6 +1158,128 @@ public:
 		{
 			Patch->SetStringField(TEXT("source_pin_path"), SourcePinPath);
 		}
+		Payload->SetObjectField(TEXT("patch"), Patch);
+
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakePatchDisconnectLinkPayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& SourceNodeRef,
+		const FString& SourcePinRef,
+		const FString& TargetNodeRef,
+		const FString& TargetPinRef,
+		const FString& BlockId,
+		bool bDryRun,
+		bool bWithExpectedOldState = false,
+		const FString& ExpectedSourceNodeRef = FString(),
+		const FString& ExpectedSourcePinRef = FString(),
+		const FString& ExpectedTargetNodeRef = FString(),
+		const FString& ExpectedTargetPinRef = FString())
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Target->SetStringField(TEXT("graph"), GraphName);
+		Target->SetStringField(TEXT("patch_scope"), TEXT("disconnect_link"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		Payload->SetStringField(TEXT("patch_type"), TEXT("disconnect_link"));
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		TSharedRef<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+		PatchedRef->SetStringField(TEXT("block_id"), BlockId);
+		PatchedRef->SetStringField(TEXT("node_ref"), SourceNodeRef);
+		PatchedRef->SetStringField(TEXT("pin_ref"), SourcePinRef);
+		PatchedRef->SetStringField(
+			TEXT("link_ref"),
+			FString::Printf(TEXT("%s.%s->%s.%s"), *SourceNodeRef, *SourcePinRef, *TargetNodeRef, *TargetPinRef));
+		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
+
+		Payload->SetObjectField(TEXT("patch"), MakeShared<FJsonObject>());
+
+		if (bWithExpectedOldState)
+		{
+			TSharedRef<FJsonObject> ExpectedOldState = MakeShared<FJsonObject>();
+			ExpectedOldState->SetStringField(TEXT("source_node_ref"), ExpectedSourceNodeRef);
+			ExpectedOldState->SetStringField(TEXT("source_pin_ref"), ExpectedSourcePinRef);
+			ExpectedOldState->SetStringField(TEXT("target_node_ref"), ExpectedTargetNodeRef);
+			ExpectedOldState->SetStringField(TEXT("target_pin_ref"), ExpectedTargetPinRef);
+			Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
+		}
+
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakePatchReplaceLinkPayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& SourceNodeRef,
+		const FString& SourcePinRef,
+		const FString& CurrentTargetNodeRef,
+		const FString& CurrentTargetPinRef,
+		const FString& ReplacementNodeRef,
+		const FString& ReplacementPinRef,
+		const FString& BlockId,
+		bool bDryRun)
+	{
+		TSharedRef<FJsonObject> Payload = MakePatchDisconnectLinkPayload(
+			AssetPath,
+			GraphName,
+			SourceNodeRef,
+			SourcePinRef,
+			CurrentTargetNodeRef,
+			CurrentTargetPinRef,
+			BlockId,
+			bDryRun);
+
+		const TSharedPtr<FJsonObject> Target = Payload->GetObjectField(TEXT("target"));
+		if (Target.IsValid())
+		{
+			Target->SetStringField(TEXT("patch_scope"), TEXT("replace_link"));
+		}
+		Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+
+		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
+		Patch->SetStringField(TEXT("replacement_block_id"), BlockId);
+		Patch->SetStringField(TEXT("replacement_node_ref"), ReplacementNodeRef);
+		Patch->SetStringField(TEXT("replacement_pin_ref"), ReplacementPinRef);
+		Payload->SetObjectField(TEXT("patch"), Patch);
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakePatchDeleteOwnedNodePayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& NodeRef,
+		const FString& BlockId,
+		bool bDryRun,
+		bool bBreakLinks = true,
+		bool bAllowEntryNode = false,
+		bool bAllowLifecycleRoot = false)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), AssetPath);
+		Target->SetStringField(TEXT("graph"), GraphName);
+		Target->SetStringField(TEXT("patch_scope"), TEXT("node_delete"));
+		Payload->SetObjectField(TEXT("target"), Target);
+
+		Payload->SetStringField(TEXT("patch_type"), TEXT("delete_owned_node"));
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		TSharedRef<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+		PatchedRef->SetStringField(TEXT("block_id"), BlockId);
+		PatchedRef->SetStringField(TEXT("node_ref"), NodeRef);
+		Payload->SetObjectField(TEXT("patched_ref"), PatchedRef);
+
+		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
+		Patch->SetBoolField(TEXT("break_links"), bBreakLinks);
+		Patch->SetBoolField(TEXT("allow_entry_node"), bAllowEntryNode);
+		Patch->SetBoolField(TEXT("allow_lifecycle_root"), bAllowLifecycleRoot);
 		Payload->SetObjectField(TEXT("patch"), Patch);
 
 		return Payload;
@@ -2789,13 +2917,13 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecuteRequiresSourceEndpointTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePathTest,
-	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunReportsInvalidSourceNodePath",
+	FBlueprintHelperGraphWritePatchConnectPinsRejectsSourceNodePathTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsRejectsSourceNodePath",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePathTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWritePatchConnectPinsRejectsSourceNodePathTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsInvalidSourceNodePath"));
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsRejectSourceNodePath"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
@@ -2811,7 +2939,7 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePat
 	{
 		return false;
 	}
-	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsInvalidSourceNodePath"));
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsRejectSourceNodePath"));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
@@ -2832,25 +2960,25 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourceNodePat
 			FString(),
 			BlockId));
 
-	TestFalse(TEXT("connect_pins dry-run fails on invalid source node path"), Result.bOk);
-	TestTrue(TEXT("dry-run carries invalid source node path error"), Result.Error.IsSet());
+	TestFalse(TEXT("connect_pins dry-run rejects source node path"), Result.bOk);
+	TestTrue(TEXT("dry-run carries source node path contract error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("invalid source node code"), Result.Error->Code, FString(TEXT("source_node_not_found")));
-		TestEqual(TEXT("invalid source node field"), Result.Error->Field, FString(TEXT("patch.source_node_path")));
-		TestTrue(TEXT("invalid source node message mentions path"), Result.Error->Message.Contains(TEXT("MissingSourcePath")));
+		TestEqual(TEXT("source node path contract code"), Result.Error->Code, FString(TEXT("unsupported_graph_write_anchor")));
+		TestEqual(TEXT("source node path contract field"), Result.Error->Field, FString(TEXT("patch.source_node_path")));
+		TestTrue(TEXT("source node path message mentions path field"), Result.Error->Message.Contains(TEXT("patch.source_node_path")));
 	}
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPathTest,
-	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsDryRunReportsInvalidSourcePinPath",
+	FBlueprintHelperGraphWritePatchConnectPinsRejectsSourcePinPathTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsRejectsSourcePinPath",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPathTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphWritePatchConnectPinsRejectsSourcePinPathTest::RunTest(const FString& Parameters)
 {
-	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsInvalidSourcePinPath"));
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsRejectSourcePinPath"));
 	TestNotNull(TEXT("test blueprint is created"), Blueprint);
 	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
 	{
@@ -2866,7 +2994,7 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPath
 	{
 		return false;
 	}
-	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsInvalidSourcePinPath"));
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectPinsRejectSourcePinPath"));
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
 
@@ -2887,13 +3015,13 @@ bool FBlueprintHelperGraphWritePatchConnectPinsDryRunReportsInvalidSourcePinPath
 			TEXT("MissingSourcePinPath"),
 			BlockId));
 
-	TestFalse(TEXT("connect_pins dry-run fails on invalid source pin path"), Result.bOk);
-	TestTrue(TEXT("dry-run carries invalid source pin path error"), Result.Error.IsSet());
+	TestFalse(TEXT("connect_pins dry-run rejects source pin path"), Result.bOk);
+	TestTrue(TEXT("dry-run carries source pin path contract error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
-		TestEqual(TEXT("invalid source pin code"), Result.Error->Code, FString(TEXT("source_pin_not_found")));
-		TestEqual(TEXT("invalid source pin field"), Result.Error->Field, FString(TEXT("patch.source_pin_path")));
-		TestTrue(TEXT("invalid source pin message mentions path"), Result.Error->Message.Contains(TEXT("MissingSourcePinPath")));
+		TestEqual(TEXT("source pin path contract code"), Result.Error->Code, FString(TEXT("unsupported_graph_write_anchor")));
+		TestEqual(TEXT("source pin path contract field"), Result.Error->Field, FString(TEXT("patch.source_pin_path")));
+		TestTrue(TEXT("source pin path message mentions path field"), Result.Error->Message.Contains(TEXT("patch.source_pin_path")));
 	}
 	return true;
 }
@@ -2947,6 +3075,783 @@ bool FBlueprintHelperGraphWritePatchConnectPinsExecutesViaCoordinatorTest::RunTe
 	TestTrue(TEXT("connect_pins execute succeeds"), Result.bOk);
 	TestEqual(TEXT("source then has one linked pin"), SourceThen->LinkedTo.Num(), 1);
 	TestTrue(TEXT("source then links to target execute"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchConnectPinsRejectsCrossBlockSourceRefTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchConnectPinsRejectsCrossBlockSourceRef",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchConnectPinsRejectsCrossBlockSourceRefTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchConnectPinsCrossBlockSource"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchConnectCrossBlockSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("source node exists"), Source);
+	TestNotNull(TEXT("target node exists"), Target);
+	if (!Source || !Target)
+	{
+		return false;
+	}
+
+	const FString SourceBlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectSourceBlock"));
+	const FString TargetBlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchConnectTargetBlock"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, SourceBlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, TargetBlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchConnectPinsPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			true,
+			FString(),
+			FString(),
+			TargetBlockId,
+			SourceBlockId));
+
+	TestFalse(TEXT("cross-block source ref is rejected"), Result.bOk);
+	TestTrue(TEXT("cross-block rejection carries owned patch code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("cross-block source code"), Result.Error->Code, FString(TEXT("owned_patch_cross_block_disallowed")));
+		TestEqual(TEXT("cross-block source field"), Result.Error->Field, FString(TEXT("patch.source_block_id")));
+	}
+	TestFalse(TEXT("dry-run does not connect cross-block pins"), Source->FindPin(TEXT("then")) && Source->FindPin(TEXT("then"))->LinkedTo.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDisconnectLinkRejectsExpectedOldStateTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDisconnectLinkRejectsExpectedOldState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDisconnectLinkRejectsExpectedOldStateTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDisconnectRejectExpectedOldState"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDisconnectSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, Target));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* TargetExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Target, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("target exec pin exists"), TargetExec);
+	if (!SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDisconnectRejectExpectedOldState"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			BlockId,
+			false,
+			true,
+			Source->GetName(),
+			TEXT("then"),
+			TEXT("UnexpectedTarget"),
+			TEXT("execute")));
+
+	TestFalse(TEXT("disconnect_link rejects expected_old_state"), Result.bOk);
+	TestTrue(TEXT("expected_old_state rejection carries owned patch code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("expected_old_state rejection code"), Result.Error->Code, FString(TEXT("redundant_owned_patch_expected_old_state")));
+		TestEqual(TEXT("expected_old_state rejection field"), Result.Error->Field, FString(TEXT("expected_old_state")));
+	}
+	TestTrue(TEXT("expected_old_state rejection leaves original link intact"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDisconnectLinkAcceptsGuidEndpointRefsTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDisconnectLinkAcceptsGuidEndpointRefs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDisconnectLinkAcceptsGuidEndpointRefsTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDisconnectGuidEndpointRefs"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDisconnectGuidSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, Target));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* TargetExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Target, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("target exec pin exists"), TargetExec);
+	if (!Source || !Target || !SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDisconnectGuidEndpointRefs"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
+	const FString SourceGuidRef = Source->NodeGuid.ToString(EGuidFormats::Digits);
+	const FString TargetGuidRef = Target->NodeGuid.ToString(EGuidFormats::Digits);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			SourceGuidRef,
+			TEXT("then"),
+			TargetGuidRef,
+			TEXT("execute"),
+			BlockId,
+			false));
+
+	TestTrue(TEXT("disconnect_link accepts GUID endpoint refs"), Result.bOk);
+	TestFalse(TEXT("GUID endpoint refs disconnect original link"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDisconnectLinkRejectsIndexedLinkRefTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDisconnectLinkRejectsIndexedLinkRef",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDisconnectLinkRejectsIndexedLinkRefTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDisconnectRejectIndexedLinkRef"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDisconnectIndexedSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, Target));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* TargetExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Target, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("target exec pin exists"), TargetExec);
+	if (!Source || !Target || !SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDisconnectRejectIndexedLinkRef"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			BlockId,
+			false);
+	const TSharedPtr<FJsonObject> PatchedRef = Payload->GetObjectField(TEXT("patched_ref"));
+	TestTrue(TEXT("patched_ref exists"), PatchedRef.IsValid());
+	if (!PatchedRef.IsValid())
+	{
+		return false;
+	}
+	PatchedRef->SetStringField(TEXT("link_ref"), TEXT("links[0]"));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(Payload);
+
+	TestFalse(TEXT("disconnect_link rejects indexed link_ref"), Result.bOk);
+	TestTrue(TEXT("indexed link_ref rejection carries contract code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("indexed link_ref rejection code"), Result.Error->Code, FString(TEXT("unsupported_graph_write_anchor")));
+		TestEqual(TEXT("indexed link_ref rejection field"), Result.Error->Field, FString(TEXT("patched_ref.link_ref")));
+	}
+	TestTrue(TEXT("indexed link_ref rejection leaves original link intact"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchReplaceLinkUsesReplacementRefTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchReplaceLinkUsesReplacementRef",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchReplaceLinkUsesReplacementRefTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchReplaceLinkReplacementRef"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchReplaceSource"));
+	UK2Node_CallFunction* OldTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	UK2Node_CallFunction* ReplacementTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, OldTarget));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* OldExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(OldTarget, EGPD_Input);
+	UEdGraphPin* ReplacementExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(ReplacementTarget, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("old target exec pin exists"), OldExec);
+	TestNotNull(TEXT("replacement exec pin exists"), ReplacementExec);
+	if (!SourceThen || !OldExec || !ReplacementExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchReplaceLinkReplacementRef"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldTarget, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(ReplacementTarget, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchReplaceLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			OldTarget->GetName(),
+			TEXT("execute"),
+			ReplacementTarget->GetName(),
+			TEXT("execute"),
+			BlockId,
+			false));
+
+	TestTrue(TEXT("replace_link execute succeeds"), Result.bOk);
+	TestFalse(TEXT("old link is removed"), SourceThen->LinkedTo.Contains(OldExec));
+	TestTrue(TEXT("replacement link is created"), SourceThen->LinkedTo.Contains(ReplacementExec));
+	const TArray<TSharedPtr<FJsonValue>>* BlockRefs = nullptr;
+	TestTrue(TEXT("replace_link result publishes block refs"),
+		Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("block_refs"), BlockRefs));
+	TestEqual(TEXT("replace_link result publishes owning block"),
+		BlockRefs && BlockRefs->Num() > 0 ? (*BlockRefs)[0]->AsString() : FString(),
+		BlockId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDisconnectLinkExecutesViaCoordinatorTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDisconnectLinkExecutesViaCoordinator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDisconnectLinkExecutesViaCoordinatorTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDisconnectLinkExecute"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDisconnectExecSource"));
+	UK2Node_CallFunction* Target = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, Target));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* TargetExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Target, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("target exec pin exists"), TargetExec);
+	if (!SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDisconnectLinkExecute"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Target, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			Target->GetName(),
+			TEXT("execute"),
+			BlockId,
+			false));
+
+	TestTrue(TEXT("disconnect_link execute succeeds"), Result.bOk);
+	TestFalse(TEXT("source no longer links to target"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDisconnectLinkRejectsUserAuthoredEndpointTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDisconnectLinkRejectsUserAuthoredEndpoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDisconnectLinkRejectsUserAuthoredEndpointTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDisconnectUserAuthoredEndpoint"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDisconnectOwnedSource"));
+	UK2Node_CallFunction* UserAuthoredTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, UserAuthoredTarget));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* TargetExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(UserAuthoredTarget, EGPD_Input);
+	TestNotNull(TEXT("source exec pin exists"), SourceThen);
+	TestNotNull(TEXT("target exec pin exists"), TargetExec);
+	if (!SourceThen || !TargetExec)
+	{
+		return false;
+	}
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDisconnectUserAuthoredEndpoint"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Source->GetName(),
+			TEXT("then"),
+			UserAuthoredTarget->GetName(),
+			TEXT("execute"),
+			BlockId,
+			false));
+
+	TestFalse(TEXT("disconnect_link rejects user-authored endpoint"), Result.bOk);
+	TestTrue(TEXT("original link remains after rejection"), SourceThen->LinkedTo.Contains(TargetExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchReplaceLinkRejectsMissingReplacementRefTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchReplaceLinkRejectsMissingReplacementRef",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchReplaceLinkRejectsMissingReplacementRefTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchReplaceMissingReplacement"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchReplaceMissingSource"));
+	UK2Node_CallFunction* OldTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, OldTarget));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* OldExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(OldTarget, EGPD_Input);
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchReplaceMissingReplacement"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldTarget, BlockId);
+
+	TSharedRef<FJsonObject> Payload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDisconnectLinkPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		Source->GetName(),
+		TEXT("then"),
+		OldTarget->GetName(),
+		TEXT("execute"),
+		BlockId,
+		false);
+	Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+	const TSharedPtr<FJsonObject> Target = Payload->GetObjectField(TEXT("target"));
+	if (Target.IsValid())
+	{
+		Target->SetStringField(TEXT("patch_scope"), TEXT("replace_link"));
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(Payload);
+
+	TestFalse(TEXT("replace_link rejects missing replacement ref"), Result.bOk);
+	TestTrue(TEXT("missing replacement ref reports owned patch code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("missing replacement code"), Result.Error->Code, FString(TEXT("owned_patch_replacement_ref_required")));
+	}
+	TestTrue(TEXT("original link remains after missing replacement rejection"), SourceThen && OldExec && SourceThen->LinkedTo.Contains(OldExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchReplaceLinkRejectsCrossBlockReplacementTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchReplaceLinkRejectsCrossBlockReplacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchReplaceLinkRejectsCrossBlockReplacementTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchReplaceCrossBlockReplacement"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Source = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchReplaceCrossSource"));
+	UK2Node_CallFunction* OldTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	UK2Node_CallFunction* ReplacementTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("existing link is created"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Source, OldTarget));
+	UEdGraphPin* SourceThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Source, EGPD_Output);
+	UEdGraphPin* OldExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(OldTarget, EGPD_Input);
+
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchReplaceCrossBlock"));
+	const FString ReplacementBlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchReplaceOtherBlock"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Source, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(OldTarget, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(ReplacementTarget, ReplacementBlockId);
+
+	TSharedRef<FJsonObject> Payload = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchReplaceLinkPayload(
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		Source->GetName(),
+		TEXT("then"),
+		OldTarget->GetName(),
+		TEXT("execute"),
+		ReplacementTarget->GetName(),
+		TEXT("execute"),
+		BlockId,
+		false);
+	const TSharedPtr<FJsonObject> Patch = Payload->GetObjectField(TEXT("patch"));
+	if (Patch.IsValid())
+	{
+		Patch->SetStringField(TEXT("replacement_block_id"), ReplacementBlockId);
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(Payload);
+
+	TestFalse(TEXT("replace_link rejects cross-block replacement"), Result.bOk);
+	TestTrue(TEXT("cross-block replacement reports owned patch code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("cross-block replacement code"), Result.Error->Code, FString(TEXT("owned_patch_cross_block_disallowed")));
+		TestEqual(TEXT("cross-block replacement field"), Result.Error->Field, FString(TEXT("patch.replacement_block_id")));
+	}
+	TestTrue(TEXT("original link remains after cross-block replacement rejection"), SourceThen && OldExec && SourceThen->LinkedTo.Contains(OldExec));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDeleteOwnedNodeRemovesNodeTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDeleteOwnedNodeRemovesNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDeleteOwnedNodeRemovesNodeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDeleteOwnedNode"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Entry = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDeleteEntry"));
+	UK2Node_CallFunction* DeletedTarget = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestTrue(TEXT("entry links to delete target before patch"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(Entry, DeletedTarget));
+	UEdGraphPin* EntryThen = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(Entry, EGPD_Output);
+	UEdGraphPin* DeletedExec = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(DeletedTarget, EGPD_Input);
+	TestNotNull(TEXT("delete target exists"), DeletedTarget);
+	TestNotNull(TEXT("entry then pin exists"), EntryThen);
+	TestNotNull(TEXT("deleted exec pin exists"), DeletedExec);
+	if (!Entry || !DeletedTarget)
+	{
+		return false;
+	}
+	const FString DeletedNodeName = DeletedTarget->GetName();
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDeleteOwnedNode"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Entry, BlockId);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(DeletedTarget, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDeleteOwnedNodePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			DeletedNodeName,
+			BlockId,
+			false));
+
+	TestTrue(TEXT("delete_owned_node execute succeeds"), Result.bOk);
+	TestEqual(TEXT("owned node is removed"), Graph->Nodes.Num(), NodeCountBefore - 1);
+	TestFalse(TEXT("deleted node no longer exists in graph"),
+		Graph->Nodes.ContainsByPredicate([&DeletedNodeName](UEdGraphNode* Node)
+		{
+			return Node && Node->GetName() == DeletedNodeName;
+		}));
+	TestTrue(TEXT("entry then no longer references deleted pin"), EntryThen && !EntryThen->LinkedTo.Contains(DeletedExec));
+	const TArray<TSharedPtr<FJsonValue>>* BlockRefs = nullptr;
+	TestTrue(TEXT("delete_owned_node result publishes block refs"),
+		Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("block_refs"), BlockRefs));
+	TestEqual(TEXT("delete_owned_node result publishes owning block"),
+		BlockRefs && BlockRefs->Num() > 0 ? (*BlockRefs)[0]->AsString() : FString(),
+		BlockId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsEntryNodeTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDeleteOwnedNodeRejectsEntryNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsEntryNodeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDeleteEntryNode"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Entry = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, TEXT("PatchDeleteEntryNode"));
+	TestNotNull(TEXT("entry node exists"), Entry);
+	if (!Entry)
+	{
+		return false;
+	}
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDeleteEntryNode"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(Entry, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDeleteOwnedNodePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Entry->GetName(),
+			BlockId,
+			false));
+
+	TestFalse(TEXT("delete_owned_node rejects entry node"), Result.bOk);
+	TestTrue(TEXT("entry-node rejection carries owned delete code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("entry-node delete code"), Result.Error->Code, FString(TEXT("owned_delete_entry_node_disallowed")));
+		TestEqual(TEXT("entry-node delete field"), Result.Error->Field, FString(TEXT("patched_ref.node_ref")));
+	}
+	TestEqual(TEXT("entry node remains in graph"), Graph->Nodes.Num(), NodeCountBefore);
+	TestTrue(TEXT("entry node is still present"), Graph->Nodes.Contains(Entry));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsUserAuthoredNodeTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDeleteOwnedNodeRejectsUserAuthoredNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsUserAuthoredNodeTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDeleteUserAuthoredNode"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CallFunction* UserAuthoredNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("user-authored node exists"), UserAuthoredNode);
+	if (!UserAuthoredNode)
+	{
+		return false;
+	}
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDeleteUserAuthoredNode"));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDeleteOwnedNodePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			UserAuthoredNode->GetName(),
+			BlockId,
+			false));
+
+	TestFalse(TEXT("delete_owned_node rejects user-authored node"), Result.bOk);
+	TestEqual(TEXT("user-authored delete leaves graph unchanged"), Graph->Nodes.Num(), NodeCountBefore);
+	TestTrue(TEXT("user-authored node remains in graph"), Graph->Nodes.Contains(UserAuthoredNode));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsLifecycleRootTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDeleteOwnedNodeRejectsLifecycleRoot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsLifecycleRootTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDeleteLifecycleRoot"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CallFunction* LifecycleRootNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("lifecycle root node exists"), LifecycleRootNode);
+	if (!LifecycleRootNode)
+	{
+		return false;
+	}
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDeleteLifecycleRoot"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(LifecycleRootNode, BlockId);
+	if (UPackage* Package = LifecycleRootNode->GetOutermost())
+	{
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		MetaData.SetValue(LifecycleRootNode, TEXT("BlueprintHelperLifecycleRoot"), TEXT("true"));
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDeleteOwnedNodePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			LifecycleRootNode->GetName(),
+			BlockId,
+			false));
+
+	TestFalse(TEXT("delete_owned_node rejects lifecycle root"), Result.bOk);
+	TestTrue(TEXT("lifecycle-root rejection carries owned delete code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("lifecycle-root delete code"), Result.Error->Code, FString(TEXT("owned_delete_lifecycle_root_disallowed")));
+	}
+	TestEqual(TEXT("lifecycle root delete leaves graph unchanged"), Graph->Nodes.Num(), NodeCountBefore);
+	TestTrue(TEXT("lifecycle root remains in graph"), Graph->Nodes.Contains(LifecycleRootNode));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsBreakLinksFalseTest,
+	"BlueprintHelper.GraphWrite.ToolResultBase.PatchDeleteOwnedNodeRejectsBreakLinksFalse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePatchDeleteOwnedNodeRejectsBreakLinksFalseTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("PatchDeleteBreakLinksFalse"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CallFunction* TargetNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(Graph);
+	TestNotNull(TEXT("target node exists"), TargetNode);
+	if (!TargetNode)
+	{
+		return false;
+	}
+	const int32 NodeCountBefore = Graph->Nodes.Num();
+	const FString BlockId = FString::Printf(TEXT("%s_%s"), *Graph->GetName(), TEXT("PatchDeleteBreakLinksFalse"));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(TargetNode, BlockId);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperLogicJsonPathService PathService;
+	FBlueprintHelperPatchBlueprintGraphService PatchService(Resolver, PathService);
+
+	const FBlueprintHelperToolResultBase Result = PatchService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePatchDeleteOwnedNodePayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			TargetNode->GetName(),
+			BlockId,
+			false,
+			false));
+
+	TestFalse(TEXT("delete_owned_node rejects break_links=false"), Result.bOk);
+	TestTrue(TEXT("break_links=false rejection carries policy code"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("break_links=false delete code"), Result.Error->Code, FString(TEXT("owned_delete_policy_disallowed")));
+	}
+	TestEqual(TEXT("break_links=false delete leaves graph unchanged"), Graph->Nodes.Num(), NodeCountBefore);
+	TestTrue(TEXT("target node remains in graph"), Graph->Nodes.Contains(TargetNode));
 	return true;
 }
 

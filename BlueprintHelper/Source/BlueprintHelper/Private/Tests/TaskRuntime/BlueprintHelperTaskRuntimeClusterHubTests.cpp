@@ -424,6 +424,73 @@ bool FBlueprintHelperTaskRuntimeCluster_BuildsProducerOwnedReviewEvidence::RunTe
 		ReplaceGraphWriteEvidence.AtomicTargets.Num() == 1 ? ReplaceGraphWriteEvidence.AtomicTargets[0].TargetKey : FString(),
 		FString(TEXT("graph:EventGraph:block:EventGraph_CE_DumpGlobalStateForReview0")));
 
+	FBlueprintHelperTaskRuntimeLoweredStep PatchGraphWriteStep = GraphWriteStep;
+	PatchGraphWriteStep.AdapterOperation = TEXT("patch_blueprint_graph");
+
+	FBlueprintHelperWriteReviewEvidence LinkPatchGraphWriteEvidence;
+	TestTrue(TEXT("link patch graph write cluster reads top-level block refs"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			PatchGraphWriteStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeGraphWriteAppliedResultWithTopLevelBlockRefs(
+				PatchGraphWriteStep.AdapterOperation,
+				{TEXT("EventGraph_OpenDoorLinkPatch")}),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			5,
+			LinkPatchGraphWriteEvidence));
+	TestEqual(TEXT("link patch graph write emits one graph block target"),
+		LinkPatchGraphWriteEvidence.AtomicTargets.Num(),
+		1);
+	if (LinkPatchGraphWriteEvidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+	const FBlueprintHelperReviewAtomicTarget& LinkPatchTarget = LinkPatchGraphWriteEvidence.AtomicTargets[0];
+	TestEqual(TEXT("link patch target kind is graph_block"),
+		LinkPatchTarget.TargetKind,
+		FString(TEXT("graph_block")));
+	TestEqual(TEXT("link patch target key uses actual patch block ref"),
+		LinkPatchTarget.TargetKey,
+		FString(TEXT("graph:EventGraph:block:EventGraph_OpenDoorLinkPatch")));
+	TestEqual(TEXT("link patch visual group is graph body"),
+		LinkPatchTarget.VisualGroupKey,
+		FString(TEXT("graph_body|EventGraph")));
+	TestEqual(TEXT("link patch target ownership is graph_write"),
+		LinkPatchTarget.Ownership,
+		FString(TEXT("graph_write")));
+
+	FBlueprintHelperWriteReviewEvidence DeletePatchGraphWriteEvidence;
+	TestTrue(TEXT("delete owned node graph write cluster reads top-level block refs"),
+		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+			PatchGraphWriteStep,
+			FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeGraphWriteAppliedResultWithTopLevelBlockRefs(
+				PatchGraphWriteStep.AdapterOperation,
+				{TEXT("EventGraph_DeleteDebugPrint")}),
+			TEXT("archive_cluster_evidence"),
+			TEXT("task_cluster_evidence"),
+			6,
+			DeletePatchGraphWriteEvidence));
+	TestEqual(TEXT("delete owned node patch emits one graph block target"),
+		DeletePatchGraphWriteEvidence.AtomicTargets.Num(),
+		1);
+	if (DeletePatchGraphWriteEvidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+	const FBlueprintHelperReviewAtomicTarget& DeletePatchTarget = DeletePatchGraphWriteEvidence.AtomicTargets[0];
+	TestEqual(TEXT("delete owned node target kind is graph_block"),
+		DeletePatchTarget.TargetKind,
+		FString(TEXT("graph_block")));
+	TestEqual(TEXT("delete owned node target key uses actual patch block ref"),
+		DeletePatchTarget.TargetKey,
+		FString(TEXT("graph:EventGraph:block:EventGraph_DeleteDebugPrint")));
+	TestEqual(TEXT("delete owned node visual group is graph body"),
+		DeletePatchTarget.VisualGroupKey,
+		FString(TEXT("graph_body|EventGraph")));
+	TestEqual(TEXT("delete owned node target ownership is graph_write"),
+		DeletePatchTarget.Ownership,
+		FString(TEXT("graph_write")));
+
 	FBlueprintHelperWriteReviewEvidence FailedGraphWriteEvidence;
 	TestFalse(TEXT("failed graph write step does not produce Review evidence"),
 		FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(

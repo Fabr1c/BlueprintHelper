@@ -167,6 +167,64 @@ public:
 		return Step;
 	}
 
+	static bool AssertGraphWritePatchLowering(
+		FAutomationTestBase& Test,
+		const FString& OpName,
+		const FString& PatchScope,
+		const TSharedPtr<FJsonObject>& PatchedRef,
+		const TSharedPtr<FJsonObject>& Patch,
+		const FString& ExpectedPatchType)
+	{
+		TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), OpName);
+		Op->SetStringField(TEXT("patch_scope"), PatchScope);
+		Op->SetObjectField(TEXT("patched_ref"), PatchedRef);
+		Op->SetObjectField(TEXT("patch"), Patch);
+
+		const TSharedPtr<FJsonObject> Step = MakeGraphWriteStepWithSingleOp(Op);
+		const TSharedPtr<FJsonObject> TaskPlan = MakeGraphWriteTaskPlan(Step);
+
+		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+		FBlueprintHelperToolError Error;
+		const bool bLowered = FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
+			TaskPlan,
+			Step,
+			true,
+			LoweredStep,
+			Error);
+
+		Test.TestTrue(TEXT("patch op lowers successfully"), bLowered);
+		if (!bLowered || !LoweredStep.Payload.IsValid())
+		{
+			return false;
+		}
+
+		Test.TestEqual(TEXT("patch op lowers to patch adapter"), LoweredStep.AdapterOperation, FString(TEXT("patch_blueprint_graph")));
+
+		FString PatchType;
+		Test.TestTrue(TEXT("patch payload has patch_type"), LoweredStep.Payload->TryGetStringField(TEXT("patch_type"), PatchType));
+		Test.TestEqual(TEXT("patch_type preserved"), PatchType, ExpectedPatchType);
+
+		const TSharedPtr<FJsonObject>* Target = nullptr;
+		Test.TestTrue(TEXT("patch payload has target"), LoweredStep.Payload->TryGetObjectField(TEXT("target"), Target));
+		if (Target && Target->IsValid())
+		{
+			FString LoweredPatchScope;
+			Test.TestTrue(TEXT("patch target has patch_scope"), (*Target)->TryGetStringField(TEXT("patch_scope"), LoweredPatchScope));
+			Test.TestEqual(TEXT("patch_scope preserved"), LoweredPatchScope, PatchScope);
+		}
+
+		const TSharedPtr<FJsonObject>* LoweredPatch = nullptr;
+		Test.TestTrue(TEXT("patch payload preserves patch object"), LoweredStep.Payload->TryGetObjectField(TEXT("patch"), LoweredPatch));
+		Test.TestTrue(TEXT("patch object remains valid"), LoweredPatch && LoweredPatch->IsValid());
+
+		bool bDryRun = false;
+		Test.TestTrue(TEXT("patch payload injects dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
+		Test.TestTrue(TEXT("patch dry_run=true"), bDryRun);
+
+		return PatchType == ExpectedPatchType;
+	}
+
 	static FString SerializeJsonObject(const TSharedPtr<FJsonObject>& Object)
 	{
 		FString JsonText;
@@ -366,56 +424,38 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrLoweringTest::RunTest(const 
 	TestEqual(TEXT("target.asset_path matches task plan"), AssetPath, FString(TEXT("/Game/Blueprints/BP_StoneGate")));
 	TestEqual(TEXT("target.graph matches task plan"), GraphName, FString(TEXT("BH_StoneGateActivation")));
 
-	const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* Links = nullptr;
-	TestTrue(TEXT("lowered payload contains nodes"), Payload->TryGetArrayField(TEXT("nodes"), Nodes));
-	TestTrue(TEXT("lowered payload contains links"), Payload->TryGetArrayField(TEXT("links"), Links));
-	TestEqual(TEXT("ensure_entry lowers entry plus three statements"), Nodes->Num(), 4);
-	TestEqual(TEXT("ensure_entry lowers one exec link per statement"), Links->Num(), 3);
+	const TSharedPtr<FJsonObject>* LogicSpec = nullptr;
+	TestTrue(TEXT("lowered payload contains logic_spec"), Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpec));
+	if (!LogicSpec || !LogicSpec->IsValid())
+	{
+		return false;
+	}
 
-	const TSharedPtr<FJsonObject> EntryNode = (*Nodes)[0]->AsObject();
-	const TSharedPtr<FJsonObject> FirstCallNode = (*Nodes)[1]->AsObject();
-	const TSharedPtr<FJsonObject> SetNode = (*Nodes)[2]->AsObject();
-	const TSharedPtr<FJsonObject> SecondCallNode = (*Nodes)[3]->AsObject();
+	FString LogicSchema;
+	TestTrue(TEXT("logic_spec schema recorded"), (*LogicSpec)->TryGetStringField(TEXT("schema"), LogicSchema));
+	TestEqual(TEXT("ensure_entry lowers to BlueprintLogicSpec.v2"), LogicSchema, FString(TEXT("BlueprintLogicSpec.v2")));
+
+	const TSharedPtr<FJsonObject>* EntryObject = nullptr;
+	TestTrue(TEXT("logic_spec contains entry"), (*LogicSpec)->TryGetObjectField(TEXT("entry"), EntryObject));
+	if (!EntryObject || !EntryObject->IsValid())
+	{
+		return false;
+	}
 
 	FString EntryKind;
 	FString EntryName;
-	TestTrue(TEXT("entry node kind recorded"), EntryNode->TryGetStringField(TEXT("kind"), EntryKind));
-	TestTrue(TEXT("entry node name recorded"), EntryNode->TryGetStringField(TEXT("name"), EntryName));
-	TestEqual(TEXT("entry node lowers to custom_event"), EntryKind, FString(TEXT("custom_event")));
+	TestTrue(TEXT("entry kind recorded"), (*EntryObject)->TryGetStringField(TEXT("kind"), EntryKind));
+	TestTrue(TEXT("entry name recorded"), (*EntryObject)->TryGetStringField(TEXT("name"), EntryName));
+	TestEqual(TEXT("entry lowers to custom_event"), EntryKind, FString(TEXT("custom_event")));
 	TestEqual(TEXT("entry name preserved"), EntryName, FString(TEXT("InitializeStoneGate")));
 
-	FString CallKind;
-	FString CallFunction;
-	TestTrue(TEXT("call node kind recorded"), FirstCallNode->TryGetStringField(TEXT("kind"), CallKind));
-	TestTrue(TEXT("call node function recorded"), FirstCallNode->TryGetStringField(TEXT("function"), CallFunction));
-	TestEqual(TEXT("call_function lowers to call node"), CallKind, FString(TEXT("call")));
-	TestEqual(TEXT("call_function name preserved"), CallFunction, FString(TEXT("SetActorEnableCollision")));
-
-	const TSharedPtr<FJsonObject>* CallInputs = nullptr;
-	TestTrue(TEXT("call node contains inputs"), FirstCallNode->TryGetObjectField(TEXT("inputs"), CallInputs));
-	bool bEnableCollision = false;
-	TestTrue(TEXT("literal bool arg lowered into inputs"), (*CallInputs)->TryGetBoolField(TEXT("bNewActorEnableCollision"), bEnableCollision));
-	TestTrue(TEXT("bool arg value preserved"), bEnableCollision);
-
-	FString SetKind;
-	FString SetVariable;
-	FString SetValue;
-	TestTrue(TEXT("set node kind recorded"), SetNode->TryGetStringField(TEXT("kind"), SetKind));
-	TestTrue(TEXT("set node variable recorded"), SetNode->TryGetStringField(TEXT("var"), SetVariable));
-	TestTrue(TEXT("set node value recorded"), SetNode->TryGetStringField(TEXT("value"), SetValue));
-	TestEqual(TEXT("set_member_variable lowers to set node"), SetKind, FString(TEXT("set")));
-	TestEqual(TEXT("set_member_variable variable preserved"), SetVariable, FString(TEXT("bGateUnlocked")));
-	TestEqual(TEXT("set_member_variable bool literal lowers to string"), SetValue, FString(TEXT("false")));
-
-	const TSharedPtr<FJsonObject>* SecondCallInputs = nullptr;
-	TestTrue(TEXT("second call contains inputs"), SecondCallNode->TryGetObjectField(TEXT("inputs"), SecondCallInputs));
-	FString InString;
-	double Duration = 0.0;
-	TestTrue(TEXT("string literal arg lowered into inputs"), (*SecondCallInputs)->TryGetStringField(TEXT("InString"), InString));
-	TestTrue(TEXT("numeric literal arg lowered into inputs"), (*SecondCallInputs)->TryGetNumberField(TEXT("Duration"), Duration));
-	TestEqual(TEXT("string literal preserved"), InString, FString(TEXT("Stone gate initialized")));
-	TestEqual(TEXT("float literal preserved"), Duration, 2.0);
+	const TArray<TSharedPtr<FJsonValue>>* Statements = nullptr;
+	TestTrue(TEXT("logic_spec contains statements"), (*LogicSpec)->TryGetArrayField(TEXT("statements"), Statements));
+	if (!Statements)
+	{
+		return false;
+	}
+	TestEqual(TEXT("ensure_entry preserves three body statements"), Statements->Num(), 3);
 
 	FBlueprintHelperToolResultBase ChildResult = FBlueprintHelperToolResultBuilder::DryRun(
 		TEXT("append_blueprint_graph"),
@@ -1321,9 +1361,9 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrUnsupportedOpTest::RunTest(c
 		Error);
 
 	TestFalse(TEXT("unsupported graph_write IR op is rejected"), bLowered);
-	TestEqual(TEXT("unsupported op reports graph_write IR error code"), Error.Code, FString(TEXT("unsupported_graph_write_ir_op")));
+	TestEqual(TEXT("unsupported op batch reports graph_write error code"), Error.Code, FString(TEXT("unsupported_graph_write_op_batch")));
 	TestEqual(TEXT("unsupported op reports parse_input stage"), Error.Stage, EBlueprintHelperToolStage::ParseInput);
-	TestEqual(TEXT("unsupported op points at write.ops entry"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[1].op")));
+	TestEqual(TEXT("unsupported op batch points at write.ops"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops")));
 
 	return true;
 }
@@ -1351,7 +1391,7 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLoweringTest::RunTest
 	Op->SetStringField(TEXT("op"), TEXT("replace_body"));
 	Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
 	Op->SetObjectField(TEXT("selector"), Selector);
-	Op->SetObjectField(TEXT("replacement"), Replacement);
+	Op->SetObjectField(TEXT("logic_spec"), Replacement);
 	Op->SetObjectField(TEXT("options"), Options);
 
 	const TSharedPtr<FJsonObject> Step = FBlueprintHelperObjectFirstContractTestsLocalUtils::MakeGraphWriteStepWithSingleOp(Op);
@@ -1367,16 +1407,28 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLoweringTest::RunTest
 		Error);
 
 	TestTrue(TEXT("replace_body lowers successfully"), bLowered);
+	if (!bLowered || !LoweredStep.Payload.IsValid())
+	{
+		return false;
+	}
 	TestEqual(TEXT("replace_body lowers to replace adapter"), LoweredStep.AdapterOperation, FString(TEXT("replace_blueprint_graph")));
 
 	const TSharedPtr<FJsonObject>* Target = nullptr;
 	TestTrue(TEXT("replace payload has target"), LoweredStep.Payload->TryGetObjectField(TEXT("target"), Target));
+	if (!Target || !Target->IsValid())
+	{
+		return false;
+	}
 	FString ReplaceScope;
 	TestTrue(TEXT("replace target has replace_scope"), (*Target)->TryGetStringField(TEXT("replace_scope"), ReplaceScope));
 	TestEqual(TEXT("replace_scope preserved"), ReplaceScope, FString(TEXT("custom_event_body")));
 
 	const TSharedPtr<FJsonObject>* PayloadOptions = nullptr;
 	TestTrue(TEXT("replace payload has options"), LoweredStep.Payload->TryGetObjectField(TEXT("options"), PayloadOptions));
+	if (!PayloadOptions || !PayloadOptions->IsValid())
+	{
+		return false;
+	}
 	bool bDryRun = false;
 	TestTrue(TEXT("replace options inject dry_run"), (*PayloadOptions)->TryGetBoolField(TEXT("dry_run"), bDryRun));
 	TestTrue(TEXT("replace dry_run=true"), bDryRun);
@@ -1428,6 +1480,108 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrPatchLoweringTest::RunTest(c
 	TestTrue(TEXT("patch dry_run=true"), bDryRun);
 
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrConnectPinsPatchLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrConnectPinsPatchLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrConnectPinsPatchLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+	PatchedRef->SetStringField(TEXT("block_id"), TEXT("EventGraph_OpenDoor"));
+	PatchedRef->SetStringField(TEXT("node_ref"), TEXT("Call_OpenDoor"));
+	PatchedRef->SetStringField(TEXT("pin_ref"), TEXT("execute"));
+
+	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
+	Patch->SetStringField(TEXT("source_block_id"), TEXT("EventGraph_OpenDoor"));
+	Patch->SetStringField(TEXT("source_node_ref"), TEXT("Branch_DoorReady"));
+	Patch->SetStringField(TEXT("source_pin_ref"), TEXT("then"));
+
+	return FBlueprintHelperObjectFirstContractTestsLocalUtils::AssertGraphWritePatchLowering(
+		*this,
+		TEXT("connect_pins"),
+		TEXT("connect_pins"),
+		PatchedRef,
+		Patch,
+		TEXT("connect_pins"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrDisconnectLinkPatchLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrDisconnectLinkPatchLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrDisconnectLinkPatchLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+	PatchedRef->SetStringField(TEXT("block_id"), TEXT("EventGraph_OpenDoor"));
+	PatchedRef->SetStringField(TEXT("node_ref"), TEXT("Branch_DoorReady"));
+	PatchedRef->SetStringField(TEXT("pin_ref"), TEXT("then"));
+	PatchedRef->SetStringField(TEXT("link_ref"), TEXT("Branch_DoorReady.then->Call_OpenDoor.execute"));
+
+	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
+
+	return FBlueprintHelperObjectFirstContractTestsLocalUtils::AssertGraphWritePatchLowering(
+		*this,
+		TEXT("disconnect_link"),
+		TEXT("disconnect_link"),
+		PatchedRef,
+		Patch,
+		TEXT("disconnect_link"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLinkPatchLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrReplaceLinkPatchLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrReplaceLinkPatchLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+	PatchedRef->SetStringField(TEXT("block_id"), TEXT("EventGraph_OpenDoor"));
+	PatchedRef->SetStringField(TEXT("node_ref"), TEXT("Branch_DoorReady"));
+	PatchedRef->SetStringField(TEXT("pin_ref"), TEXT("then"));
+	PatchedRef->SetStringField(TEXT("link_ref"), TEXT("Branch_DoorReady.then->Call_OpenDoor.execute"));
+
+	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
+	Patch->SetStringField(TEXT("replacement_block_id"), TEXT("EventGraph_OpenDoor"));
+	Patch->SetStringField(TEXT("replacement_node_ref"), TEXT("Call_CloseDoor"));
+	Patch->SetStringField(TEXT("replacement_pin_ref"), TEXT("execute"));
+
+	return FBlueprintHelperObjectFirstContractTestsLocalUtils::AssertGraphWritePatchLowering(
+		*this,
+		TEXT("replace_link"),
+		TEXT("replace_link"),
+		PatchedRef,
+		Patch,
+		TEXT("replace_link"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperContractTaskRuntimeGraphWriteIrDeleteOwnedNodePatchLoweringTest,
+	"BlueprintHelper.ObjectFirst.Contract.TaskRuntimeGraphWriteIrDeleteOwnedNodePatchLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperContractTaskRuntimeGraphWriteIrDeleteOwnedNodePatchLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> PatchedRef = MakeShared<FJsonObject>();
+	PatchedRef->SetStringField(TEXT("block_id"), TEXT("EventGraph_OpenDoor"));
+	PatchedRef->SetStringField(TEXT("node_ref"), TEXT("Call_DebugPrint"));
+
+	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
+	Patch->SetBoolField(TEXT("break_links"), true);
+	Patch->SetBoolField(TEXT("allow_entry_node"), false);
+	Patch->SetBoolField(TEXT("allow_lifecycle_root"), false);
+
+	return FBlueprintHelperObjectFirstContractTestsLocalUtils::AssertGraphWritePatchLowering(
+		*this,
+		TEXT("delete_owned_node"),
+		TEXT("node_delete"),
+		PatchedRef,
+		Patch,
+		TEXT("delete_owned_node"));
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

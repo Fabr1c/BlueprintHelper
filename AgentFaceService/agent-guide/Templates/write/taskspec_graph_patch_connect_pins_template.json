@@ -14,15 +14,16 @@
     "graph_strategy": "patch_owned_graph",
     "patches": [
       {
-        "kind": "set_node_position",
+        "kind": "connect_pins",
         "target_ref": {
           "block_id": "__BLOCK_ID__",
           "group_entry_node_path": "__GROUP_ENTRY_NODE_PATH__",
-          "node_ref": "__NODE_REF__"
+          "node_ref": "__TARGET_NODE_REF__",
+          "pin_ref": "__TARGET_PIN_REF__"
         },
-        "patch": {
-          "x": 100,
-          "y": 100
+        "source_ref": {
+          "node_ref": "__SOURCE_NODE_REF__",
+          "pin_ref": "__SOURCE_PIN_REF__"
         }
       }
     ]

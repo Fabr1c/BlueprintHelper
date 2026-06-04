@@ -807,9 +807,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             target_ref: {
               block_id: 'BH_DoorFeature_ToggleDoor',
               group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'nodes[1]',
+              node_ref: 'Branch_DoorReady',
               pin_ref: 'Condition',
-              link_ref: 'links[0]',
+              link_ref: 'Branch_DoorReady.Condition',
             },
             value: {
               kind: 'literal',
@@ -840,9 +840,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         patched_ref: {
           block_id: 'BH_DoorFeature_ToggleDoor',
           group_entry_node_path: 'logic.groups[0].entry.node_path',
-          node_ref: 'nodes[1]',
+          node_ref: 'Branch_DoorReady',
           pin_ref: 'Condition',
-          link_ref: 'links[0]',
+          link_ref: 'Branch_DoorReady.Condition',
         },
         patch: {
           value: 'true',
@@ -893,9 +893,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             anchor: {
               block_id: 'BH_DoorFeature_ToggleDoor',
               group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'nodes[0]',
+              node_ref: 'Branch_DoorReady',
               pin_ref: 'Then',
-              link_ref: 'links[0]',
+              link_ref: 'Branch_DoorReady.then->Call_OpenDoor.execute',
             },
             inserted: {
               call_kind: 'function_call',
@@ -919,9 +919,9 @@ describe('TaskSpec GraphWrite Append compiler', () => {
         anchor: {
           block_id: 'BH_DoorFeature_ToggleDoor',
           group_entry_node_path: 'logic.groups[0].entry.node_path',
-          node_ref: 'nodes[0]',
+          node_ref: 'Branch_DoorReady',
           pin_ref: 'Then',
-          link_ref: 'links[0]',
+          link_ref: 'Branch_DoorReady.then->Call_OpenDoor.execute',
         },
         inserted: {
           function: 'OpenDoor',
@@ -942,7 +942,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             anchor: {
               block_id: 'BH_DoorFeature_ToggleDoor',
               group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'nodes[0]',
+              node_ref: 'Branch_DoorReady',
               pin_ref: 'Then',
             },
             inserted: {
@@ -966,7 +966,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
       anchor: {
         block_id: 'BH_DoorFeature_ToggleDoor',
         group_entry_node_path: 'logic.groups[0].entry.node_path',
-        node_ref: 'nodes[0]',
+        node_ref: 'Branch_DoorReady',
         pin_ref: 'Then',
       },
       inserted: {
@@ -989,7 +989,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
             anchor: {
               block_id: 'BH_DoorFeature_ToggleDoor',
               group_entry_node_path: 'logic.groups[0].entry.node_path',
-              node_ref: 'nodes[0]',
+              node_ref: 'Branch_DoorReady',
               pin_ref: 'Then',
             },
             inserted: {
@@ -1019,6 +1019,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
           {
             kind: 'set_pin_default',
             target_ref: {
+              block_id: 'BH_DoorFeature_ToggleDoor',
               graph_id: 'EventGraph',
               node_ref: 'nodes[0]',
               pin_ref: 'Condition',

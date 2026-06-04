@@ -815,6 +815,42 @@ public:
 		return FromPin && ToPin && Schema && Schema->TryCreateConnection(FromPin, ToPin);
 	}
 
+	static UEdGraphNode* FindReviewNodeByComment(UEdGraph* Graph, const FString& NodeComment)
+	{
+		if (!Graph || NodeComment.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && Node->NodeComment == NodeComment)
+			{
+				return Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_CustomEvent* FindReviewCustomEventByFunctionName(UEdGraph* Graph, const FString& EventName)
+	{
+		if (!Graph || EventName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		const FName ExpectedName(*EventName);
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_CustomEvent* EventNode = Cast<UK2Node_CustomEvent>(Node);
+			if (EventNode && EventNode->CustomFunctionName == ExpectedName)
+			{
+				return EventNode;
+			}
+		}
+		return nullptr;
+	}
+
 	static void MarkReviewNodeAsBlueprintHelperOwned(UEdGraphNode* Node, const FString& BlockId)
 	{
 		if (!Node)
@@ -842,6 +878,124 @@ public:
 				&& !MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")).IsEmpty();
 		}
 		return false;
+	}
+
+	static int32 CountReviewOwnedNodesInBlock(UEdGraph* Graph, const FString& BlockId)
+	{
+		if (!Graph || BlockId.IsEmpty())
+		{
+			return 0;
+		}
+
+		int32 Count = 0;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+			if (UPackage* Package = Node->GetOutermost())
+			{
+				FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+				const bool bOwned = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == FString(TEXT("true"));
+				const bool bInBlock = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId")) == BlockId;
+				if (bOwned && bInBlock)
+				{
+					++Count;
+				}
+			}
+		}
+		return Count;
+	}
+
+	static bool ReviewExecLinkExists(UEdGraphNode* FromNode, UEdGraphNode* ToNode)
+	{
+		UEdGraphPin* FromPin = FindReviewExecPin(FromNode, EGPD_Output);
+		UEdGraphPin* ToPin = FindReviewExecPin(ToNode, EGPD_Input);
+		return FromPin && ToPin && FromPin->LinkedTo.Contains(ToPin) && ToPin->LinkedTo.Contains(FromPin);
+	}
+
+	static bool PopulateReviewGraphBlockDeleteTargetFromSnapshot(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FString& BlockLabel,
+		const FString& EvidenceId,
+		FBlueprintHelperReviewAtomicTarget& OutTarget,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph || BlockLabel.IsEmpty())
+		{
+			OutError = TEXT("invalid_graph_block_delete_target_fixture");
+			return false;
+		}
+
+		const FString BlockId =
+			FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), BlockLabel);
+		UEdGraphNode* SourceNode = AddReviewDestroyActorCallNode(Graph);
+		UEdGraphNode* DeletedNode = AddReviewDestroyActorCallNode(Graph);
+		if (!SourceNode || !DeletedNode)
+		{
+			OutError = TEXT("graph_block_delete_fixture_node_create_failed");
+			return false;
+		}
+		SourceNode->NodeComment = BlockLabel + TEXT("_Source");
+		DeletedNode->NodeComment = BlockLabel + TEXT("_Deleted");
+		MarkReviewNodeAsBlueprintHelperOwned(SourceNode, BlockId);
+		MarkReviewNodeAsBlueprintHelperOwned(DeletedNode, BlockId);
+
+		if (!ConnectReviewExecPins(
+			FindReviewExecPin(SourceNode, EGPD_Output),
+			FindReviewExecPin(DeletedNode, EGPD_Input)))
+		{
+			OutError = TEXT("graph_block_delete_fixture_link_create_failed");
+			return false;
+		}
+
+		OutTarget = FBlueprintHelperReviewAtomicTarget();
+		OutTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+		OutTarget.AssetPath = Blueprint->GetPathName();
+		OutTarget.GraphName = Graph->GetName();
+		OutTarget.TargetKind = TEXT("graph_block");
+		OutTarget.TargetKey = FString::Printf(TEXT("graph:%s:block:%s"), *Graph->GetName(), *BlockId);
+		OutTarget.VisualGroupKey = FString::Printf(TEXT("graph_body|%s"), *Graph->GetName());
+		OutTarget.DisplayLabel = BlockLabel;
+		OutTarget.LatestEvidenceId = EvidenceId;
+		OutTarget.SourceEvidenceIds.Add(EvidenceId);
+		OutTarget.Ownership = TEXT("graph_write");
+
+		FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+		FString BaselineHash;
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.BeforeSnapshotJson,
+			BaselineHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.BeforeSnapshotJson.IsEmpty() || BaselineHash.IsEmpty())
+		{
+			OutError = TEXT("empty_graph_block_delete_before_snapshot_fixture");
+			return false;
+		}
+
+		OutTarget.BaselineHash = BaselineHash;
+		FBlueprintEditorUtils::RemoveNode(Blueprint, DeletedNode, true);
+		Graph->NotifyGraphChanged();
+		if (!SnapshotService.CaptureTargetSnapshot(
+			OutTarget,
+			OutTarget.AfterSnapshotJson,
+			OutTarget.RecordedAfterHash,
+			OutError))
+		{
+			return false;
+		}
+		if (OutTarget.AfterSnapshotJson.IsEmpty() || OutTarget.RecordedAfterHash.IsEmpty())
+		{
+			OutError = TEXT("empty_graph_block_delete_after_snapshot_fixture");
+			return false;
+		}
+		return true;
 	}
 
 	static bool ReviewGraphContainsNode(UEdGraph* Graph, const UEdGraphNode* Node)
@@ -942,6 +1096,62 @@ bool FBlueprintHelperReviewBaselineSemanticHashCapturesGraphBlockTest::RunTest(c
 	TestEqual(TEXT("graph block hash is stable across captures"), FirstSnapshotHash, SecondSnapshotHash);
 	TestTrue(TEXT("graph block snapshot carries block id"), FirstSnapshotJson.Contains(BlockId));
 	TestTrue(TEXT("graph block snapshot carries nodes"), FirstSnapshotJson.Contains(TEXT("\"nodes\"")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewBaselineGraphBlockRestoreTextSurvivesSemanticBaselineLoadTest,
+	"BlueprintHelper.Review.Baseline.GraphBlockRestoreTextSurvivesSemanticBaselineLoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewBaselineGraphBlockRestoreTextSurvivesSemanticBaselineLoadTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(TEXT("SemanticGraphBlockRestoreText"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString BlockId = FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), TEXT("RestoreTextBlock"));
+	UK2Node_CustomEvent* FirstNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RestoreTextBlockA"));
+	UK2Node_CustomEvent* SecondNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("RestoreTextBlockB"));
+	TestNotNull(TEXT("first block node created"), FirstNode);
+	TestNotNull(TEXT("second block node created"), SecondNode);
+	if (!FirstNode || !SecondNode)
+	{
+		return false;
+	}
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(FirstNode, BlockId);
+	FBlueprintHelperReviewStoreServiceTestsLocalUtils::MarkReviewNodeAsBlueprintHelperOwned(SecondNode, BlockId);
+
+	const FString ArchiveSessionId = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_graph_block_restore_text"));
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	TArray<FString> Warnings;
+	const TArray<FString> SnapshotRefs =
+		SnapshotService.CaptureSemanticBaselineSnapshots(ArchiveSessionId, {Blueprint->GetPathName()}, &Warnings);
+	TestEqual(TEXT("one semantic baseline ref emitted"), SnapshotRefs.Num(), 1);
+	TestEqual(TEXT("semantic baseline capture has no warnings"), Warnings.Num(), 0);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_block");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:block:%s"), *Graph->GetName(), *BlockId);
+
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("baseline graph block target snapshot loaded"),
+		SnapshotService.TryLoadBaselineTargetSnapshot(ArchiveSessionId, Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("baseline graph block snapshot hash emitted"), SnapshotHash.IsEmpty());
+	TestTrue(TEXT("baseline-derived graph block snapshot carries restore text"),
+		SnapshotJson.Contains(TEXT("\"restore_text\"")));
+	TestTrue(TEXT("baseline-derived restore text contains first node"),
+		SnapshotJson.Contains(FirstNode->GetName()));
+	TestTrue(TEXT("baseline-derived restore text contains second node"),
+		SnapshotJson.Contains(SecondNode->GetName()));
 	return true;
 }
 
@@ -1578,6 +1788,99 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	TestEqual(TEXT("semantic guard still records target key"),
 		DirectResult.HashGuardTargetKey,
 		Target.TargetKey);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectGraphNodeRestoresCustomEventNameTest,
+	"BlueprintHelper.Review.Action.RejectGraphNodeRestoresCustomEventName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectGraphNodeRestoresCustomEventNameTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_graph_node_event_name"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("RejectGraphNodeEventName"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* Node = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(
+		Graph,
+		TEXT("RejectGraphNodeEventName_Before"));
+	TestNotNull(TEXT("graph node created"), Node);
+	if (!Node)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPathName();
+	Target.GraphName = Graph->GetName();
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.TargetKind = TEXT("graph_node");
+	Target.TargetKey = FString::Printf(TEXT("graph:%s:node:%s"), *Graph->GetName(), *Node->NodeGuid.ToString(EGuidFormats::Digits));
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.NodeGuid = Node->NodeGuid.ToString(EGuidFormats::Digits);
+	Target.Ownership = TEXT("blueprinthelper_owned");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotError;
+	TestTrue(TEXT("before graph node snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, Target.BeforeSnapshotJson, Target.BaselineHash, SnapshotError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.BaselineHash.IsEmpty())
+	{
+		if (!SnapshotError.IsEmpty())
+		{
+			AddError(SnapshotError);
+		}
+		return false;
+	}
+
+	Node->Modify();
+	Node->OnRenameNode(TEXT("RejectGraphNodeEventName_After"));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	TestTrue(TEXT("after graph node snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, Target.AfterSnapshotJson, Target.RecordedAfterHash, SnapshotError));
+	if (Target.AfterSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!SnapshotError.IsEmpty())
+		{
+			AddError(SnapshotError);
+		}
+		return false;
+	}
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_graph_node_event_name"),
+					TEXT("tx_reject_graph_node_event_name"),
+					Target)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saved before graph node custom event reject"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Record.ReviewRecordId,
+		{Target.TargetKey},
+		FBlueprintHelperReviewRejectOptions());
+	TestTrue(TEXT("graph node custom event reject succeeds"), Result.bSucceeded);
+
+	TestNotNull(TEXT("reject restores graph node custom event function name"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, TEXT("RejectGraphNodeEventName_Before")));
+	TestNull(TEXT("reject removes graph node after-state custom event function name"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, TEXT("RejectGraphNodeEventName_After")));
 	return true;
 }
 
@@ -6129,6 +6432,186 @@ bool FBlueprintHelperReviewRejectVariableBenchmarkTest::RunTest(const FString& P
 		*Result.Message);
 
 	TestTrue(TEXT("variable benchmark reject succeeds"), Result.bSucceeded);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectGraphBlockRestoresOwnedDeletePatchSnapshotTest,
+	"BlueprintHelper.Review.Action.RejectGraphBlockRestoresOwnedDeletePatchSnapshot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectGraphBlockRestoresOwnedDeletePatchSnapshotTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_owned_delete_patch"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("RejectOwnedDeletePatch"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString BlockLabel = TEXT("OwnedPatchDeleteReject");
+	const FString BlockId =
+		FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), BlockLabel);
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("delete patch graph block target has recoverable before and after snapshots"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewGraphBlockDeleteTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			BlockLabel,
+			TEXT("tx_reject_owned_delete_patch"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+
+	TestEqual(TEXT("after execute state keeps only the non-deleted owned node"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::CountReviewOwnedNodesInBlock(Graph, BlockId),
+		1);
+	TestNull(TEXT("after execute state removes the delete target node"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewNodeByComment(Graph, BlockLabel + TEXT("_Deleted")));
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_owned_delete_patch"),
+					TEXT("tx_reject_owned_delete_patch"),
+					Target)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saved before owned delete patch reject"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewRejectOptions Options;
+	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, TEXT("current_hash_diagnostic_only"));
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Record.ReviewRecordId,
+		{Target.TargetKey},
+		Options);
+	TestTrue(TEXT("owned delete patch graph block reject succeeds even when current hash drift is diagnostic"),
+		Result.bSucceeded);
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString RestoredSnapshotJson;
+	FString RestoredHash;
+	FString SnapshotError;
+	TestTrue(TEXT("restored graph block snapshot can be captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, RestoredSnapshotJson, RestoredHash, SnapshotError));
+	if (RestoredHash.IsEmpty())
+	{
+		if (!SnapshotError.IsEmpty())
+		{
+			AddError(SnapshotError);
+		}
+		return false;
+	}
+	TestEqual(TEXT("reject restores evidence-before graph block semantic hash"),
+		RestoredHash,
+		Target.BaselineHash);
+
+	UEdGraphNode* RestoredSourceNode =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewNodeByComment(Graph, BlockLabel + TEXT("_Source"));
+	UEdGraphNode* RestoredDeletedNode =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewNodeByComment(Graph, BlockLabel + TEXT("_Deleted"));
+	TestNotNull(TEXT("reject restores source node"), RestoredSourceNode);
+	TestNotNull(TEXT("reject restores deleted owned node"), RestoredDeletedNode);
+	TestEqual(TEXT("reject restores both owned nodes in the block"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::CountReviewOwnedNodesInBlock(Graph, BlockId),
+		2);
+	TestTrue(TEXT("reject restores owned link state"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ReviewExecLinkExists(RestoredSourceNode, RestoredDeletedNode));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewRejectGraphBlockRestoresCustomEventNamesTest,
+	"BlueprintHelper.Review.Action.RejectGraphBlockRestoresCustomEventNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewRejectGraphBlockRestoresCustomEventNamesTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewStoreService Store;
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_reject_graph_block_event_names"));
+	UBlueprint* Blueprint = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewConversionTestBlueprint(
+		TEXT("RejectGraphBlockEventNames"));
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString BlockLabel = TEXT("RejectCustomEventNameBlock");
+	const FString BlockId =
+		FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(Graph->GetName(), BlockLabel);
+	FBlueprintHelperReviewAtomicTarget Target;
+	FString TargetError;
+	TestTrue(TEXT("custom event graph block target has recoverable before and after snapshots"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::PopulateReviewGraphBlockTargetFromSnapshot(
+			Blueprint,
+			Graph,
+			BlockLabel,
+			TEXT("tx_reject_graph_block_event_names"),
+			Target,
+			TargetError));
+	if (Target.BeforeSnapshotJson.IsEmpty() || Target.RecordedAfterHash.IsEmpty())
+	{
+		if (!TargetError.IsEmpty())
+		{
+			AddError(TargetError);
+		}
+		return false;
+	}
+
+	TestNotNull(TEXT("after execute state contains added custom event"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, BlockLabel + TEXT("_C")));
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	FBlueprintHelperReviewRecord Record =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewRecordForVisibleChanges(
+			ArchiveSessionId,
+			Target.AssetPath,
+			{
+				FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewVisibleChangeForTarget(
+					TEXT("change_reject_graph_block_event_names"),
+					TEXT("tx_reject_graph_block_event_names"),
+					Target)
+			});
+	FString SaveError;
+	TestTrue(TEXT("record saved before custom event graph block reject"), Store.SaveReviewRecord(Record, SaveError));
+
+	FBlueprintHelperReviewActionService ActionService;
+	const FBlueprintHelperReviewActionResult Result = ActionService.RejectReviewTargets(
+		Record.ReviewRecordId,
+		{Target.TargetKey},
+		FBlueprintHelperReviewRejectOptions());
+	TestTrue(TEXT("custom event graph block reject succeeds"), Result.bSucceeded);
+
+	TestNotNull(TEXT("reject restores first custom event function name"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, BlockLabel + TEXT("_A")));
+	TestNotNull(TEXT("reject restores second custom event function name"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, BlockLabel + TEXT("_B")));
+	TestNull(TEXT("reject removes after-state custom event"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewCustomEventByFunctionName(Graph, BlockLabel + TEXT("_C")));
+	TestEqual(TEXT("reject restores two owned custom event nodes in the block"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::CountReviewOwnedNodesInBlock(Graph, BlockId),
+		2);
 	return true;
 }
 

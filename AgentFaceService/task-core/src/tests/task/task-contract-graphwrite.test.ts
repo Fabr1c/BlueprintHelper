@@ -169,6 +169,10 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'replace_body',
       'set_pin_default',
       'set_node_comment',
+      'connect_pins',
+      'disconnect_link',
+      'replace_link',
+      'delete_owned_node',
       'insert_flow',
       'insert_external_flow',
       'set_external_pin_default',
@@ -180,6 +184,10 @@ describe('GraphWrite TaskPlan contract metadata', () => {
       'replace_body',
       'set_pin_default',
       'set_node_comment',
+      'connect_pins',
+      'disconnect_link',
+      'replace_link',
+      'delete_owned_node',
       'insert_flow',
       'insert_external_flow',
       'set_external_pin_default',
@@ -236,6 +244,10 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     assert.deepEqual(taskSpecContract.patch_owned_graph.scope_derivation, {
       set_pin_default: 'pin_default',
       set_node_comment: 'node_comment',
+      connect_pins: 'connect_pins',
+      disconnect_link: 'disconnect_link',
+      replace_link: 'replace_link',
+      delete_owned_node: 'node_delete',
     });
     assert.deepEqual(taskSpecContract.patch_owned_graph.block_scoped_target_ref_fields, [
       'target_ref.block_id',

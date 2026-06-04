@@ -21,6 +21,7 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "HAL/FileManager.h"
+#include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/Crc.h"
 #include "Misc/DateTime.h"
@@ -967,6 +968,12 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 		Json->SetBoolField(TEXT("exists"), true);
 		Json->SetObjectField(TEXT("node"), NodeObject);
+		FString RestoreText;
+		NodeObject->TryGetStringField(TEXT("restore_text"), RestoreText);
+		if (!RestoreText.IsEmpty())
+		{
+			Json->SetStringField(TEXT("restore_text"), RestoreText);
+		}
 		return Json;
 	}
 
@@ -1017,15 +1024,30 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		});
 
 		TArray<TSharedPtr<FJsonValue>> Nodes;
+		FString RestoreText;
 		for (const TSharedPtr<FJsonObject>& NodeObject : BlockNodes)
 		{
 			if (NodeObject.IsValid())
 			{
 				Nodes.Add(MakeShared<FJsonValueObject>(NodeObject));
+				FString NodeRestoreText;
+				NodeObject->TryGetStringField(TEXT("restore_text"), NodeRestoreText);
+				if (!NodeRestoreText.IsEmpty())
+				{
+					RestoreText += NodeRestoreText;
+					if (!RestoreText.EndsWith(TEXT("\n")))
+					{
+						RestoreText += LINE_TERMINATOR;
+					}
+				}
 			}
 		}
 		Json->SetBoolField(TEXT("exists"), Nodes.Num() > 0);
 		Json->SetArrayField(TEXT("nodes"), Nodes);
+		if (!RestoreText.IsEmpty())
+		{
+			Json->SetStringField(TEXT("restore_text"), RestoreText);
+		}
 		if (Nodes.Num() == 0)
 		{
 			Json->SetStringField(TEXT("resolve_error_code"), TEXT("block_not_found"));
@@ -1295,9 +1317,19 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildNode
 	Json->SetStringField(TEXT("guid"), Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString());
 	Json->SetStringField(TEXT("class"), FBlueprintHelperReviewBaselineSnapshotServiceUtils::GetObjectClassPathNameSafe(Node));
 	Json->SetStringField(TEXT("title"), Node ? Node->GetNodeTitle(ENodeTitleType::ListView).ToString() : FString());
+	if (const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node))
+	{
+		Json->SetStringField(TEXT("custom_function_name"), CustomEvent->CustomFunctionName.ToString());
+	}
 	Json->SetStringField(TEXT("block_id"), UBlueprintHelperReviewUtils::GetReviewSnapshotNodeBlockId(Node));
 	Json->SetNumberField(TEXT("x"), Node ? Node->NodePosX : 0);
 	Json->SetNumberField(TEXT("y"), Node ? Node->NodePosY : 0);
+	if (Node)
+	{
+		TArray<const UEdGraphNode*> RestoreNodes;
+		RestoreNodes.Add(Node);
+		Json->SetStringField(TEXT("restore_text"), UBlueprintHelperReviewUtils::BuildReviewSnapshotRestoreText(RestoreNodes));
+	}
 
 	TArray<TSharedPtr<FJsonValue>> Pins;
 	if (Node)

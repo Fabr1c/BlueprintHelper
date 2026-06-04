@@ -18,6 +18,7 @@ enum class EBlueprintHelperPatchScope : uint8
 	ConnectPins,
 	DisconnectLink,
 	ReplaceLink,
+	NodeDelete,
 	CallTarget,
 	LocalVariableRef
 };
@@ -32,6 +33,7 @@ inline const TCHAR* PatchScopeToString(EBlueprintHelperPatchScope Scope)
 	case EBlueprintHelperPatchScope::ConnectPins:       return TEXT("connect_pins");
 	case EBlueprintHelperPatchScope::DisconnectLink:    return TEXT("disconnect_link");
 	case EBlueprintHelperPatchScope::ReplaceLink:       return TEXT("replace_link");
+	case EBlueprintHelperPatchScope::NodeDelete:        return TEXT("node_delete");
 	case EBlueprintHelperPatchScope::CallTarget:        return TEXT("call_target");
 	case EBlueprintHelperPatchScope::LocalVariableRef:  return TEXT("local_variable_ref");
 	default:                                            return TEXT("unknown");
@@ -46,6 +48,7 @@ inline bool ParsePatchScope(const FString& Str, EBlueprintHelperPatchScope& Out)
 	if (Str.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))      { Out = EBlueprintHelperPatchScope::ConnectPins; return true; }
 	if (Str.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase))   { Out = EBlueprintHelperPatchScope::DisconnectLink; return true; }
 	if (Str.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))      { Out = EBlueprintHelperPatchScope::ReplaceLink; return true; }
+	if (Str.Equals(TEXT("node_delete"), ESearchCase::IgnoreCase))       { Out = EBlueprintHelperPatchScope::NodeDelete; return true; }
 	if (Str.Equals(TEXT("call_target"), ESearchCase::IgnoreCase))       { Out = EBlueprintHelperPatchScope::CallTarget; return true; }
 	if (Str.Equals(TEXT("local_variable_ref"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperPatchScope::LocalVariableRef; return true; }
 	return false;
@@ -61,6 +64,7 @@ enum class EBlueprintHelperPatchType : uint8
 	ConnectPins,
 	DisconnectLink,
 	ReplaceLink,
+	DeleteOwnedNode,
 	SetCallTarget,
 	RenameLocalVariableRef
 };
@@ -75,6 +79,7 @@ inline const TCHAR* PatchTypeToString(EBlueprintHelperPatchType Type)
 	case EBlueprintHelperPatchType::ConnectPins:             return TEXT("connect_pins");
 	case EBlueprintHelperPatchType::DisconnectLink:          return TEXT("disconnect_link");
 	case EBlueprintHelperPatchType::ReplaceLink:             return TEXT("replace_link");
+	case EBlueprintHelperPatchType::DeleteOwnedNode:         return TEXT("delete_owned_node");
 	case EBlueprintHelperPatchType::SetCallTarget:           return TEXT("set_call_target");
 	case EBlueprintHelperPatchType::RenameLocalVariableRef:  return TEXT("rename_local_variable_ref");
 	default:                                                 return TEXT("unknown");
@@ -89,6 +94,7 @@ inline bool ParsePatchType(const FString& Str, EBlueprintHelperPatchType& Out)
 	if (Str.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))               { Out = EBlueprintHelperPatchType::ConnectPins; return true; }
 	if (Str.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase))            { Out = EBlueprintHelperPatchType::DisconnectLink; return true; }
 	if (Str.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))               { Out = EBlueprintHelperPatchType::ReplaceLink; return true; }
+	if (Str.Equals(TEXT("delete_owned_node"), ESearchCase::IgnoreCase))          { Out = EBlueprintHelperPatchType::DeleteOwnedNode; return true; }
 	if (Str.Equals(TEXT("set_call_target"), ESearchCase::IgnoreCase))            { Out = EBlueprintHelperPatchType::SetCallTarget; return true; }
 	if (Str.Equals(TEXT("rename_local_variable_ref"), ESearchCase::IgnoreCase))  { Out = EBlueprintHelperPatchType::RenameLocalVariableRef; return true; }
 	return false;
@@ -163,6 +169,7 @@ inline const TCHAR* PatchErrorCodeToString(EBlueprintHelperPatchErrorCode Code)
 struct FBlueprintHelperPatchedRef
 {
 	FString GraphId;
+	TOptional<FString> BlockId;
 	TOptional<FString> NodeRef;
 	TOptional<FString> PinRef;
 	TOptional<FString> LinkRef;
@@ -174,6 +181,7 @@ struct FBlueprintHelperPatchedRef
 	{
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		Json->SetStringField(TEXT("graph_id"), GraphId);
+		if (BlockId.IsSet()) Json->SetStringField(TEXT("block_id"), *BlockId);
 		if (NodeRef.IsSet()) Json->SetStringField(TEXT("node_ref"), *NodeRef);
 		if (PinRef.IsSet()) Json->SetStringField(TEXT("pin_ref"), *PinRef);
 		if (LinkRef.IsSet()) Json->SetStringField(TEXT("link_ref"), *LinkRef);
@@ -219,6 +227,7 @@ struct FBlueprintHelperPatchGraphResultData
 	FString Schema = TEXT("PatchBlueprintGraph.v1");
 	FBlueprintHelperPatchGraphResult PatchResult;
 	FBlueprintHelperWriteRef WriteRef;
+	TArray<FString> BlockRefs;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -226,6 +235,15 @@ struct FBlueprintHelperPatchGraphResultData
 		Json->SetStringField(TEXT("schema"), Schema);
 		Json->SetObjectField(TEXT("patch_result"), PatchResult.ToJson());
 		Json->SetObjectField(TEXT("write_ref"), WriteRef.ToJson());
+		if (BlockRefs.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Arr;
+			for (const FString& Ref : BlockRefs)
+			{
+				Arr.Add(MakeShared<FJsonValueString>(Ref));
+			}
+			Json->SetArrayField(TEXT("block_refs"), Arr);
+		}
 		return Json;
 	}
 };

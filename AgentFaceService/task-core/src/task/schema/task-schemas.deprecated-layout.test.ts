@@ -52,9 +52,30 @@ test('GraphWrite public contract does not advertise deprecated layout patch sema
   const patchContract = taskSpecContract.patch_owned_graph;
   const taskPlanIrContract = contract.graph_write_taskplan_ir_contract;
 
-  assert.deepEqual(patchContract.kinds, ['set_pin_default', 'set_node_comment']);
-  assert.deepEqual(Object.keys(patchContract.scope_derivation).sort(), ['set_node_comment', 'set_pin_default']);
-  assert.deepEqual(Object.keys(patchContract.field_shapes).sort(), ['set_node_comment', 'set_pin_default']);
+  assert.deepEqual(patchContract.kinds, [
+    'set_pin_default',
+    'set_node_comment',
+    'connect_pins',
+    'disconnect_link',
+    'replace_link',
+    'delete_owned_node',
+  ]);
+  assert.deepEqual(Object.keys(patchContract.scope_derivation).sort(), [
+    'connect_pins',
+    'delete_owned_node',
+    'disconnect_link',
+    'replace_link',
+    'set_node_comment',
+    'set_pin_default',
+  ]);
+  assert.deepEqual(Object.keys(patchContract.field_shapes).sort(), [
+    'connect_pins',
+    'delete_owned_node',
+    'disconnect_link',
+    'replace_link',
+    'set_node_comment',
+    'set_pin_default',
+  ]);
   assert.equal(JSON.stringify(taskSpecContract).includes('set_node_position'), false);
   assert.equal(JSON.stringify(taskSpecContract).includes('node_position'), false);
   assert.equal(JSON.stringify(taskSpecContract).includes('preserve_layout'), false);

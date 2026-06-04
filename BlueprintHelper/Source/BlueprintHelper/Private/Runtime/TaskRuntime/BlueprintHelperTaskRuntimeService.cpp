@@ -2612,6 +2612,22 @@ public:
 		{
 			return TEXT("node_comment");
 		}
+		if (OpName == TEXT("connect_pins"))
+		{
+			return TEXT("connect_pins");
+		}
+		if (OpName == TEXT("disconnect_link"))
+		{
+			return TEXT("disconnect_link");
+		}
+		if (OpName == TEXT("replace_link"))
+		{
+			return TEXT("replace_link");
+		}
+		if (OpName == TEXT("delete_owned_node"))
+		{
+			return TEXT("node_delete");
+		}
 		return TEXT("pin_default");
 	}
 
@@ -3048,7 +3064,11 @@ public:
 			return TryBuildGraphWriteIrReplacePayload(TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
 		}
 		if (OpName == TEXT("set_pin_default") ||
-			OpName == TEXT("set_node_comment"))
+			OpName == TEXT("set_node_comment") ||
+			OpName == TEXT("connect_pins") ||
+			OpName == TEXT("disconnect_link") ||
+			OpName == TEXT("replace_link") ||
+			OpName == TEXT("delete_owned_node"))
 		{
 			OutAdapterOperation = TEXT("patch_blueprint_graph");
 			return TryBuildGraphWriteIrPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);

@@ -556,6 +556,17 @@ bool FBlueprintHelperGraphWriteBlockScopedResolver::ResolveLink(
 
 	if (!Anchor.LinkRef.IsEmpty())
 	{
+		FBlueprintHelperPatchResolveError LinkRefPathError;
+		if (Anchor.LinkRef.Contains(TEXT("->")) &&
+			FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveLinkPathInBlock(
+				BlockNodes,
+				Anchor.LinkRef,
+				OutLink,
+				LinkRefPathError))
+		{
+			return true;
+		}
+
 		const int32 MatchCount = FBlueprintHelperGraphWriteBlockScopedResolverLocalUtils::ResolveLinkRefMatchesInBlock(
 			BlockNodes,
 			Anchor.LinkRef,

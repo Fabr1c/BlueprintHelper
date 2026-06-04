@@ -90,12 +90,19 @@ Local-variable replication is unsupported. Do not place
 | Append representative generic op, transform, struct/select, create, and branch statements | `taskspec_graph_append_generic_ops_template.json` |
 | Replace an owned graph block | `taskspec_graph_replace_owned_template.json` |
 | Patch node comment | `taskspec_graph_patch_node_comment_template.json` |
-| Patch node position | `taskspec_graph_patch_node_position_template.json` |
 | Patch pin default value | `taskspec_graph_patch_pin_default_template.json` |
+| Connect two owned pins inside one block | `taskspec_graph_patch_connect_pins_template.json` |
+| Disconnect an owned link inside one block | `taskspec_graph_patch_disconnect_link_template.json` |
+| Replace an owned link target inside one block | `taskspec_graph_patch_replace_link_template.json` |
+| Delete a non-root owned node inside one block | `taskspec_graph_patch_delete_owned_node_template.json` |
 | Merge by appending after an owned anchor | `taskspec_graph_merge_append_after_template.json` |
 | Merge by inserting between owned flow links | `taskspec_graph_merge_insert_between_template.json` |
 | Merge by branching from an owned flow anchor | `taskspec_graph_merge_branch_fork_template.json` |
 | Merge a new BlueprintHelper-owned body into an external user-authored exec flow | `taskspec_graph_merge_external_flow_template.json` |
+
+### Owned Link/Delete Patch
+
+Use `patch_owned_graph` only when `blueprinthelper_read_context` with `view.format=logic_json` provides a grouped owned block with stable `block_id`, `group_entry_node_path`, `node_ref`, `pin_ref`, and, for link operations, `link_ref`. Put `block_id` and `group_entry_node_path` only on `target_ref`; `source_ref` and `replacement_ref` carry same-block `node_ref` and `pin_ref`, with the block derived by the compiler. P0-D owned link/delete patches do not use `expected_old_state`; link state comes from `target_ref.link_ref`. Use safe `delete_policy` for `delete_owned_node`. Do not use these templates for user-authored nodes or external graph anchors.
 
 ## UMG, Data, And UObject Edits
 

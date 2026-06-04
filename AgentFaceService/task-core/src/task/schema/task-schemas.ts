@@ -446,33 +446,160 @@ const GraphWriteReplaceSchema = z.object({
   }
 });
 
+function requireGraphWritePatchRefString(
+  ctx: z.RefinementCtx,
+  ref: Record<string, unknown> | undefined,
+  path: readonly string[],
+  field: string,
+): string | undefined {
+  const value = ref?.[field];
+  if (typeof value === 'string' && value.length > 0) {
+    return value;
+  }
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: [...path, field],
+    message: `${path.join('.')}.${field} is required.`,
+  });
+  return undefined;
+}
+
+function rejectRedundantGraphWriteEndpointBlockId(
+  ctx: z.RefinementCtx,
+  ref: Record<string, unknown> | undefined,
+  path: string,
+): void {
+  if (ref && Object.hasOwn(ref, 'block_id')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [path, 'block_id'],
+      message: `${path}.block_id is redundant; the compiler derives it from target_ref.block_id.`,
+    });
+  }
+}
+
 const GraphWritePatchSchema = z.object({
-  kind: z.enum(['set_pin_default', 'set_node_comment']),
+  kind: z.enum([
+    'set_pin_default',
+    'set_node_comment',
+    'connect_pins',
+    'disconnect_link',
+    'replace_link',
+    'delete_owned_node',
+  ]),
   scope: z.string().min(1).optional(),
   target_ref: z.record(z.unknown()),
+  source_ref: z.record(z.unknown()).optional(),
+  replacement_ref: z.record(z.unknown()).optional(),
+  delete_policy: z.record(z.unknown()).optional(),
   value: z.unknown().optional(),
   expected_old_state: z.record(z.unknown()).optional(),
 }).passthrough().superRefine((value, ctx) => {
   const expectedScopeByKind: Record<string, string> = {
     set_pin_default: 'pin_default',
     set_node_comment: 'node_comment',
+    connect_pins: 'connect_pins',
+    disconnect_link: 'disconnect_link',
+    replace_link: 'replace_link',
+    delete_owned_node: 'node_delete',
   };
   const expectedScope = expectedScopeByKind[value.kind];
   if (value.scope && value.scope !== expectedScope) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['scope'],
-      message: `${value.kind} uses scope ${expectedScope}; omit scope or set it to ${expectedScope}.`,
+      message: `${value.kind} requires scope ${expectedScope}; omit scope or set it to ${expectedScope}.`,
     });
   }
-  if (typeof value.target_ref.node_ref !== 'string' || value.target_ref.node_ref.length === 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_ref', 'node_ref'], message: 'target_ref.node_ref is required.' });
-  }
-  if (value.kind === 'set_pin_default' && (typeof value.target_ref.pin_ref !== 'string' || value.target_ref.pin_ref.length === 0)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_ref', 'pin_ref'], message: 'set_pin_default requires target_ref.pin_ref.' });
-  }
-  if (!Object.hasOwn(value, 'value')) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['value'], message: `${value.kind} requires value.` });
+
+  const targetRef = value.target_ref as Record<string, unknown>;
+  const sourceRef = value.source_ref as Record<string, unknown> | undefined;
+  const replacementRef = value.replacement_ref as Record<string, unknown> | undefined;
+  const deletePolicy = value.delete_policy as Record<string, unknown> | undefined;
+
+  requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'block_id');
+  requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'node_ref');
+
+  switch (value.kind) {
+    case 'set_pin_default':
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'pin_ref');
+      if (!Object.hasOwn(value, 'value')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['value'], message: `${value.kind} requires value.` });
+      }
+      break;
+    case 'set_node_comment':
+      if (!Object.hasOwn(value, 'value')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['value'], message: `${value.kind} requires value.` });
+      }
+      break;
+    case 'connect_pins':
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'pin_ref');
+      rejectRedundantGraphWriteEndpointBlockId(ctx, sourceRef, 'source_ref');
+      requireGraphWritePatchRefString(ctx, sourceRef, ['source_ref'], 'node_ref');
+      requireGraphWritePatchRefString(ctx, sourceRef, ['source_ref'], 'pin_ref');
+      if (value.expected_old_state !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expected_old_state'],
+          message: 'connect_pins does not support expected_old_state; use read_context refs and rely on preview/runtime link compatibility checks.',
+        });
+      }
+      break;
+    case 'disconnect_link':
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'pin_ref');
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'link_ref');
+      if (value.expected_old_state !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expected_old_state'],
+          message: 'disconnect_link does not support expected_old_state; use read_context target_ref.link_ref for the current source and target endpoints.',
+        });
+      }
+      break;
+    case 'replace_link':
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'pin_ref');
+      requireGraphWritePatchRefString(ctx, targetRef, ['target_ref'], 'link_ref');
+      rejectRedundantGraphWriteEndpointBlockId(ctx, replacementRef, 'replacement_ref');
+      requireGraphWritePatchRefString(ctx, replacementRef, ['replacement_ref'], 'node_ref');
+      requireGraphWritePatchRefString(ctx, replacementRef, ['replacement_ref'], 'pin_ref');
+      if (value.expected_old_state !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expected_old_state'],
+          message: 'replace_link does not support expected_old_state; use read_context target_ref.link_ref and replacement_ref only.',
+        });
+      }
+      break;
+    case 'delete_owned_node':
+      if (value.expected_old_state !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['expected_old_state'],
+          message: 'delete_owned_node does not support expected_old_state; use target_ref plus delete_policy only.',
+        });
+      }
+      if (deletePolicy?.break_links === false) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['delete_policy', 'break_links'],
+          message: 'delete_owned_node requires delete_policy.break_links=true.',
+        });
+      }
+      if (deletePolicy?.allow_entry_node === true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['delete_policy', 'allow_entry_node'],
+          message: 'delete_owned_node does not allow delete_policy.allow_entry_node=true.',
+        });
+      }
+      if (deletePolicy?.allow_lifecycle_root === true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['delete_policy', 'allow_lifecycle_root'],
+          message: 'delete_owned_node does not allow delete_policy.allow_lifecycle_root=true.',
+        });
+      }
+      break;
   }
 });
 

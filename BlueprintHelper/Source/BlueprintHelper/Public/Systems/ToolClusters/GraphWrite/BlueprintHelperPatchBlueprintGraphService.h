@@ -19,6 +19,8 @@ struct FBlueprintHelperResolvedPatchTarget
 {
 	UEdGraphNode* Node = nullptr;
 	UEdGraphPin* Pin = nullptr;
+	UEdGraphPin* SourcePin = nullptr;
+	UEdGraphPin* ReplacementPin = nullptr;
 	FBlueprintHelperResolvedLink Link;
 	FBlueprintHelperPatchedRef PatchedRef;
 };
@@ -36,17 +38,25 @@ private:
 	{
 		FString AssetPath;
 		FString GraphName;
-		EBlueprintHelperPatchScope PatchScope;
-		EBlueprintHelperPatchType PatchType;
+		EBlueprintHelperPatchScope PatchScope = EBlueprintHelperPatchScope::PinDefault;
+		EBlueprintHelperPatchType PatchType = EBlueprintHelperPatchType::SetPinDefault;
 		bool bDryRun = false;
 		FString BlockId, GroupEntryNodePath;
 		FString NodeRef, PinRef, LinkRef;
 		FString NodePath, PinPath, LinkPath;
-		FString SourceNodeRef, SourcePinRef;
+		FString SourceBlockId, SourceNodeRef, SourcePinRef;
 		FString SourceNodePath, SourcePinPath;
+		FString ReplacementBlockId, ReplacementNodeRef, ReplacementPinRef;
+		FString ReplacementNodePath, ReplacementPinPath;
 		TSharedPtr<FJsonObject> PatchPayload;
 		TSharedPtr<FJsonObject> LogicSpec;
 		FString ExpectedOldValue;
+		FString ExpectedSourceNodeRef, ExpectedSourcePinRef;
+		FString ExpectedTargetNodeRef, ExpectedTargetPinRef;
+		FString ExpectedNodeRef, ExpectedNodeClass;
+		bool bDeleteBreakLinks = true;
+		bool bDeleteAllowEntryNode = false;
+		bool bDeleteAllowLifecycleRoot = false;
 		bool bExpectedOldStateProvided = false;
 	};
 
@@ -63,6 +73,7 @@ private:
 	FPatchRequest ParseRequest(const TSharedPtr<FJsonObject>& Payload) const;
 	FPatchPreflightResult Preflight(const FPatchRequest& Request, UBlueprint* Blueprint, UEdGraph* Graph, FBlueprintHelperResolvedPatchTarget& OutTarget) const;
 	bool PreflightLogicSpec(const FPatchRequest& Request, UBlueprint* Blueprint, FPatchPreflightResult& OutResult) const;
+	bool PreflightOwnedPatchContract(const FPatchRequest& Request, FPatchPreflightResult& OutResult) const;
 	FBlueprintHelperToolResultBase ExecuteDryRun(const FPatchRequest& Request) const;
 	FBlueprintHelperToolResultBase ExecuteWrite(const FPatchRequest& Request) const;
 
@@ -74,6 +85,13 @@ private:
 	// 銆俻atch_type 瀹炵幇
 	bool ApplySetNodeComment(UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const;
 	bool ResolvePatchSourcePin(
+		UEdGraph* Graph,
+		const FPatchRequest& Request,
+		UEdGraphPin*& OutPin,
+		FString& OutError,
+		FString* OutField = nullptr,
+		FString* OutCode = nullptr) const;
+	bool ResolvePatchReplacementPin(
 		UEdGraph* Graph,
 		const FPatchRequest& Request,
 		UEdGraphPin*& OutPin,

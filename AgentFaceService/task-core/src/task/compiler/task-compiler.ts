@@ -1736,6 +1736,14 @@ function validateExternalGraphWriteScopePolicy(
 }
 
 type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
+const OWNED_GRAPH_PATCH_KINDS = [
+  'set_pin_default',
+  'set_node_comment',
+  'connect_pins',
+  'disconnect_link',
+  'replace_link',
+  'delete_owned_node',
+] as const;
 type GraphWriteSignatureSplit = {
   op: 'ensure_custom_event';
   event_name: string;
@@ -1937,12 +1945,12 @@ function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
     }
     const patch = rawPatch as Record<string, unknown>;
     const kind = getRequiredString(patch, 'kind', `${path}.kind`);
-    if (!['set_pin_default', 'set_node_comment'].includes(kind)) {
+    if (!isOwnedGraphPatchKind(kind)) {
       throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
         {
           code: 'unsupported_graph_write_patch',
           path: `${path}.kind`,
-          message: 'Use set_pin_default or set_node_comment.',
+          message: `Use ${OWNED_GRAPH_PATCH_KINDS.join(', ')}.`,
         },
       ]);
     }
@@ -1960,11 +1968,15 @@ function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWrit
       ]);
     }
 
+    const patchedRef = normalizePatchTargetRef(kind, requiredRecord(patch, 'target_ref', `${path}.target_ref`), `${path}.target_ref`);
+    const targetBlockId = getRequiredString(patchedRef, 'block_id', `${path}.target_ref.block_id`);
+    rejectRedundantOwnedPatchExpectedOldState(kind, patch, path);
+
     return omitUndefined({
       op: kind,
       patch_scope: patchScope,
-      patched_ref: normalizePatchTargetRef(kind, requiredRecord(patch, 'target_ref', `${path}.target_ref`), `${path}.target_ref`),
-      patch: compilePatchPayload(kind, patch, path),
+      patched_ref: patchedRef,
+      patch: compilePatchPayload(kind, patch, path, targetBlockId),
       expected_old_state: isRecord(patch['expected_old_state'])
         ? normalizeExpectedOldState(patch['expected_old_state'])
         : undefined,
@@ -3889,6 +3901,10 @@ function compileExpressionInput(
 
 function defaultPatchScope(kind: string): string {
   if (kind === 'set_node_comment') return 'node_comment';
+  if (kind === 'connect_pins') return 'connect_pins';
+  if (kind === 'disconnect_link') return 'disconnect_link';
+  if (kind === 'replace_link') return 'replace_link';
+  if (kind === 'delete_owned_node') return 'node_delete';
   return 'pin_default';
 }
 
@@ -3941,13 +3957,36 @@ function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown
   const out = { ...targetRef };
   assertBlockScopedGraphWriteRef(targetRef, path);
   getRequiredString(targetRef, 'node_ref', `${path}.node_ref`);
-  if (kind === 'set_pin_default') {
+  if (kind === 'set_pin_default' || kind === 'connect_pins' || kind === 'disconnect_link' || kind === 'replace_link') {
     getRequiredString(targetRef, 'pin_ref', `${path}.pin_ref`);
+  }
+  if (kind === 'disconnect_link' || kind === 'replace_link') {
+    getRequiredString(targetRef, 'link_ref', `${path}.link_ref`);
   }
   return out;
 }
 
-function compilePatchPayload(kind: string, patch: Record<string, unknown>, path: string): Record<string, unknown> {
+function rejectRedundantOwnedPatchExpectedOldState(kind: string, patch: Record<string, unknown>, path: string): void {
+  if (
+    ['connect_pins', 'disconnect_link', 'replace_link', 'delete_owned_node'].includes(kind) &&
+    Object.hasOwn(patch, 'expected_old_state')
+  ) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${kind} does not support expected_old_state.`, [
+      {
+        code: 'redundant_owned_patch_expected_old_state',
+        path: `${path}.expected_old_state`,
+        message: 'Use read_context refs directly; P0-D owned link/delete patches do not accept redundant expected_old_state.',
+      },
+    ]);
+  }
+}
+
+function compilePatchPayload(
+  kind: string,
+  patch: Record<string, unknown>,
+  path: string,
+  targetBlockId: string,
+): Record<string, unknown> {
   if (kind === 'set_pin_default') {
     if (!Object.hasOwn(patch, 'value')) {
       throwMissingPatchValue(path, 'set_pin_default requires value.');
@@ -3964,11 +4003,116 @@ function compilePatchPayload(kind: string, patch: Record<string, unknown>, path:
       comment: patchValueToString(literalValue(patch['value'])),
     };
   }
+  if (kind === 'connect_pins') {
+    const sourceRef = normalizePatchEndpointRef(patch, 'source_ref', path, targetBlockId);
+    return {
+      source_block_id: targetBlockId,
+      source_node_ref: sourceRef.nodeRef,
+      source_pin_ref: sourceRef.pinRef,
+    };
+  }
+  if (kind === 'disconnect_link') {
+    return {};
+  }
+  if (kind === 'replace_link') {
+    const replacementRef = normalizePatchEndpointRef(patch, 'replacement_ref', path, targetBlockId);
+    return {
+      replacement_block_id: targetBlockId,
+      replacement_node_ref: replacementRef.nodeRef,
+      replacement_pin_ref: replacementRef.pinRef,
+    };
+  }
+  if (kind === 'delete_owned_node') {
+    return normalizeDeleteOwnedNodePolicy(patch, path);
+  }
   throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
     {
       code: 'unsupported_graph_write_patch',
       path: `${path}.kind`,
-      message: 'Use set_pin_default or set_node_comment.',
+      message: `Use ${OWNED_GRAPH_PATCH_KINDS.join(', ')}.`,
+    },
+  ]);
+}
+
+function isOwnedGraphPatchKind(kind: string): boolean {
+  return OWNED_GRAPH_PATCH_KINDS.includes(kind as (typeof OWNED_GRAPH_PATCH_KINDS)[number]);
+}
+
+function normalizePatchEndpointRef(
+  patch: Record<string, unknown>,
+  field: 'source_ref' | 'replacement_ref',
+  path: string,
+  targetBlockId: string,
+): { nodeRef: string; pinRef: string } {
+  const ref = requiredRecord(patch, field, `${path}.${field}`);
+  if (Object.hasOwn(ref, 'block_id')) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${field}.block_id is redundant.`, [
+      {
+        code: 'redundant_patch_endpoint_block_id',
+        path: `${path}.${field}.block_id`,
+        message: `${field}.block_id is redundant; the compiler derives it from target_ref.block_id.`,
+      },
+    ]);
+  }
+  assertBlockScopedGraphWriteRef({ ...ref, block_id: targetBlockId }, `${path}.${field}`);
+  return {
+    nodeRef: getRequiredString(ref, 'node_ref', `${path}.${field}.node_ref`),
+    pinRef: getRequiredString(ref, 'pin_ref', `${path}.${field}.pin_ref`),
+  };
+}
+
+function normalizeDeleteOwnedNodePolicy(patch: Record<string, unknown>, path: string): Record<string, unknown> {
+  const rawPolicy = patch['delete_policy'];
+  const policy = rawPolicy === undefined ? {} : requiredRecord(patch, 'delete_policy', `${path}.delete_policy`);
+  const breakLinks = optionalGraphWritePatchBoolean(policy, 'break_links', true, `${path}.delete_policy.break_links`);
+  const allowEntryNode = optionalGraphWritePatchBoolean(policy, 'allow_entry_node', false, `${path}.delete_policy.allow_entry_node`);
+  const allowLifecycleRoot = optionalGraphWritePatchBoolean(policy, 'allow_lifecycle_root', false, `${path}.delete_policy.allow_lifecycle_root`);
+
+  if (!breakLinks) {
+    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.break_links`, 'delete_owned_node requires delete_policy.break_links=true.');
+  }
+  if (allowEntryNode) {
+    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.allow_entry_node`, 'delete_owned_node does not allow delete_policy.allow_entry_node=true.');
+  }
+  if (allowLifecycleRoot) {
+    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.allow_lifecycle_root`, 'delete_owned_node does not allow delete_policy.allow_lifecycle_root=true.');
+  }
+
+  return {
+    break_links: breakLinks,
+    allow_entry_node: allowEntryNode,
+    allow_lifecycle_root: allowLifecycleRoot,
+  };
+}
+
+function optionalGraphWritePatchBoolean(
+  record: Record<string, unknown>,
+  field: string,
+  fallback: boolean,
+  path: string,
+): boolean {
+  const value = record[field];
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${field} must be a boolean.`, [
+    {
+      code: 'invalid_graph_write_patch_delete_policy',
+      path,
+      message: `${field} must be a boolean.`,
+    },
+  ]);
+}
+
+function throwUnsafeDeleteOwnedNodePolicy(path: string, message: string): never {
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
+    {
+      code: 'owned_delete_policy_disallowed',
+      path,
+      message,
     },
   ]);
 }
@@ -4180,8 +4324,13 @@ function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path:
 }
 
 function assertBlockScopedGraphWriteRef(ref: Record<string, unknown>, path: string): void {
-  const hasBlockId = typeof ref['block_id'] === 'string' && ref['block_id'].trim().length > 0;
-  if (hasBlockId) return;
+  const blockId = ref['block_id'];
+  if (typeof blockId === 'string' && isRawLogicJsonArrayRef(blockId)) {
+    throwUnsupportedGraphWriteAnchor(
+      `${path}.block_id`,
+      `${path}.block_id uses a read-view array index. Use a stable BlueprintHelper-owned block_id.`,
+    );
+  }
 
   for (const field of ['node_ref', 'pin_ref', 'link_ref']) {
     const value = ref[field];
@@ -4192,6 +4341,9 @@ function assertBlockScopedGraphWriteRef(ref: Record<string, unknown>, path: stri
       );
     }
   }
+
+  const hasBlockId = typeof ref['block_id'] === 'string' && ref['block_id'].trim().length > 0;
+  if (hasBlockId) return;
 
   throwUnsupportedGraphWriteAnchor(
     path,

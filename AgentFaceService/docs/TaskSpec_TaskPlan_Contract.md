@@ -258,7 +258,7 @@ GraphWrite is Agent-facing only through semantic `TaskSpec.behavior.graph_strate
 | `behavior.graph_strategy` | `append_new_owned_graph`, `replace_owned_graph`, `patch_owned_graph`, `merge_owned_graph`, `merge_external_flow`, `patch_external_graph`, `replace_external_body` |
 | `TaskPlan.steps[].capability` | `graph_write` |
 | `TaskPlan.steps[].write.strategy` | `owned_graph_edit` or `external_graph_edit` |
-| `TaskPlan.steps[].write.ops[].op` | owned: `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `set_node_position`, `insert_flow`; external: `insert_external_flow`, `set_external_pin_default`, `set_external_node_comment`, `replace_external_body` |
+| `TaskPlan.steps[].write.ops[].op` | owned: `ensure_entry`, `replace_body`, `set_pin_default`, `set_node_comment`, `connect_pins`, `disconnect_link`, `replace_link`, `delete_owned_node`, `insert_flow`; external: `insert_external_flow`, `set_external_pin_default`, `set_external_node_comment`, `replace_external_body` |
 | `TaskPlan.steps[].constraints.allow_modify_user_nodes` | `false` |
 | Step batching | append entries may share one step; replace/patch/merge/external strategies compile to one structural op per step |
 
@@ -292,7 +292,6 @@ behavior.replace.body:
 
 behavior.replace.options:
   - strict
-  - preserve_layout
 ```
 
 `patch_owned_graph` uses `behavior.patches[]`:
@@ -301,7 +300,10 @@ behavior.replace.options:
 patches[].kind:
   - set_pin_default
   - set_node_comment
-  - set_node_position
+  - connect_pins
+  - disconnect_link
+  - replace_link
+  - delete_owned_node
 
 set_pin_default:
   - target_ref.block_id
@@ -316,11 +318,37 @@ set_node_comment:
   - target_ref.node_ref
   - value
 
-set_node_position:
+connect_pins:
   - target_ref.block_id
   - target_ref.group_entry_node_path
   - target_ref.node_ref
-  - patch { x, y }
+  - target_ref.pin_ref
+  - source_ref.node_ref
+  - source_ref.pin_ref
+
+disconnect_link:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - target_ref.pin_ref
+  - target_ref.link_ref
+
+replace_link:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - target_ref.pin_ref
+  - target_ref.link_ref
+  - replacement_ref.node_ref
+  - replacement_ref.pin_ref
+
+delete_owned_node:
+  - target_ref.block_id
+  - target_ref.group_entry_node_path
+  - target_ref.node_ref
+  - delete_policy.break_links
+  - delete_policy.allow_entry_node
+  - delete_policy.allow_lifecycle_root
 
 behavior.patches[].scope:
   May be derived by compiler; Agent does not need to provide it as mandatory.
@@ -944,7 +972,10 @@ ensure_entry
 replace_body
 set_pin_default
 set_node_comment
-set_node_position
+connect_pins
+disconnect_link
+replace_link
+delete_owned_node
 insert_flow
 ```
 
@@ -953,20 +984,20 @@ The compiler/runtime lowering contract currently includes:
 ```text
 ensure_entry(custom_event) -> append_blueprint_graph
 replace_body -> replace_blueprint_graph
-set_pin_default / set_node_comment / set_node_position -> patch_blueprint_graph
+set_pin_default / set_node_comment / connect_pins / disconnect_link / replace_link / delete_owned_node -> patch_blueprint_graph
 insert_flow -> merge_blueprint_graph
 ```
 
 GraphWrite replace/patch/merge structural ops are emitted by the compiler as `capability/write/ops` TaskPlan IR. The runtime-owned adapter operation names may appear only in child results, runtime data, or TaskRunJournal facts.
 
-Current confirmed Bridge execution covers `ensure_entry(custom_event)` through `append_blueprint_graph` for fresh owned graphs, plus owned-block `replace_body`, `set_pin_default` / `set_node_comment` / `set_node_position`, and `insert_flow` for the smoke-verified merge cases. Runtime/profile reporting may still lag behind these source capabilities; use preview result and TaskRunJournal facts as the execution authority.
+Current confirmed Bridge execution covers `ensure_entry(custom_event)` through `append_blueprint_graph` for fresh owned graphs, plus owned-block `replace_body`, `set_pin_default` / `set_node_comment`, P0-D owned link/delete patches, and `insert_flow` for the smoke-verified merge cases. Runtime/profile reporting may still lag behind these source capabilities; use preview result and TaskRunJournal facts as the execution authority.
 
 The existing UE GraphWrite commands are Runtime lowering adapter targets, not the primary TaskPlan abstraction:
 
 | Operation | Required target fields | Required args fields | Optional args fields | Bridge dry-run placement |
 |---|---|---|---|---|
 | `append_blueprint_graph` | `asset_path`, `graph` | `nodes`, `links` | `feature_name` | root `dry_run` |
-| `replace_blueprint_graph` | `asset_path`, `graph`, `replace_scope` | `selector`, `replacement.nodes`, `replacement.links` | `options.strict`, `options.preserve_layout` | `options.dry_run` |
+| `replace_blueprint_graph` | `asset_path`, `graph`, `replace_scope` | `selector`, `replacement.nodes`, `replacement.links` | `options.strict` | `options.dry_run` |
 | `patch_blueprint_graph` | `asset_path`, `graph`, `patch_scope` | `patch_type`, `patched_ref`, `patch` | `expected_old_state` | root `dry_run` |
 | `merge_blueprint_graph` | `asset_path`, `graph`, `merge_scope`, `insert_strategy` | `anchor`, `inserted` | `sequence_order` | root `dry_run` |
 

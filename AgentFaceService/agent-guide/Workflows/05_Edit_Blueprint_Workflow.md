@@ -85,6 +85,10 @@ Append-owned graph writes may use explicit component/member calls. The object pr
 }
 ```
 
+### Owned Link/Delete Patch
+
+Use `patch_owned_graph` only when `blueprinthelper_read_context` with `view.format=logic_json` provides a grouped owned block with stable `block_id`, `group_entry_node_path`, `node_ref`, `pin_ref`, and, for link operations, `link_ref`. Put `block_id` and `group_entry_node_path` only on `target_ref`; `source_ref` and `replacement_ref` carry same-block `node_ref` and `pin_ref`, with the block derived by the compiler. P0-D owned link/delete patches do not use `expected_old_state`; link state comes from `target_ref.link_ref`. Use safe `delete_policy` for `delete_owned_node`. Do not use these templates for user-authored nodes or external graph anchors.
+
 ## Removal Or Rename
 
 删除、重命名、断线和批量改动前先读取 reference context。preview blocked 时停止，不执行写入。

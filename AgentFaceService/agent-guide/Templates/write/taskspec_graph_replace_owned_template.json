@@ -35,8 +35,7 @@
         ]
       },
       "options": {
-        "strict": true,
-        "preserve_layout": true
+        "strict": true
       }
     }
   },

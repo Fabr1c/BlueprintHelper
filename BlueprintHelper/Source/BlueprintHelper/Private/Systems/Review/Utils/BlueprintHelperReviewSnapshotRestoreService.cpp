@@ -1360,6 +1360,83 @@ static UEdGraphNode* BlueprintHelperReviewFindImportedNodeByGuid(
 	return nullptr;
 }
 
+static FString BlueprintHelperReviewReadSnapshotCustomEventName(const TSharedPtr<FJsonObject>& NodeSnapshot)
+{
+	if (!NodeSnapshot.IsValid())
+	{
+		return TEXT("");
+	}
+
+	FString EventName;
+	if (NodeSnapshot->TryGetStringField(TEXT("custom_function_name"), EventName))
+	{
+		EventName.TrimStartAndEndInline();
+		if (!EventName.IsEmpty())
+		{
+			return EventName;
+		}
+	}
+
+	NodeSnapshot->TryGetStringField(TEXT("title"), EventName);
+	EventName.TrimStartAndEndInline();
+	return EventName;
+}
+
+static void BlueprintHelperReviewRestoreCustomEventNameFromSnapshot(
+	UEdGraphNode* Node,
+	const TSharedPtr<FJsonObject>& NodeSnapshot)
+{
+	UK2Node_CustomEvent* EventNode = Cast<UK2Node_CustomEvent>(Node);
+	if (!EventNode)
+	{
+		return;
+	}
+
+	const FString EventName = BlueprintHelperReviewReadSnapshotCustomEventName(NodeSnapshot);
+	if (EventName.IsEmpty())
+	{
+		return;
+	}
+
+	EventNode->Modify();
+	EventNode->OnRenameNode(EventName);
+}
+
+static void BlueprintHelperReviewRestoreImportedCustomEventNames(
+	const TSharedPtr<FJsonObject>& Snapshot,
+	const TSet<UEdGraphNode*>& ImportedNodes)
+{
+	if (!Snapshot.IsValid())
+	{
+		return;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* NodeValues = nullptr;
+	if (!Snapshot->TryGetArrayField(TEXT("nodes"), NodeValues) || !NodeValues)
+	{
+		return;
+	}
+
+	for (const TSharedPtr<FJsonValue>& NodeValue : *NodeValues)
+	{
+		const TSharedPtr<FJsonObject> NodeSnapshot = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
+		if (!NodeSnapshot.IsValid())
+		{
+			continue;
+		}
+
+		FString NodeGuid;
+		NodeSnapshot->TryGetStringField(TEXT("guid"), NodeGuid);
+		UEdGraphNode* EventNode = BlueprintHelperReviewFindImportedNodeByGuid(ImportedNodes, NodeGuid);
+		if (!EventNode)
+		{
+			continue;
+		}
+
+		BlueprintHelperReviewRestoreCustomEventNameFromSnapshot(EventNode, NodeSnapshot);
+	}
+}
+
 static UEdGraphPin* BlueprintHelperReviewFindPinInImportedNodes(
 	const TSet<UEdGraphNode*>& ImportedNodes,
 	const FString& PinName,
@@ -1582,6 +1659,7 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 				{
 					return false;
 				}
+				BlueprintHelperReviewRestoreCustomEventNameFromSnapshot(Node, *NodeSnapshot);
 			}
 			else
 			{
@@ -1602,6 +1680,7 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 		{
 			FString RestoreText;
 			Snapshot->TryGetStringField(TEXT("restore_text"), RestoreText);
+			const FString BlockId = BlueprintHelperReviewExtractGraphTargetTail(Target.TargetKey, TEXT("block"));
 			for (UEdGraphNode* Node : NodesToRemove)
 			{
 				if (Node)
@@ -1609,9 +1688,27 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreGraphFromSnapshot(
 					FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
 				}
 			}
-			if (!BlueprintHelperReviewImportGraphRestoreText(Graph, RestoreText, OutError))
+			TSet<UEdGraphNode*> ImportedNodes;
+			if (!BlueprintHelperReviewImportGraphRestoreTextWithNodes(Graph, RestoreText, ImportedNodes, OutError))
 			{
 				return false;
+			}
+			BlueprintHelperReviewRestoreImportedCustomEventNames(Snapshot, ImportedNodes);
+			if (!BlockId.IsEmpty())
+			{
+				for (UEdGraphNode* Node : ImportedNodes)
+				{
+					if (!Node)
+					{
+						continue;
+					}
+					if (UPackage* Package = Node->GetOutermost())
+					{
+						FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+						MetaData.SetValue(Node, TEXT("BlueprintHelperOwned"), TEXT("true"));
+						MetaData.SetValue(Node, TEXT("BlueprintHelperBlockId"), *BlockId);
+					}
+				}
 			}
 			MarkBlueprintReviewRestoreModified(Blueprint);
 			Graph->NotifyGraphChanged();

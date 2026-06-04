@@ -240,11 +240,13 @@ public:
         TArray<TSharedPtr<FJsonValue>> Nodes;
         TSharedRef<FJsonObject> EntryNode =
             MakeLogicTestEventNode(TEXT("entry"), TEXT("K2Node_CustomEvent"), TEXT("OpenDoor"), TEXT("OpenDoor"));
+        EntryNode->SetStringField(TEXT("node_guid"), TEXT("11111111111111111111111111111111"));
         AddBlueprintHelperOwnershipMetadata(EntryNode, BlockId);
         Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
 
         TSharedRef<FJsonObject> PrintStringNode = MakeShared<FJsonObject>();
         PrintStringNode->SetStringField(TEXT("id"), TEXT("print"));
+        PrintStringNode->SetStringField(TEXT("node_guid"), TEXT("22222222222222222222222222222222"));
         PrintStringNode->SetStringField(TEXT("type"), TEXT("K2Node_CallFunction"));
         PrintStringNode->SetStringField(TEXT("name"), TEXT("PrintString"));
         PrintStringNode->SetStringField(TEXT("function_name"), TEXT("PrintString"));
@@ -778,9 +780,11 @@ bool FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockExposesWriteAnchors::RunT
     }
 
     FString EntryNodeRef;
-    TestTrue(TEXT("owned group node serializes group-local node_ref"),
+    TestTrue(TEXT("owned group node serializes stable node_ref"),
         (*EntryNodeJson)->TryGetStringField(TEXT("node_ref"), EntryNodeRef));
-    TestEqual(TEXT("first owned node has group-local node_ref"), EntryNodeRef, FString(TEXT("nodes[0]")));
+    TestEqual(TEXT("first owned node uses node_guid node_ref"),
+        EntryNodeRef,
+        FString(TEXT("11111111111111111111111111111111")));
 
     const TArray<TSharedPtr<FJsonValue>>* LinksJson = nullptr;
     TestTrue(TEXT("entry node serializes outgoing links"), (*EntryNodeJson)->TryGetArrayField(TEXT("links"), LinksJson));
@@ -801,10 +805,19 @@ bool FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockExposesWriteAnchors::RunT
         (*LinkJson)->TryGetStringField(TEXT("pin_ref"), PinRef));
     TestEqual(TEXT("owned group link pin_ref uses the source pin"), PinRef, FString(TEXT("then")));
 
+    FString ToNodeRef;
+    TestTrue(TEXT("owned group link serializes stable target node_ref"),
+        (*LinkJson)->TryGetStringField(TEXT("to_node"), ToNodeRef));
+    TestEqual(TEXT("owned group link target uses node_guid node_ref"),
+        ToNodeRef,
+        FString(TEXT("22222222222222222222222222222222")));
+
     FString LinkRef;
-    TestTrue(TEXT("owned group link serializes group-local link_ref"),
+    TestTrue(TEXT("owned group link serializes stable link_ref"),
         (*LinkJson)->TryGetStringField(TEXT("link_ref"), LinkRef));
-    TestEqual(TEXT("first owned link has group-local link_ref"), LinkRef, FString(TEXT("links[0]")));
+    TestEqual(TEXT("first owned link has endpoint link_ref"),
+        LinkRef,
+        FString(TEXT("11111111111111111111111111111111.then->22222222222222222222222222222222.execute")));
 
     return true;
 }

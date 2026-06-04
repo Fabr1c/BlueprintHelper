@@ -115,6 +115,20 @@ public:
 		return FString::Printf(TEXT("links[%d]"), LinkIndex);
 	}
 
+	static FString MakeEndpointLinkRef(
+		const FString& FromNodeRef,
+		const FString& FromPinRef,
+		const FString& ToNodeRef,
+		const FString& ToPinRef)
+	{
+		return FString::Printf(
+			TEXT("%s.%s->%s.%s"),
+			*FromNodeRef,
+			*FromPinRef,
+			*ToNodeRef,
+			*ToPinRef);
+	}
+
 	static FString MakeGraphNodePath(const FString& GraphName, const FString& NodeRef)
 	{
 		return FString::Printf(TEXT("$.graphs[%s].%s"), *GraphName, *NodeRef);
@@ -216,6 +230,17 @@ public:
 		return NodeId.IsEmpty() ? FString::Printf(TEXT("Node_%d"), NodeIndex) : NodeId;
 	}
 
+	static FString ExtractStableNodeRef(const TSharedPtr<FJsonObject>& NodeObj, int32 NodeIndex)
+	{
+		const FString NodeGuid = ReadFirstStringField(NodeObj, TEXT("node_guid"));
+		if (!NodeGuid.IsEmpty())
+		{
+			return NodeGuid;
+		}
+
+		return MakeNodeRef(NodeIndex);
+	}
+
 	static FString NormalizeLogicToken(const FString& InValue)
 	{
 		FString Result = InValue;
@@ -297,18 +322,33 @@ public:
 		Group.GroupEntryNodePath = Group.Entry.NodePath;
 	}
 
-	static void NormalizeGroupLocalRefs(FBlueprintHelperLogicGroup& Group)
+	static void NormalizeGroupLocalRefs(
+		FBlueprintHelperLogicGroup& Group,
+		const TMap<FString, FString>* StableNodeRefByOriginalRef = nullptr)
 	{
 		TMap<FString, FString> LocalNodeRefByOriginalRef;
 		for (int32 NodeIndex = 0; NodeIndex < Group.Nodes.Num(); ++NodeIndex)
 		{
-			LocalNodeRefByOriginalRef.Add(Group.Nodes[NodeIndex].NodeRef, MakeNodeRef(NodeIndex));
+			const FString OriginalNodeRef = Group.Nodes[NodeIndex].NodeRef;
+			const FString* StableNodeRef = StableNodeRefByOriginalRef
+				? StableNodeRefByOriginalRef->Find(OriginalNodeRef)
+				: nullptr;
+			LocalNodeRefByOriginalRef.Add(
+				OriginalNodeRef,
+				(StableNodeRef && !StableNodeRef->IsEmpty()) ? *StableNodeRef : MakeNodeRef(NodeIndex));
 		}
 
 		const FString OriginalEntryNodeRef = Group.Entry.NodeRef;
 		for (int32 NodeIndex = 0; NodeIndex < Group.Nodes.Num(); ++NodeIndex)
 		{
-			Group.Nodes[NodeIndex].NodeRef = MakeNodeRef(NodeIndex);
+			if (const FString* LocalNodeRef = LocalNodeRefByOriginalRef.Find(Group.Nodes[NodeIndex].NodeRef))
+			{
+				Group.Nodes[NodeIndex].NodeRef = *LocalNodeRef;
+			}
+			else
+			{
+				Group.Nodes[NodeIndex].NodeRef = MakeNodeRef(NodeIndex);
+			}
 		}
 
 		if (const FString* LocalEntryNodeRef = LocalNodeRefByOriginalRef.Find(OriginalEntryNodeRef))
@@ -339,6 +379,11 @@ public:
 				{
 					Link.PinRef = Link.FromPin;
 				}
+				if (StableNodeRefByOriginalRef)
+				{
+					const FString SourcePinRef = Link.PinRef.IsEmpty() ? Link.FromPin : Link.PinRef;
+					Link.LinkRef = MakeEndpointLinkRef(Node.NodeRef, SourcePinRef, Link.ToNode, Link.ToPin);
+				}
 				++LinkIndex;
 			}
 		}
@@ -356,6 +401,7 @@ public:
 		FBlueprintHelperLogicJsonPayload& Payload)
 	{
 		TMap<FString, FString> BlockIdByNodeRef;
+		TMap<FString, FString> StableNodeRefByOriginalRef;
 		for (int32 NodeIndex = 0; NodeIndex < NodesArray.Num(); ++NodeIndex)
 		{
 			const TSharedPtr<FJsonValue>& NodeValue = NodesArray[NodeIndex];
@@ -365,10 +411,13 @@ public:
 				continue;
 			}
 
+			const FString OriginalNodeRef = MakeNodeRef(NodeIndex);
+			StableNodeRefByOriginalRef.Add(OriginalNodeRef, ExtractStableNodeRef(*NodeObjPtr, NodeIndex));
+
 			const FString BlockId = ExtractBlueprintHelperBlockId(*NodeObjPtr);
 			if (!BlockId.IsEmpty())
 			{
-				BlockIdByNodeRef.Add(MakeNodeRef(NodeIndex), BlockId);
+				BlockIdByNodeRef.Add(OriginalNodeRef, BlockId);
 			}
 		}
 
@@ -419,7 +468,7 @@ public:
 				continue;
 			}
 			AssignGroupEntry(Group, GraphName);
-			NormalizeGroupLocalRefs(Group);
+			NormalizeGroupLocalRefs(Group, &StableNodeRefByOriginalRef);
 			Payload.Groups.Add(MoveTemp(Group));
 		}
 

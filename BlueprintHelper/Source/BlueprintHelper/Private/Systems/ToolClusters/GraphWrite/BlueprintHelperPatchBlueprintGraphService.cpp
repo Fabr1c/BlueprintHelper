@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
+#include "Systems/ToolClusters/GraphWrite/Patch/BlueprintHelperOwnedGraphPatchPolicy.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
@@ -22,6 +23,58 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+
+class FBlueprintHelperPatchBlueprintGraphServiceLocalUtils
+{
+public:
+	static FString MakeStableNodeRef(UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return FString();
+		}
+		return Node->NodeGuid.IsValid()
+			? Node->NodeGuid.ToString(EGuidFormats::Digits)
+			: Node->GetName();
+	}
+
+	static bool DoesNodeRefMatch(UEdGraphNode* Node, const FString& ExpectedRef)
+	{
+		if (ExpectedRef.IsEmpty())
+		{
+			return true;
+		}
+		if (!Node)
+		{
+			return false;
+		}
+		if (ExpectedRef.Equals(Node->GetName(), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+		if (Node->NodeGuid.IsValid() &&
+			ExpectedRef.Equals(Node->NodeGuid.ToString(EGuidFormats::Digits), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+		return ExpectedRef.Equals(Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString(), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsP0DOwnedPatchType(const EBlueprintHelperPatchType PatchType)
+	{
+		return PatchType == EBlueprintHelperPatchType::ConnectPins ||
+			PatchType == EBlueprintHelperPatchType::DisconnectLink ||
+			PatchType == EBlueprintHelperPatchType::ReplaceLink ||
+			PatchType == EBlueprintHelperPatchType::DeleteOwnedNode;
+	}
+
+	static bool LooksLikeReadViewArrayLocator(const FString& Value)
+	{
+		return Value.Contains(TEXT("nodes[")) ||
+			Value.Contains(TEXT("pins[")) ||
+			Value.Contains(TEXT("links["));
+	}
+};
 
 FBlueprintHelperPatchBlueprintGraphService::FBlueprintHelperPatchBlueprintGraphService(
 	const FBlueprintHelperGraphResolver& InResolver,
@@ -88,10 +141,27 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	if (Payload->TryGetObjectField(TEXT("patch"), PatchObj) && PatchObj->IsValid())
 	{
 		Req.PatchPayload = *PatchObj;
+		(*PatchObj)->TryGetStringField(TEXT("source_block_id"), Req.SourceBlockId);
 		(*PatchObj)->TryGetStringField(TEXT("source_node_ref"), Req.SourceNodeRef);
 		(*PatchObj)->TryGetStringField(TEXT("source_pin_ref"), Req.SourcePinRef);
 		(*PatchObj)->TryGetStringField(TEXT("source_node_path"), Req.SourceNodePath);
 		(*PatchObj)->TryGetStringField(TEXT("source_pin_path"), Req.SourcePinPath);
+		(*PatchObj)->TryGetStringField(TEXT("replacement_block_id"), Req.ReplacementBlockId);
+		(*PatchObj)->TryGetStringField(TEXT("replacement_node_ref"), Req.ReplacementNodeRef);
+		(*PatchObj)->TryGetStringField(TEXT("replacement_pin_ref"), Req.ReplacementPinRef);
+		(*PatchObj)->TryGetStringField(TEXT("replacement_node_path"), Req.ReplacementNodePath);
+		(*PatchObj)->TryGetStringField(TEXT("replacement_pin_path"), Req.ReplacementPinPath);
+		(*PatchObj)->TryGetBoolField(TEXT("break_links"), Req.bDeleteBreakLinks);
+		(*PatchObj)->TryGetBoolField(TEXT("allow_entry_node"), Req.bDeleteAllowEntryNode);
+		(*PatchObj)->TryGetBoolField(TEXT("allow_lifecycle_root"), Req.bDeleteAllowLifecycleRoot);
+
+		const TSharedPtr<FJsonObject>* DeletePolicyObj = nullptr;
+		if ((*PatchObj)->TryGetObjectField(TEXT("delete_policy"), DeletePolicyObj) && DeletePolicyObj && DeletePolicyObj->IsValid())
+		{
+			(*DeletePolicyObj)->TryGetBoolField(TEXT("break_links"), Req.bDeleteBreakLinks);
+			(*DeletePolicyObj)->TryGetBoolField(TEXT("allow_entry_node"), Req.bDeleteAllowEntryNode);
+			(*DeletePolicyObj)->TryGetBoolField(TEXT("allow_lifecycle_root"), Req.bDeleteAllowLifecycleRoot);
+		}
 	}
 
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
@@ -105,6 +175,12 @@ FBlueprintHelperPatchBlueprintGraphService::ParseRequest(const TSharedPtr<FJsonO
 	{
 		Req.bExpectedOldStateProvided = true;
 		(*ExpectObj)->TryGetStringField(TEXT("value"), Req.ExpectedOldValue);
+		(*ExpectObj)->TryGetStringField(TEXT("source_node_ref"), Req.ExpectedSourceNodeRef);
+		(*ExpectObj)->TryGetStringField(TEXT("source_pin_ref"), Req.ExpectedSourcePinRef);
+		(*ExpectObj)->TryGetStringField(TEXT("target_node_ref"), Req.ExpectedTargetNodeRef);
+		(*ExpectObj)->TryGetStringField(TEXT("target_pin_ref"), Req.ExpectedTargetPinRef);
+		(*ExpectObj)->TryGetStringField(TEXT("node_ref"), Req.ExpectedNodeRef);
+		(*ExpectObj)->TryGetStringField(TEXT("node_class"), Req.ExpectedNodeClass);
 	}
 
 	return Req;
@@ -135,6 +211,11 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		return Result;
 	}
 
+	if (!PreflightOwnedPatchContract(Request, Result))
+	{
+		return Result;
+	}
+
 	// Resolve target node.
 	FBlueprintHelperGraphWriteAnchorRef Anchor;
 	Anchor.BlockId = Request.BlockId;
@@ -157,8 +238,27 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 	}
 	OutTarget.Node = Node;
 	OutTarget.PatchedRef.GraphId = Graph->GetName();
+	OutTarget.PatchedRef.BlockId = Request.BlockId;
 	OutTarget.PatchedRef.NodeRef = Request.NodeRef;
 	if (!Request.NodePath.IsEmpty()) { OutTarget.PatchedRef.NodePath = Request.NodePath; }
+
+	auto ApplyPolicyFailure = [&Result](const FBlueprintHelperOwnedGraphPatchPolicyResult& PolicyResult)
+	{
+		if (PolicyResult.bPassed)
+		{
+			return false;
+		}
+
+		Result.bPassed = false;
+		Result.BlockedBy.Add(PolicyResult.Code);
+		Result.Conflicts.Add({
+			PolicyResult.Code,
+			PolicyResult.Message,
+			PolicyResult.Field,
+			PolicyResult.Field
+		});
+		return true;
+	};
 
 	// Resolve target pin when required.
 	if (Request.PatchType == EBlueprintHelperPatchType::SetPinDefault ||
@@ -178,6 +278,13 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		OutTarget.Pin = Pin;
 		OutTarget.PatchedRef.PinRef = Request.PinRef;
 		if (!Request.PinPath.IsEmpty()) { OutTarget.PatchedRef.PinPath = Request.PinPath; }
+
+		FBlueprintHelperOwnedGraphPatchPolicyResult TargetPinPolicy =
+			FBlueprintHelperOwnedGraphPatchPolicy::RequireOwnedPinInBlock(Pin, Request.BlockId, TEXT("patched_ref.pin_ref"));
+		if (ApplyPolicyFailure(TargetPinPolicy))
+		{
+			return Result;
+		}
 	}
 
 	if (Request.PatchType == EBlueprintHelperPatchType::ConnectPins)
@@ -198,6 +305,7 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 			});
 			return Result;
 		}
+		OutTarget.SourcePin = SourcePin;
 	}
 
 	// Resolve target link when required.
@@ -214,6 +322,84 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 		}
 		OutTarget.PatchedRef.LinkRef = Request.LinkRef;
 		if (!Request.LinkPath.IsEmpty()) { OutTarget.PatchedRef.LinkPath = Request.LinkPath; }
+
+		FBlueprintHelperOwnedGraphPatchPolicyResult LinkPolicy =
+			FBlueprintHelperOwnedGraphPatchPolicy::RequireOwnedLinkInBlock(OutTarget.Link, Request.BlockId, TEXT("patched_ref.link_ref"));
+		if (ApplyPolicyFailure(LinkPolicy))
+		{
+			return Result;
+		}
+
+		const bool bExpectedLinkEndpointProvided =
+			!Request.ExpectedSourceNodeRef.IsEmpty() ||
+			!Request.ExpectedSourcePinRef.IsEmpty() ||
+			!Request.ExpectedTargetNodeRef.IsEmpty() ||
+			!Request.ExpectedTargetPinRef.IsEmpty();
+		if (Request.bExpectedOldStateProvided && bExpectedLinkEndpointProvided)
+		{
+			const FString CurrentSourceNodeRef =
+				FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::MakeStableNodeRef(OutTarget.Link.SourceNode);
+			const FString CurrentSourcePinRef = OutTarget.Link.SourcePin ? OutTarget.Link.SourcePin->PinName.ToString() : FString();
+			const FString CurrentTargetNodeRef =
+				FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::MakeStableNodeRef(OutTarget.Link.TargetNode);
+			const FString CurrentTargetPinRef = OutTarget.Link.TargetPin ? OutTarget.Link.TargetPin->PinName.ToString() : FString();
+			const bool bMatches =
+				FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::DoesNodeRefMatch(OutTarget.Link.SourceNode, Request.ExpectedSourceNodeRef) &&
+				(Request.ExpectedSourcePinRef.IsEmpty() || Request.ExpectedSourcePinRef.Equals(CurrentSourcePinRef, ESearchCase::IgnoreCase)) &&
+				FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::DoesNodeRefMatch(OutTarget.Link.TargetNode, Request.ExpectedTargetNodeRef) &&
+				(Request.ExpectedTargetPinRef.IsEmpty() || Request.ExpectedTargetPinRef.Equals(CurrentTargetPinRef, ESearchCase::IgnoreCase));
+			if (!bMatches)
+			{
+				Result.bPassed = false;
+				Result.BlockedBy.Add(TEXT("owned_patch_link_state_mismatch"));
+				Result.Conflicts.Add({TEXT("owned_patch_link_state_mismatch"),
+					FString::Printf(
+						TEXT("expected_old_state link endpoints do not match current link '%s.%s->%s.%s'."),
+						*CurrentSourceNodeRef,
+						*CurrentSourcePinRef,
+						*CurrentTargetNodeRef,
+						*CurrentTargetPinRef),
+					TEXT("expected_old_state"),
+					TEXT("expected_old_state")});
+				return Result;
+			}
+		}
+	}
+
+	if (Request.PatchType == EBlueprintHelperPatchType::ReplaceLink)
+	{
+		UEdGraphPin* ReplacementPin = nullptr;
+		FString ReplacementError;
+		FString ReplacementField;
+		FString ReplacementCode;
+		if (!ResolvePatchReplacementPin(Graph, Request, ReplacementPin, ReplacementError, &ReplacementField, &ReplacementCode))
+		{
+			Result.bPassed = false;
+			Result.BlockedBy.Add(ReplacementCode.IsEmpty() ? TEXT("owned_patch_replacement_ref_required") : ReplacementCode);
+			Result.Conflicts.Add({
+				ReplacementCode.IsEmpty() ? TEXT("owned_patch_replacement_ref_required") : ReplacementCode,
+				ReplacementError,
+				ReplacementField.IsEmpty() ? TEXT("patch.replacement_ref") : ReplacementField,
+				ReplacementField.IsEmpty() ? TEXT("patch.replacement_ref") : ReplacementField
+			});
+			return Result;
+		}
+		OutTarget.ReplacementPin = ReplacementPin;
+	}
+
+	if (Request.PatchType == EBlueprintHelperPatchType::DeleteOwnedNode)
+	{
+		FBlueprintHelperOwnedGraphPatchPolicyResult DeletePolicy =
+			FBlueprintHelperOwnedGraphPatchPolicy::RequireDeleteAllowed(
+				OutTarget.Node,
+				Request.BlockId,
+				Request.bDeleteBreakLinks,
+				Request.bDeleteAllowEntryNode,
+				Request.bDeleteAllowLifecycleRoot);
+		if (ApplyPolicyFailure(DeletePolicy))
+		{
+			return Result;
+		}
 	}
 
 	// expected_old_state 鏍￠獙
@@ -240,6 +426,80 @@ FBlueprintHelperPatchBlueprintGraphService::Preflight(
 }
 
 // 鈹€鈹€鈹€ DryRun 鈹€鈹€鈹€
+
+bool FBlueprintHelperPatchBlueprintGraphService::PreflightOwnedPatchContract(
+	const FPatchRequest& Request,
+	FPatchPreflightResult& OutResult) const
+{
+	if (!FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::IsP0DOwnedPatchType(Request.PatchType))
+	{
+		return true;
+	}
+
+	auto Reject = [&OutResult](const FString& Code, const FString& Message, const FString& Field)
+	{
+		OutResult.bPassed = false;
+		OutResult.BlockedBy.Add(Code);
+		OutResult.Conflicts.Add({Code, Message, Field, Field});
+		return false;
+	};
+
+	if (Request.bExpectedOldStateProvided)
+	{
+		return Reject(
+			TEXT("redundant_owned_patch_expected_old_state"),
+			TEXT("P0-D owned graph patches derive old link/node state from target_ref and read_context; expected_old_state is not accepted."),
+			TEXT("expected_old_state"));
+	}
+
+	auto RejectPathField = [&Reject](const FString& Field, const FString& Value)
+	{
+		if (Value.IsEmpty())
+		{
+			return true;
+		}
+		return Reject(
+			TEXT("unsupported_graph_write_anchor"),
+			FString::Printf(
+				TEXT("P0-D owned graph patches require stable read_context refs; path field '%s' is not accepted."),
+				*Field),
+			Field);
+	};
+
+	if (!RejectPathField(TEXT("patched_ref.node_path"), Request.NodePath) ||
+		!RejectPathField(TEXT("patched_ref.pin_path"), Request.PinPath) ||
+		!RejectPathField(TEXT("patched_ref.link_path"), Request.LinkPath) ||
+		!RejectPathField(TEXT("patch.source_node_path"), Request.SourceNodePath) ||
+		!RejectPathField(TEXT("patch.source_pin_path"), Request.SourcePinPath) ||
+		!RejectPathField(TEXT("patch.replacement_node_path"), Request.ReplacementNodePath) ||
+		!RejectPathField(TEXT("patch.replacement_pin_path"), Request.ReplacementPinPath))
+	{
+		return false;
+	}
+
+	auto RejectArrayLocator = [&Reject](const FString& Field, const FString& Value)
+	{
+		if (Value.IsEmpty() ||
+			!FBlueprintHelperPatchBlueprintGraphServiceLocalUtils::LooksLikeReadViewArrayLocator(Value))
+		{
+			return true;
+		}
+		return Reject(
+			TEXT("unsupported_graph_write_anchor"),
+			FString::Printf(
+				TEXT("P0-D owned graph patches require stable read_context refs; read-view array locator '%s' is not accepted."),
+				*Value),
+			Field);
+	};
+
+	return RejectArrayLocator(TEXT("patched_ref.node_ref"), Request.NodeRef) &&
+		RejectArrayLocator(TEXT("patched_ref.pin_ref"), Request.PinRef) &&
+		RejectArrayLocator(TEXT("patched_ref.link_ref"), Request.LinkRef) &&
+		RejectArrayLocator(TEXT("patch.source_node_ref"), Request.SourceNodeRef) &&
+		RejectArrayLocator(TEXT("patch.source_pin_ref"), Request.SourcePinRef) &&
+		RejectArrayLocator(TEXT("patch.replacement_node_ref"), Request.ReplacementNodeRef) &&
+		RejectArrayLocator(TEXT("patch.replacement_pin_ref"), Request.ReplacementPinRef);
+}
 
 FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::ExecuteDryRun(
 	const FPatchRequest& Request) const
@@ -431,7 +691,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 		Mutation.Rollback();
 
 		FBlueprintHelperToolError Error;
-		Error.Code = TEXT("link_create_failed");
+		Error.Code = Request.PatchType == EBlueprintHelperPatchType::DeleteOwnedNode
+			? TEXT("owned_delete_failed")
+			: TEXT("link_create_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
 		Error.Message = ApplyError;
 		Error.bRetryable = false;
@@ -455,8 +717,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 
 	FBlueprintHelperPatchGraphResultData Data;
 	Data.PatchResult.PatchedRef = ResolvedTarget.PatchedRef;
+	Data.PatchResult.Patch.PatchType = PatchTypeToString(Request.PatchType);
 	Data.PatchResult.Patch.bExpectedOldStateProvided = Request.bExpectedOldStateProvided;
 	Data.PatchResult.Patch.bChanged = bChanged;
+	if (!Request.BlockId.IsEmpty())
+	{
+		Data.BlockRefs.Add(Request.BlockId);
+	}
 	Success.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(Success.Data, PreflightResult.FragmentDebugData);
 
@@ -535,6 +802,37 @@ bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchSourcePin(
 		return false;
 	}
 
+	if (Request.SourceBlockId.IsEmpty())
+	{
+		OutError = TEXT("connect_pins requires patch.source_block_id.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.source_block_id");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_source_ref_required");
+		}
+		return false;
+	}
+
+	if (!Request.SourceBlockId.Equals(Request.BlockId, ESearchCase::IgnoreCase))
+	{
+		OutError = FString::Printf(
+			TEXT("connect_pins source block '%s' does not match target block '%s'."),
+			*Request.SourceBlockId,
+			*Request.BlockId);
+		if (OutField)
+		{
+			*OutField = TEXT("patch.source_block_id");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_cross_block_disallowed");
+		}
+		return false;
+	}
+
 	if (Request.SourceNodeRef.IsEmpty() && Request.SourceNodePath.IsEmpty())
 	{
 		OutError = TEXT("connect_pins requires patch.source_node_ref or patch.source_node_path.");
@@ -567,11 +865,17 @@ bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchSourcePin(
 	const bool bResolvingPinPath = !Request.SourcePinPath.IsEmpty();
 	const FString SourceNodeIdentifier = bResolvingNodePath ? Request.SourceNodePath : Request.SourceNodeRef;
 	const FString SourcePinIdentifier = bResolvingPinPath ? Request.SourcePinPath : Request.SourcePinRef;
-	const FString ResolveNodeRef = bResolvingNodePath ? FString() : Request.SourceNodeRef;
-	const FString ResolvePinRef = bResolvingPinPath ? FString() : Request.SourcePinRef;
+	FBlueprintHelperGraphWriteAnchorRef SourceAnchor;
+	SourceAnchor.BlockId = Request.SourceBlockId;
+	SourceAnchor.GroupEntryNodePath = Request.GroupEntryNodePath;
+	SourceAnchor.NodeRef = bResolvingNodePath ? FString() : Request.SourceNodeRef;
+	SourceAnchor.PinRef = bResolvingPinPath ? FString() : Request.SourcePinRef;
+	SourceAnchor.NodePath = Request.SourceNodePath;
+	SourceAnchor.PinPath = Request.SourcePinPath;
+
 	FBlueprintHelperPatchResolveError ResolveError;
 	UEdGraphNode* SourceNode = nullptr;
-	if (!PathService.ResolveNode(Graph, ResolveNodeRef, Request.SourceNodePath, SourceNode, ResolveError))
+	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(PathService, Graph, SourceAnchor, SourceNode, ResolveError))
 	{
 		OutError = FString::Printf(TEXT("Unable to resolve source node: %s"), *SourceNodeIdentifier);
 		if (OutField)
@@ -585,7 +889,7 @@ bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchSourcePin(
 		return false;
 	}
 
-	if (!PathService.ResolvePin(Graph, SourceNode, ResolvePinRef, Request.SourcePinPath, OutPin, ResolveError))
+	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolvePin(PathService, Graph, SourceNode, SourceAnchor, OutPin, ResolveError))
 	{
 		OutError = FString::Printf(TEXT("Unable to resolve source pin: %s"), *SourcePinIdentifier);
 		if (OutField)
@@ -595,6 +899,175 @@ bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchSourcePin(
 		if (OutCode)
 		{
 			*OutCode = TEXT("source_pin_not_found");
+		}
+		return false;
+	}
+
+	FBlueprintHelperOwnedGraphPatchPolicyResult SourcePolicy =
+		FBlueprintHelperOwnedGraphPatchPolicy::RequireOwnedPinInBlock(OutPin, Request.BlockId, TEXT("patch.source_ref"));
+	if (!SourcePolicy.bPassed)
+	{
+		OutError = SourcePolicy.Message;
+		if (OutField)
+		{
+			*OutField = SourcePolicy.Field;
+		}
+		if (OutCode)
+		{
+			*OutCode = SourcePolicy.Code;
+		}
+		return false;
+	}
+
+	return true;
+}
+
+bool FBlueprintHelperPatchBlueprintGraphService::ResolvePatchReplacementPin(
+	UEdGraph* Graph,
+	const FPatchRequest& Request,
+	UEdGraphPin*& OutPin,
+	FString& OutError,
+	FString* OutField,
+	FString* OutCode) const
+{
+	OutPin = nullptr;
+	OutError.Reset();
+	if (OutField)
+	{
+		OutField->Reset();
+	}
+	if (OutCode)
+	{
+		OutCode->Reset();
+	}
+
+	if (!Graph)
+	{
+		OutError = TEXT("target_graph_invalid");
+		if (OutField)
+		{
+			*OutField = TEXT("target.graph");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("target_graph_invalid");
+		}
+		return false;
+	}
+
+	if (Request.ReplacementBlockId.IsEmpty())
+	{
+		OutError = TEXT("replace_link requires patch.replacement_block_id.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.replacement_block_id");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_replacement_ref_required");
+		}
+		return false;
+	}
+
+	if (!Request.ReplacementBlockId.Equals(Request.BlockId, ESearchCase::IgnoreCase))
+	{
+		OutError = FString::Printf(
+			TEXT("replace_link replacement block '%s' does not match target block '%s'."),
+			*Request.ReplacementBlockId,
+			*Request.BlockId);
+		if (OutField)
+		{
+			*OutField = TEXT("patch.replacement_block_id");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_cross_block_disallowed");
+		}
+		return false;
+	}
+
+	if (Request.ReplacementNodeRef.IsEmpty() && Request.ReplacementNodePath.IsEmpty())
+	{
+		OutError = TEXT("replace_link requires patch.replacement_node_ref or patch.replacement_node_path.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.replacement_node_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_replacement_ref_required");
+		}
+		return false;
+	}
+
+	if (Request.ReplacementPinRef.IsEmpty() && Request.ReplacementPinPath.IsEmpty())
+	{
+		OutError = TEXT("replace_link requires patch.replacement_pin_ref or patch.replacement_pin_path.");
+		if (OutField)
+		{
+			*OutField = TEXT("patch.replacement_pin_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("owned_patch_replacement_ref_required");
+		}
+		return false;
+	}
+
+	const bool bResolvingNodePath = !Request.ReplacementNodePath.IsEmpty();
+	const bool bResolvingPinPath = !Request.ReplacementPinPath.IsEmpty();
+	const FString ReplacementNodeIdentifier = bResolvingNodePath ? Request.ReplacementNodePath : Request.ReplacementNodeRef;
+	const FString ReplacementPinIdentifier = bResolvingPinPath ? Request.ReplacementPinPath : Request.ReplacementPinRef;
+	FBlueprintHelperGraphWriteAnchorRef ReplacementAnchor;
+	ReplacementAnchor.BlockId = Request.ReplacementBlockId;
+	ReplacementAnchor.GroupEntryNodePath = Request.GroupEntryNodePath;
+	ReplacementAnchor.NodeRef = bResolvingNodePath ? FString() : Request.ReplacementNodeRef;
+	ReplacementAnchor.PinRef = bResolvingPinPath ? FString() : Request.ReplacementPinRef;
+	ReplacementAnchor.NodePath = Request.ReplacementNodePath;
+	ReplacementAnchor.PinPath = Request.ReplacementPinPath;
+
+	FBlueprintHelperPatchResolveError ResolveError;
+	UEdGraphNode* ReplacementNode = nullptr;
+	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolveNode(PathService, Graph, ReplacementAnchor, ReplacementNode, ResolveError))
+	{
+		OutError = FString::Printf(TEXT("Unable to resolve replacement node: %s"), *ReplacementNodeIdentifier);
+		if (OutField)
+		{
+			*OutField = bResolvingNodePath ? TEXT("patch.replacement_node_path") : TEXT("patch.replacement_node_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("target_node_not_found");
+		}
+		return false;
+	}
+
+	if (!FBlueprintHelperGraphWriteBlockScopedResolver::ResolvePin(PathService, Graph, ReplacementNode, ReplacementAnchor, OutPin, ResolveError))
+	{
+		OutError = FString::Printf(TEXT("Unable to resolve replacement pin: %s"), *ReplacementPinIdentifier);
+		if (OutField)
+		{
+			*OutField = bResolvingPinPath ? TEXT("patch.replacement_pin_path") : TEXT("patch.replacement_pin_ref");
+		}
+		if (OutCode)
+		{
+			*OutCode = TEXT("target_pin_not_found");
+		}
+		return false;
+	}
+
+	FBlueprintHelperOwnedGraphPatchPolicyResult ReplacementPolicy =
+		FBlueprintHelperOwnedGraphPatchPolicy::RequireOwnedPinInBlock(OutPin, Request.BlockId, TEXT("patch.replacement_ref"));
+	if (!ReplacementPolicy.bPassed)
+	{
+		OutError = ReplacementPolicy.Message;
+		if (OutField)
+		{
+			*OutField = ReplacementPolicy.Field;
+		}
+		if (OutCode)
+		{
+			*OutCode = ReplacementPolicy.Code;
 		}
 		return false;
 	}
@@ -640,16 +1113,16 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			return false;
 		}
 
-		UEdGraphPin* FromPin = nullptr;
-		if (!ResolvePatchSourcePin(Graph, Request, FromPin, OutError))
+		if (!Target.SourcePin)
 		{
+			OutError = TEXT("connect_pins requires resolved source pin.");
 			return false;
 		}
 
 		FBlueprintHelperGraphWriteMutationIntent Intent;
 		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins;
 		Intent.IntentId = TEXT("patch_connect_pins");
-		Intent.Source.Pin = FromPin;
+		Intent.Source.Pin = Target.SourcePin;
 		Intent.Target.Pin = Target.Pin;
 		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
 	}
@@ -676,7 +1149,7 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 			return false;
 		}
 		// New target pin.
-		UEdGraphPin* NewToPin = Target.Pin;
+		UEdGraphPin* NewToPin = Target.ReplacementPin;
 		if (!NewToPin)
 		{
 			OutError = TEXT("replace_link requires a new target pin.");
@@ -690,6 +1163,23 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 		Intent.Target.Pin = Target.Link.TargetPin;
 		Intent.ReplacementTarget.Pin = NewToPin;
 		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
+	}
+	case EBlueprintHelperPatchType::DeleteOwnedNode:
+	{
+		if (!Target.Node)
+		{
+			OutError = TEXT("delete_owned_node target node is missing.");
+			return false;
+		}
+
+		Target.Node->Modify();
+		if (Request.bDeleteBreakLinks)
+		{
+			Target.Node->BreakAllNodeLinks();
+		}
+		FBlueprintEditorUtils::RemoveNode(Blueprint, Target.Node, true);
+		bOutChanged = true;
+		return true;
 	}
 	default:
 		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
