@@ -183,6 +183,11 @@ static void ApplyCallActionRequestOverrides(
 	InOutRequest.Semantic.ExpectedReturnPinType = BoundRequest.ExpectedReturnPinType;
 	InOutRequest.Semantic.ArgumentNames = ArgumentNames;
 	InOutRequest.Semantic.DefaultValues = BoundRequest.DefaultValues;
+	const FString ResolvedStableId = BoundRequest.ResolvedStableId.TrimStartAndEnd();
+	if (!ResolvedStableId.IsEmpty())
+	{
+		InOutRequest.Semantic.StableId = ResolvedStableId;
+	}
 	if (!ExplicitTargetObjectName.IsEmpty())
 	{
 		InOutRequest.Semantic.TargetPath = ExplicitTargetObjectName;

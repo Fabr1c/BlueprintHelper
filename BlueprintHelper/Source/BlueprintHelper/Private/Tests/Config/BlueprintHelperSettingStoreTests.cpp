@@ -259,6 +259,45 @@ bool FBlueprintHelperSettingsGraphWriteLayoutRetiredTest::RunTest(const FString&
 		ActionResolutionMaxCandidates.IsValid() ? ActionResolutionMaxCandidates->AsNumber() : 0.0,
 		8.0);
 
+	TSharedPtr<FJsonValue> AutoSearchMaxCandidates;
+	TestTrue(
+		TEXT("effective settings expose graph_write autosearch candidate budget"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_candidates_per_statement"),
+			AutoSearchMaxCandidates,
+			Error));
+	TestTrue(TEXT("autosearch candidate budget is numeric"), AutoSearchMaxCandidates.IsValid() && AutoSearchMaxCandidates->Type == EJson::Number);
+	TestEqual(
+		TEXT("autosearch candidate budget default"),
+		AutoSearchMaxCandidates.IsValid() ? AutoSearchMaxCandidates->AsNumber() : 0.0,
+		3.0);
+
+	TSharedPtr<FJsonValue> AutoSearchMaxStatements;
+	TestTrue(
+		TEXT("effective settings expose graph_write autosearch statement budget"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_statements"),
+			AutoSearchMaxStatements,
+			Error));
+	TestTrue(TEXT("autosearch statement budget is numeric"), AutoSearchMaxStatements.IsValid() && AutoSearchMaxStatements->Type == EJson::Number);
+	TestEqual(
+		TEXT("autosearch statement budget default"),
+		AutoSearchMaxStatements.IsValid() ? AutoSearchMaxStatements->AsNumber() : 0.0,
+		16.0);
+
+	TSharedPtr<FJsonValue> AutoSearchMaxTotalMs;
+	TestTrue(
+		TEXT("effective settings expose graph_write autosearch time budget"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_total_ms"),
+			AutoSearchMaxTotalMs,
+			Error));
+	TestTrue(TEXT("autosearch time budget is numeric"), AutoSearchMaxTotalMs.IsValid() && AutoSearchMaxTotalMs->Type == EJson::Number);
+	TestEqual(
+		TEXT("autosearch time budget default"),
+		AutoSearchMaxTotalMs.IsValid() ? AutoSearchMaxTotalMs->AsNumber() : 0.0,
+		120.0);
+
 	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
 		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
 	TestFalse(TEXT("GraphWrite policy dry_run default remains false"), Policy.bDryRun);
@@ -439,6 +478,10 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		TEXT("review.performance.validity_sweep_max_game_thread_ms_per_frame"),
 		TEXT("review.performance.validity_sweep_max_invalid_purges_per_batch"),
 		TEXT("tool_clusters.graph_write.action_resolution.max_candidates"),
+		TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_candidates_per_statement"),
+		TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_statements"),
+		TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_total_ms"),
+		TEXT("tool_clusters.graph_write.action_resolution.auto_search.detail_level"),
 		TEXT("debug.screenshot.output_dir"),
 		TEXT("debug.screenshot.default_capture_target"),
 		TEXT("debug.screenshot.filename_prefix"),

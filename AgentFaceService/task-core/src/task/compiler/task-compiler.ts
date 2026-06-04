@@ -623,6 +623,7 @@ function makeGraphWriteTaskPlanSteps(
 ): TaskPlanStep[] {
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = String(behavior['graph_strategy']);
+  const autoSearchPolicy = graphWriteAutoSearchPolicyForTaskSpec(taskSpec);
   if (strategy === 'append_new_owned_graph') {
     const signatureSteps = graphWriteOps.map((op, index) => ({
       step_id: `step_${String(index + 1).padStart(3, '0')}`,
@@ -658,6 +659,7 @@ function makeGraphWriteTaskPlanSteps(
         },
         write: {
           strategy: 'owned_graph_edit',
+          ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
           ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
         },
         constraints: {
@@ -705,6 +707,7 @@ function makeGraphWriteTaskPlanSteps(
           },
           write: {
             strategy: 'owned_graph_edit',
+            ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
             ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
           },
           constraints: {
@@ -732,6 +735,7 @@ function makeGraphWriteTaskPlanSteps(
       },
       write: {
         strategy: 'external_graph_edit',
+        ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
         ops: [stripGraphWriteCompilerMetadata(op)],
       },
       constraints: {
@@ -758,6 +762,7 @@ function makeGraphWriteTaskPlanSteps(
     },
     write: {
       strategy: 'owned_graph_edit',
+      ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
       ops,
     },
     constraints: {
@@ -765,6 +770,38 @@ function makeGraphWriteTaskPlanSteps(
       ownership_scope: 'blueprinthelper_owned',
     },
   }));
+}
+
+function graphWriteAutoSearchPolicyForTaskSpec(
+  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>,
+): Record<string, unknown> | undefined {
+  const policy = (taskSpec as Record<string, unknown>)['graph_write_policy'];
+  if (!isRecord(policy) || !isRecord(policy['auto_search'])) {
+    return undefined;
+  }
+  return policy['auto_search'];
+}
+
+function graphWriteAutoSearchPolicyWriteField(
+  autoSearchPolicy: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!autoSearchPolicy) {
+    return {};
+  }
+  const sanitized = omitUndefined({
+    mode: typeof autoSearchPolicy['mode'] === 'string' ? autoSearchPolicy['mode'] : undefined,
+    max_candidates_per_statement: typeof autoSearchPolicy['max_candidates_per_statement'] === 'number'
+      ? autoSearchPolicy['max_candidates_per_statement']
+      : undefined,
+    max_auto_search_statements: typeof autoSearchPolicy['max_auto_search_statements'] === 'number'
+      ? autoSearchPolicy['max_auto_search_statements']
+      : undefined,
+    max_total_auto_search_ms: typeof autoSearchPolicy['max_total_auto_search_ms'] === 'number'
+      ? autoSearchPolicy['max_total_auto_search_ms']
+      : undefined,
+    detail_level: typeof autoSearchPolicy['detail_level'] === 'string' ? autoSearchPolicy['detail_level'] : undefined,
+  });
+  return Object.keys(sanitized).length > 0 ? { auto_search_policy: sanitized } : {};
 }
 
 function stripGraphWriteCompilerMetadata(op: GraphWriteCompiledOp): GraphWriteCompiledOp {

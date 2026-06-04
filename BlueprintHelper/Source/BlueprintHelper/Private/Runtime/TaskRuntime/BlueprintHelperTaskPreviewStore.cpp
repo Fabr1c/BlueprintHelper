@@ -35,6 +35,8 @@ FString FBlueprintHelperTaskPreviewStore::Store(const FBlueprintHelperTaskPrevie
 	Entry.AssetStateHash = Request.AssetStateHash;
 	Entry.ActionContextRevisionManifestHash = Request.ActionContextRevisionManifestHash;
 	Entry.ActionContextRevisionManifestJson = CloneJsonObject(Request.ActionContextRevisionManifestJson);
+	Entry.GraphWriteCandidateArtifactJson = CloneJsonObject(Request.GraphWriteCandidateArtifactJson);
+	Entry.GraphWriteCandidateArtifactHash = Request.GraphWriteCandidateArtifactHash;
 	Entry.CreatedAtIso = Now.ToIso8601();
 	Entry.ExpiresAtUtc = Now + TimeToLive;
 	Entry.LastAccessedAtUtc = Now;
@@ -85,6 +87,8 @@ FBlueprintHelperTaskPreviewStoreResolveResult FBlueprintHelperTaskPreviewStore::
 	Result.AssetStateHash = Entry->AssetStateHash;
 	Result.ActionContextRevisionManifestHash = Entry->ActionContextRevisionManifestHash;
 	Result.ActionContextRevisionManifestJson = CloneJsonObject(Entry->ActionContextRevisionManifestJson);
+	Result.GraphWriteCandidateArtifactJson = CloneJsonObject(Entry->GraphWriteCandidateArtifactJson);
+	Result.GraphWriteCandidateArtifactHash = Entry->GraphWriteCandidateArtifactHash;
 	return Result;
 }
 

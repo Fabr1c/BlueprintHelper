@@ -132,6 +132,8 @@ FString FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(
 	Parts.Add(FString::Printf(TEXT("query=%s"), *Request.Query));
 	Parts.Add(FString::Printf(TEXT("search=%s"), *Request.SearchMode));
 	Parts.Add(FString::Printf(TEXT("ambiguity=%s"), *Request.AmbiguityPolicy));
+	Parts.Add(FString::Printf(TEXT("resolution_policy=%s"), *Request.ResolutionPolicy));
+	Parts.Add(FString::Printf(TEXT("selected_candidate_id=%s"), *Request.SelectedCandidateId));
 	Parts.Add(FString::Printf(TEXT("target_object=%s"), *Request.TargetObjectType));
 	Parts.Add(FString::Printf(TEXT("expected_return=%s"), *Request.ExpectedReturnType));
 	AppendPinTypeKeyParts(Parts, TEXT("target_object_pin"), Request.TargetObjectPinType);
@@ -170,7 +172,7 @@ FString FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(
 
 FString FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion()
 {
-	return TEXT("BlueprintHelper.CallFunctionResolver.v2");
+	return TEXT("BlueprintHelper.CallFunctionResolver.v3.AutoSearch");
 }
 
 void FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::PruneIfNeeded(const FDateTime& NowUtc)

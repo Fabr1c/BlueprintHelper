@@ -355,9 +355,39 @@ export const ValueExprSchema = z.union([
   z.object({ kind: z.string() }).passthrough(),
 ]);
 
+const GraphWriteResolutionPolicySchema = z.enum(['default', 'auto_search']).optional();
+
+const GraphWriteActionSelectionSchema = z.object({
+  candidate_id: z.string().regex(/^preview:[A-Za-z0-9_-]+:[A-Za-z0-9_.:-]+:\d+$/),
+}).passthrough();
+
 export const BlueprintLogicStatementSchema = z.object({
   kind: z.string(),
-}).passthrough();
+  resolution_policy: GraphWriteResolutionPolicySchema,
+  action_selection: GraphWriteActionSelectionSchema.optional(),
+}).passthrough().superRefine((value, ctx) => {
+  if (value.kind === 'action') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['kind'],
+      message: 'kind="action" is not an Agent-facing GraphWrite statement kind; use kind="call" with resolution_policy="auto_search" for broad callable search.',
+    });
+  }
+  if (value.action_selection && value.kind !== 'call') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['action_selection'],
+      message: 'action_selection is supported only on kind="call" statements.',
+    });
+  }
+  if (value.resolution_policy && value.kind !== 'call') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['resolution_policy'],
+      message: 'resolution_policy is supported only on kind="call" statements.',
+    });
+  }
+});
 
 export const BlueprintLogicSpecSchema = z.object({
   schema: z.union([z.literal('BlueprintLogicSpec.v1'), z.literal('BlueprintLogicSpec.v2')]),
@@ -883,6 +913,18 @@ const GraphWriteBehaviorSchema = z.object({
     });
 });
 
+const GraphWriteAutoSearchPolicySchema = z.object({
+  mode: z.enum(['off', 'on_preview_resolution_failure']).optional().default('off'),
+  max_candidates_per_statement: z.number().int().min(1).max(10).optional().default(3),
+  max_auto_search_statements: z.number().int().min(1).max(64).optional().default(16),
+  max_total_auto_search_ms: z.number().int().min(1).max(1000).optional().default(120),
+  detail_level: z.enum(['short', 'diagnostic']).optional().default('short'),
+}).strict();
+
+const GraphWritePolicySchema = z.object({
+  auto_search: GraphWriteAutoSearchPolicySchema.optional(),
+}).passthrough().optional().default({});
+
 export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_graph'),
   scope_policy: z.object({
@@ -890,6 +932,7 @@ export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend(
     allow_modify_user_nodes: z.boolean().optional().default(false),
     external_mutation_policy: ExternalMutationPolicySchema.optional(),
   }).passthrough(),
+  graph_write_policy: GraphWritePolicySchema,
   behavior: GraphWriteBehaviorSchema,
 }).passthrough().superRefine((value, ctx) => {
   validateExactExternalMutationPolicy({

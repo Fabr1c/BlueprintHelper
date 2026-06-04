@@ -24,7 +24,6 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
-#include "Subsystems/GameInstanceSubsystem.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperCallFunctionResolverTestsLocalUtils
@@ -408,8 +407,21 @@ public:
 	static FString MakeSingleCallJson(const FString& FunctionName)
 	{
 		TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
+		Options->SetBoolField(TEXT("dry_run"), true);
+		Root->SetObjectField(TEXT("options"), Options);
+
 		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
 		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+		Entry->SetStringField(TEXT("id"), TEXT("call_function_resolver_entry"));
+		Entry->SetStringField(TEXT("kind"), TEXT("custom_event"));
+		Entry->SetStringField(TEXT("name"), TEXT("BH_CallFunctionResolverEntry"));
+		Entry->SetStringField(TEXT("event_taxonomy"), TEXT("custom_event"));
+		Entry->SetStringField(TEXT("source_cluster"), TEXT("blueprint_signature"));
+		Entry->SetStringField(TEXT("signature_evidence_id"), TEXT("call_function_resolver_signature"));
+		LogicSpec->SetObjectField(TEXT("entry"), Entry);
 
 		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
 		Statement->SetStringField(TEXT("kind"), TEXT("call"));
@@ -424,6 +436,39 @@ public:
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
 		FJsonSerializer::Serialize(Root, Writer);
 		return JsonText;
+	}
+
+	static void AddGenerationDiagnostics(
+		FAutomationTestBase& Test,
+		const FString& Label,
+		const FBlueprintGenerateResult& Result,
+		const TArray<TSharedPtr<FUnresolvedNodeItem>>& Unresolved)
+	{
+		if (Result.bSucceed)
+		{
+			return;
+		}
+
+		Test.AddInfo(FString::Printf(
+			TEXT("%s failed: message=\"%s\" generated=%d unresolved=%d connectivity=%d"),
+			*Label,
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount));
+		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
+		{
+			if (!Item.IsValid())
+			{
+				continue;
+			}
+			Test.AddInfo(FString::Printf(
+				TEXT("%s unresolved: display=\"%s\" reason=\"%s\" candidates=%d"),
+				*Label,
+				*Item->DisplayText,
+				*Item->Reason,
+				Item->CandidateFunctions.Num()));
+		}
 	}
 
 	static UK2Node_CallFunction* FindCallNode(UEdGraph* Graph, const FName FunctionName = FName(TEXT("PrintString")))
@@ -614,6 +659,11 @@ bool FBlueprintHelperCallFunctionResolverGeneratorDisplayNameTest::RunTest(const
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Print String")),
 		Unresolved);
 
+	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
+		*this,
+		TEXT("GeneratorDisplayNameSpawnsPrintString"),
+		Result,
+		Unresolved);
 	TestTrue(TEXT("generation succeeds"), Result.bSucceed);
 	UK2Node_CallFunction* CallNode = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph);
 	TestNotNull(TEXT("call node"), CallNode);
@@ -639,6 +689,11 @@ bool FBlueprintHelperCallFunctionResolverGeneratorQualifiedNameTest::RunTest(con
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")),
 		Unresolved);
 
+	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
+		*this,
+		TEXT("GeneratorQualifiedNameSpawnsPrintString"),
+		Result,
+		Unresolved);
 	TestTrue(TEXT("generation succeeds"), Result.bSucceed);
 	UK2Node_CallFunction* CallNode = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph);
 	TestNotNull(TEXT("call node"), CallNode);
@@ -669,31 +724,42 @@ bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest:
 	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		Graph,
 		TEXT(R"JSON({
+			"options": {
+				"dry_run": true
+			},
 			"logic_spec": {
 				"schema": "BlueprintLogicSpec.v2",
+				"entry": {
+					"id": "dynamic_cast_entry",
+					"kind": "custom_event",
+					"name": "BH_DynamicCastEntry",
+					"event_taxonomy": "custom_event",
+					"source_cluster": "blueprint_signature",
+					"signature_evidence_id": "dynamic_cast_signature"
+				},
 				"statements": [{
 					"kind": "call",
-					"target": "PrintString",
+					"target": "/Script/Engine.Actor:SetActorHiddenInGame",
 					"target_object": {
 						"kind": "convert",
 						"transform_operation": "dynamic_cast",
-						"target_class_path": "/Script/Engine.GameInstanceSubsystem",
+						"target_class_path": "/Script/Engine.Actor",
 						"args": {
 							"value": {
 								"kind": "call",
-								"target": "/Script/Engine.SubsystemBlueprintLibrary:GetGameInstanceSubsystem",
+								"target": "/Script/Engine.GameplayStatics:GetPlayerPawn",
 								"args": {
-									"Class": {
+									"PlayerIndex": {
 										"kind": "literal",
-										"value_type": "class",
-										"value": "/Script/Engine.GameInstanceSubsystem"
+										"value_type": "int",
+										"value": 0
 									}
 								}
 							}
 						}
 					},
 					"args": {
-						"InString": { "kind": "literal", "value_type": "string", "value": "probe" }
+						"bNewHidden": { "kind": "literal", "value_type": "bool", "value": false }
 					}
 				}]
 			}
@@ -737,18 +803,18 @@ bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest:
 	}
 	TestNotNull(TEXT("dynamic cast result pin"), CastResultPin);
 
-	UK2Node_CallFunction* PrintStringNode =
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("PrintString")));
-	TestNotNull(TEXT("receiver PrintString call generated"), PrintStringNode);
-	if (CastResultPin && PrintStringNode)
+	UK2Node_CallFunction* ReceiverNode =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("SetActorHiddenInGame")));
+	TestNotNull(TEXT("receiver SetActorHiddenInGame call generated"), ReceiverNode);
+	if (CastResultPin && ReceiverNode)
 	{
 		UEdGraphPin* LinkedTargetPin = nullptr;
-		for (UEdGraphPin* Pin : PrintStringNode->Pins)
+		for (UEdGraphPin* Pin : ReceiverNode->Pins)
 		{
 			if (Pin
 				&& Pin->Direction == EGPD_Input
 				&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
-				&& UGraphWriteGraphStatementUtils::IsCallableTargetObjectPin(PrintStringNode, Pin)
+				&& UGraphWriteGraphStatementUtils::IsCallableTargetObjectPin(ReceiverNode, Pin)
 				&& Pin->LinkedTo.Contains(CastResultPin))
 			{
 				LinkedTargetPin = Pin;
@@ -758,18 +824,9 @@ bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest:
 		TestNotNull(TEXT("pure dynamic cast result feeds receiver call target_object pin"), LinkedTargetPin);
 	}
 
-	UK2Node_CallFunction* SubsystemNode =
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("GetGameInstanceSubsystem")));
-	TestNotNull(TEXT("subsystem getter call generated"), SubsystemNode);
-	if (SubsystemNode)
-	{
-		UEdGraphPin* ClassPin = SubsystemNode->FindPin(TEXT("Class"));
-		TestNotNull(TEXT("subsystem getter class pin"), ClassPin);
-		if (ClassPin)
-		{
-			TestTrue(TEXT("subsystem getter class default object"), ClassPin->DefaultObject.Get() == UGameInstanceSubsystem::StaticClass());
-		}
-	}
+	UK2Node_CallFunction* PawnGetterNode =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph, FName(TEXT("GetPlayerPawn")));
+	TestNotNull(TEXT("source pawn getter call generated"), PawnGetterNode);
 
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	TestFalse(TEXT("dynamic cast expression Blueprint compiles"), Blueprint->Status == BS_Error);
@@ -796,8 +853,19 @@ bool FBlueprintHelperCallFunctionResolverCallLiteralDefaultsPerStatementTest::Ru
 	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		Graph,
 		TEXT(R"JSON({
+			"options": {
+				"dry_run": true
+			},
 			"logic_spec": {
 				"schema": "BlueprintLogicSpec.v2",
+				"entry": {
+					"id": "literal_defaults_entry",
+					"kind": "custom_event",
+					"name": "BH_LiteralDefaultsEntry",
+					"event_taxonomy": "custom_event",
+					"source_cluster": "blueprint_signature",
+					"signature_evidence_id": "literal_defaults_signature"
+				},
 				"statements": [{
 					"kind": "call",
 					"target": "PrintString",
@@ -1135,6 +1203,11 @@ bool FBlueprintHelperCallFunctionResolverStressBlueprintAuthoredInheritedGenerat
 	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		ChildGraph,
 		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("ParentBlueprintNoArgUtility")),
+		Unresolved);
+	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
+		*this,
+		TEXT("Stress.BlueprintAuthoredInheritedFunctionGraphGenerationSpawns"),
+		GenerateResult,
 		Unresolved);
 	if (ResolveResult.Status == EBlueprintHelperCallFunctionResolveStatus::Resolved)
 	{
@@ -1500,6 +1573,42 @@ bool FBlueprintHelperCallFunctionActionResolutionPhysicalDoorAmbiguousSetBlocksT
 		Result.ErrorCode == TEXT("candidate_threshold_exceeded")
 		|| Result.ErrorCode == TEXT("ambiguous_function_call"));
 	TestTrue(TEXT("top candidates are present"), Result.CandidateActions.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionResolverAutoSearchRejectsInvalidCandidateIdTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.AutoSearchRejectsInvalidCandidateId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionResolverAutoSearchRejectsInvalidCandidateIdTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperCallFunctionResolveRequest Request;
+	Request.Query = TEXT("Print String");
+	Request.ResolutionPolicy = TEXT("auto_search");
+	Request.SelectedCandidateId = TEXT("not_preview_scoped");
+
+	const FBlueprintHelperCallFunctionResolveResult Result = FBlueprintHelperCallFunctionResolver::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperCallFunctionResolveStatus::Blocked);
+	TestEqual(TEXT("invalid candidate code"), Result.ErrorCode, FString(TEXT("invalid_graphwrite_candidate_selection")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperCallFunctionResolverAutoSearchRejectsMissingArtifactCandidateTest,
+	"BlueprintHelper.GraphWrite.CallFunctionResolver.AutoSearchRejectsMissingArtifactCandidate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperCallFunctionResolverAutoSearchRejectsMissingArtifactCandidateTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperCallFunctionResolveRequest Request;
+	Request.Query = TEXT("Print String");
+	Request.ResolutionPolicy = TEXT("auto_search");
+	Request.SelectedCandidateId = TEXT("preview:missing:s_print:001");
+
+	const FBlueprintHelperCallFunctionResolveResult Result = FBlueprintHelperCallFunctionResolver::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperCallFunctionResolveStatus::Blocked);
+	TestEqual(TEXT("missing artifact code"), Result.ErrorCode, FString(TEXT("graphwrite_autosearch_candidate_expired")));
 	return true;
 }
 

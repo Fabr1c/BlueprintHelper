@@ -30,6 +30,32 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		return Result;
 	}
 
+	const FString SelectedCandidateId = Request.SelectedCandidateId.TrimStartAndEnd();
+	if (!SelectedCandidateId.IsEmpty())
+	{
+		if (!Request.ResolutionPolicy.Equals(TEXT("auto_search"), ESearchCase::IgnoreCase))
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
+			Result.ErrorCode = TEXT("invalid_graphwrite_candidate_selection");
+			Result.Message = TEXT("action_selection.candidate_id requires resolution_policy=\"auto_search\".");
+			return Result;
+		}
+		if (!SelectedCandidateId.StartsWith(TEXT("preview:")))
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
+			Result.ErrorCode = TEXT("invalid_graphwrite_candidate_selection");
+			Result.Message = TEXT("action_selection.candidate_id must be a preview-scoped candidate id.");
+			return Result;
+		}
+		if (Request.CandidatePolicy.RequiredStableCallableIds.IsEmpty())
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
+			Result.ErrorCode = TEXT("graphwrite_autosearch_candidate_expired");
+			Result.Message = TEXT("Selected AutoSearch candidate is not present in the current preview artifact.");
+			return Result;
+		}
+	}
+
 	FString QualifiedOwner;
 	FString QualifiedFunction;
 	const bool bQualifiedQuery = TryParseQualifiedQuery(Query, QualifiedOwner, QualifiedFunction);
@@ -80,6 +106,49 @@ FBlueprintHelperCallFunctionResolveResult FBlueprintHelperCallFunctionResolver::
 		Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
 		Result.ErrorCode = TEXT("explicit_member_call_not_supported");
 		Result.Message = TEXT("call_function.name uses an explicit member prefix; first slice supports graph/self/library calls only.");
+		return Result;
+	}
+
+	if (!SelectedCandidateId.IsEmpty())
+	{
+		TArray<FBlueprintHelperCallFunctionCandidate> SelectedCandidates;
+		for (FBlueprintHelperCallFunctionCandidate& Candidate : Candidates)
+		{
+			if (!FBlueprintHelperCallFunctionResolverUtils::PassesMetadataFilters(Candidate, Request))
+			{
+				continue;
+			}
+			if (Candidate.bGraphCompatible && Candidate.NodeSpawner.IsValid())
+			{
+				SelectedCandidates.Add(Candidate);
+			}
+		}
+		FBlueprintHelperCallFunctionResolverUtils::SortCandidates(SelectedCandidates);
+		FBlueprintHelperCallFunctionResolverUtils::SetTopCandidates(Result, SelectedCandidates, Request.MaxCandidates);
+		if (SelectedCandidates.Num() == 1)
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Resolved;
+			Result.Selected = SelectedCandidates[0];
+			Result.Message = FString::Printf(
+				TEXT("call_function resolved selected AutoSearch candidate '%s' to %s."),
+				*SelectedCandidateId,
+				*SelectedCandidates[0].StableId);
+			return Result;
+		}
+		if (SelectedCandidates.IsEmpty())
+		{
+			Result.Status = EBlueprintHelperCallFunctionResolveStatus::Blocked;
+			Result.ErrorCode = TEXT("graphwrite_autosearch_candidate_expired");
+			Result.Message = TEXT("Selected AutoSearch candidate is no longer graph-compatible in the current ActionDatabase projection.");
+			return Result;
+		}
+
+		Result.Status = EBlueprintHelperCallFunctionResolveStatus::Ambiguous;
+		Result.ErrorCode = TEXT("ambiguous_function_call");
+		Result.Message = FBlueprintHelperCallFunctionResolverUtils::BuildCandidateListMessage(
+			FString::Printf(TEXT("Selected AutoSearch candidate '%s' resolved to multiple graph-compatible functions."), *SelectedCandidateId),
+			Query,
+			Result.Candidates);
 		return Result;
 	}
 

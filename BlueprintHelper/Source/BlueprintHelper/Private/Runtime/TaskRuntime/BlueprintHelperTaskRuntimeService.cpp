@@ -54,6 +54,8 @@
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationTypes.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
+#include "Systems/ToolClusters/GraphWrite/AutoSearch/BlueprintHelperGraphWriteAutoSearchPolicyResolver.h"
+#include "Systems/ToolClusters/GraphWrite/AutoSearch/BlueprintHelperGraphWriteCandidateArtifactStore.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
@@ -67,6 +69,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "Engine/Blueprint.h"
+#include "HAL/PlatformTime.h"
 #include "HAL/FileManager.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/Crc.h"
@@ -345,6 +348,38 @@ public:
 		for (const auto& Field : Source->Values)
 		{
 			Destination->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
+		}
+	}
+
+	static void RemoveJsonFieldRecursive(const TSharedPtr<FJsonObject>& Object, const FString& FieldName)
+	{
+		if (!Object.IsValid())
+		{
+			return;
+		}
+
+		Object->RemoveField(FieldName);
+		for (const auto& Field : Object->Values)
+		{
+			if (!Field.Value.IsValid())
+			{
+				continue;
+			}
+
+			if (Field.Value->Type == EJson::Object)
+			{
+				RemoveJsonFieldRecursive(Field.Value->AsObject(), FieldName);
+			}
+			else if (Field.Value->Type == EJson::Array)
+			{
+				for (const TSharedPtr<FJsonValue>& ArrayValue : Field.Value->AsArray())
+				{
+					if (ArrayValue.IsValid() && ArrayValue->Type == EJson::Object)
+					{
+						RemoveJsonFieldRecursive(ArrayValue->AsObject(), FieldName);
+					}
+				}
+			}
 		}
 	}
 
@@ -1536,6 +1571,353 @@ public:
 		return Groups;
 	}
 
+	static FString SanitizeGraphWriteAutoSearchIdSegment(const FString& Raw)
+	{
+		FString Sanitized;
+		for (const TCHAR Ch : Raw)
+		{
+			const bool bAllowed =
+				(Ch >= TCHAR('A') && Ch <= TCHAR('Z')) ||
+				(Ch >= TCHAR('a') && Ch <= TCHAR('z')) ||
+				(Ch >= TCHAR('0') && Ch <= TCHAR('9')) ||
+				Ch == TCHAR('_') ||
+				Ch == TCHAR('-');
+			Sanitized.AppendChar(bAllowed ? Ch : TCHAR('_'));
+		}
+		Sanitized.TrimStartAndEndInline();
+		return Sanitized.IsEmpty() ? TEXT("statement") : Sanitized;
+	}
+
+	static FString ReadGraphWriteAutoSearchStatementId(const FCallFunctionStatementRef& CallStatement)
+	{
+		FString StatementId;
+		if (CallStatement.StatementObject.IsValid())
+		{
+			CallStatement.StatementObject->TryGetStringField(TEXT("statement_id"), StatementId);
+		}
+		if (StatementId.TrimStartAndEnd().IsEmpty())
+		{
+			StatementId = CallStatement.StatementPath;
+		}
+		return SanitizeGraphWriteAutoSearchIdSegment(StatementId);
+	}
+
+	static FString MakeGraphWriteAutoSearchPreviewScope(
+		const FString& StepId,
+		const FString& ContextRevisionManifestHash)
+	{
+		const FString StableText = StepId + TEXT("|") + ContextRevisionManifestHash;
+		return FString::Printf(TEXT("gw_%08x"), FCrc::StrCrc32(*StableText));
+	}
+
+	static FString MakeGraphWriteAutoSearchCandidateId(
+		const FString& PreviewScope,
+		const FString& StatementId,
+		int32 CandidateIndex)
+	{
+		return FString::Printf(
+			TEXT("preview:%s:%s:%03d"),
+			*PreviewScope,
+			*SanitizeGraphWriteAutoSearchIdSegment(StatementId),
+			CandidateIndex + 1);
+	}
+
+	static FString ShortClassName(const FString& Path)
+	{
+		int32 DotIndex = INDEX_NONE;
+		int32 SlashIndex = INDEX_NONE;
+		Path.FindLastChar(TEXT('.'), DotIndex);
+		Path.FindLastChar(TEXT('/'), SlashIndex);
+		const int32 CutIndex = FMath::Max(DotIndex, SlashIndex);
+		return CutIndex != INDEX_NONE ? Path.Mid(CutIndex + 1) : Path;
+	}
+
+	static FString HashGraphWriteAutoSearchEvidence(const FString& StableText)
+	{
+		return FString::Printf(TEXT("%08x"), FCrc::StrCrc32(*StableText));
+	}
+
+	static TSharedRef<FJsonObject> MakeGraphWriteAutoSearchCandidateJson(
+		const FString& CandidateId,
+		const FBlueprintHelperCallFunctionCandidateInfo& Candidate)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("candidate_id"), CandidateId);
+		Json->SetStringField(TEXT("suggested_kind"), TEXT("call"));
+		Json->SetStringField(TEXT("display_name"), Candidate.DisplayName);
+		Json->SetStringField(TEXT("owner_short"), ShortClassName(Candidate.OwnerClassPath));
+		Json->SetStringField(TEXT("node_class"), ShortClassName(Candidate.NodeClassPath.IsEmpty() ? TEXT("K2Node_CallFunction") : Candidate.NodeClassPath));
+		Json->SetStringField(TEXT("match_reason"), Candidate.MatchReason.IsEmpty() ? TEXT("target text + graph context compatible") : Candidate.MatchReason);
+		return Json;
+	}
+
+	static TSharedRef<FJsonObject> MakeGraphWriteAutoSearchArtifactCandidateJson(
+		const FString& CandidateId,
+		const FString& StatementId,
+		const FString& SnapshotGeneration,
+		const FBlueprintHelperCallFunctionCandidateInfo& Candidate)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("candidate_id"), CandidateId);
+		Json->SetStringField(TEXT("statement_id"), StatementId);
+		Json->SetStringField(TEXT("stable_id"), Candidate.StableId);
+		Json->SetStringField(TEXT("owner_path"), Candidate.OwnerClassPath);
+		Json->SetStringField(TEXT("node_class"), Candidate.NodeClassPath.IsEmpty() ? TEXT("K2Node_CallFunction") : Candidate.NodeClassPath);
+		Json->SetStringField(TEXT("spawner_signature_hash"), HashGraphWriteAutoSearchEvidence(Candidate.StableId + TEXT("|") + Candidate.NodeClassPath));
+		Json->SetStringField(TEXT("snapshot_generation"), SnapshotGeneration);
+		Json->SetStringField(TEXT("pin_shape_hash"), HashGraphWriteAutoSearchEvidence(FString::Join(Candidate.InputPins, TEXT("|"))));
+		return Json;
+	}
+
+	static bool TryParseGraphWriteAutoSearchCandidateId(
+		const FString& CandidateId,
+		FString& OutPreviewScope,
+		FString& OutStatementId,
+		int32& OutCandidateIndex)
+	{
+		OutPreviewScope.Reset();
+		OutStatementId.Reset();
+		OutCandidateIndex = INDEX_NONE;
+
+		TArray<FString> Parts;
+		CandidateId.ParseIntoArray(Parts, TEXT(":"), false);
+		if (Parts.Num() != 4 || Parts[0] != TEXT("preview") || Parts[1].IsEmpty() || Parts[2].IsEmpty())
+		{
+			return false;
+		}
+		int32 CandidateOrdinal = 0;
+		if (!LexTryParseString(CandidateOrdinal, *Parts[3]) || CandidateOrdinal <= 0)
+		{
+			return false;
+		}
+		OutPreviewScope = Parts[1];
+		OutStatementId = Parts[2];
+		OutCandidateIndex = CandidateOrdinal - 1;
+		return true;
+	}
+
+	static bool TryFindGraphWriteAutoSearchCandidateInArtifact(
+		const TSharedPtr<FJsonObject>& ArtifactJson,
+		const FString& CandidateId,
+		FString& OutStableId)
+	{
+		OutStableId.Reset();
+		if (!ArtifactJson.IsValid())
+		{
+			return false;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* CandidateValues = nullptr;
+		if (!ArtifactJson->TryGetArrayField(TEXT("candidates"), CandidateValues) || !CandidateValues)
+		{
+			return false;
+		}
+		for (const TSharedPtr<FJsonValue>& CandidateValue : *CandidateValues)
+		{
+			const TSharedPtr<FJsonObject> CandidateObject = AsJsonObjectIfObject(CandidateValue);
+			if (!CandidateObject.IsValid())
+			{
+				continue;
+			}
+			FString ExistingCandidateId;
+			if (CandidateObject->TryGetStringField(TEXT("candidate_id"), ExistingCandidateId) &&
+				ExistingCandidateId == CandidateId &&
+				CandidateObject->TryGetStringField(TEXT("stable_id"), OutStableId) &&
+				!OutStableId.IsEmpty())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool TryResolveGraphWriteAutoSearchCurrentCandidateStableId(
+		const FString& CandidatePreviewScope,
+		const FString& CandidateStatementId,
+		int32 CandidateIndex,
+		const FString& CurrentPreviewScope,
+		const FString& CurrentStatementId,
+		const FBlueprintHelperCallFunctionResolveRequest& ResolveRequest,
+		FString& OutStableId)
+	{
+		OutStableId.Reset();
+		if (CandidateIndex < 0 ||
+			CandidatePreviewScope != CurrentPreviewScope ||
+			CandidateStatementId != CurrentStatementId)
+		{
+			return false;
+		}
+
+		FBlueprintHelperCallFunctionResolveRequest DiscoveryRequest = ResolveRequest;
+		DiscoveryRequest.SelectedCandidateId.Reset();
+		DiscoveryRequest.CandidatePolicy.RequiredStableCallableIds.Reset();
+
+		const FBlueprintHelperCallFunctionResolveResult DiscoveryResult =
+			FBlueprintHelperCallFunctionResolver::Resolve(DiscoveryRequest);
+		if (DiscoveryResult.CandidateFunctions.IsValidIndex(CandidateIndex) &&
+			!DiscoveryResult.CandidateFunctions[CandidateIndex].StableId.IsEmpty())
+		{
+			OutStableId = DiscoveryResult.CandidateFunctions[CandidateIndex].StableId;
+			return true;
+		}
+		if (CandidateIndex == 0 &&
+			DiscoveryResult.IsResolved() &&
+			!DiscoveryResult.Selected.StableId.IsEmpty())
+		{
+			OutStableId = DiscoveryResult.Selected.StableId;
+			return true;
+		}
+		return false;
+	}
+
+	static bool GraphWriteAutoSearchStatementMatchesSelection(
+		const TSharedPtr<FJsonObject>& StatementObject,
+		const FString& StatementId,
+		const FString& CandidateId)
+	{
+		if (!StatementObject.IsValid())
+		{
+			return false;
+		}
+
+		FString RawStatementId;
+		if (StatementObject->TryGetStringField(TEXT("statement_id"), RawStatementId) &&
+			SanitizeGraphWriteAutoSearchIdSegment(RawStatementId) == StatementId)
+		{
+			return true;
+		}
+
+		const TSharedPtr<FJsonObject>* ActionSelectionObjectPtr = nullptr;
+		FString ExistingCandidateId;
+		return StatementObject->TryGetObjectField(TEXT("action_selection"), ActionSelectionObjectPtr) &&
+			ActionSelectionObjectPtr && ActionSelectionObjectPtr->IsValid() &&
+			(*ActionSelectionObjectPtr)->TryGetStringField(TEXT("candidate_id"), ExistingCandidateId) &&
+			ExistingCandidateId == CandidateId;
+	}
+
+	static void ApplyGraphWriteAutoSearchResolvedStableIdToStatements(
+		const TArray<TSharedPtr<FJsonValue>>& StatementValues,
+		const FString& StatementId,
+		const FString& CandidateId,
+		const FString& StableId)
+	{
+		if (StableId.IsEmpty())
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& StatementValue : StatementValues)
+		{
+			const TSharedPtr<FJsonObject> StatementObject = AsJsonObjectIfObject(StatementValue);
+			if (!StatementObject.IsValid())
+			{
+				continue;
+			}
+			if (GraphWriteAutoSearchStatementMatchesSelection(StatementObject, StatementId, CandidateId))
+			{
+				StatementObject->SetStringField(TEXT("resolved_stable_id"), StableId);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* ThenStatements = nullptr;
+			if (StatementObject->TryGetArrayField(TEXT("then"), ThenStatements) && ThenStatements)
+			{
+				ApplyGraphWriteAutoSearchResolvedStableIdToStatements(*ThenStatements, StatementId, CandidateId, StableId);
+			}
+			const TArray<TSharedPtr<FJsonValue>>* ElseStatements = nullptr;
+			if (StatementObject->TryGetArrayField(TEXT("else"), ElseStatements) && ElseStatements)
+			{
+				ApplyGraphWriteAutoSearchResolvedStableIdToStatements(*ElseStatements, StatementId, CandidateId, StableId);
+			}
+		}
+	}
+
+	static void ApplyGraphWriteAutoSearchResolvedStableIdToLogicSpec(
+		const TSharedPtr<FJsonObject>& LogicSpec,
+		const FString& StatementId,
+		const FString& CandidateId,
+		const FString& StableId)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* StatementValues = nullptr;
+		if (!LogicSpec.IsValid() ||
+			!LogicSpec->TryGetArrayField(TEXT("statements"), StatementValues) ||
+			!StatementValues)
+		{
+			return;
+		}
+		ApplyGraphWriteAutoSearchResolvedStableIdToStatements(
+			*StatementValues,
+			StatementId,
+			CandidateId,
+			StableId);
+	}
+
+	static void ApplyGraphWriteAutoSearchResolvedStableIdToPayloads(
+		const TSharedPtr<FJsonObject>& StepObject,
+		const TSharedPtr<FJsonObject>& LoweredPayload,
+		const FString& StatementId,
+		const FString& CandidateId,
+		const FString& StableId)
+	{
+		TArray<FCallFunctionLogicSpecRef> StepLogicSpecs;
+		CollectCallFunctionLogicSpecs(StepObject, nullptr, StepLogicSpecs);
+		for (const FCallFunctionLogicSpecRef& LogicSpecRef : StepLogicSpecs)
+		{
+			ApplyGraphWriteAutoSearchResolvedStableIdToLogicSpec(
+				LogicSpecRef.LogicSpec,
+				StatementId,
+				CandidateId,
+				StableId);
+		}
+
+		TArray<FCallFunctionLogicSpecRef> LoweredLogicSpecs;
+		CollectCallFunctionLogicSpecs(nullptr, LoweredPayload, LoweredLogicSpecs);
+		for (const FCallFunctionLogicSpecRef& LogicSpecRef : LoweredLogicSpecs)
+		{
+			ApplyGraphWriteAutoSearchResolvedStableIdToLogicSpec(
+				LogicSpecRef.LogicSpec,
+				StatementId,
+				CandidateId,
+				StableId);
+		}
+	}
+
+	static TSharedRef<FJsonObject> MakeGraphWriteAutoSearchCandidateRequiredData(
+		const FString& Message,
+		const FString& Query,
+		const FString& Path,
+		const TArray<TSharedPtr<FJsonValue>>& CandidateJsonValues,
+		int32 CandidateCount,
+		bool bTruncated)
+	{
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("resolution_status"), TEXT("candidate_required"));
+		Data->SetStringField(TEXT("error_code"), TEXT("graphwrite_autosearch_candidate_required"));
+		Data->SetArrayField(TEXT("candidates"), CandidateJsonValues);
+		Data->SetNumberField(TEXT("candidate_count"), CandidateCount);
+		Data->SetBoolField(TEXT("truncated"), bTruncated);
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("result"), TEXT("blocked"));
+		DryRun->SetBoolField(TEXT("can_execute"), false);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+
+		TSharedRef<FJsonObject> Issue = MakeShared<FJsonObject>();
+		Issue->SetStringField(TEXT("code"), TEXT("graphwrite_autosearch_candidate_required"));
+		Issue->SetStringField(TEXT("stage"), ToolStageToString(EBlueprintHelperToolStage::DryRun));
+		Issue->SetStringField(TEXT("path"), Path);
+		Issue->SetStringField(TEXT("source"), Path);
+		Issue->SetStringField(TEXT("target"), Query);
+		Issue->SetStringField(TEXT("message"), Message);
+		Issue->SetStringField(TEXT("resolution_status"), TEXT("candidate_required"));
+		Issue->SetArrayField(TEXT("candidates"), CandidateJsonValues);
+		Issue->SetNumberField(TEXT("candidate_count"), CandidateCount);
+		Issue->SetBoolField(TEXT("truncated"), bTruncated);
+
+		TArray<TSharedPtr<FJsonValue>> Errors;
+		Errors.Add(MakeShared<FJsonValueObject>(Issue));
+		DryRun->SetArrayField(TEXT("errors"), Errors);
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		return Data;
+	}
+
 	static TSharedRef<FJsonObject> MakeCallFunctionResolutionBlockedData(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
@@ -1711,10 +2093,13 @@ public:
 		bool bDryRun,
 		const FString& AssetStateHash,
 		const FString& ContextRevisionManifestHash,
+		const TSharedPtr<FJsonObject>& PreviewArtifactJson,
+		FBlueprintHelperGraphWriteCandidateArtifactStore* CandidateArtifactStore,
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache& ResolutionCache,
 		TArray<FResolvedCallFunctionRuntimeFact>& OutResolvedFacts,
 		FBlueprintHelperToolError& OutError,
-		TSharedPtr<FJsonObject>& OutBlockedStepData)
+		TSharedPtr<FJsonObject>& OutBlockedStepData,
+		TSharedPtr<FJsonObject>& OutCandidateArtifactJson)
 	{
 		FString AssetPath;
 		FString GraphName;
@@ -1726,6 +2111,30 @@ public:
 		{
 			return true;
 		}
+
+		FBlueprintHelperGraphWriteAutoSearchPolicy AutoSearchPolicy;
+		FString AutoSearchPolicyError;
+		const TSharedPtr<FJsonObject>* WriteObjectPtr = nullptr;
+		const TSharedPtr<FJsonObject> WriteObject =
+			StepObject.IsValid() &&
+			StepObject->TryGetObjectField(TEXT("write"), WriteObjectPtr) &&
+			WriteObjectPtr && WriteObjectPtr->IsValid()
+				? *WriteObjectPtr
+				: nullptr;
+		if (!FBlueprintHelperGraphWriteAutoSearchPolicyResolver::TryParseFromWriteObject(
+			WriteObject,
+			AutoSearchPolicy,
+			AutoSearchPolicyError))
+		{
+			OutError = MakeTaskRuntimeError(
+				TEXT("invalid_graphwrite_autosearch_policy"),
+				bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Execute,
+				AutoSearchPolicyError,
+				FString::Printf(TEXT("task_plan.steps[%d].write.auto_search_policy"), StepIndex));
+			return false;
+		}
+		int32 AutoSearchStatementCount = 0;
+		const double AutoSearchStartSeconds = FPlatformTime::Seconds();
 
 		UBlueprint* Blueprint = nullptr;
 		UEdGraph* Graph = nullptr;
@@ -1794,6 +2203,87 @@ public:
 				CallStatement.StatementObject->TryGetStringField(TEXT("search_mode"), ResolveRequest.SearchMode);
 				CallStatement.StatementObject->TryGetStringField(TEXT("ambiguity"), ResolveRequest.AmbiguityPolicy);
 				CallStatement.StatementObject->TryGetStringField(TEXT("ambiguity_policy"), ResolveRequest.AmbiguityPolicy);
+				CallStatement.StatementObject->TryGetStringField(TEXT("resolution_policy"), ResolveRequest.ResolutionPolicy);
+				const TSharedPtr<FJsonObject>* ActionSelectionObjectPtr = nullptr;
+				if (CallStatement.StatementObject->TryGetObjectField(TEXT("action_selection"), ActionSelectionObjectPtr) &&
+					ActionSelectionObjectPtr && ActionSelectionObjectPtr->IsValid())
+				{
+					(*ActionSelectionObjectPtr)->TryGetStringField(TEXT("candidate_id"), ResolveRequest.SelectedCandidateId);
+				}
+				const FString AutoSearchStatementId = ReadGraphWriteAutoSearchStatementId(CallStatement);
+				const bool bStatementAutoSearch =
+					ResolveRequest.ResolutionPolicy.Equals(TEXT("auto_search"), ESearchCase::IgnoreCase);
+				FString SelectedAutoSearchStableId;
+				FString SelectedCandidatePreviewScope;
+				FString SelectedCandidateStatementId;
+				int32 SelectedCandidateIndex = INDEX_NONE;
+				if (bStatementAutoSearch || AutoSearchPolicy.bEnablePreviewRecovery)
+				{
+					ResolveRequest.MaxCandidates = AutoSearchPolicy.MaxCandidatesPerStatement;
+					if (bDryRun)
+					{
+						++AutoSearchStatementCount;
+						const int32 ElapsedMs = static_cast<int32>((FPlatformTime::Seconds() - AutoSearchStartSeconds) * 1000.0);
+						if (AutoSearchStatementCount > AutoSearchPolicy.MaxAutoSearchStatements ||
+							ElapsedMs > AutoSearchPolicy.MaxTotalSearchMs)
+						{
+							OutError = MakeTaskRuntimeError(
+								TEXT("graphwrite_autosearch_budget_exceeded"),
+								EBlueprintHelperToolStage::DryRun,
+								TEXT("GraphWrite AutoSearch preview budget was exceeded."),
+								FString::Printf(TEXT("task_plan.steps[%d]"), StepIndex));
+							return false;
+						}
+					}
+				}
+				if (!ResolveRequest.SelectedCandidateId.TrimStartAndEnd().IsEmpty())
+				{
+					if (!TryParseGraphWriteAutoSearchCandidateId(
+						ResolveRequest.SelectedCandidateId,
+						SelectedCandidatePreviewScope,
+						SelectedCandidateStatementId,
+						SelectedCandidateIndex))
+					{
+						OutError = MakeTaskRuntimeError(
+							TEXT("invalid_graphwrite_candidate_selection"),
+							bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Execute,
+							TEXT("action_selection.candidate_id must be a preview-scoped candidate id."),
+							FString::Printf(TEXT("task_plan.steps[%d].%s.action_selection.candidate_id"), StepIndex, *CallStatement.NamePath));
+						return false;
+					}
+					const FString CurrentPreviewScope = MakeGraphWriteAutoSearchPreviewScope(StepId, ContextRevisionManifestHash);
+
+					FBlueprintHelperGraphWriteCandidateArtifactRecord ResolvedArtifact;
+					if (CandidateArtifactStore &&
+						CandidateArtifactStore->TryResolve(
+							SelectedCandidatePreviewScope,
+							SelectedCandidateStatementId,
+							ResolveRequest.SelectedCandidateId,
+							ResolvedArtifact))
+					{
+						SelectedAutoSearchStableId = ResolvedArtifact.StableId;
+					}
+					if (SelectedAutoSearchStableId.IsEmpty())
+					{
+						TryFindGraphWriteAutoSearchCandidateInArtifact(
+							PreviewArtifactJson,
+							ResolveRequest.SelectedCandidateId,
+							SelectedAutoSearchStableId);
+					}
+					if (SelectedAutoSearchStableId.IsEmpty())
+					{
+						if (SelectedCandidatePreviewScope != CurrentPreviewScope ||
+							SelectedCandidateStatementId != AutoSearchStatementId)
+						{
+							OutError = MakeTaskRuntimeError(
+								TEXT("graphwrite_autosearch_candidate_stale"),
+								bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Execute,
+								TEXT("Selected AutoSearch candidate does not match the current preview scope or statement."),
+								FString::Printf(TEXT("task_plan.steps[%d].%s.action_selection.candidate_id"), StepIndex, *CallStatement.NamePath));
+							return false;
+						}
+					}
+				}
 				const TArray<TSharedPtr<FJsonValue>>* CategoryPriorityValues = nullptr;
 				if (CallStatement.StatementObject->TryGetArrayField(TEXT("category_priority"), CategoryPriorityValues) &&
 					CategoryPriorityValues)
@@ -1821,6 +2311,43 @@ public:
 					ApplySemanticStatementContext(CallStatement, SemanticIR, FragmentDag, ResolveRequest);
 				}
 				PopulateCallFunctionResolveContext(ResolveRequest, Blueprint, Graph);
+
+				if (!ResolveRequest.SelectedCandidateId.TrimStartAndEnd().IsEmpty() &&
+					ResolveRequest.CandidatePolicy.RequiredStableCallableIds.IsEmpty())
+				{
+					FString SelectedStableId;
+					if (!SelectedAutoSearchStableId.IsEmpty())
+					{
+						SelectedStableId = SelectedAutoSearchStableId;
+					}
+					else
+					{
+						const FString CurrentPreviewScope = MakeGraphWriteAutoSearchPreviewScope(StepId, ContextRevisionManifestHash);
+						if (!TryResolveGraphWriteAutoSearchCurrentCandidateStableId(
+							SelectedCandidatePreviewScope,
+							SelectedCandidateStatementId,
+							SelectedCandidateIndex,
+							CurrentPreviewScope,
+							AutoSearchStatementId,
+							ResolveRequest,
+							SelectedStableId))
+						{
+							OutError = MakeTaskRuntimeError(
+								TEXT("graphwrite_autosearch_candidate_expired"),
+								bDryRun ? EBlueprintHelperToolStage::DryRun : EBlueprintHelperToolStage::Execute,
+								TEXT("Selected AutoSearch candidate is not present in the current ActionDatabase projection."),
+								FString::Printf(TEXT("task_plan.steps[%d].%s.action_selection.candidate_id"), StepIndex, *CallStatement.NamePath));
+							return false;
+						}
+					}
+					ResolveRequest.CandidatePolicy.RequiredStableCallableIds.Add(SelectedStableId);
+					ApplyGraphWriteAutoSearchResolvedStableIdToPayloads(
+						StepObject,
+						LoweredPayload,
+						AutoSearchStatementId,
+						ResolveRequest.SelectedCandidateId,
+						SelectedStableId);
+				}
 
 				const FString ResolutionKey =
 					FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(ResolveRequest, AssetPath, GraphName);
@@ -1864,6 +2391,78 @@ public:
 					const EBlueprintHelperToolStage Stage = bDryRun
 						? EBlueprintHelperToolStage::DryRun
 						: EBlueprintHelperToolStage::Execute;
+					const bool bCanProduceAutoSearchCandidates =
+						bDryRun &&
+						(bStatementAutoSearch || AutoSearchPolicy.bEnablePreviewRecovery) &&
+						(Code == TEXT("ambiguous_function_call") || Code == TEXT("function_call_not_found")) &&
+						CachedResolution.CandidateFunctions.Num() > 0;
+					if (bCanProduceAutoSearchCandidates)
+					{
+						const FString PreviewScope = MakeGraphWriteAutoSearchPreviewScope(StepId, ContextRevisionManifestHash);
+						const FString SnapshotGeneration = PreviewScope;
+						TArray<TSharedPtr<FJsonValue>> CandidateJsonValues;
+						TArray<TSharedPtr<FJsonValue>> ArtifactCandidateValues;
+						const int32 CandidateLimit = FMath::Min(
+							CachedResolution.CandidateFunctions.Num(),
+							AutoSearchPolicy.MaxCandidatesPerStatement);
+						for (int32 CandidateIndex = 0; CandidateIndex < CandidateLimit; ++CandidateIndex)
+						{
+							const FBlueprintHelperCallFunctionCandidateInfo& Candidate =
+								CachedResolution.CandidateFunctions[CandidateIndex];
+							const FString CandidateId = MakeGraphWriteAutoSearchCandidateId(
+								PreviewScope,
+								AutoSearchStatementId,
+								CandidateIndex);
+							CandidateJsonValues.Add(MakeShared<FJsonValueObject>(
+								MakeGraphWriteAutoSearchCandidateJson(CandidateId, Candidate)));
+
+							TSharedRef<FJsonObject> ArtifactCandidateJson =
+								MakeGraphWriteAutoSearchArtifactCandidateJson(
+									CandidateId,
+									AutoSearchStatementId,
+									SnapshotGeneration,
+									Candidate);
+							ArtifactCandidateValues.Add(MakeShared<FJsonValueObject>(ArtifactCandidateJson));
+
+							if (CandidateArtifactStore)
+							{
+								FBlueprintHelperGraphWriteCandidateArtifactRecord Artifact;
+								Artifact.PreviewToken = PreviewScope;
+								Artifact.StatementId = AutoSearchStatementId;
+								Artifact.CandidateId = CandidateId;
+								Artifact.CandidateHash = HashGraphWriteAutoSearchEvidence(Candidate.StableId);
+								Artifact.StableId = Candidate.StableId;
+								Artifact.SnapshotGeneration = SnapshotGeneration;
+								Artifact.NodeClassPath = Candidate.NodeClassPath;
+								Artifact.OwnerPath = Candidate.OwnerClassPath;
+								Artifact.SpawnerSignatureHash = HashGraphWriteAutoSearchEvidence(Candidate.StableId + TEXT("|") + Candidate.NodeClassPath);
+								Artifact.ArgumentNames = Candidate.InputPins;
+								Artifact.ArgumentPinTypeSummaries = Candidate.InputPinTypes;
+								Artifact.EvidenceJson = ArtifactCandidateJson;
+								CandidateArtifactStore->Store(Artifact);
+							}
+						}
+
+						TSharedRef<FJsonObject> ArtifactJson = MakeShared<FJsonObject>();
+						ArtifactJson->SetStringField(TEXT("snapshot_generation"), SnapshotGeneration);
+						ArtifactJson->SetStringField(TEXT("action_context_revision_manifest_hash"), ContextRevisionManifestHash);
+						ArtifactJson->SetArrayField(TEXT("candidates"), ArtifactCandidateValues);
+						OutCandidateArtifactJson = ArtifactJson;
+
+						OutError = MakeTaskRuntimeError(
+							TEXT("graphwrite_autosearch_candidate_required"),
+							EBlueprintHelperToolStage::DryRun,
+							TEXT("GraphWrite AutoSearch requires a candidate selection before execute."),
+							FString::Printf(TEXT("task_plan.steps[%d].%s"), StepIndex, *CallStatement.NamePath));
+						OutBlockedStepData = MakeGraphWriteAutoSearchCandidateRequiredData(
+							TEXT("GraphWrite AutoSearch requires a candidate selection before execute."),
+							CallStatement.Query,
+							CallStatement.NamePath,
+							CandidateJsonValues,
+							CachedResolution.CandidateFunctions.Num(),
+							CachedResolution.CandidateFunctions.Num() > CandidateLimit);
+						return false;
+					}
 					OutError = MakeTaskRuntimeError(
 						Code,
 						Stage,
@@ -1889,6 +2488,12 @@ public:
 				Fact.OwnerClassPath = CachedResolution.OwnerClassPath;
 				OutResolvedFacts.Add(MoveTemp(Fact));
 				CallStatement.StatementObject->SetStringField(TEXT("resolved_stable_id"), CachedResolution.StableId);
+				ApplyGraphWriteAutoSearchResolvedStableIdToPayloads(
+					StepObject,
+					LoweredPayload,
+					AutoSearchStatementId,
+					ResolveRequest.SelectedCandidateId,
+					CachedResolution.StableId);
 			}
 		}
 
@@ -5564,6 +6169,7 @@ FBlueprintHelperTaskRuntimeService::FBlueprintHelperTaskRuntimeService(
 	, PartialPreviewCache(MakeUnique<FBlueprintHelperTaskPartialPreviewCache>())
 	, CallFunctionResolutionCache(MakeUnique<FBlueprintHelperTaskRuntimeCallFunctionResolutionCache>())
 	, GraphWritePlanCache(MakeUnique<FBlueprintHelperGraphWritePlanCache>())
+	, GraphWriteCandidateArtifactStore(MakeUnique<FBlueprintHelperGraphWriteCandidateArtifactStore>())
 	, CompileAssetService(InCompileAssetService)
 	, AssetBrowseService(InAssetBrowseService)
 	, DebugEntryService(InDebugEntryService)
@@ -5894,8 +6500,16 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 	const TSharedPtr<FJsonObject>& Payload,
 	FBlueprintHelperToolResultBase& Result) const
 {
+	auto StripGraphWriteCandidateArtifact = [&Result]()
+	{
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::RemoveJsonFieldRecursive(
+			Result.Data,
+			TEXT("graph_write_candidate_artifact"));
+	};
+
 	if (!Payload.IsValid() || !PreviewStore.IsValid())
 	{
+		StripGraphWriteCandidateArtifact();
 		return;
 	}
 
@@ -5906,6 +6520,7 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 		!Payload->TryGetObjectField(TEXT("preview_token_request"), TokenRequestPtr) ||
 		!TokenRequestPtr || !TokenRequestPtr->IsValid())
 	{
+		StripGraphWriteCandidateArtifact();
 		return;
 	}
 
@@ -5916,6 +6531,7 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 		!(*TokenRequestPtr)->TryGetStringField(TEXT("task_plan_hash"), TaskPlanHash) ||
 		!(*TokenRequestPtr)->TryGetStringField(TEXT("execution_policy_hash"), ExecutionPolicyHash))
 	{
+		StripGraphWriteCandidateArtifact();
 		return;
 	}
 
@@ -5930,6 +6546,18 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 	StoreRequest.ActionContextRevisionManifestHash = ContextRevisionManifest.ManifestHash;
 	StoreRequest.ActionContextRevisionManifestJson = ContextRevisionManifest.ToJson();
 	StoreRequest.bPassed = FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPreviewResultExecutable(Result);
+	if (Result.Data.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* CandidateArtifactPtr = nullptr;
+		if (Result.Data->TryGetObjectField(TEXT("graph_write_candidate_artifact"), CandidateArtifactPtr) &&
+			CandidateArtifactPtr && CandidateArtifactPtr->IsValid())
+		{
+			StoreRequest.GraphWriteCandidateArtifactJson = *CandidateArtifactPtr;
+			StoreRequest.GraphWriteCandidateArtifactHash =
+				FBlueprintHelperTaskRuntimeCacheKeyUtils::HashStableJson(*CandidateArtifactPtr);
+		}
+		StripGraphWriteCandidateArtifact();
+	}
 
 	const FString Token = PreviewStore->Store(StoreRequest);
 	if (!Result.Data.IsValid())
@@ -6047,6 +6675,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecutePrevie
 
 	TSharedRef<FJsonObject> ResolvedPayload = MakeShared<FJsonObject>();
 	ResolvedPayload->SetObjectField(TEXT("task_plan"), ResolveResult.TaskPlan.ToSharedRef());
+	if (ResolveResult.GraphWriteCandidateArtifactJson.IsValid())
+	{
+		ResolvedPayload->SetObjectField(
+			TEXT("graph_write_candidate_artifact"),
+			ResolveResult.GraphWriteCandidateArtifactJson.ToSharedRef());
+	}
 	bool bIncludeTiming = false;
 	if (Payload->TryGetBoolField(TEXT("include_timing"), bIncludeTiming))
 	{
@@ -6115,6 +6749,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("pure_prepare"), PurePrepareStageStart);
 
 	const TSharedPtr<FJsonObject>* TaskPlanPtr = &PreparedRun.TaskPlan;
+	TSharedPtr<FJsonObject> PreviewCandidateArtifactJson;
+	const TSharedPtr<FJsonObject>* PreviewCandidateArtifactPtr = nullptr;
+	if (Payload.IsValid() &&
+		Payload->TryGetObjectField(TEXT("graph_write_candidate_artifact"), PreviewCandidateArtifactPtr) &&
+		PreviewCandidateArtifactPtr && PreviewCandidateArtifactPtr->IsValid())
+	{
+		PreviewCandidateArtifactJson = *PreviewCandidateArtifactPtr;
+	}
 	const FBlueprintHelperTaskRuntimeDryRunPolicy& DryRunPolicy = PreparedRun.DryRunPolicy;
 	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
 	const FString& TaskRunId = PreparedRun.TaskRunId;
@@ -6293,6 +6935,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
 	FBlueprintHelperToolError FirstExecutionError;
+	TSharedPtr<FJsonObject> GraphWriteCandidateArtifactJson;
 	double MainThreadCommitStageStart = 0.0;
 	bool bMainThreadCommitStageOpen = false;
 
@@ -6446,6 +7089,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (bDryRun)
 		{
 			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
+		}
+		if (GraphWriteCandidateArtifactJson.IsValid())
+		{
+			if (!RuntimeResult.Data.IsValid())
+			{
+				RuntimeResult.Data = MakeShared<FJsonObject>();
+			}
+			RuntimeResult.Data->SetObjectField(
+				TEXT("graph_write_candidate_artifact"),
+				GraphWriteCandidateArtifactJson.ToSharedRef());
 		}
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 			RuntimeResult.Data,
@@ -6687,10 +7340,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			bDryRun,
 			TargetAssetStateHash,
 			TargetContextRevisionManifestHash,
+			PreviewCandidateArtifactJson,
+			GraphWriteCandidateArtifactStore.Get(),
 			*CallFunctionResolutionCache,
 			StepResolvedCallFunctionFacts,
 			CallFunctionResolutionError,
-			CallFunctionBlockedData))
+			CallFunctionBlockedData,
+			GraphWriteCandidateArtifactJson))
 		{
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,

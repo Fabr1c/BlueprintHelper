@@ -97,6 +97,8 @@ struct FBlueprintHelperCallFunctionResolveRequest
 	FString Query;
 	FString SearchMode;
 	FString AmbiguityPolicy;
+	FString ResolutionPolicy;
+	FString SelectedCandidateId;
 	TArray<FString> CategoryPriority;
 	TArray<FString> ArgumentNames;
 	TMap<FString, FString> ArgumentTypes;

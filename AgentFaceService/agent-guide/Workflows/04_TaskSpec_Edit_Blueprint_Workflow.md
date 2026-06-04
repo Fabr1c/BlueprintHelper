@@ -60,6 +60,14 @@ GraphWrite body 内的函数调用优先使用 GraphStatement 短名 `kind="call
 }
 ```
 
+## GraphWrite AutoSearch Candidate Flow
+
+AutoSearch is a Preview resolution strategy for GraphWrite calls, not a new statement kind. Do not write `kind="action"`. Use `kind="call"` with `resolution_policy="auto_search"` when the Agent intentionally wants broad callable search, or enable `graph_write_policy.auto_search.mode="on_preview_resolution_failure"` when the task should ask Preview for candidates after normal call resolution fails.
+
+When GraphWrite Preview returns `graphwrite_autosearch_candidate_required`, do not execute. Read `candidates[]`, choose the candidate that matches the requested callable owner/display intent, add `action_selection.candidate_id` to the same `kind="call"` statement, rerun Preview, and execute only after Preview passes.
+
+The `candidate_id` is a preview-scoped selection token. Treat it as opaque; do not persist it as a UE node id, capability id, function stable id, or raw ActionDatabase evidence. Public candidate data must not include `stable_id`, `spawner_signature`, `graph_write_candidate_artifact`, `UBlueprintNodeSpawner`, or `FEdGraphSchemaAction`.
+
 GraphWrite `branch_fork` 成功 execute 后必须读回。读回应确认：
 
 - 新插入的 Sequence 或等价分发节点连接在 anchor 之后。

@@ -192,6 +192,13 @@ public:
 		return Statement;
 	}
 
+	static TSharedRef<FJsonObject> MakeAutoSearchCallNameStatement(const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeCallNameStatement(FunctionName);
+		Statement->SetStringField(TEXT("resolution_policy"), TEXT("auto_search"));
+		return Statement;
+	}
+
 	static TSharedRef<FJsonObject> MakeGraphWriteLogicSpec(
 		const FString& EventName,
 		const TArray<TSharedPtr<FJsonValue>>& Statements)
@@ -1449,6 +1456,43 @@ public:
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 		Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
 		return Payload;
+	}
+
+	static bool SetFirstGraphWriteStepAutoSearchPolicy(
+		const TSharedRef<FJsonObject>& Payload,
+		int32 MaxCandidatesPerStatement,
+		int32 MaxAutoSearchStatements,
+		int32 MaxTotalAutoSearchMs)
+	{
+		const TSharedPtr<FJsonObject>* TaskPlanPtr = nullptr;
+		if (!Payload->TryGetObjectField(TEXT("task_plan"), TaskPlanPtr) || !TaskPlanPtr || !TaskPlanPtr->IsValid())
+		{
+			return false;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+		if (!(*TaskPlanPtr)->TryGetArrayField(TEXT("steps"), Steps) || !Steps || Steps->Num() == 0)
+		{
+			return false;
+		}
+
+		const TSharedPtr<FJsonObject> Step = (*Steps)[0].IsValid()
+			? (*Steps)[0]->AsObject()
+			: nullptr;
+		const TSharedPtr<FJsonObject>* WritePtr = nullptr;
+		if (!Step.IsValid() || !Step->TryGetObjectField(TEXT("write"), WritePtr) || !WritePtr || !WritePtr->IsValid())
+		{
+			return false;
+		}
+
+		TSharedRef<FJsonObject> Policy = MakeShared<FJsonObject>();
+		Policy->SetStringField(TEXT("mode"), TEXT("on_preview_resolution_failure"));
+		Policy->SetNumberField(TEXT("max_candidates_per_statement"), MaxCandidatesPerStatement);
+		Policy->SetNumberField(TEXT("max_auto_search_statements"), MaxAutoSearchStatements);
+		Policy->SetNumberField(TEXT("max_total_auto_search_ms"), MaxTotalAutoSearchMs);
+		Policy->SetStringField(TEXT("detail_level"), TEXT("short"));
+		(*WritePtr)->SetObjectField(TEXT("auto_search_policy"), Policy);
+		return true;
 	}
 
 	static TSharedRef<FJsonObject> MakeCompositeComponentStep(
@@ -5397,6 +5441,318 @@ bool FBlueprintHelperGraphWriteCallFunctionResolverPreviewReportsCandidateSummar
 	TestFalse(TEXT("no binding object leak"), PreviewJson.Contains(TEXT("Binding")));
 	TestFalse(TEXT("no selected object payload leak"), PreviewJson.Contains(TEXT("SelectedObjects")));
 	TestFalse(TEXT("no debug bundle path leak"), PreviewJson.Contains(TEXT("DebugBundle")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAutoSearchPreviewRequiresCandidateSelectionTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.AutoSearch.PreviewRequiresCandidateSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAutoSearchPreviewRequiresCandidateSelectionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeAutoSearchCandidateRequired"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeAutoSearchCandidateRequired");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(
+				EventName,
+				TEXT("Set")));
+	TestTrue(TEXT("auto_search policy attaches to graph_write step"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::SetFirstGraphWriteStepAutoSearchPolicy(
+			TaskPlanPayload,
+			3,
+			16,
+			120));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	TestTrue(TEXT("preview returns dry-run envelope"), Preview.bOk);
+	TestEqual(TEXT("preview status is dry-run"), Preview.Status, EBlueprintHelperToolStatus::DryRun);
+
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("dry_run exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(Preview, ErrorObject));
+	if (ErrorObject.IsValid())
+	{
+		FString Code;
+		FString Status;
+		ErrorObject->TryGetStringField(TEXT("code"), Code);
+		ErrorObject->TryGetStringField(TEXT("resolution_status"), Status);
+		TestEqual(TEXT("candidate-required error code"), Code, FString(TEXT("graphwrite_autosearch_candidate_required")));
+		TestEqual(TEXT("candidate-required status"), Status, FString(TEXT("candidate_required")));
+
+		const TArray<TSharedPtr<FJsonValue>>* Candidates = nullptr;
+		TestTrue(TEXT("candidate-required error includes candidates"),
+			ErrorObject->TryGetArrayField(TEXT("candidates"), Candidates));
+		TestTrue(TEXT("candidate-required candidates are non-empty"), Candidates && Candidates->Num() > 0);
+	}
+
+	const FString PreviewJson = Preview.ToJsonString();
+	auto ContainsWithPreviewContext = [this, &PreviewJson](const FString& Needle) -> bool
+	{
+		const int32 Index = PreviewJson.Find(Needle, ESearchCase::CaseSensitive);
+		if (Index != INDEX_NONE)
+		{
+			const int32 Start = FMath::Max(0, Index - 160);
+			AddInfo(FString::Printf(
+				TEXT("candidate-required leak context for '%s': %s"),
+				*Needle,
+				*PreviewJson.Mid(Start, 360)));
+			return true;
+		}
+		return false;
+	};
+	TestFalse(TEXT("candidate-required output hides stable id"), ContainsWithPreviewContext(TEXT("\"stable_id\"")));
+	TestFalse(TEXT("candidate-required output hides spawner signature"), ContainsWithPreviewContext(TEXT("spawner_signature")));
+	TestFalse(TEXT("candidate-required output hides internal artifact"), ContainsWithPreviewContext(TEXT("graph_write_candidate_artifact")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAutoSearchPreviewRetryUsesCurrentProjectionTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.AutoSearch.PreviewRetryUsesCurrentProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAutoSearchPreviewRetryUsesCurrentProjectionTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeAutoSearchPreviewRetry"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeAutoSearchPreviewRetry");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	auto ConfigureAutoSearchStatement = [](const TSharedRef<FJsonObject>& Op, const FString& CandidateId)
+	{
+		const TSharedPtr<FJsonObject>* LogicSpecPtr = nullptr;
+		if (!Op->TryGetObjectField(TEXT("logic_spec"), LogicSpecPtr) || !LogicSpecPtr || !LogicSpecPtr->IsValid())
+		{
+			return false;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Statements = nullptr;
+		if (!(*LogicSpecPtr)->TryGetArrayField(TEXT("statements"), Statements) || !Statements || Statements->Num() == 0)
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject> Statement = (*Statements)[0].IsValid()
+			? (*Statements)[0]->AsObject()
+			: nullptr;
+		if (!Statement.IsValid())
+		{
+			return false;
+		}
+		Statement->SetStringField(TEXT("statement_id"), TEXT("s_autosearch_print"));
+		Statement->SetStringField(TEXT("resolution_policy"), TEXT("auto_search"));
+		if (!CandidateId.IsEmpty())
+		{
+			TSharedRef<FJsonObject> ActionSelection = MakeShared<FJsonObject>();
+			ActionSelection->SetStringField(TEXT("candidate_id"), CandidateId);
+			Statement->SetObjectField(TEXT("action_selection"), ActionSelection);
+		}
+		return true;
+	};
+
+	TSharedRef<FJsonObject> CandidateRequiredOp =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(
+			EventName,
+			TEXT("Print"));
+	TestTrue(TEXT("candidate-required statement configured"), ConfigureAutoSearchStatement(CandidateRequiredOp, FString()));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness FirstHarness;
+	TSharedRef<FJsonObject> CandidatePayload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			CandidateRequiredOp);
+	TestTrue(TEXT("auto_search policy attaches to graph_write step"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::SetFirstGraphWriteStepAutoSearchPolicy(
+			CandidatePayload,
+			3,
+			16,
+			120));
+	const FBlueprintHelperToolResultBase CandidatePreview = FirstHarness.RuntimeService.PreviewTaskPlan(CandidatePayload);
+
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("candidate preview exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(CandidatePreview, ErrorObject));
+	const TArray<TSharedPtr<FJsonValue>>* Candidates = nullptr;
+	TestTrue(TEXT("candidate preview includes candidates"),
+		ErrorObject.IsValid() && ErrorObject->TryGetArrayField(TEXT("candidates"), Candidates));
+	TestTrue(TEXT("candidate preview has at least one candidate"), Candidates && Candidates->Num() > 0);
+	if (!Candidates || Candidates->Num() == 0)
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> Candidate = (*Candidates)[0].IsValid()
+		? (*Candidates)[0]->AsObject()
+		: nullptr;
+	TestNotNull(TEXT("candidate is object"), Candidate.Get());
+	if (!Candidate.IsValid())
+	{
+		return false;
+	}
+	FString CandidateId;
+	TestTrue(TEXT("candidate id is readable"), Candidate->TryGetStringField(TEXT("candidate_id"), CandidateId));
+	TestFalse(TEXT("candidate id is not empty"), CandidateId.IsEmpty());
+
+	TSharedRef<FJsonObject> SelectedOp =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionNameOp(
+			EventName,
+			TEXT("Print"));
+	TestTrue(TEXT("selected statement configured"), ConfigureAutoSearchStatement(SelectedOp, CandidateId));
+	TSharedRef<FJsonObject> SelectedPayload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			SelectedOp);
+	TestTrue(TEXT("auto_search policy attaches to selected graph_write step"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::SetFirstGraphWriteStepAutoSearchPolicy(
+			SelectedPayload,
+			3,
+			16,
+			120));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness RetryHarness;
+	const FBlueprintHelperToolResultBase SelectedPreview = RetryHarness.RuntimeService.PreviewTaskPlan(SelectedPayload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		SelectedPreview,
+		TEXT("replace_blueprint_graph"),
+		true);
+	TestFalse(TEXT("selected preview does not request another candidate"),
+		SelectedPreview.ToJsonString().Contains(TEXT("graphwrite_autosearch_candidate_required")));
+	if (SelectedPreview.ToJsonString().Contains(TEXT("graphwrite_autosearch_candidate_required")))
+	{
+		FString SelectedPayloadJson;
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SelectedPayloadJson);
+		FJsonSerializer::Serialize(SelectedPayload, Writer);
+		AddInfo(FString::Printf(TEXT("selected payload still candidate-required: %s"), *SelectedPayloadJson));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAutoSearchFastPathDoesNotEmitCandidateRequiredTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.AutoSearch.FastPathDoesNotEmitCandidateRequired",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAutoSearchFastPathDoesNotEmitCandidateRequiredTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeAutoSearchFastPath"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeAutoSearchFastPath");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeEnsureEntryCallFunctionOp(
+				EventName,
+				TEXT("Print String"))));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertRuntimePreviewReachedGraphWriteService(
+		*this,
+		Preview,
+		TEXT("replace_blueprint_graph"),
+		true);
+	TestFalse(TEXT("fast path does not emit candidate required"),
+		Preview.ToJsonString().Contains(TEXT("graphwrite_autosearch_candidate_required")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteAutoSearchBudgetExceededTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.AutoSearch.BudgetExceeded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteAutoSearchBudgetExceededTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeAutoSearchBudget"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString EventName = TEXT("RuntimeAutoSearchBudget");
+	TestNotNull(TEXT("fixture custom event exists"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+
+	TSharedRef<FJsonObject> FirstStatement =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCallStatement(
+			TEXT("Print String"),
+			TEXT("budget first statement"));
+	FirstStatement->SetStringField(TEXT("resolution_policy"), TEXT("auto_search"));
+
+	TArray<TSharedPtr<FJsonValue>> Statements;
+	Statements.Add(MakeShared<FJsonValueObject>(FirstStatement));
+	Statements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeAutoSearchCallNameStatement(TEXT("Set"))));
+
+	TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+	Op->SetStringField(TEXT("replace_scope"), TEXT("custom_event_body"));
+	TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+	Selector->SetStringField(TEXT("entry_name"), EventName);
+	Op->SetObjectField(TEXT("selector"), Selector);
+	Op->SetObjectField(
+		TEXT("logic_spec"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteLogicSpec(FString(), Statements));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const TSharedRef<FJsonObject> TaskPlanPayload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			Graph->GetName(),
+			Op);
+	TestTrue(TEXT("auto_search policy attaches to graph_write step"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::SetFirstGraphWriteStepAutoSearchPolicy(
+			TaskPlanPayload,
+			3,
+			1,
+			120));
+
+	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(TaskPlanPayload);
+	TSharedPtr<FJsonObject> ErrorObject;
+	TestTrue(TEXT("dry_run exposes first error"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GetRuntimeDryRunFirstErrorObject(Preview, ErrorObject));
+	if (ErrorObject.IsValid())
+	{
+		FString Code;
+		ErrorObject->TryGetStringField(TEXT("code"), Code);
+		TestEqual(TEXT("budget exceeded is reported"), Code, FString(TEXT("graphwrite_autosearch_budget_exceeded")));
+	}
+	TestTrue(TEXT("preview JSON reports budget exceeded"),
+		Preview.ToJsonString().Contains(TEXT("graphwrite_autosearch_budget_exceeded")));
 	return true;
 }
 

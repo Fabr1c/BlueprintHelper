@@ -190,7 +190,13 @@
       "action_resolution": {
         "max_candidates": 8,
         "default_search_mode": "",
-        "default_ambiguity_policy": ""
+        "default_ambiguity_policy": "",
+        "auto_search": {
+          "max_candidates_per_statement": 3,
+          "max_statements": 16,
+          "max_total_ms": 120,
+          "detail_level": "short"
+        }
       }
     },
     "read_context": {

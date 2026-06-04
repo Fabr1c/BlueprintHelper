@@ -100,6 +100,30 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_KeyIncludesContext::
 	const FString TargetPinSecondKey =
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(TargetPinSecond, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
 	TestFalse(TEXT("target_object pin type produces different keys"), TargetPinFirstKey == TargetPinSecondKey);
+
+	FBlueprintHelperCallFunctionResolveRequest AutoSearchPolicyFirst = First;
+	AutoSearchPolicyFirst.ResolutionPolicy = TEXT("auto_search");
+
+	FBlueprintHelperCallFunctionResolveRequest AutoSearchPolicySecond = First;
+	AutoSearchPolicySecond.ResolutionPolicy = TEXT("default");
+
+	const FString AutoSearchPolicyFirstKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(AutoSearchPolicyFirst, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	const FString AutoSearchPolicySecondKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(AutoSearchPolicySecond, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	TestFalse(TEXT("resolution_policy produces different keys"), AutoSearchPolicyFirstKey == AutoSearchPolicySecondKey);
+
+	FBlueprintHelperCallFunctionResolveRequest SelectedCandidateFirst = AutoSearchPolicyFirst;
+	SelectedCandidateFirst.SelectedCandidateId = TEXT("preview:gw_01:s_print:001");
+
+	FBlueprintHelperCallFunctionResolveRequest SelectedCandidateSecond = AutoSearchPolicyFirst;
+	SelectedCandidateSecond.SelectedCandidateId = TEXT("preview:gw_01:s_print:002");
+
+	const FString SelectedCandidateFirstKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(SelectedCandidateFirst, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	const FString SelectedCandidateSecondKey =
+		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::MakeKey(SelectedCandidateSecond, TEXT("/Game/BP_A.BP_A"), TEXT("EventGraph"));
+	TestFalse(TEXT("selected candidate id produces different keys"), SelectedCandidateFirstKey == SelectedCandidateSecondKey);
 	return true;
 }
 
@@ -113,7 +137,7 @@ bool FBlueprintHelperTaskRuntimeCallFunctionResolutionCache_ResolverVersionGuard
 	TestEqual(
 		TEXT("current resolver version"),
 		FBlueprintHelperTaskRuntimeCallFunctionResolutionCache::CurrentResolverVersion(),
-		FString(TEXT("BlueprintHelper.CallFunctionResolver.v2")));
+		FString(TEXT("BlueprintHelper.CallFunctionResolver.v3.AutoSearch")));
 
 	FBlueprintHelperTaskRuntimeCallFunctionResolutionCache Cache;
 	const FDateTime Now = FDateTime::UtcNow();

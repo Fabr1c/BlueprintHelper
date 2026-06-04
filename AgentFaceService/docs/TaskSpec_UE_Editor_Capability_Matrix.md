@@ -245,6 +245,10 @@ schedule
 - Asset lifecycle 归 `create_asset`；Graph body 的 `create` 不允许创建或确保 Content Browser 资产。
 - Component / WidgetTree lifecycle 分别归 `edit_blueprint_components` / `edit_umg_widget`；Graph body 的 `create` / `set_property` 不允许绕过这些工具簇修改模板或设计时树。
 
+AutoSearch is a GraphWrite Preview resolution strategy, not a standalone TaskSpec capability. Agents use `kind="call"` with `resolution_policy="auto_search"` for active broad callable search, or enable `graph_write_policy.auto_search.mode="on_preview_resolution_failure"` for Preview recovery. `kind="action"` is not an Agent-facing statement kind.
+
+AutoSearch candidate output is intentionally short: public Preview data may expose `candidate_id`, `suggested_kind`, `display_name`, `owner_short`, `node_class`, `match_reason`, `candidate_count`, and `truncated`; hidden stable ids, spawner signatures, raw `UBlueprintNodeSpawner`, and raw `FEdGraphSchemaAction` evidence remain runtime-owned and are not Agent-facing fields.
+
 ### `edit_umg_widget`
 
 AgentFace change kinds：
