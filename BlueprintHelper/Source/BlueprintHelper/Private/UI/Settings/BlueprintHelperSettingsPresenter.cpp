@@ -695,6 +695,36 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 			LOCTEXT("GraphWriteActionResolutionDefaultAmbiguityPolicyLabel", "ActionResolution 歧义策略"),
 			LOCTEXT("GraphWriteActionResolutionDefaultAmbiguityPolicyHint", "控制 GraphWrite 动作解析未指定 ambiguity_policy 时使用的默认值。"),
 			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_candidates_per_statement"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionAutoSearchCandidatesLabel", "AutoSearch 每语句候选"),
+			LOCTEXT("GraphWriteActionResolutionAutoSearchCandidatesHint", "控制 GraphWrite AutoSearch Preview 每条语句返回的候选上限。"),
+			1,
+			10,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_statements"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionAutoSearchStatementsLabel", "AutoSearch 语句预算"),
+			LOCTEXT("GraphWriteActionResolutionAutoSearchStatementsHint", "控制 GraphWrite AutoSearch Preview 单次最多处理的语句数。"),
+			1,
+			64,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.max_total_ms"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionAutoSearchMsLabel", "AutoSearch 时间预算"),
+			LOCTEXT("GraphWriteActionResolutionAutoSearchMsHint", "控制 GraphWrite AutoSearch Preview 单次搜索的毫秒上限。"),
+			1,
+			1000,
+			true));
+		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
+			TEXT("tool_clusters.graph_write.action_resolution.auto_search.detail_level"),
+			DeveloperToolClusterCategory,
+			LOCTEXT("GraphWriteActionResolutionAutoSearchDetailLabel", "AutoSearch 详情级别"),
+			LOCTEXT("GraphWriteActionResolutionAutoSearchDetailHint", "控制 GraphWrite AutoSearch 候选输出使用 short 或 diagnostic。"),
+			true));
 		Rows.Add(UBlueprintHelperSettingsUIUtils::MakeStringRow(
 			TEXT("graph_layout.rules_source"),
 			DeveloperGraphLayoutCategory,

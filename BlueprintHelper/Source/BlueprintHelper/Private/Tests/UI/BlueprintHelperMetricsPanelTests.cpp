@@ -171,6 +171,78 @@ static FBlueprintHelperMetricsPanelSnapshot BlueprintHelperMetricsMakePresenterS
 	return Snapshot;
 }
 
+static FBlueprintHelperMetricsPanelSnapshot BlueprintHelperMetricsMakeLoadedPresenterSnapshot(
+	const FBlueprintHelperMetricsPanelSelection& Selection,
+	int32 TotalEvents,
+	const TCHAR* StatusText)
+{
+	FBlueprintHelperMetricsPanelSnapshot Snapshot =
+		BlueprintHelperMetricsMakePresenterSnapshot(
+			Selection.TimelineMode,
+			EBlueprintHelperMetricsLoadState::Loaded,
+			TotalEvents,
+			StatusText);
+	Snapshot.Selection = Selection;
+	Snapshot.SelectedMetricTitle =
+		Selection.MetricKind == EBlueprintHelperMetricsMetricKind::OperationUsage
+			? TEXT("Operations")
+			: TEXT("Tool Calls");
+
+	FBlueprintHelperMetricsMetricOptionView ToolOption;
+	ToolOption.Kind = EBlueprintHelperMetricsMetricKind::ToolUsage;
+	ToolOption.Label = TEXT("Tool Calls");
+	ToolOption.UnitLabel = TEXT("events");
+	ToolOption.Total = TotalEvents;
+	ToolOption.bIsSelected =
+		Selection.MetricKind == EBlueprintHelperMetricsMetricKind::ToolUsage;
+	Snapshot.MetricOptions.Add(ToolOption);
+
+	FBlueprintHelperMetricsMetricOptionView OperationOption;
+	OperationOption.Kind = EBlueprintHelperMetricsMetricKind::OperationUsage;
+	OperationOption.Label = TEXT("Operations");
+	OperationOption.UnitLabel = TEXT("events");
+	OperationOption.Total = TotalEvents / 2;
+	OperationOption.bIsSelected =
+		Selection.MetricKind == EBlueprintHelperMetricsMetricKind::OperationUsage;
+	Snapshot.MetricOptions.Add(OperationOption);
+
+	const FString SelectedBucketId = Selection.SelectedBucketId.IsEmpty()
+		? FString(TEXT("bucket-a"))
+		: Selection.SelectedBucketId;
+	Snapshot.Selection.SelectedBucketId = SelectedBucketId;
+	Snapshot.SelectedBucketLabel = SelectedBucketId;
+	Snapshot.SelectedBucketTotal =
+		SelectedBucketId == TEXT("bucket-b") ? TotalEvents / 2 : TotalEvents;
+
+	FBlueprintHelperMetricsOverviewBarView FirstBar;
+	FirstBar.BucketId = TEXT("bucket-a");
+	FirstBar.Label = TEXT("2026-06-03");
+	FirstBar.Value = TotalEvents;
+	FirstBar.Fraction = 1.0f;
+	FirstBar.bIsSelected = SelectedBucketId == FirstBar.BucketId;
+	Snapshot.OverviewBars.Add(FirstBar);
+
+	FBlueprintHelperMetricsOverviewBarView SecondBar;
+	SecondBar.BucketId = TEXT("bucket-b");
+	SecondBar.Label = TEXT("2026-06-04");
+	SecondBar.Value = TotalEvents / 2;
+	SecondBar.Fraction = 0.5f;
+	SecondBar.bIsSelected = SelectedBucketId == SecondBar.BucketId;
+	Snapshot.OverviewBars.Add(SecondBar);
+
+	FBlueprintHelperMetricsDetailBarView Detail;
+	Detail.Label = SelectedBucketId == TEXT("bucket-b")
+		? TEXT("graph_write / append_after")
+		: TEXT("blueprinthelper_read_context");
+	Detail.Value = Snapshot.SelectedBucketTotal;
+	Detail.UnitLabel = TEXT("events");
+	Detail.SubText = TEXT("success=1 failed=0");
+	Detail.Fraction = 1.0f;
+	Snapshot.DetailBars.Add(Detail);
+
+	return Snapshot;
+}
+
 static bool BlueprintHelperMetricsPumpAsyncUntil(
 	TFunctionRef<bool()> Predicate,
 	double TimeoutSeconds = 5.0)
@@ -590,6 +662,99 @@ bool FBlueprintHelperMetricsTimeSeriesBuildsMetricKindProjectionTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsTimeSeriesMetricSelectionChangesOverviewProjectionTest,
+	"BlueprintHelper.UI.MetricsPanel.TimeSeries.MetricSelectionChangesOverviewProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsTimeSeriesMetricSelectionChangesOverviewProjectionTest::RunTest(
+	const FString& Parameters)
+{
+	FBlueprintHelperMetricsLoadResult LoadResult;
+
+	FBlueprintHelperMetricsEvent ReadToolEvent = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T09:00:00Z"),
+		TEXT("tool_completed"),
+		TEXT("blueprinthelper_read_context"),
+		TEXT("success"));
+	LoadResult.Events.Add(ReadToolEvent);
+
+	FBlueprintHelperMetricsEvent ExecuteAttempt = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T09:10:00Z"),
+		TEXT("taskspec_execute_completed"),
+		TEXT("blueprinthelper_execute_task"),
+		TEXT("success"));
+	BlueprintHelperMetricsSetTaskKey(
+		ExecuteAttempt,
+		TEXT("edit_blueprint_graph"),
+		TEXT("MetricsProjection"),
+		TEXT("blueprint"));
+	LoadResult.Events.Add(ExecuteAttempt);
+
+	FBlueprintHelperMetricsEvent AnotherExecuteAttempt = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T09:20:00Z"),
+		TEXT("taskspec_execute_completed"),
+		TEXT("blueprinthelper_execute_task"),
+		TEXT("failed"));
+	BlueprintHelperMetricsSetTaskKey(
+		AnotherExecuteAttempt,
+		TEXT("edit_blueprint_graph"),
+		TEXT("MetricsProjection"),
+		TEXT("blueprint"));
+	LoadResult.Events.Add(AnotherExecuteAttempt);
+
+	FBlueprintHelperMetricsEvent EarlierToolEvent = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-03T08:00:00Z"),
+		TEXT("tool_completed"),
+		TEXT("blueprinthelper_preview_task"),
+		TEXT("success"));
+	LoadResult.Events.Add(EarlierToolEvent);
+
+	FBlueprintHelperMetricsQuery AttemptsQuery;
+	AttemptsQuery.NowUtc = BlueprintHelperMetricsMakeUtcDateTime(2026, 6, 4, 12, 0, 0);
+	AttemptsQuery.DailyBucketCount = 2;
+	AttemptsQuery.MetricKind = EBlueprintHelperMetricsMetricKind::TaskSpecAttempts;
+
+	FBlueprintHelperMetricsQuery ToolQuery = AttemptsQuery;
+	ToolQuery.MetricKind = EBlueprintHelperMetricsMetricKind::ToolUsage;
+
+	const FBlueprintHelperMetricsPanelSnapshot AttemptSnapshot =
+		FBlueprintHelperMetricsTimeSeriesService::BuildSnapshot(LoadResult, AttemptsQuery);
+	const FBlueprintHelperMetricsPanelSnapshot ToolSnapshot =
+		FBlueprintHelperMetricsTimeSeriesService::BuildSnapshot(LoadResult, ToolQuery);
+
+	TestEqual(
+		TEXT("attempt snapshot uses requested metric"),
+		AttemptSnapshot.Selection.MetricKind,
+		EBlueprintHelperMetricsMetricKind::TaskSpecAttempts);
+	TestEqual(
+		TEXT("tool snapshot uses requested metric"),
+		ToolSnapshot.Selection.MetricKind,
+		EBlueprintHelperMetricsMetricKind::ToolUsage);
+	TestTrue(
+		TEXT("projection snapshots have latest bars"),
+		AttemptSnapshot.OverviewBars.Num() > 0 && ToolSnapshot.OverviewBars.Num() > 0);
+	if (AttemptSnapshot.OverviewBars.Num() > 0 && ToolSnapshot.OverviewBars.Num() > 0)
+	{
+		const FBlueprintHelperMetricsOverviewBarView& AttemptBar =
+			AttemptSnapshot.OverviewBars.Last();
+		const FBlueprintHelperMetricsOverviewBarView& ToolBar =
+			ToolSnapshot.OverviewBars.Last();
+		TestEqual(TEXT("attempt metric latest total"), AttemptBar.Value, static_cast<int64>(2));
+		TestEqual(TEXT("tool metric latest total"), ToolBar.Value, static_cast<int64>(3));
+		TestNotEqual(TEXT("latest bar values differ by metric"), AttemptBar.Value, ToolBar.Value);
+		if (AttemptSnapshot.OverviewBars.Num() > 1 && ToolSnapshot.OverviewBars.Num() > 1)
+		{
+			TestNotEqual(
+				TEXT("earlier bar fractions differ by metric"),
+				AttemptSnapshot.OverviewBars[0].Fraction,
+				ToolSnapshot.OverviewBars[0].Fraction);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperMetricsTimeSeriesBuildsBucketSpecificDetailsTest,
 	"BlueprintHelper.UI.MetricsPanel.TimeSeries.BuildsBucketSpecificDetails",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -821,6 +986,217 @@ bool FBlueprintHelperMetricsTimeSeriesBuildsIsoWeeklyBucketsTest::RunTest(const 
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelPresenterRefreshRetainsLoadedUiTest,
+	"BlueprintHelper.UI.MetricsPanel.Presenter.RefreshRetainsLoadedUi",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelPresenterRefreshRetainsLoadedUiTest::RunTest(
+	const FString& Parameters)
+{
+	std::atomic<int32> LoadCallCount{0};
+	std::atomic<bool> bAllowSecondLoadFinish{false};
+	TArray<FBlueprintHelperMetricsPanelPresenterEvent> PresenterEvents;
+
+	const TSharedRef<FBlueprintHelperMetricsPanelPresenter> Presenter =
+		MakeShared<FBlueprintHelperMetricsPanelPresenter>(
+			[&LoadCallCount, &bAllowSecondLoadFinish](
+				const FBlueprintHelperMetricsPanelSelection& Selection)
+			{
+				const int32 CallIndex = LoadCallCount.fetch_add(1) + 1;
+				if (CallIndex == 2)
+				{
+					const double DeadlineSeconds = FPlatformTime::Seconds() + 5.0;
+					while (!bAllowSecondLoadFinish.load() &&
+						FPlatformTime::Seconds() < DeadlineSeconds)
+					{
+						FPlatformProcess::Sleep(0.001f);
+					}
+				}
+
+				return BlueprintHelperMetricsMakeLoadedPresenterSnapshot(
+					Selection,
+					CallIndex == 1 ? 12 : 18,
+					TEXT("Loaded Metrics"));
+			});
+	Presenter->SetEventSink(
+		[&PresenterEvents](const FBlueprintHelperMetricsPanelPresenterEvent& Event)
+		{
+			PresenterEvents.Add(Event);
+		});
+	PresenterEvents.Reset();
+
+	Presenter->HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
+	TestEqual(TEXT("initial load called once"), LoadCallCount.load(), 1);
+	TestEqual(
+		TEXT("initial snapshot is loaded"),
+		Presenter->GetSnapshot().LoadState,
+		EBlueprintHelperMetricsLoadState::Loaded);
+	TestEqual(TEXT("initial overview bars exist"), Presenter->GetSnapshot().OverviewBars.Num(), 2);
+	TestEqual(TEXT("initial detail bars exist"), Presenter->GetSnapshot().DetailBars.Num(), 1);
+
+	PresenterEvents.Reset();
+	Presenter->HandleVisualEvent(
+		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
+
+	const FBlueprintHelperMetricsPanelSnapshot& RefreshingSnapshot =
+		Presenter->GetSnapshot();
+	TestEqual(
+		TEXT("refresh keeps loaded state"),
+		RefreshingSnapshot.LoadState,
+		EBlueprintHelperMetricsLoadState::Loaded);
+	TestEqual(
+		TEXT("refresh keeps previous total"),
+		RefreshingSnapshot.Summary.TotalEvents,
+		12);
+	TestEqual(
+		TEXT("refresh keeps overview bars"),
+		RefreshingSnapshot.OverviewBars.Num(),
+		2);
+	TestEqual(
+		TEXT("refresh keeps detail bars"),
+		RefreshingSnapshot.DetailBars.Num(),
+		1);
+	TestTrue(
+		TEXT("refresh marks progress without replacing content"),
+		RefreshingSnapshot.bRefreshInProgress);
+	TestTrue(
+		TEXT("refresh status text is available"),
+		!RefreshingSnapshot.RefreshStatusText.IsEmpty());
+	if (PresenterEvents.Num() > 0)
+	{
+		TestEqual(
+			TEXT("refresh progress emits status-only scope"),
+			PresenterEvents.Last().UpdateScope,
+			EBlueprintHelperMetricsPanelUpdateScope::StatusOnly);
+	}
+
+	bAllowSecondLoadFinish.store(true);
+	const bool bRefreshCompleted = BlueprintHelperMetricsPumpAsyncUntil(
+		[&Presenter]()
+		{
+			const FBlueprintHelperMetricsPanelSnapshot& Snapshot =
+				Presenter->GetSnapshot();
+			return Snapshot.LoadState == EBlueprintHelperMetricsLoadState::Loaded &&
+				!Snapshot.bRefreshInProgress &&
+				Snapshot.Summary.TotalEvents == 18;
+		});
+	TestTrue(TEXT("refresh eventually completes"), bRefreshCompleted);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelPresenterSelectionUsesCachedProjectionTest,
+	"BlueprintHelper.UI.MetricsPanel.Presenter.SelectionUsesCachedProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelPresenterSelectionUsesCachedProjectionTest::RunTest(
+	const FString& Parameters)
+{
+	int32 LoadCallCount = 0;
+	TArray<FBlueprintHelperMetricsPanelPresenterEvent> PresenterEvents;
+
+	FBlueprintHelperMetricsPanelPresenter Presenter(
+		[&LoadCallCount](const FBlueprintHelperMetricsPanelSelection& Selection)
+		{
+			++LoadCallCount;
+			return BlueprintHelperMetricsMakeLoadedPresenterSnapshot(
+				Selection,
+				10,
+				TEXT("Loaded Metrics"));
+		});
+	Presenter.SetEventSink(
+		[&PresenterEvents](const FBlueprintHelperMetricsPanelPresenterEvent& Event)
+		{
+			PresenterEvents.Add(Event);
+		});
+	PresenterEvents.Reset();
+
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
+	TestEqual(TEXT("initial load uses loader once"), LoadCallCount, 1);
+
+	PresenterEvents.Reset();
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::MetricSelected(
+			EBlueprintHelperMetricsMetricKind::OperationUsage));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(
+			TEXT("bucket-b")));
+
+	TestEqual(TEXT("selection events reuse cached projection"), LoadCallCount, 1);
+	for (const FBlueprintHelperMetricsPanelPresenterEvent& Event : PresenterEvents)
+	{
+		TestNotEqual(
+			TEXT("selection event never emits loading"),
+			Event.Snapshot.LoadState,
+			EBlueprintHelperMetricsLoadState::Loading);
+	}
+	TestEqual(
+		TEXT("cached metric selection stored"),
+		Presenter.GetSnapshot().Selection.MetricKind,
+		EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(
+		TEXT("cached bucket selection stored"),
+		Presenter.GetSnapshot().Selection.SelectedBucketId,
+		FString(TEXT("bucket-b")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelPresenterScopesBucketClickTest,
+	"BlueprintHelper.UI.MetricsPanel.Presenter.ScopesBucketClick",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelPresenterScopesBucketClickTest::RunTest(
+	const FString& Parameters)
+{
+	FBlueprintHelperMetricsPanelPresenter Presenter(
+		[](const FBlueprintHelperMetricsPanelSelection& Selection)
+		{
+			return BlueprintHelperMetricsMakeLoadedPresenterSnapshot(
+				Selection,
+				10,
+				TEXT("Loaded Metrics"));
+		});
+
+	TArray<FBlueprintHelperMetricsPanelPresenterEvent> PresenterEvents;
+	Presenter.SetEventSink(
+		[&PresenterEvents](const FBlueprintHelperMetricsPanelPresenterEvent& Event)
+		{
+			PresenterEvents.Add(Event);
+		});
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
+	PresenterEvents.Reset();
+
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(
+			TEXT("bucket-b")));
+
+	TestTrue(TEXT("bucket click emits an event"), PresenterEvents.Num() > 0);
+	if (PresenterEvents.Num() > 0)
+	{
+		const FBlueprintHelperMetricsPanelPresenterEvent& Event =
+			PresenterEvents.Last();
+		TestEqual(
+			TEXT("bucket click updates overview and detail only"),
+			Event.UpdateScope,
+			EBlueprintHelperMetricsPanelUpdateScope::OverviewAndDetail);
+		TestNotEqual(
+			TEXT("bucket click does not request initial content"),
+			Event.UpdateScope,
+			EBlueprintHelperMetricsPanelUpdateScope::InitialContent);
+		TestNotEqual(
+			TEXT("bucket click does not request all regions"),
+			Event.UpdateScope,
+			EBlueprintHelperMetricsPanelUpdateScope::AllRegions);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperMetricsPanelPresenterSwitchesTimelineModeTest,
 	"BlueprintHelper.UI.MetricsPanel.Presenter.SwitchesTimelineMode",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -919,16 +1295,12 @@ bool FBlueprintHelperMetricsPanelPresenterRoutesSelectionEventsTest::RunTest(
 		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(
 			TEXT("selected-bucket")));
 
-	TestEqual(TEXT("loader called twice"), LoadedSelections.Num(), 2);
+	TestEqual(TEXT("selection events load only the initial projection"), LoadedSelections.Num(), 1);
 	TestEqual(
 		TEXT("first selection metric"),
 		LoadedSelections[0].MetricKind,
 		EBlueprintHelperMetricsMetricKind::OperationUsage);
 	TestTrue(TEXT("metric change clears selected bucket"), LoadedSelections[0].SelectedBucketId.IsEmpty());
-	TestEqual(
-		TEXT("second selection bucket"),
-		LoadedSelections[1].SelectedBucketId,
-		FString(TEXT("selected-bucket")));
 	TestEqual(
 		TEXT("presenter stores selected bucket"),
 		Presenter.GetSnapshot().Selection.SelectedBucketId,
@@ -991,31 +1363,22 @@ bool FBlueprintHelperMetricsPanelPresenterRunsAbcInteractionSequenceTest::RunTes
 	Presenter.HandleVisualEventForTests(
 		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
 
-	TestEqual(TEXT("sequence loader call count"), LoadedSelections.Num(), 5);
+	TestEqual(TEXT("sequence loader call count"), LoadedSelections.Num(), 2);
 	TestEqual(
 		TEXT("operations selected"),
 		LoadedSelections[0].MetricKind,
 		EBlueprintHelperMetricsMetricKind::OperationUsage);
 	TestEqual(
-		TEXT("bucket selected"),
-		LoadedSelections[1].SelectedBucketId,
-		FString(TEXT("bucket-operations")));
-	TestEqual(
-		TEXT("weekly clears bucket"),
-		LoadedSelections[2].SelectedBucketId,
-		FString());
-	TestEqual(
-		TEXT("weekly timeline selected"),
-		LoadedSelections[2].TimelineMode,
-		EBlueprintHelperMetricsTimelineMode::Weekly);
-	TestEqual(
-		TEXT("daily timeline selected"),
-		LoadedSelections[3].TimelineMode,
-		EBlueprintHelperMetricsTimelineMode::Daily);
-	TestEqual(
 		TEXT("refresh preserves latest metric"),
-		LoadedSelections[4].MetricKind,
+		LoadedSelections[1].MetricKind,
 		EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(
+		TEXT("refresh uses latest timeline"),
+		LoadedSelections[1].TimelineMode,
+		EBlueprintHelperMetricsTimelineMode::Daily);
+	TestTrue(
+		TEXT("timeline changes clear bucket before refresh"),
+		LoadedSelections[1].SelectedBucketId.IsEmpty());
 	TestEqual(
 		TEXT("final detail row exists"),
 		Presenter.GetSnapshot().DetailBars.Num(),
@@ -1112,11 +1475,11 @@ bool FBlueprintHelperMetricsPanelPresenterReplaysLatestAsyncRequestTest::RunTest
 			return Snapshot.TimelineMode ==
 					EBlueprintHelperMetricsTimelineMode::Weekly &&
 				Snapshot.LoadState == EBlueprintHelperMetricsLoadState::Loaded &&
-				Snapshot.Summary.TotalEvents == 2;
+				Snapshot.Summary.TotalEvents == 1;
 		});
 
 	TestTrue(TEXT("latest queued request is loaded"), bLoadedLatestRequest);
-	TestEqual(TEXT("load called twice"), LoadCallCount.load(), 2);
+	TestEqual(TEXT("load called once"), LoadCallCount.load(), 1);
 	TestTrue(TEXT("presenter emitted async events"), PresenterEvents.Num() >= 2);
 	if (PresenterEvents.Num() >= 1)
 	{
@@ -1129,7 +1492,7 @@ bool FBlueprintHelperMetricsPanelPresenterReplaysLatestAsyncRequestTest::RunTest
 		TestEqual(
 			TEXT("last async event total"),
 			Event.Snapshot.Summary.TotalEvents,
-			2);
+			1);
 	}
 
 	return true;
@@ -1201,6 +1564,8 @@ bool FBlueprintHelperMetricsPanelSlateAbcComponentsConstructTest::RunTest(
 	Bar.Label = TEXT("2026-06-04");
 	Bar.Value = 3;
 	Bar.Fraction = 1.0f;
+	Bar.ValueLabel = TEXT("3");
+	Bar.Detail = TEXT("success=3 failed=0");
 	Bar.bIsSelected = true;
 	Bars.Add(Bar);
 
@@ -1209,34 +1574,101 @@ bool FBlueprintHelperMetricsPanelSlateAbcComponentsConstructTest::RunTest(
 	Detail.Label = TEXT("blueprinthelper_read_context");
 	Detail.Value = 3;
 	Detail.UnitLabel = TEXT("events");
+	Detail.SubText = TEXT("supported capability");
 	Detail.Fraction = 1.0f;
 	Details.Add(Detail);
+
+	FBlueprintHelperMetricsSummary Summary;
+	Summary.TotalEvents = 3;
+	Summary.TotalFailures = 1;
+	Summary.UnknownErrors = 0;
+	Summary.EstimatedInputTokens = 12;
+	Summary.EstimatedOutputTokens = 34;
 
 	TSharedRef<SWidget> Selector =
 		SNew(SBlueprintHelperMetricsMetricSelector)
 		.Options(Options)
 		.OnMetricSelected(FOnBlueprintHelperMetricsMetricSelected::CreateLambda(
 			[](EBlueprintHelperMetricsMetricKind) {}));
-	TSharedRef<SWidget> Overview =
+	const TSharedRef<SBlueprintHelperMetricsOverviewChart> Overview =
 		SNew(SBlueprintHelperMetricsOverviewChart)
+		.Title(TEXT("TaskSpec Attempts by Day"))
+		.Subtitle(TEXT("Last 14 local days"))
 		.TimelineMode(EBlueprintHelperMetricsTimelineMode::Daily)
+		.Summary(Summary)
 		.Bars(Bars)
+		.bRefreshInProgress(true)
 		.OnTimelineModeSelected(FOnBlueprintHelperMetricsTimelineModeSelected::CreateLambda(
 			[](EBlueprintHelperMetricsTimelineMode) {}))
 		.OnBucketSelected(FOnBlueprintHelperMetricsBucketSelected::CreateLambda(
 			[](const FString&) {}))
 		.OnRefreshClicked(FOnBlueprintHelperMetricsRefreshClicked::CreateLambda(
 			[]() {}));
-	TSharedRef<SWidget> DetailChart =
+	const TSharedRef<SBlueprintHelperMetricsDetailChart> DetailChart =
 		SNew(SBlueprintHelperMetricsDetailChart)
 		.Title(TEXT("Tool Calls"))
 		.Subtitle(TEXT("2026-06-04"))
 		.TotalText(TEXT("3 events"))
 		.Rows(Details);
 
+	Overview->SetData(
+		TEXT("Operations by Week"),
+		TEXT("Last 8 ISO weeks"),
+		EBlueprintHelperMetricsTimelineMode::Weekly,
+		Summary,
+		Bars,
+		false);
+	DetailChart->SetData(
+		TEXT("Operations"),
+		TEXT("2026-W23"),
+		TEXT("3 events"),
+		Details);
+
 	TestTrue(TEXT("selector constructed"), Selector->GetTypeAsString().Len() > 0);
 	TestTrue(TEXT("overview constructed"), Overview->GetTypeAsString().Len() > 0);
 	TestTrue(TEXT("detail constructed"), DetailChart->GetTypeAsString().Len() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelSlateDetailChartSupportsLargeUpdatesTest,
+	"BlueprintHelper.UI.MetricsPanel.Slate.DetailChartSupportsLargeUpdates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelSlateDetailChartSupportsLargeUpdatesTest::RunTest(
+	const FString& Parameters)
+{
+	TArray<FBlueprintHelperMetricsDetailBarView> Rows;
+	for (int32 Index = 0; Index < 25; ++Index)
+	{
+		FBlueprintHelperMetricsDetailBarView Row;
+		Row.Label = FString::Printf(TEXT("row-%02d"), Index);
+		Row.Value = Index + 1;
+		Row.UnitLabel = TEXT("events");
+		Row.SubText = FString::Printf(TEXT("subtext-%02d"), Index);
+		Row.Fraction = static_cast<float>(Index + 1) / 25.0f;
+		Rows.Add(Row);
+	}
+
+	const TSharedRef<SBlueprintHelperMetricsDetailChart> DetailChart =
+		SNew(SBlueprintHelperMetricsDetailChart)
+		.Title(TEXT("Tool Calls"))
+		.Subtitle(TEXT("2026-06-04"))
+		.TotalText(TEXT("25 events"))
+		.Rows(Rows);
+
+	FBlueprintHelperMetricsDetailBarView UpdatedRow = Rows[0];
+	UpdatedRow.Value = 3;
+	UpdatedRow.SubText = TEXT("unsupported capability/policy");
+	Rows[0] = UpdatedRow;
+
+	DetailChart->SetData(
+		TEXT("Tool Calls"),
+		TEXT("2026-06-04"),
+		TEXT("25 events"),
+		Rows);
+
+	TestTrue(TEXT("detail chart remains constructed"), DetailChart->GetTypeAsString().Len() > 0);
 	return true;
 }
 

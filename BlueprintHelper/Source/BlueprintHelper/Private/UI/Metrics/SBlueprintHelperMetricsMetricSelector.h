@@ -10,6 +10,8 @@ DECLARE_DELEGATE_OneParam(
 	FOnBlueprintHelperMetricsMetricSelected,
 	EBlueprintHelperMetricsMetricKind);
 
+class SVerticalBox;
+
 class SBlueprintHelperMetricsMetricSelector : public SCompoundWidget
 {
 public:
@@ -21,12 +23,15 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	void SetOptions(const TArray<FBlueprintHelperMetricsMetricOptionView>& InOptions);
 
 private:
+	void RebuildOptions();
 	TSharedRef<SWidget> BuildOption(
 		const FBlueprintHelperMetricsMetricOptionView& Option) const;
 	FReply HandleOptionClicked(EBlueprintHelperMetricsMetricKind MetricKind) const;
 
 	TArray<FBlueprintHelperMetricsMetricOptionView> Options;
 	FOnBlueprintHelperMetricsMetricSelected OnMetricSelected;
+	TSharedPtr<SVerticalBox> OptionsBox;
 };

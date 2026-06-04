@@ -34,6 +34,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperMetricsPanelVisualEvent
 struct BLUEPRINTHELPER_API FBlueprintHelperMetricsPanelPresenterEvent
 {
 	FBlueprintHelperMetricsPanelSnapshot Snapshot;
+	EBlueprintHelperMetricsPanelUpdateScope UpdateScope =
+		EBlueprintHelperMetricsPanelUpdateScope::None;
 	bool bRefreshView = false;
 };
 

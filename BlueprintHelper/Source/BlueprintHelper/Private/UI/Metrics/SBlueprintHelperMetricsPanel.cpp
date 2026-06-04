@@ -11,6 +11,7 @@
 #include "Widgets/Images/SThrobber.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -20,6 +21,14 @@ static FString BlueprintHelperMetricsPanelTimelineText(
 	return TimelineMode == EBlueprintHelperMetricsTimelineMode::Weekly
 		? TEXT("Weekly")
 		: TEXT("Daily");
+}
+
+static FString BlueprintHelperMetricsPanelOverviewRangeText(
+	EBlueprintHelperMetricsTimelineMode TimelineMode)
+{
+	return TimelineMode == EBlueprintHelperMetricsTimelineMode::Weekly
+		? TEXT("Last 8 ISO weeks")
+		: TEXT("Last 14 local days");
 }
 
 void SBlueprintHelperMetricsPanel::Construct(const FArguments& InArgs)
@@ -56,18 +65,40 @@ void SBlueprintHelperMetricsPanel::HandlePresenterEvent(
 {
 	if (Event.bRefreshView)
 	{
-		RefreshFromSnapshot(Event.Snapshot);
+		RefreshFromSnapshot(Event.Snapshot, Event.UpdateScope);
 	}
 }
 
 void SBlueprintHelperMetricsPanel::RefreshFromSnapshot(
-	const FBlueprintHelperMetricsPanelSnapshot& Snapshot)
+	const FBlueprintHelperMetricsPanelSnapshot& Snapshot,
+	EBlueprintHelperMetricsPanelUpdateScope UpdateScope)
 {
+	const bool bHasLoadedRoot =
+		MetricSelectorWidget.IsValid() &&
+		OverviewChartWidget.IsValid() &&
+		DetailChartWidget.IsValid();
+
 	CurrentSnapshot = Snapshot;
-	if (ContentHost.IsValid())
+	if (!ContentHost.IsValid())
 	{
-		ContentHost->SetContent(BuildContent());
+		return;
 	}
+
+	if (Snapshot.LoadState == EBlueprintHelperMetricsLoadState::Loaded)
+	{
+		if (!bHasLoadedRoot)
+		{
+			ContentHost->SetContent(BuildLoadedContent());
+		}
+		ApplySnapshotToRegions(Snapshot, UpdateScope);
+		return;
+	}
+
+	MetricSelectorWidget.Reset();
+	OverviewChartWidget.Reset();
+	DetailChartWidget.Reset();
+	StatusTextWidget.Reset();
+	ContentHost->SetContent(BuildStatusContent());
 }
 
 TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildContent()
@@ -121,12 +152,22 @@ TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildStatusContent()
 
 TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildLoadedContent()
 {
-	return BuildAbcLayout();
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			BuildAbcLayout()
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 8.0f, 0.0f, 0.0f)
+		[
+			SAssignNew(StatusTextWidget, STextBlock)
+		];
 }
 
 TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildAbcLayout()
 {
-	const FString SelectedUnitLabel = GetSelectedMetricUnitLabel();
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -135,7 +176,7 @@ TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildAbcLayout()
 			SNew(SBox)
 			.WidthOverride(260.0f)
 			[
-				SNew(SBlueprintHelperMetricsMetricSelector)
+				SAssignNew(MetricSelectorWidget, SBlueprintHelperMetricsMetricSelector)
 				.Options(CurrentSnapshot.MetricOptions)
 				.OnMetricSelected(FOnBlueprintHelperMetricsMetricSelected::CreateSP(
 					this,
@@ -145,17 +186,22 @@ TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildAbcLayout()
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()
-			.FillHeight(0.48f)
-			.Padding(0.0f, 0.0f, 0.0f, 10.0f)
+			SNew(SSplitter)
+			.Orientation(Orient_Vertical)
+			+ SSplitter::Slot()
+			.Value(0.48f)
 			[
-				SNew(SBlueprintHelperMetricsOverviewChart)
+				SAssignNew(OverviewChartWidget, SBlueprintHelperMetricsOverviewChart)
+				.Title(BuildOverviewTitle())
+				.Subtitle(BuildOverviewSubtitle())
 				.TimelineMode(CurrentSnapshot.Selection.TimelineMode)
+				.Summary(CurrentSnapshot.Summary)
 				.Bars(CurrentSnapshot.OverviewBars)
-				.OnTimelineModeSelected(FOnBlueprintHelperMetricsTimelineModeSelected::CreateSP(
-					this,
-					&SBlueprintHelperMetricsPanel::HandleTimelineModeSelected))
+				.bRefreshInProgress(CurrentSnapshot.bRefreshInProgress)
+				.OnTimelineModeSelected(
+					FOnBlueprintHelperMetricsTimelineModeSelected::CreateSP(
+						this,
+						&SBlueprintHelperMetricsPanel::HandleTimelineModeSelected))
 				.OnBucketSelected(FOnBlueprintHelperMetricsBucketSelected::CreateSP(
 					this,
 					&SBlueprintHelperMetricsPanel::HandleBucketSelected))
@@ -163,19 +209,104 @@ TSharedRef<SWidget> SBlueprintHelperMetricsPanel::BuildAbcLayout()
 					this,
 					&SBlueprintHelperMetricsPanel::HandleRefreshRequested))
 			]
-			+ SVerticalBox::Slot()
-			.FillHeight(0.52f)
+			+ SSplitter::Slot()
+			.Value(0.52f)
 			[
-				SNew(SBlueprintHelperMetricsDetailChart)
+				SAssignNew(DetailChartWidget, SBlueprintHelperMetricsDetailChart)
 				.Title(CurrentSnapshot.SelectedMetricTitle)
 				.Subtitle(CurrentSnapshot.SelectedBucketLabel)
-				.TotalText(FString::Printf(
-					TEXT("%lld %s"),
-					CurrentSnapshot.SelectedBucketTotal,
-					*SelectedUnitLabel))
+				.TotalText(BuildDetailTotalText())
 				.Rows(CurrentSnapshot.DetailBars)
 			]
 		];
+}
+
+void SBlueprintHelperMetricsPanel::ApplySnapshotToRegions(
+	const FBlueprintHelperMetricsPanelSnapshot& Snapshot,
+	EBlueprintHelperMetricsPanelUpdateScope UpdateScope)
+{
+	UpdateStatusText(Snapshot);
+
+	if (MetricSelectorWidget.IsValid() &&
+		(UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::MetricSelector ||
+			UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::AllRegions ||
+			UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::InitialContent))
+	{
+		MetricSelectorWidget->SetOptions(Snapshot.MetricOptions);
+	}
+
+	const bool bNeedsOverviewRefresh =
+		UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::Overview ||
+		UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::OverviewAndDetail ||
+		UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::AllRegions ||
+		UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::InitialContent ||
+		UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::StatusOnly;
+	if (OverviewChartWidget.IsValid() && bNeedsOverviewRefresh)
+	{
+		OverviewChartWidget->SetData(
+			BuildOverviewTitle(),
+			BuildOverviewSubtitle(),
+			Snapshot.Selection.TimelineMode,
+			Snapshot.Summary,
+			Snapshot.OverviewBars,
+			Snapshot.bRefreshInProgress);
+	}
+
+	if (DetailChartWidget.IsValid() &&
+		(UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::Detail ||
+			UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::OverviewAndDetail ||
+			UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::AllRegions ||
+			UpdateScope == EBlueprintHelperMetricsPanelUpdateScope::InitialContent))
+	{
+		DetailChartWidget->SetData(
+			Snapshot.SelectedMetricTitle,
+			Snapshot.SelectedBucketLabel,
+			BuildDetailTotalText(),
+			Snapshot.DetailBars);
+	}
+}
+
+void SBlueprintHelperMetricsPanel::UpdateStatusText(
+	const FBlueprintHelperMetricsPanelSnapshot& Snapshot)
+{
+	if (!StatusTextWidget.IsValid())
+	{
+		return;
+	}
+
+	const FString RefreshText = Snapshot.bRefreshInProgress &&
+			!Snapshot.RefreshStatusText.IsEmpty()
+		? FString::Printf(TEXT(" | %s"), *Snapshot.RefreshStatusText)
+		: FString();
+	StatusTextWidget->SetText(FText::FromString(FString::Printf(
+		TEXT("Mode: %s | files=%d lines=%d warnings=%d%s"),
+		*BlueprintHelperMetricsPanelTimelineText(Snapshot.Selection.TimelineMode),
+		Snapshot.FilesRead,
+		Snapshot.LinesRead,
+		Snapshot.ParseWarnings,
+		*RefreshText)));
+}
+
+FString SBlueprintHelperMetricsPanel::BuildOverviewTitle() const
+{
+	return FString::Printf(
+		TEXT("B - %s by %s"),
+		*CurrentSnapshot.SelectedMetricTitle,
+		*BlueprintHelperMetricsPanelTimelineText(CurrentSnapshot.Selection.TimelineMode));
+}
+
+FString SBlueprintHelperMetricsPanel::BuildOverviewSubtitle() const
+{
+	return BlueprintHelperMetricsPanelOverviewRangeText(
+		CurrentSnapshot.Selection.TimelineMode);
+}
+
+FString SBlueprintHelperMetricsPanel::BuildDetailTotalText() const
+{
+	return FString::Printf(
+		TEXT("%lld %s"),
+		CurrentSnapshot.SelectedBucketTotal,
+		*GetSelectedMetricUnitLabel());
 }
 
 FString SBlueprintHelperMetricsPanel::GetSelectedMetricUnitLabel() const

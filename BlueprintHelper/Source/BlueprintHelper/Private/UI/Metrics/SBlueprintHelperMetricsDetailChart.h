@@ -6,6 +6,9 @@
 #include "Systems/Metrics/BlueprintHelperMetricsData.h"
 #include "Widgets/SCompoundWidget.h"
 
+class STextBlock;
+class SVerticalBox;
+
 class SBlueprintHelperMetricsDetailChart : public SCompoundWidget
 {
 public:
@@ -19,8 +22,14 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	void SetData(
+		const FString& InTitle,
+		const FString& InSubtitle,
+		const FString& InTotalText,
+		const TArray<FBlueprintHelperMetricsDetailBarView>& InRows);
 
 private:
+	void RefreshRows();
 	TSharedRef<SWidget> BuildRow(
 		const FBlueprintHelperMetricsDetailBarView& Row) const;
 
@@ -28,4 +37,8 @@ private:
 	FString Subtitle;
 	FString TotalText;
 	TArray<FBlueprintHelperMetricsDetailBarView> Rows;
+	TSharedPtr<STextBlock> TitleTextWidget;
+	TSharedPtr<STextBlock> SubtitleTextWidget;
+	TSharedPtr<STextBlock> TotalTextWidget;
+	TSharedPtr<SVerticalBox> RowsBox;
 };

@@ -18,6 +18,19 @@ enum class EBlueprintHelperMetricsLoadState : uint8
 	Error
 };
 
+enum class EBlueprintHelperMetricsPanelUpdateScope : uint8
+{
+	None,
+	InitialContent,
+	StatusOnly,
+	MetricSelector,
+	Overview,
+	Detail,
+	OverviewAndDetail,
+	AllRegions,
+	Error
+};
+
 enum class EBlueprintHelperMetricsMetricKind : uint8
 {
 	ToolUsage,
@@ -244,6 +257,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperMetricsPanelSnapshot
 	int64 SelectedBucketTotal = 0;
 	FString MetricsRoot;
 	FString StatusText = TEXT("No Metrics data loaded");
+	bool bRefreshInProgress = false;
+	FString RefreshStatusText;
 	FString ErrorText;
 	int32 FilesRead = 0;
 	int32 LinesRead = 0;

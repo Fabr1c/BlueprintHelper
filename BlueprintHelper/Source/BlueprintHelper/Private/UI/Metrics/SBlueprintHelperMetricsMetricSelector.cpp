@@ -9,19 +9,7 @@
 
 void SBlueprintHelperMetricsMetricSelector::Construct(const FArguments& InArgs)
 {
-	Options = InArgs._Options;
 	OnMetricSelected = InArgs._OnMetricSelected;
-
-	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
-	for (const FBlueprintHelperMetricsMetricOptionView& Option : Options)
-	{
-		List->AddSlot()
-		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
-		[
-			BuildOption(Option)
-		];
-	}
 
 	ChildSlot
 	[
@@ -39,10 +27,38 @@ void SBlueprintHelperMetricsMetricSelector::Construct(const FArguments& InArgs)
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
 			[
-				List
+				SAssignNew(OptionsBox, SVerticalBox)
 			]
 		]
 	];
+
+	SetOptions(InArgs._Options);
+}
+
+void SBlueprintHelperMetricsMetricSelector::SetOptions(
+	const TArray<FBlueprintHelperMetricsMetricOptionView>& InOptions)
+{
+	Options = InOptions;
+	RebuildOptions();
+}
+
+void SBlueprintHelperMetricsMetricSelector::RebuildOptions()
+{
+	if (!OptionsBox.IsValid())
+	{
+		return;
+	}
+
+	OptionsBox->ClearChildren();
+	for (const FBlueprintHelperMetricsMetricOptionView& Option : Options)
+	{
+		OptionsBox->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+		[
+			BuildOption(Option)
+		];
+	}
 }
 
 TSharedRef<SWidget> SBlueprintHelperMetricsMetricSelector::BuildOption(
