@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -61,9 +62,49 @@ export function createCliMetricsService(options: CreateCliMetricsServiceOptions)
 
 export function resolveCliMetricsRoot(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
   const overrideRoot = readNonEmptyString(env['BPH_METRICS_DIR']);
-  return overrideRoot
-    ? path.resolve(overrideRoot)
-    : path.resolve(cwd, 'Saved', 'BlueprintHelper', 'Metrics');
+  if (overrideRoot) {
+    return path.resolve(overrideRoot);
+  }
+
+  const projectRoot = findNearestUnrealProjectRoot(cwd);
+  if (!projectRoot) {
+    throw new Error(
+      `Unable to resolve BlueprintHelper Metrics root from cwd "${path.resolve(cwd)}". ` +
+      'Run the CLI from inside an Unreal project or set BPH_METRICS_DIR.',
+    );
+  }
+
+  return path.resolve(projectRoot, 'Saved', 'BlueprintHelper', 'Metrics');
+}
+
+function findNearestUnrealProjectRoot(cwd: string): string | undefined {
+  let dir = path.resolve(cwd);
+
+  while (true) {
+    const projectFiles = readUprojectFiles(dir);
+    if (projectFiles.length === 1) {
+      return dir;
+    }
+    if (projectFiles.length > 1) {
+      return undefined;
+    }
+
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    dir = parent;
+  }
+}
+
+function readUprojectFiles(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.uproject'))
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
 }
 
 export async function recordCliToolCompletion(options: RecordCliToolCompletionOptions): Promise<void> {

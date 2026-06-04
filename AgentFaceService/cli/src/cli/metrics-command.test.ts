@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -85,6 +85,7 @@ test('runMetricsCommand markdown writes reports markdown under metrics root', as
 
 test('runCli parses metrics report json command and writes report data to stdout', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-workspace-');
+  await writeFile(path.join(workspace, 'Template.uproject'), '{"FileVersion":3}\n', 'utf8');
   const metricsRoot = path.join(workspace, 'Saved', 'BlueprintHelper', 'Metrics');
   const store = createMetricsStore({
     root: metricsRoot,
@@ -116,6 +117,7 @@ test('runCli parses metrics report json command and writes report data to stdout
 
 test('runCli parses metrics tool-usage and task-health json commands', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-workspace-metrics-kinds-');
+  await writeFile(path.join(workspace, 'Template.uproject'), '{"FileVersion":3}\n', 'utf8');
   const metricsRoot = path.join(workspace, 'Saved', 'BlueprintHelper', 'Metrics');
   const store = createMetricsStore({
     root: metricsRoot,

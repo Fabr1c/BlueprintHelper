@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { createCliMetricsService } from './metrics-runtime.js';
+import { createCliMetricsService, resolveCliMetricsRoot } from './metrics-runtime.js';
 import { runCli } from './run.js';
 
 test('createCliMetricsService returns disabled no-op without creating metrics root', async (t) => {
@@ -60,6 +60,27 @@ test('createCliMetricsService records jsonl under env metrics root when enabled'
   assert.equal(events[0]?.event_type, 'tool_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_diagnostics');
   assert.equal(events[0]?.duration_ms, 7);
+});
+
+test('resolveCliMetricsRoot writes under project Saved when cwd is a plugin subdirectory', async (t) => {
+  const projectRoot = await createTempDir(t, 'blueprinthelper-cli-metrics-project-root-');
+  const pluginRoot = path.join(projectRoot, 'Plugins', 'BlueprintHelper');
+  await mkdir(pluginRoot, { recursive: true });
+  await writeFile(path.join(projectRoot, 'Template.uproject'), '{"FileVersion":3}\n', 'utf8');
+
+  assert.equal(
+    resolveCliMetricsRoot(pluginRoot, { ...process.env, BPH_METRICS_DIR: undefined }),
+    path.join(projectRoot, 'Saved', 'BlueprintHelper', 'Metrics'),
+  );
+});
+
+test('resolveCliMetricsRoot requires a project root when env override is unset', async (t) => {
+  const workspace = await createTempDir(t, 'blueprinthelper-cli-metrics-no-project-root-');
+
+  assert.throws(
+    () => resolveCliMetricsRoot(workspace, { ...process.env, BPH_METRICS_DIR: undefined }),
+    /Unable to resolve BlueprintHelper Metrics root/,
+  );
 });
 
 test('createCliMetricsService uses default 24h stale episode TTL when env is unset', async (t) => {

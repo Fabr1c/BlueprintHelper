@@ -285,7 +285,7 @@ const groupHelpEntries: Record<string, HelpEntry> = {
       'bh metrics tool-usage --window 30d --limit 50 --format json',
       'bh metrics task-health --window all --limit 20 --format markdown',
     ],
-    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or cwd/Saved/BlueprintHelper/Metrics.'],
+    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or nearest .uproject/Saved/BlueprintHelper/Metrics.'],
     notes: [
       'Markdown reports are written under metricsRoot/reports.',
       'JSON stdout returns report data; markdown stdout returns a compact result plus artifact paths.',
@@ -543,7 +543,7 @@ function metricsHelpEntry(kind: 'report' | 'top-errors' | 'tool-usage' | 'task-h
   return {
     summary,
     usage: [`bh metrics ${kind} --window 7d --limit 20 --format json`],
-    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or cwd/Saved/BlueprintHelper/Metrics.'],
+    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or nearest .uproject/Saved/BlueprintHelper/Metrics.'],
     notes: [
       'Markdown writes the rendered report under metricsRoot/reports.',
       'Use --format json for machine-readable stdout.',
