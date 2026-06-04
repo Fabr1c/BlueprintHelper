@@ -163,6 +163,8 @@ P0 does not accept `cursor` and does not return `total_count`. It also does not 
 
 `view.format=logic_flow` is the default for `read_type=blueprint_logic` and is recommended for simple `target_type=function`, `target_type=event`, or `target_type=custom_event` reads when the Agent needs fast execution/data flow understanding. It returns `LogicFlow.v1` and must not be used as a patch/merge anchor source.
 
+When a `logic_flow` request returns `payload.schema=LogicJson.v1` and `payload.requested_format=logic_flow`, treat it as an intentional degradation caused by unknown or ambiguous link semantics; continue analysis from the returned `logic_json` payload instead of retrying `logic_flow`.
+
 `view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known and the entry is larger or more branched than a compact `logic_flow` read should carry. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
 
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.

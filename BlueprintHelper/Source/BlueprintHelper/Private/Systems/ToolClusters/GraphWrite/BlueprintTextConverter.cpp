@@ -53,6 +53,7 @@
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
+#include "Systems/ToolClusters/GraphWrite/Logic/Utils/BlueprintHelperGraphWriteClassificationUtils.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "Serialization/JsonSerializer.h"
@@ -632,14 +633,16 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 	RootObject->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
 
 	TMap<FString, TPair<FString, FString>> PinIdToNodePin;
+	TMap<FString, FMinimalPin> PinIdToPin;
 	for (const auto& Pair : Nodes)
 	{
 		const FMinimalNode& Node = Pair.Value;
-		auto CachePins = [&PinIdToNodePin, &Node](const TArray<FMinimalPin>& Pins)
+		auto CachePins = [&PinIdToNodePin, &PinIdToPin, &Node](const TArray<FMinimalPin>& Pins)
 		{
 			for (const FMinimalPin& Pin : Pins)
 			{
 				PinIdToNodePin.Add(Pin.PinId, TPair<FString, FString>(Node.InternalName, Pin.PinName));
+				PinIdToPin.Add(Pin.PinId, Pin);
 			}
 		};
 
@@ -789,11 +792,26 @@ FString FBlueprintToTextConverter::FormatNodesToJson(const TMap<FString, FMinima
 
 				LinkDeduplication.Add(LinkKey);
 
+				const FMinimalPin* TargetPinInfo = PinIdToPin.Find(TargetPinId);
+				const FString FromPinType = Pin.PinCategory.IsEmpty() ? TEXT("unknown") : Pin.PinCategory;
+				const FString ToPinType = TargetPinInfo && !TargetPinInfo->PinCategory.IsEmpty()
+					? TargetPinInfo->PinCategory
+					: TEXT("unknown");
+				const EBlueprintHelperLogicLinkType LinkType =
+					FBlueprintHelperGraphWriteClassificationUtils::IdentifyGraphLinkType(
+						TEXT(""),
+						FromPinType,
+						Pin.PinName,
+						TargetPin.Value);
+
 				TSharedRef<FJsonObject> LinkObject = MakeShared<FJsonObject>();
 				LinkObject->SetStringField(TEXT("from_id"), Node.InternalName);
 				LinkObject->SetStringField(TEXT("from_pin"), Pin.PinName);
 				LinkObject->SetStringField(TEXT("to_id"), TargetPin.Key);
 				LinkObject->SetStringField(TEXT("to_pin"), TargetPin.Value);
+				LinkObject->SetStringField(TEXT("kind"), LogicLinkTypeToString(LinkType));
+				LinkObject->SetStringField(TEXT("from_pin_type"), FromPinType);
+				LinkObject->SetStringField(TEXT("to_pin_type"), ToPinType);
 				LinkValues.Add(MakeShared<FJsonValueObject>(LinkObject));
 			}
 		}

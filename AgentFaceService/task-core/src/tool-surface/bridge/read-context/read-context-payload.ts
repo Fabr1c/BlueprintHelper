@@ -2,13 +2,36 @@ import type { ReadContextInput } from './read-context-schemas.js';
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
+export type ReadContextPostProcessResult = {
+  payload: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+};
+
+export function postProcessReadContextPayloadWithDebug(
+  input: ReadContextInput,
+  payloadSchema: string,
+  payload: Record<string, unknown>,
+): ReadContextPostProcessResult {
+  if (payloadSchema === 'LogicFlow.v1') {
+    const result = buildLogicFlowPayload(payload);
+    return {
+      payload: result.payload,
+      debug: result.debug ? { logic_flow: result.debug } : undefined,
+    };
+  }
+
+  return {
+    payload: postProcessReadContextPayload(input, payloadSchema, payload),
+  };
+}
+
 export function postProcessReadContextPayload(
   input: ReadContextInput,
   payloadSchema: string,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
   if (payloadSchema === 'LogicFlow.v1') {
-    return buildLogicFlowPayload(payload);
+    return buildLogicFlowPayload(payload).payload;
   }
 
   const normalized: Record<string, unknown> = {

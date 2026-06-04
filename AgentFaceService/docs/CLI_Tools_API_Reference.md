@@ -58,6 +58,8 @@
 - `logic_flow` 和 `logic_md` 不是锚点来源。
 - 不要再使用 `view.format=summary` 作为 ReadSpec 格式。
 
+`logic_flow` is generated only by the AgentFaceService/task-core canonical TypeScript builder from structured `LogicJson.v1`. Default `logic_flow` output does not include anchors. Use `--expert` and inspect `artifacts.debug_result` only for diagnostic anchors. If links cannot be classified, the requested `logic_flow` read degrades to `logic_json` with `requested_format=logic_flow` and a warning such as `logic_flow_degraded_unknown_link`.
+
 ## 模板导航
 
 先从这里开始找模板:

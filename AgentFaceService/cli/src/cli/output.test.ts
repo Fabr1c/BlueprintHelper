@@ -228,3 +228,54 @@ test('CLI full result keeps validation errors but drops validation policy keys',
   assert.match(serialized, /"compile_success":false/);
   assert.match(serialized, /"compile_error"/);
 });
+
+test('expert read_context debug artifact keeps logic_flow anchors while full_result omits debug', () => {
+  const chunks: string[] = [];
+  const toolResult = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'read_context',
+    trace_id: 'trace_logic_flow_anchors',
+    status: 'completed',
+    modified: false,
+    target: { target_type: 'blueprint', asset_path: '/Game/BP_Test' },
+    data: {
+      schema: 'ReadContextPack.v1',
+      payload: {
+        schema: 'LogicFlow.v1',
+        mode: 'execflow',
+        flow: 'OpenDoor -> PrintString',
+        stats: { nodes: 2, exec_links: 1, data_links: 0 },
+        warnings: [],
+      },
+    },
+    debug: {
+      logic_flow: {
+        anchors: [{ semantic_role: 'exec_boundary', fingerprint: 'boundaryfp' }],
+      },
+    },
+  } as ToolResultBase;
+
+  const outcome = writeCliResult({
+    cwd: process.cwd(),
+    stdout: (text) => chunks.push(text),
+  }, {
+    kind: 'tool.invoke',
+    format: 'json',
+    toolName: 'blueprinthelper_read_context',
+    expert: true,
+  }, toolResult);
+
+  const output = JSON.parse(chunks.join('')) as Record<string, unknown>;
+  const artifacts = output.artifacts as Record<string, unknown>;
+  const fullResult = JSON.parse(fs.readFileSync(String(artifacts.full_result), 'utf8')) as Record<string, unknown>;
+  const debugResult = JSON.parse(fs.readFileSync(String(artifacts.debug_result), 'utf8')) as Record<string, unknown>;
+
+  assert.equal(outcome.outputTooLarge, false);
+  assert.equal(((fullResult.toolResult as Record<string, unknown>).data as Record<string, unknown>)['debug'], undefined);
+  assert.equal((fullResult.toolResult as Record<string, unknown>)['debug'], undefined);
+  const debug = debugResult.debug as Record<string, unknown>;
+  const logicFlowDebug = debug['logic_flow'] as Record<string, unknown>;
+  const anchors = logicFlowDebug['anchors'] as Record<string, unknown>[];
+  assert.equal(anchors[0]?.['fingerprint'], 'boundaryfp');
+});

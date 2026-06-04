@@ -88,10 +88,17 @@ FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService
 	if (Request.Format == EBlueprintHelperReadContextExportFormat::LogicFlow)
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicFlowPayload(RawJsonRoot, Payload);
+		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(RawJsonRoot, Payload);
+		Payload->SetStringField(TEXT("requested_format"), TEXT("logic_flow"));
+
+		TArray<TSharedPtr<FJsonValue>> WarningValues;
+		WarningValues.Add(MakeShared<FJsonValueString>(
+			TEXT("logic_flow_degraded_workbench_canonical_builder_unavailable")));
+		Payload->SetArrayField(TEXT("warnings"), WarningValues);
+
 		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
 		Result.bSucceeded = true;
-		Result.Message = TEXT("logicflow copied to clipboard.");
+		Result.Message = TEXT("logicflow degraded to logicjson because canonical builder lives in AgentFaceService/task-core.");
 		return Result;
 	}
 

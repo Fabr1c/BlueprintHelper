@@ -17,11 +17,16 @@ import {
 } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
 import {
-  postProcessReadContextPayload,
+  postProcessReadContextPayloadWithDebug,
   resolveReadContextPostProcessStage,
 } from './read-context-payload.js';
 import { buildPayloadSizeMetric } from './read-context-payload-metrics.js';
 import { ReadContextInputSchema, type ReadContextInput } from './read-context-schemas.js';
+
+type ReadPayloadWithDebug = {
+  payload: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+};
 
 export async function executeReadContext(
   rawInput: Record<string, unknown>,
@@ -71,12 +76,8 @@ export async function executeReadContext(
       rollback_result: 'not_needed',
     });
   }
-  const readPayload = buildReadPayloadWithTiming(input, route.payloadSchema, payloadResult.payload, context);
-  return measureTaskTiming(timing, 'read_context.result_wrap', () => successRead('read_context', buildReadContextTarget(input), {
-    schema: 'ReadContextPack.v1',
-    payload: readPayload,
-    truncated: false,
-  }) as ToolResultBase);
+  const readPayloadResult = buildReadPayloadWithTiming(input, route.payloadSchema, payloadResult.payload, context);
+  return measureTaskTiming(timing, 'read_context.result_wrap', () => buildReadContextResult(input, readPayloadResult));
 }
 
 async function executeBridgeBackedReadContext(
@@ -133,12 +134,8 @@ async function executeBridgeBackedReadContext(
     }, buildReadContextTarget(input) as never);
   }
 
-  const readPayload = buildReadPayloadWithTiming(input, request.payloadSchema, payloadResult.payload, context);
-  return measureTaskTiming(timing, 'read_context.result_wrap', () => successRead('read_context', buildReadContextTarget(input), {
-    schema: 'ReadContextPack.v1',
-    payload: readPayload,
-    truncated: false,
-  }) as ToolResultBase);
+  const readPayloadResult = buildReadPayloadWithTiming(input, request.payloadSchema, payloadResult.payload, context);
+  return measureTaskTiming(timing, 'read_context.result_wrap', () => buildReadContextResult(input, readPayloadResult));
 }
 
 function withReadTimingPayload(
@@ -153,17 +150,38 @@ function buildReadPayloadWithTiming(
   payloadSchema: string,
   payload: Record<string, unknown>,
   context: BlueprintHelperToolContext,
-): Record<string, unknown> {
+): ReadPayloadWithDebug {
   const timing = context.timing;
   addReadPayloadSizeMarker(timing, 'read_context.ue_raw_payload_bytes', payload);
   const strippedPayload = measureTaskTiming(timing, 'read_context.ue_timing_extract', () => (
     stripTimingPayload(payload)
   ));
-  const readPayload = measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema, input), () => (
-    postProcessReadContextPayload(input, payloadSchema, strippedPayload)
+  const postProcessResult = measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema, input), () => (
+    postProcessReadContextPayloadWithDebug(input, payloadSchema, strippedPayload)
   ));
-  addReadPayloadSizeMarker(timing, 'read_context.post_processed_payload_bytes', readPayload);
-  return readPayload;
+  addReadPayloadSizeMarker(timing, 'read_context.post_processed_payload_bytes', postProcessResult.payload);
+  return postProcessResult;
+}
+
+function buildReadContextResult(
+  input: ReadContextInput,
+  readPayloadResult: ReadPayloadWithDebug,
+): ToolResultBase {
+  const toolResult = successRead('read_context', buildReadContextTarget(input), {
+    schema: 'ReadContextPack.v1',
+    payload: readPayloadResult.payload,
+    truncated: false,
+  }) as ToolResultBase;
+
+  if (readPayloadResult.debug && Object.keys(readPayloadResult.debug).length > 0) {
+    Object.defineProperty(toolResult, 'debug', {
+      value: readPayloadResult.debug,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+
+  return toolResult;
 }
 
 function stripTimingPayload(payload: Record<string, unknown>): Record<string, unknown> {

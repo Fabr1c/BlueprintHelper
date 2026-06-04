@@ -243,7 +243,7 @@ Read result `payload.schema` is the single result-shape marker for the concrete 
 
 `data.schema` and nested payload schemas do not repeat the `BlueprintHelper.` prefix. `payload.schema` is kept because it distinguishes `LogicFlow.v1`, `LogicMd.v1`, `LogicJson.v1`, `AssetContext.v1`, and other concrete payload contracts without also echoing `data.read_type` or `data.format`.
 
-For `LogicFlow.v1`, `payload.mode` is `execflow` or `dataflow`. `payload.flow` is the compact text body, `payload.stats` is the only place for node/link/count statistics, and `payload.warnings` records compression risk such as unknown links or ambiguous macro boundaries. `LogicFlow.v1` is a read-to-understand view only; write anchors still require `logic_json`.
+For `LogicFlow.v1`, `payload.mode` is `execflow` or `dataflow`, `payload.flow` is the compact text body, `payload.stats` is the only place for node/link/count statistics, and `payload.warnings` records compression risk. `LogicFlow.v1` is generated only in AgentFaceService/task-core from structured `LogicJson.v1`; UE-side Workbench code must not maintain a second generator. Default `logic_flow` output must not carry write anchors. Expert/debug artifacts may include `debug.logic_flow.anchors` for diagnosis. If unknown links prevent legal flow compression, the tool returns a `LogicJson.v1` payload with `requested_format=logic_flow` and `warnings=["logic_flow_degraded_unknown_link"]`.
 
 For `LogicMd.v1`, `payload.stats` is the only place for node/link/count statistics. `payload.markdown` omits duplicate stats summary lines and keeps the readable graph, entry, execution, dependency, and orphan sections.
 

@@ -27,3 +27,5 @@ node .\AgentFaceService\cli\build\cli\index.js blueprinthelper_read_context --fi
 ```
 
 Use `logic_flow` first for simple function/event/custom event reads. Use `logic_md` when the entry is larger or has enough branches that a separated Entry / Execution / Data view is easier to scan. Use `logic_json` for full graph reads, unknown size, block anchors, patch/merge, or debug. ReadSpec no longer supports `view.format=summary`; non-logic templates omit `view.format`.
+
+`logic_flow` templates are the fast first read for simple entries. They are not anchor templates. If the result degrades to `logic_json`, use the returned structured payload directly.

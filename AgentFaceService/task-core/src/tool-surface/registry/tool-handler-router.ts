@@ -14,7 +14,9 @@ export function createToolExecutor(meta: ToolMeta) {
     if (!source) {
       throw new Error(`Tool is registered without a handler: ${meta.name}`);
     }
-    return sanitizeAgentFacingToolResult(await source.execute(meta.name, input, context));
+    return sanitizeAgentFacingToolResult(await source.execute(meta.name, input, context), {
+      preserveDebug: context.expert === true,
+    });
   };
 }
 

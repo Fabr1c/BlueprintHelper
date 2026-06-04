@@ -235,8 +235,26 @@ export function sanitizeAgentFacingValue<T>(value: T): T {
   return sanitizeAgentFacingUnknown(value, new WeakSet<object>()) as T;
 }
 
-export function sanitizeAgentFacingToolResult(result: ToolResultBase): ToolResultBase {
-  return sanitizeAgentFacingValue(result);
+export interface AgentFacingSanitizeOptions {
+  preserveDebug?: boolean;
+}
+
+export function sanitizeAgentFacingToolResult(
+  result: ToolResultBase,
+  options: AgentFacingSanitizeOptions = {},
+): ToolResultBase {
+  const debug = options.preserveDebug
+    ? (result as ToolResultBase & { debug?: Record<string, unknown> }).debug
+    : undefined;
+  const sanitized = sanitizeAgentFacingValue(result);
+  if (debug && Object.keys(debug).length > 0) {
+    Object.defineProperty(sanitized, 'debug', {
+      value: sanitizeAgentFacingValue(debug),
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return sanitized;
 }
 
 function sanitizeAgentFacingUnknown(value: unknown, seen: WeakSet<object>): unknown {

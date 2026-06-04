@@ -28,6 +28,11 @@ type LogicFlowGraph = {
   stats: Record<string, unknown>;
 };
 
+export type LogicFlowBuildResult = {
+  payload: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+};
+
 const EXEC_PIN_ORDER = [
   'then',
   'execute',
@@ -41,24 +46,57 @@ const EXEC_PIN_ORDER = [
   'finished',
 ];
 
-export function buildLogicFlowPayload(payload: Record<string, unknown>): Record<string, unknown> {
+export function buildLogicFlowPayload(payload: Record<string, unknown>): LogicFlowBuildResult {
   const graphs = normalizeLogicFlowGraphs(payload);
   const warnings = uniqueStrings(graphs.flatMap((graph) => buildLogicFlowWarnings(graph)));
+  const anchors = collectLogicFlowAnchors(graphs);
+  const debug = buildLogicFlowDebug(anchors);
+
+  if (warnings.includes('unknown_link')) {
+    return {
+      payload: buildDegradedLogicJsonPayload(payload, 'unknown_link'),
+      debug: {
+        ...debug,
+        degraded: true,
+        reason: 'unknown_link',
+      },
+    };
+  }
+
   const mode = chooseMode(graphs);
   const flow = graphs.map((graph) => buildGraphFlow(graph, mode)).filter(Boolean).join('\n\n');
-  const anchors = collectLogicFlowAnchors(graphs);
 
-  const result: Record<string, unknown> = {
-    schema: 'LogicFlow.v1',
-    mode,
-    flow,
-    stats: isRecord(payload['stats']) ? payload['stats'] : buildAggregateStats(graphs),
-    warnings,
+  return {
+    payload: {
+      schema: 'LogicFlow.v1',
+      mode,
+      flow,
+      stats: isRecord(payload['stats']) ? payload['stats'] : buildAggregateStats(graphs),
+      warnings,
+    },
+    debug,
   };
-  if (anchors.length > 0) {
-    result['anchors'] = anchors;
-  }
-  return result;
+}
+
+function buildDegradedLogicJsonPayload(
+  payload: Record<string, unknown>,
+  reason: 'unknown_link',
+): Record<string, unknown> {
+  const degraded: Record<string, unknown> = {
+    ...payload,
+    schema: 'LogicJson.v1',
+    format: 'logic_json',
+    requested_format: 'logic_flow',
+    warnings: [`logic_flow_degraded_${reason}`],
+  };
+  delete degraded['mode'];
+  delete degraded['flow'];
+  delete degraded['anchors'];
+  return degraded;
+}
+
+function buildLogicFlowDebug(anchors: Record<string, unknown>[]): Record<string, unknown> | undefined {
+  return anchors.length > 0 ? { anchors } : undefined;
 }
 
 function chooseMode(graphs: LogicFlowGraph[]): LogicFlowMode {

@@ -1,6 +1,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Systems/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchServices.h"
 #include "UI/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchData.h"
 
@@ -64,6 +68,84 @@ Begin Object Class=/Script/BlueprintGraph.K2Node_CallFunction Name="K2Node_CallF
 End Object
 )T3D");
 	}
+
+	static FString MakeLinkedExecT3DText()
+	{
+		return TEXT(R"T3D(
+Begin Object Class=/Script/BlueprintGraph.K2Node_Event Name="K2Node_Event_0"
+   CustomProperties Pin (PinId=11111111111111111111111111111111,PinName="then",Direction="EGPD_Output",PinType.PinCategory="exec",LinkedTo=(K2Node_CallFunction_0 22222222222222222222222222222222,))
+End Object
+Begin Object Class=/Script/BlueprintGraph.K2Node_CallFunction Name="K2Node_CallFunction_0"
+   FunctionReference=(MemberParent="/Script/Engine.KismetSystemLibrary",MemberName="PrintString")
+   CustomProperties Pin (PinId=22222222222222222222222222222222,PinName="execute",Direction="EGPD_Input",PinType.PinCategory="exec")
+End Object
+)T3D");
+	}
+
+	static TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
+	{
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		FJsonSerializer::Deserialize(Reader, JsonObject);
+		return JsonObject;
+	}
+
+	static bool HasStringArrayValue(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& ExpectedValue)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Object.IsValid() || !Object->TryGetArrayField(FieldName, Values) || !Values)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			if (Value.IsValid()
+				&& Value->Type == EJson::String
+				&& Value->AsString().Equals(ExpectedValue, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool HasExecLinkWithPinTypes(const TSharedPtr<FJsonObject>& RootObject)
+	{
+		const TSharedPtr<FJsonObject>* LogicObject = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Links = nullptr;
+		if (!RootObject.IsValid()
+			|| !RootObject->TryGetObjectField(TEXT("logic"), LogicObject)
+			|| !LogicObject
+			|| !LogicObject->IsValid()
+			|| !(*LogicObject)->TryGetArrayField(TEXT("links"), Links)
+			|| !Links)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& LinkValue : *Links)
+		{
+			const TSharedPtr<FJsonObject> LinkObject = LinkValue.IsValid()
+				? LinkValue->AsObject()
+				: nullptr;
+			if (!LinkObject.IsValid())
+			{
+				continue;
+			}
+
+			if (LinkObject->GetStringField(TEXT("kind")).Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+				&& LinkObject->GetStringField(TEXT("from_pin_type")).Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+				&& LinkObject->GetStringField(TEXT("to_pin_type")).Equals(TEXT("exec"), ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -119,11 +201,23 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 	const FBlueprintHelperReadContextExportResult LogicFlowResult =
 		FBlueprintHelperReadContextExportService::Export(LogicFlowRequest);
 
-	TestTrue(TEXT("logicflow export succeeds"), LogicFlowResult.bSucceeded);
-	TestTrue(TEXT("logicflow has schema"), LogicFlowResult.ExportText.Contains(TEXT("LogicFlow.v1")));
-	TestTrue(TEXT("logicflow has flow field"), LogicFlowResult.ExportText.Contains(TEXT("\"flow\"")));
-	TestTrue(TEXT("logicflow has stats"), LogicFlowResult.ExportText.Contains(TEXT("\"stats\"")));
-	TestTrue(TEXT("logicflow status message"), LogicFlowResult.Message.Contains(TEXT("logicflow")));
+	TestTrue(TEXT("logicflow request degrades successfully"), LogicFlowResult.bSucceeded);
+	const TSharedPtr<FJsonObject> LogicFlowJson =
+		FBlueprintHelperTaskSpecWorkbenchServicesTestData::ParseJsonObject(LogicFlowResult.ExportText);
+	TestTrue(TEXT("logicflow request exports JSON object"), LogicFlowJson.IsValid());
+	if (LogicFlowJson.IsValid())
+	{
+		TestEqual(TEXT("logicflow request exports ReadContext schema"), LogicFlowJson->GetStringField(TEXT("schema")), TEXT("ReadContextPack.v1"));
+		TestEqual(TEXT("logicflow request degrades to logic_json"), LogicFlowJson->GetStringField(TEXT("format")), TEXT("logic_json"));
+		TestEqual(TEXT("logicflow request records requested format"), LogicFlowJson->GetStringField(TEXT("requested_format")), TEXT("logic_flow"));
+		TestTrue(
+			TEXT("logicflow request has warning"),
+			FBlueprintHelperTaskSpecWorkbenchServicesTestData::HasStringArrayValue(
+				LogicFlowJson,
+				TEXT("warnings"),
+				TEXT("logic_flow_degraded_workbench_canonical_builder_unavailable")));
+	}
+	TestTrue(TEXT("logicflow status message reports degradation"), LogicFlowResult.Message.Contains(TEXT("degraded to logicjson")));
 
 	FBlueprintHelperReadContextExportRequest LogicJsonRequest;
 	LogicJsonRequest.SourceText = T3DText;
@@ -132,9 +226,30 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 		FBlueprintHelperReadContextExportService::Export(LogicJsonRequest);
 
 	TestTrue(TEXT("logicjson export succeeds"), LogicJsonResult.bSucceeded);
-	TestTrue(TEXT("logicjson has ReadContext schema"), LogicJsonResult.ExportText.Contains(TEXT("ReadContextPack.v1")));
-	TestTrue(TEXT("logicjson has format"), LogicJsonResult.ExportText.Contains(TEXT("logicjson")));
+	const TSharedPtr<FJsonObject> LogicJson =
+		FBlueprintHelperTaskSpecWorkbenchServicesTestData::ParseJsonObject(LogicJsonResult.ExportText);
+	TestTrue(TEXT("logicjson exports JSON object"), LogicJson.IsValid());
+	if (LogicJson.IsValid())
+	{
+		TestEqual(TEXT("logicjson has ReadContext schema"), LogicJson->GetStringField(TEXT("schema")), TEXT("ReadContextPack.v1"));
+		TestEqual(TEXT("logicjson has format"), LogicJson->GetStringField(TEXT("format")), TEXT("logic_json"));
+	}
 	TestEqual(TEXT("source text not mutated"), LogicJsonRequest.SourceText, T3DText);
+
+	const FString LinkedT3DText = FBlueprintHelperTaskSpecWorkbenchServicesTestData::MakeLinkedExecT3DText();
+	FBlueprintHelperReadContextExportRequest LinkedLogicJsonRequest;
+	LinkedLogicJsonRequest.SourceText = LinkedT3DText;
+	LinkedLogicJsonRequest.Format = EBlueprintHelperReadContextExportFormat::LogicJson;
+	const FBlueprintHelperReadContextExportResult LinkedLogicJsonResult =
+		FBlueprintHelperReadContextExportService::Export(LinkedLogicJsonRequest);
+
+	TestTrue(TEXT("linked logicjson export succeeds"), LinkedLogicJsonResult.bSucceeded);
+	const TSharedPtr<FJsonObject> LinkedLogicJson =
+		FBlueprintHelperTaskSpecWorkbenchServicesTestData::ParseJsonObject(LinkedLogicJsonResult.ExportText);
+	TestTrue(TEXT("linked logicjson exports JSON object"), LinkedLogicJson.IsValid());
+	TestTrue(
+		TEXT("linked logicjson has exec link with pin types"),
+		FBlueprintHelperTaskSpecWorkbenchServicesTestData::HasExecLinkWithPinTypes(LinkedLogicJson));
 
 	FBlueprintHelperReadContextExportRequest LogicMdRequest;
 	LogicMdRequest.SourceText = T3DText;

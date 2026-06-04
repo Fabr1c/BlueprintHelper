@@ -337,7 +337,8 @@ TSharedRef<SWidget> SBlueprintHelperMetricsOverviewChart::BuildSummaryCard(
 	const FString& CaptionText) const
 {
 	return SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
+		.BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FLinearColor::Black)
 		.Padding(10.0f)
 		[
 			SNew(SVerticalBox)

@@ -583,7 +583,9 @@ function compactValidationForDefaultReturn(value: unknown): unknown {
 }
 
 function compactCliToolResult(toolResult: ToolResultBase): Record<string, unknown> {
-  return compactTaskSpecExecutionData(compactPolicyOnlyFields(compactCliValue(toolResult))) as Record<string, unknown>;
+  const compacted = compactTaskSpecExecutionData(compactPolicyOnlyFields(compactCliValue(toolResult))) as Record<string, unknown>;
+  delete compacted['debug'];
+  return compacted;
 }
 
 function compactCliExtra(extra: Record<string, unknown>): Record<string, unknown> {

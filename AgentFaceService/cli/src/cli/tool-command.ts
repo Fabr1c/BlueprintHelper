@@ -83,6 +83,7 @@ export async function invokeCliTool(input: {
       taskRunner: input.taskRunner,
       metrics: input.metrics,
       timing: input.timing,
+      expert: input.command.expert === true,
       runLocalProcess: input.runLocalProcess,
       sleep: input.sleep,
     }),

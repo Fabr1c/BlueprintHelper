@@ -22,6 +22,7 @@ export interface BlueprintHelperToolContext {
   taskRunner: TaskSpecRunner;
   metrics?: TaskSpecRunnerMetrics;
   timing?: TaskTimingTrace;
+  expert?: boolean;
   ueEngineDir?: string;
   runLocalProcess?: (command: string, args: string[], options?: {
     timeoutMs?: number;

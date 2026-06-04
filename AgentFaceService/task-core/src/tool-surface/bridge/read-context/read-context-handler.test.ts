@@ -137,28 +137,74 @@ function makeFunctionLogicJsonWithSyntheticBoundaries(): Record<string, unknown>
   };
 }
 
-test('logic_flow payload preserves external anchors in deterministic order', () => {
-  const payload = buildLogicFlowPayload(makeLogicJsonWithExternalAnchors());
+function makeLogicJsonWithUnknownLink(): Record<string, unknown> {
+  return {
+    schema: 'LogicJson.v1',
+    format: 'logic_json',
+    importable: false,
+    scope: 'blueprint',
+    logic: {
+      asset_path: '/Game/BP_Test',
+      graph: 'EventGraph',
+      nodes: [
+        { node_ref: 'nodes[0]', kind: 'event', name: 'BeginPlay' },
+        { node_ref: 'nodes[1]', kind: 'call_function', name: 'PrintString' },
+      ],
+      links: [
+        {
+          link_ref: 'links[0]',
+          from_node: 'nodes[0]',
+          from_pin: 'then',
+          to_node: 'nodes[1]',
+          to_pin: 'execute',
+        },
+      ],
+    },
+    stats: {
+      nodes: 2,
+      exec_links: 0,
+      data_links: 0,
+      links: 1,
+    },
+  };
+}
 
-  assert.equal(payload['schema'], 'LogicFlow.v1');
-  assert.equal(payload['mode'], 'execflow');
-  const anchors = payload['anchors'] as Record<string, unknown>[];
+test('logic_flow payload omits anchors by default and keeps them in debug metadata', () => {
+  const result = buildLogicFlowPayload(makeLogicJsonWithExternalAnchors());
+
+  assert.equal(result.payload['schema'], 'LogicFlow.v1');
+  assert.equal(result.payload['mode'], 'execflow');
+  assert.equal(result.payload['anchors'], undefined);
+  const anchors = result.debug?.['anchors'] as Record<string, unknown>[];
   assert.ok(Array.isArray(anchors));
   assert.equal(anchors.length, 2);
   assert.equal(anchors[0]?.['semantic_role'], 'exec_boundary');
   assert.equal(anchors[1]?.['semantic_role'], 'node');
-  assert.equal(anchors[0]?.['node_guid'], 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(anchors[0]?.['fingerprint'], 'boundaryfp');
   assert.equal(anchors[1]?.['fingerprint'], 'nodefp');
 });
 
 test('logic_flow payload renders function graph synthetic entry and result boundaries', () => {
-  const payload = buildLogicFlowPayload(makeFunctionLogicJsonWithSyntheticBoundaries());
+  const result = buildLogicFlowPayload(makeFunctionLogicJsonWithSyntheticBoundaries());
+  const payload = result.payload;
 
   assert.equal(payload['schema'], 'LogicFlow.v1');
   assert.equal(payload['mode'], 'execflow');
   assert.equal((payload['warnings'] as string[]).length, 0);
   assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
+});
+
+test('logic_flow payload degrades to logic_json when links are unknown', () => {
+  const result = buildLogicFlowPayload(makeLogicJsonWithUnknownLink());
+
+  assert.equal(result.payload['schema'], 'LogicJson.v1');
+  assert.equal(result.payload['format'], 'logic_json');
+  assert.equal(result.payload['requested_format'], 'logic_flow');
+  assert.equal(result.payload['mode'], undefined);
+  assert.equal(result.payload['flow'], undefined);
+  assert.deepEqual(result.payload['warnings'], ['logic_flow_degraded_unknown_link']);
+  assert.equal(result.debug?.['degraded'], true);
+  assert.equal(result.debug?.['reason'], 'unknown_link');
 });
 
 test('read_context variable filter preserves member variable metadata fields', async () => {
@@ -375,7 +421,7 @@ test('read_context handler records timing around bridge and post-processing stag
   assert.equal(payload['timing'], undefined);
 });
 
-test('read_context logic_flow handler returns external anchors from bridge LogicJson', async () => {
+test('read_context logic_flow handler omits default anchors and keeps debug anchors', async () => {
   const bridgeResponse: BridgeResponse = {
     request_id: 'test',
     success: true,
@@ -408,8 +454,9 @@ test('read_context logic_flow handler returns external anchors from bridge Logic
   assert.equal(payload['schema'], 'LogicFlow.v1');
   assert.equal(payload['mode'], 'execflow');
   assert.match(payload['flow'] as string, /OpenDoor/);
-
-  const anchors = payload['anchors'] as Record<string, unknown>[];
+  assert.equal(payload['anchors'], undefined);
+  assert.equal(result.debug?.['logic_flow'] !== undefined, true);
+  const anchors = (result.debug?.['logic_flow'] as Record<string, unknown>)['anchors'] as Record<string, unknown>[];
   assert.ok(Array.isArray(anchors));
   assert.equal(anchors.length, 2);
   assert.equal(anchors[0]?.['semantic_role'], 'exec_boundary');
