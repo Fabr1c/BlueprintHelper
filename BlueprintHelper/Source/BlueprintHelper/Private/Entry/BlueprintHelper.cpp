@@ -10,6 +10,7 @@
 #include "Misc/Paths.h"
 #include "UI/SHelperMainWidget.h"
 #include "UI/SBlueprintHelperMainWindow.h"
+#include "UI/Metrics/SBlueprintHelperMetricsPanel.h"
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
@@ -210,6 +211,7 @@ void FBlueprintHelperModule::ShutdownModule()
 {
 	SBlueprintHelperMainWindow::ShutdownCleanupTasks();
 	SBlueprintHelperReviewPanel::ShutdownAsyncTasks();
+	SBlueprintHelperMetricsPanel::ShutdownAsyncTasks();
 	FBlueprintHelperReviewDebugBundleService::ShutdownAsyncWrites();
 
 	// ─── Bridge Layer 销。───

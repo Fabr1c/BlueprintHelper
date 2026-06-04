@@ -8,6 +8,7 @@
 #include "Systems/Review/BlueprintHelperReviewValiditySweepCoordinator.h"
 #include "UI/BlueprintHelperUiSettingsResolver.h"
 #include "UI/BlueprintHelperMainWindowPresenter.h"
+#include "UI/Metrics/SBlueprintHelperMetricsPanel.h"
 #include "UI/Utils/BlueprintHelperMainWindowCleanupAsyncUtils.h"
 #include "UI/Layout/SBlueprintHelperLayoutRuleEditor.h"
 #include "Styling/AppStyle.h"
@@ -40,7 +41,7 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 		ReviewStoreService,
 		ReviewPerformanceSettings);
 	ReviewValiditySweepCoordinator->StartSweep(TEXT("main_window_open"));
-	ConstructedPages.SetNum(4);
+	ConstructedPages.SetNum(5);
 
 	ChildSlot
 	[
@@ -85,6 +86,15 @@ void SBlueprintHelperMainWindow::Construct(const FArguments& InArgs)
 				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetSettingsTabColor)
 				.Text(FText::FromString(TEXT("Setting")))
 				.OnClicked(this, &SBlueprintHelperMainWindow::ShowSettingsPage)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(MainWindowSettings.TabButtonSpacing)
+			[
+				SNew(SButton)
+				.ButtonColorAndOpacity(this, &SBlueprintHelperMainWindow::GetMetricsTabColor)
+				.Text(FText::FromString(TEXT("Metrics")))
+				.OnClicked(this, &SBlueprintHelperMainWindow::ShowMetricsPage)
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -152,6 +162,9 @@ void SBlueprintHelperMainWindow::EnsurePageConstructed(int32 PageIndex)
 		case 3:
 			ConstructedPages[PageIndex] = BuildSettingsPage();
 			break;
+		case 4:
+			ConstructedPages[PageIndex] = BuildMetricsPage();
+			break;
 		default:
 			ConstructedPages[PageIndex] = SNullWidget::NullWidget;
 			break;
@@ -198,6 +211,13 @@ TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildSettingsPage()
 	return SNew(SBlueprintHelperSettingsPanel);
 }
 
+TSharedRef<SWidget> SBlueprintHelperMainWindow::BuildMetricsPage()
+{
+	TSharedRef<SBlueprintHelperMetricsPanel> Panel = SNew(SBlueprintHelperMetricsPanel);
+	MetricsPanelWidget = Panel;
+	return Panel;
+}
+
 void SBlueprintHelperMainWindow::ShowPage(int32 PageIndex)
 {
 	if (!ConstructedPages.IsValidIndex(PageIndex))
@@ -230,6 +250,12 @@ FReply SBlueprintHelperMainWindow::ShowLayoutPage()
 FReply SBlueprintHelperMainWindow::ShowSettingsPage()
 {
 	ShowPage(3);
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperMainWindow::ShowMetricsPage()
+{
+	ShowPage(4);
 	return FReply::Handled();
 }
 
@@ -337,6 +363,10 @@ int32 SBlueprintHelperMainWindow::ResolveDefaultTabIndex() const
 	{
 		return 3;
 	}
+	if (MainWindowSettings.DefaultTab.Equals(TEXT("metrics"), ESearchCase::IgnoreCase))
+	{
+		return 4;
+	}
 	return 0;
 }
 
@@ -365,4 +395,9 @@ FSlateColor SBlueprintHelperMainWindow::GetLayoutTabColor() const
 FSlateColor SBlueprintHelperMainWindow::GetSettingsTabColor() const
 {
 	return GetTabColor(3);
+}
+
+FSlateColor SBlueprintHelperMainWindow::GetMetricsTabColor() const
+{
+	return GetTabColor(4);
 }
