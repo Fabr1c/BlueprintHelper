@@ -1054,9 +1054,8 @@ bool FBlueprintHelperBlueprintVariableReplicatedWithoutNotifyClearsNotifyTest::R
 
 	TestTrue(TEXT("CPF_Net remains set"), (Variable->PropertyFlags & CPF_Net) != 0);
 	TestTrue(TEXT("CPF_RepNotify is cleared"), (Variable->PropertyFlags & CPF_RepNotify) == 0);
-	TestEqual(TEXT("notify function is cleared"),
-		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, FName(TEXT("DoorState"))),
-		NAME_None);
+	TestTrue(TEXT("notify function is cleared"),
+		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, FName(TEXT("DoorState"))).IsNone());
 	TestEqual(TEXT("condition is skip owner"),
 		static_cast<ELifetimeCondition>(Variable->ReplicationCondition.GetValue()),
 		COND_SkipOwner);
@@ -1104,9 +1103,8 @@ bool FBlueprintHelperBlueprintVariableNoneClearsReplicationTest::RunTest(const F
 
 	TestTrue(TEXT("CPF_Net is cleared"), (Variable->PropertyFlags & CPF_Net) == 0);
 	TestTrue(TEXT("CPF_RepNotify is cleared"), (Variable->PropertyFlags & CPF_RepNotify) == 0);
-	TestEqual(TEXT("notify function is cleared"),
-		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, FName(TEXT("DoorState"))),
-		NAME_None);
+	TestTrue(TEXT("notify function is cleared"),
+		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, FName(TEXT("DoorState"))).IsNone());
 	TestEqual(TEXT("condition is none"),
 		static_cast<ELifetimeCondition>(Variable->ReplicationCondition.GetValue()),
 		COND_None);

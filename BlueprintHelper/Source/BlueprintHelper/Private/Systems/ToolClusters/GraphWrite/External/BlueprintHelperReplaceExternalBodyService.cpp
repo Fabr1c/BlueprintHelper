@@ -12,6 +12,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
@@ -347,7 +348,7 @@ namespace BlueprintHelperReplaceExternalBody
 		Stack.Add(RootNode);
 		while (Stack.Num() > 0)
 		{
-			UEdGraphNode* Node = Stack.Pop(EAllowShrinking::No);
+			UEdGraphNode* Node = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
 			if (!Node || OutReachable.Contains(Node) || !GeneratedSet.Contains(Node))
 			{
 				continue;

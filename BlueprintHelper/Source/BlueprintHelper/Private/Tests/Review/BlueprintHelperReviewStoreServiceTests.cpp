@@ -1470,9 +1470,8 @@ bool FBlueprintHelperReviewVariableReplicationRestoreTest::RunTest(const FString
 	const FBPVariableDescription& RestoredVariable = Blueprint->NewVariables[RestoredVariableIndex];
 	TestTrue(TEXT("restored variable remains replicated"), (RestoredVariable.PropertyFlags & CPF_Net) != 0);
 	TestTrue(TEXT("restored variable clears rep notify"), (RestoredVariable.PropertyFlags & CPF_RepNotify) == 0);
-	TestEqual(TEXT("restored variable clears notify function"),
-		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, VariableName),
-		NAME_None);
+	TestTrue(TEXT("restored variable clears notify function"),
+		FBlueprintEditorUtils::GetBlueprintVariableRepNotifyFunc(Blueprint, VariableName).IsNone());
 	TestEqual(TEXT("restored variable restores skip owner condition"),
 		static_cast<ELifetimeCondition>(RestoredVariable.ReplicationCondition.GetValue()),
 		COND_SkipOwner);

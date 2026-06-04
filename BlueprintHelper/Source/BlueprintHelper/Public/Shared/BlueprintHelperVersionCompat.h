@@ -7,7 +7,7 @@
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6 && ENGINE_MINOR_VERSION <= 7
 #define BLUEPRINTHELPER_UE_HAS_FPACKAGE_METADATA 1
 #define BLUEPRINTHELPER_UE_HAS_EALLOW_SHRINKING 1
 #define BLUEPRINTHELPER_UE_HAS_CONST_SCRIPTSTRUCT_IMPORTTEXT 1
@@ -61,7 +61,7 @@ public:
 		{
 			return TSharedPtr<FJsonValue>();
 		}
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4)
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4 && ENGINE_MINOR_VERSION <= 7
 		return Object->TryGetField(FStringView(FieldName));
 #else
 		return Object->TryGetField(FieldName);
