@@ -71,11 +71,12 @@ Template-first authoring is available at `AgentFaceService/agent-guide/Templates
 4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates.md`
 5. `AgentFaceService/agent-guide/Reference/05_UE_Blueprint_Write_Architecture_Rules.md`
 6. `AgentFaceService/agent-guide/Reference/06_UE_Blueprint_Write_CodingStyle.md`
-7. `AgentFaceService/agent-guide/Templates/INDEX.md`
-8. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-9. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
-10. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
-11. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
+7. `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`
+8. `AgentFaceService/agent-guide/Templates/INDEX.md`
+9. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+10. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
+11. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
+12. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 规则:
 
