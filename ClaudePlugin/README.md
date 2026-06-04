@@ -138,7 +138,7 @@ Claude Code discovers plugin commands from the plugin root `commands/` directory
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 
-1. Confirm Unreal Editor is running, or use the global MCP lifecycle tool after `<ProjectDir>/.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir`.
+1. Confirm Unreal Editor is running, or use the global MCP lifecycle tool after `<ProjectDir>/.blueprinthelper/project-profile.json` has `environment.ue_engine_dir`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
 4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.

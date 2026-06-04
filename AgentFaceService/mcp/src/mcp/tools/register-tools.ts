@@ -87,6 +87,13 @@ function preflightOnlyDescription(description: string): string {
   return `Preflight only. ${description} Use this only to start the explicit target editor before TaskSpec-first work. ${LEGACY_TOOL_GUIDANCE}`;
 }
 
+function fileContains(filePath: string, pattern: string): boolean {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+  return fs.readFileSync(filePath, 'utf8').includes(pattern);
+}
+
 type RegisterToolConfig = { description?: string };
 type RegisterToolHandler = (...args: unknown[]) => unknown;
 type RegisterToolWrapper = (
@@ -984,7 +991,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     'blueprinthelper_diagnostics',
     {
       description:
-        'Run static diagnostics without requiring the UE Editor. Checks .blueprinthelper/agent-profile.json, CLAUDE.md managed block, Skill entry, project structure, and install/configuration state. Returns a Markdown diagnostic report.',
+        'Run static diagnostics without requiring the UE Editor. Checks .blueprinthelper/project-profile.json, .blueprinthelper/AgentWorkFlow.md, AGENTS.md/CLAUDE.md managed blocks, Skill entry, project structure, and install/configuration state. Returns a Markdown diagnostic report.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -997,14 +1004,29 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
 
         // Static checks.
         const projectDir = process.cwd();
-        const agentProfilePath = path.join(
+        const projectProfilePath = path.join(
+          projectDir,
+          '.blueprinthelper',
+          'project-profile.json',
+        );
+        const legacyAgentProfilePath = path.join(
           projectDir,
           '.blueprinthelper',
           'agent-profile.json',
         );
-        if (fs.existsSync(agentProfilePath)) {
+        const agentWorkflowPath = path.join(
+          projectDir,
+          '.blueprinthelper',
+          'AgentWorkFlow.md',
+        );
+        const profilePath = fs.existsSync(projectProfilePath)
+          ? projectProfilePath
+          : fs.existsSync(legacyAgentProfilePath)
+            ? legacyAgentProfilePath
+            : undefined;
+        if (profilePath) {
           try {
-            const agentProfile = JSON.parse(fs.readFileSync(agentProfilePath, 'utf8'));
+            const agentProfile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
             const environment = isRecord(agentProfile)
               ? getRecordField(agentProfile, 'environment')
               : undefined;
@@ -1013,25 +1035,34 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
               getStringField(environment, 'UE_ENGINE_DIR');
 
             if (engineDir?.trim()) {
-              report.info.push({ code: 'agent_profile.valid' });
-              report.info.push({ code: 'agent_profile.ue_engine_dir.present' });
+              report.info.push({ code: 'project_profile.valid' });
+              report.info.push({ code: 'project_profile.ue_engine_dir.present' });
+              if (profilePath === legacyAgentProfilePath) {
+                report.warnings.push({ code: 'legacy_agent_profile.used' });
+              }
             } else {
               report.blocking.push({
-                code: 'agent_profile.ue_engine_dir.missing',
-                extra: 'reason: .blueprinthelper/agent-profile.json must define environment.ue_engine_dir',
+                code: 'project_profile.ue_engine_dir.missing',
+                extra: `reason: ${profilePath} must define environment.ue_engine_dir`,
               });
             }
           } catch (err) {
             report.blocking.push({
-              code: 'agent_profile.invalid_json',
+              code: 'project_profile.invalid_json',
               extra: `reason: ${err instanceof Error ? err.message : String(err)}`,
             });
           }
         } else {
           report.blocking.push({
-            code: 'agent_profile.unavailable',
-            extra: 'reason: .blueprinthelper/agent-profile.json not found',
+            code: 'project_profile.unavailable',
+            extra: 'reason: .blueprinthelper/project-profile.json not found and legacy .blueprinthelper/agent-profile.json not found',
           });
+        }
+
+        if (fs.existsSync(agentWorkflowPath)) {
+          report.info.push({ code: 'agent_workflow.present' });
+        } else {
+          report.warnings.push({ code: 'agent_workflow.missing' });
         }
 
         // 妫€锟?CLAUDE.md锛圙lobal guidance锟?
@@ -1069,14 +1100,26 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           // 妫€锟?Project Marker
           const projectClaudePath = path.join(projectDir, '.claude', 'CLAUDE.md');
           const projectAgentsPath = path.join(projectDir, 'AGENTS.md');
+          const projectRootClaudePath = path.join(projectDir, 'CLAUDE.md');
           if (
+            fileContains(projectAgentsPath, 'BEGIN BLUEPRINTHELPER CODEX') ||
+            fileContains(projectRootClaudePath, 'BEGIN BLUEPRINTHELPER CLAUDE') ||
             fs.existsSync(projectClaudePath) ||
-            fs.existsSync(projectAgentsPath) ||
-            fs.existsSync(agentProfilePath)
+            fs.existsSync(projectProfilePath)
           ) {
             report.info.push({ code: 'project_marker.present' });
           } else {
             report.warnings.push({ code: 'project_marker.missing' });
+          }
+          if (fileContains(projectAgentsPath, 'BEGIN BLUEPRINTHELPER CODEX')) {
+            report.info.push({ code: 'project_agents_marker.present' });
+          } else {
+            report.warnings.push({ code: 'project_agents_marker.missing' });
+          }
+          if (fileContains(projectRootClaudePath, 'BEGIN BLUEPRINTHELPER CLAUDE')) {
+            report.info.push({ code: 'project_claude_marker.present' });
+          } else {
+            report.warnings.push({ code: 'project_claude_marker.missing' });
           }
         } else {
           report.warnings.push({
@@ -2558,7 +2601,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     'blueprint_build_project',
     {
       description:
-        legacyWriteExpertDescription('Build the Unreal project using UnrealBuildTool. The editor must be closed first. Returns build output. Reads the UE engine root from the project .blueprinthelper/agent-profile.json environment.ue_engine_dir and requires an explicit project_file tool argument.'),
+        legacyWriteExpertDescription('Build the Unreal project using UnrealBuildTool. The editor must be closed first. Returns build output. Reads the UE engine root from the project .blueprinthelper/project-profile.json environment.ue_engine_dir and requires an explicit project_file tool argument.'),
       inputSchema: z.object({
         project_file: z
           .string()
@@ -2656,7 +2699,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   'blueprint_open_editor',
   {
     description:
-      preflightOnlyDescription('Launch Unreal Editor by opening the explicit project_file .uproject, then wait for the BlueprintHelper Bridge server to become available. Reads the UE engine root from the project .blueprinthelper/agent-profile.json environment.ue_engine_dir. Agents should discover the .uproject from the current workspace before calling this tool.'),
+      preflightOnlyDescription('Launch Unreal Editor by opening the explicit project_file .uproject, then wait for the BlueprintHelper Bridge server to become available. Reads the UE engine root from the project .blueprinthelper/project-profile.json environment.ue_engine_dir. Agents should discover the .uproject from the current workspace before calling this tool.'),
     inputSchema: z.object({
       project_file: z
         .string()
@@ -2720,7 +2763,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
                 uproject_path: uprojectFile,
                 launch_command: launchCommand,
                 agent_instruction:
-                  'Verify environment.ue_engine_dir in the project agent-profile and project_file. project_file must be the absolute path to the target .uproject.',
+                  'Verify environment.ue_engine_dir in the project profile and project_file. project_file must be the absolute path to the target .uproject.',
                 error: err instanceof Error ? err.message : String(err),
               },
               null,

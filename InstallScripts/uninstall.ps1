@@ -123,6 +123,22 @@ function Resolve-NpmCommandPath {
   return $null
 }
 
+function Resolve-NodeCommandPath {
+  $Commands = @(
+    Get-Command 'node.exe' -ErrorAction SilentlyContinue
+    Get-Command 'node' -All -ErrorAction SilentlyContinue
+  )
+
+  $Executable = $Commands |
+    Where-Object { $_ -and $_.CommandType -eq 'Application' -and $_.Source } |
+    Select-Object -First 1
+  if ($Executable) {
+    return $Executable.Source
+  }
+
+  return $null
+}
+
 function Invoke-ExternalSoft {
   param(
     [Parameter(Mandatory = $true)]
@@ -395,13 +411,13 @@ function Resolve-ProjectProfilePath {
     $CleanProjectFile = Normalize-PathInput -PathText $ProjectFile
     if ($CleanProjectFile) {
       $ResolvedProjectFile = [System.IO.Path]::GetFullPath($CleanProjectFile)
-      return Join-Path (Split-Path -Parent $ResolvedProjectFile) '.blueprinthelper\agent-profile.json'
+      return Join-Path (Split-Path -Parent $ResolvedProjectFile) '.blueprinthelper\project-profile.json'
     }
   }
 
   $Candidates = @(Get-ChildItem -LiteralPath $Root -Filter '*.uproject' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 2)
   if ($Candidates.Count -eq 1) {
-    return Join-Path $Candidates[0].DirectoryName '.blueprinthelper\agent-profile.json'
+    return Join-Path $Candidates[0].DirectoryName '.blueprinthelper\project-profile.json'
   }
 
   return $null
@@ -414,7 +430,26 @@ function Remove-ProjectAgentProfile {
     return
   }
 
-  Remove-FileIfPresent -Path $ProfilePath -Description 'Remove project BlueprintHelper agent profile' | Out-Null
+  $ProfileDir = Split-Path -Parent $ProfilePath
+  $ProjectDir = Split-Path -Parent $ProfileDir
+  $HelperPath = Join-Path $Root 'InstallScripts\agent-workflow-install.mjs'
+  $NodeCommand = Resolve-NodeCommandPath
+
+  if ($NodeCommand -and (Test-Path -LiteralPath $HelperPath -PathType Leaf)) {
+    if ($PSCmdlet.ShouldProcess($ProjectDir, 'Remove BlueprintHelper project Agent workflow')) {
+      & $NodeCommand $HelperPath 'uninstall' '--project-dir' $ProjectDir
+      if ($LASTEXITCODE -ne 0) {
+        throw "Remove BlueprintHelper project Agent workflow failed with exit code $LASTEXITCODE."
+      }
+      Write-Host "Removed BlueprintHelper project Agent workflow markers from: $ProjectDir"
+    }
+  } else {
+    Write-Warning 'Node.js or agent workflow uninstall helper was not found; removing profile files only.'
+    Remove-FileIfPresent -Path $ProfilePath -Description 'Remove project BlueprintHelper project profile' | Out-Null
+    Remove-FileIfPresent -Path (Join-Path $ProfileDir 'agent-profile.json') -Description 'Remove legacy BlueprintHelper agent profile' | Out-Null
+    Remove-FileIfPresent -Path (Join-Path $ProfileDir 'AgentWorkFlow.md') -Description 'Remove BlueprintHelper AgentWorkFlow' | Out-Null
+  }
+
   Remove-EmptyDirectoryIfPresent -Path (Split-Path -Parent $ProfilePath)
 }
 
@@ -483,7 +518,7 @@ function Invoke-InteractiveUninstallWizard {
   $script:SkipLifecycleMcp = -not (Read-UninstallYesNo -Prompt 'Remove Codex lifecycle MCP config' -DefaultYes:(-not $SkipLifecycleMcp))
   $script:SkipClaudePlugin = -not (Read-UninstallYesNo -Prompt 'Uninstall Claude Code plugin through official entry when available' -DefaultYes:(-not $SkipClaudePlugin))
   $script:SkipClaudeAgents = -not (Read-UninstallYesNo -Prompt 'Remove Claude sideAgents' -DefaultYes:(-not $SkipClaudeAgents))
-  $script:RemoveProjectProfile = Read-UninstallYesNo -Prompt 'Remove project .blueprinthelper/agent-profile.json' -DefaultYes:$RemoveProjectProfile
+  $script:RemoveProjectProfile = Read-UninstallYesNo -Prompt 'Remove project .blueprinthelper/project-profile.json, AgentWorkFlow, and root BlueprintHelper markers' -DefaultYes:$RemoveProjectProfile
   if ($script:RemoveProjectProfile) {
     $script:ProjectFile = Normalize-PathInput -PathText (Read-UninstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile)
   }

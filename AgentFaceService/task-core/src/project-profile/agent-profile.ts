@@ -5,7 +5,8 @@ export interface ProjectEngineDirConfig {
   ueEngineDir?: string;
 }
 
-const PROJECT_AGENT_PROFILE_RELATIVE_PATH = path.join('.blueprinthelper', 'agent-profile.json');
+const PROJECT_PROFILE_RELATIVE_PATH = path.join('.blueprinthelper', 'project-profile.json');
+const LEGACY_AGENT_PROFILE_RELATIVE_PATH = path.join('.blueprinthelper', 'agent-profile.json');
 
 function expandProjectProfilePathVars(rawPath: string, projectDir: string): string {
   return rawPath
@@ -20,20 +21,28 @@ function resolveProfilePathValue(rawPath: string, projectDir: string): string {
   return path.isAbsolute(expanded) ? path.normalize(expanded) : path.resolve(projectDir, expanded);
 }
 
-function makeProjectEngineDirMissingError(projectFile: string, profilePath: string, detail: string): Error {
+function makeProjectEngineDirMissingError(
+  projectFile: string,
+  projectProfilePath: string,
+  legacyAgentProfilePath: string,
+  detail: string,
+  activeProfilePath?: string,
+): Error {
   return new Error(
     JSON.stringify(
       {
         success: false,
-        code: 'PROJECT_AGENT_PROFILE_ENGINE_DIR_MISSING',
+        code: 'PROJECT_PROFILE_ENGINE_DIR_MISSING',
         message:
-          'Project agent profile must define environment.ue_engine_dir for this Unreal project.',
+          'Project profile must define environment.ue_engine_dir for this Unreal project.',
         detail,
         project_file: projectFile,
-        agent_profile_path: profilePath,
+        project_profile_path: projectProfilePath,
+        legacy_agent_profile_path: legacyAgentProfilePath,
+        profile_path: activeProfilePath ?? projectProfilePath,
         expected_field: 'environment.ue_engine_dir',
         agent_instruction:
-          'Run install.cmd from the BlueprintHelper repository root with -ProjectFile and -EngineRoot, or update this project with /blueprint-helper:configure. Do not write project-specific UE paths to global Claude settings.',
+          'Run install.cmd from the BlueprintHelper repository root with -ProjectFile and -EngineRoot, or update .blueprinthelper/project-profile.json. Do not write project-specific UE paths to global Claude settings.',
       },
       null,
       2,
@@ -46,9 +55,15 @@ export function resolveProjectEngineDir(
   config: ProjectEngineDirConfig,
 ): string {
   const projectDir = path.dirname(uprojectFile);
-  const profilePath = path.join(projectDir, PROJECT_AGENT_PROFILE_RELATIVE_PATH);
+  const projectProfilePath = path.join(projectDir, PROJECT_PROFILE_RELATIVE_PATH);
+  const legacyAgentProfilePath = path.join(projectDir, LEGACY_AGENT_PROFILE_RELATIVE_PATH);
+  const profilePath = fs.existsSync(projectProfilePath)
+    ? projectProfilePath
+    : fs.existsSync(legacyAgentProfilePath)
+      ? legacyAgentProfilePath
+      : undefined;
 
-  if (fs.existsSync(profilePath)) {
+  if (profilePath) {
     let profile: unknown;
     try {
       profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
@@ -57,13 +72,15 @@ export function resolveProjectEngineDir(
         JSON.stringify(
           {
             success: false,
-            code: 'PROJECT_AGENT_PROFILE_INVALID_JSON',
-            message: 'Project agent profile exists but could not be parsed as JSON.',
+            code: 'PROJECT_PROFILE_INVALID_JSON',
+            message: 'Project profile exists but could not be parsed as JSON.',
             project_file: uprojectFile,
-            agent_profile_path: profilePath,
+            project_profile_path: projectProfilePath,
+            legacy_agent_profile_path: legacyAgentProfilePath,
+            profile_path: profilePath,
             error: err instanceof Error ? err.message : String(err),
             agent_instruction:
-              'Fix .blueprinthelper/agent-profile.json or rerun install.cmd from the BlueprintHelper repository root with -ProjectFile and -EngineRoot.',
+              'Fix .blueprinthelper/project-profile.json or rerun install.cmd from the BlueprintHelper repository root with -ProjectFile and -EngineRoot.',
           },
           null,
           2,
@@ -83,8 +100,10 @@ export function resolveProjectEngineDir(
 
     throw makeProjectEngineDirMissingError(
       uprojectFile,
+      projectProfilePath,
+      legacyAgentProfilePath,
+      `${path.basename(profilePath)} exists, but environment.ue_engine_dir is empty or missing.`,
       profilePath,
-      'agent-profile.json exists, but environment.ue_engine_dir is empty or missing.',
     );
   }
 
@@ -94,8 +113,9 @@ export function resolveProjectEngineDir(
 
   throw makeProjectEngineDirMissingError(
     uprojectFile,
-    profilePath,
-    'agent-profile.json was not found and no legacy UE engine fallback is configured.',
+    projectProfilePath,
+    legacyAgentProfilePath,
+    'project-profile.json was not found, legacy agent-profile.json was not found, and no legacy UE engine fallback is configured.',
   );
 }
 

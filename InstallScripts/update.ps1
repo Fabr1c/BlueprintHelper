@@ -627,6 +627,8 @@ function Invoke-PostInstallRefresh {
   }
 
   $Args = @(
+    # Keeps machine project-profile.json untouched while install.ps1 still refreshes
+    # .blueprinthelper/AgentWorkFlow.md and root AGENTS.md / CLAUDE.md markers.
     '-SkipProjectProfile',
     '-SkipDefaultPreferences'
   )

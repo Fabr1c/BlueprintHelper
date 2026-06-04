@@ -8,16 +8,17 @@ updated_by: ClaudePlugin/commands/configure.md
 
 ## Purpose
 
-This file records durable user-facing Agent preferences for BlueprintHelper work. It is intentionally separate from `BlueprintHelper.SetupProfile.v1`, runtime_profile, project markers, and BlueprintHelper tool results.
+This file records durable user-facing Agent preferences for BlueprintHelper work. It is intentionally separate from `BlueprintHelper.ProjectProfile.v1`, `.blueprinthelper/AgentWorkFlow.md`, runtime_profile, project markers, and BlueprintHelper tool results.
 
 Agents should read this file before BlueprintHelper planning, status review, implementation, verification, or DebugBundle work. If it conflicts with a newer direct user instruction, follow the newer direct instruction and report the conflict briefly.
 
-## SetupProfile Separation
+## ProjectProfile And AgentWorkFlow Separation
 
-- SetupProfile stores executable machine policy: paths, safety profile, fallback policy, save policy, and compact boundary summaries.
-- This file stores collaboration, workflow, documentation, Debug, review, and preference-collection behavior.
+- ProjectProfile stores machine bootstrap data only: UE engine path, UE version, and the workflow document pointer.
+- AgentWorkFlow stores fixed Agent workflow guidance for the project and is referenced by project-root `AGENTS.md` / `CLAUDE.md` markers.
+- This file stores durable collaboration, documentation, Debug, review, and preference-collection behavior.
 - Do not write tokens, Bridge auth, raw payloads, local DebugBundle contents, or private environment details into this file.
-- Do not copy this full file into `CLAUDE.md`, `AGENTS.md`, or project marker text. Markers should only point to this path.
+- Do not copy this full file into `CLAUDE.md`, `AGENTS.md`, or project marker text. Markers should only point to `.blueprinthelper/AgentWorkFlow.md`.
 
 ## Active Preferences
 

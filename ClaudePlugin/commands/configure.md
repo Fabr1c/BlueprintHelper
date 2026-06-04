@@ -21,16 +21,16 @@ allowed-tools: Read, Write, AskUserQuestion
 按顺序读取：
 
 1. `ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md`
-2. `$ARGUMENTS` 指定的 SetupProfile 路径，如果用户提供
-3. 如果 `$ARGUMENTS` 为空，询问用户 SetupProfile 路径，默认建议 `<ProjectDir>/.blueprinthelper/agent-profile.json`
+2. `$ARGUMENTS` 指定的 ProjectProfile 路径，如果用户提供
+3. 如果 `$ARGUMENTS` 为空，询问用户 ProjectProfile 路径，默认建议 `<ProjectDir>/.blueprinthelper/project-profile.json`
 
-如果用户不提供 SetupProfile 路径，只更新用户偏好文件，并在最终报告中明确 `SetupProfile not updated`。
+如果用户不提供 ProjectProfile 路径，只更新用户偏好文件，并在最终报告中明确 `ProjectProfile not updated`。
 
 记录当前状态：
 
 ```text
 UserPreferences: exists / missing
-SetupProfile: exists / missing / skipped
+ProjectProfile: exists / missing / skipped
 Current safety_profile: <value or unknown>
 Current missing_capability_policy: <value or unknown>
 Current auto_save_policy: <value or unknown>
@@ -213,62 +213,24 @@ Use AskUserQuestion:
 
 ---
 
-## Safety Profile Mapping
+## ProjectProfile Mapping
 
-将 Q1 和 Q2 映射到 SetupProfile。写入时合并现有 JSON，保留未知字段。
-
-### Conservative
+ProjectProfile 只保存机器可读的项目启动信息。写入 `<ProjectDir>/.blueprinthelper/project-profile.json` 时合并现有 JSON，保留未知字段，只更新这些字段：
 
 ```json
 {
-  "active_profile": {
-    "safety_profile": "Conservative",
-    "missing_capability_policy": "stop_and_report",
-    "auto_save_policy": "never_auto_save"
+  "schema": "BlueprintHelper.ProjectProfile.v1",
+  "environment": {
+    "ue_engine_dir": "<UE root>",
+    "ue_version": "<UE version>"
   },
-  "safety": {
-    "safety_profile": "Conservative",
-    "preview_required": true,
-    "allow_auto_save": false,
-    "allow_high_risk_editor_commands": false,
-    "allow_temporary_profile_override": false
-  },
-  "agent": {
-    "agent_entry_mode": "task_spec_first",
-    "fallback_when_task_tools_unavailable": "stop_and_report",
-    "missing_capability_policy": "stop_and_report"
+  "workflow_docs": {
+    "agent_workflow": ".blueprinthelper/AgentWorkFlow.md"
   }
 }
 ```
 
-### ReadOnly
-
-- `safety_profile`: `ReadOnly`
-- `preview_required`: true
-- `allow_auto_save`: false
-- `allow_high_risk_editor_commands`: false
-- `fallback_when_task_tools_unavailable`: `stop_and_report`
-
-### Standard
-
-- `safety_profile`: `Standard`
-- `preview_required`: true
-- `allow_auto_save`: false unless Q2 selected `Workflow save`
-- `allow_high_risk_editor_commands`: false
-
-### AutoRepair
-
-- `safety_profile`: `AutoRepair`
-- `preview_required`: true
-- `allow_auto_save`: false unless Q2 selected `Workflow save`
-- 自动修复仅限 BlueprintHelper-owned 内容
-
-### Expert
-
-- `safety_profile`: `Expert`
-- `preview_required`: true
-- `allow_high_risk_editor_commands`: true
-- 不允许写入 token 或绕过 Journal / Review
+不要把 `safety_profile`、`missing_capability_policy`、`auto_save_policy`、`agent` 或 `editor_lifecycle` 写入 ProjectProfile。Agent 工作流规则属于 `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`，项目根 `AGENTS.md` / `CLAUDE.md` 只保留指向该文件的 BlueprintHelper marker。运行时安全配置属于 `<ProjectDir>/.blueprinthelper/setting.json`。
 
 ---
 
@@ -289,7 +251,7 @@ Use AskUserQuestion:
 - `source: configure_user_preference_wizard`
 - `## Purpose`
 - `## Active Preferences`
-- `## SetupProfile Separation`
+- `## ProjectProfile And AgentWorkFlow Separation`
 - `## Collaboration Preferences`
 - `## Debug And Review Preferences`
 - `## Manual Notes`
@@ -308,10 +270,10 @@ BlueprintHelper Configure Preview
 SafetyProfile:
   <old> -> <new>
 
-SetupProfile:
+ProjectProfile:
   Path: <path or skipped>
-  missing_capability_policy: <old> -> <new>
-  auto_save_policy: <old> -> <new>
+  environment.ue_engine_dir: <old> -> <new or unchanged>
+  workflow_docs.agent_workflow: .blueprinthelper/AgentWorkFlow.md
 
 UserPreferences:
   Task Flow: <summary>
@@ -322,7 +284,7 @@ UserPreferences:
 
 Write files:
   - ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
-  - <SetupProfile path, if provided>
+  - <ProjectProfile path, if provided>
 ```
 
 然后用原生确认表单询问：
@@ -333,14 +295,14 @@ Use AskUserQuestion:
 - multiSelect: false
 - options:
   - label: "Save (Recommended)"
-    description: "写入用户偏好文件，并在提供路径时更新 SetupProfile"
+    description: "写入用户偏好文件，并在提供路径时更新 ProjectProfile"
   - label: "Cancel"
     description: "不写入文件并退出 configure"
 
 守卫：
 - 用户取消：输出 `Configuration cancelled.`
 - 无变化：输出 `No changes needed - configuration unchanged.`
-- SetupProfile 路径缺失：只写用户偏好文件，并在报告里写 `SetupProfile not updated`
+- ProjectProfile 路径缺失：只写用户偏好文件，并在报告里写 `ProjectProfile not updated`
 
 ---
 
@@ -352,7 +314,7 @@ Use AskUserQuestion:
 BlueprintHelper Configure saved
 
 UserPreferences: ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md
-SetupProfile: <path or not updated>
+ProjectProfile: <path or not updated>
 Safety: <safety_profile>
 Entry Mode: task_spec_first
 Fallback: <fallback_policy>

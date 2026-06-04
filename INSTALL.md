@@ -28,7 +28,7 @@ install.cmd
 - 全局链接 CLI，使 `bh` 和 `blueprinthelper-cli` 可用。
 - 通过 Codex 官方插件入口注册仓库本地 marketplace，并安装 `blueprint-helper@blueprint-helper-local`。
 - 安装 Codex subagents 和 lifecycle-only MCP 配置。
-- 在能确认唯一 `.uproject` 和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/agent-profile.json`。
+- 在能确认唯一 `.uproject` 和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/project-profile.json`，生成 `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`，并刷新项目根 `AGENTS.md` / `CLAUDE.md` 的 BlueprintHelper marker。
 - 仅在缺失时创建 Claude/Codex 用户偏好文件。
 
 ### 常用选项
@@ -44,7 +44,7 @@ install.cmd
 .\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
-`-EngineRoot` 接受 `E:\UE_5.6` 或 `E:\UE_5.6\Engine`。项目 agent profile 会保存 BlueprintHelper lifecycle 工具期望的 UE root 形式。
+`-EngineRoot` 接受 `E:\UE_5.6` 或 `E:\UE_5.6\Engine`。项目 project-profile 会保存 BlueprintHelper lifecycle 工具期望的 UE root 形式；Agent 工作流规则写入 `.blueprinthelper/AgentWorkFlow.md`，根提示词文件只保留指向该文件的短入口。
 
 ### Codex Desktop
 
@@ -121,7 +121,7 @@ Agent 工作流不依赖 UE 插件是项目级还是引擎级安装。Codex 和 
 .\uninstall.cmd
 ```
 
-交互式卸载默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/agent-profile.json` 与 Engine 级 UE 插件副本默认保留，只有明确选择或传参时才删除：
+交互式卸载默认移除全局 `bh` CLI 链接、Codex/Claude 插件入口、Codex/Claude subagents 和 Codex lifecycle MCP 配置。项目 `.blueprinthelper/project-profile.json`、`.blueprinthelper/AgentWorkFlow.md`、根提示词 marker 与 Engine 级 UE 插件副本默认保留，只有明确选择或传参时才删除：
 
 ```powershell
 .\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>
@@ -166,7 +166,7 @@ install.cmd
 - Links the CLI globally so `bh` and `blueprinthelper-cli` are available, then removes npm-generated `.ps1` shims when `.cmd` launchers exist so PowerShell ExecutionPolicy does not block `bh`.
 - Registers the repository local marketplace through the official Codex plugin install entry, then installs `blueprint-helper@blueprint-helper-local`.
 - Installs Codex subagents and the lifecycle-only MCP config.
-- Writes `<ProjectDir>/.blueprinthelper/agent-profile.json` when a unique `.uproject` and UE root are available.
+- Writes `<ProjectDir>/.blueprinthelper/project-profile.json`, creates `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`, and refreshes the project-root `AGENTS.md` / `CLAUDE.md` BlueprintHelper markers when a unique `.uproject` and UE root are available.
 - Creates Claude/Codex user preference files only when they are missing.
 
 ### Useful Options
@@ -182,7 +182,7 @@ install.cmd
 .\install.cmd -InstallUePluginToEngine -EngineRoot E:\UE_5.6
 ```
 
-`-EngineRoot` accepts either `E:\UE_5.6` or `E:\UE_5.6\Engine`. The project agent profile stores the UE root form expected by BlueprintHelper lifecycle tools.
+`-EngineRoot` accepts either `E:\UE_5.6` or `E:\UE_5.6\Engine`. The project profile stores the UE root form expected by BlueprintHelper lifecycle tools; workflow guidance lives in `.blueprinthelper/AgentWorkFlow.md`, while root prompt files keep only the managed entry marker.
 
 ### Codex Desktop
 
@@ -262,7 +262,7 @@ The repository root keeps only `.cmd` user entry points; the underlying PowerShe
 .\uninstall.cmd
 ```
 
-Interactive uninstall removes the global `bh` CLI link, Codex/Claude plugin entries, Codex/Claude subagents, and the Codex lifecycle MCP config by default. Project `.blueprinthelper/agent-profile.json` and Engine-level UE plugin copies are kept unless explicitly selected or passed as command-line options:
+Interactive uninstall removes the global `bh` CLI link, Codex/Claude plugin entries, Codex/Claude subagents, and the Codex lifecycle MCP config by default. Project `.blueprinthelper/project-profile.json`, `.blueprinthelper/AgentWorkFlow.md`, project-root prompt markers, and Engine-level UE plugin copies are kept unless explicitly selected or passed as command-line options:
 
 ```powershell
 .\uninstall.cmd -RemoveProjectProfile -ProjectFile <Project.uproject>

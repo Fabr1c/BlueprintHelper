@@ -776,7 +776,7 @@ function Invoke-SequentialInstallWizard {
     $script:InstallClaudeAgents = Read-InstallYesNo -Prompt 'Install only Claude sideAgent definitions' -DefaultYes:$InstallClaudeAgents
   }
 
-  $script:SkipProjectProfile = -not (Read-InstallYesNo -Prompt 'Write or update project .blueprinthelper/agent-profile.json' -DefaultYes:(-not $SkipProjectProfile))
+  $script:SkipProjectProfile = -not (Read-InstallYesNo -Prompt 'Write or update project .blueprinthelper/project-profile.json' -DefaultYes:(-not $SkipProjectProfile))
   $script:SkipDefaultPreferences = -not (Read-InstallYesNo -Prompt 'Create default Claude/Codex user preference files when missing' -DefaultYes:(-not $SkipDefaultPreferences))
   $script:RunDiagnostics = Read-InstallYesNo -Prompt 'Run BlueprintHelper diagnostics after install' -DefaultYes:$RunDiagnostics
 
@@ -837,7 +837,7 @@ function New-InstallMenuOptions {
     (New-InstallMenuOption -Key 'lifecycleMcp' -Label 'Install lifecycle MCP config' -Selected:(-not $SkipLifecycleMcp) -Tip 'Install the global lifecycle-only MCP config used for opening and closing Unreal Editor from Codex.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Register the Claude plugin marketplace through the official Claude plugin installer, then install blueprint-helper from that marketplace when a callable Claude CLI is available.'),
     (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
-    (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project agent-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/agent-profile.json for the detected Unreal project. Path prompts appear after menu confirmation.'),
+    (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/project-profile.json for the detected Unreal project. Project AgentWorkFlow and root AGENTS/CLAUDE markers are refreshed even when this is skipped. Path prompts appear after menu confirmation.'),
     (New-InstallMenuOption -Key 'defaultPreferences' -Label 'Create default user preference files' -Selected:(-not $SkipDefaultPreferences) -Tip 'Create missing Claude/Codex BlueprintHelper user preference files without overwriting existing preference files.'),
     (New-InstallMenuOption -Key 'diagnostics' -Label 'Run diagnostics after install' -Selected:$RunDiagnostics -Tip 'Run BlueprintHelper static diagnostics after installation. Useful for validating CLI, profile, Bridge, and runtime configuration.'),
     (New-InstallMenuOption -Key 'ueEnginePlugin' -Label 'Copy UE plugin to Engine' -Selected:$InstallUePluginToEngine -Tip 'Copy the UE-side BlueprintHelper plugin into an Engine Plugins/Marketplace folder. Path prompts appear after menu confirmation.'),
@@ -1350,6 +1350,57 @@ function Get-ExistingProfileEngineRoot {
   return $null
 }
 
+function Invoke-ProjectAgentWorkflowInstaller {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDir,
+    [string]$ResolvedEngineRoot = '',
+    [string]$UeVersion = ''
+  )
+
+  $HelperPath = Join-Path $ScriptRoot 'agent-workflow-install.mjs'
+  Assert-File -Path $HelperPath -Name 'Agent workflow install helper'
+
+  $Args = @(
+    $HelperPath,
+    'install',
+    '--project-dir',
+    $ProjectDir
+  )
+  if ($ResolvedEngineRoot) {
+    $Args += @('--engine-root', $ResolvedEngineRoot)
+  }
+  if ($UeVersion) {
+    $Args += @('--ue-version', $UeVersion)
+  }
+
+  Invoke-External -Description 'Install BlueprintHelper project Agent workflow' -FilePath (Get-NodeCommand) -Arguments $Args
+}
+
+function Ensure-ProjectAgentWorkflow {
+  $ResolvedProjectFile = Resolve-ProjectFile
+  if (-not $ResolvedProjectFile) {
+    Write-Host '==> Project Agent workflow: skipped (no unique .uproject found; pass -ProjectFile to create project prompt entries)'
+    return [pscustomobject]@{
+      status = 'skipped'
+      path = $null
+      project_file = $null
+      engine_root = $null
+    }
+  }
+
+  $ProjectDir = Split-Path -Parent $ResolvedProjectFile
+  Invoke-ProjectAgentWorkflowInstaller -ProjectDir $ProjectDir
+
+  Write-Host "==> Project Agent workflow: $ProjectDir"
+  return [pscustomobject]@{
+    status = 'written'
+    path = Join-Path $ProjectDir '.blueprinthelper\AgentWorkFlow.md'
+    project_file = $ResolvedProjectFile
+    engine_root = $null
+  }
+}
+
 function Get-UeVersionFromEngineRoot {
   param([string]$UeRoot)
 
@@ -1374,10 +1425,14 @@ function Ensure-ProjectAgentProfile {
 
   $ProjectDir = Split-Path -Parent $ResolvedProjectFile
   $ProfileDir = Join-Path $ProjectDir '.blueprinthelper'
-  $ProfilePath = Join-Path $ProfileDir 'agent-profile.json'
+  $ProfilePath = Join-Path $ProfileDir 'project-profile.json'
+  $LegacyProfilePath = Join-Path $ProfileDir 'agent-profile.json'
   $ResolvedEngineRoot = Resolve-UeRootForProfile -RawEngineRoot $EngineRoot
   if (-not $ResolvedEngineRoot) {
     $ResolvedEngineRoot = Get-ExistingProfileEngineRoot -ProfilePath $ProfilePath
+  }
+  if (-not $ResolvedEngineRoot) {
+    $ResolvedEngineRoot = Get-ExistingProfileEngineRoot -ProfilePath $LegacyProfilePath
   }
   if (-not $ResolvedEngineRoot) {
     Write-Host "==> Project profile: skipped ($ProfilePath needs environment.ue_engine_dir; pass -EngineRoot)"
@@ -1389,15 +1444,18 @@ function Ensure-ProjectAgentProfile {
     }
   }
 
-  $Profile = if (Test-Path -LiteralPath $ProfilePath -PathType Leaf) {
-    Get-Content -Raw -LiteralPath $ProfilePath | ConvertFrom-Json
-  } else {
-    [pscustomobject]@{}
+  $Profile = [pscustomobject]@{}
+  if (Test-Path -LiteralPath $ProfilePath -PathType Leaf) {
+    try {
+      $ExistingProfile = Get-Content -Raw -LiteralPath $ProfilePath | ConvertFrom-Json
+      if ($ExistingProfile -is [pscustomobject]) {
+        $Profile = $ExistingProfile
+      }
+    } catch {
+      throw "Unable to parse existing project profile: $ProfilePath. $($_.Exception.Message)"
+    }
   }
-
-  if (-not (Get-JsonProperty -Object $Profile -Name 'schema')) {
-    Set-JsonProperty -Object $Profile -Name 'schema' -Value 'BlueprintHelper.AgentProfile.v1'
-  }
+  Set-JsonProperty -Object $Profile -Name 'schema' -Value 'BlueprintHelper.ProjectProfile.v1'
 
   $Environment = Ensure-JsonObjectProperty -Object $Profile -Name 'environment'
   Set-JsonProperty -Object $Environment -Name 'ue_engine_dir' -Value $ResolvedEngineRoot
@@ -1406,24 +1464,14 @@ function Ensure-ProjectAgentProfile {
     Set-JsonProperty -Object $Environment -Name 'ue_version' -Value $UeVersion
   }
 
-  $ActiveProfile = Ensure-JsonObjectProperty -Object $Profile -Name 'active_profile'
-  Set-JsonProperty -Object $ActiveProfile -Name 'missing_capability_policy' -Value 'stop_and_report'
-  Set-JsonProperty -Object $ActiveProfile -Name 'auto_save_policy' -Value 'never_auto_save'
+  $WorkflowDocs = Ensure-JsonObjectProperty -Object $Profile -Name 'workflow_docs'
+  Set-JsonProperty -Object $WorkflowDocs -Name 'agent_workflow' -Value '.blueprinthelper/AgentWorkFlow.md'
 
-  $Agent = Ensure-JsonObjectProperty -Object $Profile -Name 'agent'
-  Set-JsonProperty -Object $Agent -Name 'agent_entry_mode' -Value 'cli_task_spec_first'
-  Set-JsonProperty -Object $Agent -Name 'fallback_when_task_tools_unavailable' -Value 'stop_and_report'
-
-  $EditorLifecycle = Ensure-JsonObjectProperty -Object $Profile -Name 'editor_lifecycle'
-  Set-JsonProperty -Object $EditorLifecycle -Name 'entry' -Value 'global_lifecycle_only_mcp'
-  Set-JsonProperty -Object $EditorLifecycle -Name 'open_tool' -Value 'mcp__blueprint_helper__blueprint_open_editor'
-  Set-JsonProperty -Object $EditorLifecycle -Name 'close_tool' -Value 'mcp__blueprint_helper__blueprint_close_editor'
-  Set-JsonProperty -Object $EditorLifecycle -Name 'main_agent_only' -Value $true
-
-  if ($script:ThisCmdlet.ShouldProcess($ProfilePath, 'Write project agent profile')) {
+  if ($script:ThisCmdlet.ShouldProcess($ProfilePath, 'Write BlueprintHelper project profile')) {
     New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
     $Profile | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ProfilePath -Encoding utf8
   }
+  Invoke-ProjectAgentWorkflowInstaller -ProjectDir $ProjectDir
 
   Write-Host "==> Project profile: $ProfilePath"
   return [pscustomobject]@{
@@ -1449,7 +1497,15 @@ source: install_default_conservative_profile
 
 ## Purpose
 
-This file records durable user-facing Agent preferences for BlueprintHelper work.
+This file records durable user-facing Agent preferences for BlueprintHelper work. It is intentionally separate from `BlueprintHelper.ProjectProfile.v1`, `.blueprinthelper/AgentWorkFlow.md`, runtime_profile, project markers, and BlueprintHelper tool results.
+
+## ProjectProfile And AgentWorkFlow Separation
+
+- ProjectProfile stores machine bootstrap data only: UE engine path, UE version, and the workflow document pointer.
+- AgentWorkFlow stores fixed Agent workflow guidance for the project and is referenced by project-root `AGENTS.md` / `CLAUDE.md` markers.
+- This file stores durable collaboration, documentation, Debug, review, and preference-collection behavior.
+- Do not write tokens, Bridge auth, raw payloads, local DebugBundle contents, or private environment details into this file.
+- Do not copy this full file into `CLAUDE.md`, `AGENTS.md`, or project marker text. Markers should only point to `.blueprinthelper/AgentWorkFlow.md`.
 
 ## Active Preferences
 
@@ -1668,6 +1724,8 @@ $ClaudeAgentsStatus = 'skipped'
 
 if (-not $SkipProjectProfile) {
   $ProjectProfileResult = Ensure-ProjectAgentProfile
+} else {
+  $ProjectProfileResult = Ensure-ProjectAgentWorkflow
 }
 
 if (-not $SkipDefaultPreferences) {

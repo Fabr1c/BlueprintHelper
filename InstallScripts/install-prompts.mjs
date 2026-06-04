@@ -164,7 +164,7 @@ function createInstallOptions(input) {
     makeOption('lifecycleMcp', '安装 lifecycle MCP 配置', bool(input.lifecycleMcp, true), '安装只用于打开/关闭 Unreal Editor 的全局 MCP allowlist 配置。', 1, 'codexSupport'),
     makeOption('claudePlugin', '安装 Claude Code 插件支持', bool(input.claudePlugin, false), '通过 Claude 官方插件入口注册本地 marketplace 并安装 blueprint-helper。选择此项会同步安装 Claude sideAgents。'),
     makeOption('claudeAgents', '安装 Claude sideAgent 定义', bool(input.claudeAgents, false), '只复制 Claude sideAgent 定义；如果选择 Claude 插件支持，此项会自动启用。'),
-    makeOption('projectProfile', '写入项目 agent-profile.json', bool(input.projectProfile, true), '创建或更新 .blueprinthelper/agent-profile.json。确认选单后会询问 .uproject 和 UE 路径。'),
+    makeOption('projectProfile', '写入项目 project-profile.json', bool(input.projectProfile, true), '创建或更新 .blueprinthelper/project-profile.json，并刷新 .blueprinthelper/AgentWorkFlow.md 与项目根 AGENTS.md / CLAUDE.md marker。'),
     makeOption('defaultPreferences', '创建默认用户偏好文件', bool(input.defaultPreferences, true), '只在缺失时创建 Claude/Codex BlueprintHelper 用户偏好文件，不覆盖已有偏好。'),
     makeOption('diagnostics', '安装后运行 diagnostics', bool(input.diagnostics, false), '安装完成后运行 BlueprintHelper 静态诊断，用于验证 CLI、profile、Bridge 和运行时配置。'),
     makeOption('ueEnginePlugin', '复制 UE 插件到 Engine', bool(input.ueEnginePlugin, false), '把 UE 侧 BlueprintHelper 插件复制到 Engine/Plugins/Marketplace。确认选单后会询问目标路径。'),

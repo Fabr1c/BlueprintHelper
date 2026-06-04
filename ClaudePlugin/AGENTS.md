@@ -35,7 +35,7 @@ Do not use MCP for normal asset workflows. New Agent workflows should use CLI co
 
 ## Required preflight before any write operation
 
-1. Confirm the user has a target UE project and the Unreal Editor is running, or use the global MCP lifecycle tool after confirming the project `.blueprinthelper/agent-profile.json` has `environment.ue_engine_dir` configured.
+1. Confirm the user has a target UE project and the Unreal Editor is running, or use the global MCP lifecycle tool after confirming the project `.blueprinthelper/project-profile.json` has `environment.ue_engine_dir` configured.
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
