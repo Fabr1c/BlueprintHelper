@@ -37,9 +37,9 @@
 
 ### 结果形状
 
-- stdout 的常规摘要是 `BlueprintHelper.CliResult.v1`。
-- `artifacts.full_result` 是较完整的 `BlueprintHelper.CliFullResult.v1`。
-- `artifacts.debug_result` 只在 `--expert` 场景返回，对应 `BlueprintHelper.CliDebugResult.v1`。
+- Default stdout is compact CLI JSON without a top-level `BlueprintHelper.CliResult.v1` schema field.
+- `artifacts.full_result` is a compact full-result artifact without a top-level `BlueprintHelper.CliFullResult.v1` schema field.
+- `artifacts.debug_result` is returned only for `--expert` and keeps `BlueprintHelper.CliDebugResult.v1` for raw diagnostic audits.
 - `blueprinthelper_get_task_result` 读取完成的任务结果或 `TaskRunJournal`。
 
 ### 读取格式约定

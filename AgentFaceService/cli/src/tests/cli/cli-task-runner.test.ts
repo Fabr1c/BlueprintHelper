@@ -13,6 +13,22 @@ function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'bph-cli-test-'));
 }
 
+function assertNoDefaultReturnPolicyFields(value: unknown) {
+  const serialized = JSON.stringify(value);
+  assert.doesNotMatch(serialized, /"schema":"BlueprintHelper\.Cli(Result|FullResult)\.v1"/);
+  assert.doesNotMatch(serialized, /"execution_policy"/);
+  assert.doesNotMatch(serialized, /"scope_policy"/);
+  assert.doesNotMatch(serialized, /"should_compile"/);
+  assert.doesNotMatch(serialized, /"should_save"/);
+}
+
+function readJsonFile(filePath: unknown): Record<string, unknown> {
+  if (typeof filePath !== 'string') {
+    assert.fail(`Expected artifact path string, got ${typeof filePath}`);
+  }
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+}
+
 test('task preview reads TaskSpec file and prints compact summary JSON', async () => {
   const writes: string[] = [];
   const artifactDir = makeTempDir();
@@ -63,10 +79,16 @@ test('task preview reads TaskSpec file and prints compact summary JSON', async (
 
   assert.equal(exitCode, 0);
   const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(output.schema, 'BlueprintHelper.CliResult.v1');
+  assert.equal('schema' in output, false);
   assert.equal(output.operation, 'task.preview');
   assert.equal(output.status, 'preview_passed');
   assert.equal(JSON.stringify(output).includes('TaskPlan.v1'), false);
+  assertNoDefaultReturnPolicyFields(output);
+  const artifacts = output.artifacts as Record<string, unknown>;
+  const fullResult = readJsonFile(artifacts.full_result);
+  assertNoDefaultReturnPolicyFields(fullResult);
+  const taskPlan = readJsonFile(artifacts.task_plan);
+  assertNoDefaultReturnPolicyFields(taskPlan);
 });
 
 test('task execute calls the TaskSpec runner and returns executed summary', async () => {
@@ -139,7 +161,9 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
   assert.equal('debug_result' in artifacts, false);
   const fullResultPath = String(artifacts.full_result);
   const fullResult = JSON.parse(fs.readFileSync(fullResultPath, 'utf8')) as Record<string, unknown>;
-  assert.equal(fullResult.schema, 'BlueprintHelper.CliFullResult.v1');
+  assert.equal('schema' in fullResult, false);
+  assertNoDefaultReturnPolicyFields(output);
+  assertNoDefaultReturnPolicyFields(fullResult);
   const toolResult = fullResult.toolResult as Record<string, unknown>;
   assert.equal('schema' in toolResult, false);
   assert.equal('trace_id' in toolResult, false);
@@ -310,6 +334,165 @@ test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskS
   assert.equal(output.preview_id, 'preview_direct_001');
   assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
   assert.equal('schema' in output, false);
+});
+
+test('default direct task preview artifacts omit internal policy fields', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  const taskPlan = {
+    schema: 'BlueprintHelper.TaskPlan.v1',
+    task_name: 'Policy Reduction Preview',
+    task_type: 'edit_blueprint_graph',
+    context_id: 'ctx_policy',
+    target_assets: ['/Game/BP_Player'],
+    scope_policy: {
+      graph_name: 'EventGraph',
+      allow_modify_user_nodes: false,
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+      should_compile: false,
+      should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
+    },
+    validation: {
+      should_compile: false,
+      should_save: false,
+    },
+    steps: [],
+  };
+  const runner = {
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+    previewTask: async () => ({
+      previewId: 'preview_policy_001',
+      previewToken: '11111111111111111111111111111111',
+      taskPlan,
+      passed: true,
+      issues: [],
+      toolResult: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResult.v1',
+        operation: 'preview_task',
+        trace_id: 'trace_policy_preview',
+        status: 'dry_run',
+        modified: false,
+        data: {
+          schema: 'BlueprintHelper.TaskPreview.v1',
+          preview_id: 'preview_policy_001',
+          passed: true,
+          blocked: false,
+          task_plan: taskPlan,
+          validation: {
+            should_compile: false,
+            should_save: false,
+          },
+          issues: [],
+        },
+      },
+    }),
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_preview_task', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assertNoDefaultReturnPolicyFields(output);
+  const artifacts = output.artifacts as Record<string, unknown>;
+  assertNoDefaultReturnPolicyFields(readJsonFile(artifacts.full_result));
+  assertNoDefaultReturnPolicyFields(readJsonFile(artifacts.task_plan));
+});
+
+test('expert direct task preview debug artifact keeps raw policy fields', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  const taskPlan = {
+    schema: 'BlueprintHelper.TaskPlan.v1',
+    task_name: 'Expert Policy Preview',
+    task_type: 'edit_blueprint_graph',
+    context_id: 'ctx_expert_policy',
+    target_assets: ['/Game/BP_Player'],
+    scope_policy: {
+      graph_name: 'EventGraph',
+      allow_modify_user_nodes: false,
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+      should_compile: false,
+      should_save: false,
+      review_baseline_dirty_asset_policy: 'block',
+    },
+    validation: {
+      should_compile: false,
+      should_save: false,
+    },
+    steps: [],
+  };
+  const runner = {
+    readTaskContext: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+    previewTask: async () => ({
+      previewId: 'preview_expert_policy_001',
+      previewToken: '22222222222222222222222222222222',
+      taskPlan,
+      passed: true,
+      issues: [],
+      toolResult: {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResult.v1',
+        operation: 'preview_task',
+        trace_id: 'trace_expert_policy_preview',
+        status: 'dry_run',
+        modified: false,
+        data: {
+          schema: 'BlueprintHelper.TaskPreview.v1',
+          preview_id: 'preview_expert_policy_001',
+          passed: true,
+          blocked: false,
+          task_plan: taskPlan,
+          validation: {
+            should_compile: false,
+            should_save: false,
+          },
+          issues: [],
+        },
+      },
+    }),
+    executeTask: async () => { throw new Error('not used'); },
+    getTaskResult: async () => { throw new Error('not used'); },
+  } as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: ['blueprinthelper_preview_task', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assertNoDefaultReturnPolicyFields(output);
+  const artifacts = output.artifacts as Record<string, unknown>;
+  assertNoDefaultReturnPolicyFields(readJsonFile(artifacts.full_result));
+  assertNoDefaultReturnPolicyFields(readJsonFile(artifacts.task_plan));
+  const debugResult = readJsonFile(artifacts.debug_result);
+  const debugText = JSON.stringify(debugResult);
+  assert.match(debugText, /"schema":"BlueprintHelper\.CliDebugResult\.v1"/);
+  assert.match(debugText, /"execution_policy"/);
+  assert.match(debugText, /"scope_policy"/);
+  assert.match(debugText, /"should_compile"/);
+  assert.match(debugText, /"should_save"/);
 });
 
 test('select is an alias for fields', async () => {

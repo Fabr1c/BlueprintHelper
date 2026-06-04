@@ -1,8 +1,9 @@
 import { strict as assert } from 'node:assert';
+import * as fs from 'node:fs';
 import test from 'node:test';
 
 import type { ToolResultBase } from '@blueprinthelper/task-core/result/tool-result';
-import { buildCliSummary, writeCliResult, type CliCommand } from './output.js';
+import { buildCliError, buildCliSummary, writeCliResult, type CliCommand } from './output.js';
 
 test('CLI summary exposes preview-blocked connectivity violations concisely', () => {
   const command: CliCommand = {
@@ -172,4 +173,58 @@ test('CLI preview summary exposes static preflight issue from error payload', ()
     path: 'behavior.entries[0].body.statements[0]',
     message: 'PureData producer is not consumed.',
   }]);
+});
+
+test('CLI error output omits wrapper schema by default', () => {
+  const output = buildCliError({
+    operation: 'output',
+    status: 'cli_error',
+    message: 'Policy blocked execution.',
+  });
+
+  assert.equal('schema' in output, false);
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_error');
+  assert.equal(output.message, 'Policy blocked execution.');
+});
+
+test('CLI full result keeps validation errors but drops validation policy keys', () => {
+  const chunks: string[] = [];
+  writeCliResult({
+    cwd: process.cwd(),
+    stdout: (text) => chunks.push(text),
+  }, {
+    kind: 'task.execute',
+    format: 'full',
+  }, {
+    ok: false,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'execute_task',
+    trace_id: 'trace_validation_details',
+    status: 'failed',
+    modified: false,
+    validation: {
+      should_compile: true,
+      should_save: false,
+      compiled: true,
+      saved: false,
+      compile_success: false,
+      errors: [{
+        code: 'compile_error',
+        message: 'Blueprint compile failed.',
+        severity: 'error',
+      }],
+      warnings: [],
+    },
+  });
+
+  const output = JSON.parse(chunks.join('')) as Record<string, unknown>;
+  const fullPath = String((output.artifacts as Record<string, unknown>).full_result);
+  const fullResult = JSON.parse(fs.readFileSync(fullPath, 'utf8')) as Record<string, unknown>;
+  const serialized = JSON.stringify(fullResult);
+  assert.doesNotMatch(serialized, /"should_compile"/);
+  assert.doesNotMatch(serialized, /"should_save"/);
+  assert.match(serialized, /"compile_success":false/);
+  assert.match(serialized, /"compile_error"/);
 });

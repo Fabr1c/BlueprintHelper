@@ -8,8 +8,6 @@ import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-s
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
 import { createOutputIoSummary } from './io-stats.js';
 
-export const CLI_RESULT_SCHEMA = 'BlueprintHelper.CliResult.v1';
-export const CLI_FULL_RESULT_SCHEMA = 'BlueprintHelper.CliFullResult.v1';
 export const CLI_DEBUG_RESULT_SCHEMA = 'BlueprintHelper.CliDebugResult.v1';
 
 export type CliFormat = 'summary' | 'json' | 'full' | 'markdown';
@@ -99,7 +97,6 @@ export function buildCliSummary(input: {
 
   return omitUndefined({
     ok: input.toolResult.ok,
-    schema: CLI_RESULT_SCHEMA,
     operation: input.command.kind,
     tool_name: input.command.toolName,
     status,
@@ -135,7 +132,6 @@ export function writeCliResult(
   const fullToolResult = compactCliToolResult(safeToolResult);
   const fullExtra = compactCliExtra(safeExtra);
   const fullResult = omitUndefined({
-    schema: CLI_FULL_RESULT_SCHEMA,
     toolResult: fullToolResult,
     extra: Object.keys(fullExtra).length > 0 ? fullExtra : undefined,
   });
@@ -163,7 +159,7 @@ export function writeCliResult(
       root: artifactRoot,
       runId,
       name: 'task_plan',
-      value: taskPlan,
+      value: compactDefaultTaskPlanArtifact(taskPlan),
     });
   }
 
@@ -211,7 +207,6 @@ export function buildCliError(input: {
 }): Record<string, unknown> {
   return shapeCliOutput(omitUndefined({
     ok: false,
-    schema: CLI_RESULT_SCHEMA,
     operation: input.operation,
     status: input.status,
     message: input.message,
@@ -285,7 +280,6 @@ function buildOutput(
     const metricsData = data ?? {};
     return omitUndefined({
       ok: toolResult.ok,
-      schema: CLI_RESULT_SCHEMA,
       operation: command.kind,
       status,
       data: command.format === 'markdown' ? compactMetricsOutput(metricsData) : metricsData,
@@ -297,7 +291,6 @@ function buildOutput(
 
   return {
     ok: toolResult.ok,
-    schema: CLI_RESULT_SCHEMA,
     operation: command.kind,
     tool_name: command.toolName,
     status,
@@ -541,14 +534,62 @@ function buildDebugResult(
   return result;
 }
 
+function compactDefaultTaskPlanArtifact(value: unknown): unknown {
+  return compactPolicyOnlyFields(compactCliValue(value));
+}
+
+function compactPolicyOnlyFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => compactPolicyOnlyFields(item));
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const compacted: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === 'execution_policy' || key === 'scope_policy') {
+      continue;
+    }
+
+    if (key === 'validation') {
+      const compactedValidation = compactValidationForDefaultReturn(entry);
+      if (compactedValidation !== undefined) {
+        compacted[key] = compactedValidation;
+      }
+      continue;
+    }
+
+    compacted[key] = compactPolicyOnlyFields(entry);
+  }
+  return compacted;
+}
+
+function compactValidationForDefaultReturn(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return compactPolicyOnlyFields(value);
+  }
+
+  const compacted: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === 'should_compile' || key === 'should_save') {
+      continue;
+    }
+    compacted[key] = compactPolicyOnlyFields(entry);
+  }
+
+  return Object.keys(compacted).length > 0 ? compacted : undefined;
+}
+
 function compactCliToolResult(toolResult: ToolResultBase): Record<string, unknown> {
-  return compactTaskSpecExecutionData(compactCliValue(toolResult)) as Record<string, unknown>;
+  return compactTaskSpecExecutionData(compactPolicyOnlyFields(compactCliValue(toolResult))) as Record<string, unknown>;
 }
 
 function compactCliExtra(extra: Record<string, unknown>): Record<string, unknown> {
   const next = { ...extra };
   delete next['taskPlan'];
-  return compactCliValue(next) as Record<string, unknown>;
+  return compactPolicyOnlyFields(compactCliValue(next)) as Record<string, unknown>;
 }
 
 function compactCliExtraForOutput(extra: Record<string, unknown>): Record<string, unknown> {

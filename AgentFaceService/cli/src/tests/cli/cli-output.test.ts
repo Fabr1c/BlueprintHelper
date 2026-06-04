@@ -32,7 +32,7 @@ test('summary output omits full task_plan and points to artifacts', () => {
     },
   });
 
-  assert.equal(result.schema, 'BlueprintHelper.CliResult.v1');
+  assert.equal('schema' in result, false);
   assert.equal(result.operation, 'task.preview');
   assert.equal(result.status, 'preview_passed');
   assert.equal(JSON.stringify(result).includes('step_1'), false);

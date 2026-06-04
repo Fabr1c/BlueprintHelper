@@ -95,7 +95,7 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .
 
 ## Read Full Result
 
-Use the artifact paths returned by summary output for follow-up inspection. `artifacts.full_result` is a compact `BlueprintHelper.CliFullResult.v1` payload: nested ToolResult schemas, trace ids, TaskSpec duplicate `target_assets`, duplicate `task_run_id`, and raw `bridge_result` are not included.
+Use the artifact paths returned by summary output for follow-up inspection. `artifacts.full_result` is a compact full-result payload without a top-level `BlueprintHelper.CliFullResult.v1` schema field. Nested ToolResult schemas, trace ids, TaskSpec duplicate `target_assets`, duplicate `task_run_id`, raw `bridge_result`, and internal policy fields such as `execution_policy`, `scope_policy`, `should_compile`, and `should_save` are not included in default Agent-facing output.
 
 Use `--expert` only when raw execution diagnostics are needed. In expert mode the CLI also returns `artifacts.debug_result`, which contains `BlueprintHelper.CliDebugResult.v1` with the raw Bridge result and trace ids. Use `--format json` only when the Agent truly needs the full JSON in stdout.
 
@@ -125,7 +125,7 @@ UE-bound Bridge requests can wait behind editor-side work. When a Bridge call is
 [BlueprintHelper CLI] waiting for UE Bridge response: command=preview_task_plan elapsed_ms=30000. UE-bound requests are serialized on the editor side; keep waiting unless the CLI exits.
 ```
 
-Agents should treat these lines as keep-alive/progress messages, not command output. Parse only `stdout` for the final `BlueprintHelper.CliResult.v1` JSON. The default wait-hint cadence is once every 30 seconds, and the default CLI Bridge request timeout is 10 minutes for Agent workflows. Tune it with `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS`; tune or disable hints with `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0`.
+Agents should treat these lines as keep-alive/progress messages, not command output. Parse only `stdout` for the final compact CLI JSON; default stdout no longer includes a top-level `BlueprintHelper.CliResult.v1` schema field. The default wait-hint cadence is once every 30 seconds, and the default CLI Bridge request timeout is 10 minutes for Agent workflows. Tune it with `BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS`; tune or disable hints with `BPH_CLI_WAIT_HINT_INITIAL_MS`, `BPH_CLI_WAIT_HINT_INTERVAL_MS`, or `BPH_CLI_WAIT_HINTS=0`.
 
 ## Call Notes
 
