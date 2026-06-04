@@ -74,6 +74,7 @@ Local-variable replication is unsupported. Do not place
 
 | Intent | Template |
 |---|---|
+| Edit a Blueprint signature | `taskspec_edit_blueprint_signature_template.json` |
 | Ensure a function signature | `taskspec_edit_blueprint_signature_function_template.json` |
 | Ensure a custom event signature | `taskspec_edit_blueprint_signature_custom_event_template.json` |
 | Ensure an event dispatcher signature | `taskspec_edit_blueprint_signature_dispatcher_template.json` |

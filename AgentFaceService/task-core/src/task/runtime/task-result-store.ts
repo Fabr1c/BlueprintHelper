@@ -154,6 +154,7 @@ const intentActionByCapability: Record<string, string> = {
 const intentCapabilityByTaskType: Record<string, string> = {
   edit_blueprint_graph: 'graph_write',
   edit_blueprint_variables: 'blueprint_variable',
+  edit_blueprint_signature: 'blueprint_signature',
   create_asset: 'asset_factory',
   edit_blueprint_components: 'blueprint_component',
   edit_blueprint_class_settings: 'blueprint_class_settings',
@@ -309,6 +310,17 @@ function selectTaskPlanIntentStep(taskPlan: TaskPlan, fallbackStep: TaskPlan['st
 
   const nonDependencyStep = taskPlan.steps.find((step) => inferStepCapability(step) !== 'blueprint_signature');
   return nonDependencyStep ?? fallbackStep;
+}
+
+export function inferTaskResultIntentForTest(taskPlan: TaskPlan) {
+  const intentStep = selectTaskPlanIntentStep(taskPlan, taskPlan.steps[0]);
+  const capability = inferStepCapability(intentStep)
+    ?? intentCapabilityByTaskType[taskPlan.task_type]
+    ?? taskPlan.task_type;
+  return {
+    capability,
+    generatedIntent: generateTaskIntent(taskPlan, taskPlan.steps[0], undefined),
+  };
 }
 
 function selectJournalIntentStep(journal: Record<string, unknown>) {

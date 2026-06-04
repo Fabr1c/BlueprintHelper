@@ -2183,6 +2183,60 @@ bool FBlueprintHelperReviewAgentFacingSummaryDoesNotExposeGuidTest::RunTest(cons
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewSummaryExposesSignatureTargetMetadataTest,
+	"BlueprintHelper.Review.Summary.ExposesSignatureTargetMetadata",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewSummaryExposesSignatureTargetMetadataTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = TEXT("/Game/Test/BP_Signature.BP_Signature");
+	Target.Surface = EBlueprintHelperReviewSurface::MyBlueprint;
+	Target.TargetKey = TEXT("signature:function:ComputeScore");
+	Target.TargetKind = TEXT("signature");
+	Target.TargetSubKind = TEXT("function");
+	Target.SignatureRole = TEXT("dependency");
+	Target.SignatureEvidenceId = TEXT("signature:function:ComputeScore");
+	Target.DisplayLabel = TEXT("ComputeScore");
+
+	FBlueprintHelperReviewVisibleChange Change;
+	Change.ChangeId = TEXT("change_signature_function");
+	Change.AssetPath = Target.AssetPath;
+	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
+	Change.DisplayLabel = Target.DisplayLabel;
+	Change.AtomicTargets.Add(Target);
+
+	FBlueprintHelperReviewRecord Record;
+	Record.ReviewRecordId = TEXT("review_signature_summary");
+	Record.ArchiveSessionId = TEXT("archive_signature_summary");
+	Record.AssetPath = Target.AssetPath;
+	Record.VisibleChanges.Add(Change);
+
+	FBlueprintHelperReviewStoreService Store;
+	const TSharedRef<FJsonObject> Summary = Store.BuildReviewRecordSummaryArtifact(Record);
+	const TArray<TSharedPtr<FJsonValue>>* Changes = nullptr;
+	TestTrue(TEXT("summary writes visible changes"), Summary->TryGetArrayField(TEXT("visible_changes"), Changes));
+	const TSharedPtr<FJsonObject> ChangeJson =
+		Changes && Changes->Num() == 1 ? (*Changes)[0]->AsObject() : nullptr;
+	FString TargetKind;
+	TestTrue(TEXT("summary exposes target_kind"),
+		ChangeJson.IsValid() && ChangeJson->TryGetStringField(TEXT("target_kind"), TargetKind));
+	TestEqual(TEXT("summary target_kind is signature"), TargetKind, FString(TEXT("signature")));
+	FString TargetSubKind;
+	TestTrue(TEXT("summary exposes target_subkind"),
+		ChangeJson.IsValid() && ChangeJson->TryGetStringField(TEXT("target_subkind"), TargetSubKind));
+	TestEqual(TEXT("summary target_subkind is function"), TargetSubKind, FString(TEXT("function")));
+	FString SignatureEvidenceId;
+	TestTrue(TEXT("summary exposes signature_evidence_id"),
+		ChangeJson.IsValid() && ChangeJson->TryGetStringField(TEXT("signature_evidence_id"), SignatureEvidenceId));
+	TestEqual(TEXT("summary signature evidence id"),
+		SignatureEvidenceId,
+		FString(TEXT("signature:function:ComputeScore")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest,
 	"BlueprintHelper.Review.Reject.OldLegacyHashRecordNeedsAction",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

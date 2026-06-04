@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  SignaturePinSpecSchema,
+  assertNoDuplicateSignaturePinNames,
+} from './blueprint-pin-type-spec.js';
 
 export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
 export {
@@ -1120,8 +1124,8 @@ const BlueprintSignatureChangeSchema = z.object({
   ]).optional(),
   signature_name: z.string().min(1).optional(),
   interface_path: z.string().min(1).optional(),
-  inputs: z.array(z.record(z.unknown())).optional(),
-  outputs: z.array(z.record(z.unknown())).optional(),
+  inputs: z.array(SignaturePinSpecSchema).optional(),
+  outputs: z.array(SignaturePinSpecSchema).optional(),
   is_pure: z.boolean().optional(),
   name_collision_policy: z.enum(['reuse_if_exists', 'fail_if_exists']).optional(),
   signature_mismatch_policy: z.enum(['block', 'migrate_if_unreferenced']).optional(),
@@ -1159,6 +1163,19 @@ export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
     }
     if (change.kind === 'remove_signature' && !(change.signature_name || change.function_name || change.event_name || change.dispatcher_name)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'remove_signature requires signature_name, function_name, event_name, or dispatcher_name.' });
+    }
+    for (const field of ['inputs', 'outputs'] as const) {
+      const pins = Array.isArray(change[field]) ? change[field] : undefined;
+      if (pins) {
+        const duplicate = assertNoDuplicateSignaturePinNames(pins, [...path, field]);
+        if (duplicate) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: duplicate.path,
+            message: duplicate.message,
+          });
+        }
+      }
     }
   });
 });

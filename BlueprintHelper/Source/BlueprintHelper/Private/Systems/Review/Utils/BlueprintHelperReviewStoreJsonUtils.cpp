@@ -102,6 +102,11 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.GraphName.IsEmpty()) Json->SetStringField(TEXT("graph_name"), Target.GraphName);
 		Json->SetStringField(TEXT("target_key"), Target.TargetKey);
 		if (!Target.TargetKind.IsEmpty()) Json->SetStringField(TEXT("target_kind"), Target.TargetKind);
+		if (!Target.TargetSubKind.IsEmpty()) Json->SetStringField(TEXT("target_subkind"), Target.TargetSubKind);
+		if (!Target.SignatureRole.IsEmpty()) Json->SetStringField(TEXT("signature_role"), Target.SignatureRole);
+		if (!Target.SignatureEvidenceId.IsEmpty()) Json->SetStringField(TEXT("signature_evidence_id"), Target.SignatureEvidenceId);
+		if (!Target.DependencyOwnerStepId.IsEmpty()) Json->SetStringField(TEXT("dependency_owner_step_id"), Target.DependencyOwnerStepId);
+		if (!Target.DependentStepId.IsEmpty()) Json->SetStringField(TEXT("dependent_step_id"), Target.DependentStepId);
 		if (!Target.VisualGroupKey.IsEmpty()) Json->SetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 		if (!Target.DisplayLabel.IsEmpty()) Json->SetStringField(TEXT("display_label"), Target.DisplayLabel);
 		if (!Target.FirstEvidenceId.IsEmpty()) Json->SetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);
@@ -390,6 +395,11 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("graph_name"), Target.GraphName);
 						TargetJson->TryGetStringField(TEXT("target_key"), Target.TargetKey);
 						TargetJson->TryGetStringField(TEXT("target_kind"), Target.TargetKind);
+						TargetJson->TryGetStringField(TEXT("target_subkind"), Target.TargetSubKind);
+						TargetJson->TryGetStringField(TEXT("signature_role"), Target.SignatureRole);
+						TargetJson->TryGetStringField(TEXT("signature_evidence_id"), Target.SignatureEvidenceId);
+						TargetJson->TryGetStringField(TEXT("dependency_owner_step_id"), Target.DependencyOwnerStepId);
+						TargetJson->TryGetStringField(TEXT("dependent_step_id"), Target.DependentStepId);
 						TargetJson->TryGetStringField(TEXT("visual_group_key"), Target.VisualGroupKey);
 						TargetJson->TryGetStringField(TEXT("display_label"), Target.DisplayLabel);
 						TargetJson->TryGetStringField(TEXT("first_evidence_id"), Target.FirstEvidenceId);

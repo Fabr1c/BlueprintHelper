@@ -34,7 +34,7 @@ cd <PLUGIN_ROOT>
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project agent profile when project and UE root are known, and creates default user preference files only when they are missing.
+The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
 
 交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
 
@@ -65,7 +65,7 @@ The repository root keeps only `.cmd` user script entry points. The underlying P
 
 After `npm link`, the installer removes npm-generated `bh.ps1` / `blueprinthelper-cli.ps1` shims when matching `.cmd` launchers exist. This avoids PowerShell ExecutionPolicy blocking `bh`. If an older install still resolves `bh` to a `.ps1` file, rerun the root installer or call `bh.cmd`.
 
-## 3. Manual Project Agent Profile Fallback
+## 3. Manual Project Profile Fallback
 
 Use this only when the installer could not discover a unique `.uproject` or you intentionally passed `-SkipProjectProfile`.
 
@@ -73,14 +73,18 @@ Store UE version-specific configuration in the project profile:
 
 ```json
 {
+  "schema": "BlueprintHelper.ProjectProfile.v1",
   "environment": {
     "ue_version": "5.6",
     "ue_engine_dir": "<UE_ENGINE_ROOT>"
+  },
+  "workflow_docs": {
+    "agent_workflow": ".blueprinthelper/AgentWorkFlow.md"
   }
 }
 ```
 
-Save this file as `<ProjectDir>/.blueprinthelper/agent-profile.json`. The root installer writes this automatically when `-ProjectFile` and `-EngineRoot` are supplied.
+Save this file as `<ProjectDir>/.blueprinthelper/project-profile.json`. The root installer writes this automatically when `-ProjectFile` and `-EngineRoot` are supplied. Agent workflow rules should live in `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`; project-root `AGENTS.md` / `CLAUDE.md` should only keep the managed BlueprintHelper entry that points to that workflow document.
 
 Bridge connectivity environment variables:
 
@@ -93,7 +97,7 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project agent profile has `environment.ue_engine_dir`. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also uses the global MCP lifecycle tools, not CLI lifecycle aliases:
+Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project profile has `environment.ue_engine_dir`. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also uses the global MCP lifecycle tools, not CLI lifecycle aliases:
 
 ```text
 mcp__blueprint_helper__blueprint_open_editor

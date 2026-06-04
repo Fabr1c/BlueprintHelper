@@ -13,6 +13,7 @@ class FBlueprintHelperMainWindowPresenter;
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperReviewStoreService;
 class FBlueprintHelperReviewValiditySweepCoordinator;
+class SBlueprintHelperMetricsPanel;
 class SBlueprintHelperReviewPanel;
 class SBox;
 class SNotificationItem;
@@ -47,6 +48,7 @@ private:
 	FReply ShowReviewPage();
 	FReply ShowLayoutPage();
 	FReply ShowSettingsPage();
+	FReply ShowMetricsPage();
 	FReply OnCleanupReviewDataClicked();
 	void ShowPage(int32 PageIndex);
 	void EnsurePageConstructed(int32 PageIndex);
@@ -54,6 +56,7 @@ private:
 	TSharedRef<SWidget> BuildReviewPage();
 	TSharedRef<SWidget> BuildLayoutPage();
 	TSharedRef<SWidget> BuildSettingsPage();
+	TSharedRef<SWidget> BuildMetricsPage();
 	void HandleMainWindowPresenterEvent(const FBlueprintHelperMainWindowPresenterEvent& Event);
 	void HandleReviewValidityCandidatesReady(
 		const FString& Source,
@@ -66,6 +69,7 @@ private:
 	FSlateColor GetReviewTabColor() const;
 	FSlateColor GetLayoutTabColor() const;
 	FSlateColor GetSettingsTabColor() const;
+	FSlateColor GetMetricsTabColor() const;
 
 	const FBlueprintHelperImportService* ImportService = nullptr;
 	const FBlueprintHelperGraphResolver* GraphResolver = nullptr;
@@ -76,6 +80,7 @@ private:
 	TSharedPtr<SBox> PageHost;
 	TArray<TSharedPtr<SWidget>> ConstructedPages;
 	TWeakPtr<SBlueprintHelperReviewPanel> ReviewPanelWidget;
+	TWeakPtr<SBlueprintHelperMetricsPanel> MetricsPanelWidget;
 	FBlueprintHelperMainWindowSettings MainWindowSettings;
 	FBlueprintHelperNotificationSettings NotificationSettings;
 	FBlueprintHelperReviewPerformanceSettings ReviewPerformanceSettings;

@@ -114,6 +114,9 @@ bool FBlueprintHelperTaskRuntimePrepareService::Prepare(
 			return false;
 		}
 
+		PreparedStep.LoweredStep.StepId = PreparedStep.StepId;
+		PreparedStep.LoweredStep.DependsOn = PreparedStep.DependsOn;
+
 		OutPreparedRun.Steps.Add(PreparedStep);
 	}
 

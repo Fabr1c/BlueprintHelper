@@ -640,6 +640,34 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreService::BuildReviewRecordSum
 		{
 			ChangeJson->SetNumberField(TEXT("atomic_index"), Change.AtomicIndex);
 		}
+		if (Change.AtomicTargets.Num() == 1)
+		{
+			const FBlueprintHelperReviewAtomicTarget& Target = Change.AtomicTargets[0];
+			if (!Target.TargetKind.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("target_kind"), Target.TargetKind);
+			}
+			if (!Target.TargetSubKind.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("target_subkind"), Target.TargetSubKind);
+			}
+			if (!Target.SignatureRole.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("signature_role"), Target.SignatureRole);
+			}
+			if (!Target.SignatureEvidenceId.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("signature_evidence_id"), Target.SignatureEvidenceId);
+			}
+			if (!Target.DependencyOwnerStepId.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("dependency_owner_step_id"), Target.DependencyOwnerStepId);
+			}
+			if (!Target.DependentStepId.IsEmpty())
+			{
+				ChangeJson->SetStringField(TEXT("dependent_step_id"), Target.DependentStepId);
+			}
+		}
 		if (Change.bIsAssetLifecycleRoot)
 		{
 			ChangeJson->SetBoolField(TEXT("is_asset_lifecycle_root"), true);

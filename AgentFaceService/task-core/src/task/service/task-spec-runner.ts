@@ -60,6 +60,10 @@ import {
 export type { TaskPreviewToken } from '../schema/task-schemas.js';
 export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
+const TASK_ISSUE_DETAIL_KEYS = [
+  'signature_differences',
+] as const;
+
 export type TaskSpecRunnerMetrics =
   | MetricsEventSink
   | MetricsCollector
@@ -145,7 +149,7 @@ export function createTaskSpecRunner(input: {
         if (!preview.passed) {
           return await recordAndReturn(taskFailure(
             'execute_task',
-            'task_preview_blocked',
+            previewBlockedErrorCode(preview.issues),
             'preview_error',
             'Task preview was blocked; execute_task did not write assets.',
             preview.issues,
@@ -935,13 +939,17 @@ function bridgeFailureFromResponse(
     : typeof errorRecord?.['retryable'] === 'boolean'
       ? errorRecord['retryable']
       : false;
-  const normalizedIssues = issues.length > 0
+  const normalizedIssuesBase = issues.length > 0
     ? issues
     : [{
       code,
       path: field,
       message,
     }];
+  const issueDetailFields = collectTaskIssueDetailFields(data);
+  const normalizedIssues = normalizedIssuesBase.length === 1
+    ? [mergeTaskIssueDetailFields(normalizedIssuesBase[0], issueDetailFields)]
+    : normalizedIssuesBase;
 
   return {
     code,
@@ -1031,10 +1039,10 @@ function extractDryRun(resp: BridgeResponse): { canExecute: boolean; issues: Tas
     canExecute === false ||
     failedStepIssues.length > 0;
   const dryRunIssues = collectIssues(dryRun);
-  const issues = [
+  const issues = dedupeTaskIssues([
     ...dryRunIssues,
     ...failedStepIssues,
-  ];
+  ]);
   return {
     canExecute: typeof canExecute === 'boolean' ? canExecute && !blockedByStatus : !blockedByStatus,
     issues: issues.length > 0 || !blockedByStatus
@@ -1082,15 +1090,92 @@ function collectFailedPreviewStepIssues(
       readNonEmptyString(stepResult?.['message']) ??
       readNonEmptyString(step['message']) ??
       `Preview step ${stepId} failed.`;
+    const detailFields = collectFailedPreviewStepIssueDetailFields(stepResult);
 
     const issueKey = `${code}\u0000${path}\u0000${message}`;
     if (!seenIssueKeys.has(issueKey)) {
       seenIssueKeys.add(issueKey);
-      issues.push({ code, path, message });
+      issues.push({
+        code,
+        path,
+        message,
+        ...detailFields,
+      } as TaskIssue);
     }
   });
 
   return issues;
+}
+
+function collectFailedPreviewStepIssueDetailFields(
+  stepResult: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const data = asRecord(stepResult?.['data']);
+  if (!data) {
+    return {};
+  }
+
+  return collectTaskIssueDetailFields(data);
+}
+
+function collectTaskIssueDetailFields(data: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!data) {
+    return {};
+  }
+
+  const details: Record<string, unknown> = {};
+  for (const key of TASK_ISSUE_DETAIL_KEYS) {
+    if (Object.hasOwn(data, key)) {
+      details[key] = data[key];
+    }
+  }
+  return details;
+}
+
+function mergeTaskIssueDetailFields(
+  issue: TaskIssue,
+  detailFields: Record<string, unknown>,
+): TaskIssue {
+  const detailEntries = Object.entries(detailFields);
+  if (detailEntries.length === 0) {
+    return issue;
+  }
+
+  const merged = { ...(issue as Record<string, unknown>) };
+  for (const [key, value] of detailEntries) {
+    if (merged[key] === undefined) {
+      merged[key] = value;
+    }
+  }
+  return merged as TaskIssue;
+}
+
+function dedupeTaskIssues(issues: TaskIssue[]): TaskIssue[] {
+  const mergedIssues: TaskIssue[] = [];
+  const issueByKey = new Map<string, TaskIssue>();
+
+  for (const issue of issues) {
+    const issueKey = `${issue.code}\u0000${issue.path}\u0000${issue.message}`;
+    const existingIssue = issueByKey.get(issueKey);
+    if (!existingIssue) {
+      const copiedIssue = { ...(issue as Record<string, unknown>) } as TaskIssue;
+      issueByKey.set(issueKey, copiedIssue);
+      mergedIssues.push(copiedIssue);
+      continue;
+    }
+
+    const existingRecord = existingIssue as Record<string, unknown>;
+    for (const [key, value] of Object.entries(issue as Record<string, unknown>)) {
+      if (key === 'code' || key === 'path' || key === 'message') {
+        continue;
+      }
+      if (existingRecord[key] === undefined) {
+        existingRecord[key] = value;
+      }
+    }
+  }
+
+  return mergedIssues;
 }
 
 function collectBlockedPreviewIssues(
@@ -1114,6 +1199,18 @@ function collectBlockedPreviewIssues(
     'Task preview was blocked.';
 
   return [{ code, path, message }];
+}
+
+function previewBlockedErrorCode(issues: TaskIssue[]): string {
+  const issueCodes = new Set(
+    issues
+      .map((issue) => issue.code)
+      .filter((code): code is string => typeof code === 'string' && code.length > 0),
+  );
+  if (issueCodes.size === 1) {
+    return [...issueCodes][0] ?? 'task_preview_blocked';
+  }
+  return 'task_preview_blocked';
 }
 
 function collectIssues(dryRun: Record<string, unknown> | undefined): TaskIssue[] {

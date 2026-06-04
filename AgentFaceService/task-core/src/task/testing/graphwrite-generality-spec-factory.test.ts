@@ -105,7 +105,9 @@ test('GraphWrite generality select fixtures carry concrete result type proof', (
   assert.ok(bundle);
   const spec = bundle.graphWriteSpec as Record<string, any>;
   const selectExpression = spec.behavior.entries[0].body.statements[0].value as Record<string, any>;
-  assert.equal(selectExpression.context_evidence['generic.select.result_type_proof'], 'string');
+  assert.deepEqual(selectExpression.context_evidence['generic.select.result_type_proof'], {
+    pin_type: { category: 'string' },
+  });
 });
 
 test('GraphWrite generality schedule latent fixture carries graph permission evidence', () => {
@@ -143,7 +145,7 @@ test('GraphWrite generality schedule timer fixture declares BlueprintSignature h
   assert.equal(statement.context_evidence.signature_evidence_id, 'signature:custom_event:Handle_GWGen_schedule_timer_delegate_node_00');
 });
 
-test('GraphWrite generality create map fixture carries map pin evidence as strings', () => {
+test('GraphWrite generality create map fixture carries structured map pin evidence', () => {
   const bundle = makeGraphWriteGeneralityBundles({
     assetPath: '/Game/BlueprintHelper/Generality/BP_Test',
     graphName: 'EG_Test',
@@ -152,9 +154,13 @@ test('GraphWrite generality create map fixture carries map pin evidence as strin
   assert.ok(bundle);
   const spec = bundle.graphWriteSpec as Record<string, any>;
   const statement = spec.behavior.entries[0].body.statements[0] as Record<string, any>;
-  assert.equal(statement.pin_type, 'category=wildcard|container=map');
-  assert.equal(statement.key_pin_type, 'string');
-  assert.equal(statement.value_pin_type, 'int');
+  assert.deepEqual(statement.pin_type, {
+    category: 'string',
+    container_type: 'map',
+    value_type: { category: 'int' },
+  });
+  assert.deepEqual(statement.key_pin_type, { category: 'string' });
+  assert.deepEqual(statement.value_pin_type, { category: 'int' });
 });
 
 test('GraphWrite generality struct fixtures populate required field maps and facts', () => {
@@ -231,9 +237,9 @@ test('GraphWrite generality type promotion fixture carries projected type-promot
   assert.equal(statement.transform_operation, 'type_promotion');
   assert.equal(statement.context_evidence.type_promotion_stable_id, 'type_promotion:Add:int:real');
   assert.equal(statement.context_evidence.type_promotion_operator, 'Add');
-  assert.equal(statement.context_evidence.type_promotion_source_pin_type, 'int');
-  assert.equal(statement.context_evidence.type_promotion_target_pin_type, 'real');
-  assert.equal(statement.context_evidence.type_promotion_result_pin_type, 'real');
+  assert.deepEqual(statement.context_evidence.type_promotion_source_pin_type, { category: 'int' });
+  assert.deepEqual(statement.context_evidence.type_promotion_target_pin_type, { category: 'real' });
+  assert.deepEqual(statement.context_evidence.type_promotion_result_pin_type, { category: 'real' });
 });
 
 test('GraphWrite generality intpoint_equal fixture uses typed IntPoint operands', () => {

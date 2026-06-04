@@ -184,6 +184,11 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString GraphName;
 	FString TargetKey;
 	FString TargetKind;
+	FString TargetSubKind;
+	FString SignatureRole;
+	FString SignatureEvidenceId;
+	FString DependencyOwnerStepId;
+	FString DependentStepId;
 	FString ScopeIdentity;
 	FString VisualGroupKey;
 	FString DisplayLabel;

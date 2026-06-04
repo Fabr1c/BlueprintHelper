@@ -499,7 +499,15 @@ The first composite slice is Blueprint Feature composition:
 
 `create_blueprint_feature` is not a new UE mega-tool. It is a compiler-owned decomposition layer: Agent writes one semantic feature TaskSpec, the canonical TypeScript compiler emits multiple existing capability steps, and UE Task Runtime lowers each step through the existing clusters. The current executable slice supports `integration.interface` by lowering it to class settings, function signature, and GraphWrite function-body steps. It rejects `integration.input` as an explicit out-of-scope area, matching the current UE-side capability boundary, and still rejects `scope_policy.allow_create_assets=true` so asset creation is not silently skipped.
 
-Broader function/event signature management, DataAsset/ObjectProperty, Cleanup/Ownership, and large debug payload export remain future contract extensions. Input mapping integration is intentionally cut from the current roadmap until it is rechartered as a separate capability area.
+Broader DataAsset/ObjectProperty, Cleanup/Ownership, and large debug payload export remain future contract extensions. Input mapping integration is intentionally cut from the current roadmap until it is rechartered as a separate capability area.
+
+### Signature Agent-Facing Contract
+
+Agents write only `BlueprintHelper.TaskSpec.v1`; they must not author `BlueprintHelper.TaskPlan.v1` or raw Bridge payloads directly. Signature lifecycle is now exposed as the Agent-facing `edit_blueprint_signature` TaskSpec type, and the compiler lowers it to compiler-owned `blueprint_signature` TaskPlan steps.
+
+Signature inputs and outputs use `SignaturePinSpec`. `SignaturePinSpec.pin_type` uses the shared `BlueprintPinTypeSpec` object shape, for example `{ "category": "int" }` or `{ "category": "string", "container_type": "map", "value_type": { "category": "int" } }`. New Agent-facing input rejects legacy string PinType tokens such as `"int"` or `"category=wildcard|container=map"`.
+
+When an existing function has a different signature from the requested `ensure_function` contract, preview and execute both block with `function_signature_mismatch`. The result includes structured signature differences; callers should treat that as a contract mismatch, not as a best-effort rewrite request.
 
 ## 6. TaskSpec Required Fields
 
@@ -1009,7 +1017,7 @@ These operations are TaskRuntime / Existing Capability Cluster steps. They do no
 |---|---|---|---|
 | Graph Write | `append_blueprint_graph`, `replace_blueprint_graph`, `patch_blueprint_graph`, `merge_blueprint_graph` | `BlueprintHelper_AppendBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_ReplaceBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_PatchBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md`, `BlueprintHelper_MergeBlueprintGraph_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only |
 | Blueprint Variables | `add_blueprint_member_variables` runtime adapter for `ensure_member_variable`; wider read/default/local/remove commands remain internal until dry-run contracts are fixed | `BlueprintHelper_BlueprintVariables_Defaults_LocalVariables_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only for `ensure_member_variable`, otherwise TaskPlan internal |
-| Function/Event Signature | TaskPlan-internal `blueprint_signature` ops for function, custom event, interface entry, dispatcher, override/native create-if-missing, and remove preflight policies | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
+| Function/Event Signature | Agent-facing `edit_blueprint_signature` TaskSpec lowered to compiler-owned `blueprint_signature` ops for function, custom event, interface entry, dispatcher, override/native create-if-missing, and remove preflight policies | `BlueprintHelper_FunctionEventSignature_UE_CPP_Implementation_Plan_20260503.md` | TaskSpec only |
 | UMG Widget Blueprint | `read_widget_blueprint`, `set_widget_tree`, `set_widget_properties` | `BlueprintHelper_UMG_WidgetBlueprint_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataAsset | `read_data_asset`, `set_data_asset_properties` | `BlueprintHelper_DataAsset_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |
 | DataTable | `read_data_table`, `update_data_table_rows` | `BlueprintHelper_DataTable_UE_CPP_Implementation_Plan_20260503.md` | TaskPlan internal |

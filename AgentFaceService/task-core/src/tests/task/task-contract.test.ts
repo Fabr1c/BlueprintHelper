@@ -29,6 +29,11 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'blueprinthelper_execute_task',
       'blueprinthelper_get_task_result',
     ]);
+    assert.ok(TASK_PROTOCOL_CONTRACT_V1.supported_task_types.includes('edit_blueprint_signature'));
+    assert.equal(
+      TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters.find((cluster) => cluster.cluster === 'blueprint_signature')?.agent_exposure,
+      'taskspec_only',
+    );
   });
 
   it('keeps Agent-owned TaskSpec fields separate from compiler-owned TaskPlan fields', () => {
@@ -226,6 +231,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'create_asset',
         'edit_blueprint_components',
         'edit_blueprint_class_settings',
+        'edit_blueprint_signature',
         'edit_umg_widget',
         'edit_data_table',
       ],
@@ -236,6 +242,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
         'asset_factory',
         'blueprint_component',
         'blueprint_class_settings',
+        'blueprint_signature',
         'umg_widget',
         'data_table',
       ],
@@ -435,7 +442,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'ensure_override_event',
       'remove_signature',
     ]);
-    assert.deepEqual(blueprintSignature.agent_exposure, 'taskplan_internal');
+    assert.deepEqual(blueprintSignature.agent_exposure, 'taskspec_only');
 
     const blueprintVariables = TASK_PROTOCOL_CONTRACT_V1.capability_catalog.task_runtime_clusters[2];
     assert.equal(blueprintVariables.taskplan_capability, 'blueprint_variable');

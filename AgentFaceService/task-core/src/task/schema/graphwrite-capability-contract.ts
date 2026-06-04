@@ -7,6 +7,9 @@ export type GraphWriteReviewEvidencePolicy = 'graph_surface_atomic_target';
 export type GraphWriteRuntimeOwner = 'FunctionAction' | 'GenericAssetStructControlAction' | 'EventDelegateAction';
 export type GraphWriteLogicalRuntimeCluster = GraphWriteRuntimeOwner;
 
+const BLUEPRINT_PIN_TYPE_SPEC_DOC =
+  'BlueprintPinTypeSpec object, for example { category: "string" } or { category: "string", container_type: "map", value_type: { category: "int" } }.';
+
 export interface GraphWriteOperationGroupOperation {
   readonly id: string;
   readonly supportStatus: GraphWriteSupportStatus;
@@ -57,6 +60,12 @@ export interface GraphWriteCapabilityContract {
   readonly status: 'stable-candidate';
   readonly clusters: readonly GraphWriteClusterContract[];
   readonly operationGroups: readonly GraphWriteOperationGroupContract[];
+  readonly signatureDependencyReviewFields: {
+    readonly signatureRole: 'signature_role';
+    readonly signatureEvidenceId: 'signature_evidence_id';
+    readonly dependencyOwnerStepId: 'dependency_owner_step_id';
+    readonly dependentStepId: 'dependent_step_id';
+  };
   readonly finalAcceptance: {
     readonly generalityPreflightAfterStable: true;
     readonly smokePlan: 'BlueprintHelper_GraphWrite_GeneralityPreflightTest_Plan_20260525_CN.md';
@@ -376,7 +385,7 @@ const GENERIC_OPS_OPERATION_GROUPS = [
   {
     id: 'generic_ops.transform',
     responsibility:
-      'GenericOps transform operations cover generic cast and type-promotion node evidence; function-backed conversion is owned by FunctionAction and is not indexed here.',
+      `GenericOps transform operations cover generic cast and type-promotion node evidence. Pin evidence fields such as generic.transform.source_pin_type, generic.transform.target_pin_type, and type_promotion_*_pin_type must use a structured ${BLUEPRINT_PIN_TYPE_SPEC_DOC}. Function-backed conversion is owned by FunctionAction and is not indexed here.`,
     operations: [
       ...GENERIC_TRANSFORM_GENERIC_OPERATIONS.map((operation) =>
         makeSupportedGenericOp('transform', operation, 'GenericAssetStructControlAction', GENERIC_TRANSFORM_EVIDENCE_KEYS),
@@ -387,7 +396,7 @@ const GENERIC_OPS_OPERATION_GROUPS = [
   {
     id: 'generic_ops.create',
     responsibility:
-      'GenericOps create operations use projected generic spawner evidence; asset_action and function-backed factories are owned by their canonical clusters and are not indexed here.',
+      `GenericOps create operations use projected generic spawner evidence. make_array, make_set, and make_map pin declarations must use a structured ${BLUEPRINT_PIN_TYPE_SPEC_DOC}. Asset_action and function-backed factories are owned by their canonical clusters and are not indexed here.`,
     operations: [
       ...GENERIC_CREATE_GENERIC_OPERATIONS.map((operation) =>
         makeSupportedGenericOp(
@@ -402,7 +411,7 @@ const GENERIC_OPS_OPERATION_GROUPS = [
   {
     id: 'generic_ops.struct_select',
     responsibility:
-      'GenericOps struct/select operations stay GenericAssetStructControlAction-owned and require field policy or result-type proof evidence.',
+      `GenericOps struct/select operations stay GenericAssetStructControlAction-owned and require field policy or result-type proof evidence. generic.select.result_type_proof must be an object such as { pin_type: { category: "string" } } rather than a canonical string token.`,
     operations: [
       ...GENERIC_STRUCT_SELECT_OPERATIONS.map((operation) =>
         makeSupportedGenericOp('struct_select', operation, 'GenericAssetStructControlAction', GENERIC_STRUCT_SELECT_EVIDENCE_KEYS),
@@ -718,6 +727,12 @@ export const GRAPHWRITE_CAPABILITY_CONTRACT: GraphWriteCapabilityContract = {
       ],
     },
   ],
+  signatureDependencyReviewFields: {
+    signatureRole: 'signature_role',
+    signatureEvidenceId: 'signature_evidence_id',
+    dependencyOwnerStepId: 'dependency_owner_step_id',
+    dependentStepId: 'dependent_step_id',
+  },
   finalAcceptance: {
     generalityPreflightAfterStable: true,
     smokePlan: 'BlueprintHelper_GraphWrite_GeneralityPreflightTest_Plan_20260525_CN.md',

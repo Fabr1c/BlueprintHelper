@@ -7,9 +7,14 @@ FString FBlueprintHelperProjectConfigPaths::GetProjectConfigDir()
 	return FPaths::Combine(FPaths::ProjectDir(), TEXT(".blueprinthelper"));
 }
 
+FString FBlueprintHelperProjectConfigPaths::GetProjectProfilePath()
+{
+	return FPaths::Combine(GetProjectConfigDir(), TEXT("project-profile.json"));
+}
+
 FString FBlueprintHelperProjectConfigPaths::GetAgentProfilePath()
 {
-	return FPaths::Combine(GetProjectConfigDir(), TEXT("agent-profile.json"));
+	return GetProjectProfilePath();
 }
 
 FString FBlueprintHelperProjectConfigPaths::GetGraphLayoutRulesPath()

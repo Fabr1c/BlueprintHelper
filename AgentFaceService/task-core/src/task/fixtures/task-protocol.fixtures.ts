@@ -1482,6 +1482,110 @@ export const classSettingsTaskPlanFixture = {
   ],
 } satisfies TaskPlan;
 
+export const signatureTaskSpecFixture = {
+  schema: 'BlueprintHelper.TaskSpec.v1',
+  context_id: 'ctx_signature_compute_score',
+  task_type: 'edit_blueprint_signature',
+  feature_name: 'SignatureComputeScore',
+  target: {
+    asset_path: '/Game/Blueprints/BP_SignatureExample',
+    target_type: 'blueprint',
+  },
+  behavior: {
+    signature_strategy: 'signature_edit',
+    changes: [
+      {
+        kind: 'ensure_function',
+        function_name: 'ComputeScore',
+        inputs: [
+          {
+            name: 'BaseScore',
+            pin_type: {
+              category: 'int',
+            },
+            default_value: {
+              mode: 'literal',
+              value: '0',
+            },
+          },
+        ],
+        outputs: [
+          {
+            name: 'FinalScore',
+            pin_type: {
+              category: 'int',
+            },
+          },
+        ],
+        is_pure: true,
+        name_collision_policy: 'reuse_if_exists',
+      },
+    ],
+  },
+  execution_policy: {
+    dry_run_mode: 'full',
+    on_missing_capability: 'stop_and_report',
+  },
+  validation: {
+    should_compile: false,
+    should_save: false,
+  },
+} satisfies TaskSpec;
+
+export const signatureTaskPlanFixture = {
+  schema: 'BlueprintHelper.TaskPlan.v1',
+  task_name: 'SignatureComputeScore',
+  task_type: 'edit_blueprint_signature',
+  context_id: 'ctx_signature_compute_score',
+  target_assets: ['/Game/Blueprints/BP_SignatureExample'],
+  execution_policy: {
+    dry_run_mode: 'full',
+    should_compile: false,
+    should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
+  },
+  steps: [
+    {
+      step_id: 'step_001',
+      capability: 'blueprint_signature',
+      target: {
+        asset_path: '/Game/Blueprints/BP_SignatureExample',
+      },
+      write: {
+        strategy: 'function_signature',
+        ops: [
+          {
+            op: 'ensure_function',
+            function_name: 'ComputeScore',
+            inputs: [
+              {
+                name: 'BaseScore',
+                pin_type: {
+                  category: 'int',
+                },
+                default_value: {
+                  mode: 'literal',
+                  value: '0',
+                },
+              },
+            ],
+            outputs: [
+              {
+                name: 'FinalScore',
+                pin_type: {
+                  category: 'int',
+                },
+              },
+            ],
+            is_pure: true,
+            name_collision_policy: 'reuse_if_exists',
+          },
+        ],
+      },
+    },
+  ],
+} satisfies TaskPlan;
+
 export const widgetTaskSpecFixture = {
   schema: 'BlueprintHelper.TaskSpec.v1',
   context_id: 'ctx_p1_umg_widget',
@@ -1708,6 +1812,7 @@ export const p1TaskSpecFixtures = [
   createAssetTaskSpecFixture,
   componentTaskSpecFixture,
   classSettingsTaskSpecFixture,
+  signatureTaskSpecFixture,
   widgetTaskSpecFixture,
   dataTableTaskSpecFixture,
 ] satisfies TaskSpec[];
@@ -1716,6 +1821,7 @@ export const p1TaskPlanFixtures = [
   createAssetTaskPlanFixture,
   componentTaskPlanFixture,
   classSettingsTaskPlanFixture,
+  signatureTaskPlanFixture,
   widgetTaskPlanFixture,
   dataTableTaskPlanFixture,
 ] satisfies TaskPlan[];

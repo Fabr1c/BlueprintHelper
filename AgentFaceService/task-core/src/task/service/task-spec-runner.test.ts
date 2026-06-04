@@ -93,6 +93,65 @@ function createMissingEvidencePreviewStep() {
   };
 }
 
+function createSignatureMismatchPreviewStep() {
+  return {
+    step_id: 'step_001',
+    capability: 'blueprint_signature',
+    result: {
+      ok: false,
+      status: 'failed',
+      error: {
+        code: 'function_signature_mismatch',
+        message: 'Function signature mismatch: ComputeScore.',
+        field: 'inputs',
+      },
+      data: {
+        signature_differences: [
+          {
+            path: 'inputs[0].pin_type.category',
+            expected: 'float',
+            actual: 'int',
+          },
+        ],
+      },
+    },
+  };
+}
+
+function createSignatureMismatchPreviewBridgeResponse(): BridgeResponse {
+  return {
+    success: true,
+    request_id: 'preview_signature_mismatch_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_signature_mismatch',
+      status: 'dry_run',
+      modified: false,
+      data: {
+        preview_token: '11223344556677889900aabbccddeeff',
+        dry_run: {
+          can_execute: false,
+          result: 'blocked',
+          errors: [
+            {
+              code: 'function_signature_mismatch',
+              target: 'inputs',
+              message: 'Function signature mismatch: ComputeScore.',
+              source: 'task_runtime',
+            },
+          ],
+          conflicts: [],
+        },
+        steps: [
+          createSignatureMismatchPreviewStep(),
+        ],
+      },
+    },
+  };
+}
+
 function assertIssueCodes(value: unknown): string[] {
   assert.ok(Array.isArray(value));
   return value.map((issue) => {
@@ -331,6 +390,62 @@ test('preview task preserves dry run issues while deduplicating failed preview s
   assert.deepEqual(toolIssueCodes, codes);
 });
 
+test('preview task preserves signature differences from failed preview step issues', async () => {
+  const runner = createRunnerForPreviewResponse(createSignatureMismatchPreviewBridgeResponse());
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const issues = result.toolResult.data?.['issues'];
+
+  assert.equal(result.passed, false);
+  assert.ok(Array.isArray(issues));
+  assert.equal(issues.length, 1);
+  assert.equal(result.issues[0]?.code, 'function_signature_mismatch');
+  assert.deepEqual((result.issues[0] as Record<string, unknown>)['signature_differences'], [
+    {
+      path: 'inputs[0].pin_type.category',
+      expected: 'float',
+      actual: 'int',
+    },
+  ]);
+  assert.deepEqual((issues[0] as Record<string, unknown>)['signature_differences'], [
+    {
+      path: 'inputs[0].pin_type.category',
+      expected: 'float',
+      actual: 'int',
+    },
+  ]);
+});
+
+test('execute task promotes unique preview blocker code and keeps signature differences', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      assert.equal(command, 'preview_task_plan');
+      return createSignatureMismatchPreviewBridgeResponse();
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+  const issues = errorRecord['issues'];
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'function_signature_mismatch');
+  assert.ok(Array.isArray(issues));
+  assert.deepEqual((issues[0] as Record<string, unknown>)['signature_differences'], [
+    {
+      path: 'inputs[0].pin_type.category',
+      expected: 'float',
+      actual: 'int',
+    },
+  ]);
+});
+
 test('preview task records metrics with task identity and extracted operation', async () => {
   const events: MetricsEvent[] = [];
   const runner = createTaskSpecRunner({
@@ -530,6 +645,66 @@ test('execute task with preview token preserves context_stale from failed UE Too
   assert.equal(result.error?.retryable, true);
   assert.equal(result.error?.field, 'preview_token.context_revision');
   assert.equal(errorRecord['agent_action'], 'refresh_context_and_preview');
+});
+
+test('execute task with preview token preserves signature differences from failed UE ToolResult data', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      assert.equal(command, 'execute_task_plan');
+      return {
+        success: true,
+        request_id: 'signature_mismatch_execute_tool_result_request',
+        result: {
+          ok: false,
+          operation: 'ensure_function',
+          status: 'failed',
+          modified: false,
+          error: {
+            code: 'function_signature_mismatch',
+            message: 'Function signature mismatch: ComputeScore.',
+            field: 'inputs',
+            retryable: false,
+          },
+          data: {
+            signature_differences: [
+              {
+                path: 'inputs[0].pin_type.category',
+                expected: 'float',
+                actual: 'int',
+              },
+            ],
+          },
+        },
+      } as unknown as BridgeResponse;
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(
+    graphWriteAppendTaskSpecFixture,
+    undefined,
+    { previewToken: '0123456789abcdef0123456789abcdef' },
+  );
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+  const issues = errorRecord['issues'];
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'function_signature_mismatch');
+  assert.ok(Array.isArray(issues));
+  assert.deepEqual((issues[0] as Record<string, unknown>)['signature_differences'], [
+    {
+      path: 'inputs[0].pin_type.category',
+      expected: 'float',
+      actual: 'int',
+    },
+  ]);
 });
 
 test('metrics sink failures do not change preview or execute results', async () => {

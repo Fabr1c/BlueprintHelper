@@ -8,18 +8,19 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
+#include "Systems/SharedServices/Utils/BlueprintHelperPinTypeSpecUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureReferenceContextUtils.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_EditablePinBase.h"
 #include "K2Node_Event.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
@@ -33,6 +34,19 @@ public:
 	{
 		FString Name;
 		FEdGraphPinType PinType;
+	};
+
+	struct FBlueprintHelperFunctionSignaturePinSnapshot
+	{
+		FString Name;
+		FEdGraphPinType PinType;
+		FString Direction;
+	};
+
+	struct FBlueprintHelperFunctionSignatureDiff
+	{
+		bool bMatches = true;
+		TArray<TSharedPtr<FJsonValue>> Differences;
 	};
 
 	struct FBlueprintHelperResolvedCustomEventTarget
@@ -474,25 +488,39 @@ public:
 		const TArray<TSharedPtr<FJsonValue>>& Params,
 		TArray<FBlueprintHelperSignaturePinSpec>& OutPins,
 		FString& OutMessage,
-		FString& OutField)
+		FString& OutField,
+		const TCHAR* FieldPrefix = TEXT("inputs"),
+		FString* OutCode = nullptr)
 	{
 		OutPins.Reset();
+		if (OutCode)
+		{
+			OutCode->Reset();
+		}
 
 		for (int32 Index = 0; Index < Params.Num(); ++Index)
 		{
 			const TSharedPtr<FJsonObject> ParamObject = Params[Index].IsValid() ? Params[Index]->AsObject() : nullptr;
 			if (!ParamObject.IsValid())
 			{
+				if (OutCode)
+				{
+					*OutCode = TEXT("invalid_signature_payload");
+				}
 				OutMessage = TEXT("Signature parameter entries must be objects.");
-				OutField = FString::Printf(TEXT("inputs[%d]"), Index);
+				OutField = FString::Printf(TEXT("%s[%d]"), FieldPrefix, Index);
 				return false;
 			}
 
 			FString ParamName;
 			if (!ParamObject->TryGetStringField(TEXT("name"), ParamName) || ParamName.IsEmpty())
 			{
+				if (OutCode)
+				{
+					*OutCode = TEXT("invalid_signature_payload");
+				}
 				OutMessage = TEXT("Signature parameter requires name.");
-				OutField = FString::Printf(TEXT("inputs[%d].name"), Index);
+				OutField = FString::Printf(TEXT("%s[%d].name"), FieldPrefix, Index);
 				return false;
 			}
 
@@ -501,8 +529,12 @@ public:
 					return Pin.Name == ParamName;
 				}))
 			{
+				if (OutCode)
+				{
+					*OutCode = TEXT("duplicate_signature_pin_name");
+				}
 				OutMessage = FString::Printf(TEXT("Duplicate signature parameter name: %s."), *ParamName);
-				OutField = FString::Printf(TEXT("inputs[%d].name"), Index);
+				OutField = FString::Printf(TEXT("%s[%d].name"), FieldPrefix, Index);
 				return false;
 			}
 
@@ -510,27 +542,33 @@ public:
 			if (!ParamObject->TryGetObjectField(TEXT("pin_type"), PinTypeObject) ||
 				!PinTypeObject || !PinTypeObject->IsValid())
 			{
+				if (OutCode)
+				{
+					*OutCode = TEXT("invalid_pin_type");
+				}
 				OutMessage = FString::Printf(TEXT("Signature parameter %s requires pin_type."), *ParamName);
-				OutField = FString::Printf(TEXT("inputs[%d].pin_type"), Index);
+				OutField = FString::Printf(TEXT("%s[%d].pin_type"), FieldPrefix, Index);
 				return false;
 			}
 
-			FParsedPinType ParsedPinType;
-			(*PinTypeObject)->TryGetStringField(TEXT("category"), ParsedPinType.Category);
-			(*PinTypeObject)->TryGetStringField(TEXT("sub_category"), ParsedPinType.SubCategory);
-			(*PinTypeObject)->TryGetStringField(TEXT("object_path"), ParsedPinType.SubCategoryObjectPath);
-			(*PinTypeObject)->TryGetStringField(TEXT("container_type"), ParsedPinType.ContainerType);
-			(*PinTypeObject)->TryGetBoolField(TEXT("is_reference"), ParsedPinType.bIsReference);
-			(*PinTypeObject)->TryGetBoolField(TEXT("is_const"), ParsedPinType.bIsConst);
-
 			FEdGraphPinType PinType;
-			FString ConvertError;
-			if (!FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinType, PinType, ConvertError))
+			FBlueprintHelperPinTypeSpecError PinTypeError;
+			if (!FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(
+				*PinTypeObject,
+				PinType,
+				PinTypeError,
+				FString::Printf(TEXT("%s[%d].pin_type"), FieldPrefix, Index)))
 			{
-				OutMessage = ConvertError.IsEmpty()
+				if (OutCode)
+				{
+					*OutCode = PinTypeError.Code.IsEmpty() ? TEXT("invalid_pin_type") : PinTypeError.Code;
+				}
+				OutMessage = PinTypeError.Message.IsEmpty()
 					? FString::Printf(TEXT("Unable to convert signature parameter type: %s."), *ParamName)
-					: ConvertError;
-				OutField = FString::Printf(TEXT("inputs[%d].pin_type"), Index);
+					: PinTypeError.Message;
+				OutField = PinTypeError.FieldPath.IsEmpty()
+					? FString::Printf(TEXT("%s[%d].pin_type"), FieldPrefix, Index)
+					: PinTypeError.FieldPath;
 				return false;
 			}
 
@@ -541,6 +579,20 @@ public:
 		}
 
 		return true;
+	}
+
+	static bool PinTerminalTypesMatch(const FEdGraphTerminalType& Left, const FEdGraphTerminalType& Right)
+	{
+		const FString LeftObjectPath = Left.TerminalSubCategoryObject.IsValid()
+			? Left.TerminalSubCategoryObject->GetPathName()
+			: TEXT("");
+		const FString RightObjectPath = Right.TerminalSubCategoryObject.IsValid()
+			? Right.TerminalSubCategoryObject->GetPathName()
+			: TEXT("");
+
+		return Left.TerminalCategory == Right.TerminalCategory &&
+			Left.TerminalSubCategory == Right.TerminalSubCategory &&
+			LeftObjectPath == RightObjectPath;
 	}
 
 	static bool PinTypesMatch(const FEdGraphPinType& Left, const FEdGraphPinType& Right)
@@ -556,8 +608,262 @@ public:
 			Left.PinSubCategory == Right.PinSubCategory &&
 			LeftObjectPath == RightObjectPath &&
 			Left.ContainerType == Right.ContainerType &&
+			PinTerminalTypesMatch(Left.PinValueType, Right.PinValueType) &&
 			Left.bIsReference == Right.bIsReference &&
 			Left.bIsConst == Right.bIsConst;
+	}
+
+	static TSharedRef<FJsonObject> PinTerminalTypeToJson(const FEdGraphTerminalType& PinType)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		if (!PinType.TerminalCategory.IsNone())
+		{
+			Json->SetStringField(TEXT("category"), PinType.TerminalCategory.ToString());
+		}
+		if (!PinType.TerminalSubCategory.IsNone())
+		{
+			Json->SetStringField(TEXT("sub_category"), PinType.TerminalSubCategory.ToString());
+		}
+		if (PinType.TerminalSubCategoryObject.IsValid())
+		{
+			Json->SetStringField(TEXT("object_path"), PinType.TerminalSubCategoryObject->GetPathName());
+		}
+		return Json;
+	}
+
+	static TSharedRef<FJsonObject> PinTypeToJson(const FEdGraphPinType& PinType)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("category"), PinType.PinCategory.ToString());
+		if (!PinType.PinSubCategory.IsNone())
+		{
+			Json->SetStringField(TEXT("sub_category"), PinType.PinSubCategory.ToString());
+		}
+		if (PinType.PinSubCategoryObject.IsValid())
+		{
+			Json->SetStringField(TEXT("object_path"), PinType.PinSubCategoryObject->GetPathName());
+		}
+		if (PinType.ContainerType == EPinContainerType::Array)
+		{
+			Json->SetStringField(TEXT("container_type"), TEXT("array"));
+		}
+		else if (PinType.ContainerType == EPinContainerType::Set)
+		{
+			Json->SetStringField(TEXT("container_type"), TEXT("set"));
+		}
+		else if (PinType.ContainerType == EPinContainerType::Map)
+		{
+			Json->SetStringField(TEXT("container_type"), TEXT("map"));
+			Json->SetObjectField(TEXT("value_type"), PinTerminalTypeToJson(PinType.PinValueType));
+		}
+		if (PinType.bIsReference)
+		{
+			Json->SetBoolField(TEXT("is_reference"), true);
+		}
+		if (PinType.bIsConst)
+		{
+			Json->SetBoolField(TEXT("is_const"), true);
+		}
+		return Json;
+	}
+
+	static UEdGraph* FindFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+		{
+			if (Graph && Graph->GetName() == FunctionName)
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_FunctionEntry* FindFunctionEntry(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+			{
+				return Entry;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_FunctionResult* FindFunctionResult(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
+			{
+				return Result;
+			}
+		}
+		return nullptr;
+	}
+
+	static void AppendFunctionUserPinSnapshots(
+		const TArray<TSharedPtr<FUserPinInfo>>& Pins,
+		const FString& Direction,
+		TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& OutSnapshots)
+	{
+		for (const TSharedPtr<FUserPinInfo>& Pin : Pins)
+		{
+			if (!Pin.IsValid())
+			{
+				continue;
+			}
+
+			FBlueprintHelperFunctionSignaturePinSnapshot Snapshot;
+			Snapshot.Name = Pin->PinName.ToString();
+			Snapshot.PinType = Pin->PinType;
+			Snapshot.Direction = Direction;
+			OutSnapshots.Add(Snapshot);
+		}
+	}
+
+	static bool BuildExistingFunctionSignature(
+		UBlueprint* Blueprint,
+		const FString& FunctionName,
+		TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& OutInputs,
+		TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& OutOutputs,
+		FString& OutError)
+	{
+		OutInputs.Reset();
+		OutOutputs.Reset();
+		OutError.Reset();
+
+		UEdGraph* FunctionGraph = FindFunctionGraph(Blueprint, FunctionName);
+		if (!FunctionGraph)
+		{
+			OutError = FString::Printf(TEXT("Function graph not found: %s."), *FunctionName);
+			return false;
+		}
+
+		UK2Node_FunctionEntry* Entry = FindFunctionEntry(FunctionGraph);
+		if (!Entry)
+		{
+			OutError = FString::Printf(TEXT("Function entry node not found: %s."), *FunctionName);
+			return false;
+		}
+
+		AppendFunctionUserPinSnapshots(Entry->UserDefinedPins, TEXT("input"), OutInputs);
+		if (UK2Node_FunctionResult* Result = FindFunctionResult(FunctionGraph))
+		{
+			AppendFunctionUserPinSnapshots(Result->UserDefinedPins, TEXT("output"), OutOutputs);
+		}
+		return true;
+	}
+
+	static const FBlueprintHelperFunctionSignaturePinSnapshot* FindFunctionSnapshotPin(
+		const TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& Pins,
+		const FString& PinName)
+	{
+		for (const FBlueprintHelperFunctionSignaturePinSnapshot& Pin : Pins)
+		{
+			if (Pin.Name == PinName)
+			{
+				return &Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	static void AddFunctionSignatureDifference(
+		FBlueprintHelperFunctionSignatureDiff& Diff,
+		const FString& PinName,
+		const FString& Direction,
+		const FEdGraphPinType* Expected,
+		const FEdGraphPinType* Actual,
+		const FString& Reason)
+	{
+		TSharedRef<FJsonObject> Difference = MakeShared<FJsonObject>();
+		Difference->SetStringField(TEXT("pin_name"), PinName);
+		Difference->SetStringField(TEXT("direction"), Direction);
+		Difference->SetObjectField(TEXT("expected"), Expected ? PinTypeToJson(*Expected) : MakeShared<FJsonObject>());
+		Difference->SetObjectField(TEXT("actual"), Actual ? PinTypeToJson(*Actual) : MakeShared<FJsonObject>());
+		Difference->SetStringField(TEXT("reason"), Reason);
+		Diff.Differences.Add(MakeShared<FJsonValueObject>(Difference));
+		Diff.bMatches = false;
+	}
+
+	static void CompareFunctionSignatureDirection(
+		const TArray<FBlueprintHelperSignaturePinSpec>& ExpectedPins,
+		const TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& ActualPins,
+		const FString& Direction,
+		FBlueprintHelperFunctionSignatureDiff& Diff)
+	{
+		for (const FBlueprintHelperSignaturePinSpec& ExpectedPin : ExpectedPins)
+		{
+			const FBlueprintHelperFunctionSignaturePinSnapshot* ActualPin = FindFunctionSnapshotPin(ActualPins, ExpectedPin.Name);
+			if (!ActualPin)
+			{
+				AddFunctionSignatureDifference(
+					Diff,
+					ExpectedPin.Name,
+					Direction,
+					&ExpectedPin.PinType,
+					nullptr,
+					TEXT("missing_pin"));
+				continue;
+			}
+
+			if (!PinTypesMatch(ExpectedPin.PinType, ActualPin->PinType))
+			{
+				AddFunctionSignatureDifference(
+					Diff,
+					ExpectedPin.Name,
+					Direction,
+					&ExpectedPin.PinType,
+					&ActualPin->PinType,
+					TEXT("pin_type_mismatch"));
+			}
+		}
+
+		for (const FBlueprintHelperFunctionSignaturePinSnapshot& ActualPin : ActualPins)
+		{
+			if (!ExpectedPins.ContainsByPredicate([&ActualPin](const FBlueprintHelperSignaturePinSpec& ExpectedPin)
+				{
+					return ExpectedPin.Name == ActualPin.Name;
+				}))
+			{
+				AddFunctionSignatureDifference(
+					Diff,
+					ActualPin.Name,
+					Direction,
+					nullptr,
+					&ActualPin.PinType,
+					TEXT("extra_pin"));
+			}
+		}
+	}
+
+	static FBlueprintHelperFunctionSignatureDiff CompareFunctionSignature(
+		const TArray<FBlueprintHelperSignaturePinSpec>& ExpectedInputs,
+		const TArray<FBlueprintHelperSignaturePinSpec>& ExpectedOutputs,
+		const TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& ActualInputs,
+		const TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& ActualOutputs)
+	{
+		FBlueprintHelperFunctionSignatureDiff Diff;
+		CompareFunctionSignatureDirection(ExpectedInputs, ActualInputs, TEXT("input"), Diff);
+		CompareFunctionSignatureDirection(ExpectedOutputs, ActualOutputs, TEXT("output"), Diff);
+		return Diff;
 	}
 
 	static const FUserPinInfo* FindUserDefinedPinInfo(
@@ -1067,6 +1373,106 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 			EBlueprintHelperToolStage::Preflight,
 			FString::Printf(TEXT("Function already exists: %s"), *Request.FunctionName),
 			TEXT("function_name"));
+	}
+
+	TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperSignaturePinSpec> ExpectedInputs;
+	TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperSignaturePinSpec> ExpectedOutputs;
+	FString PinMessage;
+	FString PinField;
+	FString PinCode;
+	if (!FBlueprintHelperSignatureServiceLocalUtils::TryBuildSignaturePinSpecs(
+		Request.Inputs,
+		ExpectedInputs,
+		PinMessage,
+		PinField,
+		TEXT("inputs"),
+		&PinCode))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_function"),
+			PinCode.IsEmpty() ? TEXT("invalid_pin_type") : PinCode,
+			EBlueprintHelperToolStage::ParseInput,
+			PinMessage,
+			PinField);
+	}
+	if (!FBlueprintHelperSignatureServiceLocalUtils::TryBuildSignaturePinSpecs(
+		Request.Outputs,
+		ExpectedOutputs,
+		PinMessage,
+		PinField,
+		TEXT("outputs"),
+		&PinCode))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_function"),
+			PinCode.IsEmpty() ? TEXT("invalid_pin_type") : PinCode,
+			EBlueprintHelperToolStage::ParseInput,
+			PinMessage,
+			PinField);
+	}
+
+	if (bExists)
+	{
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Request.AssetPath);
+		if (!Blueprint)
+		{
+			return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+				TEXT("ensure_function"),
+				TEXT("target_blueprint_not_found"),
+				EBlueprintHelperToolStage::ResolveTarget,
+				FString::Printf(TEXT("Blueprint asset not found: %s."), *Request.AssetPath),
+				TEXT("asset_path"));
+		}
+
+		TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignaturePinSnapshot> ActualInputs;
+		TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignaturePinSnapshot> ActualOutputs;
+		FString SnapshotError;
+		if (!FBlueprintHelperSignatureServiceLocalUtils::BuildExistingFunctionSignature(
+			Blueprint,
+			Request.FunctionName,
+			ActualInputs,
+			ActualOutputs,
+			SnapshotError))
+		{
+			return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+				TEXT("ensure_function"),
+				TEXT("function_signature_snapshot_failed"),
+				EBlueprintHelperToolStage::Preflight,
+				SnapshotError.IsEmpty()
+					? FString::Printf(TEXT("Unable to inspect existing function signature: %s."), *Request.FunctionName)
+					: SnapshotError,
+				TEXT("function_name"));
+		}
+
+		const FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignatureDiff Diff =
+			FBlueprintHelperSignatureServiceLocalUtils::CompareFunctionSignature(
+				ExpectedInputs,
+				ExpectedOutputs,
+				ActualInputs,
+				ActualOutputs);
+		if (!Diff.bMatches)
+		{
+			FBlueprintHelperToolError Error =
+				FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureError(
+					TEXT("function_signature_mismatch"),
+					EBlueprintHelperToolStage::Preflight,
+					FString::Printf(TEXT("Function signature mismatch: %s."), *Request.FunctionName),
+					TEXT("inputs"));
+			FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
+				TEXT("ensure_function"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				Error);
+			FBlueprintHelperSignatureServiceLocalUtils::SetFunctionTarget(Result, Request.AssetPath, Request.FunctionName);
+			Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(Request.bDryRun, TEXT("function_result"), false);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("success"), false);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("exists"), true);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("signature_matches"), false);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_path"), Request.InterfacePath);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
+			Result.Data->SetArrayField(TEXT("signature_differences"), Diff.Differences);
+			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+			return Result;
+		}
 	}
 
 	if (Request.bDryRun)

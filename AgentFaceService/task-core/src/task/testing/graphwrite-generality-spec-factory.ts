@@ -309,9 +309,9 @@ function makeStatementForOperation(
           ...evidence,
           type_promotion_stable_id: 'type_promotion:Add:int:real',
           type_promotion_operator: 'Add',
-          type_promotion_source_pin_type: 'int',
-          type_promotion_target_pin_type: 'real',
-          type_promotion_result_pin_type: 'real',
+          type_promotion_source_pin_type: { category: 'int' },
+          type_promotion_target_pin_type: { category: 'real' },
+          type_promotion_result_pin_type: { category: 'real' },
         },
       };
     }
@@ -345,7 +345,12 @@ function makeStatementForOperation(
         kind: 'select',
         condition: boolLiteral(index % 2 === 0),
         options: [stringLiteral(`${variantName}_A`), stringLiteral(`${variantName}_B`)],
-        context_evidence: { ...evidence, 'generic.select.result_type_proof': 'string' },
+        context_evidence: {
+          ...evidence,
+          'generic.select.result_type_proof': {
+            pin_type: { category: 'string' },
+          },
+        },
       },
     };
   }
@@ -403,12 +408,12 @@ function makeEvidence(operation: GraphWriteGeneralityOperation, variantName: str
   return evidence;
 }
 
-function defaultEvidenceValue(key: string, operationId: string, index: number): string {
+function defaultEvidenceValue(key: string, operationId: string, index: number): string | JsonRecord {
   const suffix = `${graphWriteOperationKey(operationId)}_${index}`;
   if (key.includes('node_class')) return '/Script/BlueprintGraph.K2Node_CallFunction';
   if (key.includes('stable') || key.includes('signature') || key.includes('evidence_id')) return `general:${suffix}`;
   if (key.includes('class_path') || key.includes('owner_path')) return '/Script/Engine.Actor';
-  if (key.includes('pin_type') || key.includes('return')) return 'float';
+  if (key.includes('pin_type') || key.includes('return')) return { category: 'real' };
   if (key.includes('case_values')) return '0,1,2';
   if (key.includes('enum_path')) return '/Script/Engine.EInputEvent';
   if (key.includes('default_policy')) return 'include_default';
@@ -610,12 +615,16 @@ function createStatement(operationId: string, index: number, evidence: JsonRecor
   if (createOperation === 'spawn_actor' || createOperation === 'construct_object' || createOperation === 'create_widget') {
     statement.class_path = createOperation === 'create_widget' ? '/Script/UMG.UserWidget' : '/Script/Engine.Actor';
   }
-  if (createOperation === 'make_array') statement.pin_type = 'int';
-  if (createOperation === 'make_set') statement.pin_type = 'int';
+  if (createOperation === 'make_array') statement.pin_type = { category: 'int' };
+  if (createOperation === 'make_set') statement.pin_type = { category: 'int' };
   if (createOperation === 'make_map') {
-    statement.pin_type = 'category=wildcard|container=map';
-    statement.key_pin_type = 'string';
-    statement.value_pin_type = 'int';
+    statement.pin_type = {
+      category: 'string',
+      container_type: 'map',
+      value_type: { category: 'int' },
+    };
+    statement.key_pin_type = { category: 'string' };
+    statement.value_pin_type = { category: 'int' };
   }
   return statement;
 }

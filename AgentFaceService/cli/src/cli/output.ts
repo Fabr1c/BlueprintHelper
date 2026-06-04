@@ -275,14 +275,20 @@ function buildOutput(
   artifactRefs: Record<string, string>,
   extra: Record<string, unknown>,
 ): Record<string, unknown> {
+  const data = asRecord(toolResult.data);
+  const status = mapStatus(command, toolResult, data);
+  const issues = arrayOfRecords(data?.['issues']);
+  const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
+  const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
+
   if (command.kind === 'metrics.report') {
-    const data = asRecord(toolResult.data) ?? {};
+    const metricsData = data ?? {};
     return omitUndefined({
       ok: toolResult.ok,
       schema: CLI_RESULT_SCHEMA,
       operation: command.kind,
-      status: mapStatus(command, toolResult, data),
-      data: command.format === 'markdown' ? compactMetricsOutput(data) : data,
+      status,
+      data: command.format === 'markdown' ? compactMetricsOutput(metricsData) : metricsData,
       artifacts: artifactRefs,
       error_code: toolResult.error?.code,
       message: toolResult.error?.message,
@@ -294,10 +300,12 @@ function buildOutput(
     schema: CLI_RESULT_SCHEMA,
     operation: command.kind,
     tool_name: command.toolName,
-    status: mapStatus(command, toolResult, asRecord(toolResult.data)),
+    status,
     tool_result: outputToolResult,
     extra,
     artifacts: artifactRefs,
+    error_code: toolResult.ok ? blockedIssueCode : toolResult.error?.code,
+    message: toolResult.ok ? blockedIssueMessage : toolResult.error?.message,
   };
 }
 

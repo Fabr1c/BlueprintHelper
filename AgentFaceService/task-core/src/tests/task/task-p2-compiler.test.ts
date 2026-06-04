@@ -47,7 +47,7 @@ test('compiles interface function and interface event signatures into distinct b
         interface_path: '/Game/Interfaces/BPI_Door',
         function_name: 'CanInteract',
         inputs: [
-          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+          { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
         ],
         outputs: [
           { name: 'bCanInteract', pin_type: { category: 'bool' } },
@@ -59,7 +59,7 @@ test('compiles interface function and interface event signatures into distinct b
         event_name: 'OnInteract',
         graph_name: 'EventGraph',
         inputs: [
-          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+          { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
         ],
       },
     ],
@@ -78,7 +78,7 @@ test('compiles interface function and interface event signatures into distinct b
     interface_path: '/Game/Interfaces/BPI_Door',
     interface_entry_kind: 'function',
     inputs: [
-      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+      { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
     ],
     outputs: [
       { name: 'bCanInteract', pin_type: { category: 'bool' } },
@@ -94,7 +94,7 @@ test('compiles interface function and interface event signatures into distinct b
     interface_path: '/Game/Interfaces/BPI_Door',
     interface_entry_kind: 'event',
     inputs: [
-      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+      { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
     ],
     name_collision_policy: 'reuse_if_exists',
   });
@@ -185,7 +185,7 @@ test('compiles custom_event_definition into signature then graph body steps', ()
           name: 'OnInteract',
         },
         inputs: [
-          { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+          { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
         ],
         body: {
           schema: 'BlueprintLogicSpec.v1',
@@ -216,7 +216,7 @@ test('compiles custom_event_definition into signature then graph body steps', ()
     event_name: 'OnInteract',
     graph_name: 'EventGraph',
     inputs: [
-      { name: 'Instigator', pin_type: { category: 'object', subcategory_object: '/Script/Engine.Actor' } },
+      { name: 'Instigator', pin_type: { category: 'object', object_path: '/Script/Engine.Actor' } },
     ],
     name_collision_policy: 'reuse_if_exists',
   });

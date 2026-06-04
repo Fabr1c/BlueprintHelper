@@ -17,6 +17,7 @@
 #include "Misc/AutomationTest.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
+#include "Systems/SharedServices/Utils/BlueprintHelperPinTypeSpecUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "UObject/Package.h"
@@ -379,6 +380,87 @@ public:
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignaturePinTypeSpecMapParsesTest,
+	"BlueprintHelper.Signature.PinTypeSpec.MapParses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignaturePinTypeSpecMapParsesTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+	PinType->SetStringField(TEXT("category"), TEXT("string"));
+	PinType->SetStringField(TEXT("container_type"), TEXT("map"));
+
+	TSharedRef<FJsonObject> ValueType = MakeShared<FJsonObject>();
+	ValueType->SetStringField(TEXT("category"), TEXT("int"));
+	PinType->SetObjectField(TEXT("value_type"), ValueType);
+
+	FEdGraphPinType OutPinType;
+	FString Error;
+	const bool bConverted = FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(PinType, OutPinType, Error);
+
+	TestTrue(TEXT("map pin type converts"), bConverted);
+	TestEqual(TEXT("container is map"), OutPinType.ContainerType, EPinContainerType::Map);
+	TestEqual(TEXT("value terminal category is int"), OutPinType.PinValueType.TerminalCategory, UEdGraphSchema_K2::PC_Int);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignaturePinTypeSpecNestedMapRejectedTest,
+	"BlueprintHelper.Signature.PinTypeSpec.NestedMapRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignaturePinTypeSpecNestedMapRejectedTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+	PinType->SetStringField(TEXT("category"), TEXT("string"));
+	PinType->SetStringField(TEXT("container_type"), TEXT("map"));
+
+	TSharedRef<FJsonObject> NestedValueType = MakeShared<FJsonObject>();
+	NestedValueType->SetStringField(TEXT("category"), TEXT("int"));
+
+	TSharedRef<FJsonObject> ValueType = MakeShared<FJsonObject>();
+	ValueType->SetStringField(TEXT("category"), TEXT("string"));
+	ValueType->SetStringField(TEXT("container_type"), TEXT("map"));
+	ValueType->SetObjectField(TEXT("value_type"), NestedValueType);
+	PinType->SetObjectField(TEXT("value_type"), ValueType);
+
+	FEdGraphPinType OutPinType;
+	FBlueprintHelperPinTypeSpecError Error;
+	const bool bConverted =
+		FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(PinType, OutPinType, Error, TEXT("pin_type"));
+
+	TestFalse(TEXT("nested map value type is rejected"), bConverted);
+	TestEqual(TEXT("nested map error code"), Error.Code, FString(TEXT("invalid_pin_type")));
+	TestEqual(TEXT("nested map field path"), Error.FieldPath, FString(TEXT("pin_type")));
+	TestTrue(TEXT("nested map message mentions value type"),
+		Error.Message.Contains(TEXT("value_type")) || Error.Message.Contains(TEXT("Map")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignaturePinTypeSpecLegacyValueTypeRejectedTest,
+	"BlueprintHelper.Signature.PinTypeSpec.LegacyValueTypeRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignaturePinTypeSpecLegacyValueTypeRejectedTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+	PinType->SetStringField(TEXT("category"), TEXT("string"));
+	PinType->SetStringField(TEXT("container_type"), TEXT("map"));
+	PinType->SetStringField(TEXT("value_type"), TEXT("int"));
+
+	FEdGraphPinType OutPinType;
+	FBlueprintHelperPinTypeSpecError Error;
+	const bool bConverted =
+		FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(PinType, OutPinType, Error, TEXT("pin_type"));
+
+	TestFalse(TEXT("legacy value_type string is rejected"), bConverted);
+	TestEqual(TEXT("legacy value_type code"), Error.Code, FString(TEXT("legacy_pin_type_token_unsupported")));
+	TestEqual(TEXT("legacy value_type field path"), Error.FieldPath, FString(TEXT("pin_type.value_type")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSignatureServiceEnsureFunctionDryRunTest,
 	"BlueprintHelper.Signature.Service.EnsureFunctionDryRun",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -484,6 +566,83 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionReuseTest::RunTest(const FStr
 	TestEqual(TEXT("second ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
 	TestFalse(TEXT("second ensure does not modify"), SecondResult.bModified);
 	TestEqual(TEXT("second ensure does not add graph"), Blueprint ? Blueprint->FunctionGraphs.Num() : 0, FunctionCountAfterFirst);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureFunctionExistingMismatchDryRunTest,
+	"BlueprintHelper.Signature.Service.EnsureFunctionExistingMismatchDryRun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureFunctionExistingMismatchDryRunTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("ExistingMismatchDryRun"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString FunctionName = TEXT("BH_ExistingMismatchDryRun");
+	FBlueprintHelperEnsureFunctionSignatureRequest InitialRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false);
+	InitialRequest.Inputs.Reset();
+	InitialRequest.Inputs.Add(FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureParamValue(TEXT("BaseScore"), TEXT("int")));
+	TestTrue(TEXT("initial ensure succeeds"), SignatureService.EnsureFunction(InitialRequest).bOk);
+
+	FBlueprintHelperEnsureFunctionSignatureRequest MismatchRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, true);
+	MismatchRequest.Inputs.Reset();
+	MismatchRequest.Inputs.Add(FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureParamValue(TEXT("BaseScore"), TEXT("float")));
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureFunction(MismatchRequest);
+	TestFalse(TEXT("mismatch dry-run is blocked"), Result.bOk);
+	TestEqual(TEXT("status is failed"), Result.Status, EBlueprintHelperToolStatus::Failed);
+	TestTrue(TEXT("error is set"), Result.Error.IsSet());
+	TestEqual(TEXT("error code"), Result.Error.IsSet() ? Result.Error->Code : FString(), FString(TEXT("function_signature_mismatch")));
+	TestTrue(TEXT("data contains function_result"), Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Object>(TEXT("function_result")));
+	TestTrue(TEXT("data contains signature differences"), Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Array>(TEXT("signature_differences")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureFunctionExistingMismatchExecuteBlockedTest,
+	"BlueprintHelper.Signature.Service.EnsureFunctionExistingMismatchExecuteBlocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureFunctionExistingMismatchExecuteBlockedTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("ExistingMismatchExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString FunctionName = TEXT("BH_ExistingMismatchExecute");
+	FBlueprintHelperEnsureFunctionSignatureRequest InitialRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false);
+	InitialRequest.Inputs.Reset();
+	InitialRequest.Inputs.Add(FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureParamValue(TEXT("BaseScore"), TEXT("int")));
+	TestTrue(TEXT("initial ensure succeeds"), SignatureService.EnsureFunction(InitialRequest).bOk);
+
+	const int32 FunctionCountBeforeMismatch = Blueprint ? Blueprint->FunctionGraphs.Num() : 0;
+	FBlueprintHelperEnsureFunctionSignatureRequest MismatchRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureFunctionRequest(Blueprint, FunctionName, false);
+	MismatchRequest.Inputs.Reset();
+	MismatchRequest.Inputs.Add(FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureParamValue(TEXT("BaseScore"), TEXT("float")));
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureFunction(MismatchRequest);
+	TestFalse(TEXT("mismatch execute is blocked"), Result.bOk);
+	TestEqual(TEXT("status is failed"), Result.Status, EBlueprintHelperToolStatus::Failed);
+	TestTrue(TEXT("error is set"), Result.Error.IsSet());
+	TestEqual(TEXT("error code"), Result.Error.IsSet() ? Result.Error->Code : FString(), FString(TEXT("function_signature_mismatch")));
+	TestEqual(TEXT("function graph count unchanged"), Blueprint ? Blueprint->FunctionGraphs.Num() : 0, FunctionCountBeforeMismatch);
+	TestTrue(TEXT("data contains signature differences"), Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Array>(TEXT("signature_differences")));
 	return true;
 }
 

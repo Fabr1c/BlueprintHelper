@@ -47,6 +47,9 @@ bool FBlueprintHelperSignatureReviewEvidenceSubkindTest::RunTest(const FString& 
 	TestEqual(TEXT("signature visual group includes subkind"),
 		Target.VisualGroupKey,
 		FString(TEXT("signature:function:ComputeScore")));
+	TestEqual(TEXT("signature evidence id includes subkind"),
+		Target.SignatureEvidenceId,
+		FString(TEXT("signature:function:ComputeScore")));
 	return true;
 }
 

@@ -146,6 +146,34 @@ test('append bridge accepts create statement lowering', () => {
   assert.equal(statement.class_path, '/Script/CoreUObject.Object');
 });
 
+test('structured create pin_type evidence survives TaskSpec to TaskPlan and bridge lowering', () => {
+  const input = {
+    kind: 'create',
+    create_operation: 'make_map',
+    pin_type: {
+      category: 'string',
+      container_type: 'map',
+      value_type: { category: 'int' },
+    },
+    key_pin_type: { category: 'string' },
+    value_pin_type: { category: 'int' },
+    args: {
+      key: { kind: 'literal', value_type: 'string', value: 'Answer' },
+      value: { kind: 'literal', value_type: 'number', value: 42 },
+    },
+  };
+
+  for (const statement of [compileTaskPlanStatement(input), compileBridgeStatement(input)]) {
+    assert.deepEqual(statement.pin_type, {
+      category: 'string',
+      container_type: 'map',
+      value_type: { category: 'int' },
+    });
+    assert.deepEqual(statement.key_pin_type, { category: 'string' });
+    assert.deepEqual(statement.value_pin_type, { category: 'int' });
+  }
+});
+
 test('function-backed create preserves FunctionAction ownership evidence', () => {
   const input = {
     kind: 'create',

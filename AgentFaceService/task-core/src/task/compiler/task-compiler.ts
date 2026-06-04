@@ -10,6 +10,7 @@ import type {
   TaskPlan,
   TaskSpec,
 } from '../schema/task-schemas.js';
+import { BlueprintPinTypeSpecSchema } from '../schema/blueprint-pin-type-spec.js';
 import {
   BLUEPRINT_VARIABLE_REPLICATION_CONDITIONS,
   BLUEPRINT_VARIABLE_REPLICATION_MODES,
@@ -1257,6 +1258,8 @@ function compileBlueprintSignatureTaskSpecToTaskPlan(
 function compileBlueprintSignatureOp(change: Record<string, unknown>, path: string): Record<string, unknown> {
   const kind = getRequiredString(change, 'kind', `${path}.kind`);
   if (kind === 'ensure_function' || kind === 'ensure_interface_function') {
+    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
+    const outputs = optionalSignaturePinSpecs(change['outputs'], `${path}.outputs`);
     const op = omitUndefined({
       op: 'ensure_function',
       function_name: getRequiredString(change, 'function_name', `${path}.function_name`),
@@ -1264,8 +1267,8 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
         ? getRequiredString(change, 'interface_path', `${path}.interface_path`)
         : optionalString(change, 'interface_path'),
       interface_entry_kind: kind === 'ensure_interface_function' ? 'function' : undefined,
-      inputs: change['inputs'],
-      outputs: change['outputs'],
+      inputs,
+      outputs,
       is_pure: change['is_pure'],
       name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
     });
@@ -1273,6 +1276,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
   }
 
   if (kind === 'ensure_custom_event' || kind === 'ensure_interface_event') {
+    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
     return omitUndefined({
       op: 'ensure_custom_event',
       event_name: getRequiredString(change, 'event_name', `${path}.event_name`),
@@ -1281,28 +1285,30 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
         ? getRequiredString(change, 'interface_path', `${path}.interface_path`)
         : optionalString(change, 'interface_path'),
       interface_entry_kind: kind === 'ensure_interface_event' ? 'event' : undefined,
-      inputs: change['inputs'],
+      inputs,
       name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
     });
   }
 
   if (kind === 'ensure_event_dispatcher') {
+    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
     return omitUndefined({
       op: 'ensure_event_dispatcher',
       dispatcher_name: getRequiredString(change, 'dispatcher_name', `${path}.dispatcher_name`),
-      inputs: change['inputs'],
+      inputs,
       name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
       signature_mismatch_policy: optionalString(change, 'signature_mismatch_policy') ?? 'block',
     });
   }
 
   if (kind === 'ensure_override_event') {
+    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
     return omitUndefined({
       op: 'ensure_override_event',
       event_name: getRequiredString(change, 'event_name', `${path}.event_name`),
       event_kind: optionalString(change, 'event_kind') ?? 'native_event',
       graph_name: optionalString(change, 'graph_name'),
-      inputs: change['inputs'],
+      inputs,
       execute_policy: optionalString(change, 'execute_policy') ?? 'blocked_preflight',
     });
   }
@@ -1337,6 +1343,40 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
       message: 'Use ensure_function, ensure_interface_function, ensure_custom_event, ensure_interface_event, ensure_event_dispatcher, ensure_override_event, or remove_signature.',
     },
   ]);
+}
+
+function optionalSignaturePinSpecs(value: unknown, path: string): Array<Record<string, unknown>> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an array.`, [
+      {
+        code: 'invalid_signature_pins',
+        path,
+        message: 'Provide signature pins as an array of objects.',
+      },
+    ]);
+  }
+
+  return value.map((rawPin, index) => {
+    const pinPath = `${path}[${index}]`;
+    if (!isRecord(rawPin)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${pinPath} must be an object.`, [
+        {
+          code: 'invalid_signature_pin',
+          path: pinPath,
+          message: 'Provide a signature pin object.',
+        },
+      ]);
+    }
+
+    return {
+      ...rawPin,
+      name: getRequiredString(rawPin, 'name', `${pinPath}.name`),
+      pin_type: requireStructuredPinType(rawPin['pin_type'], `${pinPath}.pin_type`),
+    };
+  });
 }
 
 function blueprintSignatureStrategyForOp(op: Record<string, unknown>): string {
@@ -2306,6 +2346,29 @@ const FIELD_EXPRESSION_KIND_MAP = new Map([
 ]);
 const SUPPORTED_FIELD_SCOPES = new Set(['variable', 'property_path', 'component_ref', 'field_access']);
 const FIELD_SCOPES_WITH_PROPERTY_PATH = new Set(['property_path', 'field_access']);
+const GRAPHWRITE_STRUCTURED_PIN_TYPE_FIELDS = [
+  'pin_type',
+  'key_pin_type',
+  'value_pin_type',
+  'result_pin_type',
+  'return_pin_type',
+] as const;
+const GRAPHWRITE_STRUCTURED_PIN_TYPE_EVIDENCE_FIELDS = [
+  'pin_type',
+  'result_pin_type',
+  'return_pin_type',
+  'output_pin_type',
+  'source_pin_type',
+  'target_pin_type',
+  'schedule_result_pin_type',
+  'schedule_output_pin_type',
+  'type_promotion_source_pin_type',
+  'type_promotion_target_pin_type',
+  'type_promotion_result_pin_type',
+  'generic.transform.source_pin_type',
+  'generic.transform.target_pin_type',
+] as const;
+const GRAPHWRITE_RESULT_TYPE_PROOF_EVIDENCE_KEY = 'generic.select.result_type_proof';
 
 function applyFieldTaxonomy(record: Record<string, unknown>, operation: string, scope: string): void {
   record.kind = 'field';
@@ -2510,6 +2573,132 @@ function validateConvertScheduleOwnership(record: Record<string, unknown>, path:
   }
 }
 
+function invalidPinTypeMessage(path: string): string {
+  return `${path} must be a structured BlueprintPinTypeSpec object.`;
+}
+
+function invalidPinTypeEvidenceMessage(path: string): string {
+  return `${path} must be structured pin-type evidence.`;
+}
+
+function throwLegacyPinTypeTokenUnsupported(path: string): never {
+  throw new TaskSpecCompileError('legacy_pin_type_token_unsupported', invalidPinTypeMessage(path), [
+    {
+      code: 'legacy_pin_type_token_unsupported',
+      path,
+      message: 'Use a structured BlueprintPinTypeSpec object instead of a legacy string token.',
+    },
+  ]);
+}
+
+function throwInvalidStructuredPinType(
+  code: 'invalid_pin_type' | 'invalid_pin_type_evidence',
+  path: string,
+  message: string,
+): never {
+  throw new TaskSpecCompileError(code, message, [
+    {
+      code,
+      path,
+      message,
+    },
+  ]);
+}
+
+function joinIssuePath(basePath: string, issuePath: readonly (string | number)[]): string {
+  if (issuePath.length === 0) return basePath;
+  return `${basePath}.${issuePath.join('.')}`;
+}
+
+function requireStructuredPinType(
+  value: unknown,
+  path: string,
+  code: 'invalid_pin_type' | 'invalid_pin_type_evidence' = 'invalid_pin_type',
+): Record<string, unknown> {
+  if (typeof value === 'string') {
+    throwLegacyPinTypeTokenUnsupported(path);
+  }
+  if (!isRecord(value)) {
+    throwInvalidStructuredPinType(
+      code,
+      path,
+      code === 'invalid_pin_type' ? invalidPinTypeMessage(path) : invalidPinTypeEvidenceMessage(path),
+    );
+  }
+
+  const parsed = BlueprintPinTypeSpecSchema.safeParse(value);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    throw new TaskSpecCompileError(
+      code,
+      code === 'invalid_pin_type' ? invalidPinTypeMessage(path) : invalidPinTypeEvidenceMessage(path),
+      [{
+        code,
+        path: joinIssuePath(path, firstIssue?.path ?? []),
+        message: firstIssue?.message ?? (code === 'invalid_pin_type'
+          ? invalidPinTypeMessage(path)
+          : invalidPinTypeEvidenceMessage(path)),
+      }],
+    );
+  }
+  return parsed.data as Record<string, unknown>;
+}
+
+function requireStructuredResultTypeProofEvidence(value: unknown, path: string): Record<string, unknown> {
+  if (typeof value === 'string') {
+    throwLegacyPinTypeTokenUnsupported(path);
+  }
+  if (!isRecord(value)) {
+    throwInvalidStructuredPinType('invalid_pin_type_evidence', path, `${path} must be an object with pin_type evidence.`);
+  }
+  if (!Object.hasOwn(value, 'pin_type')) {
+    throwInvalidStructuredPinType('invalid_pin_type_evidence', `${path}.pin_type`, `${path}.pin_type is required.`);
+  }
+  return {
+    ...value,
+    pin_type: requireStructuredPinType(value.pin_type, `${path}.pin_type`, 'invalid_pin_type_evidence'),
+  };
+}
+
+function normalizeStructuredPinTypeEvidence(
+  evidence: Record<string, unknown>,
+  path: string,
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...evidence };
+  GRAPHWRITE_STRUCTURED_PIN_TYPE_EVIDENCE_FIELDS.forEach((field) => {
+    if (Object.hasOwn(normalized, field)) {
+      normalized[field] = requireStructuredPinType(normalized[field], `${path}.${field}`, 'invalid_pin_type_evidence');
+    }
+  });
+  if (Object.hasOwn(normalized, GRAPHWRITE_RESULT_TYPE_PROOF_EVIDENCE_KEY)) {
+    normalized[GRAPHWRITE_RESULT_TYPE_PROOF_EVIDENCE_KEY] = requireStructuredResultTypeProofEvidence(
+      normalized[GRAPHWRITE_RESULT_TYPE_PROOF_EVIDENCE_KEY],
+      `${path}.${GRAPHWRITE_RESULT_TYPE_PROOF_EVIDENCE_KEY}`,
+    );
+  }
+  return normalized;
+}
+
+function validateStructuredGraphWritePinTypeUsage(record: Record<string, unknown>, path: string): void {
+  GRAPHWRITE_STRUCTURED_PIN_TYPE_FIELDS.forEach((field) => {
+    if (Object.hasOwn(record, field)) {
+      requireStructuredPinType(record[field], `${path}.${field}`);
+    }
+  });
+  const evidence = record.context_evidence;
+  if (isRecord(evidence)) {
+    normalizeStructuredPinTypeEvidence(evidence, `${path}.context_evidence`);
+  }
+}
+
+function copyStructuredPinTypeFields(source: Record<string, unknown>, target: Record<string, unknown>, path = ''): void {
+  GRAPHWRITE_STRUCTURED_PIN_TYPE_FIELDS.forEach((field) => {
+    if (Object.hasOwn(source, field)) {
+      target[field] = requireStructuredPinType(source[field], path ? `${path}.${field}` : field);
+    }
+  });
+}
+
 function copyContainerActionSemanticFields(source: Record<string, unknown>, target: Record<string, unknown>): void {
   GRAPH_CONTAINER_ACTION_FIELDS.forEach((field) => {
     if (Object.hasOwn(source, field)) {
@@ -2518,10 +2707,10 @@ function copyContainerActionSemanticFields(source: Record<string, unknown>, targ
   });
 }
 
-function copyContextEvidence(source: Record<string, unknown>, target: Record<string, unknown>): void {
+function copyContextEvidence(source: Record<string, unknown>, target: Record<string, unknown>, path = 'context_evidence'): void {
   const evidence = source['context_evidence'];
   if (isRecord(evidence)) {
-    target['context_evidence'] = { ...evidence };
+    target['context_evidence'] = normalizeStructuredPinTypeEvidence(evidence, path);
   }
 }
 
@@ -2795,14 +2984,9 @@ function hasExplicitResultOutputEvidence(record: Record<string, unknown>): boole
       'result_type',
       'output_type',
       'return_type',
-      'result_pin_type',
-      'return_pin_type',
-      'output_pin_type',
-      'schedule_result_pin_type',
-      'schedule_output_pin_type',
     ];
     return evidenceTypeFields.some((field) => optionalString(evidence, field))
-      || Object.hasOwn(evidence, 'pin_type')
+      || GRAPHWRITE_STRUCTURED_PIN_TYPE_EVIDENCE_FIELDS.some((field) => Object.hasOwn(evidence, field))
       || Object.hasOwn(evidence, 'result_pin')
       || Object.hasOwn(evidence, 'return_pin')
       || Object.hasOwn(evidence, 'output_pin');
@@ -2840,6 +3024,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
     const statementRecord = statement as Record<string, unknown>;
     const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
     const statementPath = `${path}[${statementIndex}]`;
+    validateStructuredGraphWritePinTypeUsage(statementRecord, statementPath);
     if (FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS.has(kind)) {
       throw new TaskSpecCompileError('unsupported_statement_kind', 'Unsupported GraphWrite statement kind.', [
         {
@@ -2965,6 +3150,7 @@ function isExplicitlyImpureCallExpression(expression: Record<string, unknown>): 
 
 function validateSupportedExpression(expression: unknown, path: string): void {
   if (!isRecord(expression)) return;
+  validateStructuredGraphWritePinTypeUsage(expression, path);
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
   if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
     throw new TaskSpecCompileError('unsupported_expression_kind', 'Unsupported GraphWrite expression kind.', [
@@ -3105,7 +3291,7 @@ function cloneContainerActionRoleExpressionWithCompiledIds(
   }
   if (expression.kind === 'get') {
     const out: Record<string, unknown> = { ...expression, id: nodeId };
-    copyContextEvidence(expression, out);
+    copyContextEvidence(expression, out, `${nodeId}.context_evidence`);
     return out;
   }
   return cloneLogicExpressionWithCompiledIds(expression, nodeId, { ...options, defaultFieldOwnerClass: undefined });
@@ -3143,7 +3329,7 @@ function cloneContainerActionWithCompiledIds(
       out[role] = cloneContainerActionRoleValue(role, record[role], `${nodeId}_${role}`, options);
     }
   });
-  copyContextEvidence(record, out);
+  copyContextEvidence(record, out, `${nodeId}.context_evidence`);
   return out;
 }
 
@@ -3159,7 +3345,7 @@ function cloneLogicExpressionWithCompiledIds(
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
   if (kind === 'get') {
     const out: Record<string, unknown> = { ...expression, id: nodeId };
-    copyContextEvidence(expression, out);
+    copyContextEvidence(expression, out, `${nodeId}.context_evidence`);
     applyDefaultFieldOwnerEvidence(out, 'get', 'variable', options);
     return out;
   }
@@ -3171,7 +3357,7 @@ function cloneLogicExpressionWithCompiledIds(
     return out;
   }
   const out: Record<string, unknown> = { ...expression, id: nodeId };
-  copyContextEvidence(expression, out);
+  copyContextEvidence(expression, out, `${nodeId}.context_evidence`);
 
   const fieldExpression = FIELD_EXPRESSION_KIND_MAP.get(kind);
   if (fieldExpression) {
@@ -3246,6 +3432,7 @@ function cloneLogicExpressionWithCompiledIds(
   }
   if (kind === 'create') {
     copyCreateSemanticFields(expression, out, nodeId);
+    copyStructuredPinTypeFields(expression, out, nodeId);
   }
 
   return out;
@@ -3264,7 +3451,7 @@ function cloneLogicStatementWithCompiledIds(
     return cloneContainerActionWithCompiledIds(statementRecord, statementId, options) as BlueprintLogicStatement;
   }
   const out: Record<string, unknown> = { ...statementRecord, id: statementId };
-  copyContextEvidence(statementRecord, out);
+  copyContextEvidence(statementRecord, out, `${statementId}.context_evidence`);
   const delegateOperation = delegateStatementOperation(statementRecord);
 
   const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
@@ -3316,6 +3503,7 @@ function cloneLogicStatementWithCompiledIds(
     );
     if (kind === 'create') {
       copyCreateSemanticFields(statementRecord, out, statementId);
+      copyStructuredPinTypeFields(statementRecord, out, statementId);
     }
   } else if (kind === 'control') {
     const normalizedControlKind = getControlStatementKind(statementRecord, statementId);
@@ -3354,6 +3542,7 @@ function cloneLogicStatementWithCompiledIds(
   }
   if (kind === 'create') {
     copyCreateSemanticFields(statementRecord, out, statementId);
+    copyStructuredPinTypeFields(statementRecord, out, statementId);
   }
 
   return out as BlueprintLogicStatement;
@@ -3716,7 +3905,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     copyContainerActionSemanticFields(expression, node as Record<string, unknown>);
     (node as Record<string, unknown>).container_kind = containerKind;
     (node as Record<string, unknown>).container_operation = containerOperation;
-    copyContextEvidence(expression, node as Record<string, unknown>);
+    copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
     const nodes: AgentImportNode[] = [node];
     const links: AgentImportLink[] = [];
     compileContainerActionRoleInputs(expression, nodeId, path, node, nodes, links, context);
@@ -3747,7 +3936,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     }
     const outputPin = fieldScopeUsesPropertyPath(fieldExpression.scope) ? 'value' : target;
     const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
-    copyContextEvidence(expression, node as Record<string, unknown>);
+    copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
     applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
     if (fieldScopeUsesPropertyPath(fieldExpression.scope)) {
       const propertyPath = requiredGraphBodyPropertyPath(expression, path);
@@ -3764,7 +3953,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     kind,
     inputs: {},
   };
-  copyContextEvidence(expression, node as Record<string, unknown>);
+  copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
   if (kind === 'call') {
     node.function = getRequiredString(expression, 'target', `${path}.target`);
   }
@@ -3822,9 +4011,7 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     if (target) node.target = target;
     if (classPath) node.class_path = classPath;
     if (assetPath) node.asset_path = assetPath;
-    if (Object.hasOwn(expression, 'pin_type')) node.pin_type = expression.pin_type;
-    if (Object.hasOwn(expression, 'key_pin_type')) node.key_pin_type = expression.key_pin_type;
-    if (Object.hasOwn(expression, 'value_pin_type')) node.value_pin_type = expression.value_pin_type;
+    copyStructuredPinTypeFields(expression, node as Record<string, unknown>, path);
     if (isRecord(expression.args)) {
       for (const [argName, argValue] of Object.entries(expression.args)) {
         compileExpressionInput(argValue, argName, `${nodeId}_${toIdSegment(argName)}`, `${path}.args.${argName}`, node, nodes, links, context);
@@ -5079,7 +5266,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       function: functionName,
       inputs: compileArgs(statement['args']),
     };
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return node as AgentImportNode;
   }
 
@@ -5093,11 +5280,9 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       asset_path: optionalString(statementRecord, 'asset_path'),
       inputs: compileArgs(statement['args']),
     };
-    if (Object.hasOwn(statementRecord, 'pin_type')) node.pin_type = statementRecord.pin_type;
-    if (Object.hasOwn(statementRecord, 'key_pin_type')) node.key_pin_type = statementRecord.key_pin_type;
-    if (Object.hasOwn(statementRecord, 'value_pin_type')) node.value_pin_type = statementRecord.value_pin_type;
+    copyStructuredPinTypeFields(statementRecord, node, path);
     copyCreateSemanticFields(statementRecord, node, path);
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return omitUndefined(node) as AgentImportNode;
   }
 
@@ -5109,7 +5294,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       inputs: compileArgs(statement['args']),
     };
     copyConvertScheduleSemanticFields(statementRecord, node);
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return omitUndefined(node) as AgentImportNode;
   }
 
@@ -5126,7 +5311,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (fieldStatement) {
       applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
     }
-    copyContextEvidence(statementRecord, node as Record<string, unknown>);
+    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
     return node;
   }
 
@@ -5145,7 +5330,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     if (fieldStatement) {
       applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
     }
-    copyContextEvidence(statementRecord, node as Record<string, unknown>);
+    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
     return node;
   }
 
@@ -5174,7 +5359,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       (node as Record<string, unknown>).property = propertyPath;
     }
     applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
-    copyContextEvidence(statementRecord, node as Record<string, unknown>);
+    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
     return node;
   }
 
@@ -5188,7 +5373,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     copyContainerActionSemanticFields(statementRecord, node);
     node.container_kind = containerKind;
     node.container_operation = containerOperation;
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return node as AgentImportNode;
   }
 
@@ -5213,7 +5398,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
       handler: getRequiredString(statementRecord, 'handler', `${path}.handler`),
     };
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return omitUndefined(node) as AgentImportNode;
   }
 
@@ -5229,7 +5414,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
       unbind_mode: delegateOperation === 'unbind' ? 'single' : (delegateOperation === 'clear' ? 'all' : undefined),
       inputs: delegateOperation === 'call' ? compileArgs(statementRecord.args) : undefined,
     };
-    copyContextEvidence(statementRecord, node);
+    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
     return omitUndefined(node) as AgentImportNode;
   }
 

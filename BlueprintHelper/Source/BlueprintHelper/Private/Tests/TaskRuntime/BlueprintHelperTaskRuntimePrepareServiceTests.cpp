@@ -127,6 +127,9 @@ bool FBlueprintHelperTaskRuntimePrepareService_PreparesPureDataTaskRun::RunTest(
 	TestEqual(TEXT("dependency is preserved"),
 		PreparedRun.Steps[1].DependsOn.Num() == 1 ? PreparedRun.Steps[1].DependsOn[0] : FString(),
 		FString(TEXT("create_asset")));
+	TestEqual(TEXT("dependency is preserved on lowered step"),
+		PreparedRun.Steps[1].LoweredStep.DependsOn.Num() == 1 ? PreparedRun.Steps[1].LoweredStep.DependsOn[0] : FString(),
+		FString(TEXT("create_asset")));
 	TestEqual(TEXT("lowered adapter operation is produced"),
 		PreparedRun.Steps[0].LoweredStep.AdapterOperation,
 		FString(TEXT("create_asset")));

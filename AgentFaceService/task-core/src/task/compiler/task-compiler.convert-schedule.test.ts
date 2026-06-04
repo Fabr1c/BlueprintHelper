@@ -83,8 +83,8 @@ test('function-backed transform preserves FunctionAction ownership evidence', ()
     target_class_path: '/Script/CoreUObject.String',
     context_evidence: {
       'generic.transform.operation': 'blueprint_autocast',
-      'generic.transform.source_pin_type': 'name',
-      'generic.transform.target_pin_type': 'string',
+      'generic.transform.source_pin_type': { category: 'name' },
+      'generic.transform.target_pin_type': { category: 'string' },
     },
     args: {
       value: { kind: 'literal', value_type: 'name', value: 'DisplayName' },
@@ -129,9 +129,9 @@ test('convert and schedule preserve context_evidence through compiler outputs', 
     context_evidence: {
       type_promotion_stable_id: 'type_promotion:Add:int:real',
       type_promotion_operator: 'Add',
-      type_promotion_source_pin_type: 'int',
-      type_promotion_target_pin_type: 'real',
-      type_promotion_result_pin_type: 'real',
+      type_promotion_source_pin_type: { category: 'int' },
+      type_promotion_target_pin_type: { category: 'real' },
+      type_promotion_result_pin_type: { category: 'real' },
     },
     args: {
       value: { kind: 'literal', value_type: 'number', value: 7 },

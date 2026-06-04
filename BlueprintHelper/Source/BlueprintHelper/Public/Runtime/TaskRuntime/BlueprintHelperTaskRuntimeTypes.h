@@ -10,6 +10,7 @@ class FJsonObject;
 struct BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeLoweredStep
 {
 	FString StepId;
+	TArray<FString> DependsOn;
 	FString Capability;
 	FString RuntimeOperation;
 	FString AdapterOperation;

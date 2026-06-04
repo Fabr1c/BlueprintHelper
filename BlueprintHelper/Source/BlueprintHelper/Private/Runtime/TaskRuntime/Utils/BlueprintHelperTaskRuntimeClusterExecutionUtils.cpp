@@ -407,7 +407,60 @@ static void AddTaskRuntimeReplaceExternalBodyReviewTargets(
 	Evidence.AtomicTargets.Add(Target);
 }
 
-static void AddTaskRuntimeReviewTarget(
+static FString NormalizeTaskRuntimeSignatureKind(FString Value)
+{
+	Value.TrimStartAndEndInline();
+	Value.ToLowerInline();
+	return Value;
+}
+
+static FString ResolveTaskRuntimeSignatureReviewSubKind(
+	const FString& AdapterOperation,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureFunction)
+	{
+		return TEXT("function");
+	}
+	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureCustomEvent)
+	{
+		return TEXT("custom_event");
+	}
+	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureEventDispatcher)
+	{
+		return TEXT("dispatcher");
+	}
+	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureOverrideEvent)
+	{
+		return TEXT("override_event");
+	}
+	if (AdapterOperation != FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationRemoveSignature)
+	{
+		return TEXT("");
+	}
+
+	const FString SignatureKind = NormalizeTaskRuntimeSignatureKind(
+		ReadTaskRuntimeReviewStringField(Payload, TEXT("signature_kind")));
+	if (SignatureKind == TEXT("function") || SignatureKind == TEXT("interface_function"))
+	{
+		return TEXT("function");
+	}
+	if (SignatureKind == TEXT("custom_event") || SignatureKind == TEXT("interface_event"))
+	{
+		return TEXT("custom_event");
+	}
+	if (SignatureKind == TEXT("event_dispatcher") || SignatureKind == TEXT("dispatcher"))
+	{
+		return TEXT("dispatcher");
+	}
+	if (SignatureKind == TEXT("override_event") || SignatureKind == TEXT("native_event"))
+	{
+		return TEXT("override_event");
+	}
+	return TEXT("");
+}
+
+static FBlueprintHelperReviewAtomicTarget* AddTaskRuntimeReviewTarget(
 	FBlueprintHelperWriteReviewEvidence& Evidence,
 	const TSharedPtr<FJsonObject>& Payload,
 	EBlueprintHelperReviewSurface Surface,
@@ -419,7 +472,7 @@ static void AddTaskRuntimeReviewTarget(
 {
 	if (TargetName.IsEmpty())
 	{
-		return;
+		return nullptr;
 	}
 
 	const FString SafeTargetName = MakeTaskRuntimeReviewRefSegment(TargetName);
@@ -452,7 +505,10 @@ static void AddTaskRuntimeReviewTarget(
 	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
 	Target.AnchorJson = PayloadText;
 	Target.Ownership = TEXT("blueprinthelper_owned");
-	Evidence.AtomicTargets.Add(Target);
+	const int32 TargetIndex = Evidence.AtomicTargets.Add(Target);
+	return Evidence.AtomicTargets.IsValidIndex(TargetIndex)
+		? &Evidence.AtomicTargets[TargetIndex]
+		: nullptr;
 }
 
 static void AddTaskRuntimeReviewTargetsFromStringArray(
@@ -1114,7 +1170,7 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 			{
 				SignatureName = ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("signature_name"));
 			}
-			AddTaskRuntimeReviewTarget(
+			FBlueprintHelperReviewAtomicTarget* Target = AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,
 				EBlueprintHelperReviewSurface::MyBlueprint,
@@ -1123,6 +1179,21 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 				TEXT("signature"),
 				SignatureName,
 				ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("graph_name")));
+			if (Target)
+			{
+				const FString SignatureSubKind = ResolveTaskRuntimeSignatureReviewSubKind(
+					LoweredStep.AdapterOperation,
+					LoweredStep.Payload);
+				if (!SignatureSubKind.IsEmpty())
+				{
+					Target->TargetSubKind = SignatureSubKind;
+					Target->VisualGroupKey = FString::Printf(
+						TEXT("signature:%s:%s"),
+						*SignatureSubKind,
+						*MakeTaskRuntimeReviewRefSegment(SignatureName));
+					Target->SignatureEvidenceId = Target->VisualGroupKey;
+				}
+			}
 		}));
 	Routes.Add(MakeTuple(
 		[&LoweredStep]()

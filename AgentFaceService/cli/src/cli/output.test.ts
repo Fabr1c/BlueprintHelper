@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import type { ToolResultBase } from '@blueprinthelper/task-core/result/tool-result';
-import { buildCliSummary, type CliCommand } from './output.js';
+import { buildCliSummary, writeCliResult, type CliCommand } from './output.js';
 
 test('CLI summary exposes preview-blocked connectivity violations concisely', () => {
   const command: CliCommand = {
@@ -85,6 +85,42 @@ test('CLI execute summary keeps preview connectivity blocker visible', () => {
     path: 'logic_spec',
     message: 'GraphWrite connectivity validation failed.',
   }]);
+});
+
+test('CLI full output exposes preview-blocked issue code for selected fields', () => {
+  const chunks: string[] = [];
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'full',
+    fields: ['status', 'error_code', 'message', 'artifacts.full_result'],
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_cli_signature_mismatch',
+    status: 'dry_run',
+    modified: false,
+    data: {
+      passed: false,
+      issues: [{
+        code: 'function_signature_mismatch',
+        path: 'inputs',
+        message: 'Function signature mismatch: ComputeScore.',
+      }],
+    },
+  };
+
+  writeCliResult({
+    cwd: process.cwd(),
+    stdout: (text) => chunks.push(text),
+  }, command, toolResult);
+  const output = JSON.parse(chunks.join('')) as Record<string, unknown>;
+
+  assert.equal(output.status, 'preview_blocked');
+  assert.equal(output.error_code, 'function_signature_mismatch');
+  assert.equal(output.message, 'Function signature mismatch: ComputeScore.');
+  assert.ok((output.artifacts as Record<string, unknown>)['full_result']);
 });
 
 test('CLI preview summary exposes static preflight issue from error payload', () => {

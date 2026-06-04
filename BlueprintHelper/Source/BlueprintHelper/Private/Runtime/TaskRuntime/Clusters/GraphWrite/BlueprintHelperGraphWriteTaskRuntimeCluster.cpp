@@ -87,6 +87,69 @@ public:
 		return Output;
 	}
 
+	static FString TrimmedObjectStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
+	{
+		FString Value;
+		if (Object.IsValid())
+		{
+			Object->TryGetStringField(FieldName, Value);
+			Value.TrimStartAndEndInline();
+		}
+		return Value;
+	}
+
+	static FString ReadSignatureEvidenceId(const TSharedPtr<FJsonObject>& Payload)
+	{
+		FString SignatureEvidenceId = TrimmedObjectStringField(Payload, TEXT("signature_evidence_id"));
+		if (!SignatureEvidenceId.IsEmpty() || !Payload.IsValid())
+		{
+			return SignatureEvidenceId;
+		}
+
+		const TSharedPtr<FJsonObject>* LogicSpec = nullptr;
+		if (Payload->TryGetObjectField(TEXT("logic_spec"), LogicSpec) && LogicSpec && LogicSpec->IsValid())
+		{
+			SignatureEvidenceId = TrimmedObjectStringField(*LogicSpec, TEXT("signature_evidence_id"));
+			if (!SignatureEvidenceId.IsEmpty())
+			{
+				return SignatureEvidenceId;
+			}
+
+			const TSharedPtr<FJsonObject>* Entry = nullptr;
+			if ((*LogicSpec)->TryGetObjectField(TEXT("entry"), Entry) && Entry && Entry->IsValid())
+			{
+				SignatureEvidenceId = TrimmedObjectStringField(*Entry, TEXT("signature_evidence_id"));
+				if (!SignatureEvidenceId.IsEmpty())
+				{
+					return SignatureEvidenceId;
+				}
+			}
+		}
+
+		const TSharedPtr<FJsonObject>* Entry = nullptr;
+		if (Payload->TryGetObjectField(TEXT("entry"), Entry) && Entry && Entry->IsValid())
+		{
+			SignatureEvidenceId = TrimmedObjectStringField(*Entry, TEXT("signature_evidence_id"));
+		}
+		return SignatureEvidenceId;
+	}
+
+	static void ApplySignatureDependencyMetadata(
+		FBlueprintHelperReviewAtomicTarget& Target,
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FString& SignatureEvidenceId)
+	{
+		if (SignatureEvidenceId.IsEmpty() || LoweredStep.DependsOn.Num() == 0)
+		{
+			return;
+		}
+
+		Target.SignatureRole = TEXT("dependency");
+		Target.SignatureEvidenceId = SignatureEvidenceId;
+		Target.DependencyOwnerStepId = LoweredStep.StepId;
+		Target.DependentStepId = LoweredStep.DependsOn[0];
+	}
+
 	static void AppendStringArrayField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName,
@@ -202,6 +265,8 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 	}
 
 	const FString AnchorJson = FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::SerializePayloadForAnchor(LoweredStep.Payload);
+	const FString SignatureEvidenceId =
+		FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::ReadSignatureEvidenceId(LoweredStep.Payload);
 	for (int32 TargetIndex = 0; TargetIndex < TargetKeys.Num(); ++TargetIndex)
 	{
 		FBlueprintHelperReviewAtomicTarget Target;
@@ -219,6 +284,10 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Target.ExecutionOrder = StepIndex;
 		Target.TaskStepIndex = StepIndex;
 		Target.AtomicIndex = TargetIndex;
+		FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::ApplySignatureDependencyMetadata(
+			Target,
+			LoweredStep,
+			SignatureEvidenceId);
 		OutEvidence.AtomicTargets.Add(Target);
 	}
 

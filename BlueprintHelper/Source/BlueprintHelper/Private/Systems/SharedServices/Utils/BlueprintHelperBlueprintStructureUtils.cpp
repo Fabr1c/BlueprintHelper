@@ -2,6 +2,7 @@
 
 #include "Systems/SharedServices/Utils/BlueprintHelperBlueprintStructureUtils.h"
 
+#include "Systems/SharedServices/Utils/BlueprintHelperPinTypeSpecUtils.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphParsedTypes.h"
 #include "Engine/Blueprint.h"
@@ -82,36 +83,15 @@ bool UBlueprintHelperBlueprintStructureUtils::ParseStableNodeGuid(const FString&
 
 void UBlueprintHelperBlueprintStructureUtils::ReadParsedPinType(const TSharedPtr<FJsonObject>& PinTypeObject, FParsedPinType& OutParsedPinType)
 {
-	if (!PinTypeObject.IsValid())
-	{
-		return;
-	}
-
-	PinTypeObject->TryGetStringField(TEXT("category"), OutParsedPinType.Category);
-	PinTypeObject->TryGetStringField(TEXT("sub_category"), OutParsedPinType.SubCategory);
-	PinTypeObject->TryGetStringField(TEXT("object_path"), OutParsedPinType.SubCategoryObjectPath);
-	PinTypeObject->TryGetStringField(TEXT("container_type"), OutParsedPinType.ContainerType);
-	const TSharedPtr<FJsonObject>* ValueTypeObject = nullptr;
-	if (PinTypeObject->TryGetObjectField(TEXT("value_type"), ValueTypeObject) && ValueTypeObject && ValueTypeObject->IsValid())
-	{
-		OutParsedPinType.ValueType = MakeShared<FParsedPinType>();
-		ReadParsedPinType(*ValueTypeObject, *OutParsedPinType.ValueType);
-	}
-	else
-	{
-		FString ValueTypeCategory;
-		if (PinTypeObject->TryGetStringField(TEXT("value_type"), ValueTypeCategory) && !ValueTypeCategory.IsEmpty())
-		{
-			OutParsedPinType.ValueType = MakeShared<FParsedPinType>();
-			OutParsedPinType.ValueType->Category = ValueTypeCategory;
-		}
-	}
+	FBlueprintHelperPinTypeSpecError Error;
+	FBlueprintHelperPinTypeSpecUtils::ReadParsedPinType(PinTypeObject, OutParsedPinType, Error, TEXT("pin_type"));
 }
 
 FParsedPinType UBlueprintHelperBlueprintStructureUtils::ParsedPinTypeFromJson(const TSharedPtr<FJsonObject>& PinTypeObject)
 {
 	FParsedPinType ParsedPinType;
-	ReadParsedPinType(PinTypeObject, ParsedPinType);
+	FBlueprintHelperPinTypeSpecError Error;
+	FBlueprintHelperPinTypeSpecUtils::ReadParsedPinType(PinTypeObject, ParsedPinType, Error, TEXT("pin_type"));
 	return ParsedPinType;
 }
 
@@ -120,7 +100,7 @@ bool UBlueprintHelperBlueprintStructureUtils::TryConvertPinTypeObject(
 	FEdGraphPinType& OutPinType,
 	FString& OutError)
 {
-	return FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinTypeFromJson(PinTypeObject), OutPinType, OutError);
+	return FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(PinTypeObject, OutPinType, OutError);
 }
 
 void UBlueprintHelperBlueprintStructureUtils::ReadOptionalPinTypeOrDefault(
@@ -135,7 +115,7 @@ void UBlueprintHelperBlueprintStructureUtils::ReadOptionalPinTypeOrDefault(
 	if (Payload.IsValid() && Payload->TryGetObjectField(TEXT("pin_type"), PinTypeObject) && PinTypeObject && PinTypeObject->IsValid())
 	{
 		FString ConvertError;
-		FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(ParsedPinTypeFromJson(*PinTypeObject), OutPinType, ConvertError);
+		FBlueprintHelperPinTypeSpecUtils::TryConvertPinTypeObject(*PinTypeObject, OutPinType, ConvertError);
 	}
 }
 

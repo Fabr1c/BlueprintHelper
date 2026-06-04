@@ -111,6 +111,12 @@ AgentFace 可表达：
 
 ### `edit_blueprint_signature`
 
+Agent writes only `BlueprintHelper.TaskSpec.v1`; `BlueprintHelper.TaskPlan.v1` and raw Bridge payloads are compiler/runtime-owned. `edit_blueprint_signature` is the Agent-facing Signature lifecycle task type.
+
+Signature pin declarations use `SignaturePinSpec`. `SignaturePinSpec.pin_type` uses the shared `BlueprintPinTypeSpec` object shape, and new Agent-facing input rejects legacy string PinType tokens.
+
+Existing function signature mismatch blocks preview and execute with `function_signature_mismatch`; GraphWrite remains responsible only for function/event body logic after Signature dependency steps are established.
+
 AgentFace change kinds：
 
 - `ensure_function`
