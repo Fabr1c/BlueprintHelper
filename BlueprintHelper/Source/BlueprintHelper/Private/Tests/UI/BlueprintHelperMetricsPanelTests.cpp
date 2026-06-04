@@ -13,6 +13,9 @@
 #include "UI/Metrics/BlueprintHelperMetricsPanelData.h"
 #include "UI/Metrics/BlueprintHelperMetricsPanelPresenter.h"
 #include "UI/Metrics/SBlueprintHelperMetricsPanel.h"
+#include "UI/Metrics/SBlueprintHelperMetricsDetailChart.h"
+#include "UI/Metrics/SBlueprintHelperMetricsMetricSelector.h"
+#include "UI/Metrics/SBlueprintHelperMetricsOverviewChart.h"
 #include "UI/Metrics/Utils/BlueprintHelperMetricsPanelAsyncUtils.h"
 
 #include <atomic>
@@ -144,6 +147,15 @@ static void BlueprintHelperMetricsSetIo(
 	Event.Io.EstimatedOutputTokens = EstimatedOutputTokens;
 }
 
+static void BlueprintHelperMetricsSetOperation(
+	FBlueprintHelperMetricsEvent& Event,
+	const TCHAR* Capability,
+	const TCHAR* SemanticOperation)
+{
+	Event.Capability = Capability;
+	Event.SemanticOperation = SemanticOperation;
+}
+
 static FBlueprintHelperMetricsPanelSnapshot BlueprintHelperMetricsMakePresenterSnapshot(
 	EBlueprintHelperMetricsTimelineMode TimelineMode,
 	EBlueprintHelperMetricsLoadState LoadState,
@@ -152,6 +164,7 @@ static FBlueprintHelperMetricsPanelSnapshot BlueprintHelperMetricsMakePresenterS
 {
 	FBlueprintHelperMetricsPanelSnapshot Snapshot;
 	Snapshot.TimelineMode = TimelineMode;
+	Snapshot.Selection.TimelineMode = TimelineMode;
 	Snapshot.LoadState = LoadState;
 	Snapshot.Summary.TotalEvents = TotalEvents;
 	Snapshot.StatusText = StatusText;
@@ -213,6 +226,46 @@ bool FBlueprintHelperMetricsPanelDataDefaultsTest::RunTest(const FString& Parame
 			EBlueprintHelperMetricsTimelineMode::Weekly);
 	TestEqual(TEXT("weekly event type"), WeeklyEvent.Type, EBlueprintHelperMetricsVisualEventType::TimelineModeChanged);
 	TestEqual(TEXT("weekly event mode"), WeeklyEvent.TimelineMode, EBlueprintHelperMetricsTimelineMode::Weekly);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelSelectionDefaultsTest,
+	"BlueprintHelper.UI.MetricsPanel.Data.SelectionDefaults",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelSelectionDefaultsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperMetricsQuery Query;
+	TestEqual(TEXT("default metric kind"), Query.MetricKind, EBlueprintHelperMetricsMetricKind::ToolUsage);
+	TestTrue(TEXT("default selected bucket is empty"), Query.SelectedBucketId.IsEmpty());
+
+	FBlueprintHelperMetricsPanelSnapshot Snapshot;
+	TestEqual(
+		TEXT("snapshot default metric kind"),
+		Snapshot.Selection.MetricKind,
+		EBlueprintHelperMetricsMetricKind::ToolUsage);
+	TestEqual(
+		TEXT("snapshot default timeline"),
+		Snapshot.Selection.TimelineMode,
+		EBlueprintHelperMetricsTimelineMode::Daily);
+	TestTrue(TEXT("snapshot selected bucket starts empty"), Snapshot.Selection.SelectedBucketId.IsEmpty());
+	TestEqual(TEXT("metric option starts empty"), Snapshot.MetricOptions.Num(), 0);
+	TestEqual(TEXT("overview bars start empty"), Snapshot.OverviewBars.Num(), 0);
+	TestEqual(TEXT("detail bars start empty"), Snapshot.DetailBars.Num(), 0);
+	TestEqual(TEXT("operation rows start empty"), Snapshot.OperationUsageRows.Num(), 0);
+
+	const FBlueprintHelperMetricsPanelVisualEvent MetricEvent =
+		FBlueprintHelperMetricsPanelVisualEvent::MetricSelected(
+			EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(TEXT("metric event type"), MetricEvent.Type, EBlueprintHelperMetricsVisualEventType::MetricSelected);
+	TestEqual(TEXT("metric event kind"), MetricEvent.MetricKind, EBlueprintHelperMetricsMetricKind::OperationUsage);
+
+	const FBlueprintHelperMetricsPanelVisualEvent BucketEvent =
+		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(TEXT("bucket-2026-06-04"));
+	TestEqual(TEXT("bucket event type"), BucketEvent.Type, EBlueprintHelperMetricsVisualEventType::OverviewBucketSelected);
+	TestEqual(TEXT("bucket event id"), BucketEvent.BucketId, FString(TEXT("bucket-2026-06-04")));
+
 	return true;
 }
 
@@ -467,6 +520,119 @@ bool FBlueprintHelperMetricsTimeSeriesBuildsDailyBucketsTest::RunTest(const FStr
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsTimeSeriesBuildsMetricKindProjectionTest,
+	"BlueprintHelper.UI.MetricsPanel.TimeSeries.BuildsMetricKindProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsTimeSeriesBuildsMetricKindProjectionTest::RunTest(
+	const FString& Parameters)
+{
+	FBlueprintHelperMetricsLoadResult LoadResult;
+
+	FBlueprintHelperMetricsEvent ReadEvent = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T09:00:00Z"),
+		TEXT("tool_completed"),
+		TEXT("blueprinthelper_read_context"),
+		TEXT("success"));
+	BlueprintHelperMetricsSetOperation(ReadEvent, TEXT("read_context"), TEXT("logic_flow"));
+	LoadResult.Events.Add(ReadEvent);
+
+	FBlueprintHelperMetricsEvent PreviewFailure = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T10:00:00Z"),
+		TEXT("taskspec_preview_completed"),
+		TEXT("blueprinthelper_preview_task"),
+		TEXT("failed"));
+	BlueprintHelperMetricsSetTaskKey(
+		PreviewFailure,
+		TEXT("edit_blueprint_graph"),
+		TEXT("MetricsPanelABC"),
+		TEXT("blueprint"));
+	BlueprintHelperMetricsSetFailure(
+		PreviewFailure,
+		TEXT("parameter_error"),
+		TEXT("taskspec_semantic_invalid"),
+		TEXT("unconsumed_pure_data_node"));
+	BlueprintHelperMetricsSetOperation(PreviewFailure, TEXT("graph_write"), TEXT("append_after"));
+	LoadResult.Events.Add(PreviewFailure);
+
+	FBlueprintHelperMetricsEvent IoEvent = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T10:01:00Z"),
+		TEXT("cli_io_completed"),
+		TEXT("blueprinthelper_preview_task"),
+		TEXT("success"));
+	BlueprintHelperMetricsSetIo(IoEvent, 1200, 1200, 1600, 1600, 300, 400);
+	LoadResult.Events.Add(IoEvent);
+
+	FBlueprintHelperMetricsQuery Query;
+	Query.NowUtc = BlueprintHelperMetricsMakeUtcDateTime(2026, 6, 4, 12, 0, 0);
+	Query.DailyBucketCount = 2;
+	Query.TopRowLimit = 5;
+	Query.MetricKind = EBlueprintHelperMetricsMetricKind::OperationUsage;
+
+	const FBlueprintHelperMetricsPanelSnapshot Snapshot =
+		FBlueprintHelperMetricsTimeSeriesService::BuildSnapshot(LoadResult, Query);
+
+	TestEqual(TEXT("selection metric"), Snapshot.Selection.MetricKind, EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(TEXT("metric options count"), Snapshot.MetricOptions.Num(), 7);
+	TestEqual(TEXT("overview bars count"), Snapshot.OverviewBars.Num(), 2);
+	TestFalse(TEXT("selected bucket id is assigned"), Snapshot.Selection.SelectedBucketId.IsEmpty());
+	TestEqual(TEXT("operation rows count"), Snapshot.OperationUsageRows.Num(), 2);
+	TestTrue(TEXT("detail bars exist"), Snapshot.DetailBars.Num() >= 2);
+
+	if (Snapshot.DetailBars.Num() >= 1)
+	{
+		TestTrue(
+			TEXT("detail label includes operation identity"),
+			Snapshot.DetailBars[0].Label.Contains(TEXT(" / ")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsTimeSeriesBuildsBucketSpecificDetailsTest,
+	"BlueprintHelper.UI.MetricsPanel.TimeSeries.BuildsBucketSpecificDetails",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsTimeSeriesBuildsBucketSpecificDetailsTest::RunTest(
+	const FString& Parameters)
+{
+	FBlueprintHelperMetricsLoadResult LoadResult;
+
+	LoadResult.Events.Add(BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-03T09:00:00Z"),
+		TEXT("tool_completed"),
+		TEXT("blueprinthelper_read_context"),
+		TEXT("success")));
+
+	FBlueprintHelperMetricsEvent TodayTool = BlueprintHelperMetricsMakeEvent(
+		TEXT("2026-06-04T09:00:00Z"),
+		TEXT("tool_completed"),
+		TEXT("blueprinthelper_execute_task"),
+		TEXT("success"));
+	LoadResult.Events.Add(TodayTool);
+
+	FBlueprintHelperMetricsQuery Query;
+	Query.NowUtc = BlueprintHelperMetricsMakeUtcDateTime(2026, 6, 4, 12, 0, 0);
+	Query.DailyBucketCount = 2;
+	Query.MetricKind = EBlueprintHelperMetricsMetricKind::ToolUsage;
+
+	const FBlueprintHelperMetricsPanelSnapshot Snapshot =
+		FBlueprintHelperMetricsTimeSeriesService::BuildSnapshot(LoadResult, Query);
+
+	TestEqual(TEXT("selected bucket label"), Snapshot.SelectedBucketLabel, FString(TEXT("2026-06-04")));
+	TestEqual(TEXT("selected bucket total"), Snapshot.SelectedBucketTotal, static_cast<int64>(1));
+	TestEqual(TEXT("detail bars count"), Snapshot.DetailBars.Num(), 1);
+	if (Snapshot.DetailBars.Num() == 1)
+	{
+		TestEqual(TEXT("today tool detail"), Snapshot.DetailBars[0].Label, FString(TEXT("blueprinthelper_execute_task")));
+		TestEqual(TEXT("today tool value"), Snapshot.DetailBars[0].Value, static_cast<int64>(1));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperMetricsTimeSeriesSeparatesIoFromToolUsageTest,
 	"BlueprintHelper.UI.MetricsPanel.TimeSeries.SeparatesIoFromToolUsage",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -666,11 +832,11 @@ bool FBlueprintHelperMetricsPanelPresenterSwitchesTimelineModeTest::RunTest(
 	TArray<FBlueprintHelperMetricsPanelPresenterEvent> PresenterEvents;
 
 	FBlueprintHelperMetricsPanelPresenter Presenter(
-		[&LoadCallCount](EBlueprintHelperMetricsTimelineMode TimelineMode)
+		[&LoadCallCount](const FBlueprintHelperMetricsPanelSelection& Selection)
 		{
 			++LoadCallCount;
 			return BlueprintHelperMetricsMakePresenterSnapshot(
-				TimelineMode,
+				Selection.TimelineMode,
 				EBlueprintHelperMetricsLoadState::Loaded,
 				6,
 				TEXT("Loaded Metrics"));
@@ -717,6 +883,148 @@ bool FBlueprintHelperMetricsPanelPresenterSwitchesTimelineModeTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelPresenterRoutesSelectionEventsTest,
+	"BlueprintHelper.UI.MetricsPanel.Presenter.RoutesSelectionEvents",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelPresenterRoutesSelectionEventsTest::RunTest(
+	const FString& Parameters)
+{
+	TArray<FBlueprintHelperMetricsPanelSelection> LoadedSelections;
+	TArray<FBlueprintHelperMetricsPanelPresenterEvent> PresenterEvents;
+
+	FBlueprintHelperMetricsPanelPresenter Presenter(
+		[&LoadedSelections](const FBlueprintHelperMetricsPanelSelection& Selection)
+		{
+			LoadedSelections.Add(Selection);
+			FBlueprintHelperMetricsPanelSnapshot Snapshot =
+				BlueprintHelperMetricsMakePresenterSnapshot(
+					Selection.TimelineMode,
+					EBlueprintHelperMetricsLoadState::Loaded,
+					9,
+					TEXT("Loaded Metrics"));
+			Snapshot.Selection = Selection;
+			return Snapshot;
+		});
+	Presenter.SetEventSink(
+		[&PresenterEvents](const FBlueprintHelperMetricsPanelPresenterEvent& Event)
+		{
+			PresenterEvents.Add(Event);
+		});
+
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::MetricSelected(
+			EBlueprintHelperMetricsMetricKind::OperationUsage));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(
+			TEXT("selected-bucket")));
+
+	TestEqual(TEXT("loader called twice"), LoadedSelections.Num(), 2);
+	TestEqual(
+		TEXT("first selection metric"),
+		LoadedSelections[0].MetricKind,
+		EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestTrue(TEXT("metric change clears selected bucket"), LoadedSelections[0].SelectedBucketId.IsEmpty());
+	TestEqual(
+		TEXT("second selection bucket"),
+		LoadedSelections[1].SelectedBucketId,
+		FString(TEXT("selected-bucket")));
+	TestEqual(
+		TEXT("presenter stores selected bucket"),
+		Presenter.GetSnapshot().Selection.SelectedBucketId,
+		FString(TEXT("selected-bucket")));
+	TestTrue(TEXT("presenter emits refresh events"), PresenterEvents.Num() >= 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelPresenterRunsAbcInteractionSequenceTest,
+	"BlueprintHelper.UI.MetricsPanel.Presenter.RunsAbcInteractionSequence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelPresenterRunsAbcInteractionSequenceTest::RunTest(
+	const FString& Parameters)
+{
+	TArray<FBlueprintHelperMetricsPanelSelection> LoadedSelections;
+
+	FBlueprintHelperMetricsPanelPresenter Presenter(
+		[&LoadedSelections](const FBlueprintHelperMetricsPanelSelection& Selection)
+		{
+			LoadedSelections.Add(Selection);
+
+			FBlueprintHelperMetricsPanelSnapshot Snapshot =
+				BlueprintHelperMetricsMakePresenterSnapshot(
+					Selection.TimelineMode,
+					EBlueprintHelperMetricsLoadState::Loaded,
+					12,
+					TEXT("Loaded Metrics"));
+			Snapshot.Selection = Selection;
+			Snapshot.SelectedMetricTitle = TEXT("Operations");
+			Snapshot.SelectedBucketLabel = Selection.SelectedBucketId.IsEmpty()
+				? TEXT("latest")
+				: Selection.SelectedBucketId;
+			Snapshot.SelectedBucketTotal = Selection.SelectedBucketId.IsEmpty() ? 0 : 2;
+
+			FBlueprintHelperMetricsDetailBarView Detail;
+			Detail.Label = Selection.SelectedBucketId.IsEmpty()
+				? TEXT("no bucket")
+				: TEXT("graph_write / append_after");
+			Detail.Value = Snapshot.SelectedBucketTotal;
+			Detail.UnitLabel = TEXT("events");
+			Snapshot.DetailBars.Add(Detail);
+			return Snapshot;
+		});
+
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::MetricSelected(
+			EBlueprintHelperMetricsMetricKind::OperationUsage));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::OverviewBucketSelected(
+			TEXT("bucket-operations")));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::TimelineModeChanged(
+			EBlueprintHelperMetricsTimelineMode::Weekly));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::TimelineModeChanged(
+			EBlueprintHelperMetricsTimelineMode::Daily));
+	Presenter.HandleVisualEventForTests(
+		FBlueprintHelperMetricsPanelVisualEvent::RefreshClicked());
+
+	TestEqual(TEXT("sequence loader call count"), LoadedSelections.Num(), 5);
+	TestEqual(
+		TEXT("operations selected"),
+		LoadedSelections[0].MetricKind,
+		EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(
+		TEXT("bucket selected"),
+		LoadedSelections[1].SelectedBucketId,
+		FString(TEXT("bucket-operations")));
+	TestEqual(
+		TEXT("weekly clears bucket"),
+		LoadedSelections[2].SelectedBucketId,
+		FString());
+	TestEqual(
+		TEXT("weekly timeline selected"),
+		LoadedSelections[2].TimelineMode,
+		EBlueprintHelperMetricsTimelineMode::Weekly);
+	TestEqual(
+		TEXT("daily timeline selected"),
+		LoadedSelections[3].TimelineMode,
+		EBlueprintHelperMetricsTimelineMode::Daily);
+	TestEqual(
+		TEXT("refresh preserves latest metric"),
+		LoadedSelections[4].MetricKind,
+		EBlueprintHelperMetricsMetricKind::OperationUsage);
+	TestEqual(
+		TEXT("final detail row exists"),
+		Presenter.GetSnapshot().DetailBars.Num(),
+		1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperMetricsPanelPresenterReplaysLatestAsyncRequestTest,
 	"BlueprintHelper.UI.MetricsPanel.Presenter.ReplaysLatestAsyncRequest",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -731,7 +1039,7 @@ bool FBlueprintHelperMetricsPanelPresenterReplaysLatestAsyncRequestTest::RunTest
 	const TSharedRef<FBlueprintHelperMetricsPanelPresenter> Presenter =
 		MakeShared<FBlueprintHelperMetricsPanelPresenter>(
 			[&LoadCallCount, &bAllowFirstLoadFinish](
-				EBlueprintHelperMetricsTimelineMode TimelineMode)
+				const FBlueprintHelperMetricsPanelSelection& Selection)
 			{
 				const int32 CallIndex = LoadCallCount.fetch_add(1) + 1;
 				if (CallIndex == 1)
@@ -745,14 +1053,17 @@ bool FBlueprintHelperMetricsPanelPresenterReplaysLatestAsyncRequestTest::RunTest
 				}
 
 				const int32 TotalEvents =
-					TimelineMode == EBlueprintHelperMetricsTimelineMode::Weekly
+					Selection.TimelineMode == EBlueprintHelperMetricsTimelineMode::Weekly
 						? 2
 						: 1;
-				return BlueprintHelperMetricsMakePresenterSnapshot(
-					TimelineMode,
-					EBlueprintHelperMetricsLoadState::Loaded,
-					TotalEvents,
-					TEXT("Loaded Metrics"));
+				FBlueprintHelperMetricsPanelSnapshot Snapshot =
+					BlueprintHelperMetricsMakePresenterSnapshot(
+						Selection.TimelineMode,
+						EBlueprintHelperMetricsLoadState::Loaded,
+						TotalEvents,
+						TEXT("Loaded Metrics"));
+				Snapshot.Selection = Selection;
+				return Snapshot;
 			});
 	Presenter->SetEventSink(
 		[&PresenterEvents](const FBlueprintHelperMetricsPanelPresenterEvent& Event)
@@ -868,6 +1179,68 @@ bool FBlueprintHelperMetricsPanelPresenterMissingLoaderEmitsErrorTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMetricsPanelSlateAbcComponentsConstructTest,
+	"BlueprintHelper.UI.MetricsPanel.Slate.AbcComponentsConstruct",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMetricsPanelSlateAbcComponentsConstructTest::RunTest(
+	const FString& Parameters)
+{
+	TArray<FBlueprintHelperMetricsMetricOptionView> Options;
+	FBlueprintHelperMetricsMetricOptionView Option;
+	Option.Kind = EBlueprintHelperMetricsMetricKind::ToolUsage;
+	Option.Label = TEXT("Tool Calls");
+	Option.UnitLabel = TEXT("events");
+	Option.Total = 3;
+	Option.bIsSelected = true;
+	Options.Add(Option);
+
+	TArray<FBlueprintHelperMetricsOverviewBarView> Bars;
+	FBlueprintHelperMetricsOverviewBarView Bar;
+	Bar.BucketId = TEXT("bucket");
+	Bar.Label = TEXT("2026-06-04");
+	Bar.Value = 3;
+	Bar.Fraction = 1.0f;
+	Bar.bIsSelected = true;
+	Bars.Add(Bar);
+
+	TArray<FBlueprintHelperMetricsDetailBarView> Details;
+	FBlueprintHelperMetricsDetailBarView Detail;
+	Detail.Label = TEXT("blueprinthelper_read_context");
+	Detail.Value = 3;
+	Detail.UnitLabel = TEXT("events");
+	Detail.Fraction = 1.0f;
+	Details.Add(Detail);
+
+	TSharedRef<SWidget> Selector =
+		SNew(SBlueprintHelperMetricsMetricSelector)
+		.Options(Options)
+		.OnMetricSelected(FOnBlueprintHelperMetricsMetricSelected::CreateLambda(
+			[](EBlueprintHelperMetricsMetricKind) {}));
+	TSharedRef<SWidget> Overview =
+		SNew(SBlueprintHelperMetricsOverviewChart)
+		.TimelineMode(EBlueprintHelperMetricsTimelineMode::Daily)
+		.Bars(Bars)
+		.OnTimelineModeSelected(FOnBlueprintHelperMetricsTimelineModeSelected::CreateLambda(
+			[](EBlueprintHelperMetricsTimelineMode) {}))
+		.OnBucketSelected(FOnBlueprintHelperMetricsBucketSelected::CreateLambda(
+			[](const FString&) {}))
+		.OnRefreshClicked(FOnBlueprintHelperMetricsRefreshClicked::CreateLambda(
+			[]() {}));
+	TSharedRef<SWidget> DetailChart =
+		SNew(SBlueprintHelperMetricsDetailChart)
+		.Title(TEXT("Tool Calls"))
+		.Subtitle(TEXT("2026-06-04"))
+		.TotalText(TEXT("3 events"))
+		.Rows(Details);
+
+	TestTrue(TEXT("selector constructed"), Selector->GetTypeAsString().Len() > 0);
+	TestTrue(TEXT("overview constructed"), Overview->GetTypeAsString().Len() > 0);
+	TestTrue(TEXT("detail constructed"), DetailChart->GetTypeAsString().Len() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperMetricsPanelSlateConstructsTest,
 	"BlueprintHelper.UI.MetricsPanel.Slate.Constructs",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -877,6 +1250,7 @@ bool FBlueprintHelperMetricsPanelSlateConstructsTest::RunTest(
 {
 	TSharedRef<SWidget> Panel = SNew(SBlueprintHelperMetricsPanel);
 	TestTrue(TEXT("panel constructed"), Panel.Get().GetVisibility().IsVisible());
+	TestEqual(TEXT("panel widget type"), Panel->GetTypeAsString(), FString(TEXT("SBlueprintHelperMetricsPanel")));
 
 	const bool bAsyncTasksFlushed =
 		BlueprintHelperMetricsPumpAsyncUntil([]() { return true; }, 1.0);

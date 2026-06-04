@@ -9,14 +9,16 @@
 
 static FBlueprintHelperMetricsPanelSnapshot
 BlueprintHelperMetricsPanelLoadDefaultSnapshot(
-	EBlueprintHelperMetricsTimelineMode TimelineMode)
+	const FBlueprintHelperMetricsPanelSelection& Selection)
 {
+	FBlueprintHelperMetricsQuery Query;
+	Query.TimelineMode = Selection.TimelineMode;
+	Query.MetricKind = Selection.MetricKind;
+	Query.SelectedBucketId = Selection.SelectedBucketId;
+	Query.NowUtc = FDateTime::UtcNow();
+
 	const FBlueprintHelperMetricsLoadResult LoadResult =
 		FBlueprintHelperMetricsStoreReader::LoadDefault();
-
-	FBlueprintHelperMetricsQuery Query;
-	Query.TimelineMode = TimelineMode;
-	Query.NowUtc = FDateTime::UtcNow();
 	return FBlueprintHelperMetricsTimeSeriesService::BuildSnapshot(LoadResult, Query);
 }
 
@@ -33,6 +35,33 @@ static FString BlueprintHelperMetricsPanelMissingLoaderText()
 static FString BlueprintHelperMetricsPanelShutdownText()
 {
 	return TEXT("Metrics refresh skipped: worker is shutting down");
+}
+
+static FBlueprintHelperMetricsPanelSelection
+BlueprintHelperMetricsPanelSelectionFromEvent(
+	const FBlueprintHelperMetricsPanelSelection& CurrentSelection,
+	const FBlueprintHelperMetricsPanelVisualEvent& Event)
+{
+	FBlueprintHelperMetricsPanelSelection NextSelection = CurrentSelection;
+	switch (Event.Type)
+	{
+	case EBlueprintHelperMetricsVisualEventType::RefreshClicked:
+		break;
+	case EBlueprintHelperMetricsVisualEventType::MetricSelected:
+		NextSelection.MetricKind = Event.MetricKind;
+		NextSelection.SelectedBucketId.Reset();
+		break;
+	case EBlueprintHelperMetricsVisualEventType::TimelineModeChanged:
+		NextSelection.TimelineMode = Event.TimelineMode;
+		NextSelection.SelectedBucketId.Reset();
+		break;
+	case EBlueprintHelperMetricsVisualEventType::OverviewBucketSelected:
+		NextSelection.SelectedBucketId = Event.BucketId;
+		break;
+	default:
+		break;
+	}
+	return NextSelection;
 }
 
 TSharedRef<FBlueprintHelperMetricsPanelPresenter>
@@ -62,29 +91,17 @@ void FBlueprintHelperMetricsPanelPresenter::SetEventSink(
 FReply FBlueprintHelperMetricsPanelPresenter::HandleVisualEvent(
 	const FBlueprintHelperMetricsPanelVisualEvent& Event)
 {
-	switch (Event.Type)
-	{
-	case EBlueprintHelperMetricsVisualEventType::RefreshClicked:
-		return HandleRefreshRequest(Snapshot.TimelineMode, true);
-	case EBlueprintHelperMetricsVisualEventType::TimelineModeChanged:
-		return HandleRefreshRequest(Event.TimelineMode, true);
-	default:
-		return FReply::Handled();
-	}
+	const FBlueprintHelperMetricsPanelSelection NextSelection =
+		BlueprintHelperMetricsPanelSelectionFromEvent(Snapshot.Selection, Event);
+	return HandleRefreshRequest(NextSelection, true);
 }
 
 FReply FBlueprintHelperMetricsPanelPresenter::HandleVisualEventForTests(
 	const FBlueprintHelperMetricsPanelVisualEvent& Event)
 {
-	switch (Event.Type)
-	{
-	case EBlueprintHelperMetricsVisualEventType::RefreshClicked:
-		return HandleRefreshRequest(Snapshot.TimelineMode, false);
-	case EBlueprintHelperMetricsVisualEventType::TimelineModeChanged:
-		return HandleRefreshRequest(Event.TimelineMode, false);
-	default:
-		return FReply::Handled();
-	}
+	const FBlueprintHelperMetricsPanelSelection NextSelection =
+		BlueprintHelperMetricsPanelSelectionFromEvent(Snapshot.Selection, Event);
+	return HandleRefreshRequest(NextSelection, false);
 }
 
 const FBlueprintHelperMetricsPanelSnapshot&
@@ -94,12 +111,12 @@ FBlueprintHelperMetricsPanelPresenter::GetSnapshot() const
 }
 
 FReply FBlueprintHelperMetricsPanelPresenter::HandleRefreshRequest(
-	EBlueprintHelperMetricsTimelineMode TimelineMode,
+	const FBlueprintHelperMetricsPanelSelection& Selection,
 	bool bUseAsync)
 {
 	if (bLoadInProgress)
 	{
-		QueuePendingRefreshRequest(TimelineMode);
+		QueuePendingRefreshRequest(Selection);
 		return FReply::Handled();
 	}
 
@@ -107,38 +124,39 @@ FReply FBlueprintHelperMetricsPanelPresenter::HandleRefreshRequest(
 		FBlueprintHelperMetricsPanelAsyncUtils::IsShutdownRequested())
 	{
 		ApplySnapshotAndEmit(
-			BuildErrorSnapshot(TimelineMode, BlueprintHelperMetricsPanelShutdownText()));
+			BuildErrorSnapshot(Selection, BlueprintHelperMetricsPanelShutdownText()));
 		return FReply::Handled();
 	}
 
 	if (!LoadSnapshotCallback)
 	{
 		ApplySnapshotAndEmit(
-			BuildErrorSnapshot(TimelineMode, BlueprintHelperMetricsPanelMissingLoaderText()));
+			BuildErrorSnapshot(Selection, BlueprintHelperMetricsPanelMissingLoaderText()));
 		return FReply::Handled();
 	}
 
 	bLoadInProgress = true;
-	ApplySnapshotAndEmit(BuildLoadingSnapshot(TimelineMode));
+	ApplySnapshotAndEmit(BuildLoadingSnapshot(Selection));
 
 	if (!bUseAsync)
 	{
 		const FBlueprintHelperMetricsPanelSnapshot LoadedSnapshot =
-			LoadSnapshot(TimelineMode);
+			LoadSnapshot(Selection);
 		CompleteRefreshRequest(LoadedSnapshot, false);
 		return FReply::Handled();
 	}
 
+	const FBlueprintHelperMetricsPanelSelection RequestedSelection = Selection;
 	TWeakPtr<FBlueprintHelperMetricsPanelPresenter> WeakPresenter = AsShared();
 	const FLoadSnapshot Loader = LoadSnapshotCallback;
 	TFuture<void> LoadTask = Async(
 		EAsyncExecution::ThreadPool,
-		[WeakPresenter, Loader, TimelineMode]()
+		[WeakPresenter, Loader, RequestedSelection]()
 		{
 			FBlueprintHelperMetricsPanelSnapshot LoadedSnapshot;
 			if (Loader)
 			{
-				LoadedSnapshot = Loader(TimelineMode);
+				LoadedSnapshot = Loader(RequestedSelection);
 			}
 
 			AsyncTask(
@@ -187,15 +205,15 @@ void FBlueprintHelperMetricsPanelPresenter::EmitCurrentSnapshot() const
 }
 
 void FBlueprintHelperMetricsPanelPresenter::QueuePendingRefreshRequest(
-	EBlueprintHelperMetricsTimelineMode TimelineMode)
+	const FBlueprintHelperMetricsPanelSelection& Selection)
 {
 	bPendingLoadRequest = true;
-	PendingTimelineMode = TimelineMode;
-	ApplySnapshotAndEmit(BuildLoadingSnapshot(TimelineMode));
+	PendingSelection = Selection;
+	ApplySnapshotAndEmit(BuildLoadingSnapshot(Selection));
 }
 
 bool FBlueprintHelperMetricsPanelPresenter::ConsumePendingRefreshRequest(
-	EBlueprintHelperMetricsTimelineMode& OutTimelineMode)
+	FBlueprintHelperMetricsPanelSelection& OutSelection)
 {
 	if (!bPendingLoadRequest)
 	{
@@ -203,7 +221,7 @@ bool FBlueprintHelperMetricsPanelPresenter::ConsumePendingRefreshRequest(
 	}
 
 	bPendingLoadRequest = false;
-	OutTimelineMode = PendingTimelineMode;
+	OutSelection = PendingSelection;
 	return true;
 }
 
@@ -213,11 +231,10 @@ void FBlueprintHelperMetricsPanelPresenter::CompleteRefreshRequest(
 {
 	bLoadInProgress = false;
 
-	EBlueprintHelperMetricsTimelineMode PendingMode =
-		EBlueprintHelperMetricsTimelineMode::Daily;
-	if (ConsumePendingRefreshRequest(PendingMode))
+	FBlueprintHelperMetricsPanelSelection PendingSelectionToLoad;
+	if (ConsumePendingRefreshRequest(PendingSelectionToLoad))
 	{
-		HandleRefreshRequest(PendingMode, bUseAsync);
+		HandleRefreshRequest(PendingSelectionToLoad, bUseAsync);
 		return;
 	}
 
@@ -226,10 +243,11 @@ void FBlueprintHelperMetricsPanelPresenter::CompleteRefreshRequest(
 
 FBlueprintHelperMetricsPanelSnapshot
 FBlueprintHelperMetricsPanelPresenter::BuildLoadingSnapshot(
-	EBlueprintHelperMetricsTimelineMode TimelineMode) const
+	const FBlueprintHelperMetricsPanelSelection& Selection) const
 {
 	FBlueprintHelperMetricsPanelSnapshot LoadingSnapshot;
-	LoadingSnapshot.TimelineMode = TimelineMode;
+	LoadingSnapshot.TimelineMode = Selection.TimelineMode;
+	LoadingSnapshot.Selection = Selection;
 	LoadingSnapshot.LoadState = EBlueprintHelperMetricsLoadState::Loading;
 	LoadingSnapshot.MetricsRoot = Snapshot.MetricsRoot;
 	LoadingSnapshot.StatusText = BlueprintHelperMetricsPanelLoadingStatusText();
@@ -238,11 +256,12 @@ FBlueprintHelperMetricsPanelPresenter::BuildLoadingSnapshot(
 
 FBlueprintHelperMetricsPanelSnapshot
 FBlueprintHelperMetricsPanelPresenter::BuildErrorSnapshot(
-	EBlueprintHelperMetricsTimelineMode TimelineMode,
+	const FBlueprintHelperMetricsPanelSelection& Selection,
 	const FString& ErrorText) const
 {
 	FBlueprintHelperMetricsPanelSnapshot ErrorSnapshot;
-	ErrorSnapshot.TimelineMode = TimelineMode;
+	ErrorSnapshot.TimelineMode = Selection.TimelineMode;
+	ErrorSnapshot.Selection = Selection;
 	ErrorSnapshot.LoadState = EBlueprintHelperMetricsLoadState::Error;
 	ErrorSnapshot.MetricsRoot = Snapshot.MetricsRoot;
 	ErrorSnapshot.ErrorText = ErrorText;
@@ -252,9 +271,9 @@ FBlueprintHelperMetricsPanelPresenter::BuildErrorSnapshot(
 
 FBlueprintHelperMetricsPanelSnapshot
 FBlueprintHelperMetricsPanelPresenter::LoadSnapshot(
-	EBlueprintHelperMetricsTimelineMode TimelineMode) const
+	const FBlueprintHelperMetricsPanelSelection& Selection) const
 {
 	return LoadSnapshotCallback
-		? LoadSnapshotCallback(TimelineMode)
-		: BuildErrorSnapshot(TimelineMode, BlueprintHelperMetricsPanelMissingLoaderText());
+		? LoadSnapshotCallback(Selection)
+		: BuildErrorSnapshot(Selection, BlueprintHelperMetricsPanelMissingLoaderText());
 }

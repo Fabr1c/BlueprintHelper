@@ -12,7 +12,7 @@ class BLUEPRINTHELPER_API FBlueprintHelperMetricsPanelPresenter
 public:
 	using FPresenterEventSink = TFunction<void(const FBlueprintHelperMetricsPanelPresenterEvent&)>;
 	using FLoadSnapshot = TFunction<FBlueprintHelperMetricsPanelSnapshot(
-		EBlueprintHelperMetricsTimelineMode)>;
+		const FBlueprintHelperMetricsPanelSelection&)>;
 
 	static TSharedRef<FBlueprintHelperMetricsPanelPresenter> CreateDefault();
 
@@ -26,28 +26,29 @@ public:
 
 private:
 	FReply HandleRefreshRequest(
-		EBlueprintHelperMetricsTimelineMode TimelineMode,
+		const FBlueprintHelperMetricsPanelSelection& Selection,
 		bool bUseAsync);
 	void ApplySnapshotAndEmit(const FBlueprintHelperMetricsPanelSnapshot& InSnapshot);
 	void EmitCurrentSnapshot() const;
-	void QueuePendingRefreshRequest(EBlueprintHelperMetricsTimelineMode TimelineMode);
-	bool ConsumePendingRefreshRequest(EBlueprintHelperMetricsTimelineMode& OutTimelineMode);
+	void QueuePendingRefreshRequest(
+		const FBlueprintHelperMetricsPanelSelection& Selection);
+	bool ConsumePendingRefreshRequest(
+		FBlueprintHelperMetricsPanelSelection& OutSelection);
 	void CompleteRefreshRequest(
 		const FBlueprintHelperMetricsPanelSnapshot& LoadedSnapshot,
 		bool bUseAsync);
 	FBlueprintHelperMetricsPanelSnapshot BuildLoadingSnapshot(
-		EBlueprintHelperMetricsTimelineMode TimelineMode) const;
+		const FBlueprintHelperMetricsPanelSelection& Selection) const;
 	FBlueprintHelperMetricsPanelSnapshot BuildErrorSnapshot(
-		EBlueprintHelperMetricsTimelineMode TimelineMode,
+		const FBlueprintHelperMetricsPanelSelection& Selection,
 		const FString& ErrorText) const;
 	FBlueprintHelperMetricsPanelSnapshot LoadSnapshot(
-		EBlueprintHelperMetricsTimelineMode TimelineMode) const;
+		const FBlueprintHelperMetricsPanelSelection& Selection) const;
 
 	FBlueprintHelperMetricsPanelSnapshot Snapshot;
 	FPresenterEventSink EventSink;
 	FLoadSnapshot LoadSnapshotCallback;
 	bool bLoadInProgress = false;
 	bool bPendingLoadRequest = false;
-	EBlueprintHelperMetricsTimelineMode PendingTimelineMode =
-		EBlueprintHelperMetricsTimelineMode::Daily;
+	FBlueprintHelperMetricsPanelSelection PendingSelection;
 };
