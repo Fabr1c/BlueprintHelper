@@ -3,13 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionModel.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "UI/BlueprintHelperUiSettings.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SMultiLineEditableTextBox;
-class SBlueprintHelperLayoutRuleCanvas;
+class SBlueprintHelperLayoutPreviewInteractionSurface;
 class SBox;
 class SGraphEditor;
 class STextBlock;
@@ -55,7 +56,6 @@ public:
 private:
 	enum class EPreviewState : uint8
 	{
-		Edit,
 		PreviewLoading,
 		PreviewMaterializing,
 		PreviewReady,
@@ -70,11 +70,8 @@ private:
 	FReply OnResetToDefaultClicked();
 	FReply OnAlignExecRowClicked();
 	FReply OnPreviewClicked();
-	FReply OnReturnToEditClicked();
 
 	void HandleRuleSetTextChanged(const FText& InText);
-	void HandleCanvasRuleSetChanged(const FString& InRuleSetJson);
-	TSharedRef<SWidget> BuildEditWorkspace();
 	TSharedRef<SWidget> BuildSceneToolbar();
 	TSharedRef<SWidget> BuildPreviewWorkspace();
 	TSharedRef<SWidget> BuildPreviewContent();
@@ -89,7 +86,6 @@ private:
 	void CommitSettingsRuleSetJson(const FString& InUpdatedRuleSetJson);
 	void SetStatusMessage(const FString& InMessage, bool bInValid);
 	bool ValidateRuleSetJson(FString& OutMessage) const;
-	void RefreshCanvasFromJson();
 
 	FString LoadJsonFromDefaultFile(FString& OutMessage) const;
 	bool SaveJsonToDefaultFile(const FString& JsonText, FString& OutMessage) const;
@@ -104,7 +100,10 @@ private:
 	void PumpPreviewMaterializer();
 	void BuildPreviewGraphEditor(UEdGraph* PreviewGraph);
 	void CancelActivePreview();
-	bool IsPreviewMode() const;
+	void HandlePreviewInteractionBegin();
+	void HandlePreviewInteractionEnd();
+	bool CommitPreviewInteraction(
+		const BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommit& Commit);
 
 	FString RuleSetJson;
 	FString DefaultRuleSetJson;
@@ -145,18 +144,20 @@ private:
 	FBlueprintHelperLayoutRuleEditorValidateJson ValidateJsonDelegate;
 	FBlueprintHelperLayoutRuleEditorJsonChanged RuleSetJsonChangedDelegate;
 
-	TSharedPtr<SBlueprintHelperLayoutRuleCanvas> RuleCanvas;
 	TSharedPtr<SBox> WorkspaceBox;
 	TSharedPtr<SGraphEditor> PreviewGraphEditor;
+	TSharedPtr<SBlueprintHelperLayoutPreviewInteractionSurface> PreviewInteractionSurface;
 	TSharedPtr<SMultiLineEditableTextBox> RuleSetTextBox;
 	TSharedPtr<STextBlock> ValidationStatusTextBlock;
 
 	TUniquePtr<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService> PreviewService;
 	TUniquePtr<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer> PreviewMaterializer;
 	TOptional<BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult> PendingPreviewBuildResult;
-	BlueprintHelper::GraphLayout::ESemanticScene EditSceneBeforePreview =
+	BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionModel PreviewInteractionModel;
+	TWeakObjectPtr<UEdGraph> ActivePreviewGraph;
+	BlueprintHelper::GraphLayout::ESemanticScene CurrentScene =
 		BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;
-	EPreviewState PreviewState = EPreviewState::Edit;
+	EPreviewState PreviewState = EPreviewState::PreviewLoading;
 	FString PreviewStatusMessage;
 	uint64 ActivePreviewJobId = 0;
 	uint64 ActivePreviewGeneration = 0;

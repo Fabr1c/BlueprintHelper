@@ -20,11 +20,13 @@
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Self.h"
+#include "InputCoreTypes.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionModel.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewTypes.h"
@@ -35,7 +37,10 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutTopology.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutTypes.h"
+#include "UI/Layout/SBlueprintHelperLayoutPreviewInteractionSurface.h"
 #include "UI/BlueprintHelperUiSettings.h"
+#include "Input/Events.h"
+#include "Widgets/SNullWidget.h"
 
 #include <initializer_list>
 
@@ -3421,10 +3426,28 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesTransientGraph::RunTe
 	UEdGraph* PreviewGraph = Result.PreviewGraph.Get();
 	TestTrue(TEXT("preview blueprint is transient"), PreviewBlueprint->HasAnyFlags(RF_Transient));
 	TestTrue(TEXT("preview graph is transient"), PreviewGraph->HasAnyFlags(RF_Transient));
-	TestFalse(TEXT("preview graph is read only"), PreviewGraph->bEditable);
+	TestTrue(TEXT("preview graph is editable for layout calibration"), PreviewGraph->bEditable);
 	TestTrue(TEXT("preview graph is attached to blueprint ubergraph pages"), PreviewBlueprint->UbergraphPages.Contains(PreviewGraph));
 	TestTrue(TEXT("preview graph uses K2 schema"), PreviewGraph->Schema == UEdGraphSchema_K2::StaticClass());
 	TestEqual(TEXT("preview graph materializes all requested nodes"), PreviewGraph->Nodes.Num(), Sample.Nodes.Num());
+
+	const FGuid* EventGuid = Result.NodeGuidsById.Find(TEXT("EventStart"));
+	TestNotNull(TEXT("event guid exists"), EventGuid);
+	if (EventGuid)
+	{
+		const FString* EventNodeId = Result.NodeIdsByGuid.Find(*EventGuid);
+		const ENodeRole* EventRole = Result.RolesByGuid.Find(*EventGuid);
+		const ENodeRole* EventAnchorRole = Result.AnchorRolesByGuid.Find(*EventGuid);
+		TestNotNull(TEXT("event reverse node id exists"), EventNodeId);
+		TestNotNull(TEXT("event reverse role exists"), EventRole);
+		TestNotNull(TEXT("event reverse anchor role exists"), EventAnchorRole);
+		if (EventNodeId && EventRole && EventAnchorRole)
+		{
+			TestEqual(TEXT("event reverse node id"), *EventNodeId, FString(TEXT("EventStart")));
+			TestEqual(TEXT("event reverse role"), *EventRole, ENodeRole::EventEntry);
+			TestEqual(TEXT("event reverse anchor role"), *EventAnchorRole, ENodeRole::EventEntry);
+		}
+	}
 
 	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
 	TestNotNull(TEXT("event placement exists"), EventPlacement);
@@ -3468,6 +3491,293 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesTransientGraph::RunTe
 	FGraphLayoutPreviewMaterializerResult SyncResult;
 	TestTrue(TEXT("sync helper materializes preview graph"), Materializer.MaterializeForTest(Sample, Plan, SyncResult));
 	TestTrue(TEXT("sync helper returns valid graph"), SyncResult.PreviewGraph.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelDetectsMovedNodes,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelDetectsMovedNodes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelDetectsMovedNodes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FGraphLayoutPreviewSample Sample = MakeMaterializerTestSample();
+	const FLayoutPlan Plan = MakeMaterializerTestPlan();
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer succeeds"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("preview graph exists"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewInteractionModel Model;
+	TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+	Model.BeginInteraction(Result.PreviewGraph.Get());
+
+	UEdGraphNode* EventNode = nullptr;
+	for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (Node && Result.NodeIdsByGuid.FindRef(Node->NodeGuid) == TEXT("EventStart"))
+		{
+			EventNode = Node;
+			break;
+		}
+	}
+	TestNotNull(TEXT("event node found"), EventNode);
+	if (!EventNode)
+	{
+		return false;
+	}
+
+	EventNode->NodePosX += 123;
+	EventNode->NodePosY += 45;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	TestTrue(TEXT("end interaction detects change"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+	TestEqual(TEXT("one moved node"), Commit.MovedNodes.Num(), 1);
+	TestEqual(TEXT("moved node id"), Commit.MovedNodes[0].NodeId, FString(TEXT("EventStart")));
+	TestEqual(TEXT("moved anchor role"), Commit.MovedNodes[0].AnchorRole, ENodeRole::EventEntry);
+	TestEqual(TEXT("moved target x"), Commit.MovedNodes[0].EndTopLeft.X, static_cast<double>(EventNode->NodePosX));
+	TestEqual(TEXT("moved target y"), Commit.MovedNodes[0].EndTopLeft.Y, static_cast<double>(EventNode->NodePosY));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsMovedAnchorsToRuleSet,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelCommitsMovedAnchorsToRuleSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsMovedAnchorsToRuleSet::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	FGraphLayoutPreviewMovedNode& Moved = Commit.MovedNodes.AddDefaulted_GetRef();
+	Moved.NodeId = TEXT("ResetState");
+	Moved.NodeGuid = FGuid::NewGuid();
+	Moved.Role = ENodeRole::ExecNode;
+	Moved.AnchorRole = ENodeRole::ExecNode;
+	Moved.BeginTopLeft = FVector2D(100.0, 100.0);
+	Moved.EndTopLeft = FVector2D(480.0, 220.0);
+	Moved.Size = FVector2D(220.0, 96.0);
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState SceneState;
+	SceneState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0, 100.0));
+	SceneState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(300.0, 100.0));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, SceneState);
+
+	const FString InputJson = FRuleSetJson::ExportString(RuleSet);
+	FString OutputJson;
+	FString Error;
+	TestTrue(
+		TEXT("commit succeeds"),
+		FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
+			InputJson,
+			ESemanticScene::LinearExecChain,
+			Commit,
+			OutputJson,
+			Error));
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestTrue(TEXT("output imports"), FRuleSetJson::ImportString(OutputJson, Parsed, Validation));
+	const FEditorCanvasSceneState Resolved =
+		FSemanticSceneAdapter::ResolveSceneState(Parsed, ESemanticScene::LinearExecChain);
+	const FVector2D ExecCenter = Resolved.RoleCenters.FindRef(ENodeRole::ExecNode);
+	TestEqual(TEXT("exec center x follows moved preview node center"), ExecCenter.X, 590.0);
+	TestEqual(TEXT("exec center y follows moved preview node center"), ExecCenter.Y, 268.0);
+	TestTrue(TEXT("column spacing recalculated"), Parsed.ExecColumnSpacing > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelRejectsNodeCountMutation,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelRejectsNodeCountMutation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelRejectsNodeCountMutation::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FGraphLayoutPreviewSample Sample = MakeMaterializerTestSample();
+	const FLayoutPlan Plan = MakeMaterializerTestPlan();
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer succeeds"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("preview graph exists"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewInteractionModel Model;
+	TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+	Model.BeginInteraction(Result.PreviewGraph.Get());
+
+	UEdGraphNode* AddedNode = NewObject<UEdGraphNode>(Result.PreviewGraph.Get());
+	Result.PreviewGraph->AddNode(AddedNode, true, false);
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	TestFalse(TEXT("end rejects node count mutation"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+	TestTrue(TEXT("rejection reason mentions node count"), Commit.RejectionReason.Contains(TEXT("node count")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelRejectsLinkRewireMutation,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelRejectsLinkRewireMutation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelRejectsLinkRewireMutation::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FGraphLayoutPreviewSample Sample = MakeMaterializerTestSample();
+	const FLayoutPlan Plan = MakeMaterializerTestPlan();
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer succeeds"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("preview graph exists"), Result.PreviewGraph.IsValid());
+	if (!Result.PreviewGraph.IsValid())
+	{
+		return false;
+	}
+
+	UEdGraphNode* SequenceNode = nullptr;
+	UEdGraphNode* BranchNode = nullptr;
+	UEdGraphNode* PrintNode = nullptr;
+	for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		const FString NodeId = Result.NodeIdsByGuid.FindRef(Node->NodeGuid);
+		if (NodeId == TEXT("Sequence"))
+		{
+			SequenceNode = Node;
+		}
+		else if (NodeId == TEXT("Branch"))
+		{
+			BranchNode = Node;
+		}
+		else if (NodeId == TEXT("PrintNode"))
+		{
+			PrintNode = Node;
+		}
+	}
+
+	UEdGraphPin* Then0Pin = FindPinByNameAndDirection(SequenceNode, FName(TEXT("Then_0")), EGPD_Output);
+	UEdGraphPin* Then1Pin = FindPinByNameAndDirection(SequenceNode, FName(TEXT("Then_1")), EGPD_Output);
+	UEdGraphPin* BranchExecPin = FindPinByNameAndDirection(BranchNode, FName(TEXT("execute")), EGPD_Input);
+	UEdGraphPin* PrintExecPin = FindPinByNameAndDirection(PrintNode, FName(TEXT("execute")), EGPD_Input);
+	TestNotNull(TEXT("sequence Then_0 pin exists"), Then0Pin);
+	TestNotNull(TEXT("sequence Then_1 pin exists"), Then1Pin);
+	TestNotNull(TEXT("branch exec pin exists"), BranchExecPin);
+	TestNotNull(TEXT("print exec pin exists"), PrintExecPin);
+	if (!Then0Pin || !Then1Pin || !BranchExecPin || !PrintExecPin)
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewInteractionModel Model;
+	TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+	Model.BeginInteraction(Result.PreviewGraph.Get());
+
+	Then0Pin->BreakLinkTo(BranchExecPin, false);
+	Then1Pin->BreakLinkTo(PrintExecPin, false);
+	Then0Pin->MakeLinkTo(PrintExecPin, false);
+	Then1Pin->MakeLinkTo(BranchExecPin, false);
+	TestFalse(TEXT("Then_0 no longer links to branch"), Then0Pin->LinkedTo.Contains(BranchExecPin));
+	TestFalse(TEXT("Then_1 no longer links to print"), Then1Pin->LinkedTo.Contains(PrintExecPin));
+	TestTrue(TEXT("Then_0 links to print"), Then0Pin->LinkedTo.Contains(PrintExecPin));
+	TestTrue(TEXT("Then_1 links to branch"), Then1Pin->LinkedTo.Contains(BranchExecPin));
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	TestFalse(TEXT("end rejects link rewire mutation"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+	AddInfo(FString::Printf(TEXT("link rewire rejection reason: %s"), *Commit.RejectionReason));
+	TestTrue(TEXT("rejection reason mentions link"), Commit.RejectionReason.Contains(TEXT("link")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionSurfaceForwardsMouseBoundaries,
+	"BlueprintHelper.GraphLayout.Preview.InteractionSurfaceForwardsMouseBoundaries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionSurfaceForwardsMouseBoundaries::RunTest(const FString& Parameters)
+{
+	int32 BeginCount = 0;
+	int32 EndCount = 0;
+	TSharedRef<SBlueprintHelperLayoutPreviewInteractionSurface> Surface =
+		SNew(SBlueprintHelperLayoutPreviewInteractionSurface)
+		.OnInteractionBegin(FBlueprintHelperLayoutPreviewInteractionEvent::CreateLambda([&BeginCount]()
+		{
+			++BeginCount;
+		}))
+		.OnInteractionEnd(FBlueprintHelperLayoutPreviewInteractionEvent::CreateLambda([&EndCount]()
+		{
+			++EndCount;
+		}))
+		[
+			SNullWidget::NullWidget
+		];
+
+	FGeometry Geometry = FGeometry::MakeRoot(FVector2D(400.0f, 300.0f), FSlateLayoutTransform());
+	TSet<FKey> PressedButtons;
+	PressedButtons.Add(EKeys::LeftMouseButton);
+	const FPointerEvent LeftMouseEvent(
+		0,
+		0,
+		FVector2D(32.0f, 32.0f),
+		FVector2D(32.0f, 32.0f),
+		PressedButtons,
+		EKeys::LeftMouseButton,
+		0.0f,
+		FModifierKeysState());
+	const FPointerEvent RightMouseEvent(
+		0,
+		0,
+		FVector2D(48.0f, 48.0f),
+		FVector2D(48.0f, 48.0f),
+		PressedButtons,
+		EKeys::RightMouseButton,
+		0.0f,
+		FModifierKeysState());
+
+	TestFalse(
+		TEXT("left mouse down remains unhandled for SGraphEditor drag"),
+		Surface->OnPreviewMouseButtonDown(Geometry, LeftMouseEvent).IsEventHandled());
+	TestEqual(TEXT("begin forwarded once"), BeginCount, 1);
+	TestEqual(TEXT("end not forwarded before mouse up"), EndCount, 0);
+
+	TestFalse(
+		TEXT("right mouse up remains unhandled"),
+		Surface->OnMouseButtonUp(Geometry, RightMouseEvent).IsEventHandled());
+	TestEqual(TEXT("right mouse up does not finish left drag"), EndCount, 0);
+
+	TestFalse(
+		TEXT("left mouse up remains unhandled for SGraphEditor"),
+		Surface->OnMouseButtonUp(Geometry, LeftMouseEvent).IsEventHandled());
+	TestEqual(TEXT("end forwarded once"), EndCount, 1);
+
+	Surface->OnFocusLost(FFocusEvent(EFocusCause::SetDirectly, 0));
+	TestEqual(TEXT("focus lost after finished interaction is idempotent"), EndCount, 1);
+
+	Surface->OnPreviewMouseButtonDown(Geometry, LeftMouseEvent);
+	Surface->OnFocusLost(FFocusEvent(EFocusCause::SetDirectly, 0));
+	TestEqual(TEXT("begin forwarded for second interaction"), BeginCount, 2);
+	TestEqual(TEXT("focus lost finalizes open interaction"), EndCount, 2);
 	return true;
 }
 

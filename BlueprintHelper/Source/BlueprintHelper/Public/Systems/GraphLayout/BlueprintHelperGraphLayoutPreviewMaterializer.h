@@ -16,6 +16,9 @@ struct BLUEPRINTHELPER_API FGraphLayoutPreviewMaterializerResult
 	TStrongObjectPtr<UBlueprint> PreviewBlueprint;
 	TStrongObjectPtr<UEdGraph> PreviewGraph;
 	TMap<FString, FGuid> NodeGuidsById;
+	TMap<FGuid, FString> NodeIdsByGuid;
+	TMap<FGuid, ENodeRole> RolesByGuid;
+	TMap<FGuid, ENodeRole> AnchorRolesByGuid;
 	FString Error;
 };
 

@@ -9,7 +9,6 @@
 #include "InputCoreTypes.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Rendering/DrawElements.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "SlateOptMacros.h"
@@ -20,7 +19,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
 #include "UI/BlueprintHelperUiSettingsResolver.h"
-#include "Widgets/SToolTip.h"
+#include "UI/Layout/SBlueprintHelperLayoutPreviewInteractionSurface.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -30,8 +29,6 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWrapBox.h"
-#include "Widgets/SLeafWidget.h"
-#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 #if __has_include("Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h")
@@ -269,555 +266,7 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 				.Text(Label)
 			];
 	}
-
-	TSharedRef<SWidget> BuildRoleChip(const FText& Label, const FLinearColor& Color)
-	{
-		return SNew(SBorder)
-			.BorderBackgroundColor(Color)
-			.Padding(FMargin(8.0f, 4.0f))
-			[
-				SNew(STextBlock)
-				.Text(Label)
-				.ColorAndOpacity(FLinearColor::White)
-			];
-	}
-
-	FLinearColor GetRoleColor(BlueprintHelper::GraphLayout::ENodeRole Role)
-	{
-		switch (Role)
-		{
-		case BlueprintHelper::GraphLayout::ENodeRole::EventEntry: return FLinearColor(0.42f, 0.2f, 0.78f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::ExecNode: return FLinearColor(0.85f, 0.1f, 0.08f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::BranchControl: return FLinearColor(0.88f, 0.45f, 0.08f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::PureFunction: return FLinearColor(0.1f, 0.65f, 0.25f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::OperatorOrCompare: return FLinearColor(0.42f, 0.78f, 0.1f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::VariableInput: return FLinearColor(0.0f, 0.5f, 0.85f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::AsyncNode: return FLinearColor(0.0f, 0.68f, 0.78f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::DelegateNode: return FLinearColor(0.78f, 0.66f, 0.08f, 1.0f);
-		case BlueprintHelper::GraphLayout::ENodeRole::Comment: return FLinearColor(0.22f, 0.22f, 0.22f, 1.0f);
-		default: return FLinearColor(0.18f, 0.18f, 0.18f, 1.0f);
-		}
-	}
-
-	struct FCanvasRoleNode
-	{
-		BlueprintHelper::GraphLayout::ENodeRole Role = BlueprintHelper::GraphLayout::ENodeRole::Unknown;
-		FText Label;
-		FText Tooltip;
-		FVector2D Center = FVector2D::ZeroVector;
-		bool bDraggable = true;
-	};
 }
-
-DECLARE_DELEGATE_OneParam(FBlueprintHelperLayoutRuleCanvasChanged, const FString&);
-
-class SBlueprintHelperLayoutRuleCanvas : public SLeafWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SBlueprintHelperLayoutRuleCanvas)
-	{
-	}
-				SLATE_ARGUMENT(FBlueprintHelperLayoutRuleEditorSettings, LayoutRuleEditorSettings)
-SLATE_EVENT(FBlueprintHelperLayoutRuleCanvasChanged, OnRuleSetChanged)
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& InArgs)
-	{
-				LayoutRuleEditorSettings = InArgs._LayoutRuleEditorSettings;
-RuleSetChangedDelegate = InArgs._OnRuleSetChanged;
-		SetClipping(EWidgetClipping::ClipToBounds);
-		SetRuleSetJson(BlueprintHelperLayoutRuleEditorLocal::GetFallbackDefaultJson());
-	}
-
-	void SetRuleSetJson(const FString& InRuleSetJson)
-	{
-		BlueprintHelper::GraphLayout::FRuleSet ImportedRuleSet;
-		BlueprintHelper::GraphLayout::FValidationResult Validation;
-		if (BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(InRuleSetJson, ImportedRuleSet, Validation))
-		{
-			RuleSet = ImportedRuleSet;
-		}
-		else
-		{
-			RuleSet = BlueprintHelper::GraphLayout::FRuleSet();
-		}
-		BuildCanvasFromRuleSet();
-		Invalidate(EInvalidateWidgetReason::Paint);
-	}
-
-	void SetLayoutRuleEditorSettings(const FBlueprintHelperLayoutRuleEditorSettings& InSettings)
-	{
-		LayoutRuleEditorSettings = InSettings;
-		ClampRoleCentersToCanvas(LayoutRuleEditorSettings.CanvasDesiredSize);
-		Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-	}
-
-	void SetSemanticScene(BlueprintHelper::GraphLayout::ESemanticScene InScene)
-	{
-		if (CurrentScene == InScene)
-		{
-			return;
-		}
-
-		ExportCanvasToRuleSet();
-		CurrentScene = InScene;
-		UpdateHoveredRole({});
-		BuildCanvasFromRuleSet();
-		Invalidate(EInvalidateWidgetReason::Paint);
-	}
-
-	BlueprintHelper::GraphLayout::ESemanticScene GetCurrentScene() const
-	{
-		return CurrentScene;
-	}
-
-	void CommitCurrentScene()
-	{
-		ExportCanvasToRuleSet();
-	}
-
-	void AlignExecRowToEntry()
-	{
-		using namespace BlueprintHelper::GraphLayout;
-		if (!RoleCenters.Contains(ENodeRole::EventEntry) || !RoleCenters.Contains(ENodeRole::ExecNode))
-		{
-			return;
-		}
-
-		FVector2D ExecCenter = RoleCenters.FindRef(ENodeRole::ExecNode);
-		ExecCenter.Y = RoleCenters.FindRef(ENodeRole::EventEntry).Y;
-		RoleCenters.Add(ENodeRole::ExecNode, ExecCenter);
-		RuleSet.bAlignExecNodesHorizontally = true;
-		ExportCanvasToRuleSet();
-		Invalidate(EInvalidateWidgetReason::Paint);
-	}
-
-	virtual FVector2D ComputeDesiredSize(float) const override
-	{
-		return LayoutRuleEditorSettings.CanvasDesiredSize;
-	}
-
-	virtual int32 OnPaint(
-		const FPaintArgs& Args,
-		const FGeometry& AllottedGeometry,
-		const FSlateRect& MyCullingRect,
-		FSlateWindowElementList& OutDrawElements,
-		int32 LayerId,
-		const FWidgetStyle& InWidgetStyle,
-		bool bParentEnabled) const override
-	{
-		const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"));
-		const FVector2D CanvasSize = AllottedGeometry.GetLocalSize();
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			LayerId,
-			AllottedGeometry.ToPaintGeometry(CanvasSize, FSlateLayoutTransform(FVector2D::ZeroVector)),
-			WhiteBrush,
-			ESlateDrawEffect::None,
-			FLinearColor(0.035f, 0.035f, 0.04f, 1.0f));
-
-		if (const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition())
-		{
-			for (const BlueprintHelper::GraphLayout::FSemanticSceneEdgeDefinition& Edge : Definition->Edges)
-			{
-				DrawRelationship(OutDrawElements, AllottedGeometry, LayerId + 1, Edge);
-			}
-		}
-
-		const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 10);
-		for (const BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode& Node : BuildRoleNodes())
-		{
-			const FVector2D TopLeft = Node.Center - LayoutRuleEditorSettings.NodeSize * 0.5f;
-			const bool bDragged = DraggedRole.IsSet() && DraggedRole.GetValue() == Node.Role;
-			const FLinearColor RoleColor = BlueprintHelperLayoutRuleEditorLocal::GetRoleColor(Node.Role);
-			FSlateDrawElement::MakeBox(
-				OutDrawElements,
-				LayerId + 2,
-				AllottedGeometry.ToPaintGeometry(LayoutRuleEditorSettings.NodeSize, FSlateLayoutTransform(TopLeft)),
-				WhiteBrush,
-				ESlateDrawEffect::None,
-				bDragged ? RoleColor * 1.25f : RoleColor);
-			FSlateDrawElement::MakeText(
-				OutDrawElements,
-				LayerId + 3,
-				AllottedGeometry.ToPaintGeometry(LayoutRuleEditorSettings.NodeSize - FVector2D(12.0f, 0.0f), FSlateLayoutTransform(TopLeft + FVector2D(8.0f, 13.0f))),
-				Node.Label,
-				LabelFont,
-				ESlateDrawEffect::None,
-				FLinearColor::White);
-		}
-
-		const FText FooterText = BuildFooterText();
-		FSlateDrawElement::MakeText(
-			OutDrawElements,
-			LayerId + 3,
-			AllottedGeometry.ToPaintGeometry(FVector2D(CanvasSize.X - 24.0f, 20.0f), FSlateLayoutTransform(FVector2D(12.0f, CanvasSize.Y - 28.0f))),
-			FooterText,
-			FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 9),
-			ESlateDrawEffect::None,
-			FLinearColor(0.72f, 0.72f, 0.72f, 1.0f));
-
-		return LayerId + 4;
-	}
-
-	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
-	{
-		if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
-		{
-			return FReply::Unhandled();
-		}
-
-		const FVector2D LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-		const TOptional<BlueprintHelper::GraphLayout::ENodeRole> HitRole = HitTestRole(LocalPos);
-		if (!HitRole.IsSet())
-		{
-			return FReply::Unhandled();
-		}
-
-		DraggedRole = HitRole.GetValue();
-		UpdateHoveredRole(HitRole);
-		DragOffset = LocalPos - RoleCenters.FindRef(DraggedRole.GetValue());
-		return FReply::Handled().CaptureMouse(AsShared());
-	}
-
-	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
-	{
-		const FVector2D LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-		if (!DraggedRole.IsSet() || !HasMouseCapture())
-		{
-			UpdateHoveredRole(HitTestRole(LocalPos));
-			return FReply::Unhandled();
-		}
-
-		UpdateHoveredRole({});
-		FVector2D NewCenter = LocalPos - DragOffset;
-		NewCenter = ClampRoleCenterToCanvas(NewCenter, MyGeometry.GetLocalSize());
-		RoleCenters.Add(DraggedRole.GetValue(), NewCenter);
-		Invalidate(EInvalidateWidgetReason::Paint);
-		return FReply::Handled();
-	}
-
-	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
-	{
-		if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !DraggedRole.IsSet())
-		{
-			return FReply::Unhandled();
-		}
-
-		DraggedRole.Reset();
-		UpdateHoveredRole(HitTestRole(MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition())));
-		ExportCanvasToRuleSet();
-		return FReply::Handled().ReleaseMouseCapture();
-	}
-
-	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override
-	{
-		UpdateHoveredRole({});
-		SLeafWidget::OnMouseLeave(MouseEvent);
-	}
-
-	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override
-	{
-		const FVector2D LocalPos = MyGeometry.AbsoluteToLocal(CursorEvent.GetScreenSpacePosition());
-		return HitTestRole(LocalPos).IsSet()
-			? FCursorReply::Cursor(EMouseCursor::GrabHand)
-			: FCursorReply::Unhandled();
-	}
-
-private:
-	FBlueprintHelperLayoutRuleEditorSettings LayoutRuleEditorSettings;
-
-	const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* GetCurrentSceneDefinition() const
-	{
-		return BlueprintHelper::GraphLayout::FSemanticSceneCatalog::FindScene(CurrentScene);
-	}
-
-	const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition* FindCurrentSceneNodeDefinition(
-		const BlueprintHelper::GraphLayout::ENodeRole Role) const
-	{
-		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
-		if (!Definition)
-		{
-			return nullptr;
-		}
-
-		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& Node : Definition->Nodes)
-		{
-			if (Node.Role == Role)
-			{
-				return &Node;
-			}
-		}
-
-		return nullptr;
-	}
-
-	TArray<BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode> BuildRoleNodes() const
-	{
-		TArray<BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode> Nodes;
-		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
-		if (!Definition)
-		{
-			return Nodes;
-		}
-
-		Nodes.Reserve(Definition->Nodes.Num());
-		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
-		{
-			BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode Node;
-			Node.Role = NodeDefinition.Role;
-			Node.Label = NodeDefinition.Label;
-			Node.Tooltip = NodeDefinition.TooltipZh;
-			Node.Center = RoleCenters.FindRef(NodeDefinition.Role);
-			Node.bDraggable = NodeDefinition.bDraggable;
-			Nodes.Add(Node);
-		}
-
-		return Nodes;
-	}
-
-	void BuildCanvasFromRuleSet()
-	{
-		RoleCenters.Reset();
-		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
-		if (!Definition)
-		{
-			return;
-		}
-
-		const BlueprintHelper::GraphLayout::FEditorCanvasSceneState SceneState =
-			BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ResolveSceneState(RuleSet, CurrentScene);
-		for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
-		{
-			RoleCenters.Add(
-				NodeDefinition.Role,
-				ClampRoleCenterToCanvas(SceneState.RoleCenters.FindRef(NodeDefinition.Role), LayoutRuleEditorSettings.CanvasDesiredSize));
-		}
-	}
-
-	FVector2D ClampRoleCenterToCanvas(const FVector2D& Center, const FVector2D& CanvasSize) const
-	{
-		const FVector2D HalfSize = LayoutRuleEditorSettings.NodeSize * 0.5f;
-		constexpr float FooterReserveY = 40.0f;
-		const float MinX = HalfSize.X;
-		const float MaxX = FMath::Max(MinX, CanvasSize.X - HalfSize.X);
-		const float MinY = HalfSize.Y;
-		const float MaxY = FMath::Max(MinY, CanvasSize.Y - FooterReserveY - HalfSize.Y);
-		return FVector2D(
-			FMath::Clamp(Center.X, MinX, MaxX),
-			FMath::Clamp(Center.Y, MinY, MaxY));
-	}
-
-	void ClampRoleCentersToCanvas(const FVector2D& CanvasSize)
-	{
-		for (TPair<BlueprintHelper::GraphLayout::ENodeRole, FVector2D>& Pair : RoleCenters)
-		{
-			Pair.Value = ClampRoleCenterToCanvas(Pair.Value, CanvasSize);
-		}
-	}
-
-	TOptional<BlueprintHelper::GraphLayout::ENodeRole> HitTestRole(const FVector2D& LocalPos) const
-	{
-		for (const BlueprintHelperLayoutRuleEditorLocal::FCanvasRoleNode& Node : BuildRoleNodes())
-		{
-			if (!Node.bDraggable)
-			{
-				continue;
-			}
-			const FVector2D TopLeft = Node.Center - LayoutRuleEditorSettings.NodeSize * 0.5f;
-			const FVector2D BottomRight = TopLeft + LayoutRuleEditorSettings.NodeSize;
-			if (LocalPos.X >= TopLeft.X && LocalPos.X <= BottomRight.X &&
-				LocalPos.Y >= TopLeft.Y && LocalPos.Y <= BottomRight.Y)
-			{
-				return Node.Role;
-			}
-		}
-		return {};
-	}
-
-	void UpdateHoveredRole(const TOptional<BlueprintHelper::GraphLayout::ENodeRole> InHoveredRole)
-	{
-		if (HoveredRole == InHoveredRole)
-		{
-			return;
-		}
-
-		HoveredRole = InHoveredRole;
-		if (!HoveredRole.IsSet())
-		{
-			SetToolTip(TSharedPtr<IToolTip>());
-			return;
-		}
-
-		const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition* NodeDefinition =
-			FindCurrentSceneNodeDefinition(HoveredRole.GetValue());
-		if (!NodeDefinition || NodeDefinition->TooltipZh.IsEmpty())
-		{
-			SetToolTip(TSharedPtr<IToolTip>());
-			return;
-		}
-
-		SetToolTip(
-			SNew(SToolTip)
-			[
-				SNew(STextBlock)
-				.Text(NodeDefinition->TooltipZh)
-				.WrapTextAt(280.0f)
-			]);
-	}
-
-	FVector2D GetNodeBoundaryPoint(const FVector2D& Center, const FVector2D& Direction) const
-	{
-		const FVector2D HalfSize = LayoutRuleEditorSettings.NodeSize * 0.5f;
-		const float DistanceToVerticalEdge = FMath::Abs(Direction.X) > KINDA_SMALL_NUMBER
-			? HalfSize.X / FMath::Abs(Direction.X)
-			: TNumericLimits<float>::Max();
-		const float DistanceToHorizontalEdge = FMath::Abs(Direction.Y) > KINDA_SMALL_NUMBER
-			? HalfSize.Y / FMath::Abs(Direction.Y)
-			: TNumericLimits<float>::Max();
-		return Center + Direction * FMath::Min(DistanceToVerticalEdge, DistanceToHorizontalEdge);
-	}
-
-	void DrawRelationship(
-		FSlateWindowElementList& OutDrawElements,
-		const FGeometry& AllottedGeometry,
-		int32 LayerId,
-		const BlueprintHelper::GraphLayout::FSemanticSceneEdgeDefinition& Edge) const
-	{
-		const FVector2D From = RoleCenters.FindRef(Edge.FromRole);
-		const FVector2D To = RoleCenters.FindRef(Edge.ToRole);
-		if (From.IsZero() || To.IsZero())
-		{
-			return;
-		}
-
-		const FVector2D Direction = (To - From).GetSafeNormal();
-		if (Direction.IsNearlyZero())
-		{
-			return;
-		}
-
-		const FVector2D Start = GetNodeBoundaryPoint(From, Direction);
-		const FVector2D Tip = GetNodeBoundaryPoint(To, -Direction);
-
-		TArray<FVector2D> Points;
-		Points.Add(Start);
-		Points.Add(Tip);
-		FSlateDrawElement::MakeLines(
-			OutDrawElements,
-			LayerId,
-			AllottedGeometry.ToPaintGeometry(),
-			Points,
-			ESlateDrawEffect::None,
-			Edge.Color,
-			true,
-			2.0f);
-
-		const FVector2D Perpendicular(-Direction.Y, Direction.X);
-		const float ArrowLength = 12.0f;
-		const float ArrowWidth = 5.0f;
-		TArray<FVector2D> ArrowA;
-		ArrowA.Add(Tip);
-		ArrowA.Add(Tip - Direction * ArrowLength + Perpendicular * ArrowWidth);
-		FSlateDrawElement::MakeLines(
-			OutDrawElements,
-			LayerId,
-			AllottedGeometry.ToPaintGeometry(),
-			ArrowA,
-			ESlateDrawEffect::None,
-			Edge.Color,
-			true,
-			2.0f);
-
-		TArray<FVector2D> ArrowB;
-		ArrowB.Add(Tip);
-		ArrowB.Add(Tip - Direction * ArrowLength - Perpendicular * ArrowWidth);
-		FSlateDrawElement::MakeLines(
-			OutDrawElements,
-			LayerId,
-			AllottedGeometry.ToPaintGeometry(),
-			ArrowB,
-			ESlateDrawEffect::None,
-			Edge.Color,
-			true,
-			2.0f);
-	}
-
-	void ExportCanvasToRuleSet()
-	{
-		BlueprintHelper::GraphLayout::FEditorCanvasSceneState SceneState;
-		const BlueprintHelper::GraphLayout::FSemanticSceneDefinition* Definition = GetCurrentSceneDefinition();
-		if (Definition)
-		{
-			for (const BlueprintHelper::GraphLayout::FSemanticSceneNodeDefinition& NodeDefinition : Definition->Nodes)
-			{
-				if (NodeDefinition.Role != BlueprintHelper::GraphLayout::ENodeRole::Unknown)
-				{
-					SceneState.RoleCenters.Add(NodeDefinition.Role, RoleCenters.FindRef(NodeDefinition.Role));
-				}
-			}
-			BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ApplySceneStateToRuleSet(
-				CurrentScene,
-				SceneState,
-				RuleSet,
-				LayoutRuleEditorSettings.CanvasRuleScale);
-		}
-
-		const FString UpdatedJson = BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(RuleSet);
-		if (RuleSetChangedDelegate.IsBound())
-		{
-			RuleSetChangedDelegate.Execute(UpdatedJson);
-		}
-	}
-
-	FText BuildFooterText() const
-	{
-		switch (CurrentScene)
-		{
-		case BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain:
-			return FText::Format(
-				LOCTEXT("LinearCanvasFooter", "线性执行 | 对齐 {0} | 列距 {1}px"),
-				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("LinearAlignOn", "开") : LOCTEXT("LinearAlignOff", "关"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.ExecColumnSpacing)));
-		case BlueprintHelper::GraphLayout::ESemanticScene::PureDataSubgraph:
-			return FText::Format(
-				LOCTEXT("PureDataCanvasFooter", "纯数据子图 | 纯节点偏移 {0}px | 叶子偏移 {1}px | Pin 行距 {2}px"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.PureInputOffsetX)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.VariableInputOffsetX)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
-		case BlueprintHelper::GraphLayout::ESemanticScene::NodeInputCluster:
-			return FText::Format(
-				LOCTEXT("InputClusterCanvasFooter", "节点输入簇 | 数据边距 {0}/{1}px | Pin 行距 {2}px"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingX)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.DataClusterPaddingY)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.InputPinRowSpacing)));
-		case BlueprintHelper::GraphLayout::ESemanticScene::MultiExecOutput:
-			return FText::Format(
-				LOCTEXT("MultiExecCanvasFooter", "多执行出口 | 对齐 {0} | 分支行距 {1}px | 边距 {2}px"),
-				RuleSet.bAlignExecNodesHorizontally ? LOCTEXT("MultiExecAlignOn", "开") : LOCTEXT("MultiExecAlignOff", "关"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowSpacing)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.BranchRowPaddingY)));
-		case BlueprintHelper::GraphLayout::ESemanticScene::Occupancy:
-			return FText::Format(
-				LOCTEXT("OccupancyCanvasFooter", "占位避让 | 边距 {0}/{1}px | 步长 {2}px | 尝试 {3}"),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingX)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionPaddingY)),
-				FText::AsNumber(FMath::RoundToInt(RuleSet.CollisionStepY)),
-				FText::AsNumber(RuleSet.MaxCollisionAttempts));
-		default:
-			return FText::GetEmpty();
-		}
-	}
-
-	BlueprintHelper::GraphLayout::FRuleSet RuleSet;
-	TMap<BlueprintHelper::GraphLayout::ENodeRole, FVector2D> RoleCenters;
-	TOptional<BlueprintHelper::GraphLayout::ENodeRole> DraggedRole;
-	TOptional<BlueprintHelper::GraphLayout::ENodeRole> HoveredRole;
-	BlueprintHelper::GraphLayout::ESemanticScene CurrentScene =
-		BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;
-	FVector2D DragOffset = FVector2D::ZeroVector;
-	FBlueprintHelperLayoutRuleCanvasChanged RuleSetChangedDelegate;
-};
 
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
@@ -877,7 +326,8 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 	bLastValidationPassed = ValidateRuleSetJson(InitialStatus);
 	PreviewService = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService>();
 	PreviewMaterializer = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer>();
-	PreviewState = EPreviewState::Edit;
+	PreviewState = EPreviewState::PreviewLoading;
+	PreviewStatusMessage = TEXT("正在构建预览数据...");
 
 	ChildSlot
 	[
@@ -892,7 +342,7 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 		[
 			SAssignNew(WorkspaceBox, SBox)
 			[
-				BuildEditWorkspace()
+				BuildPreviewWorkspace()
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -990,8 +440,8 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 		]
 	];
 
-	RefreshCanvasFromJson();
 	RefreshSettingsFromJson();
+	StartPreviewBuild();
 }
 
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION
@@ -1014,100 +464,8 @@ void SBlueprintHelperLayoutRuleEditor::Tick(
 	PumpPreviewMaterializer();
 }
 
-TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildEditWorkspace()
-{
-	if (!RuleCanvas.IsValid())
-	{
-		RuleCanvas = SNew(SBlueprintHelperLayoutRuleCanvas)
-			.LayoutRuleEditorSettings(LayoutRuleEditorSettings)
-			.OnRuleSetChanged(FBlueprintHelperLayoutRuleCanvasChanged::CreateSP(
-				this,
-				&SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged));
-		RuleCanvas->SetRuleSetJson(RuleSetJson);
-	}
-
-	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(8.0f, 8.0f, 8.0f, 4.0f)
-		[
-			BuildSceneToolbar()
-		]
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		.Padding(8.0f, 0.0f, 8.0f, 6.0f)
-		[
-			SNew(SBorder)
-			.Clipping(EWidgetClipping::ClipToBounds)
-			.Padding(1.0f)
-			[
-				SNew(SScrollBox)
-				.Orientation(Orient_Horizontal)
-				.ScrollBarAlwaysVisible(true)
-				+ SScrollBox::Slot()
-				[
-					SNew(SScrollBox)
-					.Orientation(Orient_Vertical)
-					.ScrollBarAlwaysVisible(true)
-					+ SScrollBox::Slot()
-					[
-						RuleCanvas.ToSharedRef()
-					]
-				]
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(8.0f, 0.0f, 8.0f, 8.0f)
-		[
-			SNew(SWrapBox)
-			.UseAllottedSize(true)
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleEventEntry", "执行入口"), FLinearColor(0.42f, 0.2f, 0.78f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleExecNode", "执行节点"), FLinearColor(0.85f, 0.1f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleBranchControl", "分支控制"), FLinearColor(0.88f, 0.45f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RolePureFunction", "纯函数"), FLinearColor(0.1f, 0.65f, 0.25f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleOperatorOrCompare", "运算/比较"), FLinearColor(0.42f, 0.78f, 0.1f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleVariableInput", "变量输入"), FLinearColor(0.0f, 0.5f, 0.85f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleAsyncNode", "异步节点"), FLinearColor(0.0f, 0.68f, 0.78f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleDelegateNode", "委托节点"), FLinearColor(0.78f, 0.66f, 0.08f, 1.0f))
-			]
-			+ SWrapBox::Slot().Padding(0.0f, 0.0f, 6.0f, 6.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildRoleChip(LOCTEXT("RoleComment", "注释"), FLinearColor(0.22f, 0.22f, 0.22f, 1.0f))
-			]
-		];
-}
-
 TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 {
-	if (PreviewState != EPreviewState::Edit)
-	{
-		return SNullWidget::NullWidget;
-	}
-
 	TSharedRef<SWrapBox> SceneToolbar = SNew(SWrapBox)
 		.UseAllottedSize(true);
 	for (const BlueprintHelper::GraphLayout::FSemanticSceneDefinition& SceneDefinition :
@@ -1119,14 +477,13 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
 					SceneDefinition.DisplayName,
 					FText::Format(
-						LOCTEXT("CanvasSceneTooltip", "配置可拖拽的 {0} 语义场景。"),
+						LOCTEXT("CanvasSceneTooltip", "切换到 {0} 语义场景并刷新原生蓝图预览。"),
 						SceneDefinition.DisplayName),
 					FOnClicked::CreateLambda([this, Scene = SceneDefinition.Scene]()
 					{
-						if (RuleCanvas.IsValid())
-						{
-							RuleCanvas->SetSemanticScene(Scene);
-						}
+						CurrentScene = Scene;
+						SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在刷新预览数据..."));
+						StartPreviewBuild();
 						return FReply::Handled();
 					}))
 			];
@@ -1143,8 +500,8 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
 		[
 			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-				LOCTEXT("PreviewLayoutRule", "预览"),
-				LOCTEXT("PreviewLayoutRuleTooltip", "为当前语义场景构建只读的原生蓝图图表预览。"),
+				LOCTEXT("PreviewLayoutRule", "刷新预览"),
+				LOCTEXT("PreviewLayoutRuleTooltip", "为当前语义场景重新构建可拖拽的原生蓝图图表预览。"),
 				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPreviewClicked))
 		];
 	return SceneToolbar;
@@ -1155,29 +512,20 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewWorkspace()
 	return SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(8.0f, 8.0f, 8.0f, 6.0f)
+		.Padding(8.0f, 8.0f, 8.0f, 4.0f)
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
-			[
-				BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
-					LOCTEXT("ReturnToEdit", "返回编辑"),
-					LOCTEXT("ReturnToEditTooltip", "取消当前预览并恢复可拖拽规则画布。"),
-					FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnReturnToEditClicked))
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(PreviewStatusMessage))
-				.AutoWrapText(true)
-				.ColorAndOpacity(PreviewState == EPreviewState::PreviewError
-					? BlueprintHelperLayoutRuleEditorLocal::InvalidStatusColor
-					: FLinearColor(0.78f, 0.78f, 0.78f, 1.0f))
-			]
+			BuildSceneToolbar()
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f, 8.0f, 6.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(PreviewStatusMessage))
+			.AutoWrapText(true)
+			.ColorAndOpacity(PreviewState == EPreviewState::PreviewError
+				? BlueprintHelperLayoutRuleEditorLocal::InvalidStatusColor
+				: FLinearColor(0.78f, 0.78f, 0.78f, 1.0f))
 		]
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
@@ -1189,12 +537,12 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewWorkspace()
 
 TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildPreviewContent()
 {
-	if (PreviewState == EPreviewState::PreviewReady && PreviewGraphEditor.IsValid())
+	if (PreviewState == EPreviewState::PreviewReady && PreviewInteractionSurface.IsValid())
 	{
 		return SNew(SBorder)
 			.Padding(1.0f)
 			[
-				PreviewGraphEditor.ToSharedRef()
+				PreviewInteractionSurface.ToSharedRef()
 			];
 	}
 
@@ -1567,8 +915,12 @@ void SBlueprintHelperLayoutRuleEditor::SetRuleSetJson(const FString& InRuleSetJs
 	FString Message;
 	bLastValidationPassed = ValidateRuleSetJson(Message);
 	SetStatusMessage(Message, bLastValidationPassed);
-	RefreshCanvasFromJson();
 	RefreshSettingsFromJson();
+	if (bLastValidationPassed)
+	{
+		SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在刷新预览数据..."));
+		StartPreviewBuild();
+	}
 
 	if (RuleSetJsonChangedDelegate.IsBound())
 	{
@@ -1662,38 +1014,41 @@ FReply SBlueprintHelperLayoutRuleEditor::OnResetToDefaultClicked()
 
 FReply SBlueprintHelperLayoutRuleEditor::OnAlignExecRowClicked()
 {
-	if (RuleCanvas.IsValid())
+	BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
+	BlueprintHelper::GraphLayout::FValidationResult Validation;
+	if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
 	{
-		RuleCanvas->SetSemanticScene(BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain);
-		RuleCanvas->AlignExecRowToEntry();
+		SetStatusMessage(TEXT("RuleSet JSON 无效，无法对齐执行行。"), false);
+		return FReply::Handled();
 	}
+
+	CurrentScene = BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;
+	BlueprintHelper::GraphLayout::FEditorCanvasSceneState SceneState =
+		BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ResolveSceneState(ParsedRuleSet, CurrentScene);
+	if (!SceneState.RoleCenters.Contains(BlueprintHelper::GraphLayout::ENodeRole::EventEntry) ||
+		!SceneState.RoleCenters.Contains(BlueprintHelper::GraphLayout::ENodeRole::ExecNode))
+	{
+		SetStatusMessage(TEXT("当前规则缺少执行入口或执行节点场景锚点。"), false);
+		return FReply::Handled();
+	}
+
+	FVector2D ExecCenter = SceneState.RoleCenters.FindRef(BlueprintHelper::GraphLayout::ENodeRole::ExecNode);
+	ExecCenter.Y = SceneState.RoleCenters.FindRef(BlueprintHelper::GraphLayout::ENodeRole::EventEntry).Y;
+	SceneState.RoleCenters.Add(BlueprintHelper::GraphLayout::ENodeRole::ExecNode, ExecCenter);
+	BlueprintHelper::GraphLayout::FSemanticSceneAdapter::ApplySceneStateToRuleSet(
+		CurrentScene,
+		SceneState,
+		ParsedRuleSet,
+		1.0f);
+	CommitSettingsRuleSetJson(BlueprintHelper::GraphLayout::FRuleSetJson::ExportString(ParsedRuleSet));
+	SetStatusMessage(TEXT("已对齐执行行并刷新预览。"), true);
 	return FReply::Handled();
 }
 
 FReply SBlueprintHelperLayoutRuleEditor::OnPreviewClicked()
 {
-	if (RuleCanvas.IsValid())
-	{
-		EditSceneBeforePreview = RuleCanvas->GetCurrentScene();
-		RuleCanvas->CommitCurrentScene();
-	}
-
-	SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在构建预览数据..."));
+	SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在刷新预览数据..."));
 	StartPreviewBuild();
-	return FReply::Handled();
-}
-
-FReply SBlueprintHelperLayoutRuleEditor::OnReturnToEditClicked()
-{
-	CancelActivePreview();
-	SetPreviewState(EPreviewState::Edit, TEXT(""));
-
-	if (RuleCanvas.IsValid() && RuleCanvas->GetCurrentScene() != EditSceneBeforePreview)
-	{
-		RuleCanvas->SetSemanticScene(EditSceneBeforePreview);
-	}
-
-	RefreshCanvasFromJson();
 	return FReply::Handled();
 }
 
@@ -1706,49 +1061,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged(const FText& InT
 
 	RuleSetJson = InText.ToString();
 	SetStatusMessage(TEXT("RuleSet JSON 已编辑，请先校验再导出。"), false);
-	RefreshCanvasFromJson();
 	RefreshSettingsFromJson();
-
-	if (RuleSetJsonChangedDelegate.IsBound())
-	{
-		RuleSetJsonChangedDelegate.Execute(RuleSetJson);
-	}
-}
-
-void SBlueprintHelperLayoutRuleEditor::HandleCanvasRuleSetChanged(const FString& InRuleSetJson)
-{
-	RuleSetJson = InRuleSetJson;
-
-	if (RuleSetTextBox.IsValid())
-	{
-		TGuardValue<bool> UpdatingTextGuard(bUpdatingTextFromCode, true);
-		RuleSetTextBox->SetText(FText::FromString(RuleSetJson));
-	}
-
-	FString Message;
-	bLastValidationPassed = ValidateRuleSetJson(Message);
-	RefreshSettingsFromJson();
-	if (bLastValidationPassed)
-	{
-		bool bSaved = false;
-		FString ExportMessage;
-		if (ExportJsonDelegate.IsBound())
-		{
-			bSaved = ExportJsonDelegate.Execute(RuleSetJson);
-			ExportMessage = bSaved
-				? TEXT("已从画布更新并保存 RuleSet。")
-				: TEXT("已从画布更新 RuleSet，但保存失败。");
-		}
-		else
-		{
-			bSaved = SaveJsonToDefaultFile(RuleSetJson, ExportMessage);
-		}
-		SetStatusMessage(ExportMessage, bSaved);
-	}
-	else
-	{
-		SetStatusMessage(Message, false);
-	}
 
 	if (RuleSetJsonChangedDelegate.IsBound())
 	{
@@ -1910,10 +1223,6 @@ void SBlueprintHelperLayoutRuleEditor::HandleUiFloatSettingChanged(int32 Setting
 
 	SettingsCanvasWidth = LayoutRuleEditorSettings.CanvasDesiredSize.X;
 	SettingsCanvasHeight = LayoutRuleEditorSettings.CanvasDesiredSize.Y;
-	if (RuleCanvas.IsValid())
-	{
-		RuleCanvas->SetLayoutRuleEditorSettings(LayoutRuleEditorSettings);
-	}
 	if (WorkspaceBox.IsValid())
 	{
 		WorkspaceBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
@@ -2023,7 +1332,6 @@ void SBlueprintHelperLayoutRuleEditor::CommitSettingsRuleSetJson(const FString& 
 		RuleSetTextBox->SetText(FText::FromString(RuleSetJson));
 	}
 
-	RefreshCanvasFromJson();
 	RefreshSettingsFromJson();
 
 	FString Message;
@@ -2043,6 +1351,8 @@ void SBlueprintHelperLayoutRuleEditor::CommitSettingsRuleSetJson(const FString& 
 		SetStatusMessage(
 			bSaved ? TEXT("已从设置更新并保存 RuleSet。") : TEXT("已从设置更新 RuleSet，但保存失败。"),
 			bSaved);
+		SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在刷新预览数据..."));
+		StartPreviewBuild();
 	}
 	else
 	{
@@ -2110,22 +1420,6 @@ bool SBlueprintHelperLayoutRuleEditor::ValidateRuleSetJson(FString& OutMessage) 
 #endif
 }
 
-void SBlueprintHelperLayoutRuleEditor::RefreshCanvasFromJson()
-{
-	if (RuleCanvas.IsValid())
-	{
-#if BLUEPRINTHELPER_LAYOUT_RULE_EDITOR_HAS_GRAPH_LAYOUT_RULESET_JSON
-		BlueprintHelper::GraphLayout::FRuleSet ParsedRuleSet;
-		BlueprintHelper::GraphLayout::FValidationResult Validation;
-		if (!BlueprintHelper::GraphLayout::FRuleSetJson::ImportString(RuleSetJson, ParsedRuleSet, Validation))
-		{
-			return;
-		}
-#endif
-		RuleCanvas->SetRuleSetJson(RuleSetJson);
-	}
-}
-
 void SBlueprintHelperLayoutRuleEditor::SetPreviewState(
 	const EPreviewState InPreviewState,
 	const FString& InStatusMessage)
@@ -2142,9 +1436,7 @@ void SBlueprintHelperLayoutRuleEditor::RefreshWorkspace()
 		return;
 	}
 
-	WorkspaceBox->SetContent(IsPreviewMode()
-		? BuildPreviewWorkspace()
-		: BuildEditWorkspace());
+	WorkspaceBox->SetContent(BuildPreviewWorkspace());
 }
 
 void SBlueprintHelperLayoutRuleEditor::StartPreviewBuild()
@@ -2162,10 +1454,13 @@ void SBlueprintHelperLayoutRuleEditor::StartPreviewBuild()
 
 	PendingPreviewBuildResult.Reset();
 	PreviewGraphEditor.Reset();
+	PreviewInteractionSurface.Reset();
+	PreviewInteractionModel.Reset();
+	ActivePreviewGraph.Reset();
 	PreviewMaterializer = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer>();
 
 	BlueprintHelper::GraphLayout::FGraphLayoutPreviewRequest Request;
-	Request.Scene = RuleCanvas.IsValid() ? RuleCanvas->GetCurrentScene() : EditSceneBeforePreview;
+	Request.Scene = CurrentScene;
 	Request.RuleSetJson = RuleSetJson;
 	const uint64 PreviewGeneration = ++ActivePreviewGeneration;
 	ActivePreviewJobId = PreviewService->StartPreviewBuild(
@@ -2244,6 +1539,8 @@ void SBlueprintHelperLayoutRuleEditor::PumpPreviewMaterializer()
 		return;
 	}
 
+	ActivePreviewGraph = MaterializerResult.PreviewGraph.Get();
+	PreviewInteractionModel.Initialize(MaterializerResult, ActivePreviewGraph.Get());
 	BuildPreviewGraphEditor(MaterializerResult.PreviewGraph.Get());
 	SetPreviewState(EPreviewState::PreviewReady, TEXT("预览已就绪。"));
 }
@@ -2253,21 +1550,85 @@ void SBlueprintHelperLayoutRuleEditor::BuildPreviewGraphEditor(UEdGraph* Preview
 	if (!PreviewGraph)
 	{
 		PreviewGraphEditor.Reset();
+		PreviewInteractionSurface.Reset();
 		return;
 	}
 
 	FGraphAppearanceInfo Appearance;
 	Appearance.CornerText = LOCTEXT("LayoutRulePreviewCornerText", "预览");
-	Appearance.InstructionText = LOCTEXT("LayoutRulePreviewInstruction", "只读 GraphLayout 预览");
+	Appearance.InstructionText = LOCTEXT("LayoutRulePreviewInstruction", "拖拽节点校准 GraphLayout 规则");
 	Appearance.ReadOnlyText = LOCTEXT("LayoutRulePreviewReadOnly", "仅预览");
 
 	TSharedRef<SGraphEditor> Editor = SAssignNew(PreviewGraphEditor, SGraphEditor)
-		.IsEditable(false)
+		.IsEditable(true)
 		.DisplayAsReadOnly(false)
 		.GraphToEdit(PreviewGraph)
 		.Appearance(Appearance)
 		.ShowGraphStateOverlay(false);
+	PreviewInteractionSurface = SNew(SBlueprintHelperLayoutPreviewInteractionSurface)
+		.OnInteractionBegin(FBlueprintHelperLayoutPreviewInteractionEvent::CreateSP(
+			this,
+			&SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionBegin))
+		.OnInteractionEnd(FBlueprintHelperLayoutPreviewInteractionEvent::CreateSP(
+			this,
+			&SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionEnd))
+		[
+			Editor
+		];
 	Editor->NotifyGraphChanged();
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionBegin()
+{
+	if (ActivePreviewGraph.IsValid())
+	{
+		PreviewInteractionModel.BeginInteraction(ActivePreviewGraph.Get());
+	}
+}
+
+void SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionEnd()
+{
+	if (!ActivePreviewGraph.IsValid())
+	{
+		return;
+	}
+
+	BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommit Commit;
+	if (!PreviewInteractionModel.EndInteraction(ActivePreviewGraph.Get(), Commit))
+	{
+		if (!Commit.RejectionReason.IsEmpty())
+		{
+			SetStatusMessage(
+				FString::Printf(TEXT("预览仅允许移动节点，已拒绝本次修改：%s"), *Commit.RejectionReason),
+				false);
+			SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在恢复预览..."));
+			StartPreviewBuild();
+		}
+		return;
+	}
+
+	CommitPreviewInteraction(Commit);
+}
+
+bool SBlueprintHelperLayoutRuleEditor::CommitPreviewInteraction(
+	const BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommit& Commit)
+{
+	FString UpdatedJson;
+	FString Error;
+	if (!BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
+		RuleSetJson,
+		CurrentScene,
+		Commit,
+		UpdatedJson,
+		Error))
+	{
+		SetStatusMessage(Error.IsEmpty() ? TEXT("预览拖拽提交失败。") : Error, false);
+		return false;
+	}
+
+	CommitSettingsRuleSetJson(UpdatedJson);
+	SetStatusMessage(TEXT("已从预览拖拽更新并保存 RuleSet。"), true);
+	return true;
 }
 
 void SBlueprintHelperLayoutRuleEditor::CancelActivePreview()
@@ -2281,15 +1642,13 @@ void SBlueprintHelperLayoutRuleEditor::CancelActivePreview()
 	++ActivePreviewGeneration;
 	PendingPreviewBuildResult.Reset();
 	PreviewGraphEditor.Reset();
+	PreviewInteractionSurface.Reset();
+	PreviewInteractionModel.Reset();
+	ActivePreviewGraph.Reset();
 	if (PreviewMaterializer.IsValid())
 	{
 		PreviewMaterializer->Cancel();
 	}
-}
-
-bool SBlueprintHelperLayoutRuleEditor::IsPreviewMode() const
-{
-	return PreviewState != EPreviewState::Edit;
 }
 
 FString SBlueprintHelperLayoutRuleEditor::LoadJsonFromDefaultFile(FString& OutMessage) const

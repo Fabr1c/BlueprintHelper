@@ -224,7 +224,7 @@ bool FGraphLayoutPreviewMaterializer::InitializePreviewGraph()
 	}
 
 	PreviewGraph->Schema = UEdGraphSchema_K2::StaticClass();
-	PreviewGraph->bEditable = false;
+	PreviewGraph->bEditable = true;
 	PreviewGraph->SetFlags(RF_Transient);
 	PreviewBlueprint->UbergraphPages.Add(PreviewGraph);
 	Result.PreviewGraph = TStrongObjectPtr<UEdGraph>(PreviewGraph);
@@ -283,6 +283,11 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 
 	MaterializedNodesById.Add(NodeSpec.NodeId, Node);
 	Result.NodeGuidsById.Add(NodeSpec.NodeId, Node->NodeGuid);
+	Result.NodeIdsByGuid.Add(Node->NodeGuid, NodeSpec.NodeId);
+	Result.RolesByGuid.Add(Node->NodeGuid, NodeSpec.Role);
+	Result.AnchorRolesByGuid.Add(
+		Node->NodeGuid,
+		NodeSpec.bUsePreviewRoleAnchor ? NodeSpec.PreviewAnchorRole : NodeSpec.Role);
 	++NextNodeIndex;
 	return true;
 }
