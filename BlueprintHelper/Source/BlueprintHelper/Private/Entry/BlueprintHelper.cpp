@@ -359,7 +359,7 @@ void FBlueprintHelperModule::RegisterMenus()
 	FToolMenuOwnerScoped OwnerScoped(this);
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper RegisterMenus invoked."));
 	RegisterLevelEditorMenus();
-	RegisterBlueprintEditorToolbar();
+	RegisterAssetEditorToolbar();
 	UToolMenus::Get()->RefreshAllWidgets();
 }
 
@@ -385,19 +385,19 @@ void FBlueprintHelperModule::RegisterLevelEditorMenus()
 
 }
 
-void FBlueprintHelperModule::RegisterBlueprintEditorToolbar()
+void FBlueprintHelperModule::RegisterAssetEditorToolbar()
 {
-	UToolMenu* BlueprintToolbarMenu = UToolMenus::Get()->ExtendMenu(TEXT("AssetEditor.BlueprintEditor.ToolBar"));
-	FToolMenuSection& BlueprintToolbarSection = BlueprintToolbarMenu->FindOrAddSection(TEXT("Asset"));
+	UToolMenu* AssetEditorToolbarMenu = UToolMenus::Get()->ExtendMenu(TEXT("AssetEditor.DefaultToolBar"));
+	FToolMenuSection& AssetEditorToolbarSection = AssetEditorToolbarMenu->FindOrAddSection(TEXT("Asset"));
 
 	FToolMenuEntry ToolbarEntry = FToolMenuEntry::InitToolBarButton(
-		TEXT("OpenBlueprintHelperToolbar"),
+		TEXT("OpenBlueprintHelperAssetEditorToolbar"),
 		FUIAction(FExecuteAction::CreateRaw(this, &FBlueprintHelperModule::OpenMainWindow)),
 		LOCTEXT("BlueprintHelperToolbarLabel", "Blueprint Helper"),
 		LOCTEXT("BlueprintHelperToolbarTooltip", "打开 Blueprint Helper 工具窗口。"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), TEXT("Kismet.Tabs.Palette")));
 	ToolbarEntry.StyleNameOverride = TEXT("CalloutToolbar");
-	BlueprintToolbarSection.AddEntry(ToolbarEntry);
+	AssetEditorToolbarSection.AddEntry(ToolbarEntry);
 
 }
 

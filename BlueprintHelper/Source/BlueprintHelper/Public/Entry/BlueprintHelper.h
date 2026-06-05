@@ -105,8 +105,8 @@ private:
 	/** 注册主编辑器菜单入口。 */
 	void RegisterLevelEditorMenus();
 
-	/** 注册蓝图编辑器工具栏入口。 */
-	void RegisterBlueprintEditorToolbar();
+	/** 注册通用资产编辑器工具栏入口。 */
+	void RegisterAssetEditorToolbar();
 
 	/** 生成插件主页签。 */
 	TSharedRef<SDockTab> OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs);
