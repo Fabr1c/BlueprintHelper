@@ -43,6 +43,9 @@ export interface CliCommand {
   toolDomain?: string;
   toolCatalogKind?: string;
   toolId?: string;
+  routeId?: string;
+  slot?: boolean;
+  slotKind?: string;
   requiresBridge?: boolean;
   risks?: string[];
   bridgeCommand?: string;

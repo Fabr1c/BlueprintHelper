@@ -1,0 +1,89 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "__HANDLER_CUSTOM_EVENT_NAME__",
+        "inputs": [
+          {
+            "name": "__ARG_NAME__",
+            "pin_type": {
+              "category": "object",
+              "object_path": "/Script/Engine.Actor"
+            }
+          }
+        ],
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "call",
+              "target": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "__HANDLER_MESSAGE__"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "entry_type": "custom_event",
+        "name": "__BINDING_CUSTOM_EVENT_NAME__",
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "component_bound_event",
+              "component": "__COMPONENT_NAME__",
+              "delegate": "__COMPONENT_DELEGATE_NAME__",
+              "handler": "__HANDLER_CUSTOM_EVENT_NAME__",
+              "context_evidence": {
+                "event_delegate.component_binding_owner_class_path": "__OWNER_CLASS_PATH__",
+                "event_delegate.component_property_name": "__COMPONENT_NAME__",
+                "event_delegate.component_binding_field_path": "__COMPONENT_FIELD_PATH__",
+                "event_delegate.component_class_path": "__COMPONENT_CLASS_PATH__",
+                "event_delegate.delegate_owner_class_path": "__DELEGATE_OWNER_CLASS_PATH__",
+                "event_delegate.delegate_property_name": "__COMPONENT_DELEGATE_NAME__",
+                "event_delegate.delegate_property_path": "__DELEGATE_PROPERTY_PATH__",
+                "event_delegate.delegate_signature_function_path": "__DELEGATE_SIGNATURE_FUNCTION_PATH__",
+                "event_delegate.handler_function_path": "__HANDLER_FUNCTION_PATH__",
+                "event_delegate.handler_source_cluster": "BlueprintSignature",
+                "event_delegate.signature_evidence_id": "__SIGNATURE_EVIDENCE_ID__",
+                "event_delegate.duplicate_policy": "reuse_if_exists"
+              }
+            },
+            {
+              "kind": "delegate.bind",
+              "target": "__COMPONENT_NAME__",
+              "delegate": "__COMPONENT_DELEGATE_NAME__",
+              "handler": "__HANDLER_CUSTOM_EVENT_NAME__",
+              "context_evidence": {
+                "event_delegate.binding_object_kind": "component",
+                "event_delegate.binding_object_evidence_id": "__BINDING_OBJECT_EVIDENCE_ID__",
+                "event_delegate.delegate_owner_class_path": "__DELEGATE_OWNER_CLASS_PATH__",
+                "event_delegate.delegate_property_name": "__COMPONENT_DELEGATE_NAME__",
+                "event_delegate.delegate_property_path": "__DELEGATE_PROPERTY_PATH__",
+                "event_delegate.delegate_signature_function_path": "__DELEGATE_SIGNATURE_FUNCTION_PATH__",
+                "event_delegate.handler_function_path": "__HANDLER_FUNCTION_PATH__",
+                "event_delegate.handler_source_cluster": "BlueprintSignature",
+                "event_delegate.signature_evidence_id": "__SIGNATURE_EVIDENCE_ID__"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

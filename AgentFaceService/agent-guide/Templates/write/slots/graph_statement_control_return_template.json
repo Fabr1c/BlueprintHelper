@@ -1,0 +1,8 @@
+{
+  "kind": "control",
+  "control": "return",
+  "value": {
+    "kind": "get",
+    "target": "__RETURN_SYMBOL_OR_VARIABLE__"
+  }
+}

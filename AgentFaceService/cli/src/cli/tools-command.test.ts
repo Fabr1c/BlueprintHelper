@@ -55,13 +55,75 @@ test('runCli returns template dispatch package for a selected tool id', async ()
   assert.equal(output.tool_name, 'blueprinthelper_read_context');
   assert.deepEqual(output.allowed_tools, ['blueprinthelper_read_context']);
   assert.match(output.recommended_invocation, /blueprinthelper_read_context/);
+  assert.doesNotMatch(output.recommended_invocation, /Templates\/read\/read_context_/);
+  assert.equal('taskspec_semantic_templates' in output, false);
   assert.equal(
-    output.cli_invocation_templates.some((template: Record<string, unknown>) => {
-      return String(template.path).endsWith('read_context_function_logic_flow_template.json');
+    output.cli_invocation_templates.every((template: Record<string, unknown>) => {
+      return String(template.path).includes('/read/routes/');
     }),
     true,
   );
   assert.equal('show_command' in output, false);
+});
+
+test('ReadContext help points to route-owned templates only', () => {
+  const readContextHelp = buildHelpText(['blueprinthelper_read_context']);
+  const groupedReadHelp = buildHelpText(['context', 'read']);
+
+  assert.doesNotMatch(readContextHelp, /Templates\/read\/read_context_/);
+  assert.doesNotMatch(groupedReadHelp, /Templates\/read\/read_context_/);
+  assert.match(readContextHelp, /Templates\/read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
+  assert.match(groupedReadHelp, /Templates\/read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
+});
+
+test('runCli returns route-filtered slot templates for a selected tool id', async () => {
+  const { output } = await runCliJson([
+    'tools',
+    'templates',
+    'blueprint.write.taskspec.execute',
+    '--route',
+    'graph.replace.function_body',
+    '--slot',
+    '--kind',
+    'statement',
+    '--format',
+    'json',
+  ]);
+
+  assert.equal(output.schema, 'BlueprintHelper.ToolTemplateSelection.v1');
+  assert.equal(output.selected_route.route_id, 'graph.replace.function_body');
+  assert.equal(output.slot_templates.every((slot: Record<string, unknown>) => slot.slot_type === 'statement'), true);
+  assert.equal(
+    output.slot_templates.some((slot: Record<string, unknown>) =>
+      slot.slot_id === 'graph.statement.call.direct'
+      && String(slot.path).endsWith('graph_statement_call_direct_template.json')),
+    true,
+  );
+});
+
+test('runCli rejects template slot kind without slot output', async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: [
+      'tools',
+      'templates',
+      'blueprint.write.taskspec.execute',
+      '--route',
+      'graph.replace.function_body',
+      '--kind',
+      'statement',
+      '--format',
+      'json',
+    ],
+    cwd: workspaceRoot(),
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.equal(stdout.join(''), '');
+  assert.match(stderr.join(''), /--kind requires --slot/);
 });
 
 test('runCli does not register an independent tool detail command', async () => {

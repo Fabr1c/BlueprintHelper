@@ -1,0 +1,16 @@
+{
+  "kind": "op",
+  "op": "__OPERATION_ID__",
+  "left": {
+    "kind": "get",
+    "target": "__LEFT_SYMBOL_OR_VARIABLE__"
+  },
+  "right": {
+    "kind": "get",
+    "target": "__RIGHT_SYMBOL_OR_VARIABLE__"
+  },
+  "context_evidence": {
+    "op.operation_id": "__OPERATION_ID__",
+    "op.spawn_family": "__SPAWN_FAMILY__"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "select",
+  "condition": {
+    "kind": "get",
+    "target": "__CONDITION_SYMBOL_OR_VARIABLE__"
+  },
+  "options": [
+    {
+      "kind": "literal",
+      "value_type": "__VALUE_TYPE__",
+      "value": "__OPTION_A__"
+    },
+    {
+      "kind": "literal",
+      "value_type": "__VALUE_TYPE__",
+      "value": "__OPTION_B__"
+    }
+  ],
+  "context_evidence": {
+    "generic.select.result_type_proof": "__VALUE_TYPE__"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "let",
+  "name": "__SYMBOL_NAME__",
+  "value": {
+    "kind": "get",
+    "target": "__SOURCE_SYMBOL_OR_VARIABLE__"
+  }
+}

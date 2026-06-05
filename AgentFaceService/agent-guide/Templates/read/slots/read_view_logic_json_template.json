@@ -1,0 +1,7 @@
+{
+  "view": {
+    "format": "logic_json",
+    "max_items": 200,
+    "detail": "normal"
+  }
+}

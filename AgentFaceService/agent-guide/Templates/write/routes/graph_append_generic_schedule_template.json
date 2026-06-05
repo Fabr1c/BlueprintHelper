@@ -1,0 +1,84 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "__HANDLER_CUSTOM_EVENT_NAME__",
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "call",
+              "target": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "__TIMER_MESSAGE__"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "entry_type": "custom_event",
+        "name": "__START_TIMER_EVENT_NAME__",
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "schedule",
+              "schedule_operation": "timer_delegate_node",
+              "context_evidence": {
+                "generic.schedule.operation": "timer_delegate_node",
+                "schedule_action_stable_id": "__SCHEDULE_ACTION_STABLE_ID__",
+                "schedule_node_class": "/Script/BlueprintGraph.K2Node_CallFunction",
+                "schedule_spawner_signature": "__SCHEDULE_SPAWNER_SIGNATURE__",
+                "schedule_owner_path": "/Script/Engine.KismetSystemLibrary",
+                "handler_name": "__HANDLER_CUSTOM_EVENT_NAME__",
+                "handler_function_path": "__HANDLER_FUNCTION_PATH__",
+                "handler_source_cluster": "BlueprintSignature",
+                "signature_evidence_id": "__SIGNATURE_EVIDENCE_ID__"
+              },
+              "args": {
+                "time": {
+                  "kind": "literal",
+                  "value_type": "number",
+                  "value": 0.25
+                }
+              }
+            },
+            {
+              "kind": "schedule",
+              "function_operation": "schedule_function",
+              "schedule_operation": "delay",
+              "graph_latent_allowed": true,
+              "context_evidence": {
+                "generic.schedule.operation": "delay",
+                "generic.schedule.graph_latent_allowed": "true",
+                "schedule_action_stable_id": "__DELAY_ACTION_STABLE_ID__",
+                "schedule_spawner_signature": "__DELAY_SPAWNER_SIGNATURE__"
+              },
+              "args": {
+                "duration": {
+                  "kind": "literal",
+                  "value_type": "number",
+                  "value": 0.25
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

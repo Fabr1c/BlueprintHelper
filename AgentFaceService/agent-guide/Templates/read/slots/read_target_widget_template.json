@@ -1,0 +1,7 @@
+{
+  "target": {
+    "asset_path": "__WIDGET_BLUEPRINT_ASSET_PATH__",
+    "target_type": "__blueprint|widget__",
+    "target_name": "__OPTIONAL_WIDGET_NAME__"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "graph_strategy": "append_new_owned_graph",
+    "entries": [
+      {
+        "entry_type": "custom_event",
+        "name": "__CUSTOM_EVENT_NAME__",
+        "body": {
+          "schema": "BlueprintLogicSpec.v2",
+          "statements": [
+            {
+              "kind": "call",
+              "target": "PrintString",
+              "args": {
+                "InString": {
+                  "kind": "literal",
+                  "value_type": "string",
+                  "value": "__MESSAGE__"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

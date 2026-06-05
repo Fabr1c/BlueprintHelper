@@ -1,0 +1,9 @@
+{
+  "kind": "set",
+  "target": "__VARIABLE_NAME__",
+  "value": {
+    "kind": "literal",
+    "value_type": "__VALUE_TYPE__",
+    "value": "__VALUE__"
+  }
+}

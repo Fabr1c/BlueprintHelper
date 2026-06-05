@@ -28,7 +28,7 @@ import {
 import { createInputIoSummary, createOutputIoSummary } from './io-stats.js';
 import { buildHelpText } from './help.js';
 import { runMetricsCommand, type MetricsCliCommand } from './metrics-command.js';
-import { parseToolAudience, parseToolRisk, runToolsCommand } from './tools-command.js';
+import { parseToolAudience, parseToolRisk, parseToolTemplateSlotKind, runToolsCommand } from './tools-command.js';
 import {
   createCliMetricsService,
   recordCliIoCompleted,
@@ -341,6 +341,9 @@ function parseArgs(argv: string[]): ParseResult {
     audience?: 'default' | 'compat' | 'expert';
     requiresBridge?: boolean;
     risks?: string[];
+    routeId?: string;
+    slot?: boolean;
+    slotKind?: string;
   } = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -386,6 +389,18 @@ function parseArgs(argv: string[]): ParseResult {
         }
       }
       options.risks = risks;
+    } else if (arg === '--route') {
+      options.routeId = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--slot') {
+      options.slot = true;
+    } else if (arg === '--kind') {
+      const slotKind = readOptionValue(argv, ++index, arg);
+      try {
+        parseToolTemplateSlotKind(slotKind);
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      }
+      options.slotKind = slotKind;
     } else if (arg === '--preview-token') {
       options.previewToken = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
@@ -480,12 +495,18 @@ function parseArgs(argv: string[]): ParseResult {
       };
     }
     if (action === 'templates' && positionals.length === 3) {
+      if (options.slotKind && options.slot !== true) {
+        return { ok: false, message: '--kind requires --slot for tools templates.' };
+      }
       return {
         ok: true,
         command: {
           ...base,
           kind: 'tools.templates',
           toolId: positionals[2],
+          routeId: options.routeId,
+          slot: options.slot,
+          slotKind: options.slotKind,
         },
       };
     }
@@ -644,6 +665,8 @@ function parseHelpTarget(argv: string[]): string[] {
     '--audience',
     '--requires-bridge',
     '--risk',
+    '--route',
+    '--kind',
     '--select',
     '--limit',
     '--window',

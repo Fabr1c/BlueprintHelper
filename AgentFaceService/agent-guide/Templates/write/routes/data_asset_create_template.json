@@ -3,14 +3,14 @@
   "task_type": "create_asset",
   "feature_name": "__FEATURE_NAME__",
   "target": {
-    "asset_path": "__ASSET_PATH__",
+    "asset_path": "__DATA_ASSET_PATH__",
     "target_type": "asset"
   },
   "behavior": {
     "asset_strategy": "ensure_asset",
     "asset": {
-      "asset_type": "blueprint_class",
-      "parent_class": "Actor",
+      "asset_type": "data_asset",
+      "data_asset_class": "__CONCRETE_DATA_ASSET_CLASS_PATH__",
       "collision_policy": "reuse_if_exists"
     }
   }

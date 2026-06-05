@@ -1,0 +1,5 @@
+{
+  "kind": "call",
+  "target": "__FUNCTION_OR_ACTION_TARGET__",
+  "args": {}
+}

@@ -1,0 +1,6 @@
+{
+  "target": {
+    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "row_name": "__ROW_NAME__"
+  }
+}

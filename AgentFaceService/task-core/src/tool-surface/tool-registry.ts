@@ -14,7 +14,7 @@ export type {
   CliInvocationTemplateRef,
   ListToolCapabilitiesOptions,
   ListToolDomainsOptions,
-  TaskSpecSemanticTemplateRef,
+  GetToolTemplateDispatchOptions,
   ToolCapabilityDomain,
   ToolCapabilityItem,
   ToolCapabilityKind,
@@ -23,4 +23,8 @@ export type {
   ToolDomainListResult,
   ToolDomainStatus,
   ToolTemplateDispatchResult,
+  ToolTemplateRouteKind,
+  ToolTemplateRouteRef,
+  ToolTemplateSlotKind,
+  ToolTemplateSlotRef,
 } from './catalog/tool-capability-types.js';

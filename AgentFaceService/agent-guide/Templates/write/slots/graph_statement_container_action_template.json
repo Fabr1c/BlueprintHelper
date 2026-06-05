@@ -1,0 +1,18 @@
+{
+  "kind": "container_action",
+  "container_kind": "__array|set|map__",
+  "container_operation": "__OPERATION__",
+  "target": "__CONTAINER_VARIABLE_NAME__",
+  "item": {
+    "kind": "literal",
+    "value_type": "__ELEMENT_VALUE_TYPE__",
+    "value": "__ITEM_VALUE__"
+  },
+  "element_type": "__ELEMENT_VALUE_TYPE__",
+  "context_evidence": {
+    "container.kind": "__array|set|map__",
+    "container.operation": "__OPERATION__",
+    "container.collection_pin_type": "__COLLECTION_PIN_TYPE__",
+    "container.element_pin_type": "__ELEMENT_PIN_TYPE__"
+  }
+}

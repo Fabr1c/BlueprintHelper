@@ -1,0 +1,7 @@
+{
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "function",
+    "target_name": "__FUNCTION_NAME__"
+  }
+}

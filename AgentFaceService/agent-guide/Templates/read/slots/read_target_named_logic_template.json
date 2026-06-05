@@ -1,0 +1,7 @@
+{
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "__function|event|custom_event|graph|block__",
+    "target_name": "__TARGET_NAME__"
+  }
+}

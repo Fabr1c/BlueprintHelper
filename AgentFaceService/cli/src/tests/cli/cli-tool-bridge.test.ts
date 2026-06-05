@@ -44,8 +44,9 @@ test('tool help is specific and includes concrete ReadContext template paths', a
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_read_context/);
   assert.match(output, /Root JSON: bare BlueprintHelper\.ReadSpec\.v1/);
-  assert.match(output, /read_context_asset_summary_template\.json/);
-  assert.match(output, /read_context_function_logic_flow_template\.json/);
+  assert.match(output, /read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
+  assert.match(output, /read\/routes\/blueprint_logic_graph_logic_json_template\.json/);
+  assert.doesNotMatch(output, /Templates\/read\/read_context_/);
   assert.doesNotMatch(output, new RegExp(String.raw`read/${legacyTemplateIndexName}\.md`));
   assert.doesNotMatch(output, /Default tool names:/);
 });

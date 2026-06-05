@@ -2,9 +2,9 @@ import { toolMetas } from '../registry/tool-metas.js';
 import type { ToolAudience, ToolRisk } from '../types.js';
 import type {
   CliInvocationTemplateRef,
+  GetToolTemplateDispatchOptions,
   ListToolCapabilitiesOptions,
   ListToolDomainsOptions,
-  TaskSpecSemanticTemplateRef,
   ToolCapabilityDomain,
   ToolCapabilityItem,
   ToolCapabilityKind,
@@ -12,9 +12,15 @@ import type {
   ToolDomainCatalogItem,
   ToolDomainListResult,
   ToolTemplateDispatchResult,
+  ToolTemplateRouteKind,
+  ToolTemplateRouteRef,
+  ToolTemplateSlotKind,
+  ToolTemplateSlotRef,
 } from './tool-capability-types.js';
 
 const TEMPLATE_ROOT = 'AgentFaceService/agent-guide/Templates';
+const READ_ROUTE_TEMPLATE_ROOT = `${TEMPLATE_ROOT}/read/routes`;
+const WRITE_ROUTE_TEMPLATE_ROOT = `${TEMPLATE_ROOT}/write/routes`;
 
 const toolMetaByName = new Map(toolMetas.map((meta) => [meta.name, meta]));
 
@@ -97,24 +103,24 @@ const DOMAINS: readonly ToolDomainCatalogItem[] = [
 
 const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.discover.assets', 'blueprint', 'discover', 'blueprinthelper_find_assets', 'Resolve unknown Unreal asset paths before reads or writes.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_find_assets']),
-  capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow']),
-  capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json']),
+  capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow', 'read_context_event_logic_flow', 'read_context_custom_event_logic_flow']),
+  capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json', 'read_context_block_logic_json']),
   capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, ['read_context_components']),
   capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, ['read_context_variables']),
   capability('blueprint.read.reference.dependencies', 'blueprint', 'read', 'blueprinthelper_read_reference_context', 'Read dependency ReferenceContextPack before risky edits.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_reference_context_dependencies']),
   capability('blueprint.read.function_chain', 'blueprint', 'read', 'blueprinthelper_read_function_chain_context', 'Trace project-authored function/event/custom-event calls.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_function_chain_context']),
-  capability('blueprint.plan.taskspec.preview', 'blueprint', 'plan', 'blueprinthelper_preview_task', 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec'], ['taskspec_create_blueprint_feature', 'taskspec_graph_merge_external_flow', 'taskspec_edit_blueprint_variables']),
-  capability('blueprint.write.taskspec.execute', 'blueprint', 'write', 'blueprinthelper_execute_task', 'Execute a BlueprintHelper.TaskSpec.v1 after preview and write permission.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec'], ['taskspec_create_blueprint_feature', 'taskspec_graph_merge_external_flow', 'taskspec_edit_blueprint_variables']),
+  capability('blueprint.plan.taskspec.preview', 'blueprint', 'plan', 'blueprinthelper_preview_task', 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec']),
+  capability('blueprint.write.taskspec.execute', 'blueprint', 'write', 'blueprinthelper_execute_task', 'Execute a BlueprintHelper.TaskSpec.v1 after preview and write permission.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec']),
 
   capability('umg.read.widget_tree', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint tree context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_tree']),
   capability('umg.read.widget_property', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint property context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_property']),
-  capability('umg.plan.taskspec.preview', 'umg', 'plan', 'blueprinthelper_preview_task', 'Preview UMG TaskSpec changes.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec'], ['taskspec_edit_umg_widget']),
-  capability('umg.write.taskspec.execute', 'umg', 'write', 'blueprinthelper_execute_task', 'Execute UMG TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec'], ['taskspec_edit_umg_widget']),
+  capability('umg.plan.taskspec.preview', 'umg', 'plan', 'blueprinthelper_preview_task', 'Preview UMG TaskSpec changes.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec']),
+  capability('umg.write.taskspec.execute', 'umg', 'write', 'blueprinthelper_execute_task', 'Execute UMG TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec']),
 
   capability('data.read.data_asset', 'data', 'read', 'blueprinthelper_read_context', 'Read DataAsset object property context.', 'blueprint-explorer', 'low', true, false, ['read_context_data_asset']),
   capability('data.read.data_table', 'data', 'read', 'blueprinthelper_read_context', 'Read DataTable or DataTable row context.', 'blueprint-explorer', 'low', true, false, ['read_context_data_table', 'read_context_data_table_row']),
-  capability('data.plan.taskspec.preview', 'data', 'plan', 'blueprinthelper_preview_task', 'Preview DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec'], ['taskspec_edit_object_properties', 'taskspec_edit_data_table_rows', 'taskspec_create_asset_data_asset', 'taskspec_create_asset_data_table']),
-  capability('data.write.taskspec.execute', 'data', 'write', 'blueprinthelper_execute_task', 'Execute DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec'], ['taskspec_edit_object_properties', 'taskspec_edit_data_table_rows', 'taskspec_create_asset_data_asset', 'taskspec_create_asset_data_table']),
+  capability('data.plan.taskspec.preview', 'data', 'plan', 'blueprinthelper_preview_task', 'Preview DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec']),
+  capability('data.write.taskspec.execute', 'data', 'write', 'blueprinthelper_execute_task', 'Execute DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec']),
 
   capability('editor.read.runtime_profile', 'editor', 'read', 'blueprint_get_runtime_profile', 'Read BlueprintHelper runtime profile from the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprint_get_runtime_profile']),
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
@@ -153,15 +159,18 @@ const CLI_TEMPLATES = new Map<string, CliInvocationTemplateRef>([
   cliTemplate('blueprinthelper_query_review_records', `${TEMPLATE_ROOT}/blueprinthelper_query_review_records_template.json`, 'Review record query request.', 'BlueprintHelper.ReviewQueryRequest.v1'),
   cliTemplate('blueprinthelper_apply_review_action', `${TEMPLATE_ROOT}/blueprinthelper_query_review_records_template.json`, 'Review action request; fill the Review action schema manually if unavailable.', 'BlueprintHelper.ReviewActionRequest.v1'),
 
-  cliTemplate('read_context_function_logic_flow', `${TEMPLATE_ROOT}/read/read_context_function_logic_flow_template.json`, 'Function logic_flow ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_graph_logic_json', `${TEMPLATE_ROOT}/read/read_context_graph_logic_json_template.json`, 'Graph logic_json ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_components', `${TEMPLATE_ROOT}/read/read_context_components_template.json`, 'Component ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_variables', `${TEMPLATE_ROOT}/read/read_context_variables_template.json`, 'Variable ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_widget_tree', `${TEMPLATE_ROOT}/read/read_context_widget_tree_template.json`, 'Widget tree ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_widget_property', `${TEMPLATE_ROOT}/read/read_context_widget_property_template.json`, 'Widget property ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_data_asset', `${TEMPLATE_ROOT}/read/read_context_data_asset_template.json`, 'DataAsset ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_data_table', `${TEMPLATE_ROOT}/read/read_context_data_table_template.json`, 'DataTable ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
-  cliTemplate('read_context_data_table_row', `${TEMPLATE_ROOT}/read/read_context_data_table_row_template.json`, 'DataTable row ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_function_logic_flow', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_function_logic_flow_template.json`, 'Function logic_flow ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_event_logic_flow', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_event_logic_flow_template.json`, 'Event logic_flow ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_custom_event_logic_flow', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_custom_event_logic_flow_template.json`, 'Custom event logic_flow ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_graph_logic_json', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_graph_logic_json_template.json`, 'Graph logic_json ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_block_logic_json', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_block_logic_json_template.json`, 'Block logic_json ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_components', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_components_template.json`, 'Component ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_variables', `${READ_ROUTE_TEMPLATE_ROOT}/blueprint_variables_template.json`, 'Variable ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_widget_tree', `${READ_ROUTE_TEMPLATE_ROOT}/widget_tree_template.json`, 'Widget tree ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_widget_property', `${READ_ROUTE_TEMPLATE_ROOT}/widget_property_template.json`, 'Widget property ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_data_asset', `${READ_ROUTE_TEMPLATE_ROOT}/data_asset_object_template.json`, 'DataAsset ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_data_table', `${READ_ROUTE_TEMPLATE_ROOT}/data_table_template.json`, 'DataTable ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
+  cliTemplate('read_context_data_table_row', `${READ_ROUTE_TEMPLATE_ROOT}/data_table_row_template.json`, 'DataTable row ReadSpec.', 'BlueprintHelper.ReadSpec.v1'),
   cliTemplate('blueprinthelper_read_reference_context_dependencies', `${TEMPLATE_ROOT}/read/blueprinthelper_read_reference_context_dependencies_template.json`, 'ReferenceContext dependency request.', 'BlueprintHelper.ReferenceContextRequest.v1'),
   cliTemplate('blueprinthelper_read_function_chain_context', `${TEMPLATE_ROOT}/read/blueprinthelper_read_function_chain_context_template.json`, 'Function-chain context request.', 'BlueprintHelper.FunctionChainContextRequest.v1'),
 
@@ -171,20 +180,736 @@ const CLI_TEMPLATES = new Map<string, CliInvocationTemplateRef>([
   cliTemplate('task_execute_bare_taskspec', `${TEMPLATE_ROOT}/write/task_execute_bare_taskspec_template.json`, 'Bare TaskSpec execute file.', 'BlueprintHelper.TaskSpec.v1'),
 ]);
 
-const TASKSPEC_TEMPLATES = new Map<string, TaskSpecSemanticTemplateRef>([
-  taskSpecTemplate('taskspec_create_blueprint_feature', `${TEMPLATE_ROOT}/write/taskspec_create_blueprint_feature_template.json`, 'create_blueprint_feature'),
-  taskSpecTemplate('taskspec_graph_merge_external_flow', `${TEMPLATE_ROOT}/write/taskspec_graph_merge_external_flow_template.json`, 'merge_external_flow'),
-  taskSpecTemplate('taskspec_edit_blueprint_variables', `${TEMPLATE_ROOT}/write/taskspec_edit_blueprint_variables_template.json`, 'edit_blueprint_variables'),
-  taskSpecTemplate('taskspec_edit_umg_widget', `${TEMPLATE_ROOT}/write/taskspec_edit_umg_widget_template.json`, 'edit_umg_widget'),
-  taskSpecTemplate('taskspec_edit_object_properties', `${TEMPLATE_ROOT}/write/taskspec_edit_object_properties_template.json`, 'edit_object_properties'),
-  taskSpecTemplate('taskspec_edit_data_table_rows', `${TEMPLATE_ROOT}/write/taskspec_edit_data_table_rows_template.json`, 'edit_data_table_rows'),
-  taskSpecTemplate('taskspec_create_asset_data_asset', `${TEMPLATE_ROOT}/write/taskspec_create_asset_data_asset_template.json`, 'create_asset'),
-  taskSpecTemplate('taskspec_create_asset_data_table', `${TEMPLATE_ROOT}/write/taskspec_create_asset_data_table_template.json`, 'create_asset'),
+function route(
+  routeId: string,
+  routeKind: ToolTemplateRouteKind,
+  purpose: string,
+  templatePaths: string[],
+  requiredFields: string[],
+  optionalFields: string[],
+  insertPaths: string[],
+  whenToUse?: string,
+  whenNotToUse?: string,
+): ToolTemplateRouteRef {
+  return {
+    route_id: routeId,
+    route_kind: routeKind,
+    purpose,
+    template_paths: templatePaths,
+    required_fields: requiredFields,
+    optional_fields: optionalFields,
+    insert_paths: insertPaths,
+    when_to_use: whenToUse,
+    when_not_to_use: whenNotToUse,
+  };
+}
+
+function slot(
+  slotId: string,
+  slotType: ToolTemplateSlotKind,
+  path: string,
+  appliesToRoutes: string[],
+  insertPath: string,
+  keywords: string[],
+  whenToUse: string,
+  whenNotToUse?: string,
+): ToolTemplateSlotRef {
+  return {
+    slot_id: slotId,
+    slot_type: slotType,
+    path,
+    applies_to_routes: appliesToRoutes,
+    insert_path: insertPath,
+    keywords,
+    when_to_use: whenToUse,
+    when_not_to_use: whenNotToUse,
+  };
+}
+
+const GRAPH_BODY_ROUTES = [
+  'graph.append.container_action',
+  'graph.append.event_delegate',
+  'graph.append.generic_ops',
+  'graph.append.generic_schedule',
+  'graph.append.custom_event',
+  'graph.replace.function_body',
+  'graph.replace.event_body',
+  'graph.merge_external_flow.append_after',
+] as const;
+
+const GRAPHWRITE_ROUTES: readonly ToolTemplateRouteRef[] = [
+  route(
+    'graph.append.container_action',
+    'graph_write',
+    'Append owned graph content that demonstrates container_action statements.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_container_action_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[].kind=container_action'],
+    ['behavior.entries[].inputs'],
+    ['behavior.entries[].body.statements[]'],
+    'Use when authoring array, set, or map operations inside a new owned graph body.',
+  ),
+  route(
+    'graph.append.event_delegate',
+    'graph_write',
+    'Append owned graph content for component-bound event and delegate statements.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_event_delegate_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[]'],
+    ['behavior.entries[].inputs'],
+    ['behavior.entries[].body.statements[]'],
+    'Use when binding an event dispatcher or component delegate through owned graph content.',
+  ),
+  route(
+    'graph.append.generic_ops',
+    'graph_write',
+    'Append owned graph content for generic operation statements and expressions.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_generic_ops_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[]'],
+    ['behavior.entries[].inputs'],
+    ['behavior.entries[].body.statements[]'],
+    'Use when authoring let, op, convert, construct, select, create, field, or switch operation families.',
+  ),
+  route(
+    'graph.append.generic_schedule',
+    'graph_write',
+    'Append owned graph content for schedule statements.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_generic_schedule_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[].kind=schedule'],
+    ['behavior.entries[].inputs'],
+    ['behavior.entries[].body.statements[]'],
+    'Use when authoring delay, timer, or other scheduled execution statements.',
+  ),
+  route(
+    'graph.append.custom_event',
+    'graph_write',
+    'Append a BlueprintHelper-owned custom event graph body.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_owned_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body'],
+    ['behavior.entries[].inputs'],
+    ['behavior.entries[].body.statements[]'],
+    'Use when creating new owned graph content.',
+  ),
+  route(
+    'graph.replace.function_body',
+    'graph_write',
+    'Replace the body of an existing function.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_replace_owned_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=replace_owned_graph', 'behavior.replace.scope=function_body', 'behavior.replace.selector.kind=function', 'behavior.replace.selector.name', 'behavior.replace.body'],
+    ['behavior.replace.options.strict'],
+    ['behavior.replace.body.statements[]'],
+    'Use after the function signature already exists.',
+  ),
+  route(
+    'graph.replace.event_body',
+    'graph_write',
+    'Replace the body of an existing event or custom event.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_replace_owned_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=replace_owned_graph', 'behavior.replace.scope=event_body|custom_event_body', 'behavior.replace.selector.kind=event|custom_event', 'behavior.replace.selector.name', 'behavior.replace.body'],
+    ['behavior.replace.options.strict'],
+    ['behavior.replace.body.statements[]'],
+    'Use when the target event signature already exists.',
+  ),
+  route(
+    'graph.merge_external_flow.append_after',
+    'graph_write',
+    'Insert executable statements after a stable external graph anchor.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_external_flow_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_external_flow', 'behavior.external_merges[].insert_strategy=append_after', 'behavior.external_merges[].anchor', 'behavior.external_merges[].inserted.body'],
+    ['behavior.external_merges[].sequence_order'],
+    ['behavior.external_merges[].inserted.body.statements[]'],
+    'Use when read_context provides a stable LogicJson or ExternalGraphAnchor exec boundary.',
+  ),
+  route(
+    'graph.merge.append_after',
+    'graph_write',
+    'Append an owned merge payload after an owned anchor.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_append_after_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=append_after', 'behavior.merges[].anchor', 'behavior.merges[].inserted'],
+    [],
+    ['behavior.merges[]', 'behavior.merges[].inserted'],
+    'Use for legacy owned merge payloads that are not BlueprintLogicSpec body statements.',
+  ),
+  route(
+    'graph.merge.branch_fork',
+    'graph_write',
+    'Fork owned flow around an owned anchor with explicit sequence order.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_branch_fork_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=branch_fork', 'behavior.merges[].anchor', 'behavior.merges[].inserted', 'behavior.merges[].sequence_order'],
+    [],
+    ['behavior.merges[]', 'behavior.merges[].sequence_order'],
+    'Use when inserting owned logic as an explicit branch fork.',
+  ),
+  route(
+    'graph.merge.insert_between',
+    'graph_write',
+    'Insert an owned merge payload between an owned anchor and successor link.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_insert_between_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=insert_between', 'behavior.merges[].anchor.link_ref', 'behavior.merges[].inserted'],
+    [],
+    ['behavior.merges[]', 'behavior.merges[].inserted'],
+    'Use for owned insertion between an anchor and an existing successor.',
+  ),
+  route(
+    'graph.patch.connect_pins',
+    'graph_write',
+    'Connect two pins in an owned GraphWrite block.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_connect_pins_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=connect_pins', 'behavior.patches[].target_ref', 'behavior.patches[].source_ref'],
+    [],
+    ['behavior.patches[].target_ref', 'behavior.patches[].source_ref'],
+    'Use for GUID/ref based patching of BlueprintHelper-owned nodes.',
+  ),
+  route(
+    'graph.patch.pin_default',
+    'graph_write',
+    'Set a pin default value in an owned GraphWrite block.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_pin_default_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=set_pin_default', 'behavior.patches[].target_ref', 'behavior.patches[].value'],
+    [],
+    ['behavior.patches[].target_ref', 'behavior.patches[].value'],
+    'Use for default-value edits when read_context returned stable pin refs.',
+  ),
+  route(
+    'graph.patch.delete_owned_node',
+    'graph_write',
+    'Delete a BlueprintHelper-owned node by stable node reference.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_delete_owned_node_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=delete_owned_node', 'behavior.patches[].target_ref', 'behavior.patches[].delete_policy'],
+    [],
+    ['behavior.patches[]', 'behavior.patches[].target_ref'],
+    'Use only for BlueprintHelper-owned nodes where delete_policy is explicit.',
+  ),
+  route(
+    'graph.patch.disconnect_link',
+    'graph_write',
+    'Disconnect a link in a BlueprintHelper-owned graph block.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_disconnect_link_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=disconnect_link', 'behavior.patches[].link_ref'],
+    [],
+    ['behavior.patches[]', 'behavior.patches[].link_ref'],
+    'Use for link-level owned graph patches.',
+  ),
+  route(
+    'graph.patch.node_comment',
+    'graph_write',
+    'Set comment text on a BlueprintHelper-owned node.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_node_comment_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=set_node_comment', 'behavior.patches[].target_ref', 'behavior.patches[].comment'],
+    [],
+    ['behavior.patches[]', 'behavior.patches[].target_ref'],
+    'Use for owned node comment patches.',
+  ),
+  route(
+    'graph.patch.replace_link',
+    'graph_write',
+    'Replace an existing owned graph link with another endpoint reference.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_replace_link_template.json`],
+    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=replace_link', 'behavior.patches[].link_ref', 'behavior.patches[].replacement_ref'],
+    [],
+    ['behavior.patches[]', 'behavior.patches[].replacement_ref'],
+    'Use for link replacement inside BlueprintHelper-owned graph content.',
+  ),
+];
+
+const BLUEPRINT_TASKSPEC_ROUTES: readonly ToolTemplateRouteRef[] = [
+  route(
+    'blueprint.create_feature',
+    'taskspec',
+    'Create or extend a Blueprint feature through the composite TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/blueprint_create_feature_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=create_blueprint_feature', 'target.asset_path', 'behavior'],
+    [],
+    ['behavior'],
+    'Use for composite Blueprint feature creation when one TaskSpec should coordinate signatures, variables, and graph writes.',
+  ),
+  ...GRAPHWRITE_ROUTES,
+  route(
+    'blueprint.variables.edit',
+    'taskspec',
+    'Edit Blueprint variables through the variable TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/blueprint_edit_variables_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=edit_blueprint_variables', 'target.asset_path', 'behavior.changes[]'],
+    [],
+    ['behavior.changes[]'],
+    'Use for member variable, local variable, default, and replication edits.',
+  ),
+];
+
+const UMG_TASKSPEC_ROUTES: readonly ToolTemplateRouteRef[] = [
+  route(
+    'umg.widget.edit',
+    'taskspec',
+    'Edit Widget Blueprint tree or properties through the UMG TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/umg_widget_edit_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=edit_umg_widget', 'target.asset_path', 'behavior.changes[]'],
+    [],
+    ['behavior.changes[]'],
+    'Use for Widget Blueprint create, update, delete, or property changes.',
+  ),
+];
+
+const DATA_TASKSPEC_ROUTES: readonly ToolTemplateRouteRef[] = [
+  route(
+    'data.object_properties.edit',
+    'taskspec',
+    'Edit object or DataAsset properties through the object-property TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/data_object_properties_edit_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=edit_object_properties', 'target.asset_path', 'behavior.changes[]'],
+    [],
+    ['behavior.changes[]'],
+    'Use for DataAsset or UObject property edits.',
+  ),
+  route(
+    'data.data_table.rows.edit',
+    'taskspec',
+    'Edit DataTable rows through the row TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/data_table_rows_edit_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=edit_data_table', 'target.asset_path', 'behavior.rows[]'],
+    [],
+    ['behavior.rows[]'],
+    'Use for adding, updating, or deleting DataTable rows.',
+  ),
+  route(
+    'data.asset.data_asset.create',
+    'taskspec',
+    'Create a DataAsset asset through the asset factory TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/data_asset_create_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=create_asset', 'target.asset_path', 'behavior.asset_class'],
+    [],
+    ['behavior'],
+    'Use for creating a DataAsset when the class is known.',
+  ),
+  route(
+    'data.asset.data_table.create',
+    'taskspec',
+    'Create a DataTable asset through the asset factory TaskSpec surface.',
+    [`${WRITE_ROUTE_TEMPLATE_ROOT}/data_table_create_template.json`],
+    ['schema=BlueprintHelper.TaskSpec.v1', 'task_type=create_asset', 'target.asset_path', 'behavior.row_struct'],
+    [],
+    ['behavior'],
+    'Use for creating a DataTable when the row struct is known.',
+  ),
+];
+
+const READ_CONTEXT_ROUTES: readonly ToolTemplateRouteRef[] = [
+  route(
+    'read.blueprint.logic.function.logic_flow',
+    'read_context',
+    'Read compact function execution/data flow.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_function_logic_flow_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=blueprint_logic', 'target.asset_path', 'target.target_type=function', 'target.target_name', 'view.format=logic_flow'],
+    ['view.max_items', 'view.detail'],
+    ['target', 'view'],
+    'Use before editing or replacing a known function body.',
+  ),
+  route(
+    'read.blueprint.logic.event.logic_flow',
+    'read_context',
+    'Read compact event execution/data flow.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_event_logic_flow_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=blueprint_logic', 'target.asset_path', 'target.target_type=event', 'target.target_name', 'view.format=logic_flow'],
+    ['view.max_items', 'view.detail'],
+    ['target', 'view'],
+    'Use before editing or replacing a known event body.',
+  ),
+  route(
+    'read.blueprint.logic.custom_event.logic_flow',
+    'read_context',
+    'Read compact custom event execution/data flow.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_custom_event_logic_flow_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=blueprint_logic', 'target.asset_path', 'target.target_type=custom_event', 'target.target_name', 'view.format=logic_flow'],
+    ['view.max_items', 'view.detail'],
+    ['target', 'view'],
+    'Use before editing or replacing a known custom event body.',
+  ),
+  route(
+    'read.blueprint.logic.graph.logic_json',
+    'read_context',
+    'Read graph LogicJson anchors and references.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_graph_logic_json_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=blueprint_logic', 'target.asset_path', 'target.target_type=graph', 'target.target_name', 'view.format=logic_json'],
+    ['view.max_items', 'view.detail'],
+    ['target', 'view'],
+    'Use when a write needs stable graph anchors or node/link refs.',
+  ),
+  route(
+    'read.blueprint.logic.block.logic_json',
+    'read_context',
+    'Read block LogicJson anchors and references.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_logic_block_logic_json_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=blueprint_logic', 'target.asset_path', 'target.target_type=block', 'target.target_name', 'view.format=logic_json'],
+    ['view.max_items', 'view.detail'],
+    ['target', 'view'],
+    'Use when a write needs stable anchors or pin refs for one owned block.',
+  ),
+  route(
+    'read.blueprint.variables',
+    'read_context',
+    'Read Blueprint variable and dispatcher context.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_variables_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=variable_context', 'target.asset_path', 'target.target_type=member_variable'],
+    ['target.target_name'],
+    ['target'],
+    'Use before variable reads, writes, or default edits.',
+  ),
+  route(
+    'read.blueprint.components',
+    'read_context',
+    'Read Blueprint component facts.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/blueprint_components_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=component_context', 'target.asset_path'],
+    ['target.target_type', 'target.target_name'],
+    ['target'],
+    'Use before component refs, component property reads, or component edits.',
+  ),
+  route(
+    'read.widget.tree',
+    'read_context',
+    'Read Widget Blueprint tree.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/widget_tree_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=widget_context', 'target.asset_path', 'target.target_type=blueprint'],
+    ['view.detail'],
+    ['target', 'view'],
+    'Use before UMG tree edits.',
+  ),
+  route(
+    'read.widget.property',
+    'read_context',
+    'Read one Widget Blueprint widget property context.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/widget_property_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=widget_context', 'target.asset_path', 'target.target_type=widget', 'target.target_name'],
+    ['view.detail'],
+    ['target', 'view'],
+    'Use before UMG widget property edits.',
+  ),
+  route(
+    'read.data_asset.object',
+    'read_context',
+    'Read DataAsset object property context.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/data_asset_object_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=data_asset_context', 'target.asset_path', 'target.target_type=data_asset'],
+    ['view.detail'],
+    ['target', 'view'],
+    'Use before DataAsset object property edits.',
+  ),
+  route(
+    'read.data_table.table',
+    'read_context',
+    'Read DataTable rows and schema.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/data_table_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=data_table_context', 'target.asset_path'],
+    ['target.row_name', 'view.detail'],
+    ['target', 'view'],
+    'Use before DataTable row edits.',
+  ),
+  route(
+    'read.data_table.row',
+    'read_context',
+    'Read a specific DataTable row.',
+    [`${READ_ROUTE_TEMPLATE_ROOT}/data_table_row_template.json`],
+    ['schema=BlueprintHelper.ReadSpec.v1', 'read_type=data_table_context', 'target.asset_path', 'target.row_name'],
+    ['view.detail'],
+    ['target', 'view'],
+    'Use when the target row is known.',
+  ),
+];
+
+const GRAPHWRITE_SLOTS: readonly ToolTemplateSlotRef[] = [
+  slot(
+    'graph.statement.call.direct',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_direct_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['call', 'function', 'args'],
+    'Use when the callable target is already known.',
+  ),
+  slot(
+    'graph.statement.call.auto_search',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_auto_search_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['call', 'auto_search', 'candidate'],
+    'Use when the Agent knows intent but needs preview candidate search.',
+  ),
+  slot(
+    'graph.statement.call.result_symbol',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_result_symbol_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['call', 'result_symbol', 'impure'],
+    'Use when an impure call produces a value consumed by a later statement.',
+  ),
+  slot(
+    'graph.statement.let',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_let_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['let', 'symbol', 'value'],
+    'Use when a reusable graph-local symbol should be produced by an expression.',
+  ),
+  slot(
+    'graph.expression.get.symbol_or_variable',
+    'expression',
+    `${TEMPLATE_ROOT}/write/slots/graph_expression_get_symbol_or_variable_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'statement.value | statement.args.<pin>',
+    ['get', 'symbol', 'variable'],
+    'Use to consume a graph-local symbol or member variable.',
+  ),
+  slot(
+    'graph.expression.literal',
+    'expression',
+    `${TEMPLATE_ROOT}/write/slots/graph_expression_literal_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'statement.value | statement.args.<pin>',
+    ['literal', 'value_type', 'value'],
+    'Use for scalar literal values inside statement inputs.',
+  ),
+  slot(
+    'graph.expression.op',
+    'expression',
+    `${TEMPLATE_ROOT}/write/slots/graph_expression_op_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'statement.value | statement.args.<pin>',
+    ['op', 'generic_ops'],
+    'Use for generic operator expressions such as boolean_and.',
+  ),
+  slot(
+    'graph.expression.construct',
+    'expression',
+    `${TEMPLATE_ROOT}/write/slots/graph_expression_construct_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'statement.value | statement.args.<pin>',
+    ['construct', 'struct'],
+    'Use for struct construction expressions.',
+  ),
+  slot(
+    'graph.expression.select',
+    'expression',
+    `${TEMPLATE_ROOT}/write/slots/graph_expression_select_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'statement.value | statement.args.<pin>',
+    ['select', 'condition', 'options'],
+    'Use for generic select expressions with explicit result type proof.',
+  ),
+  slot(
+    'graph.statement.set.variable',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_set_variable_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['set', 'variable'],
+    'Use for member variable assignment with a value expression.',
+  ),
+  slot(
+    'graph.statement.set_property',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_set_property_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['set_property', 'property_path'],
+    'Use for object or component property assignment.',
+  ),
+  slot(
+    'graph.statement.container_action',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_container_action_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['container_action', 'array', 'set', 'map'],
+    'Use for array, set, or map operations.',
+  ),
+  slot(
+    'graph.statement.component_bound_event',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_component_bound_event_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['component_bound_event', 'delegate', 'handler'],
+    'Use to declare a component-bound event handler relationship.',
+  ),
+  slot(
+    'graph.statement.delegate_bind',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_delegate_bind_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['delegate.bind', 'event_delegate'],
+    'Use to bind a delegate to a handler.',
+  ),
+  slot(
+    'graph.statement.schedule',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_schedule_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['schedule', 'timer', 'delay'],
+    'Use for delay, timer, or other scheduled execution operations.',
+  ),
+  slot(
+    'graph.statement.convert',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_convert_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['convert', 'dynamic_cast', 'transform'],
+    'Use for conversion or transform statements that need GenericOps evidence.',
+  ),
+  slot(
+    'graph.statement.create',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_create_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['create', 'construct_object', 'asset_action'],
+    'Use for object construction, asset action create, or function-backed create statements.',
+  ),
+  slot(
+    'graph.statement.field.struct_member_set',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_field_struct_member_set_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['field', 'struct_member_set'],
+    'Use for struct member field writes with capability facts.',
+  ),
+  slot(
+    'graph.statement.control.branch',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_branch_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['control', 'branch'],
+    'Use for explicit if/else execution flow.',
+  ),
+  slot(
+    'graph.statement.control.switch',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_switch_template.json`,
+    [...GRAPH_BODY_ROUTES],
+    'body.statements[]',
+    ['control', 'switch'],
+    'Use for switch-style control statements with explicit operation evidence.',
+  ),
+  slot(
+    'graph.statement.control.return',
+    'statement',
+    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_return_template.json`,
+    ['graph.replace.function_body'],
+    'behavior.replace.body.statements[]',
+    ['control', 'return', 'function'],
+    'Use as the terminal return statement in a function body.',
+  ),
+];
+
+const READ_CONTEXT_SLOTS: readonly ToolTemplateSlotRef[] = [
+  slot(
+    'read.target.asset',
+    'target',
+    `${TEMPLATE_ROOT}/read/slots/read_target_asset_template.json`,
+    READ_CONTEXT_ROUTES.map((entry) => entry.route_id),
+    'target',
+    ['target', 'asset_path'],
+    'Use to fill the asset path for any ReadContext route.',
+  ),
+  slot(
+    'read.target.function',
+    'target',
+    `${TEMPLATE_ROOT}/read/slots/read_target_function_template.json`,
+    ['read.blueprint.logic.function.logic_flow'],
+    'target',
+    ['target', 'function', 'target_name'],
+    'Use when reading a known function graph.',
+  ),
+  slot(
+    'read.target.named_logic',
+    'target',
+    `${TEMPLATE_ROOT}/read/slots/read_target_named_logic_template.json`,
+    [
+      'read.blueprint.logic.function.logic_flow',
+      'read.blueprint.logic.event.logic_flow',
+      'read.blueprint.logic.custom_event.logic_flow',
+      'read.blueprint.logic.graph.logic_json',
+      'read.blueprint.logic.block.logic_json',
+    ],
+    'target',
+    ['target', 'logic', 'target_name'],
+    'Use when reading a named function, event, custom event, graph, or block.',
+  ),
+  slot(
+    'read.target.widget',
+    'target',
+    `${TEMPLATE_ROOT}/read/slots/read_target_widget_template.json`,
+    ['read.widget.tree', 'read.widget.property'],
+    'target',
+    ['target', 'widget'],
+    'Use when reading Widget Blueprint tree or a named widget property.',
+  ),
+  slot(
+    'read.target.data_table_row',
+    'target',
+    `${TEMPLATE_ROOT}/read/slots/read_target_data_table_row_template.json`,
+    ['read.data_table.row'],
+    'target',
+    ['target', 'data_table', 'row_name'],
+    'Use when reading a specific DataTable row.',
+  ),
+  slot(
+    'read.view.logic_flow',
+    'view',
+    `${TEMPLATE_ROOT}/read/slots/read_view_logic_flow_template.json`,
+    ['read.blueprint.logic.function.logic_flow', 'read.blueprint.logic.event.logic_flow', 'read.blueprint.logic.custom_event.logic_flow'],
+    'view',
+    ['view', 'logic_flow'],
+    'Use for compact flow-oriented Blueprint logic reads.',
+  ),
+  slot(
+    'read.view.logic_json',
+    'view',
+    `${TEMPLATE_ROOT}/read/slots/read_view_logic_json_template.json`,
+    ['read.blueprint.logic.graph.logic_json', 'read.blueprint.logic.block.logic_json'],
+    'view',
+    ['view', 'logic_json', 'anchors'],
+    'Use when a later write needs stable anchors or pin refs.',
+  ),
+];
+
+const ROUTES_BY_TOOL_ID = new Map<string, readonly ToolTemplateRouteRef[]>([
+  ['blueprint.plan.taskspec.preview', BLUEPRINT_TASKSPEC_ROUTES],
+  ['blueprint.write.taskspec.execute', BLUEPRINT_TASKSPEC_ROUTES],
+  ['blueprint.read.context.logic_flow', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.includes('logic_flow'))],
+  ['blueprint.read.context.logic_json', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.includes('logic_json'))],
+  ['blueprint.read.context.variables', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.blueprint.variables')],
+  ['blueprint.read.context.components', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.blueprint.components')],
+  ['umg.read.widget_tree', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.widget.tree')],
+  ['umg.read.widget_property', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.widget.property')],
+  ['umg.plan.taskspec.preview', UMG_TASKSPEC_ROUTES],
+  ['umg.write.taskspec.execute', UMG_TASKSPEC_ROUTES],
+  ['data.read.data_asset', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.data_asset.object')],
+  ['data.read.data_table', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.startsWith('read.data_table.'))],
+  ['data.plan.taskspec.preview', DATA_TASKSPEC_ROUTES],
+  ['data.write.taskspec.execute', DATA_TASKSPEC_ROUTES],
+]);
+
+const SLOTS_BY_TOOL_ID = new Map<string, readonly ToolTemplateSlotRef[]>([
+  ['blueprint.plan.taskspec.preview', GRAPHWRITE_SLOTS],
+  ['blueprint.write.taskspec.execute', GRAPHWRITE_SLOTS],
+  ['blueprint.read.context.logic_flow', READ_CONTEXT_SLOTS],
+  ['blueprint.read.context.logic_json', READ_CONTEXT_SLOTS],
+  ['blueprint.read.context.variables', READ_CONTEXT_SLOTS],
+  ['blueprint.read.context.components', READ_CONTEXT_SLOTS],
+  ['umg.read.widget_tree', READ_CONTEXT_SLOTS],
+  ['umg.read.widget_property', READ_CONTEXT_SLOTS],
+  ['data.read.data_asset', READ_CONTEXT_SLOTS],
+  ['data.read.data_table', READ_CONTEXT_SLOTS],
 ]);
 
 const STOP_CONDITIONS = new Map<string, string[]>([
   ['blueprinthelper_find_assets', ['tool_unavailable', 'bridge_unavailable', 'target asset not found']],
-  ['blueprinthelper_read_context', ['tool_unavailable', 'bridge_unavailable', 'target function not found']],
+  ['blueprinthelper_read_context', ['tool_unavailable', 'bridge_unavailable', 'target not found', 'target asset not found', 'target graph not found']],
   ['blueprinthelper_read_reference_context', ['tool_unavailable', 'bridge_unavailable', 'reference target not found']],
   ['blueprinthelper_read_function_chain_context', ['tool_unavailable', 'bridge_unavailable', 'entry function not found']],
   ['blueprinthelper_preview_task', ['tool_unavailable', 'write_session_required', 'taskspec_template_unavailable', 'preview_blocked']],
@@ -247,26 +972,65 @@ export function listToolCapabilities(options: ListToolCapabilitiesOptions): Tool
   };
 }
 
-export function getToolTemplateDispatch(toolId: string): ToolTemplateDispatchResult {
+export function getToolTemplateDispatch(toolId: string, options: GetToolTemplateDispatchOptions = {}): ToolTemplateDispatchResult {
   const capabilityItem = CAPABILITIES.find((entry) => entry.id === toolId);
   if (!capabilityItem) {
     throw new Error(`Unknown BlueprintHelper tool capability id: ${toolId}`);
   }
 
   const cliInvocationTemplates = capabilityItem.cli_template_ids.map(resolveCliTemplate);
-  const taskSpecSemanticTemplates = capabilityItem.taskspec_template_ids.map(resolveTaskSpecTemplate);
   const inputShape = cliInvocationTemplates.find((template) => template.input_shape)?.input_shape;
+  const routes = [...(ROUTES_BY_TOOL_ID.get(toolId) ?? [])];
+  const selectedRoute = options.route
+    ? routes.find((entry) => entry.route_id === options.route)
+    : undefined;
+  if (options.route && !selectedRoute) {
+    throw new Error(`Unknown BlueprintHelper template route for ${toolId}: ${options.route}`);
+  }
+  const slotTemplates = options.slot === true
+    ? filterSlotTemplates(toolId, options, selectedRoute)
+    : [];
 
   return {
     schema: 'BlueprintHelper.ToolTemplateSelection.v1',
     tool_id: capabilityItem.id,
     tool_name: capabilityItem.tool_name,
     cli_invocation_templates: cliInvocationTemplates,
-    taskspec_semantic_templates: taskSpecSemanticTemplates,
+    routes,
+    selected_route: selectedRoute,
+    slot_templates: slotTemplates,
     input_shape: inputShape,
     recommended_invocation: buildRecommendedInvocation(capabilityItem, cliInvocationTemplates),
     allowed_tools: [capabilityItem.tool_name],
     stop_conditions: resolveStopConditions(capabilityItem),
+    next: buildTemplateDispatchNext(capabilityItem.id, routes),
+  };
+}
+
+function filterSlotTemplates(
+  toolId: string,
+  options: GetToolTemplateDispatchOptions,
+  selectedRoute: ToolTemplateRouteRef | undefined,
+): ToolTemplateSlotRef[] {
+  const routeIds = selectedRoute
+    ? new Set([selectedRoute.route_id])
+    : new Set((ROUTES_BY_TOOL_ID.get(toolId) ?? []).map((routeEntry) => routeEntry.route_id));
+  const slotTemplates = SLOTS_BY_TOOL_ID.get(toolId) ?? [];
+  return slotTemplates.filter((slotTemplate) => {
+    if (options.slotKind && slotTemplate.slot_type !== options.slotKind) {
+      return false;
+    }
+    return slotTemplate.applies_to_routes.some((routeId) => routeIds.has(routeId));
+  });
+}
+
+function buildTemplateDispatchNext(toolId: string, routes: readonly ToolTemplateRouteRef[]): ToolTemplateDispatchResult['next'] {
+  if (routes.length === 0) {
+    return {};
+  }
+  return {
+    route_command: `bh tools templates ${toolId} --route <route_id> --format json`,
+    slot_command: `bh tools templates ${toolId} --route <route_id> --slot --format json`,
   };
 }
 
@@ -293,7 +1057,6 @@ function capability(
   requiresBridge: boolean,
   requiresWriteSession: boolean,
   cliTemplateIds: string[],
-  taskspecTemplateIds: string[] = [],
 ): ToolCapabilityItem {
   const meta = toolMetaByName.get(toolName);
   return {
@@ -308,7 +1071,6 @@ function capability(
     requires_bridge: requiresBridge,
     requires_write_session: requiresWriteSession,
     cli_template_ids: [...cliTemplateIds],
-    taskspec_template_ids: [...taskspecTemplateIds],
   };
 }
 
@@ -327,32 +1089,10 @@ function cliTemplate(
   }];
 }
 
-function taskSpecTemplate(
-  taskSpecTemplateId: string,
-  path: string,
-  taskType: string,
-): [string, TaskSpecSemanticTemplateRef] {
-  return [taskSpecTemplateId, {
-    taskspec_template_id: taskSpecTemplateId,
-    path,
-    template_kind: 'taskspec_semantic',
-    recommended_for: [taskType],
-    task_type: taskType,
-  }];
-}
-
 function resolveCliTemplate(templateId: string): CliInvocationTemplateRef {
   const template = CLI_TEMPLATES.get(templateId);
   if (!template) {
     throw new Error(`Unknown BlueprintHelper CLI invocation template id: ${templateId}`);
-  }
-  return template;
-}
-
-function resolveTaskSpecTemplate(templateId: string): TaskSpecSemanticTemplateRef {
-  const template = TASKSPEC_TEMPLATES.get(templateId);
-  if (!template) {
-    throw new Error(`Unknown BlueprintHelper TaskSpec semantic template id: ${templateId}`);
   }
   return template;
 }

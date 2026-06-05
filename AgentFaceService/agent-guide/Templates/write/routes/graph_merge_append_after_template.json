@@ -1,0 +1,36 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "graph_strategy": "merge_owned_graph",
+    "merges": [
+      {
+        "kind": "insert_flow",
+        "scope": "function_call",
+        "insert_strategy": "append_after",
+        "anchor": {
+          "block_id": "__BLOCK_ID__",
+          "group_entry_node_path": "__GROUP_ENTRY_NODE_PATH__",
+          "node_ref": "__NODE_REF__",
+          "pin_ref": "__PIN_REF__"
+        },
+        "inserted": {
+          "call_kind": "function_call",
+          "name": "PrintString",
+          "args": {
+            "InString": {
+              "kind": "literal",
+              "value_type": "string",
+              "value": "__MESSAGE__"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

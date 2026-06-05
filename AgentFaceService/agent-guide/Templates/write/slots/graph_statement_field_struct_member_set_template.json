@@ -1,0 +1,17 @@
+{
+  "kind": "field",
+  "field_operation": "set",
+  "field_scope": "field_access",
+  "target": "__STRUCT_SYMBOL__",
+  "property_path": "__FIELD_NAME__",
+  "capability_id": "field.struct_member_set",
+  "capability_facts": {
+    "generic.struct.struct_path": "__STRUCT_PATH__",
+    "generic.struct.selected_field_paths": "__FIELD_NAME__"
+  },
+  "value": {
+    "kind": "literal",
+    "value_type": "__VALUE_TYPE__",
+    "value": "__VALUE__"
+  }
+}

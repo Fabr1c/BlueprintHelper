@@ -45,7 +45,6 @@ export interface ToolCapabilityItem {
   deprecated?: boolean;
   frozen?: boolean;
   cli_template_ids: string[];
-  taskspec_template_ids: string[];
 }
 
 export interface CliInvocationTemplateRef {
@@ -56,12 +55,40 @@ export interface CliInvocationTemplateRef {
   input_shape?: string;
 }
 
-export interface TaskSpecSemanticTemplateRef {
-  taskspec_template_id: string;
+export type ToolTemplateRouteKind =
+  | 'read_context'
+  | 'graph_write'
+  | 'taskspec';
+
+export type ToolTemplateSlotKind =
+  | 'statement'
+  | 'expression'
+  | 'target'
+  | 'view'
+  | 'patch'
+  | 'merge';
+
+export interface ToolTemplateRouteRef {
+  route_id: string;
+  route_kind: ToolTemplateRouteKind;
+  purpose: string;
+  template_paths: string[];
+  required_fields: string[];
+  optional_fields: string[];
+  insert_paths: string[];
+  when_to_use?: string;
+  when_not_to_use?: string;
+}
+
+export interface ToolTemplateSlotRef {
+  slot_id: string;
+  slot_type: ToolTemplateSlotKind;
   path: string;
-  template_kind: 'taskspec_semantic';
-  recommended_for?: string[];
-  task_type?: string;
+  applies_to_routes: string[];
+  insert_path: string;
+  keywords: string[];
+  when_to_use: string;
+  when_not_to_use?: string;
 }
 
 export interface ToolDomainListResult {
@@ -92,11 +119,17 @@ export interface ToolTemplateDispatchResult {
   tool_id: string;
   tool_name: string;
   cli_invocation_templates: CliInvocationTemplateRef[];
-  taskspec_semantic_templates: TaskSpecSemanticTemplateRef[];
+  routes: ToolTemplateRouteRef[];
+  selected_route?: ToolTemplateRouteRef;
+  slot_templates: ToolTemplateSlotRef[];
   input_shape?: string;
   recommended_invocation: string;
   allowed_tools: string[];
   stop_conditions: string[];
+  next: {
+    route_command?: string;
+    slot_command?: string;
+  };
 }
 
 export interface ListToolDomainsOptions {
@@ -111,4 +144,10 @@ export interface ListToolCapabilitiesOptions {
   expert?: boolean;
   requiresBridge?: boolean;
   risks?: ToolRisk[];
+}
+
+export interface GetToolTemplateDispatchOptions {
+  route?: string;
+  slot?: boolean;
+  slotKind?: ToolTemplateSlotKind;
 }

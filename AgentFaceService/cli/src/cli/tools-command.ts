@@ -6,6 +6,7 @@ import {
   listToolDomains,
   type ToolAudience,
   type ToolRisk,
+  type ToolTemplateSlotKind,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import type { CliCommand } from './output.js';
 
@@ -38,7 +39,11 @@ export function runToolsCommand(command: CliCommand): Record<string, unknown> {
   }
 
   if (command.kind === 'tools.templates') {
-    return getToolTemplateDispatch(required(command.toolId, 'Missing tools template tool id.')) as unknown as Record<string, unknown>;
+    return getToolTemplateDispatch(required(command.toolId, 'Missing tools template tool id.'), {
+      route: command.routeId,
+      slot: command.slot,
+      slotKind: command.slotKind ? parseToolTemplateSlotKind(command.slotKind) : undefined,
+    }) as unknown as Record<string, unknown>;
   }
 
   throw new Error(`Unsupported BlueprintHelper tools command: ${command.kind}`);
@@ -56,6 +61,20 @@ export function parseToolRisk(value: string): ToolRisk {
     return value;
   }
   throw new Error(`Unsupported BlueprintHelper tools risk: ${value}`);
+}
+
+export function parseToolTemplateSlotKind(value: string): ToolTemplateSlotKind {
+  if (
+    value === 'statement'
+    || value === 'expression'
+    || value === 'target'
+    || value === 'view'
+    || value === 'patch'
+    || value === 'merge'
+  ) {
+    return value;
+  }
+  throw new Error(`Unsupported BlueprintHelper template slot kind: ${value}`);
 }
 
 function required(value: string | undefined, message: string): string {

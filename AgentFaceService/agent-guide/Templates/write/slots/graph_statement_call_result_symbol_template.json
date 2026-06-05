@@ -1,0 +1,7 @@
+{
+  "kind": "call",
+  "target": "__FUNCTION_OR_ACTION_TARGET__",
+  "value_type": "__RESULT_VALUE_TYPE__",
+  "result_symbol": "__RESULT_SYMBOL__",
+  "args": {}
+}

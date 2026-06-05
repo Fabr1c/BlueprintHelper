@@ -1,0 +1,10 @@
+{
+  "kind": "control",
+  "control": "branch",
+  "condition": {
+    "kind": "get",
+    "target": "__BOOLEAN_SYMBOL_OR_VARIABLE__"
+  },
+  "then": [],
+  "else": []
+}
