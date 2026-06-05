@@ -215,7 +215,10 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 
 	if (bNeedsMultiGraph)
 	{
-		UBlueprint* Blueprint = Resolver.ResolveBlueprint(Request.Target, Result.Diagnostics);
+		UBlueprint* Blueprint = Resolver.ResolveBlueprint(
+			Request.Target,
+			Result.Diagnostics,
+			FBlueprintHelperResolvePolicy::Mutation());
 		if (!Blueprint)
 		{
 			Transaction.Cancel();
@@ -228,7 +231,10 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 	}
 	else
 	{
-		UEdGraph* Graph = Resolver.ResolveGraph(Request.Target, Result.Diagnostics);
+		UEdGraph* Graph = Resolver.ResolveGraph(
+			Request.Target,
+			Result.Diagnostics,
+			FBlueprintHelperResolvePolicy::Mutation());
 		if (!Graph)
 		{
 			Transaction.Cancel();

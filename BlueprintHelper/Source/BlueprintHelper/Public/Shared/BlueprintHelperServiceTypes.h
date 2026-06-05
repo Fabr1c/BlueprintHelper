@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "UObject/UnrealType.h"
 
 class FJsonObject;
@@ -17,6 +19,28 @@ struct FBlueprintHelperGraphTarget
 
 	/** 图表名称，例如 "EventGraph"。为空时使用焦点图表或默认 EventGraph。 */
 	FString GraphName;
+};
+
+/** Resolver fallback policy. Mutation paths must not infer target identity from editor focus. */
+struct FBlueprintHelperResolvePolicy
+{
+	bool bAllowFocusedBlueprint = false;
+	bool bAllowFocusedGraph = false;
+	bool bDefaultToEventGraph = false;
+
+	static FBlueprintHelperResolvePolicy Mutation()
+	{
+		return FBlueprintHelperResolvePolicy();
+	}
+
+	static FBlueprintHelperResolvePolicy FocusedEditorRead()
+	{
+		FBlueprintHelperResolvePolicy Policy;
+		Policy.bAllowFocusedBlueprint = true;
+		Policy.bAllowFocusedGraph = true;
+		Policy.bDefaultToEventGraph = true;
+		return Policy;
+	}
 };
 
 // ─── 诊断信息 ───
@@ -35,8 +59,16 @@ struct FBlueprintHelperDiagnosticItem
 	EBlueprintHelperDiagnosticSeverity Severity = EBlueprintHelperDiagnosticSeverity::Info;
 	FString Code;
 	FString Message;
+	FString GraphName;
 	FString NodeId;
 	FString NodeName;
+	FString NodeGuid;
+	FString NodeTitle;
+	FString NodeClass;
+	FString ErrorType;
+	FString BlockRef;
+	FString TargetKey;
+	FString CompileDiagnosticCorrelationKey;
 	FString PinName;
 	FString Field;
 };
@@ -49,6 +81,14 @@ struct FBlueprintHelperDiagnosticSet
 	int32 WarningCount = 0;
 
 	bool HasErrors() const { return ErrorCount > 0; }
+
+	void AddItem(FBlueprintHelperDiagnosticItem Item)
+	{
+		const EBlueprintHelperDiagnosticSeverity Severity = Item.Severity;
+		Items.Add(MoveTemp(Item));
+		if (Severity == EBlueprintHelperDiagnosticSeverity::Error) { ++ErrorCount; }
+		else if (Severity == EBlueprintHelperDiagnosticSeverity::Warning) { ++WarningCount; }
+	}
 
 	void Add(
 		EBlueprintHelperDiagnosticSeverity Severity,
@@ -67,11 +107,157 @@ struct FBlueprintHelperDiagnosticSet
 		Item.NodeName = NodeName;
 		Item.PinName = PinName;
 		Item.Field = Field;
-		Items.Add(MoveTemp(Item));
-		if (Severity == EBlueprintHelperDiagnosticSeverity::Error) { ++ErrorCount; }
-		else if (Severity == EBlueprintHelperDiagnosticSeverity::Warning) { ++WarningCount; }
+		AddItem(MoveTemp(Item));
 	}
 };
+
+inline const TCHAR* BlueprintHelperDiagnosticSeverityToString(EBlueprintHelperDiagnosticSeverity Severity)
+{
+	switch (Severity)
+	{
+	case EBlueprintHelperDiagnosticSeverity::Error:
+		return TEXT("error");
+	case EBlueprintHelperDiagnosticSeverity::Warning:
+		return TEXT("warning");
+	default:
+		return TEXT("info");
+	}
+}
+
+inline EBlueprintHelperDiagnosticSeverity BlueprintHelperDiagnosticSeverityFromString(const FString& Severity)
+{
+	if (Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperDiagnosticSeverity::Error;
+	}
+	if (Severity.Equals(TEXT("warning"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperDiagnosticSeverity::Warning;
+	}
+	return EBlueprintHelperDiagnosticSeverity::Info;
+}
+
+inline void BlueprintHelperSetDiagnosticStringField(
+	const TSharedRef<FJsonObject>& Json,
+	const TCHAR* FieldName,
+	const FString& Value)
+{
+	if (!Value.IsEmpty())
+	{
+		Json->SetStringField(FieldName, Value);
+	}
+}
+
+inline FString BlueprintHelperDiagnosticCorrelationKey(const FBlueprintHelperDiagnosticItem& Item)
+{
+	if (!Item.CompileDiagnosticCorrelationKey.IsEmpty())
+	{
+		return Item.CompileDiagnosticCorrelationKey;
+	}
+	if (!Item.GraphName.IsEmpty() && !Item.NodeGuid.IsEmpty())
+	{
+		return FString::Printf(TEXT("%s:%s"), *Item.GraphName, *Item.NodeGuid);
+	}
+	return FString();
+}
+
+inline TSharedRef<FJsonObject> BlueprintHelperDiagnosticItemToJson(const FBlueprintHelperDiagnosticItem& Item)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("severity"), BlueprintHelperDiagnosticSeverityToString(Item.Severity));
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("code"), Item.Code);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("message"), Item.Message);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("graph_name"), Item.GraphName);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("node_id"), Item.NodeId);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("node_name"), Item.NodeName);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("node_guid"), Item.NodeGuid);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("node_title"), Item.NodeTitle);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("node_class"), Item.NodeClass);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("error_type"), Item.ErrorType);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("block_ref"), Item.BlockRef);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("target_key"), Item.TargetKey);
+	BlueprintHelperSetDiagnosticStringField(
+		Json,
+		TEXT("compile_diagnostic_correlation_key"),
+		BlueprintHelperDiagnosticCorrelationKey(Item));
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("pin_name"), Item.PinName);
+	BlueprintHelperSetDiagnosticStringField(Json, TEXT("field"), Item.Field);
+	return Json;
+}
+
+inline TArray<TSharedPtr<FJsonValue>> BlueprintHelperDiagnosticItemsToJsonArray(
+	const TArray<FBlueprintHelperDiagnosticItem>& Items)
+{
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const FBlueprintHelperDiagnosticItem& Item : Items)
+	{
+		Values.Add(MakeShared<FJsonValueObject>(BlueprintHelperDiagnosticItemToJson(Item)));
+	}
+	return Values;
+}
+
+inline bool BlueprintHelperDiagnosticItemFromJson(
+	const TSharedPtr<FJsonObject>& Json,
+	FBlueprintHelperDiagnosticItem& OutItem)
+{
+	if (!Json.IsValid())
+	{
+		return false;
+	}
+
+	FString Severity;
+	Json->TryGetStringField(TEXT("severity"), Severity);
+	OutItem.Severity = BlueprintHelperDiagnosticSeverityFromString(Severity);
+	Json->TryGetStringField(TEXT("code"), OutItem.Code);
+	Json->TryGetStringField(TEXT("message"), OutItem.Message);
+	Json->TryGetStringField(TEXT("graph_name"), OutItem.GraphName);
+	Json->TryGetStringField(TEXT("node_id"), OutItem.NodeId);
+	Json->TryGetStringField(TEXT("node_name"), OutItem.NodeName);
+	Json->TryGetStringField(TEXT("node_guid"), OutItem.NodeGuid);
+	Json->TryGetStringField(TEXT("node_title"), OutItem.NodeTitle);
+	Json->TryGetStringField(TEXT("node_class"), OutItem.NodeClass);
+	Json->TryGetStringField(TEXT("error_type"), OutItem.ErrorType);
+	Json->TryGetStringField(TEXT("block_ref"), OutItem.BlockRef);
+	Json->TryGetStringField(TEXT("target_key"), OutItem.TargetKey);
+	Json->TryGetStringField(
+		TEXT("compile_diagnostic_correlation_key"),
+		OutItem.CompileDiagnosticCorrelationKey);
+	Json->TryGetStringField(TEXT("pin_name"), OutItem.PinName);
+	Json->TryGetStringField(TEXT("field"), OutItem.Field);
+	if (OutItem.CompileDiagnosticCorrelationKey.IsEmpty())
+	{
+		OutItem.CompileDiagnosticCorrelationKey = BlueprintHelperDiagnosticCorrelationKey(OutItem);
+	}
+
+	return !OutItem.Code.IsEmpty() ||
+		!OutItem.Message.IsEmpty() ||
+		!OutItem.GraphName.IsEmpty() ||
+		!OutItem.NodeGuid.IsEmpty() ||
+		!OutItem.CompileDiagnosticCorrelationKey.IsEmpty() ||
+		!OutItem.TargetKey.IsEmpty() ||
+		!OutItem.BlockRef.IsEmpty();
+}
+
+inline void BlueprintHelperReadDiagnosticArrayField(
+	const TSharedPtr<FJsonObject>& Json,
+	const TCHAR* FieldName,
+	TArray<FBlueprintHelperDiagnosticItem>& OutItems)
+{
+	const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+	if (!Json.IsValid() || !Json->TryGetArrayField(FieldName, Values) || !Values)
+	{
+		return;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : *Values)
+	{
+		FBlueprintHelperDiagnosticItem Item;
+		if (BlueprintHelperDiagnosticItemFromJson(Value.IsValid() ? Value->AsObject() : nullptr, Item))
+		{
+			OutItems.Add(MoveTemp(Item));
+		}
+	}
+}
 
 // ─── 属性写入策略 ───
 

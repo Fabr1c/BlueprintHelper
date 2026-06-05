@@ -10,6 +10,8 @@ class UEdGraph;
 struct FBlueprintHelperActionDatabaseProjectionEvidence
 {
 	FString StableId;
+	FString EventKind;
+	FString ContextFingerprint;
 	FString NodeClassPath;
 	FString SpawnerSignature;
 	FString OwnerPath;
@@ -35,6 +37,9 @@ struct FBlueprintHelperActionDatabaseProjectedCandidate
 	UBlueprintNodeSpawner* Spawner = nullptr;
 	UClass* NodeClass = nullptr;
 	FString StableId;
+	FString EventKind;
+	FString ContextFingerprint;
+	FString StableActionId;
 	FString NodeClassPath;
 	FString SpawnerSignature;
 	FString OwnerPath;
@@ -48,6 +53,11 @@ struct FBlueprintHelperActionDatabaseProjectionResult
 	EBlueprintHelperActionResolutionStatus Status = EBlueprintHelperActionResolutionStatus::InvalidRequest;
 	FString ErrorCode;
 	FString Message;
+	FString EventKind;
+	FString ContextFingerprint;
+	FString StableActionId;
+	FString NodeClassPath;
+	FString OwnerPath;
 	TArray<FBlueprintHelperActionDatabaseProjectedCandidate> Candidates;
 };
 

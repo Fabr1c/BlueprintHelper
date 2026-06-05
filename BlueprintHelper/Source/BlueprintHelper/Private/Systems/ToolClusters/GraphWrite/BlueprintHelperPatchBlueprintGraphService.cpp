@@ -510,7 +510,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* BP = Resolver.ResolveBlueprint(Target, Diag);
+	UBlueprint* BP = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	UEdGraph* Graph = nullptr;
 	if (BP)
 	{
@@ -601,7 +601,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* BP = Resolver.ResolveBlueprint(Target, Diag);
+	UBlueprint* BP = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!BP)
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("patch_blueprint_graph"), TraceId,
 			{TEXT("target_blueprint_not_found"), EBlueprintHelperToolStage::ResolveTarget,

@@ -19,8 +19,20 @@ public:
 	/** 解析 Target，返回目标图表。失败时 OutDiag 有错误。 */
 	UEdGraph* ResolveGraph(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const;
 
+	/** 解析 Target，返回目标图表。Policy 控制是否允许焦点/默认回退。 */
+	UEdGraph* ResolveGraph(
+		const FBlueprintHelperGraphTarget& Target,
+		FBlueprintHelperDiagnosticSet& OutDiag,
+		const FBlueprintHelperResolvePolicy& Policy) const;
+
 	/** 解析 Target，返回目标蓝图。失败时 OutDiag 有错误。 */
 	UBlueprint* ResolveBlueprint(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const;
+
+	/** 解析 Target，返回目标蓝图。Policy 控制是否允许焦点回退。 */
+	UBlueprint* ResolveBlueprint(
+		const FBlueprintHelperGraphTarget& Target,
+		FBlueprintHelperDiagnosticSet& OutDiag,
+		const FBlueprintHelperResolvePolicy& Policy) const;
 
 	/** 获取当前焦点图表（降级路径）。 */
 	UEdGraph* GetFocusedGraph() const;

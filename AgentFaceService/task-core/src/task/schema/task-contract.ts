@@ -137,6 +137,17 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'generic behavior.ops[]',
       'Bridge payload fields as TaskSpec body',
     ],
+    append_new_owned_graph: {
+      entry_required_fields: ['entry_type', 'name', 'body'],
+      entry_optional_fields: ['event_kind', 'catalog_evidence'],
+      event_kind_enum: ['custom_event', 'override_event', 'component_bound_event', 'input_action_event', 'dispatcher_event'],
+      catalog_evidence_contract: {
+        source_enum: ['signature', 'graph_action_catalog'],
+        signature: ['signature_evidence_id'],
+        graph_action_catalog: ['action_stable_id', 'context_fingerprint'],
+      },
+      note: 'event_kind defaults to custom_event in compiler lowering. Non-custom event kinds require catalog_evidence so runtime can bind the owned entry to a stable read/catalog signature.',
+    },
     generic_control_boundary: {
       public_shape: 'kind=control with control/control_operation and operation-local context_evidence',
       implicit_linear_continuation: 'unsupported',
@@ -853,6 +864,12 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'set_external_node_comment',
       'replace_external_body',
     ],
+    ensure_entry_contract: {
+      required_fields: ['op', 'entry_type', 'name', 'body'],
+      optional_fields: ['event_kind', 'catalog_evidence', 'signature_evidence_id'],
+      event_kind_default: 'custom_event',
+      note: 'signature_evidence_id may come from catalog_evidence.source=signature or from compiler-generated custom_event evidence when event_kind defaults to custom_event.',
+    },
     external_graph_edit_constraints: {
       ownership_scope: 'external_user_authored',
       external_mutation_policy: [

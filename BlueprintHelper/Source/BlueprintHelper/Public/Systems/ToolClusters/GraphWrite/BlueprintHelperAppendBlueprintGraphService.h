@@ -26,6 +26,10 @@ public:
 	/** 执行 Append 操作，返回统一 ToolResultBase。*/
 	FBlueprintHelperToolResultBase Execute(const TSharedPtr<FJsonObject>& Payload) const;
 
+#if WITH_DEV_AUTOMATION_TESTS
+	static void SetAutomationOwnershipWriteFailure(bool bFail, const FString& ErrorMessage);
+#endif
+
 private:
 	// ─── 内部请求/预检结构 ───
 

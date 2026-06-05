@@ -684,7 +684,7 @@ bool FBlueprintHelperMergeExternalFlowService::ResolveTarget(
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diagnostics;
-	Context.Blueprint = Resolver.ResolveBlueprint(Target, Diagnostics);
+	Context.Blueprint = Resolver.ResolveBlueprint(Target, Diagnostics, FBlueprintHelperResolvePolicy::Mutation());
 	if (!Context.Blueprint)
 	{
 		BlueprintHelperMergeExternalFlow::AddError(

@@ -1117,7 +1117,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightBlueprint(
 	Target.BlueprintPath = AssetPath;
 
 	FBlueprintHelperDiagnosticSet Diag;
-	OutBlueprint = Resolver.ResolveBlueprint(Target, Diag);
+	OutBlueprint = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 
 	if (!OutBlueprint || Diag.HasErrors())
 	{
@@ -1309,7 +1309,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	FBlueprintHelperGraphTarget BPTarget;
 	BPTarget.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* Blueprint = Resolver.ResolveBlueprint(BPTarget, Diag);
+	UBlueprint* Blueprint = Resolver.ResolveBlueprint(BPTarget, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!Blueprint)
 	{
 		FBlueprintHelperToolError Error;

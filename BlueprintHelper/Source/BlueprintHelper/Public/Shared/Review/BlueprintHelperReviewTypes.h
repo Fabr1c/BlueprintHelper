@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Shared/BlueprintHelperServiceTypes.h"
 
 enum class EBlueprintHelperReviewChangeKind : uint8
 {
@@ -220,6 +221,7 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString AfterSnapshotJson;
 	FString RecordedAfterHash;
 	FString BaselineHash;
+	TArray<FBlueprintHelperDiagnosticItem> Diagnostics;
 	EBlueprintHelperReviewChangeStatus Status = EBlueprintHelperReviewChangeStatus::Pending;
 	int32 ExecutionOrder = INDEX_NONE;
 	int32 TaskStepIndex = INDEX_NONE;
@@ -286,6 +288,7 @@ struct FBlueprintHelperWriteReviewEvidence
 	FString AfterSummary;
 	int32 TaskStepIndex = INDEX_NONE;
 	TArray<FString> DebugCaseIds;
+	TArray<FBlueprintHelperDiagnosticItem> Diagnostics;
 	TArray<FBlueprintHelperReviewAtomicTarget> AtomicTargets;
 };
 

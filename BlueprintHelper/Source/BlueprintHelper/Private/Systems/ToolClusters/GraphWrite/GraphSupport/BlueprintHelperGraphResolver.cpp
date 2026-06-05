@@ -10,17 +10,40 @@
 
 UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const
 {
-	UBlueprint* Blueprint = ResolveBlueprint(Target, OutDiag);
+	return ResolveGraph(Target, OutDiag, FBlueprintHelperResolvePolicy::FocusedEditorRead());
+}
+
+UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(
+	const FBlueprintHelperGraphTarget& Target,
+	FBlueprintHelperDiagnosticSet& OutDiag,
+	const FBlueprintHelperResolvePolicy& Policy) const
+{
+	const bool bMissingGraphName = Target.GraphName.IsEmpty();
+	const bool bStrictGraphNameRequired =
+		bMissingGraphName &&
+		!Policy.bDefaultToEventGraph &&
+		!(Target.BlueprintPath.IsEmpty() && Policy.bAllowFocusedGraph);
+	if (bStrictGraphNameRequired)
+	{
+		OutDiag.Add(
+			EBlueprintHelperDiagnosticSeverity::Error,
+			TEXT("target.graph is required for this resolver policy."),
+			TEXT(""),
+			TEXT("target_graph_required"),
+			TEXT("target.graph"));
+	}
+
+	UBlueprint* Blueprint = ResolveBlueprint(Target, OutDiag, Policy);
 	if (!Blueprint)
 	{
 		return nullptr;
 	}
 
 	// 图表名为空时走降级路径
-	if (Target.GraphName.IsEmpty())
+	if (bMissingGraphName)
 	{
 		// 显式蓝图路径 。默认查找 EventGraph
-		if (!Target.BlueprintPath.IsEmpty())
+		if (!Target.BlueprintPath.IsEmpty() && Policy.bDefaultToEventGraph)
 		{
 			UEdGraph* EventGraph = FBlueprintGraphWriteFacade::FindGraphByName(Blueprint, TEXT("EventGraph"));
 			if (EventGraph)
@@ -32,12 +55,26 @@ UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGrap
 		}
 
 		// 无路径无图表。。当前焦点图表
-		UEdGraph* FocusedGraph = GetFocusedGraph();
-		if (FocusedGraph)
+		if (Target.BlueprintPath.IsEmpty() && Policy.bAllowFocusedGraph)
 		{
-			return FocusedGraph;
+			UEdGraph* FocusedGraph = GetFocusedGraph();
+			if (FocusedGraph)
+			{
+				return FocusedGraph;
+			}
+			OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error, TEXT("未找到当前焦点蓝图图表。"));
+			return nullptr;
 		}
-		OutDiag.Add(EBlueprintHelperDiagnosticSeverity::Error, TEXT("未找到当前焦点蓝图图表。"));
+
+		if (!bStrictGraphNameRequired)
+		{
+			OutDiag.Add(
+				EBlueprintHelperDiagnosticSeverity::Error,
+				TEXT("target.graph is required for this resolver policy."),
+				TEXT(""),
+				TEXT("target_graph_required"),
+				TEXT("target.graph"));
+		}
 		return nullptr;
 	}
 
@@ -47,8 +84,27 @@ UEdGraph* FBlueprintHelperGraphResolver::ResolveGraph(const FBlueprintHelperGrap
 
 UBlueprint* FBlueprintHelperGraphResolver::ResolveBlueprint(const FBlueprintHelperGraphTarget& Target, FBlueprintHelperDiagnosticSet& OutDiag) const
 {
+	return ResolveBlueprint(Target, OutDiag, FBlueprintHelperResolvePolicy::FocusedEditorRead());
+}
+
+UBlueprint* FBlueprintHelperGraphResolver::ResolveBlueprint(
+	const FBlueprintHelperGraphTarget& Target,
+	FBlueprintHelperDiagnosticSet& OutDiag,
+	const FBlueprintHelperResolvePolicy& Policy) const
+{
 	if (Target.BlueprintPath.IsEmpty())
 	{
+		if (!Policy.bAllowFocusedBlueprint)
+		{
+			OutDiag.Add(
+				EBlueprintHelperDiagnosticSeverity::Error,
+				TEXT("target.asset_path is required for this resolver policy."),
+				TEXT(""),
+				TEXT("target_blueprint_required"),
+				TEXT("target.asset_path"));
+			return nullptr;
+		}
+
 		UBlueprint* Focused = GetFocusedBlueprint();
 		if (!Focused)
 		{

@@ -425,8 +425,52 @@ const TaskSpecBaseSchema = z.object({
 const GraphWriteAppendEntrySchema = z.object({
   entry_type: z.string(),
   name: z.string().min(1),
+  event_kind: z.enum([
+    'custom_event',
+    'override_event',
+    'component_bound_event',
+    'input_action_event',
+    'dispatcher_event',
+  ]).optional(),
+  catalog_evidence: z.object({
+    source: z.enum(['signature', 'graph_action_catalog']),
+    signature_evidence_id: z.string().min(1).optional(),
+    action_stable_id: z.string().min(1).optional(),
+    context_fingerprint: z.string().min(1).optional(),
+  }).strict().superRefine((value, ctx) => {
+    if (value.source === 'signature' && !value.signature_evidence_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['signature_evidence_id'],
+        message: 'catalog_evidence.source="signature" requires signature_evidence_id.',
+      });
+    }
+    if (value.source === 'graph_action_catalog' && !value.action_stable_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['action_stable_id'],
+        message: 'catalog_evidence.source="graph_action_catalog" requires action_stable_id.',
+      });
+    }
+    if (value.source === 'graph_action_catalog' && !value.context_fingerprint) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['context_fingerprint'],
+        message: 'catalog_evidence.source="graph_action_catalog" requires context_fingerprint.',
+      });
+    }
+  }).optional(),
   body: BlueprintLogicSpecSchema,
-}).passthrough();
+}).passthrough().superRefine((value, ctx) => {
+  const eventKind = value.event_kind ?? 'custom_event';
+  if (eventKind !== 'custom_event' && !value.catalog_evidence) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['catalog_evidence'],
+      message: `${eventKind} append entries require catalog_evidence.`,
+    });
+  }
+});
 
 const GraphWriteReplaceSchema = z.object({
   scope: z.enum(['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation']),

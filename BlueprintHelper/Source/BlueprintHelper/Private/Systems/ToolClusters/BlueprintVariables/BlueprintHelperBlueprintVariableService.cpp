@@ -46,7 +46,7 @@ static bool TryResolveBlueprintForVariableWrite(
 	Target.BlueprintPath = AssetPath;
 
 	FBlueprintHelperDiagnosticSet Diagnostics;
-	OutBlueprint = Resolver.ResolveBlueprint(Target, Diagnostics);
+	OutBlueprint = Resolver.ResolveBlueprint(Target, Diagnostics, FBlueprintHelperResolvePolicy::Mutation());
 	if (!OutBlueprint)
 	{
 		OutError = Diagnostics.Items.Num() > 0

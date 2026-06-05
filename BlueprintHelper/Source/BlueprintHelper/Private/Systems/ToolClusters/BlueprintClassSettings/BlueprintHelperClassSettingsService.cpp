@@ -42,7 +42,7 @@ UBlueprint* FBlueprintHelperClassSettingsService::ResolveBlueprint(
 	Target.BlueprintPath = AssetPath;
 
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag);
+	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!Blueprint)
 	{
 		OutErrorCode = TEXT("blueprint_not_found");

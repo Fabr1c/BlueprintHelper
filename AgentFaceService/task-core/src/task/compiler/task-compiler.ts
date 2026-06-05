@@ -625,7 +625,8 @@ function makeGraphWriteTaskPlanSteps(
   const strategy = String(behavior['graph_strategy']);
   const autoSearchPolicy = graphWriteAutoSearchPolicyForTaskSpec(taskSpec);
   if (strategy === 'append_new_owned_graph') {
-    const signatureSteps = graphWriteOps.map((op, index) => ({
+    const signatureOps = graphWriteOps.filter((op) => graphWriteEnsureEntryEventKind(op) === 'custom_event');
+    const signatureSteps = signatureOps.map((op, index) => ({
       step_id: `step_${String(index + 1).padStart(3, '0')}`,
       capability: 'blueprint_signature',
       target: {
@@ -827,6 +828,15 @@ function targetGraphForGraphWriteOp(taskSpec: TaskSpec, op: GraphWriteCompiledOp
 
 function withSignatureEvidence(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
   if (op.op !== 'ensure_entry' || typeof op.name !== 'string' || op.name.trim().length === 0) {
+    return op;
+  }
+  if (typeof op.signature_evidence_id === 'string' && op.signature_evidence_id.trim().length > 0) {
+    return {
+      ...op,
+      signature_evidence_id: op.signature_evidence_id.trim(),
+    };
+  }
+  if (graphWriteEnsureEntryEventKind(op) !== 'custom_event') {
     return op;
   }
   return {
@@ -1665,10 +1675,13 @@ function graphWriteTaskPlanToAppendBridgePayload(
 
     logicStatements.push(...compileEnsureEntryOpIntoAppendPayload(nodes, links, rawOp as Record<string, unknown>, `steps[0].write.ops[${opIndex}]`, cloneOptions));
     if (!logicEntry && isRecord(rawOp) && rawOp.entry_type === 'custom_event' && typeof rawOp.name === 'string') {
+      const eventKind = graphWriteEnsureEntryEventKind(rawOp);
+      const catalogEvidence = graphWriteCatalogEvidence(rawOp['catalog_evidence']);
       logicEntry = {
-        kind: 'custom_event',
+        kind: eventKind,
         name: rawOp.name,
         id: `${toIdSegment(rawOp.name)}_entry`,
+        ...(catalogEvidence ? { catalog_evidence: catalogEvidence } : {}),
         ...(typeof rawOp.signature_evidence_id === 'string' && rawOp.signature_evidence_id.trim().length > 0
           ? {
               source_cluster: 'blueprint_signature',
@@ -1907,6 +1920,18 @@ function validateExternalGraphWriteScopePolicy(
 }
 
 type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
+type GraphWriteAppendEventKind =
+  | 'custom_event'
+  | 'override_event'
+  | 'component_bound_event'
+  | 'input_action_event'
+  | 'dispatcher_event';
+type GraphWriteCatalogEvidence = {
+  source: 'signature' | 'graph_action_catalog';
+  signature_evidence_id?: string;
+  action_stable_id?: string;
+  context_fingerprint?: string;
+};
 const OWNED_GRAPH_PATCH_KINDS = [
   'set_pin_default',
   'set_node_comment',
@@ -2031,14 +2056,24 @@ function compileAppendGraphWriteOps(
       `behavior.entries[${entryIndex}].body.statements`,
     );
     const entryName = getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`);
+    const rawEventKind = optionalString(entry, 'event_kind');
+    const eventKind = graphWriteAppendEventKind(entry);
     const entryInputs = Array.isArray(entry['inputs']) ? entry['inputs'] : undefined;
+    const catalogEvidence = graphWriteCatalogEvidence(entry['catalog_evidence']);
+    const signatureEvidenceId = catalogEvidence?.signature_evidence_id;
     return {
       op: 'ensure_entry',
       entry_type: entryType,
       name: entryName,
-      signature_evidence_id: makeCustomEventSignatureEvidenceId(entryName),
+      ...(rawEventKind ? { event_kind: eventKind } : {}),
+      ...(catalogEvidence ? { catalog_evidence: catalogEvidence } : {}),
+      ...(signatureEvidenceId
+        ? { signature_evidence_id: signatureEvidenceId }
+        : eventKind === 'custom_event'
+          ? { signature_evidence_id: makeCustomEventSignatureEvidenceId(entryName) }
+          : {}),
       body: compileLogicBodyToSemanticLogicSpec(body, entryName, options),
-      ...(entryInputs
+      ...(entryInputs && eventKind === 'custom_event'
         ? {
             __signature_split: {
               op: 'ensure_custom_event',
@@ -5632,6 +5667,42 @@ function getRequiredString(record: Record<string, unknown>, field: string, path:
 function optionalString(record: Record<string, unknown>, field: string): string | undefined {
   const value = record[field];
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function graphWriteAppendEventKind(record: Record<string, unknown>): GraphWriteAppendEventKind {
+  const eventKind = optionalString(record, 'event_kind');
+  if (
+    eventKind === 'custom_event'
+    || eventKind === 'override_event'
+    || eventKind === 'component_bound_event'
+    || eventKind === 'input_action_event'
+    || eventKind === 'dispatcher_event'
+  ) {
+    return eventKind;
+  }
+  return 'custom_event';
+}
+
+function graphWriteEnsureEntryEventKind(record: Record<string, unknown>): GraphWriteAppendEventKind {
+  return graphWriteAppendEventKind(record);
+}
+
+function graphWriteCatalogEvidence(value: unknown): GraphWriteCatalogEvidence | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const source = optionalString(value, 'source');
+  if (source !== 'signature' && source !== 'graph_action_catalog') {
+    return undefined;
+  }
+
+  return omitUndefined({
+    source,
+    signature_evidence_id: optionalString(value, 'signature_evidence_id'),
+    action_stable_id: optionalString(value, 'action_stable_id'),
+    context_fingerprint: optionalString(value, 'context_fingerprint'),
+  }) as GraphWriteCatalogEvidence;
 }
 
 function getRequiredLogicBody(record: Record<string, unknown>, field: string, path: string): { statements: BlueprintLogicStatement[] } {

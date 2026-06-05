@@ -73,6 +73,9 @@ FBlueprintHelperActionDatabaseProjectionResult FBlueprintHelperActionDatabasePro
 				continue;
 			}
 			Candidate.Query = Evidence.Query;
+			Candidate.EventKind = Evidence.EventKind;
+			Candidate.ContextFingerprint = Evidence.ContextFingerprint;
+			Candidate.StableActionId = Candidate.StableId;
 			if (!UGraphWriteActionAdapterUtils::MatchesProjectedEvidence(Evidence, Candidate))
 			{
 				continue;
@@ -102,5 +105,11 @@ FBlueprintHelperActionDatabaseProjectionResult FBlueprintHelperActionDatabasePro
 
 	Result.Status = EBlueprintHelperActionResolutionStatus::Resolved;
 	Result.Message = FString::Printf(TEXT("%s projected evidence matched one current ActionDatabase spawner."), *ErrorPrefix);
+	const FBlueprintHelperActionDatabaseProjectedCandidate& Candidate = Result.Candidates[0];
+	Result.EventKind = Candidate.EventKind;
+	Result.ContextFingerprint = Candidate.ContextFingerprint;
+	Result.StableActionId = Candidate.StableActionId.IsEmpty() ? Candidate.StableId : Candidate.StableActionId;
+	Result.NodeClassPath = Candidate.NodeClassPath;
+	Result.OwnerPath = Candidate.OwnerPath;
 	return Result;
 }

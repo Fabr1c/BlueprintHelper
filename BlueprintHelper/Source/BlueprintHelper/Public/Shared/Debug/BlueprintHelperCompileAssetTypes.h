@@ -59,26 +59,7 @@ struct FBlueprintHelperCompileAssetResult
 			TArray<TSharedPtr<FJsonValue>> ResultsArray;
 			for (const FBlueprintHelperDiagnosticItem& Item : CompilerResults)
 			{
-				TSharedPtr<FJsonObject> ItemJson = MakeShared<FJsonObject>();
-				switch (Item.Severity)
-				{
-				case EBlueprintHelperDiagnosticSeverity::Error:
-					ItemJson->SetStringField(TEXT("severity"), TEXT("error"));
-					break;
-				case EBlueprintHelperDiagnosticSeverity::Warning:
-					ItemJson->SetStringField(TEXT("severity"), TEXT("warning"));
-					break;
-				default:
-					ItemJson->SetStringField(TEXT("severity"), TEXT("info"));
-					break;
-				}
-				if (!Item.Code.IsEmpty()) ItemJson->SetStringField(TEXT("code"), Item.Code);
-				if (!Item.Message.IsEmpty()) ItemJson->SetStringField(TEXT("message"), Item.Message);
-				if (!Item.NodeId.IsEmpty()) ItemJson->SetStringField(TEXT("node_id"), Item.NodeId);
-				if (!Item.NodeName.IsEmpty()) ItemJson->SetStringField(TEXT("node_name"), Item.NodeName);
-				if (!Item.PinName.IsEmpty()) ItemJson->SetStringField(TEXT("pin_name"), Item.PinName);
-				if (!Item.Field.IsEmpty()) ItemJson->SetStringField(TEXT("field"), Item.Field);
-				ResultsArray.Add(MakeShared<FJsonValueObject>(ItemJson));
+				ResultsArray.Add(MakeShared<FJsonValueObject>(BlueprintHelperDiagnosticItemToJson(Item)));
 			}
 			J->SetArrayField(TEXT("compiler_results"), ResultsArray);
 		}

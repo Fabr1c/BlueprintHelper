@@ -4,6 +4,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphWriteDryRunSandbox.h"
+#include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphWriteRollbackFinalizer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
@@ -29,6 +31,30 @@
 
 // ─── 禁止创建的全局事件名称集合 ───
 
+struct FBlueprintHelperAppendEventCatalogEvidence
+{
+	FString Source;
+	FString SignatureEvidenceId;
+	FString ActionStableId;
+	FString ContextFingerprint;
+	bool bMarkedStale = false;
+
+	bool IsPresent() const
+	{
+		return !Source.IsEmpty()
+			|| !SignatureEvidenceId.IsEmpty()
+			|| !ActionStableId.IsEmpty()
+			|| !ContextFingerprint.IsEmpty();
+	}
+};
+
+struct FBlueprintHelperAppendEventEntry
+{
+	FString Name;
+	FString EventKind = TEXT("custom_event");
+	FBlueprintHelperAppendEventCatalogEvidence CatalogEvidence;
+};
+
 class FBlueprintHelperAppendBlueprintGraphServiceLocalUtils
 {
 public:
@@ -52,16 +78,111 @@ public:
 		return Names;
 	}
 
-		static bool LooksLikeGlobalEvent(const FString& Name)
+	static bool IsReservedGeneratedEventName(const FString& Name)
 	{
 		for (const FString& Forbidden : ForbiddenEventNames())
 		{
-			if (Name.StartsWith(Forbidden) || Name.Equals(Forbidden, ESearchCase::IgnoreCase))
+			if (Name.Equals(Forbidden, ESearchCase::IgnoreCase))
 			{
 				return true;
 			}
 		}
 		return false;
+	}
+
+	static FString ReadTrimmedStringField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName)
+	{
+		FString Value;
+		if (Object.IsValid())
+		{
+			Object->TryGetStringField(FieldName, Value);
+			Value.TrimStartAndEndInline();
+		}
+		return Value;
+	}
+
+	static FString NormalizeEventKind(const FString& RawEventKind)
+	{
+		const FString EventKind = RawEventKind.TrimStartAndEnd().ToLower();
+		if (EventKind == TEXT("override_event") ||
+			EventKind == TEXT("component_bound_event") ||
+			EventKind == TEXT("input_action_event") ||
+			EventKind == TEXT("dispatcher_event"))
+		{
+			return EventKind;
+		}
+		return TEXT("custom_event");
+	}
+
+	static FBlueprintHelperAppendEventCatalogEvidence ReadCatalogEvidence(
+		const TSharedPtr<FJsonObject>& EntryObject)
+	{
+		FBlueprintHelperAppendEventCatalogEvidence Evidence;
+		const TSharedPtr<FJsonObject>* CatalogEvidenceObject = nullptr;
+		if (!EntryObject.IsValid() ||
+			!EntryObject->TryGetObjectField(TEXT("catalog_evidence"), CatalogEvidenceObject) ||
+			!CatalogEvidenceObject ||
+			!CatalogEvidenceObject->IsValid())
+		{
+			return Evidence;
+		}
+
+		Evidence.Source = ReadTrimmedStringField(*CatalogEvidenceObject, TEXT("source")).ToLower();
+		Evidence.SignatureEvidenceId = ReadTrimmedStringField(*CatalogEvidenceObject, TEXT("signature_evidence_id"));
+		Evidence.ActionStableId = ReadTrimmedStringField(*CatalogEvidenceObject, TEXT("action_stable_id"));
+		Evidence.ContextFingerprint = ReadTrimmedStringField(*CatalogEvidenceObject, TEXT("context_fingerprint"));
+
+		bool bMarkedStale = false;
+		if ((*CatalogEvidenceObject)->TryGetBoolField(TEXT("stale"), bMarkedStale) && bMarkedStale)
+		{
+			Evidence.bMarkedStale = true;
+		}
+		if ((*CatalogEvidenceObject)->TryGetBoolField(TEXT("context_stale"), bMarkedStale) && bMarkedStale)
+		{
+			Evidence.bMarkedStale = true;
+		}
+		if ((*CatalogEvidenceObject)->TryGetBoolField(TEXT("is_stale"), bMarkedStale) && bMarkedStale)
+		{
+			Evidence.bMarkedStale = true;
+		}
+		const FString Status = ReadTrimmedStringField(*CatalogEvidenceObject, TEXT("status")).ToLower();
+		if (Status == TEXT("stale") || Status == TEXT("context_stale"))
+		{
+			Evidence.bMarkedStale = true;
+		}
+
+		return Evidence;
+	}
+
+	static TArray<FBlueprintHelperAppendEventEntry> ExtractAppendEventEntries(
+		const TSharedPtr<FJsonObject>& LogicSpec)
+	{
+		TArray<FBlueprintHelperAppendEventEntry> Entries;
+		const TSharedPtr<FJsonObject>* EntryObject = nullptr;
+		if (!LogicSpec.IsValid() ||
+			!LogicSpec->TryGetObjectField(TEXT("entry"), EntryObject) ||
+			!EntryObject ||
+			!EntryObject->IsValid())
+		{
+			return Entries;
+		}
+
+		FBlueprintHelperAppendEventEntry Entry;
+		Entry.Name = ReadTrimmedStringField(*EntryObject, TEXT("name"));
+		FString RawEventKind = ReadTrimmedStringField(*EntryObject, TEXT("event_kind"));
+		if (RawEventKind.IsEmpty())
+		{
+			RawEventKind = ReadTrimmedStringField(*EntryObject, TEXT("kind"));
+		}
+		Entry.EventKind = NormalizeEventKind(RawEventKind);
+		Entry.CatalogEvidence = ReadCatalogEvidence(*EntryObject);
+		if (!Entry.Name.IsEmpty())
+		{
+			Entries.Add(MoveTemp(Entry));
+		}
+		return Entries;
 	}
 
 	static UK2Node_CustomEvent* FindExistingCustomEventNode(UEdGraph* Graph, const FString& EventName)
@@ -93,6 +214,26 @@ public:
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
 			if (Node)
+			{
+				Nodes.Add(Node);
+			}
+		}
+		return Nodes;
+	}
+
+	static TArray<UEdGraphNode*> CollectNodesNotInSnapshot(
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodeSnapshot)
+	{
+		TArray<UEdGraphNode*> Nodes;
+		if (!Graph)
+		{
+			return Nodes;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && !NodeSnapshot.Contains(Node))
 			{
 				Nodes.Add(Node);
 			}
@@ -141,6 +282,20 @@ public:
 			FBlueprintGraphWriteExecutionStatsSerializer::ToJson(Stats));
 	}
 
+	static void AttachDryRunSideEffectProof(
+		TSharedPtr<FJsonObject> Data,
+		int32 GeneratedNodeCount)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		Data->SetStringField(TEXT("dry_run_side_effects"), TEXT("none"));
+		Data->SetStringField(TEXT("sandbox"), TEXT("transient_blueprint_duplicate"));
+		Data->SetNumberField(TEXT("generated_node_count"), GeneratedNodeCount);
+	}
+
 	static void CollectExecReachableOwnershipNodes(
 		UEdGraphNode* EntryNode,
 		const TSet<UEdGraphNode*>& OwnershipCandidates,
@@ -186,6 +341,33 @@ public:
 		}
 	}
 
+#if WITH_DEV_AUTOMATION_TESTS
+	static bool& AutomationOwnershipWriteFailureFlag()
+	{
+		static bool bFail = false;
+		return bFail;
+	}
+
+	static FString& AutomationOwnershipWriteFailureMessage()
+	{
+		static FString Message;
+		return Message;
+	}
+
+	static bool ShouldForceAutomationOwnershipWriteFailure(FString& OutError)
+	{
+		if (!AutomationOwnershipWriteFailureFlag())
+		{
+			return false;
+		}
+
+		OutError = AutomationOwnershipWriteFailureMessage().IsEmpty()
+			? TEXT("Forced automation ownership write failure.")
+			: AutomationOwnershipWriteFailureMessage();
+		return true;
+	}
+#endif
+
 };
 
 // ─── 构造 ───
@@ -201,6 +383,16 @@ FBlueprintHelperAppendBlueprintGraphService::FBlueprintHelperAppendBlueprintGrap
 }
 
 // ─── 公共入口 ───
+
+#if WITH_DEV_AUTOMATION_TESTS
+void FBlueprintHelperAppendBlueprintGraphService::SetAutomationOwnershipWriteFailure(
+	bool bFail,
+	const FString& ErrorMessage)
+{
+	FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AutomationOwnershipWriteFailureFlag() = bFail;
+	FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AutomationOwnershipWriteFailureMessage() = ErrorMessage;
+}
+#endif
 
 FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Execute(
 	const TSharedPtr<FJsonObject>& Payload) const
@@ -307,7 +499,7 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightBlueprint(
 	Target.BlueprintPath = AssetPath;
 
 	FBlueprintHelperDiagnosticSet Diag;
-	OutBlueprint = Resolver.ResolveBlueprint(Target, Diag);
+	OutBlueprint = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 
 	if (!OutBlueprint || Diag.HasErrors())
 	{
@@ -422,27 +614,79 @@ bool FBlueprintHelperAppendBlueprintGraphService::PreflightNodePayload(
 	}
 
 	TSet<FString> SeenNames;
-	for (const FString& Name : ExtractCustomEventNames(Request))
+	for (const FBlueprintHelperAppendEventEntry& Entry :
+		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::ExtractAppendEventEntries(Request.LogicSpec))
 	{
-		if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::LooksLikeGlobalEvent(Name))
+		const FString& Name = Entry.Name;
+		if (Entry.EventKind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase))
+		{
+			if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::IsReservedGeneratedEventName(Name))
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("reserved_generated_event_name"));
+				OutResult.Conflicts.Add({TEXT("reserved_generated_event_name"), FString::Printf(TEXT("Reserved generated event name cannot be created as a custom event: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+			}
+			if (SeenNames.Contains(Name))
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("custom_event_already_exists"));
+				OutResult.Conflicts.Add({TEXT("custom_event_already_exists"), FString::Printf(TEXT("Custom Event name is duplicated: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+			}
+			SeenNames.Add(Name);
+			if (Graph && !Request.bReuseExistingEntries && FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("custom_event_already_exists"));
+				OutResult.Conflicts.Add({TEXT("custom_event_already_exists"), FString::Printf(TEXT("Custom Event name already exists: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+			}
+			if (Graph && Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
+				OutResult.Conflicts.Add({TEXT("custom_event_entry_not_found"), FString::Printf(TEXT("Custom Event '%s' must already exist when reuse_existing_entries is enabled."), *Name), Name, TEXT("logic_spec.entry.name")});
+			}
+			continue;
+		}
+
+		const FBlueprintHelperAppendEventCatalogEvidence& Evidence = Entry.CatalogEvidence;
+		if (!Evidence.IsPresent())
 		{
 			OutResult.bPassed = false;
-			OutResult.BlockedBy.Add(TEXT("global_event_creation_disallowed"));
-			OutResult.Conflicts.Add({TEXT("global_event_creation_disallowed"), FString::Printf(TEXT("Global event creation is not allowed in append_blueprint_graph: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+			OutResult.BlockedBy.Add(TEXT("event_catalog_evidence_required"));
+			OutResult.Conflicts.Add({TEXT("event_catalog_evidence_required"), FString::Printf(TEXT("%s requires catalog_evidence before append_blueprint_graph can create or bind event '%s'."), *Entry.EventKind, *Name), Name, TEXT("logic_spec.entry.catalog_evidence")});
+			continue;
 		}
-		if (SeenNames.Contains(Name))
+		if (Evidence.bMarkedStale)
 		{
 			OutResult.bPassed = false;
-			OutResult.BlockedBy.Add(TEXT("custom_event_already_exists"));
-			OutResult.Conflicts.Add({TEXT("custom_event_already_exists"), FString::Printf(TEXT("Custom Event name is duplicated: %s."), *Name), Name, TEXT("logic_spec.entry.name")});
+			OutResult.BlockedBy.Add(TEXT("event_catalog_evidence_stale"));
+			OutResult.Conflicts.Add({TEXT("event_catalog_evidence_stale"), FString::Printf(TEXT("%s catalog_evidence is stale for event '%s'."), *Entry.EventKind, *Name), Name, TEXT("logic_spec.entry.catalog_evidence.context_fingerprint")});
+			continue;
 		}
-		SeenNames.Add(Name);
-		if (Graph && Request.bReuseExistingEntries && !Request.bDryRun && !FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::FindExistingCustomEventNode(Graph, Name))
+		if (Evidence.Source.Equals(TEXT("signature"), ESearchCase::IgnoreCase))
 		{
-			OutResult.bPassed = false;
-			OutResult.BlockedBy.Add(TEXT("custom_event_entry_not_found"));
-			OutResult.Conflicts.Add({TEXT("custom_event_entry_not_found"), FString::Printf(TEXT("Custom Event '%s' must already exist when reuse_existing_entries is enabled."), *Name), Name, TEXT("logic_spec.entry.name")});
+			if (Evidence.SignatureEvidenceId.IsEmpty())
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("event_catalog_evidence_required"));
+				OutResult.Conflicts.Add({TEXT("event_catalog_evidence_required"), FString::Printf(TEXT("%s signature catalog_evidence requires signature_evidence_id for event '%s'."), *Entry.EventKind, *Name), Name, TEXT("logic_spec.entry.catalog_evidence.signature_evidence_id")});
+			}
+			continue;
 		}
+		if (Evidence.Source.Equals(TEXT("graph_action_catalog"), ESearchCase::IgnoreCase))
+		{
+			if (Evidence.ActionStableId.IsEmpty() || Evidence.ContextFingerprint.IsEmpty())
+			{
+				OutResult.bPassed = false;
+				OutResult.BlockedBy.Add(TEXT("event_catalog_evidence_required"));
+				OutResult.Conflicts.Add({TEXT("event_catalog_evidence_required"), FString::Printf(TEXT("%s graph_action_catalog evidence requires action_stable_id and context_fingerprint for event '%s'."), *Entry.EventKind, *Name), Name, TEXT("logic_spec.entry.catalog_evidence")});
+			}
+			continue;
+		}
+
+		OutResult.bPassed = false;
+		OutResult.BlockedBy.Add(TEXT("event_catalog_evidence_required"));
+		OutResult.Conflicts.Add({TEXT("event_catalog_evidence_required"), FString::Printf(TEXT("%s catalog_evidence has unsupported source for event '%s'."), *Entry.EventKind, *Name), Name, TEXT("logic_spec.entry.catalog_evidence.source")});
 	}
 	return OutResult.bPassed;
 }
@@ -551,7 +795,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		FBlueprintHelperGraphTarget GraphTarget;
 		GraphTarget.BlueprintPath = Request.AssetPath;
 		FBlueprintHelperDiagnosticSet Diag;
-		UBlueprint* Blueprint = Resolver.ResolveBlueprint(GraphTarget, Diag);
+		UBlueprint* Blueprint = Resolver.ResolveBlueprint(GraphTarget, Diag, FBlueprintHelperResolvePolicy::Mutation());
 		if (!Blueprint)
 		{
 			FBlueprintHelperAppendDryRunData DryRunData;
@@ -575,36 +819,63 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 				TEXT("append_blueprint_graph"), TraceId, Error);
 			Result.Target = TargetRef;
 			Result.Data = DryRunData.ToJson();
+			FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachDryRunSideEffectProof(
+				Result.Data,
+				0);
 		}
 		else
 		{
-			UEdGraph* ExistingGraph = nullptr;
-			for (UEdGraph* Page : Blueprint->UbergraphPages)
+			FBlueprintHelperGraphWriteDryRunSandboxInput SandboxInput;
+			SandboxInput.SourceBlueprint = Blueprint;
+			SandboxInput.GraphName = Request.GraphName;
+			SandboxInput.GraphWritePayload = BuildSemanticGraphWritePayload(Request);
+
+			const FBlueprintHelperGraphWriteDryRunSandboxResult SandboxResult =
+				FBlueprintHelperGraphWriteDryRunSandbox().RunAppendPreview(SandboxInput);
+			if (SandboxResult.bSucceeded)
 			{
-				if (Page && Page->GetName() == Request.GraphName)
+				FBlueprintHelperAppendDryRunData DryRunData;
+				DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Passed;
+				DryRunData.DryRun.bCanExecute = true;
+				Result.Data = DryRunData.ToJson();
+				FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachDryRunSideEffectProof(
+					Result.Data,
+					SandboxResult.GeneratedNodeCount);
+				if (Request.bIncludeTiming)
 				{
-					ExistingGraph = Page;
-					break;
+					FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
+						Result.Data,
+						SandboxResult.ExecutionStats);
 				}
 			}
-
-			const bool bGraphExisted = ExistingGraph != nullptr;
-			const bool bPackageWasDirty = Blueprint->GetOutermost() ? Blueprint->GetOutermost()->IsDirty() : false;
-			FString GraphError;
-			UEdGraph* PreviewGraph = FindOrCreateAppendGraph(Blueprint, Request.GraphName, GraphError);
-			if (!PreviewGraph)
+			else
 			{
+				const bool bPreserveGraphWriteFailure =
+					SandboxResult.ErrorCode == TEXT("graphwrite_connectivity_failed") ||
+					SandboxResult.ErrorCode == TEXT("semantic_graph_write_failed");
+				const FString FailureCode = bPreserveGraphWriteFailure
+					? SandboxResult.ErrorCode
+					: TEXT("graphwrite_dry_run_sandbox_failed");
+				const FString FailureMessage = SandboxResult.Message.IsEmpty()
+					? TEXT("GraphWrite dry-run sandbox failed.")
+					: SandboxResult.Message;
+
 				FBlueprintHelperAppendDryRunData DryRunData;
 				DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
 				DryRunData.DryRun.bCanExecute = false;
-				DryRunData.DryRun.BlockedBy.Add(TEXT("preview_graph_create_failed"));
-				DryRunData.DryRun.Errors.Add({TEXT("preview_graph_create_failed"), GraphError, Request.GraphName, TEXT("target.graph")});
+				DryRunData.DryRun.BlockedBy.Add(FailureCode);
+				DryRunData.DryRun.Errors.Add({
+					FailureCode,
+					FailureMessage,
+					Request.GraphName,
+					bPreserveGraphWriteFailure ? TEXT("logic_spec") : TEXT("target.graph")
+				});
 
 				FBlueprintHelperToolError Error;
-				Error.Code = TEXT("preview_graph_create_failed");
+				Error.Code = FailureCode;
 				Error.Stage = EBlueprintHelperToolStage::Preflight;
-				Error.Message = GraphError;
-				Error.Field = TEXT("target.graph");
+				Error.Message = FailureMessage;
+				Error.Field = bPreserveGraphWriteFailure ? TEXT("logic_spec") : TEXT("target.graph");
 				Error.bRetryable = false;
 				Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
 
@@ -612,112 +883,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 					TEXT("append_blueprint_graph"), TraceId, Error);
 				Result.Target = TargetRef;
 				Result.Data = DryRunData.ToJson();
-			}
-			else
-			{
-				const TSet<UEdGraphNode*> NodeSnapshot = FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CaptureGraphNodes(PreviewGraph);
-				const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
-				TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
-				const FBlueprintGenerateResult GenerateResult =
-					FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(PreviewGraph, GraphWritePayload, UnresolvedNodes);
-
-				if (!bGraphExisted)
+				Result.Data->SetStringField(TEXT("sandbox_error_code"), SandboxResult.ErrorCode);
+				FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachDryRunSideEffectProof(
+					Result.Data,
+					SandboxResult.GeneratedNodeCount);
+				if (Request.bIncludeTiming)
 				{
-					FBlueprintEditorUtils::RemoveGraph(Blueprint, PreviewGraph);
-					FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-				}
-				else
-				{
-					TArray<UEdGraphNode*> NodesToRemove;
-					for (UEdGraphNode* Node : PreviewGraph->Nodes)
-					{
-						if (Node && !NodeSnapshot.Contains(Node))
-						{
-							NodesToRemove.Add(Node);
-						}
-					}
-					for (UEdGraphNode* Node : NodesToRemove)
-					{
-						FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
-					}
-				}
-				if (Blueprint->GetOutermost())
-				{
-					Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirty);
-				}
-
-				if (GenerateResult.bSucceed)
-				{
-					FBlueprintHelperAppendDryRunData DryRunData;
-					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Passed;
-					DryRunData.DryRun.bCanExecute = true;
-					Result.Data = DryRunData.ToJson();
-					if (Request.bIncludeTiming)
-					{
-						FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
-							Result.Data,
-							GenerateResult.ExecutionStats);
-					}
-				}
-				else
-				{
-					const bool bConnectivityFailure = GenerateResult.ConnectivityViolationCount > 0;
-					const FString FailureCode = bConnectivityFailure
-						? TEXT("graphwrite_connectivity_failed")
-						: TEXT("semantic_graph_write_failed");
-					FString ImportMessage = GenerateResult.Message;
-					if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
-					{
-						ImportMessage += FString::Printf(TEXT(" First unresolved: %s - %s"), *UnresolvedNodes[0]->DisplayText, *UnresolvedNodes[0]->Reason);
-					}
-
-					FBlueprintHelperAppendDryRunData DryRunData;
-					DryRunData.DryRun.Result = EBlueprintHelperDryRunResult::Blocked;
-					DryRunData.DryRun.bCanExecute = false;
-					DryRunData.DryRun.BlockedBy.Add(FailureCode);
-					FBlueprintHelperDryRunIssue SemanticIssue{
-						FailureCode,
-						ImportMessage,
-						TEXT("logic_spec"),
-						TEXT("logic_spec")
-					};
-					for (const TSharedPtr<FUnresolvedNodeItem>& UnresolvedNode : UnresolvedNodes)
-					{
-						if (!UnresolvedNode.IsValid())
-						{
-							continue;
-						}
-						for (const FBlueprintHelperCandidateFunctionGroup& Group : UnresolvedNode->CandidateFunctions)
-						{
-							FBlueprintHelperDryRunCandidateFunctionGroup DryRunGroup;
-							DryRunGroup.Target = Group.Target;
-							DryRunGroup.Candidates = Group.Candidates;
-							SemanticIssue.CandidateFunctions.Add(MoveTemp(DryRunGroup));
-						}
-					}
-					DryRunData.DryRun.Errors.Add(MoveTemp(SemanticIssue));
-
-					FBlueprintHelperToolError Error;
-					Error.Code = FailureCode;
-					Error.Stage = EBlueprintHelperToolStage::Preflight;
-					Error.Message = ImportMessage;
-					Error.Field = TEXT("logic_spec");
-					Error.bRetryable = false;
-					Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-
-					Result = FBlueprintHelperToolResultBuilder::Failure(
-						TEXT("append_blueprint_graph"), TraceId, Error);
-					Result.Target = TargetRef;
-					Result.Data = DryRunData.ToJson();
-					FBlueprintHelperGraphWriteConnectivityDiagnosticsJson::Attach(
+					FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
 						Result.Data,
-						GenerateResult.ConnectivityDiagnostics);
-					if (Request.bIncludeTiming)
-					{
-						FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachGraphWriteExecutionStats(
-							Result.Data,
-							GenerateResult.ExecutionStats);
-					}
+						SandboxResult.ExecutionStats);
 				}
 			}
 		}
@@ -751,6 +925,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 			TEXT("append_blueprint_graph"), TraceId, Error);
 		Result.Target = TargetRef;
 		Result.Data = DryRunData.ToJson();
+		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachDryRunSideEffectProof(
+			Result.Data,
+			0);
 	}
 
 	return Result;
@@ -799,7 +976,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 	FBlueprintHelperGraphTarget Target;
 	Target.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag);
+	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!Blueprint)
 	{
 		FBlueprintHelperToolError Error;
@@ -861,39 +1038,32 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 
 	if (!bImportSuccess)
 	{
-		// 清理可能半成品的新图表
-		if (!bGraphExistedBeforeWrite)
-		{
-			FBlueprintEditorUtils::RemoveGraph(Blueprint, TargetGraph);
-			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-		}
-		else
-		{
-			TArray<UEdGraphNode*> NodesToRemove;
-			for (UEdGraphNode* Node : TargetGraph->Nodes)
-			{
-				if (Node && !NodeSnapshot.Contains(Node))
-				{
-					NodesToRemove.Add(Node);
-				}
-			}
-			for (UEdGraphNode* Node : NodesToRemove)
-			{
-				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
-			}
-		}
-		if (Blueprint->GetOutermost())
-		{
-			Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirtyBeforeWrite);
-		}
+		FBlueprintHelperGraphWriteRollbackInput RollbackInput;
+		RollbackInput.Blueprint = Blueprint;
+		RollbackInput.TargetGraph = TargetGraph;
+		RollbackInput.bGraphExistedBeforeWrite = bGraphExistedBeforeWrite;
+		RollbackInput.bPackageWasDirtyBeforeWrite = bPackageWasDirtyBeforeWrite;
+		RollbackInput.NodeSnapshot = NodeSnapshot;
+		RollbackInput.ImportedNodes =
+			FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::CollectNodesNotInSnapshot(TargetGraph, NodeSnapshot);
+		RollbackInput.ReasonCode = ImportErrorCode;
+		const FBlueprintHelperGraphWriteRollbackResult RollbackResult =
+			FBlueprintHelperGraphWriteRollbackFinalizer().RollbackPostImportFailure(RollbackInput);
 
+		// 清理可能半成品的新图表
 		FBlueprintHelperToolError Error;
 		Error.Code = ImportErrorCode.IsEmpty() ? TEXT("node_create_failed") : ImportErrorCode;
 		Error.Stage = EBlueprintHelperToolStage::Execute;
 		Error.Message = ImportMessage.IsEmpty()
 			? TEXT("Agent 导入执行失败。") : ImportMessage;
+		if (!RollbackResult.bRolledBack && !RollbackResult.ErrorMessage.IsEmpty())
+		{
+			Error.Message += FString::Printf(TEXT(" Rollback failed: %s"), *RollbackResult.ErrorMessage);
+		}
 		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+		Error.RollbackResult = RollbackResult.bRolledBack
+			? EBlueprintHelperRollbackResult::RolledBack
+			: EBlueprintHelperRollbackResult::Failed;
 
 		FBlueprintHelperToolResultBase FailResult = FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("append_blueprint_graph"), TraceId, Error);
@@ -970,25 +1140,44 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 		}
 
 		FString OwnershipError;
-		if (!OwnershipService.WriteBlockOwnership(
-			Blueprint, OwnershipNodes, FullBlockId, Request.FeatureName, OwnershipError))
+		bool bOwnershipWriteSucceeded = true;
+#if WITH_DEV_AUTOMATION_TESTS
+		if (FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::ShouldForceAutomationOwnershipWriteFailure(OwnershipError))
 		{
-			// Ownership 写入失败 → 回滚
-			for (UEdGraphNode* Node : ImportedNodes)
-			{
-				if (Node)
-				{
-					FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
-				}
-			}
-			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+			bOwnershipWriteSucceeded = false;
+		}
+		else
+#endif
+		{
+			bOwnershipWriteSucceeded = OwnershipService.WriteBlockOwnership(
+				Blueprint, OwnershipNodes, FullBlockId, Request.FeatureName, OwnershipError);
+		}
+		if (!bOwnershipWriteSucceeded)
+		{
+			FBlueprintHelperGraphWriteRollbackInput RollbackInput;
+			RollbackInput.Blueprint = Blueprint;
+			RollbackInput.TargetGraph = TargetGraph;
+			RollbackInput.bGraphExistedBeforeWrite = bGraphExistedBeforeWrite;
+			RollbackInput.bPackageWasDirtyBeforeWrite = bPackageWasDirtyBeforeWrite;
+			RollbackInput.NodeSnapshot = NodeSnapshot;
+			RollbackInput.ImportedNodes = ImportedNodes;
+			RollbackInput.ReasonCode = TEXT("ownership_write_failed");
+			const FBlueprintHelperGraphWriteRollbackResult RollbackResult =
+				FBlueprintHelperGraphWriteRollbackFinalizer().RollbackPostImportFailure(RollbackInput);
 
+			// Ownership 写入失败 → 回滚
 			FBlueprintHelperToolError Error;
 			Error.Code = TEXT("ownership_write_failed");
 			Error.Stage = EBlueprintHelperToolStage::Execute;
 			Error.Message = OwnershipError;
+			if (!RollbackResult.bRolledBack && !RollbackResult.ErrorMessage.IsEmpty())
+			{
+				Error.Message += FString::Printf(TEXT(" Rollback failed: %s"), *RollbackResult.ErrorMessage);
+			}
 			Error.bRetryable = false;
-			Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+			Error.RollbackResult = RollbackResult.bRolledBack
+				? EBlueprintHelperRollbackResult::RolledBack
+				: EBlueprintHelperRollbackResult::Failed;
 			return FBlueprintHelperToolResultBuilder::Failure(TEXT("append_blueprint_graph"), TraceId, Error);
 		}
 	}
@@ -1057,19 +1246,12 @@ TArray<FString> FBlueprintHelperAppendBlueprintGraphService::ExtractCustomEventN
 	const FAppendRequest& Request) const
 {
 	TArray<FString> Names;
-	if (Request.LogicSpec.IsValid())
+	for (const FBlueprintHelperAppendEventEntry& Entry :
+		FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::ExtractAppendEventEntries(Request.LogicSpec))
 	{
-		const TSharedPtr<FJsonObject>* EntryObject = nullptr;
-		if (Request.LogicSpec->TryGetObjectField(TEXT("entry"), EntryObject) && EntryObject && EntryObject->IsValid())
+		if (Entry.EventKind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase) && !Entry.Name.IsEmpty())
 		{
-			FString EntryKind;
-			(*EntryObject)->TryGetStringField(TEXT("kind"), EntryKind);
-			FString EntryName;
-			(*EntryObject)->TryGetStringField(TEXT("name"), EntryName);
-			if (EntryKind.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase) && !EntryName.IsEmpty())
-			{
-				Names.AddUnique(EntryName);
-			}
+			Names.AddUnique(Entry.Name);
 		}
 	}
 	return Names;

@@ -623,7 +623,7 @@ UBlueprint* FBlueprintHelperComponentService::ResolveBlueprint(const FString& As
 	Target.BlueprintPath = AssetPath;
 
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag);
+	UBlueprint* Blueprint = Resolver.ResolveBlueprint(Target, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!Blueprint)
 	{
 		OutError = Diag.Items.Num() > 0

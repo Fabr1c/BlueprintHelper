@@ -567,7 +567,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	// 瑙ｆ瀽钃濆浘/鍥捐〃
 	FBlueprintHelperGraphTarget Tgt; Tgt.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag);
+	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	UEdGraph* Graph = nullptr;
 	if (BP)
 	{
@@ -643,7 +643,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	// 1-2. Resolve BP/Graph
 	FBlueprintHelperGraphTarget Tgt; Tgt.BlueprintPath = Request.AssetPath;
 	FBlueprintHelperDiagnosticSet Diag;
-	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag);
+	UBlueprint* BP = Resolver.ResolveBlueprint(Tgt, Diag, FBlueprintHelperResolvePolicy::Mutation());
 	if (!BP) return FBlueprintHelperToolResultBuilder::Failure(TEXT("merge_blueprint_graph"), TraceId,
 		{TEXT("target_blueprint_not_found"), EBlueprintHelperToolStage::ResolveTarget, TEXT("target blueprint not found."), false, EBlueprintHelperRollbackResult::NotNeeded});
 

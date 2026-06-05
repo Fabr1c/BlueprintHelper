@@ -203,6 +203,213 @@ public:
 		return FString::Printf(TEXT("graph:%s:block:%s"), *GraphName, *FullBlockId);
 	}
 
+	static FString ReadStringField(const TSharedPtr<FJsonObject>& Object, const TCHAR* FieldName)
+	{
+		FString Value;
+		if (Object.IsValid())
+		{
+			Object->TryGetStringField(FieldName, Value);
+			Value.TrimStartAndEndInline();
+		}
+		return Value;
+	}
+
+	static void NormalizeGraphWriteDiagnostic(
+		FBlueprintHelperDiagnosticItem& Item,
+		const FString& DefaultGraphName)
+	{
+		if (Item.GraphName.IsEmpty())
+		{
+			Item.GraphName = DefaultGraphName;
+		}
+		if (Item.NodeGuid.IsEmpty() && !Item.NodeId.IsEmpty())
+		{
+			Item.NodeGuid = Item.NodeId;
+		}
+		if (Item.NodeId.IsEmpty() && !Item.NodeGuid.IsEmpty())
+		{
+			Item.NodeId = Item.NodeGuid;
+		}
+		if (Item.NodeName.IsEmpty())
+		{
+			Item.NodeName = Item.NodeTitle;
+		}
+		if (Item.CompileDiagnosticCorrelationKey.IsEmpty())
+		{
+			Item.CompileDiagnosticCorrelationKey = BlueprintHelperDiagnosticCorrelationKey(Item);
+		}
+	}
+
+	static void AppendDiagnosticsFromArrayField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& DefaultGraphName,
+		TArray<FBlueprintHelperDiagnosticItem>& OutDiagnostics)
+	{
+		TArray<FBlueprintHelperDiagnosticItem> Items;
+		BlueprintHelperReadDiagnosticArrayField(Object, FieldName, Items);
+		for (FBlueprintHelperDiagnosticItem& Item : Items)
+		{
+			NormalizeGraphWriteDiagnostic(Item, DefaultGraphName);
+			OutDiagnostics.Add(MoveTemp(Item));
+		}
+	}
+
+	static void AppendReadbackCorrelationFromObject(
+		const TSharedPtr<FJsonObject>& Object,
+		const FString& DefaultGraphName,
+		TArray<FBlueprintHelperDiagnosticItem>& OutDiagnostics)
+	{
+		if (!Object.IsValid())
+		{
+			return;
+		}
+
+		FBlueprintHelperDiagnosticItem Item;
+		Item.Severity = EBlueprintHelperDiagnosticSeverity::Info;
+		Item.Code = ReadStringField(Object, TEXT("code"));
+		if (Item.Code.IsEmpty())
+		{
+			Item.Code = TEXT("graphwrite_readback_correlation");
+		}
+		Item.Message = ReadStringField(Object, TEXT("message"));
+		Item.GraphName = ReadStringField(Object, TEXT("graph_name"));
+		Item.NodeGuid = ReadStringField(Object, TEXT("node_guid"));
+		Item.NodeId = ReadStringField(Object, TEXT("node_id"));
+		Item.NodeTitle = ReadStringField(Object, TEXT("node_title"));
+		Item.NodeName = ReadStringField(Object, TEXT("node_name"));
+		Item.NodeClass = ReadStringField(Object, TEXT("node_class"));
+		Item.BlockRef = ReadStringField(Object, TEXT("block_ref"));
+		Item.TargetKey = ReadStringField(Object, TEXT("target_key"));
+		Item.CompileDiagnosticCorrelationKey = ReadStringField(Object, TEXT("compile_diagnostic_correlation_key"));
+		Item.ErrorType = ReadStringField(Object, TEXT("error_type"));
+		NormalizeGraphWriteDiagnostic(Item, DefaultGraphName);
+
+		if (!Item.CompileDiagnosticCorrelationKey.IsEmpty() ||
+			!Item.NodeGuid.IsEmpty() ||
+			!Item.TargetKey.IsEmpty() ||
+			!Item.BlockRef.IsEmpty())
+		{
+			OutDiagnostics.Add(MoveTemp(Item));
+		}
+	}
+
+	static void AppendReadbackCorrelationsFromArrayField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		const FString& DefaultGraphName,
+		TArray<FBlueprintHelperDiagnosticItem>& OutDiagnostics)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Object.IsValid() || !Object->TryGetArrayField(FieldName, Values) || !Values)
+		{
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			AppendReadbackCorrelationFromObject(Value.IsValid() ? Value->AsObject() : nullptr, DefaultGraphName, OutDiagnostics);
+		}
+	}
+
+	static TArray<FBlueprintHelperDiagnosticItem> ReadReviewDiagnostics(
+		const FBlueprintHelperToolResultBase& StepResult,
+		const FString& DefaultGraphName)
+	{
+		TArray<FBlueprintHelperDiagnosticItem> Diagnostics;
+		if (!StepResult.Data.IsValid())
+		{
+			return Diagnostics;
+		}
+
+		AppendDiagnosticsFromArrayField(StepResult.Data, TEXT("diagnostics"), DefaultGraphName, Diagnostics);
+		AppendDiagnosticsFromArrayField(StepResult.Data, TEXT("compiler_results"), DefaultGraphName, Diagnostics);
+
+		const TSharedPtr<FJsonObject>* CompileResult = nullptr;
+		if (StepResult.Data->TryGetObjectField(TEXT("compile_result"), CompileResult) && CompileResult && CompileResult->IsValid())
+		{
+			AppendDiagnosticsFromArrayField(*CompileResult, TEXT("compiler_results"), DefaultGraphName, Diagnostics);
+			AppendDiagnosticsFromArrayField(*CompileResult, TEXT("diagnostics"), DefaultGraphName, Diagnostics);
+		}
+
+		AppendReadbackCorrelationsFromArrayField(StepResult.Data, TEXT("generated_nodes"), DefaultGraphName, Diagnostics);
+		AppendReadbackCorrelationsFromArrayField(StepResult.Data, TEXT("readback_nodes"), DefaultGraphName, Diagnostics);
+		AppendReadbackCorrelationsFromArrayField(StepResult.Data, TEXT("readback_entries"), DefaultGraphName, Diagnostics);
+
+		const TSharedPtr<FJsonObject>* Readback = nullptr;
+		if (StepResult.Data->TryGetObjectField(TEXT("readback"), Readback) && Readback && Readback->IsValid())
+		{
+			AppendDiagnosticsFromArrayField(*Readback, TEXT("diagnostics"), DefaultGraphName, Diagnostics);
+			AppendReadbackCorrelationsFromArrayField(*Readback, TEXT("generated_nodes"), DefaultGraphName, Diagnostics);
+			AppendReadbackCorrelationsFromArrayField(*Readback, TEXT("nodes"), DefaultGraphName, Diagnostics);
+			AppendReadbackCorrelationFromObject(*Readback, DefaultGraphName, Diagnostics);
+		}
+
+		return Diagnostics;
+	}
+
+	static FString TargetKeyForDiagnostic(
+		const FBlueprintHelperDiagnosticItem& Diagnostic,
+		const FString& DefaultGraphName)
+	{
+		if (!Diagnostic.TargetKey.IsEmpty())
+		{
+			return Diagnostic.TargetKey;
+		}
+		const FString GraphName = Diagnostic.GraphName.IsEmpty() ? DefaultGraphName : Diagnostic.GraphName;
+		if (!GraphName.IsEmpty() && !Diagnostic.BlockRef.IsEmpty())
+		{
+			return MakeGraphBlockTargetKey(GraphName, Diagnostic.BlockRef);
+		}
+		return FString();
+	}
+
+	static bool DiagnosticMatchesTarget(
+		const FBlueprintHelperDiagnosticItem& Diagnostic,
+		const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		const FString DiagnosticTargetKey = TargetKeyForDiagnostic(Diagnostic, Target.GraphName);
+		if (!DiagnosticTargetKey.IsEmpty())
+		{
+			return DiagnosticTargetKey == Target.TargetKey;
+		}
+
+		const bool bDiagnosticHasNodeIdentity =
+			!Diagnostic.NodeGuid.IsEmpty() ||
+			!Diagnostic.CompileDiagnosticCorrelationKey.IsEmpty();
+		if (bDiagnosticHasNodeIdentity)
+		{
+			return !Diagnostic.NodeGuid.IsEmpty() &&
+				!Target.NodeGuid.IsEmpty() &&
+				Diagnostic.NodeGuid.Equals(Target.NodeGuid, ESearchCase::IgnoreCase) &&
+				(Diagnostic.GraphName.IsEmpty() || Diagnostic.GraphName == Target.GraphName);
+		}
+
+		return Diagnostic.GraphName.IsEmpty() || Diagnostic.GraphName == Target.GraphName;
+	}
+
+	static void AttachDiagnosticsToEvidence(
+		const TArray<FBlueprintHelperDiagnosticItem>& Diagnostics,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence)
+	{
+		OutEvidence.Diagnostics = Diagnostics;
+		for (FBlueprintHelperReviewAtomicTarget& Target : OutEvidence.AtomicTargets)
+		{
+			for (FBlueprintHelperDiagnosticItem Diagnostic : Diagnostics)
+			{
+				NormalizeGraphWriteDiagnostic(Diagnostic, Target.GraphName);
+				if (Diagnostic.TargetKey.IsEmpty())
+				{
+					Diagnostic.TargetKey = TargetKeyForDiagnostic(Diagnostic, Target.GraphName);
+				}
+				if (DiagnosticMatchesTarget(Diagnostic, Target))
+				{
+					Target.Diagnostics.Add(MoveTemp(Diagnostic));
+				}
+			}
+		}
+	}
+
 };
 
 FBlueprintHelperGraphWriteTaskRuntimeCluster::FBlueprintHelperGraphWriteTaskRuntimeCluster(
@@ -290,6 +497,10 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 			SignatureEvidenceId);
 		OutEvidence.AtomicTargets.Add(Target);
 	}
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =
+		FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::ReadReviewDiagnostics(StepResult, GraphName);
+	FBlueprintHelperGraphWriteTaskRuntimeClusterLocalUtils::AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
 
 	FBlueprintHelperGraphWriteOwnershipValidationInput OwnershipValidationInput;
 	OwnershipValidationInput.GeneratedBlockRefs = BlockRefs;

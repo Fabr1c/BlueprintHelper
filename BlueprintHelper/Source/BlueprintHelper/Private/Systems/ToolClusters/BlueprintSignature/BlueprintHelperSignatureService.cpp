@@ -997,7 +997,10 @@ public:
 
 		FBlueprintHelperGraphResolver Resolver;
 		FBlueprintHelperDiagnosticSet Diag;
-		OutTarget.Graph = Resolver.ResolveGraph(MakeGraphTarget(Request.AssetPath, Request.GraphName), Diag);
+		OutTarget.Graph = Resolver.ResolveGraph(
+			MakeGraphTarget(Request.AssetPath, Request.GraphName),
+			Diag,
+			FBlueprintHelperResolvePolicy::Mutation());
 		if (!OutTarget.Graph || Diag.HasErrors())
 		{
 			OutCode = TEXT("target_graph_not_found");
@@ -1259,7 +1262,10 @@ public:
 
 		FBlueprintHelperGraphResolver Resolver;
 		FBlueprintHelperDiagnosticSet Diag;
-		UEdGraph* Graph = Resolver.ResolveGraph(MakeGraphTarget(Request.AssetPath, OutGraphName), Diag);
+		UEdGraph* Graph = Resolver.ResolveGraph(
+			MakeGraphTarget(Request.AssetPath, OutGraphName),
+			Diag,
+			FBlueprintHelperResolvePolicy::Mutation());
 		if (!Graph || Diag.HasErrors())
 		{
 			OutCode = TEXT("target_graph_not_found");

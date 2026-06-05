@@ -200,6 +200,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		if (!Target.BeforeSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
 		if (!Target.AfterSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
+		if (Target.Diagnostics.Num() > 0)
+		{
+			Json->SetArrayField(TEXT("diagnostics"), BlueprintHelperDiagnosticItemsToJsonArray(Target.Diagnostics));
+		}
 		if (Target.ExecutionOrder != INDEX_NONE) Json->SetNumberField(TEXT("execution_order"), Target.ExecutionOrder);
 		if (Target.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Target.TaskStepIndex);
 		if (Target.AtomicIndex != INDEX_NONE) Json->SetNumberField(TEXT("atomic_index"), Target.AtomicIndex);
@@ -533,6 +537,10 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 						TargetJson->TryGetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
 						TargetJson->TryGetStringField(TEXT("after_snapshot_json"), Target.AfterSnapshotJson);
+						BlueprintHelperReadDiagnosticArrayField(
+							TargetJson,
+							TEXT("diagnostics"),
+							Target.Diagnostics);
 						double TargetOrderValue = 0.0;
 						if (TargetJson->TryGetNumberField(TEXT("execution_order"), TargetOrderValue))
 						{

@@ -1501,16 +1501,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBluepr
 	TArray<TSharedPtr<FJsonValue>> DiagArray;
 	for (const auto& Item : CompileResult.Diagnostics.Items)
 	{
-		TSharedPtr<FJsonObject> DiagObj = MakeShared<FJsonObject>();
-		DiagObj->SetStringField(TEXT("severity"),
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Error ? TEXT("error") :
-			Item.Severity == EBlueprintHelperDiagnosticSeverity::Warning ? TEXT("warning") : TEXT("info"));
-		DiagObj->SetStringField(TEXT("message"), Item.Message);
-		if (!Item.NodeName.IsEmpty())
-		{
-			DiagObj->SetStringField(TEXT("node_name"), Item.NodeName);
-		}
-		DiagArray.Add(MakeShared<FJsonValueObject>(DiagObj));
+		DiagArray.Add(MakeShared<FJsonValueObject>(BlueprintHelperDiagnosticItemToJson(Item)));
 	}
 	Resp.Result->SetArrayField(TEXT("diagnostics"), DiagArray);
 
