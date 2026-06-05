@@ -3,6 +3,13 @@ import {
   sanitizeAgentFacingValue,
   type ToolResultBase,
 } from '@blueprinthelper/task-core/result/tool-result';
+import {
+  buildCliDebugArtifactSource,
+  compactExtraForDefaultCliOutput,
+  compactTaskPlanForArtifact,
+  projectToolResultForCli,
+} from '@blueprinthelper/task-core/tool-surface/result/result-projection-policy';
+import { resolveResultProjectionPolicy } from '@blueprinthelper/task-core/tool-surface/result/result-projection-registry';
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
 import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
@@ -37,6 +44,7 @@ export interface CliCommand {
   develop?: boolean;
   expert?: boolean;
   previewToken?: string;
+  compileOnly?: boolean;
   taskRunId?: string;
   includeReserved?: boolean;
   audience?: 'default' | 'compat' | 'expert';
@@ -137,13 +145,34 @@ export function writeCliResult(
   toolResult: ToolResultBase,
   extra: Record<string, unknown> = {},
 ): CliWriteOutcome {
-  const debugResult = command.expert ? buildDebugResult(command, toolResult, extra) : undefined;
+  const projectionPolicy = resolveResultProjectionPolicy({
+    commandKind: command.kind,
+    toolIdOrAlias: command.toolId ?? command.toolName,
+  });
+  const debugResult = buildCliDebugArtifactSource({
+    command_kind: command.kind,
+    tool_name: command.toolName,
+    format: command.format,
+    expert: command.expert,
+    tool_result: toolResult,
+    extra,
+    policy: projectionPolicy,
+  });
   const safeToolResult = stripExecutePreviewId(command, sanitizeAgentFacingToolResult(toolResult));
   const safeExtra = sanitizeAgentFacingValue(extra);
   const artifactRoot = resolveArtifactRoot({ cwd: runtime.cwd, cliDir: command.artifactDir });
   const runId = inferRunId(command, safeToolResult, safeExtra);
-  const fullToolResult = compactCliToolResult(safeToolResult);
-  const fullExtra = compactCliExtra(safeExtra);
+  const projected = projectToolResultForCli({
+    command_kind: command.kind,
+    tool_name: command.toolName,
+    format: command.format,
+    expert: command.expert,
+    tool_result: safeToolResult,
+    extra: safeExtra,
+    policy: projectionPolicy,
+  });
+  const fullToolResult = projected.tool_result;
+  const fullExtra = projected.extra;
   const fullResult = omitUndefined({
     toolResult: fullToolResult,
     extra: Object.keys(fullExtra).length > 0 ? fullExtra : undefined,
@@ -172,7 +201,7 @@ export function writeCliResult(
       root: artifactRoot,
       runId,
       name: 'task_plan',
-      value: compactDefaultTaskPlanArtifact(taskPlan),
+      value: compactTaskPlanForArtifact(taskPlan),
     });
   }
 
@@ -520,95 +549,8 @@ function stripExecutePreviewId(command: CliCommand, toolResult: ToolResultBase):
   };
 }
 
-function buildDebugResult(
-  command: CliCommand,
-  toolResult: ToolResultBase,
-  extra: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const debug = asRecord((toolResult as ToolResultBase & { debug?: Record<string, unknown> }).debug);
-  const data = asRecord(toolResult.data);
-  const bridgeResult = debug?.['bridge_result'] ?? data?.['bridge_result'];
-  const remainingDebug = debug
-    ? Object.fromEntries(Object.entries(debug).filter(([key]) => key !== 'bridge_result'))
-    : undefined;
-  const toolResultWithoutDebug = { ...toolResult } as Record<string, unknown>;
-  delete toolResultWithoutDebug['debug'];
-
-  const result = omitUndefined({
-    schema: CLI_DEBUG_RESULT_SCHEMA,
-    command: command.kind,
-    tool_name: command.toolName,
-    tool_result: toolResultWithoutDebug,
-    extra: Object.keys(extra).length > 0 ? extra : undefined,
-    bridge_result: bridgeResult,
-    debug: remainingDebug && Object.keys(remainingDebug).length > 0 ? remainingDebug : undefined,
-  });
-
-  return result;
-}
-
-function compactDefaultTaskPlanArtifact(value: unknown): unknown {
-  return compactPolicyOnlyFields(compactCliValue(value));
-}
-
-function compactPolicyOnlyFields(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => compactPolicyOnlyFields(item));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'execution_policy' || key === 'scope_policy') {
-      continue;
-    }
-
-    if (key === 'validation') {
-      const compactedValidation = compactValidationForDefaultReturn(entry);
-      if (compactedValidation !== undefined) {
-        compacted[key] = compactedValidation;
-      }
-      continue;
-    }
-
-    compacted[key] = compactPolicyOnlyFields(entry);
-  }
-  return compacted;
-}
-
-function compactValidationForDefaultReturn(value: unknown): unknown {
-  if (!isRecord(value)) {
-    return compactPolicyOnlyFields(value);
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'should_compile' || key === 'should_save') {
-      continue;
-    }
-    compacted[key] = compactPolicyOnlyFields(entry);
-  }
-
-  return Object.keys(compacted).length > 0 ? compacted : undefined;
-}
-
-function compactCliToolResult(toolResult: ToolResultBase): Record<string, unknown> {
-  const compacted = compactTaskSpecExecutionData(compactPolicyOnlyFields(compactCliValue(toolResult))) as Record<string, unknown>;
-  delete compacted['debug'];
-  return compacted;
-}
-
-function compactCliExtra(extra: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...extra };
-  delete next['taskPlan'];
-  return compactPolicyOnlyFields(compactCliValue(next)) as Record<string, unknown>;
-}
-
 function compactCliExtraForOutput(extra: Record<string, unknown>): Record<string, unknown> {
-  return compactCliExtra(extra);
+  return compactExtraForDefaultCliOutput(extra);
 }
 
 function compactMetricsOutput(data: Record<string, unknown>): Record<string, unknown> {
@@ -619,47 +561,6 @@ function compactMetricsOutput(data: Record<string, unknown>): Record<string, unk
     summary: asRecord(data['summary']),
     markdown_report_path: readString(data['markdown_report_path']),
   });
-}
-
-function compactTaskSpecExecutionData(value: unknown): unknown {
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const data = asRecord(value['data']);
-  const task = asRecord(data?.['task']);
-  if (!task) {
-    return value;
-  }
-
-  delete task['task_run_id'];
-  delete task['target_assets'];
-  if (Object.keys(task).length === 0) {
-    delete data?.['task'];
-  }
-  return value;
-}
-
-function compactCliValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => compactCliValue(item));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'debug' || key === 'trace_id' || key === 'bridge_result') {
-      continue;
-    }
-    if (key === 'schema' && typeof entry === 'string' && entry.startsWith('BlueprintHelper.')) {
-      continue;
-    }
-    compacted[key] = compactCliValue(entry);
-  }
-  return compacted;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

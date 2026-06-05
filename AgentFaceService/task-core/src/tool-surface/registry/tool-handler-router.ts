@@ -1,25 +1,22 @@
-import { z } from 'zod';
 import { sanitizeAgentFacingToolResult } from '../../result/tool-result.js';
 import type { BlueprintHelperToolContext } from '../types.js';
 import type { ToolMeta } from './tool-metas.js';
+import { ToolExecutorRegistry } from './tool-executor-registry.js';
 import { toolSources } from './tool-sources.js';
 
+const defaultToolExecutorRegistry = toolSources.reduce(
+  (registry, source) => registry.register(source),
+  new ToolExecutorRegistry(),
+);
+
 export function resolveToolInputSchema(name: string) {
-  return findToolSource(name)?.getInputSchema(name) ?? z.record(z.unknown());
+  return defaultToolExecutorRegistry.resolveInputSchema(name);
 }
 
 export function createToolExecutor(meta: ToolMeta) {
   return async (input: Record<string, unknown>, context: BlueprintHelperToolContext) => {
-    const source = findToolSource(meta.name);
-    if (!source) {
-      throw new Error(`Tool is registered without a handler: ${meta.name}`);
-    }
-    return sanitizeAgentFacingToolResult(await source.execute(meta.name, input, context), {
+    return sanitizeAgentFacingToolResult(await defaultToolExecutorRegistry.execute(meta.name, input, context), {
       preserveDebug: context.expert === true,
     });
   };
-}
-
-function findToolSource(name: string) {
-  return toolSources.find((source) => source.canHandle(name));
 }

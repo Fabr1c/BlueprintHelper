@@ -29,6 +29,36 @@ test('extractTaskPlanMetricOperations uses structured graph_write ops before str
   ]);
 });
 
+test('extractTaskPlanMetricOperations prefers GraphWrite route descriptor for replace scope', () => {
+  const operations = extractTaskPlanMetricOperations({
+    steps: [
+      {
+        capability: 'graph_write',
+        target: {
+          asset_path: '/Game/Blueprints/BP_StoneGate',
+          graph: 'EventGraph',
+        },
+        write: {
+          strategy: 'owned_graph_edit',
+          ops: [
+            {
+              op: 'replace_body',
+              replace_scope: 'function_body',
+              selector: {
+                function_name: 'ApplySaveGame',
+              },
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(operations, [
+    { capability: 'graph_write', semantic_operation: 'graph.replace.function_body' },
+  ]);
+});
+
 test('extractTaskPlanMetricOperations derives stable semantic operation for graph_write adapter patch steps', () => {
   const operations = extractTaskPlanMetricOperations({
     steps: [
@@ -37,10 +67,10 @@ test('extractTaskPlanMetricOperations derives stable semantic operation for grap
         target: {
           asset_path: '/Game/Blueprints/BP_StoneGate',
           graph: 'EventGraph',
-          patch_scope: 'container_action',
+          patch_scope: 'pin_default',
         },
         args: {
-          patch_type: 'replace_node',
+          patch_type: 'set_pin_default',
         },
       },
     ],
@@ -49,7 +79,7 @@ test('extractTaskPlanMetricOperations derives stable semantic operation for grap
   assert.deepEqual(operations, [
     {
       capability: 'graph_write',
-      semantic_operation: 'patch_blueprint_graph.container_action.replace_node',
+      semantic_operation: 'graph.patch.pin_default',
     },
   ]);
 });
@@ -111,9 +141,9 @@ test('extractTaskPlanMetricOperations folds external graph-write adapter operati
   });
 
   assert.deepEqual(operations, [
-    { capability: 'graph_write', semantic_operation: 'merge_external_flow.append_after' },
-    { capability: 'graph_write', semantic_operation: 'patch_external_graph.set_external_node_comment' },
-    { capability: 'graph_write', semantic_operation: 'replace_external_body.custom_event_body' },
+    { capability: 'graph_write', semantic_operation: 'graph.merge_external_flow.append_after' },
+    { capability: 'graph_write', semantic_operation: 'graph.patch_external_graph.node_comment' },
+    { capability: 'graph_write', semantic_operation: 'graph.replace_external_body.body' },
   ]);
 });
 

@@ -1,0 +1,47 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "ctx_cli_compile_only_fixture",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "CliCompileOnlyFixture",
+  "target": {
+    "asset_path": "/Game/BH_Tests/BP_CliCompileOnlyFixture",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EventGraph",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "replace_owned_graph",
+    "replace": {
+      "scope": "function_body",
+      "selector": {
+        "kind": "function",
+        "name": "ComputeFixtureValue"
+      },
+      "body": {
+        "schema": "BlueprintLogicSpec.v1",
+        "statements": [
+          {
+            "kind": "control",
+            "control": "return",
+            "values": {
+              "ReturnValue": {
+                "kind": "literal",
+                "value_type": "number",
+                "value": 3
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}

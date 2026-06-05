@@ -28,20 +28,24 @@ import {
 import {
   collectGraphWriteConnectivityPreflightIssues,
 } from './graphwrite-connectivity-preflight.js';
+import {
+  createGraphWriteOperationCompilerRegistry,
+} from './graphwrite/graphwrite-operation-compiler-registry.js';
+import {
+  getGraphWriteRequiredFieldByStrategy,
+  getSupportedGraphWriteStrategies,
+  normalizeSelectorWithDescriptor,
+  requireGraphWriteRouteByScope,
+} from './graphwrite/graphwrite-route-registry.js';
+import { requireGraphWriteExpressionCompiler } from './graphwrite/expression-compiler-registry.js';
+import { createDefaultTaskTypeCompilerRegistry } from './compilers/default-task-type-compilers.js';
+import { requireGraphWriteStatementCompiler } from './graphwrite/statement-compiler-registry.js';
+import { requiredNonEmptyArray } from './compiler-helpers.js';
+export { TaskSpecCompileError } from './task-compiler-errors.js';
+import { TaskSpecCompileError } from './task-compiler-errors.js';
 
 export const TASK_COMPILER_RESULT_SCHEMA = 'BlueprintHelper.TaskCompilerResult.v1';
-
-export class TaskSpecCompileError extends Error {
-  readonly code: string;
-  readonly issues: TaskIssue[];
-
-  constructor(code: string, message: string, issues: TaskIssue[]) {
-    super(message);
-    this.name = 'TaskSpecCompileError';
-    this.code = code;
-    this.issues = issues;
-  }
-}
+const defaultTaskTypeCompilerRegistry = createDefaultTaskTypeCompilerRegistry();
 
 export type TaskCompilerStrategyId = 'canonical_ts';
 
@@ -95,39 +99,24 @@ const COMPONENT_DELETE_POLICIES = [
 ] as const;
 
 export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
-  if (taskSpec.task_type === 'create_asset') {
-    return compileAssetFactoryTaskSpecToTaskPlan(taskSpec);
+  const compiler = defaultTaskTypeCompilerRegistry.get(taskSpec.task_type);
+  if (compiler) {
+    return compiler.compile(taskSpec as never, { source: 'facade' });
   }
+  return compileLegacyGraphWriteOrCompositeTaskSpecToTaskPlan(taskSpec);
+}
+
+function compileLegacyGraphWriteOrCompositeTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
+  // Migration guard: new GraphWrite public routes must enter graphwrite-route-source.json, not this legacy facade.
   if (taskSpec.task_type === 'create_blueprint_feature') {
     return compileCompositeBlueprintFeatureTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_blueprint_variables') {
-    return compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_object_properties') {
-    return compileObjectPropertiesTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_blueprint_signature') {
-    return compileBlueprintSignatureTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_blueprint_class_settings') {
-    return compileBlueprintClassSettingsTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_blueprint_components') {
-    return compileBlueprintComponentsTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_umg_widget') {
-    return compileUMGWidgetTaskSpecToTaskPlan(taskSpec);
-  }
-  if (taskSpec.task_type === 'edit_data_table') {
-    return compileDataTableTaskSpecToTaskPlan(taskSpec);
   }
   if (taskSpec.task_type !== 'edit_blueprint_graph') {
     throw new TaskSpecCompileError('unsupported_task_type', `Unsupported TaskSpec task_type: ${taskSpec.task_type}`, [
       {
         code: 'unsupported_task_type',
         path: 'task_type',
-        message: 'The canonical TypeScript compiler currently supports AssetFactory, GraphWrite, Blueprint Variables, Signature, ObjectProperty, ClassSettings, Components, UMG Widget, DataTable, and composite feature slices.',
+        message: 'The canonical TypeScript compiler currently supports registered non-GraphWrite TaskTypeCompilers plus GraphWrite and composite feature legacy facades.',
       },
     ]);
   }
@@ -151,47 +140,6 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
     },
     steps: makeGraphWriteTaskPlanSteps(taskSpec, graphWriteOps),
-  };
-}
-
-function compileAssetFactoryTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'create_asset' }>,
-): TaskPlan {
-  const asset = taskSpec.behavior.asset as Record<string, unknown>;
-  const op = omitUndefined({
-    op: 'create_asset',
-    asset_type: getRequiredString(asset, 'asset_type', 'behavior.asset.asset_type'),
-    parent_class: optionalString(asset, 'parent_class'),
-    value_type: optionalString(asset, 'value_type'),
-    fields: Array.isArray(asset['fields']) ? asset['fields'] : undefined,
-    row_struct: optionalString(asset, 'row_struct'),
-    data_asset_class: optionalString(asset, 'data_asset_class'),
-    collision: optionalString(asset, 'collision') ?? optionalString(asset, 'collision_policy'),
-  }) as { op: string; [key: string]: unknown };
-
-  return {
-    schema: TASK_PLAN_SCHEMA,
-    task_name: taskSpec.feature_name,
-    task_type: taskSpec.task_type,
-    context_id: taskSpec.context_id,
-    target_assets: [taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
-      should_compile: taskSpec.validation.should_compile,
-      should_save: taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
-    steps: [{
-      step_id: 'step_001',
-      capability: 'asset_factory',
-      target: {
-        asset_path: taskSpec.target.asset_path,
-      },
-      write: {
-        strategy: 'asset_create',
-        ops: [op],
-      },
-    }],
   };
 }
 
@@ -845,716 +793,6 @@ function withSignatureEvidence(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
   };
 }
 
-function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>): TaskPlan {
-  assertSupportedBlueprintVariablesTaskSpec(taskSpec);
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  const strategy = getRequiredString(behavior, 'variable_strategy', 'behavior.variable_strategy');
-
-  return {
-    schema: TASK_PLAN_SCHEMA,
-    task_name: taskSpec.feature_name,
-    task_type: taskSpec.task_type,
-    context_id: taskSpec.context_id,
-    target_assets: [taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
-      should_compile: taskSpec.validation.should_compile,
-      should_save: taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
-    steps: compileBlueprintVariableSteps(taskSpec.target.asset_path, behavior, strategy),
-  };
-}
-
-function compileObjectPropertiesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec, { task_type: 'edit_object_properties' }>): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'property_strategy',
-    'property_edit',
-    'behavior.property_strategy',
-    'Use property_strategy="property_edit".',
-  );
-
-  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
-  const settings = changes.map((rawChange, index) => {
-    const path = `behavior.changes[${index}]`;
-    if (!isRecord(rawChange)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
-        { code: 'invalid_property_change', path, message: 'Use { property_path, value }.' },
-      ]);
-    }
-    const change = rawChange as Record<string, unknown>;
-    if (!Object.hasOwn(change, 'value')) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
-        { code: 'missing_property_value', path: `${path}.value`, message: 'Provide value.' },
-      ]);
-    }
-    return {
-      property_path: getRequiredString(change, 'property_path', `${path}.property_path`),
-      value: literalValue(change['value']),
-    };
-  });
-
-  const op = settings.length === 1
-    ? {
-        op: 'set_object_property',
-        property_path: settings[0].property_path,
-        value: settings[0].value,
-      }
-    : {
-        op: 'set_object_properties',
-        settings,
-      };
-
-  return makeSingleCapabilityTaskPlan(
-    taskSpec,
-    'object_property',
-    'property_edit',
-    [op],
-    { property_scope: 'uobject' },
-  );
-}
-
-function compileBlueprintComponentsTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_components' }>,
-): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'component_strategy',
-    'component_tree',
-    'behavior.component_strategy',
-    'Use component_strategy="component_tree".',
-  );
-
-  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
-  const steps: TaskPlanStep[] = [];
-
-  changes.forEach((rawChange, changeIndex) => {
-    const path = `behavior.changes[${changeIndex}]`;
-    if (!isRecord(rawChange)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
-        { code: 'invalid_component_change', path, message: 'Provide a component change object.' },
-      ]);
-    }
-
-    const change = rawChange as Record<string, unknown>;
-    const kind = getRequiredString(change, 'kind', `${path}.kind`);
-    if (kind === 'ensure_component_present') {
-      const addOp = omitUndefined({
-        op: 'add_component',
-        component_name: getRequiredString(change, 'name', `${path}.name`),
-        component_class: getRequiredString(change, 'class', `${path}.class`),
-        parent_component: componentParent(change),
-        socket_name: componentSocket(change),
-        attach_rule: componentAttachRule(change),
-        name_collision_policy: normalizeComponentCollisionPolicy(change['name_collision_policy'])
-          ?? normalizeComponentCollisionPolicy(change['on_name_conflict']),
-      });
-      const addStep = makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [addOp],
-      );
-      steps.push(addStep);
-
-      const settings = propertySettingsArray(change['properties'], `${path}.properties`, false, 'component');
-      if (settings.length > 0) {
-        steps.push({
-          ...makeCompositeCapabilityStep(
-            steps.length + 1,
-            'blueprint_component',
-            taskSpec.target.asset_path,
-            'component_tree',
-            [{
-              op: 'set_component_properties',
-              component_name: addOp.component_name,
-              settings,
-            }],
-          ),
-          depends_on: [addStep.step_id],
-        } as TaskPlanStep);
-      }
-      return;
-    }
-
-    if (kind === 'configure_component') {
-      const settings = propertySettingsArray(change['properties'], `${path}.properties`, true, 'component');
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [{
-          op: 'set_component_properties',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          settings,
-        }],
-      ));
-      return;
-    }
-
-    if (kind === 'rename_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'rename_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          new_component_name: getRequiredString(change, 'new_name', `${path}.new_name`),
-        })],
-      ));
-      return;
-    }
-
-    if (kind === 'reparent_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'reparent_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          new_parent_component: requiredComponentHierarchyParent(change, `${path}.new_parent`, ['new_parent']),
-          socket_name: componentSocket(change),
-          attach_rule: componentAttachRule(change),
-          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
-        })],
-      ));
-      return;
-    }
-
-    if (kind === 'attach_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'attach_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          parent_component: requiredComponentHierarchyParent(change, `${path}.parent`, ['parent']),
-          socket_name: componentSocket(change),
-          attach_rule: componentAttachRule(change),
-          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
-        })],
-      ));
-      return;
-    }
-
-    if (kind === 'detach_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'detach_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          transform_policy: optionalComponentPolicyValue(change, 'transform_policy', COMPONENT_TRANSFORM_POLICIES, `${path}.transform_policy`, 'unsupported_transform_policy'),
-          default_root_policy: optionalComponentPolicyValue(change, 'default_root_policy', COMPONENT_DEFAULT_ROOT_POLICIES, `${path}.default_root_policy`, 'unsupported_default_root_policy'),
-        })],
-      ));
-      return;
-    }
-
-    if (kind === 'set_root_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'set_root_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          old_root_policy: optionalComponentPolicyValue(change, 'old_root_policy', COMPONENT_OLD_ROOT_POLICIES, `${path}.old_root_policy`, 'unsupported_old_root_policy'),
-          default_root_policy: optionalComponentPolicyValue(change, 'default_root_policy', COMPONENT_DEFAULT_ROOT_POLICIES, `${path}.default_root_policy`, 'unsupported_default_root_policy'),
-        })],
-      ));
-      return;
-    }
-
-    if (kind === 'remove_component') {
-      steps.push(makeCompositeCapabilityStep(
-        steps.length + 1,
-        'blueprint_component',
-        taskSpec.target.asset_path,
-        'component_tree',
-        [omitUndefined({
-          op: 'remove_component',
-          component_name: getRequiredString(change, 'name', `${path}.name`),
-          delete_policy: optionalComponentPolicyValue(change, 'delete_policy', COMPONENT_DELETE_POLICIES, `${path}.delete_policy`, 'unsupported_delete_policy'),
-        })],
-      ));
-      return;
-    }
-
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported component change kind: ${kind}`, [
-      {
-        code: 'unsupported_component_change_kind',
-        path: `${path}.kind`,
-        message: 'Use ensure_component_present, configure_component, rename_component, reparent_component, attach_component, detach_component, set_root_component, or remove_component.',
-      },
-    ]);
-  });
-
-  return makeTaskPlanWithSteps(taskSpec, steps);
-}
-
-function compileUMGWidgetTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_umg_widget' }>,
-): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'widget_strategy',
-    'widget_blueprint_edit',
-    'behavior.widget_strategy',
-    'Use widget_strategy="widget_blueprint_edit".',
-  );
-
-  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
-  const steps = changes.map((rawChange, index) => {
-    const path = `behavior.changes[${index}]`;
-    if (!isRecord(rawChange)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
-        { code: 'invalid_umg_widget_change', path, message: 'Provide a UMG widget change object.' },
-      ]);
-    }
-
-    const change = rawChange as Record<string, unknown>;
-    const kind = getRequiredString(change, 'kind', `${path}.kind`);
-    if (kind === 'create_widget') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [omitUndefined({
-          op: 'add_widget',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          widget_class: getRequiredString(change, 'widget_class', `${path}.widget_class`),
-          parent_widget_name: optionalString(change, 'parent_widget_name'),
-          parent_name: optionalString(change, 'parent_name'),
-        })],
-      );
-    }
-
-    if (kind === 'update_widget_property') {
-      if (!Object.hasOwn(change, 'value')) {
-        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
-          {
-            code: 'missing_umg_widget_property_value',
-            path: `${path}.value`,
-            message: 'Provide value for update_widget_property.',
-          },
-        ]);
-      }
-      const propertyPath = optionalString(change, 'property_path');
-      const propertyName = optionalString(change, 'property_name');
-      if (!propertyPath && !propertyName) {
-        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.property_path is required.`, [
-          {
-            code: 'missing_umg_widget_property_path',
-            path: `${path}.property_path`,
-            message: 'Provide property_path or property_name.',
-          },
-        ]);
-      }
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_property_edit',
-        [omitUndefined({
-          op: 'set_widget_property',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          property_path: propertyPath,
-          property_name: propertyName,
-          value: literalValue(change['value']),
-        })],
-      );
-    }
-
-    if (kind === 'delete_widget') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [{
-          op: 'remove_widget',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-        }],
-      );
-    }
-
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported UMG widget change kind: ${kind}`, [
-      {
-        code: 'unsupported_umg_widget_change_kind',
-        path: `${path}.kind`,
-        message: 'Use create_widget, update_widget_property, or delete_widget.',
-      },
-    ]);
-  });
-
-  return makeTaskPlanWithSteps(taskSpec, steps);
-}
-
-function compileDataTableTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_data_table' }>,
-): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'row_strategy',
-    'row_edit',
-    'behavior.row_strategy',
-    'Use row_strategy="row_edit".',
-  );
-
-  const rows = requiredArray(behavior, 'rows', 'behavior.rows');
-  const steps = rows.map((rawRow, index) => {
-    const path = `behavior.rows[${index}]`;
-    if (!isRecord(rawRow)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
-        { code: 'invalid_data_table_row', path, message: 'Provide a DataTable row object.' },
-      ]);
-    }
-
-    const row = rawRow as Record<string, unknown>;
-    const action = getRequiredString(row, 'action', `${path}.action`);
-    const rowName = getRequiredString(row, 'row_name', `${path}.row_name`);
-
-    if (action === 'add') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'data_table',
-        taskSpec.target.asset_path,
-        'row_edit',
-        [omitUndefined({
-          op: 'add_row',
-          row_name: rowName,
-          fields: optionalFieldsObject(row['fields'], `${path}.fields`, false),
-        })],
-      );
-    }
-
-    if (action === 'update') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'data_table',
-        taskSpec.target.asset_path,
-        'row_edit',
-        [{
-          op: 'update_row',
-          row_name: rowName,
-          fields: optionalFieldsObject(row['fields'], `${path}.fields`, true),
-        }],
-      );
-    }
-
-    if (action === 'delete') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'data_table',
-        taskSpec.target.asset_path,
-        'row_edit',
-        [{
-          op: 'delete_row',
-          row_name: rowName,
-        }],
-      );
-    }
-
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `Unsupported DataTable row action: ${action}`, [
-      {
-        code: 'unsupported_data_table_row_action',
-        path: `${path}.action`,
-        message: 'Use add, update, or delete.',
-      },
-    ]);
-  });
-
-  return makeTaskPlanWithSteps(taskSpec, steps);
-}
-
-function compileBlueprintClassSettingsTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_class_settings' }>,
-): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'class_settings_strategy',
-    'class_settings',
-    'behavior.class_settings_strategy',
-    'Use class_settings_strategy="class_settings".',
-  );
-
-  if (Object.hasOwn(behavior, 'parent_class')) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Use behavior.reparent.new_parent_class for Blueprint reparent operations.', [
-      {
-        code: 'legacy_parent_class_field',
-        path: 'behavior.parent_class',
-        message: 'Use behavior.reparent.new_parent_class.',
-      },
-    ]);
-  }
-
-  const ops: Record<string, unknown>[] = [];
-  const interfaces = asRecord(behavior['interfaces']);
-  const ensurePresent = stringArrayOrEmpty(interfaces?.['ensure_present'], 'behavior.interfaces.ensure_present');
-  if (ensurePresent.length > 0) {
-    ops.push({
-      op: 'add_implemented_interfaces',
-      interface_paths: ensurePresent,
-    });
-  }
-
-  const ensureAbsent = stringArrayOrEmpty(interfaces?.['ensure_absent'], 'behavior.interfaces.ensure_absent');
-  if (ensureAbsent.length > 0) {
-    ops.push({
-      op: 'remove_implemented_interfaces',
-      interface_paths: ensureAbsent,
-    });
-  }
-
-  const classDefaults = classSettingsDefaultArray(behavior['class_defaults'], 'behavior.class_defaults');
-  if (classDefaults.length > 0) {
-    ops.push({
-      op: 'set_class_default_properties',
-      settings: classDefaults,
-    });
-  }
-
-  const reparent = asRecord(behavior['reparent']);
-  if (reparent) {
-    ops.push({
-      op: 'reparent_blueprint',
-      new_parent_class: getRequiredString(reparent, 'new_parent_class', 'behavior.reparent.new_parent_class'),
-    });
-  }
-
-  if (ops.length === 0) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'edit_blueprint_class_settings requires at least one class settings change.', [
-      {
-        code: 'missing_class_settings_change',
-        path: 'behavior',
-        message: 'Provide interfaces, class_defaults, or reparent.new_parent_class.',
-      },
-    ]);
-  }
-
-  return makeTaskPlanWithSteps(
-    taskSpec,
-    ops.map((op, index) => makeCompositeCapabilityStep(
-      index + 1,
-      'blueprint_class_settings',
-      taskSpec.target.asset_path,
-      'class_settings',
-      [op],
-    )),
-  );
-}
-
-function compileBlueprintSignatureTaskSpecToTaskPlan(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_signature' }>,
-): TaskPlan {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  assertExactString(
-    behavior,
-    'signature_strategy',
-    'signature_edit',
-    'behavior.signature_strategy',
-    'Use signature_strategy="signature_edit".',
-  );
-
-  const changes = requiredArray(behavior, 'changes', 'behavior.changes');
-  const steps = changes.map((rawChange, index) => {
-    const path = `behavior.changes[${index}]`;
-    if (!isRecord(rawChange)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
-        { code: 'invalid_signature_change', path, message: 'Provide a signature change object.' },
-      ]);
-    }
-    const op = compileBlueprintSignatureOp(rawChange, path);
-    return makeCompositeCapabilityStep(
-      index + 1,
-      'blueprint_signature',
-      taskSpec.target.asset_path,
-      blueprintSignatureStrategyForOp(op),
-      [op],
-    );
-  });
-
-  return makeTaskPlanWithSteps(taskSpec, steps);
-}
-
-function compileBlueprintSignatureOp(change: Record<string, unknown>, path: string): Record<string, unknown> {
-  const kind = getRequiredString(change, 'kind', `${path}.kind`);
-  if (kind === 'ensure_function' || kind === 'ensure_interface_function') {
-    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
-    const outputs = optionalSignaturePinSpecs(change['outputs'], `${path}.outputs`);
-    const op = omitUndefined({
-      op: 'ensure_function',
-      function_name: getRequiredString(change, 'function_name', `${path}.function_name`),
-      interface_path: kind === 'ensure_interface_function'
-        ? getRequiredString(change, 'interface_path', `${path}.interface_path`)
-        : optionalString(change, 'interface_path'),
-      interface_entry_kind: kind === 'ensure_interface_function' ? 'function' : undefined,
-      inputs,
-      outputs,
-      is_pure: change['is_pure'],
-      name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
-    });
-    return op;
-  }
-
-  if (kind === 'ensure_custom_event' || kind === 'ensure_interface_event') {
-    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
-    return omitUndefined({
-      op: 'ensure_custom_event',
-      event_name: getRequiredString(change, 'event_name', `${path}.event_name`),
-      graph_name: getRequiredString(change, 'graph_name', `${path}.graph_name`),
-      interface_path: kind === 'ensure_interface_event'
-        ? getRequiredString(change, 'interface_path', `${path}.interface_path`)
-        : optionalString(change, 'interface_path'),
-      interface_entry_kind: kind === 'ensure_interface_event' ? 'event' : undefined,
-      inputs,
-      name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
-    });
-  }
-
-  if (kind === 'ensure_event_dispatcher') {
-    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
-    return omitUndefined({
-      op: 'ensure_event_dispatcher',
-      dispatcher_name: getRequiredString(change, 'dispatcher_name', `${path}.dispatcher_name`),
-      inputs,
-      name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
-      signature_mismatch_policy: optionalString(change, 'signature_mismatch_policy') ?? 'block',
-    });
-  }
-
-  if (kind === 'ensure_override_event') {
-    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
-    return omitUndefined({
-      op: 'ensure_override_event',
-      event_name: getRequiredString(change, 'event_name', `${path}.event_name`),
-      event_kind: optionalString(change, 'event_kind') ?? 'native_event',
-      graph_name: optionalString(change, 'graph_name'),
-      inputs,
-      execute_policy: optionalString(change, 'execute_policy') ?? 'blocked_preflight',
-    });
-  }
-
-  if (kind === 'remove_signature') {
-    const signatureKind = optionalString(change, 'signature_kind') ?? inferRemoveSignatureKind(change);
-    if (change['require_reference_context'] === false) {
-      throw new TaskSpecCompileError('invalid_signature_remove_policy', `${path}.require_reference_context must be true.`, [
-        {
-          code: 'invalid_signature_remove_policy',
-          path: `${path}.require_reference_context`,
-          message: 'Signature removal requires reference context in this slice.',
-        },
-      ]);
-    }
-    return omitUndefined({
-      op: 'remove_signature',
-      signature_kind: signatureKind,
-      signature_name: removeSignatureName(change, signatureKind, path),
-      graph_name: change['graph_name'],
-      execute_policy: optionalString(change, 'execute_policy') ?? 'blocked_preflight',
-      require_reference_context: typeof change['require_reference_context'] === 'boolean'
-        ? change['require_reference_context']
-        : true,
-    });
-  }
-
-  throw new TaskSpecCompileError('unsupported_signature_change', `Unsupported signature change kind: ${kind}.`, [
-    {
-      code: 'unsupported_signature_change',
-      path: `${path}.kind`,
-      message: 'Use ensure_function, ensure_interface_function, ensure_custom_event, ensure_interface_event, ensure_event_dispatcher, ensure_override_event, or remove_signature.',
-    },
-  ]);
-}
-
-function optionalSignaturePinSpecs(value: unknown, path: string): Array<Record<string, unknown>> | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an array.`, [
-      {
-        code: 'invalid_signature_pins',
-        path,
-        message: 'Provide signature pins as an array of objects.',
-      },
-    ]);
-  }
-
-  return value.map((rawPin, index) => {
-    const pinPath = `${path}[${index}]`;
-    if (!isRecord(rawPin)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${pinPath} must be an object.`, [
-        {
-          code: 'invalid_signature_pin',
-          path: pinPath,
-          message: 'Provide a signature pin object.',
-        },
-      ]);
-    }
-
-    return {
-      ...rawPin,
-      name: getRequiredString(rawPin, 'name', `${pinPath}.name`),
-      pin_type: requireStructuredPinType(rawPin['pin_type'], `${pinPath}.pin_type`),
-    };
-  });
-}
-
-function blueprintSignatureStrategyForOp(op: Record<string, unknown>): string {
-  if (op['op'] === 'ensure_event_dispatcher') return 'event_dispatcher_signature';
-  if (op['op'] === 'ensure_override_event') return 'override_event_signature';
-  if (op['op'] === 'ensure_custom_event') return 'custom_event_signature';
-  if (op['op'] === 'remove_signature') {
-    const kind = String(op['signature_kind'] ?? 'function');
-    if (kind === 'event_dispatcher') return 'event_dispatcher_signature';
-    if (kind === 'override_event' || kind === 'native_event') return 'override_event_signature';
-    if (kind === 'custom_event' || kind === 'interface_event') return 'custom_event_signature';
-  }
-  return 'function_signature';
-}
-
-function inferRemoveSignatureKind(change: Record<string, unknown>): string {
-  if (typeof change['dispatcher_name'] === 'string') return 'event_dispatcher';
-  if (typeof change['event_name'] === 'string') return 'custom_event';
-  return 'function';
-}
-
-function removeSignatureName(change: Record<string, unknown>, signatureKind: string, path: string): string {
-  if (typeof change['signature_name'] === 'string' && change['signature_name'].length > 0) {
-    return change['signature_name'];
-  }
-  if ((signatureKind === 'function' || signatureKind === 'interface_function') && typeof change['function_name'] === 'string') {
-    return change['function_name'];
-  }
-  if ((signatureKind === 'custom_event' || signatureKind === 'interface_event' || signatureKind === 'override_event' || signatureKind === 'native_event') && typeof change['event_name'] === 'string') {
-    return change['event_name'];
-  }
-  if (signatureKind === 'event_dispatcher' && typeof change['dispatcher_name'] === 'string') {
-    return change['dispatcher_name'];
-  }
-  return getRequiredString(change, 'signature_name', `${path}.signature_name`);
-}
-
 function makeSingleCapabilityTaskPlan(
   taskSpec: TaskSpec,
   capability: string,
@@ -1805,25 +1043,18 @@ function assertSupportedTaskSpec(taskSpec: TaskSpec) {
 
   const behavior = taskSpec.behavior as Record<string, unknown>;
   const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
-  if (!['append_new_owned_graph', 'replace_owned_graph', 'patch_owned_graph', 'merge_owned_graph', 'merge_external_flow', 'patch_external_graph', 'replace_external_body'].includes(strategy)) {
+  const supportedStrategies = getSupportedGraphWriteStrategies();
+  if (!supportedStrategies.includes(strategy)) {
     throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
       {
         code: 'unsupported_graph_strategy',
         path: 'behavior.graph_strategy',
-        message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph, merge_external_flow, patch_external_graph, or replace_external_body.',
-        suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
+        message: `Use ${supportedStrategies.join(', ')}.`,
+        suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: supportedStrategies[0] ?? 'append_new_owned_graph' },
       },
     ]);
   }
-  const requiredFieldByStrategy: Record<string, string> = {
-    append_new_owned_graph: 'entries',
-    replace_owned_graph: 'replace',
-    patch_owned_graph: 'patches',
-    merge_owned_graph: 'merges',
-    merge_external_flow: 'external_merges',
-    patch_external_graph: 'external_patches',
-    replace_external_body: 'external_replace',
-  };
+  const requiredFieldByStrategy = getGraphWriteRequiredFieldByStrategy();
   const requiredField = requiredFieldByStrategy[strategy];
   for (const field of ['entries', 'replace', 'patches', 'merges', 'external_merges', 'external_patches', 'external_replace']) {
     if (field !== requiredField && behavior[field] !== undefined) {
@@ -1956,6 +1187,37 @@ interface LogicCloneOptions {
   graphLocalSymbols?: Set<string>;
 }
 
+const graphWriteOperationCompilerRegistry = createGraphWriteOperationCompilerRegistry([
+  {
+    compilerId: 'append_new_owned_graph',
+    compile: (behavior, options) => compileAppendGraphWriteOps(behavior, options),
+  },
+  {
+    compilerId: 'replace_body',
+    compile: (behavior, options) => [compileReplaceGraphWriteOp(behavior, options)],
+  },
+  {
+    compilerId: 'patch_owned_graph',
+    compile: (behavior) => compilePatchGraphWriteOps(behavior),
+  },
+  {
+    compilerId: 'merge_owned_graph',
+    compile: (behavior) => compileMergeGraphWriteOps(behavior),
+  },
+  {
+    compilerId: 'merge_external_flow',
+    compile: (behavior, options) => compileExternalMergeGraphWriteOps(behavior, options),
+  },
+  {
+    compilerId: 'patch_external_graph',
+    compile: (behavior) => compileExternalPatchGraphWriteOps(behavior),
+  },
+  {
+    compilerId: 'replace_external_body',
+    compile: (behavior, options) => [compileExternalReplaceBodyGraphWriteOp(behavior, options)],
+  },
+]);
+
 function makeCustomEventSignatureEvidenceId(eventName: string): string {
   return `signature:custom_event:${eventName}`;
 }
@@ -1964,37 +1226,7 @@ function compileGraphWriteOps(
   behavior: Record<string, unknown>,
   options: GraphWriteCompileOptions = {},
 ): GraphWriteCompiledOp[] {
-  const strategy = getRequiredString(behavior, 'graph_strategy', 'behavior.graph_strategy');
-  if (strategy === 'append_new_owned_graph') {
-    return compileAppendGraphWriteOps(behavior, options);
-  }
-  if (strategy === 'replace_owned_graph') {
-    return [compileReplaceGraphWriteOp(behavior, options)];
-  }
-  if (strategy === 'patch_owned_graph') {
-    return compilePatchGraphWriteOps(behavior);
-  }
-  if (strategy === 'merge_owned_graph') {
-    return compileMergeGraphWriteOps(behavior);
-  }
-  if (strategy === 'merge_external_flow') {
-    return compileExternalMergeGraphWriteOps(behavior, options);
-  }
-  if (strategy === 'patch_external_graph') {
-    return compileExternalPatchGraphWriteOps(behavior);
-  }
-  if (strategy === 'replace_external_body') {
-    return [compileExternalReplaceBodyGraphWriteOp(behavior, options)];
-  }
-
-  throw new TaskSpecCompileError('unsupported_graph_strategy', 'Unsupported GraphWrite graph_strategy.', [
-    {
-      code: 'unsupported_graph_strategy',
-      path: 'behavior.graph_strategy',
-      message: 'Use append_new_owned_graph, replace_owned_graph, patch_owned_graph, merge_owned_graph, merge_external_flow, patch_external_graph, or replace_external_body.',
-      suggested_patch: { op: 'replace', path: '/behavior/graph_strategy', value: 'append_new_owned_graph' },
-    },
-  ]);
+  return graphWriteOperationCompilerRegistry.compile(behavior, options) as GraphWriteCompiledOp[];
 }
 
 function assertGraphWriteConnectivityPreflight(
@@ -2093,18 +1325,23 @@ function compileReplaceGraphWriteOp(
 ): GraphWriteCompiledOp {
   const replace = requiredRecord(behavior, 'replace', 'behavior.replace');
   const replaceScope = getRequiredString(replace, 'scope', 'behavior.replace.scope');
-  assertAllowedString(
-    replaceScope,
-    'behavior.replace.scope',
-    ['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation'],
-    'Use graph, custom_event_definition, custom_event_body, function_body, event_body, or block_implementation.',
-  );
   const graphWriteReplaceScope = replaceScope === 'custom_event_definition'
     ? 'custom_event_body'
     : replaceScope;
+  const route = requireGraphWriteRouteByScope('replace_owned_graph', graphWriteReplaceScope);
+  if (!route.selector) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite replace route is missing selector metadata.', [
+      {
+        code: 'missing_graphwrite_selector_descriptor',
+        path: 'behavior.replace.scope',
+        message: `Descriptor ${route.route_id} must define selector metadata.`,
+      },
+    ]);
+  }
   const selector = normalizeReplaceSelector(
     graphWriteReplaceScope,
     requiredRecord(replace, 'selector', 'behavior.replace.selector'),
+    route.selector,
   );
   const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
   validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
@@ -2424,19 +1661,6 @@ const FORBIDDEN_AGENT_DELEGATE_INTERNAL_KINDS = new Set([
   'delegate_call',
   'delegate_clear',
 ]);
-const SUPPORTED_GRAPH_BODY_STATEMENT_KINDS = new Set([
-  'call',
-  'field',
-  'set',
-  'set_property',
-  'let',
-  'control',
-  'create',
-  'convert',
-  'schedule',
-  CONTAINER_ACTION_KIND,
-  ...PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.keys(),
-]);
 const VALUE_PRODUCING_STATEMENT_KINDS = new Set([
   'call',
   'create',
@@ -2463,21 +1687,6 @@ const SUPPORTED_GRAPH_BODY_CONTROL_KINDS = new Set([
   ...GRAPH_BODY_SWITCH_CONTROL_KINDS,
   ...GRAPH_BODY_DYNAMIC_CONTROL_KINDS,
   ...GRAPH_BODY_MACRO_CONTROL_KINDS,
-]);
-const SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS = new Set([
-  'literal',
-  'field',
-  'get',
-  'get_property',
-  'call',
-  'op',
-  'construct',
-  'deconstruct',
-  'select',
-  'create',
-  'convert',
-  'schedule',
-  CONTAINER_ACTION_KIND,
 ]);
 const GRAPH_CONVERT_SCHEDULE_FIELDS = [
   'function_operation',
@@ -3200,15 +2409,23 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
         },
       ]);
     }
-    if (!SUPPORTED_GRAPH_BODY_STATEMENT_KINDS.has(kind)) {
+    if (kind === 'branch' || kind === 'return' || kind === 'sequence') {
       throw new TaskSpecCompileError('unsupported_statement_kind', 'Unsupported GraphWrite statement kind.', [
         {
           code: 'unsupported_statement_kind',
           path: `${statementPath}.kind`,
-          message: 'Use call, field, create, convert, schedule, set, set_property, let, control, container_action, component_bound_event, or delegate.*.',
+          message: 'Use kind=control with control=branch, control=return, or control=sequence.',
         },
       ]);
     }
+    const delegateOperation = delegateStatementOperation(statementRecord);
+    const initialControlKind = kind === 'control' ? getControlStatementKind(statementRecord, statementPath) : undefined;
+    requireGraphWriteStatementCompiler({
+      kind,
+      path: statementPath,
+      controlKind: initialControlKind,
+      delegateOperation,
+    });
     validateStatementResultSymbol(statementRecord, statementPath);
     if (PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES.has(kind)) {
       validateDelegateStatementShape(statementRecord, statementPath);
@@ -3238,7 +2455,7 @@ function validateSupportedStatements(statements: BlueprintLogicStatement[], path
     } else if (kind === 'let' || kind === 'set' || kind === 'set_property') {
       validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
     } else if (kind === 'control') {
-      const controlKind = getControlStatementKind(statementRecord, statementPath);
+      const controlKind = initialControlKind ?? getControlStatementKind(statementRecord, statementPath);
       if (controlKind === 'branch') {
         validateSupportedExpression(statementRecord.condition, `${statementPath}.condition`);
         validateSupportedStatements(Array.isArray(statementRecord.then) ? statementRecord.then as BlueprintLogicStatement[] : [], `${statementPath}.then`);
@@ -3318,15 +2535,11 @@ function validateSupportedExpression(expression: unknown, path: string): void {
   if (!isRecord(expression)) return;
   validateStructuredGraphWritePinTypeUsage(expression, path);
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
-  if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
-    throw new TaskSpecCompileError('unsupported_expression_kind', 'Unsupported GraphWrite expression kind.', [
-      {
-        code: 'unsupported_expression_kind',
-        path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action.',
-      },
-    ]);
-  }
+  requireGraphWriteExpressionCompiler({
+    kind,
+    path,
+    capabilityId: optionalString(expression, 'capability_id'),
+  });
   if (kind === CONTAINER_ACTION_KIND) {
     validateContainerActionShape(expression, path, 'expression');
     validateContainerActionRoleExpressions(expression, path);
@@ -3800,39 +3013,41 @@ function isContainerActionPureOperation(containerKind: string, containerOperatio
   return isExpressionContainerActionOperation(containerKind, containerOperation);
 }
 
+// Migration guard: new GraphWrite statement kinds must enter graphwrite-slot-source.json and StatementCompilerRegistry.
 function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   const delegateOperation = delegateStatementOperation(statementRecord);
-  if (kind === 'control') {
-    const controlKind = getControlStatementKind(statementRecord, path);
-    if (controlKind === 'branch') {
+  const controlKind = kind === 'control' ? getControlStatementKind(statementRecord, path) : undefined;
+  const statementCompilerId = requireGraphWriteStatementCompiler({
+    kind,
+    path,
+    controlKind,
+    delegateOperation,
+  }).compiler_id;
+
+  if (statementCompilerId === 'statement.control.branch') {
+    if (kind === 'control') {
       return compileBranchStatementFlow({ ...statementRecord, kind: 'branch' } as BlueprintLogicStatement, nodeId, path, context);
     }
-    if (controlKind === 'return') {
-      return compileReturnStatementFlow(statementRecord, nodeId, path, context);
-    }
-    if (isGenericControlKind(controlKind)) {
-      const node = compileStatementNode(statement, nodeId, path);
-      return {
-        nodes: [node],
-        links: [],
-        entry: `${nodeId}.execute`,
-        exits: [`${nodeId}.then`],
-      };
-    }
-    return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
-  }
-  if (kind === 'branch') {
     return compileBranchStatementFlow(statement, nodeId, path, context);
   }
-  if (kind === 'return') {
+  if (statementCompilerId === 'statement.control.return') {
     return compileReturnStatementFlow(statementRecord, nodeId, path, context);
   }
-  if (kind === 'sequence') {
+  if (statementCompilerId === 'statement.control.sequence') {
     return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
   }
-  if (kind === 'let') {
+  if (statementCompilerId === 'statement.control.generic') {
+    const node = compileStatementNode(statement, nodeId, path);
+    return {
+      nodes: [node],
+      links: [],
+      entry: `${nodeId}.execute`,
+      exits: [`${nodeId}.then`],
+    };
+  }
+  if (statementCompilerId === 'statement.let') {
     const name = getRequiredString(statementRecord, 'name', `${path}.name`);
     const valueFlow = compileValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);
     context.symbols.set(name.toLowerCase(), {
@@ -3846,7 +3061,7 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
       preservePreviousExits: true,
     };
   }
-  if (kind === CONTAINER_ACTION_KIND) {
+  if (statementCompilerId === 'statement.container_action') {
     const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
     const node = compileStatementNode(statement, nodeId, path);
     const nodes: AgentImportNode[] = [node];
@@ -4041,27 +3256,23 @@ function compileBranchCondition(condition: unknown, nodeId: string, path: string
   return compileValueExpression(condition, nodeId, path, context);
 }
 
+// Migration guard: new GraphWrite expression kinds must enter graphwrite-slot-source.json and ExpressionCompilerRegistry.
 function compileValueExpression(expression: unknown, nodeId: string, path: string, context: CompileFlowContext): CompiledConditionFlow {
   if (!isRecord(expression)) {
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
   }
 
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
-  if (kind === 'literal') {
+  const expressionCompilerId = requireGraphWriteExpressionCompiler({
+    kind,
+    path,
+    capabilityId: optionalString(expression, 'capability_id'),
+  }).compiler_id;
+  if (expressionCompilerId === 'expression.literal') {
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
   }
 
-  if (!SUPPORTED_GRAPH_BODY_EXPRESSION_KINDS.has(kind)) {
-    throw new TaskSpecCompileError('unsupported_expression_kind', `Unsupported expression kind: ${kind}`, [
-      {
-        code: 'unsupported_expression_kind',
-        path: `${path}.kind`,
-        message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action.',
-      },
-    ]);
-  }
-
-  if (kind === CONTAINER_ACTION_KIND) {
+  if (expressionCompilerId === 'expression.container_action') {
     const { containerKind, containerOperation } = validateContainerActionShape(expression, path, 'expression');
     const node: AgentImportNode = {
       id: nodeId,
@@ -4078,7 +3289,9 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
     return { nodes, links, output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}` };
   }
 
-  if (kind === 'get' || kind === 'get_property' || kind === 'field') {
+  if (expressionCompilerId === 'expression.get'
+    || expressionCompilerId === 'expression.get_property'
+    || expressionCompilerId === 'expression.field') {
     const target = kind === 'get'
       ? (optionalString(expression, 'target') ?? getRequiredString(expression, 'name', `${path}.name`))
       : getRequiredString(expression, 'target', `${path}.target`);
@@ -4264,46 +3477,9 @@ function defaultPatchScope(kind: string): string {
 function normalizeReplaceSelector(
   replaceScope: string,
   selector: Record<string, unknown>,
+  descriptor: Parameters<typeof normalizeSelectorWithDescriptor>[0],
 ): Record<string, unknown> {
-  const kind = getRequiredString(selector, 'kind', 'behavior.replace.selector.kind');
-  const out: Record<string, unknown> = {};
-  copyOptionalStringFields(selector, out, ['graph_id', 'node_ref', 'node_path']);
-
-  if (replaceScope === 'graph') {
-    requireSelectorKind(kind, 'graph', replaceScope);
-    return out;
-  }
-  if (replaceScope === 'custom_event_body') {
-    requireSelectorKind(kind, 'custom_event', replaceScope);
-    out['entry_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
-    return out;
-  }
-  if (replaceScope === 'event_body') {
-    requireSelectorKind(kind, 'event', replaceScope);
-    out['entry_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
-    return out;
-  }
-  if (replaceScope === 'function_body') {
-    requireSelectorKind(kind, 'function', replaceScope);
-    out['function_name'] = getRequiredString(selector, 'name', 'behavior.replace.selector.name');
-    return out;
-  }
-
-  requireSelectorKind(kind, 'block', replaceScope);
-  out['block_id'] = getRequiredString(selector, 'block_id', 'behavior.replace.selector.block_id');
-  copyOptionalStringFields(selector, out, ['target_ref', 'block_ref']);
-  return out;
-}
-
-function requireSelectorKind(actual: string, expected: string, replaceScope: string): void {
-  if (actual === expected) return;
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', `replace selector kind must match ${replaceScope}.`, [
-    {
-      code: 'replace_selector_scope_mismatch',
-      path: 'behavior.replace.selector.kind',
-      message: `${replaceScope} requires selector.kind="${expected}".`,
-    },
-  ]);
+  return normalizeSelectorWithDescriptor(descriptor, selector, 'behavior.replace.selector', replaceScope);
 }
 
 function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown>, path: string): Record<string, unknown> {
@@ -4937,465 +4113,7 @@ function requiredRecord(record: Record<string, unknown>, field: string, path: st
   ]);
 }
 
-function assertSupportedBlueprintVariablesTaskSpec(taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_variables' }>) {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  const strategy = getRequiredString(behavior, 'variable_strategy', 'behavior.variable_strategy');
-  if (!['member_variables', 'member_defaults', 'local_variables'].includes(strategy)) {
-    throw new TaskSpecCompileError('unsupported_variable_strategy', 'Only member_variables is supported in the Blueprint Variables slice.', [
-      {
-        code: 'unsupported_variable_strategy',
-        path: 'behavior.variable_strategy',
-        message: 'Use member_variables, member_defaults, or local_variables.',
-        suggested_patch: { op: 'replace', path: '/behavior/variable_strategy', value: 'member_variables' },
-      },
-    ]);
-  }
-
-  if (strategy === 'local_variables') {
-    getRequiredString(behavior, 'function_name', 'behavior.function_name');
-  }
-
-  compileBlueprintVariableOps(behavior);
-}
-
 type BlueprintVariableCompiledOp = Record<string, unknown> & { op: string };
-
-function compileBlueprintVariableOps(behavior: Record<string, unknown>): BlueprintVariableCompiledOp[] {
-  const strategy = getRequiredString(behavior, 'variable_strategy', 'behavior.variable_strategy');
-  if (strategy === 'member_variables') {
-    const entries = Array.isArray(behavior['changes'])
-      ? behavior['changes']
-      : Array.isArray(behavior['variables'])
-        ? behavior['variables']
-        : undefined;
-    if (!entries || entries.length === 0) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'behavior.changes must contain at least one variable change.', [
-        {
-          code: 'missing_variables',
-          path: Array.isArray(behavior['variables']) ? 'behavior.variables' : 'behavior.changes',
-          message: 'Provide at least one variable change.',
-        },
-      ]);
-    }
-    return entries.map((entry, index) => compileMemberVariableChange(entry, `behavior.${Array.isArray(behavior['changes']) ? 'changes' : 'variables'}[${index}]`));
-  }
-
-  if (strategy === 'member_defaults') {
-    const defaults = behavior['defaults'];
-    if (!Array.isArray(defaults) || defaults.length === 0) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'behavior.defaults must contain at least one default change.', [
-        {
-          code: 'missing_variables',
-          path: 'behavior.defaults',
-          message: 'Provide at least one member default change.',
-        },
-      ]);
-    }
-    return defaults.map((entry, index) => compileMemberDefaultChange(entry, `behavior.defaults[${index}]`));
-  }
-
-  const changes = behavior['changes'];
-  if (!Array.isArray(changes) || changes.length === 0) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'behavior.changes must contain at least one local variable change.', [
-      {
-        code: 'missing_variables',
-        path: 'behavior.changes',
-        message: 'Provide at least one local variable change.',
-      },
-    ]);
-  }
-  const functionName = getRequiredString(behavior, 'function_name', 'behavior.function_name');
-  return changes.map((entry, index) => compileLocalVariableChange(entry, functionName, `behavior.changes[${index}]`));
-}
-
-function compileBlueprintVariableSteps(
-  assetPath: string,
-  behavior: Record<string, unknown>,
-  strategy: string,
-): TaskPlanStep[] {
-  if (strategy !== 'member_variables') {
-    return [
-      blueprintVariableStep(
-        'step_001',
-        {
-          asset_path: assetPath,
-          ...(strategy === 'local_variables'
-            ? { function_name: getRequiredString(behavior, 'function_name', 'behavior.function_name') }
-            : {}),
-        },
-        strategy,
-        compileBlueprintVariableOps(behavior),
-      ),
-    ];
-  }
-
-  const entries = Array.isArray(behavior['changes'])
-    ? behavior['changes']
-    : Array.isArray(behavior['variables'])
-      ? behavior['variables']
-      : [];
-  const pathPrefix = Array.isArray(behavior['changes']) ? 'behavior.changes' : 'behavior.variables';
-  const target = { asset_path: assetPath };
-  const steps = [
-    blueprintVariableStep(
-      'step_001',
-      target,
-      'member_variables',
-      entries.map((entry, index) => compileMemberVariableChange(entry, `${pathPrefix}[${index}]`)),
-    ),
-  ];
-  const defaultOps = entries
-    .map((entry, index) => compileMemberDefaultFromVariableEntry(entry, `${pathPrefix}[${index}]`))
-    .filter((op): op is BlueprintVariableCompiledOp => op !== undefined);
-  if (defaultOps.length > 0) {
-    steps.push({
-      ...blueprintVariableStep('step_002', target, 'member_defaults', defaultOps),
-      depends_on: ['step_001'],
-    });
-  }
-  return steps;
-}
-
-function blueprintVariableStep(
-  stepId: string,
-  target: Record<string, unknown>,
-  strategy: string,
-  ops: BlueprintVariableCompiledOp[],
-): TaskPlanStep {
-  return {
-    step_id: stepId,
-    capability: 'blueprint_variable',
-    target,
-    write: {
-      strategy,
-      ops,
-    },
-    constraints: {
-      allow_remove_referenced_variables: false,
-    },
-  } as TaskPlanStep;
-}
-
-function compileMemberVariableChange(rawEntry: unknown, path: string): BlueprintVariableCompiledOp {
-  if (!isRecord(rawEntry)) {
-    throwInvalidVariable(path);
-  }
-  const entry = rawEntry as Record<string, unknown>;
-  if ('op' in entry && !('kind' in entry)) {
-    if (entry['op'] !== 'ensure_member_variable') {
-      throw new TaskSpecCompileError('unsupported_variable_op', 'Only ensure_member_variable is supported in the Blueprint Variables slice.', [
-        {
-          code: 'unsupported_variable_op',
-          path: `${path}.op`,
-          message: 'Replace adapter-style op with a semantic kind.',
-        },
-      ]);
-    }
-    const out = { ...entry };
-    if (!isRecord(out['pin_type'])) {
-      if (isRecord(out['variable_type'])) {
-        out['pin_type'] = out['variable_type'];
-        delete out['variable_type'];
-      } else {
-        throwMissingVariableType(`${path}.pin_type`);
-      }
-    }
-    return out as BlueprintVariableCompiledOp;
-  }
-
-  if (!('kind' in entry)) {
-    return omitUndefined({
-      op: 'ensure_member_variable',
-      name: getRequiredString(entry, 'name', `${path}.name`),
-      pin_type: variablePinType(entry, path),
-      category: entry['category'],
-      tooltip: entry['tooltip'],
-      flags: entry['flags'],
-      metadata: entry['metadata'],
-      name_collision: entry['name_collision'],
-    }) as BlueprintVariableCompiledOp;
-  }
-
-  const kind = getRequiredString(entry, 'kind', `${path}.kind`);
-  if (kind === 'ensure_member_variable') {
-    return omitUndefined({
-      op: 'ensure_member_variable',
-      name: getRequiredString(entry, 'name', `${path}.name`),
-      pin_type: variablePinType(entry, path),
-      category: entry['category'],
-      tooltip: entry['tooltip'],
-      flags: entry['flags'],
-      metadata: entry['metadata'],
-      name_collision: entry['name_collision'],
-    }) as BlueprintVariableCompiledOp;
-  }
-  if (kind === 'configure_member_variable') {
-    const name = getRequiredString(entry, 'name', `${path}.name`);
-    return {
-      op: 'set_member_variable_properties',
-      name,
-      settings: normalizeMemberVariablePropertySettings(entry, 'properties', `${path}.properties`, name),
-    };
-  }
-  if (kind === 'remove_member_variable') {
-    return {
-      op: 'remove_member_variable',
-      name: getRequiredString(entry, 'name', `${path}.name`),
-    };
-  }
-  throwUnsupportedVariableKind(kind, `${path}.kind`, ['ensure_member_variable', 'configure_member_variable', 'remove_member_variable']);
-}
-
-function normalizeMemberVariablePropertySettings(
-  record: Record<string, unknown>,
-  field: string,
-  path: string,
-  variableName: string,
-): unknown[] {
-  return requiredNonEmptyArray(record, field, path)
-    .map((rawSetting, index) => normalizeMemberVariablePropertySetting(rawSetting, `${path}[${index}]`, variableName));
-}
-
-function normalizeMemberVariablePropertySetting(rawSetting: unknown, path: string, variableName: string): unknown {
-  if (!isRecord(rawSetting)) {
-    return rawSetting;
-  }
-
-  const propertyPath = rawSetting['property_path'];
-  if (propertyPath !== 'replication') {
-    return rawSetting;
-  }
-
-  const rawValue = literalValue(rawSetting['value']);
-  if (!isRecord(rawValue)) {
-    throwReplicationCompileError(
-      'invalid_replication_setting',
-      `${path}.value`,
-      'Replication setting value must be an object.',
-    );
-  }
-
-  const mode = replicationStringValue(
-    rawValue,
-    'mode',
-    `${path}.value.mode`,
-    BLUEPRINT_VARIABLE_REPLICATION_MODES,
-    'invalid_replication_mode',
-    'Use one of: none, replicated, rep_notify.',
-  );
-  const condition = rawValue['condition'] === undefined
-    ? 'none'
-    : replicationStringValue(
-        rawValue,
-        'condition',
-        `${path}.value.condition`,
-        BLUEPRINT_VARIABLE_REPLICATION_CONDITIONS,
-        'invalid_replication_condition',
-        'Use a public UE editor-facing replication condition.',
-      );
-
-  if (mode === 'none' && condition !== 'none') {
-    throwReplicationCompileError(
-      'replication_condition_requires_networked_mode',
-      `${path}.value.condition`,
-      'Replication condition is accepted only for replicated and rep_notify modes.',
-    );
-  }
-
-  return {
-    ...rawSetting,
-    property_path: 'replication',
-    value: omitUndefined({
-      mode,
-      condition,
-      notify_function: mode === 'rep_notify'
-        ? optionalNonEmptyString(rawValue, 'notify_function', `${path}.value.notify_function`) ?? `OnRep_${variableName}`
-        : undefined,
-      create_notify_function: optionalBoolean(rawValue, 'create_notify_function', true, `${path}.value.create_notify_function`),
-      reuse_existing_notify_function: optionalBoolean(rawValue, 'reuse_existing_notify_function', false, `${path}.value.reuse_existing_notify_function`),
-    }),
-  };
-}
-
-function replicationStringValue(
-  record: Record<string, unknown>,
-  field: string,
-  path: string,
-  allowedValues: readonly string[],
-  code: string,
-  message: string,
-): string {
-  const value = record[field];
-  if (typeof value === 'string' && allowedValues.includes(value)) {
-    return value;
-  }
-  throwReplicationCompileError(code, path, message);
-}
-
-function optionalNonEmptyString(record: Record<string, unknown>, field: string, path: string): string | undefined {
-  const value = record[field];
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value.trim();
-  }
-  throwReplicationCompileError(
-    'rep_notify_function_missing',
-    path,
-    'RepNotify function name must be a non-empty string when provided.',
-  );
-}
-
-function optionalBoolean(record: Record<string, unknown>, field: string, fallback: boolean, path: string): boolean {
-  const value = record[field];
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  throwReplicationCompileError(
-    'invalid_replication_setting',
-    path,
-    `${field} must be a boolean.`,
-  );
-}
-
-function throwReplicationCompileError(code: string, path: string, message: string): never {
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
-    {
-      code,
-      path,
-      message,
-    },
-  ]);
-}
-
-function compileMemberDefaultFromVariableEntry(rawEntry: unknown, path: string): BlueprintVariableCompiledOp | undefined {
-  if (!isRecord(rawEntry) || !Object.hasOwn(rawEntry, 'default')) {
-    return undefined;
-  }
-  const kind = rawEntry['kind'];
-  const op = rawEntry['op'];
-  if (
-    (kind !== undefined && kind !== 'ensure_member_variable') ||
-    (op !== undefined && op !== 'ensure_member_variable')
-  ) {
-    return undefined;
-  }
-  return {
-    op: 'set_member_default',
-    name: getRequiredString(rawEntry, 'name', `${path}.name`),
-    value: literalValue(rawEntry['default']),
-  };
-}
-
-function compileMemberDefaultChange(rawEntry: unknown, path: string): BlueprintVariableCompiledOp {
-  if (!isRecord(rawEntry)) {
-    throwInvalidVariable(path);
-  }
-  if (!('value' in rawEntry)) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'set_member_default requires value.', [
-      {
-        code: 'missing_variable_default_value',
-        path: `${path}.value`,
-        message: 'Provide a default value.',
-      },
-    ]);
-  }
-  return {
-    op: 'set_member_default',
-    name: getRequiredString(rawEntry, 'name', `${path}.name`),
-    value: literalValue(rawEntry['value']),
-  };
-}
-
-function compileLocalVariableChange(rawEntry: unknown, functionName: string, path: string): BlueprintVariableCompiledOp {
-  if (!isRecord(rawEntry)) {
-    throwInvalidVariable(path);
-  }
-  const kind = getRequiredString(rawEntry, 'kind', `${path}.kind`);
-  if (kind === 'ensure_local_variable') {
-    return {
-      op: 'ensure_local_variable',
-      function_name: functionName,
-      name: getRequiredString(rawEntry, 'name', `${path}.name`),
-      pin_type: variablePinType(rawEntry, path),
-    };
-  }
-  if (kind === 'configure_local_variable') {
-    return {
-      op: 'set_local_variable_properties',
-      function_name: functionName,
-      name: getRequiredString(rawEntry, 'name', `${path}.name`),
-      settings: normalizeLocalVariablePropertySettings(rawEntry, 'properties', `${path}.properties`),
-    };
-  }
-  if (kind === 'remove_local_variable') {
-    return {
-      op: 'remove_local_variable',
-      function_name: functionName,
-      name: getRequiredString(rawEntry, 'name', `${path}.name`),
-    };
-  }
-  throwUnsupportedVariableKind(kind, `${path}.kind`, ['ensure_local_variable', 'configure_local_variable', 'remove_local_variable']);
-}
-
-function normalizeLocalVariablePropertySettings(
-  record: Record<string, unknown>,
-  field: string,
-  path: string,
-): unknown[] {
-  return requiredNonEmptyArray(record, field, path)
-    .map((rawSetting, index) => normalizeLocalVariablePropertySetting(rawSetting, `${path}[${index}]`));
-}
-
-function normalizeLocalVariablePropertySetting(rawSetting: unknown, path: string): unknown {
-  if (!isRecord(rawSetting) || rawSetting['property_path'] !== 'replication') {
-    return rawSetting;
-  }
-
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Local variable replication is unsupported; use member_variables.', [
-    {
-      code: 'local_variable_replication_unsupported',
-      path: `${path}.property_path`,
-      message: 'Replication is only supported for member variables.',
-      suggested_patch: { op: 'replace', path: '/behavior/variable_strategy', value: 'member_variables' },
-    },
-  ]);
-}
-
-function variablePinType(entry: Record<string, unknown>, path: string): Record<string, unknown> {
-  if (isRecord(entry['pin_type'])) return entry['pin_type'];
-  if (isRecord(entry['variable_type'])) return entry['variable_type'];
-  if (typeof entry['type'] === 'string' && entry['type'].trim().length > 0) {
-    return { category: entry['type'] };
-  }
-  throwMissingVariableType(`${path}.type`);
-}
-
-function requiredNonEmptyArray(record: Record<string, unknown>, field: string, path: string): unknown[] {
-  const value = record[field];
-  if (Array.isArray(value) && value.length > 0) return value;
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be a non-empty list.`, [
-    {
-      code: 'missing_required_list',
-      path,
-      message: `${path} must be a non-empty list.`,
-    },
-  ]);
-}
-
-function throwInvalidVariable(path: string): never {
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Blueprint variable entry must be an object.', [
-    {
-      code: 'invalid_variable',
-      path,
-      message: 'Blueprint variable entry must be an object.',
-    },
-  ]);
-}
 
 function throwMissingVariableType(path: string): never {
   throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Blueprint variable type is required.', [
@@ -5407,24 +4125,24 @@ function throwMissingVariableType(path: string): never {
   ]);
 }
 
-function throwUnsupportedVariableKind(kind: string, path: string, allowed: string[]): never {
-  throw new TaskSpecCompileError('unsupported_variable_op', `Unsupported Blueprint variable change kind: ${kind}`, [
-    {
-      code: 'unsupported_variable_op',
-      path,
-      message: `Use one of: ${allowed.join(', ')}.`,
-    },
-  ]);
-}
-
 function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
 
+// Migration guard: new GraphWrite statement node kinds must enter graphwrite-slot-source.json and StatementCompilerRegistry.
 function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string, path: string): AgentImportNode {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
-  if (kind === 'call') {
+  const controlKind = kind === 'control' ? getControlStatementKind(statementRecord, path) : undefined;
+  const delegateOperation = delegateStatementOperation(statementRecord);
+  const statementCompilerId = requireGraphWriteStatementCompiler({
+    kind,
+    path,
+    controlKind,
+    delegateOperation,
+  }).compiler_id;
+
+  if (statementCompilerId === 'statement.call') {
     const functionName = getRequiredString(statementRecord, 'target', `${path}.target`);
     const node: Record<string, unknown> = {
       id: nodeId,
@@ -5436,7 +4154,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return node as AgentImportNode;
   }
 
-  if (kind === 'create') {
+  if (statementCompilerId === 'statement.create') {
     const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'create',
@@ -5452,7 +4170,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return omitUndefined(node) as AgentImportNode;
   }
 
-  if (kind === 'convert' || kind === 'schedule') {
+  if (statementCompilerId === 'statement.convert' || statementCompilerId === 'statement.schedule') {
     const node: Record<string, unknown> = {
       id: nodeId,
       kind,
@@ -5464,7 +4182,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return omitUndefined(node) as AgentImportNode;
   }
 
-  if (kind === 'set') {
+  if (statementCompilerId === 'statement.set') {
     const variableName = getRequiredString(statementRecord, 'target', `${path}.target`);
     const node = {
       id: nodeId,
@@ -5481,7 +4199,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return node;
   }
 
-  if (kind === 'set_property') {
+  if (statementCompilerId === 'statement.set_property') {
     const target = getRequiredString(statementRecord, 'target', `${path}.target`);
     const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
     const node = {
@@ -5500,7 +4218,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return node;
   }
 
-  if (kind === 'field') {
+  if (statementCompilerId === 'statement.field') {
     const { operation, scope } = fieldOperationScope(statementRecord, path);
     if (operation !== 'set') {
       throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
@@ -5529,7 +4247,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return node;
   }
 
-  if (kind === CONTAINER_ACTION_KIND) {
+  if (statementCompilerId === 'statement.container_action') {
     const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
     const node: Record<string, unknown> = {
       id: nodeId,
@@ -5543,20 +4261,20 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return node as AgentImportNode;
   }
 
-  if (kind === 'control' && isGenericControlKind(getControlStatementKind(statementRecord, path))) {
-    const controlKind = getControlStatementKind(statementRecord, path);
+  if (statementCompilerId === 'statement.control.generic') {
+    const genericControlKind = controlKind ?? getControlStatementKind(statementRecord, path);
     const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'control',
-      control: controlKind,
-      control_operation: controlKind,
+      control: genericControlKind,
+      control_operation: genericControlKind,
       inputs: compileArgs(statementRecord.args),
     };
-    applyGenericControlSemanticFields(statementRecord, node, controlKind, path);
+    applyGenericControlSemanticFields(statementRecord, node, genericControlKind, path);
     return omitUndefined(node) as AgentImportNode;
   }
 
-  if (kind === 'component_bound_event') {
+  if (statementCompilerId === 'statement.component_bound_event') {
     const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'component_bound_event',
@@ -5568,8 +4286,7 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
     return omitUndefined(node) as AgentImportNode;
   }
 
-  const delegateOperation = delegateStatementOperation(statementRecord);
-  if (delegateOperation) {
+  if (statementCompilerId === 'statement.delegate' && delegateOperation) {
     const node: Record<string, unknown> = {
       id: nodeId,
       kind: 'delegate',

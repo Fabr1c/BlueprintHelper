@@ -1,4 +1,8 @@
 import { toolMetas } from '../registry/tool-metas.js';
+import { createToolsTemplateBuilderCore } from '../manifest/tools-template-builder-core.js';
+import { buildReadonlyToolCommandManifestRegistry } from '../manifest/tool-command-manifest-builder.js';
+import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
+import { getGraphWriteSlotsForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
 import type { ToolAudience, ToolRisk } from '../types.js';
 import type {
   CliInvocationTemplateRef,
@@ -230,189 +234,18 @@ function slot(
   };
 }
 
-const GRAPH_BODY_ROUTES = [
-  'graph.append.container_action',
-  'graph.append.event_delegate',
-  'graph.append.generic_ops',
-  'graph.append.generic_schedule',
-  'graph.append.custom_event',
-  'graph.replace.function_body',
-  'graph.replace.event_body',
-  'graph.merge_external_flow.append_after',
-] as const;
-
-const GRAPHWRITE_ROUTES: readonly ToolTemplateRouteRef[] = [
-  route(
-    'graph.append.container_action',
-    'graph_write',
-    'Append owned graph content that demonstrates container_action statements.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_container_action_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[].kind=container_action'],
-    ['behavior.entries[].inputs'],
-    ['behavior.entries[].body.statements[]'],
-    'Use when authoring array, set, or map operations inside a new owned graph body.',
-  ),
-  route(
-    'graph.append.event_delegate',
-    'graph_write',
-    'Append owned graph content for component-bound event and delegate statements.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_event_delegate_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[]'],
-    ['behavior.entries[].inputs'],
-    ['behavior.entries[].body.statements[]'],
-    'Use when binding an event dispatcher or component delegate through owned graph content.',
-  ),
-  route(
-    'graph.append.generic_ops',
-    'graph_write',
-    'Append owned graph content for generic operation statements and expressions.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_generic_ops_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[]'],
-    ['behavior.entries[].inputs'],
-    ['behavior.entries[].body.statements[]'],
-    'Use when authoring let, op, convert, construct, select, create, field, or switch operation families.',
-  ),
-  route(
-    'graph.append.generic_schedule',
-    'graph_write',
-    'Append owned graph content for schedule statements.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_generic_schedule_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body.statements[].kind=schedule'],
-    ['behavior.entries[].inputs'],
-    ['behavior.entries[].body.statements[]'],
-    'Use when authoring delay, timer, or other scheduled execution statements.',
-  ),
-  route(
-    'graph.append.custom_event',
-    'graph_write',
-    'Append a BlueprintHelper-owned custom event graph body.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_append_owned_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=append_new_owned_graph', 'behavior.entries[].entry_type=custom_event', 'behavior.entries[].body'],
-    ['behavior.entries[].inputs'],
-    ['behavior.entries[].body.statements[]'],
-    'Use when creating new owned graph content.',
-  ),
-  route(
-    'graph.replace.function_body',
-    'graph_write',
-    'Replace the body of an existing function.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_replace_owned_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=replace_owned_graph', 'behavior.replace.scope=function_body', 'behavior.replace.selector.kind=function', 'behavior.replace.selector.name', 'behavior.replace.body'],
-    ['behavior.replace.options.strict'],
-    ['behavior.replace.body.statements[]'],
-    'Use after the function signature already exists.',
-  ),
-  route(
-    'graph.replace.event_body',
-    'graph_write',
-    'Replace the body of an existing event or custom event.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_replace_owned_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=replace_owned_graph', 'behavior.replace.scope=event_body|custom_event_body', 'behavior.replace.selector.kind=event|custom_event', 'behavior.replace.selector.name', 'behavior.replace.body'],
-    ['behavior.replace.options.strict'],
-    ['behavior.replace.body.statements[]'],
-    'Use when the target event signature already exists.',
-  ),
-  route(
-    'graph.merge_external_flow.append_after',
-    'graph_write',
-    'Insert executable statements after a stable external graph anchor.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_external_flow_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_external_flow', 'behavior.external_merges[].insert_strategy=append_after', 'behavior.external_merges[].anchor', 'behavior.external_merges[].inserted.body'],
-    ['behavior.external_merges[].sequence_order'],
-    ['behavior.external_merges[].inserted.body.statements[]'],
-    'Use when read_context provides a stable LogicJson or ExternalGraphAnchor exec boundary.',
-  ),
-  route(
-    'graph.merge.append_after',
-    'graph_write',
-    'Append an owned merge payload after an owned anchor.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_append_after_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=append_after', 'behavior.merges[].anchor', 'behavior.merges[].inserted'],
-    [],
-    ['behavior.merges[]', 'behavior.merges[].inserted'],
-    'Use for legacy owned merge payloads that are not BlueprintLogicSpec body statements.',
-  ),
-  route(
-    'graph.merge.branch_fork',
-    'graph_write',
-    'Fork owned flow around an owned anchor with explicit sequence order.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_branch_fork_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=branch_fork', 'behavior.merges[].anchor', 'behavior.merges[].inserted', 'behavior.merges[].sequence_order'],
-    [],
-    ['behavior.merges[]', 'behavior.merges[].sequence_order'],
-    'Use when inserting owned logic as an explicit branch fork.',
-  ),
-  route(
-    'graph.merge.insert_between',
-    'graph_write',
-    'Insert an owned merge payload between an owned anchor and successor link.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_merge_insert_between_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=merge_owned_graph', 'behavior.merges[].kind=insert_flow', 'behavior.merges[].insert_strategy=insert_between', 'behavior.merges[].anchor.link_ref', 'behavior.merges[].inserted'],
-    [],
-    ['behavior.merges[]', 'behavior.merges[].inserted'],
-    'Use for owned insertion between an anchor and an existing successor.',
-  ),
-  route(
-    'graph.patch.connect_pins',
-    'graph_write',
-    'Connect two pins in an owned GraphWrite block.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_connect_pins_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=connect_pins', 'behavior.patches[].target_ref', 'behavior.patches[].source_ref'],
-    [],
-    ['behavior.patches[].target_ref', 'behavior.patches[].source_ref'],
-    'Use for GUID/ref based patching of BlueprintHelper-owned nodes.',
-  ),
-  route(
-    'graph.patch.pin_default',
-    'graph_write',
-    'Set a pin default value in an owned GraphWrite block.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_pin_default_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=set_pin_default', 'behavior.patches[].target_ref', 'behavior.patches[].value'],
-    [],
-    ['behavior.patches[].target_ref', 'behavior.patches[].value'],
-    'Use for default-value edits when read_context returned stable pin refs.',
-  ),
-  route(
-    'graph.patch.delete_owned_node',
-    'graph_write',
-    'Delete a BlueprintHelper-owned node by stable node reference.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_delete_owned_node_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=delete_owned_node', 'behavior.patches[].target_ref', 'behavior.patches[].delete_policy'],
-    [],
-    ['behavior.patches[]', 'behavior.patches[].target_ref'],
-    'Use only for BlueprintHelper-owned nodes where delete_policy is explicit.',
-  ),
-  route(
-    'graph.patch.disconnect_link',
-    'graph_write',
-    'Disconnect a link in a BlueprintHelper-owned graph block.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_disconnect_link_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=disconnect_link', 'behavior.patches[].link_ref'],
-    [],
-    ['behavior.patches[]', 'behavior.patches[].link_ref'],
-    'Use for link-level owned graph patches.',
-  ),
-  route(
-    'graph.patch.node_comment',
-    'graph_write',
-    'Set comment text on a BlueprintHelper-owned node.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_node_comment_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=set_node_comment', 'behavior.patches[].target_ref', 'behavior.patches[].comment'],
-    [],
-    ['behavior.patches[]', 'behavior.patches[].target_ref'],
-    'Use for owned node comment patches.',
-  ),
-  route(
-    'graph.patch.replace_link',
-    'graph_write',
-    'Replace an existing owned graph link with another endpoint reference.',
-    [`${WRITE_ROUTE_TEMPLATE_ROOT}/graph_patch_replace_link_template.json`],
-    ['task_type=edit_blueprint_graph', 'behavior.graph_strategy=patch_owned_graph', 'behavior.patches[].kind=replace_link', 'behavior.patches[].link_ref', 'behavior.patches[].replacement_ref'],
-    [],
-    ['behavior.patches[]', 'behavior.patches[].replacement_ref'],
-    'Use for link replacement inside BlueprintHelper-owned graph content.',
-  ),
-];
+const GRAPHWRITE_TEMPLATE_DISCOVERY_ROUTES = getGraphWriteRoutesForTemplateDiscovery();
+const GRAPHWRITE_ROUTES: readonly ToolTemplateRouteRef[] = GRAPHWRITE_TEMPLATE_DISCOVERY_ROUTES.map((descriptor) => route(
+  descriptor.route_id,
+  'graph_write',
+  descriptor.purpose,
+  descriptor.template_path ? [descriptor.template_path] : [],
+  [...descriptor.required_fields],
+  [...descriptor.optional_fields],
+  [...descriptor.insert_paths],
+  descriptor.when_to_use,
+  descriptor.when_not_to_use,
+));
 
 const BLUEPRINT_TASKSPEC_ROUTES: readonly ToolTemplateRouteRef[] = [
   route(
@@ -617,197 +450,14 @@ const READ_CONTEXT_ROUTES: readonly ToolTemplateRouteRef[] = [
   ),
 ];
 
-const GRAPHWRITE_SLOTS: readonly ToolTemplateSlotRef[] = [
-  slot(
-    'graph.statement.call.direct',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_direct_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['call', 'function', 'args'],
-    'Use when the callable target is already known.',
-  ),
-  slot(
-    'graph.statement.call.auto_search',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_auto_search_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['call', 'auto_search', 'candidate'],
-    'Use when the Agent knows intent but needs preview candidate search.',
-  ),
-  slot(
-    'graph.statement.call.result_symbol',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_call_result_symbol_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['call', 'result_symbol', 'impure'],
-    'Use when an impure call produces a value consumed by a later statement.',
-  ),
-  slot(
-    'graph.statement.let',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_let_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['let', 'symbol', 'value'],
-    'Use when a reusable graph-local symbol should be produced by an expression.',
-  ),
-  slot(
-    'graph.expression.get.symbol_or_variable',
-    'expression',
-    `${TEMPLATE_ROOT}/write/slots/graph_expression_get_symbol_or_variable_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'statement.value | statement.args.<pin>',
-    ['get', 'symbol', 'variable'],
-    'Use to consume a graph-local symbol or member variable.',
-  ),
-  slot(
-    'graph.expression.literal',
-    'expression',
-    `${TEMPLATE_ROOT}/write/slots/graph_expression_literal_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'statement.value | statement.args.<pin>',
-    ['literal', 'value_type', 'value'],
-    'Use for scalar literal values inside statement inputs.',
-  ),
-  slot(
-    'graph.expression.op',
-    'expression',
-    `${TEMPLATE_ROOT}/write/slots/graph_expression_op_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'statement.value | statement.args.<pin>',
-    ['op', 'generic_ops'],
-    'Use for generic operator expressions such as boolean_and.',
-  ),
-  slot(
-    'graph.expression.construct',
-    'expression',
-    `${TEMPLATE_ROOT}/write/slots/graph_expression_construct_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'statement.value | statement.args.<pin>',
-    ['construct', 'struct'],
-    'Use for struct construction expressions.',
-  ),
-  slot(
-    'graph.expression.select',
-    'expression',
-    `${TEMPLATE_ROOT}/write/slots/graph_expression_select_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'statement.value | statement.args.<pin>',
-    ['select', 'condition', 'options'],
-    'Use for generic select expressions with explicit result type proof.',
-  ),
-  slot(
-    'graph.statement.set.variable',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_set_variable_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['set', 'variable'],
-    'Use for member variable assignment with a value expression.',
-  ),
-  slot(
-    'graph.statement.set_property',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_set_property_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['set_property', 'property_path'],
-    'Use for object or component property assignment.',
-  ),
-  slot(
-    'graph.statement.container_action',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_container_action_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['container_action', 'array', 'set', 'map'],
-    'Use for array, set, or map operations.',
-  ),
-  slot(
-    'graph.statement.component_bound_event',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_component_bound_event_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['component_bound_event', 'delegate', 'handler'],
-    'Use to declare a component-bound event handler relationship.',
-  ),
-  slot(
-    'graph.statement.delegate_bind',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_delegate_bind_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['delegate.bind', 'event_delegate'],
-    'Use to bind a delegate to a handler.',
-  ),
-  slot(
-    'graph.statement.schedule',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_schedule_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['schedule', 'timer', 'delay'],
-    'Use for delay, timer, or other scheduled execution operations.',
-  ),
-  slot(
-    'graph.statement.convert',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_convert_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['convert', 'dynamic_cast', 'transform'],
-    'Use for conversion or transform statements that need GenericOps evidence.',
-  ),
-  slot(
-    'graph.statement.create',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_create_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['create', 'construct_object', 'asset_action'],
-    'Use for object construction, asset action create, or function-backed create statements.',
-  ),
-  slot(
-    'graph.statement.field.struct_member_set',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_field_struct_member_set_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['field', 'struct_member_set'],
-    'Use for struct member field writes with capability facts.',
-  ),
-  slot(
-    'graph.statement.control.branch',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_branch_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['control', 'branch'],
-    'Use for explicit if/else execution flow.',
-  ),
-  slot(
-    'graph.statement.control.switch',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_switch_template.json`,
-    [...GRAPH_BODY_ROUTES],
-    'body.statements[]',
-    ['control', 'switch'],
-    'Use for switch-style control statements with explicit operation evidence.',
-  ),
-  slot(
-    'graph.statement.control.return',
-    'statement',
-    `${TEMPLATE_ROOT}/write/slots/graph_statement_control_return_template.json`,
-    ['graph.replace.function_body'],
-    'behavior.replace.body.statements[]',
-    ['control', 'return', 'function'],
-    'Use as the terminal return statement in a function body.',
-  ),
-];
+const GRAPHWRITE_SLOT_TEMPLATE_REFS: readonly ToolTemplateSlotRef[] = uniqueGraphWriteSlotTemplateRefs(
+  GRAPHWRITE_TEMPLATE_DISCOVERY_ROUTES.flatMap((descriptor) =>
+    getGraphWriteSlotsForTemplateDiscovery(descriptor.route_id)),
+);
+
+function uniqueGraphWriteSlotTemplateRefs(slotRefs: readonly ToolTemplateSlotRef[]): ToolTemplateSlotRef[] {
+  return [...new Map(slotRefs.map((slotRef) => [slotRef.slot_id, slotRef])).values()];
+}
 
 const READ_CONTEXT_SLOTS: readonly ToolTemplateSlotRef[] = [
   slot(
@@ -899,8 +549,8 @@ const ROUTES_BY_TOOL_ID = new Map<string, readonly ToolTemplateRouteRef[]>([
 ]);
 
 const SLOTS_BY_TOOL_ID = new Map<string, readonly ToolTemplateSlotRef[]>([
-  ['blueprint.plan.taskspec.preview', GRAPHWRITE_SLOTS],
-  ['blueprint.write.taskspec.execute', GRAPHWRITE_SLOTS],
+  ['blueprint.plan.taskspec.preview', GRAPHWRITE_SLOT_TEMPLATE_REFS],
+  ['blueprint.write.taskspec.execute', GRAPHWRITE_SLOT_TEMPLATE_REFS],
   ['blueprint.read.context.logic_flow', READ_CONTEXT_SLOTS],
   ['blueprint.read.context.logic_json', READ_CONTEXT_SLOTS],
   ['blueprint.read.context.variables', READ_CONTEXT_SLOTS],
@@ -979,6 +629,13 @@ export function listToolCapabilities(options: ListToolCapabilitiesOptions): Tool
 }
 
 export function getToolTemplateDispatch(toolId: string, options: GetToolTemplateDispatchOptions = {}): ToolTemplateDispatchResult {
+  return createToolsTemplateBuilderCore(
+    buildReadonlyToolCommandManifestRegistry(),
+    { getRawTemplateDispatch: getRawToolTemplateDispatch },
+  ).getTemplateDispatch(toolId, options);
+}
+
+export function getRawToolTemplateDispatch(toolId: string, options: GetToolTemplateDispatchOptions = {}): ToolTemplateDispatchResult {
   const capabilityItem = CAPABILITIES.find((entry) => entry.id === toolId);
   if (!capabilityItem) {
     throw new Error(`Unknown BlueprintHelper tool capability id: ${toolId}`);

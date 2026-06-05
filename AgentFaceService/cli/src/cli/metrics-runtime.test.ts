@@ -125,7 +125,7 @@ test('createCliMetricsService uses default 24h stale episode TTL when env is uns
   assert.equal(closedEpisodes?.[0]?.close_reason, 'stale_open');
 });
 
-test('runCli direct read_context records tool_completed with extracted semantic operation', async (t) => {
+test('runCli direct read_context records manifest-owned metrics identity', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-read-context-');
   const metricsRoot = path.join(workspace, 'metrics');
   const readSpecPath = path.join(workspace, 'read-spec.json');
@@ -175,13 +175,13 @@ test('runCli direct read_context records tool_completed with extracted semantic 
   assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'tool_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_read_context');
-  assert.equal(events[0]?.capability, 'read_context');
-  assert.equal(events[0]?.semantic_operation, 'blueprint_logic.logic_flow');
+  assert.equal(events[0]?.capability, 'blueprint.read');
+  assert.equal(events[0]?.semantic_operation, 'blueprint.read.context.logic_flow');
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[1]?.event_type, 'cli_io_completed');
   assert.equal(events[1]?.tool_name, 'blueprinthelper_read_context');
-  assert.equal(events[1]?.capability, 'read_context');
-  assert.equal(events[1]?.semantic_operation, 'blueprint_logic.logic_flow');
+  assert.equal(events[1]?.capability, 'blueprint.read');
+  assert.equal(events[1]?.semantic_operation, 'blueprint.read.context.logic_flow');
   assert.deepEqual(events[1]?.io, {
     input_source: 'file',
     input_chars: readSpecText.length,
@@ -218,10 +218,13 @@ test('runCli direct tool success records metrics without changing stdout payload
   assert.equal(output.tool_name, 'blueprinthelper_diagnostics');
   assert.equal(events.length, 2);
   assert.equal(events[0]?.tool_name, 'blueprinthelper_diagnostics');
-  assert.equal(events[0]?.semantic_operation, 'blueprinthelper_diagnostics');
+  assert.equal(events[0]?.capability, 'editor.diagnose');
+  assert.equal(events[0]?.semantic_operation, 'editor.diagnose.static');
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[1]?.event_type, 'cli_io_completed');
   assert.equal(events[1]?.tool_name, 'blueprinthelper_diagnostics');
+  assert.equal(events[1]?.capability, 'editor.diagnose');
+  assert.equal(events[1]?.semantic_operation, 'editor.diagnose.static');
   assert.deepEqual(events[1]?.io, {
     input_source: 'json',
     input_chars: 2,
@@ -259,11 +262,15 @@ test('runCli direct tool malformed --json records failed metrics event with inpu
   assert.equal(events.length, 2);
   assert.equal(events[0]?.event_type, 'tool_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_diagnostics');
+  assert.equal(events[0]?.capability, 'editor.diagnose');
+  assert.equal(events[0]?.semantic_operation, 'editor.diagnose.static');
   assert.equal(events[0]?.status, 'failed');
   assert.equal(events[0]?.error_category, 'parameter_error');
   assert.equal(events[0]?.error_code, 'malformed_json');
   assert.equal(events[1]?.event_type, 'cli_io_completed');
   assert.equal(events[1]?.tool_name, 'blueprinthelper_diagnostics');
+  assert.equal(events[1]?.capability, 'editor.diagnose');
+  assert.equal(events[1]?.semantic_operation, 'editor.diagnose.static');
   assert.deepEqual(events[1]?.io, {
     input_source: 'json',
     input_chars: 4,
@@ -354,6 +361,8 @@ test('runCli task preview records taskspec preview metrics through the default r
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[1]?.event_type, 'cli_io_completed');
   assert.equal(events[1]?.tool_name, 'blueprinthelper_preview_task');
+  assert.equal(events[1]?.capability, 'blueprint.plan');
+  assert.equal(events[1]?.semantic_operation, 'blueprint.plan.taskspec.preview');
   const io = events[1]?.io as Record<string, unknown> | undefined;
   assert.equal(io?.['input_source'], 'task_file');
   assert.equal(io?.['input_chars'], taskSpecText.length);
@@ -440,6 +449,8 @@ test('runCli task execute records taskspec execute metrics through the default r
   assert.equal(events[0]?.correctness_basis, 'pending_confirmation');
   assert.equal(events[1]?.event_type, 'cli_io_completed');
   assert.equal(events[1]?.tool_name, 'blueprinthelper_execute_task');
+  assert.equal(events[1]?.capability, 'blueprint.write');
+  assert.equal(events[1]?.semantic_operation, 'blueprint.write.taskspec.execute');
   const io = events[1]?.io as Record<string, unknown> | undefined;
   assert.equal(io?.['input_source'], 'task_file');
   assert.equal(io?.['input_chars'], taskSpecText.length);
@@ -497,6 +508,8 @@ test('runCli task result records CLI output IO metrics', async (t) => {
   assert.equal(events.length, 1);
   assert.equal(events[0]?.event_type, 'cli_io_completed');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_get_task_result');
+  assert.equal(events[0]?.capability, 'project.read');
+  assert.equal(events[0]?.semantic_operation, 'project.read.task_result');
   assert.deepEqual(events[0]?.io, {
     output_chars: stdout.join('').length,
     output_utf8_bytes: Buffer.byteLength(stdout.join(''), 'utf8'),

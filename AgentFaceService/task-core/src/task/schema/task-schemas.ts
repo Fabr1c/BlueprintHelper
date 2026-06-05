@@ -3,6 +3,10 @@ import {
   SignaturePinSpecSchema,
   assertNoDuplicateSignaturePinNames,
 } from './blueprint-pin-type-spec.js';
+import {
+  getGraphWriteRouteByScope,
+  getGraphWriteRequiredFieldByStrategy,
+} from '../compiler/graphwrite/graphwrite-route-registry.js';
 
 export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
 export {
@@ -473,9 +477,9 @@ const GraphWriteAppendEntrySchema = z.object({
 });
 
 const GraphWriteReplaceSchema = z.object({
-  scope: z.enum(['graph', 'custom_event_definition', 'custom_event_body', 'function_body', 'event_body', 'block_implementation']),
+  scope: z.string().min(1),
   selector: z.object({
-    kind: z.enum(['graph', 'custom_event', 'function', 'event', 'block']),
+    kind: z.string().min(1),
     name: z.string().min(1).optional(),
     block_id: z.string().min(1).optional(),
     graph_id: z.string().min(1).optional(),
@@ -488,15 +492,27 @@ const GraphWriteReplaceSchema = z.object({
     strict: z.boolean().optional(),
   }).passthrough().optional(),
 }).passthrough().superRefine((value, ctx) => {
-  const expectedKindByScope: Record<string, string> = {
-    graph: 'graph',
-    custom_event_definition: 'custom_event',
-    custom_event_body: 'custom_event',
-    function_body: 'function',
-    event_body: 'event',
-    block_implementation: 'block',
-  };
-  const expectedKind = expectedKindByScope[value.scope];
+  const route = getGraphWriteRouteByScope('replace_owned_graph', value.scope);
+  if (!route || route.status === 'planned') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope'],
+      message: route?.status === 'planned'
+        ? `${value.scope} is planned and is not available to TaskSpec authoring yet.`
+        : `Unsupported replace scope "${value.scope}".`,
+    });
+    return;
+  }
+  const selector = route.selector;
+  if (!selector) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope'],
+      message: `${value.scope} is missing GraphWrite selector metadata.`,
+    });
+    return;
+  }
+  const expectedKind = selector.expected_kind;
   if (value.selector.kind !== expectedKind) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -504,23 +520,30 @@ const GraphWriteReplaceSchema = z.object({
       message: `${value.scope} requires selector.kind="${expectedKind}".`,
     });
   }
-  if (value.selector.kind === 'graph') {
-    return;
-  }
-  if (value.selector.kind === 'block') {
-    if (!value.selector.block_id) {
+  for (const field of selector.required_fields) {
+    if (field === 'name') {
+      if (!value.selector.name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['selector', 'name'],
+          message: `${value.scope} requires selector.name.`,
+        });
+      }
+    } else if (field === 'block_id') {
+      if (!value.selector.block_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['selector', 'block_id'],
+          message: `${value.scope} requires selector.block_id.`,
+        });
+      }
+    } else if (typeof value.selector[field] !== 'string' || value.selector[field].length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['selector', 'block_id'],
-        message: 'block_implementation requires selector.block_id.',
+        path: ['selector', field],
+        message: `${value.scope} requires selector.${field}.`,
       });
     }
-  } else if (!value.selector.name) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['selector', 'name'],
-      message: `${value.scope} requires selector.name.`,
-    });
   }
 });
 
@@ -928,16 +951,8 @@ const GraphWriteBehaviorSchema = z.object({
   external_patches: z.array(GraphWriteExternalPatchSchema).min(1).optional(),
   external_replace: GraphWriteExternalReplaceBodySchema.optional(),
 }).passthrough().superRefine((value, ctx) => {
-  const requiredFieldByStrategy: Record<string, keyof typeof value> = {
-    append_new_owned_graph: 'entries',
-    replace_owned_graph: 'replace',
-    patch_owned_graph: 'patches',
-    merge_owned_graph: 'merges',
-    merge_external_flow: 'external_merges',
-    patch_external_graph: 'external_patches',
-    replace_external_body: 'external_replace',
-  };
-  const requiredField = requiredFieldByStrategy[value.graph_strategy];
+  const requiredFieldByStrategy = getGraphWriteRequiredFieldByStrategy();
+  const requiredField = requiredFieldByStrategy[value.graph_strategy] as keyof typeof value | undefined;
   if (!requiredField) return;
   if (requiredField && value[requiredField] === undefined) {
     ctx.addIssue({

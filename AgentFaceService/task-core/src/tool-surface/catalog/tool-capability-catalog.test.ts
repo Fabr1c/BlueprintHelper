@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   getToolTemplateDispatch,
   listToolCapabilities,
   listToolDomains,
 } from './tool-capability-catalog.js';
+import { createToolsTemplateBuilder } from '../manifest/tools-template-builder.js';
+import { buildReadonlyToolCommandManifestRegistry } from '../manifest/tool-command-manifest-builder.js';
+import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
+import { getAllGraphWriteSlotDescriptors } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
 
 const HIDDEN_TASKSPEC_POLICY_FIELDS = new Set(['execution_policy', 'scope_policy', 'validation']);
 
@@ -126,6 +131,38 @@ test('getToolTemplateDispatch returns route-owned templates for preview tool', (
   ]);
 });
 
+test('ToolsTemplateBuilder matches current preview template dispatch', () => {
+  const builder = createToolsTemplateBuilder(buildReadonlyToolCommandManifestRegistry());
+
+  assert.deepEqual(
+    builder.getTemplateDispatch('blueprint.plan.taskspec.preview'),
+    getToolTemplateDispatch('blueprint.plan.taskspec.preview'),
+  );
+});
+
+test('ToolsTemplateBuilder filters route slots like catalog dispatch', () => {
+  const builder = createToolsTemplateBuilder(buildReadonlyToolCommandManifestRegistry());
+  const dispatch = builder.getTemplateDispatch('blueprint.write.taskspec.execute', {
+    route: 'graph.replace.function_body',
+    slot: true,
+    slotKind: 'statement',
+  });
+
+  assert.equal(dispatch.selected_route?.route_id, 'graph.replace.function_body');
+  assert.equal(
+    dispatch.slot_templates.every((slot) => slot.slot_type === 'statement'),
+    true,
+  );
+  assert.deepEqual(
+    dispatch,
+    getToolTemplateDispatch('blueprint.write.taskspec.execute', {
+      route: 'graph.replace.function_body',
+      slot: true,
+      slotKind: 'statement',
+    }),
+  );
+});
+
 test('getToolTemplateDispatch exposes route-first GraphWrite template navigation', () => {
   const dispatch = getToolTemplateDispatch('blueprint.write.taskspec.execute');
 
@@ -138,6 +175,18 @@ test('getToolTemplateDispatch exposes route-first GraphWrite template navigation
   assert.equal(dispatch.slot_templates.length, 0);
   assert.ok(dispatch.next.slot_command);
   assert.match(dispatch.next.slot_command, /--route <route_id> --slot/);
+});
+
+test('active GraphWrite routes are descriptor-backed and planned routes stay hidden from template discovery', () => {
+  const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview');
+  const routeIds = dispatch.routes.map((route) => route.route_id);
+
+  assert.equal(routeIds.includes('graph.replace.function_body'), true);
+  assert.equal(routeIds.includes('graph.replace.macro_body'), false);
+  assert.throws(
+    () => getToolTemplateDispatch('blueprint.plan.taskspec.preview', { route: 'graph.replace.macro_body' }),
+    /Unknown BlueprintHelper template route/,
+  );
 });
 
 test('agent-facing write templates do not expose hidden TaskSpec policy fields', () => {
@@ -233,6 +282,126 @@ test('getToolTemplateDispatch filters GraphWrite slots by route and slot kind', 
       && slot.applies_to_routes.includes('graph.replace.function_body')),
     true,
   );
+});
+
+test('getToolTemplateDispatch reflects descriptor-owned GraphWrite slot routing', () => {
+  const visibleGraphWriteRoutes = getGraphWriteRoutesForTemplateDiscovery();
+  const visibleRouteIds = new Set(visibleGraphWriteRoutes.map((route) => route.route_id));
+  const allGraphWriteSlots = getToolTemplateDispatch('blueprint.write.taskspec.execute', { slot: true }).slot_templates
+    .filter((slot) => slot.slot_id.startsWith('graph.'));
+
+  for (const slot of allGraphWriteSlots) {
+    for (const routeId of slot.applies_to_routes) {
+      assert.equal(visibleRouteIds.has(routeId), true, `${slot.slot_id} points to unknown GraphWrite route ${routeId}`);
+    }
+  }
+
+  for (const route of visibleGraphWriteRoutes) {
+    const dispatch = getToolTemplateDispatch('blueprint.write.taskspec.execute', {
+      route: route.route_id,
+      slot: true,
+    });
+    const slotIds = new Set(dispatch.slot_templates.map((slot) => slot.slot_id));
+
+    for (const allowedSlotId of route.allowed_slot_ids) {
+      if (allowedSlotId === 'graph.body.*') {
+        assert.equal(
+          slotIds.has('graph.statement.call.direct'),
+          true,
+          `${route.route_id} should receive graph body common slots from descriptor wildcard`,
+        );
+        continue;
+      }
+      assert.equal(slotIds.has(allowedSlotId), true, `${route.route_id} should expose descriptor slot ${allowedSlotId}`);
+    }
+  }
+});
+
+test('GraphWrite slot descriptors own slot template discovery', () => {
+  const slotIds = new Set(getAllGraphWriteSlotDescriptors().map((slot) => slot.slot_id));
+  const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', {
+    route: 'graph.replace.function_body',
+    slot: true,
+  });
+
+  assert.ok(dispatch.slot_templates.length > 0);
+  for (const slot of dispatch.slot_templates) {
+    if (!slot.slot_id.startsWith('graph.')) {
+      continue;
+    }
+    assert.equal(slotIds.has(slot.slot_id), true, `${slot.slot_id} must come from generated slot descriptors`);
+  }
+});
+
+test('getToolTemplateDispatch exposes function parameter expression slot for function bodies', () => {
+  const dispatch = getToolTemplateDispatch('blueprint.write.taskspec.execute', {
+    route: 'graph.replace.function_body',
+    slot: true,
+    slotKind: 'expression',
+  });
+
+  assert.equal(dispatch.selected_route?.route_id, 'graph.replace.function_body');
+  assert.equal(
+    dispatch.slot_templates.some((slot) =>
+      slot.slot_id === 'graph.expression.get.function_param'
+      && slot.path.endsWith('graph_expression_get_function_param_template.json')
+      && slot.applies_to_routes.includes('graph.replace.function_body')),
+    true,
+  );
+});
+
+test('getToolTemplateDispatch scopes function parameter expression slot to function bodies', () => {
+  const functionDispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', {
+    route: 'graph.replace.function_body',
+    slot: true,
+    slotKind: 'expression',
+  });
+  const functionSlotIds = new Set(functionDispatch.slot_templates.map((slot) => slot.slot_id));
+
+  assert.equal(functionSlotIds.has('graph.expression.get.function_param'), true);
+
+  for (const routeId of [
+    'graph.append.custom_event',
+    'graph.replace.event_body',
+    'graph.patch.pin_default',
+    'graph.merge_external_flow.append_after',
+  ]) {
+    const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', {
+      route: routeId,
+      slot: true,
+      slotKind: 'expression',
+    });
+    const slotIds = new Set(dispatch.slot_templates.map((slot) => slot.slot_id));
+
+    assert.equal(slotIds.has('graph.expression.get.function_param'), false, `${routeId} must not expose function parameter reads`);
+  }
+});
+
+test('getToolTemplateDispatch scopes return statement slot to function bodies', () => {
+  const functionDispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', {
+    route: 'graph.replace.function_body',
+    slot: true,
+    slotKind: 'statement',
+  });
+  const functionSlotIds = new Set(functionDispatch.slot_templates.map((slot) => slot.slot_id));
+
+  assert.equal(functionSlotIds.has('graph.statement.control.return'), true);
+
+  for (const routeId of [
+    'graph.append.custom_event',
+    'graph.replace.event_body',
+    'graph.patch.pin_default',
+    'graph.merge_external_flow.append_after',
+  ]) {
+    const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', {
+      route: routeId,
+      slot: true,
+      slotKind: 'statement',
+    });
+    const slotIds = new Set(dispatch.slot_templates.map((slot) => slot.slot_id));
+
+    assert.equal(slotIds.has('graph.statement.control.return'), false, `${routeId} must not expose function return statements`);
+  }
 });
 
 test('getToolTemplateDispatch rejects unknown template routes', () => {
@@ -375,7 +544,7 @@ test('getToolTemplateDispatch rejects unknown tool ids', () => {
 });
 
 function agentGuideTemplatesRoot(): string {
-  return path.resolve(process.cwd(), '..', 'agent-guide', 'Templates');
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../agent-guide/Templates');
 }
 
 function listJsonFiles(root: string): string[] {

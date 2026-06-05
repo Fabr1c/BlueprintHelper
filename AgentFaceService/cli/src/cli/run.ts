@@ -15,6 +15,9 @@ import {
   type TaskTimingTrace,
 } from '@blueprinthelper/task-core/task/service/task-timing';
 import {
+  createTaskSpecCompiler,
+} from '@blueprinthelper/task-core/task/compiler/task-compiler-service';
+import {
   TaskSpecSchema,
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
@@ -145,6 +148,29 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         path.resolve(runtime.cwd, required(command.file)),
       ));
       const taskSpec = TaskSpecSchema.parse(taskSpecInput.value);
+      if (command.compileOnly === true) {
+        const compiler = createTaskSpecCompiler();
+        const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile_only', () => compiler(taskSpec, {
+          dryRun: true,
+          diagnostics: command.develop === true,
+        }));
+        const taskPlan = compiled.taskPlan;
+        const toolResult = successRead('task_compile_only_preview', {
+          asset_path: taskSpec.target.asset_path,
+          target_type: 'blueprint',
+        }, {
+          task_plan: taskPlan as unknown as Record<string, unknown>,
+          passed: true,
+          issues: [],
+        });
+        const outcome = writeTimedCliResult(runtime, command, toolResult, timing, {
+          taskPlan,
+          passed: true,
+          issues: [],
+        });
+        await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+        return outcome.outputTooLarge ? 3 : 0;
+      }
       const preview = await getRunner(runtime).previewTask(taskSpec, timing);
       const outcome = writeTimedCliResult(runtime, command, preview.toolResult, timing, {
         previewId: preview.previewId,
@@ -344,6 +370,7 @@ function parseArgs(argv: string[]): ParseResult {
     routeId?: string;
     slot?: boolean;
     slotKind?: string;
+    compileOnly?: boolean;
   } = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -393,6 +420,8 @@ function parseArgs(argv: string[]): ParseResult {
       options.routeId = readOptionValue(argv, ++index, arg);
     } else if (arg === '--slot') {
       options.slot = true;
+    } else if (arg === '--compile-only') {
+      options.compileOnly = true;
     } else if (arg === '--kind') {
       const slotKind = readOptionValue(argv, ++index, arg);
       try {
@@ -559,7 +588,7 @@ function parseArgs(argv: string[]): ParseResult {
   }
 
   if (group === 'task' && action === 'preview' && options.file) {
-    return { ok: true, command: { ...base, kind: 'task.preview', file: options.file } };
+    return { ok: true, command: { ...base, kind: 'task.preview', file: options.file, compileOnly: options.compileOnly } };
   }
   if (group === 'task' && action === 'execute' && options.file) {
     return { ok: true, command: { ...base, kind: 'task.execute', file: options.file, previewToken: options.previewToken } };

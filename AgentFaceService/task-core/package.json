@@ -37,6 +37,11 @@
   },
   "scripts": {
     "build": "node ../scripts/clean-build.mjs && node ../scripts/run-tsc.mjs",
+    "generate:graphwrite-routes": "node scripts/generate-graphwrite-route-manifest.mjs",
+    "check:graphwrite-routes": "node scripts/generate-graphwrite-route-manifest.mjs --check",
+    "generate:graphwrite-slots": "node scripts/generate-graphwrite-slot-manifest.mjs",
+    "check:graphwrite-slots": "node scripts/generate-graphwrite-slot-manifest.mjs --check",
+    "check:task-compiler-freeze": "node scripts/check-task-compiler-legacy-freeze.mjs",
     "test": "npm run build && npm run test:node",
     "test:node": "node scripts/run-node-tests.mjs",
     "dev": "tsc --watch"

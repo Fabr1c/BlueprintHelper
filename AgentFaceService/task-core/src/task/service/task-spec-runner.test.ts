@@ -8,6 +8,8 @@ import { TaskSpecCompileError, createCompiledTaskPlan } from '../compiler/task-c
 import {
   graphWriteAppendExpectedTaskPlanFixture,
   graphWriteAppendTaskSpecFixture,
+  graphWriteReplaceExpectedTaskPlanFixture,
+  graphWriteReplaceTaskSpecFixture,
 } from '../fixtures/task-protocol.fixtures.js';
 import { TaskTimingTrace } from './task-timing.js';
 import { createTaskSpecRunner, type TaskRunnerBridge } from './task-spec-runner.js';
@@ -455,7 +457,7 @@ test('preview task records metrics with task identity and extracted operation', 
       },
     },
     taskCompiler: async () => createCompiledTaskPlan({
-      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      taskPlan: graphWriteReplaceExpectedTaskPlanFixture,
       strategyId: 'canonical_ts',
     }),
     metrics: {
@@ -465,7 +467,7 @@ test('preview task records metrics with task identity and extracted operation', 
     },
   });
 
-  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const result = await runner.previewTask(graphWriteReplaceTaskSpecFixture);
 
   assert.equal(result.passed, true);
   assert.equal(events.length, 1);
@@ -473,10 +475,10 @@ test('preview task records metrics with task identity and extracted operation', 
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[0]?.tool_name, 'blueprinthelper_preview_task');
   assert.equal(events[0]?.task_key?.task_type, 'edit_blueprint_graph');
-  assert.equal(events[0]?.task_key?.feature_name, 'StoneGateActivation');
+  assert.equal(events[0]?.task_key?.feature_name, 'StoneGateActivationReplace');
   assert.match(events[0]?.task_spec_hash ?? '', /^sha256:[a-f0-9]{64}$/);
   assert.equal(events[0]?.capability, 'graph_write');
-  assert.equal(events[0]?.semantic_operation, 'ensure_entry');
+  assert.equal(events[0]?.semantic_operation, 'graph.replace.custom_event_body');
   assert.equal(JSON.stringify(result.toolResult).includes('BlueprintHelper.MetricsEvent.v1'), false);
 });
 
@@ -530,7 +532,7 @@ test('execute task records pending_confirmation when success has no validation/r
   const runner = createTaskSpecRunner({
     bridge,
     taskCompiler: async () => createCompiledTaskPlan({
-      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      taskPlan: graphWriteReplaceExpectedTaskPlanFixture,
       strategyId: 'canonical_ts',
     }),
     metrics: {
@@ -540,7 +542,7 @@ test('execute task records pending_confirmation when success has no validation/r
     },
   });
 
-  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+  const result = await runner.executeTask(graphWriteReplaceTaskSpecFixture);
 
   assert.equal(result.ok, true);
   assert.equal(events.length, 1);
@@ -548,7 +550,7 @@ test('execute task records pending_confirmation when success has no validation/r
   assert.equal(events[0]?.status, 'success');
   assert.equal(events[0]?.correctness_basis, 'pending_confirmation');
   assert.equal(events[0]?.capability, 'graph_write');
-  assert.equal(events[0]?.semantic_operation, 'ensure_entry');
+  assert.equal(events[0]?.semantic_operation, 'graph.replace.custom_event_body');
   assert.equal(JSON.stringify(result).includes('BlueprintHelper.MetricsEvent.v1'), false);
 });
 

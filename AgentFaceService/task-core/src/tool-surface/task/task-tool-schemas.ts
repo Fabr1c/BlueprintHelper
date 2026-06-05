@@ -1,17 +1,9 @@
-import { z } from 'zod';
-import {
-  ExecuteTaskInputSchema,
-  GetTaskResultInputSchema,
-  PreviewTaskInputSchema,
-  TaskSpecSchema,
-} from '../../task/schema/task-schemas.js';
-import { ReadReferenceContextInputSchema } from './read-reference-context-schema.js';
+import { createDefaultTaskToolHandlerRegistry, type TaskToolName } from './task-tool-handler-registry.js';
 
-export const taskToolSchemas = {
-  blueprinthelper_read_reference_context: ReadReferenceContextInputSchema,
-  blueprinthelper_preview_task: z.union([PreviewTaskInputSchema, TaskSpecSchema]),
-  blueprinthelper_execute_task: z.union([ExecuteTaskInputSchema, TaskSpecSchema]),
-  blueprinthelper_get_task_result: GetTaskResultInputSchema,
-} as const;
+const descriptorRegistry = createDefaultTaskToolHandlerRegistry();
 
-export type TaskToolName = keyof typeof taskToolSchemas;
+export const taskToolSchemas = Object.fromEntries(
+  descriptorRegistry.list().map((descriptor) => [descriptor.toolName, descriptor.inputSchema]),
+) as Record<TaskToolName, ReturnType<typeof descriptorRegistry.require>['inputSchema']>;
+
+export type { TaskToolName };

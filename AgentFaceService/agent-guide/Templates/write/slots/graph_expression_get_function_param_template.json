@@ -1,0 +1,15 @@
+{
+  "kind": "field",
+  "capability_id": "field.function_param_get",
+  "field_operation": "get",
+  "field_scope": "variable",
+  "target": "__FUNCTION_PARAM_NAME__",
+  "function_name": "__FUNCTION_NAME__",
+  "pin_type": {
+    "category": "__PIN_CATEGORY__"
+  },
+  "capability_facts": {
+    "field.member_name": "__FUNCTION_PARAM_NAME__",
+    "field.function_name": "__FUNCTION_NAME__"
+  }
+}

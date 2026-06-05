@@ -6,6 +6,11 @@ import { TaskTimingTrace } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
 import { executeReadContext } from './read-context-handler.js';
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
+import {
+  LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
+  LOGIC_PROJECTION_OWNER,
+  READ_CONTEXT_LOGIC_FORMATS,
+} from './read-context-schemas.js';
 
 const nodeAnchor = {
   schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
@@ -32,6 +37,22 @@ const boundaryAnchor = {
 const duplicateBoundaryAnchor = {
   ...boundaryAnchor,
 };
+
+test('read_context logic formats declare UE callback capabilities with task-core projection owner', () => {
+  assert.deepEqual(
+    READ_CONTEXT_LOGIC_FORMATS,
+    ['logic_flow', 'logic_md', 'logic_json'],
+  );
+  assert.deepEqual(
+    LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
+    [
+      'ue.raw_snapshot.logic_json',
+      'ue.raw_snapshot.logic_md',
+      'ue.raw_snapshot.logic_flow',
+    ],
+  );
+  assert.equal(LOGIC_PROJECTION_OWNER, 'task-core');
+});
 
 function makeLogicJsonWithExternalAnchors(): Record<string, unknown> {
   return {

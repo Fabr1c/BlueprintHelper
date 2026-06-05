@@ -1,0 +1,791 @@
+{
+  "schema": "BlueprintHelper.GraphWriteRouteSource.v1",
+  "routes": [
+    {
+      "route_id": "graph.append.container_action",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "container_action",
+      "taskplan_op": "ensure_entry",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_append_container_action_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=append_new_owned_graph",
+        "behavior.entries[].entry_type=custom_event",
+        "behavior.entries[].body.statements[].kind=container_action"
+      ],
+      "optional_fields": [
+        "behavior.entries[].inputs"
+      ],
+      "insert_paths": [
+        "behavior.entries[].body.statements[]"
+      ],
+      "purpose": "Append owned graph content that demonstrates container_action statements.",
+      "when_to_use": "Use when authoring array, set, or map operations inside a new owned graph body.",
+      "allowed_slot_ids": [
+        "graph.body.*",
+        "graph.statement.container_action"
+      ],
+      "compiler_id": "append_new_owned_graph",
+      "status": "active",
+      "behavior_field": "entries"
+    },
+    {
+      "route_id": "graph.append.custom_event",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "custom_event",
+      "taskplan_op": "ensure_entry",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=append_new_owned_graph",
+        "behavior.entries[].entry_type=custom_event",
+        "behavior.entries[].body"
+      ],
+      "optional_fields": [
+        "behavior.entries[].inputs"
+      ],
+      "insert_paths": [
+        "behavior.entries[].body.statements[]"
+      ],
+      "purpose": "Append a BlueprintHelper-owned custom event graph body.",
+      "when_to_use": "Use when creating new owned graph content.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
+      "compiler_id": "append_new_owned_graph",
+      "status": "active",
+      "behavior_field": "entries"
+    },
+    {
+      "route_id": "graph.append.event_delegate",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "event_delegate",
+      "taskplan_op": "ensure_entry",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_append_event_delegate_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=append_new_owned_graph",
+        "behavior.entries[].entry_type=custom_event",
+        "behavior.entries[].body.statements[]"
+      ],
+      "optional_fields": [
+        "behavior.entries[].inputs"
+      ],
+      "insert_paths": [
+        "behavior.entries[].body.statements[]"
+      ],
+      "purpose": "Append owned graph content for component-bound event and delegate statements.",
+      "when_to_use": "Use when binding an event dispatcher or component delegate through owned graph content.",
+      "allowed_slot_ids": [
+        "graph.body.*",
+        "graph.statement.component_bound_event",
+        "graph.statement.delegate_bind"
+      ],
+      "compiler_id": "append_new_owned_graph",
+      "status": "active",
+      "behavior_field": "entries"
+    },
+    {
+      "route_id": "graph.append.generic_ops",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "generic_ops",
+      "taskplan_op": "ensure_entry",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_append_generic_ops_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=append_new_owned_graph",
+        "behavior.entries[].entry_type=custom_event",
+        "behavior.entries[].body.statements[]"
+      ],
+      "optional_fields": [
+        "behavior.entries[].inputs"
+      ],
+      "insert_paths": [
+        "behavior.entries[].body.statements[]"
+      ],
+      "purpose": "Append owned graph content for generic operation statements and expressions.",
+      "when_to_use": "Use when authoring let, op, convert, construct, select, create, field, or switch operation families.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
+      "compiler_id": "append_new_owned_graph",
+      "status": "active",
+      "behavior_field": "entries"
+    },
+    {
+      "route_id": "graph.append.generic_schedule",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "generic_schedule",
+      "taskplan_op": "ensure_entry",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_append_generic_schedule_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=append_new_owned_graph",
+        "behavior.entries[].entry_type=custom_event",
+        "behavior.entries[].body.statements[].kind=schedule"
+      ],
+      "optional_fields": [
+        "behavior.entries[].inputs"
+      ],
+      "insert_paths": [
+        "behavior.entries[].body.statements[]"
+      ],
+      "purpose": "Append owned graph content for schedule statements.",
+      "when_to_use": "Use when authoring delay, timer, or other scheduled execution statements.",
+      "allowed_slot_ids": [
+        "graph.body.*",
+        "graph.statement.schedule"
+      ],
+      "compiler_id": "append_new_owned_graph",
+      "status": "active",
+      "behavior_field": "entries"
+    },
+    {
+      "route_id": "graph.merge.append_after",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "append_after",
+      "taskplan_op": "insert_flow",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_append_after_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=merge_owned_graph",
+        "behavior.merges[].kind=insert_flow",
+        "behavior.merges[].insert_strategy=append_after",
+        "behavior.merges[].anchor",
+        "behavior.merges[].inserted"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.merges[]",
+        "behavior.merges[].inserted"
+      ],
+      "purpose": "Append an owned merge payload after an owned anchor.",
+      "when_to_use": "Use for legacy owned merge payloads that are not BlueprintLogicSpec body statements.",
+      "allowed_slot_ids": [],
+      "compiler_id": "merge_owned_graph",
+      "status": "active",
+      "behavior_field": "merges"
+    },
+    {
+      "route_id": "graph.merge.branch_fork",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "branch_fork",
+      "taskplan_op": "insert_flow",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_branch_fork_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=merge_owned_graph",
+        "behavior.merges[].kind=insert_flow",
+        "behavior.merges[].insert_strategy=branch_fork",
+        "behavior.merges[].anchor",
+        "behavior.merges[].inserted",
+        "behavior.merges[].sequence_order"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.merges[]",
+        "behavior.merges[].sequence_order"
+      ],
+      "purpose": "Fork owned flow around an owned anchor with explicit sequence order.",
+      "when_to_use": "Use when inserting owned logic as an explicit branch fork.",
+      "allowed_slot_ids": [],
+      "compiler_id": "merge_owned_graph",
+      "status": "active",
+      "behavior_field": "merges"
+    },
+    {
+      "route_id": "graph.merge.insert_between",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "insert_between",
+      "taskplan_op": "insert_flow",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_insert_between_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=merge_owned_graph",
+        "behavior.merges[].kind=insert_flow",
+        "behavior.merges[].insert_strategy=insert_between",
+        "behavior.merges[].anchor.link_ref",
+        "behavior.merges[].inserted"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.merges[]",
+        "behavior.merges[].inserted"
+      ],
+      "purpose": "Insert an owned merge payload between an owned anchor and successor link.",
+      "when_to_use": "Use for owned insertion between an anchor and an existing successor.",
+      "allowed_slot_ids": [],
+      "compiler_id": "merge_owned_graph",
+      "status": "active",
+      "behavior_field": "merges"
+    },
+    {
+      "route_id": "graph.merge_external_flow.append_after",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "merge_external_flow",
+      "public_scope": "append_after",
+      "taskplan_op": "insert_external_flow",
+      "runtime_adapter_id": "k2.external_graph.insert_external_flow",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_flow_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=merge_external_flow",
+        "behavior.external_merges[].insert_strategy=append_after",
+        "behavior.external_merges[].anchor",
+        "behavior.external_merges[].inserted.body"
+      ],
+      "optional_fields": [
+        "behavior.external_merges[].sequence_order"
+      ],
+      "insert_paths": [
+        "behavior.external_merges[].inserted.body.statements[]"
+      ],
+      "purpose": "Insert executable statements after a stable external graph anchor.",
+      "when_to_use": "Use when read_context provides a stable LogicJson or ExternalGraphAnchor exec boundary.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
+      "compiler_id": "merge_external_flow",
+      "status": "active",
+      "behavior_field": "external_merges"
+    },
+    {
+      "route_id": "graph.patch.connect_pins",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "connect_pins",
+      "taskplan_op": "connect_pins",
+      "runtime_adapter_id": "k2.owned_graph.patch.connect_pins",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_connect_pins_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=connect_pins",
+        "behavior.patches[].target_ref",
+        "behavior.patches[].source_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[].target_ref",
+        "behavior.patches[].source_ref"
+      ],
+      "purpose": "Connect two pins in an owned GraphWrite block.",
+      "when_to_use": "Use for GUID/ref based patching of BlueprintHelper-owned nodes.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.patch.delete_owned_node",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "node_delete",
+      "taskplan_op": "delete_owned_node",
+      "runtime_adapter_id": "k2.owned_graph.patch.node_delete",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_delete_owned_node_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=delete_owned_node",
+        "behavior.patches[].target_ref",
+        "behavior.patches[].delete_policy"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[]",
+        "behavior.patches[].target_ref"
+      ],
+      "purpose": "Delete a BlueprintHelper-owned node by stable node reference.",
+      "when_to_use": "Use only for BlueprintHelper-owned nodes where delete_policy is explicit.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.patch.disconnect_link",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "disconnect_link",
+      "taskplan_op": "disconnect_link",
+      "runtime_adapter_id": "k2.owned_graph.patch.disconnect_link",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_disconnect_link_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=disconnect_link",
+        "behavior.patches[].link_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[]",
+        "behavior.patches[].link_ref"
+      ],
+      "purpose": "Disconnect a link in a BlueprintHelper-owned graph block.",
+      "when_to_use": "Use for link-level owned graph patches.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.patch.node_comment",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "node_comment",
+      "taskplan_op": "set_node_comment",
+      "runtime_adapter_id": "k2.owned_graph.patch.node_comment",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_node_comment_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=set_node_comment",
+        "behavior.patches[].target_ref",
+        "behavior.patches[].comment"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[]",
+        "behavior.patches[].target_ref"
+      ],
+      "purpose": "Set comment text on a BlueprintHelper-owned node.",
+      "when_to_use": "Use for owned node comment patches.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.patch.pin_default",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "pin_default",
+      "taskplan_op": "set_pin_default",
+      "runtime_adapter_id": "k2.owned_graph.patch.pin_default",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_pin_default_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=set_pin_default",
+        "behavior.patches[].target_ref",
+        "behavior.patches[].value"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[].target_ref",
+        "behavior.patches[].value"
+      ],
+      "purpose": "Set a pin default value in an owned GraphWrite block.",
+      "when_to_use": "Use for default-value edits when read_context returned stable pin refs.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.patch.replace_link",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "replace_link",
+      "taskplan_op": "replace_link",
+      "runtime_adapter_id": "k2.owned_graph.patch.replace_link",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_replace_link_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_owned_graph",
+        "behavior.patches[].kind=replace_link",
+        "behavior.patches[].link_ref",
+        "behavior.patches[].replacement_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.patches[]",
+        "behavior.patches[].replacement_ref"
+      ],
+      "purpose": "Replace an existing owned graph link with another endpoint reference.",
+      "when_to_use": "Use for link replacement inside BlueprintHelper-owned graph content.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_owned_graph",
+      "status": "active",
+      "behavior_field": "patches"
+    },
+    {
+      "route_id": "graph.replace.event_body",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "event_body",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.event_body",
+      "selector": {
+        "expected_kind": "event",
+        "required_fields": [
+          "name"
+        ],
+        "output_fields": {
+          "name": "entry_name"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_replace_owned_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=event_body|custom_event_body",
+        "behavior.replace.selector.kind=event|custom_event",
+        "behavior.replace.selector.name",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Replace the body of an existing event or custom event.",
+      "when_to_use": "Use when the target event signature already exists.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
+      "compiler_id": "replace_body",
+      "status": "active",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.function_body",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "function_body",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.function_body",
+      "selector": {
+        "expected_kind": "function",
+        "required_fields": [
+          "name"
+        ],
+        "output_fields": {
+          "name": "function_name"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_replace_owned_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=function_body",
+        "behavior.replace.selector.kind=function",
+        "behavior.replace.selector.name",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Replace the body of an existing function.",
+      "when_to_use": "Use after the function signature already exists.",
+      "allowed_slot_ids": [
+        "graph.body.*",
+        "graph.statement.call.direct",
+        "graph.statement.control.return",
+        "graph.expression.get.function_param"
+      ],
+      "compiler_id": "replace_body",
+      "status": "active",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.custom_event_definition",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "custom_event_definition",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.custom_event_body",
+      "selector": {
+        "expected_kind": "custom_event",
+        "required_fields": [
+          "name"
+        ],
+        "output_fields": {
+          "name": "entry_name"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=custom_event_definition",
+        "behavior.replace.selector.kind=custom_event",
+        "behavior.replace.selector.name",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Internal selector route for custom event definition replacement with signature split.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_body",
+      "status": "hidden",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.custom_event_body",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "custom_event_body",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.custom_event_body",
+      "selector": {
+        "expected_kind": "custom_event",
+        "required_fields": [
+          "name"
+        ],
+        "output_fields": {
+          "name": "entry_name"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=custom_event_body",
+        "behavior.replace.selector.kind=custom_event",
+        "behavior.replace.selector.name",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Internal selector route for custom event body replacement.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_body",
+      "status": "hidden",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.graph",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "graph",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.graph_body",
+      "selector": {
+        "expected_kind": "graph",
+        "required_fields": [],
+        "output_fields": {},
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=graph",
+        "behavior.replace.selector.kind=graph",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Internal selector route for whole graph body replacement.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_body",
+      "status": "hidden",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.block_implementation",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "block_implementation",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.block_implementation",
+      "selector": {
+        "expected_kind": "block",
+        "required_fields": [
+          "block_id"
+        ],
+        "output_fields": {
+          "block_id": "block_id"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path",
+          "target_ref",
+          "block_ref"
+        ]
+      },
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=block_implementation",
+        "behavior.replace.selector.kind=block",
+        "behavior.replace.selector.block_id",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Internal selector route for owned block implementation replacement.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_body",
+      "status": "hidden",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.replace.macro_body",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "macro_body",
+      "taskplan_op": "replace_body",
+      "runtime_adapter_id": "k2.macro_body",
+      "selector": {
+        "expected_kind": "macro",
+        "required_fields": [
+          "name"
+        ],
+        "output_fields": {
+          "name": "entry_name"
+        },
+        "passthrough_fields": [
+          "graph_id",
+          "node_ref",
+          "node_path"
+        ]
+      },
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_owned_graph",
+        "behavior.replace.scope=macro_body",
+        "behavior.replace.selector.kind=macro",
+        "behavior.replace.selector.name",
+        "behavior.replace.body"
+      ],
+      "optional_fields": [
+        "behavior.replace.options.strict"
+      ],
+      "insert_paths": [
+        "behavior.replace.body.statements[]"
+      ],
+      "purpose": "Planned macro body replacement route.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_body",
+      "status": "planned",
+      "behavior_field": "replace"
+    },
+    {
+      "route_id": "graph.patch_external_graph.node_comment",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "node_comment",
+      "taskplan_op": "set_external_node_comment",
+      "runtime_adapter_id": "k2.external_graph.patch.node_comment",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_graph",
+        "behavior.external_patches[].kind=set_external_node_comment"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_patches[]"
+      ],
+      "purpose": "Internal external graph node comment patch route.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_external_graph",
+      "status": "hidden",
+      "behavior_field": "external_patches"
+    },
+    {
+      "route_id": "graph.patch_external_graph.pin_default",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "pin_default",
+      "taskplan_op": "set_external_pin_default",
+      "runtime_adapter_id": "k2.external_graph.patch.pin_default",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_graph",
+        "behavior.external_patches[].kind=set_external_pin_default"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_patches[]"
+      ],
+      "purpose": "Internal external graph pin default patch route.",
+      "allowed_slot_ids": [],
+      "compiler_id": "patch_external_graph",
+      "status": "hidden",
+      "behavior_field": "external_patches"
+    },
+    {
+      "route_id": "graph.replace_external_body.body",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "replace_external_body",
+      "public_scope": "body_replace",
+      "taskplan_op": "replace_external_body",
+      "runtime_adapter_id": "k2.external_graph.replace_body",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=replace_external_body",
+        "behavior.external_replace"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_replace.body.statements[]"
+      ],
+      "purpose": "Internal external body replacement route.",
+      "allowed_slot_ids": [],
+      "compiler_id": "replace_external_body",
+      "status": "hidden",
+      "behavior_field": "external_replace"
+    }
+  ]
+}

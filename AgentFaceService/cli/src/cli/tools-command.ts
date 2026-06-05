@@ -1,5 +1,6 @@
 import {
-  getToolTemplateDispatch,
+  buildReadonlyToolCommandManifestRegistry,
+  createToolsTemplateBuilder,
   isToolCapabilityDomain,
   isToolCapabilityKind,
   listToolCapabilities,
@@ -39,7 +40,7 @@ export function runToolsCommand(command: CliCommand): Record<string, unknown> {
   }
 
   if (command.kind === 'tools.templates') {
-    return getToolTemplateDispatch(required(command.toolId, 'Missing tools template tool id.'), {
+    return createToolsTemplateBuilder(buildReadonlyToolCommandManifestRegistry()).getTemplateDispatch(required(command.toolId, 'Missing tools template tool id.'), {
       route: command.routeId,
       slot: command.slot,
       slotKind: command.slotKind ? parseToolTemplateSlotKind(command.slotKind) : undefined,

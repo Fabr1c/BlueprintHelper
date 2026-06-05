@@ -5,7 +5,7 @@ import {
   createMetricsService,
   type MetricsService,
 } from '@blueprinthelper/task-core/metrics/metrics-service';
-import { extractReadToolOperation } from '@blueprinthelper/task-core/metrics/operation-extractor';
+import { buildReadonlyToolCommandManifestRegistry } from '@blueprinthelper/task-core/tool-surface/manifest/tool-command-manifest-builder';
 import type {
   MetricsIoSummary,
   MetricsOperationIdentity,
@@ -176,9 +176,13 @@ function resolveCliMetricsEpisodeTtlMs(env: NodeJS.ProcessEnv): number | undefin
   return hours * HOUR_IN_MS;
 }
 
-function resolveCliToolOperation(toolName: string, input: unknown): MetricsOperationIdentity {
-  if (toolName === 'blueprinthelper_read_context') {
-    return extractReadToolOperation(input);
+function resolveCliToolOperation(toolName: string, _input: unknown): MetricsOperationIdentity {
+  const manifest = buildReadonlyToolCommandManifestRegistry().get(toolName);
+  if (manifest) {
+    return manifest.metrics_identity ?? {
+      capability: `${manifest.domain}.${manifest.kind}`,
+      semantic_operation: manifest.tool_id,
+    };
   }
 
   return {

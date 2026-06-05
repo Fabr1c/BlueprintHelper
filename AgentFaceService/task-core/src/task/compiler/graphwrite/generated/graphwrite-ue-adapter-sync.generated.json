@@ -1,0 +1,281 @@
+{
+  "schema": "BlueprintHelper.GraphWriteRouteAdapterSync.v1",
+  "generated_from": "src/task/compiler/graphwrite/graphwrite-route-source.json",
+  "routes": [
+    {
+      "route_id": "graph.append.container_action",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "container_action",
+      "behavior_field": "entries",
+      "compiler_id": "append_new_owned_graph",
+      "taskplan_op": "ensure_entry",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.append.custom_event",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "custom_event",
+      "behavior_field": "entries",
+      "compiler_id": "append_new_owned_graph",
+      "taskplan_op": "ensure_entry",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.append.event_delegate",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "event_delegate",
+      "behavior_field": "entries",
+      "compiler_id": "append_new_owned_graph",
+      "taskplan_op": "ensure_entry",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.append.generic_ops",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "generic_ops",
+      "behavior_field": "entries",
+      "compiler_id": "append_new_owned_graph",
+      "taskplan_op": "ensure_entry",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.append.generic_schedule",
+      "runtime_adapter_id": "k2.owned_graph.ensure_entry",
+      "graph_strategy": "append_new_owned_graph",
+      "public_scope": "generic_schedule",
+      "behavior_field": "entries",
+      "compiler_id": "append_new_owned_graph",
+      "taskplan_op": "ensure_entry",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.merge_external_flow.append_after",
+      "runtime_adapter_id": "k2.external_graph.insert_external_flow",
+      "graph_strategy": "merge_external_flow",
+      "public_scope": "append_after",
+      "behavior_field": "external_merges",
+      "compiler_id": "merge_external_flow",
+      "taskplan_op": "insert_external_flow",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.merge.append_after",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "append_after",
+      "behavior_field": "merges",
+      "compiler_id": "merge_owned_graph",
+      "taskplan_op": "insert_flow",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.merge.branch_fork",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "branch_fork",
+      "behavior_field": "merges",
+      "compiler_id": "merge_owned_graph",
+      "taskplan_op": "insert_flow",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.merge.insert_between",
+      "runtime_adapter_id": "k2.owned_graph.insert_flow",
+      "graph_strategy": "merge_owned_graph",
+      "public_scope": "insert_between",
+      "behavior_field": "merges",
+      "compiler_id": "merge_owned_graph",
+      "taskplan_op": "insert_flow",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch_external_graph.node_comment",
+      "runtime_adapter_id": "k2.external_graph.patch.node_comment",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "node_comment",
+      "behavior_field": "external_patches",
+      "compiler_id": "patch_external_graph",
+      "taskplan_op": "set_external_node_comment",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.patch_external_graph.pin_default",
+      "runtime_adapter_id": "k2.external_graph.patch.pin_default",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "pin_default",
+      "behavior_field": "external_patches",
+      "compiler_id": "patch_external_graph",
+      "taskplan_op": "set_external_pin_default",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.patch.connect_pins",
+      "runtime_adapter_id": "k2.owned_graph.patch.connect_pins",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "connect_pins",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "connect_pins",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch.delete_owned_node",
+      "runtime_adapter_id": "k2.owned_graph.patch.node_delete",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "node_delete",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "delete_owned_node",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch.disconnect_link",
+      "runtime_adapter_id": "k2.owned_graph.patch.disconnect_link",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "disconnect_link",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "disconnect_link",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch.node_comment",
+      "runtime_adapter_id": "k2.owned_graph.patch.node_comment",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "node_comment",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "set_node_comment",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch.pin_default",
+      "runtime_adapter_id": "k2.owned_graph.patch.pin_default",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "pin_default",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "set_pin_default",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.patch.replace_link",
+      "runtime_adapter_id": "k2.owned_graph.patch.replace_link",
+      "graph_strategy": "patch_owned_graph",
+      "public_scope": "replace_link",
+      "behavior_field": "patches",
+      "compiler_id": "patch_owned_graph",
+      "taskplan_op": "replace_link",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.replace_external_body.body",
+      "runtime_adapter_id": "k2.external_graph.replace_body",
+      "graph_strategy": "replace_external_body",
+      "public_scope": "body_replace",
+      "behavior_field": "external_replace",
+      "compiler_id": "replace_external_body",
+      "taskplan_op": "replace_external_body",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.replace.block_implementation",
+      "runtime_adapter_id": "k2.block_implementation",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "block_implementation",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.replace.custom_event_body",
+      "runtime_adapter_id": "k2.custom_event_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "custom_event_body",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.replace.custom_event_definition",
+      "runtime_adapter_id": "k2.custom_event_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "custom_event_definition",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.replace.event_body",
+      "runtime_adapter_id": "k2.event_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "event_body",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.replace.function_body",
+      "runtime_adapter_id": "k2.function_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "function_body",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
+    },
+    {
+      "route_id": "graph.replace.graph",
+      "runtime_adapter_id": "k2.graph_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "graph",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "hidden",
+      "adapter_sync": "hidden"
+    },
+    {
+      "route_id": "graph.replace.macro_body",
+      "runtime_adapter_id": "k2.macro_body",
+      "graph_strategy": "replace_owned_graph",
+      "public_scope": "macro_body",
+      "behavior_field": "replace",
+      "compiler_id": "replace_body",
+      "taskplan_op": "replace_body",
+      "status": "planned",
+      "adapter_sync": "planned"
+    }
+  ]
+}

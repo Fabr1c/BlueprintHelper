@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -66,6 +67,22 @@ test('runCli returns template dispatch package for a selected tool id', async ()
   assert.equal('show_command' in output, false);
 });
 
+test('runCli resolves tools templates by capability id and tool alias through shared builder', async () => {
+  const byCapability = await runCliJson(['tools', 'templates', 'blueprint.plan.taskspec.preview', '--format', 'json']);
+  const byToolName = await runCliJson(['tools', 'templates', 'blueprinthelper_preview_task', '--format', 'json']);
+
+  assert.equal(byCapability.output.schema, 'BlueprintHelper.ToolTemplateSelection.v1');
+  assert.deepEqual(byToolName.output.routes, byCapability.output.routes);
+  assert.equal(byToolName.output.tool_id, 'blueprint.plan.taskspec.preview');
+});
+
+test('runCli resolves grouped alias templates through shared builder', async () => {
+  const { output } = await runCliJson(['tools', 'templates', 'task preview', '--format', 'json']);
+
+  assert.equal(output.tool_id, 'blueprint.plan.taskspec.preview');
+  assert.equal(output.tool_name, 'blueprinthelper_preview_task');
+});
+
 test('ReadContext help points to route-owned templates only', () => {
   const readContextHelp = buildHelpText(['blueprinthelper_read_context']);
   const groupedReadHelp = buildHelpText(['context', 'read']);
@@ -101,6 +118,39 @@ test('runCli returns route-filtered slot templates for a selected tool id', asyn
   );
 });
 
+test('runCli scopes GraphWrite function-only expression slots by route', async () => {
+  const functionDispatch = await runCliJson([
+    'tools',
+    'templates',
+    'blueprint.plan.taskspec.preview',
+    '--route',
+    'graph.replace.function_body',
+    '--slot',
+    '--kind',
+    'expression',
+    '--format',
+    'json',
+  ]);
+  const eventDispatch = await runCliJson([
+    'tools',
+    'templates',
+    'blueprint.plan.taskspec.preview',
+    '--route',
+    'graph.replace.event_body',
+    '--slot',
+    '--kind',
+    'expression',
+    '--format',
+    'json',
+  ]);
+
+  const functionSlotIds = new Set(functionDispatch.output.slot_templates.map((slot: Record<string, unknown>) => slot.slot_id));
+  const eventSlotIds = new Set(eventDispatch.output.slot_templates.map((slot: Record<string, unknown>) => slot.slot_id));
+
+  assert.equal(functionSlotIds.has('graph.expression.get.function_param'), true);
+  assert.equal(eventSlotIds.has('graph.expression.get.function_param'), false);
+});
+
 test('runCli rejects template slot kind without slot output', async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -124,6 +174,91 @@ test('runCli rejects template slot kind without slot output', async () => {
   assert.equal(exitCode, 64);
   assert.equal(stdout.join(''), '');
   assert.match(stderr.join(''), /--kind requires --slot/);
+});
+
+test('runCli supports compile-only task preview without bridge access', async (t) => {
+  const workspace = await fs.mkdtemp(path.join(process.cwd(), 'tmp-cli-compile-only-'));
+  t.after(async () => {
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+  await fs.writeFile(
+    path.join(workspace, 'replace-function-body.taskspec.json'),
+    JSON.stringify(makeReplaceFunctionBodyTaskSpec(), null, 2),
+    'utf8',
+  );
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: [
+      'task',
+      'preview',
+      '--file',
+      'replace-function-body.taskspec.json',
+      '--compile-only',
+      '--format',
+      'json',
+    ],
+    cwd: workspace,
+    runner: {
+      async readReferenceContext() {
+        throw new Error('compile-only preview must not read reference context.');
+      },
+      async previewTask() {
+        throw new Error('compile-only preview must not call the Bridge-backed runner.');
+      },
+      async executeTask() {
+        throw new Error('compile-only preview must not execute tasks.');
+      },
+      async getTaskResult() {
+        throw new Error('compile-only preview must not read task results.');
+      },
+    },
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(stdout.join('')) as Record<string, any>;
+  const taskPlan = output.tool_result.data.task_plan;
+  assert.equal(taskPlan.steps.some((step: Record<string, any>) =>
+    step.capability === 'graph_write'
+    && step.write.strategy === 'owned_graph_edit'
+    && step.write.ops.some((op: Record<string, unknown>) => op.op === 'replace_body')), true);
+});
+
+test('runCli compile-only preview accepts function parameter return slot fixture', async () => {
+  const { output } = await runCliJson([
+    'task',
+    'preview',
+    '--file',
+    'AgentFaceService/cli/test-fixtures/graphwrite-slots/replace-function-body-with-param-return.taskspec.json',
+    '--compile-only',
+    '--format',
+    'json',
+  ]);
+
+  const taskPlanText = JSON.stringify(output.tool_result.data.task_plan);
+  assert.match(taskPlanText, /field\.function_param_get/);
+  assert.match(taskPlanText, /InputValue/);
+  assert.match(taskPlanText, /replace_body/);
+});
+
+test('runCli compile-only preview accepts custom event call slot fixture', async () => {
+  const { output } = await runCliJson([
+    'task',
+    'preview',
+    '--file',
+    'AgentFaceService/cli/test-fixtures/graphwrite-slots/append-custom-event-with-call.taskspec.json',
+    '--compile-only',
+    '--format',
+    'json',
+  ]);
+
+  const taskPlanText = JSON.stringify(output.tool_result.data.task_plan);
+  assert.match(taskPlanText, /PrintString/);
+  assert.match(taskPlanText, /ensure_entry/);
+  assert.doesNotMatch(taskPlanText, /field\.function_param_get/);
 });
 
 test('runCli does not register an independent tool detail command', async () => {
@@ -216,4 +351,48 @@ async function runCliJson(argv: string[]): Promise<{ output: Record<string, any>
 
 function workspaceRoot(): string {
   return path.join('D:', 'UEProjects', 'Template', 'Plugins', 'BlueprintHelper');
+}
+
+function makeReplaceFunctionBodyTaskSpec(): Record<string, unknown> {
+  return {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_cli_compile_only_replace_function',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'CliCompileOnlyReplaceFunction',
+    target: {
+      asset_path: '/Game/BH_Tests/BP_CliCompileOnly',
+      target_type: 'blueprint',
+    },
+    scope_policy: {
+      graph_name: 'EventGraph',
+      allow_modify_user_nodes: false,
+    },
+    behavior: {
+      graph_strategy: 'replace_owned_graph',
+      replace: {
+        scope: 'function_body',
+        selector: {
+          kind: 'function',
+          name: 'ComputeValue',
+        },
+        body: {
+          schema: 'BlueprintLogicSpec.v1',
+          statements: [{
+            kind: 'control',
+            control: 'return',
+            values: {
+              ReturnValue: { kind: 'literal', value_type: 'number', value: 7 },
+            },
+          }],
+        },
+      },
+    },
+    execution_policy: {
+      dry_run_mode: 'full',
+    },
+    validation: {
+      should_compile: false,
+      should_save: false,
+    },
+  };
 }
