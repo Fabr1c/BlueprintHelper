@@ -13,11 +13,11 @@
 
 Preview is the write gate for every S1-S3 write. If preview returns `preview_blocked`, `context_required`, `context_stale`, or `failed`, do not execute; either repair the TaskSpec, refresh context, or stop and report.
 
-For GraphWrite `merge_owned_graph` using `branch_fork + owned_block_call`, preview must verify:
+For GraphWrite branch insertion into an owned block, preview must verify:
 
 - The anchor is a block-scoped LogicJson anchor from a BlueprintHelper-owned block.
-- `sequence_order` is explicit and uses only `original_successor` and `inserted_logic`.
-- `inserted.block_id` resolves to an existing BlueprintHelper-owned CustomEvent block that can be called.
+- ordering policy matches the current template.
+- the inserted target resolves to an existing BlueprintHelper-owned callable block.
 
 If any of these checks block, execution is forbidden. A successful preview is still not a guarantee that execute will succeed, because the UE asset may change or Editor state may fail during write; execute failures must return a non-empty error code/message/stage that the Agent can report.
 
@@ -31,7 +31,7 @@ Source-control checkout is separate from write authorization. In P4/Perforce or 
 
 ## Validation
 
-Use TaskSpec `validation.should_compile` and `validation.should_save`. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
+Use the compile/save validation policy from the current CLI-discovered template. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
 
 ## Recovery
 
@@ -52,11 +52,6 @@ After writing, do at least one relevant read-back:
 
 ## Report Format
 
-```text
-Status: completed / preview_blocked / failed
-Target: asset path
-Task: task_type or feature_name
-Changes: concise list
-Validation: compile/save/read-back status
-Remaining risks: concise list
-```
+Report status, target, task summary, main changes, validation result, and
+remaining risks. Do not copy raw TaskSpec fields or runtime payloads into the
+ordinary user report.

@@ -69,22 +69,7 @@ After `npm link`, the installer removes npm-generated `bh.ps1` / `blueprinthelpe
 
 Use this only when the installer could not discover a unique `.uproject` or you intentionally passed `-SkipProjectProfile`.
 
-Store UE version-specific configuration in the project profile:
-
-```json
-{
-  "schema": "BlueprintHelper.ProjectProfile.v1",
-  "environment": {
-    "ue_version": "5.6",
-    "ue_engine_dir": "<UE_ENGINE_ROOT>"
-  },
-  "workflow_docs": {
-    "agent_workflow": ".blueprinthelper/AgentWorkFlow.md"
-  }
-}
-```
-
-Save this file as `<ProjectDir>/.blueprinthelper/project-profile.json`. The root installer writes this automatically when `-ProjectFile` and `-EngineRoot` are supplied. Agent workflow rules should live in `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`; project-root `AGENTS.md` / `CLAUDE.md` should only keep the managed BlueprintHelper entry that points to that workflow document.
+Store UE version-specific configuration in `<ProjectDir>/.blueprinthelper/project-profile.json` only when this fallback is necessary. The root installer writes this automatically when `-ProjectFile` and `-EngineRoot` are supplied. Agent workflow rules should live in `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`; project-root `AGENTS.md` / `CLAUDE.md` should only keep the managed BlueprintHelper entry that points to that workflow document.
 
 Bridge connectivity environment variables:
 
@@ -123,10 +108,10 @@ The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagno
 Examples:
 
 ```powershell
-bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh blueprinthelper_read_context --file .\read-spec.json --select status,summary,artifacts.full_result
-bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
-bh task execute --file .\task_spec.json --select status,task_run_id,summary
+bh blueprint_get_runtime_profile --json "{}" --select <fields>
+bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
+bh task preview --file <copied-template.json> --select <fields>
+bh task execute --file <copied-template.json> --select <fields>
 ```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
@@ -150,80 +135,52 @@ Repository verification:
 Editor connection verification:
 
 ```powershell
-bh blueprint_get_runtime_profile --json "{}" --select status,summary
+bh blueprint_get_runtime_profile --json "{}" --select <fields>
 ```
 
 ReadContext capability discovery is local to task-core and does not touch UE assets:
 
 ```powershell
-'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select <fields>
 ```
 
-Expected bridge facts:
-
-```json
-{
-  "status": "completed",
-  "summary": {
-    "bridge": {
-      "reachable": true
-    },
-    "write_permission": {
-      "enabled": true
-    }
-  }
-}
-```
+Expected bridge facts are a completed status, reachable Bridge summary, and current write-permission summary.
 
 ## 7. First Safe Asset Read
 
 Read compact Blueprint asset context:
 
 ```powershell
-bh blueprinthelper_read_context --file .\read_blueprint_summary.json --select status,summary,artifacts.full_result
+bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
 ```
 
 Read a graph as Markdown:
 
 ```powershell
-bh blueprinthelper_read_context --file .\read_eventgraph_logic_md.json --select status,summary,artifacts.full_result
+bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
 ```
 
 Read the project-authored function/event chain from a known Blueprint entry:
 
 ```powershell
-bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,summary,artifacts.full_result
+bh blueprinthelper_read_function_chain_context --file <copied-template.json> --select <fields>
 ```
 
-Minimal `function_chain.json`:
+Use current CLI discovery to locate the FunctionChain request template. The result is a compact index; use current CLI help/discovery for exact result fields.
 
-```json
-{
-  "asset_path": "/Game/BP_PlayerController",
-  "target_type": "custom_event",
-  "target_name": "Input_Fire",
-  "graph_name": "EventGraph",
-  "max_depth": 3,
-  "include_data_dependencies": true,
-  "expand_cross_asset": true
-}
-```
-
-The result is a compact `FunctionChainContext.v1` index. Follow `custom_logic_refs[]` with scoped `blueprinthelper_read_context` calls when the function body is needed.
-
-Copy matching inputs from `AgentFaceService/agent-guide/Templates/read/` and edit placeholders instead of embedding complex JSON in PowerShell.
+Use the current CLI discovery output or per-command help to prepare JSON input, then pass it with `--file` instead of embedding complex JSON in PowerShell.
 
 ## 8. Safe Write Checklist
 
 For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
-- Run `bh blueprint_get_runtime_profile --json "{}" --select status,summary`.
-- Run `bh blueprinthelper_read_context --file .\read-spec.json --select status,summary,artifacts.full_result`.
-- Produce `BlueprintHelper.TaskSpec.v1` with exact `asset_path`, target graph when relevant, allowed scope, resource references, failure policy, `validation.should_compile`, and `validation.should_save`.
+- Run `bh blueprint_get_runtime_profile --json "{}" --select <fields>`.
+- Run `bh blueprinthelper_read_context --file <copied-template.json> --select <fields>`.
+- Produce the TaskSpec from the current CLI-discovered template, filling only the task-specific placeholders required by that template.
 - Do not submit TaskPlan directly; it is produced by the canonical AgentFace task-core TypeScript compiler.
-- Run `bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result` and stop on blocked / failed preview.
-- Run `bh task execute --file .\task_spec.json --select status,task_run_id,summary` only after preview passes.
+- Run `bh task preview --file <copied-template.json> --select <fields>` and stop on blocked / failed preview.
+- Run `bh task execute --file <copied-template.json> --select <fields>` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, compile/save policy, transaction grouping, rollback, and diagnostics.
 
-Low-level legacy/internal/debug/expert commands are documented in [CLI_Tools_API_Reference.md](CLI_Tools_API_Reference.md), but they are not part of the supported Agent entry.
+Low-level legacy/internal/debug/expert commands are not part of the supported Agent entry. Use current CLI discovery for supported ordinary Agent flows.

@@ -19,7 +19,7 @@ Deprecated MCP ordinary tools are not an alternate transport or fallback path.
 - Complete the Bridge and project profile setup before running CLI commands.
 - Build `task-core` and the CLI package so the CLI entry exists under `AgentFaceService/cli/build/cli/`.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
-- Prepare a bare `BlueprintHelper.TaskSpec.v1` file such as `.\task_spec.json`, or copy one from `AgentFaceService/agent-guide/Templates/write/`.
+- Prepare a TaskSpec file by copying the matching template returned by current CLI discovery.
 
 ## Direct Tool Name Invocation
 
@@ -34,11 +34,11 @@ PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for gen
 Examples:
 
 ```powershell
-bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh blueprinthelper_read_context_capabilities --json "{}" --select status,artifacts.full_result
-bh blueprinthelper_read_function_chain_context --file .\function_chain.json --select status,artifacts.full_result
-bh blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,summary,artifacts.full_result
-bh blueprinthelper_execute_task --file .\execute_wrapper.json --select status,task_run_id,summary
+bh blueprint_get_runtime_profile --json "{}" --select <fields>
+bh blueprinthelper_read_context_capabilities --json "{}" --select <fields>
+bh blueprinthelper_read_function_chain_context --file <copied-template.json> --select <fields>
+bh blueprinthelper_preview_task --file <copied-template.json> --select <fields>
+bh blueprinthelper_execute_task --file <copied-template.json> --select <fields>
 ```
 
 Generated JSON example:
@@ -55,7 +55,7 @@ bh blueprinthelper_preview_task --help
 bh task preview --help
 ```
 
-Tool help lists the expected input shape and the matching `AgentFaceService/agent-guide/Templates/` semantic index and template files. Prefer copying a template, replacing placeholders, and passing the result with `--file` instead of building large JSON directly in the shell.
+Tool help and current CLI discovery provide concrete template file paths. Prefer copying the returned template, replacing placeholders, and passing the result with `--file` instead of building large JSON directly in the shell.
 
 The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
@@ -64,25 +64,25 @@ The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/deb
 Use `blueprinthelper_read_context_capabilities` when an Agent needs to discover supported ReadContext read types, asset target types, and formats. This command is local to task-core, does not read UE assets, and does not call Bridge.
 
 ```powershell
-'{}' | bh blueprinthelper_read_context_capabilities --stdin --select status,artifacts.full_result
+'{}' | bh blueprinthelper_read_context_capabilities --stdin --select <fields>
 ```
 
-The full artifact payload schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are full sets; `read_types[]` lists only unsupported asset types and unsupported formats for each read type.
+Use current CLI help/discovery for the result fields to select.
 
 ## Preview
 
 Run preview first. This compiles `BlueprintHelper.TaskSpec.v1`, then uses the Bridge preview and UE-side validation path.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file .\task_spec.json --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file <copied-template.json> --format summary
 ```
 
 Use `--format summary` for normal Agent loops so the shell returns compact text plus artifact paths instead of large escaped JSON blobs.
 
-The direct tool-name command uses the tool input shape. Prefer the wrapper templates:
+The direct tool-name command uses the tool input shape returned by CLI discovery:
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file .\preview_wrapper.json --select status,preview_id,artifacts.full_result
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file <copied-template.json> --select <fields>
 ```
 
 ## Execute
@@ -90,32 +90,20 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_previ
 Execute only after preview passes. This uses the same canonical TypeScript compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .\task_spec.json --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <copied-template.json> --format summary
 ```
 
 ## Read Full Result
 
-Use the artifact paths returned by summary output for follow-up inspection. `artifacts.full_result` is a compact full-result payload without a top-level `BlueprintHelper.CliFullResult.v1` schema field. Nested ToolResult schemas, trace ids, TaskSpec duplicate `target_assets`, duplicate `task_run_id`, raw `bridge_result`, and internal policy fields such as `execution_policy`, `scope_policy`, `should_compile`, and `should_save` are not included in default Agent-facing output.
+Use artifact paths returned by summary output for follow-up inspection. Use current CLI help/discovery for exact result fields. Ordinary Agent output should stay compact and should not expand raw Bridge payloads or internal execution policy details.
 
 Use `--expert` only when raw execution diagnostics are needed. In expert mode the CLI also returns `artifacts.debug_result`, which contains `BlueprintHelper.CliDebugResult.v1` with the raw Bridge result and trace ids. Use `--format json` only when the Agent truly needs the full JSON in stdout.
 
 ## Function Chain Reads
 
-Use `blueprinthelper_read_function_chain_context` after reading an entry graph when the next step is to inspect project-authored functions/events reached from that entry. It returns `FunctionChainContext.v1` with `custom_logic_refs[]`, not full graph bodies.
+Use `blueprinthelper_read_function_chain_context` after reading an entry graph when the next step is to inspect project-authored functions/events reached from that entry. It returns a compact index, not full graph bodies.
 
-```json
-{
-  "asset_path": "/Game/BP_PlayerController",
-  "target_type": "custom_event",
-  "target_name": "Input_Fire",
-  "graph_name": "EventGraph",
-  "max_depth": 3,
-  "include_data_dependencies": true,
-  "expand_cross_asset": true
-}
-```
-
-Do not pass GUID or owner fields. Engine and trusted plugin calls are summarized by count; follow returned refs with `blueprinthelper_read_context` when detailed logic is needed.
+Use CLI discovery to locate the current FunctionChain input template. Do not pass GUID or owner fields. Engine and trusted plugin calls are summarized by count; follow returned refs with `blueprinthelper_read_context` when detailed logic is needed.
 
 ## Waiting Hints
 
@@ -136,34 +124,17 @@ For graph writes, `call.name` may be a native name, display name, owner-qualifie
 Use `--fields` or `--select` to return only the fields the Agent needs in stdout. Field paths can address top-level fields or nested fields with dot notation. Fields that are not selected are omitted, so routine Agent loops do not need to carry `ok`, `schema`, or the full normalized ToolResult envelope.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file .\task_spec.json --fields status,task_run_id,summary,artifacts.full_result
-```
-
-Example projected output:
-
-```json
-{
-  "status": "executed",
-  "task_run_id": "task_cli_001",
-  "summary": {
-    "target_assets": ["/Game/BP_Player"],
-    "planned_steps": 1,
-    "modified": true
-  },
-  "artifacts": {
-    "full_result": ".blueprinthelper/cli-runs/task_cli_001/result.json"
-  }
-}
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <copied-template.json> --fields <fields>
 ```
 
 ## Rules
 
 - Keep writes TaskSpec-first. Any CLI write should start from `BlueprintHelper.TaskSpec.v1`.
-- Use bare TaskSpec files with `task preview` / `task execute`; use `task_spec` wrapper files with `blueprinthelper_preview_task` / `blueprinthelper_execute_task`.
-- Prefer `AgentFaceService/agent-guide/Templates/` copy-and-edit JSON templates or `--stdin` over inline PowerShell `--json` for complex inputs.
+- Use CLI-discovered templates to distinguish grouped commands from direct tool-name wrappers.
+- Prefer CLI-discovered copy-and-edit JSON files or `--stdin` over inline PowerShell `--json` for complex inputs.
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the canonical AgentFace task-core TypeScript compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
 - Use global MCP allowlist for Agent-owned Editor open/close; compatibility paths for `blueprint_open_editor` / `blueprint_close_editor` are MCP lifecycle paths, not CLI aliases.
 - Deprecated MCP ordinary tools are not fallback paths for ordinary Agent workflows.
-- For ordinary Agent input shapes, use [CLI_Tools_API_Reference.md](CLI_Tools_API_Reference.md) and `AgentFaceService/agent-guide/Templates/`.
+- For ordinary Agent input shapes, use per-command help and current CLI discovery.
