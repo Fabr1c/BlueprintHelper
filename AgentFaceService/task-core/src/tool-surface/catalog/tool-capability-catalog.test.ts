@@ -301,6 +301,55 @@ test('source control checkout is advertised as an editor write capability', () =
   assert.equal(dispatch.stop_conditions.includes('not_editable'), true);
 });
 
+test('compile blueprint is advertised as a blueprint diagnose capability', () => {
+  const diagnoseList = listToolCapabilities({ domain: 'blueprint', kind: 'diagnose' });
+  const compileItem = diagnoseList.items.find((item) => item.id === 'blueprint.diagnose.compile');
+  assert.ok(compileItem);
+  assert.equal(compileItem.risk, 'medium');
+  assert.equal(compileItem.requires_bridge, true);
+  assert.equal(compileItem.requires_write_session, true);
+
+  const dispatch = getToolTemplateDispatch('blueprint.diagnose.compile');
+  assert.equal(dispatch.tool_name, 'blueprint_compile_blueprint');
+  assert.deepEqual(dispatch.allowed_tools, ['blueprint_compile_blueprint']);
+  assert.equal(dispatch.routes.length, 0);
+  assert.equal(dispatch.slot_templates.length, 0);
+  assert.equal(
+    dispatch.cli_invocation_templates.some((template) =>
+      template.path.endsWith('blueprint_compile_blueprint_template.json')),
+    true,
+  );
+  assert.equal(dispatch.stop_conditions.includes('write_session_required'), true);
+  assert.equal(dispatch.stop_conditions.includes('compile_failed'), true);
+  assert.equal(dispatch.stop_conditions.includes('target_asset_not_found'), true);
+});
+
+test('save asset is advertised as an editor write capability', () => {
+  const writeList = listToolCapabilities({ domain: 'editor', kind: 'write' });
+  const saveItem = writeList.items.find((item) => item.id === 'editor.write.asset.save');
+  assert.ok(saveItem);
+  assert.equal(saveItem.risk, 'high');
+  assert.equal(saveItem.requires_bridge, true);
+  assert.equal(saveItem.requires_write_session, true);
+
+  const dispatch = getToolTemplateDispatch('editor.write.asset.save');
+  assert.equal(dispatch.tool_name, 'blueprint_save_asset');
+  assert.deepEqual(dispatch.allowed_tools, ['blueprint_save_asset']);
+  assert.equal(dispatch.routes.length, 0);
+  assert.equal(dispatch.slot_templates.length, 0);
+  assert.equal(
+    dispatch.cli_invocation_templates.some((template) =>
+      template.path.endsWith('blueprint_save_asset_template.json')),
+    true,
+  );
+  assert.equal(dispatch.stop_conditions.includes('source_control_unavailable'), true);
+  assert.equal(dispatch.stop_conditions.includes('checked_out_by_other'), true);
+  assert.equal(dispatch.stop_conditions.includes('source_control_conflicted'), true);
+  assert.equal(dispatch.stop_conditions.includes('checkout_required'), true);
+  assert.equal(dispatch.stop_conditions.includes('not_editable'), true);
+  assert.equal(dispatch.stop_conditions.includes('save_failed'), true);
+});
+
 test('source control status is advertised as an editor read capability with conflict stops', () => {
   const readList = listToolCapabilities({ domain: 'editor', kind: 'read' });
   assert.equal(readList.items.some((item) => item.id === 'editor.read.source_control.status'), true);

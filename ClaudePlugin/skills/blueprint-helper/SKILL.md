@@ -27,7 +27,7 @@ Do not inspect the BlueprintHelper plugin package or implementation source (`Cod
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open/close lifecycle; do not route ordinary workflows through MCP.
+The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, compile/save validation, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open/close lifecycle; do not route ordinary workflows through MCP.
 
 Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through the CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, stop and report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
 
@@ -163,7 +163,7 @@ Stop before write delegation when:
 - the target asset or create strategy is unknown;
 - the requested edit would modify user-owned nodes without explicit permission;
 - the request needs a capability not listed in the onboarding index;
-- the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `tool_failed`;
+- the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, `checkout_required`, `compile_failed`, `save_failed`, or `tool_failed`;
 - the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References

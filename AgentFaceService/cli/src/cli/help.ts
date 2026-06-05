@@ -143,6 +143,46 @@ const helpEntries: Record<string, HelpEntry> = {
       'Only asset-only requests capture the current editor window; graph/block/node requests capture Graph-only independent PNGs.',
     ],
   },
+  blueprint_compile_blueprint: {
+    summary: 'Compile an explicit Blueprint asset through the running Editor Bridge for validation.',
+    usage: [
+      'bh blueprint_compile_blueprint --file <compile-blueprint.json> --select status,artifacts.full_result',
+      'bh blueprint_compile_blueprint --json "{\\"target_blueprint\\":\\"/Game/Path/BP_Target.BP_Target\\"}" --format summary',
+    ],
+    input: [
+      'Root JSON: { "target_blueprint": "/Game/Path/BP_Target.BP_Target" }.',
+      'target_blueprint is optional for Bridge compatibility, but Agent-facing requests should fill it explicitly.',
+    ],
+    templates: [
+      `${TEMPLATE_ROOT}/blueprint_compile_blueprint_template.json`,
+      'bh tools templates blueprint.diagnose.compile --format json',
+    ],
+    notes: [
+      'Risk: medium. Compile is validation, not an editor lifecycle operation and not a save.',
+      'Requires a running Editor Bridge and write-session authorization because UE treats compile as a write-side command.',
+      'Use --file for generated payloads in PowerShell.',
+    ],
+  },
+  blueprint_save_asset: {
+    summary: 'Persist an explicit Unreal asset package through the running Editor Bridge.',
+    usage: [
+      'bh blueprint_save_asset --file <save-asset.json> --select status,artifacts.full_result',
+    ],
+    input: [
+      'Root JSON: { "asset_path": "/Game/Path/BP_Target.BP_Target" }.',
+      'Required: asset_path.',
+    ],
+    templates: [
+      `${TEMPLATE_ROOT}/blueprint_save_asset_template.json`,
+      'bh tools templates editor.write.asset.save --format json',
+    ],
+    notes: [
+      'Risk: high. Saving persists package state to disk and must reflect explicit user or task intent.',
+      'Requires a running Editor Bridge, write-session authorization, and source-control/editability preflight.',
+      'Stop on source_control_unavailable, checked_out_by_other, source_control_conflicted, checkout_required, not_editable, or save_failed.',
+      'Use --file for generated payloads in PowerShell.',
+    ],
+  },
   blueprinthelper_preview_task: {
     summary: 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.',
     usage: [
@@ -375,6 +415,8 @@ function globalHelpText(): string {
     'blueprinthelper_read_function_chain_context',
     'blueprinthelper_find_assets',
     'blueprinthelper_capture_screenshot',
+    'blueprint_compile_blueprint',
+    'blueprint_save_asset',
     'blueprinthelper_preview_task',
     'blueprinthelper_request_write_session',
     'blueprinthelper_execute_task',

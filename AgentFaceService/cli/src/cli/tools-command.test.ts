@@ -147,7 +147,53 @@ test('global help points tool selection to tools catalog and not semantic indexe
   assert.match(help, /bh tools domains --format json/);
   assert.match(help, /bh tools list <domain> <kind> --format json/);
   assert.match(help, /bh tools templates <tool_id> --format json/);
+  assert.match(help, /blueprint_compile_blueprint/);
+  assert.match(help, /blueprint_save_asset/);
   assert.doesNotMatch(help, new RegExp(['SEMANTIC', 'INDEX'].join('_')));
+});
+
+test('runCli exposes compile and save tools through catalog templates', async () => {
+  const { output: diagnoseList } = await runCliJson(['tools', 'list', 'blueprint', 'diagnose', '--format', 'json']);
+  assert.equal(diagnoseList.items.some((item: Record<string, unknown>) => item.id === 'blueprint.diagnose.compile'), true);
+
+  const { output: writeList } = await runCliJson(['tools', 'list', 'editor', 'write', '--format', 'json']);
+  assert.equal(writeList.items.some((item: Record<string, unknown>) => item.id === 'editor.write.asset.save'), true);
+
+  const { output: compileDispatch } = await runCliJson(['tools', 'templates', 'blueprint.diagnose.compile', '--format', 'json']);
+  assert.equal(compileDispatch.tool_name, 'blueprint_compile_blueprint');
+  assert.deepEqual(compileDispatch.allowed_tools, ['blueprint_compile_blueprint']);
+  assert.equal(
+    compileDispatch.cli_invocation_templates.some((template: Record<string, unknown>) =>
+      String(template.path).endsWith('blueprint_compile_blueprint_template.json')),
+    true,
+  );
+  assert.equal(compileDispatch.stop_conditions.includes('compile_failed'), true);
+
+  const { output: saveDispatch } = await runCliJson(['tools', 'templates', 'editor.write.asset.save', '--format', 'json']);
+  assert.equal(saveDispatch.tool_name, 'blueprint_save_asset');
+  assert.deepEqual(saveDispatch.allowed_tools, ['blueprint_save_asset']);
+  assert.equal(
+    saveDispatch.cli_invocation_templates.some((template: Record<string, unknown>) =>
+      String(template.path).endsWith('blueprint_save_asset_template.json')),
+    true,
+  );
+  assert.equal(saveDispatch.stop_conditions.includes('source_control_conflicted'), true);
+  assert.equal(saveDispatch.stop_conditions.includes('save_failed'), true);
+});
+
+test('compile and save help are tool-specific and point to catalog templates', () => {
+  const compileHelp = buildHelpText(['blueprint_compile_blueprint']);
+  const saveHelp = buildHelpText(['blueprint_save_asset']);
+
+  assert.match(compileHelp, /BlueprintHelper CLI help: blueprint_compile_blueprint/);
+  assert.match(compileHelp, /blueprint_compile_blueprint_template\.json/);
+  assert.match(compileHelp, /bh tools templates blueprint\.diagnose\.compile --format json/);
+  assert.match(compileHelp, /Risk: medium/);
+
+  assert.match(saveHelp, /BlueprintHelper CLI help: blueprint_save_asset/);
+  assert.match(saveHelp, /blueprint_save_asset_template\.json/);
+  assert.match(saveHelp, /bh tools templates editor\.write\.asset\.save --format json/);
+  assert.match(saveHelp, /source-control\/editability preflight/);
 });
 
 async function runCliJson(argv: string[]): Promise<{ output: Record<string, any>; stderr: string[] }> {

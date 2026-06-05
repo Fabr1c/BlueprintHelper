@@ -111,6 +111,7 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.read.function_chain', 'blueprint', 'read', 'blueprinthelper_read_function_chain_context', 'Trace project-authored function/event/custom-event calls.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_function_chain_context']),
   capability('blueprint.plan.taskspec.preview', 'blueprint', 'plan', 'blueprinthelper_preview_task', 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec']),
   capability('blueprint.write.taskspec.execute', 'blueprint', 'write', 'blueprinthelper_execute_task', 'Execute a BlueprintHelper.TaskSpec.v1 after preview and write permission.', 'task-worker', 'high', false, true, ['blueprinthelper_execute_task_wrapper', 'task_execute_bare_taskspec']),
+  capability('blueprint.diagnose.compile', 'blueprint', 'diagnose', 'blueprint_compile_blueprint', 'Compile an explicit Blueprint asset through the running Editor Bridge for validation.', 'task-worker', 'medium', true, true, ['blueprint_compile_blueprint']),
 
   capability('umg.read.widget_tree', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint tree context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_tree']),
   capability('umg.read.widget_property', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint property context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_property']),
@@ -126,6 +127,7 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
   capability('editor.write.source_control.checkout', 'editor', 'write', 'blueprinthelper_source_control_checkout', 'Check out source-controlled assets or files before editing under Perforce/source control.', 'task-worker', 'medium', true, false, ['blueprinthelper_source_control_checkout']),
+  capability('editor.write.asset.save', 'editor', 'write', 'blueprint_save_asset', 'Persist an explicit Unreal asset package after write-session and source-control checks.', 'task-worker', 'high', true, true, ['blueprint_save_asset']),
   capability('editor.diagnose.static', 'editor', 'diagnose', 'blueprinthelper_diagnostics', 'Run static installation/configuration diagnostics.', 'main-agent', 'none', false, false, ['blueprinthelper_diagnostics']),
   capability('editor.diagnose.runtime', 'editor', 'diagnose', 'blueprinthelper_diagnostics_runtime', 'Run runtime diagnostics through the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_diagnostics_runtime']),
 
@@ -148,6 +150,8 @@ const CLI_TEMPLATES = new Map<string, CliInvocationTemplateRef>([
   cliTemplate('blueprinthelper_read_agent_guide', `${TEMPLATE_ROOT}/blueprinthelper_read_agent_guide_template.json`, 'AgentGuide onboarding request.', '{}'),
   cliTemplate('blueprinthelper_find_assets', `${TEMPLATE_ROOT}/blueprinthelper_find_assets_template.json`, 'FindAssets request.', 'BlueprintHelper.FindAssetsRequest.v1'),
   cliTemplate('blueprinthelper_capture_screenshot', `${TEMPLATE_ROOT}/blueprinthelper_capture_screenshot_template.json`, 'Screenshot evidence request.', 'BlueprintHelper.CaptureScreenshotRequest.v1'),
+  cliTemplate('blueprint_compile_blueprint', `${TEMPLATE_ROOT}/blueprint_compile_blueprint_template.json`, 'Explicit Blueprint compile validation request.', '{ "target_blueprint": "/Game/Path/BP_Target.BP_Target" }'),
+  cliTemplate('blueprint_save_asset', `${TEMPLATE_ROOT}/blueprint_save_asset_template.json`, 'Explicit asset save request.', '{ "asset_path": "/Game/Path/BP_Target.BP_Target" }'),
   cliTemplate('blueprinthelper_source_control_status', `${TEMPLATE_ROOT}/blueprinthelper_source_control_status_template.json`, 'Source-control status request before a write.', 'BlueprintHelper.SourceControlRequest.v1'),
   cliTemplate('blueprinthelper_source_control_checkout', `${TEMPLATE_ROOT}/blueprinthelper_source_control_checkout_template.json`, 'Source-control checkout request before a write.', 'BlueprintHelper.SourceControlRequest.v1'),
   cliTemplate('blueprinthelper_get_task_result', `${TEMPLATE_ROOT}/blueprinthelper_get_task_result_template.json`, 'Task result request.', '{ "task_run_id": "..." }'),
@@ -917,6 +921,8 @@ const STOP_CONDITIONS = new Map<string, string[]>([
   ['blueprinthelper_request_write_session', ['tool_unavailable', 'preview_required', 'write_permission_denied']],
   ['blueprinthelper_diagnostics', ['tool_unavailable', 'diagnostics_failed']],
   ['blueprinthelper_diagnostics_runtime', ['tool_unavailable', 'bridge_unavailable', 'diagnostics_failed']],
+  ['blueprint_compile_blueprint', ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'compile_failed', 'target_asset_not_found', 'tool_failed']],
+  ['blueprint_save_asset', ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_required', 'not_editable', 'save_failed', 'target_asset_not_found', 'tool_failed']],
   ['blueprinthelper_source_control_status', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'not_editable']],
   ['blueprinthelper_source_control_checkout', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_failed', 'not_editable']],
 ]);

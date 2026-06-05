@@ -21,7 +21,7 @@ Do not inspect the BlueprintHelper plugin package or implementation source (`Cod
 
 ## Entry Rule
 
-The supported Agent-facing entry for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
+The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, compile/save validation, write-session requests, and result queries is the BlueprintHelper CLI. The global MCP endpoint is retained only for editor open/close lifecycle in ordinary Agent workflows.
 
 Important: call editor lifecycle commands only through the global MCP tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`. Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through the CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, stop and report `lifecycle_mcp_unavailable` instead of using a CLI fallback. Do not validate lifecycle behavior through plugin-local MCP or one-shot shell MCP clients because the sandbox may reap child editor processes.
 
@@ -302,6 +302,8 @@ blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
+blueprint_compile_blueprint
+blueprint_save_asset
 blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task

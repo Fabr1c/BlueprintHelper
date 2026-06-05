@@ -65,6 +65,8 @@ blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
+blueprint_compile_blueprint
+blueprint_save_asset
 blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task
@@ -75,7 +77,7 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-`blueprint_open_editor` / `blueprint_close_editor` 属于全局 MCP editor lifecycle 边界。主 Agent 明确要求启动或关闭目标 Editor 时才使用；兼容路径也统一走全局 MCP lifecycle 工具，不通过 CLI lifecycle helper。CLI lifecycle 调用会被阻断；如果 lifecycle MCP 不可用，返回 `lifecycle_mcp_unavailable`。普通读写仍走 CLI TaskSpec/ReadSpec 工具链。
+`blueprint_open_editor` / `blueprint_close_editor` 属于全局 MCP editor lifecycle 边界。主 Agent 明确要求启动或关闭目标 Editor 时才使用；兼容路径也统一走全局 MCP lifecycle 工具，不通过 CLI lifecycle helper。CLI lifecycle 调用会被阻断；如果 lifecycle MCP 不可用，返回 `lifecycle_mcp_unavailable`。普通读写/验证走 CLI catalog 选出的 named tools；TaskSpec/ReadSpec 仍是主要读写链路，但不是 compile/save 的唯一普通工具面。
 
 `blueprinthelper_apply_review_action` 只用于插件开发/内部验证，不属于普通 Agent 或 SideAgent 工具链。
 
@@ -95,7 +97,10 @@ blueprinthelper_query_review_records
 - `source_control_conflicted`: 目标文件处于版本控制冲突状态
 - `source_control_unavailable`: 需要版本控制状态但 Provider 不可用
 - `checkout_failed`: 迁出失败，不能继续写入
+- `checkout_required`: 保存目标需要先完成版本控制迁出
 - `not_editable`: 目标文件当前不可编辑
+- `compile_failed`: 编译目标蓝图失败
+- `save_failed`: 保存目标资产失败
 - `tool_failed`: 工具返回失败，且没有明确可安全修复的参数错误
 
 不要自行扩大工具范围。不要把 frozen/legacy 工具当作恢复路径，除非主 Agent 的任务包明确授权。

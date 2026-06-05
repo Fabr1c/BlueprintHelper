@@ -33,6 +33,8 @@ Source-control checkout is separate from write authorization. In P4/Perforce or 
 
 Use the compile/save validation policy from the current CLI-discovered template. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
 
+When compile or save is an explicit tool step, discover the tool through `bh tools list blueprint diagnose --format json` or `bh tools list editor write --format json`, fetch the matching template with `bh tools templates`, and run the returned `allowed_tools` only. `blueprint_compile_blueprint` should target a specific Blueprint asset even though the Bridge accepts an empty compatibility payload. `blueprint_save_asset` must target a specific `asset_path`, requires write-session authorization, and must not bypass source-control/editability stops.
+
 ## Recovery
 
 If a write fails:
