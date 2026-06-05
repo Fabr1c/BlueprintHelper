@@ -27,8 +27,10 @@ The Main Agent performs preflight and owns allowed global MCP lifecycle tools. S
 For writes, follow the TaskSpec-first closed loop:
 
 ```text
-main preflight -> explorer context -> task-worker TaskSpec -> preview -> write session if needed -> execute -> result -> main-agent next decision
+main preflight -> explorer context -> task-worker TaskSpec -> preview -> source-control checkout if needed -> write session if needed -> execute -> result -> main-agent next decision
 ```
+
+In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` for target assets after preview and before execute when assets may be read-only or save/close reports `checkout_required`. Stop on occupied, conflicted, unavailable, failed checkout, or not-editable states and report the returned agent message.
 
 For complex CLI inputs, use the CLI catalog first:
 

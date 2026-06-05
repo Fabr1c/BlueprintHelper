@@ -173,8 +173,24 @@ P0 不支持输入 `cursor`，`FindAssets.v1` 结果也不返回 `total_count` �
 |---|---|---|---|---|
 | `blueprinthelper_preview_task` | TaskSpec 预览 | `{ "task_spec": { ... } }` 包装器 | `Templates/write/blueprinthelper_preview_task_wrapper_template.json` | 直接工具名入口使用包装器。 |
 | `blueprinthelper_execute_task` | TaskSpec 执行 | `{ "task_spec": { ... } }` 包装器 | `Templates/write/blueprinthelper_execute_task_wrapper_template.json` | 只能在 preview 成功后执行。 |
+| `blueprinthelper_source_control_status` | 版本控制状态 | `BlueprintHelper.SourceControlRequest.v1` 请求对象 | `Templates/blueprinthelper_source_control_status_template.json` | preview 后、execute 前读取目标资产是否需要迁出、是否被他人占用或冲突。 |
+| `blueprinthelper_source_control_checkout` | 版本控制迁出 | `BlueprintHelper.SourceControlRequest.v1` 请求对象 | `Templates/blueprinthelper_source_control_checkout_template.json` | 在 P4/Perforce 等版本控制启用时，写入前迁出目标资产；被他人占用或冲突时停止。 |
 | `blueprinthelper_request_write_session` | 写权限申请 | 项目作用域或资产列表作用域请求对象 | `Templates/blueprinthelper_request_write_session_project_template.json` / `Templates/blueprinthelper_request_write_session_assets_template.json` | preview 提示 write permission disabled 时再申请。 |
 | `blueprinthelper_get_task_result` | 结果查询 | `{ "task_run_id": "..." }` 或 `--id` | `Templates/blueprinthelper_get_task_result_template.json` | 读取已完成任务结果或 journal。 |
+
+`blueprinthelper_source_control_status` / `blueprinthelper_source_control_checkout` 的常见形状:
+
+```json
+{
+  "schema": "BlueprintHelper.SourceControlRequest.v1",
+  "asset_paths": ["/Game/Blueprints/BP_Player"],
+  "package_names": [],
+  "file_paths": [],
+  "update_status": true
+}
+```
+
+至少提供 `asset_paths`、`package_names`、`file_paths` 其中一个非空数组。结果会返回 Provider 状态、文件级状态、`agent_message` 和 `recommended_action`。如果返回 `checked_out_by_other`、`source_control_conflicted`、`source_control_unavailable`、`checkout_failed` 或 `not_editable`，Agent 必须停止写入并把提示返回给用户。
 
 `blueprinthelper_request_write_session` 的常见形状:
 
@@ -258,6 +274,7 @@ bh blueprint_get_runtime_profile
 -> bh blueprinthelper_read_context
 -> author BlueprintHelper.TaskSpec.v1
 -> bh blueprinthelper_preview_task
+-> bh blueprinthelper_source_control_status/checkout when target assets require checkout
 -> bh blueprinthelper_request_write_session when write_permission is disabled
 -> bh blueprinthelper_execute_task
 -> bh blueprinthelper_get_task_result when needed

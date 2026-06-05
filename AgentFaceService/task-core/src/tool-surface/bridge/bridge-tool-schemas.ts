@@ -26,6 +26,21 @@ const ReviewActionInputSchema = z.object({
   target_keys: z.array(z.string().min(1)).optional(),
 });
 
+const SourceControlInputSchema = z.object({
+  asset_paths: z.array(z.string().min(1)).optional(),
+  package_names: z.array(z.string().min(1)).optional(),
+  file_paths: z.array(z.string().min(1)).optional(),
+  update_status: z.boolean().optional(),
+}).refine(
+  (value) =>
+    (value.asset_paths?.length ?? 0) > 0 ||
+    (value.package_names?.length ?? 0) > 0 ||
+    (value.file_paths?.length ?? 0) > 0,
+  {
+    message: 'At least one of asset_paths, package_names, or file_paths is required.',
+  },
+);
+
 export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_context: ReadContextInputSchema,
   blueprinthelper_read_context_capabilities: ReadContextCapabilitiesInputSchema,
@@ -37,4 +52,6 @@ export const bridgeToolSchemas: Record<string, z.ZodTypeAny> = {
   blueprinthelper_read_function_chain_context: ReadFunctionChainContextInputSchema,
   blueprinthelper_find_assets: FindAssetsInputSchema,
   blueprinthelper_capture_screenshot: CaptureScreenshotInputSchema,
+  blueprinthelper_source_control_status: SourceControlInputSchema,
+  blueprinthelper_source_control_checkout: SourceControlInputSchema,
 };

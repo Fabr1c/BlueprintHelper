@@ -1,0 +1,9 @@
+{
+  "schema": "BlueprintHelper.SourceControlRequest.v1",
+  "asset_paths": [
+    "__REQUIRED_ASSET_PATH_OR_PACKAGE__"
+  ],
+  "package_names": [],
+  "file_paths": [],
+  "update_status": true
+}

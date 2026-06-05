@@ -109,6 +109,41 @@ test('getToolTemplateDispatch returns both CLI and TaskSpec templates for previe
   ]);
 });
 
+test('source control checkout is advertised as an editor write capability', () => {
+  const writeList = listToolCapabilities({ domain: 'editor', kind: 'write' });
+  assert.equal(writeList.items.some((item) => item.id === 'editor.write.source_control.checkout'), true);
+
+  const dispatch = getToolTemplateDispatch('editor.write.source_control.checkout');
+  assert.equal(dispatch.tool_name, 'blueprinthelper_source_control_checkout');
+  assert.deepEqual(dispatch.allowed_tools, ['blueprinthelper_source_control_checkout']);
+  assert.equal(
+    dispatch.cli_invocation_templates.some((template) =>
+      template.path.endsWith('blueprinthelper_source_control_checkout_template.json')),
+    true,
+  );
+  assert.equal(dispatch.stop_conditions.includes('checked_out_by_other'), true);
+  assert.equal(dispatch.stop_conditions.includes('source_control_conflicted'), true);
+  assert.equal(dispatch.stop_conditions.includes('checkout_failed'), true);
+  assert.equal(dispatch.stop_conditions.includes('not_editable'), true);
+});
+
+test('source control status is advertised as an editor read capability with conflict stops', () => {
+  const readList = listToolCapabilities({ domain: 'editor', kind: 'read' });
+  assert.equal(readList.items.some((item) => item.id === 'editor.read.source_control.status'), true);
+
+  const dispatch = getToolTemplateDispatch('editor.read.source_control.status');
+  assert.equal(dispatch.tool_name, 'blueprinthelper_source_control_status');
+  assert.deepEqual(dispatch.allowed_tools, ['blueprinthelper_source_control_status']);
+  assert.equal(
+    dispatch.cli_invocation_templates.some((template) =>
+      template.path.endsWith('blueprinthelper_source_control_status_template.json')),
+    true,
+  );
+  assert.equal(dispatch.stop_conditions.includes('checked_out_by_other'), true);
+  assert.equal(dispatch.stop_conditions.includes('source_control_conflicted'), true);
+  assert.equal(dispatch.stop_conditions.includes('not_editable'), true);
+});
+
 test('getToolTemplateDispatch rejects unknown tool ids', () => {
   assert.throws(
     () => getToolTemplateDispatch('blueprint.read.unknown'),

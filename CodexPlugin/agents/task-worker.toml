@@ -44,6 +44,7 @@ Input contract from Main Agent:
 - source_context_summary
 - safety_profile
 - write_policy
+- source_control_policy
 - allowed_tools
 - tool_id
 - returned_template_paths
@@ -52,6 +53,8 @@ Input contract from Main Agent:
 Allowed commands:
 - bh blueprint_get_runtime_profile
 - bh blueprinthelper_preview_task
+- bh blueprinthelper_source_control_status
+- bh blueprinthelper_source_control_checkout
 - bh blueprinthelper_request_write_session
 - bh blueprinthelper_execute_task
 - bh blueprinthelper_get_task_result

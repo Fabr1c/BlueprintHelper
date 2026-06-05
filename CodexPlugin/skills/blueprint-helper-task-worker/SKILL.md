@@ -23,12 +23,15 @@ blueprint_context_summary: "<from blueprint-explorer>"
 source_context_summary: "<from sourcecode-explorer or none>"
 safety_profile: "<runtime profile safety>"
 write_policy: "<write permission/session policy>"
+source_control_policy: "<checkout/status policy for target assets before execute>"
 allowed_tools: []
 tool_id: "<selected tool_id from bh tools list>"
 returned_template_paths: []
 stop_conditions: []
 reasoning: "maximum_available"
 ```
+
+For write tasks, execute any Main-Agent-assigned source-control status or checkout tool before `blueprinthelper_execute_task`. If source control reports `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`, stop and return the agent-facing message and recommended action instead of attempting the write.
 
 Return only the sideAgent's compact YAML result to the Main Agent.
 

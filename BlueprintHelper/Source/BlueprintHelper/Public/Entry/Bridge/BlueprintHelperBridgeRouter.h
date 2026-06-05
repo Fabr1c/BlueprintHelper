@@ -48,6 +48,7 @@ class FBlueprintHelperBlueprintVariableService;
 class FBlueprintHelperReviewStoreService;
 class FBlueprintHelperEditorFocusService;
 class FBlueprintHelperScreenshotCaptureService;
+class FBlueprintHelperSourceControlService;
 
 /**
  * 命令路由器，将 Bridge 请求分发到对应的静态簇或系统层入口。
@@ -81,7 +82,8 @@ public:
 		const FBlueprintHelperBlueprintVariableService& InVariableService,
 		const FBlueprintHelperReviewStoreService& InReviewStoreService,
 		const FBlueprintHelperEditorFocusService& InEditorFocusService,
-		const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService);
+		const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService,
+		const FBlueprintHelperSourceControlService& InSourceControlService);
 
 	/** 路由并执行命令。必须在 GameThread 调用。 */
 	FBlueprintHelperBridgeResponse HandleRequest(const FBlueprintHelperBridgeRequest& Request) const;
@@ -131,6 +133,8 @@ private:
 	FBlueprintHelperBridgeResponse HandleStopPIE(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleCreateBlueprint(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExecConsoleCommand(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSourceControlStatus(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleSourceControlCheckout(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleCloseEditor(const FBlueprintHelperBridgeRequest& Req) const;
 
 	FBlueprintHelperBridgeResponse HandlePreviewTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
@@ -171,4 +175,5 @@ private:
 	FBlueprintHelperTaskRuntimeService TaskRuntimeService;
 	const FBlueprintHelperCompileAssetService& CompileAssetService;
 	const FBlueprintHelperReviewStoreService& ReviewStoreService;
+	const FBlueprintHelperSourceControlService& SourceControlService;
 };

@@ -51,6 +51,7 @@ class FBlueprintHelperReviewStoreService;
 class FBlueprintHelperReviewActionService;
 class FBlueprintHelperEditorFocusService;
 class FBlueprintHelperScreenshotCaptureService;
+class FBlueprintHelperSourceControlService;
 
 /**
  * BlueprintHelper 模块，负责注册编辑器窗口与提供当前蓝图图表访问能力。
@@ -175,6 +176,7 @@ private:
 	TUniquePtr<FBlueprintHelperReviewActionService> ReviewActionService;
 	TUniquePtr<FBlueprintHelperEditorFocusService> EditorFocusService;
 	TUniquePtr<FBlueprintHelperScreenshotCaptureService> ScreenshotCaptureService;
+	TUniquePtr<FBlueprintHelperSourceControlService> SourceControlService;
 
 	// ─── Bridge Layer ───
 	TUniquePtr<FBlueprintHelperContextService> ContextService;

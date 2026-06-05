@@ -1,6 +1,7 @@
 // BlueprintHelper Bridge Layer — request validation helpers
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Entry/Bridge/Utils/BlueprintHelperBridgeUtils.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Dom/JsonObject.h"
@@ -892,6 +893,40 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			{TEXT("command"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("source_control_status")) ||
+		FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("source_control_checkout")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_paths"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("package_names"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("file_paths"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Array, false},
+			{TEXT("update_status"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("asset_paths"), OutError) ||
+			!FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("package_names"), OutError) ||
+			!FBlueprintHelperRequestValidatorLocalUtils::ValidateStringArrayField(Payload, TEXT("file_paths"), OutError))
+		{
+			return false;
+		}
+		const bool bHasInput =
+			UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("asset_paths")).Num() > 0 ||
+			UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("package_names")).Num() > 0 ||
+			UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("file_paths")).Num() > 0;
+		if (!bHasInput)
+		{
+			OutError.Code = TEXT("invalid_request");
+			OutError.Field = TEXT("payload.asset_paths");
+			OutError.ExpectedType = TEXT("non_empty_string_array");
+			OutError.ActualType = TEXT("missing");
+			OutError.Message = TEXT("At least one of asset_paths, package_names, or file_paths is required.");
+			return false;
+		}
+		return true;
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("close_editor")))
 	{

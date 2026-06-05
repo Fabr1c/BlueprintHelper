@@ -47,8 +47,8 @@ const DOMAINS: readonly ToolDomainCatalogItem[] = [
     id: 'editor',
     label: 'Editor',
     status: 'active',
-    default_kinds: ['discover', 'read', 'diagnose'],
-    purpose: 'Runtime profile, diagnostics, screenshot, and editor evidence workflows.',
+    default_kinds: ['discover', 'read', 'write', 'diagnose'],
+    purpose: 'Runtime profile, diagnostics, screenshot, source-control, and editor evidence workflows.',
     available_by_default: true,
   },
   {
@@ -118,6 +118,8 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
 
   capability('editor.read.runtime_profile', 'editor', 'read', 'blueprint_get_runtime_profile', 'Read BlueprintHelper runtime profile from the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprint_get_runtime_profile']),
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
+  capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
+  capability('editor.write.source_control.checkout', 'editor', 'write', 'blueprinthelper_source_control_checkout', 'Check out source-controlled assets or files before editing under Perforce/source control.', 'task-worker', 'medium', true, false, ['blueprinthelper_source_control_checkout']),
   capability('editor.diagnose.static', 'editor', 'diagnose', 'blueprinthelper_diagnostics', 'Run static installation/configuration diagnostics.', 'main-agent', 'none', false, false, ['blueprinthelper_diagnostics']),
   capability('editor.diagnose.runtime', 'editor', 'diagnose', 'blueprinthelper_diagnostics_runtime', 'Run runtime diagnostics through the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_diagnostics_runtime']),
 
@@ -140,6 +142,8 @@ const CLI_TEMPLATES = new Map<string, CliInvocationTemplateRef>([
   cliTemplate('blueprinthelper_read_agent_guide', `${TEMPLATE_ROOT}/blueprinthelper_read_agent_guide_template.json`, 'AgentGuide onboarding request.', '{}'),
   cliTemplate('blueprinthelper_find_assets', `${TEMPLATE_ROOT}/blueprinthelper_find_assets_template.json`, 'FindAssets request.', 'BlueprintHelper.FindAssetsRequest.v1'),
   cliTemplate('blueprinthelper_capture_screenshot', `${TEMPLATE_ROOT}/blueprinthelper_capture_screenshot_template.json`, 'Screenshot evidence request.', 'BlueprintHelper.CaptureScreenshotRequest.v1'),
+  cliTemplate('blueprinthelper_source_control_status', `${TEMPLATE_ROOT}/blueprinthelper_source_control_status_template.json`, 'Source-control status request before a write.', 'BlueprintHelper.SourceControlRequest.v1'),
+  cliTemplate('blueprinthelper_source_control_checkout', `${TEMPLATE_ROOT}/blueprinthelper_source_control_checkout_template.json`, 'Source-control checkout request before a write.', 'BlueprintHelper.SourceControlRequest.v1'),
   cliTemplate('blueprinthelper_get_task_result', `${TEMPLATE_ROOT}/blueprinthelper_get_task_result_template.json`, 'Task result request.', '{ "task_run_id": "..." }'),
   cliTemplate('blueprinthelper_request_write_session_project', `${TEMPLATE_ROOT}/blueprinthelper_request_write_session_project_template.json`, 'Project write-session request.', 'BlueprintHelper.WriteSessionRequest.v1'),
   cliTemplate('blueprinthelper_request_write_session_assets', `${TEMPLATE_ROOT}/blueprinthelper_request_write_session_assets_template.json`, 'Asset-list write-session request.', 'BlueprintHelper.WriteSessionRequest.v1'),
@@ -188,6 +192,8 @@ const STOP_CONDITIONS = new Map<string, string[]>([
   ['blueprinthelper_request_write_session', ['tool_unavailable', 'preview_required', 'write_permission_denied']],
   ['blueprinthelper_diagnostics', ['tool_unavailable', 'diagnostics_failed']],
   ['blueprinthelper_diagnostics_runtime', ['tool_unavailable', 'bridge_unavailable', 'diagnostics_failed']],
+  ['blueprinthelper_source_control_status', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'not_editable']],
+  ['blueprinthelper_source_control_checkout', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_failed', 'not_editable']],
 ]);
 
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {

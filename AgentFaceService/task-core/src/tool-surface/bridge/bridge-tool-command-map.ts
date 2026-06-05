@@ -6,6 +6,8 @@ export const bridgeCommandByToolName: Record<string, string> = {
   blueprinthelper_apply_review_action: 'apply_review_action',
   blueprinthelper_read_function_chain_context: 'read_function_chain_context',
   blueprinthelper_find_assets: 'find_assets',
+  blueprinthelper_source_control_status: 'source_control_status',
+  blueprinthelper_source_control_checkout: 'source_control_checkout',
   blueprint_get_runtime_profile: 'get_runtime_profile',
   blueprinthelper_request_write_session: 'request_write_session',
   blueprinthelper_diagnostics_runtime: 'diagnostics_runtime',

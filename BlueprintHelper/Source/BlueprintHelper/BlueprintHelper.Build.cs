@@ -56,6 +56,7 @@ public class BlueprintHelper : ModuleRules
 				"Sockets",
 				"Networking",
 				"AssetRegistry",
+				"SourceControl",
 				"EnhancedInput",
 				"InputBlueprintNodes",
 				"SubobjectEditor",

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 
 class UPackage;
 
@@ -13,6 +14,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperCommandResult
 	bool bSuccess = false;
 	FString ErrorMessage;
 	FString Message;
+	TSharedPtr<FJsonObject> Data;
 };
 
 // ─── Create Blueprint 结果 ───

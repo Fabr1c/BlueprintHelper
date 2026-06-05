@@ -44,6 +44,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Shared/GraphWrite/BlueprintHelperMergeGraphTypes.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
+#include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "Shared/Debug/BlueprintHelperCompileAssetTypes.h"
 #include "Shared/Debug/BlueprintHelperSaveAssetTypes.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -532,6 +533,60 @@ public:
 		return Result;
 	}
 
+	static FBlueprintHelperToolResultBase MakeSourceControlToolResult(
+		const FString& Operation,
+		const FBlueprintHelperSourceControlResult& SourceControlResult)
+	{
+		FBlueprintHelperToolResultBase Result;
+		if (SourceControlResult.bSuccess)
+		{
+			Result = SourceControlResult.bModified
+				? FBlueprintHelperToolResultBuilder::Applied(Operation, FBlueprintHelperToolResultBuilder::GenerateTraceId())
+				: FBlueprintHelperToolResultBuilder::Completed(Operation, FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		}
+		else
+		{
+			FBlueprintHelperToolError Error;
+			Error.Code = SourceControlResult.ErrorCode.IsEmpty()
+				? SourceControlResult.Status
+				: SourceControlResult.ErrorCode;
+			Error.Stage = EBlueprintHelperToolStage::Execute;
+			Error.Message = SourceControlResult.ErrorMessage.IsEmpty()
+				? SourceControlResult.AgentMessage
+				: SourceControlResult.ErrorMessage;
+			Error.bRetryable = SourceControlResult.Status == TEXT("source_control_unavailable");
+			Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+			Result = FBlueprintHelperToolResultBuilder::Failure(
+				Operation,
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				Error);
+		}
+		Result.bModified = SourceControlResult.bModified;
+		Result.Data = SourceControlResult.ToJson();
+		FBlueprintHelperTargetRef Target;
+		Target.TargetType = EBlueprintHelperTargetType::Asset;
+		Result.Target = Target;
+		return Result;
+	}
+
+	static TArray<FString> ReadSourceControlInputs(const TSharedPtr<FJsonObject>& Payload)
+	{
+		TArray<FString> Inputs;
+		for (const FString& Value : UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("asset_paths")))
+		{
+			Inputs.AddUnique(Value);
+		}
+		for (const FString& Value : UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("package_names")))
+		{
+			Inputs.AddUnique(Value);
+		}
+		for (const FString& Value : UBlueprintHelperBridgeUtils::ReadStringArrayField(Payload, TEXT("file_paths")))
+		{
+			Inputs.AddUnique(Value);
+		}
+		return Inputs;
+	}
+
 	static void SetStringDefaultIfMissing(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
@@ -739,7 +794,8 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperBlueprintVariableService& InVariableService,
 	const FBlueprintHelperReviewStoreService& InReviewStoreService,
 	const FBlueprintHelperEditorFocusService& InEditorFocusService,
-	const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService)
+	const FBlueprintHelperScreenshotCaptureService& InScreenshotCaptureService,
+	const FBlueprintHelperSourceControlService& InSourceControlService)
 	: ExportService(InExport)
 	, CompileService(InCompile)
 	, ValidationService(InValidation)
@@ -778,6 +834,7 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 		&InDebugEntryService)
 	, CompileAssetService(InCompileAssetService)
 	, ReviewStoreService(InReviewStoreService)
+	, SourceControlService(InSourceControlService)
 {
 }
 
@@ -911,6 +968,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("stop_pie", EditorCommand, HandleStopPIE)
 	BLUEPRINTHELPER_ROUTE("create_blueprint", EditorCommand, HandleCreateBlueprint)
 	BLUEPRINTHELPER_ROUTE("exec_console_command", EditorCommand, HandleExecConsoleCommand)
+	BLUEPRINTHELPER_ROUTE("source_control_status", EditorCommand, HandleSourceControlStatus)
+	BLUEPRINTHELPER_ROUTE("source_control_checkout", EditorCommand, HandleSourceControlCheckout)
 	BLUEPRINTHELPER_ROUTE("close_editor", EditorCommand, HandleCloseEditor)
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::AssetFactory &&
@@ -2034,6 +2093,48 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExecConsoleCo
 
 // ─── close_editor ───
 
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSourceControlStatus(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	bool bUpdateStatus = true;
+	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("update_status")))
+	{
+		FBlueprintHelperBridgeValidationError ParseError;
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolField(Req.Payload, TEXT("update_status"), false, bUpdateStatus, ParseError))
+		{
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
+		}
+	}
+
+	const TArray<FString> Inputs = FBlueprintHelperBridgeRouterLocalUtils::ReadSourceControlInputs(Req.Payload);
+	const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.QueryStatus(Inputs, bUpdateStatus);
+	const FBlueprintHelperToolResultBase ToolResult = FBlueprintHelperBridgeRouterLocalUtils::MakeSourceControlToolResult(
+		TEXT("source_control_status"),
+		SourceControlResult);
+	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, ToolResult);
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSourceControlCheckout(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	bool bUpdateStatus = true;
+	if (Req.Payload.IsValid() && Req.Payload->HasField(TEXT("update_status")))
+	{
+		FBlueprintHelperBridgeValidationError ParseError;
+		if (!FBlueprintHelperBridgeRouterLocalUtils::TryReadBoolField(Req.Payload, TEXT("update_status"), false, bUpdateStatus, ParseError))
+		{
+			return FBlueprintHelperBridgeRouterLocalUtils::ValidationErrorResponse(Req.RequestId, ParseError);
+		}
+	}
+
+	const TArray<FString> Inputs = FBlueprintHelperBridgeRouterLocalUtils::ReadSourceControlInputs(Req.Payload);
+	const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.Checkout(Inputs, bUpdateStatus);
+	const FBlueprintHelperToolResultBase ToolResult = FBlueprintHelperBridgeRouterLocalUtils::MakeSourceControlToolResult(
+		TEXT("source_control_checkout"),
+		SourceControlResult);
+	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, ToolResult);
+}
+
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
@@ -2050,12 +2151,27 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	FBlueprintHelperCommandResult Result = EditorCommandService.CloseEditor(bSaveAll);
 	if (!Result.bSuccess)
 	{
-		return FBlueprintHelperBridgeResponse::Error(
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		if (Result.Data.IsValid())
+		{
+			Resp.Result = MakeShared<FJsonObject>();
+			Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
+			if (!Result.Message.IsEmpty())
+			{
+				Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+			}
+			Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+		}
+		return Resp;
 	}
 
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = MakeShared<FJsonObject>();
 	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	if (Result.Data.IsValid())
+	{
+		Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+	}
 	return Resp;
 }

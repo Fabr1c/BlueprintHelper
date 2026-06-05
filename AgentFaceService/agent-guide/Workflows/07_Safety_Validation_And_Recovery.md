@@ -25,6 +25,10 @@ If any of these checks block, execution is forbidden. A successful preview is st
 
 Preview and write authorization are separate gates. After preview succeeds, if runtime profile or execute preflight reports missing write permission, call `blueprinthelper_request_write_session`. The Editor approval UI is intentionally minimal: accept or reject. If the user rejects, stop and report the denied write session. Approval is scoped to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can continue the tool chain without receiving raw session data. Do not fall back to `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling.
 
+## Source Control Gate
+
+Source-control checkout is separate from write authorization. In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when target assets may be read-only or when close/save reports `checkout_required`. Stop and report on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`.
+
 ## Validation
 
 Use TaskSpec `validation.should_compile` and `validation.should_save`. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.

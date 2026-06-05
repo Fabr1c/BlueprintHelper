@@ -84,6 +84,15 @@ approved scope and lifetime, and can be used by delegated SideAgents. The tool
 response omits the raw session id; Agents must not pass `auth_session`,
 `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
+`blueprinthelper_source_control_status` and `blueprinthelper_source_control_checkout`
+are normal Agent-facing CLI tools for source-control state and checkout. They
+accept Unreal `asset_paths`, UE `package_names`, or filesystem `file_paths` at
+the schema root. Agents use them after preview and before execute when source
+control may block writes. Treat `checked_out_by_other`,
+`source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, and
+`not_editable` as hard stop conditions; surface `agent_message` and
+`recommended_action` to the Main Agent/user.
+
 Write-session required fields:
 
 | Field | Required | Purpose |
@@ -94,6 +103,22 @@ Write-session required fields:
 | `asset_paths` | Required for `scope=asset_list` | Unreal asset paths covered by the approval. |
 
 Unknown Unreal `asset_path` values must be resolved with `blueprinthelper_find_assets` before `blueprinthelper_read_context` or any write request. Known Unreal `asset_path` values go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes. Every write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+
+## 3.6 Source Control Template
+
+```json
+{
+  "schema": "required. Literal BlueprintHelper.SourceControlRequest.v1.",
+  "asset_paths": "optional. Array of Unreal asset paths or package names such as /Game/BP_Door.",
+  "package_names": "optional. Array of UE package names.",
+  "file_paths": "optional. Array of filesystem package paths.",
+  "update_status": "optional. true refreshes provider state before classification."
+}
+```
+
+At least one of `asset_paths`, `package_names`, or `file_paths` must be non-empty.
+The result includes provider availability, file-level status, `agent_message`,
+and `recommended_action`.
 
 ## 3.5 Find Assets Template
 

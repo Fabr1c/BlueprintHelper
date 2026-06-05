@@ -25,6 +25,8 @@ const expectedToolNames = [
   'blueprinthelper_read_function_chain_context',
   'blueprinthelper_find_assets',
   'blueprinthelper_capture_screenshot',
+  'blueprinthelper_source_control_status',
+  'blueprinthelper_source_control_checkout',
   'blueprinthelper_read_context_capabilities',
   'blueprinthelper_read_context',
   'blueprint_get_runtime_profile',

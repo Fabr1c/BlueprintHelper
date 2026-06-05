@@ -14,6 +14,8 @@ tool_capabilities.mode
 
 If `write_permission.disabled` is true and the reason is `write_session_missing`, finish the TaskSpec preview first, then call `blueprinthelper_request_write_session` before execute. The approval UI is a minimal Editor accept/reject dialog. A rejected or failed request is a stop-and-report condition, not a reason to fall back to token setup. Once approved, the running Editor/Bridge holds the scoped permission for Main Agent and SideAgent tool execution.
 
+Write permission does not replace source-control checkout. In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when target assets may be read-only or when close/save reports `checkout_required`.
+
 `blueprinthelper_diagnostics` 用于静态安装和配置检查。`blueprinthelper_diagnostics_runtime` 用于 Editor/Bridge 可达时的运行时链路检查。
 
 诊断结果中的 blocking 项表示环境需要处理，不等于诊断工具自身失败。只有工具返回 failed 才表示诊断调用失败。

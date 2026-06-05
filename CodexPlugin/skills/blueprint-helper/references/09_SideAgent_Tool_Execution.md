@@ -19,6 +19,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 - `operation_mode`: `create_new`、`modify_existing`、`inspect_only` 或 `validate_only`
 - `safety_profile`: runtime_profile 中的当前安全档位
 - `allowed_tools`: 允许调用的 BlueprintHelper 工具名
+- `source_control_policy`: 写入前的版本控制 status/checkout 策略
 - `read_strategy`: 图表读取策略，必须包含是否避免未知规模全图 `logic_md` 和大图节点阈值
 - `tool_call_intent`: 主 Agent 指定的单个工具调用意图，以及为什么需要这次缺失数据
 - `stop_conditions`: 必须停止并回交的条件
@@ -62,6 +63,8 @@ blueprinthelper_read_context
 blueprinthelper_read_context_capabilities
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
+blueprinthelper_source_control_status
+blueprinthelper_source_control_checkout
 blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task
@@ -88,6 +91,11 @@ blueprinthelper_query_review_records
 - `capability_missing`: TaskSpec 或工具能力缺失
 - `graph_too_large_without_slice`: 图表超过 80 个节点且任务包没有足够信息定位读取分块
 - `write_rejected`: write session 被拒绝
+- `checked_out_by_other`: P4/版本控制显示目标文件被其他用户迁出
+- `source_control_conflicted`: 目标文件处于版本控制冲突状态
+- `source_control_unavailable`: 需要版本控制状态但 Provider 不可用
+- `checkout_failed`: 迁出失败，不能继续写入
+- `not_editable`: 目标文件当前不可编辑
 - `tool_failed`: 工具返回失败，且没有明确可安全修复的参数错误
 
 不要自行扩大工具范围。不要把 frozen/legacy 工具当作恢复路径，除非主 Agent 的任务包明确授权。

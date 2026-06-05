@@ -22,6 +22,8 @@ export const toolMetas: ToolMeta[] = [
   { name: 'blueprinthelper_read_function_chain_context', description: 'Read compact project custom function/event call-chain references from a Blueprint entry.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_find_assets', description: 'Find Unreal assets through AssetRegistry before a target asset_path is known.', audience: 'default', risk: 'low' },
   { name: 'blueprinthelper_capture_screenshot', description: 'Open an asset, optionally focus graph_name plus block_ref or node_ref, and capture window or Graph-only PNG screenshot evidence.', audience: 'default', risk: 'low' },
+  { name: 'blueprinthelper_source_control_status', description: 'Read source-control checkout and lock state for files or Unreal assets.', audience: 'default', risk: 'low' },
+  { name: 'blueprinthelper_source_control_checkout', description: 'Check out source-controlled files or Unreal assets before editing.', audience: 'default', risk: 'medium' },
   { name: 'blueprinthelper_read_context_capabilities', description: 'Read the compact ReadContext capability matrix without touching UE assets.', audience: 'default', risk: 'none' },
   { name: 'blueprinthelper_read_context', description: 'Read UE asset context through ReadSpec.', audience: 'default', risk: 'low' },
   { name: 'blueprint_get_runtime_profile', description: 'Read the BlueprintHelper runtime profile.', audience: 'default', risk: 'low' },

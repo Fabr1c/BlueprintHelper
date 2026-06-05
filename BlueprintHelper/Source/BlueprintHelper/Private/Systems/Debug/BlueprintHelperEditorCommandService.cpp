@@ -12,6 +12,7 @@
 #include "Misc/StringFormatArg.h"
 #include "PlayInEditorDataTypes.h"
 #include "Runtime/Launch/Resources/Version.h"
+#include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "UObject/UObjectIterator.h"
 
 #if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7)
@@ -262,14 +263,39 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 
 	if (bSaveAll)
 	{
+		TSharedPtr<FJsonObject> SourceControlJson;
+		TArray<UPackage*> DirtyPackages;
+		FEditorFileUtils::GetDirtyPackages(DirtyPackages);
+		const TArray<FString> DirtyPackageInputs = FBlueprintHelperSourceControlService::InputsFromDirtyPackages(DirtyPackages);
+		if (!DirtyPackageInputs.IsEmpty())
+		{
+			const FBlueprintHelperSourceControlService SourceControlService;
+			const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.QueryStatus(DirtyPackageInputs, /*bUpdateStatus=*/ true);
+			SourceControlJson = SourceControlResult.ToJson();
+			if (SourceControlResult.BlocksAgentEdit())
+			{
+				Result.ErrorMessage = SourceControlResult.AgentMessage.IsEmpty()
+					? TEXT("Source-control checkout is required before closing the editor with save_all=true.")
+					: SourceControlResult.AgentMessage;
+				Result.Message = SourceControlResult.RecommendedAction;
+				Result.Data = SourceControlJson;
+				return Result;
+			}
+		}
+
 		const bool bSaved = FEditorFileUtils::SaveDirtyPackages(
 			/*bPromptUserToSave=*/ false,
 			/*bSaveMapPackages=*/ true,
 			/*bSaveContentPackages=*/ true);
 		if (!bSaved)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[BlueprintHelper] CloseEditor: some dirty packages failed to save; shutdown will still be requested."));
+			Result.ErrorMessage = TEXT("Some dirty packages failed to save; editor shutdown was not requested.");
+			Result.Message = TEXT("Check source-control or file-system state, then retry blueprint_close_editor.");
+			Result.Data = SourceControlJson;
+			UE_LOG(LogTemp, Warning, TEXT("[BlueprintHelper] CloseEditor: some dirty packages failed to save; shutdown was not requested."));
+			return Result;
 		}
+		Result.Data = SourceControlJson;
 	}
 
 	// Do not call CloseAllAssetEditors here. Some Blueprint/asset editor teardown

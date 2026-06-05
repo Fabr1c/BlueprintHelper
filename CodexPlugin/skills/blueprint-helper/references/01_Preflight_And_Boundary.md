@@ -53,6 +53,8 @@ understand request
 
 Write authorization is running Editor/Bridge based. If preview succeeds but `write_permission` is disabled, call `blueprinthelper_request_write_session`; the Editor displays a simple accept/reject dialog. If the user rejects it, stop and report. Delegated SideAgents may execute within the approved scope and lifetime. Do not use `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling for ordinary writes.
 
+Source-control checkout is also required before execute when P4/Perforce or another UE source-control provider marks target assets read-only, checked out by another user, conflicted, or not editable. Use `blueprinthelper_source_control_status` / `blueprinthelper_source_control_checkout` and stop on occupied, conflicted, unavailable, failed checkout, or not-editable states.
+
 ## 5. Frozen Tool Boundary
 
 已注册但冻结的兼容、测试和专家工具不在 AgentGuide 中列为调用入口。普通 Agent 遇到 TaskSpec 无法表达的需求时，应停止报告缺口，而不是改用冻结入口。

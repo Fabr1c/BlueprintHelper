@@ -31,6 +31,7 @@
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Debug/BlueprintHelperEditorFocusService.h"
 #include "Systems/Debug/BlueprintHelperScreenshotCaptureService.h"
+#include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
@@ -188,11 +189,12 @@ void FBlueprintHelperModule::StartupModule()
 		*BlockIdService,
 		*LogicJsonPathService);
 	ScreenshotCaptureService = MakeUnique<FBlueprintHelperScreenshotCaptureService>();
+	SourceControlService = MakeUnique<FBlueprintHelperSourceControlService>();
 
 	// ─── Bridge Layer 初始。───
 	ContextService = MakeUnique<FBlueprintHelperContextService>(*GraphResolver);
 	BridgeRouter = MakeUnique<FBlueprintHelperBridgeRouter>(
-		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *AssetDiscoveryService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *GraphWriteServiceRegistry, *CompileAssetService, *VariableService, *ReviewStoreService, *EditorFocusService, *ScreenshotCaptureService);
+		*ExportService, *CompileService, *ValidationService, *ContextService, *AssetBrowseService, *AssetDiscoveryService, *StructureService, *WidgetService, *PropertyReflectionService, *DataTableService, *EditorCommandService, *RuntimeProfileService, *DiagnosticsService, *DebugEntryService, *LogicMdReadService, *LogicJsonReadService, *AssetFactoryService, *ComponentService, *ClassSettingsService, *GraphWriteServiceRegistry, *CompileAssetService, *VariableService, *ReviewStoreService, *EditorFocusService, *ScreenshotCaptureService, *SourceControlService);
 	const FBlueprintHelperBridgeRuntimeConfig BridgeRuntimeConfig = FBlueprintHelperBridgeRuntimeConfigResolver::Load();
 	BridgeServer = MakeUnique<FBlueprintHelperBridgeServer>(*BridgeRouter, BridgeRuntimeConfig, DebugEntryService.Get());
 	BridgeServer->Start();
@@ -220,6 +222,7 @@ void FBlueprintHelperModule::ShutdownModule()
 	BridgeServer.Reset();
 	BridgeRouter.Reset();
 	ContextService.Reset();
+	SourceControlService.Reset();
 	ScreenshotCaptureService.Reset();
 	EditorFocusService.Reset();
 

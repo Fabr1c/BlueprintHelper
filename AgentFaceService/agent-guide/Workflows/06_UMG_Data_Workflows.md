@@ -2,6 +2,8 @@
 
 For any UMG, DataAsset, DataTable, or UObject write, call `blueprinthelper_request_write_session` after preview only when `write_permission` is disabled. The Editor prompt is intentionally simple accept/reject; rejection stops the write.
 
+If source control is enabled for the target assets, also run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute. Stop on `checked_out_by_other`, conflict, unavailable provider, checkout failure, or not-editable status.
+
 UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不要直接选择冻结入口。
 
 ## Validation Policy

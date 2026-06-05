@@ -118,6 +118,7 @@ read_strategy:
 tool_call_intent:
   tool_name: "<single BlueprintHelper tool this SideAgent should execute>"
   missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
+source_control_policy: "<checkout/status policy for target assets before execute>"
 references_to_read:
   - "references/09_SideAgent_Tool_Execution.md"
   - "<workflow reference if needed>"
@@ -151,6 +152,7 @@ Tell the SideAgent its responsibility in the task package:
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
 - translate the returned tool results into a concise Chinese result for the Main Agent;
 - stop and return a blocker instead of asking the user directly.
+- for write tasks, run any Main-Agent-assigned source-control status or checkout tool before execute; stop on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable` and return the agent-facing message/recommended action.
 
 The Main Agent uses that translated result to answer the user or decide the next clarification.
 
@@ -161,7 +163,7 @@ Stop before write delegation when:
 - the target asset or create strategy is unknown;
 - the requested edit would modify user-owned nodes without explicit permission;
 - the request needs a capability not listed in the onboarding index;
-- the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, or `tool_failed`;
+- the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `tool_failed`;
 - the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References

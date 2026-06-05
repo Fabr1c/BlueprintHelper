@@ -18,6 +18,7 @@ blueprint_get_runtime_profile
 -> build BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
 -> repair TaskSpec or stop_and_report
+-> blueprinthelper_source_control_status/checkout if source control requires checkout or close/save reports checkout_required
 -> blueprinthelper_request_write_session if write_permission is disabled and the user accepts the simple Editor approval dialog
 -> blueprinthelper_execute_task
 -> blueprinthelper_get_task_result
@@ -32,6 +33,8 @@ blueprint_get_runtime_profile
 blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_request_write_session
+blueprinthelper_source_control_status
+blueprinthelper_source_control_checkout
 blueprinthelper_find_assets
 blueprinthelper_read_context
 blueprinthelper_read_context_capabilities
@@ -49,6 +52,8 @@ blueprinthelper_query_review_records
 `blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Agent-facing templates or workflows.
 
 Write authorization is running Editor/Bridge based: use `blueprinthelper_request_write_session` only after a successful preview when `write_permission` is disabled. The approved scope and lifetime are held by the running Editor, so delegated SideAgents can call BlueprintHelper tools after approval as long as they stay within that scope. The Editor UI is intentionally a minimal accept/reject prompt. If it is rejected, stop and report.
+
+Source-control checkout is a separate pre-write gate. In P4/Perforce or other UE source-control projects, use `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when target assets may be read-only or when close/save reports `checkout_required`. Stop on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable` and report the returned agent message.
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 

@@ -9,6 +9,8 @@ blueprinthelper_find_assets
 blueprinthelper_read_context
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
+blueprinthelper_source_control_status
+blueprinthelper_source_control_checkout
 blueprinthelper_preview_task
 blueprinthelper_request_write_session
 blueprinthelper_execute_task
@@ -30,6 +32,8 @@ blueprinthelper_diagnostics_runtime
 
 `blueprinthelper_request_write_session` is the ordinary interactive write authorization path. Use it after preview and before execute only when write permission is disabled and the user approves the Editor-side prompt.
 The Editor prompt is intentionally a simple accept/reject dialog. If the user rejects it, stop and report. Approval applies to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can execute BlueprintHelper tools after approval without receiving secret session data. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+
+`blueprinthelper_source_control_status` and `blueprinthelper_source_control_checkout` are the source-control pre-write path for P4/Perforce and other UE source-control providers. Use status or checkout after a successful preview and before execute when source control is enabled, when target assets may be read-only, or when MCP close/save reports `checkout_required`. Stop on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`, and report the returned `agent_message` / `recommended_action` instead of editing.
 
 ## Asset Path Routing
 

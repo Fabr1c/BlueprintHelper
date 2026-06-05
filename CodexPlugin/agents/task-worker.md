@@ -58,6 +58,7 @@ blueprint_context_summary: "<from blueprint-explorer>"
 source_context_summary: "<from sourcecode-explorer or none>"
 safety_profile: "<runtime profile safety>"
 write_policy: "<write permission/session policy>"
+source_control_policy: "<checkout/status policy for target assets before execute>"
 allowed_tools: []
 tool_id: "<selected tool_id from bh tools list>"
 returned_template_paths: []
@@ -68,6 +69,8 @@ stop_conditions: []
 
 - `bh blueprint_get_runtime_profile`
 - `bh blueprinthelper_preview_task`
+- `bh blueprinthelper_source_control_status`
+- `bh blueprinthelper_source_control_checkout`
 - `bh blueprinthelper_request_write_session`
 - `bh blueprinthelper_execute_task`
 - `bh blueprinthelper_get_task_result`
