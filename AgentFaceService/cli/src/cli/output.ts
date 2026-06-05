@@ -17,6 +17,9 @@ export type CliCommandKind =
   | 'task.preview'
   | 'task.execute'
   | 'task.result'
+  | 'tools.domains'
+  | 'tools.list'
+  | 'tools.templates'
   | 'bridge.ping'
   | 'bridge.call'
   | 'context.read'
@@ -35,6 +38,13 @@ export interface CliCommand {
   expert?: boolean;
   previewToken?: string;
   taskRunId?: string;
+  includeReserved?: boolean;
+  audience?: 'default' | 'compat' | 'expert';
+  toolDomain?: string;
+  toolCatalogKind?: string;
+  toolId?: string;
+  requiresBridge?: boolean;
+  risks?: string[];
   bridgeCommand?: string;
   metricsKind?: MetricsReportKind;
   metricsRoot?: string;

@@ -57,7 +57,40 @@ bh task preview --file .\task_spec.json --select status,preview_id,summary,artif
 bh task execute --file .\task_spec.json --select status,task_run_id,summary,artifacts.full_result
 ```
 
-For complex JSON, open `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+For complex JSON, use the CLI catalog first:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Then read only the concrete template paths returned by `bh tools templates <tool_id>`, copy a returned template, and call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+
+## Tool Catalog Flow
+
+Do not scan plugin source or template indexes to choose BlueprintHelper tools.
+
+Use the CLI catalog:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Then read only the concrete template paths returned by `bh tools templates <tool_id>`.
+
+The standard read path is:
+
+1. Main Agent chooses `domain` and `kind`.
+2. Main Agent runs `bh tools list <domain> <kind> --format json`.
+3. Main Agent selects a `tool_id`.
+4. Main Agent runs `bh tools templates <tool_id> --format json`.
+5. Main Agent dispatches the required sideAgent with the selected `tool_id`, returned template paths, `allowed_tools`, and `stop_conditions`.
+6. The sideAgent fills the returned template and calls only the CLI tools listed in `allowed_tools`.
+
+There is no independent tool detail step.
 
 Generated JSON example:
 
@@ -152,7 +185,9 @@ tool_call_intent:
   missing_field_reason: "<why Main Agent cannot answer from accumulated sideAgent results>"
 references_to_read:
   - "references/09_SideAgent_Tool_Execution.md"
-  - "<workflow/template reference if needed>"
+  - "<workflow reference if needed>"
+tool_id: "<selected tool_id from bh tools list>"
+returned_template_paths: []
 allowed_tools: []
 stop_conditions:
   - "missing target asset or create/modify strategy"
@@ -224,11 +259,12 @@ source_context_summary: "<from sourcecode-explorer or none>"
 safety_profile: "<runtime profile safety>"
 write_policy: "<write permission/session policy>"
 allowed_tools: []
-template_hint: "<preferred template path or search target>"
+tool_id: "<selected tool_id from bh tools list>"
+returned_template_paths: []
 stop_conditions: []
 ```
 
-`task-worker` must prefer templates from `AgentFaceService/agent-guide/Templates/`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
+`task-worker` must read only returned template paths from `bh tools templates <tool_id>`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
 
 ### Closed loop
 

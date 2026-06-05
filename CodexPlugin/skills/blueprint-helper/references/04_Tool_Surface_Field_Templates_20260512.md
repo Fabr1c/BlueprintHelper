@@ -32,54 +32,66 @@ bh task result --id task_xxx --select summary.target_assets,artifacts.full_resul
 
 Use `--max-bytes <n>` as a hard stdout budget. When the budget is exceeded, read `artifacts.full_result` instead of rerunning the command with a broader selection.
 
-## 2. Allowed Tool Names
+`artifacts.full_result` is compact by default and no longer includes a top-level `BlueprintHelper.CliFullResult.v1` schema field. It removes nested ToolResult schemas, trace ids, raw `bridge_result`, duplicate TaskSpec `target_assets`, duplicate nested `task_run_id`, `execution_policy`, `scope_policy`, and policy-only `should_compile` / `should_save` fields. Add `--expert` only when a raw diagnostic `artifacts.debug_result` is needed.
 
-Use `tools/list` as final authority. Normal Agent-facing tools:
+## 2. Tool Catalog Flow
 
-| Purpose | Tool |
-|---|---|
-| Runtime profile | `blueprint_get_runtime_profile` |
-| Static diagnostics | `blueprinthelper_diagnostics` |
-| Runtime diagnostics | `blueprinthelper_diagnostics_runtime` |
-| Request write session | `blueprinthelper_request_write_session` |
-| AgentGuide index | `blueprinthelper_read_agent_guide` |
-| Asset discovery before a target path is known | `blueprinthelper_find_assets` |
-| ReadSpec context | `blueprinthelper_read_context` |
-| Reference context | `blueprinthelper_read_reference_context` |
-| Function chain context | `blueprinthelper_read_function_chain_context` |
-| Preview TaskSpec | `blueprinthelper_preview_task` |
-| Execute TaskSpec | `blueprinthelper_execute_task` |
-| Query task result | `blueprinthelper_get_task_result` |
-| Debug case summary | `blueprinthelper_get_debug_case` |
-| Debug case list | `blueprinthelper_list_debug_cases` |
-| Debug bundle manifest | `blueprinthelper_export_debug_bundle` |
-| Review record summary query | `blueprinthelper_query_review_records` |
+Agent-facing tool and template selection is CLI-owned:
 
-Lifecycle companion tools are available only through the global MCP allowlist for Agent-owned Editor open/close. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also maps to the global MCP lifecycle tools; ordinary Agents must not use CLI lifecycle helpers. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
 
-`blueprinthelper_apply_review_action` is plugin-development/internal and is intentionally omitted from ordinary Agent-facing templates.
+After `bh tools templates <tool_id>` returns a template dispatch package, read
+only the returned template paths. Do not scan `Templates/` or old semantic
+indexes for tool selection.
 
-## 3. Root Argument Shapes
+The template dispatch package distinguishes:
 
-| Tool | Root argument shape |
-|---|---|
-| `blueprint_get_runtime_profile` | `{}` |
-| `blueprinthelper_diagnostics` | `{}` |
-| `blueprinthelper_diagnostics_runtime` | `{}` |
-| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
-| `blueprinthelper_read_agent_guide` | `{}` |
-| `blueprinthelper_find_assets` | `BlueprintHelper.FindAssetsRequest.v1` fields at root |
-| `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
-| `blueprinthelper_read_reference_context` | Reference fields at root |
-| `blueprinthelper_read_function_chain_context` | Function chain fields at root |
-| `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
-| `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
-| `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
-| `blueprinthelper_get_debug_case` / `blueprinthelper_export_debug_bundle` | `{ "debug_case_id": "..." }` |
-| `blueprinthelper_list_debug_cases` | `{ "limit": 20 }` |
-| `blueprinthelper_query_review_records` | `{ "asset_path": "...", "task_run_id": "...", "pending_only": true }` |
+- CLI invocation templates: concrete JSON inputs for a CLI tool or grouped CLI command.
+- TaskSpec semantic templates: concrete `BlueprintHelper.TaskSpec.v1` examples for a TaskSpec semantic.
 
-`blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
+Use the returned `recommended_invocation`, `allowed_tools`, and
+`stop_conditions` to build the sideAgent task package. There is no independent
+tool detail step.
+
+Lifecycle companion tools are available only through the global MCP allowlist for
+Agent-owned Editor open/close. Compatibility for `blueprint_open_editor` /
+`blueprint_close_editor` also maps to the global MCP lifecycle tools; ordinary
+Agents must not use CLI lifecycle helpers. CLI lifecycle invocation is blocked
+with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report
+`lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent
+entry points or fallback paths.
+
+`blueprinthelper_apply_review_action` is plugin-development/internal and is not
+part of ordinary Agent-facing selection.
+
+## 3. Tool Argument Rules
+
+Tool arguments use the schema root object returned by the selected template.
+Do not wrap tool calls in an extra `args` object.
+
+`blueprinthelper_preview_task` and `blueprinthelper_execute_task` tool-name
+inputs prefer wrapping the TaskSpec under root field `task_spec`; grouped
+`task preview` / `task execute` commands use a bare TaskSpec file.
+
+`blueprinthelper_request_write_session` is only called after a successful preview
+when `write_permission` is disabled. The running Editor shows a minimal
+accept/reject prompt. The approval is owned by the running Editor/Bridge for the
+approved scope and lifetime, and can be used by delegated SideAgents. The tool
+response omits the raw session id; Agents must not pass `auth_session`,
+`auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
+
+Write-session required fields:
+
+| Field | Required | Purpose |
+|---|---|---|
+| `reason` | Required | Human-readable reason shown to the Editor approval prompt. Do not call this tool with `{}`. |
+| `scope` | Optional | `project` or `asset_list`; defaults to `project`. |
+| `ttl_seconds` | Optional | Approval lifetime, clamped by the Editor service. |
+| `asset_paths` | Required for `scope=asset_list` | Unreal asset paths covered by the approval. |
 
 Unknown Unreal `asset_path` values must be resolved with `blueprinthelper_find_assets` before `blueprinthelper_read_context` or any write request. Known Unreal `asset_path` values go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes. Every write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 
@@ -146,13 +158,29 @@ P0 does not accept `cursor` and does not return `total_count`. It also does not 
 }
 ```
 
+`view.format=summary` is removed from ReadSpec. Non-logic reads use their `read_type` as the compact view contract and should omit `view.format`.
+
 `view.format=logic_flow` is the default for `read_type=blueprint_logic` and is recommended for simple `target_type=function`, `target_type=event`, or `target_type=custom_event` reads when the Agent needs fast execution/data flow understanding. It returns `LogicFlow.v1` and must not be used as a patch/merge anchor source.
+
+Full `LogicFlow.v1` syntax rules: `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`.
+
+When a `logic_flow` request returns `payload.schema=LogicJson.v1` and `payload.requested_format=logic_flow`, treat it as an intentional degradation caused by unknown or ambiguous link semantics; continue analysis from the returned `logic_json` payload instead of retrying `logic_flow`.
 
 `view.format=logic_md` may be used directly for `target_type=function`, `target_type=event`, or `target_type=custom_event` when `target_name` is known and the entry is larger or more branched than a compact `logic_flow` read should carry. These target-entry reads are generated from structured target slices and report sliced stats. Do not use whole-graph `logic_md` until `logic_json` shows the graph is small enough.
 
 `view.max_items` is a truncation guard for `logic_json`; when truncation happens, the tool result sets `data.truncated=true` and includes `payload.truncation.nodes_total` plus `payload.truncation.nodes_returned`.
 
 If `blueprinthelper_read_context` is not visible or callable, stop with `tool_unavailable`. Do not read `.vs\BlueprintCache`, Saved exports, or local JSON files as a substitute for missing BlueprintHelper tool availability.
+
+## 4.5 Read Context Capabilities Template
+
+Use this local read-only tool when an Agent needs to know which ReadContext read types, asset target types, and formats are currently supported. It does not read UE assets or call Bridge.
+
+```json
+{}
+```
+
+Returned data schema is `ReadContextCapabilities.v1`. `asset_types`, `formats`, and `read_type_ids` are the full sets. `read_types[]` is a negative capability diff: each row lists only `unsupported_asset_types` and `unsupported_formats` for that read type.
 
 ## 5. Reference Context Template
 
@@ -506,6 +534,54 @@ For `merge_owned_graph` with `branch_fork`, keep the TaskSpec semantic and provi
 `sequence_order` is required only for `branch_fork`, and values must be `original_successor` and `inserted_logic`. Preview must resolve `inserted.block_id` to a BlueprintHelper-owned CustomEvent block; missing, non-owned, or non-CustomEvent targets are preview blockers.
 
 After a successful `branch_fork` execute, read back LogicJson or LogicMd and verify the inserted Sequence or equivalent distribution node, the inserted call, and the original successor are reachable from the anchor, with no orphaned nodes in the affected flow.
+
+## 14.5 GraphWrite Field First-Class Capability IDs
+
+Graph body Field statements use a stable `field.capability_id`. The statement may also carry namespaced `field.*` facts such as owner class, member guid, local scope, target pin, component metadata, or property path. Do not depend on transient editor UI state such as selection, context menus, pin drag state, or modifier keys.
+
+Allowed `field.capability_id` values:
+
+```text
+field.member_get
+field.member_set
+field.inherited_member_get
+field.inherited_member_set
+field.sparse_data_get
+field.function_param_get
+field.local_get
+field.local_set
+field.object_pin_member_get
+field.object_pin_member_set
+field.component_ref_get
+field.component_ref_set
+field.component_property_get
+field.component_property_set
+field.struct_member_get
+field.struct_member_set
+field.nested_property_path
+```
+
+Excluded Field-like inputs:
+
+| Category | IDs | Required behavior |
+|---|---|---|
+| UI-only evidence | `field.drag_get`, `field.drag_set`, `field.pin_drag_get`, `field.pin_drag_set` | Reject with `unsupported_ui_entry_not_statement`; caller must map UI evidence to a first-class Field capability before GraphWrite execution. |
+| Support/readback-only | `field.split_struct_pin_support`, `field.recombine_struct_pin_support` | Internal fragment/readback support only; no user statement surface. |
+| Other clusters | `control.function_return_write`, `function.selected_component_call`, `component.add_component_node` | Route or reject outside FieldVariableActionCluster; Field must not claim success. |
+| Diagnostic / first-stage excluded | `field.unsupported_path_diagnostic`, `field.by_ref_set` | Diagnostic-only; `field.by_ref_set` returns `unsupported_by_ref_set_deferred`. |
+
+Minimum statement-local facts by capability family:
+
+| Family | Required fields |
+|---|---|
+| member get/set | `field.member_name`, optional `field.owner_class`, optional `field.member_guid`, access mode from capability id |
+| inherited/native/sparse member | `field.owner_class`, `field.member_name`, optional `field.member_guid` |
+| local get/set | `field.function_name` or `field.local_scope`, `field.member_name` or `field.local_name`, optional `field.member_guid` |
+| function param get | `field.function_name`, `field.member_name` or parameter name, `field.param_flags` or resolved parameter evidence |
+| component_ref | `field.component_name`, optional `field.component_owner_class`, optional `field.component_kind` |
+| object pin member get/set | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.owner_class`, `field.member_name` |
+| component property get/set | `field.target_pin_ref`, `field.target_pin_type`, `field.target_pin_object_path`, `field.property_path`, component/property owner evidence |
+| struct/nested property path | `field.property_path`, root expression evidence, expected read/write mode, linked pins/defaults when applicable |
 
 ## 15. Function Call Body Statement
 

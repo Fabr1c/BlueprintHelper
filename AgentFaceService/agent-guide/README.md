@@ -10,7 +10,19 @@
 00_Agent_Onboarding_Index.md
 ```
 
-新 Agent 应先阅读 onboarding index，再根据用户任务进入 `Reference/`、`Workflows/` 或 `Templates/`。
+新的 Agent 应先阅读 onboarding index，再根据用户任务进入 `Reference/`、`Workflows/`，或读取 CLI catalog 返回的具体 `Templates/` 路径。
+
+### 工具 Catalog
+
+Agent-facing 工具和模板选择由 CLI catalog 负责：
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Agent 只读取 `bh tools templates <tool_id>` 返回的具体模板路径。不要扫描 `Templates/` 目录来选择工具或模板。
 
 ### 使用边界
 
@@ -21,7 +33,8 @@
 
 ## English
 
-This directory guides AI Agents in using the BlueprintHelper Agent-facing tool surface correctly.
+This directory guides AI Agents in using the BlueprintHelper Agent-facing tool
+surface correctly.
 
 Recommended entry:
 
@@ -29,7 +42,23 @@ Recommended entry:
 00_Agent_Onboarding_Index.md
 ```
 
-New Agents should read the onboarding index first, then move into `Reference/`, `Workflows/`, or `Templates/` depending on the user task.
+New Agents should read the onboarding index first, then move into `Reference/`,
+`Workflows/`, or concrete `Templates/` paths returned by the CLI catalog
+depending on the user task.
+
+### Tool Catalog
+
+Agent-facing tool and template selection is CLI-owned:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Agents should read only the concrete template paths returned by
+`bh tools templates <tool_id>` and must not scan `Templates/` to choose tools or
+templates.
 
 ### Boundaries
 

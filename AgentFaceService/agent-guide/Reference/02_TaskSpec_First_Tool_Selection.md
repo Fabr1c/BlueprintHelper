@@ -1,6 +1,33 @@
 # 02 - TaskSpec-first Tool Selection
 
-默认工具链:
+## Tool Catalog Flow
+
+Agent-facing tool and template selection is CLI-owned:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+After `bh tools templates <tool_id>` returns a template dispatch package, read
+only the returned template paths. Do not scan `Templates/` or old semantic
+indexes for tool selection.
+
+## 中文
+
+Agent 面向的工具和模板选择由 CLI catalog 负责：
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+选择 `tool_id` 后，只读取 `bh tools templates <tool_id>` 返回的模板路径。不要扫描
+`Templates/` 目录来选择工具。
+
+## Default Tool Chain
 
 ```text
 blueprint_get_runtime_profile
@@ -19,17 +46,28 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-只读诊断:
+Read-only diagnostics:
 
 ```text
 blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 ```
 
-`blueprint_open_editor` / `blueprint_close_editor` 只表示全局 MCP lifecycle 工具，用于显式启动或关闭目标 Editor。普通资产读写、TaskSpec preview/execute、diagnostics 和 result query 使用 CLI；Editor lifecycle 兼容路径也统一使用全局 MCP，不使用 CLI lifecycle alias。CLI lifecycle 调用会被阻断；如果 lifecycle MCP 不可用，返回 `lifecycle_mcp_unavailable`。废弃 MCP 普通工具不作为 fallback。
+`blueprint_open_editor` / `blueprint_close_editor` represent only the global MCP
+lifecycle tools for explicitly opening or closing the target Editor. Ordinary
+asset reads/writes, TaskSpec preview/execute, diagnostics, and result query use
+the CLI. Editor lifecycle compatibility paths also use the global MCP; do not use
+CLI lifecycle aliases. CLI lifecycle invocation is blocked. If lifecycle MCP is
+unavailable, return `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools
+are not fallback paths.
 
-`blueprinthelper_request_write_session` is the ordinary interactive write authorization path. Use it after preview and before execute only when write permission is disabled and the user approves the Editor-side prompt.
-The Editor prompt is intentionally a simple accept/reject dialog. If the user rejects it, stop and report. Approval applies to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can execute BlueprintHelper tools after approval without receiving secret session data. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+`blueprinthelper_request_write_session` is the ordinary interactive write
+authorization path. Use it after preview and before execute only when write
+permission is disabled and the user approves the Editor-side prompt. Approval
+applies to the running Editor/Bridge for the approved scope and lifetime, so
+SideAgents can execute BlueprintHelper tools after approval without receiving
+secret session data. Do not request or pass `BLUEPRINTHELPER_BRIDGE_TOKEN`,
+`auth_token`, or `auth_session`.
 
 ## Asset Path Routing
 
@@ -41,7 +79,8 @@ The Editor prompt is intentionally a simple accept/reject dialog. If the user re
 
 ## Task Tool Arguments
 
-`blueprinthelper_preview_task` 和 `blueprinthelper_execute_task` 的工具名入口优先使用 `task_spec` wrapper:
+`blueprinthelper_preview_task` and `blueprinthelper_execute_task` tool-name
+entries prefer the `task_spec` wrapper:
 
 ```json
 {
@@ -51,11 +90,15 @@ The Editor prompt is intentionally a simple accept/reject dialog. If the user re
 }
 ```
 
-`task preview --file` 和 `task execute --file` 分组命令使用裸 `BlueprintHelper.TaskSpec.v1` 文件。不要额外包 `args`，不要把 `{ "task_spec": ... }` wrapper 传给分组命令。
+Grouped `task preview --file` and `task execute --file` commands use a bare
+`BlueprintHelper.TaskSpec.v1` file. Do not add an outer `args` wrapper and do
+not pass `{ "task_spec": ... }` to grouped commands.
 
 ## Context And Anchors
 
-Patch/Merge 修改 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`，再从 grouped block 中取:
+For patch/merge changes to BlueprintHelper-owned blocks, first use
+`blueprinthelper_read_context` with `logic_json`, then take these anchors from
+the grouped block:
 
 ```text
 block_id
@@ -65,14 +108,23 @@ pin_ref
 link_ref
 ```
 
-`append_after` 使用 `block_id + group_entry_node_path + node_ref + pin_ref`。`insert_between` 还必须带 `link_ref`。
+`append_after` uses `block_id + group_entry_node_path + node_ref + pin_ref`.
+`insert_between` must also carry `link_ref`.
 
-Graph body 里的函数调用使用 `args` 表达函数参数。这里的 `args` 不是 BlueprintHelper 工具参数包装。
+Graph body function calls may use `args`; that is not a BlueprintHelper tool
+argument wrapper.
 
 ## Frozen Boundary
 
-底层 capability 入口只供 Task Runtime、测试和专家诊断使用。普通 Agent 不从 AgentGuide 选择这些入口。preview blocked 时停止报告或修正 TaskSpec。
+Low-level capability entries are for Task Runtime, tests, and expert diagnostics.
+Ordinary Agents do not choose these entries from AgentGuide. When preview is
+blocked, stop and report or repair the TaskSpec.
 
-普通 Agent 不操作 ReviewPanel，不展开 ReviewRecord 内部状态。工具返回 `debug_case_ids[]` 时，可以用 summary-only `blueprinthelper_get_debug_case` 定位问题，但不能读取 DebugBundle artifact 内容、本地 bundle 路径、raw payload、source content 或 token/settings 全文。
+Ordinary Agents do not operate ReviewPanel or expand ReviewRecord internals. When
+tool results return `debug_case_ids[]`, a summary-only `blueprinthelper_get_debug_case`
+may be used to locate the issue, but Agents must not read DebugBundle artifact
+contents, local bundle paths, raw payloads, source content, or full token/settings
+files.
 
-`blueprinthelper_apply_review_action` 只用于插件开发/内部验证，不进入普通 Agent 工具选择。
+`blueprinthelper_apply_review_action` is plugin-development/internal and does not
+enter ordinary Agent tool selection.

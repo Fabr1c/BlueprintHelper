@@ -400,7 +400,7 @@ Excluded OpCoverage inputs:
 - `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
 - `AgentFaceService/task-core/src/task/compiler/task-compiler.ts`
 - `AgentFaceService/task-core/src/task/compiler/task-compiler-service.ts`
-- `AgentFaceService/agent-guide/Templates/write/SEMANTIC_INDEX.md`
+- `bh tools templates <tool_id> returned TaskSpec template paths`
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/TaskPlanAdapters/*`
 - `BlueprintHelper/Source/BlueprintHelper/Public/Runtime/TaskRuntime/Clusters/*`
 - `BlueprintHelper/Source/BlueprintHelper/Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.cpp`

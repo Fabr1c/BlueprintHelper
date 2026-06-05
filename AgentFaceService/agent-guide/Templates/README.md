@@ -1,8 +1,32 @@
-﻿# BlueprintHelper AgentGuide Templates
+# BlueprintHelper Templates
 
-These templates are copy-and-edit JSON inputs for the TaskSpec-first CLI workflow.
-They are intentionally small and valid JSON. Copy one template to a working file,
-replace placeholders, then call the CLI with `--file`.
+This directory stores executable JSON templates consumed by the BlueprintHelper CLI.
+
+Agent-facing tool and template selection is owned by:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Do not use this directory as a manual selection index. Agents should only read a
+concrete template path returned by `bh tools templates <tool_id>`.
+
+## 中文
+
+本目录只保存 BlueprintHelper CLI 使用的 JSON 模板。
+
+Agent 面向的工具和模板选择由 CLI catalog 负责。先运行 `bh tools domains`、
+`bh tools list <domain> <kind>` 和 `bh tools templates <tool_id>`，然后只读取
+返回的具体模板路径。不要手动扫描本目录来选择工具或模板。
+
+## Manual Editing
+
+Returned templates are copy-and-edit JSON inputs for the TaskSpec-first CLI
+workflow. They are intentionally small and valid JSON. Copy the returned
+template to a working file, replace placeholders, then call the CLI with
+`--file`.
 
 Recommended PowerShell flow:
 
@@ -39,6 +63,5 @@ There are two supported TaskSpec command shapes:
 
 ## Not Exposed Here
 
-`blueprinthelper_apply_review_action` is intentionally not included in ordinary
-AgentGuide templates. It is a plugin-development/internal Review action, not a
-normal Agent-facing workflow.
+`blueprinthelper_apply_review_action` is plugin-development/internal. It is not
+part of ordinary Agent-facing template selection.

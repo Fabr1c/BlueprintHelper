@@ -37,7 +37,40 @@ When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` firs
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
-For complex JSON input, copy a template from `AgentFaceService/agent-guide/Templates/`, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+For complex JSON input, use the CLI catalog first:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Then read only the concrete template paths returned by `bh tools templates <tool_id>`, copy a returned template, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+
+## Tool Catalog Flow
+
+Do not scan plugin source or template indexes to choose BlueprintHelper tools.
+
+Use the CLI catalog:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Then read only the concrete template paths returned by `bh tools templates <tool_id>`.
+
+The standard read path is:
+
+1. Main Agent chooses `domain` and `kind`.
+2. Main Agent runs `bh tools list <domain> <kind> --format json`.
+3. Main Agent selects a `tool_id`.
+4. Main Agent runs `bh tools templates <tool_id> --format json`.
+5. Main Agent dispatches the required SideAgent with the selected `tool_id`, returned template paths, `allowed_tools`, and `stop_conditions`.
+6. The SideAgent fills the returned template and calls only the CLI tools listed in `allowed_tools`.
+
+There is no independent tool detail step.
 
 On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by the root installer. If an older install resolves to blocked `bh.ps1`, rerun `install.cmd` or call `bh.cmd`.
 
@@ -88,6 +121,9 @@ tool_call_intent:
 references_to_read:
   - "references/09_SideAgent_Tool_Execution.md"
   - "<workflow reference if needed>"
+tool_id: "<selected tool_id from bh tools list>"
+returned_template_paths: []
+allowed_tools: []
 stop_conditions:
   - "missing target asset or create/modify strategy"
   - "Bridge unavailable"
@@ -105,7 +141,7 @@ Example: if the user says "在蓝图实现一个可以开关的物理门" and do
 Tell the SideAgent its responsibility in the task package:
 
 - construct valid BlueprintHelper tool parameters from the user's goal and target;
-- prefer copy-and-edit templates from `AgentFaceService/agent-guide/Templates/` for CLI JSON input;
+- read only returned template paths from `bh tools templates <tool_id>` for CLI JSON input;
 - call only the assigned BlueprintHelper tool or the single atomic tool step explicitly requested by the Main Agent;
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
@@ -141,4 +177,4 @@ Stop before write delegation when:
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
 - `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
-- `AgentFaceService/agent-guide/Templates/INDEX.md` - copy-and-edit CLI JSON templates
+- `bh tools domains/list/templates` - CLI-owned tool and template selection

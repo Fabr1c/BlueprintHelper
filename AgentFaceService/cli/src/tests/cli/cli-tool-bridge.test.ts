@@ -6,7 +6,9 @@ import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 
-test('global help points Agents to template indexes and per-tool help', async () => {
+const legacyTemplateIndexName = 'SEMANTIC' + '_INDEX';
+
+test('global help points Agents to CLI catalog and per-tool help', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['--help'],
@@ -20,13 +22,14 @@ test('global help points Agents to template indexes and per-tool help', async ()
   const output = writes.join('');
   assert.equal(exitCode, 0);
   assert.match(output, /bh <tool_name> --help/);
-  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/INDEX\.md/);
-  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/read\/SEMANTIC_INDEX\.md/);
-  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/write\/SEMANTIC_INDEX\.md/);
-  assert.match(output, /Copy a matching template, replace placeholders, then pass it with --file/);
+  assert.match(output, /bh tools domains --format json/);
+  assert.match(output, /bh tools list <domain> <kind> --format json/);
+  assert.match(output, /bh tools templates <tool_id> --format json/);
+  assert.match(output, /Fill the returned template path, then run the returned recommended_invocation/);
+  assert.doesNotMatch(output, new RegExp(legacyTemplateIndexName));
 });
 
-test('tool help is specific and includes ReadContext template navigation', async () => {
+test('tool help is specific and includes concrete ReadContext template paths', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['blueprinthelper_read_context', '--help'],
@@ -43,7 +46,7 @@ test('tool help is specific and includes ReadContext template navigation', async
   assert.match(output, /Root JSON: bare BlueprintHelper\.ReadSpec\.v1/);
   assert.match(output, /read_context_asset_summary_template\.json/);
   assert.match(output, /read_context_function_logic_flow_template\.json/);
-  assert.match(output, /read\/SEMANTIC_INDEX\.md/);
+  assert.doesNotMatch(output, new RegExp(String.raw`read/${legacyTemplateIndexName}\.md`));
   assert.doesNotMatch(output, /Default tool names:/);
 });
 

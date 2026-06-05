@@ -64,10 +64,10 @@
 
 先从这里开始找模板:
 
-- `AgentFaceService/agent-guide/Templates/INDEX.md`
-- `AgentFaceService/agent-guide/Templates/SEMANTIC_INDEX.md`
-- `AgentFaceService/agent-guide/Templates/read/SEMANTIC_INDEX.md`
-- `AgentFaceService/agent-guide/Templates/write/SEMANTIC_INDEX.md`
+- `bh tools templates <tool_id> returned template path`
+- `bh tools templates <tool_id> returned template paths`
+- `bh tools templates <tool_id> returned read template paths`
+- `bh tools templates <tool_id> returned TaskSpec template paths`
 
 模板目录分工如下:
 
@@ -99,9 +99,9 @@
 
 | 命令 | 类型 | 输入 | 推荐模板 | 说明 |
 |---|---|---|---|---|
-| `blueprinthelper_read_context` | UE 资产上下文读取 | `BlueprintHelper.ReadSpec.v1` 根对象 | `Templates/read/SEMANTIC_INDEX.md` + 对应 read 模板 | 读取 Blueprint、UMG、DataAsset、DataTable、对象属性、图上下文等。 |
+| `blueprinthelper_read_context` | UE 资产上下文读取 | `BlueprintHelper.ReadSpec.v1` 根对象 | `bh tools templates <tool_id>` + 对应 read 模板 | 读取 Blueprint、UMG、DataAsset、DataTable、对象属性、图上下文等。 |
 | `blueprinthelper_read_context_capabilities` | ReadContext 能力矩阵 | `{}` | `Templates/read/blueprinthelper_read_context_capabilities_template.json` | 只读本地能力矩阵，不接触 UE 资产。 |
-| `blueprinthelper_read_reference_context` | 引用 / 依赖上下文 | `ReferenceContextPack.v1` 请求对象 | `Templates/read/SEMANTIC_INDEX.md` + 对应 reference 模板 | 用于重命名、删除、签名变更、依赖风险分析。 |
+| `blueprinthelper_read_reference_context` | 引用 / 依赖上下文 | `ReferenceContextPack.v1` 请求对象 | `bh tools templates <tool_id>` + 对应 reference 模板 | 用于重命名、删除、签名变更、依赖风险分析。 |
 | `blueprinthelper_read_function_chain_context` | 函数链索引 | function / event / custom_event 链路请求对象 | `Templates/read/blueprinthelper_read_function_chain_context_template.json` | 只返回紧凑索引，不返回完整函数体。 |
 | `blueprinthelper_find_assets` | 资产路径发现 | `BlueprintHelper.FindAssetsRequest.v1` 请求对象 | `Templates/blueprinthelper_find_assets_template.json` | 在未知 Unreal `asset_path` 时先用 AssetRegistry 缩小候选，再继续读上下文或写流程。 |
 | `blueprinthelper_capture_screenshot` | 编辑器截图证据 | `BlueprintHelper.CaptureScreenshotRequest.v1` 请求对象 | `Templates/blueprinthelper_capture_screenshot_template.json` | 打开资产、可选定位 `graph_name + block_ref/node_ref`，然后保存真实编辑器截图证据。 |
@@ -208,7 +208,7 @@ P0 不支持输入 `cursor`，`FindAssets.v1` 结果也不返回 `total_count` �
 | `bh task preview` | 裸 `BlueprintHelper.TaskSpec.v1` | `Templates/write/task_preview_bare_taskspec_template.json` | 不要再包 `task_spec`。 |
 | `bh task execute` | 裸 `BlueprintHelper.TaskSpec.v1` | `Templates/write/task_execute_bare_taskspec_template.json` | 不要再包 `task_spec`。 |
 | `bh task result` | `task_run_id` | `Templates/blueprinthelper_get_task_result_template.json` | 读取任务结果。 |
-| `bh context read` | 裸 `BlueprintHelper.ReadSpec.v1` | `Templates/read/SEMANTIC_INDEX.md` | 读取资产上下文。 |
+| `bh context read` | 裸 `BlueprintHelper.ReadSpec.v1` | `bh tools templates <tool_id>` | 读取资产上下文。 |
 | `bh bridge ping` | 无 JSON 输入 | 无 | 只做 Bridge 连通性探测。 |
 | `bh bridge call` | `--command <read_only_command>` | 无 | 只允许只读 Bridge 命令，普通 Agent 应优先使用命名工具。 |
 

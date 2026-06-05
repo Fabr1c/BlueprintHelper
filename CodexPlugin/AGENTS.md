@@ -30,6 +30,15 @@ For writes, follow the TaskSpec-first closed loop:
 main preflight -> explorer context -> task-worker TaskSpec -> preview -> write session if needed -> execute -> result -> main-agent next decision
 ```
 
-For complex CLI inputs, start at `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching JSON template, and use `--file`.
+For complex CLI inputs, use the CLI catalog first:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Read only the concrete template paths returned by `bh tools templates <tool_id>`,
+copy a returned JSON template, and use `--file`.
 
 Never request or forward raw Bridge auth tokens. Interactive write approval belongs to the running Editor/Bridge session.

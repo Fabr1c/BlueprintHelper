@@ -34,56 +34,55 @@ Use `--max-bytes <n>` as a hard stdout budget. When the budget is exceeded, read
 
 `artifacts.full_result` is compact by default and no longer includes a top-level `BlueprintHelper.CliFullResult.v1` schema field. It removes nested ToolResult schemas, trace ids, raw `bridge_result`, duplicate TaskSpec `target_assets`, duplicate nested `task_run_id`, `execution_policy`, `scope_policy`, and policy-only `should_compile` / `should_save` fields. Add `--expert` only when a raw diagnostic `artifacts.debug_result` is needed.
 
-## 2. Allowed Tool Names
+## 2. Tool Catalog Flow
 
-Use `tools/list` as final authority. Normal Agent-facing tools:
+Agent-facing tool and template selection is CLI-owned:
 
-| Purpose | Tool |
-|---|---|
-| Runtime profile | `blueprint_get_runtime_profile` |
-| Static diagnostics | `blueprinthelper_diagnostics` |
-| Runtime diagnostics | `blueprinthelper_diagnostics_runtime` |
-| Request write session | `blueprinthelper_request_write_session` |
-| AgentGuide index | `blueprinthelper_read_agent_guide` |
-| Asset discovery before a target path is known | `blueprinthelper_find_assets` |
-| ReadSpec context | `blueprinthelper_read_context` |
-| ReadContext capabilities | `blueprinthelper_read_context_capabilities` |
-| Reference context | `blueprinthelper_read_reference_context` |
-| Function chain context | `blueprinthelper_read_function_chain_context` |
-| Preview TaskSpec | `blueprinthelper_preview_task` |
-| Execute TaskSpec | `blueprinthelper_execute_task` |
-| Query task result | `blueprinthelper_get_task_result` |
-| Debug case summary | `blueprinthelper_get_debug_case` |
-| Debug case list | `blueprinthelper_list_debug_cases` |
-| Debug bundle manifest | `blueprinthelper_export_debug_bundle` |
-| Review record summary query | `blueprinthelper_query_review_records` |
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
 
-Lifecycle companion tools are available only through the global MCP allowlist for Agent-owned Editor open/close. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also maps to the global MCP lifecycle tools; ordinary Agents must not use CLI lifecycle helpers. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
+After `bh tools templates <tool_id>` returns a template dispatch package, read
+only the returned template paths. Do not scan `Templates/` or old semantic
+indexes for tool selection.
 
-`blueprinthelper_apply_review_action` is plugin-development/internal and is intentionally omitted from ordinary Agent-facing templates.
+The template dispatch package distinguishes:
 
-## 3. Root Argument Shapes
+- CLI invocation templates: concrete JSON inputs for a CLI tool or grouped CLI command.
+- TaskSpec semantic templates: concrete `BlueprintHelper.TaskSpec.v1` examples for a TaskSpec semantic.
 
-| Tool | Root argument shape |
-|---|---|
-| `blueprint_get_runtime_profile` | `{}` |
-| `blueprinthelper_diagnostics` | `{}` |
-| `blueprinthelper_diagnostics_runtime` | `{}` |
-| `blueprinthelper_request_write_session` | `{ "reason": "...", "scope": "project", "ttl_seconds": 900 }` or `{ "reason": "...", "scope": "asset_list", "ttl_seconds": 900, "asset_paths": ["/Game/..."] }` |
-| `blueprinthelper_read_agent_guide` | `{}` |
-| `blueprinthelper_find_assets` | `BlueprintHelper.FindAssetsRequest.v1` fields at root |
-| `blueprinthelper_read_context` | `BlueprintHelper.ReadSpec.v1` fields at root |
-| `blueprinthelper_read_context_capabilities` | `{}` |
-| `blueprinthelper_read_reference_context` | Reference fields at root |
-| `blueprinthelper_read_function_chain_context` | Function chain fields at root |
-| `blueprinthelper_preview_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
-| `blueprinthelper_execute_task` | `{ "task_spec": { ...BlueprintHelper.TaskSpec.v1... } }` |
-| `blueprinthelper_get_task_result` | `{ "task_run_id": "..." }` |
-| `blueprinthelper_get_debug_case` / `blueprinthelper_export_debug_bundle` | `{ "debug_case_id": "..." }` |
-| `blueprinthelper_list_debug_cases` | `{ "limit": 20 }` |
-| `blueprinthelper_query_review_records` | `{ "asset_path": "...", "task_run_id": "...", "pending_only": true }` |
+Use the returned `recommended_invocation`, `allowed_tools`, and
+`stop_conditions` to build the sideAgent task package. There is no independent
+tool detail step.
 
-`blueprinthelper_request_write_session` is only called after a successful preview when `write_permission` is disabled. The running Editor shows a minimal accept/reject prompt. The approval is owned by the running Editor/Bridge for the approved scope and lifetime, and can be used by delegated SideAgents. The tool response omits the raw session id; Agents must not pass `auth_session`, `auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
+Lifecycle companion tools are available only through the global MCP allowlist for
+Agent-owned Editor open/close. Compatibility for `blueprint_open_editor` /
+`blueprint_close_editor` also maps to the global MCP lifecycle tools; ordinary
+Agents must not use CLI lifecycle helpers. CLI lifecycle invocation is blocked
+with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report
+`lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent
+entry points or fallback paths.
+
+`blueprinthelper_apply_review_action` is plugin-development/internal and is not
+part of ordinary Agent-facing selection.
+
+## 3. Tool Argument Rules
+
+Tool arguments use the schema root object returned by the selected template.
+Do not wrap tool calls in an extra `args` object.
+
+`blueprinthelper_preview_task` and `blueprinthelper_execute_task` tool-name
+inputs prefer wrapping the TaskSpec under root field `task_spec`; grouped
+`task preview` / `task execute` commands use a bare TaskSpec file.
+
+`blueprinthelper_request_write_session` is only called after a successful preview
+when `write_permission` is disabled. The running Editor shows a minimal
+accept/reject prompt. The approval is owned by the running Editor/Bridge for the
+approved scope and lifetime, and can be used by delegated SideAgents. The tool
+response omits the raw session id; Agents must not pass `auth_session`,
+`auth_token`, or `BLUEPRINTHELPER_BRIDGE_TOKEN` in later tool calls.
 
 Write-session required fields:
 

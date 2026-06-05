@@ -48,5 +48,14 @@ Do not use MCP for normal asset workflows. New Agent workflows should use CLI co
 
 Open `AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md` and follow the workflow matching the user request.
 
-For complex JSON inputs, start at `AgentFaceService/agent-guide/Templates/INDEX.md`, choose the category semantic index, copy a matching template, and call the CLI with `--file`.
+For complex JSON inputs, use the CLI catalog first:
+
+```powershell
+bh tools domains --format json
+bh tools list <domain> <kind> --format json
+bh tools templates <tool_id> --format json
+```
+
+Read only the concrete template paths returned by `bh tools templates <tool_id>`,
+copy a returned template, and call the CLI with `--file`.
 

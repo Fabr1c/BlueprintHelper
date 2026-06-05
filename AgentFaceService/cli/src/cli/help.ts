@@ -1,9 +1,6 @@
 import { getBlueprintHelperTool } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 
 const TEMPLATE_ROOT = 'AgentFaceService/agent-guide/Templates';
-const READ_INDEX = `${TEMPLATE_ROOT}/read/SEMANTIC_INDEX.md`;
-const WRITE_INDEX = `${TEMPLATE_ROOT}/write/SEMANTIC_INDEX.md`;
-const ROOT_INDEX = `${TEMPLATE_ROOT}/SEMANTIC_INDEX.md`;
 
 type HelpEntry = {
   summary: string;
@@ -24,7 +21,6 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
     input: ['Root JSON: {}'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprint_get_runtime_profile_template.json`,
     ],
   },
@@ -33,7 +29,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_diagnostics --json "{}" --select status,summary'],
     input: ['Root JSON: {}'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_diagnostics_template.json`,
     ],
   },
@@ -42,7 +37,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_diagnostics_runtime --json "{}" --select status,summary,artifacts.full_result'],
     input: ['Root JSON: {}'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_diagnostics_runtime_template.json`,
     ],
   },
@@ -51,7 +45,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_read_agent_guide --json "{}" --format summary'],
     input: ['Root JSON: {}'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_read_agent_guide_template.json`,
       'AgentFaceService/agent-guide/00_Agent_Onboarding_Index.md',
     ],
@@ -68,7 +61,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Do not wrap the input in args or { "task_spec": ... }.',
     ],
     templates: [
-      READ_INDEX,
       `${TEMPLATE_ROOT}/read/read_context_asset_summary_template.json`,
       `${TEMPLATE_ROOT}/read/read_context_function_logic_flow_template.json`,
       `${TEMPLATE_ROOT}/read/read_context_graph_logic_json_template.json`,
@@ -84,7 +76,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_read_context_capabilities --json "{}" --select status,artifacts.full_result'],
     input: ['Root JSON: {}'],
     templates: [
-      READ_INDEX,
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_context_capabilities_template.json`,
     ],
   },
@@ -95,7 +86,6 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
     input: ['Root JSON: BlueprintHelper reference-context request object.'],
     templates: [
-      READ_INDEX,
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_reference_context_safety_template.json`,
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_reference_context_dependencies_template.json`,
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_reference_context_function_template.json`,
@@ -110,7 +100,6 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
     input: ['Root JSON: function-chain context request object.'],
     templates: [
-      READ_INDEX,
       `${TEMPLATE_ROOT}/read/blueprinthelper_read_function_chain_context_template.json`,
     ],
   },
@@ -125,7 +114,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Use this before blueprinthelper_read_context when the Unreal asset_path is unknown.',
     ],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_find_assets_template.json`,
     ],
     notes: [
@@ -148,7 +136,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Use capture_target:auto for graph_name/block_ref/node_ref requests; graph targets capture Graph-only PNGs.',
     ],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_capture_screenshot_template.json`,
     ],
     notes: [
@@ -167,7 +154,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Grouped command input: bare BlueprintHelper.TaskSpec.v1 file.',
     ],
     templates: [
-      WRITE_INDEX,
       `${TEMPLATE_ROOT}/write/blueprinthelper_preview_task_wrapper_template.json`,
       `${TEMPLATE_ROOT}/write/task_preview_bare_taskspec_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_create_blueprint_feature_template.json`,
@@ -189,7 +175,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Grouped command input: bare BlueprintHelper.TaskSpec.v1 file.',
     ],
     templates: [
-      WRITE_INDEX,
       `${TEMPLATE_ROOT}/write/blueprinthelper_execute_task_wrapper_template.json`,
       `${TEMPLATE_ROOT}/write/task_execute_bare_taskspec_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_create_blueprint_feature_template.json`,
@@ -208,7 +193,6 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
     input: ['Direct tool input: { "task_run_id": "task_..." }, or pass --id.'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_get_task_result_template.json`,
     ],
   },
@@ -224,7 +208,6 @@ const helpEntries: Record<string, HelpEntry> = {
       'Optional: scope defaults to project; ttl_seconds defaults to 900.',
     ],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_request_write_session_project_template.json`,
       `${TEMPLATE_ROOT}/blueprinthelper_request_write_session_assets_template.json`,
     ],
@@ -235,7 +218,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_get_debug_case --file <debug-case.json> --select status,artifacts.full_result'],
     input: ['Root JSON: { "debug_case_id": "..." }'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_get_debug_case_template.json`,
     ],
   },
@@ -244,7 +226,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_list_debug_cases --json "{}" --select status,artifacts.full_result'],
     input: ['Root JSON: {}, optionally { "limit": 20 }.'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_list_debug_cases_template.json`,
     ],
   },
@@ -253,7 +234,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_export_debug_bundle --file <debug-case.json> --select status,artifacts.full_result'],
     input: ['Root JSON: { "debug_case_id": "..." }'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_export_debug_bundle_template.json`,
     ],
   },
@@ -262,7 +242,6 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: ['bh blueprinthelper_query_review_records --file <review-query.json> --select status,artifacts.full_result'],
     input: ['Root JSON: Review record query object.'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_query_review_records_template.json`,
     ],
   },
@@ -306,7 +285,6 @@ const groupHelpEntries: Record<string, HelpEntry> = {
     usage: ['bh task preview --file <bare-task-spec.json> --format summary'],
     input: ['Input file root: bare BlueprintHelper.TaskSpec.v1. Do not wrap it in { "task_spec": ... }.'],
     templates: [
-      WRITE_INDEX,
       `${TEMPLATE_ROOT}/write/task_preview_bare_taskspec_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_create_blueprint_feature_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_graph_append_container_action_template.json`,
@@ -320,7 +298,6 @@ const groupHelpEntries: Record<string, HelpEntry> = {
     usage: ['bh task execute --file <bare-task-spec.json> --format summary'],
     input: ['Input file root: bare BlueprintHelper.TaskSpec.v1. Do not wrap it in { "task_spec": ... }.'],
     templates: [
-      WRITE_INDEX,
       `${TEMPLATE_ROOT}/write/task_execute_bare_taskspec_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_create_blueprint_feature_template.json`,
       `${TEMPLATE_ROOT}/write/taskspec_graph_append_container_action_template.json`,
@@ -334,7 +311,6 @@ const groupHelpEntries: Record<string, HelpEntry> = {
     usage: ['bh task result --id <task_run_id> --select status,artifacts.full_result'],
     input: ['Pass the task id with --id.'],
     templates: [
-      ROOT_INDEX,
       `${TEMPLATE_ROOT}/blueprinthelper_get_task_result_template.json`,
     ],
   },
@@ -343,7 +319,6 @@ const groupHelpEntries: Record<string, HelpEntry> = {
     usage: ['bh context read --file <read-spec.json> --select status,artifacts.full_result'],
     input: ['Input file root: bare BlueprintHelper.ReadSpec.v1.'],
     templates: [
-      READ_INDEX,
       `${TEMPLATE_ROOT}/read/read_context_asset_summary_template.json`,
       `${TEMPLATE_ROOT}/read/read_context_function_logic_flow_template.json`,
       `${TEMPLATE_ROOT}/read/read_context_graph_logic_json_template.json`,
@@ -422,17 +397,19 @@ function globalHelpText(): string {
     '  bh context read --file <read-spec.json>',
     '  bh bridge ping',
     '  bh bridge call --command <read_only_command>',
+    '  bh tools domains --format json',
+    '  bh tools list <domain> <kind> --format json',
+    '  bh tools templates <tool_id> --format json',
     '  bh metrics report --window 7d --format json',
     '  bh metrics top-errors --window 7d --format markdown',
     '  bh metrics tool-usage --window 30d --limit 50 --format json',
     '  bh metrics task-health --window all --limit 20 --format markdown',
     '',
-    'Template-first input:',
-    `  Start at ${TEMPLATE_ROOT}/INDEX.md`,
-    `  Support templates: ${ROOT_INDEX}`,
-    `  Read templates:    ${READ_INDEX}`,
-    `  Write templates:   ${WRITE_INDEX}`,
-    '  Copy a matching template, replace placeholders, then pass it with --file.',
+    'Tool and template selection:',
+    '  Start with: bh tools domains --format json',
+    '  Filter with: bh tools list <domain> <kind> --format json',
+    '  Fetch templates with: bh tools templates <tool_id> --format json',
+    '  Fill the returned template path, then run the returned recommended_invocation.',
     '',
     'Default tool names:',
     ...defaultTools.map((toolName) => {

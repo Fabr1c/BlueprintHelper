@@ -19,6 +19,7 @@ import {
 } from '@blueprinthelper/task-core/task/schema/task-schemas';
 import {
   buildCliError,
+  shapeCliOutput,
   type CliWriteOutcome,
   writeCliResult,
   type CliCommand,
@@ -27,6 +28,7 @@ import {
 import { createInputIoSummary, createOutputIoSummary } from './io-stats.js';
 import { buildHelpText } from './help.js';
 import { runMetricsCommand, type MetricsCliCommand } from './metrics-command.js';
+import { parseToolAudience, parseToolRisk, runToolsCommand } from './tools-command.js';
 import {
   createCliMetricsService,
   recordCliIoCompleted,
@@ -121,6 +123,12 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       const outcome = writeTimedCliResult(runtime, command, result.toolResult, timing);
       await recordCliIo(runtime, command, outcome, result.inputIo, result.parsedParams ?? result.rawParams);
       return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
+    }
+
+    if (command.kind === 'tools.domains' || command.kind === 'tools.list' || command.kind === 'tools.templates') {
+      const output = shapeCliOutput(runToolsCommand(command), command.fields, command.omitFields);
+      runtime.stdout(`${JSON.stringify(output)}\n`);
+      return 0;
     }
 
     if (command.kind === 'metrics.report') {
@@ -329,6 +337,10 @@ function parseArgs(argv: string[]): ParseResult {
     maxBytes?: number;
     fields?: string[];
     omitFields?: string[];
+    includeReserved?: boolean;
+    audience?: 'default' | 'compat' | 'expert';
+    requiresBridge?: boolean;
+    risks?: string[];
   } = {};
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -347,6 +359,33 @@ function parseArgs(argv: string[]): ParseResult {
       options.develop = true;
     } else if (arg === '--expert') {
       options.expert = true;
+    } else if (arg === '--include-reserved') {
+      options.includeReserved = true;
+    } else if (arg === '--audience') {
+      try {
+        options.audience = parseToolAudience(readOptionValue(argv, ++index, arg));
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    } else if (arg === '--requires-bridge') {
+      const raw = readOptionValue(argv, ++index, arg);
+      if (raw !== 'true' && raw !== 'false') {
+        return { ok: false, message: `--requires-bridge must be true or false: ${raw}` };
+      }
+      options.requiresBridge = raw === 'true';
+    } else if (arg === '--risk') {
+      const risks = readOptionValue(argv, ++index, arg)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      for (const risk of risks) {
+        try {
+          parseToolRisk(risk);
+        } catch (err) {
+          return { ok: false, message: err instanceof Error ? err.message : String(err) };
+        }
+      }
+      options.risks = risks;
     } else if (arg === '--preview-token') {
       options.previewToken = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
@@ -411,6 +450,46 @@ function parseArgs(argv: string[]): ParseResult {
   const metricsOnlyOptionError = group === 'metrics' ? undefined : readMetricsOnlyOptionError(options);
   if (metricsOnlyOptionError) {
     return { ok: false, message: metricsOnlyOptionError };
+  }
+
+  if (group === 'tools') {
+    if (action === 'domains' && positionals.length === 2) {
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.domains',
+          includeReserved: options.includeReserved,
+          audience: options.audience ?? 'default',
+        },
+      };
+    }
+    if (action === 'list' && positionals.length === 4) {
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.list',
+          toolDomain: positionals[2],
+          toolCatalogKind: positionals[3],
+          audience: options.audience ?? 'default',
+          requiresBridge: options.requiresBridge,
+          risks: options.risks,
+          expert: options.expert,
+        },
+      };
+    }
+    if (action === 'templates' && positionals.length === 3) {
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates',
+          toolId: positionals[2],
+        },
+      };
+    }
+    return { ok: false, message: `Unsupported BlueprintHelper CLI tools command: ${action ?? ''}` };
   }
 
   if (positionals.length === 1 && (group === 'open_editor' || group === 'close_editor')) {
@@ -562,6 +641,9 @@ function parseHelpTarget(argv: string[]): string[] {
     '--max-bytes',
     '--omit',
     '--preview-token',
+    '--audience',
+    '--requires-bridge',
+    '--risk',
     '--select',
     '--limit',
     '--window',

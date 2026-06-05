@@ -24,7 +24,8 @@ source_context_summary: "<from sourcecode-explorer or none>"
 safety_profile: "<runtime profile safety>"
 write_policy: "<write permission/session policy>"
 allowed_tools: []
-template_hint: "<preferred template path or search target>"
+tool_id: "<selected tool_id from bh tools list>"
+returned_template_paths: []
 stop_conditions: []
 reasoning: "maximum_available"
 ```

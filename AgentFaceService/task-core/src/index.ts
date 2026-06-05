@@ -9,5 +9,7 @@ export * from './task/schema/task-schemas.js';
 export * from './task/service/task-spec-runner.js';
 export * from './tool-surface/types.js';
 export * from './tool-surface/tool-registry.js';
+export * from './tool-surface/catalog/tool-capability-catalog.js';
+export * from './tool-surface/catalog/tool-capability-types.js';
 export * from './project-profile/agent-profile.js';
 export * from './project-profile/editor-paths.js';
