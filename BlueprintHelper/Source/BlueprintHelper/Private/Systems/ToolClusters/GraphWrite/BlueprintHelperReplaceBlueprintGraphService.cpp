@@ -165,6 +165,236 @@ public:
 		return EntryExecOut && EntryExecOut->LinkedTo.Num() > 0;
 	}
 
+	static bool HasExecPin(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool IsExecPin(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+	}
+
+	static TArray<UEdGraphNode*> CollectImportedNodes(
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesBeforeImport)
+	{
+		TArray<UEdGraphNode*> ImportedNodes;
+		if (!Graph)
+		{
+			return ImportedNodes;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && !NodesBeforeImport.Contains(Node))
+			{
+				ImportedNodes.Add(Node);
+			}
+		}
+		return ImportedNodes;
+	}
+
+	static void CollectExecReachableFromBodyEntry(
+		UEdGraphPin* BodyEntryPin,
+		const TSet<UEdGraphNode*>& ImportedNodeSet,
+		TSet<UEdGraphNode*>& OutReachable)
+	{
+		OutReachable.Empty();
+		UEdGraphNode* BodyEntryNode = BodyEntryPin ? BodyEntryPin->GetOwningNode() : nullptr;
+		if (!BodyEntryNode || !ImportedNodeSet.Contains(BodyEntryNode))
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> PendingNodes;
+		OutReachable.Add(BodyEntryNode);
+		PendingNodes.Add(BodyEntryNode);
+
+		while (PendingNodes.Num() > 0)
+		{
+			UEdGraphNode* Node = FBlueprintHelperVersionCompat::PopNoShrink(PendingNodes);
+			if (!Node)
+			{
+				continue;
+			}
+
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || !IsExecPin(Pin))
+				{
+					continue;
+				}
+
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedNode && ImportedNodeSet.Contains(LinkedNode) && HasExecPin(LinkedNode) && !OutReachable.Contains(LinkedNode))
+					{
+						OutReachable.Add(LinkedNode);
+						PendingNodes.Add(LinkedNode);
+					}
+				}
+			}
+		}
+	}
+
+	static bool DataChainReachesReachableExecConsumer(
+		const UEdGraphNode* Node,
+		const TSet<UEdGraphNode*>& ImportedNodeSet,
+		const TSet<UEdGraphNode*>& ReachableExecNodes,
+		TSet<const UEdGraphNode*>& VisitedNodes)
+	{
+		if (!Node || VisitedNodes.Contains(Node))
+		{
+			return false;
+		}
+		VisitedNodes.Add(Node);
+
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->Direction != EGPD_Output || IsExecPin(Pin))
+			{
+				continue;
+			}
+
+			for (const UEdGraphPin* LinkedPin : Pin->LinkedTo)
+			{
+				if (!LinkedPin || LinkedPin->Direction != EGPD_Input || IsExecPin(LinkedPin))
+				{
+					continue;
+				}
+
+				UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+				if (!LinkedNode || !ImportedNodeSet.Contains(LinkedNode))
+				{
+					continue;
+				}
+
+				if (HasExecPin(LinkedNode))
+				{
+					if (ReachableExecNodes.Contains(LinkedNode))
+					{
+						return true;
+					}
+					continue;
+				}
+
+				if (DataChainReachesReachableExecConsumer(LinkedNode, ImportedNodeSet, ReachableExecNodes, VisitedNodes))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	static bool GeneratedPureDataChainsReachBodyEntryExecFlow(
+		const TArray<UEdGraphNode*>& ImportedNodes,
+		const TSet<UEdGraphNode*>& ImportedNodeSet,
+		const TSet<UEdGraphNode*>& ReachableExecNodes)
+	{
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (!Node || HasExecPin(Node))
+			{
+				continue;
+			}
+
+			TSet<const UEdGraphNode*> VisitedNodes;
+			if (!DataChainReachesReachableExecConsumer(Node, ImportedNodeSet, ReachableExecNodes, VisitedNodes))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool ImportedExecNodesReachBodyEntryExecFlow(
+		const TArray<UEdGraphNode*>& ImportedNodes,
+		const TSet<UEdGraphNode*>& ReachableExecNodes)
+	{
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (HasExecPin(Node) && !ReachableExecNodes.Contains(Node))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool CanDeferEntryResolvedConnectivityFailure(
+		const EBlueprintHelperReplaceScope Scope,
+		const FBlueprintGenerateResult& GenerateResult,
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesBeforeImport)
+	{
+		if (Scope != EBlueprintHelperReplaceScope::FunctionBody)
+		{
+			return false;
+		}
+		if (GenerateResult.bSucceed ||
+			GenerateResult.UnresolvedNodeCount != 0 ||
+			GenerateResult.ConnectivityDiagnostics.Num() == 0)
+		{
+			return false;
+		}
+
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : GenerateResult.ConnectivityDiagnostics)
+		{
+			if (Diagnostic.Code != TEXT("unreachable_exec_node") &&
+				Diagnostic.Code != TEXT("unreachable_pure_data_chain"))
+			{
+				return false;
+			}
+		}
+
+		const TArray<UEdGraphNode*> ImportedNodes = CollectImportedNodes(Graph, NodesBeforeImport);
+		TSet<UEdGraphNode*> ImportedNodeSet;
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (Node)
+			{
+				ImportedNodeSet.Add(Node);
+			}
+		}
+		if (ImportedNodeSet.Num() == 0)
+		{
+			return false;
+		}
+
+		UEdGraphNode* BodyEntryNode = FindFirstImportedExecutableBodyNode(Graph, NodesBeforeImport);
+		UEdGraphPin* BodyEntryPin = FindFirstExecPin(BodyEntryNode, EGPD_Input);
+		if (!BodyEntryPin || !ImportedNodeSet.Contains(BodyEntryNode))
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> ReachableExecNodes;
+		CollectExecReachableFromBodyEntry(BodyEntryPin, ImportedNodeSet, ReachableExecNodes);
+		if (ReachableExecNodes.Num() == 0)
+		{
+			return false;
+		}
+
+		return ImportedExecNodesReachBodyEntryExecFlow(ImportedNodes, ReachableExecNodes) &&
+			GeneratedPureDataChainsReachBodyEntryExecFlow(ImportedNodes, ImportedNodeSet, ReachableExecNodes);
+	}
+
 	static void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
 	{
 		if (!Pin)
@@ -598,6 +828,44 @@ public:
 		}
 		Graph->NotifyGraphChanged();
 		return true;
+	}
+
+	static bool RestoreReplacementFailureSnapshot(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesBeforeImport,
+		FBlueprintHelperScopedAssetMutation& Mutation,
+		const FBlueprintHelperGraphSnapshot& RollbackSnapshot,
+		const FReplaceRollbackExecBoundary& RollbackExecBoundary,
+		const EBlueprintHelperReplaceScope Scope,
+		const FString& EntryName,
+		const FString& EventTaxonomy,
+		const FString& SignatureEvidenceId,
+		const FString& OriginalBlockId,
+		const bool bRequireOwnedEntryBodyBoundaryFallback,
+		FString& OutError)
+	{
+		RemoveNodesNotInSnapshot(Blueprint, Graph, NodesBeforeImport);
+		Mutation.Rollback();
+		bool bRestored = RestoreSnapshotNodes(Blueprint, Graph, RollbackSnapshot, OutError);
+		if (!bRestored)
+		{
+			return false;
+		}
+
+		bool bBoundaryRestored = RestoreRollbackExecBoundary(Graph, RollbackExecBoundary, OutError);
+		if (!bBoundaryRestored || (!RollbackExecBoundary.bValid && bRequireOwnedEntryBodyBoundaryFallback))
+		{
+			bBoundaryRestored = RestoreOwnedEntryBodyBoundary(
+				Graph,
+				Scope,
+				EntryName,
+				EventTaxonomy,
+				SignatureEvidenceId,
+				OriginalBlockId,
+				OutError);
+		}
+		return bBoundaryRestored;
 	}
 
 	static TSharedPtr<FJsonObject> BuildLogicSpecWithCustomEventEntryReference(
@@ -1145,39 +1413,30 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Resolved.Graph, GraphWritePayload, UnresolvedNodes);
 	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
-
-	if (!GenerateResult.bSucceed)
-	{
-		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RemoveNodesNotInSnapshot(
-			Blueprint,
+	const bool bDeferredEntryResolvedConnectivityFailure =
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::CanDeferEntryResolvedConnectivityFailure(
+			Request.Scope,
+			GenerateResult,
 			Resolved.Graph,
 			NodesBeforeImport);
-		Mutation.Rollback();
+
+	if (!GenerateResult.bSucceed && !bDeferredEntryResolvedConnectivityFailure)
+	{
 		FString RestoreError;
-		bool bRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreSnapshotNodes(
+		const bool bRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreReplacementFailureSnapshot(
 			Blueprint,
 			Resolved.Graph,
+			NodesBeforeImport,
+			Mutation,
 			RollbackSnapshot,
+			RollbackExecBoundary,
+			Request.Scope,
+			Request.EntryName,
+			Request.EventTaxonomy,
+			Request.SignatureEvidenceId,
+			Resolved.OriginalBlockId,
+			Resolved.NodesToDelete.Num() > 0,
 			RestoreError);
-		if (bRestored)
-		{
-			bool bBoundaryRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreRollbackExecBoundary(
-				Resolved.Graph,
-				RollbackExecBoundary,
-				RestoreError);
-			if (!bBoundaryRestored || (!RollbackExecBoundary.bValid && Resolved.NodesToDelete.Num() > 0))
-			{
-				bBoundaryRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreOwnedEntryBodyBoundary(
-					Resolved.Graph,
-					Request.Scope,
-					Request.EntryName,
-					Request.EventTaxonomy,
-					Request.SignatureEvidenceId,
-					Resolved.OriginalBlockId,
-					RestoreError);
-			}
-			bRestored = bBoundaryRestored;
-		}
 		if (Blueprint->GetOutermost())
 		{
 			Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirtyBeforeWrite);
@@ -1223,18 +1482,46 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		}
 		return FailResult;
 	}
+	if (bDeferredEntryResolvedConnectivityFailure)
+	{
+		ExecutionStats.ConnectivityViolationCount = 0;
+	}
 	FString ReconnectError;
 	if (!ReconnectPreservedEntryToNewBody(Request, Resolved, NodesBeforeImport, ReconnectError))
 	{
-		Mutation.Rollback();
+		FString RestoreError;
+		const bool bRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreReplacementFailureSnapshot(
+			Blueprint,
+			Resolved.Graph,
+			NodesBeforeImport,
+			Mutation,
+			RollbackSnapshot,
+			RollbackExecBoundary,
+			Request.Scope,
+			Request.EntryName,
+			Request.EventTaxonomy,
+			Request.SignatureEvidenceId,
+			Resolved.OriginalBlockId,
+			Resolved.NodesToDelete.Num() > 0,
+			RestoreError);
+		if (Blueprint->GetOutermost())
+		{
+			Blueprint->GetOutermost()->SetDirtyFlag(bPackageWasDirtyBeforeWrite);
+		}
 
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("entry_reconnect_failed");
 		Error.Stage = EBlueprintHelperToolStage::Execute;
 		Error.Message = ReconnectError.IsEmpty()
 			? TEXT("Failed to rebuild entry exec link after replacement.") : ReconnectError;
+		if (!bRestored && !RestoreError.IsEmpty())
+		{
+			Error.Message += FString::Printf(TEXT(" Rollback restore failed: %s"), *RestoreError);
+		}
 		Error.bRetryable = false;
-		Error.RollbackResult = EBlueprintHelperRollbackResult::RolledBack;
+		Error.RollbackResult = bRestored
+			? EBlueprintHelperRollbackResult::RolledBack
+			: EBlueprintHelperRollbackResult::Failed;
 		return FBlueprintHelperToolResultBuilder::Failure(TEXT("replace_blueprint_graph"), TraceId, Error);
 	}
 

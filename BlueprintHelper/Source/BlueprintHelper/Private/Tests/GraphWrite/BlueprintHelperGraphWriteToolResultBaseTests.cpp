@@ -23,6 +23,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_FunctionEntry.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_MakeStruct.h"
 #include "K2Node_Select.h"
@@ -49,6 +50,8 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperGraphWriteCapabilityMetrics.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
@@ -62,8 +65,6 @@
 #include "UObject/Package.h"
 #include "UObject/Class.h"
 #include "UObject/NoExportTypes.h"
-#include "UObject/MetaData.h"
-#include "UObject/Package.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -127,6 +128,51 @@ public:
 		return FunctionGraph;
 	}
 
+	static UK2Node_FunctionEntry* FindGraphWriteFunctionEntry(UEdGraph* FunctionGraph)
+	{
+		if (!FunctionGraph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : FunctionGraph->Nodes)
+		{
+			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
+			{
+				return Entry;
+			}
+		}
+		return nullptr;
+	}
+
+	static FEdGraphPinType MakeGraphWriteTestPinType(const FName Category, const FName SubCategory = NAME_None)
+	{
+		return FEdGraphPinType(Category, SubCategory, nullptr, EPinContainerType::None, false, FEdGraphTerminalType());
+	}
+
+	static bool AddGraphWriteFunctionInputPin(
+		UBlueprint* Blueprint,
+		UEdGraph* FunctionGraph,
+		const FString& PinName,
+		const FEdGraphPinType& PinType)
+	{
+		UK2Node_FunctionEntry* Entry = FindGraphWriteFunctionEntry(FunctionGraph);
+		if (!Blueprint || !Entry || PinName.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
+		NewPin->PinName = FName(*PinName);
+		NewPin->PinType = PinType;
+		NewPin->DesiredPinDirection = EGPD_Output;
+		Entry->UserDefinedPins.Add(NewPin);
+		Entry->ReconstructNode();
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Blueprint);
+		return true;
+	}
+
 	static TSharedRef<FJsonObject> MakeStringLiteralExpression(const FString& Value)
 	{
 		TSharedRef<FJsonObject> Literal = MakeShared<FJsonObject>();
@@ -169,6 +215,27 @@ public:
 		TSharedRef<FJsonObject> ContextEvidence = MakeShared<FJsonObject>();
 		ContextEvidence->SetStringField(TEXT("component_name"), ComponentName);
 		Expression->SetObjectField(TEXT("context_evidence"), ContextEvidence);
+		return Expression;
+	}
+
+	static TSharedRef<FJsonObject> MakeFunctionParamGetExpression(
+		const FString& ParamName,
+		const FString& FunctionName,
+		const FString& PinType = TEXT("category=string"))
+	{
+		TSharedRef<FJsonObject> Expression = MakeShared<FJsonObject>();
+		Expression->SetStringField(TEXT("kind"), TEXT("field"));
+		Expression->SetStringField(TEXT("capability_id"), TEXT("field.function_param_get"));
+		Expression->SetStringField(TEXT("field_operation"), TEXT("get"));
+		Expression->SetStringField(TEXT("field_scope"), TEXT("variable"));
+		Expression->SetStringField(TEXT("target"), ParamName);
+		Expression->SetStringField(TEXT("function_name"), FunctionName);
+		Expression->SetStringField(TEXT("pin_type"), PinType);
+
+		TSharedRef<FJsonObject> CapabilityFacts = MakeShared<FJsonObject>();
+		CapabilityFacts->SetStringField(TEXT("field.member_name"), ParamName);
+		CapabilityFacts->SetStringField(TEXT("field.function_name"), FunctionName);
+		Expression->SetObjectField(TEXT("capability_facts"), CapabilityFacts);
 		return Expression;
 	}
 
@@ -242,6 +309,55 @@ public:
 		TArray<TSharedPtr<FJsonValue>> Statements;
 		Statements.Add(MakeShared<FJsonValueObject>(MakeCallNameStatement(FunctionName)));
 		return MakeGraphWriteLogicSpec(EventName, Statements);
+	}
+
+	static TSharedRef<FJsonObject> MakePrintFunctionParamLogicSpec(const FString& ParamName, const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_print_function_param"));
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("PrintString"));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), MakeFunctionParamGetExpression(ParamName, FunctionName));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		return MakeGraphWriteLogicSpec(FString(), Statements);
+	}
+
+	static FString MakeRawReplaceGraphWritePayload(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& LogicSpec)
+	{
+		FBlueprintHelperGraphWriteSemanticPayload Payload;
+		Payload.TargetAssetPath = AssetPath;
+		Payload.TargetGraph = GraphName;
+		Payload.Mode = TEXT("replace");
+		Payload.bCompile = false;
+		Payload.bSave = false;
+		Payload.bStrict = true;
+		Payload.bDryRun = false;
+		Payload.bCreateMissingVariables = false;
+		Payload.bReconstructExistingNodes = false;
+		Payload.LogicSpec = LogicSpec;
+		return Payload.ToJsonString();
+	}
+
+	static bool GenerateResultHasConnectivityCode(
+		const FBlueprintGenerateResult& Result,
+		const FString& Code)
+	{
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			if (Diagnostic.Code.Equals(Code, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static TSharedRef<FJsonObject> MakeUnconsumedPureDataLogicSpec(const FString& EventName)
@@ -435,6 +551,39 @@ public:
 		{
 			(*Selector)->SetStringField(TEXT("entry_name"), EventName);
 		}
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceFunctionBodyExecutePayload(
+		const FString& AssetPath,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceExecutePayload(AssetPath, FunctionName);
+
+		const TSharedPtr<FJsonObject>* Target = nullptr;
+		if (Payload->TryGetObjectField(TEXT("target"), Target) && Target && Target->IsValid())
+		{
+			(*Target)->SetStringField(TEXT("graph"), FunctionName);
+			(*Target)->SetStringField(TEXT("replace_scope"), TEXT("function_body"));
+		}
+
+		const TSharedPtr<FJsonObject>* Selector = nullptr;
+		if (Payload->TryGetObjectField(TEXT("selector"), Selector) && Selector && Selector->IsValid())
+		{
+			(*Selector)->RemoveField(TEXT("entry_name"));
+			(*Selector)->SetStringField(TEXT("function_name"), FunctionName);
+		}
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceFunctionBodyUnconsumedPureDataExecutePayload(
+		const FString& AssetPath,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceFunctionBodyExecutePayload(AssetPath, FunctionName);
+		Payload->SetObjectField(
+			TEXT("logic_spec"),
+			MakeUnconsumedPureDataLogicSpec(FString()));
 		return Payload;
 	}
 
@@ -2101,6 +2250,24 @@ public:
 		Op->SetObjectField(
 			TEXT("logic_spec"),
 			MakeCallLogicSpec(FString(), TEXT("PrintString"), TEXT("replace body")));
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceFunctionBodyParamDataFlowOp(
+		const FString& FunctionName,
+		const FString& ParamName)
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("replace_body"));
+		Op->SetStringField(TEXT("replace_scope"), TEXT("function_body"));
+
+		TSharedRef<FJsonObject> Selector = MakeShared<FJsonObject>();
+		Selector->SetStringField(TEXT("function_name"), FunctionName);
+		Op->SetObjectField(TEXT("selector"), Selector);
+
+		Op->SetObjectField(
+			TEXT("logic_spec"),
+			MakePrintFunctionParamLogicSpec(ParamName, FunctionName));
 		return Op;
 	}
 
@@ -4049,6 +4216,262 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyReconnectsEntryExecTest::Ru
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryExecTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyReconnectsEntryExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryExecTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyReconnectsEntryExec"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("ComputeFunctionBodySmoke");
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body"),
+		Result);
+	TestTrue(TEXT("replace function body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace function body status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("function entry has output exec pin"), EntryExecOut);
+	TestTrue(TEXT("function entry output exec is linked after replace"),
+		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
+
+	bool bLinkedToPrintString = false;
+	if (EntryExecOut)
+	{
+		for (UEdGraphPin* LinkedPin : EntryExecOut->LinkedTo)
+		{
+			UK2Node_CallFunction* CallNode = LinkedPin ? Cast<UK2Node_CallFunction>(LinkedPin->GetOwningNode()) : nullptr;
+			if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
+			{
+				bLinkedToPrintString = true;
+				break;
+			}
+		}
+	}
+	TestTrue(TEXT("function entry output exec links to replacement PrintString"), bLinkedToPrintString);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsParamDataFlowTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyReconnectsParamDataFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsParamDataFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyReconnectsParamDataFlow"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("ComputeFunctionBodyParamSmoke");
+	const FString ParamName = TEXT("InputMessage");
+	TSharedRef<FJsonObject> ParamLogicSpec =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakePrintFunctionParamLogicSpec(
+			ParamName,
+			FunctionName);
+
+	UBlueprint* RawBlueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RawFunctionBodyParamDataFlowFailsBeforeEntryReconnect"));
+	UEdGraph* RawFunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(RawBlueprint, FunctionName);
+	TestNotNull(TEXT("raw function graph is created"), RawFunctionGraph);
+	TestTrue(TEXT("raw function input pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			RawBlueprint,
+			RawFunctionGraph,
+			ParamName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_String)));
+	if (RawFunctionGraph)
+	{
+		TArray<TSharedPtr<FUnresolvedNodeItem>> RawUnresolvedNodes;
+		const FBlueprintGenerateResult RawGenerateResult =
+			FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+				RawFunctionGraph,
+				FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeRawReplaceGraphWritePayload(
+					RawBlueprint ? RawBlueprint->GetPathName() : FString(),
+					FunctionName,
+					ParamLogicSpec),
+				RawUnresolvedNodes);
+		TestFalse(TEXT("raw function body generation fails before preserved entry reconnect"), RawGenerateResult.bSucceed);
+		TestEqual(TEXT("raw function body param generation has no unresolved nodes"), RawUnresolvedNodes.Num(), 0);
+		TestTrue(TEXT("raw function body generation reports unreachable exec before reconnect"),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GenerateResultHasConnectivityCode(
+				RawGenerateResult,
+				TEXT("unreachable_exec_node")));
+	}
+
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("function input pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			ParamName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_String)));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName);
+	Payload->SetObjectField(
+		TEXT("logic_spec"),
+		ParamLogicSpec);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(Payload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body with param data flow"),
+		Result);
+	TestTrue(TEXT("replace function body with param data flow succeeds"), Result.bOk);
+	TestEqual(TEXT("replace function body with param data flow status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("function entry has output exec pin"), EntryExecOut);
+	TestTrue(TEXT("function entry output exec is linked after replace"),
+		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
+	TestTrue(TEXT("function param getter links to replacement PrintString"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GraphHasVariableGetLinkedToFunctionInput(
+			*this,
+			FunctionGraph,
+			FName(*ParamName),
+			TEXT("PrintString")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyRejectsUnreachablePureDataChainTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyRejectsUnreachablePureDataChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyRejectsUnreachablePureDataChainTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyRejectsUnreachablePureDataChain"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("ComputeFunctionBodyRejectsUnreachablePureData");
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+	const int32 NodeCountBefore = FunctionGraph->Nodes.Num();
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyUnconsumedPureDataExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AssertConnectivityFailureData(
+		*this,
+		Result,
+		TEXT("replace_blueprint_graph"),
+		TEXT("replace function body unconsumed pure data"));
+	TestEqual(TEXT("replace function body connectivity rollback restores node count"), FunctionGraph->Nodes.Num(), NodeCountBefore);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("function entry has output exec pin after rollback"), EntryExecOut);
+	bool bLinkedToPrintString = false;
+	if (EntryExecOut)
+	{
+		for (UEdGraphPin* LinkedPin : EntryExecOut->LinkedTo)
+		{
+			UK2Node_CallFunction* CallNode = LinkedPin ? Cast<UK2Node_CallFunction>(LinkedPin->GetOwningNode()) : nullptr;
+			if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
+			{
+				bLinkedToPrintString = true;
+				break;
+			}
+		}
+	}
+	if (!bLinkedToPrintString)
+	{
+		AddInfo(FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::DescribeGraphExecLinks(FunctionGraph));
+	}
+	TestTrue(TEXT("replace function body rollback preserves old body link"), bLinkedToPrintString);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteReplaceCustomEventBodyConnectsSignatureCreatedEntryTest,
 	"BlueprintHelper.GraphWrite.Replace.CustomEventBodyConnectsSignatureCreatedEntry",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -4804,6 +5227,71 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplaceCustomEventBodyReconnectsEntryE
 	TestTrue(TEXT("exported graph contains runtime event to replacement PrintString exec link"),
 		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ExportHasExecLinkFromCustomEventToFunction(Graph, TEXT("SmokeCustomEvent"), TEXT("PrintString")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteTaskRuntimeReplaceFunctionBodyReconnectsParamDataFlowTest,
+	"BlueprintHelper.GraphWrite.TaskRuntime.Replace.FunctionBodyReconnectsParamDataFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteTaskRuntimeReplaceFunctionBodyReconnectsParamDataFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("RuntimeReplaceFunctionBodyParamDataFlow"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("RuntimeFunctionBodyParamSmoke");
+	const FString ParamName = TEXT("InputMessage");
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("function input pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			ParamName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_String)));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before runtime replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase Result = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTaskPlanPayload(
+			Blueprint->GetPathName(),
+			FunctionName,
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyParamDataFlowOp(
+				FunctionName,
+				ParamName)));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("runtime replace function body with param data flow"),
+		Result);
+	TestTrue(TEXT("runtime replace function body with param data flow succeeds"), Result.bOk);
+	TestEqual(TEXT("runtime replace function body status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	TestNotNull(TEXT("function entry has output exec pin after runtime replace"), EntryExecOut);
+	TestTrue(TEXT("function entry output exec is linked after runtime replace"),
+		EntryExecOut && EntryExecOut->LinkedTo.Num() > 0);
+	TestTrue(TEXT("runtime function param getter links to replacement PrintString"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GraphHasVariableGetLinkedToFunctionInput(
+			*this,
+			FunctionGraph,
+			FName(*ParamName),
+			TEXT("PrintString")));
 	return true;
 }
 
