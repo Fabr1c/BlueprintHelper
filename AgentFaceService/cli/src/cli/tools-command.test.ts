@@ -6,6 +6,11 @@ import test from 'node:test';
 import { buildHelpText } from './help.js';
 import { runCli } from './run.js';
 
+async function readJsonArtifact(filePath: unknown): Promise<Record<string, any>> {
+  assert.equal(typeof filePath, 'string');
+  return JSON.parse(await fs.readFile(filePath as string, 'utf8')) as Record<string, any>;
+}
+
 test('runCli returns active tool domains as catalog JSON without bridge access', async () => {
   const { output, stderr } = await runCliJson(['tools', 'domains', '--format', 'json']);
 
@@ -220,7 +225,7 @@ test('runCli supports compile-only task preview without bridge access', async (t
   assert.equal(exitCode, 0);
   assert.deepEqual(stderr, []);
   const output = JSON.parse(stdout.join('')) as Record<string, any>;
-  const taskPlan = output.tool_result.data.task_plan;
+  const taskPlan = await readJsonArtifact(output.artifacts.task_plan);
   assert.equal(taskPlan.steps.some((step: Record<string, any>) =>
     step.capability === 'graph_write'
     && step.write.strategy === 'owned_graph_edit'
@@ -238,7 +243,7 @@ test('runCli compile-only preview accepts function parameter return slot fixture
     'json',
   ]);
 
-  const taskPlanText = JSON.stringify(output.tool_result.data.task_plan);
+  const taskPlanText = JSON.stringify(await readJsonArtifact(output.artifacts.task_plan));
   assert.match(taskPlanText, /field\.function_param_get/);
   assert.match(taskPlanText, /InputValue/);
   assert.match(taskPlanText, /replace_body/);
@@ -255,7 +260,7 @@ test('runCli compile-only preview accepts custom event call slot fixture', async
     'json',
   ]);
 
-  const taskPlanText = JSON.stringify(output.tool_result.data.task_plan);
+  const taskPlanText = JSON.stringify(await readJsonArtifact(output.artifacts.task_plan));
   assert.match(taskPlanText, /PrintString/);
   assert.match(taskPlanText, /ensure_entry/);
   assert.doesNotMatch(taskPlanText, /field\.function_param_get/);

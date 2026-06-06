@@ -683,6 +683,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "output_fields": {
         "name": "function_name"
       },
+      "graph_name_output_field": "function_name",
       "passthrough_fields": [
         "graph_id",
         "node_ref",
@@ -767,12 +768,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "output_fields": {
         "name": "entry_name"
       },
+      "graph_name_output_field": "entry_name",
       "passthrough_fields": [
         "graph_id",
         "node_ref",
         "node_path"
       ]
     },
+    "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_replace_owned_template.json",
     "required_fields": [
       "task_type=edit_blueprint_graph",
       "behavior.graph_strategy=replace_owned_graph",
@@ -787,10 +790,13 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "insert_paths": [
       "behavior.replace.body.statements[]"
     ],
-    "purpose": "Planned macro body replacement route.",
-    "allowed_slot_ids": [],
+    "purpose": "Replace the body of an existing macro graph.",
+    "when_to_use": "Use after the macro graph already exists.",
+    "allowed_slot_ids": [
+      "graph.body.*"
+    ],
     "compiler_id": "replace_body",
-    "status": "planned",
+    "status": "active",
     "behavior_field": "replace"
   }
 ] as const satisfies readonly GraphWriteRouteDescriptor[];

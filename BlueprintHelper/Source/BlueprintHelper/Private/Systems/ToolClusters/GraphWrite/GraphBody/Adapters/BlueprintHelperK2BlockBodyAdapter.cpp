@@ -1,6 +1,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2BlockBodyAdapter.h"
 
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 
 static void BlueprintHelperReadGraphBodyStringArray(
 	const TSharedRef<FJsonObject>& Payload,
@@ -40,6 +43,35 @@ static FBlueprintHelperGraphBodyAdapterDescriptor BlueprintHelperResolveDefaultK
 	return Descriptor;
 }
 
+static FString BlueprintHelperResolveK2BlockSearchId(
+	const FString& GraphName,
+	const FString& BlockId,
+	const FString& TargetRef)
+{
+	if (!BlockId.IsEmpty())
+	{
+		return BlockId;
+	}
+	if (!TargetRef.IsEmpty())
+	{
+		return FString::Printf(TEXT("%s_%s"), *GraphName, *TargetRef);
+	}
+	return TEXT("");
+}
+
+static FString BlueprintHelperResolveK2BlockRef(
+	const FString& GraphName,
+	const FString& BlockId,
+	const FString& FallbackTargetRef)
+{
+	const FString Prefix = GraphName + TEXT("_");
+	if (BlockId.StartsWith(Prefix))
+	{
+		return BlockId.Mid(Prefix.Len());
+	}
+	return FallbackTargetRef;
+}
+
 FBlueprintHelperK2BlockBodyAdapter::FBlueprintHelperK2BlockBodyAdapter()
 	: Descriptor(BlueprintHelperResolveDefaultK2BlockDescriptor())
 {
@@ -61,10 +93,19 @@ bool FBlueprintHelperK2BlockBodyAdapter::ResolveTarget(
 	FBlueprintHelperGraphBodyTarget& OutTarget,
 	FString& OutError) const
 {
+	if (!Request.Blueprint)
+	{
+		OutError = TEXT("Blueprint is required for k2.block_implementation.");
+		return false;
+	}
+
 	OutTarget.Blueprint = Request.Blueprint;
 	OutTarget.AssetPath = Request.AssetPath;
 	OutTarget.GraphName = Request.GraphName;
 	OutTarget.EntryName = Request.EntryName;
+
+	FString BlockId;
+	FString TargetRef;
 
 	if (Request.Payload.IsValid())
 	{
@@ -79,13 +120,74 @@ bool FBlueprintHelperK2BlockBodyAdapter::ResolveTarget(
 			{
 				(*Target)->TryGetStringField(TEXT("graph"), OutTarget.GraphName);
 			}
+			(*Target)->TryGetStringField(TEXT("block_id"), BlockId);
+			(*Target)->TryGetStringField(TEXT("target_ref"), TargetRef);
 		}
 	}
+	if (OutTarget.GraphName.IsEmpty())
+	{
+		OutTarget.GraphName = TEXT("EventGraph");
+	}
+
+	UEdGraph* Graph = FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
+		Request.Blueprint->UbergraphPages,
+		OutTarget.GraphName);
+	if (!Graph && Request.Blueprint->UbergraphPages.Num() > 0)
+	{
+		Graph = Request.Blueprint->UbergraphPages[0];
+	}
+	if (!Graph)
+	{
+		OutError = FString::Printf(TEXT("Graph %s was not found."), *OutTarget.GraphName);
+		return false;
+	}
+	OutTarget.Graph = Graph;
+	OutTarget.GraphName = Graph->GetName();
+
+	const FString SearchBlockId = BlueprintHelperResolveK2BlockSearchId(
+		OutTarget.GraphName,
+		BlockId,
+		TargetRef);
+	FString FoundBlockId;
+	FString FoundBlockRef;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		FString NodeBlockId;
+		if (!FBlueprintHelperK2GraphBodyAdapterUtils::TryReadBlueprintHelperBlockId(Node, NodeBlockId))
+		{
+			continue;
+		}
+		if (!SearchBlockId.IsEmpty() && !NodeBlockId.Equals(SearchBlockId, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		OutTarget.DeletableNodes.AddUnique(Node);
+		if (FoundBlockId.IsEmpty())
+		{
+			FoundBlockId = NodeBlockId;
+			FoundBlockRef = BlueprintHelperResolveK2BlockRef(OutTarget.GraphName, NodeBlockId, TargetRef);
+		}
+	}
+	if (OutTarget.DeletableNodes.Num() == 0)
+	{
+		OutError = SearchBlockId.IsEmpty()
+			? TEXT("No BlueprintHelper-owned node found. Provide selector.block_id or selector.target_ref.")
+			: FString::Printf(TEXT("Target block %s was not found or is not owned by BlueprintHelper."), *SearchBlockId);
+		return false;
+	}
+	OutTarget.EntryName = FoundBlockRef;
 
 	OutTarget.BodyIdentity = FString::Printf(
-		TEXT("%s|%s|%s"),
+		TEXT("%s|%s|%s|%s"),
 		*OutTarget.AssetPath,
 		*OutTarget.GraphName,
+		*FoundBlockId,
 		*FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Descriptor.BodyKind));
 	OutError.Reset();
 	return true;
@@ -160,6 +262,24 @@ FBlueprintHelperGraphBodyBoundaryModel FBlueprintHelperK2BlockBodyAdapter::Build
 	if (Boundary.GraphName.IsEmpty())
 	{
 		Boundary.GraphName = Target.GraphName;
+	}
+	if (Boundary.OwnedBlockId.IsEmpty())
+	{
+		for (UEdGraphNode* Node : Target.DeletableNodes)
+		{
+			if (FBlueprintHelperK2GraphBodyAdapterUtils::TryReadBlueprintHelperBlockId(Node, Boundary.OwnedBlockId))
+			{
+				break;
+			}
+		}
+	}
+	for (UEdGraphNode* Node : Target.DeletableNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		Boundary.DeletableNodeRefs.AddUnique(FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node));
 	}
 	return Boundary;
 }

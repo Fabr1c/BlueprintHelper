@@ -13,6 +13,7 @@ enum class EBlueprintHelperReplaceScope : uint8
 	Graph,
 	BlockImplementation,
 	FunctionBody,
+	MacroBody,
 	EventBody,
 	CustomEventBody,
 	FunctionDefinition,
@@ -26,6 +27,7 @@ inline const TCHAR* ReplaceScopeToString(EBlueprintHelperReplaceScope Scope)
 	case EBlueprintHelperReplaceScope::Graph: return TEXT("graph");
 	case EBlueprintHelperReplaceScope::BlockImplementation: return TEXT("block_implementation");
 	case EBlueprintHelperReplaceScope::FunctionBody: return TEXT("function_body");
+	case EBlueprintHelperReplaceScope::MacroBody: return TEXT("macro_body");
 	case EBlueprintHelperReplaceScope::EventBody: return TEXT("event_body");
 	case EBlueprintHelperReplaceScope::CustomEventBody: return TEXT("custom_event_body");
 	case EBlueprintHelperReplaceScope::FunctionDefinition: return TEXT("function_definition");
@@ -39,6 +41,7 @@ inline bool ParseReplaceScope(const FString& Str, EBlueprintHelperReplaceScope& 
 	if (Str.Equals(TEXT("graph"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::Graph; return true; }
 	if (Str.Equals(TEXT("block_implementation"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::BlockImplementation; return true; }
 	if (Str.Equals(TEXT("function_body"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::FunctionBody; return true; }
+	if (Str.Equals(TEXT("macro_body"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::MacroBody; return true; }
 	if (Str.Equals(TEXT("event_body"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::EventBody; return true; }
 	if (Str.Equals(TEXT("custom_event_body"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::CustomEventBody; return true; }
 	if (Str.Equals(TEXT("function_definition"), ESearchCase::IgnoreCase)) { Out = EBlueprintHelperReplaceScope::FunctionDefinition; return true; }

@@ -14,6 +14,15 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyAdapterDescriptor
 	bool bReservedOnly = false;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperGraphWriteRouteSyncValidationIssue
+{
+	FString RouteId;
+	FString RuntimeAdapterId;
+	FString Status;
+	FString Code;
+	FString Message;
+};
+
 class BLUEPRINTHELPER_API FBlueprintHelperGraphBodyAdapterRegistry
 {
 public:
@@ -24,4 +33,5 @@ public:
 	static bool TryFindByTaskSpecStrategy(
 		const FString& TaskSpecStrategy,
 		FBlueprintHelperGraphBodyAdapterDescriptor& OutDescriptor);
+	static TArray<FBlueprintHelperGraphWriteRouteSyncValidationIssue> ValidateGeneratedRouteSync();
 };

@@ -8,6 +8,7 @@ import {
   compactExtraForDefaultCliOutput,
   compactTaskPlanForArtifact,
   projectToolResultForCli,
+  projectMetricsReportDataForCli,
 } from '@blueprinthelper/task-core/tool-surface/result/result-projection-policy';
 import { resolveResultProjectionPolicy } from '@blueprinthelper/task-core/tool-surface/result/result-projection-registry';
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
@@ -158,7 +159,7 @@ export function writeCliResult(
     extra,
     policy: projectionPolicy,
   });
-  const safeToolResult = stripExecutePreviewId(command, sanitizeAgentFacingToolResult(toolResult));
+  const safeToolResult = sanitizeAgentFacingToolResult(toolResult);
   const safeExtra = sanitizeAgentFacingValue(extra);
   const artifactRoot = resolveArtifactRoot({ cwd: runtime.cwd, cliDir: command.artifactDir });
   const runId = inferRunId(command, safeToolResult, safeExtra);
@@ -166,6 +167,7 @@ export function writeCliResult(
     command_kind: command.kind,
     tool_name: command.toolName,
     format: command.format,
+    develop: command.develop,
     expert: command.expert,
     tool_result: safeToolResult,
     extra: safeExtra,
@@ -324,7 +326,7 @@ function buildOutput(
       ok: toolResult.ok,
       operation: command.kind,
       status,
-      data: command.format === 'markdown' ? compactMetricsOutput(metricsData) : metricsData,
+      data: projectMetricsReportDataForCli(metricsData, command.format),
       artifacts: artifactRefs,
       error_code: toolResult.error?.code,
       message: toolResult.error?.message,
@@ -528,39 +530,8 @@ function isPreviewCommand(command: CliCommand): boolean {
     || (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_preview_task');
 }
 
-function isExecuteCommand(command: CliCommand): boolean {
-  return command.kind === 'task.execute'
-    || (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_execute_task');
-}
-
-function stripExecutePreviewId(command: CliCommand, toolResult: ToolResultBase): ToolResultBase {
-  if (!toolResult.ok || !isExecuteCommand(command)) {
-    return toolResult;
-  }
-  const data = asRecord(toolResult.data);
-  if (!data || !Object.hasOwn(data, 'preview_id')) {
-    return toolResult;
-  }
-  const nextData = { ...data };
-  delete nextData['preview_id'];
-  return {
-    ...toolResult,
-    data: nextData,
-  };
-}
-
 function compactCliExtraForOutput(extra: Record<string, unknown>): Record<string, unknown> {
   return compactExtraForDefaultCliOutput(extra);
-}
-
-function compactMetricsOutput(data: Record<string, unknown>): Record<string, unknown> {
-  return omitUndefined({
-    schema: readString(data['schema']),
-    kind: readString(data['kind']),
-    window: readString(data['window']),
-    summary: asRecord(data['summary']),
-    markdown_report_path: readString(data['markdown_report_path']),
-  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

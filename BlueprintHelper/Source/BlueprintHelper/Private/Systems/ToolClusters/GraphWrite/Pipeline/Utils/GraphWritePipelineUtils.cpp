@@ -1122,7 +1122,8 @@ TArray<FBlueprintHelperGraphFragmentDataEdge> UGraphWritePipelineUtils::FilterSe
 FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJsonObject(
 	UEdGraph* TargetGraph,
 	const TSharedPtr<FJsonObject>& JsonObject,
-	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
+	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
+	const FBlueprintGraphWriteConnectivityValidationInput* AdapterConnectivityInput)
 {
 	FBlueprintGenerateResult Result;
 	Result.Message = TEXT("Generation failed.");
@@ -1305,55 +1306,68 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput;
 	ConnectivityInput.TargetGraph = TargetGraph;
 	ConnectivityInput.GeneratedNodes = GraphWriteContext.GetGeneratedNodes();
-	ConnectivityInput.BoundaryModel.RuntimeAdapterId = TEXT("k2.semantic_graph_generation");
-	ConnectivityInput.BoundaryModel.TaskSpecStrategy = TEXT("semantic_graph");
-	ConnectivityInput.BoundaryModel.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
-	ConnectivityInput.BoundaryModel.GraphName = TargetGraph ? TargetGraph->GetName() : TEXT("");
-	ConnectivityInput.BoundaryModel.GraphFamily = TEXT("k2");
-	ConnectivityInput.BoundaryModel.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
-	ConnectivityInput.BoundaryModel.PureDataConsumptionPolicy =
-		EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;
-	ConnectivityInput.BoundaryModel.AllowedIsolatedNodePolicy =
-		EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly;
+	if (AdapterConnectivityInput)
+	{
+		ConnectivityInput.BoundaryModel = AdapterConnectivityInput->BoundaryModel;
+		ConnectivityInput.ConnectivityPolicy = AdapterConnectivityInput->ConnectivityPolicy;
+		ConnectivityInput.NodeRefs = AdapterConnectivityInput->NodeRefs;
+		ConnectivityInput.AllowedTerminalPureDataNodes = AdapterConnectivityInput->AllowedTerminalPureDataNodes;
+	}
+	else
+	{
+		ConnectivityInput.BoundaryModel.RuntimeAdapterId = TEXT("k2.semantic_graph_generation");
+		ConnectivityInput.BoundaryModel.TaskSpecStrategy = TEXT("semantic_graph");
+		ConnectivityInput.BoundaryModel.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
+		ConnectivityInput.BoundaryModel.GraphName = TargetGraph ? TargetGraph->GetName() : TEXT("");
+		ConnectivityInput.BoundaryModel.GraphFamily = TEXT("k2");
+		ConnectivityInput.BoundaryModel.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+		ConnectivityInput.BoundaryModel.PureDataConsumptionPolicy =
+			EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;
+		ConnectivityInput.BoundaryModel.AllowedIsolatedNodePolicy =
+			EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly;
+	}
 	for (UEdGraphNode* Node : ConnectivityInput.GeneratedNodes)
 	{
 		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityNodeRef(ConnectivityInput, Node);
 	}
-	for (UEdGraphNode* EntryNode : GraphWriteContext.GetEntryRootNodes())
+	if (!AdapterConnectivityInput)
 	{
-		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-			ConnectivityInput,
-			EntryNode,
-			ConnectivityInput.BoundaryModel.EntryNodeRefs);
-	}
-	if (ConnectivityInput.BoundaryModel.EntryNodeRefs.Num() == 0)
-	{
-		for (UEdGraphPin* EntryPin : TopLevelFlow.Entries)
+		for (UEdGraphNode* EntryNode : GraphWriteContext.GetEntryRootNodes())
 		{
-			UEdGraphNode* EntryNode = EntryPin ? EntryPin->GetOwningNode() : nullptr;
-			if (EntryNode)
+			BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+				ConnectivityInput,
+				EntryNode,
+				ConnectivityInput.BoundaryModel.EntryNodeRefs);
+		}
+		if (ConnectivityInput.BoundaryModel.EntryNodeRefs.Num() == 0)
+		{
+			for (UEdGraphPin* EntryPin : TopLevelFlow.Entries)
 			{
-				BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-					ConnectivityInput,
-					EntryNode,
-					ConnectivityInput.BoundaryModel.EntryNodeRefs);
+				UEdGraphNode* EntryNode = EntryPin ? EntryPin->GetOwningNode() : nullptr;
+				if (EntryNode)
+				{
+					BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+						ConnectivityInput,
+						EntryNode,
+						ConnectivityInput.BoundaryModel.EntryNodeRefs);
+				}
 			}
 		}
+		ConnectivityInput.AllowedTerminalPureDataNodes =
+			BlueprintHelperGraphWritePipelineUtilsLocal::CollectAllowedTerminalPureDataNodes(
+				FragmentDag,
+				GeneratedFragments,
+				DataEdges);
+		for (UEdGraphNode* TerminalPureDataNode : ConnectivityInput.AllowedTerminalPureDataNodes)
+		{
+			BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+				ConnectivityInput,
+				TerminalPureDataNode,
+				ConnectivityInput.BoundaryModel.ExitNodeRefs);
+		}
+		ConnectivityInput.ConnectivityPolicy =
+			FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(ConnectivityInput.BoundaryModel);
 	}
-	ConnectivityInput.AllowedTerminalPureDataNodes =
-		BlueprintHelperGraphWritePipelineUtilsLocal::CollectAllowedTerminalPureDataNodes(
-			FragmentDag,
-			GeneratedFragments,
-			DataEdges);
-	for (UEdGraphNode* TerminalPureDataNode : ConnectivityInput.AllowedTerminalPureDataNodes)
-	{
-		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-			ConnectivityInput,
-			TerminalPureDataNode,
-			ConnectivityInput.BoundaryModel.ExitNodeRefs);
-	}
-	ConnectivityInput.ConnectivityPolicy =
-		FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(ConnectivityInput.BoundaryModel);
 	ConnectivityInput.RequestedConnectionCount = DataEdges.Num();
 	ConnectivityInput.CreatedConnectionCount = CreatedDataConnectionCount;
 	const FBlueprintGraphWriteConnectivityValidationResult Connectivity =

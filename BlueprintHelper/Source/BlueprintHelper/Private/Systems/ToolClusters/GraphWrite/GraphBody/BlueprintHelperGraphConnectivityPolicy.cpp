@@ -6,9 +6,7 @@ FBlueprintHelperGraphConnectivityPolicy FBlueprintHelperGraphConnectivityPolicyU
 	FBlueprintHelperGraphConnectivityPolicy Policy;
 	Policy.BodyKind = BoundaryModel.BodyKind;
 	Policy.PolicyId = FBlueprintHelperGraphBodyBoundaryModelUtils::MakeBodyIdentity(BoundaryModel);
-	Policy.bAllowFunctionResultBoundary =
-		BoundaryModel.BodyKind == EBlueprintHelperGraphBodyKind::K2FunctionBody ||
-		BoundaryModel.ExitNodeRefs.Contains(TEXT("FunctionResult"));
+	Policy.bAllowExitBoundaryReachability = BoundaryModel.ExitNodeRefs.Num() > 0;
 	Policy.bAllowExternalAnchorBoundary =
 		BoundaryModel.BodyKind == EBlueprintHelperGraphBodyKind::K2ExternalBody ||
 		BoundaryModel.ExternalAnchorRefs.Num() > 0;

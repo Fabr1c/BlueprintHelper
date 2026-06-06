@@ -127,6 +127,79 @@ bool FBlueprintHelperGraphBodyBoundaryModelFamilyMatrixTest::RunTest(const FStri
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyGeneratedRouteSyncTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.GeneratedRouteSync",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyGeneratedRouteSyncTest::RunTest(const FString&)
+{
+	const TArray<FBlueprintHelperGraphWriteRouteSyncValidationIssue> Issues =
+		FBlueprintHelperGraphBodyAdapterRegistry::ValidateGeneratedRouteSync();
+
+	for (const FBlueprintHelperGraphWriteRouteSyncValidationIssue& Issue : Issues)
+	{
+		AddError(FString::Printf(
+			TEXT("Route sync issue: route_id=%s runtime_adapter_id=%s status=%s code=%s message=%s"),
+			*Issue.RouteId,
+			*Issue.RuntimeAdapterId,
+			*Issue.Status,
+			*Issue.Code,
+			*Issue.Message));
+	}
+
+	TestEqual(TEXT("active generated routes resolve to UE adapters"), Issues.Num(), 0);
+	return Issues.Num() == 0;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.AdapterConnectivityCallerContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest::RunTest(const FString&)
+{
+	const FString PipelinePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.cpp"));
+	FString PipelineSource;
+	TestTrue(TEXT("pipeline utils source loads"), FFileHelper::LoadFileToString(PipelineSource, *PipelinePath));
+
+	const int32 AdapterBranchStart = PipelineSource.Find(TEXT("if (AdapterConnectivityInput)"));
+	TestTrue(TEXT("pipeline has adapter connectivity branch"), AdapterBranchStart != INDEX_NONE);
+	const int32 FallbackBranchStart = PipelineSource.Find(TEXT("else"), ESearchCase::CaseSensitive, ESearchDir::FromStart, AdapterBranchStart);
+	TestTrue(TEXT("pipeline keeps fallback outside adapter branch"), FallbackBranchStart != INDEX_NONE && FallbackBranchStart > AdapterBranchStart);
+	const FString AdapterBranch = PipelineSource.Mid(AdapterBranchStart, FallbackBranchStart - AdapterBranchStart);
+
+	const TArray<FString> ForbiddenAdapterBranchTokens =
+	{
+		TEXT("GetEntryRootNodes()"),
+		TEXT("TopLevelFlow.Entries"),
+		TEXT("CollectAllowedTerminalPureDataNodes"),
+		TEXT("k2.semantic_graph_generation"),
+		TEXT("BodyKind = EBlueprintHelperGraphBodyKind::Unknown")
+	};
+	for (const FString& Token : ForbiddenAdapterBranchTokens)
+	{
+		TestFalse(
+			FString::Printf(TEXT("adapter connectivity branch does not contain %s"), *Token),
+			AdapterBranch.Contains(Token));
+	}
+
+	const FString ReplaceServicePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.cpp"));
+	FString ReplaceServiceSource;
+	TestTrue(TEXT("replace service source loads"), FFileHelper::LoadFileToString(ReplaceServiceSource, *ReplaceServicePath));
+	TestTrue(
+		TEXT("replace service builds adapter connectivity input"),
+		ReplaceServiceSource.Contains(TEXT("BuildAdapterConnectivityInput(ReplacePlan)")));
+	TestTrue(
+		TEXT("replace service passes adapter connectivity input into pipeline"),
+		ReplaceServiceSource.Contains(TEXT("? &AdapterConnectivityInput : nullptr")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphBodyBoundaryModelIdentityTest,
 	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.Identity",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -168,7 +241,7 @@ bool FBlueprintHelperGraphConnectivityPolicyProjectionTest::RunTest(const FStrin
 	FunctionBoundary.ExitNodeRefs.Add(TEXT("FunctionResult"));
 	const FBlueprintHelperGraphConnectivityPolicy FunctionPolicy =
 		FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(FunctionBoundary);
-	TestTrue(TEXT("function body allows FunctionResult boundary"), FunctionPolicy.bAllowFunctionResultBoundary);
+	TestTrue(TEXT("function body allows exit boundary reachability"), FunctionPolicy.bAllowExitBoundaryReachability);
 	TestFalse(TEXT("function body does not imply external anchors"), FunctionPolicy.bAllowExternalAnchorBoundary);
 
 	FBlueprintHelperGraphBodyBoundaryModel OwnedBlockBoundary;

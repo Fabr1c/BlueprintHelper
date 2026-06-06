@@ -30,7 +30,9 @@ const POLICY_BY_MANIFEST_ID = new Map<ToolResultProjectionPolicyId, BuiltinResul
 
 const BUILTIN_POLICIES = new Map<BuiltinResultProjectionPolicyId, ResultProjectionPolicy>([
   ['task.preview.default', definePolicy('task.preview.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.preview_id', 'data.preview_token', 'data.passed', 'data.blocked', 'data.issues', 'error'])],
-  ['task.execute.default', definePolicy('task.execute.default', ['ok', 'operation', 'status', 'modified', 'target', 'validation', 'data.task_run_id', 'data.task', 'data.issues', 'error'])],
+  ['task.execute.default', definePolicy('task.execute.default', ['ok', 'operation', 'status', 'modified', 'target', 'validation', 'data.task_run_id', 'data.task', 'data.issues', 'error'], ['debug', 'trace_id'], [
+    { field: 'preview_id', parent_path_suffix: ['data'] },
+  ])],
   ['task.result.default', definePolicy('task.result.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],
   ['context.read.default', definePolicy('context.read.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.payload', 'data.issues', 'error'])],
   ['diagnostics.default', definePolicy('diagnostics.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],
@@ -86,6 +88,7 @@ function definePolicy(
   policyId: BuiltinResultProjectionPolicyId,
   baseFields: readonly string[],
   expertFields: readonly string[] = ['debug', 'trace_id'],
+  omitRules: ResultProjectionPolicy['omit_rules'] = [],
 ): ResultProjectionPolicy {
   return {
     ...GENERIC_RESULT_PROJECTION_POLICY,
@@ -94,6 +97,7 @@ function definePolicy(
     json_fields: [...baseFields],
     full_fields: [...baseFields],
     expert_fields: [...expertFields],
-    debug_artifact_fields: ['tool_result', 'extra', 'bridge_result', 'debug'],
+    debug_artifact_fields: ['schema', 'tool_result', 'extra', 'bridge_result', 'debug'],
+    omit_rules: [...GENERIC_RESULT_PROJECTION_POLICY.omit_rules, ...omitRules],
   };
 }

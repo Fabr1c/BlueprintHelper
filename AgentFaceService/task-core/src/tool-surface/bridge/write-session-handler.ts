@@ -1,14 +1,13 @@
 import { successRead, type ToolResultBase } from '../../result/tool-result.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import type { BlueprintHelperToolContext } from '../types.js';
-import { normalizeBridgePayload } from './generic-bridge-tool-handler.js';
 import { isRecord, normalizeBridgeToolResult } from './bridge-tool-result-utils.js';
 
 export async function executeWriteSessionRequest(
   input: Record<string, unknown>,
   context: BlueprintHelperToolContext,
 ): Promise<ToolResultBase> {
-  const payload = normalizeBridgePayload('blueprinthelper_request_write_session', input);
+  const payload = input;
   const response = await context.bridge.sendCommand('request_write_session', payload);
   if (response.success) {
     const sessionId = extractWriteSessionId(response);

@@ -28,6 +28,7 @@
 #include "K2Node_IfThenElse.h"
 #include "K2Node_MakeStruct.h"
 #include "K2Node_Select.h"
+#include "K2Node_Tunnel.h"
 #include "K2Node_Variable.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -686,6 +687,27 @@ public:
 		{
 			(*Selector)->RemoveField(TEXT("entry_name"));
 			(*Selector)->SetStringField(TEXT("function_name"), FunctionName);
+		}
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceMacroBodyExecutePayload(
+		const FString& AssetPath,
+		const FString& MacroName)
+	{
+		TSharedRef<FJsonObject> Payload = MakeReplaceExecutePayload(AssetPath, MacroName);
+
+		const TSharedPtr<FJsonObject>* Target = nullptr;
+		if (Payload->TryGetObjectField(TEXT("target"), Target) && Target && Target->IsValid())
+		{
+			(*Target)->SetStringField(TEXT("graph"), MacroName);
+			(*Target)->SetStringField(TEXT("replace_scope"), TEXT("macro_body"));
+		}
+
+		const TSharedPtr<FJsonObject>* Selector = nullptr;
+		if (Payload->TryGetObjectField(TEXT("selector"), Selector) && Selector && Selector->IsValid())
+		{
+			(*Selector)->SetStringField(TEXT("entry_name"), MacroName);
 		}
 		return Payload;
 	}
@@ -4441,6 +4463,108 @@ bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryExecTest::RunTe
 		}
 	}
 	TestTrue(TEXT("function entry output exec links to replacement PrintString"), bLinkedToPrintString);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceMacroBodyReconnectsEntryAndExitExecTest,
+	"BlueprintHelper.GraphWrite.Replace.MacroBodyReconnectsEntryAndExitExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceMacroBodyReconnectsEntryAndExitExecTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceMacroBodyReconnectsEntryAndExitExec"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString MacroName = TEXT("ClampScoreMacro");
+	UEdGraph* MacroGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		FName(*MacroName),
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddMacroGraph(Blueprint, MacroGraph, true, nullptr);
+	TestNotNull(TEXT("macro graph is created"), MacroGraph);
+	if (!MacroGraph)
+	{
+		return false;
+	}
+
+	UK2Node_Tunnel* EntryNode = nullptr;
+	UK2Node_Tunnel* ExitNode = nullptr;
+	for (UEdGraphNode* Node : MacroGraph->Nodes)
+	{
+		UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node);
+		if (!Tunnel)
+		{
+			continue;
+		}
+		if (Tunnel->bCanHaveOutputs && !EntryNode)
+		{
+			EntryNode = Tunnel;
+		}
+		if (Tunnel->bCanHaveInputs && !ExitNode)
+		{
+			ExitNode = Tunnel;
+		}
+	}
+	TestNotNull(TEXT("macro entry tunnel exists"), EntryNode);
+	TestNotNull(TEXT("macro exit tunnel exists"), ExitNode);
+	if (!EntryNode || !ExitNode)
+	{
+		return false;
+	}
+
+	FEdGraphPinType ExecPinType;
+	ExecPinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+	EntryNode->CreateUserDefinedPin(TEXT("Execute"), ExecPinType, EGPD_Output, false);
+	ExitNode->CreateUserDefinedPin(TEXT("Then"), ExecPinType, EGPD_Input, false);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceMacroBodyExecutePayload(
+			Blueprint->GetPathName(),
+			MacroName));
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace macro body"),
+		Result);
+	TestTrue(TEXT("replace macro body succeeds"), Result.bOk);
+	TestEqual(TEXT("replace macro body status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UK2Node_CallFunction* ReplacementPrintNode = nullptr;
+	for (UEdGraphNode* Node : MacroGraph->Nodes)
+	{
+		UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+		if (CallNode && CallNode->GetFunctionName().ToString().Equals(TEXT("PrintString"), ESearchCase::IgnoreCase))
+		{
+			ReplacementPrintNode = CallNode;
+			break;
+		}
+	}
+	TestNotNull(TEXT("replacement PrintString node exists"), ReplacementPrintNode);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	UEdGraphPin* PrintExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(ReplacementPrintNode, EGPD_Input);
+	UEdGraphPin* PrintExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(ReplacementPrintNode, EGPD_Output);
+	UEdGraphPin* ExitExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(ExitNode, EGPD_Input);
+	TestTrue(TEXT("macro entry links to replacement body"),
+		EntryExecOut && PrintExecIn && EntryExecOut->LinkedTo.Contains(PrintExecIn));
+	TestTrue(TEXT("replacement body links to macro exit"),
+		PrintExecOut && ExitExecIn && PrintExecOut->LinkedTo.Contains(ExitExecIn));
 	return true;
 }
 

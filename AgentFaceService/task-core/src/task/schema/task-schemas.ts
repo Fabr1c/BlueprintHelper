@@ -987,10 +987,10 @@ const GraphWritePolicySchema = z.object({
 export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_graph'),
   scope_policy: z.object({
-    graph_name: z.string().min(1),
+    graph_name: z.string().min(1).optional().default('EventGraph'),
     allow_modify_user_nodes: z.boolean().optional().default(false),
     external_mutation_policy: ExternalMutationPolicySchema.optional(),
-  }).passthrough(),
+  }).passthrough().optional().default({ graph_name: 'EventGraph', allow_modify_user_nodes: false }),
   graph_write_policy: GraphWritePolicySchema,
   behavior: GraphWriteBehaviorSchema,
 }).passthrough().superRefine((value, ctx) => {

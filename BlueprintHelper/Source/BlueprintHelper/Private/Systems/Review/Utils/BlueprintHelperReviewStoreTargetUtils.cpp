@@ -141,6 +141,9 @@ void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 		Target.LifecycleParentKey = !Incoming.LifecycleParentKey.IsEmpty()
 			? Incoming.LifecycleParentKey
 			: Existing.LifecycleParentKey;
+		Target.GraphBodyBoundaryJson = !Incoming.GraphBodyBoundaryJson.IsEmpty()
+			? Incoming.GraphBodyBoundaryJson
+			: Existing.GraphBodyBoundaryJson;
 	}
 void FBlueprintHelperReviewStoreTargetUtils::PreserveFirstBaselineFields(
 		FBlueprintHelperReviewVisibleChange& Change,

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   graphWriteAppendTaskSpecFixture,
@@ -28,4 +31,41 @@ test('default GraphWrite operation registry rejects unknown strategy with struct
       return true;
     },
   );
+});
+
+test('GraphWrite operation compilers live in focused owner modules', () => {
+  const taskCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+  const graphwriteRoot = path.resolve(taskCoreRoot, 'src', 'task', 'compiler', 'graphwrite');
+  const logicBodySource = readFileSync(path.join(graphwriteRoot, 'graphwrite-logic-body-compiler.ts'), 'utf8');
+  const ownerModules = [
+    'graphwrite-append-compiler.ts',
+    'graphwrite-replace-compiler.ts',
+    'graphwrite-patch-compiler.ts',
+    'graphwrite-merge-compiler.ts',
+  ];
+
+  for (const forbidden of [
+    'compileAppendGraphWriteOps',
+    'compileReplaceGraphWriteOp',
+    'compilePatchGraphWriteOps',
+    'compileMergeGraphWriteOps',
+    'compileExternalMergeGraphWriteOps',
+    'compileExternalPatchGraphWriteOps',
+    'compileExternalReplaceBodyGraphWriteOp',
+  ]) {
+    assert.equal(
+      new RegExp(`export function ${forbidden}\\b`).test(logicBodySource),
+      false,
+      `${forbidden} must not be owned by graphwrite-logic-body-compiler.ts`,
+    );
+  }
+
+  for (const ownerModule of ownerModules) {
+    const source = readFileSync(path.join(graphwriteRoot, ownerModule), 'utf8');
+    assert.equal(
+      /from ['"]\.\/graphwrite-logic-body-compiler\.js['"];?\s*$/m.test(source) && /export\s*\{/.test(source),
+      false,
+      `${ownerModule} must implement operation compiler functions instead of re-exporting them`,
+    );
+  }
 });

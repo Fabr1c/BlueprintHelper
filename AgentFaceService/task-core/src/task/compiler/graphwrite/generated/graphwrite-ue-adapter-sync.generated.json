@@ -274,8 +274,8 @@
       "behavior_field": "replace",
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
-      "status": "planned",
-      "adapter_sync": "planned"
+      "status": "active",
+      "adapter_sync": "generated_active_stub"
     }
   ]
 }

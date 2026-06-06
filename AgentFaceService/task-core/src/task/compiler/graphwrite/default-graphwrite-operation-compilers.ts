@@ -3,18 +3,22 @@ import {
   type GraphWriteOperationCompilerRegistry,
 } from './graphwrite-operation-compiler-registry.js';
 import {
-  compileAppendGraphWriteOps,
-  compileExternalMergeGraphWriteOps,
-  compileExternalReplaceBodyGraphWriteOp,
-  compileMergeGraphWriteOps,
   type GraphWriteCompiledOp,
   type GraphWriteCompileOptions,
 } from './graphwrite-logic-body-compiler.js';
+import { compileAppendGraphWriteOps } from './graphwrite-append-compiler.js';
+import {
+  compileExternalMergeGraphWriteOps,
+  compileMergeGraphWriteOps,
+} from './graphwrite-merge-compiler.js';
 import {
   compileExternalPatchGraphWriteOps,
   compilePatchGraphWriteOps,
 } from './graphwrite-patch-compiler.js';
-import { compileReplaceGraphWriteOp } from './graphwrite-replace-compiler.js';
+import {
+  compileExternalReplaceBodyGraphWriteOp,
+  compileReplaceGraphWriteOp,
+} from './graphwrite-replace-compiler.js';
 
 export function createDefaultGraphWriteOperationCompilerRegistry(): GraphWriteOperationCompilerRegistry {
   return createGraphWriteOperationCompilerRegistry([

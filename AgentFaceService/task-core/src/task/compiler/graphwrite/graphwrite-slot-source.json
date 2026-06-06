@@ -16,7 +16,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["type", "struct_path", "args", "context_evidence"],
       "keywords": ["construct", "struct"],
@@ -52,7 +53,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "name", "context_evidence"],
       "keywords": ["get", "symbol", "variable"],
@@ -74,7 +76,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["value_type", "value"],
       "keywords": ["literal", "value_type", "value"],
@@ -96,7 +99,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["op", "args", "left", "right", "context_evidence"],
       "keywords": ["op", "generic_ops"],
@@ -118,7 +122,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["condition", "options", "context_evidence"],
       "keywords": ["select", "condition", "options"],
@@ -140,7 +145,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "args", "resolution_policy", "action_selection"],
       "keywords": ["call", "auto_search", "candidate"],
@@ -162,7 +168,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "args"],
       "keywords": ["call", "function", "args"],
@@ -184,7 +191,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "args", "result_symbol", "value_type"],
       "keywords": ["call", "result_symbol", "impure"],
@@ -232,7 +240,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["control", "condition", "then", "else"],
       "keywords": ["control", "branch"],
@@ -267,7 +276,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["control", "selector", "cases", "default"],
       "keywords": ["control", "switch"],
@@ -289,7 +299,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["transform_operation", "target_class_path", "args", "context_evidence"],
       "keywords": ["convert", "dynamic_cast", "transform"],
@@ -311,7 +322,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["create_operation", "target", "class_path", "args"],
       "keywords": ["create", "construct_object", "asset_action"],
@@ -346,7 +358,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["field_operation", "field_scope", "target", "property_path", "capability_facts"],
       "keywords": ["field", "struct_member_set"],
@@ -368,7 +381,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["symbol", "value"],
       "keywords": ["let", "symbol", "value"],
@@ -403,7 +417,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "value"],
       "keywords": ["set", "variable"],
@@ -425,7 +440,8 @@
         "graph.append.generic_schedule",
         "graph.merge_external_flow.append_after",
         "graph.replace.event_body",
-        "graph.replace.function_body"
+        "graph.replace.function_body",
+        "graph.replace.macro_body"
       ],
       "validation_hints": ["target", "property_path", "value"],
       "keywords": ["set_property", "property_path"],

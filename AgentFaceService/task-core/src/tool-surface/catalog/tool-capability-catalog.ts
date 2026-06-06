@@ -7,6 +7,7 @@ import {
   buildDescriptorRecommendedInvocation,
   createToolCapabilityDescriptorRegistry,
 } from './tool-capability-descriptor-registry.js';
+import type { ToolCapabilityDescriptor } from './tool-capability-descriptor-registry.js';
 import type { ToolAudience, ToolRisk } from '../types.js';
 import type {
   CliInvocationTemplateRef,
@@ -535,16 +536,173 @@ const READ_CONTEXT_SLOTS: readonly ToolTemplateSlotRef[] = [
   ),
 ];
 
+interface ToolCapabilityDescriptorOptions {
+  readonly route_refs?: readonly ToolTemplateRouteRef[];
+  readonly slot_refs?: readonly ToolTemplateSlotRef[];
+  readonly stop_conditions?: readonly string[];
+  readonly recommended_invocations?: readonly string[];
+}
+
+const DEFAULT_LOCAL_STOP_CONDITIONS = ['tool_unavailable'] as const;
+const DEFAULT_BRIDGE_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable'] as const;
+const FIND_ASSETS_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'target asset not found'] as const;
+const READ_CONTEXT_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'target not found', 'target asset not found', 'target graph not found'] as const;
+const READ_REFERENCE_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'reference target not found'] as const;
+const FUNCTION_CHAIN_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'entry function not found'] as const;
+const PREVIEW_STOP_CONDITIONS = ['tool_unavailable', 'write_session_required', 'taskspec_template_unavailable', 'preview_blocked'] as const;
+const EXECUTE_STOP_CONDITIONS = ['tool_unavailable', 'write_session_required', 'preview_required', 'execute_failed'] as const;
+const WRITE_SESSION_STOP_CONDITIONS = ['tool_unavailable', 'preview_required', 'write_permission_denied'] as const;
+const DIAGNOSTICS_STOP_CONDITIONS = ['tool_unavailable', 'diagnostics_failed'] as const;
+const RUNTIME_DIAGNOSTICS_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'diagnostics_failed'] as const;
+const COMPILE_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'compile_failed', 'target_asset_not_found', 'tool_failed'] as const;
+const SAVE_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_required', 'not_editable', 'save_failed', 'target_asset_not_found', 'tool_failed'] as const;
+const SOURCE_CONTROL_STATUS_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'not_editable'] as const;
+const SOURCE_CONTROL_CHECKOUT_STOP_CONDITIONS = ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_failed', 'not_editable'] as const;
+const TASK_PREVIEW_INVOCATION = ['bh task preview --file <filled_taskspec.json> --format summary'] as const;
+const TASK_EXECUTE_INVOCATION = ['bh task execute --file <filled_taskspec.json> --preview-token <preview_token> --format summary'] as const;
+
 function createDescriptorRegistry() {
+  const descriptorOptions = buildDescriptorOptionsByCapabilityId();
   return createToolCapabilityDescriptorRegistry({
-    capabilities: CAPABILITIES,
-    blueprintTaskSpecRoutes: BLUEPRINT_TASKSPEC_ROUTES,
-    umgTaskSpecRoutes: UMG_TASKSPEC_ROUTES,
-    dataTaskSpecRoutes: DATA_TASKSPEC_ROUTES,
-    readContextRoutes: READ_CONTEXT_ROUTES,
-    graphWriteSlotTemplateRefs: GRAPHWRITE_SLOT_TEMPLATE_REFS,
-    readContextSlots: READ_CONTEXT_SLOTS,
+    descriptors: CAPABILITIES.map((capabilityItem) => toToolCapabilityDescriptor(
+      capabilityItem,
+      descriptorOptions.get(capabilityItem.id),
+    )),
   });
+}
+
+function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescriptorOptions> {
+  return new Map<string, ToolCapabilityDescriptorOptions>([
+    ['blueprint.discover.assets', { stop_conditions: FIND_ASSETS_STOP_CONDITIONS }],
+    ['blueprint.read.context.logic_flow', {
+      route_refs: readRoutesById([
+        'read.blueprint.logic.function.logic_flow',
+        'read.blueprint.logic.event.logic_flow',
+        'read.blueprint.logic.custom_event.logic_flow',
+      ]),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['blueprint.read.context.logic_json', {
+      route_refs: readRoutesById([
+        'read.blueprint.logic.graph.logic_json',
+        'read.blueprint.logic.block.logic_json',
+      ]),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['blueprint.read.context.components', {
+      route_refs: readRoutesById(['read.blueprint.components']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['blueprint.read.context.variables', {
+      route_refs: readRoutesById(['read.blueprint.variables']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['blueprint.read.reference.dependencies', { stop_conditions: READ_REFERENCE_STOP_CONDITIONS }],
+    ['blueprint.read.function_chain', { stop_conditions: FUNCTION_CHAIN_STOP_CONDITIONS }],
+    ['blueprint.plan.taskspec.preview', {
+      route_refs: BLUEPRINT_TASKSPEC_ROUTES,
+      slot_refs: GRAPHWRITE_SLOT_TEMPLATE_REFS,
+      stop_conditions: PREVIEW_STOP_CONDITIONS,
+      recommended_invocations: TASK_PREVIEW_INVOCATION,
+    }],
+    ['blueprint.write.taskspec.execute', {
+      route_refs: BLUEPRINT_TASKSPEC_ROUTES,
+      slot_refs: GRAPHWRITE_SLOT_TEMPLATE_REFS,
+      stop_conditions: EXECUTE_STOP_CONDITIONS,
+      recommended_invocations: TASK_EXECUTE_INVOCATION,
+    }],
+    ['blueprint.diagnose.compile', { stop_conditions: COMPILE_STOP_CONDITIONS }],
+
+    ['umg.read.widget_tree', {
+      route_refs: readRoutesById(['read.widget.tree']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['umg.read.widget_property', {
+      route_refs: readRoutesById(['read.widget.property']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['umg.plan.taskspec.preview', {
+      route_refs: UMG_TASKSPEC_ROUTES,
+      stop_conditions: PREVIEW_STOP_CONDITIONS,
+      recommended_invocations: TASK_PREVIEW_INVOCATION,
+    }],
+    ['umg.write.taskspec.execute', {
+      route_refs: UMG_TASKSPEC_ROUTES,
+      stop_conditions: EXECUTE_STOP_CONDITIONS,
+      recommended_invocations: TASK_EXECUTE_INVOCATION,
+    }],
+
+    ['data.read.data_asset', {
+      route_refs: readRoutesById(['read.data_asset.object']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['data.read.data_table', {
+      route_refs: readRoutesById(['read.data_table.table', 'read.data_table.row']),
+      slot_refs: READ_CONTEXT_SLOTS,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+    }],
+    ['data.plan.taskspec.preview', {
+      route_refs: DATA_TASKSPEC_ROUTES,
+      stop_conditions: PREVIEW_STOP_CONDITIONS,
+      recommended_invocations: TASK_PREVIEW_INVOCATION,
+    }],
+    ['data.write.taskspec.execute', {
+      route_refs: DATA_TASKSPEC_ROUTES,
+      stop_conditions: EXECUTE_STOP_CONDITIONS,
+      recommended_invocations: TASK_EXECUTE_INVOCATION,
+    }],
+
+    ['editor.write.asset.save', { stop_conditions: SAVE_STOP_CONDITIONS }],
+    ['editor.write.source_control.checkout', { stop_conditions: SOURCE_CONTROL_CHECKOUT_STOP_CONDITIONS }],
+    ['editor.read.source_control.status', { stop_conditions: SOURCE_CONTROL_STATUS_STOP_CONDITIONS }],
+    ['editor.diagnose.static', { stop_conditions: DIAGNOSTICS_STOP_CONDITIONS }],
+    ['editor.diagnose.runtime', { stop_conditions: RUNTIME_DIAGNOSTICS_STOP_CONDITIONS }],
+    ['project.write.write_session', { stop_conditions: WRITE_SESSION_STOP_CONDITIONS }],
+  ]);
+}
+
+function readRoutesById(routeIds: readonly string[]): ToolTemplateRouteRef[] {
+  const routesById = new Map(READ_CONTEXT_ROUTES.map((routeEntry) => [routeEntry.route_id, routeEntry]));
+  return routeIds.map((routeId) => {
+    const routeEntry = routesById.get(routeId);
+    if (!routeEntry) {
+      throw new Error(`Unknown ReadContext route descriptor id: ${routeId}`);
+    }
+    return routeEntry;
+  });
+}
+
+function toToolCapabilityDescriptor(
+  capabilityItem: ToolCapabilityItem,
+  options: ToolCapabilityDescriptorOptions = {},
+): ToolCapabilityDescriptor {
+  return {
+    tool_id: capabilityItem.id,
+    tool_name: capabilityItem.tool_name,
+    route_refs: [...(options.route_refs ?? [])],
+    slot_refs: [...(options.slot_refs ?? [])],
+    stop_conditions: [...(options.stop_conditions ?? defaultStopConditions(capabilityItem))],
+    recommended_invocations: [...(options.recommended_invocations ?? defaultRecommendedInvocations(capabilityItem.tool_name))],
+    metrics_identity: {
+      capability: `${capabilityItem.domain}.${capabilityItem.kind}`,
+      semantic_operation: capabilityItem.id,
+    },
+  };
+}
+
+function defaultStopConditions(capabilityItem: ToolCapabilityItem): readonly string[] {
+  return capabilityItem.requires_bridge ? DEFAULT_BRIDGE_STOP_CONDITIONS : DEFAULT_LOCAL_STOP_CONDITIONS;
+}
+
+function defaultRecommendedInvocations(toolName: string): readonly string[] {
+  return [`bh ${toolName} --file <filled-template.json> --select status,artifacts.full_result`];
 }
 
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {

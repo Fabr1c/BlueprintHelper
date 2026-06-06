@@ -239,6 +239,33 @@ test('logic_flow uses adapter boundary projection instead of local function gues
   });
 
   assert.equal(result.payload['flow'], 'AddScore -> Set Score -> Return');
+  assert.deepEqual(result.payload['adapter_boundary'], {
+    runtime_adapter_id: 'k2.function_body',
+    entry_count: 1,
+    exit_count: 1,
+  });
+});
+
+test('logic_flow does not guess entry roots when adapter boundary is present but unmatched', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.function_body',
+      entry_boundaries: [{ node_ref: 'FunctionEntry', display_name: 'AddScore' }],
+      exit_boundaries: [{ node_ref: 'FunctionResult', display_name: 'Return' }],
+    },
+    logic: {
+      nodes: [
+        { node_ref: 'LocalEvent', name: 'Local Event', kind: 'event' },
+        { node_ref: 'SetScore', name: 'Set Score', kind: 'call' },
+      ],
+      links: [
+        { type: 'exec', from_node: 'LocalEvent', from_pin: 'then', to_node: 'SetScore', to_pin: 'execute' },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['flow'], '');
 });
 
 test('logic_flow renders macro tunnel boundaries from adapter projection', () => {
@@ -264,6 +291,53 @@ test('logic_flow renders macro tunnel boundaries from adapter projection', () =>
   });
 
   assert.equal(result.payload['flow'], 'Macro In -> Clamp -> Macro Out');
+  assert.deepEqual(result.payload['adapter_boundary'], {
+    runtime_adapter_id: 'k2.macro_body',
+    entry_count: 1,
+    exit_count: 1,
+  });
+});
+
+test('logic_flow remaps macro tunnel boundary refs to raw logic_json node refs', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.macro_body',
+      entry_boundaries: [{ node_ref: 'TunnelEntry', display_name: 'Macro In' }],
+      exit_boundaries: [{ node_ref: 'TunnelExit', display_name: 'Macro Out' }],
+      visible_boundary_node_refs: ['TunnelEntry', 'TunnelExit'],
+    },
+    logic: {
+      nodes: [
+        {
+          node_ref: 'nodes[0]',
+          name: 'Inputs',
+          kind: 'unknown',
+          external_anchor: { node_class: '/Script/BlueprintGraph.K2Node_Tunnel' },
+          external_anchors: [{ semantic_role: 'exec_boundary', pin_direction: 'output' }],
+          links: [
+            { type: 'exec', from_pin: 'Execute', to_node: 'nodes[2]', to_pin: 'execute' },
+          ],
+        },
+        {
+          node_ref: 'nodes[1]',
+          name: 'Outputs',
+          kind: 'unknown',
+          external_anchor: { node_class: '/Script/BlueprintGraph.K2Node_Tunnel' },
+        },
+        { node_ref: 'nodes[2]', name: 'Print String', kind: 'call_function', links: [
+          { type: 'exec', from_pin: 'then', to_node: 'nodes[1]', to_pin: 'Then' },
+        ] },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['flow'], 'Macro In -> Print String -> Macro Out');
+  assert.deepEqual(result.payload['adapter_boundary'], {
+    runtime_adapter_id: 'k2.macro_body',
+    entry_count: 1,
+    exit_count: 1,
+  });
 });
 
 test('logic_flow payload degrades to logic_json when links are unknown', () => {

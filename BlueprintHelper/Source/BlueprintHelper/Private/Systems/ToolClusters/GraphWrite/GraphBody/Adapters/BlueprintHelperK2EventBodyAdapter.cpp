@@ -38,6 +38,50 @@ bool FBlueprintHelperK2EventBodyAdapter::ResolveTarget(
 	OutTarget.GraphName = EventGraph->GetName();
 	OutTarget.EntryName = Request.EntryName;
 	OutTarget.BodyIdentity = FString::Printf(TEXT("%s|%s|k2.event_body"), *Request.AssetPath, *EventGraph->GetName());
+	const bool bWholeGraphReplacement = Request.ReplaceScope.Equals(TEXT("graph"), ESearchCase::IgnoreCase);
+	UEdGraphNode* EntryNode = nullptr;
+	FString EntryBlockId;
+	for (UEdGraphNode* Node : EventGraph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		if (FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(Node, Request.EntryName))
+		{
+			if (!EntryNode)
+			{
+				EntryNode = Node;
+				FBlueprintHelperK2GraphBodyAdapterUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId);
+			}
+			OutTarget.EntryBoundaryNodes.AddUnique(Node);
+			OutTarget.ProtectedNodes.AddUnique(Node);
+		}
+		else if (bWholeGraphReplacement)
+		{
+			OutTarget.DeletableNodes.AddUnique(Node);
+		}
+	}
+	if (!bWholeGraphReplacement)
+	{
+		if (!EntryNode)
+		{
+			OutError = FString::Printf(TEXT("Entry %s was not found."), *Request.EntryName);
+			return false;
+		}
+		if (EntryBlockId.IsEmpty())
+		{
+			OutError = FString::Printf(
+				TEXT("owned_replace_target_not_blueprinthelper_owned: Entry %s does not have BlueprintHelper ownership metadata; owned replace cannot adopt user-authored nodes."),
+				*Request.EntryName);
+			return false;
+		}
+		FBlueprintHelperK2GraphBodyAdapterUtils::AppendOwnedBodyNodesForBlock(
+			EventGraph,
+			EntryBlockId,
+			EntryNode,
+			OutTarget.DeletableNodes);
+	}
 	OutError.Reset();
 	return true;
 }
@@ -54,25 +98,28 @@ FBlueprintHelperGraphBodyBoundaryModel FBlueprintHelperK2EventBodyAdapter::Build
 	Boundary.GraphFamily = TEXT("k2");
 	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2EventBody;
 
-	if (!Target.Graph)
+	for (UEdGraphNode* Node : Target.EntryBoundaryNodes)
 	{
-		return Boundary;
+		if (Node)
+		{
+			const FString Ref = FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node);
+			Boundary.EntryNodeRefs.AddUnique(Ref);
+			Boundary.ProtectedNodeRefs.AddUnique(Ref);
+			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
+			if (Boundary.OwnedBlockId.IsEmpty())
+			{
+				FBlueprintHelperK2GraphBodyAdapterUtils::TryReadBlueprintHelperBlockId(Node, Boundary.OwnedBlockId);
+			}
+		}
 	}
-
-	for (UEdGraphNode* Node : Target.Graph->Nodes)
+	for (UEdGraphNode* Node : Target.DeletableNodes)
 	{
 		if (!Node)
 		{
 			continue;
 		}
 		const FString Ref = FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node);
-		if (FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(Node, Request.EntryName))
-		{
-			Boundary.EntryNodeRefs.AddUnique(Ref);
-			Boundary.ProtectedNodeRefs.AddUnique(Ref);
-			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
-		}
-		else
+		if (!Ref.IsEmpty())
 		{
 			Boundary.DeletableNodeRefs.AddUnique(Ref);
 		}

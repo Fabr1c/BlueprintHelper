@@ -11,6 +11,7 @@ import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metric
 import {
   getBlueprintHelperTool,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
+import { normalizeToolInputForManifest } from '@blueprinthelper/task-core/tool-surface/input/default-input-shape-adapters';
 import { readCliInputObjectWithStats } from './input.js';
 import type { CliCommand } from './output.js';
 
@@ -69,10 +70,14 @@ export async function invokeCliTool(input: {
       json: input.command.json,
       stdin: input.command.stdin,
       readStdin: input.readStdin,
-    });
+  });
   const rawParams = inputObject.value;
   const params = applyDevelopFlag(toolName, rawParams, input.command.develop === true);
-  const parsed = tool.inputSchema.parse(params) as Record<string, unknown>;
+  const normalizedParams = normalizeToolInputForManifest({
+    toolName,
+    value: params as Record<string, unknown>,
+  });
+  const parsed = tool.inputSchema.parse(normalizedParams) as Record<string, unknown>;
   return {
     rawParams,
     parsedParams: parsed,

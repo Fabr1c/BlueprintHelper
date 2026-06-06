@@ -4,6 +4,7 @@ import { bridgeCommandByToolName } from './bridge-tool-command-map.js';
 import { executeGenericBridgeTool } from './generic-bridge-tool-handler.js';
 import { executeReadContextCapabilities } from './read-context/read-context-capabilities.js';
 import { executeReadContext } from './read-context/read-context-handler.js';
+import type { ReadContextInput } from './read-context/read-context-schemas.js';
 import { executeCaptureScreenshot } from './screenshot/capture-screenshot-handler.js';
 import { executeWriteSessionRequest } from './write-session-handler.js';
 
@@ -13,7 +14,7 @@ export async function executeBridgeTool(
   context: BlueprintHelperToolContext,
 ): Promise<ToolResultBase> {
   if (toolName === 'blueprinthelper_read_context') {
-    return executeReadContext(input, context);
+    return executeReadContext(input as ReadContextInput, context);
   }
   if (toolName === 'blueprinthelper_read_context_capabilities') {
     return executeReadContextCapabilities(input);

@@ -58,6 +58,9 @@ static void BlueprintHelperGraphWriteAttachUnitOfWorkTrace(
 	ToolResult.Data->SetStringField(
 		TEXT("graph_body_kind"),
 		FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Request.BoundaryModel.BodyKind));
+	ToolResult.Data->SetObjectField(
+		TEXT("graph_body_boundary"),
+		FBlueprintHelperGraphBodyBoundaryModelUtils::ToJsonObject(Request.BoundaryModel));
 	ToolResult.Data->SetBoolField(TEXT("unit_of_work_rolled_back"), bRolledBack);
 }
 

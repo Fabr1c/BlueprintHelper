@@ -2,9 +2,6 @@ import type { TaskPlan, TaskSpec } from '../schema/task-schemas.js';
 import { createDefaultTaskTypeCompilerRegistry } from './compilers/default-task-type-compilers.js';
 export { TaskSpecCompileError } from './task-compiler-errors.js';
 import { TaskSpecCompileError } from './task-compiler-errors.js';
-export { taskPlanToAppendBridgePayload } from './graphwrite/graphwrite-task-type-compiler.js';
-export { summarizeTaskPlan } from './task-plan-summary.js';
-export { blueprintVariableTaskPlanToBridgePayload } from './compilers/blueprint-variables-bridge-payload.js';
 
 export const TASK_COMPILER_RESULT_SCHEMA = 'BlueprintHelper.TaskCompilerResult.v1';
 const defaultTaskTypeCompilerRegistry = createDefaultTaskTypeCompilerRegistry();

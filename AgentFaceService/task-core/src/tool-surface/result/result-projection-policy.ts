@@ -14,12 +14,27 @@ export interface ResultProjectionPolicy {
   expert_fields: string[];
   debug_artifact_fields: string[];
   omit_by_default: string[];
+  omit_rules: ResultProjectionOmitRule[];
+  extra_omit_rules: ResultProjectionOmitRule[];
+}
+
+export interface ResultProjectionOmitRule {
+  field: string;
+  parent_path?: string[];
+  parent_path_suffix?: string[];
+  value_prefix?: string;
+  parent_has_field?: string;
+  preserve_when_parent_field_equals?: {
+    field: string;
+    value: unknown;
+  };
 }
 
 export interface ProjectToolResultForCliInput {
   command_kind: string;
   tool_name?: string;
   format: ResultProjectionFormat;
+  develop?: boolean;
   expert?: boolean;
   tool_result: ToolResultBase;
   extra?: Record<string, unknown>;
@@ -35,6 +50,7 @@ export interface ProjectToolResultForCliOutput {
 export interface SelectProjectionFieldsInput {
   readonly policy: ResultProjectionPolicy;
   readonly format: ResultProjectionFormat;
+  readonly develop?: boolean;
   readonly expert?: boolean;
   readonly artifactKind?: 'stdout' | 'debug_artifact';
 }
@@ -45,27 +61,53 @@ export const GENERIC_RESULT_PROJECTION_POLICY: ResultProjectionPolicy = {
   json_fields: ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'],
   full_fields: ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'],
   expert_fields: [],
-  debug_artifact_fields: ['tool_result', 'extra', 'bridge_result', 'debug'],
+  debug_artifact_fields: ['schema', 'tool_result', 'extra', 'bridge_result', 'debug'],
   omit_by_default: ['schema', 'trace_id', 'debug', 'bridge_result'],
+  omit_rules: [
+    {
+      field: 'schema',
+      value_prefix: 'BlueprintHelper.',
+      preserve_when_parent_field_equals: {
+        field: 'schema',
+        value: 'BlueprintHelper.ExternalGraphAnchor.v1',
+      },
+    },
+    { field: 'trace_id' },
+    { field: 'debug' },
+    { field: 'bridge_result' },
+    { field: 'execution_policy' },
+    { field: 'scope_policy' },
+    { field: 'should_compile', parent_path_suffix: ['validation'] },
+    { field: 'should_save', parent_path_suffix: ['validation'] },
+    { field: 'target_assets', parent_has_field: 'target' },
+    { field: 'task_run_id', parent_path_suffix: ['task'] },
+    { field: 'target_assets', parent_path_suffix: ['task'] },
+  ],
+  extra_omit_rules: [
+    { field: 'taskPlan', parent_path: [] },
+  ],
 };
 
 export function selectProjectionFields(input: SelectProjectionFieldsInput): readonly string[] {
   if (input.artifactKind === 'debug_artifact') {
     return input.policy.debug_artifact_fields;
   }
+  const withDevelopTiming = (fields: readonly string[]): readonly string[] => (
+    input.develop === true ? uniqueStrings([...fields, 'data.timing']) : fields
+  );
   if (input.expert === true) {
-    return uniqueStrings([...input.policy.full_fields, ...input.policy.expert_fields]);
+    return withDevelopTiming(uniqueStrings([...input.policy.full_fields, ...input.policy.expert_fields]));
   }
   if (input.format === 'summary') {
-    return input.policy.default_fields;
+    return withDevelopTiming(input.policy.default_fields);
   }
   if (input.format === 'json') {
-    return input.policy.json_fields;
+    return withDevelopTiming(input.policy.json_fields);
   }
   if (input.format === 'full') {
-    return input.policy.full_fields;
+    return withDevelopTiming(input.policy.full_fields);
   }
-  return input.policy.default_fields;
+  return withDevelopTiming(input.policy.default_fields);
 }
 
 export function projectToolResultForCli(input: ProjectToolResultForCliInput): ProjectToolResultForCliOutput {
@@ -73,6 +115,7 @@ export function projectToolResultForCli(input: ProjectToolResultForCliInput): Pr
   const selectedFields = selectProjectionFields({
     policy: input.policy,
     format: input.format,
+    develop: input.develop,
     expert: input.expert,
     artifactKind: 'stdout',
   });
@@ -124,11 +167,7 @@ export function compactToolResultForDefaultCliOutput(
   selectedFields: readonly string[] = policy.full_fields,
 ): Record<string, unknown> {
   const projected = projectValueByFields(result, selectedFields);
-  const compacted = compactTaskSpecExecutionData(compactPolicyOnlyFields(compactCliValue(projected, policy))) as Record<string, unknown>;
-  delete compacted['debug'];
-  delete compacted['schema'];
-  delete compacted['trace_id'];
-  return compacted;
+  return compactCliValue(projected, policy) as Record<string, unknown>;
 }
 
 export function compactExtraForDefaultCliOutput(
@@ -143,121 +182,62 @@ export function compactExtraForDefaultCliOutput(
   const next = extraFields.length > 0
     ? projectValueByFields(extra, extraFields)
     : { ...extra };
-  delete next['taskPlan'];
-  return compactPolicyOnlyFields(compactCliValue(next, policy)) as Record<string, unknown>;
+  return compactCliValue(next, policy, selectOmitRules(policy, {
+    includeExtraRules: true,
+  })) as Record<string, unknown>;
 }
 
 export function compactTaskPlanForArtifact(
   taskPlan: unknown,
   policy: ResultProjectionPolicy = GENERIC_RESULT_PROJECTION_POLICY,
 ): unknown {
-  return compactPolicyOnlyFields(compactCliValue(taskPlan, policy));
+  return compactCliValue(taskPlan, policy);
+}
+
+export function projectMetricsReportDataForCli(
+  data: Record<string, unknown>,
+  format: ResultProjectionFormat,
+): Record<string, unknown> {
+  if (format !== 'markdown') {
+    return data;
+  }
+  return omitUndefined({
+    schema: readString(data['schema']),
+    kind: readString(data['kind']),
+    window: readString(data['window']),
+    summary: asRecord(data['summary']),
+    markdown_report_path: readString(data['markdown_report_path']),
+  });
 }
 
 export function compactCliValue(
   value: unknown,
   policy: ResultProjectionPolicy = GENERIC_RESULT_PROJECTION_POLICY,
+  rules: readonly ResultProjectionOmitRule[] = selectOmitRules(policy),
+  path: readonly string[] = [],
 ): unknown {
   if (Array.isArray(value)) {
-    return value.map((entry) => compactCliValue(entry, policy));
+    return value.map((entry) => compactCliValue(entry, policy, rules, path));
   }
   if (!isRecord(value)) {
     return value;
   }
 
   const out: Record<string, unknown> = {};
-  const bExternalGraphAnchor = value['schema'] === 'BlueprintHelper.ExternalGraphAnchor.v1';
   for (const [key, entry] of Object.entries(value)) {
-    const bPreserveExternalAnchorSchema = bExternalGraphAnchor && key === 'schema';
-    if (!bPreserveExternalAnchorSchema && shouldOmitByPolicy(key, entry, policy)) {
+    if (shouldOmitByRules(key, entry, value, path, rules)) {
       continue;
     }
-    if (!bPreserveExternalAnchorSchema && key === 'schema' && typeof entry === 'string' && entry.startsWith('BlueprintHelper.')) {
-      continue;
-    }
-    out[key] = compactCliValue(entry, policy);
+    out[key] = compactCliValue(entry, policy, rules, [...path, key]);
   }
   return out;
 }
 
-export function compactPolicyOnlyFields(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => compactPolicyOnlyFields(item));
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'execution_policy' || key === 'scope_policy') {
-      continue;
-    }
-
-    if (key === 'validation') {
-      const compactedValidation = compactValidationForDefaultReturn(entry);
-      if (compactedValidation !== undefined) {
-        compacted[key] = compactedValidation;
-      }
-      continue;
-    }
-
-    compacted[key] = compactPolicyOnlyFields(entry);
-  }
-  return compacted;
-}
-
-function compactValidationForDefaultReturn(value: unknown): unknown {
-  if (!isRecord(value)) {
-    return compactPolicyOnlyFields(value);
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'should_compile' || key === 'should_save') {
-      continue;
-    }
-    compacted[key] = compactPolicyOnlyFields(entry);
-  }
-
-  return Object.keys(compacted).length > 0 ? compacted : undefined;
-}
-
-function compactTaskSpecExecutionData(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => compactTaskSpecExecutionData(item));
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'bridge_result') {
-      continue;
-    }
-    if (key === 'target_assets' && isRecord(value['target'])) {
-      continue;
-    }
-    if (key === 'task' && isRecord(entry)) {
-      compacted[key] = compactTaskExecutionSummary(entry);
-      continue;
-    }
-    compacted[key] = compactTaskSpecExecutionData(entry);
-  }
-  return compacted;
-}
-
-function compactTaskExecutionSummary(task: Record<string, unknown>): Record<string, unknown> {
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(task)) {
-    if (key === 'task_run_id' || key === 'target_assets') {
-      continue;
-    }
-    compacted[key] = compactTaskSpecExecutionData(entry);
-  }
-  return compacted;
+export function compactPolicyOnlyFields(
+  value: unknown,
+  policy: ResultProjectionPolicy = GENERIC_RESULT_PROJECTION_POLICY,
+): unknown {
+  return compactCliValue(value, policy);
 }
 
 function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {
@@ -268,17 +248,75 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function shouldOmitByPolicy(key: string, value: unknown, policy: ResultProjectionPolicy): boolean {
-  if (key === 'schema') {
-    return typeof value === 'string'
-      && value.startsWith('BlueprintHelper.')
-      && policy.omit_by_default.includes(key);
+function selectOmitRules(
+  policy: ResultProjectionPolicy,
+  options: { includeExtraRules?: boolean } = {},
+): readonly ResultProjectionOmitRule[] {
+  const policyRuleFields = new Set(policy.omit_rules.map((rule) => rule.field));
+  const legacyRules = policy.omit_by_default
+    .filter((field) => !policyRuleFields.has(field))
+    .map((field) => ({ field }));
+  return options.includeExtraRules === true
+    ? [...policy.omit_rules, ...legacyRules, ...policy.extra_omit_rules]
+    : [...policy.omit_rules, ...legacyRules];
+}
+
+function shouldOmitByRules(
+  field: string,
+  value: unknown,
+  parent: Record<string, unknown>,
+  path: readonly string[],
+  rules: readonly ResultProjectionOmitRule[],
+): boolean {
+  return rules.some((rule) =>
+    rule.field === field
+    && matchesParentPath(path, rule)
+    && matchesValue(value, rule)
+    && matchesParent(parent, rule)
+    && !isPreservedByRule(parent, rule));
+}
+
+function matchesParentPath(path: readonly string[], rule: ResultProjectionOmitRule): boolean {
+  if (rule.parent_path && !arraysEqual(path, rule.parent_path)) {
+    return false;
   }
-  return policy.omit_by_default.includes(key);
+  if (rule.parent_path_suffix && !hasPathSuffix(path, rule.parent_path_suffix)) {
+    return false;
+  }
+  return true;
+}
+
+function matchesValue(value: unknown, rule: ResultProjectionOmitRule): boolean {
+  if (!rule.value_prefix) {
+    return true;
+  }
+  return typeof value === 'string' && value.startsWith(rule.value_prefix);
+}
+
+function matchesParent(parent: Record<string, unknown>, rule: ResultProjectionOmitRule): boolean {
+  return !rule.parent_has_field || Object.hasOwn(parent, rule.parent_has_field);
+}
+
+function isPreservedByRule(parent: Record<string, unknown>, rule: ResultProjectionOmitRule): boolean {
+  const condition = rule.preserve_when_parent_field_equals;
+  return Boolean(condition && parent[condition.field] === condition.value);
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+
+function hasPathSuffix(path: readonly string[], suffix: readonly string[]): boolean {
+  return suffix.length <= path.length && suffix.every((entry, index) =>
+    path[path.length - suffix.length + index] === entry);
 }
 
 function projectValueByFields<TValue>(value: TValue, fields: readonly string[]): TValue | Record<string, unknown> {

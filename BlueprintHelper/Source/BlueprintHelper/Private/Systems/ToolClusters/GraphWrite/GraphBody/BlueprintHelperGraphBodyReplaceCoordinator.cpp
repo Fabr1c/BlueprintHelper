@@ -5,7 +5,6 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
-#include "K2Node_FunctionResult.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 
@@ -178,9 +177,11 @@ public:
 		}
 	}
 
-	static void AddReachedResultBoundaries(UEdGraph* Graph, TSet<UEdGraphNode*>& InOutBodyFlowNodes)
+	static void AddReachedExitBoundaries(
+		const TArray<UEdGraphNode*>& ExitBoundaryNodes,
+		TSet<UEdGraphNode*>& InOutBodyFlowNodes)
 	{
-		if (!Graph)
+		if (ExitBoundaryNodes.Num() == 0)
 		{
 			return;
 		}
@@ -189,26 +190,25 @@ public:
 		while (bAddedNode)
 		{
 			bAddedNode = false;
-			for (UEdGraphNode* Node : Graph->Nodes)
+			for (UEdGraphNode* Node : ExitBoundaryNodes)
 			{
-				UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(Node);
-				if (!ResultNode || InOutBodyFlowNodes.Contains(ResultNode))
+				if (!Node || InOutBodyFlowNodes.Contains(Node))
 				{
 					continue;
 				}
 
-				UEdGraphPin* ResultExecInput = FindFirstExecPin(ResultNode, EGPD_Input);
-				if (!ResultExecInput)
+				UEdGraphPin* ExitExecInput = FindFirstExecPin(Node, EGPD_Input);
+				if (!ExitExecInput)
 				{
 					continue;
 				}
 
-				for (UEdGraphPin* LinkedPin : ResultExecInput->LinkedTo)
+				for (UEdGraphPin* LinkedPin : ExitExecInput->LinkedTo)
 				{
 					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
 					if (LinkedNode && InOutBodyFlowNodes.Contains(LinkedNode))
 					{
-						InOutBodyFlowNodes.Add(ResultNode);
+						InOutBodyFlowNodes.Add(Node);
 						bAddedNode = true;
 						break;
 					}
@@ -322,96 +322,13 @@ bool FBlueprintHelperGraphBodyReplaceCoordinator::BuildPlan(
 	return true;
 }
 
-EBlueprintHelperGraphBodyKind FBlueprintHelperGraphBodyReplaceCoordinator::BodyKindForReplaceScope(
-	EBlueprintHelperReplaceScope Scope)
-{
-	switch (Scope)
-	{
-	case EBlueprintHelperReplaceScope::CustomEventBody:
-		return EBlueprintHelperGraphBodyKind::K2CustomEventBody;
-	case EBlueprintHelperReplaceScope::EventBody:
-		return EBlueprintHelperGraphBodyKind::K2EventBody;
-	case EBlueprintHelperReplaceScope::FunctionBody:
-		return EBlueprintHelperGraphBodyKind::K2FunctionBody;
-	case EBlueprintHelperReplaceScope::BlockImplementation:
-		return EBlueprintHelperGraphBodyKind::K2BlockImplementation;
-	default:
-		return EBlueprintHelperGraphBodyKind::Unknown;
-	}
-}
-
-FString FBlueprintHelperGraphBodyReplaceCoordinator::RuntimeAdapterIdForReplaceScope(
-	EBlueprintHelperReplaceScope Scope)
-{
-	return FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(BodyKindForReplaceScope(Scope));
-}
-
-bool FBlueprintHelperGraphBodyReplaceCoordinator::IsEntryReconnectScope(EBlueprintHelperReplaceScope Scope)
-{
-	return Scope == EBlueprintHelperReplaceScope::FunctionBody ||
-		Scope == EBlueprintHelperReplaceScope::EventBody ||
-		Scope == EBlueprintHelperReplaceScope::CustomEventBody;
-}
-
-bool FBlueprintHelperGraphBodyReplaceCoordinator::IsWholeGraphBodyReplacementScope(
-	EBlueprintHelperReplaceScope Scope)
-{
-	return Scope == EBlueprintHelperReplaceScope::FunctionBody ||
-		Scope == EBlueprintHelperReplaceScope::Graph;
-}
-
-bool FBlueprintHelperGraphBodyReplaceCoordinator::UsesMemberGraphTarget(
-	EBlueprintHelperReplaceScope Scope)
-{
-	return BodyKindForReplaceScope(Scope) == EBlueprintHelperGraphBodyKind::K2FunctionBody;
-}
-
-UEdGraph* FBlueprintHelperGraphBodyReplaceCoordinator::ResolveGraphForReplaceScope(
-	UBlueprint* Blueprint,
-	const FString& GraphName,
-	EBlueprintHelperReplaceScope Scope,
-	FString& OutErrorCode,
-	FString& OutErrorMessage)
-{
-	if (!Blueprint)
-	{
-		OutErrorCode = TEXT("target_blueprint_not_found");
-		OutErrorMessage = TEXT("Blueprint is null.");
-		return nullptr;
-	}
-
-	const bool bUseFunctionGraphs = UsesMemberGraphTarget(Scope);
-	const TArray<UEdGraph*>& Graphs = bUseFunctionGraphs ? Blueprint->FunctionGraphs : Blueprint->UbergraphPages;
-	for (UEdGraph* Candidate : Graphs)
-	{
-		if (Candidate && Candidate->GetName() == GraphName)
-		{
-			return Candidate;
-		}
-	}
-
-	OutErrorCode = bUseFunctionGraphs ? TEXT("target_function_not_found") : TEXT("target_graph_not_found");
-	OutErrorMessage = FString::Printf(TEXT("Graph %s was not found."), *GraphName);
-	return nullptr;
-}
-
-UEdGraph* FBlueprintHelperGraphBodyReplaceCoordinator::ResolveSemanticContextGraph(
-	UBlueprint* Blueprint,
-	const FString& GraphName,
-	EBlueprintHelperReplaceScope Scope)
-{
-	FString ErrorCode;
-	FString ErrorMessage;
-	return ResolveGraphForReplaceScope(Blueprint, GraphName, Scope, ErrorCode, ErrorMessage);
-}
-
-bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptBoundaryConnectivityDiagnostics(
-	EBlueprintHelperReplaceScope Scope,
+bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptAdapterPlanConnectivityDiagnostics(
+	const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan,
 	const FBlueprintGenerateResult& GenerateResult,
-	UEdGraph* Graph,
 	const TSet<UEdGraphNode*>& NodesBeforeImport)
 {
-	if (BodyKindForReplaceScope(Scope) != EBlueprintHelperGraphBodyKind::K2FunctionBody)
+	if (!ReplacePlan.ConnectivityPolicy.bAllowExitBoundaryReachability ||
+		!ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary)
 	{
 		return false;
 	}
@@ -433,6 +350,7 @@ bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptBoundaryConnectivityD
 		}
 	}
 
+	UEdGraph* Graph = ReplacePlan.Target.Graph;
 	const TArray<UEdGraphNode*> ImportedNodes =
 		FBlueprintHelperGraphBodyReplaceCoordinatorLocalUtils::CollectImportedNodes(Graph, NodesBeforeImport);
 	TSet<UEdGraphNode*> ImportedNodeSet;
@@ -449,7 +367,9 @@ bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptBoundaryConnectivityD
 	}
 
 	TSet<UEdGraphNode*> BodyFlowNodeSet = ImportedNodeSet;
-	FBlueprintHelperGraphBodyReplaceCoordinatorLocalUtils::AddReachedResultBoundaries(Graph, BodyFlowNodeSet);
+	FBlueprintHelperGraphBodyReplaceCoordinatorLocalUtils::AddReachedExitBoundaries(
+		ReplacePlan.Target.ExitBoundaryNodes,
+		BodyFlowNodeSet);
 
 	UEdGraphNode* BodyEntryNode =
 		FBlueprintHelperGraphBodyReplaceCoordinatorLocalUtils::FindFirstImportedExecutableBodyNode(Graph, NodesBeforeImport);

@@ -75,6 +75,93 @@ FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::SerializePayloadForAnch
 	return Output;
 }
 
+FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::SerializeJsonObject(
+	const TSharedRef<FJsonObject>& Object)
+{
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	FJsonSerializer::Serialize(Object, Writer);
+	return Output;
+}
+
+TSharedRef<FJsonObject> FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildGraphBodyBoundaryEvidence(
+	const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel)
+{
+	return FBlueprintHelperGraphBodyBoundaryModelUtils::ToJsonObject(BoundaryModel);
+}
+
+void FBlueprintHelperGraphWriteReviewEvidenceBuilder::AugmentBoundaryModelFromStepResult(
+	const FBlueprintHelperToolResultBase& StepResult,
+	FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel)
+{
+	if (!StepResult.Data.IsValid())
+	{
+		return;
+	}
+
+	const TSharedPtr<FJsonObject>* BoundaryJson = nullptr;
+	if (StepResult.Data->TryGetObjectField(TEXT("graph_body_boundary"), BoundaryJson) &&
+		BoundaryJson &&
+		BoundaryJson->IsValid())
+	{
+		FString StringValue;
+		if ((*BoundaryJson)->TryGetStringField(TEXT("runtime_adapter_id"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.RuntimeAdapterId = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("task_spec_strategy"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.TaskSpecStrategy = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("asset_path"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.TargetAssetPath = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("graph_name"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.GraphName = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("graph_family"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.GraphFamily = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("owned_block_id"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.OwnedBlockId = StringValue;
+		}
+		if ((*BoundaryJson)->TryGetStringField(TEXT("body_kind"), StringValue) && !StringValue.IsEmpty())
+		{
+			BoundaryModel.BodyKind = FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindFromString(StringValue);
+		}
+		AppendStringArrayField(*BoundaryJson, TEXT("entry_boundaries"), BoundaryModel.EntryNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("exit_boundaries"), BoundaryModel.ExitNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("protected_node_refs"), BoundaryModel.ProtectedNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("deletable_node_refs"), BoundaryModel.DeletableNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("generated_node_refs"), BoundaryModel.GeneratedNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("imported_body_node_refs"), BoundaryModel.ImportedBodyNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("reachable_body_flow_node_refs"), BoundaryModel.ReachableBodyFlowNodeRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("external_anchor_refs"), BoundaryModel.ExternalAnchorRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("semantic_source_refs"), BoundaryModel.SemanticSourceRefs);
+		AppendStringArrayField(*BoundaryJson, TEXT("connectivity_exception_codes"), BoundaryModel.ConnectivityExceptionCodes);
+	}
+
+	FString RuntimeAdapterId;
+	if (BoundaryModel.RuntimeAdapterId.IsEmpty() &&
+		StepResult.Data->TryGetStringField(TEXT("runtime_adapter_id"), RuntimeAdapterId) &&
+		!RuntimeAdapterId.IsEmpty())
+	{
+		BoundaryModel.RuntimeAdapterId = RuntimeAdapterId;
+	}
+
+	FString GraphBodyKind;
+	if (BoundaryModel.BodyKind == EBlueprintHelperGraphBodyKind::Unknown &&
+		StepResult.Data->TryGetStringField(TEXT("graph_body_kind"), GraphBodyKind) &&
+		!GraphBodyKind.IsEmpty())
+	{
+		BoundaryModel.BodyKind = FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindFromString(GraphBodyKind);
+	}
+}
+
 FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::TrimmedObjectStringField(
 	const TSharedPtr<FJsonObject>& Object,
 	const TCHAR* FieldName)
@@ -427,15 +514,20 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 		return false;
 	}
 
-	FString AssetPath = Input.BoundaryModel.TargetAssetPath;
+	FBlueprintHelperGraphBodyBoundaryModel BoundaryModel = Input.BoundaryModel;
+	AugmentBoundaryModelFromStepResult(Input.StepResult, BoundaryModel);
+
+	FString AssetPath = BoundaryModel.TargetAssetPath;
 	if (AssetPath.IsEmpty())
 	{
 		AssetPath = ReadAssetPath(Input.LoweredStep.Payload);
+		BoundaryModel.TargetAssetPath = AssetPath;
 	}
-	FString GraphName = Input.BoundaryModel.GraphName;
+	FString GraphName = BoundaryModel.GraphName;
 	if (GraphName.IsEmpty())
 	{
 		GraphName = ReadGraphName(Input.LoweredStep.Payload);
+		BoundaryModel.GraphName = GraphName;
 	}
 	if (AssetPath.IsEmpty() || GraphName.IsEmpty())
 	{
@@ -477,7 +569,7 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 		Target.Surface = EBlueprintHelperReviewSurface::Graph;
 		Target.GraphName = GraphName;
 		Target.TargetKind = TEXT("graph_block");
-		Target.TargetSubKind = FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Input.BoundaryModel.BodyKind);
+		Target.TargetSubKind = FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(BoundaryModel.BodyKind);
 		Target.TargetKey = TargetKeys[TargetIndex];
 		Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
 		Target.LifecycleObjectKey = Target.TargetKey;
@@ -487,6 +579,7 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 		Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
 		Target.Ownership = TEXT("graph_write");
 		Target.AnchorJson = AnchorJson;
+		Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
 		Target.ExecutionOrder = Input.StepIndex;
 		Target.TaskStepIndex = Input.StepIndex;
 		Target.AtomicIndex = TargetIndex;

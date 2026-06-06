@@ -12,8 +12,8 @@ import { extractTaskPlanMetricOperations } from '../../metrics/operation-extract
 import {
   TaskSpecCompileError,
   type CompiledTaskPlan,
-  summarizeTaskPlan,
 } from '../compiler/task-compiler.js';
+import { summarizeTaskPlan } from '../compiler/task-plan-summary.js';
 import {
   createTaskSpecCompiler,
   type TaskCompiler,

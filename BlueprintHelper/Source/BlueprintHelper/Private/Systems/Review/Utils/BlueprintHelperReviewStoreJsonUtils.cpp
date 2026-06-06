@@ -39,6 +39,26 @@ public:
 		FJsonSerializer::Serialize(Values, Writer);
 		return JsonText;
 	}
+
+	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Object)
+	{
+		FString JsonText;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonText);
+		FJsonSerializer::Serialize(Object, Writer);
+		return JsonText;
+	}
+
+	static bool TryParseJsonObjectString(const FString& JsonText, TSharedPtr<FJsonObject>& OutObject)
+	{
+		OutObject.Reset();
+		if (JsonText.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		return FJsonSerializer::Deserialize(Reader, OutObject) && OutObject.IsValid();
+	}
 };
 
 EBlueprintHelperReviewChangeStatus FBlueprintHelperReviewStoreJsonUtils::ParseReviewChangeStatus(const FString& Status)
@@ -196,6 +216,20 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewAtomicTarget
 		if (!Target.LifecycleObjectKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
 		if (!Target.LifecycleParentKey.IsEmpty()) Json->SetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 		if (!Target.AnchorJson.IsEmpty()) Json->SetStringField(TEXT("anchor"), Target.AnchorJson);
+		if (!Target.GraphBodyBoundaryJson.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> GraphBodyBoundary;
+			if (FBlueprintHelperReviewStoreJsonLocalUtils::TryParseJsonObjectString(
+				Target.GraphBodyBoundaryJson,
+				GraphBodyBoundary))
+			{
+				Json->SetObjectField(TEXT("graph_body_boundary"), GraphBodyBoundary);
+			}
+			else
+			{
+				Json->SetStringField(TEXT("graph_body_boundary_json"), Target.GraphBodyBoundaryJson);
+			}
+		}
 		if (!Target.RecordedAfterHash.IsEmpty()) Json->SetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 		if (!Target.BaselineHash.IsEmpty()) Json->SetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 		if (!Target.BeforeSnapshotJson.IsEmpty()) Json->SetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);
@@ -533,6 +567,18 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 						TargetJson->TryGetStringField(TEXT("lifecycle_object_key"), Target.LifecycleObjectKey);
 						TargetJson->TryGetStringField(TEXT("lifecycle_parent_key"), Target.LifecycleParentKey);
 						TargetJson->TryGetStringField(TEXT("anchor"), Target.AnchorJson);
+						const TSharedPtr<FJsonObject>* GraphBodyBoundary = nullptr;
+						if (TargetJson->TryGetObjectField(TEXT("graph_body_boundary"), GraphBodyBoundary) &&
+							GraphBodyBoundary &&
+							GraphBodyBoundary->IsValid())
+						{
+							Target.GraphBodyBoundaryJson =
+								FBlueprintHelperReviewStoreJsonLocalUtils::SerializeJsonObject(GraphBodyBoundary->ToSharedRef());
+						}
+						else
+						{
+							TargetJson->TryGetStringField(TEXT("graph_body_boundary_json"), Target.GraphBodyBoundaryJson);
+						}
 						TargetJson->TryGetStringField(TEXT("recorded_after_hash"), Target.RecordedAfterHash);
 						TargetJson->TryGetStringField(TEXT("baseline_hash"), Target.BaselineHash);
 						TargetJson->TryGetStringField(TEXT("before_snapshot_json"), Target.BeforeSnapshotJson);

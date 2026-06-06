@@ -6,6 +6,8 @@
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReplaceCoordinator.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityValidator.h"
 
 class FBlueprintHelperGraphResolver;
 class FBlueprintHelperBlockIdService;
@@ -72,7 +74,6 @@ private:
 	FReplacePreflightResult Preflight(const FReplaceRequest& Request) const;
 	bool PreflightBlueprint(const FString& AssetPath, UBlueprint*& OutBlueprint, FReplacePreflightResult& OutResult) const;
 	bool PreflightLogicSpec(const FReplaceRequest& Request, UBlueprint* Blueprint, FReplacePreflightResult& OutResult) const;
-	bool PreflightGraphTarget(UBlueprint* Blueprint, const FString& GraphName, EBlueprintHelperReplaceScope Scope, UEdGraph*& OutGraph, FReplacePreflightResult& OutResult) const;
 	bool PreflightReplaceScope(EBlueprintHelperReplaceScope Scope, FReplacePreflightResult& OutResult) const;
 
 	// ─── DryRun ───
@@ -109,8 +110,20 @@ private:
 		bool bExternalDependentsMayBreak = false;
 	};
 
-	bool ResolveReplaceTarget(const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
-	bool ResolveBlockImplementation(UEdGraph* Graph, const FReplaceRequest& Request, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
+	FBlueprintHelperGraphBodyRequest BuildGraphBodyRequest(const FReplaceRequest& Request, UBlueprint* Blueprint) const;
+	bool BuildReplacePlan(
+		const FReplaceRequest& Request,
+		UBlueprint* Blueprint,
+		FBlueprintHelperGraphBodyReplacePlan& OutPlan,
+		FString& OutError) const;
+	bool ResolveReplaceTargetFromPlan(
+		const FReplaceRequest& Request,
+		const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan,
+		FResolvedReplaceTarget& OutTarget,
+		FString& OutError) const;
+	FBlueprintGraphWriteConnectivityValidationInput BuildAdapterConnectivityInput(
+		const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan) const;
+	bool ResolveReplaceTargetLegacy(const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
 
 	// GraphWrite SemanticIR payload
 
@@ -119,9 +132,8 @@ private:
 	// ─── 删除旧实。───
 
 	bool DeleteOldImplementation(UBlueprint* Blueprint, UEdGraph* Graph, const TArray<UEdGraphNode*>& NodesToDelete) const;
-	bool ReconnectPreservedEntryToNewBody(
-		const FReplaceRequest& Request,
-		const FResolvedReplaceTarget& Resolved,
+	bool ApplyAdapterReconnectPlan(
+		const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan,
 		const TSet<UEdGraphNode*>& NodesBeforeImport,
 		FString& OutError) const;
 

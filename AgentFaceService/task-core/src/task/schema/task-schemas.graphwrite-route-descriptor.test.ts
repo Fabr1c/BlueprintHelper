@@ -53,19 +53,16 @@ test('GraphWrite replace schema accepts descriptor-backed hidden custom_event_de
   assert.equal(result.success, true, JSON.stringify(result, null, 2));
 });
 
-test('GraphWrite replace schema rejects planned descriptor scopes before compiler routing', () => {
+test('GraphWrite replace schema accepts active macro_body descriptor scope', () => {
   const result = GraphWriteTaskSpecSchema.safeParse(makeReplaceSpec({
     scope: 'macro_body',
     selector: {
       kind: 'macro',
-      name: 'PlannedMacro',
+      name: 'RuntimeBackedMacro',
     },
   }));
 
-  assert.equal(result.success, false, JSON.stringify(result, null, 2));
-  if (!result.success) {
-    assert.match(JSON.stringify(result.error.issues), /macro_body is planned/);
-  }
+  assert.equal(result.success, true, JSON.stringify(result, null, 2));
 });
 
 test('GraphWrite replace schema validates selector kind from descriptor metadata', () => {

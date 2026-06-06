@@ -11,8 +11,8 @@ import {
 import {
   TaskSpecCompileError,
   compileTaskSpecToTaskPlan,
-  taskPlanToAppendBridgePayload,
 } from '../../task/compiler/task-compiler.js';
+import { taskPlanToAppendBridgePayload } from '../../task/compiler/graphwrite/graphwrite-task-type-compiler.js';
 
 function makeTaskSpec(overrides: Record<string, unknown> = {}) {
   return {
@@ -228,12 +228,14 @@ describe('TaskSpec schema validation', () => {
     assert.throws(() => TaskSpecSchema.parse(spec), /asset_path/);
   });
 
-  it('rejects missing graph name', () => {
+  it('defaults hidden scope policy graph name', () => {
     const spec = makeTaskSpec({
       scope_policy: { allow_modify_user_nodes: false },
     });
 
-    assert.throws(() => TaskSpecSchema.parse(spec), /graph_name/);
+    const parsed = TaskSpecSchema.parse(spec);
+    assert.equal(parsed.scope_policy.graph_name, 'EventGraph');
+    assert.equal(parsed.scope_policy.allow_modify_user_nodes, false);
   });
 
   it('rejects legacy validation compile/save fields', () => {

@@ -43,7 +43,11 @@ bool FBlueprintGraphLocalVariableService::ConvertToEdGraphPinType(const FParsedP
 	OutPinType = FEdGraphPinType();
 	const FString Category = InPinType.Category.ToLower();
 
-	if (Category == TEXT("bool") || Category == TEXT("boolean"))
+	if (Category == TEXT("exec") || Category == TEXT("execution"))
+	{
+		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Exec;
+	}
+	else if (Category == TEXT("bool") || Category == TEXT("boolean"))
 	{
 		OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
 	}

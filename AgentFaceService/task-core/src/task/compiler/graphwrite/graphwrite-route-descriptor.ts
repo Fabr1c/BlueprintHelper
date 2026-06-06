@@ -4,6 +4,7 @@ export interface GraphWriteSelectorDescriptor {
   expected_kind: string;
   required_fields: string[];
   output_fields: Record<string, string>;
+  graph_name_output_field?: string;
   passthrough_fields?: string[];
 }
 

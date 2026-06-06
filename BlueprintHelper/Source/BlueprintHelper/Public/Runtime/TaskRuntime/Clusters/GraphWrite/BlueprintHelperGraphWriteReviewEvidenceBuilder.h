@@ -24,6 +24,8 @@ public:
 	static bool Build(
 		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
 		FBlueprintHelperWriteReviewEvidence& OutEvidence);
+	static TSharedRef<FJsonObject> BuildGraphBodyBoundaryEvidence(
+		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel);
 
 private:
 	static FString TrimmedPayloadString(
@@ -36,6 +38,10 @@ private:
 	static FString ReadAssetPath(const TSharedPtr<FJsonObject>& Payload);
 	static FString ReadGraphName(const TSharedPtr<FJsonObject>& Payload);
 	static FString SerializePayloadForAnchor(const TSharedPtr<FJsonObject>& Payload);
+	static FString SerializeJsonObject(const TSharedRef<FJsonObject>& Object);
+	static void AugmentBoundaryModelFromStepResult(
+		const FBlueprintHelperToolResultBase& StepResult,
+		FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel);
 	static FString TrimmedObjectStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName);

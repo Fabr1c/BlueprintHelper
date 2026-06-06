@@ -13,7 +13,7 @@ import {
 } from './graphwrite-route-registry.js';
 
 test('GraphWrite route manifest stays synchronized with generated UE adapter sync artifact', () => {
-  const sync = readGeneratedAdapterSync();
+  const sync = readGeneratedAdapterSync('task-core');
   const routeIds = getAllGraphWriteRoutes().map((route) => route.route_id).sort();
   const syncRouteIds = sync.routes.map((route) => route.route_id).sort();
 
@@ -26,12 +26,20 @@ test('GraphWrite route manifest stays synchronized with generated UE adapter syn
   }
 });
 
-test('GraphWrite route registry exposes active routes and keeps planned routes hidden', () => {
+test('GraphWrite generated adapter sync artifacts stay mirrored between TS and UE', () => {
+  const taskCoreSync = normalizeGeneratedAdapterSync(readGeneratedAdapterSync('task-core'));
+  const ueSync = normalizeGeneratedAdapterSync(readGeneratedAdapterSync('ue'));
+
+  assert.deepEqual(ueSync, taskCoreSync);
+});
+
+test('GraphWrite route registry exposes active macro route after runtime adapter support', () => {
   const visibleRouteIds = getAgentVisibleGraphWriteRoutes().map((route) => route.route_id);
 
   assert.equal(visibleRouteIds.includes('graph.replace.function_body'), true);
-  assert.equal(visibleRouteIds.includes('graph.replace.macro_body'), false);
-  assert.equal(getGraphWriteRouteById('graph.replace.macro_body')?.status, 'planned');
+  assert.equal(visibleRouteIds.includes('graph.replace.macro_body'), true);
+  assert.equal(getGraphWriteRouteById('graph.replace.macro_body')?.runtime_adapter_id, 'k2.macro_body');
+  assert.equal(getGraphWriteRouteById('graph.replace.macro_body')?.status, 'active');
 });
 
 test('GraphWrite route registry resolves replace selector scopes from descriptors', () => {
@@ -40,6 +48,10 @@ test('GraphWrite route registry resolves replace selector scopes from descriptor
   assert.equal(route.route_id, 'graph.replace.function_body');
   assert.equal(route.selector?.expected_kind, 'function');
   assert.deepEqual(route.selector?.output_fields, { name: 'function_name' });
+  assert.equal(route.selector?.graph_name_output_field, 'function_name');
+
+  const macroRoute = requireGraphWriteRouteByScope('replace_owned_graph', 'macro_body');
+  assert.equal(macroRoute.selector?.graph_name_output_field, 'entry_name');
 });
 
 test('GraphWrite route registry derives required behavior fields from descriptors', () => {
@@ -57,23 +69,60 @@ test('GraphWrite route registry derives required behavior fields from descriptor
 interface AdapterSyncRoute {
   route_id: string;
   runtime_adapter_id: string;
+  graph_strategy: string;
+  public_scope: string;
   behavior_field: string;
+  taskplan_op: string;
   status: string;
 }
 
-function readGeneratedAdapterSync(): { routes: AdapterSyncRoute[] } {
-  const syncPath = path.resolve(
-    taskCoreRoot(),
-    'src',
-    'task',
-    'compiler',
-    'graphwrite',
-    'generated',
-    'graphwrite-ue-adapter-sync.generated.json',
-  );
-  return JSON.parse(fs.readFileSync(syncPath, 'utf8')) as { routes: AdapterSyncRoute[] };
+type AdapterSyncArtifact = { routes: AdapterSyncRoute[] };
+
+type NormalizedAdapterSyncRoute = Pick<
+  AdapterSyncRoute,
+  'route_id' | 'runtime_adapter_id' | 'graph_strategy' | 'public_scope' | 'taskplan_op' | 'status'
+>;
+
+function readGeneratedAdapterSync(kind: 'task-core' | 'ue'): AdapterSyncArtifact {
+  const syncPath = kind === 'task-core'
+    ? path.resolve(
+      taskCoreRoot(),
+      'src',
+      'task',
+      'compiler',
+      'graphwrite',
+      'generated',
+      'graphwrite-ue-adapter-sync.generated.json',
+    )
+    : path.resolve(
+      pluginRoot(),
+      'BlueprintHelper',
+      'Source',
+      'BlueprintHelper',
+      'Private',
+      'Generated',
+      'BlueprintHelperGraphWriteRouteAdapterSync.generated.json',
+    );
+  return JSON.parse(fs.readFileSync(syncPath, 'utf8')) as AdapterSyncArtifact;
+}
+
+function normalizeGeneratedAdapterSync(sync: AdapterSyncArtifact): NormalizedAdapterSyncRoute[] {
+  return sync.routes
+    .map((route) => ({
+      route_id: route.route_id,
+      runtime_adapter_id: route.runtime_adapter_id,
+      graph_strategy: route.graph_strategy,
+      public_scope: route.public_scope,
+      taskplan_op: route.taskplan_op,
+      status: route.status,
+    }))
+    .sort((left, right) => left.route_id.localeCompare(right.route_id));
 }
 
 function taskCoreRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+}
+
+function pluginRoot(): string {
+  return path.resolve(taskCoreRoot(), '..', '..');
 }

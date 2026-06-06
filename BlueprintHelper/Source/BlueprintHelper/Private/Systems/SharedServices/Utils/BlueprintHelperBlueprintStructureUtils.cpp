@@ -8,6 +8,7 @@
 #include "Engine/Blueprint.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
@@ -16,7 +17,61 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
+#include <type_traits>
+
 // ─── Template helper ───
+
+static bool BlueprintHelperPinMatches(
+	const FEdGraphPinType& ExistingType,
+	const FEdGraphPinType& ExpectedType)
+{
+	return ExistingType.PinCategory == ExpectedType.PinCategory
+		&& ExistingType.PinSubCategory == ExpectedType.PinSubCategory
+		&& ExistingType.PinSubCategoryObject == ExpectedType.PinSubCategoryObject
+		&& ExistingType.ContainerType == ExpectedType.ContainerType
+		&& ExistingType.bIsReference == ExpectedType.bIsReference
+		&& ExistingType.bIsConst == ExpectedType.bIsConst;
+}
+
+static bool BlueprintHelperUserPinMatches(
+	const TSharedPtr<FUserPinInfo>& ExistingPin,
+	const FName PinName,
+	const FEdGraphPinType& ExpectedType,
+	const EEdGraphPinDirection ExpectedDirection)
+{
+	return ExistingPin.IsValid()
+		&& ExistingPin->PinName == PinName
+		&& ExistingPin->DesiredPinDirection == ExpectedDirection
+		&& BlueprintHelperPinMatches(ExistingPin->PinType, ExpectedType);
+}
+
+template <typename TNode>
+static TSharedPtr<FUserPinInfo> FindUserPinByName(TNode* Node, const FName PinName)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	for (const TSharedPtr<FUserPinInfo>& ExistingPin : Node->UserDefinedPins)
+	{
+		if (ExistingPin.IsValid() && ExistingPin->PinName == PinName)
+		{
+			return ExistingPin;
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperGraphPinMatches(
+	const UEdGraphPin* ExistingPin,
+	const FEdGraphPinType& ExpectedType,
+	const EEdGraphPinDirection ExpectedDirection)
+{
+	return ExistingPin
+		&& ExistingPin->Direction == ExpectedDirection
+		&& BlueprintHelperPinMatches(ExistingPin->PinType, ExpectedType);
+}
 
 template <typename TNode>
 static void AppendUserPins(
@@ -47,21 +102,35 @@ static void AppendUserPins(
 		}
 
 		const FName PinFName(*PinName);
-		if (bSkipExistingNames)
-		{
-			const bool bPinExists = Node->UserDefinedPins.ContainsByPredicate(
-				[&PinFName](const TSharedPtr<FUserPinInfo>& ExistingPin)
-				{
-					return ExistingPin.IsValid() && ExistingPin->PinName == PinFName;
-				});
-			if (bPinExists)
-			{
-				continue;
-			}
-		}
 
 		FEdGraphPinType PinType;
 		UBlueprintHelperBlueprintStructureUtils::ReadOptionalPinTypeOrDefault(PinObject, DefaultCategory, PinType);
+
+		if constexpr (std::is_base_of_v<UK2Node_Tunnel, TNode>)
+		{
+			UK2Node_Tunnel* TunnelNode = Node;
+			const TSharedPtr<FUserPinInfo> ExistingUserPin = FindUserPinByName(TunnelNode, PinFName);
+			UEdGraphPin* ExistingGraphPin = TunnelNode->FindPin(PinFName);
+			if (bSkipExistingNames
+				&& BlueprintHelperUserPinMatches(ExistingUserPin, PinFName, PinType, Direction)
+				&& BlueprintHelperGraphPinMatches(ExistingGraphPin, PinType, Direction))
+			{
+				continue;
+			}
+
+			if (ExistingUserPin.IsValid() || ExistingGraphPin)
+			{
+				TunnelNode->RemoveUserDefinedPinByName(PinFName);
+			}
+
+			TunnelNode->CreateUserDefinedPin(PinFName, PinType, Direction, false);
+			continue;
+		}
+
+		if (bSkipExistingNames && FindUserPinByName(Node, PinFName).IsValid())
+		{
+			continue;
+		}
 
 		TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
 		NewPin->PinName = PinFName;
@@ -325,26 +394,31 @@ bool UBlueprintHelperBlueprintStructureUtils::AddMacroGraphDirect(UBlueprint* Bl
 		return false;
 	}
 
+	UEdGraph* NewGraph = nullptr;
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
 		if (Graph && Graph->GetFName() == FName(*MacroName))
 		{
-			return true;
+			NewGraph = Graph;
+			break;
 		}
 	}
 
-	UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
-		Blueprint,
-		FName(*MacroName),
-		UEdGraph::StaticClass(),
-		UEdGraphSchema_K2::StaticClass());
 	if (!NewGraph)
 	{
-		OutError = FString::Printf(TEXT("add_macro_graph '%s' failed: could not create graph."), *MacroName);
-		return false;
-	}
+		NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+			Blueprint,
+			FName(*MacroName),
+			UEdGraph::StaticClass(),
+			UEdGraphSchema_K2::StaticClass());
+		if (!NewGraph)
+		{
+			OutError = FString::Printf(TEXT("add_macro_graph '%s' failed: could not create graph."), *MacroName);
+			return false;
+		}
 
-	FBlueprintEditorUtils::AddMacroGraph(Blueprint, NewGraph, true, nullptr);
+		FBlueprintEditorUtils::AddMacroGraph(Blueprint, NewGraph, true, nullptr);
+	}
 
 	UK2Node_Tunnel* InputNode = nullptr;
 	UK2Node_Tunnel* OutputNode = nullptr;
@@ -369,13 +443,13 @@ bool UBlueprintHelperBlueprintStructureUtils::AddMacroGraphDirect(UBlueprint* Bl
 	const TArray<TSharedPtr<FJsonValue>>* InputsArray = nullptr;
 	if (Payload->TryGetArrayField(TEXT("inputs"), InputsArray) && InputsArray && InputNode)
 	{
-		AppendUserPins(InputNode, InputsArray, EGPD_Output, UEdGraphSchema_K2::PC_Exec, false);
+		AppendUserPins(InputNode, InputsArray, EGPD_Output, UEdGraphSchema_K2::PC_Exec, true);
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* OutputsArray = nullptr;
 	if (Payload->TryGetArrayField(TEXT("outputs"), OutputsArray) && OutputsArray && OutputNode)
 	{
-		AppendUserPins(OutputNode, OutputsArray, EGPD_Input, UEdGraphSchema_K2::PC_Exec, false);
+		AppendUserPins(OutputNode, OutputsArray, EGPD_Input, UEdGraphSchema_K2::PC_Exec, true);
 	}
 
 	return true;

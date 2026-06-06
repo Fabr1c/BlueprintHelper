@@ -43,236 +43,6 @@ import type {
 import { requiredNonEmptyArray, asRecord, isNonEmptyRecord, isRecord } from '../compiler-helpers.js';
 import { TaskSpecCompileError } from '../task-compiler-errors.js';
 
-type TaskPlanStep = TaskPlan['steps'][number];
-
-export function makeGraphWriteTaskPlanSteps(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>,
-  graphWriteOps: GraphWriteCompiledOp[],
-): TaskPlanStep[] {
-  const behavior = taskSpec.behavior as Record<string, unknown>;
-  const strategy = String(behavior['graph_strategy']);
-  const autoSearchPolicy = graphWriteAutoSearchPolicyForTaskSpec(taskSpec);
-  if (strategy === 'append_new_owned_graph') {
-    const signatureOps = graphWriteOps.filter((op) => graphWriteEnsureEntryEventKind(op) === 'custom_event');
-    const signatureSteps = signatureOps.map((op, index) => ({
-      step_id: `step_${String(index + 1).padStart(3, '0')}`,
-      capability: 'blueprint_signature',
-      target: {
-        asset_path: taskSpec.target.asset_path,
-      },
-      write: {
-        strategy: 'custom_event_signature',
-        ops: [
-          omitUndefined({
-            op: 'ensure_custom_event',
-            event_name: String(op['name']),
-            graph_name: taskSpec.scope_policy.graph_name,
-            inputs: (op as GraphWriteCompiledOp & { __signature_split?: GraphWriteSignatureSplit }).__signature_split?.inputs,
-            name_collision_policy: 'reuse_if_exists',
-          }),
-        ],
-      },
-    } as TaskPlanStep));
-    const signatureStepIds = signatureSteps.map((step) => step.step_id);
-    const graphWriteSteps = graphWriteOps.map((op, index) => {
-      const stepId = `step_${String(signatureSteps.length + index + 1).padStart(3, '0')}`;
-      const previousGraphWriteStepId = index > 0
-        ? `step_${String(signatureSteps.length + index).padStart(3, '0')}`
-        : undefined;
-      return {
-        step_id: stepId,
-        capability: 'graph_write',
-        target: {
-          asset_path: taskSpec.target.asset_path,
-          graph: targetGraphForGraphWriteOp(taskSpec, op),
-        },
-        write: {
-          strategy: 'owned_graph_edit',
-          ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
-          ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
-        },
-        constraints: {
-          allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
-          ownership_scope: 'blueprinthelper_owned',
-        },
-        depends_on: previousGraphWriteStepId
-          ? [...signatureStepIds, previousGraphWriteStepId]
-          : signatureStepIds,
-      } as TaskPlanStep;
-    });
-    return [...signatureSteps, ...graphWriteSteps];
-  }
-
-  if (strategy === 'replace_owned_graph' && graphWriteOps.length === 1) {
-    const op = graphWriteOps[0] as GraphWriteCompiledOp & { __signature_split?: GraphWriteSignatureSplit };
-    if (op.__signature_split) {
-      const signatureOp = op.__signature_split;
-      return [
-        {
-          step_id: 'step_001',
-          capability: 'blueprint_signature',
-          target: {
-            asset_path: taskSpec.target.asset_path,
-          },
-          write: {
-            strategy: 'custom_event_signature',
-            ops: [
-              omitUndefined({
-                op: signatureOp.op,
-                event_name: signatureOp.event_name,
-                graph_name: taskSpec.scope_policy.graph_name,
-                inputs: signatureOp.inputs,
-                name_collision_policy: signatureOp.name_collision_policy,
-              }),
-            ],
-          },
-        } as TaskPlanStep,
-        {
-          step_id: 'step_002',
-          capability: 'graph_write',
-          target: {
-            asset_path: taskSpec.target.asset_path,
-            graph: targetGraphForGraphWriteOp(taskSpec, op),
-          },
-          write: {
-            strategy: 'owned_graph_edit',
-            ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
-            ops: [withSignatureEvidence(stripGraphWriteCompilerMetadata(op))],
-          },
-          constraints: {
-            allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
-            ownership_scope: 'blueprinthelper_owned',
-          },
-          depends_on: ['step_001'],
-        } as TaskPlanStep,
-      ];
-    }
-  }
-
-  if (strategy === 'merge_external_flow' || strategy === 'patch_external_graph' || strategy === 'replace_external_body') {
-    const mutationPolicyByStrategy: Record<string, string[]> = {
-      merge_external_flow: ['exec_boundary_link'],
-      patch_external_graph: ['pin_default', 'node_comment'],
-      replace_external_body: ['body_replace'],
-    };
-    return graphWriteOps.map((op, index) => ({
-      step_id: `step_${String(index + 1).padStart(3, '0')}`,
-      capability: 'graph_write',
-      target: {
-        asset_path: taskSpec.target.asset_path,
-        graph: targetGraphForGraphWriteOp(taskSpec, op),
-      },
-      write: {
-        strategy: 'external_graph_edit',
-        ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
-        ops: [stripGraphWriteCompilerMetadata(op)],
-      },
-      constraints: {
-        allow_modify_user_nodes: false,
-        ownership_scope: 'external_user_authored',
-        external_mutation_policy: {
-          strategy,
-          allowed_mutations: mutationPolicyByStrategy[strategy],
-        },
-      },
-    } as TaskPlanStep));
-  }
-
-  const opBatches = strategy === 'append_new_owned_graph'
-    ? [graphWriteOps]
-    : graphWriteOps.map((op) => [stripGraphWriteCompilerMetadata(op)]);
-
-  return opBatches.map((ops, index) => ({
-    step_id: `step_${String(index + 1).padStart(3, '0')}`,
-    capability: 'graph_write',
-    target: {
-      asset_path: taskSpec.target.asset_path,
-      graph: ops.length === 1 ? targetGraphForGraphWriteOp(taskSpec, ops[0]) : taskSpec.scope_policy.graph_name,
-    },
-    write: {
-      strategy: 'owned_graph_edit',
-      ...graphWriteAutoSearchPolicyWriteField(autoSearchPolicy),
-      ops,
-    },
-    constraints: {
-      allow_modify_user_nodes: taskSpec.scope_policy.allow_modify_user_nodes,
-      ownership_scope: 'blueprinthelper_owned',
-    },
-  }));
-}
-
-function graphWriteAutoSearchPolicyForTaskSpec(
-  taskSpec: Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>,
-): Record<string, unknown> | undefined {
-  const policy = (taskSpec as Record<string, unknown>)['graph_write_policy'];
-  if (!isRecord(policy) || !isRecord(policy['auto_search'])) {
-    return undefined;
-  }
-  return policy['auto_search'];
-}
-
-function graphWriteAutoSearchPolicyWriteField(
-  autoSearchPolicy: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  if (!autoSearchPolicy) {
-    return {};
-  }
-  const sanitized = omitUndefined({
-    mode: typeof autoSearchPolicy['mode'] === 'string' ? autoSearchPolicy['mode'] : undefined,
-    max_candidates_per_statement: typeof autoSearchPolicy['max_candidates_per_statement'] === 'number'
-      ? autoSearchPolicy['max_candidates_per_statement']
-      : undefined,
-    max_auto_search_statements: typeof autoSearchPolicy['max_auto_search_statements'] === 'number'
-      ? autoSearchPolicy['max_auto_search_statements']
-      : undefined,
-    max_total_auto_search_ms: typeof autoSearchPolicy['max_total_auto_search_ms'] === 'number'
-      ? autoSearchPolicy['max_total_auto_search_ms']
-      : undefined,
-    detail_level: typeof autoSearchPolicy['detail_level'] === 'string' ? autoSearchPolicy['detail_level'] : undefined,
-  });
-  return Object.keys(sanitized).length > 0 ? { auto_search_policy: sanitized } : {};
-}
-
-function stripGraphWriteCompilerMetadata(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
-  const { __signature_split: _signatureSplit, ...cleanOp } = op as GraphWriteCompiledOp & { __signature_split?: unknown };
-  return cleanOp as GraphWriteCompiledOp;
-}
-
-function targetGraphForGraphWriteOp(taskSpec: TaskSpec, op: GraphWriteCompiledOp): string {
-  if (op.op !== 'replace_body' || !isRecord(op.selector)) {
-    return taskSpec.scope_policy.graph_name;
-  }
-
-  if (op.replace_scope === 'function_body' && typeof op.selector.function_name === 'string' && op.selector.function_name.trim().length > 0) {
-    return op.selector.function_name.trim();
-  }
-
-  if (typeof op.selector.graph_id === 'string' && op.selector.graph_id.trim().length > 0) {
-    return op.selector.graph_id.trim();
-  }
-
-  return taskSpec.scope_policy.graph_name;
-}
-
-function withSignatureEvidence(op: GraphWriteCompiledOp): GraphWriteCompiledOp {
-  if (op.op !== 'ensure_entry' || typeof op.name !== 'string' || op.name.trim().length === 0) {
-    return op;
-  }
-  if (typeof op.signature_evidence_id === 'string' && op.signature_evidence_id.trim().length > 0) {
-    return {
-      ...op,
-      signature_evidence_id: op.signature_evidence_id.trim(),
-    };
-  }
-  if (graphWriteEnsureEntryEventKind(op) !== 'custom_event') {
-    return op;
-  }
-  return {
-    ...op,
-    signature_evidence_id: makeCustomEventSignatureEvidenceId(op.name.trim()),
-  };
-}
-
 export function taskPlanToAppendBridgePayload(taskPlan: TaskPlan, dryRun: boolean): AppendBridgePayload {
   const step = taskPlan.steps.find((candidate) => (
     ('capability' in candidate && candidate.capability === 'graph_write') ||
@@ -512,19 +282,19 @@ function validateExternalGraphWriteScopePolicy(
 }
 
 export type GraphWriteCompiledOp = Record<string, unknown> & { op: string };
-type GraphWriteAppendEventKind =
+export type GraphWriteAppendEventKind =
   | 'custom_event'
   | 'override_event'
   | 'component_bound_event'
   | 'input_action_event'
   | 'dispatcher_event';
-type GraphWriteCatalogEvidence = {
+export type GraphWriteCatalogEvidence = {
   source: 'signature' | 'graph_action_catalog';
   signature_evidence_id?: string;
   action_stable_id?: string;
   context_fingerprint?: string;
 };
-const OWNED_GRAPH_PATCH_KINDS = [
+export const OWNED_GRAPH_PATCH_KINDS = [
   'set_pin_default',
   'set_node_comment',
   'connect_pins',
@@ -532,7 +302,7 @@ const OWNED_GRAPH_PATCH_KINDS = [
   'replace_link',
   'delete_owned_node',
 ] as const;
-type GraphWriteSignatureSplit = {
+export type GraphWriteSignatureSplit = {
   op: 'ensure_custom_event';
   event_name: string;
   inputs?: unknown;
@@ -550,22 +320,41 @@ interface LogicCloneOptions {
 
 const graphWriteStatementCompilerRegistry = createDefaultStatementCompilerRegistry(
   createGraphWriteStatementCompilerRegistrations({
-    compileFlow: compileStatementFlowByCompiler,
-    compileNode: compileStatementNodeByCompiler,
+    compileBranchFlow: compileBranchStatementFlowFromCompilerService,
+    compileReturnFlow: compileReturnStatementFlowFromCompilerService,
+    compileSequenceFlow: compileSequenceStatementFlowFromCompilerService,
+    compileGenericControlFlow: compileGenericControlStatementFlowFromCompilerService,
+    compileLetFlow: compileLetStatementFlowFromCompilerService,
+    compileContainerActionFlow: compileContainerActionStatementFlowFromCompilerService,
+    compileDefaultExecFlow: compileDefaultExecStatementFlowFromCompilerService,
+    compileCallNode: compileCallStatementNodeFromCompilerService,
+    compileComponentBoundEventNode: compileComponentBoundEventStatementNodeFromCompilerService,
+    compileContainerActionNode: compileContainerActionStatementNodeFromCompilerService,
+    compileGenericControlNode: compileGenericControlStatementNodeFromCompilerService,
+    compileConvertOrScheduleNode: compileConvertOrScheduleStatementNodeFromCompilerService,
+    compileCreateNode: compileCreateStatementNodeFromCompilerService,
+    compileDelegateNode: compileDelegateStatementNodeFromCompilerService,
+    compileFieldNode: compileFieldStatementNodeFromCompilerService,
+    compileSetNode: compileSetStatementNodeFromCompilerService,
+    compileSetPropertyNode: compileSetPropertyStatementNodeFromCompilerService,
+    compileUnsupportedNode: compileUnsupportedStatementNodeFromCompilerService,
   }),
 );
 
 const graphWriteExpressionCompilerRegistry = createDefaultExpressionCompilerRegistry(
   createGraphWriteExpressionCompilerRegistrations({
-    compileExpression: compileValueExpressionByCompiler,
+    compileLiteral: compileLiteralExpressionFromCompilerService,
+    compileContainerAction: compileContainerActionExpressionFromCompilerService,
+    compileFieldGet: compileFieldGetExpressionFromCompilerService,
+    compileGeneral: compileGeneralExpressionFromCompilerService,
   }),
 );
 
-function makeCustomEventSignatureEvidenceId(eventName: string): string {
+export function makeCustomEventSignatureEvidenceId(eventName: string): string {
   return `signature:custom_event:${eventName}`;
 }
 
-function assertGraphWriteConnectivityPreflight(
+export function assertGraphWriteConnectivityPreflight(
   statements: BlueprintLogicStatement[],
   basePath: string,
 ): void {
@@ -587,372 +376,6 @@ function assertGraphWriteConnectivityPreflight(
     `GraphWrite connectivity static preflight failed: ${taskIssues[0]?.code ?? 'unknown_issue'}.`,
     taskIssues,
   );
-}
-
-export function compileAppendGraphWriteOps(
-  behavior: Record<string, unknown>,
-  options: GraphWriteCompileOptions,
-): GraphWriteCompiledOp[] {
-  const entries = requiredNonEmptyArray(behavior, 'entries', 'behavior.entries');
-  return entries.map((rawEntry, entryIndex) => {
-    if (!isRecord(rawEntry)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite entry must be an object.', [
-        {
-          code: 'invalid_graph_write_entry',
-          path: `behavior.entries[${entryIndex}]`,
-          message: 'GraphWrite entry must be an object.',
-        },
-      ]);
-    }
-    const entry = rawEntry as Record<string, unknown>;
-    const entryType = getRequiredString(entry, 'entry_type', `behavior.entries[${entryIndex}].entry_type`);
-    if (entryType !== 'custom_event') {
-      throw new TaskSpecCompileError('unsupported_entry_type', 'Only custom_event entries are supported in this GraphWrite slice.', [
-        {
-          code: 'unsupported_entry_type',
-          path: `behavior.entries[${entryIndex}].entry_type`,
-          message: 'Use entry_type="custom_event". Function/Event signature management is a later capability cluster.',
-          suggested_patch: { op: 'replace', path: `/behavior/entries/${entryIndex}/entry_type`, value: 'custom_event' },
-        },
-      ]);
-    }
-
-    const body = getRequiredLogicBody(entry, 'body', `behavior.entries[${entryIndex}].body`);
-    validateSupportedStatements(body.statements, `behavior.entries[${entryIndex}].body.statements`);
-    assertGraphWriteConnectivityPreflight(
-      body.statements,
-      `behavior.entries[${entryIndex}].body.statements`,
-    );
-    const entryName = getRequiredString(entry, 'name', `behavior.entries[${entryIndex}].name`);
-    const rawEventKind = optionalString(entry, 'event_kind');
-    const eventKind = graphWriteAppendEventKind(entry);
-    const entryInputs = Array.isArray(entry['inputs']) ? entry['inputs'] : undefined;
-    const catalogEvidence = graphWriteCatalogEvidence(entry['catalog_evidence']);
-    const signatureEvidenceId = catalogEvidence?.signature_evidence_id;
-    return {
-      op: 'ensure_entry',
-      entry_type: entryType,
-      name: entryName,
-      ...(rawEventKind ? { event_kind: eventKind } : {}),
-      ...(catalogEvidence ? { catalog_evidence: catalogEvidence } : {}),
-      ...(signatureEvidenceId
-        ? { signature_evidence_id: signatureEvidenceId }
-        : eventKind === 'custom_event'
-          ? { signature_evidence_id: makeCustomEventSignatureEvidenceId(entryName) }
-          : {}),
-      body: compileLogicBodyToSemanticLogicSpec(body, entryName, options),
-      ...(entryInputs && eventKind === 'custom_event'
-        ? {
-            __signature_split: {
-              op: 'ensure_custom_event',
-              event_name: entryName,
-              inputs: entryInputs,
-              name_collision_policy: 'reuse_if_exists',
-            } satisfies GraphWriteSignatureSplit,
-          }
-        : {}),
-    };
-  });
-}
-
-export function compileReplaceGraphWriteOp(
-  behavior: Record<string, unknown>,
-  options: GraphWriteCompileOptions,
-): GraphWriteCompiledOp {
-  const replace = requiredRecord(behavior, 'replace', 'behavior.replace');
-  const replaceScope = getRequiredString(replace, 'scope', 'behavior.replace.scope');
-  const graphWriteReplaceScope = replaceScope === 'custom_event_definition'
-    ? 'custom_event_body'
-    : replaceScope;
-  const route = requireGraphWriteRouteByScope('replace_owned_graph', graphWriteReplaceScope);
-  if (!route.selector) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite replace route is missing selector metadata.', [
-      {
-        code: 'missing_graphwrite_selector_descriptor',
-        path: 'behavior.replace.scope',
-        message: `Descriptor ${route.route_id} must define selector metadata.`,
-      },
-    ]);
-  }
-  const selector = normalizeReplaceSelector(
-    graphWriteReplaceScope,
-    requiredRecord(replace, 'selector', 'behavior.replace.selector'),
-    route.selector,
-  );
-  const body = getRequiredLogicBody(replace, 'body', 'behavior.replace.body');
-  validateSupportedStatements(body.statements, 'behavior.replace.body.statements');
-  assertGraphWriteConnectivityPreflight(body.statements, 'behavior.replace.body.statements');
-  if (body.statements.length === 0) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_owned_graph requires at least one replacement statement.', [
-      {
-        code: 'empty_replacement',
-        path: 'behavior.replace.body.statements',
-        message: 'Provide at least one replacement statement.',
-      },
-    ]);
-  }
-
-  return omitUndefined({
-    op: 'replace_body',
-    replace_scope: graphWriteReplaceScope,
-    selector,
-    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'replace', options),
-    options: isRecord(replace['options']) ? replace['options'] : undefined,
-    __signature_split: replaceScope === 'custom_event_definition'
-      ? {
-          op: 'ensure_custom_event',
-          event_name: String(selector['entry_name']),
-          inputs: replace['inputs'],
-          name_collision_policy: optionalString(replace, 'name_collision_policy') ?? 'reuse_if_exists',
-        }
-      : undefined,
-  }) as GraphWriteCompiledOp;
-}
-
-export function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
-  const patches = requiredNonEmptyArray(behavior, 'patches', 'behavior.patches');
-  return patches.map((rawPatch, index) => {
-    const path = `behavior.patches[${index}]`;
-    if (!isRecord(rawPatch)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite patch must be an object.', [
-        {
-          code: 'invalid_graph_write_patch',
-          path,
-          message: 'GraphWrite patch must be an object.',
-        },
-      ]);
-    }
-    const patch = rawPatch as Record<string, unknown>;
-    const kind = getRequiredString(patch, 'kind', `${path}.kind`);
-    if (!isOwnedGraphPatchKind(kind)) {
-      throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
-        {
-          code: 'unsupported_graph_write_patch',
-          path: `${path}.kind`,
-          message: `Use ${OWNED_GRAPH_PATCH_KINDS.join(', ')}.`,
-        },
-      ]);
-    }
-    const patchScope = typeof patch['scope'] === 'string' && patch['scope'].length > 0
-      ? patch['scope']
-      : defaultPatchScope(kind);
-    const expectedScope = defaultPatchScope(kind);
-    if (patchScope !== expectedScope) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', `GraphWrite patch scope must match ${kind}.`, [
-        {
-          code: 'patch_scope_mismatch',
-          path: `${path}.scope`,
-          message: `${kind} uses scope ${expectedScope}. Omit scope or set it to ${expectedScope}.`,
-        },
-      ]);
-    }
-
-    const patchedRef = normalizePatchTargetRef(kind, requiredRecord(patch, 'target_ref', `${path}.target_ref`), `${path}.target_ref`);
-    const targetBlockId = getRequiredString(patchedRef, 'block_id', `${path}.target_ref.block_id`);
-    rejectRedundantOwnedPatchExpectedOldState(kind, patch, path);
-
-    return omitUndefined({
-      op: kind,
-      patch_scope: patchScope,
-      patched_ref: patchedRef,
-      patch: compilePatchPayload(kind, patch, path, targetBlockId),
-      expected_old_state: isRecord(patch['expected_old_state'])
-        ? normalizeExpectedOldState(patch['expected_old_state'])
-        : undefined,
-    }) as GraphWriteCompiledOp;
-  });
-}
-
-export function compileMergeGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
-  const merges = requiredNonEmptyArray(behavior, 'merges', 'behavior.merges');
-  return merges.map((rawMerge, index) => {
-    const path = `behavior.merges[${index}]`;
-    if (!isRecord(rawMerge)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'GraphWrite merge must be an object.', [
-        {
-          code: 'invalid_graph_write_merge',
-          path,
-          message: 'GraphWrite merge must be an object.',
-        },
-      ]);
-    }
-    const merge = rawMerge as Record<string, unknown>;
-    const kind = getRequiredString(merge, 'kind', `${path}.kind`);
-    if (kind !== 'insert_flow') {
-      throw new TaskSpecCompileError('unsupported_graph_write_merge', `Unsupported GraphWrite merge kind: ${kind}`, [
-        {
-          code: 'unsupported_graph_write_merge',
-          path: `${path}.kind`,
-          message: 'Use insert_flow.',
-        },
-      ]);
-    }
-    const mergeScope = getRequiredString(merge, 'scope', `${path}.scope`);
-    assertAllowedString(
-      mergeScope,
-      `${path}.scope`,
-      ['owned_block_call', 'custom_event_call', 'function_call'],
-      'Use owned_block_call, custom_event_call, or function_call.',
-    );
-    const insertStrategy = getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`);
-    assertAllowedString(
-      insertStrategy,
-      `${path}.insert_strategy`,
-      ['append_after', 'insert_between', 'branch_fork'],
-      'Use append_after, insert_between, or branch_fork.',
-    );
-    const sequenceOrder = normalizeMergeSequenceOrder(merge, insertStrategy, `${path}.sequence_order`);
-
-    return omitUndefined({
-      op: 'insert_flow',
-      merge_scope: mergeScope,
-      insert_strategy: insertStrategy,
-      anchor: normalizeMergeAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
-      inserted: normalizeMergeInserted(mergeScope, requiredRecord(merge, 'inserted', `${path}.inserted`), `${path}.inserted`),
-      sequence_order: sequenceOrder,
-    }) as GraphWriteCompiledOp;
-  });
-}
-
-export function compileExternalMergeGraphWriteOps(
-  behavior: Record<string, unknown>,
-  options: GraphWriteCompileOptions,
-): GraphWriteCompiledOp[] {
-  const merges = requiredNonEmptyArray(behavior, 'external_merges', 'behavior.external_merges');
-  return merges.map((rawMerge, index) => {
-    const path = `behavior.external_merges[${index}]`;
-    if (!isRecord(rawMerge)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External GraphWrite merge must be an object.', [
-        {
-          code: 'invalid_external_graph_write_merge',
-          path,
-          message: 'External GraphWrite merge must be an object.',
-        },
-      ]);
-    }
-
-    const merge = rawMerge as Record<string, unknown>;
-    const kind = getRequiredString(merge, 'kind', `${path}.kind`);
-    if (kind !== 'insert_external_flow') {
-      throw new TaskSpecCompileError('unsupported_external_graph_write_merge', `Unsupported external GraphWrite merge kind: ${kind}`, [
-        {
-          code: 'unsupported_external_graph_write_merge',
-          path: `${path}.kind`,
-          message: 'Use insert_external_flow.',
-        },
-      ]);
-    }
-
-    const insertStrategy = getRequiredString(merge, 'insert_strategy', `${path}.insert_strategy`);
-    assertAllowedString(
-      insertStrategy,
-      `${path}.insert_strategy`,
-      ['append_after', 'insert_between', 'branch_fork'],
-      'Use append_after, insert_between, or branch_fork.',
-    );
-    const inserted = requiredRecord(merge, 'inserted', `${path}.inserted`);
-    const body = getRequiredLogicBody(inserted, 'body', `${path}.inserted.body`);
-    validateSupportedStatements(body.statements, `${path}.inserted.body.statements`);
-    assertGraphWriteConnectivityPreflight(body.statements, `${path}.inserted.body.statements`);
-
-    return omitUndefined({
-      op: 'insert_external_flow',
-      insert_strategy: insertStrategy,
-      anchor: normalizeExternalExecBoundaryAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
-      inserted: {
-        body: compileLogicBodyToSemanticLogicSpec(body, `external_merge_${index}`, options),
-      },
-      sequence_order: normalizeMergeSequenceOrder(merge, insertStrategy, `${path}.sequence_order`),
-    }) as GraphWriteCompiledOp;
-  });
-}
-
-export function compileExternalPatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
-  const patches = requiredNonEmptyArray(behavior, 'external_patches', 'behavior.external_patches');
-  return patches.map((rawPatch, index) => {
-    const path = `behavior.external_patches[${index}]`;
-    if (!isRecord(rawPatch)) {
-      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External GraphWrite patch must be an object.', [
-        {
-          code: 'invalid_external_graph_write_patch',
-          path,
-          message: 'External GraphWrite patch must be an object.',
-        },
-      ]);
-    }
-
-    const patch = rawPatch as Record<string, unknown>;
-    const kind = getRequiredString(patch, 'kind', `${path}.kind`);
-    assertAllowedString(
-      kind,
-      `${path}.kind`,
-      ['set_external_pin_default', 'set_external_node_comment'],
-      'Use set_external_pin_default or set_external_node_comment.',
-    );
-    if (!Object.hasOwn(patch, 'value')) {
-      throwMissingPatchValue(path, `${kind} requires value.`);
-    }
-    const expectedOldState = requiredRecord(patch, 'expected_old_state', `${path}.expected_old_state`);
-
-    return {
-      op: kind,
-      anchor: normalizeExternalNodeAnchor(requiredRecord(patch, 'anchor', `${path}.anchor`), `${path}.anchor`, kind),
-      value: patchValueToString(literalValue(patch['value'])),
-      expected_old_state: normalizeExpectedOldState(expectedOldState),
-    } as GraphWriteCompiledOp;
-  });
-}
-
-export function compileExternalReplaceBodyGraphWriteOp(
-  behavior: Record<string, unknown>,
-  options: GraphWriteCompileOptions,
-): GraphWriteCompiledOp {
-  const replace = requiredRecord(behavior, 'external_replace', 'behavior.external_replace');
-  const scope = getRequiredString(replace, 'scope', 'behavior.external_replace.scope');
-  assertAllowedString(
-    scope,
-    'behavior.external_replace.scope',
-    ['custom_event_body', 'event_body', 'function_body'],
-    'Use custom_event_body, event_body, or function_body.',
-  );
-  if (replace['require_full_dry_run'] !== true) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_external_body requires require_full_dry_run=true.', [
-      {
-        code: 'replace_external_body_requires_full_dry_run',
-        path: 'behavior.external_replace.require_full_dry_run',
-        message: 'Set require_full_dry_run=true.',
-      },
-    ]);
-  }
-
-  const body = getRequiredLogicBody(replace, 'body', 'behavior.external_replace.body');
-  validateSupportedStatements(body.statements, 'behavior.external_replace.body.statements');
-  assertGraphWriteConnectivityPreflight(body.statements, 'behavior.external_replace.body.statements');
-  if (body.statements.length === 0) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'replace_external_body requires at least one replacement statement.', [
-      {
-        code: 'empty_external_body_replacement',
-        path: 'behavior.external_replace.body.statements',
-        message: 'Provide at least one replacement statement.',
-      },
-    ]);
-  }
-
-  return {
-    op: 'replace_external_body',
-    replace_scope: scope,
-    anchor: normalizeExternalBodyEntryAnchor(
-      requiredRecord(replace, 'anchor', 'behavior.external_replace.anchor'),
-      'behavior.external_replace.anchor',
-    ),
-    logic_spec: compileLogicBodyToSemanticLogicSpec(body, 'external_body_replace', options),
-    expected_body_fingerprint: getRequiredString(
-      replace,
-      'expected_body_fingerprint',
-      'behavior.external_replace.expected_body_fingerprint',
-    ),
-    require_full_dry_run: true,
-  } as GraphWriteCompiledOp;
 }
 
 const PUBLIC_DELEGATE_STATEMENT_KIND_ALIASES = new Map<string, string>([
@@ -2353,81 +1776,83 @@ function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string
   });
 }
 
-function compileStatementFlowByCompiler(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+function compileBranchStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  return compileBranchStatementFlow(input.statement, input.nodeId, input.path, input.context);
+}
+
+function compileReturnStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  return compileReturnStatementFlow(input.statement as Record<string, unknown>, input.nodeId, input.path, input.context);
+}
+
+function compileSequenceStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  return compileSequenceControlStatementFlow(input.statement as Record<string, unknown>, input.nodeId, input.path, input.context);
+}
+
+function compileGenericControlStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  const node = compileStatementNode(input.statement, input.nodeId, input.path);
+  return {
+    nodes: [node],
+    links: [],
+    entry: `${input.nodeId}.execute`,
+    exits: [`${input.nodeId}.then`],
+  };
+}
+
+function compileLetStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const name = getRequiredString(statementRecord, 'name', `${input.path}.name`);
+  const valueFlow = compileValueExpression(statementRecord['value'], `${input.nodeId}_value`, `${input.path}.value`, input.context);
+  input.context.symbols.set(name.toLowerCase(), {
+    output: valueFlow.output,
+    defaultValue: valueFlow.defaultValue,
+  });
+  return {
+    nodes: valueFlow.nodes,
+    links: valueFlow.links,
+    exits: [],
+    preservePreviousExits: true,
+  };
+}
+
+function compileContainerActionStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, input.path, 'statement');
+  const node = compileStatementNode(input.statement, input.nodeId, input.path);
+  const nodes: AgentImportNode[] = [node];
+  const links: AgentImportLink[] = [];
+  compileContainerActionRoleInputs(statementRecord, input.nodeId, input.path, node, nodes, links, input.context);
+  const resultSymbol = optionalString(statementRecord, 'result_symbol');
+  if (resultSymbol) {
+    input.context.symbols.set(resultSymbol.toLowerCase(), {
+      output: `${input.nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}`,
+    });
+  }
+  if (isContainerActionPureOperation(containerKind, containerOperation)) {
+    return {
+      nodes,
+      links,
+      exits: [],
+      preservePreviousExits: true,
+    };
+  }
+  return {
+    nodes,
+    links,
+    entry: `${input.nodeId}.execute`,
+    exits: [`${input.nodeId}.then`],
+  };
+}
+
+function compileDefaultExecStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
   const {
     statement,
     nodeId,
     path,
     context,
-    compilerId: statementCompilerId,
   } = input;
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   const delegateOperation = delegateStatementOperation(statementRecord);
-
-  if (statementCompilerId === 'statement.control.branch') {
-    if (kind === 'control') {
-      return compileBranchStatementFlow({ ...statementRecord, kind: 'branch' } as BlueprintLogicStatement, nodeId, path, context);
-    }
-    return compileBranchStatementFlow(statement, nodeId, path, context);
-  }
-  if (statementCompilerId === 'statement.control.return') {
-    return compileReturnStatementFlow(statementRecord, nodeId, path, context);
-  }
-  if (statementCompilerId === 'statement.control.sequence') {
-    return compileSequenceControlStatementFlow(statementRecord, nodeId, path, context);
-  }
-  if (statementCompilerId === 'statement.control.generic') {
-    const node = compileStatementNode(statement, nodeId, path);
-    return {
-      nodes: [node],
-      links: [],
-      entry: `${nodeId}.execute`,
-      exits: [`${nodeId}.then`],
-    };
-  }
-  if (statementCompilerId === 'statement.let') {
-    const name = getRequiredString(statementRecord, 'name', `${path}.name`);
-    const valueFlow = compileValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);
-    context.symbols.set(name.toLowerCase(), {
-      output: valueFlow.output,
-      defaultValue: valueFlow.defaultValue,
-    });
-    return {
-      nodes: valueFlow.nodes,
-      links: valueFlow.links,
-      exits: [],
-      preservePreviousExits: true,
-    };
-  }
-  if (statementCompilerId === 'statement.container_action') {
-    const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
-    const node = compileStatementNode(statement, nodeId, path);
-    const nodes: AgentImportNode[] = [node];
-    const links: AgentImportLink[] = [];
-    compileContainerActionRoleInputs(statementRecord, nodeId, path, node, nodes, links, context);
-    const resultSymbol = optionalString(statementRecord, 'result_symbol');
-    if (resultSymbol) {
-      context.symbols.set(resultSymbol.toLowerCase(), {
-        output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}`,
-      });
-    }
-    if (isContainerActionPureOperation(containerKind, containerOperation)) {
-      return {
-        nodes,
-        links,
-        exits: [],
-        preservePreviousExits: true,
-      };
-    }
-    return {
-      nodes,
-      links,
-      entry: `${nodeId}.execute`,
-      exits: [`${nodeId}.then`],
-    };
-  }
-
   const node = compileStatementNode(statement, nodeId, path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
@@ -2606,79 +2031,96 @@ function compileValueExpression(expression: unknown, nodeId: string, path: strin
   });
 }
 
-function compileValueExpressionByCompiler(input: GraphWriteExpressionCompileInput): CompiledConditionFlow {
+function compileLiteralExpressionFromCompilerService(input: GraphWriteExpressionCompileInput): CompiledConditionFlow {
+  return { nodes: [], links: [], defaultValue: literalValue(input.expression) };
+}
+
+function compileContainerActionExpressionFromCompilerService(input: GraphWriteExpressionCompileInput): CompiledConditionFlow {
   const {
     expression,
     nodeId,
     path,
     context,
-    compilerId: expressionCompilerId,
+  } = input;
+  if (!isRecord(expression)) {
+    return { nodes: [], links: [], defaultValue: literalValue(expression) };
+  }
+
+  const { containerKind, containerOperation } = validateContainerActionShape(expression, path, 'expression');
+  const node: AgentImportNode = {
+    id: nodeId,
+    kind: CONTAINER_ACTION_KIND,
+    inputs: {},
+  };
+  copyContainerActionSemanticFields(expression, node as Record<string, unknown>);
+  (node as Record<string, unknown>).container_kind = containerKind;
+  (node as Record<string, unknown>).container_operation = containerOperation;
+  copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
+  const nodes: AgentImportNode[] = [node];
+  const links: AgentImportLink[] = [];
+  compileContainerActionRoleInputs(expression, nodeId, path, node, nodes, links, context);
+  return { nodes, links, output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}` };
+}
+
+function compileFieldGetExpressionFromCompilerService(input: GraphWriteExpressionCompileInput): CompiledConditionFlow {
+  const {
+    expression,
+    nodeId,
+    path,
+    context,
   } = input;
   if (!isRecord(expression)) {
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
   }
 
   const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
-  if (expressionCompilerId === 'expression.literal') {
+  const target = kind === 'get'
+    ? (optionalString(expression, 'target') ?? getRequiredString(expression, 'name', `${path}.name`))
+    : getRequiredString(expression, 'target', `${path}.target`);
+  const fieldExpression = kind === 'field'
+    ? fieldOperationScope(expression, path)
+    : FIELD_EXPRESSION_KIND_MAP.get(kind);
+  if (!fieldExpression || fieldExpression.operation !== 'get') {
+    throw new TaskSpecCompileError('unsupported_field_operation', 'Field expressions require field_operation=get.', [
+      {
+        code: 'unsupported_field_operation',
+        path: `${path}.field_operation`,
+        message: 'Field expressions require field_operation=get.',
+      },
+    ]);
+  }
+  if (fieldExpression.scope === 'variable') {
+    const symbol = context.symbols.get(target.toLowerCase());
+    if (symbol) {
+      return { nodes: [], links: [], output: symbol.output, defaultValue: symbol.defaultValue };
+    }
+  }
+  const outputPin = fieldScopeUsesPropertyPath(fieldExpression.scope) ? 'value' : target;
+  const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
+  copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
+  applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
+  if (fieldScopeUsesPropertyPath(fieldExpression.scope)) {
+    const propertyPath = requiredGraphBodyPropertyPath(expression, path);
+    (node as Record<string, unknown>).property_path = propertyPath;
+    (node as Record<string, unknown>).property = propertyPath;
+  }
+  return { nodes: [node], links: [], output: `${nodeId}.${outputPin}` };
+}
+
+function compileGeneralExpressionFromCompilerService(input: GraphWriteExpressionCompileInput): CompiledConditionFlow {
+  const {
+    expression,
+    nodeId,
+    path,
+    context,
+  } = input;
+  if (!isRecord(expression)) {
     return { nodes: [], links: [], defaultValue: literalValue(expression) };
-  }
-
-  if (expressionCompilerId === 'expression.container_action') {
-    const { containerKind, containerOperation } = validateContainerActionShape(expression, path, 'expression');
-    const node: AgentImportNode = {
-      id: nodeId,
-      kind: CONTAINER_ACTION_KIND,
-      inputs: {},
-    };
-    copyContainerActionSemanticFields(expression, node as Record<string, unknown>);
-    (node as Record<string, unknown>).container_kind = containerKind;
-    (node as Record<string, unknown>).container_operation = containerOperation;
-    copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
-    const nodes: AgentImportNode[] = [node];
-    const links: AgentImportLink[] = [];
-    compileContainerActionRoleInputs(expression, nodeId, path, node, nodes, links, context);
-    return { nodes, links, output: `${nodeId}.${containerActionResultOutputPin(containerKind, containerOperation)}` };
-  }
-
-  if (expressionCompilerId === 'expression.get'
-    || expressionCompilerId === 'expression.get_property'
-    || expressionCompilerId === 'expression.field'
-    || expressionCompilerId === 'expression.get_function_param') {
-    const target = kind === 'get'
-      ? (optionalString(expression, 'target') ?? getRequiredString(expression, 'name', `${path}.name`))
-      : getRequiredString(expression, 'target', `${path}.target`);
-    const fieldExpression = kind === 'field'
-      ? fieldOperationScope(expression, path)
-      : FIELD_EXPRESSION_KIND_MAP.get(kind);
-    if (!fieldExpression || fieldExpression.operation !== 'get') {
-      throw new TaskSpecCompileError('unsupported_field_operation', 'Field expressions require field_operation=get.', [
-        {
-          code: 'unsupported_field_operation',
-          path: `${path}.field_operation`,
-          message: 'Field expressions require field_operation=get.',
-        },
-      ]);
-    }
-    if (fieldExpression.scope === 'variable') {
-      const symbol = context.symbols.get(target.toLowerCase());
-      if (symbol) {
-        return { nodes: [], links: [], output: symbol.output, defaultValue: symbol.defaultValue };
-      }
-    }
-    const outputPin = fieldScopeUsesPropertyPath(fieldExpression.scope) ? 'value' : target;
-    const node = { id: nodeId, kind: 'field', var: target, target } as AgentImportNode;
-    copyContextEvidence(expression, node as Record<string, unknown>, `${path}.context_evidence`);
-    applyFieldTaxonomy(node as Record<string, unknown>, fieldExpression.operation, fieldExpression.scope);
-    if (fieldScopeUsesPropertyPath(fieldExpression.scope)) {
-      const propertyPath = requiredGraphBodyPropertyPath(expression, path);
-      (node as Record<string, unknown>).property_path = propertyPath;
-      (node as Record<string, unknown>).property = propertyPath;
-    }
-    return { nodes: [node], links: [], output: `${nodeId}.${outputPin}` };
   }
 
   const nodes: AgentImportNode[] = [];
   const links: AgentImportLink[] = [];
+  const kind = typeof expression.kind === 'string' ? expression.kind : 'literal';
   const node: AgentImportNode = {
     id: nodeId,
     kind,
@@ -2691,10 +2133,10 @@ function compileValueExpressionByCompiler(input: GraphWriteExpressionCompileInpu
   if (kind === 'op') {
     node.function = getRequiredString(expression, 'op', `${path}.op`);
     if (Object.hasOwn(expression, 'left')) {
-    compileExpressionInput(expression['left'], 'A', `${nodeId}_left`, `${path}.left`, node, nodes, links, context);
+      compileExpressionInput(expression['left'], 'A', `${nodeId}_left`, `${path}.left`, node, nodes, links, context);
     }
     if (Object.hasOwn(expression, 'right')) {
-    compileExpressionInput(expression['right'], 'B', `${nodeId}_right`, `${path}.right`, node, nodes, links, context);
+      compileExpressionInput(expression['right'], 'B', `${nodeId}_right`, `${path}.right`, node, nodes, links, context);
     }
     if (isRecord(expression.args)) {
       for (const [argName, argValue] of Object.entries(expression.args)) {
@@ -2817,7 +2259,7 @@ function compileExpressionInput(
   }
 }
 
-function defaultPatchScope(kind: string): string {
+export function defaultPatchScope(kind: string): string {
   if (kind === 'set_node_comment') return 'node_comment';
   if (kind === 'connect_pins') return 'connect_pins';
   if (kind === 'disconnect_link') return 'disconnect_link';
@@ -2826,7 +2268,7 @@ function defaultPatchScope(kind: string): string {
   return 'pin_default';
 }
 
-function normalizeReplaceSelector(
+export function normalizeReplaceSelector(
   replaceScope: string,
   selector: Record<string, unknown>,
   descriptor: Parameters<typeof normalizeSelectorWithDescriptor>[0],
@@ -2834,7 +2276,7 @@ function normalizeReplaceSelector(
   return normalizeSelectorWithDescriptor(descriptor, selector, 'behavior.replace.selector', replaceScope);
 }
 
-function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown>, path: string): Record<string, unknown> {
+export function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown>, path: string): Record<string, unknown> {
   const out = { ...targetRef };
   assertBlockScopedGraphWriteRef(targetRef, path);
   getRequiredString(targetRef, 'node_ref', `${path}.node_ref`);
@@ -2847,7 +2289,7 @@ function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown
   return out;
 }
 
-function rejectRedundantOwnedPatchExpectedOldState(kind: string, patch: Record<string, unknown>, path: string): void {
+export function rejectRedundantOwnedPatchExpectedOldState(kind: string, patch: Record<string, unknown>, path: string): void {
   if (
     ['connect_pins', 'disconnect_link', 'replace_link', 'delete_owned_node'].includes(kind) &&
     Object.hasOwn(patch, 'expected_old_state')
@@ -2862,7 +2304,7 @@ function rejectRedundantOwnedPatchExpectedOldState(kind: string, patch: Record<s
   }
 }
 
-function compilePatchPayload(
+export function compilePatchPayload(
   kind: string,
   patch: Record<string, unknown>,
   path: string,
@@ -2915,7 +2357,7 @@ function compilePatchPayload(
   ]);
 }
 
-function isOwnedGraphPatchKind(kind: string): boolean {
+export function isOwnedGraphPatchKind(kind: string): boolean {
   return OWNED_GRAPH_PATCH_KINDS.includes(kind as (typeof OWNED_GRAPH_PATCH_KINDS)[number]);
 }
 
@@ -2998,7 +2440,7 @@ function throwUnsafeDeleteOwnedNodePolicy(path: string, message: string): never 
   ]);
 }
 
-function throwMissingPatchValue(path: string, message: string): never {
+export function throwMissingPatchValue(path: string, message: string): never {
   throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
     {
       code: 'missing_patch_payload',
@@ -3008,7 +2450,7 @@ function throwMissingPatchValue(path: string, message: string): never {
   ]);
 }
 
-function normalizeExpectedOldState(record: Record<string, unknown>): Record<string, unknown> {
+export function normalizeExpectedOldState(record: Record<string, unknown>): Record<string, unknown> {
   const out = literalRecordValues(record);
   if (Object.hasOwn(record, 'value')) {
     out['value'] = patchValueToString(literalValue(record['value']));
@@ -3016,7 +2458,7 @@ function normalizeExpectedOldState(record: Record<string, unknown>): Record<stri
   return out;
 }
 
-function normalizeMergeAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+export function normalizeMergeAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
   assertBlockScopedGraphWriteRef(anchor, path);
   getRequiredString(anchor, 'node_ref', `${path}.node_ref`);
   getRequiredString(anchor, 'pin_ref', `${path}.pin_ref`);
@@ -3139,7 +2581,7 @@ function normalizeLogicJsonAnchorSelector(anchor: Record<string, unknown>, path:
   });
 }
 
-function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+export function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
   if (anchor['schema'] === 'BlueprintHelper.LogicJsonAnchorSelector.v1') {
     return normalizeLogicJsonAnchorSelector(anchor, path);
   }
@@ -3173,7 +2615,7 @@ function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unknown>, pa
   };
 }
 
-function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: string, kind: string): Record<string, unknown> {
+export function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: string, kind: string): Record<string, unknown> {
   const out = normalizeExternalGraphAnchorBase(anchor, path);
   if (out['semantic_role'] !== 'node') {
     throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'patch_external_graph requires a node external anchor.', [
@@ -3190,7 +2632,7 @@ function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: stri
   return out;
 }
 
-function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+export function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
   const out = normalizeExternalGraphAnchorBase(anchor, path);
   if (out['semantic_role'] !== 'body_entry') {
     throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'replace_external_body requires a body_entry external anchor.', [
@@ -3246,7 +2688,7 @@ function throwUnsupportedGraphWriteAnchor(path: string, message: string): never 
   ]);
 }
 
-function normalizeMergeInserted(mergeScope: string, inserted: Record<string, unknown>, path: string): Record<string, unknown> {
+export function normalizeMergeInserted(mergeScope: string, inserted: Record<string, unknown>, path: string): Record<string, unknown> {
   const expectedCallKind = mergeScope;
   const callKind = getRequiredString(inserted, 'call_kind', `${path}.call_kind`);
   if (callKind !== expectedCallKind) {
@@ -3270,7 +2712,7 @@ function normalizeMergeInserted(mergeScope: string, inserted: Record<string, unk
   });
 }
 
-function normalizeMergeSequenceOrder(record: Record<string, unknown>, insertStrategy: string, path: string): string[] | undefined {
+export function normalizeMergeSequenceOrder(record: Record<string, unknown>, insertStrategy: string, path: string): string[] | undefined {
   const raw = record['sequence_order'];
   if (insertStrategy !== 'branch_fork') {
     if (raw !== undefined) {
@@ -3327,7 +2769,7 @@ function normalizeMergeSequenceOrder(record: Record<string, unknown>, insertStra
   return sequenceOrder;
 }
 
-function patchValueToString(value: unknown): string {
+export function patchValueToString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value === null || value === undefined) return '';
@@ -3342,7 +2784,7 @@ function copyOptionalStringFields(source: Record<string, unknown>, target: Recor
   });
 }
 
-function assertAllowedString(value: string, path: string, allowed: string[], message: string): void {
+export function assertAllowedString(value: string, path: string, allowed: string[], message: string): void {
   if (allowed.includes(value)) return;
   throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} is not supported.`, [
     {
@@ -3453,7 +2895,7 @@ function literalRecordValues(record: Record<string, unknown>): Record<string, un
   );
 }
 
-function requiredRecord(record: Record<string, unknown>, field: string, path: string): Record<string, unknown> {
+export function requiredRecord(record: Record<string, unknown>, field: string, path: string): Record<string, unknown> {
   const value = record[field];
   if (isRecord(value)) return value;
   throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be an object.`, [
@@ -3477,7 +2919,7 @@ function throwMissingVariableType(path: string): never {
   ]);
 }
 
-function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {
+export function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
 
@@ -3501,181 +2943,194 @@ function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string
   });
 }
 
-function compileStatementNodeByCompiler(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+function compileCallStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
   const {
     statement,
     nodeId,
     path,
-    compilerId: statementCompilerId,
   } = input;
   const statementRecord = statement as Record<string, unknown>;
+  const functionName = getRequiredString(statementRecord, 'target', `${path}.target`);
+  const node: Record<string, unknown> = {
+    id: nodeId,
+    kind: 'call',
+    function: functionName,
+    inputs: compileArgs(statement['args']),
+  };
+  copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
+  return node as AgentImportNode;
+}
+
+function compileCreateStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind: 'create',
+    create_operation: getRequiredString(statementRecord, 'create_operation', `${input.path}.create_operation`),
+    target: optionalString(statementRecord, 'target'),
+    class_path: optionalString(statementRecord, 'class_path'),
+    asset_path: optionalString(statementRecord, 'asset_path'),
+    inputs: compileArgs(input.statement['args']),
+  };
+  copyStructuredPinTypeFields(statementRecord, node, input.path);
+  copyCreateSemanticFields(statementRecord, node, input.path);
+  copyContextEvidence(statementRecord, node, `${input.path}.context_evidence`);
+  return omitUndefined(node) as AgentImportNode;
+}
+
+function compileConvertOrScheduleStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
-  const controlKind = kind === 'control' ? getControlStatementKind(statementRecord, path) : undefined;
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind,
+    target: optionalString(statementRecord, 'target'),
+    inputs: compileArgs(input.statement['args']),
+  };
+  copyConvertScheduleSemanticFields(statementRecord, node);
+  copyContextEvidence(statementRecord, node, `${input.path}.context_evidence`);
+  return omitUndefined(node) as AgentImportNode;
+}
+
+function compileSetStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  const variableName = getRequiredString(statementRecord, 'target', `${input.path}.target`);
+  const node = {
+    id: input.nodeId,
+    kind: 'field',
+    var: variableName,
+    target: variableName,
+    value: valueExprToString(input.statement['value']),
+  } as AgentImportNode;
+  const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
+  if (fieldStatement) {
+    applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
+  }
+  copyContextEvidence(statementRecord, node as Record<string, unknown>, `${input.path}.context_evidence`);
+  return node;
+}
+
+function compileSetPropertyStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
+  const target = getRequiredString(statementRecord, 'target', `${input.path}.target`);
+  const propertyPath = requiredGraphBodyPropertyPath(statementRecord, input.path);
+  const node = {
+    id: input.nodeId,
+    kind: 'field',
+    target,
+    property_path: propertyPath,
+    property: propertyPath,
+    value: valueExprToString(statementRecord['value']),
+  } as AgentImportNode;
+  const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
+  if (fieldStatement) {
+    applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
+  }
+  copyContextEvidence(statementRecord, node as Record<string, unknown>, `${input.path}.context_evidence`);
+  return node;
+}
+
+function compileFieldStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const { operation, scope } = fieldOperationScope(statementRecord, input.path);
+  if (operation !== 'set') {
+    throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
+      {
+        code: 'unsupported_field_operation',
+        path: `${input.path}.field_operation`,
+        message: 'Field statements require field_operation=set.',
+      },
+    ]);
+  }
+  const target = getRequiredString(statementRecord, 'target', `${input.path}.target`);
+  const node = {
+    id: input.nodeId,
+    kind: 'field',
+    var: target,
+    target,
+    value: valueExprToString(statementRecord['value']),
+  } as AgentImportNode;
+  if (fieldScopeUsesPropertyPath(scope)) {
+    const propertyPath = requiredGraphBodyPropertyPath(statementRecord, input.path);
+    (node as Record<string, unknown>).property_path = propertyPath;
+    (node as Record<string, unknown>).property = propertyPath;
+  }
+  applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
+  copyContextEvidence(statementRecord, node as Record<string, unknown>, `${input.path}.context_evidence`);
+  return node;
+}
+
+function compileContainerActionStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, input.path, 'statement');
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind: CONTAINER_ACTION_KIND,
+    inputs: {},
+  };
+  copyContainerActionSemanticFields(statementRecord, node);
+  node.container_kind = containerKind;
+  node.container_operation = containerOperation;
+  copyContextEvidence(statementRecord, node, `${input.path}.context_evidence`);
+  return node as AgentImportNode;
+}
+
+function compileGenericControlStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const genericControlKind = getControlStatementKind(statementRecord, input.path);
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind: 'control',
+    control: genericControlKind,
+    control_operation: genericControlKind,
+    inputs: compileArgs(statementRecord.args),
+  };
+  applyGenericControlSemanticFields(statementRecord, node, genericControlKind, input.path);
+  return omitUndefined(node) as AgentImportNode;
+}
+
+function compileComponentBoundEventStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind: 'component_bound_event',
+    component: getRequiredString(statementRecord, 'component', `${input.path}.component`),
+    delegate: getRequiredString(statementRecord, 'delegate', `${input.path}.delegate`),
+    handler: getRequiredString(statementRecord, 'handler', `${input.path}.handler`),
+  };
+  copyContextEvidence(statementRecord, node, `${input.path}.context_evidence`);
+  return omitUndefined(node) as AgentImportNode;
+}
+
+function compileDelegateStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): AgentImportNode {
+  const statementRecord = input.statement as Record<string, unknown>;
   const delegateOperation = delegateStatementOperation(statementRecord);
-
-  if (statementCompilerId === 'statement.call') {
-    const functionName = getRequiredString(statementRecord, 'target', `${path}.target`);
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: 'call',
-      function: functionName,
-      inputs: compileArgs(statement['args']),
-    };
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return node as AgentImportNode;
+  if (!delegateOperation) {
+    return compileUnsupportedStatementNodeFromCompilerService(input);
   }
+  const node: Record<string, unknown> = {
+    id: input.nodeId,
+    kind: 'delegate',
+    target: getRequiredString(statementRecord, 'target', `${input.path}.target`),
+    delegate: getRequiredString(statementRecord, 'delegate', `${input.path}.delegate`),
+    handler: typeof statementRecord.handler === 'string' ? statementRecord.handler : undefined,
+    delegate_operation: delegateOperation,
+    unbind_mode: delegateOperation === 'unbind' ? 'single' : (delegateOperation === 'clear' ? 'all' : undefined),
+    inputs: delegateOperation === 'call' ? compileArgs(statementRecord.args) : undefined,
+  };
+  copyContextEvidence(statementRecord, node, `${input.path}.context_evidence`);
+  return omitUndefined(node) as AgentImportNode;
+}
 
-  if (statementCompilerId === 'statement.create') {
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: 'create',
-      create_operation: getRequiredString(statementRecord, 'create_operation', `${path}.create_operation`),
-      target: optionalString(statementRecord, 'target'),
-      class_path: optionalString(statementRecord, 'class_path'),
-      asset_path: optionalString(statementRecord, 'asset_path'),
-      inputs: compileArgs(statement['args']),
-    };
-    copyStructuredPinTypeFields(statementRecord, node, path);
-    copyCreateSemanticFields(statementRecord, node, path);
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return omitUndefined(node) as AgentImportNode;
-  }
-
-  if (statementCompilerId === 'statement.convert' || statementCompilerId === 'statement.schedule') {
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind,
-      target: optionalString(statementRecord, 'target'),
-      inputs: compileArgs(statement['args']),
-    };
-    copyConvertScheduleSemanticFields(statementRecord, node);
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return omitUndefined(node) as AgentImportNode;
-  }
-
-  if (statementCompilerId === 'statement.set') {
-    const variableName = getRequiredString(statementRecord, 'target', `${path}.target`);
-    const node = {
-      id: nodeId,
-      kind: 'field',
-      var: variableName,
-      target: variableName,
-      value: valueExprToString(statement['value']),
-    } as AgentImportNode;
-    const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
-    if (fieldStatement) {
-      applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
-    }
-    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
-    return node;
-  }
-
-  if (statementCompilerId === 'statement.set_property') {
-    const target = getRequiredString(statementRecord, 'target', `${path}.target`);
-    const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
-    const node = {
-      id: nodeId,
-      kind: 'field',
-      target,
-      property_path: propertyPath,
-      property: propertyPath,
-      value: valueExprToString(statementRecord['value']),
-    } as AgentImportNode;
-    const fieldStatement = FIELD_STATEMENT_KIND_MAP.get(kind);
-    if (fieldStatement) {
-      applyFieldTaxonomy(node as Record<string, unknown>, fieldStatement.operation, fieldStatement.scope);
-    }
-    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
-    return node;
-  }
-
-  if (statementCompilerId === 'statement.field') {
-    const { operation, scope } = fieldOperationScope(statementRecord, path);
-    if (operation !== 'set') {
-      throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
-        {
-          code: 'unsupported_field_operation',
-          path: `${path}.field_operation`,
-          message: 'Field statements require field_operation=set.',
-        },
-      ]);
-    }
-    const target = getRequiredString(statementRecord, 'target', `${path}.target`);
-    const node = {
-      id: nodeId,
-      kind: 'field',
-      var: target,
-      target,
-      value: valueExprToString(statementRecord['value']),
-    } as AgentImportNode;
-    if (fieldScopeUsesPropertyPath(scope)) {
-      const propertyPath = requiredGraphBodyPropertyPath(statementRecord, path);
-      (node as Record<string, unknown>).property_path = propertyPath;
-      (node as Record<string, unknown>).property = propertyPath;
-    }
-    applyFieldTaxonomy(node as Record<string, unknown>, operation, scope);
-    copyContextEvidence(statementRecord, node as Record<string, unknown>, `${path}.context_evidence`);
-    return node;
-  }
-
-  if (statementCompilerId === 'statement.container_action') {
-    const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, path, 'statement');
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: CONTAINER_ACTION_KIND,
-      inputs: {},
-    };
-    copyContainerActionSemanticFields(statementRecord, node);
-    node.container_kind = containerKind;
-    node.container_operation = containerOperation;
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return node as AgentImportNode;
-  }
-
-  if (statementCompilerId === 'statement.control.generic') {
-    const genericControlKind = controlKind ?? getControlStatementKind(statementRecord, path);
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: 'control',
-      control: genericControlKind,
-      control_operation: genericControlKind,
-      inputs: compileArgs(statementRecord.args),
-    };
-    applyGenericControlSemanticFields(statementRecord, node, genericControlKind, path);
-    return omitUndefined(node) as AgentImportNode;
-  }
-
-  if (statementCompilerId === 'statement.component_bound_event') {
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: 'component_bound_event',
-      component: getRequiredString(statementRecord, 'component', `${path}.component`),
-      delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
-      handler: getRequiredString(statementRecord, 'handler', `${path}.handler`),
-    };
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return omitUndefined(node) as AgentImportNode;
-  }
-
-  if (statementCompilerId === 'statement.delegate' && delegateOperation) {
-    const node: Record<string, unknown> = {
-      id: nodeId,
-      kind: 'delegate',
-      target: getRequiredString(statementRecord, 'target', `${path}.target`),
-      delegate: getRequiredString(statementRecord, 'delegate', `${path}.delegate`),
-      handler: typeof statementRecord.handler === 'string' ? statementRecord.handler : undefined,
-      delegate_operation: delegateOperation,
-      unbind_mode: delegateOperation === 'unbind' ? 'single' : (delegateOperation === 'clear' ? 'all' : undefined),
-      inputs: delegateOperation === 'call' ? compileArgs(statementRecord.args) : undefined,
-    };
-    copyContextEvidence(statementRecord, node, `${path}.context_evidence`);
-    return omitUndefined(node) as AgentImportNode;
-  }
-
+function compileUnsupportedStatementNodeFromCompilerService(input: GraphWriteStatementNodeCompileInput): never {
+  const statementRecord = input.statement as Record<string, unknown>;
+  const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   throw new TaskSpecCompileError('unsupported_statement_kind', `Unsupported statement kind: ${kind}`, [
     {
       code: 'unsupported_statement_kind',
-      path: `${path}.kind`,
+      path: `${input.path}.kind`,
       message: `Unsupported statement kind: ${kind}`,
     },
   ]);
@@ -3722,7 +3177,7 @@ function compileArgs(args: unknown): Record<string, unknown> {
   return out;
 }
 
-function literalValue(value: unknown): unknown {
+export function literalValue(value: unknown): unknown {
   if (isRecord(value) && value['kind'] === 'literal') {
     return value['value'];
   }
@@ -3737,7 +3192,7 @@ function valueExprToString(value: unknown): string {
   return JSON.stringify(literal);
 }
 
-function getRequiredString(record: Record<string, unknown>, field: string, path: string): string {
+export function getRequiredString(record: Record<string, unknown>, field: string, path: string): string {
   const value = record[field];
   if (typeof value === 'string' && value.trim().length > 0) {
     return value;
@@ -3752,12 +3207,12 @@ function getRequiredString(record: Record<string, unknown>, field: string, path:
   ]);
 }
 
-function optionalString(record: Record<string, unknown>, field: string): string | undefined {
+export function optionalString(record: Record<string, unknown>, field: string): string | undefined {
   const value = record[field];
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
-function graphWriteAppendEventKind(record: Record<string, unknown>): GraphWriteAppendEventKind {
+export function graphWriteAppendEventKind(record: Record<string, unknown>): GraphWriteAppendEventKind {
   const eventKind = optionalString(record, 'event_kind');
   if (
     eventKind === 'custom_event'
@@ -3775,7 +3230,7 @@ function graphWriteEnsureEntryEventKind(record: Record<string, unknown>): GraphW
   return graphWriteAppendEventKind(record);
 }
 
-function graphWriteCatalogEvidence(value: unknown): GraphWriteCatalogEvidence | undefined {
+export function graphWriteCatalogEvidence(value: unknown): GraphWriteCatalogEvidence | undefined {
   if (!isRecord(value)) {
     return undefined;
   }

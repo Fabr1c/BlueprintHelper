@@ -76,16 +76,16 @@ test('tools templates exposes only active public graph write routes by default',
   assert.deepEqual(actualRouteIds, expectedRouteIds);
 });
 
-test('default template discovery excludes planned graph write routes', () => {
+test('default template discovery excludes non-active graph write routes', () => {
   const defaultRouteIds = new Set(getToolTemplateDispatch('blueprint.write.taskspec.execute')
     .routes
     .map((route) => route.route_id));
-  const plannedRouteIds = getAllGraphWriteRoutes()
-    .filter((route) => route.status === 'planned')
+  const nonActiveRouteIds = getAllGraphWriteRoutes()
+    .filter((route) => route.status !== 'active')
     .map((route) => route.route_id);
 
-  assert.equal(plannedRouteIds.length > 0, true, 'planned route fixture must exist for this guard');
-  for (const routeId of plannedRouteIds) {
+  assert.equal(nonActiveRouteIds.length > 0, true, 'non-active route fixture must exist for this guard');
+  for (const routeId of nonActiveRouteIds) {
     assert.equal(defaultRouteIds.has(routeId), false, `${routeId} must not appear in default route discovery`);
   }
 });

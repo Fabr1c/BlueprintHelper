@@ -38,6 +38,27 @@ bool FBlueprintHelperK2FunctionBodyAdapter::ResolveTarget(
 		TEXT("%s|%s|k2.function_body"),
 		*Request.AssetPath,
 		*FunctionGraph->GetName());
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(Node))
+		{
+			OutTarget.EntryBoundaryNodes.AddUnique(Node);
+			OutTarget.ProtectedNodes.AddUnique(Node);
+		}
+		else if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(Node))
+		{
+			OutTarget.ExitBoundaryNodes.AddUnique(Node);
+			OutTarget.ProtectedNodes.AddUnique(Node);
+		}
+		else
+		{
+			OutTarget.DeletableNodes.AddUnique(Node);
+		}
+	}
 	OutError.Reset();
 	return true;
 }
@@ -141,9 +162,16 @@ FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperK2FunctionBodyAdapte
 	{
 		Projection.EntryNodeRef = Boundary.EntryNodeRefs[0];
 		Projection.FoldedBoundaryNodeRefs.AddUnique(Boundary.EntryNodeRefs[0]);
+		Projection.BoundaryDisplayNames.Add(
+			Boundary.EntryNodeRefs[0],
+			Boundary.GraphName.IsEmpty() ? FString(TEXT("Function")) : Boundary.GraphName);
 	}
 	Projection.ExitNodeRefs = Boundary.ExitNodeRefs;
 	Projection.VisibleBoundaryNodeRefs = Boundary.ExitNodeRefs;
+	for (const FString& ExitRef : Boundary.ExitNodeRefs)
+	{
+		Projection.BoundaryDisplayNames.Add(ExitRef, TEXT("Return"));
+	}
 	Projection.bSynthesizeLogicEntry = false;
 	Projection.bSynthesizeLogicResult = false;
 	return Projection;

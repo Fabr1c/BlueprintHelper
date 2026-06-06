@@ -30,7 +30,9 @@ type LogicFlowGraph = {
 };
 
 type AdapterBoundaryProjection = {
+  hasBoundary: boolean;
   runtimeAdapterId?: string;
+  bodyKind?: string;
   entryRefs: Set<string>;
   exitRefs: Set<string>;
   displayNameByRef: Map<string, string>;
@@ -75,6 +77,7 @@ export function buildLogicFlowPayload(payload: Record<string, unknown>): LogicFl
 
   const mode = chooseMode(graphs);
   const flow = graphs.map((graph) => buildGraphFlow(graph, mode)).filter(Boolean).join('\n\n');
+  const adapterBoundary = buildAdapterBoundarySummary(graphs);
 
   return {
     payload: {
@@ -83,6 +86,7 @@ export function buildLogicFlowPayload(payload: Record<string, unknown>): LogicFl
       flow,
       stats: isRecord(payload['stats']) ? payload['stats'] : buildAggregateStats(graphs),
       warnings,
+      ...(adapterBoundary ? { adapter_boundary: adapterBoundary } : {}),
     },
     debug,
   };
@@ -111,6 +115,27 @@ function buildLogicFlowDebug(anchors: Record<string, unknown>[]): Record<string,
 
 function chooseMode(graphs: LogicFlowGraph[]): LogicFlowMode {
   return graphs.some((graph) => graph.links.some((link) => link.type === 'exec')) ? 'execflow' : 'dataflow';
+}
+
+function buildAdapterBoundarySummary(graphs: LogicFlowGraph[]): Record<string, unknown> | undefined {
+  const boundaries = graphs
+    .map((graph) => graph.boundary)
+    .filter((boundary) => boundary.hasBoundary && boundary.runtimeAdapterId);
+  if (boundaries.length === 0) {
+    return undefined;
+  }
+
+  const runtimeAdapterIds = uniqueStrings(boundaries.map((boundary) => boundary.runtimeAdapterId ?? '').filter(Boolean));
+  const bodyKinds = uniqueStrings(boundaries.map((boundary) => boundary.bodyKind ?? '').filter(Boolean));
+  const entryCount = boundaries.reduce((sum, boundary) => sum + boundary.entryRefs.size, 0);
+  const exitCount = boundaries.reduce((sum, boundary) => sum + boundary.exitRefs.size, 0);
+
+  return {
+    runtime_adapter_id: runtimeAdapterIds.length === 1 ? runtimeAdapterIds[0] : runtimeAdapterIds,
+    ...(bodyKinds.length === 1 ? { body_kind: bodyKinds[0] } : {}),
+    entry_count: entryCount,
+    exit_count: exitCount,
+  };
 }
 
 function buildGraphFlow(graph: LogicFlowGraph, mode: LogicFlowMode): string {
@@ -280,13 +305,16 @@ function normalizeGraph(
   boundary: AdapterBoundaryProjection,
   name?: string,
 ): LogicFlowGraph {
-  const nodes = applyAdapterBoundaryToNodes(Array.isArray(logic['nodes'])
+  const rawNodes = Array.isArray(logic['nodes'])
     ? logic['nodes'].map((node, index) => normalizeNode(node, index)).filter((node): node is LogicFlowNode => Boolean(node))
-    : [], boundary);
-  const links = collectLinks(logic);
+    : [];
+  const rawLinks = collectLinks(logic);
+  const remappedBoundary = remapAdapterBoundaryToRawNodeRefs(rawNodes, rawLinks, boundary);
+  const nodes = applyAdapterBoundaryToNodes(rawNodes, remappedBoundary);
+  const links = rawLinks;
   const stats = isRecord(payload['stats']) ? payload['stats'] : buildStats(nodes, links);
   const anchors = collectGraphAnchors(logic, nodes, links);
-  return { name, nodes, links, anchors, stats, boundary };
+  return { name, nodes, links, anchors, stats, boundary: remappedBoundary };
 }
 
 function normalizeNode(value: unknown, index: number): LogicFlowNode | undefined {
@@ -369,6 +397,9 @@ function findExecRoots(
   if (adapterRoots.length > 0) {
     return adapterRoots;
   }
+  if (boundary.hasBoundary) {
+    return [];
+  }
   const entryRoots = nodes.filter((node) => isEntryNode(node) && withOutgoing.has(node.ref));
   if (entryRoots.length > 0) {
     return entryRoots;
@@ -388,12 +419,15 @@ function isReturnNode(node: LogicFlowNode): boolean {
 }
 
 function normalizeAdapterBoundary(value: unknown): AdapterBoundaryProjection {
-  const boundary = isRecord(value) ? value : {};
+  const hasBoundary = isRecord(value);
+  const boundary = hasBoundary ? value : {};
   const displayNameByRef = new Map<string, string>();
   const entryRefs = collectBoundaryRefs(boundary, ['entry_boundaries', 'entries'], displayNameByRef);
   const exitRefs = collectBoundaryRefs(boundary, ['exit_boundaries', 'exits'], displayNameByRef);
   return {
+    hasBoundary,
     runtimeAdapterId: readString(boundary, ['runtime_adapter_id', 'runtimeAdapterId']),
+    bodyKind: readString(boundary, ['body_kind', 'bodyKind']),
     entryRefs,
     exitRefs,
     displayNameByRef,
@@ -433,6 +467,84 @@ function applyAdapterBoundaryToNodes(
     const boundaryName = boundary.displayNameByRef.get(node.ref);
     return boundaryName ? { ...node, name: boundaryName } : node;
   });
+}
+
+function remapAdapterBoundaryToRawNodeRefs(
+  nodes: LogicFlowNode[],
+  links: LogicFlowLink[],
+  boundary: AdapterBoundaryProjection,
+): AdapterBoundaryProjection {
+  if (!boundary.hasBoundary) {
+    return boundary;
+  }
+
+  const nodeRefs = new Set(nodes.map((node) => node.ref));
+  const remaps = new Map<string, string>();
+  for (const ref of boundary.entryRefs) {
+    if (!nodeRefs.has(ref)) {
+      const match = findAdapterBoundaryNode(nodes, links, 'entry');
+      if (match) {
+        remaps.set(ref, match.ref);
+      }
+    }
+  }
+  for (const ref of boundary.exitRefs) {
+    if (!nodeRefs.has(ref)) {
+      const match = findAdapterBoundaryNode(nodes, links, 'exit');
+      if (match) {
+        remaps.set(ref, match.ref);
+      }
+    }
+  }
+
+  if (remaps.size === 0) {
+    return boundary;
+  }
+
+  const remapSet = (refs: Set<string>): Set<string> => new Set([...refs].map((ref) => remaps.get(ref) ?? ref));
+  const displayNameByRef = new Map<string, string>();
+  for (const [ref, displayName] of boundary.displayNameByRef.entries()) {
+    displayNameByRef.set(remaps.get(ref) ?? ref, displayName);
+  }
+
+  return {
+    ...boundary,
+    entryRefs: remapSet(boundary.entryRefs),
+    exitRefs: remapSet(boundary.exitRefs),
+    foldedRefs: remapSet(boundary.foldedRefs),
+    visibleRefs: remapSet(boundary.visibleRefs),
+    displayNameByRef,
+  };
+}
+
+function findAdapterBoundaryNode(
+  nodes: LogicFlowNode[],
+  links: LogicFlowLink[],
+  role: 'entry' | 'exit',
+): LogicFlowNode | undefined {
+  return nodes.find((node) => {
+    if (!isTunnelBoundaryNode(node)) {
+      return false;
+    }
+    if (hasExecBoundaryAnchor(node, role === 'entry' ? 'output' : 'input')) {
+      return true;
+    }
+    return role === 'entry'
+      ? links.some((link) => link.type === 'exec' && link.fromNode === node.ref)
+      : links.some((link) => link.type === 'exec' && link.toNode === node.ref);
+  });
+}
+
+function isTunnelBoundaryNode(node: LogicFlowNode): boolean {
+  const nodeClass = readAnchorString(node.externalAnchor ?? {}, 'node_class').toLowerCase();
+  return nodeClass.includes('k2node_tunnel');
+}
+
+function hasExecBoundaryAnchor(node: LogicFlowNode, pinDirection: 'input' | 'output'): boolean {
+  return (node.externalAnchors ?? []).some((anchor) => (
+    readAnchorString(anchor, 'semantic_role') === 'exec_boundary'
+    && readAnchorString(anchor, 'pin_direction').toLowerCase() === pinDirection
+  ));
 }
 
 function buildOrphanSummary(

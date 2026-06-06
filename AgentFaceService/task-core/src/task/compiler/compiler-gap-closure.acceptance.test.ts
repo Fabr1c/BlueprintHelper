@@ -15,6 +15,19 @@ const FORBIDDEN_TASK_COMPILER_PATTERNS: readonly [string, RegExp][] = [
   ['inline statement node compiler', /function compileStatementNode\b/],
   ['inline composite feature compiler', /function compileCompositeBlueprintFeatureTaskSpecToTaskPlan\b/],
   ['owned patch payload switch', /function compilePatchPayload\b/],
+  ['graphwrite bridge payload re-export', /export\s*\{\s*taskPlanToAppendBridgePayload\s*\}/],
+  ['task plan summary re-export', /export\s*\{\s*summarizeTaskPlan\s*\}/],
+  ['blueprint variable bridge payload re-export', /export\s*\{\s*blueprintVariableTaskPlanToBridgePayload\s*\}/],
+];
+
+const FORBIDDEN_GRAPHWRITE_LOGIC_BODY_PATTERNS: readonly [string, RegExp][] = [
+  ['task plan step builder', /function makeGraphWriteTaskPlanSteps\b/],
+  ['target graph hardcoded selector', /function targetGraphForGraphWriteOp\b/],
+  ['statement flow by compiler switch', /function compileStatementFlowByCompiler\b/],
+  ['expression by compiler switch', /function compileValueExpressionByCompiler\b/],
+  ['statement node by compiler switch', /function compileStatementNodeByCompiler\b/],
+  ['function body target graph branch', /replace_scope\s*===\s*['"]function_body['"]/],
+  ['macro body target graph branch', /replace_scope\s*===\s*['"]macro_body['"]/],
 ];
 
 const GRAPHWRITE_FIXTURE_PATHS = [
@@ -30,6 +43,17 @@ test('task-compiler facade contains no legacy GraphWrite or composite compiler b
 
   for (const [label, pattern] of FORBIDDEN_TASK_COMPILER_PATTERNS) {
     assert.equal(pattern.test(taskCompilerSource), false, `${label} must not remain in task-compiler.ts`);
+  }
+});
+
+test('GraphWrite logic body no longer owns plan-step or compiler-id lowering switches', () => {
+  const logicBodySource = readFileSync(
+    path.resolve(taskCoreRoot(), 'src', 'task', 'compiler', 'graphwrite', 'graphwrite-logic-body-compiler.ts'),
+    'utf8',
+  );
+
+  for (const [label, pattern] of FORBIDDEN_GRAPHWRITE_LOGIC_BODY_PATTERNS) {
+    assert.equal(pattern.test(logicBodySource), false, `${label} must not remain in graphwrite-logic-body-compiler.ts`);
   }
 });
 

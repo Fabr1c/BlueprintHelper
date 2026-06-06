@@ -49,8 +49,11 @@
 
 #include "Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.h"
 
-FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(UEdGraph* TargetGraph, const FString& JsonString,
-	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
+FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+	UEdGraph* TargetGraph,
+	const FString& JsonString,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
+	const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput)
 {
 	FBlueprintGenerateResult Result;
 	Result.Message = TEXT("Generation failed.");
@@ -123,7 +126,11 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
 	if (JsonObject->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject)
 	{
-		return UGraphWritePipelineUtils::GenerateSemanticGraphFromJsonObject(TargetGraph, JsonObject, OutUnresolvedNodes);
+		return UGraphWritePipelineUtils::GenerateSemanticGraphFromJsonObject(
+			TargetGraph,
+			JsonObject,
+			OutUnresolvedNodes,
+			ConnectivityInput);
 	}
 
 	Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. nodes/links node creation is disabled.");
@@ -132,7 +139,8 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateBlueprintFro
 
 FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateSemanticGraphForGraph(
 	UEdGraph* TargetGraph, const TSharedPtr<FJsonObject>& GraphJsonObject,
-	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes)
+	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
+	const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput)
 {
 	FBlueprintGenerateResult Result;
 	Result.Message = TEXT("Generation failed.");
@@ -146,7 +154,11 @@ FBlueprintGenerateResult FBlueprintGraphGenerationPipeline::GenerateSemanticGrap
 	const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
 	if (GraphJsonObject->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject) && LogicSpecObject)
 	{
-		return UGraphWritePipelineUtils::GenerateSemanticGraphFromJsonObject(TargetGraph, GraphJsonObject, OutUnresolvedNodes);
+		return UGraphWritePipelineUtils::GenerateSemanticGraphFromJsonObject(
+			TargetGraph,
+			GraphJsonObject,
+			OutUnresolvedNodes,
+			ConnectivityInput);
 	}
 
 	Result.Message = TEXT("GraphWrite only accepts logic_spec/SemanticIR. nodes/links node creation is disabled.");

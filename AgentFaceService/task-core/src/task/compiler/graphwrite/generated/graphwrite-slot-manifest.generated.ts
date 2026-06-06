@@ -25,7 +25,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "type",
@@ -88,7 +89,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",
@@ -121,7 +123,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "value_type",
@@ -153,7 +156,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "op",
@@ -187,7 +191,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "condition",
@@ -219,7 +224,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",
@@ -252,7 +258,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",
@@ -283,7 +290,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",
@@ -367,7 +375,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "control",
@@ -424,7 +433,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "control",
@@ -456,7 +466,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "transform_operation",
@@ -489,7 +500,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "create_operation",
@@ -546,7 +558,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "field_operation",
@@ -579,7 +592,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "symbol",
@@ -635,7 +649,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",
@@ -666,7 +681,8 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.generic_schedule",
       "graph.merge_external_flow.append_after",
       "graph.replace.event_body",
-      "graph.replace.function_body"
+      "graph.replace.function_body",
+      "graph.replace.macro_body"
     ],
     "validation_hints": [
       "target",

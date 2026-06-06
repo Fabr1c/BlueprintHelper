@@ -1,11 +1,8 @@
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 
 #include "Engine/Blueprint.h"
-#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2CustomEventBodyAdapter.h"
-#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2EventBodyAdapter.h"
-#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2FunctionBodyAdapter.h"
-#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2MacroBodyAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyTarget.h"
 
@@ -27,23 +24,11 @@ public:
 
 	static FString DisplayNameForBoundaryRef(
 		const FString& Ref,
-		const FBlueprintHelperGraphBodyBoundaryModel& Boundary)
+		const FBlueprintHelperGraphBodyReadbackProjection& Projection)
 	{
-		if (Ref.Equals(TEXT("FunctionEntry"), ESearchCase::IgnoreCase))
+		if (const FString* DisplayName = Projection.BoundaryDisplayNames.Find(Ref))
 		{
-			return Boundary.GraphName.IsEmpty() ? TEXT("Function") : Boundary.GraphName;
-		}
-		if (Ref.Equals(TEXT("FunctionResult"), ESearchCase::IgnoreCase))
-		{
-			return TEXT("Return");
-		}
-		if (Ref.Equals(TEXT("TunnelEntry"), ESearchCase::IgnoreCase))
-		{
-			return TEXT("Macro In");
-		}
-		if (Ref.Equals(TEXT("TunnelExit"), ESearchCase::IgnoreCase))
-		{
-			return TEXT("Macro Out");
+			return *DisplayName;
 		}
 		if (Ref.StartsWith(TEXT("CustomEvent:")))
 		{
@@ -58,7 +43,7 @@ public:
 
 	static TArray<TSharedPtr<FJsonValue>> BoundaryRefsToJson(
 		const TArray<FString>& Refs,
-		const FBlueprintHelperGraphBodyBoundaryModel& Boundary)
+		const FBlueprintHelperGraphBodyReadbackProjection& Projection)
 	{
 		TArray<TSharedPtr<FJsonValue>> Values;
 		for (const FString& Ref : Refs)
@@ -70,53 +55,12 @@ public:
 
 			TSharedRef<FJsonObject> Item = MakeShared<FJsonObject>();
 			Item->SetStringField(TEXT("node_ref"), Ref);
-			Item->SetStringField(TEXT("display_name"), DisplayNameForBoundaryRef(Ref, Boundary));
+			Item->SetStringField(TEXT("display_name"), DisplayNameForBoundaryRef(Ref, Projection));
 			Values.Add(MakeShared<FJsonValueObject>(Item));
 		}
 		return Values;
 	}
 
-	static FString ResolveRequestGraphName(const FBlueprintHelperTargetRef& Target)
-	{
-		if (!Target.Graph.IsEmpty())
-		{
-			return Target.Graph;
-		}
-		if (Target.TargetType == EBlueprintHelperTargetType::Function && !Target.Function.IsEmpty())
-		{
-			return Target.Function;
-		}
-		return TEXT("EventGraph");
-	}
-
-	static FString ResolveRequestEntryName(const FBlueprintHelperTargetRef& Target)
-	{
-		if (Target.TargetType == EBlueprintHelperTargetType::Function)
-		{
-			return Target.Function;
-		}
-		if (Target.TargetType == EBlueprintHelperTargetType::Event
-			|| Target.TargetType == EBlueprintHelperTargetType::CustomEvent)
-		{
-			return Target.Event;
-		}
-		return TEXT("");
-	}
-
-	static FBlueprintHelperGraphBodyRequest MakeRequest(
-		const FBlueprintHelperTargetRef& Target,
-		UBlueprint* Blueprint)
-	{
-		FBlueprintHelperGraphBodyRequest Request;
-		Request.OperationKind = TEXT("read_context");
-		Request.TaskSpecStrategy = TEXT("read_context");
-		Request.ReplaceScope = TargetTypeToString(Target.TargetType);
-		Request.AssetPath = Target.AssetPath;
-		Request.GraphName = ResolveRequestGraphName(Target);
-		Request.EntryName = ResolveRequestEntryName(Target);
-		Request.Blueprint = Blueprint;
-		return Request;
-	}
 };
 
 bool FBlueprintHelperGraphBodyReadbackService::BuildAdapterBoundaryForTarget(
@@ -145,34 +89,12 @@ bool FBlueprintHelperGraphBodyReadbackService::BuildAdapterBoundaryForTarget(
 	}
 
 	FBlueprintHelperGraphBodyRequest Request =
-		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::MakeRequest(Target, Blueprint);
+		FBlueprintHelperGraphBodyAdapterResolver::MakeReadRequestForTarget(Target, Blueprint);
 
-	if (Target.TargetType == EBlueprintHelperTargetType::Function)
-	{
-		FBlueprintHelperK2FunctionBodyAdapter Adapter;
-		return TryBuildAdapterBoundary(Adapter, Request, OutAdapterBoundaryJson, OutError);
-	}
-	if (Target.TargetType == EBlueprintHelperTargetType::CustomEvent)
-	{
-		FBlueprintHelperK2CustomEventBodyAdapter Adapter;
-		return TryBuildAdapterBoundary(Adapter, Request, OutAdapterBoundaryJson, OutError);
-	}
-	if (Target.TargetType == EBlueprintHelperTargetType::Event)
-	{
-		FBlueprintHelperK2EventBodyAdapter Adapter;
-		return TryBuildAdapterBoundary(Adapter, Request, OutAdapterBoundaryJson, OutError);
-	}
-	if (Target.TargetType == EBlueprintHelperTargetType::Graph)
-	{
-		FBlueprintHelperK2MacroBodyAdapter MacroAdapter;
-		if (TryBuildAdapterBoundary(MacroAdapter, Request, OutAdapterBoundaryJson, OutError))
-		{
-			return true;
-		}
-		OutError.Reset();
-	}
-
-	return false;
+	TUniquePtr<IBlueprintHelperGraphBodyAdapter> Adapter;
+	return FBlueprintHelperGraphBodyAdapterResolver::TryCreateForReadTarget(Target, Adapter, OutError) &&
+		Adapter.IsValid() &&
+		TryBuildAdapterBoundary(*Adapter, Request, OutAdapterBoundaryJson, OutError);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBoundaryJson(
@@ -185,10 +107,10 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBo
 	Json->SetStringField(TEXT("graph_name"), Boundary.GraphName);
 	Json->SetArrayField(
 		TEXT("entry_boundaries"),
-		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.EntryNodeRefs, Boundary));
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.EntryNodeRefs, Projection));
 	Json->SetArrayField(
 		TEXT("exit_boundaries"),
-		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.ExitNodeRefs, Boundary));
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.ExitNodeRefs, Projection));
 	Json->SetArrayField(
 		TEXT("folded_boundary_node_refs"),
 		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.FoldedBoundaryNodeRefs));

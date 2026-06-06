@@ -31,6 +31,25 @@ test('GraphWrite expression compiler registry covers expression slot compiler id
   }
 });
 
+test('GraphWrite compatibility compiler kinds are internal and not slot-discoverable', () => {
+  const slotCompilerKinds = new Set(getAllGraphWriteSlotDescriptors().map((slot) => `${slot.compiler_id}:${slot.kind}`));
+  const compatibilityCompilers = [
+    ...defaultStatementCompilerRegistry.getAll(),
+    ...defaultExpressionCompilerRegistry.getAll(),
+  ].filter((descriptor) => descriptor.compatibility_kinds.length > 0);
+
+  assert.ok(compatibilityCompilers.length > 0);
+  for (const descriptor of compatibilityCompilers) {
+    for (const kind of descriptor.compatibility_kinds) {
+      assert.equal(
+        slotCompilerKinds.has(`${descriptor.compiler_id}:${kind}`),
+        false,
+        `${descriptor.compiler_id}:${kind} must not bind template slots`,
+      );
+    }
+  }
+});
+
 test('GraphWrite statement compiler registry resolves current public statement shapes', () => {
   const cases = [
     { kind: 'call', compiler_id: 'statement.call' },

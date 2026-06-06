@@ -1,7 +1,12 @@
 import {
   buildReadonlyToolCommandManifestRegistry,
   createToolsTemplateBuilder,
+  formatManifestUsage,
   getBlueprintHelperTool,
+  globalCliCommandUsageLines,
+  manifestSpecificNotes,
+  resolveCliCommandHelpManifest,
+  type CommandHelpEntry,
   type ToolCommandManifest,
   type ToolCommandManifestRegistry,
   type ToolTemplateDispatchResult,
@@ -10,21 +15,6 @@ import {
 export interface HelpBuilder {
   build(target?: string[]): string;
 }
-
-type CommandHelpEntry = {
-  summary: string;
-  usage: string[];
-  input: string[];
-  templates?: string[];
-  notes?: string[];
-  commonOptions?: string[];
-};
-
-type LocalCommandHelpDescriptor = CommandHelpEntry & {
-  key: string;
-  title?: string;
-  aliases?: string[];
-};
 
 export function createHelpBuilder(
   registry: ToolCommandManifestRegistry = buildReadonlyToolCommandManifestRegistry(),
@@ -37,17 +27,17 @@ export function createHelpBuilder(
       }
 
       const key = normalizedTarget.join(' ');
-      const localEntry = resolveLocalCommandHelpDescriptor(key);
-      if (localEntry) {
-        return formatEntry(localEntry.title ?? localEntry.key, localEntry);
-      }
-
       const manifest = registry.get(key);
       if (manifest) {
         const templateBuilder = createToolsTemplateBuilder(registry);
         const manifests = resolveDisplayManifests(registry, key, manifest);
         const dispatches = manifests.map((entry) => templateBuilder.getTemplateDispatch(entry.tool_id));
         return formatManifestEntry(key, manifest, manifests, dispatches);
+      }
+
+      const cliCommandEntry = resolveCliCommandHelpManifest(key);
+      if (cliCommandEntry) {
+        return formatEntry(cliCommandEntry.title ?? cliCommandEntry.key, cliCommandEntry);
       }
 
       return [
@@ -81,7 +71,7 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     '  bh tools list <domain> <kind> --format json',
     '  bh tools templates <tool_id> --format json',
     '  bh tools templates <tool_id> --route <route_id> --slot [--kind statement|expression|target|view|patch|merge] --format json',
-    ...globalMetricsUsageLines().map((line) => `  ${line}`),
+    ...globalCliCommandUsageLines().map((line) => `  ${line}`),
     '',
     'Tool and template selection:',
     '  Start with: bh tools domains --format json',
@@ -120,7 +110,7 @@ function formatManifestEntry(
   return formatEntry(title, {
     summary: manifestPurpose(manifest),
     usage: uniqueStrings([
-      ...formatUsage(manifest),
+      ...formatManifestUsage(manifest),
       ...dispatches.map((dispatch) => dispatch.recommended_invocation),
     ]),
     input: formatInputShapes(uniqueStrings(manifests.flatMap((entry) => entry.input_shapes))),
@@ -174,6 +164,10 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
         return 'Root JSON: bare BlueprintHelper.ReferenceContextRequest.v1. Do not wrap the input in args.';
       case 'bridge_payload':
         return 'Root JSON: Bridge tool payload object. Use a template path before calling the tool.';
+      case 'bridge_logic_md_payload':
+        return 'Root JSON: Bridge logic payload object; format defaults to logic_md.';
+      case 'bridge_logic_json_payload':
+        return 'Root JSON: Bridge logic payload object; format defaults to logic_json.';
       case 'tool_payload':
         return 'Root JSON: tool payload object. Use a template path before calling the tool.';
     }
@@ -209,7 +203,7 @@ function formatManifestNotes(manifest: ToolCommandManifest): string[] {
   if (manifest.stop_conditions.length > 0) {
     notes.push(`Stop conditions: ${manifest.stop_conditions.join(', ')}`);
   }
-  notes.push(...toolSpecificNotes(manifest.tool_name));
+  notes.push(...manifestSpecificNotes(manifest));
   return notes;
 }
 
@@ -226,126 +220,6 @@ function resolveDisplayManifests(
     .filter((entry) => entry.tool_name === manifest.tool_name)
     .filter((entry) => entry.audience !== 'expert');
   return related.length > 0 ? related : [manifest];
-}
-
-function formatUsage(manifest: ToolCommandManifest): string[] {
-  switch (manifest.tool_name) {
-    case 'blueprinthelper_find_assets':
-      return ['bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result'];
-    case 'blueprinthelper_capture_screenshot':
-      return ['bh blueprinthelper_capture_screenshot --file <capture-screenshot.json> --select status,artifacts.full_result'];
-    case 'blueprinthelper_read_context':
-      return [
-        'bh blueprinthelper_read_context --file <read-spec.json> --select status,artifacts.full_result',
-        '$json | bh blueprinthelper_read_context --stdin --format full',
-        'bh context read --file <read-spec.json> --select status,artifacts.full_result',
-      ];
-    default:
-      return [...manifest.recommended_invocations];
-  }
-}
-
-function toolSpecificNotes(toolName: string): string[] {
-  if (toolName === 'blueprinthelper_capture_screenshot') {
-    return [
-      'graph_name is required when block_ref or node_ref is provided.',
-      'Use capture_target:auto for graph_name/block_ref/node_ref requests; graph targets capture Graph-only PNGs.',
-    ];
-  }
-  if (toolName === 'blueprinthelper_find_assets') {
-    return [
-      'Resolve one explicit Unreal asset_path before preview_task or any write request.',
-      'Do not infer Unreal asset_path values from filesystem .uasset paths.',
-    ];
-  }
-  return [];
-}
-
-function resolveLocalCommandHelpDescriptor(key: string): LocalCommandHelpDescriptor | undefined {
-  return LOCAL_COMMAND_HELP_DESCRIPTORS.find((entry) => (
-    entry.key === key || entry.aliases?.includes(key)
-  ));
-}
-
-function globalMetricsUsageLines(): string[] {
-  return resolveLocalCommandHelpDescriptor('metrics')?.usage ?? [];
-}
-
-const LOCAL_COMMAND_HELP_DESCRIPTORS: readonly LocalCommandHelpDescriptor[] = [
-  {
-    key: 'metrics',
-    summary: 'Build standalone BlueprintHelper metrics reports from the local metrics store.',
-    usage: [
-      'bh metrics report --window 7d --format json',
-      'bh metrics top-errors --window 7d --limit 20 --format markdown',
-      'bh metrics tool-usage --window 30d --limit 50 --format json',
-      'bh metrics task-health --window all --limit 20 --format markdown',
-    ],
-    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or nearest .uproject/Saved/BlueprintHelper/Metrics.'],
-    notes: [
-      'Markdown reports are written under metricsRoot/reports.',
-      'JSON stdout returns report data; markdown stdout returns a compact result plus artifact paths.',
-      'Only bh metrics ... commands emit metrics reports.',
-    ],
-    commonOptions: metricsCommonOptions(),
-  },
-  metricsLocalCommandDescriptor('report', 'Build the full metrics report with all sections.'),
-  metricsLocalCommandDescriptor('top-errors', 'Build a metrics report focused on top error rows.'),
-  metricsLocalCommandDescriptor('tool-usage', 'Build a metrics report focused on tool usage rows.'),
-  metricsLocalCommandDescriptor('task-health', 'Build a metrics report focused on task health rows.'),
-  lifecycleLocalCommandDescriptor('open'),
-  lifecycleLocalCommandDescriptor('close'),
-  {
-    key: 'bridge ping',
-    summary: 'Ping the running Editor Bridge.',
-    usage: ['bh bridge ping --select status,summary'],
-    input: ['No JSON input.'],
-    notes: ['Use diagnostics commands for richer setup or runtime checks.'],
-  },
-  {
-    key: 'bridge call',
-    summary: 'Call a narrow allowlist of read-only Bridge commands.',
-    usage: ['bh bridge call --command <read_only_command> --select status,artifacts.full_result'],
-    input: ['No JSON payload. Pass the Bridge command with --command.'],
-    notes: ['Ordinary Agent workflows should prefer named tools and templates over bridge call.'],
-  },
-];
-
-function lifecycleLocalCommandDescriptor(action: 'open' | 'close'): LocalCommandHelpDescriptor {
-  const mcpTool = action === 'open'
-    ? 'mcp__blueprint_helper__blueprint_open_editor'
-    : 'mcp__blueprint_helper__blueprint_close_editor';
-  const key = action === 'open' ? 'blueprint_open_editor' : 'blueprint_close_editor';
-  const alias = action === 'open' ? 'open_editor' : 'close_editor';
-  return {
-    key,
-    aliases: [alias],
-    summary: `Agent-owned Editor ${action} is a global MCP lifecycle operation, not a normal CLI asset workflow.`,
-    usage: [mcpTool],
-    input: ['Use the global MCP tool schema exposed by the host Agent environment.'],
-    notes: [
-      'Ordinary reads, writes, diagnostics, preview, execute, and result lookup stay on the CLI.',
-      'Do not use CLI lifecycle aliases as Agent compatibility paths.',
-      'CLI lifecycle invocation is blocked for Agents; report lifecycle_mcp_unavailable when the global MCP lifecycle tools are unavailable.',
-    ],
-  };
-}
-
-function metricsLocalCommandDescriptor(
-  kind: 'report' | 'top-errors' | 'tool-usage' | 'task-health',
-  summary: string,
-): LocalCommandHelpDescriptor {
-  return {
-    key: `metrics ${kind}`,
-    summary,
-    usage: [`bh metrics ${kind} --window 7d --limit 20 --format json`],
-    input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or nearest .uproject/Saved/BlueprintHelper/Metrics.'],
-    notes: [
-      'Markdown writes the rendered report under metricsRoot/reports.',
-      'Use --format json for machine-readable stdout.',
-    ],
-    commonOptions: metricsCommonOptions(),
-  };
 }
 
 function formatOptionalSection(title: string, lines: string[] | undefined): string[] {
@@ -386,14 +260,6 @@ function defaultCommonOptions(): string[] {
     '  --omit path[,path...]',
     '  --artifact-dir <dir> (overrides BPH_CLI_ARTIFACT_DIR and cli.artifacts.default_output_dir)',
     '  --max-bytes <bytes>',
-  ];
-}
-
-function metricsCommonOptions(): string[] {
-  return [
-    '  --format json|markdown',
-    '  --window 1d|7d|30d|all',
-    '  --limit <N>',
   ];
 }
 

@@ -4,16 +4,16 @@ import type { TaskTypeCompiler } from '../task-type-compiler.js';
 import {
   assertSupportedTaskSpec,
   defaultFieldOwnerClassForBlueprintAsset,
-  makeGraphWriteTaskPlanSteps,
 } from './graphwrite-logic-body-compiler.js';
 import { compileGraphWriteOps } from './default-graphwrite-operation-compilers.js';
+import { makeGraphWriteTaskPlanSteps } from './graphwrite-plan-step-builder.js';
 
 export {
   assertSupportedTaskSpec,
   defaultFieldOwnerClassForBlueprintAsset,
-  makeGraphWriteTaskPlanSteps,
   taskPlanToAppendBridgePayload,
 } from './graphwrite-logic-body-compiler.js';
+export { makeGraphWriteTaskPlanSteps } from './graphwrite-plan-step-builder.js';
 export { compileGraphWriteOps } from './default-graphwrite-operation-compilers.js';
 
 export const graphWriteTaskTypeCompiler: TaskTypeCompiler<Extract<TaskSpec, { task_type: 'edit_blueprint_graph' }>> = {

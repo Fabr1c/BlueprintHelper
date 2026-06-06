@@ -85,10 +85,10 @@ test('unsupported graph route reports descriptor-owned unsupported route error',
       behavior: {
         graph_strategy: 'replace_owned_graph',
         replace: {
-          scope: 'macro_body',
+          scope: 'unsupported_body',
           selector: {
-            kind: 'macro',
-            name: 'UnsupportedMacroBody',
+            kind: 'function',
+            name: 'UnsupportedBody',
           },
           body: {
             schema: 'BlueprintLogicSpec.v1',

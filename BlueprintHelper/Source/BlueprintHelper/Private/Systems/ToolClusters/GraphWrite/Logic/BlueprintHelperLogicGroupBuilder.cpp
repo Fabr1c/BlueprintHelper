@@ -17,6 +17,7 @@ public:
 
 	struct FAdapterBoundaryProjection
 	{
+		bool bPresent = false;
 		FString RuntimeAdapterId;
 		FString BodyKind;
 		FString GraphName;
@@ -28,6 +29,11 @@ public:
 		bool HasEntryBoundary() const
 		{
 			return EntryBoundaries.Num() > 0 && !EntryBoundaries[0].NodeRef.IsEmpty();
+		}
+
+		bool IsPresent() const
+		{
+			return bPresent;
 		}
 
 		bool HasExitBoundary() const
@@ -185,6 +191,7 @@ public:
 			return Projection;
 		}
 
+		Projection.bPresent = true;
 		TryReadStringField(*Boundary, TEXT("runtime_adapter_id"), Projection.RuntimeAdapterId);
 		TryReadStringField(*Boundary, TEXT("body_kind"), Projection.BodyKind);
 		TryReadStringField(*Boundary, TEXT("graph_name"), Projection.GraphName);
@@ -314,7 +321,13 @@ public:
 		{
 			return false;
 		}
-		return TargetName.IsEmpty() || Projection.GraphName.Equals(TargetName, ESearchCase::IgnoreCase);
+		if (Projection.BodyKind.Equals(TEXT("k2.function_body"), ESearchCase::IgnoreCase)
+			&& !TargetName.IsEmpty()
+			&& !Projection.GraphName.Equals(TargetName, ESearchCase::IgnoreCase))
+		{
+			return false;
+		}
+		return true;
 	}
 
 	static FBlueprintHelperLogicEntry MakeAdapterFunctionEntry(
@@ -404,6 +417,91 @@ public:
 		}
 
 		return MakeNodeRef(NodeIndex);
+	}
+
+	static FString NormalizeAdapterBoundaryName(const FString& NodeRef)
+	{
+		int32 ColonIndex = INDEX_NONE;
+		if (NodeRef.FindChar(TEXT(':'), ColonIndex) && ColonIndex + 1 < NodeRef.Len())
+		{
+			return NodeRef.Mid(ColonIndex + 1);
+		}
+		return NodeRef;
+	}
+
+	static FString ExtractAdapterBoundaryComparableNodeName(const TSharedPtr<FJsonObject>& NodeObj)
+	{
+		if (!NodeObj.IsValid())
+		{
+			return TEXT("");
+		}
+
+		FString Name = ReadFirstStringField(
+			NodeObj,
+			TEXT("name"),
+			TEXT("member_name"),
+			TEXT("function_name"));
+		if (!Name.IsEmpty())
+		{
+			return Name;
+		}
+
+		const TSharedPtr<FJsonObject>* EventObj = nullptr;
+		if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
+		{
+			Name = ReadFirstStringField(*EventObj, TEXT("event_name"), TEXT("name"));
+			if (!Name.IsEmpty())
+			{
+				return Name;
+			}
+		}
+
+		return ReadFirstStringField(NodeObj, TEXT("event_name"), TEXT("class"), TEXT("type"));
+	}
+
+	static bool DoesNodeMatchAdapterEntryBoundary(
+		const FAdapterBoundaryProjection& Projection,
+		const TSharedPtr<FJsonObject>& NodeObj,
+		int32 NodeIndex)
+	{
+		if (!Projection.HasEntryBoundary() || !NodeObj.IsValid())
+		{
+			return false;
+		}
+
+		const FString StableNodeRef = ExtractStableNodeRef(NodeObj, NodeIndex);
+		const FString NodeName = ExtractAdapterBoundaryComparableNodeName(NodeObj);
+		FString EventName;
+		const TSharedPtr<FJsonObject>* EventObj = nullptr;
+		if (NodeObj->TryGetObjectField(TEXT("event"), EventObj) && EventObj && EventObj->IsValid())
+		{
+			(*EventObj)->TryGetStringField(TEXT("event_name"), EventName);
+		}
+		if (EventName.IsEmpty())
+		{
+			NodeObj->TryGetStringField(TEXT("event_name"), EventName);
+		}
+
+		for (const FAdapterBoundaryRef& BoundaryRef : Projection.EntryBoundaries)
+		{
+			if (BoundaryRef.NodeRef.IsEmpty())
+			{
+				continue;
+			}
+			if (StableNodeRef.Equals(BoundaryRef.NodeRef, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+
+			const FString BoundaryName = NormalizeAdapterBoundaryName(BoundaryRef.NodeRef);
+			if (!BoundaryName.IsEmpty() &&
+				(NodeName.Equals(BoundaryName, ESearchCase::IgnoreCase) ||
+					EventName.Equals(BoundaryName, ESearchCase::IgnoreCase)))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static FString NormalizeLogicToken(const FString& InValue)
@@ -934,7 +1032,15 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 
 			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i, AssetPath);
 
-			if (!bFoundEntry && IsEntryNode(*NodeObjPtr))
+			const bool bAdapterBoundaryEntry =
+				AdapterBoundary.IsPresent() &&
+				FBlueprintHelperLogicGroupBuilderLocalUtils::DoesNodeMatchAdapterEntryBoundary(
+					AdapterBoundary,
+					*NodeObjPtr,
+					i);
+			if (!bFoundEntry && (
+				(!AdapterBoundary.IsPresent() && IsEntryNode(*NodeObjPtr)) ||
+				bAdapterBoundaryEntry))
 			{
 				Group.Entry.Kind = Kind;
 				Group.Entry.Name = Name;
@@ -957,7 +1063,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 		}
 
 		// 如果没找到明确入口，使用第一个节点
-		if (!bFoundEntry && Group.Nodes.Num() > 0)
+		if (!AdapterBoundary.IsPresent() && !bFoundEntry && Group.Nodes.Num() > 0)
 		{
 			Group.Entry.Kind = Group.Nodes[0].Kind;
 			Group.Entry.Name = Group.Nodes[0].Name;
@@ -984,7 +1090,15 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 
 			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i, AssetPath);
 
-			if (!bFoundEntry && IsEntryNode(*NodeObjPtr))
+			const bool bAdapterBoundaryEntry =
+				AdapterBoundary.IsPresent() &&
+				FBlueprintHelperLogicGroupBuilderLocalUtils::DoesNodeMatchAdapterEntryBoundary(
+					AdapterBoundary,
+					*NodeObjPtr,
+					i);
+			if (!bFoundEntry && (
+				(!AdapterBoundary.IsPresent() && IsEntryNode(*NodeObjPtr)) ||
+				bAdapterBoundaryEntry))
 			{
 				FBlueprintHelperLogicEntry Entry;
 				Entry.Kind = Kind;
@@ -1004,7 +1118,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			&AdapterBoundary);
 		Payload.BlockId = FBlueprintHelperLogicGroupBuilderLocalUtils::FindUniqueOwnedBlockId(*NodesArray);
 
-		if (!bFoundEntry && Payload.Nodes.Num() > 0)
+		if (!AdapterBoundary.IsPresent() && !bFoundEntry && Payload.Nodes.Num() > 0)
 		{
 			FBlueprintHelperLogicEntry Entry;
 			Entry.Kind = Payload.Nodes[0].Kind;
@@ -1149,7 +1263,18 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 			if (!NodeVal.IsValid() || !NodeVal->TryGetObject(NodeObjPtr) || !NodeObjPtr) continue;
 
 			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
-			if (IsEntryNode(*NodeObjPtr) && MatchesScope(Kind) && MatchesTargetName(*NodeObjPtr))
+			const bool bAdapterBoundaryEntry =
+				AdapterBoundary.IsPresent() &&
+				FBlueprintHelperLogicGroupBuilderLocalUtils::DoesAdapterBoundaryMatchGraph(
+					AdapterBoundary,
+					EffectiveGraphName,
+					TargetName) &&
+				FBlueprintHelperLogicGroupBuilderLocalUtils::DoesNodeMatchAdapterEntryBoundary(
+					AdapterBoundary,
+					*NodeObjPtr,
+					i);
+			if ((!AdapterBoundary.IsPresent() && IsEntryNode(*NodeObjPtr) && MatchesScope(Kind) && MatchesTargetName(*NodeObjPtr)) ||
+				bAdapterBoundaryEntry)
 			{
 				EntryIndex = i;
 				break;

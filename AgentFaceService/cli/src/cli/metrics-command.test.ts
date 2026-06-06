@@ -165,7 +165,7 @@ test('metrics help includes grouped metrics commands', () => {
   const metricsHelp = buildHelpText(['metrics', 'report']);
 
   assert.match(globalHelp, /bh metrics report --window 7d --format json/);
-  assert.match(globalHelp, /bh metrics top-errors --window 7d --format markdown/);
+  assert.match(globalHelp, /bh metrics top-errors --window 7d --limit 20 --format markdown/);
   assert.match(metricsHelp, /BlueprintHelper CLI help: metrics report/);
   assert.match(metricsHelp, /--window 1d\|7d\|30d\|all/);
 });

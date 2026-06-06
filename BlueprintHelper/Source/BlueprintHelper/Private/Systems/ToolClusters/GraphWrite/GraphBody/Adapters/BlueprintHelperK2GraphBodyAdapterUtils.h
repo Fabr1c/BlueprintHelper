@@ -19,6 +19,12 @@ public:
 	static bool IsCustomEventEntry(const UEdGraphNode* Node, const FString& EntryName);
 	static bool IsEventEntry(const UEdGraphNode* Node, const FString& EntryName);
 	static bool HasExecPin(const UEdGraphNode* Node, EEdGraphPinDirection Direction);
+	static bool TryReadBlueprintHelperBlockId(const UEdGraphNode* Node, FString& OutBlockId);
+	static void AppendOwnedBodyNodesForBlock(
+		UEdGraph* Graph,
+		const FString& BlockId,
+		const UEdGraphNode* EntryNode,
+		TArray<UEdGraphNode*>& OutNodes);
 	static void AppendPinSemanticSources(
 		const UEdGraphNode* Node,
 		const FString& NodeRef,

@@ -39,6 +39,14 @@ test('generic bridge and tool payload adapters preserve object payloads', () => 
   const registry = createReadSpecInputShapeAdapterRegistry();
 
   assert.deepEqual(adaptToolInput(registry, ['bridge_payload'], { asset_path: '/Game/BP' }), { asset_path: '/Game/BP' });
+  assert.deepEqual(adaptToolInput(registry, ['bridge_logic_md_payload'], { asset_path: '/Game/BP' }), {
+    asset_path: '/Game/BP',
+    format: 'logic_md',
+  });
+  assert.deepEqual(adaptToolInput(registry, ['bridge_logic_json_payload'], { asset_path: '/Game/BP', format: 'custom' }), {
+    asset_path: '/Game/BP',
+    format: 'custom',
+  });
   assert.deepEqual(adaptToolInput(registry, ['tool_payload'], { limit: 5 }), { limit: 5 });
   assert.deepEqual(adaptToolInput(registry, ['empty_object'], {}), {});
 });

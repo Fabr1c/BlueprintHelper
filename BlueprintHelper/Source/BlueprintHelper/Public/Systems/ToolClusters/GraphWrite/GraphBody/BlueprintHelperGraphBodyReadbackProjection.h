@@ -9,6 +9,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyReadbackProjection
 	TArray<FString> ExitNodeRefs;
 	TArray<FString> FoldedBoundaryNodeRefs;
 	TArray<FString> VisibleBoundaryNodeRefs;
+	TMap<FString, FString> BoundaryDisplayNames;
 	bool bSynthesizeLogicEntry = false;
 	bool bSynthesizeLogicResult = false;
 };

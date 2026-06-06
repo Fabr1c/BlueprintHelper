@@ -2,7 +2,8 @@ import type {
   GraphWriteExpressionCompilerRegistration,
 } from './expression-compiler-registry.js';
 import type {
-  GraphWriteExpressionCompileHandler,
+  CompiledConditionFlow,
+  GraphWriteExpressionCompileInput,
 } from './graphwrite-compiler-types.js';
 
 const DEFAULT_EXPRESSION_COMPILER_IDS = [
@@ -22,19 +23,44 @@ const DEFAULT_EXPRESSION_COMPILER_IDS = [
   'expression.select',
 ] as const;
 
-export interface GraphWriteExpressionCompilerHandlers {
-  compileExpression: GraphWriteExpressionCompileHandler;
+export interface GraphWriteExpressionCompilerServices {
+  compileLiteral(input: GraphWriteExpressionCompileInput): CompiledConditionFlow;
+  compileContainerAction(input: GraphWriteExpressionCompileInput): CompiledConditionFlow;
+  compileFieldGet(input: GraphWriteExpressionCompileInput): CompiledConditionFlow;
+  compileGeneral(input: GraphWriteExpressionCompileInput): CompiledConditionFlow;
 }
 
 export function createGraphWriteExpressionCompilerRegistrations(
-  handlers: GraphWriteExpressionCompilerHandlers,
+  services: GraphWriteExpressionCompilerServices,
 ): GraphWriteExpressionCompilerRegistration[] {
-  return DEFAULT_EXPRESSION_COMPILER_IDS.map((compilerId) => ({
-    compiler_id: compilerId,
-    compile: handlers.compileExpression,
-  }));
+  return [
+    registration('expression.call', services.compileGeneral),
+    registration('expression.construct', services.compileGeneral),
+    registration('expression.container_action', services.compileContainerAction),
+    registration('expression.convert', services.compileGeneral),
+    registration('expression.create', services.compileGeneral),
+    registration('expression.deconstruct', services.compileGeneral),
+    registration('expression.field', services.compileFieldGet),
+    registration('expression.get', services.compileFieldGet),
+    registration('expression.get_function_param', services.compileFieldGet),
+    registration('expression.get_property', services.compileFieldGet),
+    registration('expression.literal', services.compileLiteral),
+    registration('expression.op', services.compileGeneral),
+    registration('expression.schedule', services.compileGeneral),
+    registration('expression.select', services.compileGeneral),
+  ];
 }
 
 export function getDefaultGraphWriteExpressionCompilerIds(): readonly string[] {
   return DEFAULT_EXPRESSION_COMPILER_IDS;
+}
+
+function registration(
+  compilerId: (typeof DEFAULT_EXPRESSION_COMPILER_IDS)[number],
+  compile: GraphWriteExpressionCompilerRegistration['compile'],
+): GraphWriteExpressionCompilerRegistration {
+  return {
+    compiler_id: compilerId,
+    compile: (input) => compile({ ...input, compilerId }),
+  };
 }

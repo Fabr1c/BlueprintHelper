@@ -27,6 +27,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReplaceCoordinator.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -47,6 +48,17 @@ public:
 		FGuid BodyNodeGuid;
 		bool bValid = false;
 	};
+
+	static bool UsesGraphBodyReplacePlan(EBlueprintHelperReplaceScope Scope)
+	{
+		return !FBlueprintHelperGraphBodyAdapterResolver::RuntimeAdapterIdForReplaceScope(Scope)
+			.Equals(TEXT("unknown"), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsLegacyWholeGraphBodyReplacementScope(EBlueprintHelperReplaceScope Scope)
+	{
+		return Scope == EBlueprintHelperReplaceScope::Graph;
+	}
 
 	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
@@ -149,6 +161,115 @@ public:
 		}
 
 		return ImportedExecutableNodes.Num() > 0 ? ImportedExecutableNodes[0] : nullptr;
+	}
+
+	static bool HasOutboundExecLinkToImportedNode(
+		UEdGraphPin* ExecOutputPin,
+		const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		if (!ExecOutputPin)
+		{
+			return false;
+		}
+
+		for (UEdGraphPin* LinkedPin : ExecOutputPin->LinkedTo)
+		{
+			if (!LinkedPin ||
+				LinkedPin->Direction != EGPD_Input ||
+				LinkedPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			if (ImportedNodes.Contains(LinkedPin->GetOwningNode()))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static UEdGraphPin* FindFirstTerminalExecOutputPin(
+		UEdGraphNode* Node,
+		const TSet<UEdGraphNode*>& ImportedNodes)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin &&
+				Pin->Direction == EGPD_Output &&
+				Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+				!HasOutboundExecLinkToImportedNode(Pin, ImportedNodes))
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	static UEdGraphNode* FindFirstImportedTerminalExecutableBodyNode(
+		UEdGraph* Graph,
+		const TSet<UEdGraphNode*>& NodesBeforeImport)
+	{
+		TArray<UEdGraphNode*> ImportedNodes = CollectImportedNodes(Graph, NodesBeforeImport);
+		TSet<UEdGraphNode*> ImportedNodeSet;
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (Node)
+			{
+				ImportedNodeSet.Add(Node);
+			}
+		}
+
+		UEdGraphNode* EntryNode = FindFirstImportedExecutableBodyNode(Graph, NodesBeforeImport);
+		if (!EntryNode)
+		{
+			return nullptr;
+		}
+
+		TArray<UEdGraphNode*> PendingNodes;
+		TSet<UEdGraphNode*> VisitedNodes;
+		PendingNodes.Add(EntryNode);
+		while (PendingNodes.Num() > 0)
+		{
+			UEdGraphNode* Node = FBlueprintHelperVersionCompat::PopNoShrink(PendingNodes);
+			if (!Node || VisitedNodes.Contains(Node))
+			{
+				continue;
+			}
+			VisitedNodes.Add(Node);
+
+			bool bHasImportedExecSuccessor = false;
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
+					if (LinkedNode &&
+						ImportedNodeSet.Contains(LinkedNode) &&
+						FindFirstExecPin(LinkedNode, EGPD_Input))
+					{
+						bHasImportedExecSuccessor = true;
+						PendingNodes.Add(LinkedNode);
+					}
+				}
+			}
+
+			if (!bHasImportedExecSuccessor && FindFirstTerminalExecOutputPin(Node, ImportedNodeSet))
+			{
+				return Node;
+			}
+		}
+		return nullptr;
 	}
 
 	static bool PinsHaveSingleConnectionToEachOther(UEdGraphPin* FirstPin, UEdGraphPin* SecondPin)
@@ -881,9 +1002,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		Request.bDryRun
 			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
 			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
-		TEXT("replace_blueprint_graph"),
+		FBlueprintHelperGraphBodyAdapterResolver::RuntimeAdapterIdForReplaceScope(Request.Scope),
 		TEXT("replace_owned_graph"),
-		FBlueprintHelperGraphBodyReplaceCoordinator::BodyKindForReplaceScope(Request.Scope),
+		FBlueprintHelperGraphBodyAdapterResolver::BodyKindForReplaceScope(Request.Scope),
 		[this, &Request]()
 		{
 			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
@@ -1007,18 +1128,6 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 		return Result;
 	}
 
-	if ((Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
-		Request.Scope == EBlueprintHelperReplaceScope::EventBody) &&
-		Request.EntryName.IsEmpty())
-	{
-		Result.bPassed = false;
-		Result.BlockedBy.Add(TEXT("target_entry_not_found"));
-		Result.Conflicts.Add({TEXT("target_entry_not_found"),
-			TEXT("event/custom_event body replacement requires selector.entry_name."),
-			TEXT("selector.entry_name"), TEXT("payload")});
-		return Result;
-	}
-
 	UBlueprint* Blueprint = nullptr;
 	if (!PreflightBlueprint(Request.AssetPath, Blueprint, Result))
 	{
@@ -1031,12 +1140,6 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 	}
 
 	// 6. 鍥捐〃鏍￠獙
-	UEdGraph* Graph = nullptr;
-	if (!PreflightGraphTarget(Blueprint, Request.GraphName, Request.Scope, Graph, Result))
-	{
-		return Result;
-	}
-
 	// 7. scope 鏍￠獙
 	if (!PreflightReplaceScope(Request.Scope, Result))
 	{
@@ -1044,18 +1147,6 @@ FBlueprintHelperReplaceBlueprintGraphService::Preflight(const FReplaceRequest& R
 	}
 
 	// 8. selector 瀛樺湪鎬ф鏌?
-	if (Request.Scope == EBlueprintHelperReplaceScope::BlockImplementation)
-	{
-		if (Request.BlockId.IsEmpty() && Request.TargetRef.IsEmpty() && Request.NodePath.IsEmpty())
-		{
-			Result.bPassed = false;
-			Result.BlockedBy.Add(TEXT("target_block_not_found"));
-			Result.Conflicts.Add({TEXT("target_block_not_found"),
-				TEXT("block_implementation requires selector.block_id, selector.target_ref, or selector.node_path."),
-				TEXT("selector"), TEXT("payload")});
-		}
-	}
-
 	return Result;
 }
 
@@ -1097,11 +1188,20 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightLogicSpec(
 
 	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
 
-	UEdGraph* SemanticContextGraph =
-		FBlueprintHelperGraphBodyReplaceCoordinator::ResolveSemanticContextGraph(
-			Blueprint,
-			Request.GraphName,
-			Request.Scope);
+	UEdGraph* SemanticContextGraph = nullptr;
+	if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::UsesGraphBodyReplacePlan(Request.Scope))
+	{
+		FBlueprintHelperGraphBodyReplacePlan ReplacePlan;
+		FString PlanError;
+		if (!BuildReplacePlan(Request, Blueprint, ReplacePlan, PlanError))
+		{
+			OutResult.bPassed = false;
+			OutResult.BlockedBy.Add(TEXT("graph_body_adapter_plan_failed"));
+			OutResult.Conflicts.Add({TEXT("graph_body_adapter_plan_failed"), PlanError, Request.GraphName, TEXT("target.graph")});
+			return false;
+		}
+		SemanticContextGraph = ReplacePlan.Target.Graph;
+	}
 
 	FBlueprintHelperGraphSemanticIR SemanticIR;
 	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
@@ -1118,45 +1218,6 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightLogicSpec(
 		}
 	}
 	return OutResult.bPassed;
-}
-
-bool FBlueprintHelperReplaceBlueprintGraphService::PreflightGraphTarget(
-	UBlueprint* Blueprint, const FString& GraphName, EBlueprintHelperReplaceScope Scope,
-	UEdGraph*& OutGraph, FReplacePreflightResult& OutResult) const
-{
-	// 鍑芥暟鍥?(function_body)
-	if (FBlueprintHelperGraphBodyReplaceCoordinator::UsesMemberGraphTarget(Scope))
-	{
-		for (UEdGraph* FnGraph : Blueprint->FunctionGraphs)
-		{
-			if (FnGraph && FnGraph->GetName() == GraphName)
-			{
-				OutGraph = FnGraph;
-				return true;
-			}
-		}
-		OutResult.bPassed = false;
-		OutResult.BlockedBy.Add(TEXT("target_function_not_found"));
-		OutResult.Conflicts.Add({TEXT("target_function_not_found"),
-			FString::Printf(TEXT("Function graph %s was not found."), *GraphName), GraphName, TEXT("target.graph")});
-		return false;
-	}
-
-	// 浜嬩欢鍥?(block_implementation / event_body / custom_event_body / graph)
-	for (UEdGraph* UbergraphPage : Blueprint->UbergraphPages)
-	{
-		if (UbergraphPage && UbergraphPage->GetName() == GraphName)
-		{
-			OutGraph = UbergraphPage;
-			return true;
-		}
-	}
-
-	OutResult.bPassed = false;
-	OutResult.BlockedBy.Add(TEXT("target_graph_not_found"));
-	OutResult.Conflicts.Add({TEXT("target_graph_not_found"),
-		FString::Printf(TEXT("Graph %s was not found."), *GraphName), GraphName, TEXT("target.graph")});
-	return false;
 }
 
 bool FBlueprintHelperReplaceBlueprintGraphService::PreflightReplaceScope(
@@ -1281,8 +1342,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 
 	// 3. 瑙ｆ瀽鏇挎崲鐩爣
 	FResolvedReplaceTarget Resolved;
+	FBlueprintHelperGraphBodyReplacePlan ReplacePlan;
+	const bool bUsesAdapterPlan =
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::UsesGraphBodyReplacePlan(Request.Scope);
 	FString ResolveError;
-	if (!ResolveReplaceTarget(Request, Blueprint, Resolved, ResolveError))
+	const bool bResolvedTarget = bUsesAdapterPlan
+		? (BuildReplacePlan(Request, Blueprint, ReplacePlan, ResolveError) &&
+			ResolveReplaceTargetFromPlan(Request, ReplacePlan, Resolved, ResolveError))
+		: ResolveReplaceTargetLegacy(Request, Blueprint, Resolved, ResolveError);
+	if (!bResolvedTarget)
 	{
 		FBlueprintHelperToolError Error;
 		if (ResolveError.Contains(TEXT("owned_replace_target_not_blueprinthelper_owned")))
@@ -1368,14 +1436,20 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	// 7. 閫氳繃 AgentImportService 鍒涘缓鏂拌妭鐐?杩炵嚎
 	const FString GraphWritePayload = BuildSemanticGraphWritePayload(Request);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	const FBlueprintGraphWriteConnectivityValidationInput AdapterConnectivityInput =
+		bUsesAdapterPlan ? BuildAdapterConnectivityInput(ReplacePlan) : FBlueprintGraphWriteConnectivityValidationInput();
 	const FBlueprintGenerateResult GenerateResult =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Resolved.Graph, GraphWritePayload, UnresolvedNodes);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Resolved.Graph,
+			GraphWritePayload,
+			UnresolvedNodes,
+			bUsesAdapterPlan ? &AdapterConnectivityInput : nullptr);
 	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 	const bool bDeferredEntryResolvedConnectivityFailure =
-		FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptBoundaryConnectivityDiagnostics(
-			Request.Scope,
+		bUsesAdapterPlan &&
+		FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptAdapterPlanConnectivityDiagnostics(
+			ReplacePlan,
 			GenerateResult,
-			Resolved.Graph,
 			NodesBeforeImport);
 
 	if (!GenerateResult.bSucceed && !bDeferredEntryResolvedConnectivityFailure)
@@ -1438,6 +1512,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 				FailResult.Data,
 				ExecutionStats);
 		}
+		if (bUsesAdapterPlan)
+		{
+			FailResult.Data->SetObjectField(
+				TEXT("graph_body_boundary"),
+				FBlueprintHelperGraphBodyBoundaryModelUtils::ToJsonObject(ReplacePlan.BoundaryModel));
+		}
 		return FailResult;
 	}
 	if (bDeferredEntryResolvedConnectivityFailure)
@@ -1445,7 +1525,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		ExecutionStats.ConnectivityViolationCount = 0;
 	}
 	FString ReconnectError;
-	if (!ReconnectPreservedEntryToNewBody(Request, Resolved, NodesBeforeImport, ReconnectError))
+	if (bUsesAdapterPlan && !ApplyAdapterReconnectPlan(ReplacePlan, NodesBeforeImport, ReconnectError))
 	{
 		FString RestoreError;
 		const bool bRestored = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::RestoreReplacementFailureSnapshot(
@@ -1547,6 +1627,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 	}
 	SuccessResult.Data = Data.ToJson();
 	FBlueprintHelperGraphFragmentDebugData::AttachToData(SuccessResult.Data, PreflightResult.FragmentDebugData);
+	if (bUsesAdapterPlan)
+	{
+		SuccessResult.Data->SetObjectField(
+			TEXT("graph_body_boundary"),
+			FBlueprintHelperGraphBodyBoundaryModelUtils::ToJsonObject(ReplacePlan.BoundaryModel));
+	}
 
 	FBlueprintHelperValidationSummary Validation;
 	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
@@ -1571,34 +1657,144 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 
 // 鈹€鈹€鈹€ 鐩爣瑙ｆ瀽 鈹€鈹€鈹€
 
-bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
-	const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const
+FBlueprintHelperGraphBodyRequest FBlueprintHelperReplaceBlueprintGraphService::BuildGraphBodyRequest(
+	const FReplaceRequest& Request,
+	UBlueprint* Blueprint) const
 {
-	// 鏌ユ壘鍥捐〃
-	UEdGraph* Graph = nullptr;
-	if (FBlueprintHelperGraphBodyReplaceCoordinator::IsWholeGraphBodyReplacementScope(Request.Scope))
+	FBlueprintHelperGraphBodyRequest GraphBodyRequest;
+	GraphBodyRequest.OperationKind = TEXT("replace_blueprint_graph");
+	GraphBodyRequest.TaskSpecStrategy = TEXT("replace_owned_graph");
+	GraphBodyRequest.ReplaceScope = ReplaceScopeToString(Request.Scope);
+	GraphBodyRequest.AssetPath = Request.AssetPath;
+	GraphBodyRequest.GraphName = Request.GraphName;
+	GraphBodyRequest.EntryName = Request.EntryName;
+	GraphBodyRequest.Blueprint = Blueprint;
+	GraphBodyRequest.RuntimeAdapterId = FBlueprintHelperGraphBodyAdapterResolver::RuntimeAdapterIdForReplaceScope(Request.Scope);
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), Request.AssetPath);
+	Target->SetStringField(TEXT("graph"), Request.GraphName);
+	if (!Request.BlockId.IsEmpty())
 	{
-		for (UEdGraph* FnGraph : Blueprint->FunctionGraphs)
-		{
-			if (FnGraph && FnGraph->GetName() == Request.GraphName)
-			{
-				Graph = FnGraph;
-				break;
-			}
-		}
+		Target->SetStringField(TEXT("block_id"), Request.BlockId);
 	}
-	else
+	else if (!Request.TargetRef.IsEmpty())
 	{
-		for (UEdGraph* Page : Blueprint->UbergraphPages)
-		{
-			if (Page && Page->GetName() == Request.GraphName)
-			{
-				Graph = Page;
-				break;
-			}
-		}
+		Target->SetStringField(TEXT("block_id"), FString::Printf(TEXT("%s_%s"), *Request.GraphName, *Request.TargetRef));
+	}
+	if (!Request.TargetRef.IsEmpty())
+	{
+		Target->SetStringField(TEXT("target_ref"), Request.TargetRef);
+	}
+	Payload->SetObjectField(TEXT("target"), Target);
+	GraphBodyRequest.Payload = Payload;
+	return GraphBodyRequest;
+}
+
+bool FBlueprintHelperReplaceBlueprintGraphService::BuildReplacePlan(
+	const FReplaceRequest& Request,
+	UBlueprint* Blueprint,
+	FBlueprintHelperGraphBodyReplacePlan& OutPlan,
+	FString& OutError) const
+{
+	TUniquePtr<IBlueprintHelperGraphBodyAdapter> Adapter;
+	if (!FBlueprintHelperGraphBodyAdapterResolver::TryCreateForReplaceScope(Request.Scope, Adapter, OutError) ||
+		!Adapter.IsValid())
+	{
+		return false;
 	}
 
+	FBlueprintHelperGraphBodyReplaceCoordinator Coordinator;
+	const FBlueprintHelperGraphBodyRequest GraphBodyRequest = BuildGraphBodyRequest(Request, Blueprint);
+	if (!Coordinator.BuildPlan(GraphBodyRequest, *Adapter, OutPlan, OutError))
+	{
+		return false;
+	}
+	if (!OutPlan.Target.Graph)
+	{
+		OutError = FString::Printf(TEXT("GraphBody adapter %s did not resolve a graph."), *Adapter->GetAdapterId());
+		return false;
+	}
+	return true;
+}
+
+bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTargetFromPlan(
+	const FReplaceRequest& Request,
+	const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan,
+	FResolvedReplaceTarget& OutTarget,
+	FString& OutError) const
+{
+	if (!ReplacePlan.Target.Graph)
+	{
+		OutError = TEXT("GraphBody replace plan did not resolve a graph.");
+		return false;
+	}
+
+	OutTarget.Blueprint = ReplacePlan.Target.Blueprint;
+	OutTarget.Graph = ReplacePlan.Target.Graph;
+	OutTarget.Scope = Request.Scope;
+	OutTarget.AssetPath = Request.AssetPath;
+	OutTarget.GraphName = ReplacePlan.Target.GraphName.IsEmpty() ? Request.GraphName : ReplacePlan.Target.GraphName;
+	OutTarget.GraphId = OutTarget.GraphName;
+	OutTarget.TargetRef = Request.EntryName.IsEmpty()
+		? (Request.TargetRef.IsEmpty() ? OutTarget.GraphName : Request.TargetRef)
+		: Request.EntryName;
+	OutTarget.OriginalBlockId = ReplacePlan.BoundaryModel.OwnedBlockId;
+	OutTarget.OriginalBlockRef = ReplacePlan.Target.EntryName.IsEmpty() ? Request.TargetRef : ReplacePlan.Target.EntryName;
+	OutTarget.bIsBlueprintHelperOwned = !OutTarget.OriginalBlockId.IsEmpty();
+	OutTarget.NodesToPreserve = ReplacePlan.Target.ProtectedNodes;
+	OutTarget.NodesToDelete = ReplacePlan.Target.DeletableNodes;
+	OutTarget.ExistingOwnedNodes = ReplacePlan.Target.DeletableNodes;
+	OutTarget.bExternalDependentsMayBreak = false;
+	return true;
+}
+
+FBlueprintGraphWriteConnectivityValidationInput FBlueprintHelperReplaceBlueprintGraphService::BuildAdapterConnectivityInput(
+	const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan) const
+{
+	FBlueprintGraphWriteConnectivityValidationInput Input;
+	Input.TargetGraph = ReplacePlan.Target.Graph;
+	Input.BoundaryModel = ReplacePlan.BoundaryModel;
+	Input.ConnectivityPolicy = ReplacePlan.ConnectivityPolicy;
+
+	auto AddBoundaryNodeRefs = [&Input](const TArray<FString>& Refs, const TArray<UEdGraphNode*>& Nodes)
+	{
+		const int32 Count = FMath::Min(Refs.Num(), Nodes.Num());
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			if (!Refs[Index].IsEmpty() && Nodes[Index])
+			{
+				Input.NodeRefs.Add(Refs[Index], Nodes[Index]);
+			}
+		}
+	};
+
+	AddBoundaryNodeRefs(ReplacePlan.BoundaryModel.EntryNodeRefs, ReplacePlan.Target.EntryBoundaryNodes);
+	AddBoundaryNodeRefs(ReplacePlan.BoundaryModel.ExitNodeRefs, ReplacePlan.Target.ExitBoundaryNodes);
+	AddBoundaryNodeRefs(ReplacePlan.BoundaryModel.ProtectedNodeRefs, ReplacePlan.Target.ProtectedNodes);
+	return Input;
+}
+
+bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTargetLegacy(
+	const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const
+{
+	if (!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::IsLegacyWholeGraphBodyReplacementScope(Request.Scope))
+	{
+		const FString ScopeText = ReplaceScopeToString(Request.Scope);
+		OutError = FString::Printf(TEXT("Replace scope %s must be resolved by a GraphBody adapter plan."), *ScopeText);
+		return false;
+	}
+
+	UEdGraph* Graph = nullptr;
+	for (UEdGraph* Page : Blueprint->UbergraphPages)
+	{
+		if (Page && Page->GetName() == Request.GraphName)
+		{
+			Graph = Page;
+			break;
+		}
+	}
 	if (!Graph)
 	{
 		OutError = FString::Printf(TEXT("Graph %s was not found."), *Request.GraphName);
@@ -1611,197 +1807,31 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 	OutTarget.AssetPath = Request.AssetPath;
 	OutTarget.GraphName = Request.GraphName;
 	OutTarget.GraphId = Request.GraphName;
+	OutTarget.TargetRef = Request.GraphName;
 
-	if (Request.Scope == EBlueprintHelperReplaceScope::BlockImplementation)
-	{
-		return ResolveBlockImplementation(Graph, Request, OutTarget, OutError);
-	}
-
-	if (FBlueprintHelperGraphBodyReplaceCoordinator::IsWholeGraphBodyReplacementScope(Request.Scope))
-	{
-		OutTarget.TargetRef = Request.GraphName;
-		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
-		EntryResolveRequest.Scope = Request.Scope;
-		EntryResolveRequest.EntryName = Request.EntryName;
-		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
-		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
-		// 鏀堕泦 body 鑺傜偣锛堜繚鐣?FunctionEntry/Result锛?
-		for (UEdGraphNode* Node : Graph->Nodes)
-		{
-			if (!Node)
-			{
-				continue;
-			}
-			if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
-			{
-				OutTarget.NodesToPreserve.Add(Node);
-			}
-			else
-			{
-				OutTarget.NodesToDelete.Add(Node);
-			}
-		}
-		OutTarget.bExternalDependentsMayBreak = false;
-		return true;
-	}
-
-	// event_body / custom_event_body / graph: 鍥為€€鍒?block_implementation 璇箟
-	if (Request.Scope == EBlueprintHelperReplaceScope::Graph)
-	{
-		// 绠€鍖栵細鍒犻櫎鎵€鏈夐潪 entry 鑺傜偣
-		OutTarget.TargetRef = Request.GraphName;
-		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
-		EntryResolveRequest.Scope = Request.Scope;
-		EntryResolveRequest.EntryName = Request.EntryName;
-		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
-		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
-		for (UEdGraphNode* Node : Graph->Nodes)
-		{
-			if (Node)
-			{
-				if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
-				{
-					OutTarget.NodesToPreserve.Add(Node);
-				}
-				else
-				{
-					OutTarget.NodesToDelete.Add(Node);
-				}
-			}
-		}
-		return true;
-	}
-
-	if (Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody ||
-		Request.Scope == EBlueprintHelperReplaceScope::EventBody)
-	{
-		OutTarget.TargetRef = Request.EntryName;
-		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
-		EntryResolveRequest.Scope = Request.Scope;
-		EntryResolveRequest.EntryName = Request.EntryName;
-		EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
-		EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
-
-		UEdGraphNode* EntryNode = nullptr;
-		FString EntryBlockId;
-		for (UEdGraphNode* Node : Graph->Nodes)
-		{
-			if (!Node || !FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
-			{
-				continue;
-			}
-
-			EntryNode = Node;
-			OutTarget.NodesToPreserve.Add(Node);
-			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, EntryBlockId);
-			break;
-		}
-
-		if (!EntryNode)
-		{
-			OutError = FString::Printf(TEXT("Entry %s was not found."), *Request.EntryName);
-			return false;
-		}
-
-		if (EntryBlockId.IsEmpty())
-		{
-			OutError = FString::Printf(
-				TEXT("owned_replace_target_not_blueprinthelper_owned: Entry %s does not have BlueprintHelper ownership metadata; owned replace cannot adopt user-authored nodes."),
-				*Request.EntryName);
-			return false;
-		}
-
-		OutTarget.OriginalBlockId = EntryBlockId;
-		OutTarget.OriginalBlockRef = Request.EntryName;
-		OutTarget.TargetRef = Request.EntryName;
-		OutTarget.bIsBlueprintHelperOwned = true;
-
-		for (UEdGraphNode* Node : Graph->Nodes)
-		{
-			if (!Node || Node == EntryNode)
-			{
-				continue;
-			}
-
-			FString NodeBlockId;
-			if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::TryReadBlueprintHelperBlockId(Node, NodeBlockId) &&
-				NodeBlockId.Equals(EntryBlockId, ESearchCase::IgnoreCase))
-			{
-				OutTarget.NodesToDelete.Add(Node);
-				OutTarget.ExistingOwnedNodes.Add(Node);
-			}
-		}
-		return true;
-	}
-
-	OutError = TEXT("Unsupported replace_scope.");
-	return false;
-}
-
-bool FBlueprintHelperReplaceBlueprintGraphService::ResolveBlockImplementation(
-	UEdGraph* Graph, const FReplaceRequest& Request, FResolvedReplaceTarget& OutTarget, FString& OutError) const
-{
-	// 鎵弿鍥捐〃涓殑 BlueprintHelper-owned 鑺傜偣
-	FString SearchBlockId = Request.BlockId;
-	if (SearchBlockId.IsEmpty() && !Request.TargetRef.IsEmpty())
-	{
-		SearchBlockId = FString::Printf(TEXT("%s_%s"), *Request.GraphName, *Request.TargetRef);
-	}
-
-	TArray<UEdGraphNode*> OwnedNodes;
-	FString FoundBlockRef;
-
+	FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
+	EntryResolveRequest.Scope = Request.Scope;
+	EntryResolveRequest.EntryName = Request.EntryName;
+	EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
+	EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (!Node) continue;
-
-		UPackage* Package = Node->GetOutermost();
-		if (!Package) continue;
-
-		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
-		const FString OwnedStr = MetaData.GetValue(Node, TEXT("BlueprintHelperOwned"));
-		if (OwnedStr != TEXT("true")) continue;
-
-		const FString NodeBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
-		if (!SearchBlockId.IsEmpty() && NodeBlockId != SearchBlockId) continue;
-
-		OwnedNodes.Add(Node);
-		if (FoundBlockRef.IsEmpty())
+		if (!Node)
 		{
-			// 浠?block_id 鎻愬彇 block_ref
-			const FString Prefix = Request.GraphName + TEXT("_");
-			if (NodeBlockId.StartsWith(Prefix))
-			{
-				FoundBlockRef = NodeBlockId.Mid(Prefix.Len());
-			}
+			continue;
 		}
-	}
-
-	if (OwnedNodes.Num() == 0)
-	{
-		if (SearchBlockId.IsEmpty())
+		if (FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(EntryResolveRequest, Node->GetClass()))
 		{
-			OutError = TEXT("No BlueprintHelper-owned node found. Provide selector.block_id or selector.target_ref.");
+			OutTarget.NodesToPreserve.Add(Node);
 		}
 		else
 		{
-			OutError = FString::Printf(TEXT("Target block %s was not found or is not owned by BlueprintHelper."), *SearchBlockId);
+			OutTarget.NodesToDelete.Add(Node);
 		}
-		return false;
 	}
-
-	OutTarget.NodesToDelete = OwnedNodes;
-	OutTarget.ExistingOwnedNodes = OwnedNodes;
-	OutTarget.OriginalBlockId = SearchBlockId;
-	OutTarget.OriginalBlockRef = FoundBlockRef.IsEmpty() ? Request.TargetRef : FoundBlockRef;
-	OutTarget.TargetRef = FoundBlockRef.IsEmpty() ? Request.TargetRef : FoundBlockRef;
-	OutTarget.bIsBlueprintHelperOwned = true;
-
+	OutTarget.bExternalDependentsMayBreak = false;
 	return true;
 }
-
-// 鈹€鈹€鈹€ 鍒犻櫎鏃у疄鐜?鈹€鈹€鈹€
-
 bool FBlueprintHelperReplaceBlueprintGraphService::DeleteOldImplementation(
 	UBlueprint* Blueprint, UEdGraph* Graph, const TArray<UEdGraphNode*>& NodesToDelete) const
 {
@@ -1823,56 +1853,44 @@ bool FBlueprintHelperReplaceBlueprintGraphService::DeleteOldImplementation(
 	return true;
 }
 
-bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewBody(
-	const FReplaceRequest& Request,
-	const FResolvedReplaceTarget& Resolved,
+bool FBlueprintHelperReplaceBlueprintGraphService::ApplyAdapterReconnectPlan(
+	const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan,
 	const TSet<UEdGraphNode*>& NodesBeforeImport,
 	FString& OutError) const
 {
-	if (!FBlueprintHelperGraphBodyReplaceCoordinator::IsEntryReconnectScope(Request.Scope))
+	if (!ReplacePlan.ReconnectPlan.bReconnectEntryToFirstImportedExec &&
+		!ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary)
 	{
 		return true;
 	}
-
-	if (!Resolved.Graph)
+	if (!ReplacePlan.Target.Graph)
 	{
-		OutError = TEXT("Replacement graph is null; cannot rebuild entry exec link.");
+		OutError = TEXT("Replacement graph is null; cannot rebuild adapter entry exec link.");
+		return false;
+	}
+	if (ReplacePlan.Target.EntryBoundaryNodes.Num() == 0)
+	{
+		OutError = TEXT("Adapter replace plan did not declare an entry boundary node.");
 		return false;
 	}
 
-	UEdGraphNode* EntryNode = nullptr;
-	FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
-	EntryResolveRequest.Scope = Request.Scope;
-	EntryResolveRequest.EntryName = Request.EntryName;
-	EntryResolveRequest.EventTaxonomy = Request.EventTaxonomy;
-	EntryResolveRequest.SignatureEvidenceId = Request.SignatureEvidenceId;
-	for (UEdGraphNode* Node : Resolved.NodesToPreserve)
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema)
 	{
-		if (!Node)
-		{
-			continue;
-		}
-
-		if (FBlueprintHelperReplaceEntryResolver::NodeMatchesEntry(EntryResolveRequest, Node))
-		{
-			EntryNode = Node;
-			break;
-		}
-	}
-
-	if (!EntryNode)
-	{
-		OutError = Request.EntryName.IsEmpty()
-			? TEXT("No preserved entry node was found for reconnection.")
-			: FString::Printf(TEXT("No preserved entry node was found for reconnection: %s."), *Request.EntryName);
+		OutError = TEXT("K2 schema is unavailable; cannot rebuild adapter exec links.");
 		return false;
 	}
 
+	bool bGraphChanged = false;
+	UEdGraphNode* EntryNode = ReplacePlan.Target.EntryBoundaryNodes[0];
 	UEdGraphPin* EntryExecOut = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
-	UEdGraphNode* FirstBodyNode = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstImportedExecutableBodyNode(Resolved.Graph, NodesBeforeImport);
+	UEdGraphNode* FirstBodyNode =
+		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstImportedExecutableBodyNode(
+			ReplacePlan.Target.Graph,
+			NodesBeforeImport);
 	if (!EntryExecOut)
 	{
-		OutError = TEXT("Entry node or replacement body first node is missing an Exec pin.");
+		OutError = TEXT("Adapter entry boundary is missing an Exec output pin.");
 		return false;
 	}
 
@@ -1881,41 +1899,93 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 		if (EntryExecOut->LinkedTo.Num() > 0)
 		{
 			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(EntryExecOut);
-			Resolved.Graph->NotifyGraphChanged();
+			bGraphChanged = true;
 		}
-		return true;
 	}
-
-	UEdGraphPin* BodyExecIn = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(FirstBodyNode, EGPD_Input);
-	if (!BodyExecIn)
+	else if (ReplacePlan.ReconnectPlan.bReconnectEntryToFirstImportedExec)
 	{
-		OutError = TEXT("Replacement body first node is missing an Exec input pin.");
-		return false;
+		UEdGraphPin* BodyExecIn = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(FirstBodyNode, EGPD_Input);
+		if (!BodyExecIn)
+		{
+			OutError = TEXT("Replacement body first node is missing an Exec input pin.");
+			return false;
+		}
+
+		if (!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+		{
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(EntryExecOut);
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(BodyExecIn);
+			if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
+				!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+			{
+				OutError = FString::Printf(TEXT("Cannot connect adapter entry %s to replacement body first node %s."),
+					*EntryNode->GetName(), *FirstBodyNode->GetName());
+				return false;
+			}
+			bGraphChanged = true;
+		}
 	}
 
-	if (FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
+	if (ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary)
 	{
-		return true;
+		if (ReplacePlan.Target.ExitBoundaryNodes.Num() == 0)
+		{
+			OutError = TEXT("Adapter replace plan requested exit reconnect but did not declare an exit boundary node.");
+			return false;
+		}
+
+		TArray<UEdGraphNode*> ImportedNodes =
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::CollectImportedNodes(
+				ReplacePlan.Target.Graph,
+				NodesBeforeImport);
+		TSet<UEdGraphNode*> ImportedNodeSet;
+		for (UEdGraphNode* Node : ImportedNodes)
+		{
+			if (Node)
+			{
+				ImportedNodeSet.Add(Node);
+			}
+		}
+
+		UEdGraphNode* BodyExitNode =
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstImportedTerminalExecutableBodyNode(
+				ReplacePlan.Target.Graph,
+				NodesBeforeImport);
+		UEdGraphPin* BodyExecOut =
+			FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstTerminalExecOutputPin(
+				BodyExitNode,
+				ImportedNodeSet);
+		if (BodyExecOut)
+		{
+			UEdGraphNode* ExitNode = ReplacePlan.Target.ExitBoundaryNodes[0];
+			UEdGraphPin* ExitExecIn = FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::FindFirstExecPin(ExitNode, EGPD_Input);
+			if (!ExitExecIn)
+			{
+				OutError = TEXT("Adapter exit boundary is missing an Exec input pin.");
+				return false;
+			}
+
+			if (!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(BodyExecOut, ExitExecIn))
+			{
+				FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(BodyExecOut);
+				FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(ExitExecIn);
+				if (!Schema->TryCreateConnection(BodyExecOut, ExitExecIn) ||
+					!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(BodyExecOut, ExitExecIn))
+				{
+					OutError = FString::Printf(TEXT("Cannot connect replacement body exit node %s to adapter exit %s."),
+						BodyExitNode ? *BodyExitNode->GetName() : TEXT("<missing>"),
+						*ExitNode->GetName());
+					return false;
+				}
+				bGraphChanged = true;
+			}
+		}
 	}
 
-	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
-	if (!Schema)
+	if (bGraphChanged)
 	{
-		OutError = TEXT("K2 schema is unavailable; cannot rebuild entry exec link.");
-		return false;
+		ReplacePlan.Target.Graph->NotifyGraphChanged();
 	}
-
-	FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(EntryExecOut);
-	FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::BreakAllPinLinksWithModify(BodyExecIn);
-	if (!Schema->TryCreateConnection(EntryExecOut, BodyExecIn) ||
-		!FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::PinsHaveSingleConnectionToEachOther(EntryExecOut, BodyExecIn))
-	{
-		OutError = FString::Printf(TEXT("Cannot connect entry %s to replacement body first node %s."),
-			*EntryNode->GetName(), *FirstBodyNode->GetName());
-		return false;
-	}
-
-	Resolved.Graph->NotifyGraphChanged();
 	return true;
 }
 
@@ -1936,7 +2006,7 @@ FString FBlueprintHelperReplaceBlueprintGraphService::BuildSemanticGraphWritePay
 	Payload.bDryRun = Request.bDryRun;
 	Payload.bCreateMissingVariables = Policy.bCreateMissingVariables;
 	Payload.bReconstructExistingNodes =
-		(Request.Scope == EBlueprintHelperReplaceScope::CustomEventBody && !Request.EntryName.TrimStartAndEnd().IsEmpty())
+		!Request.EntryName.TrimStartAndEnd().IsEmpty()
 			? true
 			: Policy.bReconstructExistingNodes;
 	Payload.LogicSpec =

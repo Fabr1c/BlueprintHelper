@@ -5,6 +5,7 @@ import type { GraphWriteExpressionCompileHandler } from './graphwrite-compiler-t
 export interface GraphWriteExpressionCompilerMetadata {
   compiler_id: string;
   public_kinds: readonly string[];
+  compatibility_kinds?: readonly string[];
   slot_ids: readonly string[];
 }
 
@@ -14,6 +15,7 @@ export interface GraphWriteExpressionCompilerRegistration {
 }
 
 export interface GraphWriteExpressionCompilerDescriptor extends GraphWriteExpressionCompilerMetadata {
+  compatibility_kinds: readonly string[];
   compile: GraphWriteExpressionCompileHandler;
 }
 
@@ -26,42 +28,50 @@ export interface ResolveGraphWriteExpressionCompilerInput {
 const COMPATIBILITY_EXPRESSION_COMPILERS: readonly GraphWriteExpressionCompilerMetadata[] = [
   {
     compiler_id: 'expression.get_property',
-    public_kinds: ['get_property'],
+    public_kinds: [],
+    compatibility_kinds: ['get_property'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.field',
-    public_kinds: ['field'],
+    public_kinds: [],
+    compatibility_kinds: ['field'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.call',
-    public_kinds: ['call'],
+    public_kinds: [],
+    compatibility_kinds: ['call'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.deconstruct',
-    public_kinds: ['deconstruct'],
+    public_kinds: [],
+    compatibility_kinds: ['deconstruct'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.create',
-    public_kinds: ['create'],
+    public_kinds: [],
+    compatibility_kinds: ['create'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.convert',
-    public_kinds: ['convert'],
+    public_kinds: [],
+    compatibility_kinds: ['convert'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.schedule',
-    public_kinds: ['schedule'],
+    public_kinds: [],
+    compatibility_kinds: ['schedule'],
     slot_ids: [],
   },
   {
     compiler_id: 'expression.container_action',
-    public_kinds: ['container_action'],
+    public_kinds: [],
+    compatibility_kinds: ['container_action'],
     slot_ids: [],
   },
 ];
@@ -137,10 +147,15 @@ function mergeExpressionCompilerDescriptors(
   descriptors: readonly GraphWriteExpressionCompilerMetadata[],
   registrations: readonly GraphWriteExpressionCompilerRegistration[],
 ): Map<string, GraphWriteExpressionCompilerDescriptor> {
-  const merged = new Map<string, { publicKinds: Set<string>; slotIds: Set<string> }>();
+  const merged = new Map<string, { publicKinds: Set<string>; compatibilityKinds: Set<string>; slotIds: Set<string> }>();
   for (const descriptor of descriptors) {
-    const entry = merged.get(descriptor.compiler_id) ?? { publicKinds: new Set<string>(), slotIds: new Set<string>() };
+    const entry = merged.get(descriptor.compiler_id) ?? {
+      publicKinds: new Set<string>(),
+      compatibilityKinds: new Set<string>(),
+      slotIds: new Set<string>(),
+    };
     descriptor.public_kinds.forEach((kind) => entry.publicKinds.add(kind));
+    (descriptor.compatibility_kinds ?? []).forEach((kind) => entry.compatibilityKinds.add(kind));
     descriptor.slot_ids.forEach((slotId) => entry.slotIds.add(slotId));
     merged.set(descriptor.compiler_id, entry);
   }
@@ -148,6 +163,7 @@ function mergeExpressionCompilerDescriptors(
   return new Map([...merged.entries()].map(([compilerId, entry]) => [compilerId, {
     compiler_id: compilerId,
     public_kinds: [...entry.publicKinds].sort(),
+    compatibility_kinds: [...entry.compatibilityKinds].sort(),
     slot_ids: [...entry.slotIds].sort(),
     compile: registrationsById.get(compilerId)?.compile ?? unboundExpressionCompiler,
   }]));

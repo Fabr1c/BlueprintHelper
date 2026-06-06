@@ -21,7 +21,7 @@ import {
   resolveReadContextPostProcessStage,
 } from './read-context-payload.js';
 import { buildPayloadSizeMetric } from './read-context-payload-metrics.js';
-import { ReadContextInputSchema, type ReadContextInput } from './read-context-schemas.js';
+import type { ReadContextInput } from './read-context-schemas.js';
 
 type ReadPayloadWithDebug = {
   payload: Record<string, unknown>;
@@ -29,13 +29,11 @@ type ReadPayloadWithDebug = {
 };
 
 export async function executeReadContext(
-  rawInput: Record<string, unknown>,
+  rawInput: ReadContextInput | Record<string, unknown>,
   context: BlueprintHelperToolContext,
 ): Promise<ToolResultBase> {
   const timing = context.timing;
-  const input = measureTaskTiming(timing, 'read_context.parse_input', () => (
-    ReadContextInputSchema.parse(rawInput)
-  ));
+  const input = measureTaskTiming(timing, 'read_context.parse_input', () => rawInput as ReadContextInput);
   const format = measureTaskTiming(timing, 'read_context.resolve_format', () => (
     resolveReadContextLogicFormat(input)
   ));

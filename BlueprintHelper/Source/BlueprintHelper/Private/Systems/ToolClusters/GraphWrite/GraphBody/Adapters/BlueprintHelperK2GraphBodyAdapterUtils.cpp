@@ -9,6 +9,8 @@
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_Tunnel.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
+#include "UObject/Package.h"
 
 UEdGraph* FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
 	const TArray<UEdGraph*>& Graphs,
@@ -129,6 +131,59 @@ bool FBlueprintHelperK2GraphBodyAdapterUtils::HasExecPin(
 		}
 	}
 	return false;
+}
+
+bool FBlueprintHelperK2GraphBodyAdapterUtils::TryReadBlueprintHelperBlockId(
+	const UEdGraphNode* Node,
+	FString& OutBlockId)
+{
+	OutBlockId.Reset();
+	if (!Node)
+	{
+		return false;
+	}
+
+	UPackage* Package = Node->GetOutermost();
+	if (!Package)
+	{
+		return false;
+	}
+
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+	if (MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) != TEXT("true"))
+	{
+		return false;
+	}
+
+	OutBlockId = MetaData.GetValue(Node, TEXT("BlueprintHelperBlockId"));
+	return !OutBlockId.IsEmpty();
+}
+
+void FBlueprintHelperK2GraphBodyAdapterUtils::AppendOwnedBodyNodesForBlock(
+	UEdGraph* Graph,
+	const FString& BlockId,
+	const UEdGraphNode* EntryNode,
+	TArray<UEdGraphNode*>& OutNodes)
+{
+	if (!Graph || BlockId.IsEmpty())
+	{
+		return;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node || Node == EntryNode)
+		{
+			continue;
+		}
+
+		FString NodeBlockId;
+		if (TryReadBlueprintHelperBlockId(Node, NodeBlockId) &&
+			NodeBlockId.Equals(BlockId, ESearchCase::IgnoreCase))
+		{
+			OutNodes.AddUnique(Node);
+		}
+	}
 }
 
 void FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(

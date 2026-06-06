@@ -7,6 +7,8 @@ export type InputShapeId =
   | 'readspec'
   | 'read_reference_context'
   | 'bridge_payload'
+  | 'bridge_logic_md_payload'
+  | 'bridge_logic_json_payload'
   | 'tool_payload'
   | 'empty_object';
 

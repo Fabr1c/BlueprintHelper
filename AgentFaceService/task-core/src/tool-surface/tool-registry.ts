@@ -18,6 +18,16 @@ export {
   buildReadonlyToolCommandManifests,
 } from './manifest/tool-command-manifest-builder.js';
 export {
+  formatManifestUsage,
+  globalCliCommandUsageLines,
+  manifestSpecificNotes,
+  resolveCliCommandHelpManifest,
+} from './manifest/cli-command-help-manifest.js';
+export type {
+  CliCommandHelpManifest,
+  CommandHelpEntry,
+} from './manifest/cli-command-help-manifest.js';
+export {
   createToolCommandManifestRegistry,
 } from './manifest/tool-command-manifest-registry.js';
 export {

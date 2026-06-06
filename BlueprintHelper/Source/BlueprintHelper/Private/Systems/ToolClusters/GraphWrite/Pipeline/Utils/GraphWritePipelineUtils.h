@@ -6,6 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityValidator.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
 #include "GraphWritePipelineUtils.generated.h"
 
@@ -65,5 +66,9 @@ public:
 	static FSemanticStatementExecFlow BuildSemanticStatementArray(UEdGraph* TargetGraph, const FBlueprintHelperActionContextScope* ActionContextScope, const FBlueprintHelperGraphFragmentDag& FragmentDag, const TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>>& Statements, TArray<UEdGraphPin*> IncomingExits, TArray<FBlueprintHelperNodeFragment>& GeneratedFragments, TSet<FString>& GeneratedFragmentIds, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes, TArray<FBlueprintGeneratorDiagnostic>& ConnectionDiagnostics, int32& GeneratedNodeCount, int32& CreatedConnectionCount);
 	static FSemanticStatementExecFlow BuildSemanticStatement(UEdGraph* TargetGraph, const FBlueprintHelperActionContextScope* ActionContextScope, const FBlueprintHelperGraphFragmentDag& FragmentDag, const TSharedPtr<FBlueprintHelperGraphStatementIR>& Statement, TArray<FBlueprintHelperNodeFragment>& GeneratedFragments, TSet<FString>& GeneratedFragmentIds, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes, TArray<FBlueprintGeneratorDiagnostic>& ConnectionDiagnostics, int32& GeneratedNodeCount, int32& CreatedConnectionCount);
 	static TArray<FBlueprintHelperGraphFragmentDataEdge> FilterSemanticDataEdges(const FBlueprintHelperGraphFragmentDag& FragmentDag, const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments);
-	static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(UEdGraph* TargetGraph, const TSharedPtr<FJsonObject>& JsonObject, TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes);
+	static FBlueprintGenerateResult GenerateSemanticGraphFromJsonObject(
+		UEdGraph* TargetGraph,
+		const TSharedPtr<FJsonObject>& JsonObject,
+		TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
+		const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput = nullptr);
 };

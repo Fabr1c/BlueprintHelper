@@ -8,7 +8,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphConnectivityPolicy
 	FString PolicyId;
 	EBlueprintHelperGraphBodyKind BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
 	bool bAllowExternalAnchorBoundary = false;
-	bool bAllowFunctionResultBoundary = false;
+	bool bAllowExitBoundaryReachability = false;
 	bool bAllowOwnedBlockDisconnectedPreview = false;
 	TArray<FString> ViolationCodes;
 };

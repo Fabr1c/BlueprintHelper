@@ -217,6 +217,7 @@ struct FBlueprintHelperReviewAtomicTarget
 	FString LifecycleObjectKey;
 	FString LifecycleParentKey;
 	FString AnchorJson;
+	FString GraphBodyBoundaryJson;
 	FString BeforeSnapshotJson;
 	FString AfterSnapshotJson;
 	FString RecordedAfterHash;

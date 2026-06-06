@@ -2,18 +2,27 @@
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_Tunnel.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
+#include "Misc/PackageName.h"
+#include "Misc/Paths.h"
+#include "Systems/SharedServices/Utils/BlueprintHelperBlueprintStructureUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2FunctionBodyAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2MacroBodyAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 #include "UObject/Package.h"
+#include "UObject/SavePackage.h"
 
 class FBlueprintHelperGraphBodyAdapterExtractionTestUtils
 {
@@ -64,6 +73,151 @@ public:
 			UEdGraphSchema_K2::StaticClass());
 		FBlueprintEditorUtils::AddMacroGraph(Blueprint, MacroGraph, true, nullptr);
 		return MacroGraph;
+	}
+
+	static UBlueprint* LoadOrCreatePersistentNodeGraphBodyFixture()
+	{
+		const FString PackageName = TEXT("/Game/BlueprintHelper/NodeGraphBody/BP_NodeGraphBodyAdapter");
+		const FString AssetName = TEXT("BP_NodeGraphBodyAdapter");
+		const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
+		if (UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *ObjectPath))
+		{
+			return ExistingBlueprint;
+		}
+
+		UPackage* Package = CreatePackage(*PackageName);
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			AActor::StaticClass(),
+			Package,
+			*AssetName,
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperNodeGraphBodyFixture"));
+		if (Blueprint)
+		{
+			FAssetRegistryModule::AssetCreated(Blueprint);
+		}
+		return Blueprint;
+	}
+
+	static TSharedPtr<FJsonObject> MakePinPayload(const FString& PinName, const FString& PinCategory)
+	{
+		TSharedPtr<FJsonObject> Pin = MakeShared<FJsonObject>();
+		Pin->SetStringField(TEXT("name"), PinName);
+		TSharedPtr<FJsonObject> PinType = MakeShared<FJsonObject>();
+		PinType->SetStringField(TEXT("category"), PinCategory);
+		Pin->SetObjectField(TEXT("pin_type"), PinType);
+		return Pin;
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> MakePinArray(const TArray<TPair<FString, FString>>& Pins)
+	{
+		TArray<TSharedPtr<FJsonValue>> Values;
+		for (const TPair<FString, FString>& Pin : Pins)
+		{
+			Values.Add(MakeShared<FJsonValueObject>(MakePinPayload(Pin.Key, Pin.Value)));
+		}
+		return Values;
+	}
+
+	static bool EnsurePersistentFunctionSignature(UBlueprint* Blueprint, FString& OutError)
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("name"), TEXT("ComputeNodeGraphScore"));
+		Payload->SetArrayField(TEXT("inputs"), MakePinArray({{TEXT("InputScore"), TEXT("int")}}));
+		Payload->SetArrayField(TEXT("outputs"), MakePinArray({{TEXT("ReturnValue"), TEXT("int")}}));
+		return UBlueprintHelperBlueprintStructureUtils::AddFunctionGraphDirect(Blueprint, Payload, OutError);
+	}
+
+	static bool EnsurePersistentMacroGraph(UBlueprint* Blueprint, FString& OutError)
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("name"), TEXT("ClampScoreMacro"));
+		Payload->SetStringField(TEXT("graph_type"), TEXT("Macro"));
+		Payload->SetArrayField(TEXT("inputs"), MakePinArray({{TEXT("Execute"), TEXT("exec")}}));
+		Payload->SetArrayField(TEXT("outputs"), MakePinArray({{TEXT("Then"), TEXT("exec")}}));
+		return UBlueprintHelperBlueprintStructureUtils::AddMacroGraphDirect(Blueprint, Payload, OutError);
+	}
+
+	static bool SavePersistentFixture(UBlueprint* Blueprint, FString& OutError)
+	{
+		if (!Blueprint)
+		{
+			OutError = TEXT("fixture save failed: Blueprint is null.");
+			return false;
+		}
+
+		UPackage* Package = Blueprint->GetOutermost();
+		if (!Package)
+		{
+			OutError = TEXT("fixture save failed: package is null.");
+			return false;
+		}
+
+		Package->MarkPackageDirty();
+		const FString Filename = FPackageName::LongPackageNameToFilename(
+			Package->GetName(),
+			FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		if (!UPackage::SavePackage(Package, Blueprint, *Filename, SaveArgs))
+		{
+			OutError = FString::Printf(TEXT("fixture save failed: %s"), *Filename);
+			return false;
+		}
+		return true;
+	}
+
+	static bool MacroGraphHasTunnelExecPin(
+		UBlueprint* Blueprint,
+		const FString& MacroName,
+		const bool bEntryTunnel,
+		const EEdGraphPinDirection Direction)
+	{
+		if (!Blueprint)
+		{
+			return false;
+		}
+
+		UEdGraph* MacroGraph = nullptr;
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetName().Equals(MacroName, ESearchCase::IgnoreCase))
+			{
+				MacroGraph = Graph;
+				break;
+			}
+		}
+		if (!MacroGraph)
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : MacroGraph->Nodes)
+		{
+			const UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node);
+			if (!Tunnel)
+			{
+				continue;
+			}
+			if (bEntryTunnel && !FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelEntry(Tunnel))
+			{
+				continue;
+			}
+			if (!bEntryTunnel && !FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelExit(Tunnel))
+			{
+				continue;
+			}
+			return FBlueprintHelperK2GraphBodyAdapterUtils::HasExecPin(Tunnel, Direction);
+		}
+		return false;
 	}
 
 	static bool BoundaryArrayContainsNodeRef(
@@ -135,6 +289,98 @@ private:
 		NodeCreator.Finalize();
 	}
 };
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperNodeGraphBodyAdapterE2EFixturePreparesAssetTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.E2EFixture.PrepareNodeGraphBodyAdapter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperNodeGraphBodyAdapterE2EFixturePreparesAssetTest::RunTest(const FString&)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::LoadOrCreatePersistentNodeGraphBodyFixture();
+	TestTrue(TEXT("fixture blueprint exists"), Blueprint != nullptr);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FString Error;
+	TestTrue(
+		TEXT("fixture function signature exists"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::EnsurePersistentFunctionSignature(Blueprint, Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("function fixture message: %s"), *Error));
+	}
+
+	Error.Reset();
+	TestTrue(
+		TEXT("fixture macro graph exists"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::EnsurePersistentMacroGraph(Blueprint, Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("macro fixture message: %s"), *Error));
+	}
+	TestTrue(
+		TEXT("fixture macro entry has exec output"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphHasTunnelExecPin(
+			Blueprint,
+			TEXT("ClampScoreMacro"),
+			true,
+			EGPD_Output));
+	TestTrue(
+		TEXT("fixture macro exit has exec input"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphHasTunnelExecPin(
+			Blueprint,
+			TEXT("ClampScoreMacro"),
+			false,
+			EGPD_Input));
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	Error.Reset();
+	TestTrue(
+		TEXT("fixture blueprint saved"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::SavePersistentFixture(Blueprint, Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(Error);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyReadbackServiceUsesRegistryTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.ReadbackService.UsesRegistry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyReadbackServiceUsesRegistryTest::RunTest(const FString&)
+{
+	const FString SourcePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.cpp"));
+	FString Source;
+	TestTrue(TEXT("readback service source loads"), FFileHelper::LoadFileToString(Source, *SourcePath));
+	TestTrue(TEXT("readback service uses adapter resolver"), Source.Contains(TEXT("FBlueprintHelperGraphBodyAdapterResolver")));
+
+	const TArray<FString> ForbiddenTokens =
+	{
+		TEXT("Target.TargetType =="),
+		TEXT("FBlueprintHelperK2FunctionBodyAdapter"),
+		TEXT("FBlueprintHelperK2MacroBodyAdapter"),
+		TEXT("FBlueprintHelperK2EventBodyAdapter"),
+		TEXT("FBlueprintHelperK2CustomEventBodyAdapter"),
+		TEXT("Ref.Equals(TEXT(\"FunctionResult\")"),
+		TEXT("Ref.Equals(TEXT(\"TunnelEntry\")"),
+		TEXT("Ref.Equals(TEXT(\"TunnelExit\")")
+	};
+	for (const FString& Token : ForbiddenTokens)
+	{
+		TestFalse(
+			FString::Printf(TEXT("readback service does not contain %s"), *Token),
+			Source.Contains(Token));
+	}
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperK2FunctionBodyAdapterExtractsFunctionBoundariesTest,
@@ -246,6 +492,38 @@ bool FBlueprintHelperK2MacroBodyAdapterExtractsTunnelBoundariesTest::RunTest(con
 	TestTrue(TEXT("Tunnel entry boundary"), Boundary.EntryNodeRefs.Contains(TEXT("TunnelEntry")));
 	TestTrue(TEXT("Tunnel exit boundary"), Boundary.ExitNodeRefs.Contains(TEXT("TunnelExit")));
 	TestTrue(TEXT("tunnel pins are semantic sources"), Boundary.SemanticSourceRefs.Contains(TEXT("TunnelEntry.Execute")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyAdapterResolverMapsMacroReplaceScopeTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.K2Macro.ResolverMapsReplaceScope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyAdapterResolverMapsMacroReplaceScopeTest::RunTest(const FString&)
+{
+	EBlueprintHelperReplaceScope Scope = EBlueprintHelperReplaceScope::Graph;
+	TestTrue(TEXT("macro_body scope parses"), ParseReplaceScope(TEXT("macro_body"), Scope));
+	TestEqual(TEXT("macro_body scope enum"), Scope, EBlueprintHelperReplaceScope::MacroBody);
+	TestEqual(
+		TEXT("macro_body scope string"),
+		FString(ReplaceScopeToString(Scope)),
+		FString(TEXT("macro_body")));
+	TestEqual(
+		TEXT("macro_body runtime adapter id"),
+		FBlueprintHelperGraphBodyAdapterResolver::RuntimeAdapterIdForReplaceScope(Scope),
+		FString(TEXT("k2.macro_body")));
+
+	TUniquePtr<IBlueprintHelperGraphBodyAdapter> Adapter;
+	FString Error;
+	TestTrue(
+		TEXT("macro_body scope creates adapter"),
+		FBlueprintHelperGraphBodyAdapterResolver::TryCreateForReplaceScope(Scope, Adapter, Error));
+	TestTrue(TEXT("macro_body adapter valid"), Adapter.IsValid());
+	TestEqual(
+		TEXT("macro_body adapter id"),
+		Adapter.IsValid() ? Adapter->GetAdapterId() : FString(),
+		FString(TEXT("k2.macro_body")));
 	return true;
 }
 

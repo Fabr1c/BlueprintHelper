@@ -177,16 +177,14 @@ test('getToolTemplateDispatch exposes route-first GraphWrite template navigation
   assert.match(dispatch.next.slot_command, /--route <route_id> --slot/);
 });
 
-test('active GraphWrite routes are descriptor-backed and planned routes stay hidden from template discovery', () => {
+test('active GraphWrite routes are descriptor-backed and macro route is discoverable', () => {
   const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview');
   const routeIds = dispatch.routes.map((route) => route.route_id);
 
   assert.equal(routeIds.includes('graph.replace.function_body'), true);
-  assert.equal(routeIds.includes('graph.replace.macro_body'), false);
-  assert.throws(
-    () => getToolTemplateDispatch('blueprint.plan.taskspec.preview', { route: 'graph.replace.macro_body' }),
-    /Unknown BlueprintHelper template route/,
-  );
+  assert.equal(routeIds.includes('graph.replace.macro_body'), true);
+  const macroDispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview', { route: 'graph.replace.macro_body' });
+  assert.equal(macroDispatch.selected_route?.route_id, 'graph.replace.macro_body');
 });
 
 test('agent-facing write templates do not expose hidden TaskSpec policy fields', () => {

@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+class FJsonObject;
+
 enum class EBlueprintHelperGraphBodyKind : uint8
 {
 	Unknown,
@@ -59,4 +61,5 @@ public:
 	static FString BodyKindToString(EBlueprintHelperGraphBodyKind Kind);
 	static EBlueprintHelperGraphBodyKind BodyKindFromString(const FString& Value);
 	static FString MakeBodyIdentity(const FBlueprintHelperGraphBodyBoundaryModel& Model);
+	static TSharedRef<FJsonObject> ToJsonObject(const FBlueprintHelperGraphBodyBoundaryModel& Model);
 };

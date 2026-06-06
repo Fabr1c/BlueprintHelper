@@ -8,10 +8,10 @@ import {
   compileLogicBodyToImportPayload,
   defaultFieldOwnerClassForBlueprintAsset,
   getRequiredLogicBody,
-  makeGraphWriteTaskPlanSteps,
   validateSupportedStatements,
 } from '../graphwrite/graphwrite-logic-body-compiler.js';
 import { compileGraphWriteOps } from '../graphwrite/default-graphwrite-operation-compilers.js';
+import { makeGraphWriteTaskPlanSteps } from '../graphwrite/graphwrite-plan-step-builder.js';
 
 type TaskPlanStep = TaskPlan['steps'][number];
 

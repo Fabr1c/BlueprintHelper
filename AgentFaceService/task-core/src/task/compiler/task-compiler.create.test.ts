@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { compileTaskSpecToTaskPlan, taskPlanToAppendBridgePayload } from './task-compiler.js';
+import { compileTaskSpecToTaskPlan } from './task-compiler.js';
+import { taskPlanToAppendBridgePayload } from './graphwrite/graphwrite-task-type-compiler.js';
 
 function makeCreateSpec(statement: Record<string, unknown>, scopePolicy?: Record<string, unknown>) {
   return {

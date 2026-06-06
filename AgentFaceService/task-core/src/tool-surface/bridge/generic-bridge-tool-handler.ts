@@ -8,17 +8,6 @@ export async function executeGenericBridgeTool(
   input: Record<string, unknown>,
   context: BlueprintHelperToolContext,
 ): Promise<ToolResultBase> {
-  const payload = normalizeBridgePayload(toolName, input);
-  const response = await context.bridge.sendCommand(bridgeCommand, payload);
+  const response = await context.bridge.sendCommand(bridgeCommand, input);
   return normalizeBridgeToolResult(toolName, response);
-}
-
-export function normalizeBridgePayload(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  if (toolName === 'blueprint_get_logic') {
-    return { format: 'logic_md', ...input };
-  }
-  if (toolName === 'blueprint_get_logic_json') {
-    return { format: 'logic_json', ...input };
-  }
-  return input;
 }

@@ -8,6 +8,7 @@ import type {
 export interface GraphWriteStatementCompilerMetadata {
   compiler_id: string;
   public_kinds: readonly string[];
+  compatibility_kinds?: readonly string[];
   slot_ids: readonly string[];
 }
 
@@ -18,6 +19,7 @@ export interface GraphWriteStatementCompilerRegistration {
 }
 
 export interface GraphWriteStatementCompilerDescriptor extends GraphWriteStatementCompilerMetadata {
+  compatibility_kinds: readonly string[];
   compile_flow: GraphWriteStatementFlowCompileHandler;
   compile_node: GraphWriteStatementNodeCompileHandler;
 }
@@ -40,12 +42,14 @@ const PUBLIC_DELEGATE_KINDS = new Set([
 const COMPATIBILITY_STATEMENT_COMPILERS: readonly GraphWriteStatementCompilerMetadata[] = [
   {
     compiler_id: 'statement.control.sequence',
-    public_kinds: ['sequence'],
+    public_kinds: [],
+    compatibility_kinds: ['sequence'],
     slot_ids: [],
   },
   {
     compiler_id: 'statement.delegate',
-    public_kinds: ['delegate.assign', 'delegate.unbind', 'delegate.unbind_all', 'delegate.call', 'delegate'],
+    public_kinds: [],
+    compatibility_kinds: ['delegate.assign', 'delegate.unbind', 'delegate.unbind_all', 'delegate.call', 'delegate'],
     slot_ids: [],
   },
 ];
@@ -121,10 +125,15 @@ function mergeStatementCompilerDescriptors(
   descriptors: readonly GraphWriteStatementCompilerMetadata[],
   registrations: readonly GraphWriteStatementCompilerRegistration[],
 ): Map<string, GraphWriteStatementCompilerDescriptor> {
-  const merged = new Map<string, { publicKinds: Set<string>; slotIds: Set<string> }>();
+  const merged = new Map<string, { publicKinds: Set<string>; compatibilityKinds: Set<string>; slotIds: Set<string> }>();
   for (const descriptor of descriptors) {
-    const entry = merged.get(descriptor.compiler_id) ?? { publicKinds: new Set<string>(), slotIds: new Set<string>() };
+    const entry = merged.get(descriptor.compiler_id) ?? {
+      publicKinds: new Set<string>(),
+      compatibilityKinds: new Set<string>(),
+      slotIds: new Set<string>(),
+    };
     descriptor.public_kinds.forEach((kind) => entry.publicKinds.add(kind));
+    (descriptor.compatibility_kinds ?? []).forEach((kind) => entry.compatibilityKinds.add(kind));
     descriptor.slot_ids.forEach((slotId) => entry.slotIds.add(slotId));
     merged.set(descriptor.compiler_id, entry);
   }
@@ -132,6 +141,7 @@ function mergeStatementCompilerDescriptors(
   return new Map([...merged.entries()].map(([compilerId, entry]) => [compilerId, {
     compiler_id: compilerId,
     public_kinds: [...entry.publicKinds].sort(),
+    compatibility_kinds: [...entry.compatibilityKinds].sort(),
     slot_ids: [...entry.slotIds].sort(),
     compile_flow: registrationsById.get(compilerId)?.compile_flow ?? unboundStatementFlowCompiler,
     compile_node: registrationsById.get(compilerId)?.compile_node ?? unboundStatementNodeCompiler,

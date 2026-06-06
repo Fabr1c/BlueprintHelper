@@ -39,6 +39,29 @@ bool FBlueprintHelperK2MacroBodyAdapter::ResolveTarget(
 		TEXT("%s|%s|k2.macro_body"),
 		*Request.AssetPath,
 		*MacroGraph->GetName());
+	for (UEdGraphNode* Node : MacroGraph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		if (const UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node))
+		{
+			OutTarget.ProtectedNodes.AddUnique(Node);
+			if (FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelEntry(Tunnel))
+			{
+				OutTarget.EntryBoundaryNodes.AddUnique(Node);
+			}
+			if (FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelExit(Tunnel))
+			{
+				OutTarget.ExitBoundaryNodes.AddUnique(Node);
+			}
+		}
+		else
+		{
+			OutTarget.DeletableNodes.AddUnique(Node);
+		}
+	}
 	OutError.Reset();
 	return true;
 }
@@ -142,9 +165,14 @@ FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperK2MacroBodyAdapter::
 	if (Boundary.EntryNodeRefs.Num() > 0)
 	{
 		Projection.EntryNodeRef = Boundary.EntryNodeRefs[0];
+		Projection.BoundaryDisplayNames.Add(Boundary.EntryNodeRefs[0], TEXT("Macro In"));
 	}
 	Projection.ExitNodeRefs = Boundary.ExitNodeRefs;
 	Projection.VisibleBoundaryNodeRefs.Append(Boundary.EntryNodeRefs);
 	Projection.VisibleBoundaryNodeRefs.Append(Boundary.ExitNodeRefs);
+	for (const FString& ExitRef : Boundary.ExitNodeRefs)
+	{
+		Projection.BoundaryDisplayNames.Add(ExitRef, TEXT("Macro Out"));
+	}
 	return Projection;
 }

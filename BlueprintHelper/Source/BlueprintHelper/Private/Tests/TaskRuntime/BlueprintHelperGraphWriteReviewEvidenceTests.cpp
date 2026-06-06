@@ -2,10 +2,24 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Misc/FileHelper.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/Paths.h"
+#include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteReviewEvidenceBuilder.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyBoundaryModel.h"
+
+static TSharedPtr<FJsonObject> BlueprintHelperGraphWriteReviewEvidenceParseJsonObject(const FString& JsonText)
+{
+	TSharedPtr<FJsonObject> Json;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	FJsonSerializer::Deserialize(Reader, Json);
+	return Json;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteReviewEvidencePreservesCompileDiagnosticsTest,
@@ -184,6 +198,150 @@ bool FBlueprintHelperGraphWriteReviewEvidenceDoesNotFanOutNodeDiagnosticsTest::R
 			AtomicTarget.Diagnostics.Num(),
 			0);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceCarriesGraphBodyBoundaryTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.CarriesGraphBodyBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceCarriesGraphBodyBoundaryTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphBodyBoundaryModel Boundary;
+	Boundary.RuntimeAdapterId = TEXT("k2.macro_body");
+	Boundary.TaskSpecStrategy = TEXT("replace_owned_graph");
+	Boundary.TargetAssetPath = TEXT("/Game/BP_GraphWriteReviewEvidence");
+	Boundary.GraphName = TEXT("ClampScoreMacro");
+	Boundary.GraphFamily = TEXT("k2");
+	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2MacroBody;
+	Boundary.EntryNodeRefs.Add(TEXT("TunnelEntry"));
+	Boundary.ExitNodeRefs.Add(TEXT("TunnelExit"));
+
+	TSharedRef<FJsonObject> Evidence =
+		FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildGraphBodyBoundaryEvidence(Boundary);
+	TestEqual(TEXT("adapter id"),
+		Evidence->GetStringField(TEXT("runtime_adapter_id")),
+		FString(TEXT("k2.macro_body")));
+	TestEqual(TEXT("body kind"),
+		Evidence->GetStringField(TEXT("body_kind")),
+		FString(TEXT("k2.macro_body")));
+
+	const TArray<TSharedPtr<FJsonValue>>* EntryBoundaries = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* ExitBoundaries = nullptr;
+	TestTrue(TEXT("entry boundary exists"),
+		Evidence->TryGetArrayField(TEXT("entry_boundaries"), EntryBoundaries) &&
+		EntryBoundaries &&
+		EntryBoundaries->Num() == 1);
+	TestTrue(TEXT("exit boundary exists"),
+		Evidence->TryGetArrayField(TEXT("exit_boundaries"), ExitBoundaries) &&
+		ExitBoundaries &&
+		ExitBoundaries->Num() == 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceBuildUsesRuntimeBoundaryTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.BuildUsesRuntimeBoundary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuildUsesRuntimeBoundaryTest::RunTest(const FString& Parameters)
+{
+	const FString GraphName = TEXT("ClampScoreMacro");
+
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_GraphWriteReviewEvidence"));
+	Target->SetStringField(TEXT("graph"), GraphName);
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	LoweredStep.Capability = TEXT("graph_write");
+	LoweredStep.AdapterOperation = TEXT("replace_blueprint_graph");
+	LoweredStep.Payload = MakeShared<FJsonObject>();
+	LoweredStep.Payload->SetObjectField(TEXT("target"), Target);
+
+	FBlueprintHelperGraphBodyBoundaryModel Boundary;
+	Boundary.RuntimeAdapterId = TEXT("k2.macro_body");
+	Boundary.TaskSpecStrategy = TEXT("replace_owned_graph");
+	Boundary.TargetAssetPath = TEXT("/Game/BP_GraphWriteReviewEvidence");
+	Boundary.GraphName = GraphName;
+	Boundary.GraphFamily = TEXT("k2");
+	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2MacroBody;
+	Boundary.EntryNodeRefs.Add(TEXT("TunnelEntry"));
+	Boundary.ExitNodeRefs.Add(TEXT("TunnelExit"));
+
+	TArray<TSharedPtr<FJsonValue>> BlockRefs;
+	BlockRefs.Add(MakeShared<FJsonValueString>(TEXT("ClampScoreMacro")));
+
+	FBlueprintHelperToolResultBase StepResult;
+	StepResult.bOk = true;
+	StepResult.Status = EBlueprintHelperToolStatus::Applied;
+	StepResult.Data = MakeShared<FJsonObject>();
+	StepResult.Data->SetArrayField(TEXT("block_refs"), BlockRefs);
+	StepResult.Data->SetObjectField(
+		TEXT("graph_body_boundary"),
+		FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildGraphBodyBoundaryEvidence(Boundary));
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		LoweredStep,
+		StepResult,
+		TEXT("archive_graph_body_boundary"),
+		TEXT("task_graph_body_boundary"),
+		6,
+		Evidence);
+
+	TestTrue(TEXT("graphwrite evidence builds"), bBuilt);
+	TestEqual(TEXT("one target is emitted"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& AtomicTarget = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target subkind is runtime body kind"),
+		AtomicTarget.TargetSubKind,
+		FString(TEXT("k2.macro_body")));
+	TestFalse(TEXT("graph body boundary json exists"), AtomicTarget.GraphBodyBoundaryJson.IsEmpty());
+
+	const TSharedPtr<FJsonObject> BoundaryJson =
+		BlueprintHelperGraphWriteReviewEvidenceParseJsonObject(AtomicTarget.GraphBodyBoundaryJson);
+	TestTrue(TEXT("boundary json parses"), BoundaryJson.IsValid());
+	if (!BoundaryJson.IsValid())
+	{
+		return false;
+	}
+	TestEqual(TEXT("boundary adapter id"),
+		BoundaryJson->GetStringField(TEXT("runtime_adapter_id")),
+		FString(TEXT("k2.macro_body")));
+	TestTrue(TEXT("boundary entry array exists"), BoundaryJson->HasTypedField<EJson::Array>(TEXT("entry_boundaries")));
+	TestTrue(TEXT("boundary exit array exists"), BoundaryJson->HasTypedField<EJson::Array>(TEXT("exit_boundaries")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceConnectivityFailureCleanupContractTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.ConnectivityFailureCleanupContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceConnectivityFailureCleanupContractTest::RunTest(const FString& Parameters)
+{
+	const FString SourcePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.cpp"));
+	FString Source;
+	TestTrue(TEXT("replace service source loads"), FFileHelper::LoadFileToString(Source, *SourcePath));
+
+	const int32 FailureBranchIndex = Source.Find(TEXT("if (!GenerateResult.bSucceed && !bDeferredEntryResolvedConnectivityFailure)"));
+	const int32 RestoreIndex = Source.Find(TEXT("RestoreReplacementFailureSnapshot"), ESearchCase::CaseSensitive, ESearchDir::FromStart, FailureBranchIndex);
+	const int32 FailureResultIndex = Source.Find(TEXT("ToolResultBuilder::Failure"), ESearchCase::CaseSensitive, ESearchDir::FromStart, RestoreIndex);
+	const int32 BoundaryEvidenceIndex = Source.Find(TEXT("graph_body_boundary"), ESearchCase::CaseSensitive, ESearchDir::FromStart, FailureResultIndex);
+	TestTrue(TEXT("connectivity failure branch exists"), FailureBranchIndex != INDEX_NONE);
+	TestTrue(TEXT("restore happens in connectivity failure branch"), RestoreIndex != INDEX_NONE);
+	TestTrue(TEXT("failure result is built after restore"), FailureResultIndex != INDEX_NONE && RestoreIndex < FailureResultIndex);
+	TestTrue(TEXT("failure result keeps adapter boundary evidence"), BoundaryEvidenceIndex != INDEX_NONE && FailureResultIndex < BoundaryEvidenceIndex);
+	TestTrue(TEXT("rollback result reports rolled back"),
+		Source.Contains(TEXT("Error.RollbackResult = bRestored")) &&
+		Source.Contains(TEXT("EBlueprintHelperRollbackResult::RolledBack")));
 	return true;
 }
 
