@@ -49,7 +49,10 @@ private:
 	static EBlueprintHelperLogicNodeKind IdentifyNodeKind(const TSharedPtr<FJsonObject>& NodeObj);
 
 	/** 将 Raw JSON 中的节点转换为 LogicNode。 */
-	static FBlueprintHelperLogicNode ConvertNode(const TSharedPtr<FJsonObject>& NodeObj, int32 Index);
+	static FBlueprintHelperLogicNode ConvertNode(
+		const TSharedPtr<FJsonObject>& NodeObj,
+		int32 Index,
+		const FString& AssetPath);
 
 	/** 提取节点名。 */
 	static FString ExtractNodeName(const TSharedPtr<FJsonObject>& NodeObj);

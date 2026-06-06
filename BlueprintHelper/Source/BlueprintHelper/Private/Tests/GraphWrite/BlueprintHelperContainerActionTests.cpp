@@ -340,6 +340,24 @@ static bool RunContainerActionFixture(
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Graph, MakeContainerActionLogicJson(StatementJson), Unresolved);
 	if (!Test.TestTrue(*FString::Printf(TEXT("%s generation succeeds"), *TestName), Result.bSucceed))
 	{
+		Test.AddError(FString::Printf(
+			TEXT("%s result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*TestName,
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s connectivity: %s node=%s %s"),
+				*TestName,
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message));
+		}
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())
@@ -961,6 +979,18 @@ bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTe
 
 	if (!TestTrue(TEXT("branch pure query generation succeeds"), Result.bSucceed))
 	{
+		AddError(FString::Printf(
+			TEXT("branch pure query result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("branch pure query connectivity: %s %s"), *Diagnostic.Code, *Diagnostic.Message));
+		}
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())
@@ -1084,6 +1114,18 @@ bool FBlueprintHelperGraphWriteContainerActionMapFindResultSymbolValuePinTest::R
 
 	if (!TestTrue(TEXT("map find result symbol generation succeeds"), Result.bSucceed))
 	{
+		AddError(FString::Printf(
+			TEXT("map find result symbol result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			AddError(FString::Printf(TEXT("map find result symbol connectivity: %s %s"), *Diagnostic.Code, *Diagnostic.Message));
+		}
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())
@@ -1287,6 +1329,22 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest::RunTest(co
 
 	if (!TestTrue(TEXT("RestoreDevice-shape generation succeeds"), Result.bSucceed))
 	{
+		AddError(FString::Printf(
+			TEXT("RestoreDevice-shape result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			AddError(FString::Printf(
+				TEXT("RestoreDevice-shape connectivity: %s node=%s %s"),
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message));
+		}
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())

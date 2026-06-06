@@ -9,7 +9,9 @@
 #include "Entry/Bridge/Routes/BlueprintHelperObjectPropertyBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperScreenshotBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
+#include "Entry/Bridge/BlueprintHelperBridgeCommandRegistry.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
+#include "Entry/Bridge/BlueprintHelperRequestValidationRegistry.h"
 
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
@@ -25,6 +27,17 @@
 #include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+
+static bool BlueprintHelperBridgeTestHasRequiredField(
+	const FBlueprintHelperRequestValidationDescriptor& Descriptor,
+	const FString& FieldName)
+{
+	return Descriptor.RequiredFields.ContainsByPredicate(
+		[&FieldName](const FBlueprintHelperFieldRule& Rule)
+		{
+			return Rule.FieldName == FieldName;
+		});
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters,
@@ -79,6 +92,78 @@ bool FBlueprintHelperBridgeRoutePlanner_UnknownCommandStaysUnknown::RunTest(cons
 	TestFalse(TEXT("Unknown command is not known"), Plan.bKnownCommand);
 	TestFalse(TEXT("Unknown command does not need GameThread execution"), Plan.bRequiresGameThread);
 	TestTrue(TEXT("Unknown command maps to Unknown cluster"), Plan.Cluster == EBlueprintHelperBridgeRouteCluster::Unknown);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBridgeCommandRegistry_DescriptorsMatchRoutePlanner,
+	"BlueprintHelper.Bridge.CommandRegistry.DescriptorsMatchRoutePlanner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperBridgeCommandRegistry_DescriptorsMatchRoutePlanner::RunTest(const FString& Parameters)
+{
+	const TArray<FBlueprintHelperBridgeCommandDescriptor> Descriptors =
+		FBlueprintHelperBridgeCommandRegistry::GetRepresentativeDescriptors();
+	TestTrue(TEXT("representative descriptors exist"), Descriptors.Num() > 0);
+
+	for (const FBlueprintHelperBridgeCommandDescriptor& Descriptor : Descriptors)
+	{
+		const FBlueprintHelperBridgeRoutePlan Plan =
+			FBlueprintHelperBridgeRoutePlanner::BuildPlan(Descriptor.Command);
+		TestTrue(FString::Printf(TEXT("%s is known"), *Descriptor.Command), Plan.bKnownCommand);
+		TestEqual(
+			FString::Printf(TEXT("%s keeps route cluster"), *Descriptor.Command),
+			static_cast<int32>(Descriptor.RouteCluster),
+			static_cast<int32>(Plan.Cluster));
+		TestEqual(
+			FString::Printf(TEXT("%s keeps GameThread requirement"), *Descriptor.Command),
+			Descriptor.bRequiresGameThread,
+			Plan.bRequiresGameThread);
+		if (Plan.Cluster == EBlueprintHelperBridgeRouteCluster::GraphWrite)
+		{
+			TestTrue(
+				FString::Printf(TEXT("%s allows GraphWrite validation policy"), *Descriptor.Command),
+				Descriptor.bAllowsGraphWriteValidationPolicy);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperRequestValidationRegistry_RepresentativeRulesMatchValidator,
+	"BlueprintHelper.Bridge.ValidationRegistry.RepresentativeRulesMatchValidator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperRequestValidationRegistry_RepresentativeRulesMatchValidator::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperRequestValidationDescriptor AppendDescriptor;
+	TestTrue(
+		TEXT("append descriptor exists"),
+		FBlueprintHelperRequestValidationRegistry::TryFindDescriptor(
+			TEXT("append_blueprint_graph"),
+			AppendDescriptor));
+	TestTrue(TEXT("append descriptor requires target"), BlueprintHelperBridgeTestHasRequiredField(AppendDescriptor, TEXT("target")));
+	TestTrue(TEXT("append descriptor requires nodes"), BlueprintHelperBridgeTestHasRequiredField(AppendDescriptor, TEXT("nodes")));
+
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetObjectField(TEXT("target"), MakeShared<FJsonObject>());
+	FBlueprintHelperBridgeValidationError Error;
+	TestFalse(
+		TEXT("old validator rejects missing append nodes"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("append_blueprint_graph"),
+			Payload,
+			Error));
+	TestEqual(TEXT("old validator reports missing nodes"), Error.Field, FString(TEXT("payload.nodes")));
+
+	FBlueprintHelperRequestValidationDescriptor LogicDescriptor;
+	TestTrue(
+		TEXT("logic json descriptor exists"),
+		FBlueprintHelperRequestValidationRegistry::TryFindDescriptor(
+			TEXT("read_blueprint_logic_json"),
+			LogicDescriptor));
+	TestTrue(TEXT("logic json descriptor requires asset_path"), BlueprintHelperBridgeTestHasRequiredField(LogicDescriptor, TEXT("asset_path")));
 	return true;
 }
 

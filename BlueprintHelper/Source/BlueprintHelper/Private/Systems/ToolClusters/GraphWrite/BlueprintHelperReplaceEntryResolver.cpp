@@ -5,6 +5,7 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 
 bool FBlueprintHelperReplaceEntryResolver::MatchesEntryClass(
 	const FBlueprintHelperReplaceEntryResolveRequest& Request,
@@ -42,6 +43,11 @@ bool FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(
 	if (Request.Scope == EBlueprintHelperReplaceScope::Graph)
 	{
 		return NodeClass->IsChildOf(UK2Node_Event::StaticClass());
+	}
+	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody &&
+		NodeClass->IsChildOf(UK2Node_FunctionResult::StaticClass()))
+	{
+		return true;
 	}
 	return MatchesEntryClass(Request, NodeClass);
 }

@@ -58,7 +58,8 @@ public:
 			FBlueprintHelperGraphSemanticIR& OutIR,
 			const FBlueprintHelperGraphSemanticContext& Context,
 			const FBlueprintHelperGraphResolvedTarget& Target,
-			const FString& Path);
+			const FString& Path,
+			const FString& Severity = TEXT("warning"));
 	static bool FindSymbolInScopes(
 			const FString& Name,
 			const TArray<TMap<FString, FBlueprintHelperGraphSymbol>>& ScopeStack,

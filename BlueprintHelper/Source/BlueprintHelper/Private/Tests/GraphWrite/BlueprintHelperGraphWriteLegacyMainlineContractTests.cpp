@@ -397,11 +397,27 @@ bool FBlueprintHelperMergePatchUsesMutationCoordinatorContractTest::RunTest(cons
 		});
 	bClean &= AssertSourceContainsTokens(
 		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Patch/Handlers/BlueprintHelperConnectPinsPatchHandler.cpp"),
+		{
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Patch/Handlers/BlueprintHelperDisconnectLinkPatchHandler.cpp"),
+		{
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
+		TEXT("Private/Systems/ToolClusters/GraphWrite/Patch/Handlers/BlueprintHelperReplaceLinkPatchHandler.cpp"),
+		{
+			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection")
+		});
+	bClean &= AssertSourceContainsTokens(
+		*this,
 		TEXT("Private/Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.cpp"),
 		{
-			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins"),
-			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins"),
-			TEXT("EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection"),
+			TEXT("FBlueprintHelperPatchOperationHandlerRegistry::FindHandler"),
 			TEXT("FBlueprintHelperGraphWriteMutationCoordinator::ExecuteIntents")
 		});
 	bClean &= AssertSourceContainsTokens(

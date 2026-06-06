@@ -11,6 +11,7 @@ struct BLUEPRINTHELPER_API FBlueprintGraphWriteConnectivityValidationInput
 	UEdGraph* TargetGraph = nullptr;
 	TArray<UEdGraphNode*> GeneratedNodes;
 	TSet<UEdGraphNode*> EntryRootNodes;
+	TSet<UEdGraphNode*> AllowedTerminalPureDataNodes;
 	int32 RequestedConnectionCount = 0;
 	int32 CreatedConnectionCount = 0;
 	bool bRequirePureDataReachableToExec = true;

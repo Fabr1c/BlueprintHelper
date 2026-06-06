@@ -58,6 +58,131 @@ bool IsPureQueryContainerActionStatement(const TSharedPtr<FBlueprintHelperGraphS
 		FBlueprintHelperContainerActionVocabulary::Find(Statement->ContainerKind, Statement->ContainerOperation);
 	return Spec && Spec->bPureQuery;
 }
+
+static TSet<UEdGraphNode*> CollectAllowedTerminalPureDataNodes(
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
+	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
+	const TArray<FBlueprintHelperGraphFragmentDataEdge>& DataEdges)
+{
+	TSet<FString> ConsumedProducerFragmentIds;
+	for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : DataEdges)
+	{
+		if (!DataEdge.From.FragmentId.IsEmpty())
+		{
+			ConsumedProducerFragmentIds.Add(DataEdge.From.FragmentId);
+		}
+	}
+
+	TSet<FString> TerminalResultFragmentIds;
+	TSet<FString> TerminalResultStatementIds;
+	for (const FBlueprintHelperGraphFragmentRef& FragmentRef : FragmentDag.Fragments)
+	{
+		const FString* ResultSymbol = FragmentRef.Metadata.Find(TEXT("result_symbol"));
+		const FString* StatementKind = FragmentRef.Metadata.Find(TEXT("statement_kind"));
+		const FString* StatementId = FragmentRef.Metadata.Find(TEXT("statement_id"));
+		const FString* ContainerKind = FragmentRef.Metadata.Find(TEXT("container_kind"));
+		const FString* ContainerOperation = FragmentRef.Metadata.Find(TEXT("container_operation"));
+		const FBlueprintHelperContainerActionSpec* ContainerSpec =
+			(ContainerKind && ContainerOperation)
+				? FBlueprintHelperContainerActionVocabulary::Find(*ContainerKind, *ContainerOperation)
+				: nullptr;
+		const bool bIsTerminalContainerQuery =
+			StatementKind
+			&& StatementKind->Equals(TEXT("container_action"), ESearchCase::IgnoreCase)
+			&& ContainerSpec
+			&& ContainerSpec->bPureQuery;
+		if (ResultSymbol && !ResultSymbol->TrimStartAndEnd().IsEmpty()
+			&& bIsTerminalContainerQuery
+			&& !ConsumedProducerFragmentIds.Contains(FragmentRef.FragmentId))
+		{
+			TerminalResultFragmentIds.Add(FragmentRef.FragmentId);
+			if (StatementId && !StatementId->IsEmpty())
+			{
+				TerminalResultStatementIds.Add(*StatementId);
+			}
+		}
+	}
+
+	TSet<UEdGraphNode*> AllowedNodes;
+	for (const FBlueprintHelperNodeFragment& GeneratedFragment : GeneratedFragments)
+	{
+		if (!TerminalResultFragmentIds.Contains(GeneratedFragment.FragmentId)
+			&& !TerminalResultStatementIds.Contains(GeneratedFragment.SourceStatementId))
+		{
+			continue;
+		}
+
+		if (GeneratedFragment.PrimaryNode)
+		{
+			AllowedNodes.Add(GeneratedFragment.PrimaryNode);
+		}
+		for (UEdGraphNode* Node : GeneratedFragment.Nodes)
+		{
+			if (Node)
+			{
+				AllowedNodes.Add(Node);
+			}
+		}
+	}
+	return AllowedNodes;
+}
+
+static TMap<FString, FString> BuildGeneratedFragmentAliasMap(const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments)
+{
+	TMap<FString, FString> AliasToFragmentId;
+	for (const FBlueprintHelperNodeFragment& GeneratedFragment : GeneratedFragments)
+	{
+		if (GeneratedFragment.FragmentId.IsEmpty())
+		{
+			continue;
+		}
+
+		AliasToFragmentId.Add(GeneratedFragment.FragmentId, GeneratedFragment.FragmentId);
+		if (!GeneratedFragment.SourceStatementId.IsEmpty())
+		{
+			AliasToFragmentId.Add(GeneratedFragment.SourceStatementId, GeneratedFragment.FragmentId);
+		}
+	}
+	return AliasToFragmentId;
+}
+
+static const FBlueprintHelperGraphFragmentRef* FindDagFragment(
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
+	const FString& FragmentId)
+{
+	for (const FBlueprintHelperGraphFragmentRef& Fragment : FragmentDag.Fragments)
+	{
+		if (Fragment.FragmentId.Equals(FragmentId, ESearchCase::CaseSensitive))
+		{
+			return &Fragment;
+		}
+	}
+	return nullptr;
+}
+
+static bool TryResolveGeneratedFragmentId(
+	const FBlueprintHelperGraphFragmentDag& FragmentDag,
+	const TMap<FString, FString>& GeneratedAliasToFragmentId,
+	const FString& DagFragmentId,
+	FString& OutGeneratedFragmentId)
+{
+	if (const FString* DirectMatch = GeneratedAliasToFragmentId.Find(DagFragmentId))
+	{
+		OutGeneratedFragmentId = *DirectMatch;
+		return true;
+	}
+
+	const FBlueprintHelperGraphFragmentRef* DagFragment = FindDagFragment(FragmentDag, DagFragmentId);
+	if (DagFragment && !DagFragment->SourceStatementId.IsEmpty())
+	{
+		if (const FString* SourceMatch = GeneratedAliasToFragmentId.Find(DagFragment->SourceStatementId))
+		{
+			OutGeneratedFragmentId = *SourceMatch;
+			return true;
+		}
+	}
+	return false;
+}
 }
 
 // ========== From BlueprintGraphLocalVariableService.cpp ==========
@@ -247,7 +372,10 @@ void UGraphWritePipelineUtils::AppendSemanticFragmentDataEdges(
 
 	UBlueprint* Blueprint = TargetGraph ? FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph) : nullptr;
 	FBlueprintHelperGraphSemanticIR SemanticIR;
-	if (!FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(*LogicSpecObject, Blueprint, SemanticIR))
+	if (!FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		*LogicSpecObject,
+		FBlueprintHelperGraphSemanticContext::FromBlueprintAndGraph(Blueprint, TargetGraph),
+		SemanticIR))
 	{
 		return;
 	}
@@ -924,14 +1052,30 @@ FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatement(
 
 TArray<FBlueprintHelperGraphFragmentDataEdge> UGraphWritePipelineUtils::FilterSemanticDataEdges(
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
-	const TSet<FString>& GeneratedFragmentIds)
+	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments)
 {
 	TArray<FBlueprintHelperGraphFragmentDataEdge> DataEdges;
+	const TMap<FString, FString> GeneratedAliasToFragmentId =
+		BlueprintHelperGraphWritePipelineUtilsLocal::BuildGeneratedFragmentAliasMap(GeneratedFragments);
 	for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : FragmentDag.DataEdges)
 	{
-		if (GeneratedFragmentIds.Contains(DataEdge.From.FragmentId) && GeneratedFragmentIds.Contains(DataEdge.To.FragmentId))
+		FString ResolvedFromFragmentId;
+		FString ResolvedToFragmentId;
+		if (BlueprintHelperGraphWritePipelineUtilsLocal::TryResolveGeneratedFragmentId(
+				FragmentDag,
+				GeneratedAliasToFragmentId,
+				DataEdge.From.FragmentId,
+				ResolvedFromFragmentId)
+			&& BlueprintHelperGraphWritePipelineUtilsLocal::TryResolveGeneratedFragmentId(
+				FragmentDag,
+				GeneratedAliasToFragmentId,
+				DataEdge.To.FragmentId,
+				ResolvedToFragmentId))
 		{
-			DataEdges.Add(DataEdge);
+			FBlueprintHelperGraphFragmentDataEdge ResolvedEdge = DataEdge;
+			ResolvedEdge.From.FragmentId = ResolvedFromFragmentId;
+			ResolvedEdge.To.FragmentId = ResolvedToFragmentId;
+			DataEdges.Add(MoveTemp(ResolvedEdge));
 		}
 	}
 	return DataEdges;
@@ -1081,7 +1225,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 		}
 	}
 
-	BuildSemanticStatementArray(
+	const FSemanticStatementExecFlow TopLevelFlow = BuildSemanticStatementArray(
 		TargetGraph,
 		&ActionContextScope,
 		FragmentDag,
@@ -1109,7 +1253,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	}
 	Result.ExecutionStats.BuildContextMs += GraphWriteElapsedMs(ContextIndexStart);
 
-	const TArray<FBlueprintHelperGraphFragmentDataEdge> DataEdges = FilterSemanticDataEdges(FragmentDag, GeneratedFragmentIds);
+	const TArray<FBlueprintHelperGraphFragmentDataEdge> DataEdges = FilterSemanticDataEdges(FragmentDag, GeneratedFragments);
 	const double ConnectLinksStart = FPlatformTime::Seconds();
 	const int32 CreatedDataConnectionCount = FBlueprintGraphLinker::ConnectFragmentDataEdges(
 		TargetGraph,
@@ -1124,6 +1268,22 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	ConnectivityInput.TargetGraph = TargetGraph;
 	ConnectivityInput.GeneratedNodes = GraphWriteContext.GetGeneratedNodes();
 	ConnectivityInput.EntryRootNodes = GraphWriteContext.GetEntryRootNodes();
+	if (ConnectivityInput.EntryRootNodes.Num() == 0)
+	{
+		for (UEdGraphPin* EntryPin : TopLevelFlow.Entries)
+		{
+			UEdGraphNode* EntryNode = EntryPin ? EntryPin->GetOwningNode() : nullptr;
+			if (EntryNode)
+			{
+				ConnectivityInput.EntryRootNodes.Add(EntryNode);
+			}
+		}
+	}
+	ConnectivityInput.AllowedTerminalPureDataNodes =
+		BlueprintHelperGraphWritePipelineUtilsLocal::CollectAllowedTerminalPureDataNodes(
+			FragmentDag,
+			GeneratedFragments,
+			DataEdges);
 	ConnectivityInput.RequestedConnectionCount = DataEdges.Num();
 	ConnectivityInput.CreatedConnectionCount = CreatedDataConnectionCount;
 	const FBlueprintGraphWriteConnectivityValidationResult Connectivity =

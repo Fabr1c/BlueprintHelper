@@ -121,6 +121,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 	static bool DataChainReachesExecConsumer(
 		const UEdGraphNode* Node,
 		const TSet<const UEdGraphNode*>& ReachableExecNodes,
+		const TSet<UEdGraphNode*>& AllowedTerminalPureDataNodes,
 		TSet<const UEdGraphNode*>& VisitedNodes)
 	{
 		if (!Node || VisitedNodes.Contains(Node))
@@ -149,6 +150,11 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 					continue;
 				}
 
+				if (AllowedTerminalPureDataNodes.Contains(LinkedNode))
+				{
+					return true;
+				}
+
 				if (HasExecPin(LinkedNode))
 				{
 					if (ReachableExecNodes.Contains(LinkedNode))
@@ -158,7 +164,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 					continue;
 				}
 
-				if (DataChainReachesExecConsumer(LinkedNode, ReachableExecNodes, VisitedNodes))
+				if (DataChainReachesExecConsumer(LinkedNode, ReachableExecNodes, AllowedTerminalPureDataNodes, VisitedNodes))
 				{
 					return true;
 				}
@@ -187,6 +193,17 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 		return Node->NodeGuid.ToString(EGuidFormats::Digits);
 	}
 
+	static FString NodeDiagnosticLabel(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return TEXT("generated node");
+		}
+
+		const FString Title = Node->GetNodeTitle(ENodeTitleType::ListView).ToString().TrimStartAndEnd();
+		return Title.IsEmpty() ? Node->GetClass()->GetName() : Title;
+	}
+
 	static FBlueprintGeneratorDiagnostic MakeDiagnostic(
 		const FString& Code,
 		const UEdGraphNode* Node,
@@ -196,7 +213,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 		Diagnostic.Severity = TEXT("error");
 		Diagnostic.Code = Code;
 		Diagnostic.NodeId = NodeDiagnosticId(Node);
-		Diagnostic.Message = Message;
+		Diagnostic.Message = FString::Printf(TEXT("%s: %s"), *NodeDiagnosticLabel(Node), *Message);
 		return Diagnostic;
 	}
 }
@@ -229,6 +246,10 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 
 		if (HasExecPin(Node))
 		{
+			if (Input.AllowedTerminalPureDataNodes.Contains(Node))
+			{
+				continue;
+			}
 			if (!Input.EntryRootNodes.Contains(Node) && !ReachableExecNodes.Contains(Node))
 			{
 				Result.Diagnostics.Add(MakeDiagnostic(
@@ -243,15 +264,18 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 
 		if (!HasOutgoingDataConsumer(Node))
 		{
-			Result.Diagnostics.Add(MakeDiagnostic(
-				TEXT("unconsumed_pure_data_node"),
-				Node,
-				TEXT("Generated PureData node has no outgoing data consumer.")));
+			if (!Input.AllowedTerminalPureDataNodes.Contains(Node))
+			{
+				Result.Diagnostics.Add(MakeDiagnostic(
+					TEXT("unconsumed_pure_data_node"),
+					Node,
+					TEXT("Generated PureData node has no outgoing data consumer.")));
+			}
 		}
 		else if (Input.bRequirePureDataReachableToExec)
 		{
 			TSet<const UEdGraphNode*> VisitedNodes;
-			if (!DataChainReachesExecConsumer(Node, ReachableExecNodes, VisitedNodes))
+			if (!DataChainReachesExecConsumer(Node, ReachableExecNodes, Input.AllowedTerminalPureDataNodes, VisitedNodes))
 			{
 				Result.Diagnostics.Add(MakeDiagnostic(
 					TEXT("unreachable_pure_data_chain"),

@@ -118,11 +118,13 @@ export function compactCliValue(
   }
 
   const out: Record<string, unknown> = {};
+  const bExternalGraphAnchor = value['schema'] === 'BlueprintHelper.ExternalGraphAnchor.v1';
   for (const [key, entry] of Object.entries(value)) {
-    if (shouldOmitByPolicy(key, entry, policy)) {
+    const bPreserveExternalAnchorSchema = bExternalGraphAnchor && key === 'schema';
+    if (!bPreserveExternalAnchorSchema && shouldOmitByPolicy(key, entry, policy)) {
       continue;
     }
-    if (key === 'schema' && typeof entry === 'string' && entry.startsWith('BlueprintHelper.')) {
+    if (!bPreserveExternalAnchorSchema && key === 'schema' && typeof entry === 'string' && entry.startsWith('BlueprintHelper.')) {
       continue;
     }
     out[key] = compactCliValue(entry, policy);

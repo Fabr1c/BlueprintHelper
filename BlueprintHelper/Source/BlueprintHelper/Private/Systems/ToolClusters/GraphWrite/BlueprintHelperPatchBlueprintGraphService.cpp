@@ -10,6 +10,8 @@
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
 #include "Systems/ToolClusters/GraphWrite/Patch/BlueprintHelperOwnedGraphPatchPolicy.h"
+#include "Systems/ToolClusters/GraphWrite/Patch/BlueprintHelperPatchOperationHandlerRegistry.h"
+#include "Systems/ToolClusters/GraphWrite/UnitOfWork/BlueprintHelperGraphWriteUnitOfWork.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperReplaceGraphTypes.h"
@@ -91,12 +93,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperPatchBlueprintGraphService::Execu
 {
 	const FPatchRequest Request = ParseRequest(Payload);
 
-	if (Request.bDryRun)
-	{
-		return ExecuteDryRun(Request);
-	}
-
-	return ExecuteWrite(Request);
+	return FBlueprintHelperGraphWriteUnitOfWork::RunExistingOperation(
+		Request.bDryRun
+			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
+			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
+		TEXT("patch_blueprint_graph"),
+		TEXT("patch_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2BlockImplementation,
+		[this, &Request]()
+		{
+			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+		});
 }
 
 // 鈹€鈹€鈹€ 瑙ｆ瀽 鈹€鈹€鈹€
@@ -1080,111 +1087,42 @@ bool FBlueprintHelperPatchBlueprintGraphService::ApplyPatch(
 	const FPatchRequest& Request, const FBlueprintHelperResolvedPatchTarget& Target,
 	bool& bOutChanged, FString& OutError) const
 {
-	switch (Request.PatchType)
+	const FString PatchKind = PatchTypeToString(Request.PatchType);
+	const IBlueprintHelperPatchOperationHandler* Handler =
+		FBlueprintHelperPatchOperationHandlerRegistry::FindHandler(PatchKind);
+	if (!Handler)
 	{
-	case EBlueprintHelperPatchType::SetPinDefault:
-	{
-		FString NewVal;
-		if (Request.PatchPayload.IsValid())
-		{
-			Request.PatchPayload->TryGetStringField(TEXT("value"), NewVal);
-		}
-
-		FBlueprintHelperGraphWriteMutationIntent Intent;
-		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::SetPinDefault;
-		Intent.IntentId = TEXT("patch_set_pin_default");
-		Intent.Target.Pin = Target.Pin;
-		Intent.DefaultValue = NewVal;
-		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
-	}
-	case EBlueprintHelperPatchType::SetNodeComment:
-	{
-		FString Comment;
-		if (Request.PatchPayload.IsValid())
-			Request.PatchPayload->TryGetStringField(TEXT("comment"), Comment);
-		return ApplySetNodeComment(Target.Node, Comment, bOutChanged, OutError);
-	}
-	case EBlueprintHelperPatchType::ConnectPins:
-	{
-		// 鐩爣 Pin 浠?patched_ref.pin_ref 瑙ｆ瀽
-		if (!Target.Pin)
-		{
-			OutError = TEXT("connect_pins requires target pin_ref.");
-			return false;
-		}
-
-		if (!Target.SourcePin)
-		{
-			OutError = TEXT("connect_pins requires resolved source pin.");
-			return false;
-		}
-
-		FBlueprintHelperGraphWriteMutationIntent Intent;
-		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ConnectPins;
-		Intent.IntentId = TEXT("patch_connect_pins");
-		Intent.Source.Pin = Target.SourcePin;
-		Intent.Target.Pin = Target.Pin;
-		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
-	}
-	case EBlueprintHelperPatchType::DisconnectLink:
-	{
-		if (!Target.Link.SourcePin || !Target.Link.TargetPin)
-		{
-			OutError = TEXT("disconnect_link requires source and target pins.");
-			return false;
-		}
-
-		FBlueprintHelperGraphWriteMutationIntent Intent;
-		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::DisconnectPins;
-		Intent.IntentId = TEXT("patch_disconnect_link");
-		Intent.Source.Pin = Target.Link.SourcePin;
-		Intent.Target.Pin = Target.Link.TargetPin;
-		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
-	}
-	case EBlueprintHelperPatchType::ReplaceLink:
-	{
-		if (!Target.Link.SourcePin)
-		{
-			OutError = TEXT("replace_link requires an existing link.");
-			return false;
-		}
-		// New target pin.
-		UEdGraphPin* NewToPin = Target.ReplacementPin;
-		if (!NewToPin)
-		{
-			OutError = TEXT("replace_link requires a new target pin.");
-			return false;
-		}
-
-		FBlueprintHelperGraphWriteMutationIntent Intent;
-		Intent.Kind = EBlueprintHelperGraphWriteMutationIntentKind::ReplacePinConnection;
-		Intent.IntentId = TEXT("patch_replace_link");
-		Intent.Source.Pin = Target.Link.SourcePin;
-		Intent.Target.Pin = Target.Link.TargetPin;
-		Intent.ReplacementTarget.Pin = NewToPin;
-		return ExecuteMutationIntent(Graph, Intent, bOutChanged, OutError);
-	}
-	case EBlueprintHelperPatchType::DeleteOwnedNode:
-	{
-		if (!Target.Node)
-		{
-			OutError = TEXT("delete_owned_node target node is missing.");
-			return false;
-		}
-
-		Target.Node->Modify();
-		if (Request.bDeleteBreakLinks)
-		{
-			Target.Node->BreakAllNodeLinks();
-		}
-		FBlueprintEditorUtils::RemoveNode(Blueprint, Target.Node, true);
-		bOutChanged = true;
-		return true;
-	}
-	default:
-		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), PatchTypeToString(Request.PatchType));
+		OutError = FString::Printf(TEXT("Unsupported patch_type: %s"), *PatchKind);
 		return false;
 	}
+
+	const TSharedPtr<FJsonObject> PatchJson =
+		Request.PatchPayload.IsValid() ? Request.PatchPayload : MakeShared<FJsonObject>();
+	FBlueprintHelperToolError ValidationError;
+	if (!Handler->ValidateRequest(PatchJson.ToSharedRef(), ValidationError))
+	{
+		OutError = ValidationError.Message.IsEmpty() ? ValidationError.Code : ValidationError.Message;
+		return false;
+	}
+
+	FBlueprintHelperPatchOperationApplyContext Context;
+	Context.Blueprint = Blueprint;
+	Context.Graph = Graph;
+	Context.TargetNode = Target.Node;
+	Context.TargetPin = Target.Pin;
+	Context.SourcePin = Target.SourcePin;
+	Context.ReplacementPin = Target.ReplacementPin;
+	Context.Link = Target.Link;
+	Context.bDeleteBreakLinks = Request.bDeleteBreakLinks;
+	Context.PatchJson = PatchJson;
+	Context.ExecuteMutationIntent =
+		[this, Graph](const FBlueprintHelperGraphWriteMutationIntent& Intent, bool& bInnerChanged, FString& InnerError)
+		{
+			return ExecuteMutationIntent(Graph, Intent, bInnerChanged, InnerError);
+		};
+
+	return Handler->ApplyResolvedPatch(Context, bOutChanged, OutError);
+
 }
 
 // 鈹€鈹€鈹€ set_pin_default 鈹€鈹€鈹€
@@ -1208,25 +1146,4 @@ bool FBlueprintHelperPatchBlueprintGraphService::ExecuteMutationIntent(
 	}
 	return true;
 }
-bool FBlueprintHelperPatchBlueprintGraphService::ApplySetNodeComment(
-	UEdGraphNode* Node, const FString& NewComment, bool& bOutChanged, FString& OutError) const
-{
-	if (!Node)
-	{
-		OutError = TEXT("target_node_not_found");
-		return false;
-	}
-
-	if (Node->NodeComment == NewComment)
-	{
-		bOutChanged = false;
-		return true;
-	}
-
-	Node->Modify();
-	Node->NodeComment = NewComment;
-	bOutChanged = true;
-	return true;
-}
-
 // 鈹€鈹€鈹€ connect_pins 鈹€鈹€鈹€

@@ -116,6 +116,44 @@ test('projectToolResultForCli preserves connectivity blocker issue summary', () 
   }]);
 });
 
+test('projectToolResultForCli preserves ExternalGraphAnchor schema', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'read.context',
+    format: 'json',
+    tool_result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_context',
+      trace_id: 'trace_external_anchor_projection',
+      status: 'completed',
+      modified: false,
+      data: {
+        payload: {
+          schema: 'LogicJson.v1',
+          logic: {
+            nodes: [{
+              external_anchor: {
+                schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+                node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                fingerprint: 'anchorfp',
+              },
+            }],
+          },
+        },
+      },
+    } as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+
+  const data = projected.tool_result.data as Record<string, unknown>;
+  const payload = data['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicJson.v1');
+  const logic = payload['logic'] as Record<string, unknown>;
+  const nodes = logic['nodes'] as Record<string, unknown>[];
+  const anchor = nodes[0]?.['external_anchor'] as Record<string, unknown>;
+  assert.equal(anchor['schema'], 'BlueprintHelper.ExternalGraphAnchor.v1');
+});
+
 test('projectToolResultForCli applies policy omit_by_default recursively', () => {
   const projected = projectToolResultForCli({
     command_kind: 'tool.invoke',

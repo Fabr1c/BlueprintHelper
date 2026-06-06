@@ -24,6 +24,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/UnitOfWork/BlueprintHelperGraphWriteUnitOfWork.h"
 #include "Systems/ToolClusters/GraphWrite/Utils/GraphWriteCoreUtils.h"
 
 namespace BlueprintHelperMergeExternalFlow
@@ -560,7 +561,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeExternalFlowService::Execute
 	const TSharedPtr<FJsonObject>& Payload) const
 {
 	const FMergeExternalFlowRequest Request = ParseRequest(Payload);
-	return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+	return FBlueprintHelperGraphWriteUnitOfWork::RunExistingOperation(
+		Request.bDryRun
+			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
+			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
+		TEXT("merge_external_flow"),
+		TEXT("merge_external_flow"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		[this, &Request]()
+		{
+			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+		});
 }
 
 FBlueprintHelperMergeExternalFlowService::FMergeExternalFlowRequest

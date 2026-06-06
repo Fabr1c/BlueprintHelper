@@ -66,6 +66,7 @@ public:
 
 	static EBlueprintHelperTaskRuntimeCluster ResolveClusterForLoweredStep(
 		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
+	static const TArray<EBlueprintHelperTaskRuntimeCluster>& GetRegisteredClusters();
 
 	bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
 

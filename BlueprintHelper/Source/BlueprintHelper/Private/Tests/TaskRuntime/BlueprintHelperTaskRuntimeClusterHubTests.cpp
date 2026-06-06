@@ -112,6 +112,35 @@ bool FBlueprintHelperTaskRuntimeClusterHub_ResolvesLoweredSteps::RunTest(const F
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeClusterHub_RegisteredClustersCoverImplementedClusters,
+	"BlueprintHelper.TaskRuntime.ClusterRegistry.CoversImplementedClusters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeClusterHub_RegisteredClustersCoverImplementedClusters::RunTest(const FString& Parameters)
+{
+	const TArray<EBlueprintHelperTaskRuntimeCluster>& RegisteredClusters =
+		FBlueprintHelperTaskRuntimeClusterHub::GetRegisteredClusters();
+	const EBlueprintHelperTaskRuntimeCluster ExpectedClusters[] = {
+		EBlueprintHelperTaskRuntimeCluster::GraphWrite,
+		EBlueprintHelperTaskRuntimeCluster::BlueprintVariables,
+		EBlueprintHelperTaskRuntimeCluster::AssetFactory,
+		EBlueprintHelperTaskRuntimeCluster::Component,
+		EBlueprintHelperTaskRuntimeCluster::ClassSettings,
+		EBlueprintHelperTaskRuntimeCluster::Signature,
+		EBlueprintHelperTaskRuntimeCluster::UMGWidget,
+		EBlueprintHelperTaskRuntimeCluster::DataTable,
+		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
+	};
+
+	TestEqual(TEXT("registered cluster count"), RegisteredClusters.Num(), static_cast<int32>(UE_ARRAY_COUNT(ExpectedClusters)));
+	for (const EBlueprintHelperTaskRuntimeCluster ExpectedCluster : ExpectedClusters)
+	{
+		TestTrue(TEXT("expected cluster is registered"), RegisteredClusters.Contains(ExpectedCluster));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskRuntimeClusterHub_UnknownLoweredStepIsUnknown,
 	"BlueprintHelper.TaskRuntime.Cluster.UnknownLoweredStepIsUnknown",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

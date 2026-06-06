@@ -637,7 +637,7 @@ test('develop timing records read_context logic_flow stages and UE nested timing
     'read_context.bridge_send_receive',
     'read_context.bridge_payload_extract',
     'read_context.ue_timing_extract',
-    'read_context.logic_flow_build_payload',
+    'read_context.logic_project_payload',
     'read_context.result_wrap',
     'cli.result_return',
   ]) {

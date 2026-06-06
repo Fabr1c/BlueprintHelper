@@ -210,12 +210,16 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 		TestEqual(TEXT("logicflow request exports ReadContext schema"), LogicFlowJson->GetStringField(TEXT("schema")), TEXT("ReadContextPack.v1"));
 		TestEqual(TEXT("logicflow request degrades to logic_json"), LogicFlowJson->GetStringField(TEXT("format")), TEXT("logic_json"));
 		TestEqual(TEXT("logicflow request records requested format"), LogicFlowJson->GetStringField(TEXT("requested_format")), TEXT("logic_flow"));
+		TestEqual(TEXT("logicflow records task-core projection owner"), LogicFlowJson->GetStringField(TEXT("projection_owner")), TEXT("task-core"));
+		TestEqual(TEXT("logicflow records UE callback schema"), LogicFlowJson->GetStringField(TEXT("ue_callback_schema")), TEXT("LogicSnapshot.v1"));
 		TestTrue(
 			TEXT("logicflow request has warning"),
 			FBlueprintHelperTaskSpecWorkbenchServicesTestData::HasStringArrayValue(
 				LogicFlowJson,
 				TEXT("warnings"),
 				TEXT("logic_flow_degraded_workbench_canonical_builder_unavailable")));
+		const TArray<TSharedPtr<FJsonValue>>* Diagnostics = nullptr;
+		TestTrue(TEXT("logicflow records projection diagnostic"), LogicFlowJson->TryGetArrayField(TEXT("diagnostics"), Diagnostics));
 	}
 	TestTrue(TEXT("logicflow status message reports degradation"), LogicFlowResult.Message.Contains(TEXT("degraded to logicjson")));
 
@@ -233,6 +237,7 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 	{
 		TestEqual(TEXT("logicjson has ReadContext schema"), LogicJson->GetStringField(TEXT("schema")), TEXT("ReadContextPack.v1"));
 		TestEqual(TEXT("logicjson has format"), LogicJson->GetStringField(TEXT("format")), TEXT("logic_json"));
+		TestEqual(TEXT("logicjson records task-core projection owner"), LogicJson->GetStringField(TEXT("projection_owner")), TEXT("task-core"));
 	}
 	TestEqual(TEXT("source text not mutated"), LogicJsonRequest.SourceText, T3DText);
 
@@ -259,6 +264,39 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 
 	TestTrue(TEXT("logicmd export succeeds"), LogicMdResult.bSucceeded);
 	TestTrue(TEXT("logicmd has title"), LogicMdResult.ExportText.Contains(TEXT("ReadContext LogicMD")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskSpecWorkbenchReadContextProjectionMetadataShapeTest,
+	"BlueprintHelper.TaskSpecWorkbench.ReadContextProjection.MetadataShape",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskSpecWorkbenchReadContextProjectionMetadataShapeTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperReadContextExportRequest Request;
+	Request.SourceText = FBlueprintHelperTaskSpecWorkbenchServicesTestData::MakeMinimalT3DText();
+	Request.Format = EBlueprintHelperReadContextExportFormat::LogicFlow;
+
+	const FBlueprintHelperReadContextExportResult Result =
+		FBlueprintHelperReadContextExportService::Export(Request);
+	TestTrue(TEXT("logicflow projection export succeeds"), Result.bSucceeded);
+
+	const TSharedPtr<FJsonObject> Payload =
+		FBlueprintHelperTaskSpecWorkbenchServicesTestData::ParseJsonObject(Result.ExportText);
+	TestTrue(TEXT("projection export is JSON"), Payload.IsValid());
+	if (!Payload.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("projection owner is task-core"), Payload->GetStringField(TEXT("projection_owner")), TEXT("task-core"));
+	TestEqual(TEXT("UE callback schema is recorded"), Payload->GetStringField(TEXT("ue_callback_schema")), TEXT("LogicSnapshot.v1"));
+	TestEqual(TEXT("requested format is preserved"), Payload->GetStringField(TEXT("requested_format")), TEXT("logic_flow"));
+
+	const TArray<TSharedPtr<FJsonValue>>* Diagnostics = nullptr;
+	TestTrue(TEXT("projection unavailable diagnostic exists"), Payload->TryGetArrayField(TEXT("diagnostics"), Diagnostics));
+	TestTrue(TEXT("projection unavailable diagnostic has entries"), Diagnostics && Diagnostics->Num() > 0);
 	return true;
 }
 

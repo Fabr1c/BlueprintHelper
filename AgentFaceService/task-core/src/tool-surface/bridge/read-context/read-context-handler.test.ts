@@ -432,7 +432,7 @@ test('read_context handler records timing around bridge and post-processing stag
   assert.ok(stageNames.includes('read_context.bridge_send_receive'));
   assert.ok(stageNames.includes('read_context.bridge_payload_extract'));
   assert.ok(stageNames.includes('read_context.ue_timing_extract'));
-  assert.ok(stageNames.includes('read_context.filter_payload'));
+  assert.ok(stageNames.includes('read_context.logic_project_payload'));
   assert.ok(stageNames.includes('read_context.bridge_payload_bytes'));
   assert.ok(stageNames.includes('read_context.ue_raw_payload_bytes'));
   assert.ok(stageNames.includes('read_context.post_processed_payload_bytes'));

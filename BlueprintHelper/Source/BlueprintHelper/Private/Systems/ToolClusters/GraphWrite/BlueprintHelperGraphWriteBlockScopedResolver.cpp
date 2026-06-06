@@ -3,6 +3,7 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "K2Node_CustomEvent.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
@@ -140,8 +141,12 @@ public:
 			}
 
 			const FString Title = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
+			const UK2Node_CustomEvent* CustomEventNode = Cast<UK2Node_CustomEvent>(Node);
+			const bool bMatchesCustomEventName = CustomEventNode &&
+				CustomEventNode->CustomFunctionName.ToString().Equals(Ref, ESearchCase::IgnoreCase);
 			if (Node->GetName().Equals(Ref, ESearchCase::IgnoreCase) ||
-				Title.Equals(Ref, ESearchCase::IgnoreCase))
+				Title.Equals(Ref, ESearchCase::IgnoreCase) ||
+				bMatchesCustomEventName)
 			{
 				Matches.Add(Node);
 			}

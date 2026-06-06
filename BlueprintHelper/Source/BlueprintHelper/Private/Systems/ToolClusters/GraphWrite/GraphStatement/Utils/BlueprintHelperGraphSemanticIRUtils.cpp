@@ -435,7 +435,8 @@ void FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(
 	FBlueprintHelperGraphSemanticIR& OutIR,
 	const FBlueprintHelperGraphSemanticContext& Context,
 	const FBlueprintHelperGraphResolvedTarget& Target,
-	const FString& Path)
+	const FString& Path,
+	const FString& Severity)
 {
 	if (!Context.HasVariables() || Target.Raw.IsEmpty() || Target.bVerifiedByContext)
 	{
@@ -447,7 +448,7 @@ void FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(
 		TEXT("target_unverified"),
 		Path,
 		FString::Printf(TEXT("Target was not found in Blueprint context: %s."), *Target.Raw),
-		TEXT("warning"));
+		Severity);
 }
 bool FBlueprintHelperGraphSemanticIRUtils::FindSymbolInScopes(
 	const FString& Name,

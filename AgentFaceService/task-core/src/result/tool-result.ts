@@ -274,8 +274,10 @@ function sanitizeAgentFacingUnknown(value: unknown, seen: WeakSet<object>): unkn
   seen.add(value);
 
   const sanitized: Record<string, unknown> = {};
-  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
-    if (isAgentFacingInternalKey(key)) {
+  const record = value as Record<string, unknown>;
+  const bExternalGraphAnchor = record['schema'] === 'BlueprintHelper.ExternalGraphAnchor.v1';
+  for (const [key, entryValue] of Object.entries(record)) {
+    if (!(bExternalGraphAnchor && key === 'node_guid') && isAgentFacingInternalKey(key)) {
       continue;
     }
     const nextValue = sanitizeAgentFacingUnknown(entryValue, seen);

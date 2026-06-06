@@ -218,6 +218,23 @@ static bool RunFixture(
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Graph, MakeLogicJson(StatementJson), Unresolved);
 	if (!Test.TestTrue(*FString::Printf(TEXT("%s generation succeeds"), *TestName), Result.bSucceed))
 	{
+		Test.AddError(FString::Printf(
+			TEXT("%s result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*TestName,
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s connectivity: %s %s"),
+				*TestName,
+				*Diagnostic.Code,
+				*Diagnostic.Message));
+		}
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())

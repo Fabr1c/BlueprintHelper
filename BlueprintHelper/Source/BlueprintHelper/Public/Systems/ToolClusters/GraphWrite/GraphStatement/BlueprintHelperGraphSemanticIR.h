@@ -5,6 +5,7 @@
 class FJsonObject;
 class FJsonValue;
 class UBlueprint;
+class UEdGraph;
 class UStruct;
 
 enum class EBlueprintHelperGraphStatementKind : uint8
@@ -89,15 +90,18 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphSemanticContext
 	TSet<FString> VariableNames;
 	TSet<FString> ComponentNames;
 	TSet<FString> FunctionNames;
+	TSet<FString> FunctionParamNames;
 	TMap<FString, FString> TargetTypes;
 	TMap<FString, const UStruct*> TargetStructs;
 
 	static FBlueprintHelperGraphSemanticContext FromBlueprint(const UBlueprint* Blueprint);
+	static FBlueprintHelperGraphSemanticContext FromBlueprintAndGraph(const UBlueprint* Blueprint, const UEdGraph* Graph);
 
 	bool HasVariables() const;
 	bool IsVariable(const FString& Name) const;
 	bool IsComponent(const FString& Name) const;
 	bool IsFunction(const FString& Name) const;
+	bool IsFunctionParam(const FString& Name) const;
 	FString FindTargetType(const FString& Name) const;
 	bool TryFindTargetStruct(const FString& Name, const UStruct*& OutStruct) const;
 	bool HasMemberFunction(const FString& OwnerName, const FString& FunctionName) const;

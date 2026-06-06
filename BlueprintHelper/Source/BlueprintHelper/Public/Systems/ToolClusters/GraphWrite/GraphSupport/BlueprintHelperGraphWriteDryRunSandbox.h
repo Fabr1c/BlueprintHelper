@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
+#include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
 
 class UBlueprint;
 class UEdGraph;
@@ -19,6 +19,7 @@ struct FBlueprintHelperGraphWriteDryRunSandboxResult
 	FString ErrorCode;
 	FString Message;
 	int32 GeneratedNodeCount = 0;
+	TArray<FBlueprintGeneratorDiagnostic> ConnectivityDiagnostics;
 	FBlueprintGraphWriteExecutionStats ExecutionStats;
 };
 

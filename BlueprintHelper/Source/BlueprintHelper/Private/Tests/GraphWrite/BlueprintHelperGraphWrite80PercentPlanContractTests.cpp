@@ -27,7 +27,7 @@ bool FBlueprintHelperGraphWrite80PercentPlanDocsContractTest::RunTest(const FStr
 	FString Roadmap;
 	TestTrue(TEXT("roadmap loads"),
 		BlueprintHelperGraphWrite80PercentPlanContractTests::LoadProjectFile(
-			TEXT("Plugins/BlueprintHelper/BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_80PercentCapability_Roadmap_20260522_CN.md"),
+			TEXT("Plugins/BlueprintHelper/BlueprintHelper/Develop/Plan/GraphWrite/BlueprintHelper_GraphWrite_80PercentCapability_Roadmap_20260522_CN.md"),
 			Roadmap));
 	TestTrue(TEXT("roadmap defines legacy strict mode"), Roadmap.Contains(TEXT("Legacy 严格模式")));
 	TestTrue(TEXT("roadmap defines direct spawn boundary"), Roadmap.Contains(TEXT("Direct spawn 边界")));
@@ -36,7 +36,7 @@ bool FBlueprintHelperGraphWrite80PercentPlanDocsContractTest::RunTest(const FStr
 	FString TestRecord;
 	TestTrue(TEXT("test record loads"),
 		BlueprintHelperGraphWrite80PercentPlanContractTests::LoadProjectFile(
-			TEXT("Plugins/BlueprintHelper/BlueprintHelper/Develop/Plan/BlueprintHelper_GraphWrite_80PercentCapability_TestRecord_20260522_CN.md"),
+			TEXT("Plugins/BlueprintHelper/BlueprintHelper/Develop/Plan/GraphWrite/BlueprintHelper_GraphWrite_80PercentCapability_TestRecord_20260522_CN.md"),
 			TestRecord));
 	TestTrue(TEXT("test record includes physical door"), TestRecord.Contains(TEXT("PhysicalDoor_InteractableOnly")));
 	TestTrue(TEXT("test record includes synthetic function field control"), TestRecord.Contains(TEXT("TimedAccessGate_StateMachine")));

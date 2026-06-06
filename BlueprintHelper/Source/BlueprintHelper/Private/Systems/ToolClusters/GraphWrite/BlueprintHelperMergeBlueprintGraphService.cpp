@@ -9,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
+#include "Systems/ToolClusters/GraphWrite/UnitOfWork/BlueprintHelperGraphWriteUnitOfWork.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
@@ -235,8 +236,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeBlueprintGraphService::Execu
 	const TSharedPtr<FJsonObject>& Payload) const
 {
 	const FMergeRequest Request = ParseRequest(Payload);
-	if (Request.bDryRun) return ExecuteDryRun(Request);
-	return ExecuteWrite(Request);
+	return FBlueprintHelperGraphWriteUnitOfWork::RunExistingOperation(
+		Request.bDryRun
+			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
+			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
+		TEXT("merge_blueprint_graph"),
+		TEXT("merge_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2BlockImplementation,
+		[this, &Request]()
+		{
+			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+		});
 }
 
 // 鈹€鈹€鈹€ 瑙ｆ瀽 鈹€鈹€鈹€

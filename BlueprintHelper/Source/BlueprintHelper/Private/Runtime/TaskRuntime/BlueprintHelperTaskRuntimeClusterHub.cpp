@@ -48,10 +48,26 @@ EBlueprintHelperTaskRuntimeCluster FBlueprintHelperTaskRuntimeClusterHub::Resolv
 	return FBlueprintHelperTaskRuntimeClusterHubUtils::ResolveClusterForLoweredStep(LoweredStep);
 }
 
+const TArray<EBlueprintHelperTaskRuntimeCluster>& FBlueprintHelperTaskRuntimeClusterHub::GetRegisteredClusters()
+{
+	static const TArray<EBlueprintHelperTaskRuntimeCluster> RegisteredClusters = {
+		EBlueprintHelperTaskRuntimeCluster::GraphWrite,
+		EBlueprintHelperTaskRuntimeCluster::BlueprintVariables,
+		EBlueprintHelperTaskRuntimeCluster::AssetFactory,
+		EBlueprintHelperTaskRuntimeCluster::Component,
+		EBlueprintHelperTaskRuntimeCluster::ClassSettings,
+		EBlueprintHelperTaskRuntimeCluster::Signature,
+		EBlueprintHelperTaskRuntimeCluster::UMGWidget,
+		EBlueprintHelperTaskRuntimeCluster::DataTable,
+		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
+	};
+	return RegisteredClusters;
+}
+
 bool FBlueprintHelperTaskRuntimeClusterHub::CanExecuteStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const
 {
-	return ResolveClusterForLoweredStep(LoweredStep) != EBlueprintHelperTaskRuntimeCluster::Unknown;
+	return GetRegisteredClusters().Contains(ResolveClusterForLoweredStep(LoweredStep));
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteStep(
@@ -67,67 +83,29 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 		return StepResult;
 	}
 
-	using FExecuteStepHandler = TFunction<FBlueprintHelperToolResultBase(const FBlueprintHelperTaskRuntimeLoweredStep&)>;
-
-	TMap<EBlueprintHelperTaskRuntimeCluster, FExecuteStepHandler> ExecuteHandlers;
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::GraphWrite,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return GraphWriteCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::BlueprintVariables,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return BlueprintVariablesCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::AssetFactory,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return AssetFactoryCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::Component,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return ComponentCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::ClassSettings,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return ClassSettingsCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::Signature,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return SignatureCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::UMGWidget,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return UMGWidgetCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::DataTable,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return DataTableCluster.ExecuteStep(Step);
-		});
-	ExecuteHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
-		[this](const FBlueprintHelperTaskRuntimeLoweredStep& Step)
-		{
-			return ObjectPropertyCluster.ExecuteStep(Step);
-		});
 	const EBlueprintHelperTaskRuntimeCluster Cluster = ResolveClusterForLoweredStep(LoweredStep);
-	if (const FExecuteStepHandler* ExecuteHandler = ExecuteHandlers.Find(Cluster))
+	switch (Cluster)
 	{
-		return (*ExecuteHandler)(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::GraphWrite:
+		return GraphWriteCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::BlueprintVariables:
+		return BlueprintVariablesCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::AssetFactory:
+		return AssetFactoryCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::Component:
+		return ComponentCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::ClassSettings:
+		return ClassSettingsCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::Signature:
+		return SignatureCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::UMGWidget:
+		return UMGWidgetCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::DataTable:
+		return DataTableCluster.ExecuteStep(LoweredStep);
+	case EBlueprintHelperTaskRuntimeCluster::ObjectProperty:
+		return ObjectPropertyCluster.ExecuteStep(LoweredStep);
+	default:
+		break;
 	}
 
 	return FBlueprintHelperTaskRuntimeClusterHubUtils::MakeUnsupportedAdapterOperationResult(LoweredStep);
@@ -141,52 +119,83 @@ bool FBlueprintHelperTaskRuntimeClusterHub::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence) const
 {
-	using FBuildReviewEvidenceHandler = TFunction<bool(
-		const FBlueprintHelperTaskRuntimeLoweredStep&,
-		const FBlueprintHelperToolResultBase&,
-		const FString&,
-		const FString&,
-		int32,
-		FBlueprintHelperWriteReviewEvidence&)>;
-
-	TMap<EBlueprintHelperTaskRuntimeCluster, FBuildReviewEvidenceHandler> EvidenceHandlers;
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::GraphWrite,
-		&FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::BlueprintVariables,
-		&FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::AssetFactory,
-		&FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::Component,
-		&FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::ClassSettings,
-		&FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::Signature,
-		&FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::UMGWidget,
-		&FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::DataTable,
-		&FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence);
-	EvidenceHandlers.Add(
-		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
-		&FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence);
 	const EBlueprintHelperTaskRuntimeCluster Cluster = ResolveClusterForLoweredStep(LoweredStep);
-	if (const FBuildReviewEvidenceHandler* EvidenceHandler = EvidenceHandlers.Find(Cluster))
+	switch (Cluster)
 	{
-		return (*EvidenceHandler)(
+	case EBlueprintHelperTaskRuntimeCluster::GraphWrite:
+		return FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 			LoweredStep,
 			StepResult,
 			ArchiveSessionId,
 			TaskRunId,
 			StepIndex,
 			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::BlueprintVariables:
+		return FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::AssetFactory:
+		return FBlueprintHelperAssetFactoryTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::Component:
+		return FBlueprintHelperComponentTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::ClassSettings:
+		return FBlueprintHelperClassSettingsTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::Signature:
+		return FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::UMGWidget:
+		return FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::DataTable:
+		return FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	case EBlueprintHelperTaskRuntimeCluster::ObjectProperty:
+		return FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence(
+			LoweredStep,
+			StepResult,
+			ArchiveSessionId,
+			TaskRunId,
+			StepIndex,
+			OutEvidence);
+	default:
+		break;
 	}
 
 	return false;

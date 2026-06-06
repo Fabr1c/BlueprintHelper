@@ -68,6 +68,55 @@ public:
 		return TEXT("");
 	}
 
+	static TSharedPtr<FJsonObject> CopyJsonObject(const TSharedPtr<FJsonObject>& Source)
+	{
+		if (!Source.IsValid())
+		{
+			return nullptr;
+		}
+
+		TSharedPtr<FJsonObject> Copy = MakeShared<FJsonObject>();
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source->Values)
+		{
+			Copy->SetField(Field.Key, Field.Value);
+		}
+		return Copy;
+	}
+
+	static TSharedPtr<FJsonObject> NormalizeExternalAnchorForNode(
+		const TSharedPtr<FJsonObject>& AnchorObj,
+		const TSharedPtr<FJsonObject>& NodeObj,
+		const FString& AssetPath)
+	{
+		TSharedPtr<FJsonObject> Anchor = CopyJsonObject(AnchorObj);
+		if (!Anchor.IsValid())
+		{
+			return nullptr;
+		}
+
+		FString ExistingSchema;
+		if (!TryReadStringField(Anchor, TEXT("schema"), ExistingSchema))
+		{
+			Anchor->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalGraphAnchor.v1"));
+		}
+
+		if (!AssetPath.IsEmpty())
+		{
+			Anchor->SetStringField(TEXT("asset_path"), AssetPath);
+		}
+
+		FString ExistingNodeGuid;
+		if (!TryReadStringField(Anchor, TEXT("node_guid"), ExistingNodeGuid))
+		{
+			const FString NodeGuid = ReadFirstStringField(NodeObj, TEXT("node_guid"), TEXT("id"), TEXT("node_id"));
+			if (!NodeGuid.IsEmpty())
+			{
+				Anchor->SetStringField(TEXT("node_guid"), NodeGuid);
+			}
+		}
+		return Anchor;
+	}
+
 	static FString SanitizeDisplayText(const FString& InValue)
 	{
 		FString Result;
@@ -745,7 +794,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			const FString Name = ExtractNodeName(*NodeObjPtr);
 			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
 
-			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i);
+			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i, AssetPath);
 
 			if (!bFoundEntry && IsEntryNode(*NodeObjPtr))
 			{
@@ -792,7 +841,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			const FString Name = ExtractNodeName(*NodeObjPtr);
 			const EBlueprintHelperLogicNodeKind Kind = IdentifyNodeKind(*NodeObjPtr);
 
-			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i);
+			FBlueprintHelperLogicNode Node = ConvertNode(*NodeObjPtr, i, AssetPath);
 
 			if (!bFoundEntry && IsEntryNode(*NodeObjPtr))
 			{
@@ -928,7 +977,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 		return EventName.Equals(TargetName, ESearchCase::IgnoreCase);
 	};
 
-	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName, Scope, &TargetName](
+	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName, Scope, &TargetName, &AssetPath](
 		const TSharedPtr<FJsonObject>& GraphObj,
 		const FString& EffectiveGraphName) -> bool
 	{
@@ -992,7 +1041,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 				Payload.Entry = Entry;
 			}
 
-			Payload.Nodes.Add(ConvertNode(*NodeObjPtr, i));
+			Payload.Nodes.Add(ConvertNode(*NodeObjPtr, i, AssetPath));
 		}
 
 		if (EntryIndex == INDEX_NONE
@@ -1055,7 +1104,10 @@ EBlueprintHelperLogicNodeKind FBlueprintHelperLogicGroupBuilder::IdentifyNodeKin
 	return FBlueprintHelperGraphWriteClassificationUtils::IdentifyNodeKind(ClassName, MemberName);
 }
 
-FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const TSharedPtr<FJsonObject>& NodeObj, int32 Index)
+FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
+	const TSharedPtr<FJsonObject>& NodeObj,
+	int32 Index,
+	const FString& AssetPath)
 {
 	FBlueprintHelperLogicNode Node;
 	Node.NodeRef = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeNodeRef(Index);
@@ -1067,7 +1119,10 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 		&& ExternalAnchorObj
 		&& ExternalAnchorObj->IsValid())
 	{
-		Node.ExternalAnchor = *ExternalAnchorObj;
+		Node.ExternalAnchor = FBlueprintHelperLogicGroupBuilderLocalUtils::NormalizeExternalAnchorForNode(
+			*ExternalAnchorObj,
+			NodeObj,
+			AssetPath);
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* ExternalAnchorArray = nullptr;
@@ -1081,7 +1136,15 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 				&& AnchorObj
 				&& AnchorObj->IsValid())
 			{
-				Node.ExternalAnchors.Add(*AnchorObj);
+				TSharedPtr<FJsonObject> NormalizedAnchor =
+					FBlueprintHelperLogicGroupBuilderLocalUtils::NormalizeExternalAnchorForNode(
+						*AnchorObj,
+						NodeObj,
+						AssetPath);
+				if (NormalizedAnchor.IsValid())
+				{
+					Node.ExternalAnchors.Add(NormalizedAnchor);
+				}
 			}
 		}
 	}
@@ -1134,7 +1197,10 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(const T
 				&& LinkExternalAnchorObj
 				&& LinkExternalAnchorObj->IsValid())
 			{
-				Link.ExternalAnchor = *LinkExternalAnchorObj;
+				Link.ExternalAnchor = FBlueprintHelperLogicGroupBuilderLocalUtils::NormalizeExternalAnchorForNode(
+					*LinkExternalAnchorObj,
+					NodeObj,
+					AssetPath);
 			}
 
 			Node.Links.Add(MoveTemp(Link));

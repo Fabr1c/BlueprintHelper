@@ -7,6 +7,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphWriteDryRunSandbox.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphWriteRollbackFinalizer.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/GraphWrite/UnitOfWork/BlueprintHelperGraphWriteUnitOfWork.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
@@ -399,12 +400,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 {
 	const FAppendRequest Request = ParseRequest(Payload);
 
-	if (Request.bDryRun)
-	{
-		return ExecuteDryRun(Request);
-	}
-
-	return ExecuteWrite(Request);
+	return FBlueprintHelperGraphWriteUnitOfWork::RunExistingOperation(
+		Request.bDryRun
+			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
+			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
+		TEXT("append_blueprint_graph"),
+		TEXT("append_new_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2CustomEventBody,
+		[this, &Request]()
+		{
+			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+		});
 }
 
 // ─── 解析 ───
@@ -884,6 +890,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 				Result.Target = TargetRef;
 				Result.Data = DryRunData.ToJson();
 				Result.Data->SetStringField(TEXT("sandbox_error_code"), SandboxResult.ErrorCode);
+				FBlueprintHelperGraphWriteConnectivityDiagnosticsJson::Attach(
+					Result.Data,
+					SandboxResult.ConnectivityDiagnostics);
 				FBlueprintHelperAppendBlueprintGraphServiceLocalUtils::AttachDryRunSideEffectProof(
 					Result.Data,
 					SandboxResult.GeneratedNodeCount);

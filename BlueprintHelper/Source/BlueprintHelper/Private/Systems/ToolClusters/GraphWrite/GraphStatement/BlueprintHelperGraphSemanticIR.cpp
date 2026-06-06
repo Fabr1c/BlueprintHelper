@@ -1,9 +1,13 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 
 #include "Dom/JsonObject.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "K2Node_FunctionEntry.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Serialization/JsonReader.h"
@@ -143,9 +147,95 @@ FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromB
 	return Context;
 }
 
+FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromBlueprintAndGraph(
+	const UBlueprint* Blueprint,
+	const UEdGraph* Graph)
+{
+	FBlueprintHelperGraphSemanticContext Context = FromBlueprint(Blueprint);
+	if (!Graph)
+	{
+		return Context;
+	}
+
+	auto AddFunctionParam = [&Context](const FString& Name, const FString& Type)
+	{
+		const FString CleanName = Name.TrimStartAndEnd();
+		if (CleanName.IsEmpty())
+		{
+			return;
+		}
+
+		const FString Key = FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(CleanName);
+		Context.FunctionParamNames.Add(Key);
+		if (!Type.IsEmpty())
+		{
+			Context.TargetTypes.Add(Key, Type);
+		}
+	};
+
+	auto AddFunctionParamsFromClass = [&AddFunctionParam, Graph](const UClass* Class)
+	{
+		if (!Class || !Graph)
+		{
+			return;
+		}
+
+		const FString GraphName = Graph->GetName();
+		for (TFieldIterator<UFunction> FunctionIt(Class, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
+		{
+			const UFunction* Function = *FunctionIt;
+			if (!Function || !Function->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			for (TFieldIterator<FProperty> PropertyIt(Function); PropertyIt; ++PropertyIt)
+			{
+				const FProperty* Property = *PropertyIt;
+				if (!Property
+					|| !Property->HasAnyPropertyFlags(CPF_Parm)
+					|| Property->HasAnyPropertyFlags(CPF_OutParm | CPF_ReturnParm))
+				{
+					continue;
+				}
+
+				AddFunctionParam(Property->GetName(), Property->GetCPPType());
+			}
+		}
+	};
+
+	if (Blueprint)
+	{
+		AddFunctionParamsFromClass(Blueprint->SkeletonGeneratedClass);
+		AddFunctionParamsFromClass(Blueprint->GeneratedClass);
+	}
+
+	for (const UEdGraphNode* Node : Graph->Nodes)
+	{
+		const UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node);
+		if (!FunctionEntry)
+		{
+			continue;
+		}
+
+		for (const UEdGraphPin* Pin : FunctionEntry->Pins)
+		{
+			if (!Pin
+				|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				continue;
+			}
+
+			AddFunctionParam(Pin->PinName.ToString(), Pin->PinType.PinCategory.ToString());
+		}
+	}
+
+	return Context;
+}
+
 bool FBlueprintHelperGraphSemanticContext::HasVariables() const
 {
-	return VariableNames.Num() > 0 || ComponentNames.Num() > 0 || FunctionNames.Num() > 0;
+	return VariableNames.Num() > 0 || ComponentNames.Num() > 0 || FunctionNames.Num() > 0 || FunctionParamNames.Num() > 0;
 }
 
 bool FBlueprintHelperGraphSemanticContext::IsVariable(const FString& Name) const
@@ -161,6 +251,11 @@ bool FBlueprintHelperGraphSemanticContext::IsComponent(const FString& Name) cons
 bool FBlueprintHelperGraphSemanticContext::IsFunction(const FString& Name) const
 {
 	return FunctionNames.Contains(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(Name));
+}
+
+bool FBlueprintHelperGraphSemanticContext::IsFunctionParam(const FString& Name) const
+{
+	return FunctionParamNames.Contains(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(Name));
 }
 
 FString FBlueprintHelperGraphSemanticContext::FindTargetType(const FString& Name) const
@@ -976,8 +1071,14 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveStatement(
 				? Statement->Target + TEXT(".") + Statement->Property
 				: Statement->Target;
 			Statement->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, Statement->Kind, EBlueprintHelperGraphExpressionKind::Unknown, Context);
+			if (Statement->CapabilityId.Equals(TEXT("field.function_param_get"), ESearchCase::IgnoreCase))
+			{
+				Statement->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Variable;
+				Statement->ResolvedTarget.Type = Context.FindTargetType(Statement->ResolvedTarget.Raw);
+				Statement->ResolvedTarget.bVerifiedByContext = true;
+			}
 		}
-		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"));
+		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Statement->ResolvedTarget, Statement->Path + TEXT(".target"), TEXT("error"));
 		break;
 
 	case EBlueprintHelperGraphStatementKind::Branch:
@@ -1293,8 +1394,14 @@ void FBlueprintHelperGraphSemanticIRBuilder::ResolveExpression(
 				? Expression->Target + TEXT(".") + Expression->Property
 				: Expression->Target;
 			Expression->ResolvedTarget = FBlueprintHelperGraphSemanticIRUtils::ResolveTargetString(ResolvedFieldTarget, EBlueprintHelperGraphStatementKind::Unknown, Expression->Kind, Context);
+			if (Expression->CapabilityId.Equals(TEXT("field.function_param_get"), ESearchCase::IgnoreCase))
+			{
+				Expression->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Variable;
+				Expression->ResolvedTarget.Type = Context.FindTargetType(Expression->ResolvedTarget.Raw);
+				Expression->ResolvedTarget.bVerifiedByContext = true;
+			}
 		}
-		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Expression->ResolvedTarget, Expression->Path + TEXT(".target"));
+		FBlueprintHelperGraphSemanticIRUtils::AddUnverifiedTargetDiagnostic(OutIR, Context, Expression->ResolvedTarget, Expression->Path + TEXT(".target"), TEXT("error"));
 		if (Expression->Type.IsEmpty())
 		{
 			Expression->Type = Expression->ResolvedTarget.Type;

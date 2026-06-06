@@ -1,6 +1,7 @@
 // BlueprintHelper TaskSpec / ReadContext workbench services.
 
 #include "Systems/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchServices.h"
+#include "Systems/TaskSpecWorkbench/BlueprintHelperReadContextProjectionBridge.h"
 #include "Systems/TaskSpecWorkbench/Utils/BlueprintHelperTaskSpecWorkbenchUtils.h"
 
 #include "Dom/JsonObject.h"
@@ -95,6 +96,10 @@ FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService
 		WarningValues.Add(MakeShared<FJsonValueString>(
 			TEXT("logic_flow_degraded_workbench_canonical_builder_unavailable")));
 		Payload->SetArrayField(TEXT("warnings"), WarningValues);
+		FBlueprintHelperReadContextProjectionBridge::AttachTaskCoreProjectionMetadata(
+			Payload,
+			TEXT("logic_flow"),
+			true);
 
 		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
 		Result.bSucceeded = true;
@@ -106,6 +111,10 @@ FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService
 	{
 		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(RawJsonRoot, Payload);
+		FBlueprintHelperReadContextProjectionBridge::AttachTaskCoreProjectionMetadata(
+			Payload,
+			TEXT("logic_json"),
+			false);
 		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
 		Result.bSucceeded = true;
 		Result.Message = TEXT("logicjson copied to clipboard.");

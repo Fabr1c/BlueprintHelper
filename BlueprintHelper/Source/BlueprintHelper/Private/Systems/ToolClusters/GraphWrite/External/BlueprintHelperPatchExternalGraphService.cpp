@@ -14,6 +14,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationCoordinator.h"
 #include "Systems/ToolClusters/GraphWrite/Mutation/BlueprintHelperGraphWriteMutationIntent.h"
+#include "Systems/ToolClusters/GraphWrite/UnitOfWork/BlueprintHelperGraphWriteUnitOfWork.h"
 
 namespace BlueprintHelperPatchExternalGraph
 {
@@ -432,7 +433,17 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 FBlueprintHelperToolResultBase FBlueprintHelperPatchExternalGraphService::Execute(const TSharedRef<FJsonObject>& Payload) const
 {
 	const FPatchExternalGraphRequest Request = ParseRequest(Payload);
-	return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+	return FBlueprintHelperGraphWriteUnitOfWork::RunExistingOperation(
+		Request.bDryRun
+			? EBlueprintHelperGraphWriteUnitOfWorkMode::Preview
+			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
+		TEXT("patch_external_graph"),
+		TEXT("patch_external_graph"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		[this, &Request]()
+		{
+			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
+		});
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperPatchExternalGraphService::ExecuteDryRun(

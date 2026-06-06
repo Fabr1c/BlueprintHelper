@@ -13,6 +13,43 @@
 class FBlueprintHelperGraphWriteDryRunSandboxLocalUtils
 {
 public:
+	static UPackage* CreateSandboxPackage(const UBlueprint* SourceBlueprint)
+	{
+		const FString SourceName = SourceBlueprint ? SourceBlueprint->GetName() : TEXT("Blueprint");
+		UPackage* SandboxPackage = CreatePackage(*FString::Printf(
+			TEXT("/Temp/BlueprintHelperDryRun/%s_%s"),
+			*SourceName,
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (SandboxPackage)
+		{
+			SandboxPackage->SetFlags(RF_Transient);
+			SandboxPackage->SetDirtyFlag(false);
+		}
+		return SandboxPackage;
+	}
+
+	static FName MakeSandboxBlueprintName(const UBlueprint* SourceBlueprint)
+	{
+		const FString SourceName = SourceBlueprint ? SourceBlueprint->GetName() : TEXT("BP");
+		return FName(*FString::Printf(
+			TEXT("%s_DryRunSandbox_%s"),
+			*SourceName,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+	}
+
+	static void ReleaseSandbox(UBlueprint* SandboxBlueprint, UPackage* SandboxPackage)
+	{
+		if (SandboxBlueprint)
+		{
+			SandboxBlueprint->ClearFlags(RF_Public | RF_Standalone);
+			SandboxBlueprint->SetFlags(RF_Transient);
+		}
+		if (SandboxPackage)
+		{
+			SandboxPackage->SetDirtyFlag(false);
+		}
+	}
+
 	static UEdGraph* FindOrCreateUbergraphPage(
 		UBlueprint* SandboxBlueprint,
 		const FString& GraphName,
@@ -85,16 +122,28 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 		return Result;
 	}
 
+	UPackage* SandboxPackage = FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::CreateSandboxPackage(
+		Input.SourceBlueprint);
+	if (!SandboxPackage)
+	{
+		Result.ErrorCode = TEXT("dry_run_sandbox_package_failed");
+		Result.Message = TEXT("Failed to create transient dry-run sandbox package.");
+		return Result;
+	}
+
 	UBlueprint* SandboxBlueprint = DuplicateObject<UBlueprint>(
 		Input.SourceBlueprint,
-		GetTransientPackage(),
-		NAME_None);
+		SandboxPackage,
+		FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::MakeSandboxBlueprintName(Input.SourceBlueprint));
 	if (!SandboxBlueprint)
 	{
 		Result.ErrorCode = TEXT("dry_run_sandbox_duplicate_failed");
 		Result.Message = TEXT("Failed to duplicate Blueprint into transient dry-run sandbox.");
+		FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::ReleaseSandbox(nullptr, SandboxPackage);
 		return Result;
 	}
+	SandboxBlueprint->SetFlags(RF_Transient);
+	SandboxBlueprint->ClearFlags(RF_Public | RF_Standalone);
 
 	FString GraphError;
 	UEdGraph* SandboxGraph = FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::FindOrCreateUbergraphPage(
@@ -105,6 +154,7 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 	{
 		Result.ErrorCode = TEXT("dry_run_sandbox_graph_resolve_failed");
 		Result.Message = GraphError;
+		FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::ReleaseSandbox(SandboxBlueprint, SandboxPackage);
 		return Result;
 	}
 
@@ -120,6 +170,7 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 	if (GenerateResult.bSucceed)
 	{
 		Result.bSucceeded = true;
+		FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::ReleaseSandbox(SandboxBlueprint, SandboxPackage);
 		return Result;
 	}
 
@@ -127,6 +178,7 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 		? TEXT("graphwrite_connectivity_failed")
 		: TEXT("semantic_graph_write_failed");
 	Result.Message = GenerateResult.Message;
+	Result.ConnectivityDiagnostics = GenerateResult.ConnectivityDiagnostics;
 	if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
 	{
 		Result.Message += FString::Printf(
@@ -134,5 +186,6 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 			*UnresolvedNodes[0]->DisplayText,
 			*UnresolvedNodes[0]->Reason);
 	}
+	FBlueprintHelperGraphWriteDryRunSandboxLocalUtils::ReleaseSandbox(SandboxBlueprint, SandboxPackage);
 	return Result;
 }

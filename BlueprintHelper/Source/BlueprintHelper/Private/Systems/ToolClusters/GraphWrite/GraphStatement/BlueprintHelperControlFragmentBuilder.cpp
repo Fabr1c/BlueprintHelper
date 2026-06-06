@@ -14,6 +14,95 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 
+static UK2Node_FunctionResult* BlueprintHelperFindReusableFunctionResultNode(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphStatementIR& Statement)
+{
+	if (!TargetGraph)
+	{
+		return nullptr;
+	}
+
+	UK2Node_FunctionResult* FirstResultNode = nullptr;
+	UK2Node_FunctionResult* FirstResultNodeWithDataInput = nullptr;
+	for (UEdGraphNode* Node : TargetGraph->Nodes)
+	{
+		UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(Node);
+		if (!ResultNode)
+		{
+			continue;
+		}
+
+		if (!FirstResultNode)
+		{
+			FirstResultNode = ResultNode;
+		}
+		if (!FirstResultNodeWithDataInput &&
+			UGraphWriteGraphStatementUtils::FindFirstDataInputPin(ResultNode))
+		{
+			FirstResultNodeWithDataInput = ResultNode;
+		}
+	}
+
+	return Statement.Value.IsValid()
+		? FirstResultNodeWithDataInput
+		: FirstResultNode;
+}
+
+static void BlueprintHelperBreakReusableReturnInputLinks(UK2Node_FunctionResult* ReturnNode)
+{
+	if (!ReturnNode)
+	{
+		return;
+	}
+
+	ReturnNode->Modify();
+	for (UEdGraphPin* Pin : ReturnNode->Pins)
+	{
+		if (Pin && Pin->Direction == EGPD_Input)
+		{
+			Pin->Modify();
+			Pin->BreakAllPinLinks(true);
+		}
+	}
+}
+
+static void BlueprintHelperApplyReusableReturnLiteralDefaults(
+	UK2Node_FunctionResult* ReturnNode,
+	const FBlueprintHelperGraphStatementIR& Statement)
+{
+	if (!ReturnNode)
+	{
+		return;
+	}
+
+	TMap<FString, FString> Defaults;
+	UGraphWriteGraphStatementUtils::CollectReturnLiteralDefault(ReturnNode, Statement, Defaults);
+	if (Defaults.Num() == 0)
+	{
+		return;
+	}
+
+	for (UEdGraphPin* Pin : ReturnNode->Pins)
+	{
+		if (!Pin
+			|| Pin->Direction != EGPD_Input
+			|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			continue;
+		}
+
+		const FString* DefaultValue = Defaults.Find(Pin->PinName.ToString());
+		if (!DefaultValue)
+		{
+			continue;
+		}
+
+		Pin->Modify();
+		Pin->DefaultValue = *DefaultValue;
+	}
+}
+
 bool FBlueprintHelperControlFragmentBuilder::BuildSequence(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperActionContextScope* ActionContextScope,
@@ -126,6 +215,17 @@ bool FBlueprintHelperControlFragmentBuilder::BuildReturn(
 
 	const FString FragmentId = UGraphWriteGraphStatementUtils::ResolveStatementFragmentId(Statement);
 	const FString StatementContextId = !Statement.StatementId.IsEmpty() ? Statement.StatementId : Statement.Path;
+
+	if (UK2Node_FunctionResult* ReusableReturnNode =
+		BlueprintHelperFindReusableFunctionResultNode(TargetGraph, Statement))
+	{
+		BlueprintHelperBreakReusableReturnInputLinks(ReusableReturnNode);
+		BlueprintHelperApplyReusableReturnLiteralDefaults(ReusableReturnNode, Statement);
+		UGraphWriteGraphStatementUtils::PopulateCommonControlMetadata(FragmentId, Statement.StatementId, TEXT("return"), ReusableReturnNode, OutFragment);
+		UGraphWriteGraphStatementUtils::PopulateReturnPins(ReusableReturnNode, OutFragment);
+		return true;
+	}
+
 	FBlueprintHelperActionResolutionResult ActionResult;
 	if (!UGraphWriteGraphStatementUtils::ResolveControlActionProvider(TargetGraph, ActionContextScope, StatementContextId, TEXT("return"), FragmentId, ActionResult, OutError))
 	{
