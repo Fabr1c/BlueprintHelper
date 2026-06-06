@@ -13,6 +13,7 @@ class FBlueprintHelperOwnershipService;
 class UEdGraph;
 class UBlueprint;
 class FJsonObject;
+struct FBlueprintGraphWriteConnectivityValidationInput;
 
 /**
  * AppendBlueprintGraph 核心服务。 * 支持创建。EG_{FeatureName} 图表或向空图表追加独。BlueprintHelper-owned block。 */
@@ -78,6 +79,10 @@ private:
 	// ─── 构建 AgentImport 兼容 JSON ───
 
 	FString BuildSemanticGraphWritePayload(const FAppendRequest& Request) const;
+	FBlueprintGraphWriteConnectivityValidationInput BuildAppendConnectivityInput(
+		UBlueprint* Blueprint,
+		UEdGraph* TargetGraph,
+		const FAppendRequest& Request) const;
 
 	// ─── Helpers ───
 

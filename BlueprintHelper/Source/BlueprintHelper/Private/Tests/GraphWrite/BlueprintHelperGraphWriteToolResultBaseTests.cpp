@@ -52,6 +52,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperGraphWriteCapabilityMetrics.h"
@@ -414,6 +415,14 @@ public:
 		return Statement;
 	}
 
+	static TSharedRef<FJsonObject> MakeReturnFunctionParamLogicSpec(const FString& ParamName, const FString& FunctionName)
+	{
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(
+			MakeReturnValueStatement(MakeFunctionParamGetExpression(ParamName, FunctionName))));
+		return MakeGraphWriteLogicSpec(FString(), Statements);
+	}
+
 	static TSharedRef<FJsonObject> MakeSetThenReturnVariableLogicSpec(
 		const FString& VariableName,
 		const FString& LiteralValue)
@@ -459,6 +468,17 @@ public:
 		Payload.bReconstructExistingNodes = false;
 		Payload.LogicSpec = LogicSpec;
 		return Payload.ToJsonString();
+	}
+
+	static FBlueprintGraphWriteConnectivityValidationInput MakeRawGenerationConnectivityInput(
+		UEdGraph* Graph,
+		const FString& GraphWriteJson)
+	{
+		return FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.raw_graphwrite"),
+			TEXT("automation_raw_graphwrite"),
+			GraphWriteJson);
 	}
 
 	static bool GenerateResultHasConnectivityCode(
@@ -3059,8 +3079,8 @@ bool FBlueprintHelperGraphWriteReplaceBlockedDryRunErrorEnvelopeTest::RunTest(co
 		*this,
 		Result,
 		TEXT("replace_blueprint_graph"),
-		TEXT("target_graph_not_found"),
-		TEXT("target.graph"));
+		TEXT("graph_body_target_unresolved"),
+		TEXT("graph_body"));
 	TestEqual(TEXT("blocked replace preview leaves graph count unchanged"), Blueprint->UbergraphPages.Num(), UbergraphCountBefore);
 	TestEqual(TEXT("blocked replace preview leaves package dirty flag unchanged"), Blueprint->GetOutermost()->IsDirty(), bDirtyBefore);
 	return true;
@@ -4601,17 +4621,24 @@ bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsParamDataFlowTest::R
 	if (RawFunctionGraph)
 	{
 		TArray<TSharedPtr<FUnresolvedNodeItem>> RawUnresolvedNodes;
+		const FString RawGraphWriteJson =
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeRawReplaceGraphWritePayload(
+				RawBlueprint ? RawBlueprint->GetPathName() : FString(),
+				FunctionName,
+				ParamLogicSpec);
+		const FBlueprintGraphWriteConnectivityValidationInput RawConnectivityInput =
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeRawGenerationConnectivityInput(
+				RawFunctionGraph,
+				RawGraphWriteJson);
 		const FBlueprintGenerateResult RawGenerateResult =
 			FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 				RawFunctionGraph,
-				FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeRawReplaceGraphWritePayload(
-					RawBlueprint ? RawBlueprint->GetPathName() : FString(),
-					FunctionName,
-					ParamLogicSpec),
-				RawUnresolvedNodes);
-		TestTrue(TEXT("raw function body generation succeeds with preserved function entry root"), RawGenerateResult.bSucceed);
+				RawGraphWriteJson,
+				RawUnresolvedNodes,
+				RawConnectivityInput);
+		TestFalse(TEXT("raw function body generation reports pre-reconnect connectivity"), RawGenerateResult.bSucceed);
 		TestEqual(TEXT("raw function body param generation has no unresolved nodes"), RawUnresolvedNodes.Num(), 0);
-		TestFalse(TEXT("raw function body generation has no unreachable exec after entry root resolution"),
+		TestTrue(TEXT("raw function body generation has unreachable exec before coordinator reconnect"),
 			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GenerateResultHasConnectivityCode(
 				RawGenerateResult,
 				TEXT("unreachable_exec_node")));
@@ -4822,6 +4849,93 @@ bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsReturnDataFlowTest::
 			*this,
 			FunctionGraph,
 			FName(*VariableName)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryToReturnOnlyTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyReconnectsEntryToReturnOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryToReturnOnlyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyReturnOnly"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("ComputeNodeGraphScore");
+	const FString ParamName = TEXT("InputScore");
+	const FEdGraphPinType IntPinType =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_Int);
+
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("function input pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			ParamName,
+			IntPinType));
+	TestTrue(TEXT("function output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("ReturnValue"),
+			IntPinType));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	UK2Node_FunctionResult* ResultNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionResult(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	TestNotNull(TEXT("function result is created"), ResultNode);
+	if (!FunctionGraph || !EntryNode || !ResultNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName);
+	Payload->SetObjectField(
+		TEXT("logic_spec"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReturnFunctionParamLogicSpec(
+			ParamName,
+			FunctionName));
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(Payload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body with return-only param flow"),
+		Result);
+	TestTrue(TEXT("replace function body with return-only param flow succeeds"), Result.bOk);
+	TestEqual(TEXT("replace function body with return-only param flow status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
+	UEdGraphPin* ReturnExecIn = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(ResultNode, EGPD_Input);
+	TestTrue(TEXT("function entry output exec links directly to FunctionResult when return is the only executable node"),
+		EntryExecOut && ReturnExecIn && EntryExecOut->LinkedTo.Contains(ReturnExecIn) && ReturnExecIn->LinkedTo.Contains(EntryExecOut));
+	TestTrue(TEXT("function param getter links to function return"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::GraphHasVariableGetLinkedToFunctionResult(
+			*this,
+			FunctionGraph,
+			FName(*ParamName)));
 	return true;
 }
 
@@ -5122,8 +5236,10 @@ bool FBlueprintHelperGraphWriteReplaceCustomEventBodyRejectsEmptyUnownedEntryTes
 			EventName));
 
 	TestFalse(TEXT("replace empty unowned custom event body is rejected"), Result.bOk);
-	TestTrue(TEXT("replace empty unowned custom event reports owned-only policy"),
-		Result.Error.IsSet() && Result.Error->Code == TEXT("owned_replace_target_not_blueprinthelper_owned"));
+	TestTrue(TEXT("replace empty unowned custom event reports graph-body target failure"),
+		Result.Error.IsSet() && Result.Error->Code == TEXT("graph_body_target_unresolved"));
+	TestTrue(TEXT("replace empty unowned custom event preserves owned-only policy detail"),
+		Result.Error.IsSet() && Result.Error->Message.Contains(TEXT("owned_replace_target_not_blueprinthelper_owned")));
 
 	UEdGraphPin* EntryExecOut = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindFirstExecPin(EntryNode, EGPD_Output);
 	TestNotNull(TEXT("custom event has output exec pin"), EntryExecOut);
@@ -6151,8 +6267,15 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCallFunctionTargetObjectPinTypeCacheKe
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeTargetObjectPinTypeCache");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 
 	auto MakePayloadWithTargetPinType = [&](const FString& PinObjectPath) -> TSharedRef<FJsonObject>
 	{
@@ -6454,8 +6577,15 @@ bool FBlueprintHelperGraphWriteAutoSearchPreviewRetryUsesCurrentProjectionTest::
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeAutoSearchPreviewRetry");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 
 	auto ConfigureAutoSearchStatement = [](const TSharedRef<FJsonObject>& Op, const FString& CandidateId)
 	{
@@ -6583,8 +6713,15 @@ bool FBlueprintHelperGraphWriteAutoSearchFastPathDoesNotEmitCandidateRequiredTes
 
 	UEdGraph* Graph = Blueprint->UbergraphPages[0];
 	const FString EventName = TEXT("RuntimeAutoSearchFastPath");
-	TestNotNull(TEXT("fixture custom event exists"),
-		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName));
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 	const FBlueprintHelperToolResultBase Preview = Harness.RuntimeService.PreviewTaskPlan(
@@ -7195,7 +7332,18 @@ bool FBlueprintHelperGraphWriteTaskRuntimeReplacePatchMergeDryRunEnvelopeTest::R
 	}
 
 	const FString AssetPath = Blueprint->GetPathName();
-	const FString GraphName = Blueprint->UbergraphPages[0]->GetName();
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	const FString GraphName = Graph->GetName();
+	const FString EventName = TEXT("SmokeCustomEvent");
+	UK2Node_CustomEvent* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteCustomEvent(Graph, EventName);
+	TestNotNull(TEXT("replace dry-run fixture custom event exists"), EntryNode);
+	if (!EntryNode)
+	{
+		return false;
+	}
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MarkGraphWriteNodeAsBlueprintHelperOwned(
+		EntryNode,
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteEntryBlockId(Blueprint, Graph, EventName));
 
 	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
 

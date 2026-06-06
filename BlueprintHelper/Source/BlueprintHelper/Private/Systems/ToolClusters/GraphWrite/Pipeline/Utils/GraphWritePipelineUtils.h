@@ -70,5 +70,5 @@ public:
 		UEdGraph* TargetGraph,
 		const TSharedPtr<FJsonObject>& JsonObject,
 		TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
-		const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput = nullptr);
+		const FBlueprintGraphWriteConnectivityValidationInput& ConnectivityInput);
 };

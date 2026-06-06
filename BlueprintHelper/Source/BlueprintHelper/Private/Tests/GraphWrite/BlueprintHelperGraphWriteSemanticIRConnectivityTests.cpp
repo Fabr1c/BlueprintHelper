@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 
@@ -168,11 +169,20 @@ bool FBlueprintHelperGraphWriteSemanticIRConnectivityRejectsUnconsumedPureDataRe
 		FBlueprintHelperGraphWriteSemanticIRConnectivityTestsLocalUtils::AddCustomEventNode(Graph, EntryName));
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson =
+		FBlueprintHelperGraphWriteSemanticIRConnectivityTestsLocalUtils::MakeUnconsumedPureDataLogicJson(EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.semantic_ir_connectivity"),
+			TEXT("automation_semantic_ir_connectivity"),
+			GraphWriteJson);
 	const FBlueprintGenerateResult Result =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 			Graph,
-			FBlueprintHelperGraphWriteSemanticIRConnectivityTestsLocalUtils::MakeUnconsumedPureDataLogicJson(EntryName),
-			Unresolved);
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 	for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 	{
 		if (Item.IsValid())

@@ -123,7 +123,6 @@ private:
 		FString& OutError) const;
 	FBlueprintGraphWriteConnectivityValidationInput BuildAdapterConnectivityInput(
 		const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan) const;
-	bool ResolveReplaceTargetLegacy(const FReplaceRequest& Request, UBlueprint* Blueprint, FResolvedReplaceTarget& OutTarget, FString& OutError) const;
 
 	// GraphWrite SemanticIR payload
 

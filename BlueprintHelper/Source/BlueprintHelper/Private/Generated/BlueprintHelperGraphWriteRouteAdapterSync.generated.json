@@ -11,7 +11,7 @@
       "compiler_id": "append_new_owned_graph",
       "taskplan_op": "ensure_entry",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.append.custom_event",
@@ -22,7 +22,7 @@
       "compiler_id": "append_new_owned_graph",
       "taskplan_op": "ensure_entry",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.append.event_delegate",
@@ -33,7 +33,7 @@
       "compiler_id": "append_new_owned_graph",
       "taskplan_op": "ensure_entry",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.append.generic_ops",
@@ -44,7 +44,7 @@
       "compiler_id": "append_new_owned_graph",
       "taskplan_op": "ensure_entry",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.append.generic_schedule",
@@ -55,7 +55,7 @@
       "compiler_id": "append_new_owned_graph",
       "taskplan_op": "ensure_entry",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.merge_external_flow.append_after",
@@ -66,7 +66,7 @@
       "compiler_id": "merge_external_flow",
       "taskplan_op": "insert_external_flow",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.merge.append_after",
@@ -77,7 +77,7 @@
       "compiler_id": "merge_owned_graph",
       "taskplan_op": "insert_flow",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.merge.branch_fork",
@@ -88,7 +88,7 @@
       "compiler_id": "merge_owned_graph",
       "taskplan_op": "insert_flow",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.merge.insert_between",
@@ -99,7 +99,7 @@
       "compiler_id": "merge_owned_graph",
       "taskplan_op": "insert_flow",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch_external_graph.node_comment",
@@ -110,7 +110,7 @@
       "compiler_id": "patch_external_graph",
       "taskplan_op": "set_external_node_comment",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.patch_external_graph.pin_default",
@@ -121,7 +121,7 @@
       "compiler_id": "patch_external_graph",
       "taskplan_op": "set_external_pin_default",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.patch.connect_pins",
@@ -132,7 +132,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "connect_pins",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.delete_owned_node",
@@ -143,7 +143,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "delete_owned_node",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.disconnect_link",
@@ -154,7 +154,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "disconnect_link",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.node_comment",
@@ -165,7 +165,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "set_node_comment",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.pin_default",
@@ -176,7 +176,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "set_pin_default",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.replace_link",
@@ -187,7 +187,7 @@
       "compiler_id": "patch_owned_graph",
       "taskplan_op": "replace_link",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.replace_external_body.body",
@@ -198,7 +198,7 @@
       "compiler_id": "replace_external_body",
       "taskplan_op": "replace_external_body",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.replace.block_implementation",
@@ -209,7 +209,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.replace.custom_event_body",
@@ -220,7 +220,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.replace.custom_event_definition",
@@ -231,7 +231,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.replace.event_body",
@@ -242,7 +242,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.replace.function_body",
@@ -253,7 +253,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.replace.graph",
@@ -264,7 +264,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden"
+      "adapter_sync": "hidden_route_not_agent_executable"
     },
     {
       "route_id": "graph.replace.macro_body",
@@ -275,7 +275,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "active",
-      "adapter_sync": "generated_active_stub"
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     }
   ]
 }

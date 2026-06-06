@@ -14,12 +14,11 @@ public:
 	bool IsValid() const;
 	UEdGraph* GetGraph() const;
 
-	void RegisterNode(const FString& NodeId, UK2Node* Node, bool bGenerated, bool bEntryRoot = false);
+	void RegisterNode(const FString& NodeId, UK2Node* Node, bool bGenerated);
 	UK2Node* FindNode(const FString& NodeId) const;
 	UEdGraphPin* FindPinByAlias(const FString& NodeId, const FString& RequestedPinName);
 
 	const TArray<UEdGraphNode*>& GetGeneratedNodes() const;
-	const TSet<UEdGraphNode*>& GetEntryRootNodes() const;
 
 private:
 	void BuildPinIndex(UK2Node* Node);
@@ -29,5 +28,4 @@ private:
 	TMap<FString, UK2Node*> IdToNode;
 	TMap<FString, TMap<FString, UEdGraphPin*>> PinIndexByNodeKey;
 	TArray<UEdGraphNode*> GeneratedNodes;
-	TSet<UEdGraphNode*> EntryRootNodes;
 };

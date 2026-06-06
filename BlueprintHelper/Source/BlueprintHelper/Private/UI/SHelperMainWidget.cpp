@@ -6,10 +6,12 @@
 #include "Entry/BlueprintHelper.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Shared/Services/BlueprintHelperImportService.h"
 #include "HAL/PlatformApplicationMisc.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "ScopedTransaction.h"
 #include "SlateOptMacros.h"
 #include "Widgets/Input/SButton.h"
@@ -302,7 +304,24 @@ FReply SHelperMainWidget::OnGenerateFromTextClicked()
 		return FReply::Handled();
 	}
 
-	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, JsonText, UnresolvedSource);
+	UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(TargetGraph);
+	FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+	ContextInput.RuntimeAdapterId = TEXT("k2.ui.semantic_graph_generation");
+	ContextInput.TaskSpecStrategy = TEXT("ui_generate_from_text");
+	ContextInput.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
+	ContextInput.GraphName = TargetGraph->GetName();
+	ContextInput.GraphFamily = TEXT("k2");
+	ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+	ContextInput.EntryNodeRefs.Add(
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::MakeSemanticEntryRefFromGraphWriteJsonText(JsonText));
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(TargetGraph, ContextInput);
+	const FBlueprintGenerateResult GenerateResult =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			TargetGraph,
+			JsonText,
+			UnresolvedSource,
+			ConnectivityInput);
 	RefreshUnresolvedList();
 	SetStatusMessage(GenerateResult.Message);
 	return FReply::Handled();

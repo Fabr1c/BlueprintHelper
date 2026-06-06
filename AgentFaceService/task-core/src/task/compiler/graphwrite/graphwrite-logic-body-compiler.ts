@@ -294,14 +294,6 @@ export type GraphWriteCatalogEvidence = {
   action_stable_id?: string;
   context_fingerprint?: string;
 };
-export const OWNED_GRAPH_PATCH_KINDS = [
-  'set_pin_default',
-  'set_node_comment',
-  'connect_pins',
-  'disconnect_link',
-  'replace_link',
-  'delete_owned_node',
-] as const;
 export type GraphWriteSignatureSplit = {
   op: 'ensure_custom_event';
   event_name: string;
@@ -1699,7 +1691,7 @@ function compileStatementSequence(
   statements.forEach((statement, statementIndex) => {
     const statementId = `${idPrefix}_${statementIndex + 1}`;
     const statementPath = `${path}[${statementIndex}]`;
-    const flow = compileStatementFlow(statement, statementId, statementPath, context);
+    const flow = dispatchGraphWriteStatementFlow(statement, statementId, statementPath, context);
     nodes.push(...flow.nodes);
     links.push(...flow.links);
     if (!entry) {
@@ -1736,7 +1728,7 @@ function compileContainerActionRoleInputs(
       inputValues[role] = rawValue.map((entry) => literalValue(normalizeContainerActionRoleValueForFlow(role, entry)));
       return;
     }
-    const roleFlow = compileValueExpression(rawValue, `${nodeId}_${role}`, `${path}.${role}`, context);
+    const roleFlow = dispatchGraphWriteValueExpression(rawValue, `${nodeId}_${role}`, `${path}.${role}`, context);
     nodes.push(...roleFlow.nodes);
     links.push(...roleFlow.links);
     if (roleFlow.output) {
@@ -1756,7 +1748,12 @@ function isContainerActionPureOperation(containerKind: string, containerOperatio
 }
 
 // Migration guard: new GraphWrite statement kinds must enter graphwrite-slot-source.json and StatementCompilerRegistry.
-function compileStatementFlow(statement: BlueprintLogicStatement, nodeId: string, path: string, context: CompileFlowContext): CompiledStatementFlow {
+function dispatchGraphWriteStatementFlow(
+  statement: BlueprintLogicStatement,
+  nodeId: string,
+  path: string,
+  context: CompileFlowContext,
+): CompiledStatementFlow {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   const delegateOperation = delegateStatementOperation(statementRecord);
@@ -1789,7 +1786,7 @@ function compileSequenceStatementFlowFromCompilerService(input: GraphWriteStatem
 }
 
 function compileGenericControlStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
-  const node = compileStatementNode(input.statement, input.nodeId, input.path);
+  const node = dispatchGraphWriteStatementNode(input.statement, input.nodeId, input.path);
   return {
     nodes: [node],
     links: [],
@@ -1801,7 +1798,12 @@ function compileGenericControlStatementFlowFromCompilerService(input: GraphWrite
 function compileLetStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
   const statementRecord = input.statement as Record<string, unknown>;
   const name = getRequiredString(statementRecord, 'name', `${input.path}.name`);
-  const valueFlow = compileValueExpression(statementRecord['value'], `${input.nodeId}_value`, `${input.path}.value`, input.context);
+  const valueFlow = dispatchGraphWriteValueExpression(
+    statementRecord['value'],
+    `${input.nodeId}_value`,
+    `${input.path}.value`,
+    input.context,
+  );
   input.context.symbols.set(name.toLowerCase(), {
     output: valueFlow.output,
     defaultValue: valueFlow.defaultValue,
@@ -1817,7 +1819,7 @@ function compileLetStatementFlowFromCompilerService(input: GraphWriteStatementCo
 function compileContainerActionStatementFlowFromCompilerService(input: GraphWriteStatementCompileInput): CompiledStatementFlow {
   const statementRecord = input.statement as Record<string, unknown>;
   const { containerKind, containerOperation } = validateContainerActionShape(statementRecord, input.path, 'statement');
-  const node = compileStatementNode(input.statement, input.nodeId, input.path);
+  const node = dispatchGraphWriteStatementNode(input.statement, input.nodeId, input.path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
   compileContainerActionRoleInputs(statementRecord, input.nodeId, input.path, node, nodes, links, input.context);
@@ -1853,14 +1855,19 @@ function compileDefaultExecStatementFlowFromCompilerService(input: GraphWriteSta
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   const delegateOperation = delegateStatementOperation(statementRecord);
-  const node = compileStatementNode(statement, nodeId, path);
+  const node = dispatchGraphWriteStatementNode(statement, nodeId, path);
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
   if (kind === 'call' || kind === 'create' || kind === 'convert' || kind === 'schedule' || delegateOperation === 'call') {
     const inputValues: Record<string, unknown> = {};
     if (isRecord(statementRecord['args'])) {
       for (const [argName, argValue] of Object.entries(statementRecord['args'])) {
-        const argFlow = compileValueExpression(argValue, `${nodeId}_arg_${toIdSegment(argName)}`, `${path}.args.${argName}`, context);
+        const argFlow = dispatchGraphWriteValueExpression(
+          argValue,
+          `${nodeId}_arg_${toIdSegment(argName)}`,
+          `${path}.args.${argName}`,
+          context,
+        );
         nodes.push(...argFlow.nodes);
         links.push(...argFlow.links);
         if (argFlow.output) {
@@ -1891,7 +1898,7 @@ function compileDefaultExecStatementFlowFromCompilerService(input: GraphWriteSta
         ? getRequiredString(statementRecord, 'target', `${path}.target`)
         : 'value';
     }
-    const valueFlow = compileValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);
+    const valueFlow = dispatchGraphWriteValueExpression(statementRecord['value'], `${nodeId}_value`, `${path}.value`, context);
     nodes.push(...valueFlow.nodes);
     links.push(...valueFlow.links);
     if (valueFlow.output) {
@@ -1919,7 +1926,7 @@ function compileReturnStatementFlow(statementRecord: Record<string, unknown>, no
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
   if (Object.hasOwn(statementRecord, 'value')) {
-    const valueFlow = compileValueExpression(statementRecord.value, `${nodeId}_value`, `${path}.value`, context);
+    const valueFlow = dispatchGraphWriteValueExpression(statementRecord.value, `${nodeId}_value`, `${path}.value`, context);
     nodes.push(...valueFlow.nodes);
     links.push(...valueFlow.links);
     if (valueFlow.output) {
@@ -2010,11 +2017,16 @@ function compileBranchStatementFlow(statement: BlueprintLogicStatement, nodeId: 
 }
 
 function compileBranchCondition(condition: unknown, nodeId: string, path: string, context: CompileFlowContext): CompiledConditionFlow {
-  return compileValueExpression(condition, nodeId, path, context);
+  return dispatchGraphWriteValueExpression(condition, nodeId, path, context);
 }
 
 // Migration guard: new GraphWrite expression kinds must enter graphwrite-slot-source.json and ExpressionCompilerRegistry.
-function compileValueExpression(expression: unknown, nodeId: string, path: string, context: CompileFlowContext): CompiledConditionFlow {
+function dispatchGraphWriteValueExpression(
+  expression: unknown,
+  nodeId: string,
+  path: string,
+  context: CompileFlowContext,
+): CompiledConditionFlow {
   const expressionRecord = isRecord(expression) ? expression : { kind: 'literal', value: expression };
   const kind = typeof expressionRecord.kind === 'string' ? expressionRecord.kind : 'literal';
   const expressionCompiler = graphWriteExpressionCompilerRegistry.requireForExpression({
@@ -2248,7 +2260,7 @@ function compileExpressionInput(
   links: AgentImportLink[],
   context: CompileFlowContext,
 ): void {
-  const valueFlow = compileValueExpression(expression, nodeId, path, context);
+  const valueFlow = dispatchGraphWriteValueExpression(expression, nodeId, path, context);
   nodes.push(...valueFlow.nodes);
   links.push(...valueFlow.links);
   if (valueFlow.output) {
@@ -2259,203 +2271,12 @@ function compileExpressionInput(
   }
 }
 
-export function defaultPatchScope(kind: string): string {
-  if (kind === 'set_node_comment') return 'node_comment';
-  if (kind === 'connect_pins') return 'connect_pins';
-  if (kind === 'disconnect_link') return 'disconnect_link';
-  if (kind === 'replace_link') return 'replace_link';
-  if (kind === 'delete_owned_node') return 'node_delete';
-  return 'pin_default';
-}
-
 export function normalizeReplaceSelector(
   replaceScope: string,
   selector: Record<string, unknown>,
   descriptor: Parameters<typeof normalizeSelectorWithDescriptor>[0],
 ): Record<string, unknown> {
   return normalizeSelectorWithDescriptor(descriptor, selector, 'behavior.replace.selector', replaceScope);
-}
-
-export function normalizePatchTargetRef(kind: string, targetRef: Record<string, unknown>, path: string): Record<string, unknown> {
-  const out = { ...targetRef };
-  assertBlockScopedGraphWriteRef(targetRef, path);
-  getRequiredString(targetRef, 'node_ref', `${path}.node_ref`);
-  if (kind === 'set_pin_default' || kind === 'connect_pins' || kind === 'disconnect_link' || kind === 'replace_link') {
-    getRequiredString(targetRef, 'pin_ref', `${path}.pin_ref`);
-  }
-  if (kind === 'disconnect_link' || kind === 'replace_link') {
-    getRequiredString(targetRef, 'link_ref', `${path}.link_ref`);
-  }
-  return out;
-}
-
-export function rejectRedundantOwnedPatchExpectedOldState(kind: string, patch: Record<string, unknown>, path: string): void {
-  if (
-    ['connect_pins', 'disconnect_link', 'replace_link', 'delete_owned_node'].includes(kind) &&
-    Object.hasOwn(patch, 'expected_old_state')
-  ) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${kind} does not support expected_old_state.`, [
-      {
-        code: 'redundant_owned_patch_expected_old_state',
-        path: `${path}.expected_old_state`,
-        message: 'Use read_context refs directly; P0-D owned link/delete patches do not accept redundant expected_old_state.',
-      },
-    ]);
-  }
-}
-
-export function compilePatchPayload(
-  kind: string,
-  patch: Record<string, unknown>,
-  path: string,
-  targetBlockId: string,
-): Record<string, unknown> {
-  if (kind === 'set_pin_default') {
-    if (!Object.hasOwn(patch, 'value')) {
-      throwMissingPatchValue(path, 'set_pin_default requires value.');
-    }
-    return {
-      value: patchValueToString(literalValue(patch['value'])),
-    };
-  }
-  if (kind === 'set_node_comment') {
-    if (!Object.hasOwn(patch, 'value')) {
-      throwMissingPatchValue(path, 'set_node_comment requires value.');
-    }
-    return {
-      comment: patchValueToString(literalValue(patch['value'])),
-    };
-  }
-  if (kind === 'connect_pins') {
-    const sourceRef = normalizePatchEndpointRef(patch, 'source_ref', path, targetBlockId);
-    return {
-      source_block_id: targetBlockId,
-      source_node_ref: sourceRef.nodeRef,
-      source_pin_ref: sourceRef.pinRef,
-    };
-  }
-  if (kind === 'disconnect_link') {
-    return {};
-  }
-  if (kind === 'replace_link') {
-    const replacementRef = normalizePatchEndpointRef(patch, 'replacement_ref', path, targetBlockId);
-    return {
-      replacement_block_id: targetBlockId,
-      replacement_node_ref: replacementRef.nodeRef,
-      replacement_pin_ref: replacementRef.pinRef,
-    };
-  }
-  if (kind === 'delete_owned_node') {
-    return normalizeDeleteOwnedNodePolicy(patch, path);
-  }
-  throw new TaskSpecCompileError('unsupported_graph_write_patch', `Unsupported GraphWrite patch kind: ${kind}`, [
-    {
-      code: 'unsupported_graph_write_patch',
-      path: `${path}.kind`,
-      message: `Use ${OWNED_GRAPH_PATCH_KINDS.join(', ')}.`,
-    },
-  ]);
-}
-
-export function isOwnedGraphPatchKind(kind: string): boolean {
-  return OWNED_GRAPH_PATCH_KINDS.includes(kind as (typeof OWNED_GRAPH_PATCH_KINDS)[number]);
-}
-
-function normalizePatchEndpointRef(
-  patch: Record<string, unknown>,
-  field: 'source_ref' | 'replacement_ref',
-  path: string,
-  targetBlockId: string,
-): { nodeRef: string; pinRef: string } {
-  const ref = requiredRecord(patch, field, `${path}.${field}`);
-  if (Object.hasOwn(ref, 'block_id')) {
-    throw new TaskSpecCompileError('taskspec_semantic_invalid', `${field}.block_id is redundant.`, [
-      {
-        code: 'redundant_patch_endpoint_block_id',
-        path: `${path}.${field}.block_id`,
-        message: `${field}.block_id is redundant; the compiler derives it from target_ref.block_id.`,
-      },
-    ]);
-  }
-  assertBlockScopedGraphWriteRef({ ...ref, block_id: targetBlockId }, `${path}.${field}`);
-  return {
-    nodeRef: getRequiredString(ref, 'node_ref', `${path}.${field}.node_ref`),
-    pinRef: getRequiredString(ref, 'pin_ref', `${path}.${field}.pin_ref`),
-  };
-}
-
-function normalizeDeleteOwnedNodePolicy(patch: Record<string, unknown>, path: string): Record<string, unknown> {
-  const rawPolicy = patch['delete_policy'];
-  const policy = rawPolicy === undefined ? {} : requiredRecord(patch, 'delete_policy', `${path}.delete_policy`);
-  const breakLinks = optionalGraphWritePatchBoolean(policy, 'break_links', true, `${path}.delete_policy.break_links`);
-  const allowEntryNode = optionalGraphWritePatchBoolean(policy, 'allow_entry_node', false, `${path}.delete_policy.allow_entry_node`);
-  const allowLifecycleRoot = optionalGraphWritePatchBoolean(policy, 'allow_lifecycle_root', false, `${path}.delete_policy.allow_lifecycle_root`);
-
-  if (!breakLinks) {
-    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.break_links`, 'delete_owned_node requires delete_policy.break_links=true.');
-  }
-  if (allowEntryNode) {
-    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.allow_entry_node`, 'delete_owned_node does not allow delete_policy.allow_entry_node=true.');
-  }
-  if (allowLifecycleRoot) {
-    throwUnsafeDeleteOwnedNodePolicy(`${path}.delete_policy.allow_lifecycle_root`, 'delete_owned_node does not allow delete_policy.allow_lifecycle_root=true.');
-  }
-
-  return {
-    break_links: breakLinks,
-    allow_entry_node: allowEntryNode,
-    allow_lifecycle_root: allowLifecycleRoot,
-  };
-}
-
-function optionalGraphWritePatchBoolean(
-  record: Record<string, unknown>,
-  field: string,
-  fallback: boolean,
-  path: string,
-): boolean {
-  const value = record[field];
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${field} must be a boolean.`, [
-    {
-      code: 'invalid_graph_write_patch_delete_policy',
-      path,
-      message: `${field} must be a boolean.`,
-    },
-  ]);
-}
-
-function throwUnsafeDeleteOwnedNodePolicy(path: string, message: string): never {
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
-    {
-      code: 'owned_delete_policy_disallowed',
-      path,
-      message,
-    },
-  ]);
-}
-
-export function throwMissingPatchValue(path: string, message: string): never {
-  throw new TaskSpecCompileError('taskspec_semantic_invalid', message, [
-    {
-      code: 'missing_patch_payload',
-      path: `${path}.value`,
-      message: 'Provide value.',
-    },
-  ]);
-}
-
-export function normalizeExpectedOldState(record: Record<string, unknown>): Record<string, unknown> {
-  const out = literalRecordValues(record);
-  if (Object.hasOwn(record, 'value')) {
-    out['value'] = patchValueToString(literalValue(record['value']));
-  }
-  return out;
 }
 
 export function normalizeMergeAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
@@ -2615,23 +2436,6 @@ export function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unkno
   };
 }
 
-export function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: string, kind: string): Record<string, unknown> {
-  const out = normalizeExternalGraphAnchorBase(anchor, path);
-  if (out['semantic_role'] !== 'node') {
-    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'patch_external_graph requires a node external anchor.', [
-      {
-        code: 'unsupported_external_graph_anchor_role',
-        path: `${path}.semantic_role`,
-        message: 'Use semantic_role="node".',
-      },
-    ]);
-  }
-  if (kind === 'set_external_pin_default') {
-    out['pin_name'] = getRequiredString(out, 'pin_name', `${path}.pin_name`);
-  }
-  return out;
-}
-
 export function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
   const out = normalizeExternalGraphAnchorBase(anchor, path);
   if (out['semantic_role'] !== 'body_entry') {
@@ -2769,13 +2573,6 @@ export function normalizeMergeSequenceOrder(record: Record<string, unknown>, ins
   return sequenceOrder;
 }
 
-export function patchValueToString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value === null || value === undefined) return '';
-  return JSON.stringify(value);
-}
-
 function copyOptionalStringFields(source: Record<string, unknown>, target: Record<string, unknown>, fields: string[]): void {
   fields.forEach((field) => {
     if (typeof source[field] === 'string' && source[field].length > 0) {
@@ -2889,12 +2686,6 @@ function classSettingsDefaultArray(rawSettings: unknown, path: string): Record<s
   });
 }
 
-function literalRecordValues(record: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key, literalValue(value)]),
-  );
-}
-
 export function requiredRecord(record: Record<string, unknown>, field: string, path: string): Record<string, unknown> {
   const value = record[field];
   if (isRecord(value)) return value;
@@ -2924,7 +2715,7 @@ export function omitUndefined(record: Record<string, unknown>): Record<string, u
 }
 
 // Migration guard: new GraphWrite statement node kinds must enter graphwrite-slot-source.json and StatementCompilerRegistry.
-function compileStatementNode(statement: BlueprintLogicStatement, nodeId: string, path: string): AgentImportNode {
+function dispatchGraphWriteStatementNode(statement: BlueprintLogicStatement, nodeId: string, path: string): AgentImportNode {
   const statementRecord = statement as Record<string, unknown>;
   const kind = typeof statementRecord.kind === 'string' ? statementRecord.kind : '';
   const controlKind = kind === 'control' ? getControlStatementKind(statementRecord, path) : undefined;

@@ -4,6 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphDefaultValueApplier.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphExistingNodeMapper.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphJsonParser.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLinker.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
@@ -128,7 +129,25 @@ FBlueprintGenerateResult FBlueprintMultiGraphGenerationPipeline::GenerateMultiGr
 				continue;
 			}
 
-			FBlueprintGenerateResult GraphResult = FBlueprintGraphGenerationPipeline::GenerateSemanticGraphForGraph(TargetGraph, GraphObject, OutUnresolvedNodes);
+			FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+			ContextInput.RuntimeAdapterId = TEXT("k2.multi_graph.semantic_generation");
+			ContextInput.TaskSpecStrategy = TEXT("multi_graph_generation");
+			ContextInput.TargetAssetPath = Blueprint->GetPathName();
+			ContextInput.GraphName = TargetGraph->GetName();
+			ContextInput.GraphFamily = TEXT("k2");
+			ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+			const TSharedPtr<FJsonObject>* LogicSpecObject = nullptr;
+			GraphObject->TryGetObjectField(TEXT("logic_spec"), LogicSpecObject);
+			ContextInput.EntryNodeRefs.Add(
+				FBlueprintHelperGraphWriteConnectivityContextBuilder::MakeSemanticEntryRefFromLogicSpec(
+					LogicSpecObject && LogicSpecObject->IsValid() ? *LogicSpecObject : TSharedPtr<FJsonObject>()));
+			const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+				FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(TargetGraph, ContextInput);
+			FBlueprintGenerateResult GraphResult = FBlueprintGraphGenerationPipeline::GenerateSemanticGraphForGraph(
+				TargetGraph,
+				GraphObject,
+				OutUnresolvedNodes,
+				ConnectivityInput);
 			TotalGenerated += GraphResult.GeneratedNodeCount;
 			TotalRequestedDefaultValues += GraphResult.RequestedDefaultValueCount;
 			TotalAppliedDefaultValues += GraphResult.AppliedDefaultValueCount;

@@ -6,6 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperContainerActionVocabulary.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperContainerActionReadbackVerifier.h"
@@ -15,6 +16,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_CustomEvent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/Package.h"
@@ -195,14 +197,40 @@ static bool AddVariable(UBlueprint* Blueprint, const FString& Name, const FEdGra
 	return true;
 }
 
-static FString MakeLogicJson(const FString& StatementJson)
+static UK2Node_CustomEvent* AddCustomEvent(UEdGraph* Graph, const FString& EventName)
+{
+	if (!Graph || EventName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(Graph);
+	Graph->AddNode(EventNode, true, false);
+	EventNode->CreateNewGuid();
+	EventNode->PostPlacedNewNode();
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->AllocateDefaultPins();
+	return EventNode;
+}
+
+static FString MakeLogicJson(const FString& StatementJson, const FString& EntryName)
 {
 	return FString::Printf(TEXT(R"JSON({
+		"options": { "reconstruct_existing_nodes": true },
 		"logic_spec": {
 			"schema": "BlueprintLogicSpec.v2",
+			"entry": {
+				"kind": "custom_event",
+				"name": "%s",
+				"id": "%s_entry",
+				"signature_evidence_id": "signature:custom_event:%s",
+				"signature_dependency": true,
+				"source": "signature_dependency",
+				"source_cluster": "blueprint_signature"
+			},
 			"statements": [%s]
 		}
-	})JSON"), *StatementJson);
+	})JSON"), *EntryName, *EntryName, *EntryName, *StatementJson);
 }
 
 static bool RunFixture(
@@ -214,8 +242,23 @@ static bool RunFixture(
 	const FBlueprintHelperContainerActionReadbackExpectation& Expectation)
 {
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString EntryName = MakeObjectName(TEXT("BH_ContainerCoverageEntry"));
+	Test.TestNotNull(
+		*FString::Printf(TEXT("%s entry event"), *TestName),
+		AddCustomEvent(Graph, EntryName));
+	const FString GraphWriteJson = MakeLogicJson(StatementJson, EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action_coverage"),
+			TEXT("automation_container_action_coverage"),
+			GraphWriteJson);
 	const FBlueprintGenerateResult Result =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Graph, MakeLogicJson(StatementJson), Unresolved);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 	if (!Test.TestTrue(*FString::Printf(TEXT("%s generation succeeds"), *TestName), Result.bSucceed))
 	{
 		Test.AddError(FString::Printf(
@@ -458,31 +501,31 @@ bool FBlueprintHelperGraphWriteContainerActionCoverageVerifierCollectionPinTest:
 	}
 
 	const FBlueprintHelperContainerActionReadbackExpectation Expectation{
-		TEXT("container.set.to_array"),
+		TEXT("container.set.add"),
 		TEXT("set"),
-		TEXT("to_array"),
+		TEXT("add"),
 		TEXT("TagSet"),
+		TEXT("string"),
 		FString(),
 		FString(),
-		FString(),
-		{},
+		{ TEXT("target"), TEXT("item") },
 		false,
-		true
+		false
 	};
 
 	const bool bPassed = RunFixture(
 		*this,
 		Blueprint,
 		Graph,
-		TEXT("set to array readback"),
+		TEXT("set add readback"),
 		TEXT(R"JSON({
-			"id": "stmt_set_to_array",
+			"id": "stmt_set_add",
 			"kind": "container_action",
 			"container_kind": "set",
-			"container_operation": "to_array",
+			"container_operation": "add",
 			"target": { "kind": "get", "name": "TagSet" },
-			"element_type": "string",
-			"result_symbol": "TagArray"
+			"item": { "kind": "literal", "value": "Ready", "type": "string" },
+			"element_type": "string"
 		})JSON"),
 		Expectation);
 

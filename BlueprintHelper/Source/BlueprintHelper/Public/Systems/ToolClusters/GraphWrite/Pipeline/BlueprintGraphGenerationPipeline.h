@@ -14,11 +14,11 @@ public:
 		UEdGraph* TargetGraph,
 		const FString& JsonString,
 		TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
-		const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput = nullptr);
+		const FBlueprintGraphWriteConnectivityValidationInput& ConnectivityInput);
 	static FBlueprintGenerateResult GenerateSemanticGraphForGraph(
 		UEdGraph* TargetGraph,
 		const TSharedPtr<FJsonObject>& GraphJsonObject,
 		TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
-		const FBlueprintGraphWriteConnectivityValidationInput* ConnectivityInput = nullptr);
+		const FBlueprintGraphWriteConnectivityValidationInput& ConnectivityInput);
 	static UEdGraph* FindGraphByName(UBlueprint* Blueprint, const FString& GraphName);
 };

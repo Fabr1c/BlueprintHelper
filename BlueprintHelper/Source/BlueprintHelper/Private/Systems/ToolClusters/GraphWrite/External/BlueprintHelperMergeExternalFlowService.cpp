@@ -18,6 +18,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
@@ -1159,8 +1160,23 @@ FBlueprintHelperToolResultBase FBlueprintHelperMergeExternalFlowService::Execute
 	const TSet<UEdGraphNode*> NodeSnapshot = BlueprintHelperMergeExternalFlow::CaptureGraphNodes(Context.Graph);
 	const FString GraphWritePayload = BlueprintHelperMergeExternalFlow::BuildSemanticPayload(Request);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+	ContextInput.RuntimeAdapterId = TEXT("k2.external_graph.insert_external_flow");
+	ContextInput.TaskSpecStrategy = TEXT("merge_external_flow");
+	ContextInput.TargetAssetPath = Context.Blueprint ? Context.Blueprint->GetPathName() : Request.AssetPath;
+	ContextInput.GraphName = Context.Graph ? Context.Graph->GetName() : Request.GraphName;
+	ContextInput.GraphFamily = TEXT("k2");
+	ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::K2ExternalBody;
+	ContextInput.EntryNodeRefs.Add(TEXT("external_anchor"));
+	ContextInput.EntryNodes.Add(Context.AnchorNode);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(Context.Graph, ContextInput);
 	const FBlueprintGenerateResult GenerateResult =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Context.Graph, GraphWritePayload, UnresolvedNodes);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Context.Graph,
+			GraphWritePayload,
+			UnresolvedNodes,
+			ConnectivityInput);
 	Context.GeneratedNodes = BlueprintHelperMergeExternalFlow::CollectNewNodes(Context.Graph, NodeSnapshot);
 	Context.BodyEntryPin = BlueprintHelperMergeExternalFlow::FindBodyEntryPin(Context.GeneratedNodes);
 	Context.BodyExitPins = BlueprintHelperMergeExternalFlow::FindBodyExitPins(Context.GeneratedNodes);

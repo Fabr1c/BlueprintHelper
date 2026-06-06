@@ -327,8 +327,12 @@ bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptAdapterPlanConnectivi
 	const FBlueprintGenerateResult& GenerateResult,
 	const TSet<UEdGraphNode*>& NodesBeforeImport)
 {
-	if (!ReplacePlan.ConnectivityPolicy.bAllowExitBoundaryReachability ||
-		!ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary)
+	if (!ReplacePlan.ReconnectPlan.bReconnectEntryToFirstImportedExec)
+	{
+		return false;
+	}
+	if (ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary &&
+		!ReplacePlan.ConnectivityPolicy.bAllowExitBoundaryReachability)
 	{
 		return false;
 	}

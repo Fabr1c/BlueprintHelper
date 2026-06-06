@@ -59,74 +59,6 @@ bool IsPureQueryContainerActionStatement(const TSharedPtr<FBlueprintHelperGraphS
 	return Spec && Spec->bPureQuery;
 }
 
-static TSet<UEdGraphNode*> CollectAllowedTerminalPureDataNodes(
-	const FBlueprintHelperGraphFragmentDag& FragmentDag,
-	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
-	const TArray<FBlueprintHelperGraphFragmentDataEdge>& DataEdges)
-{
-	TSet<FString> ConsumedProducerFragmentIds;
-	for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : DataEdges)
-	{
-		if (!DataEdge.From.FragmentId.IsEmpty())
-		{
-			ConsumedProducerFragmentIds.Add(DataEdge.From.FragmentId);
-		}
-	}
-
-	TSet<FString> TerminalResultFragmentIds;
-	TSet<FString> TerminalResultStatementIds;
-	for (const FBlueprintHelperGraphFragmentRef& FragmentRef : FragmentDag.Fragments)
-	{
-		const FString* ResultSymbol = FragmentRef.Metadata.Find(TEXT("result_symbol"));
-		const FString* StatementKind = FragmentRef.Metadata.Find(TEXT("statement_kind"));
-		const FString* StatementId = FragmentRef.Metadata.Find(TEXT("statement_id"));
-		const FString* ContainerKind = FragmentRef.Metadata.Find(TEXT("container_kind"));
-		const FString* ContainerOperation = FragmentRef.Metadata.Find(TEXT("container_operation"));
-		const FBlueprintHelperContainerActionSpec* ContainerSpec =
-			(ContainerKind && ContainerOperation)
-				? FBlueprintHelperContainerActionVocabulary::Find(*ContainerKind, *ContainerOperation)
-				: nullptr;
-		const bool bIsTerminalContainerQuery =
-			StatementKind
-			&& StatementKind->Equals(TEXT("container_action"), ESearchCase::IgnoreCase)
-			&& ContainerSpec
-			&& ContainerSpec->bPureQuery;
-		if (ResultSymbol && !ResultSymbol->TrimStartAndEnd().IsEmpty()
-			&& bIsTerminalContainerQuery
-			&& !ConsumedProducerFragmentIds.Contains(FragmentRef.FragmentId))
-		{
-			TerminalResultFragmentIds.Add(FragmentRef.FragmentId);
-			if (StatementId && !StatementId->IsEmpty())
-			{
-				TerminalResultStatementIds.Add(*StatementId);
-			}
-		}
-	}
-
-	TSet<UEdGraphNode*> AllowedNodes;
-	for (const FBlueprintHelperNodeFragment& GeneratedFragment : GeneratedFragments)
-	{
-		if (!TerminalResultFragmentIds.Contains(GeneratedFragment.FragmentId)
-			&& !TerminalResultStatementIds.Contains(GeneratedFragment.SourceStatementId))
-		{
-			continue;
-		}
-
-		if (GeneratedFragment.PrimaryNode)
-		{
-			AllowedNodes.Add(GeneratedFragment.PrimaryNode);
-		}
-		for (UEdGraphNode* Node : GeneratedFragment.Nodes)
-		{
-			if (Node)
-			{
-				AllowedNodes.Add(Node);
-			}
-		}
-	}
-	return AllowedNodes;
-}
-
 static FString MakeConnectivityNodeRef(const UEdGraphNode* Node)
 {
 	if (!Node)
@@ -152,16 +84,22 @@ static void AddConnectivityNodeRef(
 	Input.BoundaryModel.GeneratedNodeRefs.AddUnique(NodeRef);
 }
 
-static void AddConnectivityBoundaryNodeRef(
+static void AddConnectivityFragmentNodeRefs(
 	FBlueprintGraphWriteConnectivityValidationInput& Input,
-	UEdGraphNode* Node,
-	TArray<FString>& BoundaryRefs)
+	const FBlueprintHelperNodeFragment& Fragment)
 {
-	AddConnectivityNodeRef(Input, Node);
-	const FString NodeRef = MakeConnectivityNodeRef(Node);
-	if (!NodeRef.IsEmpty())
+	if (!Fragment.PrimaryNode)
 	{
-		BoundaryRefs.AddUnique(NodeRef);
+		return;
+	}
+
+	if (!Fragment.FragmentId.IsEmpty())
+	{
+		Input.NodeRefs.Add(Fragment.FragmentId, Fragment.PrimaryNode);
+	}
+	if (!Fragment.SourceStatementId.IsEmpty())
+	{
+		Input.NodeRefs.Add(Fragment.SourceStatementId, Fragment.PrimaryNode);
 	}
 }
 
@@ -1123,7 +1061,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	UEdGraph* TargetGraph,
 	const TSharedPtr<FJsonObject>& JsonObject,
 	TArray<TSharedPtr<FUnresolvedNodeItem>>& OutUnresolvedNodes,
-	const FBlueprintGraphWriteConnectivityValidationInput* AdapterConnectivityInput)
+	const FBlueprintGraphWriteConnectivityValidationInput& AdapterConnectivityInput)
 {
 	FBlueprintGenerateResult Result;
 	Result.Message = TEXT("Generation failed.");
@@ -1286,8 +1224,7 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 			GraphWriteContext.RegisterNode(
 				Fragment.FragmentId,
 				Fragment.PrimaryNode,
-				true,
-				EntryFragmentIds.Contains(Fragment.FragmentId));
+				true);
 		}
 	}
 	Result.ExecutionStats.BuildContextMs += GraphWriteElapsedMs(ContextIndexStart);
@@ -1303,70 +1240,16 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	Result.ExecutionStats.ConnectLinksMs = GraphWriteElapsedMs(ConnectLinksStart);
 
 	const double ConnectivityStart = FPlatformTime::Seconds();
-	FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput;
+	FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput = AdapterConnectivityInput;
 	ConnectivityInput.TargetGraph = TargetGraph;
 	ConnectivityInput.GeneratedNodes = GraphWriteContext.GetGeneratedNodes();
-	if (AdapterConnectivityInput)
-	{
-		ConnectivityInput.BoundaryModel = AdapterConnectivityInput->BoundaryModel;
-		ConnectivityInput.ConnectivityPolicy = AdapterConnectivityInput->ConnectivityPolicy;
-		ConnectivityInput.NodeRefs = AdapterConnectivityInput->NodeRefs;
-		ConnectivityInput.AllowedTerminalPureDataNodes = AdapterConnectivityInput->AllowedTerminalPureDataNodes;
-	}
-	else
-	{
-		ConnectivityInput.BoundaryModel.RuntimeAdapterId = TEXT("k2.semantic_graph_generation");
-		ConnectivityInput.BoundaryModel.TaskSpecStrategy = TEXT("semantic_graph");
-		ConnectivityInput.BoundaryModel.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
-		ConnectivityInput.BoundaryModel.GraphName = TargetGraph ? TargetGraph->GetName() : TEXT("");
-		ConnectivityInput.BoundaryModel.GraphFamily = TEXT("k2");
-		ConnectivityInput.BoundaryModel.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
-		ConnectivityInput.BoundaryModel.PureDataConsumptionPolicy =
-			EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;
-		ConnectivityInput.BoundaryModel.AllowedIsolatedNodePolicy =
-			EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly;
-	}
 	for (UEdGraphNode* Node : ConnectivityInput.GeneratedNodes)
 	{
 		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityNodeRef(ConnectivityInput, Node);
 	}
-	if (!AdapterConnectivityInput)
+	for (const FBlueprintHelperNodeFragment& Fragment : GeneratedFragments)
 	{
-		for (UEdGraphNode* EntryNode : GraphWriteContext.GetEntryRootNodes())
-		{
-			BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-				ConnectivityInput,
-				EntryNode,
-				ConnectivityInput.BoundaryModel.EntryNodeRefs);
-		}
-		if (ConnectivityInput.BoundaryModel.EntryNodeRefs.Num() == 0)
-		{
-			for (UEdGraphPin* EntryPin : TopLevelFlow.Entries)
-			{
-				UEdGraphNode* EntryNode = EntryPin ? EntryPin->GetOwningNode() : nullptr;
-				if (EntryNode)
-				{
-					BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-						ConnectivityInput,
-						EntryNode,
-						ConnectivityInput.BoundaryModel.EntryNodeRefs);
-				}
-			}
-		}
-		ConnectivityInput.AllowedTerminalPureDataNodes =
-			BlueprintHelperGraphWritePipelineUtilsLocal::CollectAllowedTerminalPureDataNodes(
-				FragmentDag,
-				GeneratedFragments,
-				DataEdges);
-		for (UEdGraphNode* TerminalPureDataNode : ConnectivityInput.AllowedTerminalPureDataNodes)
-		{
-			BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
-				ConnectivityInput,
-				TerminalPureDataNode,
-				ConnectivityInput.BoundaryModel.ExitNodeRefs);
-		}
-		ConnectivityInput.ConnectivityPolicy =
-			FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(ConnectivityInput.BoundaryModel);
+		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityFragmentNodeRefs(ConnectivityInput, Fragment);
 	}
 	ConnectivityInput.RequestedConnectionCount = DataEdges.Num();
 	ConnectivityInput.CreatedConnectionCount = CreatedDataConnectionCount;

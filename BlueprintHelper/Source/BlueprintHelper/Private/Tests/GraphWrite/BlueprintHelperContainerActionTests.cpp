@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Testing/BlueprintHelperContainerActionReadbackVerifier.h"
 
@@ -157,14 +158,31 @@ static bool AddContainerActionVariable(UBlueprint* Blueprint, const FString& Nam
 	return true;
 }
 
-static FString MakeContainerActionLogicJson(const FString& StatementJson)
+static FString MakeContainerActionLogicJson(const FString& StatementJson, const FString& EntryName)
 {
 	return FString::Printf(TEXT(R"JSON({
+		"options": { "reconstruct_existing_nodes": true },
 		"logic_spec": {
 			"schema": "BlueprintLogicSpec.v2",
+			"entry": {
+				"kind": "custom_event",
+				"name": "%s",
+				"id": "%s_entry",
+				"signature_evidence_id": "signature:custom_event:%s",
+				"signature_dependency": true,
+				"source": "signature_dependency",
+				"source_cluster": "blueprint_signature"
+			},
 			"statements": [%s]
 		}
-	})JSON"), *StatementJson);
+	})JSON"), *EntryName, *EntryName, *EntryName, *StatementJson);
+}
+
+static FString MakeContainerActionLogicJson(const FString& StatementJson)
+{
+	return MakeContainerActionLogicJson(
+		StatementJson,
+		MakeContainerActionObjectName(TEXT("BH_ContainerActionEntry")));
 }
 
 static FString MakeRestoreDeviceSequentialTaskPlanLogicJson()
@@ -336,8 +354,23 @@ static bool RunContainerActionFixture(
 	const FBlueprintHelperContainerActionReadbackExpectation& Expectation)
 {
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString EntryName = MakeContainerActionObjectName(TEXT("BH_ContainerActionFixtureEntry"));
+	Test.TestNotNull(
+		*FString::Printf(TEXT("%s entry event"), *TestName),
+		AddContainerActionCustomEvent(Graph, EntryName));
+	const FString GraphWriteJson = MakeContainerActionLogicJson(StatementJson, EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action"),
+			TEXT("automation_container_action"),
+			GraphWriteJson);
 	const FBlueprintGenerateResult Result =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Graph, MakeContainerActionLogicJson(StatementJson), Unresolved);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 	if (!Test.TestTrue(*FString::Printf(TEXT("%s generation succeeds"), *TestName), Result.bSucceed))
 	{
 		Test.AddError(FString::Printf(
@@ -853,8 +886,20 @@ bool FBlueprintHelperGraphWriteContainerActionFocusedE2ETest::RunTest(const FStr
 			"target": { "kind": "get", "name": "Scores" },
 			"key": { "kind": "literal", "value": "PlayerA", "type": "string" },
 			"key_type": "string",
-			"value_type": "int",
+			"value_type": "string",
 			"result_symbol": "bHasScore"
+		}, {
+			"id": "stmt_branch_has_score",
+			"kind": "branch",
+			"condition": { "kind": "get", "name": "bHasScore", "type": "bool" },
+			"then": [{
+				"id": "stmt_print_has_score",
+				"kind": "call",
+				"target": "PrintString",
+				"args": {
+					"InString": { "kind": "literal", "value": "score exists", "type": "string" }
+				}
+			}]
 		})JSON"),
 		FBlueprintHelperContainerActionReadbackExpectation{
 			TEXT("container.map.contains"),
@@ -863,7 +908,7 @@ bool FBlueprintHelperGraphWriteContainerActionFocusedE2ETest::RunTest(const FStr
 			TEXT("Scores"),
 			FString(),
 			TEXT("string"),
-			TEXT("int"),
+			TEXT("string"),
 			{ TEXT("target"), TEXT("key") },
 			false,
 			true });
@@ -889,27 +934,27 @@ bool FBlueprintHelperGraphWriteContainerActionFocusedE2ETest::RunTest(const FStr
 		*this,
 		Blueprint,
 		Graph,
-		TEXT("set to array"),
+		TEXT("set add"),
 		TEXT(R"JSON({
-			"id": "stmt_set_to_array",
+			"id": "stmt_set_add",
 			"kind": "container_action",
 			"container_kind": "set",
-			"container_operation": "to_array",
+			"container_operation": "add",
 			"target": { "kind": "get", "name": "TagSet" },
-			"element_type": "string",
-			"result_symbol": "TagArray"
+			"item": { "kind": "literal", "value": "Ready", "type": "string" },
+			"element_type": "string"
 		})JSON"),
 		FBlueprintHelperContainerActionReadbackExpectation{
-			TEXT("container.set.to_array"),
+			TEXT("container.set.add"),
 			TEXT("set"),
-			TEXT("to_array"),
+			TEXT("add"),
 			TEXT("TagSet"),
 			TEXT("string"),
 			FString(),
 			FString(),
-			{ TEXT("target") },
+			{ TEXT("target"), TEXT("item") },
 			false,
-			true });
+			false });
 
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	TestFalse(TEXT("container action generated Blueprint compiles"), Blueprint->Status == BS_Error);
@@ -936,7 +981,7 @@ bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTe
 		MakeContainerActionPinType(
 			UEdGraphSchema_K2::PC_String,
 			EPinContainerType::Map,
-			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_Int));
+			MakeContainerActionTerminalType(UEdGraphSchema_K2::PC_String));
 	const FEdGraphPinType ConditionType =
 		MakeContainerActionPinType(UEdGraphSchema_K2::PC_Boolean, EPinContainerType::None);
 	TestTrue(TEXT("Scores variable added"), AddContainerActionVariable(Blueprint, TEXT("Scores"), ScoresType));
@@ -949,10 +994,9 @@ bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTe
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
-			Graph,
-			MakeContainerActionLogicJson(TEXT(R"JSON({
+	const FString EntryName = MakeContainerActionObjectName(TEXT("BH_ContainerActionBranchEntry"));
+	TestNotNull(TEXT("branch entry event"), AddContainerActionCustomEvent(Graph, EntryName));
+	const FString GraphWriteJson = MakeContainerActionLogicJson(TEXT(R"JSON({
 				"id": "stmt_branch",
 				"kind": "branch",
 				"condition": { "kind": "get", "name": "bShouldPrint", "type": "bool" },
@@ -974,8 +1018,19 @@ bool FBlueprintHelperGraphWriteContainerActionPureQueryPreservesBranchThenFlowTe
 						"InString": { "kind": "get", "name": "FoundScore", "type": "string" }
 					}
 				}]
-			})JSON")),
-			Unresolved);
+			})JSON"), EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action"),
+			TEXT("automation_container_action"),
+			GraphWriteJson);
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 
 	if (!TestTrue(TEXT("branch pure query generation succeeds"), Result.bSucceed))
 	{
@@ -1089,10 +1144,9 @@ bool FBlueprintHelperGraphWriteContainerActionMapFindResultSymbolValuePinTest::R
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
-			Graph,
-			MakeContainerActionLogicJson(TEXT(R"JSON({
+	const FString EntryName = MakeContainerActionObjectName(TEXT("BH_ContainerActionMapFindEntry"));
+	TestNotNull(TEXT("map find entry event"), AddContainerActionCustomEvent(Graph, EntryName));
+	const FString GraphWriteJson = MakeContainerActionLogicJson(TEXT(R"JSON({
 				"id": "stmt_find_score",
 				"kind": "container_action",
 				"container_kind": "map",
@@ -1109,8 +1163,19 @@ bool FBlueprintHelperGraphWriteContainerActionMapFindResultSymbolValuePinTest::R
 				"field_scope": "variable",
 				"target": "LastScore",
 				"value": { "kind": "get", "name": "FoundScore", "type": "int" }
-			})JSON")),
-			Unresolved);
+			})JSON"), EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action"),
+			TEXT("automation_container_action"),
+			GraphWriteJson);
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 
 	if (!TestTrue(TEXT("map find result symbol generation succeeds"), Result.bSucceed))
 	{
@@ -1208,10 +1273,9 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest::RunTest(co
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
-			Graph,
-			MakeContainerActionLogicJson(TEXT(R"JSON({
+	const FString EntryName = MakeContainerActionObjectName(TEXT("BH_ContainerActionRestoreEntry"));
+	TestNotNull(TEXT("RestoreDevice-shape entry event"), AddContainerActionCustomEvent(Graph, EntryName));
+	const FString GraphWriteJson = MakeContainerActionLogicJson(TEXT(R"JSON({
 				"id": "stmt_restore_branch",
 				"kind": "branch",
 				"condition": {
@@ -1324,8 +1388,19 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest::RunTest(co
 						}]
 					}]
 				}]
-			})JSON")),
-			Unresolved);
+			})JSON"), EntryName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action"),
+			TEXT("automation_container_action"),
+			GraphWriteJson);
+	const FBlueprintGenerateResult Result =
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 
 	if (!TestTrue(TEXT("RestoreDevice-shape generation succeeds"), Result.bSucceed))
 	{
@@ -1437,11 +1512,19 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceSequentialTaskPlanSha
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson = MakeRestoreDeviceSequentialTaskPlanPayloadWithExistingEntry(EventName);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.container_action"),
+			TEXT("automation_container_action"),
+			GraphWriteJson);
 	const FBlueprintGenerateResult Result =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 			Graph,
-			MakeRestoreDeviceSequentialTaskPlanPayloadWithExistingEntry(EventName),
-			Unresolved);
+			GraphWriteJson,
+			Unresolved,
+			ConnectivityInput);
 
 	if (!TestTrue(TEXT("sequential RestoreDevice generation succeeds"), Result.bSucceed))
 	{

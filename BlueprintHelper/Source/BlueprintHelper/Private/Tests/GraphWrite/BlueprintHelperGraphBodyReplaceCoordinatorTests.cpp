@@ -28,7 +28,12 @@ bool FBlueprintHelperReplaceServiceNoGraphTypeProtectionBranchesTest::RunTest(co
 		TEXT("ResolveReplaceTarget("),
 		TEXT("ReconnectPreservedEntryToNewBody("),
 		TEXT("CanAcceptBoundaryConnectivityDiagnostics("),
-		TEXT("ResolveBlockImplementation(")
+		TEXT("ResolveBlockImplementation("),
+		TEXT("UsesGraphBodyReplacePlan("),
+		TEXT("IsLegacyWholeGraphBodyReplacementScope("),
+		TEXT("ResolveReplaceTargetLegacy("),
+		TEXT("? BuildReplacePlan("),
+		TEXT(": ResolveReplaceTargetLegacy(")
 	};
 	for (const FString& Token : ForbiddenTokens)
 	{

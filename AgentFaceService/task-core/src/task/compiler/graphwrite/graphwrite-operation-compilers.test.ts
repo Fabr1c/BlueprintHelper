@@ -10,6 +10,7 @@ import {
 } from '../../fixtures/task-protocol.fixtures.js';
 import { TaskSpecCompileError } from '../task-compiler-errors.js';
 import { createDefaultGraphWriteOperationCompilerRegistry } from './default-graphwrite-operation-compilers.js';
+import { compilePatchGraphWriteOps } from './graphwrite-patch-compiler.js';
 
 test('default GraphWrite operation registry compiles append and replace routes', () => {
   const registry = createDefaultGraphWriteOperationCompilerRegistry();
@@ -68,4 +69,32 @@ test('GraphWrite operation compilers live in focused owner modules', () => {
       `${ownerModule} must implement operation compiler functions instead of re-exporting them`,
     );
   }
+});
+
+test('patch compiler owns every owned patch payload kind', () => {
+  const ops = compilePatchGraphWriteOps({
+    patches: [
+      { kind: 'set_pin_default', target_ref: { block_id: 'B', node_ref: 'N', pin_ref: 'P' }, value: '42' },
+      { kind: 'set_node_comment', target_ref: { block_id: 'B', node_ref: 'N' }, value: 'hello' },
+      { kind: 'connect_pins', target_ref: { block_id: 'B', node_ref: 'To', pin_ref: 'Exec' }, source_ref: { node_ref: 'From', pin_ref: 'Then' } },
+      { kind: 'disconnect_link', target_ref: { block_id: 'B', node_ref: 'N', pin_ref: 'P', link_ref: 'L' } },
+      { kind: 'replace_link', target_ref: { block_id: 'B', node_ref: 'N', pin_ref: 'P', link_ref: 'L' }, replacement_ref: { node_ref: 'New', pin_ref: 'Then' } },
+      { kind: 'delete_owned_node', target_ref: { block_id: 'B', node_ref: 'N' } },
+    ],
+  });
+
+  assert.deepEqual(ops.map((op) => op.op), [
+    'set_pin_default',
+    'set_node_comment',
+    'connect_pins',
+    'disconnect_link',
+    'replace_link',
+    'delete_owned_node',
+  ]);
+  assert.equal(ops[0]?.patch_scope, 'pin_default');
+  assert.equal(ops[1]?.patch_scope, 'node_comment');
+  assert.equal(ops[2]?.patch_scope, 'connect_pins');
+  assert.equal(ops[3]?.patch_scope, 'disconnect_link');
+  assert.equal(ops[4]?.patch_scope, 'replace_link');
+  assert.equal(ops[5]?.patch_scope, 'node_delete');
 });

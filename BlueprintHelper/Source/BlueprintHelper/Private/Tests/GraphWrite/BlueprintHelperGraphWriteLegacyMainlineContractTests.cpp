@@ -111,7 +111,8 @@ static bool IsAllowedDiagnosticOnlyMatch(const FString& RelativePath, const FStr
 			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.cpp"))
 			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/ActionResolution/Utils/GraphWriteActionContextUtils.cpp"))
 			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/BlueprintHelperCallFunctionResolverUtils.cpp"))
-			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/GraphWriteFunctionResolutionUtils.cpp"));
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/FunctionResolution/Utils/GraphWriteFunctionResolutionUtils.cpp"))
+			|| RelativePath.EndsWith(TEXT("Private/Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.cpp"));
 	}
 	return false;
 }

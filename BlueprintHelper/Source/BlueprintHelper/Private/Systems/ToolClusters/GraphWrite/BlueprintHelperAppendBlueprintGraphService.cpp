@@ -11,6 +11,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphWriteExecutionStats.h"
 #include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityDiagnosticsJson.h"
@@ -835,6 +836,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 			SandboxInput.SourceBlueprint = Blueprint;
 			SandboxInput.GraphName = Request.GraphName;
 			SandboxInput.GraphWritePayload = BuildSemanticGraphWritePayload(Request);
+			SandboxInput.ConnectivityContext.RuntimeAdapterId = TEXT("k2.owned_graph.ensure_entry");
+			SandboxInput.ConnectivityContext.TaskSpecStrategy = TEXT("append_new_owned_graph");
+			SandboxInput.ConnectivityContext.TargetAssetPath = Blueprint->GetPathName();
+			SandboxInput.ConnectivityContext.GraphName = Request.GraphName;
+			SandboxInput.ConnectivityContext.GraphFamily = TEXT("k2");
+			SandboxInput.ConnectivityContext.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+			SandboxInput.ConnectivityContext.EntryNodeRefs.Add(
+				FBlueprintHelperGraphWriteConnectivityContextBuilder::MakeSemanticEntryRefFromLogicSpec(Request.LogicSpec));
 
 			const FBlueprintHelperGraphWriteDryRunSandboxResult SandboxResult =
 				FBlueprintHelperGraphWriteDryRunSandbox().RunAppendPreview(SandboxInput);
@@ -1031,8 +1040,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperAppendBlueprintGraphService::Exec
 
 	// 5. Create graph nodes through the SemanticIR pipeline.
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		BuildAppendConnectivityInput(Blueprint, TargetGraph, Request);
 	const FBlueprintGenerateResult GenerateResult =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(TargetGraph, GraphWritePayload, UnresolvedNodes);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			TargetGraph,
+			GraphWritePayload,
+			UnresolvedNodes,
+			ConnectivityInput);
 	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 	const bool bImportSuccess = GenerateResult.bSucceed;
 	const bool bConnectivityFailure = GenerateResult.ConnectivityViolationCount > 0;
@@ -1250,6 +1265,23 @@ FString FBlueprintHelperAppendBlueprintGraphService::BuildSemanticGraphWritePayl
 }
 
 // ─── Helpers ───
+
+FBlueprintGraphWriteConnectivityValidationInput FBlueprintHelperAppendBlueprintGraphService::BuildAppendConnectivityInput(
+	UBlueprint* Blueprint,
+	UEdGraph* TargetGraph,
+	const FAppendRequest& Request) const
+{
+	FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+	ContextInput.RuntimeAdapterId = TEXT("k2.owned_graph.ensure_entry");
+	ContextInput.TaskSpecStrategy = TEXT("append_new_owned_graph");
+	ContextInput.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : Request.AssetPath;
+	ContextInput.GraphName = TargetGraph ? TargetGraph->GetName() : Request.GraphName;
+	ContextInput.GraphFamily = TEXT("k2");
+	ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+	ContextInput.EntryNodeRefs.Add(
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::MakeSemanticEntryRefFromLogicSpec(Request.LogicSpec));
+	return FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(TargetGraph, ContextInput);
+}
 
 TArray<FString> FBlueprintHelperAppendBlueprintGraphService::ExtractCustomEventNames(
 	const FAppendRequest& Request) const

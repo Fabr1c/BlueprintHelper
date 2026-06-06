@@ -113,7 +113,9 @@ function toSyncEntry(route) {
     compiler_id: route.compiler_id,
     taskplan_op: route.taskplan_op,
     status: route.status,
-    adapter_sync: route.status === 'active' ? 'generated_active_stub' : route.status,
+    adapter_sync: route.status === 'active'
+      ? 'active_requires_registered_non_reserved_adapter'
+      : `${route.status}_route_not_agent_executable`,
   };
 }
 

@@ -24,28 +24,28 @@ bool FBlueprintGraphWriteContextNullSafeTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintGraphWriteContextTracksEntryRootsTest,
-	"BlueprintHelper.GraphWrite.Context.TracksEntryRoots",
+	FBlueprintGraphWriteContextTracksGeneratedNodesTest,
+	"BlueprintHelper.GraphWrite.Context.TracksGeneratedNodes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintGraphWriteContextTracksEntryRootsTest::RunTest(const FString&)
+bool FBlueprintGraphWriteContextTracksGeneratedNodesTest::RunTest(const FString&)
 {
 	UEdGraph* Graph = NewObject<UEdGraph>(
 		GetTransientPackage(),
-		FName(TEXT("BH_Context_EntryRoots")));
-	UK2Node_Knot* Node = NewObject<UK2Node_Knot>(Graph, FName(TEXT("EntryRootNode")));
+		FName(TEXT("BH_Context_GeneratedNodes")));
+	UK2Node_Knot* Node = NewObject<UK2Node_Knot>(Graph, FName(TEXT("GeneratedNode")));
 	Graph->AddNode(Node, true, false);
 
 	FBlueprintGraphWriteContext Context;
 	Context.Initialize(Graph);
-	Context.RegisterNode(TEXT("entry"), Node, true, true);
+	Context.RegisterNode(TEXT("generated"), Node, true);
 
 	TestEqual(TEXT("generated count"), Context.GetGeneratedNodes().Num(), 1);
 	TestTrue(TEXT("generated node recorded"), Context.GetGeneratedNodes().Contains(Node));
-	TestTrue(TEXT("entry root recorded"), Context.GetEntryRootNodes().Contains(Node));
+	TestTrue(TEXT("node lookup returns registered node"), Context.FindNode(TEXT("generated")) == Node);
 
 	Context.Initialize(nullptr);
-	TestEqual(TEXT("entry roots cleared"), Context.GetEntryRootNodes().Num(), 0);
+	TestEqual(TEXT("generated nodes cleared"), Context.GetGeneratedNodes().Num(), 0);
 	return true;
 }
 

@@ -500,7 +500,8 @@ bool FBlueprintHelperGraphWriteUnifiedSmokeEventSignatureBoundaryTest::RunTest(c
 		TEXT("src"),
 		TEXT("task"),
 		TEXT("compiler"),
-		TEXT("task-compiler.ts"));
+		TEXT("graphwrite"),
+		TEXT("graphwrite-plan-step-builder.ts"));
 
 	FString EventDelegateSource;
 	FString TaskCompilerSource;

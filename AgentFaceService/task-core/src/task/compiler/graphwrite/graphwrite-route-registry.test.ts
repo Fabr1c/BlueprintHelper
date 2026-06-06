@@ -23,6 +23,7 @@ test('GraphWrite route manifest stays synchronized with generated UE adapter syn
     assert.equal(syncRoute?.runtime_adapter_id, route.runtime_adapter_id);
     assert.equal(syncRoute?.status, route.status);
     assert.equal(syncRoute?.behavior_field, route.behavior_field);
+    assert.equal(syncRoute?.adapter_sync, expectedAdapterSyncForStatus(route.status));
   }
 });
 
@@ -66,21 +67,40 @@ test('GraphWrite route registry derives required behavior fields from descriptor
   assert.equal(requiredFieldByStrategy.replace_external_body, 'external_replace');
 });
 
+test('generated UE adapter sync uses runtime requirement semantics, not active stubs', () => {
+  const deprecatedActiveStubSync = ['generated', 'active', 'stub'].join('_');
+  const sync = readGeneratedAdapterSync('task-core');
+  for (const route of sync.routes) {
+    assert.notEqual(
+      route.adapter_sync,
+      deprecatedActiveStubSync,
+      `${route.route_id} must not use deprecated active stub adapter sync`,
+    );
+    assert.equal(
+      route.adapter_sync,
+      expectedAdapterSyncForStatus(route.status),
+      `${route.route_id} adapter sync semantics`,
+    );
+  }
+});
+
 interface AdapterSyncRoute {
   route_id: string;
   runtime_adapter_id: string;
   graph_strategy: string;
   public_scope: string;
   behavior_field: string;
+  compiler_id: string;
   taskplan_op: string;
   status: string;
+  adapter_sync: string;
 }
 
 type AdapterSyncArtifact = { routes: AdapterSyncRoute[] };
 
 type NormalizedAdapterSyncRoute = Pick<
   AdapterSyncRoute,
-  'route_id' | 'runtime_adapter_id' | 'graph_strategy' | 'public_scope' | 'taskplan_op' | 'status'
+  'route_id' | 'runtime_adapter_id' | 'graph_strategy' | 'public_scope' | 'taskplan_op' | 'status' | 'adapter_sync'
 >;
 
 function readGeneratedAdapterSync(kind: 'task-core' | 'ue'): AdapterSyncArtifact {
@@ -115,8 +135,15 @@ function normalizeGeneratedAdapterSync(sync: AdapterSyncArtifact): NormalizedAda
       public_scope: route.public_scope,
       taskplan_op: route.taskplan_op,
       status: route.status,
+      adapter_sync: route.adapter_sync,
     }))
     .sort((left, right) => left.route_id.localeCompare(right.route_id));
+}
+
+function expectedAdapterSyncForStatus(status: string): string {
+  return status === 'active'
+    ? 'active_requires_registered_non_reserved_adapter'
+    : `${status}_route_not_agent_executable`;
 }
 
 function taskCoreRoot(): string {

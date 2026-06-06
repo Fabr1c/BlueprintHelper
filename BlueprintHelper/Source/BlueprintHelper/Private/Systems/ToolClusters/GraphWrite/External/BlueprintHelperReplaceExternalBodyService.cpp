@@ -18,6 +18,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDebugData.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -813,8 +814,23 @@ bool FBlueprintHelperReplaceExternalBodyService::ApplyReplacement(
 	const TSet<UEdGraphNode*> NodesBeforeImport = BlueprintHelperReplaceExternalBody::CaptureGraphNodes(Context.Graph);
 	const FString GraphWritePayload = BlueprintHelperReplaceExternalBody::BuildSemanticPayload(Request);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+	ContextInput.RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
+	ContextInput.TaskSpecStrategy = TEXT("replace_external_body");
+	ContextInput.TargetAssetPath = Context.Blueprint ? Context.Blueprint->GetPathName() : Request.AssetPath;
+	ContextInput.GraphName = Context.Graph ? Context.Graph->GetName() : Request.GraphName;
+	ContextInput.GraphFamily = TEXT("k2");
+	ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::K2ExternalBody;
+	ContextInput.EntryNodeRefs.Add(TEXT("external_body_entry"));
+	ContextInput.EntryNodes.Add(Context.EntryNode);
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(Context.Graph, ContextInput);
 	const FBlueprintGenerateResult GenerateResult =
-		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Context.Graph, GraphWritePayload, UnresolvedNodes);
+		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Context.Graph,
+			GraphWritePayload,
+			UnresolvedNodes,
+			ConnectivityInput);
 	Context.GeneratedNodes = BlueprintHelperReplaceExternalBody::CollectNewNodes(Context.Graph, NodesBeforeImport);
 	if (!GenerateResult.bSucceed &&
 		!BlueprintHelperReplaceExternalBody::CanDeferEntryResolvedConnectivityFailure(GenerateResult, Context.GeneratedNodes))

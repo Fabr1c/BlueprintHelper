@@ -4,6 +4,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/Debug/BlueprintHelperValidationService.h"
 #include "Systems/Debug/BlueprintHelperCompileService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintMultiGraphGenerationPipeline.h"
 #include "ScopedTransaction.h"
@@ -244,7 +245,23 @@ FBlueprintHelperImportResult FBlueprintHelperImportService::Import(const FBluepr
 		SnapshotGraphs.Add(Graph);
 		NodeSnapshot = FBlueprintHelperImportServiceLocalUtils::CaptureGraphNodeSnapshot(SnapshotGraphs);
 		DirtySnapshot = FBlueprintHelperImportServiceLocalUtils::CapturePackageDirtySnapshot(SnapshotGraphs);
-		GenResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Graph, EffectiveJsonText, Unresolved);
+		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForGraph(Graph);
+		FBlueprintHelperGraphWriteConnectivityContextInput ContextInput;
+		ContextInput.RuntimeAdapterId = TEXT("k2.import.semantic_graph_generation");
+		ContextInput.TaskSpecStrategy = TEXT("import_service");
+		ContextInput.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : Request.Target.BlueprintPath;
+		ContextInput.GraphName = Graph->GetName();
+		ContextInput.GraphFamily = TEXT("k2");
+		ContextInput.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+		ContextInput.EntryNodeRefs.Add(
+			FBlueprintHelperGraphWriteConnectivityContextBuilder::MakeSemanticEntryRefFromGraphWriteJsonText(EffectiveJsonText));
+		const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+			FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(Graph, ContextInput);
+		GenResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+			Graph,
+			EffectiveJsonText,
+			Unresolved,
+			ConnectivityInput);
 	}
 
 	// 4. 转换结果

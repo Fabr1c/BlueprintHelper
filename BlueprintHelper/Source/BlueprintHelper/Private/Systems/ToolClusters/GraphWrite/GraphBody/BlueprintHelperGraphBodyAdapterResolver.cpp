@@ -31,7 +31,23 @@ EBlueprintHelperGraphBodyKind FBlueprintHelperGraphBodyAdapterResolver::BodyKind
 FString FBlueprintHelperGraphBodyAdapterResolver::RuntimeAdapterIdForReplaceScope(
 	EBlueprintHelperReplaceScope Scope)
 {
-	return FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(BodyKindForReplaceScope(Scope));
+	switch (Scope)
+	{
+	case EBlueprintHelperReplaceScope::EventBody:
+		return TEXT("k2.event_body");
+	case EBlueprintHelperReplaceScope::CustomEventBody:
+		return TEXT("k2.custom_event_body");
+	case EBlueprintHelperReplaceScope::FunctionBody:
+		return TEXT("k2.function_body");
+	case EBlueprintHelperReplaceScope::MacroBody:
+		return TEXT("k2.macro_body");
+	case EBlueprintHelperReplaceScope::Graph:
+		return TEXT("k2.graph_body");
+	case EBlueprintHelperReplaceScope::BlockImplementation:
+		return TEXT("k2.block_implementation");
+	default:
+		return TEXT("unknown");
+	}
 }
 
 bool FBlueprintHelperGraphBodyAdapterResolver::TryCreateByRuntimeAdapterId(

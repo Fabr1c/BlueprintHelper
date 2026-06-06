@@ -6,6 +6,66 @@
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyBoundaryModel.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphConnectivityPolicy.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.h"
+
+#include <type_traits>
+
+template <typename T, typename = void>
+struct TBlueprintHelperHasNullablePipelineGenerate : std::false_type
+{
+};
+
+template <typename T>
+struct TBlueprintHelperHasNullablePipelineGenerate<T, std::void_t<decltype(static_cast<FBlueprintGenerateResult(*)(
+	UEdGraph*,
+	const FString&,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>&,
+	const FBlueprintGraphWriteConnectivityValidationInput*)>(&T::GenerateBlueprintFromJson))>> : std::true_type
+{
+};
+
+template <typename T, typename = void>
+struct TBlueprintHelperHasNullablePipelineUtilsGenerate : std::false_type
+{
+};
+
+template <typename T>
+struct TBlueprintHelperHasNullablePipelineUtilsGenerate<T, std::void_t<decltype(static_cast<FBlueprintGenerateResult(*)(
+	UEdGraph*,
+	const TSharedPtr<FJsonObject>&,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>&,
+	const FBlueprintGraphWriteConnectivityValidationInput*)>(&T::GenerateSemanticGraphFromJsonObject))>> : std::true_type
+{
+};
+
+template <typename T, typename = void>
+struct TBlueprintHelperHasRequiredPipelineGenerate : std::false_type
+{
+};
+
+template <typename T>
+struct TBlueprintHelperHasRequiredPipelineGenerate<T, std::void_t<decltype(static_cast<FBlueprintGenerateResult(*)(
+	UEdGraph*,
+	const FString&,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>&,
+	const FBlueprintGraphWriteConnectivityValidationInput&)>(&T::GenerateBlueprintFromJson))>> : std::true_type
+{
+};
+
+template <typename T, typename = void>
+struct TBlueprintHelperHasRequiredPipelineUtilsGenerate : std::false_type
+{
+};
+
+template <typename T>
+struct TBlueprintHelperHasRequiredPipelineUtilsGenerate<T, std::void_t<decltype(static_cast<FBlueprintGenerateResult(*)(
+	UEdGraph*,
+	const TSharedPtr<FJsonObject>&,
+	TArray<TSharedPtr<FUnresolvedNodeItem>>&,
+	const FBlueprintGraphWriteConnectivityValidationInput&)>(&T::GenerateSemanticGraphFromJsonObject))>> : std::true_type
+{
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphBodyBoundaryModelDesignVocabularyTest,
@@ -147,16 +207,16 @@ bool FBlueprintHelperGraphBodyGeneratedRouteSyncTest::RunTest(const FString&)
 			*Issue.Message));
 	}
 
-	TestEqual(TEXT("active generated routes resolve to UE adapters"), Issues.Num(), 0);
+	TestEqual(TEXT("generated routes declare runtime sync semantics and active routes resolve to UE adapters"), Issues.Num(), 0);
 	return Issues.Num() == 0;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest,
-	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.AdapterConnectivityCallerContract",
+	FBlueprintHelperGraphWritePipelineNoConnectivityFallbackTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.NoConnectivityFallback",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest::RunTest(const FString&)
+bool FBlueprintHelperGraphWritePipelineNoConnectivityFallbackTest::RunTest(const FString&)
 {
 	const FString PipelinePath = FPaths::Combine(
 		FPaths::ProjectPluginsDir(),
@@ -164,25 +224,20 @@ bool FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest::Ru
 	FString PipelineSource;
 	TestTrue(TEXT("pipeline utils source loads"), FFileHelper::LoadFileToString(PipelineSource, *PipelinePath));
 
-	const int32 AdapterBranchStart = PipelineSource.Find(TEXT("if (AdapterConnectivityInput)"));
-	TestTrue(TEXT("pipeline has adapter connectivity branch"), AdapterBranchStart != INDEX_NONE);
-	const int32 FallbackBranchStart = PipelineSource.Find(TEXT("else"), ESearchCase::CaseSensitive, ESearchDir::FromStart, AdapterBranchStart);
-	TestTrue(TEXT("pipeline keeps fallback outside adapter branch"), FallbackBranchStart != INDEX_NONE && FallbackBranchStart > AdapterBranchStart);
-	const FString AdapterBranch = PipelineSource.Mid(AdapterBranchStart, FallbackBranchStart - AdapterBranchStart);
-
-	const TArray<FString> ForbiddenAdapterBranchTokens =
+	const TArray<FString> ForbiddenTokens =
 	{
+		TEXT("k2.semantic_graph_generation"),
 		TEXT("GetEntryRootNodes()"),
 		TEXT("TopLevelFlow.Entries"),
-		TEXT("CollectAllowedTerminalPureDataNodes"),
-		TEXT("k2.semantic_graph_generation"),
-		TEXT("BodyKind = EBlueprintHelperGraphBodyKind::Unknown")
+		TEXT("CollectAllowedTerminalPureDataNodes("),
+		TEXT("if (AdapterConnectivityInput)"),
+		TEXT("if (!AdapterConnectivityInput)")
 	};
-	for (const FString& Token : ForbiddenAdapterBranchTokens)
+	for (const FString& Token : ForbiddenTokens)
 	{
 		TestFalse(
-			FString::Printf(TEXT("adapter connectivity branch does not contain %s"), *Token),
-			AdapterBranch.Contains(Token));
+			FString::Printf(TEXT("pipeline source no longer contains connectivity fallback token %s"), *Token),
+			PipelineSource.Contains(Token));
 	}
 
 	const FString ReplaceServicePath = FPaths::Combine(
@@ -194,8 +249,30 @@ bool FBlueprintHelperGraphWritePipelineAdapterConnectivityCallerContractTest::Ru
 		TEXT("replace service builds adapter connectivity input"),
 		ReplaceServiceSource.Contains(TEXT("BuildAdapterConnectivityInput(ReplacePlan)")));
 	TestTrue(
-		TEXT("replace service passes adapter connectivity input into pipeline"),
-		ReplaceServiceSource.Contains(TEXT("? &AdapterConnectivityInput : nullptr")));
+		TEXT("replace service passes required adapter connectivity input into pipeline"),
+		ReplaceServiceSource.Contains(TEXT("AdapterConnectivityInput);")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWritePipelineConnectivityInputContractTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.ConnectivityInputContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWritePipelineConnectivityInputContractTest::RunTest(const FString&)
+{
+	TestTrue(
+		TEXT("generation pipeline exposes required connectivity input contract"),
+		TBlueprintHelperHasRequiredPipelineGenerate<FBlueprintGraphGenerationPipeline>::value);
+	TestFalse(
+		TEXT("generation pipeline does not expose nullable connectivity input overload"),
+		TBlueprintHelperHasNullablePipelineGenerate<FBlueprintGraphGenerationPipeline>::value);
+	TestTrue(
+		TEXT("pipeline utils exposes required connectivity input contract"),
+		TBlueprintHelperHasRequiredPipelineUtilsGenerate<UGraphWritePipelineUtils>::value);
+	TestFalse(
+		TEXT("pipeline utils does not expose nullable connectivity input overload"),
+		TBlueprintHelperHasNullablePipelineUtilsGenerate<UGraphWritePipelineUtils>::value);
 	return true;
 }
 

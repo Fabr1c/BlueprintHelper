@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
@@ -438,6 +439,17 @@ public:
 		return JsonText;
 	}
 
+	static FBlueprintGraphWriteConnectivityValidationInput MakeGenerationConnectivityInput(
+		UEdGraph* Graph,
+		const FString& GraphWriteJson)
+	{
+		return FBlueprintHelperGraphWriteConnectivityContextBuilder::BuildSemanticGenerationContext(
+			Graph,
+			TEXT("k2.automation.call_function_resolver"),
+			TEXT("automation_call_function_resolver"),
+			GraphWriteJson);
+	}
+
 	static void AddGenerationDiagnostics(
 		FAutomationTestBase& Test,
 		const FString& Label,
@@ -654,10 +666,15 @@ bool FBlueprintHelperCallFunctionResolverGeneratorDisplayNameTest::RunTest(const
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Print String"));
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(Graph, GraphWriteJson);
 	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		Graph,
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Print String")),
-		Unresolved);
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 
 	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
 		*this,
@@ -684,10 +701,16 @@ bool FBlueprintHelperCallFunctionResolverGeneratorQualifiedNameTest::RunTest(con
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(
+			TEXT("/Script/Engine.KismetSystemLibrary:PrintString"));
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(Graph, GraphWriteJson);
 	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		Graph,
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("/Script/Engine.KismetSystemLibrary:PrintString")),
-		Unresolved);
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 
 	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
 		*this,
@@ -721,9 +744,7 @@ bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest:
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
-		Graph,
-		TEXT(R"JSON({
+	const FString GraphWriteJson = TEXT(R"JSON({
 			"options": {
 				"dry_run": true
 			},
@@ -763,8 +784,14 @@ bool FBlueprintHelperCallFunctionResolverConvertExpressionDynamicCastIsPureTest:
 					}
 				}]
 			}
-		})JSON"),
-		Unresolved);
+		})JSON");
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(Graph, GraphWriteJson);
+	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+		Graph,
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 
 	if (!TestTrue(TEXT("generation succeeds"), Result.bSucceed))
 	{
@@ -850,9 +877,7 @@ bool FBlueprintHelperCallFunctionResolverCallLiteralDefaultsPerStatementTest::Ru
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
-	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
-		Graph,
-		TEXT(R"JSON({
+	const FString GraphWriteJson = TEXT(R"JSON({
 			"options": {
 				"dry_run": true
 			},
@@ -882,8 +907,14 @@ bool FBlueprintHelperCallFunctionResolverCallLiteralDefaultsPerStatementTest::Ru
 					}
 				}]
 			}
-		})JSON"),
-		Unresolved);
+		})JSON");
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(Graph, GraphWriteJson);
+	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
+		Graph,
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 
 	if (!TestTrue(TEXT("generation succeeds"), Result.bSucceed))
 	{
@@ -949,10 +980,15 @@ bool FBlueprintHelperCallFunctionResolverGeneratorAmbiguousNameTest::RunTest(con
 	UBlueprint* Blueprint = FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeBlueprint();
 	UEdGraph* Graph = FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindEventGraph(Blueprint);
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Set"));
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(Graph, GraphWriteJson);
 	const FBlueprintGenerateResult Result = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		Graph,
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("Set")),
-		Unresolved);
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 
 	TestFalse(TEXT("generation does not succeed"), Result.bSucceed);
 	TestNull(TEXT("no print string call node"), FBlueprintHelperCallFunctionResolverTestsLocalUtils::FindCallNode(Graph));
@@ -1200,10 +1236,15 @@ bool FBlueprintHelperCallFunctionResolverStressBlueprintAuthoredInheritedGenerat
 		FBlueprintHelperCallFunctionResolver::Resolve(ResolveRequest);
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> Unresolved;
+	const FString GraphWriteJson =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("ParentBlueprintNoArgUtility"));
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeGenerationConnectivityInput(ChildGraph, GraphWriteJson);
 	const FBlueprintGenerateResult GenerateResult = FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 		ChildGraph,
-		FBlueprintHelperCallFunctionResolverTestsLocalUtils::MakeSingleCallJson(TEXT("ParentBlueprintNoArgUtility")),
-		Unresolved);
+		GraphWriteJson,
+		Unresolved,
+		ConnectivityInput);
 	FBlueprintHelperCallFunctionResolverTestsLocalUtils::AddGenerationDiagnostics(
 		*this,
 		TEXT("Stress.BlueprintAuthoredInheritedFunctionGraphGenerationSpawns"),

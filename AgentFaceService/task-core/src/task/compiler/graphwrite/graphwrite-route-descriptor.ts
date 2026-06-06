@@ -38,7 +38,10 @@ export interface GraphWriteRouteSyncEntry {
   compiler_id: string;
   taskplan_op: string;
   status: GraphWriteRouteStatus;
-  adapter_sync: 'generated_active_stub' | 'planned' | 'hidden';
+  adapter_sync:
+    | 'active_requires_registered_non_reserved_adapter'
+    | 'planned_route_not_agent_executable'
+    | 'hidden_route_not_agent_executable';
 }
 
 export interface GraphWriteRouteSyncManifest {

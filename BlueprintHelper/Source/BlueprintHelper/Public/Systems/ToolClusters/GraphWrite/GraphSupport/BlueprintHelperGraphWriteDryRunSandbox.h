@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteResultTypes.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 
 class UBlueprint;
 class UEdGraph;
@@ -11,6 +12,7 @@ struct FBlueprintHelperGraphWriteDryRunSandboxInput
 	UBlueprint* SourceBlueprint = nullptr;
 	FString GraphName;
 	FString GraphWritePayload;
+	FBlueprintHelperGraphWriteConnectivityContextInput ConnectivityContext;
 };
 
 struct FBlueprintHelperGraphWriteDryRunSandboxResult

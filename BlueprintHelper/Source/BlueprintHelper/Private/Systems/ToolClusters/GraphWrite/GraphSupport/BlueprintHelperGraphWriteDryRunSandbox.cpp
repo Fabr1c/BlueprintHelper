@@ -159,11 +159,16 @@ FBlueprintHelperGraphWriteDryRunSandboxResult FBlueprintHelperGraphWriteDryRunSa
 	}
 
 	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	FBlueprintHelperGraphWriteConnectivityContextInput ContextInput = Input.ConnectivityContext;
+	ContextInput.GraphName = SandboxGraph->GetName();
+	const FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput =
+		FBlueprintHelperGraphWriteConnectivityContextBuilder::Build(SandboxGraph, ContextInput);
 	const FBlueprintGenerateResult GenerateResult =
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(
 			SandboxGraph,
 			Input.GraphWritePayload,
-			UnresolvedNodes);
+			UnresolvedNodes,
+			ConnectivityInput);
 
 	Result.GeneratedNodeCount = GenerateResult.GeneratedNodeCount;
 	Result.ExecutionStats = GenerateResult.ExecutionStats;

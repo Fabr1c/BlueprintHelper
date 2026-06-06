@@ -739,7 +739,8 @@ bool FBlueprintHelperGraphWriteDelegatePublicInternalBoundaryContractTest::RunTe
 		TEXT("src"),
 		TEXT("task"),
 		TEXT("compiler"),
-		TEXT("task-compiler.ts"));
+		TEXT("graphwrite"),
+		TEXT("graphwrite-logic-body-compiler.ts"));
 	const FString TsContractSourcePath = FPaths::Combine(
 		FPaths::ProjectPluginsDir(),
 		TEXT("BlueprintHelper"),
