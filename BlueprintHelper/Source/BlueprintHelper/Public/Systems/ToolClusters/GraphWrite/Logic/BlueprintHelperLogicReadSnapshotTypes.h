@@ -21,6 +21,7 @@ struct FBlueprintHelperLogicReadSnapshot
 	bool bTargetEntryScope = false;
 	bool bExportSucceeded = false;
 	TSharedPtr<FJsonObject> RawJsonObject;
+	TSharedPtr<FJsonObject> AdapterBoundaryJson;
 	TArray<FString> Warnings;
 	int32 NodeCount = 0;
 	int32 EdgeCount = 0;

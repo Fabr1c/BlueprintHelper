@@ -1,9 +1,63 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyBoundaryModel.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphConnectivityPolicy.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyBoundaryModelDesignVocabularyTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.DesignVocabulary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyBoundaryModelDesignVocabularyTest::RunTest(const FString&)
+{
+	FBlueprintHelperGraphBodyBoundaryModel Model;
+	Model.GraphFamily = TEXT("k2");
+	Model.BodyKind = EBlueprintHelperGraphBodyKind::K2MacroBody;
+	Model.EntryNodeRefs.Add(TEXT("TunnelEntry"));
+	Model.ExitNodeRefs.Add(TEXT("TunnelExit"));
+	Model.ProtectedNodeRefs.Append({TEXT("TunnelEntry"), TEXT("TunnelExit")});
+	Model.DeletableNodeRefs.Add(TEXT("BodyNode"));
+	Model.GeneratedNodeRefs.Add(TEXT("GeneratedPrint"));
+	Model.ImportedBodyNodeRefs.Add(TEXT("ImportedPrint"));
+	Model.ReachableBodyFlowNodeRefs.Add(TEXT("GeneratedPrint"));
+	Model.ExternalAnchorRefs.Add(TEXT("MacroBoundaryAnchor"));
+	Model.SemanticSourceRefs.Append({TEXT("TunnelEntry.Execute"), TEXT("TunnelExit.Then")});
+	Model.ConnectivityExceptionCodes.Add(TEXT("comment_node"));
+	Model.PureDataConsumptionPolicy = EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;
+	Model.AllowedIsolatedNodePolicy = EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly;
+
+	TestEqual(
+		TEXT("macro body token"),
+		FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Model.BodyKind),
+		FString(TEXT("k2.macro_body")));
+	TestTrue(TEXT("entry boundary present"), Model.EntryNodeRefs.Contains(TEXT("TunnelEntry")));
+	TestTrue(TEXT("exit boundary present"), Model.ExitNodeRefs.Contains(TEXT("TunnelExit")));
+	TestTrue(TEXT("deletable node present"), Model.DeletableNodeRefs.Contains(TEXT("BodyNode")));
+	TestTrue(TEXT("semantic source present"), Model.SemanticSourceRefs.Contains(TEXT("TunnelEntry.Execute")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperConnectivityValidatorConsumesBoundaryPolicyTest,
+	"BlueprintHelper.GraphWrite.ConnectivityValidator.ConsumesBoundaryModelPolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperConnectivityValidatorConsumesBoundaryPolicyTest::RunTest(const FString&)
+{
+	const FString HeaderPath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Public/Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteConnectivityValidator.h"));
+	FString Header;
+	TestTrue(TEXT("validator header loads"), FFileHelper::LoadFileToString(Header, *HeaderPath));
+	TestTrue(TEXT("input contains boundary model"), Header.Contains(TEXT("FBlueprintHelperGraphBodyBoundaryModel BoundaryModel")));
+	TestTrue(TEXT("input contains connectivity policy"), Header.Contains(TEXT("FBlueprintHelperGraphConnectivityPolicy ConnectivityPolicy")));
+	TestFalse(TEXT("validator does not expose raw entry roots as the contract"), Header.Contains(TEXT("TSet<UEdGraphNode*> EntryRootNodes")));
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphBodyBoundaryModelFamilyMatrixTest,
@@ -17,23 +71,19 @@ bool FBlueprintHelperGraphBodyBoundaryModelFamilyMatrixTest::RunTest(const FStri
 
 	const TArray<FString> ExpectedRuntimeAdapters =
 	{
-		TEXT("append_blueprint_graph"),
-		TEXT("replace_blueprint_graph"),
-		TEXT("patch_blueprint_graph"),
-		TEXT("merge_blueprint_graph"),
-		TEXT("merge_external_flow"),
-		TEXT("patch_external_graph"),
-		TEXT("replace_external_body")
+		TEXT("k2.custom_event_body"),
+		TEXT("k2.event_body"),
+		TEXT("k2.function_body"),
+		TEXT("k2.macro_body"),
+		TEXT("k2.block_implementation"),
+		TEXT("k2.external_body")
 	};
 	const TArray<FString> ExpectedTaskSpecStrategies =
 	{
 		TEXT("append_new_owned_graph"),
 		TEXT("replace_owned_graph"),
 		TEXT("patch_owned_graph"),
-		TEXT("merge_owned_graph"),
-		TEXT("merge_external_flow"),
-		TEXT("patch_external_graph"),
-		TEXT("replace_external_body")
+		TEXT("merge_external_flow")
 	};
 
 	for (const FString& RuntimeAdapterId : ExpectedRuntimeAdapters)
@@ -54,17 +104,25 @@ bool FBlueprintHelperGraphBodyBoundaryModelFamilyMatrixTest::RunTest(const FStri
 		TestFalse(TEXT("TaskSpec strategy is not reserved-only"), Descriptor.bReservedOnly);
 	}
 
-	bool bFoundReservedMacro = false;
+	bool bFoundReservedMaterialFunction = false;
+	bool bFoundReservedAnimationGraph = false;
 	for (const FBlueprintHelperGraphBodyAdapterDescriptor& Descriptor : Descriptors)
 	{
-		if (Descriptor.BodyKind == EBlueprintHelperGraphBodyKind::ReservedMacroBody)
+		if (Descriptor.BodyKind == EBlueprintHelperGraphBodyKind::ReservedMaterialFunctionBody)
 		{
-			bFoundReservedMacro = true;
-			TestTrue(TEXT("macro descriptor is reserved-only"), Descriptor.bReservedOnly);
-			TestTrue(TEXT("macro descriptor does not expose a write route"), Descriptor.TaskSpecStrategy.IsEmpty());
+			bFoundReservedMaterialFunction = true;
+			TestTrue(TEXT("material function descriptor is reserved-only"), Descriptor.bReservedOnly);
+			TestTrue(TEXT("material function descriptor does not expose a write route"), Descriptor.TaskSpecStrategy.IsEmpty());
+		}
+		else if (Descriptor.BodyKind == EBlueprintHelperGraphBodyKind::ReservedAnimationGraphBody)
+		{
+			bFoundReservedAnimationGraph = true;
+			TestTrue(TEXT("animation graph descriptor is reserved-only"), Descriptor.bReservedOnly);
+			TestTrue(TEXT("animation graph descriptor does not expose a write route"), Descriptor.TaskSpecStrategy.IsEmpty());
 		}
 	}
-	TestTrue(TEXT("reserved macro body is represented"), bFoundReservedMacro);
+	TestTrue(TEXT("reserved material function body is represented"), bFoundReservedMaterialFunction);
+	TestTrue(TEXT("reserved animation graph body is represented"), bFoundReservedAnimationGraph);
 	return true;
 }
 

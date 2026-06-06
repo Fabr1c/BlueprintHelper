@@ -9,6 +9,43 @@
 class FBlueprintHelperLogicGroupBuilderLocalUtils
 {
 public:
+	struct FAdapterBoundaryRef
+	{
+		FString NodeRef;
+		FString DisplayName;
+	};
+
+	struct FAdapterBoundaryProjection
+	{
+		FString RuntimeAdapterId;
+		FString BodyKind;
+		FString GraphName;
+		TArray<FAdapterBoundaryRef> EntryBoundaries;
+		TArray<FAdapterBoundaryRef> ExitBoundaries;
+		TSet<FString> FoldedBoundaryNodeRefs;
+		TSet<FString> VisibleBoundaryNodeRefs;
+
+		bool HasEntryBoundary() const
+		{
+			return EntryBoundaries.Num() > 0 && !EntryBoundaries[0].NodeRef.IsEmpty();
+		}
+
+		bool HasExitBoundary() const
+		{
+			return ExitBoundaries.Num() > 0 && !ExitBoundaries[0].NodeRef.IsEmpty();
+		}
+
+		FAdapterBoundaryRef FirstEntryBoundary() const
+		{
+			return HasEntryBoundary() ? EntryBoundaries[0] : FAdapterBoundaryRef();
+		}
+
+		FAdapterBoundaryRef FirstExitBoundary() const
+		{
+			return HasExitBoundary() ? ExitBoundaries[0] : FAdapterBoundaryRef();
+		}
+	};
+
 	static FString JsonValueToString(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid())
@@ -81,6 +118,87 @@ public:
 			Copy->SetField(Field.Key, Field.Value);
 		}
 		return Copy;
+	}
+
+	static TArray<FString> ReadStringArrayField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName)
+	{
+		TArray<FString> Values;
+		const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
+		if (!Object.IsValid() || !Object->TryGetArrayField(FieldName, Array) || !Array)
+		{
+			return Values;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Array)
+		{
+			const FString StringValue = JsonValueToString(Value).TrimStartAndEnd();
+			if (!StringValue.IsEmpty())
+			{
+				Values.Add(StringValue);
+			}
+		}
+		return Values;
+	}
+
+	static TArray<FAdapterBoundaryRef> ReadBoundaryRefArray(
+		const TSharedPtr<FJsonObject>& Boundary,
+		const TCHAR* FieldName)
+	{
+		TArray<FAdapterBoundaryRef> Refs;
+		const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
+		if (!Boundary.IsValid() || !Boundary->TryGetArrayField(FieldName, Array) || !Array)
+		{
+			return Refs;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Array)
+		{
+			const TSharedPtr<FJsonObject>* RefObj = nullptr;
+			if (!Value.IsValid() || !Value->TryGetObject(RefObj) || !RefObj || !RefObj->IsValid())
+			{
+				continue;
+			}
+
+			FAdapterBoundaryRef Ref;
+			Ref.NodeRef = ReadFirstStringField(*RefObj, TEXT("node_ref"), TEXT("nodeRef"), TEXT("ref"));
+			Ref.DisplayName = ReadFirstStringField(*RefObj, TEXT("display_name"), TEXT("displayName"), TEXT("name"));
+			if (!Ref.NodeRef.IsEmpty())
+			{
+				Refs.Add(MoveTemp(Ref));
+			}
+		}
+		return Refs;
+	}
+
+	static FAdapterBoundaryProjection ReadAdapterBoundary(
+		const TSharedPtr<FJsonObject>& RawJson)
+	{
+		FAdapterBoundaryProjection Projection;
+		const TSharedPtr<FJsonObject>* Boundary = nullptr;
+		if (!RawJson.IsValid()
+			|| !RawJson->TryGetObjectField(TEXT("adapter_boundary"), Boundary)
+			|| !Boundary
+			|| !Boundary->IsValid())
+		{
+			return Projection;
+		}
+
+		TryReadStringField(*Boundary, TEXT("runtime_adapter_id"), Projection.RuntimeAdapterId);
+		TryReadStringField(*Boundary, TEXT("body_kind"), Projection.BodyKind);
+		TryReadStringField(*Boundary, TEXT("graph_name"), Projection.GraphName);
+		Projection.EntryBoundaries = ReadBoundaryRefArray(*Boundary, TEXT("entry_boundaries"));
+		Projection.ExitBoundaries = ReadBoundaryRefArray(*Boundary, TEXT("exit_boundaries"));
+		for (const FString& Ref : ReadStringArrayField(*Boundary, TEXT("folded_boundary_node_refs")))
+		{
+			Projection.FoldedBoundaryNodeRefs.Add(Ref);
+		}
+		for (const FString& Ref : ReadStringArrayField(*Boundary, TEXT("visible_boundary_node_refs")))
+		{
+			Projection.VisibleBoundaryNodeRefs.Add(Ref);
+		}
+		return Projection;
 	}
 
 	static TSharedPtr<FJsonObject> NormalizeExternalAnchorForNode(
@@ -183,58 +301,56 @@ public:
 		return FString::Printf(TEXT("$.graphs[%s].%s"), *GraphName, *NodeRef);
 	}
 
-	static const TCHAR* SyntheticFunctionEntryNodeRef()
-	{
-		return TEXT("__function_entry__");
-	}
-
-	static const TCHAR* SyntheticFunctionResultNodeRef()
-	{
-		return TEXT("__function_result__");
-	}
-
-	static bool IsSyntheticFunctionBoundaryNodeRef(const FString& NodeRef)
-	{
-		return NodeRef.Equals(SyntheticFunctionEntryNodeRef(), ESearchCase::IgnoreCase)
-			|| NodeRef.Equals(SyntheticFunctionResultNodeRef(), ESearchCase::IgnoreCase);
-	}
-
-	static bool DoesGraphNameMatchTargetFunction(
+	static bool DoesAdapterBoundaryMatchGraph(
+		const FAdapterBoundaryProjection& Projection,
 		const FString& EffectiveGraphName,
 		const FString& TargetName)
 	{
-		return !EffectiveGraphName.IsEmpty()
-			&& !TargetName.IsEmpty()
-			&& EffectiveGraphName.Equals(TargetName, ESearchCase::IgnoreCase);
+		if (Projection.GraphName.IsEmpty())
+		{
+			return false;
+		}
+		if (!Projection.GraphName.Equals(EffectiveGraphName, ESearchCase::IgnoreCase))
+		{
+			return false;
+		}
+		return TargetName.IsEmpty() || Projection.GraphName.Equals(TargetName, ESearchCase::IgnoreCase);
 	}
 
-	static FBlueprintHelperLogicEntry MakeSyntheticFunctionEntry(
+	static FBlueprintHelperLogicEntry MakeAdapterFunctionEntry(
+		const FAdapterBoundaryProjection& Projection,
 		const FString& EffectiveGraphName,
 		const FString& TargetName)
 	{
+		const FAdapterBoundaryRef BoundaryRef = Projection.FirstEntryBoundary();
 		FBlueprintHelperLogicEntry Entry;
 		Entry.Kind = EBlueprintHelperLogicNodeKind::FunctionEntry;
-		Entry.Name = TargetName;
-		Entry.NodeRef = SyntheticFunctionEntryNodeRef();
+		Entry.Name = BoundaryRef.DisplayName.IsEmpty() ? TargetName : BoundaryRef.DisplayName;
+		Entry.NodeRef = BoundaryRef.NodeRef;
 		Entry.NodePath = MakeGraphNodePath(EffectiveGraphName, Entry.NodeRef);
 		return Entry;
 	}
 
-	static FBlueprintHelperLogicNode MakeSyntheticFunctionEntryNode(const FString& TargetName)
+	static FBlueprintHelperLogicNode MakeAdapterFunctionEntryNode(
+		const FAdapterBoundaryProjection& Projection,
+		const FString& TargetName)
 	{
+		const FAdapterBoundaryRef BoundaryRef = Projection.FirstEntryBoundary();
 		FBlueprintHelperLogicNode Node;
 		Node.Kind = EBlueprintHelperLogicNodeKind::FunctionEntry;
-		Node.Name = TargetName;
-		Node.NodeRef = SyntheticFunctionEntryNodeRef();
+		Node.Name = BoundaryRef.DisplayName.IsEmpty() ? TargetName : BoundaryRef.DisplayName;
+		Node.NodeRef = BoundaryRef.NodeRef;
 		return Node;
 	}
 
-	static FBlueprintHelperLogicNode MakeSyntheticFunctionResultNode()
+	static FBlueprintHelperLogicNode MakeAdapterFunctionResultNode(
+		const FAdapterBoundaryProjection& Projection)
 	{
+		const FAdapterBoundaryRef BoundaryRef = Projection.FirstExitBoundary();
 		FBlueprintHelperLogicNode Node;
 		Node.Kind = EBlueprintHelperLogicNodeKind::Return;
-		Node.Name = TEXT("Return");
-		Node.NodeRef = SyntheticFunctionResultNodeRef();
+		Node.Name = BoundaryRef.DisplayName.IsEmpty() ? TEXT("Return") : BoundaryRef.DisplayName;
+		Node.NodeRef = BoundaryRef.NodeRef;
 		return Node;
 	}
 
@@ -597,7 +713,8 @@ public:
 
 	static void AttachGraphLevelLinksToNodes(
 		const TSharedPtr<FJsonObject>& GraphObj,
-		TArray<FBlueprintHelperLogicNode>& Nodes)
+		TArray<FBlueprintHelperLogicNode>& Nodes,
+		const FAdapterBoundaryProjection* AdapterBoundary = nullptr)
 	{
 		if (!GraphObj.IsValid() || Nodes.Num() == 0)
 		{
@@ -645,7 +762,26 @@ public:
 
 		for (int32 PayloadIndex = 0; PayloadIndex < Nodes.Num(); ++PayloadIndex)
 		{
-			if (IsSyntheticFunctionBoundaryNodeRef(Nodes[PayloadIndex].NodeRef))
+			if (!AdapterBoundary)
+			{
+				continue;
+			}
+			for (const FAdapterBoundaryRef& BoundaryRef : AdapterBoundary->EntryBoundaries)
+			{
+				if (Nodes[PayloadIndex].NodeRef.Equals(BoundaryRef.NodeRef, ESearchCase::IgnoreCase))
+				{
+					AddNodeAlias(Nodes[PayloadIndex].NodeRef, PayloadIndex, Nodes[PayloadIndex].NodeRef);
+				}
+			}
+			for (const FAdapterBoundaryRef& BoundaryRef : AdapterBoundary->ExitBoundaries)
+			{
+				if (Nodes[PayloadIndex].NodeRef.Equals(BoundaryRef.NodeRef, ESearchCase::IgnoreCase))
+				{
+					AddNodeAlias(Nodes[PayloadIndex].NodeRef, PayloadIndex, Nodes[PayloadIndex].NodeRef);
+				}
+			}
+			if (AdapterBoundary->FoldedBoundaryNodeRefs.Contains(Nodes[PayloadIndex].NodeRef)
+				|| AdapterBoundary->VisibleBoundaryNodeRefs.Contains(Nodes[PayloadIndex].NodeRef))
 			{
 				AddNodeAlias(Nodes[PayloadIndex].NodeRef, PayloadIndex, Nodes[PayloadIndex].NodeRef);
 			}
@@ -773,6 +909,8 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 	{
 		return Payload;
 	}
+	const FBlueprintHelperLogicGroupBuilderLocalUtils::FAdapterBoundaryProjection AdapterBoundary =
+		FBlueprintHelperLogicGroupBuilderLocalUtils::ReadAdapterBoundary(RawJson);
 
 	if (IsMultiEntryScope(Scope))
 	{
@@ -809,7 +947,10 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Group.Nodes.Add(MoveTemp(Node));
 		}
 
-		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(RawJson, Group.Nodes);
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(
+			RawJson,
+			Group.Nodes,
+			&AdapterBoundary);
 		if (FBlueprintHelperLogicGroupBuilderLocalUtils::TryBuildOwnedBlockGroups(*NodesArray, Group.Nodes, GraphName, Payload))
 		{
 			return Payload;
@@ -857,7 +998,10 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildGroups(
 			Payload.Nodes.Add(MoveTemp(Node));
 		}
 
-		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(RawJson, Payload.Nodes);
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(
+			RawJson,
+			Payload.Nodes,
+			&AdapterBoundary);
 		Payload.BlockId = FBlueprintHelperLogicGroupBuilderLocalUtils::FindUniqueOwnedBlockId(*NodesArray);
 
 		if (!bFoundEntry && Payload.Nodes.Num() > 0)
@@ -898,6 +1042,8 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 	{
 		return Payload;
 	}
+	const FBlueprintHelperLogicGroupBuilderLocalUtils::FAdapterBoundaryProjection AdapterBoundary =
+		FBlueprintHelperLogicGroupBuilderLocalUtils::ReadAdapterBoundary(RawJson);
 
 	auto ExtractGraphName = [](const TSharedPtr<FJsonObject>& GraphObj, int32 GraphIndex) -> FString
 	{
@@ -977,7 +1123,15 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 		return EventName.Equals(TargetName, ESearchCase::IgnoreCase);
 	};
 
-	auto TryBuildFromGraph = [this, &Payload, &MatchesScope, &MatchesTargetName, Scope, &TargetName, &AssetPath](
+	auto TryBuildFromGraph = [
+		this,
+		&Payload,
+		&MatchesScope,
+		&MatchesTargetName,
+		&AdapterBoundary,
+		Scope,
+		&TargetName,
+		&AssetPath](
 		const TSharedPtr<FJsonObject>& GraphObj,
 		const FString& EffectiveGraphName) -> bool
 	{
@@ -1004,7 +1158,11 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 
 		const bool bCanSynthesizeFunctionEntry =
 			Scope == EBlueprintHelperLogicScope::TargetFunction
-			&& FBlueprintHelperLogicGroupBuilderLocalUtils::DoesGraphNameMatchTargetFunction(EffectiveGraphName, TargetName)
+			&& AdapterBoundary.HasEntryBoundary()
+			&& FBlueprintHelperLogicGroupBuilderLocalUtils::DoesAdapterBoundaryMatchGraph(
+				AdapterBoundary,
+				EffectiveGraphName,
+				TargetName)
 			&& NodesArray->Num() > 0;
 
 		if (EntryIndex == INDEX_NONE && !bCanSynthesizeFunctionEntry)
@@ -1019,10 +1177,13 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 
 		if (EntryIndex == INDEX_NONE && bCanSynthesizeFunctionEntry)
 		{
-			Payload.Entry = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionEntry(
+			Payload.Entry = FBlueprintHelperLogicGroupBuilderLocalUtils::MakeAdapterFunctionEntry(
+				AdapterBoundary,
 				EffectiveGraphName,
 				TargetName);
-			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionEntryNode(TargetName));
+			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeAdapterFunctionEntryNode(
+				AdapterBoundary,
+				TargetName));
 		}
 
 		for (int32 i = 0; i < NodesArray->Num(); ++i)
@@ -1046,14 +1207,18 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 
 		if (EntryIndex == INDEX_NONE
 			&& bCanSynthesizeFunctionEntry
+			&& AdapterBoundary.HasExitBoundary()
 			&& FBlueprintHelperLogicGroupBuilderLocalUtils::DoesGraphReferenceNodeId(
 				GraphObj,
-				FBlueprintHelperLogicGroupBuilderLocalUtils::SyntheticFunctionResultNodeRef()))
+				AdapterBoundary.FirstExitBoundary().NodeRef))
 		{
-			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeSyntheticFunctionResultNode());
+			Payload.Nodes.Add(FBlueprintHelperLogicGroupBuilderLocalUtils::MakeAdapterFunctionResultNode(AdapterBoundary));
 		}
 
-		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(GraphObj, Payload.Nodes);
+		FBlueprintHelperLogicGroupBuilderLocalUtils::AttachGraphLevelLinksToNodes(
+			GraphObj,
+			Payload.Nodes,
+			&AdapterBoundary);
 		Payload.BlockId = FBlueprintHelperLogicGroupBuilderLocalUtils::FindUniqueOwnedBlockId(*NodesArray);
 
 		return true;

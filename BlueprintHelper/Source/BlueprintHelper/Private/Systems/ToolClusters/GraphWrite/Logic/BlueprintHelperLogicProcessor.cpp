@@ -426,7 +426,7 @@ public:
 					{
 						IncomingExecNodeIds.Add(Link.TargetNodeId);
 					}
-					if (Link.SourceNodeId.Equals(TEXT("__function_entry__"), ESearchCase::IgnoreCase)
+					if (Link.SourceNodeId.Equals(TEXT("FunctionEntry"), ESearchCase::IgnoreCase)
 						&& Graph.NodeIndexById.Contains(Link.TargetNodeId))
 					{
 						EntryPointNodeIds.Add(Link.TargetNodeId);

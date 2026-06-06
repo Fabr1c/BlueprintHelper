@@ -27,7 +27,7 @@ public:
 
 		TArray<TSharedPtr<FJsonValue>> FunctionLinks;
 		TSharedRef<FJsonObject> EntryToBodyLink = MakeShared<FJsonObject>();
-		EntryToBodyLink->SetStringField(TEXT("from_id"), TEXT("__function_entry__"));
+		EntryToBodyLink->SetStringField(TEXT("from_id"), TEXT("FunctionEntry"));
 		EntryToBodyLink->SetStringField(TEXT("from_pin"), TEXT("then"));
 		EntryToBodyLink->SetStringField(TEXT("to_id"), TEXT("set_relative_rotation"));
 		EntryToBodyLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
@@ -37,10 +37,34 @@ public:
 		TSharedRef<FJsonObject> BodyToResultLink = MakeShared<FJsonObject>();
 		BodyToResultLink->SetStringField(TEXT("from_id"), TEXT("set_relative_rotation"));
 		BodyToResultLink->SetStringField(TEXT("from_pin"), TEXT("then"));
-		BodyToResultLink->SetStringField(TEXT("to_id"), TEXT("__function_result__"));
+		BodyToResultLink->SetStringField(TEXT("to_id"), TEXT("FunctionResult"));
 		BodyToResultLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
 		BodyToResultLink->SetStringField(TEXT("kind"), TEXT("exec"));
 		FunctionLinks.Add(MakeShared<FJsonValueObject>(BodyToResultLink));
+
+		TSharedRef<FJsonObject> AdapterBoundary = MakeShared<FJsonObject>();
+		AdapterBoundary->SetStringField(TEXT("runtime_adapter_id"), TEXT("k2.function_body"));
+		AdapterBoundary->SetStringField(TEXT("body_kind"), TEXT("k2.function_body"));
+		AdapterBoundary->SetStringField(TEXT("graph_name"), TEXT("AddMazeRelativeRotation"));
+		TArray<TSharedPtr<FJsonValue>> EntryBoundaries;
+		TSharedRef<FJsonObject> EntryBoundary = MakeShared<FJsonObject>();
+		EntryBoundary->SetStringField(TEXT("node_ref"), TEXT("FunctionEntry"));
+		EntryBoundary->SetStringField(TEXT("display_name"), TEXT("AddMazeRelativeRotation"));
+		EntryBoundaries.Add(MakeShared<FJsonValueObject>(EntryBoundary));
+		AdapterBoundary->SetArrayField(TEXT("entry_boundaries"), EntryBoundaries);
+		TArray<TSharedPtr<FJsonValue>> ExitBoundaries;
+		TSharedRef<FJsonObject> ExitBoundary = MakeShared<FJsonObject>();
+		ExitBoundary->SetStringField(TEXT("node_ref"), TEXT("FunctionResult"));
+		ExitBoundary->SetStringField(TEXT("display_name"), TEXT("Return"));
+		ExitBoundaries.Add(MakeShared<FJsonValueObject>(ExitBoundary));
+		AdapterBoundary->SetArrayField(TEXT("exit_boundaries"), ExitBoundaries);
+		TArray<TSharedPtr<FJsonValue>> FoldedRefs;
+		FoldedRefs.Add(MakeShared<FJsonValueString>(TEXT("FunctionEntry")));
+		AdapterBoundary->SetArrayField(TEXT("folded_boundary_node_refs"), FoldedRefs);
+		TArray<TSharedPtr<FJsonValue>> VisibleRefs;
+		VisibleRefs.Add(MakeShared<FJsonValueString>(TEXT("FunctionResult")));
+		AdapterBoundary->SetArrayField(TEXT("visible_boundary_node_refs"), VisibleRefs);
+		Root->SetObjectField(TEXT("adapter_boundary"), AdapterBoundary);
 
 		TSharedRef<FJsonObject> FunctionGraph = MakeShared<FJsonObject>();
 		FunctionGraph->SetStringField(TEXT("graph"), TEXT("AddMazeRelativeRotation"));
@@ -150,13 +174,13 @@ bool FBlueprintHelperLogicReadSnapshotFormatter_FormatsFunctionTargetWithoutExpo
 			if (EntryNode && EntryNode->IsValid() && BodyNode && BodyNode->IsValid() && ResultNode && ResultNode->IsValid())
 			{
 				TestEqual(TEXT("logic_json entry boundary node ref"), (*EntryNode)->GetStringField(TEXT("node_ref")),
-					FString(TEXT("__function_entry__")));
+					FString(TEXT("FunctionEntry")));
 				TestEqual(TEXT("logic_json entry boundary kind"), (*EntryNode)->GetStringField(TEXT("kind")),
 					FString(TEXT("function")));
 				TestEqual(TEXT("logic_json body node ref"), (*BodyNode)->GetStringField(TEXT("node_ref")),
 					FString(TEXT("nodes[0]")));
 				TestEqual(TEXT("logic_json result boundary node ref"), (*ResultNode)->GetStringField(TEXT("node_ref")),
-					FString(TEXT("__function_result__")));
+					FString(TEXT("FunctionResult")));
 				TestEqual(TEXT("logic_json result boundary kind"), (*ResultNode)->GetStringField(TEXT("kind")),
 					FString(TEXT("return")));
 
@@ -192,7 +216,7 @@ bool FBlueprintHelperLogicReadSnapshotFormatter_FormatsFunctionTargetWithoutExpo
 					if (BodyLink && BodyLink->IsValid())
 					{
 						TestEqual(TEXT("logic_json body link target"), (*BodyLink)->GetStringField(TEXT("to_node")),
-							FString(TEXT("__function_result__")));
+							FString(TEXT("FunctionResult")));
 					}
 				}
 			}
@@ -204,9 +228,9 @@ bool FBlueprintHelperLogicReadSnapshotFormatter_FormatsFunctionTargetWithoutExpo
 		Formatter.BuildFormattedPayload(TEXT("logic_md"), Snapshot, MdPayload, Error));
 	const FString Markdown = MdPayload.IsValid() ? MdPayload->GetStringField(TEXT("markdown")) : TEXT("");
 	TestTrue(TEXT("logic_md includes function entry boundary link"),
-		Markdown.Contains(TEXT("__function_entry__.then -> nodes[0].execute")));
+		Markdown.Contains(TEXT("FunctionEntry.then -> nodes[0].execute")));
 	TestTrue(TEXT("logic_md includes function result boundary link"),
-		Markdown.Contains(TEXT("nodes[0].then -> __function_result__.execute")));
+		Markdown.Contains(TEXT("nodes[0].then -> FunctionResult.execute")));
 	return true;
 }
 

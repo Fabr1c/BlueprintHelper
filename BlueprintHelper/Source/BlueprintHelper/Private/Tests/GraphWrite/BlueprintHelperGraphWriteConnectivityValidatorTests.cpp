@@ -78,6 +78,46 @@ namespace BlueprintHelperGraphWriteConnectivityValidatorTests
 		ToPin->LinkedTo.AddUnique(FromPin);
 	}
 
+	static void RegisterBoundaryNode(
+		FBlueprintGraphWriteConnectivityValidationInput& Input,
+		const FString& Ref,
+		UEdGraphNode* Node,
+		const bool bEntry,
+		const bool bExit)
+	{
+		if (!Node || Ref.IsEmpty())
+		{
+			return;
+		}
+
+		Input.NodeRefs.Add(Ref, Node);
+		Input.BoundaryModel.GeneratedNodeRefs.AddUnique(Ref);
+		if (bEntry)
+		{
+			Input.BoundaryModel.EntryNodeRefs.AddUnique(Ref);
+		}
+		if (bExit)
+		{
+			Input.BoundaryModel.ExitNodeRefs.AddUnique(Ref);
+		}
+	}
+
+	static void RegisterEntryNode(
+		FBlueprintGraphWriteConnectivityValidationInput& Input,
+		const FString& Ref,
+		UEdGraphNode* Node)
+	{
+		RegisterBoundaryNode(Input, Ref, Node, true, false);
+	}
+
+	static FBlueprintGraphWriteConnectivityValidationResult ValidateInput(
+		FBlueprintGraphWriteConnectivityValidationInput& Input)
+	{
+		Input.ConnectivityPolicy =
+			FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(Input.BoundaryModel);
+		return FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	}
+
 	static bool HasViolation(
 		const FBlueprintGraphWriteConnectivityValidationResult& Result,
 		const FString& Code)
@@ -111,10 +151,9 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorRejectsExecWithoutIncomingTe
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry, OrphanExec };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("validation blocks orphan exec"), Result.bPassed);
 	TestTrue(TEXT("reports unreachable_exec_node"), HasViolation(Result, TEXT("unreachable_exec_node")));
@@ -147,10 +186,9 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorRejectsExecWithoutEntryReach
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry, CycleA, CycleB };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("validation blocks exec cycle not reachable from entry"), Result.bPassed);
 	TestTrue(TEXT("reports unreachable_exec_node"), HasViolation(Result, TEXT("unreachable_exec_node")));
@@ -174,12 +212,11 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorReportsMissingExpectedLinkTe
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 	Input.RequestedConnectionCount = 2;
 	Input.CreatedConnectionCount = 1;
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("validation blocks missing requested link"), Result.bPassed);
 	TestTrue(TEXT("reports missing_expected_link"), HasViolation(Result, TEXT("missing_expected_link")));
@@ -204,8 +241,7 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorRejectsPureDataWithoutConsum
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { PureData };
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("validation blocks unconsumed pure data"), Result.bPassed);
 	TestTrue(TEXT("reports unconsumed_pure_data_node"), HasViolation(Result, TEXT("unconsumed_pure_data_node")));
@@ -238,10 +274,9 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorAcceptsConsumedPureDataTest:
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry, ExecNode, PureData };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestTrue(TEXT("consumed pure data passes"), Result.bPassed);
 	return true;
@@ -270,10 +305,9 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorRejectsPureDataChainWithoutR
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry, PureData, PureConsumer };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("pure data chain without reachable exec is blocked"), Result.bPassed);
 	TestTrue(TEXT("reports unreachable_pure_data_chain"), HasViolation(Result, TEXT("unreachable_pure_data_chain")));
@@ -306,10 +340,9 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorRejectsPureDataLinkedToExecO
 	FBlueprintGraphWriteConnectivityValidationInput Input;
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Entry, ExecNode, PureData };
-	Input.EntryRootNodes.Add(Entry);
+	RegisterEntryNode(Input, TEXT("Entry"), Entry);
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestFalse(TEXT("pure data linked to an output pin is not consumed"), Result.bPassed);
 	TestTrue(TEXT("reports unconsumed_pure_data_node"), HasViolation(Result, TEXT("unconsumed_pure_data_node")));
@@ -323,6 +356,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphWriteConnectivityValidatorWhitelistsCommentAndRerouteTest::RunTest(const FString&)
 {
+	using namespace BlueprintHelperGraphWriteConnectivityValidatorTests;
+
 	UEdGraph* Graph = NewObject<UEdGraph>(
 		GetTransientPackage(),
 		FName(TEXT("BH_Connectivity_Whitelist")));
@@ -337,8 +372,7 @@ bool FBlueprintHelperGraphWriteConnectivityValidatorWhitelistsCommentAndRerouteT
 	Input.TargetGraph = Graph;
 	Input.GeneratedNodes = { Comment, Reroute };
 
-	const FBlueprintGraphWriteConnectivityValidationResult Result =
-		FBlueprintHelperGraphWriteConnectivityValidator::Validate(Input);
+	const FBlueprintGraphWriteConnectivityValidationResult Result = ValidateInput(Input);
 
 	TestTrue(TEXT("comment/reroute whitelist passes"), Result.bPassed);
 	return true;

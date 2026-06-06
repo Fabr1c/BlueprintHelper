@@ -1,17 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Dom/JsonObject.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapter.h"
-#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterRegistry.h"
 
-class BLUEPRINTHELPER_API FBlueprintHelperExternalBodyAdapter : public IBlueprintHelperGraphBodyAdapter
+class BLUEPRINTHELPER_API FBlueprintHelperK2CustomEventBodyAdapter : public IBlueprintHelperGraphBodyAdapter
 {
 public:
-	FBlueprintHelperExternalBodyAdapter();
-	explicit FBlueprintHelperExternalBodyAdapter(
-		const FBlueprintHelperGraphBodyAdapterDescriptor& InDescriptor);
-
 	virtual FString GetAdapterId() const override;
 	virtual bool ResolveTarget(
 		const FBlueprintHelperGraphBodyRequest& Request,
@@ -36,14 +30,4 @@ public:
 	virtual FBlueprintHelperGraphBodyReadbackProjection BuildReadbackProjection(
 		const FBlueprintHelperGraphBodyTarget& Target,
 		const FBlueprintHelperGraphBodyBoundaryModel& Boundary) const override;
-
-	FBlueprintHelperGraphBodyBoundaryModel BuildBoundaryModel(
-		const TSharedRef<FJsonObject>& Payload) const;
-	FBlueprintHelperGraphConnectivityPolicy SelectConnectivityPolicy(
-		const FBlueprintHelperGraphBodyBoundaryModel& Boundary) const;
-	FBlueprintHelperGraphBodyMutationPlan BuildMutationPlan(
-		const TSharedRef<FJsonObject>& Payload) const;
-
-private:
-	FBlueprintHelperGraphBodyAdapterDescriptor Descriptor;
 };

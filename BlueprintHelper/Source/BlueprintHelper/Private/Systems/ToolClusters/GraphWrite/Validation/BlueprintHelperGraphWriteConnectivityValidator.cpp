@@ -73,13 +73,72 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 		return false;
 	}
 
-	static TSet<const UEdGraphNode*> CollectReachableExecNodes(
+	static TSet<const UEdGraphNode*> ResolveBoundaryNodes(
+		const TArray<FString>& BoundaryRefs,
+		const TMap<FString, UEdGraphNode*>& NodeRefs)
+	{
+		TSet<const UEdGraphNode*> Nodes;
+		for (const FString& BoundaryRef : BoundaryRefs)
+		{
+			UEdGraphNode* const* Node = NodeRefs.Find(BoundaryRef);
+			if (Node && *Node)
+			{
+				Nodes.Add(*Node);
+			}
+		}
+		return Nodes;
+	}
+
+	static bool BoundaryRefsContainNode(
+		const TArray<FString>& BoundaryRefs,
+		const TMap<FString, UEdGraphNode*>& NodeRefs,
+		const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		for (const FString& BoundaryRef : BoundaryRefs)
+		{
+			UEdGraphNode* const* BoundaryNode = NodeRefs.Find(BoundaryRef);
+			if (BoundaryNode && *BoundaryNode == Node)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static TSet<const UEdGraphNode*> CollectLegalTerminalNodes(
 		const FBlueprintGraphWriteConnectivityValidationInput& Input)
+	{
+		TSet<const UEdGraphNode*> Nodes = ResolveBoundaryNodes(Input.BoundaryModel.ExitNodeRefs, Input.NodeRefs);
+		for (UEdGraphNode* Node : Input.AllowedTerminalPureDataNodes)
+		{
+			if (Node)
+			{
+				Nodes.Add(Node);
+			}
+		}
+		return Nodes;
+	}
+
+	static bool IsPolicyAllowedViolation(
+		const FBlueprintGraphWriteConnectivityValidationInput& Input,
+		const FString& Code)
+	{
+		return Input.ConnectivityPolicy.ViolationCodes.Contains(Code)
+			|| Input.BoundaryModel.ConnectivityExceptionCodes.Contains(Code);
+	}
+
+	static TSet<const UEdGraphNode*> CollectReachableExecNodes(
+		const TSet<const UEdGraphNode*>& EntryNodes)
 	{
 		TSet<const UEdGraphNode*> ReachableNodes;
 		TArray<const UEdGraphNode*> PendingNodes;
 
-		for (UEdGraphNode* EntryRoot : Input.EntryRootNodes)
+		for (const UEdGraphNode* EntryRoot : EntryNodes)
 		{
 			if (EntryRoot)
 			{
@@ -121,7 +180,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 	static bool DataChainReachesExecConsumer(
 		const UEdGraphNode* Node,
 		const TSet<const UEdGraphNode*>& ReachableExecNodes,
-		const TSet<UEdGraphNode*>& AllowedTerminalPureDataNodes,
+		const TSet<const UEdGraphNode*>& LegalTerminalNodes,
 		TSet<const UEdGraphNode*>& VisitedNodes)
 	{
 		if (!Node || VisitedNodes.Contains(Node))
@@ -150,7 +209,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 					continue;
 				}
 
-				if (AllowedTerminalPureDataNodes.Contains(LinkedNode))
+				if (LegalTerminalNodes.Contains(LinkedNode))
 				{
 					return true;
 				}
@@ -164,7 +223,7 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 					continue;
 				}
 
-				if (DataChainReachesExecConsumer(LinkedNode, ReachableExecNodes, AllowedTerminalPureDataNodes, VisitedNodes))
+				if (DataChainReachesExecConsumer(LinkedNode, ReachableExecNodes, LegalTerminalNodes, VisitedNodes))
 				{
 					return true;
 				}
@@ -178,6 +237,27 @@ namespace BlueprintHelperGraphWriteConnectivityValidation
 	{
 		return Node
 			&& (Node->IsA<UEdGraphNode_Comment>() || Node->IsA<UK2Node_Knot>());
+	}
+
+	static bool IsAllowedIsolatedNode(
+		const FBlueprintGraphWriteConnectivityValidationInput& Input,
+		const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		if (Input.BoundaryModel.AllowedIsolatedNodePolicy
+			== EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly)
+		{
+			return IsConnectivityWhitelisted(Node);
+		}
+
+		return BoundaryRefsContainNode(Input.BoundaryModel.EntryNodeRefs, Input.NodeRefs, Node)
+			|| BoundaryRefsContainNode(Input.BoundaryModel.ExitNodeRefs, Input.NodeRefs, Node)
+			|| BoundaryRefsContainNode(Input.BoundaryModel.ProtectedNodeRefs, Input.NodeRefs, Node)
+			|| BoundaryRefsContainNode(Input.BoundaryModel.ExternalAnchorRefs, Input.NodeRefs, Node);
 	}
 
 	static FString NodeDiagnosticId(const UEdGraphNode* Node)
@@ -224,7 +304,10 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 	using namespace BlueprintHelperGraphWriteConnectivityValidation;
 
 	FBlueprintGraphWriteConnectivityValidationResult Result;
-	const TSet<const UEdGraphNode*> ReachableExecNodes = CollectReachableExecNodes(Input);
+	const TSet<const UEdGraphNode*> EntryNodes =
+		ResolveBoundaryNodes(Input.BoundaryModel.EntryNodeRefs, Input.NodeRefs);
+	const TSet<const UEdGraphNode*> LegalTerminalNodes = CollectLegalTerminalNodes(Input);
+	const TSet<const UEdGraphNode*> ReachableExecNodes = CollectReachableExecNodes(EntryNodes);
 
 	if (Input.RequestedConnectionCount > Input.CreatedConnectionCount)
 	{
@@ -239,18 +322,19 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 
 	for (UEdGraphNode* Node : Input.GeneratedNodes)
 	{
-		if (!Node || IsConnectivityWhitelisted(Node))
+		if (!Node || IsAllowedIsolatedNode(Input, Node))
 		{
 			continue;
 		}
 
 		if (HasExecPin(Node))
 		{
-			if (Input.AllowedTerminalPureDataNodes.Contains(Node))
+			if (EntryNodes.Contains(Node) || LegalTerminalNodes.Contains(Node))
 			{
 				continue;
 			}
-			if (!Input.EntryRootNodes.Contains(Node) && !ReachableExecNodes.Contains(Node))
+			if (!ReachableExecNodes.Contains(Node)
+				&& !IsPolicyAllowedViolation(Input, TEXT("unreachable_exec_node")))
 			{
 				Result.Diagnostics.Add(MakeDiagnostic(
 					TEXT("unreachable_exec_node"),
@@ -262,9 +346,18 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 			continue;
 		}
 
+		if (Input.BoundaryModel.PureDataConsumptionPolicy
+			== EBlueprintHelperGraphBodyPureDataPolicy::PureDataGraphOutput)
+		{
+			continue;
+		}
+
 		if (!HasOutgoingDataConsumer(Node))
 		{
-			if (!Input.AllowedTerminalPureDataNodes.Contains(Node))
+			if (!LegalTerminalNodes.Contains(Node)
+				&& Input.BoundaryModel.PureDataConsumptionPolicy
+					!= EBlueprintHelperGraphBodyPureDataPolicy::AllowTerminalPureDataOutput
+				&& !IsPolicyAllowedViolation(Input, TEXT("unconsumed_pure_data_node")))
 			{
 				Result.Diagnostics.Add(MakeDiagnostic(
 					TEXT("unconsumed_pure_data_node"),
@@ -272,10 +365,12 @@ FBlueprintGraphWriteConnectivityValidationResult FBlueprintHelperGraphWriteConne
 					TEXT("Generated PureData node has no outgoing data consumer.")));
 			}
 		}
-		else if (Input.bRequirePureDataReachableToExec)
+		else if (Input.BoundaryModel.PureDataConsumptionPolicy
+			== EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer)
 		{
 			TSet<const UEdGraphNode*> VisitedNodes;
-			if (!DataChainReachesExecConsumer(Node, ReachableExecNodes, Input.AllowedTerminalPureDataNodes, VisitedNodes))
+			if (!DataChainReachesExecConsumer(Node, ReachableExecNodes, LegalTerminalNodes, VisitedNodes)
+				&& !IsPolicyAllowedViolation(Input, TEXT("unreachable_pure_data_chain")))
 			{
 				Result.Diagnostics.Add(MakeDiagnostic(
 					TEXT("unreachable_pure_data_chain"),

@@ -270,6 +270,17 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicReadSnapshotFormatter::BuildL
 	FBlueprintHelperLogicJsonData Data;
 	Data.Scope = Snapshot.Scope;
 	Data.bImportable = false;
+	Data.AdapterBoundaryJson = Snapshot.AdapterBoundaryJson;
+	if (!Data.AdapterBoundaryJson.IsValid() && Snapshot.RawJsonObject.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* AdapterBoundaryJson = nullptr;
+		if (Snapshot.RawJsonObject->TryGetObjectField(TEXT("adapter_boundary"), AdapterBoundaryJson)
+			&& AdapterBoundaryJson
+			&& AdapterBoundaryJson->IsValid())
+		{
+			Data.AdapterBoundaryJson = *AdapterBoundaryJson;
+		}
+	}
 
 	if (!Snapshot.bExportSucceeded || !Snapshot.RawJsonObject.IsValid())
 	{

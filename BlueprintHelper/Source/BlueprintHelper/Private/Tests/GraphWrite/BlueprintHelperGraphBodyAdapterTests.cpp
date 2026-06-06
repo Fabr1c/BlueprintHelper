@@ -16,7 +16,7 @@ bool FBlueprintHelperGraphBodyK2BlockAdapterProjectionTest::RunTest(const FStrin
 	FBlueprintHelperGraphBodyAdapterDescriptor Descriptor;
 	TestTrue(
 		TEXT("patch descriptor is registered"),
-		FBlueprintHelperGraphBodyAdapterRegistry::TryFindByRuntimeAdapterId(TEXT("patch_blueprint_graph"), Descriptor));
+		FBlueprintHelperGraphBodyAdapterRegistry::TryFindByRuntimeAdapterId(TEXT("k2.block_implementation"), Descriptor));
 
 	FBlueprintHelperK2BlockBodyAdapter Adapter(Descriptor);
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -33,7 +33,7 @@ bool FBlueprintHelperGraphBodyK2BlockAdapterProjectionTest::RunTest(const FStrin
 		{MakeShared<FJsonValueString>(TEXT("unreachable_exec_node"))});
 
 	const FBlueprintHelperGraphBodyMutationPlan Plan = Adapter.BuildMutationPlan(Payload);
-	TestEqual(TEXT("adapter id comes from descriptor"), Adapter.GetAdapterId(), FString(TEXT("patch_blueprint_graph")));
+	TestEqual(TEXT("adapter id comes from descriptor"), Adapter.GetAdapterId(), FString(TEXT("k2.block_implementation")));
 	TestEqual(TEXT("boundary body kind is block implementation"), Plan.BoundaryModel.BodyKind, EBlueprintHelperGraphBodyKind::K2BlockImplementation);
 	TestEqual(TEXT("boundary block id comes from patched_ref"), Plan.BoundaryModel.OwnedBlockId, FString(TEXT("DoorBlock")));
 	TestTrue(TEXT("adapter does not create nodes"), !Plan.bCreatesNodesInsideAdapter);
@@ -51,7 +51,7 @@ bool FBlueprintHelperGraphBodyExternalAdapterProjectionTest::RunTest(const FStri
 	FBlueprintHelperGraphBodyAdapterDescriptor Descriptor;
 	TestTrue(
 		TEXT("external descriptor is registered"),
-		FBlueprintHelperGraphBodyAdapterRegistry::TryFindByRuntimeAdapterId(TEXT("merge_external_flow"), Descriptor));
+		FBlueprintHelperGraphBodyAdapterRegistry::TryFindByRuntimeAdapterId(TEXT("k2.external_body"), Descriptor));
 
 	FBlueprintHelperExternalBodyAdapter Adapter(Descriptor);
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
@@ -62,7 +62,7 @@ bool FBlueprintHelperGraphBodyExternalAdapterProjectionTest::RunTest(const FStri
 	Payload->SetObjectField(TEXT("target"), Target);
 
 	const FBlueprintHelperGraphBodyMutationPlan Plan = Adapter.BuildMutationPlan(Payload);
-	TestEqual(TEXT("external adapter id comes from descriptor"), Adapter.GetAdapterId(), FString(TEXT("merge_external_flow")));
+	TestEqual(TEXT("external adapter id comes from descriptor"), Adapter.GetAdapterId(), FString(TEXT("k2.external_body")));
 	TestEqual(TEXT("external body kind is distinct"), Plan.BoundaryModel.BodyKind, EBlueprintHelperGraphBodyKind::K2ExternalBody);
 	TestTrue(TEXT("external anchor is projected"), Plan.BoundaryModel.ExternalAnchorRefs.Contains(TEXT("anchor:then")));
 	TestTrue(TEXT("external policy allows external anchors"), Plan.ConnectivityPolicy.bAllowExternalAnchorBoundary);

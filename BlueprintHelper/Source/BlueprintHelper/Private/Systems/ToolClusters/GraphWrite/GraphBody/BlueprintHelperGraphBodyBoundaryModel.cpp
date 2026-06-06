@@ -10,12 +10,16 @@ FString FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(EBlueprint
 		return TEXT("k2.event_body");
 	case EBlueprintHelperGraphBodyKind::K2FunctionBody:
 		return TEXT("k2.function_body");
+	case EBlueprintHelperGraphBodyKind::K2MacroBody:
+		return TEXT("k2.macro_body");
 	case EBlueprintHelperGraphBodyKind::K2BlockImplementation:
 		return TEXT("k2.block_implementation");
 	case EBlueprintHelperGraphBodyKind::K2ExternalBody:
 		return TEXT("k2.external_body");
-	case EBlueprintHelperGraphBodyKind::ReservedMacroBody:
-		return TEXT("k2.macro_body");
+	case EBlueprintHelperGraphBodyKind::ReservedMaterialFunctionBody:
+		return TEXT("material.function_body");
+	case EBlueprintHelperGraphBodyKind::ReservedAnimationGraphBody:
+		return TEXT("animation.graph_body");
 	default:
 		return TEXT("unknown");
 	}
@@ -36,6 +40,10 @@ EBlueprintHelperGraphBodyKind FBlueprintHelperGraphBodyBoundaryModelUtils::BodyK
 	{
 		return EBlueprintHelperGraphBodyKind::K2FunctionBody;
 	}
+	if (Normalized == TEXT("k2.macro_body"))
+	{
+		return EBlueprintHelperGraphBodyKind::K2MacroBody;
+	}
 	if (Normalized == TEXT("k2.block_implementation"))
 	{
 		return EBlueprintHelperGraphBodyKind::K2BlockImplementation;
@@ -44,9 +52,13 @@ EBlueprintHelperGraphBodyKind FBlueprintHelperGraphBodyBoundaryModelUtils::BodyK
 	{
 		return EBlueprintHelperGraphBodyKind::K2ExternalBody;
 	}
-	if (Normalized == TEXT("k2.macro_body"))
+	if (Normalized == TEXT("material.function_body"))
 	{
-		return EBlueprintHelperGraphBodyKind::ReservedMacroBody;
+		return EBlueprintHelperGraphBodyKind::ReservedMaterialFunctionBody;
+	}
+	if (Normalized == TEXT("animation.graph_body"))
+	{
+		return EBlueprintHelperGraphBodyKind::ReservedAnimationGraphBody;
 	}
 	return EBlueprintHelperGraphBodyKind::Unknown;
 }

@@ -957,12 +957,12 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		// FunctionEntry / FunctionResult 不导出为节点，但加入 NodeToIdMap 以保留连线
 		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node))
 		{
-			NodeToIdMap.Add(Node, TEXT("__function_entry__"));
+			NodeToIdMap.Add(Node, TEXT("FunctionEntry"));
 			continue;
 		}
 		if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
 		{
-			NodeToIdMap.Add(Node, TEXT("__function_result__"));
+			NodeToIdMap.Add(Node, TEXT("FunctionResult"));
 			continue;
 		}
 

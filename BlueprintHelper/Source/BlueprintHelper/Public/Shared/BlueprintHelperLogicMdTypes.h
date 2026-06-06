@@ -436,6 +436,7 @@ struct FBlueprintHelperLogicJsonData
 	EBlueprintHelperLogicScope Scope = EBlueprintHelperLogicScope::TargetGraph;
 	FBlueprintHelperLogicJsonPayload Logic;
 	FBlueprintHelperLogicMdStats Stats;
+	TSharedPtr<FJsonObject> AdapterBoundaryJson;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -446,6 +447,7 @@ struct FBlueprintHelperLogicJsonData
 		Json->SetStringField(TEXT("scope"), LogicScopeToString(Scope));
 		Json->SetObjectField(TEXT("logic"), Logic.ToJson());
 		Json->SetObjectField(TEXT("stats"), Stats.ToJson());
+		if (AdapterBoundaryJson.IsValid()) { Json->SetObjectField(TEXT("adapter_boundary"), AdapterBoundaryJson); }
 		return Json;
 	}
 };

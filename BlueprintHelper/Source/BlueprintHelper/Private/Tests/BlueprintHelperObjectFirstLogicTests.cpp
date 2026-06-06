@@ -159,7 +159,7 @@ public:
 
         TArray<TSharedPtr<FJsonValue>> FunctionLinks;
         TSharedRef<FJsonObject> EntryToBodyLink = MakeShared<FJsonObject>();
-        EntryToBodyLink->SetStringField(TEXT("from_id"), TEXT("__function_entry__"));
+        EntryToBodyLink->SetStringField(TEXT("from_id"), TEXT("FunctionEntry"));
         EntryToBodyLink->SetStringField(TEXT("from_pin"), TEXT("then"));
         EntryToBodyLink->SetStringField(TEXT("to_id"), TEXT("set_relative_rotation"));
         EntryToBodyLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
@@ -169,10 +169,34 @@ public:
         TSharedRef<FJsonObject> BodyToResultLink = MakeShared<FJsonObject>();
         BodyToResultLink->SetStringField(TEXT("from_id"), TEXT("set_relative_rotation"));
         BodyToResultLink->SetStringField(TEXT("from_pin"), TEXT("then"));
-        BodyToResultLink->SetStringField(TEXT("to_id"), TEXT("__function_result__"));
+        BodyToResultLink->SetStringField(TEXT("to_id"), TEXT("FunctionResult"));
         BodyToResultLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
         BodyToResultLink->SetStringField(TEXT("kind"), TEXT("exec"));
         FunctionLinks.Add(MakeShared<FJsonValueObject>(BodyToResultLink));
+
+        TSharedRef<FJsonObject> AdapterBoundary = MakeShared<FJsonObject>();
+        AdapterBoundary->SetStringField(TEXT("runtime_adapter_id"), TEXT("k2.function_body"));
+        AdapterBoundary->SetStringField(TEXT("body_kind"), TEXT("k2.function_body"));
+        AdapterBoundary->SetStringField(TEXT("graph_name"), TEXT("AddMazeRelativeRotation"));
+        TArray<TSharedPtr<FJsonValue>> EntryBoundaries;
+        TSharedRef<FJsonObject> EntryBoundary = MakeShared<FJsonObject>();
+        EntryBoundary->SetStringField(TEXT("node_ref"), TEXT("FunctionEntry"));
+        EntryBoundary->SetStringField(TEXT("display_name"), TEXT("AddMazeRelativeRotation"));
+        EntryBoundaries.Add(MakeShared<FJsonValueObject>(EntryBoundary));
+        AdapterBoundary->SetArrayField(TEXT("entry_boundaries"), EntryBoundaries);
+        TArray<TSharedPtr<FJsonValue>> ExitBoundaries;
+        TSharedRef<FJsonObject> ExitBoundary = MakeShared<FJsonObject>();
+        ExitBoundary->SetStringField(TEXT("node_ref"), TEXT("FunctionResult"));
+        ExitBoundary->SetStringField(TEXT("display_name"), TEXT("Return"));
+        ExitBoundaries.Add(MakeShared<FJsonValueObject>(ExitBoundary));
+        AdapterBoundary->SetArrayField(TEXT("exit_boundaries"), ExitBoundaries);
+        TArray<TSharedPtr<FJsonValue>> FoldedRefs;
+        FoldedRefs.Add(MakeShared<FJsonValueString>(TEXT("FunctionEntry")));
+        AdapterBoundary->SetArrayField(TEXT("folded_boundary_node_refs"), FoldedRefs);
+        TArray<TSharedPtr<FJsonValue>> VisibleRefs;
+        VisibleRefs.Add(MakeShared<FJsonValueString>(TEXT("FunctionResult")));
+        AdapterBoundary->SetArrayField(TEXT("visible_boundary_node_refs"), VisibleRefs);
+        Root->SetObjectField(TEXT("adapter_boundary"), AdapterBoundary);
 
         TArray<TSharedPtr<FJsonValue>> Graphs;
         Graphs.Add(MakeShared<FJsonValueObject>(MakeLogicTestGraph(TEXT("EventGraph"), EventGraphNodes)));
@@ -636,17 +660,17 @@ bool FObjectFirstLogic_FunctionTargetUsesExportedFunctionGraphWithoutEntry::RunT
     {
         TestEqual(TEXT("synthetic function entry uses target name"), Payload.Entry->Name, FString(TEXT("AddMazeRelativeRotation")));
         TestEqual(TEXT("synthetic function entry kind is function"), Payload.Entry->Kind, EBlueprintHelperLogicNodeKind::FunctionEntry);
-        TestEqual(TEXT("synthetic function entry ref is stable"), Payload.Entry->NodeRef, FString(TEXT("__function_entry__")));
+        TestEqual(TEXT("adapter function entry ref is stable"), Payload.Entry->NodeRef, FString(TEXT("FunctionEntry")));
         TestEqual(
             TEXT("synthetic function entry path is function scoped"),
             Payload.Entry->NodePath,
-            FString(TEXT("$.graphs[AddMazeRelativeRotation].__function_entry__")));
+            FString(TEXT("$.graphs[AddMazeRelativeRotation].FunctionEntry")));
     }
     TestEqual(TEXT("function target returns function boundary and body nodes"), Payload.Nodes.Num(), 3);
     if (Payload.Nodes.Num() == 3)
     {
         TestEqual(TEXT("function target includes synthetic entry node"), Payload.Nodes[0].Name, FString(TEXT("AddMazeRelativeRotation")));
-        TestEqual(TEXT("function target synthetic entry node keeps boundary ref"), Payload.Nodes[0].NodeRef, FString(TEXT("__function_entry__")));
+        TestEqual(TEXT("function target adapter entry node keeps boundary ref"), Payload.Nodes[0].NodeRef, FString(TEXT("FunctionEntry")));
         TestEqual(TEXT("function entry has one exec link"), Payload.Nodes[0].Links.Num(), 1);
         if (Payload.Nodes[0].Links.Num() == 1)
         {
@@ -658,11 +682,11 @@ bool FObjectFirstLogic_FunctionTargetUsesExportedFunctionGraphWithoutEntry::RunT
         TestEqual(TEXT("function body has one result link"), Payload.Nodes[1].Links.Num(), 1);
         if (Payload.Nodes[1].Links.Num() == 1)
         {
-            TestEqual(TEXT("function body link reaches result boundary"), Payload.Nodes[1].Links[0].ToNode, FString(TEXT("__function_result__")));
+            TestEqual(TEXT("function body link reaches result boundary"), Payload.Nodes[1].Links[0].ToNode, FString(TEXT("FunctionResult")));
         }
 
         TestEqual(TEXT("function target includes synthetic result node"), Payload.Nodes[2].Name, FString(TEXT("Return")));
-        TestEqual(TEXT("function target synthetic result node keeps boundary ref"), Payload.Nodes[2].NodeRef, FString(TEXT("__function_result__")));
+        TestEqual(TEXT("function target adapter result node keeps boundary ref"), Payload.Nodes[2].NodeRef, FString(TEXT("FunctionResult")));
         TestEqual(TEXT("function target synthetic result kind"), Payload.Nodes[2].Kind, EBlueprintHelperLogicNodeKind::Return);
     }
 

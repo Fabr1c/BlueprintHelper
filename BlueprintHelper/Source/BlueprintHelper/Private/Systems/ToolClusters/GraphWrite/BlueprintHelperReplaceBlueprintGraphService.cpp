@@ -27,7 +27,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
-#include "K2Node_FunctionResult.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReplaceCoordinator.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
@@ -253,47 +253,6 @@ public:
 		}
 	}
 
-	static void AddFunctionResultsReachedByImportedExecFlow(
-		UEdGraph* Graph,
-		TSet<UEdGraphNode*>& InOutBodyFlowNodes)
-	{
-		if (!Graph)
-		{
-			return;
-		}
-
-		bool bAddedNode = true;
-		while (bAddedNode)
-		{
-			bAddedNode = false;
-			for (UEdGraphNode* Node : Graph->Nodes)
-			{
-				UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(Node);
-				if (!ResultNode || InOutBodyFlowNodes.Contains(ResultNode))
-				{
-					continue;
-				}
-
-				UEdGraphPin* ResultExecInput = FindFirstExecPin(ResultNode, EGPD_Input);
-				if (!ResultExecInput)
-				{
-					continue;
-				}
-
-				for (UEdGraphPin* LinkedPin : ResultExecInput->LinkedTo)
-				{
-					UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
-					if (LinkedNode && InOutBodyFlowNodes.Contains(LinkedNode))
-					{
-						InOutBodyFlowNodes.Add(ResultNode);
-						bAddedNode = true;
-						break;
-					}
-				}
-			}
-		}
-	}
-
 	static bool DataChainReachesReachableExecConsumer(
 		const UEdGraphNode* Node,
 		const TSet<UEdGraphNode*>& ImportedNodeSet,
@@ -378,69 +337,6 @@ public:
 			}
 		}
 		return true;
-	}
-
-	static bool CanDeferEntryResolvedConnectivityFailure(
-		const EBlueprintHelperReplaceScope Scope,
-		const FBlueprintGenerateResult& GenerateResult,
-		UEdGraph* Graph,
-		const TSet<UEdGraphNode*>& NodesBeforeImport)
-	{
-		if (Scope != EBlueprintHelperReplaceScope::FunctionBody)
-		{
-			return false;
-		}
-		if (GenerateResult.bSucceed ||
-			GenerateResult.UnresolvedNodeCount != 0 ||
-			GenerateResult.ConnectivityDiagnostics.Num() == 0)
-		{
-			return false;
-		}
-
-		for (const FBlueprintGeneratorDiagnostic& Diagnostic : GenerateResult.ConnectivityDiagnostics)
-		{
-			if (Diagnostic.Code != TEXT("unreachable_exec_node") &&
-				Diagnostic.Code != TEXT("unreachable_pure_data_chain") &&
-				Diagnostic.Code != TEXT("missing_expected_link") &&
-				Diagnostic.Code != TEXT("unconsumed_pure_data_node"))
-			{
-				return false;
-			}
-		}
-
-		const TArray<UEdGraphNode*> ImportedNodes = CollectImportedNodes(Graph, NodesBeforeImport);
-		TSet<UEdGraphNode*> ImportedNodeSet;
-		for (UEdGraphNode* Node : ImportedNodes)
-		{
-			if (Node)
-			{
-				ImportedNodeSet.Add(Node);
-			}
-		}
-		if (ImportedNodeSet.Num() == 0)
-		{
-			return false;
-		}
-
-		TSet<UEdGraphNode*> BodyFlowNodeSet = ImportedNodeSet;
-		AddFunctionResultsReachedByImportedExecFlow(Graph, BodyFlowNodeSet);
-
-		UEdGraphNode* BodyEntryNode = FindFirstImportedExecutableBodyNode(Graph, NodesBeforeImport);
-		UEdGraphPin* BodyEntryPin = FindFirstExecPin(BodyEntryNode, EGPD_Input);
-		if (!BodyEntryPin || !BodyFlowNodeSet.Contains(BodyEntryNode))
-		{
-			return false;
-		}
-
-		TSet<UEdGraphNode*> ReachableExecNodes;
-		CollectExecReachableFromBodyEntry(BodyEntryPin, BodyFlowNodeSet, ReachableExecNodes);
-		if (ReachableExecNodes.Num() == 0)
-		{
-			return false;
-		}
-
-		return ImportedExecNodesReachBodyEntryExecFlow(ImportedNodes, ReachableExecNodes) &&
-			GeneratedPureDataChainsReachBodyEntryExecFlow(ImportedNodes, BodyFlowNodeSet, ReachableExecNodes);
 	}
 
 	static void BreakAllPinLinksWithModify(UEdGraphPin* Pin)
@@ -987,7 +883,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 			: EBlueprintHelperGraphWriteUnitOfWorkMode::Execute,
 		TEXT("replace_blueprint_graph"),
 		TEXT("replace_owned_graph"),
-		EBlueprintHelperGraphBodyKind::K2FunctionBody,
+		FBlueprintHelperGraphBodyReplaceCoordinator::BodyKindForReplaceScope(Request.Scope),
 		[this, &Request]()
 		{
 			return Request.bDryRun ? ExecuteDryRun(Request) : ExecuteWrite(Request);
@@ -1201,29 +1097,11 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightLogicSpec(
 
 	OutResult.FragmentDebugData = FBlueprintHelperGraphFragmentDebugData::BuildFromLogicSpec(Request.LogicSpec, Blueprint);
 
-	UEdGraph* SemanticContextGraph = nullptr;
-	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
-	{
-		for (UEdGraph* FunctionGraph : Blueprint->FunctionGraphs)
-		{
-			if (FunctionGraph && FunctionGraph->GetName() == Request.GraphName)
-			{
-				SemanticContextGraph = FunctionGraph;
-				break;
-			}
-		}
-	}
-	else
-	{
-		for (UEdGraph* Graph : Blueprint->UbergraphPages)
-		{
-			if (Graph && Graph->GetName() == Request.GraphName)
-			{
-				SemanticContextGraph = Graph;
-				break;
-			}
-		}
-	}
+	UEdGraph* SemanticContextGraph =
+		FBlueprintHelperGraphBodyReplaceCoordinator::ResolveSemanticContextGraph(
+			Blueprint,
+			Request.GraphName,
+			Request.Scope);
 
 	FBlueprintHelperGraphSemanticIR SemanticIR;
 	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
@@ -1247,7 +1125,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::PreflightGraphTarget(
 	UEdGraph*& OutGraph, FReplacePreflightResult& OutResult) const
 {
 	// 鍑芥暟鍥?(function_body)
-	if (Scope == EBlueprintHelperReplaceScope::FunctionBody)
+	if (FBlueprintHelperGraphBodyReplaceCoordinator::UsesMemberGraphTarget(Scope))
 	{
 		for (UEdGraph* FnGraph : Blueprint->FunctionGraphs)
 		{
@@ -1494,7 +1372,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceBlueprintGraphService::Exe
 		FBlueprintGraphGenerationPipeline::GenerateBlueprintFromJson(Resolved.Graph, GraphWritePayload, UnresolvedNodes);
 	FBlueprintGraphWriteExecutionStats ExecutionStats = GenerateResult.ExecutionStats;
 	const bool bDeferredEntryResolvedConnectivityFailure =
-		FBlueprintHelperReplaceBlueprintGraphServiceLocalUtils::CanDeferEntryResolvedConnectivityFailure(
+		FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptBoundaryConnectivityDiagnostics(
 			Request.Scope,
 			GenerateResult,
 			Resolved.Graph,
@@ -1698,7 +1576,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 {
 	// 鏌ユ壘鍥捐〃
 	UEdGraph* Graph = nullptr;
-	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
+	if (FBlueprintHelperGraphBodyReplaceCoordinator::IsWholeGraphBodyReplacementScope(Request.Scope))
 	{
 		for (UEdGraph* FnGraph : Blueprint->FunctionGraphs)
 		{
@@ -1739,7 +1617,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ResolveReplaceTarget(
 		return ResolveBlockImplementation(Graph, Request, OutTarget, OutError);
 	}
 
-	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
+	if (FBlueprintHelperGraphBodyReplaceCoordinator::IsWholeGraphBodyReplacementScope(Request.Scope))
 	{
 		OutTarget.TargetRef = Request.GraphName;
 		FBlueprintHelperReplaceEntryResolveRequest EntryResolveRequest;
@@ -1951,9 +1829,7 @@ bool FBlueprintHelperReplaceBlueprintGraphService::ReconnectPreservedEntryToNewB
 	const TSet<UEdGraphNode*>& NodesBeforeImport,
 	FString& OutError) const
 {
-	if (Request.Scope != EBlueprintHelperReplaceScope::FunctionBody &&
-		Request.Scope != EBlueprintHelperReplaceScope::EventBody &&
-		Request.Scope != EBlueprintHelperReplaceScope::CustomEventBody)
+	if (!FBlueprintHelperGraphBodyReplaceCoordinator::IsEntryReconnectScope(Request.Scope))
 	{
 		return true;
 	}

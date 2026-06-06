@@ -42,11 +42,11 @@ void FBlueprintGraphExistingNodeMapper::MapFunctionEntryResultNodes(UEdGraph* Ta
 	{
 		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
 		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_entry__"), Entry);
+			IdToSpawnedNode.FindOrAdd(TEXT("FunctionEntry"), Entry);
 		}
 		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
 		{
-			IdToSpawnedNode.FindOrAdd(TEXT("__function_result__"), ResultNode);
+			IdToSpawnedNode.FindOrAdd(TEXT("FunctionResult"), ResultNode);
 		}
 	}
 }

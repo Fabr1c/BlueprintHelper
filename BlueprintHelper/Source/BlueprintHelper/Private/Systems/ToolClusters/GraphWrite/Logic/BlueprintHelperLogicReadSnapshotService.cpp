@@ -1,6 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadSnapshotService.h"
 
 #include "Shared/Services/BlueprintHelperExportService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 
 class FBlueprintHelperLogicReadSnapshotServiceLocalUtils
@@ -101,6 +102,16 @@ bool FBlueprintHelperLogicReadSnapshotService::BuildSnapshot(
 	{
 		OutError = TEXT("Logic read snapshot export failed.");
 		return false;
+	}
+
+	FBlueprintHelperGraphBodyReadbackService ReadbackService;
+	TSharedPtr<FJsonObject> AdapterBoundaryJson;
+	FString AdapterBoundaryError;
+	if (ReadbackService.BuildAdapterBoundaryForTarget(Target, AdapterBoundaryJson, AdapterBoundaryError)
+		&& AdapterBoundaryJson.IsValid())
+	{
+		OutSnapshot.AdapterBoundaryJson = AdapterBoundaryJson;
+		OutSnapshot.RawJsonObject->SetObjectField(TEXT("adapter_boundary"), AdapterBoundaryJson);
 	}
 
 	if (RequestCache)

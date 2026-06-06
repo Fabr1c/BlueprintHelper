@@ -25,58 +25,59 @@ TArray<FBlueprintHelperGraphBodyAdapterDescriptor> FBlueprintHelperGraphBodyAdap
 	TArray<FBlueprintHelperGraphBodyAdapterDescriptor> Descriptors;
 	Descriptors.Reserve(8);
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("append_blueprint_graph"),
+		TEXT("k2.custom_event_body"),
 		TEXT("append_new_owned_graph"),
 		EBlueprintHelperGraphBodyKind::K2CustomEventBody,
-		TEXT("append_service"),
+		TEXT("custom_event_body_adapter"),
 		true,
 		false));
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("replace_blueprint_graph"),
+		TEXT("k2.event_body"),
+		TEXT("replace_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2EventBody,
+		TEXT("event_body_adapter"),
+		true,
+		false));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.function_body"),
 		TEXT("replace_owned_graph"),
 		EBlueprintHelperGraphBodyKind::K2FunctionBody,
-		TEXT("replace_service"),
+		TEXT("function_body_adapter"),
 		true,
 		false));
-	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("patch_blueprint_graph"),
-		TEXT("patch_owned_graph"),
-		EBlueprintHelperGraphBodyKind::K2BlockImplementation,
-		TEXT("owned_patch_policy"),
-		true,
-		false));
-	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("merge_blueprint_graph"),
-		TEXT("merge_owned_graph"),
-		EBlueprintHelperGraphBodyKind::K2BlockImplementation,
-		TEXT("merge_service"),
-		true,
-		false));
-	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("merge_external_flow"),
-		TEXT("merge_external_flow"),
-		EBlueprintHelperGraphBodyKind::K2ExternalBody,
-		TEXT("external_anchor_resolver"),
-		true,
-		true));
-	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("patch_external_graph"),
-		TEXT("patch_external_graph"),
-		EBlueprintHelperGraphBodyKind::K2ExternalBody,
-		TEXT("external_anchor_resolver"),
-		true,
-		true));
-	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
-		TEXT("replace_external_body"),
-		TEXT("replace_external_body"),
-		EBlueprintHelperGraphBodyKind::K2ExternalBody,
-		TEXT("external_body_snapshot"),
-		true,
-		true));
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
 		TEXT("k2.macro_body"),
+		TEXT("replace_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2MacroBody,
+		TEXT("macro_body_adapter"),
+		true,
+		false));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.block_implementation"),
+		TEXT("patch_owned_graph"),
+		EBlueprintHelperGraphBodyKind::K2BlockImplementation,
+		TEXT("block_body_adapter"),
+		true,
+		false));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.external_body"),
+		TEXT("merge_external_flow"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		TEXT("external_body_adapter"),
+		true,
+		true));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("material.function_body"),
 		TEXT(""),
-		EBlueprintHelperGraphBodyKind::ReservedMacroBody,
+		EBlueprintHelperGraphBodyKind::ReservedMaterialFunctionBody,
+		TEXT("reserved"),
+		false,
+		false,
+		true));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("animation.graph_body"),
+		TEXT(""),
+		EBlueprintHelperGraphBodyKind::ReservedAnimationGraphBody,
 		TEXT("reserved"),
 		false,
 		false,

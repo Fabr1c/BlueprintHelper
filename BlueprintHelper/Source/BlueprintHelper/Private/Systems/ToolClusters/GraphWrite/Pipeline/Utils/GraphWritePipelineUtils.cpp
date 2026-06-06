@@ -127,6 +127,44 @@ static TSet<UEdGraphNode*> CollectAllowedTerminalPureDataNodes(
 	return AllowedNodes;
 }
 
+static FString MakeConnectivityNodeRef(const UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		return TEXT("");
+	}
+	return Node->NodeGuid.IsValid()
+		? Node->NodeGuid.ToString(EGuidFormats::Digits)
+		: Node->GetName();
+}
+
+static void AddConnectivityNodeRef(
+	FBlueprintGraphWriteConnectivityValidationInput& Input,
+	UEdGraphNode* Node)
+{
+	const FString NodeRef = MakeConnectivityNodeRef(Node);
+	if (!Node || NodeRef.IsEmpty())
+	{
+		return;
+	}
+
+	Input.NodeRefs.Add(NodeRef, Node);
+	Input.BoundaryModel.GeneratedNodeRefs.AddUnique(NodeRef);
+}
+
+static void AddConnectivityBoundaryNodeRef(
+	FBlueprintGraphWriteConnectivityValidationInput& Input,
+	UEdGraphNode* Node,
+	TArray<FString>& BoundaryRefs)
+{
+	AddConnectivityNodeRef(Input, Node);
+	const FString NodeRef = MakeConnectivityNodeRef(Node);
+	if (!NodeRef.IsEmpty())
+	{
+		BoundaryRefs.AddUnique(NodeRef);
+	}
+}
+
 static TMap<FString, FString> BuildGeneratedFragmentAliasMap(const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments)
 {
 	TMap<FString, FString> AliasToFragmentId;
@@ -1267,15 +1305,38 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 	FBlueprintGraphWriteConnectivityValidationInput ConnectivityInput;
 	ConnectivityInput.TargetGraph = TargetGraph;
 	ConnectivityInput.GeneratedNodes = GraphWriteContext.GetGeneratedNodes();
-	ConnectivityInput.EntryRootNodes = GraphWriteContext.GetEntryRootNodes();
-	if (ConnectivityInput.EntryRootNodes.Num() == 0)
+	ConnectivityInput.BoundaryModel.RuntimeAdapterId = TEXT("k2.semantic_graph_generation");
+	ConnectivityInput.BoundaryModel.TaskSpecStrategy = TEXT("semantic_graph");
+	ConnectivityInput.BoundaryModel.TargetAssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
+	ConnectivityInput.BoundaryModel.GraphName = TargetGraph ? TargetGraph->GetName() : TEXT("");
+	ConnectivityInput.BoundaryModel.GraphFamily = TEXT("k2");
+	ConnectivityInput.BoundaryModel.BodyKind = EBlueprintHelperGraphBodyKind::Unknown;
+	ConnectivityInput.BoundaryModel.PureDataConsumptionPolicy =
+		EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;
+	ConnectivityInput.BoundaryModel.AllowedIsolatedNodePolicy =
+		EBlueprintHelperGraphBodyIsolatedNodePolicy::CommentsAndReroutesOnly;
+	for (UEdGraphNode* Node : ConnectivityInput.GeneratedNodes)
+	{
+		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityNodeRef(ConnectivityInput, Node);
+	}
+	for (UEdGraphNode* EntryNode : GraphWriteContext.GetEntryRootNodes())
+	{
+		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+			ConnectivityInput,
+			EntryNode,
+			ConnectivityInput.BoundaryModel.EntryNodeRefs);
+	}
+	if (ConnectivityInput.BoundaryModel.EntryNodeRefs.Num() == 0)
 	{
 		for (UEdGraphPin* EntryPin : TopLevelFlow.Entries)
 		{
 			UEdGraphNode* EntryNode = EntryPin ? EntryPin->GetOwningNode() : nullptr;
 			if (EntryNode)
 			{
-				ConnectivityInput.EntryRootNodes.Add(EntryNode);
+				BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+					ConnectivityInput,
+					EntryNode,
+					ConnectivityInput.BoundaryModel.EntryNodeRefs);
 			}
 		}
 	}
@@ -1284,6 +1345,15 @@ FBlueprintGenerateResult UGraphWritePipelineUtils::GenerateSemanticGraphFromJson
 			FragmentDag,
 			GeneratedFragments,
 			DataEdges);
+	for (UEdGraphNode* TerminalPureDataNode : ConnectivityInput.AllowedTerminalPureDataNodes)
+	{
+		BlueprintHelperGraphWritePipelineUtilsLocal::AddConnectivityBoundaryNodeRef(
+			ConnectivityInput,
+			TerminalPureDataNode,
+			ConnectivityInput.BoundaryModel.ExitNodeRefs);
+	}
+	ConnectivityInput.ConnectivityPolicy =
+		FBlueprintHelperGraphConnectivityPolicyUtils::FromBoundaryModel(ConnectivityInput.BoundaryModel);
 	ConnectivityInput.RequestedConnectionCount = DataEdges.Num();
 	ConnectivityInput.CreatedConnectionCount = CreatedDataConnectionCount;
 	const FBlueprintGraphWriteConnectivityValidationResult Connectivity =
