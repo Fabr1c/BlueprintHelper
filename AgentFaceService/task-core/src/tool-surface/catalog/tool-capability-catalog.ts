@@ -3,6 +3,10 @@ import { createToolsTemplateBuilderCore } from '../manifest/tools-template-build
 import { buildReadonlyToolCommandManifestRegistry } from '../manifest/tool-command-manifest-builder.js';
 import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { getGraphWriteSlotsForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
+import {
+  buildDescriptorRecommendedInvocation,
+  createToolCapabilityDescriptorRegistry,
+} from './tool-capability-descriptor-registry.js';
 import type { ToolAudience, ToolRisk } from '../types.js';
 import type {
   CliInvocationTemplateRef,
@@ -531,51 +535,17 @@ const READ_CONTEXT_SLOTS: readonly ToolTemplateSlotRef[] = [
   ),
 ];
 
-const ROUTES_BY_TOOL_ID = new Map<string, readonly ToolTemplateRouteRef[]>([
-  ['blueprint.plan.taskspec.preview', BLUEPRINT_TASKSPEC_ROUTES],
-  ['blueprint.write.taskspec.execute', BLUEPRINT_TASKSPEC_ROUTES],
-  ['blueprint.read.context.logic_flow', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.includes('logic_flow'))],
-  ['blueprint.read.context.logic_json', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.includes('logic_json'))],
-  ['blueprint.read.context.variables', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.blueprint.variables')],
-  ['blueprint.read.context.components', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.blueprint.components')],
-  ['umg.read.widget_tree', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.widget.tree')],
-  ['umg.read.widget_property', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.widget.property')],
-  ['umg.plan.taskspec.preview', UMG_TASKSPEC_ROUTES],
-  ['umg.write.taskspec.execute', UMG_TASKSPEC_ROUTES],
-  ['data.read.data_asset', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id === 'read.data_asset.object')],
-  ['data.read.data_table', READ_CONTEXT_ROUTES.filter((entry) => entry.route_id.startsWith('read.data_table.'))],
-  ['data.plan.taskspec.preview', DATA_TASKSPEC_ROUTES],
-  ['data.write.taskspec.execute', DATA_TASKSPEC_ROUTES],
-]);
-
-const SLOTS_BY_TOOL_ID = new Map<string, readonly ToolTemplateSlotRef[]>([
-  ['blueprint.plan.taskspec.preview', GRAPHWRITE_SLOT_TEMPLATE_REFS],
-  ['blueprint.write.taskspec.execute', GRAPHWRITE_SLOT_TEMPLATE_REFS],
-  ['blueprint.read.context.logic_flow', READ_CONTEXT_SLOTS],
-  ['blueprint.read.context.logic_json', READ_CONTEXT_SLOTS],
-  ['blueprint.read.context.variables', READ_CONTEXT_SLOTS],
-  ['blueprint.read.context.components', READ_CONTEXT_SLOTS],
-  ['umg.read.widget_tree', READ_CONTEXT_SLOTS],
-  ['umg.read.widget_property', READ_CONTEXT_SLOTS],
-  ['data.read.data_asset', READ_CONTEXT_SLOTS],
-  ['data.read.data_table', READ_CONTEXT_SLOTS],
-]);
-
-const STOP_CONDITIONS = new Map<string, string[]>([
-  ['blueprinthelper_find_assets', ['tool_unavailable', 'bridge_unavailable', 'target asset not found']],
-  ['blueprinthelper_read_context', ['tool_unavailable', 'bridge_unavailable', 'target not found', 'target asset not found', 'target graph not found']],
-  ['blueprinthelper_read_reference_context', ['tool_unavailable', 'bridge_unavailable', 'reference target not found']],
-  ['blueprinthelper_read_function_chain_context', ['tool_unavailable', 'bridge_unavailable', 'entry function not found']],
-  ['blueprinthelper_preview_task', ['tool_unavailable', 'write_session_required', 'taskspec_template_unavailable', 'preview_blocked']],
-  ['blueprinthelper_execute_task', ['tool_unavailable', 'write_session_required', 'preview_required', 'execute_failed']],
-  ['blueprinthelper_request_write_session', ['tool_unavailable', 'preview_required', 'write_permission_denied']],
-  ['blueprinthelper_diagnostics', ['tool_unavailable', 'diagnostics_failed']],
-  ['blueprinthelper_diagnostics_runtime', ['tool_unavailable', 'bridge_unavailable', 'diagnostics_failed']],
-  ['blueprint_compile_blueprint', ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'compile_failed', 'target_asset_not_found', 'tool_failed']],
-  ['blueprint_save_asset', ['tool_unavailable', 'bridge_unavailable', 'write_session_required', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_required', 'not_editable', 'save_failed', 'target_asset_not_found', 'tool_failed']],
-  ['blueprinthelper_source_control_status', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'not_editable']],
-  ['blueprinthelper_source_control_checkout', ['tool_unavailable', 'bridge_unavailable', 'source_control_unavailable', 'checked_out_by_other', 'source_control_conflicted', 'checkout_failed', 'not_editable']],
-]);
+function createDescriptorRegistry() {
+  return createToolCapabilityDescriptorRegistry({
+    capabilities: CAPABILITIES,
+    blueprintTaskSpecRoutes: BLUEPRINT_TASKSPEC_ROUTES,
+    umgTaskSpecRoutes: UMG_TASKSPEC_ROUTES,
+    dataTaskSpecRoutes: DATA_TASKSPEC_ROUTES,
+    readContextRoutes: READ_CONTEXT_ROUTES,
+    graphWriteSlotTemplateRefs: GRAPHWRITE_SLOT_TEMPLATE_REFS,
+    readContextSlots: READ_CONTEXT_SLOTS,
+  });
+}
 
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {
   const audience = options.audience ?? 'default';
@@ -635,23 +605,30 @@ export function getToolTemplateDispatch(toolId: string, options: GetToolTemplate
   ).getTemplateDispatch(toolId, options);
 }
 
+export function getToolCapabilityDescriptor(toolId: string) {
+  return createDescriptorRegistry().get(toolId);
+}
+
 export function getRawToolTemplateDispatch(toolId: string, options: GetToolTemplateDispatchOptions = {}): ToolTemplateDispatchResult {
   const capabilityItem = CAPABILITIES.find((entry) => entry.id === toolId);
   if (!capabilityItem) {
     throw new Error(`Unknown BlueprintHelper tool capability id: ${toolId}`);
   }
 
+  const descriptorRegistry = createDescriptorRegistry();
+  const descriptor = descriptorRegistry.require(toolId);
   const cliInvocationTemplates = capabilityItem.cli_template_ids.map(resolveCliTemplate);
   const inputShape = cliInvocationTemplates.find((template) => template.input_shape)?.input_shape;
-  const routes = [...(ROUTES_BY_TOOL_ID.get(toolId) ?? [])];
+  const routes = [...descriptor.route_refs];
+  const requestedRoute = options.route ? normalizeTemplateRouteId(options.route) : undefined;
   const selectedRoute = options.route
-    ? routes.find((entry) => entry.route_id === options.route)
+    ? routes.find((entry) => entry.route_id === requestedRoute)
     : undefined;
   if (options.route && !selectedRoute) {
     throw new Error(`Unknown BlueprintHelper template route for ${toolId}: ${options.route}`);
   }
   const slotTemplates = options.slot === true
-    ? filterSlotTemplates(toolId, options, selectedRoute)
+    ? descriptorRegistry.filterSlotTemplates(toolId, options, selectedRoute)
     : [];
 
   return {
@@ -663,29 +640,25 @@ export function getRawToolTemplateDispatch(toolId: string, options: GetToolTempl
     selected_route: selectedRoute,
     slot_templates: slotTemplates,
     input_shape: inputShape,
-    recommended_invocation: buildRecommendedInvocation(capabilityItem, cliInvocationTemplates),
+    recommended_invocation: descriptor.recommended_invocations[0]
+      ?? buildDescriptorRecommendedInvocation(descriptor, cliInvocationTemplates),
     allowed_tools: [capabilityItem.tool_name],
-    stop_conditions: resolveStopConditions(capabilityItem),
+    stop_conditions: [...descriptor.stop_conditions],
     next: buildTemplateDispatchNext(capabilityItem.id, routes),
   };
 }
 
-function filterSlotTemplates(
-  toolId: string,
-  options: GetToolTemplateDispatchOptions,
-  selectedRoute: ToolTemplateRouteRef | undefined,
-): ToolTemplateSlotRef[] {
-  const routeIds = selectedRoute
-    ? new Set([selectedRoute.route_id])
-    : new Set((ROUTES_BY_TOOL_ID.get(toolId) ?? []).map((routeEntry) => routeEntry.route_id));
-  const slotTemplates = SLOTS_BY_TOOL_ID.get(toolId) ?? [];
-  return slotTemplates.filter((slotTemplate) => {
-    if (options.slotKind && slotTemplate.slot_type !== options.slotKind) {
-      return false;
-    }
-    return slotTemplate.applies_to_routes.some((routeId) => routeIds.has(routeId));
-  });
+function normalizeTemplateRouteId(routeId: string): string {
+  return READ_CONTEXT_ROUTE_ALIASES.get(routeId) ?? routeId;
 }
+
+const READ_CONTEXT_ROUTE_ALIASES = new Map<string, string>([
+  ['read_context.function.logic_flow', 'read.blueprint.logic.function.logic_flow'],
+  ['read_context.event.logic_flow', 'read.blueprint.logic.event.logic_flow'],
+  ['read_context.custom_event.logic_flow', 'read.blueprint.logic.custom_event.logic_flow'],
+  ['read_context.graph.logic_json', 'read.blueprint.logic.graph.logic_json'],
+  ['read_context.block.logic_json', 'read.blueprint.logic.block.logic_json'],
+]);
 
 function buildTemplateDispatchNext(toolId: string, routes: readonly ToolTemplateRouteRef[]): ToolTemplateDispatchResult['next'] {
   if (routes.length === 0) {
@@ -772,28 +745,4 @@ function isAudienceVisible(
     return audience === 'compat';
   }
   return true;
-}
-
-function buildRecommendedInvocation(
-  capabilityItem: ToolCapabilityItem,
-  templates: CliInvocationTemplateRef[],
-): string {
-  const templatePath = templates[0]?.path ?? '<filled-template.json>';
-  if (capabilityItem.tool_name === 'blueprinthelper_preview_task') {
-    return 'bh task preview --file <filled_taskspec.json> --format summary';
-  }
-  if (capabilityItem.tool_name === 'blueprinthelper_execute_task') {
-    return 'bh task execute --file <filled_taskspec.json> --preview-token <preview_token> --format summary';
-  }
-  return `bh ${capabilityItem.tool_name} --file ${templatePath} --select status,artifacts.full_result`;
-}
-
-function resolveStopConditions(capabilityItem: ToolCapabilityItem): string[] {
-  const specific = STOP_CONDITIONS.get(capabilityItem.tool_name);
-  if (specific) {
-    return [...specific];
-  }
-  return capabilityItem.requires_bridge
-    ? ['tool_unavailable', 'bridge_unavailable']
-    : ['tool_unavailable'];
 }

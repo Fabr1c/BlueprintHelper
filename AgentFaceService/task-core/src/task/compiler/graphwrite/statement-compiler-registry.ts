@@ -1,10 +1,25 @@
 import { getAllGraphWriteSlotDescriptors } from './graphwrite-slot-registry.js';
 import { TaskSpecCompileError } from '../task-compiler-errors.js';
+import type {
+  GraphWriteStatementFlowCompileHandler,
+  GraphWriteStatementNodeCompileHandler,
+} from './graphwrite-compiler-types.js';
 
-export interface GraphWriteStatementCompilerDescriptor {
+export interface GraphWriteStatementCompilerMetadata {
   compiler_id: string;
   public_kinds: readonly string[];
   slot_ids: readonly string[];
+}
+
+export interface GraphWriteStatementCompilerRegistration {
+  compiler_id: string;
+  compile_flow: GraphWriteStatementFlowCompileHandler;
+  compile_node: GraphWriteStatementNodeCompileHandler;
+}
+
+export interface GraphWriteStatementCompilerDescriptor extends GraphWriteStatementCompilerMetadata {
+  compile_flow: GraphWriteStatementFlowCompileHandler;
+  compile_node: GraphWriteStatementNodeCompileHandler;
 }
 
 export interface ResolveGraphWriteStatementCompilerInput {
@@ -22,7 +37,7 @@ const PUBLIC_DELEGATE_KINDS = new Set([
   'delegate.call',
 ]);
 
-const COMPATIBILITY_STATEMENT_COMPILERS: readonly GraphWriteStatementCompilerDescriptor[] = [
+const COMPATIBILITY_STATEMENT_COMPILERS: readonly GraphWriteStatementCompilerMetadata[] = [
   {
     compiler_id: 'statement.control.sequence',
     public_kinds: ['sequence'],
@@ -38,8 +53,11 @@ const COMPATIBILITY_STATEMENT_COMPILERS: readonly GraphWriteStatementCompilerDes
 export class StatementCompilerRegistry {
   private readonly descriptorsById: Map<string, GraphWriteStatementCompilerDescriptor>;
 
-  constructor(descriptors: readonly GraphWriteStatementCompilerDescriptor[]) {
-    this.descriptorsById = mergeStatementCompilerDescriptors(descriptors);
+  constructor(
+    descriptors: readonly GraphWriteStatementCompilerMetadata[],
+    registrations: readonly GraphWriteStatementCompilerRegistration[] = [],
+  ) {
+    this.descriptorsById = mergeStatementCompilerDescriptors(descriptors, registrations);
   }
 
   getByCompilerId(compilerId: string): GraphWriteStatementCompilerDescriptor | undefined {
@@ -63,11 +81,16 @@ export class StatementCompilerRegistry {
   }
 }
 
-export function createDefaultStatementCompilerRegistry(): StatementCompilerRegistry {
-  return new StatementCompilerRegistry([
-    ...statementCompilerDescriptorsFromSlots(),
-    ...COMPATIBILITY_STATEMENT_COMPILERS,
-  ]);
+export function createDefaultStatementCompilerRegistry(
+  registrations: readonly GraphWriteStatementCompilerRegistration[] = [],
+): StatementCompilerRegistry {
+  return new StatementCompilerRegistry(
+    [
+      ...statementCompilerDescriptorsFromSlots(),
+      ...COMPATIBILITY_STATEMENT_COMPILERS,
+    ],
+    registrations,
+  );
 }
 
 export function requireGraphWriteStatementCompiler(
@@ -78,7 +101,7 @@ export function requireGraphWriteStatementCompiler(
 
 export const defaultStatementCompilerRegistry = createDefaultStatementCompilerRegistry();
 
-function statementCompilerDescriptorsFromSlots(): GraphWriteStatementCompilerDescriptor[] {
+function statementCompilerDescriptorsFromSlots(): GraphWriteStatementCompilerMetadata[] {
   const byCompilerId = new Map<string, { publicKinds: Set<string>; slotIds: string[] }>();
   for (const slot of getAllGraphWriteSlotDescriptors()) {
     if (slot.slot_type !== 'statement') continue;
@@ -95,7 +118,8 @@ function statementCompilerDescriptorsFromSlots(): GraphWriteStatementCompilerDes
 }
 
 function mergeStatementCompilerDescriptors(
-  descriptors: readonly GraphWriteStatementCompilerDescriptor[],
+  descriptors: readonly GraphWriteStatementCompilerMetadata[],
+  registrations: readonly GraphWriteStatementCompilerRegistration[],
 ): Map<string, GraphWriteStatementCompilerDescriptor> {
   const merged = new Map<string, { publicKinds: Set<string>; slotIds: Set<string> }>();
   for (const descriptor of descriptors) {
@@ -104,11 +128,26 @@ function mergeStatementCompilerDescriptors(
     descriptor.slot_ids.forEach((slotId) => entry.slotIds.add(slotId));
     merged.set(descriptor.compiler_id, entry);
   }
+  const registrationsById = new Map(registrations.map((registration) => [registration.compiler_id, registration]));
   return new Map([...merged.entries()].map(([compilerId, entry]) => [compilerId, {
     compiler_id: compilerId,
     public_kinds: [...entry.publicKinds].sort(),
     slot_ids: [...entry.slotIds].sort(),
+    compile_flow: registrationsById.get(compilerId)?.compile_flow ?? unboundStatementFlowCompiler,
+    compile_node: registrationsById.get(compilerId)?.compile_node ?? unboundStatementNodeCompiler,
   }]));
+}
+
+function unboundStatementFlowCompiler(
+  input: Parameters<GraphWriteStatementFlowCompileHandler>[0],
+): ReturnType<GraphWriteStatementFlowCompileHandler> {
+  throw new Error(`GraphWrite statement compiler ${input.compilerId} has no registered flow handler.`);
+}
+
+function unboundStatementNodeCompiler(
+  input: Parameters<GraphWriteStatementNodeCompileHandler>[0],
+): ReturnType<GraphWriteStatementNodeCompileHandler> {
+  throw new Error(`GraphWrite statement compiler ${input.compilerId} has no registered node handler.`);
 }
 
 function resolveStatementCompilerId(input: ResolveGraphWriteStatementCompilerInput): string {

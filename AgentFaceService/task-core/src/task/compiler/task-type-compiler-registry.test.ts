@@ -70,11 +70,13 @@ test('compiler helper module exports primitives needed by non-GraphWrite compile
   assert.equal(typeof helpers.omitUndefined, 'function');
 });
 
-test('default task type registry includes all P3 non-GraphWrite compilers and excludes GraphWrite surfaces', () => {
+test('default task type registry includes every canonical public task compiler', () => {
   const registry = createDefaultTaskTypeCompilerRegistry();
 
   for (const taskType of [
     'create_asset',
+    'create_blueprint_feature',
+    'edit_blueprint_graph',
     'edit_blueprint_variables',
     'edit_object_properties',
     'edit_blueprint_signature',
@@ -83,9 +85,6 @@ test('default task type registry includes all P3 non-GraphWrite compilers and ex
     'edit_umg_widget',
     'edit_data_table',
   ]) {
-    assert.equal(registry.has(taskType), true, `${taskType} should be registered in P3`);
+    assert.equal(registry.has(taskType), true, `${taskType} should be registered`);
   }
-
-  assert.equal(registry.has('edit_blueprint_graph'), false);
-  assert.equal(registry.has('create_blueprint_feature'), false);
 });

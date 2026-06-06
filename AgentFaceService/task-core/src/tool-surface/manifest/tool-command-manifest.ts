@@ -14,6 +14,7 @@ export type ToolInputShapeId =
   | 'wrapped_taskspec_preview'
   | 'wrapped_taskspec_execute'
   | 'readspec'
+  | 'read_reference_context'
   | 'bridge_payload'
   | 'tool_payload';
 

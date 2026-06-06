@@ -5,7 +5,11 @@ import {
   createMetricsService,
   type MetricsService,
 } from '@blueprinthelper/task-core/metrics/metrics-service';
-import { buildReadonlyToolCommandManifestRegistry } from '@blueprinthelper/task-core/tool-surface/manifest/tool-command-manifest-builder';
+import { extractTaskPlanMetricOperations } from '@blueprinthelper/task-core/metrics/operation-extractor';
+import {
+  buildReadonlyToolCommandManifestRegistry,
+  getToolCapabilityDescriptor,
+} from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import type {
   MetricsIoSummary,
   MetricsOperationIdentity,
@@ -176,19 +180,60 @@ function resolveCliMetricsEpisodeTtlMs(env: NodeJS.ProcessEnv): number | undefin
   return hours * HOUR_IN_MS;
 }
 
-function resolveCliToolOperation(toolName: string, _input: unknown): MetricsOperationIdentity {
+function resolveCliToolOperation(toolName: string, input: unknown): MetricsOperationIdentity {
   const manifest = buildReadonlyToolCommandManifestRegistry().get(toolName);
+  if (manifest?.metrics_identity) {
+    return manifest.metrics_identity;
+  }
   if (manifest) {
-    return manifest.metrics_identity ?? {
+    const descriptorIdentity = getToolCapabilityDescriptor(manifest.tool_id)?.metrics_identity;
+    if (descriptorIdentity) {
+      return descriptorIdentity;
+    }
+  }
+
+  const taskPlanOperation = resolveTaskPlanOperationIdentity(input);
+  if (taskPlanOperation) {
+    return taskPlanOperation;
+  }
+
+  if (manifest) {
+    return {
       capability: `${manifest.domain}.${manifest.kind}`,
       semantic_operation: manifest.tool_id,
+      fallback: true,
     };
   }
 
   return {
     capability: toolName,
     semantic_operation: toolName,
+    fallback: true,
   };
+}
+
+function resolveTaskPlanOperationIdentity(input: unknown): MetricsOperationIdentity | undefined {
+  const taskPlan = readTaskPlanLike(input);
+  if (!taskPlan) {
+    return undefined;
+  }
+  return extractTaskPlanMetricOperations(taskPlan as never)[0];
+}
+
+function readTaskPlanLike(input: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  const directSchema = typeof input['schema'] === 'string' ? input['schema'] : undefined;
+  if (directSchema?.includes('TaskPlan')) {
+    return input;
+  }
+  const taskPlan = input['task_plan'] ?? input['taskPlan'];
+  return isRecord(taskPlan) ? taskPlan : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function resolveCliIoToolName(command: Pick<CliCommand, 'kind' | 'toolName'>): string | undefined {

@@ -1126,7 +1126,7 @@ test('execute task registry handler passes preview token to TaskSpecRunner', asy
   assert.deepEqual(receivedPreviewToken, previewToken);
 });
 
-test('execute task registry handler rejects direct TaskSpec preview token', async () => {
+test('execute task registry adapter rejects direct TaskSpec preview token', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
   assert.ok(tool);
   const previewToken = 'abcdef0123456789abcdef0123456789';
@@ -1138,35 +1138,38 @@ test('execute task registry handler rejects direct TaskSpec preview token', asyn
     getTaskResult: async () => { throw new Error('not used'); },
   } as unknown as TaskSpecRunner;
 
-  const result = await tool.execute({
-    schema: 'BlueprintHelper.TaskSpec.v1',
-    context_id: 'ctx_registry_execute_direct',
-    task_type: 'edit_blueprint_graph',
-    feature_name: 'RegistryExecuteDirect',
-    target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
-    scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
-    behavior: {
-      graph_strategy: 'append_new_owned_graph',
-      entries: [{
-        entry_type: 'custom_event',
-        name: 'RegistryExecuteDirect',
-        body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
-      }],
+  await assert.rejects(
+    () => tool.execute({
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      context_id: 'ctx_registry_execute_direct',
+      task_type: 'edit_blueprint_graph',
+      feature_name: 'RegistryExecuteDirect',
+      target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
+      scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
+      behavior: {
+        graph_strategy: 'append_new_owned_graph',
+        entries: [{
+          entry_type: 'custom_event',
+          name: 'RegistryExecuteDirect',
+          body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
+        }],
+      },
+      execution_policy: {
+        dry_run_mode: 'full',
+        on_missing_capability: 'stop_and_report',
+      },
+      validation: { should_compile: true, should_save: false },
+      preview_token: previewToken,
+    }, {
+      cwd: process.cwd(),
+      bridge: {} as never,
+      taskRunner: runner,
+    }),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, 'preview_token_requires_task_spec_wrapper');
+      return true;
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: { should_compile: true, should_save: false },
-    preview_token: previewToken,
-  }, {
-    cwd: process.cwd(),
-    bridge: {} as never,
-    taskRunner: runner,
-  });
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error?.code, 'preview_token_requires_task_spec_wrapper');
+  );
 });
 
 function assertNoUnsafeAgentFacingKeys(value: unknown): void {

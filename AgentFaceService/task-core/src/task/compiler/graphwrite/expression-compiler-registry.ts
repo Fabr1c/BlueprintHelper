@@ -1,10 +1,20 @@
 import { getAllGraphWriteSlotDescriptors } from './graphwrite-slot-registry.js';
 import { TaskSpecCompileError } from '../task-compiler-errors.js';
+import type { GraphWriteExpressionCompileHandler } from './graphwrite-compiler-types.js';
 
-export interface GraphWriteExpressionCompilerDescriptor {
+export interface GraphWriteExpressionCompilerMetadata {
   compiler_id: string;
   public_kinds: readonly string[];
   slot_ids: readonly string[];
+}
+
+export interface GraphWriteExpressionCompilerRegistration {
+  compiler_id: string;
+  compile: GraphWriteExpressionCompileHandler;
+}
+
+export interface GraphWriteExpressionCompilerDescriptor extends GraphWriteExpressionCompilerMetadata {
+  compile: GraphWriteExpressionCompileHandler;
 }
 
 export interface ResolveGraphWriteExpressionCompilerInput {
@@ -13,7 +23,7 @@ export interface ResolveGraphWriteExpressionCompilerInput {
   capabilityId?: string;
 }
 
-const COMPATIBILITY_EXPRESSION_COMPILERS: readonly GraphWriteExpressionCompilerDescriptor[] = [
+const COMPATIBILITY_EXPRESSION_COMPILERS: readonly GraphWriteExpressionCompilerMetadata[] = [
   {
     compiler_id: 'expression.get_property',
     public_kinds: ['get_property'],
@@ -59,8 +69,11 @@ const COMPATIBILITY_EXPRESSION_COMPILERS: readonly GraphWriteExpressionCompilerD
 export class ExpressionCompilerRegistry {
   private readonly descriptorsById: Map<string, GraphWriteExpressionCompilerDescriptor>;
 
-  constructor(descriptors: readonly GraphWriteExpressionCompilerDescriptor[]) {
-    this.descriptorsById = mergeExpressionCompilerDescriptors(descriptors);
+  constructor(
+    descriptors: readonly GraphWriteExpressionCompilerMetadata[],
+    registrations: readonly GraphWriteExpressionCompilerRegistration[] = [],
+  ) {
+    this.descriptorsById = mergeExpressionCompilerDescriptors(descriptors, registrations);
   }
 
   getByCompilerId(compilerId: string): GraphWriteExpressionCompilerDescriptor | undefined {
@@ -84,11 +97,16 @@ export class ExpressionCompilerRegistry {
   }
 }
 
-export function createDefaultExpressionCompilerRegistry(): ExpressionCompilerRegistry {
-  return new ExpressionCompilerRegistry([
-    ...expressionCompilerDescriptorsFromSlots(),
-    ...COMPATIBILITY_EXPRESSION_COMPILERS,
-  ]);
+export function createDefaultExpressionCompilerRegistry(
+  registrations: readonly GraphWriteExpressionCompilerRegistration[] = [],
+): ExpressionCompilerRegistry {
+  return new ExpressionCompilerRegistry(
+    [
+      ...expressionCompilerDescriptorsFromSlots(),
+      ...COMPATIBILITY_EXPRESSION_COMPILERS,
+    ],
+    registrations,
+  );
 }
 
 export function requireGraphWriteExpressionCompiler(
@@ -99,7 +117,7 @@ export function requireGraphWriteExpressionCompiler(
 
 export const defaultExpressionCompilerRegistry = createDefaultExpressionCompilerRegistry();
 
-function expressionCompilerDescriptorsFromSlots(): GraphWriteExpressionCompilerDescriptor[] {
+function expressionCompilerDescriptorsFromSlots(): GraphWriteExpressionCompilerMetadata[] {
   const byCompilerId = new Map<string, { publicKinds: Set<string>; slotIds: string[] }>();
   for (const slot of getAllGraphWriteSlotDescriptors()) {
     if (slot.slot_type !== 'expression') continue;
@@ -116,7 +134,8 @@ function expressionCompilerDescriptorsFromSlots(): GraphWriteExpressionCompilerD
 }
 
 function mergeExpressionCompilerDescriptors(
-  descriptors: readonly GraphWriteExpressionCompilerDescriptor[],
+  descriptors: readonly GraphWriteExpressionCompilerMetadata[],
+  registrations: readonly GraphWriteExpressionCompilerRegistration[],
 ): Map<string, GraphWriteExpressionCompilerDescriptor> {
   const merged = new Map<string, { publicKinds: Set<string>; slotIds: Set<string> }>();
   for (const descriptor of descriptors) {
@@ -125,11 +144,19 @@ function mergeExpressionCompilerDescriptors(
     descriptor.slot_ids.forEach((slotId) => entry.slotIds.add(slotId));
     merged.set(descriptor.compiler_id, entry);
   }
+  const registrationsById = new Map(registrations.map((registration) => [registration.compiler_id, registration]));
   return new Map([...merged.entries()].map(([compilerId, entry]) => [compilerId, {
     compiler_id: compilerId,
     public_kinds: [...entry.publicKinds].sort(),
     slot_ids: [...entry.slotIds].sort(),
+    compile: registrationsById.get(compilerId)?.compile ?? unboundExpressionCompiler,
   }]));
+}
+
+function unboundExpressionCompiler(
+  input: Parameters<GraphWriteExpressionCompileHandler>[0],
+): ReturnType<GraphWriteExpressionCompileHandler> {
+  throw new Error(`GraphWrite expression compiler ${input.compilerId} has no registered handler.`);
 }
 
 function resolveExpressionCompilerId(input: ResolveGraphWriteExpressionCompilerInput): string {

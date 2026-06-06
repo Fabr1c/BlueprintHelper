@@ -34,6 +34,7 @@ export interface MetricsTaskKey {
 export interface MetricsOperationIdentity {
   capability?: string;
   semantic_operation?: string;
+  fallback?: boolean;
 }
 
 export interface MetricsIssueSummary {

@@ -1,6 +1,7 @@
 export { getBlueprintHelperTool, getBlueprintHelperToolRegistry } from './registry/tool-registry-builder.js';
 export {
   getToolTemplateDispatch,
+  getToolCapabilityDescriptor,
   isToolCapabilityDomain,
   isToolCapabilityKind,
   listToolCapabilities,

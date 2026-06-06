@@ -430,6 +430,19 @@ test('getToolTemplateDispatch exposes route-first ReadContext template navigatio
   );
 });
 
+test('getToolTemplateDispatch accepts compact ReadContext route aliases', () => {
+  const dispatch = getToolTemplateDispatch('blueprint.read.context.logic_flow', {
+    route: 'read_context.function.logic_flow',
+    slot: true,
+  });
+
+  assert.equal(dispatch.selected_route?.route_id, 'read.blueprint.logic.function.logic_flow');
+  assert.equal(
+    dispatch.slot_templates.some((slot) => slot.slot_id === 'read.target.function'),
+    true,
+  );
+});
+
 test('getToolTemplateDispatch exposes route-first ReadContext navigation for widget properties and data assets', () => {
   const widgetDispatch = getToolTemplateDispatch('umg.read.widget_property', {
     route: 'read.widget.property',

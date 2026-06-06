@@ -110,12 +110,12 @@ function makeFunctionLogicJsonWithSyntheticBoundaries(): Record<string, unknown>
       entry: {
         kind: 'function',
         name: 'AddMazeRelativeRotation',
-        node_path: '$.graphs[AddMazeRelativeRotation].__function_entry__',
-        node_ref: '__function_entry__',
+        node_path: '$.graphs[AddMazeRelativeRotation].FunctionEntry',
+        node_ref: 'FunctionEntry',
       },
       nodes: [
         {
-          node_ref: '__function_entry__',
+          node_ref: 'FunctionEntry',
           kind: 'function',
           name: 'AddMazeRelativeRotation',
           links: [
@@ -137,13 +137,13 @@ function makeFunctionLogicJsonWithSyntheticBoundaries(): Record<string, unknown>
               link_ref: 'links[1]',
               type: 'exec',
               from_pin: 'then',
-              to_node: '__function_result__',
+              to_node: 'FunctionResult',
               to_pin: 'execute',
             },
           ],
         },
         {
-          node_ref: '__function_result__',
+          node_ref: 'FunctionResult',
           kind: 'return',
           name: 'Return',
         },
@@ -213,6 +213,57 @@ test('logic_flow payload renders function graph synthetic entry and result bound
   assert.equal(payload['mode'], 'execflow');
   assert.equal((payload['warnings'] as string[]).length, 0);
   assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
+});
+
+test('logic_flow uses adapter boundary projection instead of local function guessing', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.function_body',
+      entry_boundaries: [{ node_ref: 'FunctionEntry', display_name: 'AddScore' }],
+      exit_boundaries: [{ node_ref: 'FunctionResult', display_name: 'Return' }],
+      folded_boundary_node_refs: ['FunctionEntry'],
+      visible_boundary_node_refs: ['FunctionResult'],
+    },
+    logic: {
+      nodes: [
+        { node_ref: 'FunctionEntry', name: 'Entry', kind: 'function_entry' },
+        { node_ref: 'SetScore', name: 'Set Score', kind: 'call' },
+        { node_ref: 'FunctionResult', name: 'Return', kind: 'return' },
+      ],
+      links: [
+        { type: 'exec', from_node: 'FunctionEntry', from_pin: 'then', to_node: 'SetScore', to_pin: 'execute' },
+        { type: 'exec', from_node: 'SetScore', from_pin: 'then', to_node: 'FunctionResult', to_pin: 'execute' },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['flow'], 'AddScore -> Set Score -> Return');
+});
+
+test('logic_flow renders macro tunnel boundaries from adapter projection', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.macro_body',
+      entry_boundaries: [{ node_ref: 'TunnelEntry', display_name: 'Macro In' }],
+      exit_boundaries: [{ node_ref: 'TunnelExit', display_name: 'Macro Out' }],
+      visible_boundary_node_refs: ['TunnelEntry', 'TunnelExit'],
+    },
+    logic: {
+      nodes: [
+        { node_ref: 'TunnelEntry', name: 'Tunnel Entry', kind: 'macro_entry' },
+        { node_ref: 'Clamp', name: 'Clamp', kind: 'call' },
+        { node_ref: 'TunnelExit', name: 'Tunnel Exit', kind: 'macro_exit' },
+      ],
+      links: [
+        { type: 'exec', from_node: 'TunnelEntry', from_pin: 'then', to_node: 'Clamp', to_pin: 'execute' },
+        { type: 'exec', from_node: 'Clamp', from_pin: 'then', to_node: 'TunnelExit', to_pin: 'execute' },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['flow'], 'Macro In -> Clamp -> Macro Out');
 });
 
 test('logic_flow payload degrades to logic_json when links are unknown', () => {

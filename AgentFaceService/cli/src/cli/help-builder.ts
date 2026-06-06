@@ -11,13 +11,19 @@ export interface HelpBuilder {
   build(target?: string[]): string;
 }
 
-type StaticHelpEntry = {
+type CommandHelpEntry = {
   summary: string;
   usage: string[];
   input: string[];
   templates?: string[];
   notes?: string[];
   commonOptions?: string[];
+};
+
+type LocalCommandHelpDescriptor = CommandHelpEntry & {
+  key: string;
+  title?: string;
+  aliases?: string[];
 };
 
 export function createHelpBuilder(
@@ -31,12 +37,12 @@ export function createHelpBuilder(
       }
 
       const key = normalizedTarget.join(' ');
-      const staticEntry = resolveStaticHelpEntry(key);
-      if (staticEntry) {
-        return formatEntry(resolveStaticHelpTitle(key) ?? key, staticEntry);
+      const localEntry = resolveLocalCommandHelpDescriptor(key);
+      if (localEntry) {
+        return formatEntry(localEntry.title ?? localEntry.key, localEntry);
       }
 
-      const manifest = registry.get(resolveLifecycleAlias(key) ?? key);
+      const manifest = registry.get(key);
       if (manifest) {
         const templateBuilder = createToolsTemplateBuilder(registry);
         const manifests = resolveDisplayManifests(registry, key, manifest);
@@ -75,10 +81,7 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     '  bh tools list <domain> <kind> --format json',
     '  bh tools templates <tool_id> --format json',
     '  bh tools templates <tool_id> --route <route_id> --slot [--kind statement|expression|target|view|patch|merge] --format json',
-    '  bh metrics report --window 7d --format json',
-    '  bh metrics top-errors --window 7d --format markdown',
-    '  bh metrics tool-usage --window 30d --limit 50 --format json',
-    '  bh metrics task-health --window all --limit 20 --format markdown',
+    ...globalMetricsUsageLines().map((line) => `  ${line}`),
     '',
     'Tool and template selection:',
     '  Start with: bh tools domains --format json',
@@ -126,7 +129,7 @@ function formatManifestEntry(
   });
 }
 
-function formatEntry(name: string, entry: StaticHelpEntry): string {
+function formatEntry(name: string, entry: CommandHelpEntry): string {
   return [
     `BlueprintHelper CLI help: ${name}`,
     '',
@@ -167,6 +170,8 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
         return 'Direct tool input: { "task_spec": { "schema": "BlueprintHelper.TaskSpec.v1", ... } }.';
       case 'readspec':
         return 'Root JSON: bare BlueprintHelper.ReadSpec.v1. Do not wrap the input in args.';
+      case 'read_reference_context':
+        return 'Root JSON: bare BlueprintHelper.ReferenceContextRequest.v1. Do not wrap the input in args.';
       case 'bridge_payload':
         return 'Root JSON: Bridge tool payload object. Use a template path before calling the tool.';
       case 'tool_payload':
@@ -256,38 +261,19 @@ function toolSpecificNotes(toolName: string): string[] {
   return [];
 }
 
-function resolveStaticHelpEntry(key: string): StaticHelpEntry | undefined {
-  if (key === 'blueprint_open_editor' || key === 'open_editor') {
-    return lifecycleHelp('open');
-  }
-  if (key === 'blueprint_close_editor' || key === 'close_editor') {
-    return lifecycleHelp('close');
-  }
-  return STATIC_GROUP_HELP.get(key);
+function resolveLocalCommandHelpDescriptor(key: string): LocalCommandHelpDescriptor | undefined {
+  return LOCAL_COMMAND_HELP_DESCRIPTORS.find((entry) => (
+    entry.key === key || entry.aliases?.includes(key)
+  ));
 }
 
-function resolveStaticHelpTitle(key: string): string | undefined {
-  if (key === 'open_editor') {
-    return 'blueprint_open_editor';
-  }
-  if (key === 'close_editor') {
-    return 'blueprint_close_editor';
-  }
-  return undefined;
+function globalMetricsUsageLines(): string[] {
+  return resolveLocalCommandHelpDescriptor('metrics')?.usage ?? [];
 }
 
-function resolveLifecycleAlias(key: string): string | undefined {
-  if (key === 'open_editor') {
-    return 'blueprint_open_editor';
-  }
-  if (key === 'close_editor') {
-    return 'blueprint_close_editor';
-  }
-  return undefined;
-}
-
-const STATIC_GROUP_HELP = new Map<string, StaticHelpEntry>([
-  ['metrics', {
+const LOCAL_COMMAND_HELP_DESCRIPTORS: readonly LocalCommandHelpDescriptor[] = [
+  {
+    key: 'metrics',
     summary: 'Build standalone BlueprintHelper metrics reports from the local metrics store.',
     usage: [
       'bh metrics report --window 7d --format json',
@@ -302,30 +288,38 @@ const STATIC_GROUP_HELP = new Map<string, StaticHelpEntry>([
       'Only bh metrics ... commands emit metrics reports.',
     ],
     commonOptions: metricsCommonOptions(),
-  }],
-  ['metrics report', metricsHelpEntry('report', 'Build the full metrics report with all sections.')],
-  ['metrics top-errors', metricsHelpEntry('top-errors', 'Build a metrics report focused on top error rows.')],
-  ['metrics tool-usage', metricsHelpEntry('tool-usage', 'Build a metrics report focused on tool usage rows.')],
-  ['metrics task-health', metricsHelpEntry('task-health', 'Build a metrics report focused on task health rows.')],
-  ['bridge ping', {
+  },
+  metricsLocalCommandDescriptor('report', 'Build the full metrics report with all sections.'),
+  metricsLocalCommandDescriptor('top-errors', 'Build a metrics report focused on top error rows.'),
+  metricsLocalCommandDescriptor('tool-usage', 'Build a metrics report focused on tool usage rows.'),
+  metricsLocalCommandDescriptor('task-health', 'Build a metrics report focused on task health rows.'),
+  lifecycleLocalCommandDescriptor('open'),
+  lifecycleLocalCommandDescriptor('close'),
+  {
+    key: 'bridge ping',
     summary: 'Ping the running Editor Bridge.',
     usage: ['bh bridge ping --select status,summary'],
     input: ['No JSON input.'],
     notes: ['Use diagnostics commands for richer setup or runtime checks.'],
-  }],
-  ['bridge call', {
+  },
+  {
+    key: 'bridge call',
     summary: 'Call a narrow allowlist of read-only Bridge commands.',
     usage: ['bh bridge call --command <read_only_command> --select status,artifacts.full_result'],
     input: ['No JSON payload. Pass the Bridge command with --command.'],
     notes: ['Ordinary Agent workflows should prefer named tools and templates over bridge call.'],
-  }],
-]);
+  },
+];
 
-function lifecycleHelp(action: 'open' | 'close'): StaticHelpEntry {
+function lifecycleLocalCommandDescriptor(action: 'open' | 'close'): LocalCommandHelpDescriptor {
   const mcpTool = action === 'open'
     ? 'mcp__blueprint_helper__blueprint_open_editor'
     : 'mcp__blueprint_helper__blueprint_close_editor';
+  const key = action === 'open' ? 'blueprint_open_editor' : 'blueprint_close_editor';
+  const alias = action === 'open' ? 'open_editor' : 'close_editor';
   return {
+    key,
+    aliases: [alias],
     summary: `Agent-owned Editor ${action} is a global MCP lifecycle operation, not a normal CLI asset workflow.`,
     usage: [mcpTool],
     input: ['Use the global MCP tool schema exposed by the host Agent environment.'],
@@ -337,11 +331,12 @@ function lifecycleHelp(action: 'open' | 'close'): StaticHelpEntry {
   };
 }
 
-function metricsHelpEntry(
+function metricsLocalCommandDescriptor(
   kind: 'report' | 'top-errors' | 'tool-usage' | 'task-health',
   summary: string,
-): StaticHelpEntry {
+): LocalCommandHelpDescriptor {
   return {
+    key: `metrics ${kind}`,
     summary,
     usage: [`bh metrics ${kind} --window 7d --limit 20 --format json`],
     input: ['No JSON payload. Metrics root resolves from BPH_METRICS_DIR or nearest .uproject/Saved/BlueprintHelper/Metrics.'],

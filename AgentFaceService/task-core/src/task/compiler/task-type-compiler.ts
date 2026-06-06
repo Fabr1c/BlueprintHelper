@@ -9,8 +9,8 @@ export type TaskTypeCompilerId =
   | 'blueprint_components'
   | 'umg_widget'
   | 'data_table'
-  | 'graphwrite_legacy'
-  | 'composite_feature_legacy';
+  | 'graphwrite'
+  | 'composite_feature';
 
 export interface TaskTypeCompileContext {
   readonly source: 'facade' | 'strategy';

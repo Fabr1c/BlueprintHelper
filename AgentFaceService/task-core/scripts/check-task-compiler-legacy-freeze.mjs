@@ -31,6 +31,44 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 const COMPILER_RELATIVE_PATH = 'src/task/compiler/task-compiler.ts';
 
+export const GAP_CLOSURE_FORBIDDEN_PATTERNS = [
+  {
+    kind: 'legacy_fallback_function',
+    value: 'compileLegacyGraphWriteOrCompositeTaskSpecToTaskPlan',
+    pattern: /compileLegacyGraphWriteOrCompositeTaskSpecToTaskPlan/,
+  },
+  {
+    kind: 'inline_graphwrite_operation_registry',
+    value: 'graphWriteOperationCompilerRegistry',
+    pattern: /graphWriteOperationCompilerRegistry/,
+  },
+  {
+    kind: 'inline_statement_flow_compiler',
+    value: 'compileStatementFlow',
+    pattern: /function compileStatementFlow\b/,
+  },
+  {
+    kind: 'inline_value_expression_compiler',
+    value: 'compileValueExpression',
+    pattern: /function compileValueExpression\b/,
+  },
+  {
+    kind: 'inline_statement_node_compiler',
+    value: 'compileStatementNode',
+    pattern: /function compileStatementNode\b/,
+  },
+  {
+    kind: 'inline_composite_feature_compiler',
+    value: 'compileCompositeBlueprintFeatureTaskSpecToTaskPlan',
+    pattern: /function compileCompositeBlueprintFeatureTaskSpecToTaskPlan\b/,
+  },
+  {
+    kind: 'owned_patch_payload_switch',
+    value: 'compilePatchPayload',
+    pattern: /function compilePatchPayload\b/,
+  },
+];
+
 export function runLegacyFreezeCheck(root = DEFAULT_ROOT) {
   const compilerPath = path.resolve(root, COMPILER_RELATIVE_PATH);
   const source = stripComments(fs.readFileSync(compilerPath, 'utf8'));
@@ -72,6 +110,49 @@ export function runLegacyFreezeCheck(root = DEFAULT_ROOT) {
   return {
     ok: matches.length === 0,
     code: matches.length === 0 ? undefined : 'legacy_task_compiler_branch_added',
+    file: 'AgentFaceService/task-core/src/task/compiler/task-compiler.ts',
+    matches,
+  };
+}
+
+export function runGapClosureCheck(root = DEFAULT_ROOT) {
+  const compilerPath = path.resolve(root, COMPILER_RELATIVE_PATH);
+  const source = stripComments(fs.readFileSync(compilerPath, 'utf8'));
+  const matches = [];
+
+  for (const entry of GAP_CLOSURE_FORBIDDEN_PATTERNS) {
+    if (entry.pattern.test(source)) {
+      matches.push({
+        kind: entry.kind,
+        value: entry.value,
+        reason: 'Gap closure requires task-compiler.ts to be a facade without legacy GraphWrite or composite compiler bodies.',
+      });
+    }
+  }
+
+  return {
+    ok: matches.length === 0,
+    code: matches.length === 0 ? 'legacy_task_compiler_closed' : 'legacy_task_compiler_gap_open',
+    file: 'AgentFaceService/task-core/src/task/compiler/task-compiler.ts',
+    matches,
+  };
+}
+
+export function runTaskCompilerLegacyClosureCheck(root = DEFAULT_ROOT) {
+  const freeze = runLegacyFreezeCheck(root);
+  const gapClosure = runGapClosureCheck(root);
+  const matches = [
+    ...(freeze.matches ?? []),
+    ...(gapClosure.matches ?? []),
+  ];
+  const ok = freeze.ok && gapClosure.ok;
+  return {
+    ok,
+    code: ok
+      ? 'legacy_task_compiler_closed'
+      : gapClosure.ok
+        ? freeze.code
+        : gapClosure.code,
     file: 'AgentFaceService/task-core/src/task/compiler/task-compiler.ts',
     matches,
   };
@@ -136,7 +217,11 @@ function stripComments(source) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = runLegacyFreezeCheck();
-  console.log(JSON.stringify(result.ok ? { ok: true } : result, null, 2));
+  const result = process.argv.includes('--legacy-freeze')
+    ? runLegacyFreezeCheck()
+    : process.argv.includes('--gap-closure')
+    ? runGapClosureCheck()
+    : runTaskCompilerLegacyClosureCheck();
+  console.log(JSON.stringify(result.ok ? { ok: true, code: result.code } : result, null, 2));
   process.exit(result.ok ? 0 : 1);
 }

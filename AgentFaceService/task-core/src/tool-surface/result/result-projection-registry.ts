@@ -12,6 +12,9 @@ export type BuiltinResultProjectionPolicyId =
   | 'context.read.default'
   | 'diagnostics.default'
   | 'metrics.report.default'
+  | 'bridge.default'
+  | 'local.default'
+  | 'review.expert.default'
   | 'tool.generic.default';
 
 const POLICY_BY_MANIFEST_ID = new Map<ToolResultProjectionPolicyId, BuiltinResultProjectionPolicyId>([
@@ -20,18 +23,21 @@ const POLICY_BY_MANIFEST_ID = new Map<ToolResultProjectionPolicyId, BuiltinResul
   ['task_result_default', 'task.result.default'],
   ['read_context_default', 'context.read.default'],
   ['diagnostics_default', 'diagnostics.default'],
-  ['review_expert_default', 'tool.generic.default'],
-  ['bridge_default', 'tool.generic.default'],
-  ['local_default', 'tool.generic.default'],
+  ['review_expert_default', 'review.expert.default'],
+  ['bridge_default', 'bridge.default'],
+  ['local_default', 'local.default'],
 ]);
 
 const BUILTIN_POLICIES = new Map<BuiltinResultProjectionPolicyId, ResultProjectionPolicy>([
-  ['task.preview.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'task.preview.default' }],
-  ['task.execute.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'task.execute.default' }],
-  ['task.result.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'task.result.default' }],
-  ['context.read.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'context.read.default' }],
-  ['diagnostics.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'diagnostics.default' }],
-  ['metrics.report.default', { ...GENERIC_RESULT_PROJECTION_POLICY, policy_id: 'metrics.report.default' }],
+  ['task.preview.default', definePolicy('task.preview.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.preview_id', 'data.preview_token', 'data.passed', 'data.blocked', 'data.issues', 'error'])],
+  ['task.execute.default', definePolicy('task.execute.default', ['ok', 'operation', 'status', 'modified', 'target', 'validation', 'data.task_run_id', 'data.task', 'data.issues', 'error'])],
+  ['task.result.default', definePolicy('task.result.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],
+  ['context.read.default', definePolicy('context.read.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.payload', 'data.issues', 'error'])],
+  ['diagnostics.default', definePolicy('diagnostics.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],
+  ['metrics.report.default', definePolicy('metrics.report.default', ['ok', 'operation', 'status', 'modified', 'data', 'error'])],
+  ['bridge.default', definePolicy('bridge.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],
+  ['local.default', definePolicy('local.default', ['ok', 'operation', 'status', 'modified', 'data', 'error'])],
+  ['review.expert.default', definePolicy('review.expert.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'], ['debug', 'trace_id'])],
   ['tool.generic.default', GENERIC_RESULT_PROJECTION_POLICY],
 ]);
 
@@ -74,4 +80,20 @@ function policyIdForCommandKind(commandKind: string | undefined): BuiltinResultP
   if (commandKind === 'context.read') return 'context.read.default';
   if (commandKind === 'metrics.report') return 'metrics.report.default';
   return undefined;
+}
+
+function definePolicy(
+  policyId: BuiltinResultProjectionPolicyId,
+  baseFields: readonly string[],
+  expertFields: readonly string[] = ['debug', 'trace_id'],
+): ResultProjectionPolicy {
+  return {
+    ...GENERIC_RESULT_PROJECTION_POLICY,
+    policy_id: policyId,
+    default_fields: [...baseFields],
+    json_fields: [...baseFields],
+    full_fields: [...baseFields],
+    expert_fields: [...expertFields],
+    debug_artifact_fields: ['tool_result', 'extra', 'bridge_result', 'debug'],
+  };
 }

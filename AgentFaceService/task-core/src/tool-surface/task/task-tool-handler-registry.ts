@@ -21,6 +21,7 @@ import {
   adaptToolInput,
   type InputShapeId,
 } from '../input/input-shape-adapter.js';
+import { createReadSpecInputShapeAdapterRegistry } from '../input/readspec-input-adapters.js';
 import { createTaskSpecInputShapeAdapterRegistry } from '../input/taskspec-input-adapters.js';
 import type { BlueprintHelperToolContext } from '../types.js';
 import { readReferenceContext } from './task-context-handlers.js';
@@ -76,6 +77,7 @@ export class TaskToolHandlerRegistry {
 }
 
 const taskSpecInputShapeAdapters = createTaskSpecInputShapeAdapterRegistry();
+const readSpecInputShapeAdapters = createReadSpecInputShapeAdapterRegistry();
 
 function adaptTaskSpecInput(
   inputShapeIds: readonly InputShapeId[],
@@ -87,13 +89,19 @@ function adaptTaskSpecInput(
 export function createDefaultTaskToolHandlerRegistry(): TaskToolHandlerRegistry {
   const previewInputShapeIds = ['wrapped_taskspec_preview', 'bare_taskspec'] as const;
   const executeInputShapeIds = ['wrapped_taskspec_execute', 'bare_taskspec'] as const;
+  const readReferenceInputShapeIds = ['read_reference_context'] as const;
 
   return new TaskToolHandlerRegistry()
     .register({
       toolName: 'blueprinthelper_read_reference_context',
-      inputShapeIds: ['readspec'],
+      inputShapeIds: readReferenceInputShapeIds,
       inputSchema: ReadReferenceContextInputSchema,
-      execute: readReferenceContext,
+      execute(input, context) {
+        return readReferenceContext(
+          adaptToolInput(readSpecInputShapeAdapters, readReferenceInputShapeIds, input),
+          context,
+        );
+      },
     })
     .register({
       toolName: 'blueprinthelper_preview_task',

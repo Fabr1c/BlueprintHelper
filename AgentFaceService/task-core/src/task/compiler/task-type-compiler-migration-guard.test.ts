@@ -35,11 +35,11 @@ test('P3 legacy compiler facade does not reintroduce alternate non-GraphWrite ro
   assert.doesNotMatch(source, /includes\s*\([^)]*task_type[^)]*\)/);
 });
 
-test('legacy facade only names GraphWrite and composite feature task types during P3', () => {
+test('task-compiler facade does not name GraphWrite or composite task types', () => {
   const source = fs.readFileSync(sourcePath('task-compiler.ts'), 'utf8');
 
-  assert.match(source, /edit_blueprint_graph/);
-  assert.match(source, /create_blueprint_feature/);
+  assert.doesNotMatch(source, /edit_blueprint_graph/);
+  assert.doesNotMatch(source, /create_blueprint_feature/);
 });
 
 function sourcePath(fileName: string): string {

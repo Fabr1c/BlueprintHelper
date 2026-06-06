@@ -118,6 +118,10 @@ function inferInputShapes(
       shapes.add('readspec');
       continue;
     }
+    if (inputShape === 'BlueprintHelper.ReferenceContextRequest.v1') {
+      shapes.add('read_reference_context');
+      continue;
+    }
     shapes.add(capability.requires_bridge ? 'bridge_payload' : 'tool_payload');
   }
 

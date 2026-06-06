@@ -26,6 +26,16 @@ type LogicFlowGraph = {
   links: LogicFlowLink[];
   anchors: Record<string, unknown>[];
   stats: Record<string, unknown>;
+  boundary: AdapterBoundaryProjection;
+};
+
+type AdapterBoundaryProjection = {
+  runtimeAdapterId?: string;
+  entryRefs: Set<string>;
+  exitRefs: Set<string>;
+  displayNameByRef: Map<string, string>;
+  foldedRefs: Set<string>;
+  visibleRefs: Set<string>;
 };
 
 export type LogicFlowBuildResult = {
@@ -125,7 +135,7 @@ function buildExecFlow(
   const incomingExec = groupLinks(execLinks, 'toNode');
   const incomingData = groupLinks(dataLinks, 'toNode');
   const outgoingData = groupLinks(dataLinks, 'fromNode');
-  const roots = findExecRoots(graph.nodes, execLinks, incomingExec);
+  const roots = findExecRoots(graph.nodes, execLinks, incomingExec, graph.boundary);
   const lines = roots.map((root) => buildExecLine(
     root.ref,
     byRef,
@@ -237,15 +247,23 @@ function formatNodeExpression(name: string, inputs: string[], outputs: string[])
 
 function normalizeLogicFlowGraphs(payload: Record<string, unknown>): LogicFlowGraph[] {
   const logic = isRecord(payload['logic']) ? payload['logic'] : payload;
+  const boundary = normalizeAdapterBoundary(
+    isRecord(payload['adapter_boundary']) ? payload['adapter_boundary'] : logic['adapter_boundary'],
+  );
   if (Array.isArray(logic['groups']) && logic['groups'].length > 0) {
     return logic['groups']
-      .map((group, index) => normalizeGroup(group, payload, index))
+      .map((group, index) => normalizeGroup(group, payload, boundary, index))
       .filter((graph): graph is LogicFlowGraph => Boolean(graph));
   }
-  return [normalizeGraph(logic, payload)];
+  return [normalizeGraph(logic, payload, boundary)];
 }
 
-function normalizeGroup(value: unknown, payload: Record<string, unknown>, index: number): LogicFlowGraph | undefined {
+function normalizeGroup(
+  value: unknown,
+  payload: Record<string, unknown>,
+  boundary: AdapterBoundaryProjection,
+  index: number,
+): LogicFlowGraph | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -253,21 +271,22 @@ function normalizeGroup(value: unknown, payload: Record<string, unknown>, index:
   const name = readString(value, ['name', 'block_id', 'group_entry_node_path'])
     ?? readString(entry, ['name', 'node_ref'])
     ?? `group_${index}`;
-  return normalizeGraph(value, payload, name);
+  return normalizeGraph(value, payload, boundary, name);
 }
 
 function normalizeGraph(
   logic: Record<string, unknown>,
   payload: Record<string, unknown>,
+  boundary: AdapterBoundaryProjection,
   name?: string,
 ): LogicFlowGraph {
-  const nodes = Array.isArray(logic['nodes'])
+  const nodes = applyAdapterBoundaryToNodes(Array.isArray(logic['nodes'])
     ? logic['nodes'].map((node, index) => normalizeNode(node, index)).filter((node): node is LogicFlowNode => Boolean(node))
-    : [];
+    : [], boundary);
   const links = collectLinks(logic);
   const stats = isRecord(payload['stats']) ? payload['stats'] : buildStats(nodes, links);
   const anchors = collectGraphAnchors(logic, nodes, links);
-  return { name, nodes, links, anchors, stats };
+  return { name, nodes, links, anchors, stats, boundary };
 }
 
 function normalizeNode(value: unknown, index: number): LogicFlowNode | undefined {
@@ -343,8 +362,13 @@ function findExecRoots(
   nodes: LogicFlowNode[],
   execLinks: LogicFlowLink[],
   incomingExec: Map<string, LogicFlowLink[]>,
+  boundary: AdapterBoundaryProjection,
 ): LogicFlowNode[] {
   const withOutgoing = new Set(execLinks.map((link) => link.fromNode));
+  const adapterRoots = nodes.filter((node) => boundary.entryRefs.has(node.ref) && withOutgoing.has(node.ref));
+  if (adapterRoots.length > 0) {
+    return adapterRoots;
+  }
   const entryRoots = nodes.filter((node) => isEntryNode(node) && withOutgoing.has(node.ref));
   if (entryRoots.length > 0) {
     return entryRoots;
@@ -361,6 +385,54 @@ function isEntryNode(node: LogicFlowNode): boolean {
 function isReturnNode(node: LogicFlowNode): boolean {
   const normalized = node.name.toLowerCase();
   return normalized === 'returnvalue' || normalized === 'return' || normalized === 'return node';
+}
+
+function normalizeAdapterBoundary(value: unknown): AdapterBoundaryProjection {
+  const boundary = isRecord(value) ? value : {};
+  const displayNameByRef = new Map<string, string>();
+  const entryRefs = collectBoundaryRefs(boundary, ['entry_boundaries', 'entries'], displayNameByRef);
+  const exitRefs = collectBoundaryRefs(boundary, ['exit_boundaries', 'exits'], displayNameByRef);
+  return {
+    runtimeAdapterId: readString(boundary, ['runtime_adapter_id', 'runtimeAdapterId']),
+    entryRefs,
+    exitRefs,
+    displayNameByRef,
+    foldedRefs: new Set(readStringArray(boundary, ['folded_boundary_node_refs', 'foldedBoundaryNodeRefs'])),
+    visibleRefs: new Set(readStringArray(boundary, ['visible_boundary_node_refs', 'visibleBoundaryNodeRefs'])),
+  };
+}
+
+function collectBoundaryRefs(
+  boundary: Record<string, unknown>,
+  keys: string[],
+  displayNameByRef: Map<string, string>,
+): Set<string> {
+  const refs = new Set<string>();
+  for (const item of readObjectArray(boundary, keys)) {
+    const ref = readString(item, ['node_ref', 'nodeRef', 'ref', 'id']);
+    if (!ref) {
+      continue;
+    }
+    refs.add(ref);
+    const displayName = readString(item, ['display_name', 'displayName', 'name']);
+    if (displayName) {
+      displayNameByRef.set(ref, displayName);
+    }
+  }
+  return refs;
+}
+
+function applyAdapterBoundaryToNodes(
+  nodes: LogicFlowNode[],
+  boundary: AdapterBoundaryProjection,
+): LogicFlowNode[] {
+  if (boundary.displayNameByRef.size === 0) {
+    return nodes;
+  }
+  return nodes.map((node) => {
+    const boundaryName = boundary.displayNameByRef.get(node.ref);
+    return boundaryName ? { ...node, name: boundaryName } : node;
+  });
 }
 
 function buildOrphanSummary(
@@ -481,6 +553,19 @@ function readObjectArray(record: Record<string, unknown> | undefined, keys: stri
     const value = record[key];
     if (Array.isArray(value)) {
       return value.filter((item): item is Record<string, unknown> => isRecord(item));
+    }
+  }
+  return [];
+}
+
+function readStringArray(record: Record<string, unknown> | undefined, keys: string[]): string[] {
+  if (!record) {
+    return [];
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
     }
   }
   return [];
