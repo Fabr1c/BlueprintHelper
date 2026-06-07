@@ -57,13 +57,25 @@ test('ReadContext template index exposes domain cluster target and view discover
   const domains = listReadContextTemplateDomains();
   assert.equal(domains.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');
   assert.equal(domains.items.some((item) => item.domain === 'blueprint'), true);
+  assert.match(
+    domains.items.find((item) => item.domain === 'blueprint')?.description ?? '',
+    /Blueprint/i,
+  );
   assert.equal(domains.items.some((item) => item.domain === 'material'), false);
 
   const clusters = listReadContextTemplateClusters({ domain: 'blueprint' });
   assert.equal(clusters.items.some((item) => item.read_cluster === 'logic'), true);
+  assert.match(
+    clusters.items.find((item) => item.read_cluster === 'logic')?.description ?? '',
+    /logic/i,
+  );
 
   const targets = listReadContextTemplateTargets({ domain: 'blueprint', readCluster: 'logic' });
   assert.equal(targets.items.some((item) => item.target_kind === 'function'), true);
+  assert.match(
+    targets.items.find((item) => item.target_kind === 'function')?.description ?? '',
+    /function/i,
+  );
 
   const views = listReadContextTemplateViews({
     domain: 'blueprint',
@@ -71,6 +83,10 @@ test('ReadContext template index exposes domain cluster target and view discover
     targetKind: 'function',
   });
   assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
+  assert.match(
+    views.items.find((item) => item.view_template === 'logic_flow')?.description ?? '',
+    /flow/i,
+  );
 
   const quickAccess = listReadContextTemplateQuickAccess({
     domain: 'blueprint',

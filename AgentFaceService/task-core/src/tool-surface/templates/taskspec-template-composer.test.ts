@@ -22,11 +22,19 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' });
   assert.equal(families.schema, 'BlueprintHelper.TaskSpecTemplateFamilies.v1');
   assert.equal(families.items.some((item) => item.family === 'graph_write'), true);
+  assert.match(
+    families.items.find((item) => item.family === 'graph_write')?.description ?? '',
+    /Blueprint graph/i,
+  );
 
   const writeModes = listTaskSpecTemplateWriteModes({ family: 'graph_write' });
   assert.deepEqual(
     writeModes.items.map((item) => item.write_mode).sort(),
     ['graph.append', 'graph.merge', 'graph.patch', 'graph.replace'],
+  );
+  assert.match(
+    writeModes.items.find((item) => item.write_mode === 'graph.append')?.description ?? '',
+    /new owned graph/i,
   );
   assert.equal(
     writeModes.items.find((item) => item.write_mode === 'graph.append')?.base_template_path,
@@ -39,6 +47,10 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
 
   const clusters = listTaskSpecTemplateClusters({ family: 'graph_write' });
   assert.equal(clusters.items.some((item) => item.cluster_id === 'generic_ops'), true);
+  assert.match(
+    clusters.items.find((item) => item.cluster_id === 'generic_ops')?.description ?? '',
+    /general Blueprint statements/i,
+  );
   assert.equal(
     clusters.items.find((item) => item.cluster_id === 'generic_ops')?.unsupported_write_modes.includes('graph.patch'),
     true,
@@ -50,6 +62,10 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
     writeMode: 'graph.append',
   });
   assert.equal(operations.items.some((item) => item.operation_id === 'call'), true);
+  assert.match(
+    operations.items.find((item) => item.operation_id === 'call')?.description ?? '',
+    /function/i,
+  );
 
   const quickAccess = listTaskSpecTemplateQuickAccess({
     family: 'graph_write',

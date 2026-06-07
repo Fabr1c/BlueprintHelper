@@ -45,18 +45,21 @@ export interface TaskSpecTemplateDiagnostic {
 export interface TaskSpecTemplateFamilyItem {
   family: TaskSpecTemplateFamily;
   task_type: string;
+  description: string;
   status: 'supported';
 }
 
 export interface TaskSpecTemplateWriteModeItem {
   family: TaskSpecTemplateFamily;
   write_mode: TaskSpecTemplateWriteMode;
+  description: string;
   base_template_path: string;
 }
 
 export interface TaskSpecTemplateClusterItem {
   family: TaskSpecTemplateFamily;
   cluster_id: string;
+  description: string;
   unsupported_write_modes: TaskSpecTemplateWriteMode[];
 }
 
@@ -64,6 +67,7 @@ export interface TaskSpecTemplateOperationItem {
   family: TaskSpecTemplateFamily;
   cluster_id: string;
   operation_id: string;
+  description: string;
 }
 
 export interface TaskSpecTemplateQuickAccessItem {
@@ -146,6 +150,7 @@ export type TaskSpecTemplateCompositionResult =
 export interface NonGraphWriteTemplateFamilyMetadata {
   family: NonGraphWriteFamily;
   task_type: string;
+  description: string;
   strategy_field: string;
   base_template_path: string;
   insert_targets: string[];

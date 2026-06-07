@@ -4,7 +4,12 @@ import {
   listGraphWriteTemplateQuickAccess,
   listGraphWriteTemplateWriteModes,
 } from './graphwrite-template-metadata.js';
-import { getSupportedNonGraphWriteTemplateFamilies } from './non-graphwrite-template-metadata.js';
+import {
+  getSupportedNonGraphWriteTemplateFamilies,
+  listNonGraphWriteTemplateClusters,
+  listNonGraphWriteTemplateOperations,
+  listNonGraphWriteTemplateQuickAccess,
+} from './non-graphwrite-template-metadata.js';
 import type {
   TaskSpecTemplateClustersResult,
   TaskSpecTemplateFamiliesResult,
@@ -26,11 +31,13 @@ export function listTaskSpecTemplateFamilies(input: {
       {
         family: 'graph_write',
         task_type: 'edit_blueprint_graph',
+        description: 'Create or modify Blueprint graph bodies through GraphWrite TaskSpec routes.',
         status: 'supported',
       },
       ...getSupportedNonGraphWriteTemplateFamilies().map((entry) => ({
         family: entry.family,
         task_type: entry.task_type,
+        description: entry.description,
         status: 'supported' as const,
       })),
     ],
@@ -56,6 +63,7 @@ export function listTaskSpecTemplateWriteModes(input: {
       ? [{
         family: supported.family,
         write_mode: supported.write_mode,
+        description: supported.description,
         base_template_path: supported.base_template_path,
       }]
       : [],
@@ -68,7 +76,9 @@ export function listTaskSpecTemplateClusters(input: {
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateClusters.v1',
     family: input.family,
-    items: input.family === 'graph_write' ? listGraphWriteTemplateClusters() : [],
+    items: input.family === 'graph_write'
+      ? listGraphWriteTemplateClusters()
+      : listNonGraphWriteTemplateClusters(input),
   };
 }
 
@@ -84,7 +94,7 @@ export function listTaskSpecTemplateOperations(input: {
     write_mode: input.writeMode,
     items: input.family === 'graph_write'
       ? listGraphWriteTemplateOperations(input)
-      : [],
+      : listNonGraphWriteTemplateOperations(input),
   };
 }
 
@@ -102,6 +112,6 @@ export function listTaskSpecTemplateQuickAccess(input: {
     write_mode: input.writeMode,
     items: input.family === 'graph_write'
       ? listGraphWriteTemplateQuickAccess(input)
-      : [],
+      : listNonGraphWriteTemplateQuickAccess(input),
   };
 }

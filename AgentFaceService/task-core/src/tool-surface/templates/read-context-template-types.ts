@@ -80,18 +80,21 @@ export interface ReadContextRouteDescriptor {
 
 export interface ReadContextTemplateDomainItem {
   domain: string;
+  description: string;
   status: 'supported';
 }
 
 export interface ReadContextTemplateClusterItem {
   domain: string;
   read_cluster: string;
+  description: string;
 }
 
 export interface ReadContextTemplateTargetItem {
   domain: string;
   read_cluster: string;
   target_kind: string;
+  description: string;
   required_target_fields: string[];
 }
 
@@ -100,6 +103,7 @@ export interface ReadContextTemplateViewItem {
   read_cluster: string;
   target_kind: string;
   view_template: string;
+  description: string;
   output_schema: string;
 }
 

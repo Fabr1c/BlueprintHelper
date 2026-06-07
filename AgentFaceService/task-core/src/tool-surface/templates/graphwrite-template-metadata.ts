@@ -21,12 +21,42 @@ const CANONICAL_ROUTE_BY_WRITE_MODE: Record<GraphWriteTemplateWriteMode, string>
   'graph.patch': 'graph.patch.connect_pins',
 };
 
+const GRAPH_WRITE_MODE_DESCRIPTIONS: Readonly<Record<GraphWriteTemplateWriteMode, string>> = {
+  'graph.append': 'Create new owned graph content, usually a custom event or owned entry body.',
+  'graph.replace': 'Replace an existing event, function, macro, graph, or owned block body.',
+  'graph.merge': 'Insert owned logic at an existing stable graph anchor.',
+  'graph.patch': 'Edit links, pin defaults, comments, or owned nodes inside BlueprintHelper-owned graph content.',
+};
+
+const GRAPH_WRITE_CLUSTER_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  container: 'Array, set, and map operation statements.',
+  event_delegate: 'Component-bound event and delegate binding statements.',
+  generic_ops: 'General Blueprint statements and expressions such as call, set, let, branch, return, construct, and literal values.',
+  schedule: 'Delay, timer, and scheduled execution statements.',
+};
+
+const GRAPH_WRITE_OPERATION_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  action: 'Run array, set, or map container operations.',
+  call: 'Invoke Blueprint functions or methods, optionally with preview candidate search or result symbols.',
+  component: 'Declare component-bound event handler relationships.',
+  control: 'Build control-flow statements such as branch, switch, and function return.',
+  convert: 'Run conversion or transform operations backed by GenericOps evidence.',
+  create: 'Create objects, components, or assets through supported create operations.',
+  delegate: 'Bind, assign, unbind, clear, or call delegates.',
+  expression: 'Build nested value inputs such as literals, variables, function parameters, operators, structs, and selects.',
+  field: 'Read or write structured field and property values.',
+  let: 'Create a reusable graph-local symbol from an expression.',
+  set: 'Assign member variables or object/component properties.',
+  timer: 'Run delay, timer, or other scheduled execution operations.',
+};
+
 export function listGraphWriteTemplateWriteModes(): TaskSpecTemplateWriteModeItem[] {
   return uniqueBy(
     getGraphWriteRoutesForTemplateDiscovery()
       .map((route) => ({
         family: 'graph_write' as const,
         write_mode: route.write_mode,
+        description: GRAPH_WRITE_MODE_DESCRIPTIONS[route.write_mode],
         base_template_path: getBaseTemplatePathForWriteMode(route.write_mode),
       })),
     (item) => item.write_mode,
@@ -49,6 +79,7 @@ export function listGraphWriteTemplateClusters(): TaskSpecTemplateClusterItem[] 
     .map(([clusterId, unsupported]) => ({
       family: 'graph_write' as const,
       cluster_id: clusterId,
+      description: GRAPH_WRITE_CLUSTER_DESCRIPTIONS[clusterId] ?? `GraphWrite ${clusterId} templates.`,
       unsupported_write_modes: [...unsupported].sort(),
     }))
     .sort((a, b) => a.cluster_id.localeCompare(b.cluster_id));
@@ -66,9 +97,14 @@ export function listGraphWriteTemplateOperations(input: {
         family: 'graph_write' as const,
         cluster_id: item.cluster_id,
         operation_id: item.operation_id,
+        description: describeOperation(item.operation_id),
       })),
     (item) => item.operation_id,
   ).sort((a, b) => a.operation_id.localeCompare(b.operation_id));
+}
+
+function describeOperation(operationId: string): string {
+  return GRAPH_WRITE_OPERATION_DESCRIPTIONS[operationId] ?? `GraphWrite ${operationId} operation templates.`;
 }
 
 export function listGraphWriteTemplateQuickAccess(input?: {
