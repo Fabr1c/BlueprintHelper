@@ -534,6 +534,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'ensure_interface_function',
       'ensure_custom_event',
       'ensure_interface_event',
+      'ensure_macro',
       'ensure_event_dispatcher',
       'ensure_override_event',
       'remove_signature',
@@ -554,6 +555,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     runtime_supported_structural_ops: [
       'ensure_function',
       'ensure_custom_event',
+      'ensure_macro',
       'ensure_event_dispatcher',
       'ensure_override_event',
       'remove_signature',
@@ -561,6 +563,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     runtime_lowering_adapters: [
       'ensure_function',
       'ensure_custom_event',
+      'ensure_macro',
       'ensure_event_dispatcher',
       'ensure_override_event',
       'remove_signature',
@@ -732,6 +735,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'ensure_interface_function',
         'ensure_custom_event',
         'ensure_interface_event',
+        'ensure_macro',
         'ensure_event_dispatcher',
         'ensure_override_event',
         'remove_signature',
@@ -757,6 +761,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       runtime_supported_structural_ops: [
         'ensure_function',
         'ensure_custom_event',
+        'ensure_macro',
         'ensure_event_dispatcher',
         'ensure_override_event',
         'remove_signature',
@@ -764,6 +769,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       runtime_lowering_adapters: [
         'ensure_function',
         'ensure_custom_event',
+        'ensure_macro',
         'ensure_event_dispatcher',
         'ensure_override_event',
         'remove_signature',
@@ -774,7 +780,15 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       task_type: 'edit_umg_widget',
       target_type: 'widget_blueprint',
       widget_strategy: 'widget_blueprint_edit',
-      change_kinds: ['create_widget', 'update_widget_property', 'delete_widget', 'move_widget', 'set_named_slot_content'],
+      change_kinds: [
+        'create_widget',
+        'update_widget_property',
+        'delete_widget',
+        'move_widget',
+        'set_named_slot_content',
+        'set_slot_property',
+        'set_widget_as_variable',
+      ],
       agent_semantic_paths: [
         'behavior.widget_strategy=widget_blueprint_edit',
         'behavior.changes[].kind',
@@ -785,6 +799,8 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'behavior.changes[].expected_virtual_index',
         'behavior.changes[].host_widget_name',
         'behavior.changes[].slot_name',
+        'behavior.changes[].property_path',
+        'behavior.changes[].is_variable',
       ],
       forbidden_agent_fields: [
         'behavior.changes[].op',
@@ -792,8 +808,24 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'write.ops[].op',
       ],
       task_plan_capability: 'umg_widget',
-      runtime_supported_structural_ops: ['add_widget', 'move_widget', 'set_named_slot_content', 'set_widget_property', 'remove_widget'],
-      runtime_lowering_adapters: ['add_widget', 'move_widget', 'set_named_slot_content', 'set_widget_property', 'remove_widget'],
+      runtime_supported_structural_ops: [
+        'add_widget',
+        'move_widget',
+        'set_named_slot_content',
+        'set_widget_property',
+        'set_slot_property',
+        'set_widget_as_variable',
+        'remove_widget',
+      ],
+      runtime_lowering_adapters: [
+        'add_widget',
+        'move_widget',
+        'set_named_slot_content',
+        'set_widget_property',
+        'set_slot_property',
+        'set_widget_as_variable',
+        'remove_widget',
+      ],
     },
     {
       task_type: 'edit_data_table',
@@ -1106,6 +1138,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         runtime_adapter_operations: [
           'ensure_function',
           'ensure_custom_event',
+          'ensure_macro',
           'ensure_event_dispatcher',
           'ensure_override_event',
           'remove_signature',
@@ -1113,6 +1146,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         ue_commands: [
           'ensure_function',
           'ensure_custom_event',
+          'ensure_macro',
           'ensure_event_dispatcher',
           'ensure_override_event',
           'remove_signature',

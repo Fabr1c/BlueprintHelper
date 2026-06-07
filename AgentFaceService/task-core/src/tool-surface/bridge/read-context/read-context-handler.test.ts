@@ -620,6 +620,64 @@ test('read_context widget tree routes through bridge and projects logic_flow', a
   assert.deepEqual(payload['warnings'], []);
 });
 
+test('read_context widget tree tree_json projects first-class tree payload', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'widget_tree_json',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'WidgetContext.v1',
+        asset_path: '/Game/UI/WBP_Menu',
+        root: {
+          widget_name: 'Canvas_Root',
+          widget_class_path: '/Script/UMG.CanvasPanel',
+          virtual_index: 0,
+          children: [
+            { widget_name: 'Button_Start', widget_class_path: '/Script/UMG.Button', virtual_index: 0, children: [] },
+          ],
+        },
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'widget_context',
+    target: {
+      asset_path: '/Game/UI/WBP_Menu',
+      target_type: 'blueprint',
+    },
+    view: {
+      format: 'tree_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_widget_tree');
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'WidgetTreeJson.v1');
+  assert.equal(payload['format'], 'tree_json');
+  assert.equal(payload['domain'], 'widget_blueprint');
+  assert.equal(payload['asset_path'], '/Game/UI/WBP_Menu');
+  assert.equal(Boolean(payload['root']), true);
+  assert.equal(Boolean(payload['index']), true);
+  assert.equal(Array.isArray(payload['named_slots']), true);
+});
+
 test('read_context handler records timing around bridge and post-processing stages', async () => {
   const timing = TaskTimingTrace.start('read_context_test', 'agentface_test');
   const bridgeResponse: BridgeResponse = {

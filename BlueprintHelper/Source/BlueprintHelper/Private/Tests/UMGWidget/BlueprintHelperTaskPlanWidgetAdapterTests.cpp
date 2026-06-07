@@ -3,7 +3,9 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/ExpandableArea.h"
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
@@ -464,6 +466,129 @@ bool FBlueprintHelperWidgetTaskPlanRemoveWidgetLoweringTest::RunTest(const FStri
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanSetSlotPropertyLoweringTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.SetSlotPropertyLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanSetSlotPropertyLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::SetSlotProperty);
+	Op->SetStringField(TEXT("widget_name"), TEXT("ExistingText"));
+	Op->SetStringField(TEXT("property_path"), TEXT("LayoutData.Offsets.Left"));
+	Op->SetStringField(TEXT("value"), TEXT("24"));
+	Op->SetStringField(TEXT("expected_slot_class_path"), TEXT("/Script/UMG.CanvasPanelSlot"));
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(
+		Ops,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetPropertyEdit);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("umg_widget set_slot_property lowers successfully"), bLowered);
+	TestTrue(TEXT("slot property adapter supports true dry-run"), LoweredStep.bAdapterDryRunSupported);
+	TestEqual(TEXT("one lowered widget op emitted"), LoweredStep.Ops.Num(), 1);
+
+	if (LoweredStep.Ops.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
+	TestEqual(TEXT("slot property op lowers to service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty));
+
+	FString PropertyPath;
+	TestTrue(TEXT("payload carries property_path"), LoweredOp.Payload->TryGetStringField(TEXT("property_path"), PropertyPath));
+	TestEqual(TEXT("property_path preserved"), PropertyPath, FString(TEXT("LayoutData.Offsets.Left")));
+
+	FString ExpectedSlotClassPath;
+	TestTrue(TEXT("payload carries expected_slot_class_path"), LoweredOp.Payload->TryGetStringField(TEXT("expected_slot_class_path"), ExpectedSlotClassPath));
+	TestEqual(TEXT("expected slot class path preserved"), ExpectedSlotClassPath, FString(TEXT("/Script/UMG.CanvasPanelSlot")));
+
+	FString Value;
+	TestTrue(TEXT("payload carries import value"), LoweredOp.Payload->TryGetStringField(TEXT("value"), Value));
+	TestEqual(TEXT("value preserved as import text"), Value, FString(TEXT("24")));
+
+	bool bPayloadDryRun = true;
+	TestTrue(TEXT("payload carries dry_run"), LoweredOp.Payload->TryGetBoolField(TEXT("dry_run"), bPayloadDryRun));
+	TestFalse(TEXT("execute payload preserves dry_run=false"), bPayloadDryRun);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanSetWidgetAsVariableLoweringTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.SetWidgetAsVariableLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanSetWidgetAsVariableLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::SetWidgetAsVariable);
+	Op->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+	Op->SetBoolField(TEXT("is_variable"), true);
+	Op->SetStringField(TEXT("expected_widget_class_path"), TEXT("/Script/UMG.Button"));
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(
+		Ops,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("umg_widget set_widget_as_variable lowers successfully"), bLowered);
+	TestTrue(TEXT("widget variable adapter supports true dry-run"), LoweredStep.bAdapterDryRunSupported);
+	TestEqual(TEXT("one lowered widget op emitted"), LoweredStep.Ops.Num(), 1);
+
+	if (LoweredStep.Ops.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
+	TestEqual(TEXT("widget variable op lowers to service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable));
+
+	FString WidgetName;
+	TestTrue(TEXT("payload carries widget_name"), LoweredOp.Payload->TryGetStringField(TEXT("widget_name"), WidgetName));
+	TestEqual(TEXT("widget_name preserved"), WidgetName, FString(TEXT("StartButton")));
+
+	bool bIsVariable = false;
+	TestTrue(TEXT("payload carries is_variable"), LoweredOp.Payload->TryGetBoolField(TEXT("is_variable"), bIsVariable));
+	TestTrue(TEXT("is_variable preserved"), bIsVariable);
+
+	FString ExpectedWidgetClassPath;
+	TestTrue(TEXT("payload carries expected_widget_class_path"), LoweredOp.Payload->TryGetStringField(TEXT("expected_widget_class_path"), ExpectedWidgetClassPath));
+	TestEqual(TEXT("expected widget class path preserved"), ExpectedWidgetClassPath, FString(TEXT("/Script/UMG.Button")));
+
+	bool bPayloadDryRun = true;
+	TestTrue(TEXT("payload carries dry_run"), LoweredOp.Payload->TryGetBoolField(TEXT("dry_run"), bPayloadDryRun));
+	TestFalse(TEXT("execute payload preserves dry_run=false"), bPayloadDryRun);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperWidgetServiceAddWidgetDryRunDoesNotCreateWidgetTest,
 	"BlueprintHelper.UMGWidget.Service.AddWidgetDryRunDoesNotCreateWidget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -552,6 +677,82 @@ bool FBlueprintHelperWidgetServiceSetWidgetPropertyDryRunDoesNotModifyPropertyTe
 	TestEqual(TEXT("dry-run set does not change render opacity"), Fixture.ExistingText->GetRenderOpacity(), InitialRenderOpacity);
 	TestFalse(TEXT("dry-run set does not dirty package"), Fixture.Package->IsDirty());
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetSlotPropertyTest,
+	"BlueprintHelper.UMGWidget.Service.SetSlotProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetSlotPropertyTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetSetSlotProperty"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("existing text widget is created"), Fixture.ExistingText);
+
+	UCanvasPanelSlot* Slot = Cast<UCanvasPanelSlot>(Fixture.ExistingText->Slot);
+	TestNotNull(TEXT("existing text widget has canvas slot"), Slot);
+	if (!Slot)
+	{
+		return false;
+	}
+
+	FAnchorData Layout = Slot->GetLayout();
+	Layout.Offsets.Left = 0.0f;
+	Slot->SetLayout(Layout);
+
+	FBlueprintHelperSetSlotPropertyRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.WidgetName = TEXT("ExistingText");
+	Request.PropertyPath = TEXT("LayoutData.Offsets.Left");
+	Request.Value = TEXT("24");
+	Request.ExpectedSlotClassPath = UCanvasPanelSlot::StaticClass()->GetPathName();
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetSlotProperty(Request);
+
+	TestTrue(TEXT("set slot property updates CanvasPanelSlot LayoutData Offsets.Left"), Result.bSuccess);
+	TestEqual(TEXT("affected widget records target widget"), Result.AffectedWidget, FString(TEXT("ExistingText")));
+	TestEqual(TEXT("slot property readback left"), Slot->GetLayout().Offsets.Left, 24.0f);
+	TestTrue(TEXT("slot property result includes readback context"), Result.ReadbackContext.IsValid());
+	return Result.bSuccess;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetWidgetAsVariableTest,
+	"BlueprintHelper.UMGWidget.Service.SetWidgetAsVariable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetWidgetAsVariableTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetSetVariable"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	UButton* StartButton = Fixture.Blueprint->WidgetTree->ConstructWidget<UButton>(
+		UButton::StaticClass(),
+		TEXT("StartButton"));
+	Fixture.Root->AddChild(StartButton);
+	StartButton->bIsVariable = false;
+
+	FBlueprintHelperSetWidgetAsVariableRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.WidgetName = TEXT("StartButton");
+	Request.bIsVariable = true;
+	Request.ExpectedWidgetClassPath = UButton::StaticClass()->GetPathName();
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetWidgetAsVariable(Request);
+
+	TestTrue(TEXT("set widget as variable true succeeds"), Result.bSuccess);
+	TestEqual(TEXT("affected widget records target widget"), Result.AffectedWidget, FString(TEXT("StartButton")));
+	TestTrue(TEXT("widget bIsVariable true"), StartButton->bIsVariable);
+	TestTrue(TEXT("widget variable registration is updated"),
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, StartButton));
+	TestTrue(TEXT("widget variable result includes readback context"), Result.ReadbackContext.IsValid());
+	return Result.bSuccess;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

@@ -1,4 +1,7 @@
 export type GraphWriteRouteStatus = 'active' | 'planned' | 'hidden';
+export type GraphWriteRouteAdapterSync =
+  | 'active_requires_registered_non_reserved_adapter'
+  | 'reserved_hidden_from_agent';
 export type GraphWriteTemplateWriteMode =
   | 'graph.append'
   | 'graph.replace'
@@ -33,6 +36,7 @@ export interface GraphWriteRouteDescriptor {
   allowed_slot_ids: string[];
   compiler_id: string;
   status: GraphWriteRouteStatus;
+  adapter_sync: GraphWriteRouteAdapterSync;
 }
 
 export interface GraphWriteRouteSyncEntry {
@@ -44,10 +48,7 @@ export interface GraphWriteRouteSyncEntry {
   compiler_id: string;
   taskplan_op: string;
   status: GraphWriteRouteStatus;
-  adapter_sync:
-    | 'active_requires_registered_non_reserved_adapter'
-    | 'planned_route_not_agent_executable'
-    | 'hidden_route_not_agent_executable';
+  adapter_sync: GraphWriteRouteAdapterSync;
 }
 
 export interface GraphWriteRouteSyncManifest {
@@ -57,7 +58,9 @@ export interface GraphWriteRouteSyncManifest {
 }
 
 export function isAgentVisibleGraphWriteRoute(route: GraphWriteRouteDescriptor): boolean {
-  return route.status === 'active' && route.template_path !== undefined;
+  return route.status === 'active'
+    && route.adapter_sync === 'active_requires_registered_non_reserved_adapter'
+    && route.template_path !== undefined;
 }
 
 export function makeGraphWriteRouteKey(graphStrategy: string, publicScope: string): string {

@@ -6,6 +6,7 @@
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
+#include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipeline.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
 #include "Serialization/JsonSerializer.h"
@@ -462,7 +463,7 @@ bool FBlueprintHelperContractTaskRuntimeGraphWriteIrLoweringTest::RunTest(const 
 		TEXT("trace_graphwrite_ir"));
 	ChildResult.Data = MakeShared<FJsonObject>();
 
-	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForStep(
+	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimePipeline::BuildRuntimeDataForStep(
 		TaskPlan,
 		TEXT(""),
 		LoweredStep,
@@ -583,7 +584,7 @@ bool FBlueprintHelperContractTaskRuntimeAggregatesMultipleStepsTest::RunTest(con
 	StepRecords.Add({FirstStep, FirstResult});
 	StepRecords.Add({SecondStep, SecondResult});
 
-	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForSteps(
+	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimePipeline::BuildRuntimeDataForSteps(
 		TaskPlan,
 		TEXT("task_multi_step"),
 		StepRecords,
@@ -806,7 +807,7 @@ bool FBlueprintHelperContractTaskRuntimeRecordsCompileSavePostOperationsTest::Ru
 	SavePostOperation.DurationMs = 0.25;
 	PostOperations.Add(SavePostOperation);
 
-	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForSteps(
+	const TSharedRef<FJsonObject> RuntimeData = FBlueprintHelperTaskRuntimePipeline::BuildRuntimeDataForSteps(
 		TaskPlan,
 		TEXT("task_compile_save"),
 		StepRecords,

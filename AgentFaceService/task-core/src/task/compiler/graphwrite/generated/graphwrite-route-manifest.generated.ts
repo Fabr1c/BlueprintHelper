@@ -35,6 +35,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
     "write_mode": "graph.append"
   },
@@ -65,6 +66,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
     "write_mode": "graph.append"
   },
@@ -97,6 +99,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
     "write_mode": "graph.append"
   },
@@ -127,6 +130,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
     "write_mode": "graph.append"
   },
@@ -158,6 +162,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
     "write_mode": "graph.append"
   },
@@ -189,6 +194,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "merge_external_flow",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_merges",
     "write_mode": "graph.merge"
   },
@@ -218,6 +224,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
     "write_mode": "graph.merge"
   },
@@ -248,6 +255,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
     "write_mode": "graph.merge"
   },
@@ -277,6 +285,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
     "write_mode": "graph.merge"
   },
@@ -300,6 +309,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_external_graph",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "external_patches",
     "write_mode": "graph.patch"
   },
@@ -323,6 +333,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_external_graph",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "external_patches",
     "write_mode": "graph.patch"
   },
@@ -351,6 +362,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -379,6 +391,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -406,6 +419,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -434,6 +448,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -462,6 +477,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -490,6 +506,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
     "write_mode": "graph.patch"
   },
@@ -513,6 +530,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_external_body",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "external_replace",
     "write_mode": "graph.replace"
   },
@@ -557,6 +575,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -599,6 +618,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -641,6 +661,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -687,6 +708,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -737,6 +759,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -774,6 +797,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
+    "adapter_sync": "reserved_hidden_from_agent",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   },
@@ -821,6 +845,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
+    "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
     "write_mode": "graph.replace"
   }

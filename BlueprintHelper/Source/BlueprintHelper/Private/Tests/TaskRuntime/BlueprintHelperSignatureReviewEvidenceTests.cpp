@@ -50,6 +50,42 @@ bool FBlueprintHelperSignatureReviewEvidenceSubkindTest::RunTest(const FString& 
 	TestEqual(TEXT("signature evidence id includes subkind"),
 		Target.SignatureEvidenceId,
 		FString(TEXT("signature:function:ComputeScore")));
+
+	FBlueprintHelperTaskRuntimeLoweredStep MacroStep;
+	MacroStep.Capability = FBlueprintHelperSignatureTaskPlanAdapter::CapabilityName;
+	MacroStep.AdapterOperation = FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureMacro;
+	MacroStep.Payload = MakeShared<FJsonObject>();
+	MacroStep.Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/Test/BP_Signature.BP_Signature"));
+	MacroStep.Payload->SetStringField(TEXT("macro_name"), TEXT("ClampScore"));
+
+	FBlueprintHelperWriteReviewEvidence MacroEvidence;
+	const bool bMacroBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+		MacroStep,
+		TEXT("archive"),
+		TEXT("task_run"),
+		1,
+		MacroEvidence);
+
+	TestTrue(TEXT("macro signature evidence builds"), bMacroBuilt);
+	TestEqual(TEXT("one macro target"), MacroEvidence.AtomicTargets.Num(), 1);
+	if (MacroEvidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& MacroTarget = MacroEvidence.AtomicTargets[0];
+	TestEqual(TEXT("macro target kind remains signature"),
+		MacroTarget.TargetKind,
+		FString(TEXT("signature")));
+	TestEqual(TEXT("signature subkind is macro"),
+		MacroTarget.TargetSubKind,
+		FString(TEXT("macro")));
+	TestEqual(TEXT("macro signature visual group includes subkind"),
+		MacroTarget.VisualGroupKey,
+		FString(TEXT("signature:macro:ClampScore")));
+	TestEqual(TEXT("macro signature evidence id includes subkind"),
+		MacroTarget.SignatureEvidenceId,
+		FString(TEXT("signature:macro:ClampScore")));
 	return true;
 }
 

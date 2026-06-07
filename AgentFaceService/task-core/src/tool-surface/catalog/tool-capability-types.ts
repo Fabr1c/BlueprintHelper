@@ -46,6 +46,7 @@ export interface ToolCapabilityItem {
   deprecated?: boolean;
   frozen?: boolean;
   cli_template_ids: string[];
+  source: 'capability_catalog';
 }
 
 export interface ToolCapabilityListItem extends ToolCapabilityItem {

@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyBoundaryModel.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphConnectivityPolicy.h"
@@ -65,6 +66,45 @@ struct TBlueprintHelperHasRequiredPipelineUtilsGenerate<T, std::void_t<decltype(
 	TArray<TSharedPtr<FUnresolvedNodeItem>>&,
 	const FBlueprintGraphWriteConnectivityValidationInput&)>(&T::GenerateSemanticGraphFromJsonObject))>> : std::true_type
 {
+};
+
+class FBlueprintHelperGraphBodyBoundaryModelTestFileUtils
+{
+public:
+	static void AddCppAndHeaderFiles(const FString& RelativeDirectory, TArray<FString>& OutFiles)
+	{
+		const FString AbsoluteDirectory = FPaths::Combine(
+			FPaths::ProjectPluginsDir(),
+			TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper"),
+			RelativeDirectory);
+		IFileManager::Get().FindFilesRecursive(OutFiles, *AbsoluteDirectory, TEXT("*.cpp"), true, false);
+		IFileManager::Get().FindFilesRecursive(OutFiles, *AbsoluteDirectory, TEXT("*.h"), true, false);
+	}
+
+	static TArray<FString> GenericGraphWriteBoundaryScanFiles()
+	{
+		TArray<FString> Files;
+		AddCppAndHeaderFiles(
+			TEXT("Private/Systems/ToolClusters/GraphWrite/Pipeline"),
+			Files);
+		AddCppAndHeaderFiles(
+			TEXT("Public/Systems/ToolClusters/GraphWrite/Pipeline"),
+			Files);
+		AddCppAndHeaderFiles(
+			TEXT("Private/Systems/ToolClusters/GraphWrite/GraphStatement"),
+			Files);
+		return Files;
+	}
+
+	static TArray<FString> GenericBoundaryForbiddenTokens()
+	{
+		const FString TextPrefix = FString(TEXT("TEXT(\""));
+		return {
+			FString(TEXT("FindOrAdd(")) + TextPrefix + FString(TEXT("Function")) + TEXT("Result\")"),
+			TextPrefix + FString(TEXT("Tunnel")) + TEXT("Entry\")"),
+			TextPrefix + FString(TEXT("Tunnel")) + TEXT("Exit\")")
+		};
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -251,6 +291,36 @@ bool FBlueprintHelperGraphWritePipelineNoConnectivityFallbackTest::RunTest(const
 	TestTrue(
 		TEXT("replace service passes required adapter connectivity input into pipeline"),
 		ReplaceServiceSource.Contains(TEXT("AdapterConnectivityInput);")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteGenericPipelineNoBoundaryIdentityMappingTest,
+	"BlueprintHelper.GraphWrite.GraphBodyBoundaryModel.GenericPipelineNoBoundaryIdentityMapping",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteGenericPipelineNoBoundaryIdentityMappingTest::RunTest(const FString&)
+{
+	const TArray<FString> Files =
+		FBlueprintHelperGraphBodyBoundaryModelTestFileUtils::GenericGraphWriteBoundaryScanFiles();
+	TestTrue(TEXT("generic GraphWrite source files are discovered"), Files.Num() > 0);
+
+	const TArray<FString> ForbiddenTokens =
+		FBlueprintHelperGraphBodyBoundaryModelTestFileUtils::GenericBoundaryForbiddenTokens();
+	for (const FString& File : Files)
+	{
+		FString Source;
+		if (!TestTrue(FString::Printf(TEXT("generic GraphWrite source loads: %s"), *File), FFileHelper::LoadFileToString(Source, *File)))
+		{
+			continue;
+		}
+		for (const FString& Token : ForbiddenTokens)
+		{
+			TestFalse(
+				FString::Printf(TEXT("generic source does not publish adapter boundary token %s in %s"), *Token, *File),
+				Source.Contains(Token));
+		}
+	}
 	return true;
 }
 

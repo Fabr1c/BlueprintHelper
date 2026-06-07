@@ -213,7 +213,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 
 	FBlueprintHelperWriteUnitOfWorkRequest Request;
 	FBlueprintHelperToolError Error;
-	if (!Adapter->BuildUnitOfWorkRequest(AcceptedPayload, Request, Error))
+	if (!Adapter->BuildPreflight(AcceptedPayload, Request, Error))
 	{
 		return FBlueprintHelperToolResultBuilder::Failure(
 			LoweredStep.RuntimeOperation.IsEmpty() ? TEXT("execute_task_plan") : LoweredStep.RuntimeOperation,
@@ -228,6 +228,15 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterHub::ExecuteSte
 	{
 		return Executor->ExecuteStep(LoweredStep);
 	};
+	if (!Adapter->BuildMutationPlan(AcceptedPayload, Request, Error) ||
+		!Adapter->BuildDryRunProjection(AcceptedPayload, Request, Error) ||
+		!Adapter->BuildReviewAndReadback(AcceptedPayload, Request, Error))
+	{
+		return FBlueprintHelperToolResultBuilder::Failure(
+			LoweredStep.RuntimeOperation.IsEmpty() ? TEXT("execute_task_plan") : LoweredStep.RuntimeOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+	}
 
 	return FBlueprintHelperWriteUnitOfWork::Run(Request).ToolResult;
 }

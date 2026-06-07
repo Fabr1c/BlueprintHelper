@@ -50,6 +50,8 @@ export interface ToolCommandManifest {
   template_refs: string[];
   route_refs: string[];
   recommended_invocations: string[];
+  help_usage: string[];
+  help_notes: string[];
   stop_conditions: string[];
   source: 'readonly_mirror';
 }

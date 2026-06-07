@@ -19,6 +19,9 @@ public:
 	FBlueprintHelperToolResultBase EnsureCustomEvent(
 		const FBlueprintHelperEnsureCustomEventSignatureRequest& Request) const;
 
+	FBlueprintHelperToolResultBase EnsureMacro(
+		const FBlueprintHelperEnsureMacroSignatureRequest& Request) const;
+
 	FBlueprintHelperToolResultBase RemoveSignature(
 		const FBlueprintHelperRemoveSignatureRequest& Request) const;
 

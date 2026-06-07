@@ -22,11 +22,11 @@ export const compositeBlueprintFeatureTaskCompiler: TaskTypeCompiler<Extract<Tas
     return taskSpec.task_type === 'create_blueprint_feature';
   },
   compile(taskSpec): TaskPlan {
-    return compileCompositeBlueprintFeatureTaskSpecToTaskPlan(taskSpec);
+    return compileCompositeFeatureTaskSpecToTaskPlan(taskSpec);
   },
 };
 
-export function compileCompositeBlueprintFeatureTaskSpecToTaskPlan(
+export function compileCompositeFeatureTaskSpecToTaskPlan(
   taskSpec: Extract<TaskSpec, { task_type: 'create_blueprint_feature' }>,
 ): TaskPlan {
   assertSupportedCompositeBlueprintFeatureTaskSpec(taskSpec);

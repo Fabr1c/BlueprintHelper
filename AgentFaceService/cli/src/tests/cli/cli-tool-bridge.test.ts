@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { getActiveReadContextRouteDescriptors } from '@blueprinthelper/task-core/tool-surface/templates/read-context-template-registry';
 
 const legacyTemplateIndexName = 'SEMANTIC' + '_INDEX';
 
@@ -392,7 +393,8 @@ test('direct read context capabilities stays local and returns compact matrix ar
   const toolResult = fullResult.toolResult as Record<string, unknown>;
   const data = toolResult.data as Record<string, unknown>;
   assert.equal(data.schema, 'ReadContextCapabilities.v1');
-  assert.deepEqual(data.formats, ['logic_flow', 'logic_md', 'logic_json']);
+  const activeRoutes = getActiveReadContextRouteDescriptors();
+  assert.deepEqual(data.formats, uniqueSorted(activeRoutes.flatMap((route) => route.supported_formats)));
   assert.equal(Array.isArray(data.read_types), true);
   assert.equal(JSON.stringify(data).includes('bridge_command'), false);
 });
@@ -588,6 +590,10 @@ test('frozen direct Bridge tools are not exposed through CLI tool invocation', a
   assert.equal(writes.join(''), '');
   assert.match(errors.join(''), /Unsupported BlueprintHelper CLI command/);
 });
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {

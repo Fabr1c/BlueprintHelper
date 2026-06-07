@@ -83,12 +83,13 @@ public:
 		if (!(*WriteObjectPtr)->TryGetStringField(TEXT("strategy"), OutStrategy) ||
 			(OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyFunctionSignature &&
 				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyCustomEventSignature &&
+				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyMacroSignature &&
 				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyEventDispatcherSignature &&
 				OutStrategy != FBlueprintHelperSignatureTaskPlanAdapter::StrategyOverrideEventSignature))
 		{
 			OutError = MakeSignatureAdapterError(
 				TEXT("unsupported_signature_strategy"),
-				TEXT("blueprint_signature TaskPlan step supports function_signature, custom_event_signature, event_dispatcher_signature, and override_event_signature strategies."),
+				TEXT("blueprint_signature TaskPlan step supports function_signature, custom_event_signature, macro_signature, event_dispatcher_signature, and override_event_signature strategies."),
 				SignatureStepFieldPath(TEXT("write.strategy")));
 			return false;
 		}
@@ -198,14 +199,15 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 
 	const bool bEnsureFunction = OpName == AdapterOperationEnsureFunction;
 	const bool bEnsureCustomEvent = OpName == AdapterOperationEnsureCustomEvent;
+	const bool bEnsureMacro = OpName == AdapterOperationEnsureMacro;
 	const bool bRemoveSignature = OpName == AdapterOperationRemoveSignature;
 	const bool bEnsureEventDispatcher = OpName == AdapterOperationEnsureEventDispatcher;
 	const bool bEnsureOverrideEvent = OpName == AdapterOperationEnsureOverrideEvent;
-	if (!bEnsureFunction && !bEnsureCustomEvent && !bRemoveSignature && !bEnsureEventDispatcher && !bEnsureOverrideEvent)
+	if (!bEnsureFunction && !bEnsureCustomEvent && !bEnsureMacro && !bRemoveSignature && !bEnsureEventDispatcher && !bEnsureOverrideEvent)
 	{
 		OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
 			TEXT("unsupported_signature_op"),
-			TEXT("blueprint_signature currently supports ensure_function, ensure_custom_event, ensure_event_dispatcher, ensure_override_event, and remove_signature."),
+			TEXT("blueprint_signature currently supports ensure_function, ensure_custom_event, ensure_macro, ensure_event_dispatcher, ensure_override_event, and remove_signature."),
 			FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureOpFieldPath(TEXT("op")));
 		return false;
 	}
@@ -224,6 +226,15 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
 			TEXT("unsupported_signature_strategy"),
 			TEXT("ensure_custom_event requires custom_event_signature strategy."),
+			FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureStepFieldPath(TEXT("write.strategy")));
+		return false;
+	}
+
+	if (bEnsureMacro && Strategy != StrategyMacroSignature)
+	{
+		OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
+			TEXT("unsupported_signature_strategy"),
+			TEXT("ensure_macro requires macro_signature strategy."),
 			FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureStepFieldPath(TEXT("write.strategy")));
 		return false;
 	}
@@ -347,6 +358,32 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
 		{
 			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+	}
+	else if (bEnsureMacro)
+	{
+		FString MacroName;
+		if (!OpObject->TryGetStringField(TEXT("macro_name"), MacroName) || MacroName.IsEmpty())
+		{
+			OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
+				TEXT("invalid_signature_op"),
+				TEXT("ensure_macro requires macro_name."),
+				FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureOpFieldPath(TEXT("macro_name")));
+			return false;
+		}
+
+		Payload->SetStringField(TEXT("macro_name"), MacroName);
+
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
+		{
+			Payload->SetArrayField(TEXT("inputs"), *Inputs);
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
+		if (OpObject->TryGetArrayField(TEXT("outputs"), Outputs) && Outputs)
+		{
+			Payload->SetArrayField(TEXT("outputs"), *Outputs);
 		}
 	}
 	else if (bEnsureEventDispatcher)
@@ -492,7 +529,7 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		{
 			OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
 				TEXT("invalid_signature_op"),
-				TEXT("remove_signature requires signature_name, function_name, or event_name."),
+				TEXT("remove_signature requires signature_name, function_name, event_name, or dispatcher_name."),
 				FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureOpFieldPath(TEXT("signature_name")));
 			return false;
 		}

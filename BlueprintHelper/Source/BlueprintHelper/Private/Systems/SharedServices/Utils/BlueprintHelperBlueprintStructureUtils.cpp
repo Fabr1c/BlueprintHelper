@@ -73,6 +73,197 @@ static bool BlueprintHelperGraphPinMatches(
 		&& BlueprintHelperPinMatches(ExistingPin->PinType, ExpectedType);
 }
 
+static bool BlueprintHelperIsExecPin(const UEdGraphPin* Pin)
+{
+	return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+}
+
+static UEdGraphPin* BlueprintHelperFindFirstExecPin(UEdGraphNode* Node, const EEdGraphPinDirection Direction)
+{
+	if (!Node)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (Pin && Pin->Direction == Direction && BlueprintHelperIsExecPin(Pin))
+		{
+			return Pin;
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperPinsAreLinkedToEachOther(const UEdGraphPin* FirstPin, const UEdGraphPin* SecondPin)
+{
+	return FirstPin &&
+		SecondPin &&
+		FirstPin->LinkedTo.Contains(const_cast<UEdGraphPin*>(SecondPin)) &&
+		SecondPin->LinkedTo.Contains(const_cast<UEdGraphPin*>(FirstPin));
+}
+
+static bool BlueprintHelperMacroGraphHasBodyNodes(const UEdGraph* Graph)
+{
+	if (!Graph)
+	{
+		return false;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node && !Cast<UK2Node_Tunnel>(Node))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void BlueprintHelperFindMacroTunnelBoundaries(
+	UEdGraph* Graph,
+	UK2Node_Tunnel*& OutEntryNode,
+	UK2Node_Tunnel*& OutExitNode)
+{
+	OutEntryNode = nullptr;
+	OutExitNode = nullptr;
+	if (!Graph)
+	{
+		return;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UK2Node_Tunnel* TunnelNode = Cast<UK2Node_Tunnel>(Node);
+		if (!TunnelNode)
+		{
+			continue;
+		}
+
+		if (!OutEntryNode && TunnelNode->bCanHaveOutputs)
+		{
+			OutEntryNode = TunnelNode;
+		}
+		else if (!OutExitNode && TunnelNode->bCanHaveInputs)
+		{
+			OutExitNode = TunnelNode;
+		}
+	}
+}
+
+static UK2Node_Tunnel* BlueprintHelperCreateMacroTunnelBoundary(
+	UEdGraph* Graph,
+	const bool bEntry)
+{
+	if (!Graph)
+	{
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_Tunnel> NodeCreator(*Graph);
+	UK2Node_Tunnel* TunnelNode = NodeCreator.CreateNode(true);
+	if (!TunnelNode)
+	{
+		return nullptr;
+	}
+
+	TunnelNode->bCanHaveOutputs = bEntry;
+	TunnelNode->bCanHaveInputs = !bEntry;
+	TunnelNode->NodePosX = bEntry ? 0 : 240;
+	TunnelNode->NodePosY = 0;
+	NodeCreator.Finalize();
+	return TunnelNode;
+}
+
+static bool BlueprintHelperEnsureMacroTunnelBoundaries(UEdGraph* Graph, FString& OutError)
+{
+	if (!Graph)
+	{
+		OutError = TEXT("add_macro_graph failed: target macro graph is invalid.");
+		return false;
+	}
+
+	UK2Node_Tunnel* EntryNode = nullptr;
+	UK2Node_Tunnel* ExitNode = nullptr;
+	BlueprintHelperFindMacroTunnelBoundaries(Graph, EntryNode, ExitNode);
+	if (EntryNode && ExitNode)
+	{
+		return true;
+	}
+
+	if (BlueprintHelperMacroGraphHasBodyNodes(Graph))
+	{
+		OutError = TEXT("add_macro_graph failed: existing macro graph has body nodes but no complete tunnel boundary.");
+		return false;
+	}
+
+	Graph->Modify();
+	if (!EntryNode)
+	{
+		EntryNode = BlueprintHelperCreateMacroTunnelBoundary(Graph, true);
+	}
+	if (!ExitNode)
+	{
+		ExitNode = BlueprintHelperCreateMacroTunnelBoundary(Graph, false);
+	}
+
+	if (!EntryNode || !ExitNode)
+	{
+		OutError = TEXT("add_macro_graph failed: could not create macro tunnel boundary nodes.");
+		return false;
+	}
+
+	Graph->NotifyGraphChanged();
+	return true;
+}
+
+static bool BlueprintHelperEnsureEmptyMacroGraphDefaultExecLink(UEdGraph* Graph, FString& OutError)
+{
+	if (!Graph || BlueprintHelperMacroGraphHasBodyNodes(Graph))
+	{
+		return true;
+	}
+
+	UK2Node_Tunnel* EntryNode = nullptr;
+	UK2Node_Tunnel* ExitNode = nullptr;
+	BlueprintHelperFindMacroTunnelBoundaries(Graph, EntryNode, ExitNode);
+	if (!EntryNode || !ExitNode)
+	{
+		return true;
+	}
+
+	UEdGraphPin* EntryExecOut = BlueprintHelperFindFirstExecPin(EntryNode, EGPD_Output);
+	UEdGraphPin* ExitExecIn = BlueprintHelperFindFirstExecPin(ExitNode, EGPD_Input);
+	if (!EntryExecOut || !ExitExecIn || BlueprintHelperPinsAreLinkedToEachOther(EntryExecOut, ExitExecIn))
+	{
+		return true;
+	}
+
+	if (EntryExecOut->LinkedTo.Num() > 0 || ExitExecIn->LinkedTo.Num() > 0)
+	{
+		return true;
+	}
+
+	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+	if (!Schema)
+	{
+		OutError = TEXT("add_macro_graph failed: K2 schema is unavailable for default tunnel exec link.");
+		return false;
+	}
+
+	EntryExecOut->Modify();
+	ExitExecIn->Modify();
+	if (!Schema->TryCreateConnection(EntryExecOut, ExitExecIn) ||
+		!BlueprintHelperPinsAreLinkedToEachOther(EntryExecOut, ExitExecIn))
+	{
+		OutError = TEXT("add_macro_graph failed: could not connect default macro tunnel exec pins.");
+		return false;
+	}
+
+	Graph->NotifyGraphChanged();
+	return true;
+}
+
 template <typename TNode>
 static void AppendUserPins(
 	TNode* Node,
@@ -420,25 +611,14 @@ bool UBlueprintHelperBlueprintStructureUtils::AddMacroGraphDirect(UBlueprint* Bl
 		FBlueprintEditorUtils::AddMacroGraph(Blueprint, NewGraph, true, nullptr);
 	}
 
+	if (!BlueprintHelperEnsureMacroTunnelBoundaries(NewGraph, OutError))
+	{
+		return false;
+	}
+
 	UK2Node_Tunnel* InputNode = nullptr;
 	UK2Node_Tunnel* OutputNode = nullptr;
-	for (UEdGraphNode* Node : NewGraph->Nodes)
-	{
-		UK2Node_Tunnel* TunnelNode = Cast<UK2Node_Tunnel>(Node);
-		if (!TunnelNode)
-		{
-			continue;
-		}
-
-		if (TunnelNode->bCanHaveOutputs && !InputNode)
-		{
-			InputNode = TunnelNode;
-		}
-		else if (TunnelNode->bCanHaveInputs && !OutputNode)
-		{
-			OutputNode = TunnelNode;
-		}
-	}
+	BlueprintHelperFindMacroTunnelBoundaries(NewGraph, InputNode, OutputNode);
 
 	const TArray<TSharedPtr<FJsonValue>>* InputsArray = nullptr;
 	if (Payload->TryGetArrayField(TEXT("inputs"), InputsArray) && InputsArray && InputNode)
@@ -450,6 +630,11 @@ bool UBlueprintHelperBlueprintStructureUtils::AddMacroGraphDirect(UBlueprint* Bl
 	if (Payload->TryGetArrayField(TEXT("outputs"), OutputsArray) && OutputsArray && OutputNode)
 	{
 		AppendUserPins(OutputNode, OutputsArray, EGPD_Input, UEdGraphSchema_K2::PC_Exec, true);
+	}
+
+	if (!BlueprintHelperEnsureEmptyMacroGraphDefaultExecLink(NewGraph, OutError))
+	{
+		return false;
 	}
 
 	return true;

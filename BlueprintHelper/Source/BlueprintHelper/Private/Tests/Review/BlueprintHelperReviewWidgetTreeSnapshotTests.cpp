@@ -5,6 +5,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/ExpandableArea.h"
 #include "Components/NamedSlotInterface.h"
 #include "Components/TextBlock.h"
@@ -232,6 +233,143 @@ bool FBlueprintHelperReviewWidgetTreeRestoreNamedSlotTest::RunTest(const FString
 	TestTrue(
 		TEXT("restored content variable is registered"),
 		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, RestoredContent));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeRestoreSlotPropertyTest,
+	"BlueprintHelper.Review.WidgetTree.RestoreSlotProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeRestoreSlotPropertyTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("SlotPropertyRestore"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	TestNotNull(TEXT("first text"), Fixture.FirstText);
+	if (!Fixture.Blueprint || !Fixture.FirstText)
+	{
+		return false;
+	}
+
+	UCanvasPanelSlot* Slot = Cast<UCanvasPanelSlot>(Fixture.FirstText->Slot);
+	TestNotNull(TEXT("first text has canvas panel slot"), Slot);
+	if (!Slot)
+	{
+		return false;
+	}
+
+	FAnchorData InitialLayout = Slot->GetLayout();
+	InitialLayout.Offsets.Left = 12.0f;
+	Slot->SetLayout(InitialLayout);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Fixture.Blueprint->GetPathName();
+	Target.TargetKind = TEXT("slot_property");
+	Target.TargetSubKind = TEXT("slot_property");
+	Target.TargetKey = TEXT("slot_property:FirstText.LayoutData.Offsets.Left");
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.PropertyPath = TEXT("LayoutData.Offsets.Left");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(
+		TEXT("slot property snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+
+	TSharedPtr<FJsonObject> Snapshot;
+	TestTrue(
+		TEXT("slot property snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(SnapshotJson), Snapshot) && Snapshot.IsValid());
+	if (!Snapshot.IsValid())
+	{
+		return false;
+	}
+
+	FString ValueText;
+	TestTrue(TEXT("snapshot carries slot property value"), Snapshot->TryGetStringField(TEXT("value"), ValueText));
+	TestEqual(TEXT("snapshot carries before value"), ValueText, FString(TEXT("12.000000")));
+
+	FAnchorData ChangedLayout = Slot->GetLayout();
+	ChangedLayout.Offsets.Left = 48.0f;
+	Slot->SetLayout(ChangedLayout);
+	TestEqual(TEXT("slot changed before restore"), Slot->GetLayout().Offsets.Left, 48.0f);
+
+	FString RestoreError;
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
+		Target,
+		Snapshot,
+		RestoreError);
+	TestTrue(FString::Printf(TEXT("slot property restore succeeds: %s"), *RestoreError), bRestored);
+	TestEqual(TEXT("slot property restored to before value"), Slot->GetLayout().Offsets.Left, 12.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeRestoreWidgetVariableTest,
+	"BlueprintHelper.Review.WidgetTree.RestoreWidgetVariable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeRestoreWidgetVariableTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("WidgetVariableRestore"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	TestNotNull(TEXT("first text"), Fixture.FirstText);
+	if (!Fixture.Blueprint || !Fixture.FirstText)
+	{
+		return false;
+	}
+
+	FBlueprintHelperWidgetVersionCompat::SetWidgetVariableState(Fixture.Blueprint, Fixture.FirstText, false);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Fixture.Blueprint->GetPathName();
+	Target.TargetKind = TEXT("widget_variable");
+	Target.TargetSubKind = TEXT("widget_variable");
+	Target.TargetKey = TEXT("widget_variable:FirstText");
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.PropertyPath = TEXT("is_variable");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(
+		TEXT("widget variable snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+
+	TSharedPtr<FJsonObject> Snapshot;
+	TestTrue(
+		TEXT("widget variable snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(SnapshotJson), Snapshot) && Snapshot.IsValid());
+	if (!Snapshot.IsValid())
+	{
+		return false;
+	}
+
+	bool bSnapshotIsVariable = true;
+	TestTrue(TEXT("snapshot carries is_variable"), Snapshot->TryGetBoolField(TEXT("is_variable"), bSnapshotIsVariable));
+	TestFalse(TEXT("snapshot records before variable state"), bSnapshotIsVariable);
+
+	Fixture.FirstText->bIsVariable = true;
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.FirstText);
+	TestTrue(
+		TEXT("widget variable registered before restore"),
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, Fixture.FirstText));
+
+	FString RestoreError;
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
+		Target,
+		Snapshot,
+		RestoreError);
+	TestTrue(FString::Printf(TEXT("widget variable restore succeeds: %s"), *RestoreError), bRestored);
+	TestFalse(TEXT("widget bIsVariable restored false"), Fixture.FirstText->bIsVariable);
+	TestTrue(
+		TEXT("widget source GUID remains valid after variable restore"),
+		FBlueprintHelperWidgetVersionCompat::HasWidgetSourceGuid(Fixture.Blueprint, Fixture.FirstText));
 	return true;
 }
 

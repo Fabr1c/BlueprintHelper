@@ -32,6 +32,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentFacts.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
@@ -103,6 +104,90 @@ public:
 	static bool IsNamedSlotContentTarget(const FBlueprintHelperReviewAtomicTarget& Target)
 	{
 		return Target.TargetSubKind.Equals(TEXT("named_slot_content"), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsSlotPropertyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetKind.Equals(TEXT("slot_property"), ESearchCase::IgnoreCase) ||
+			Target.TargetSubKind.Equals(TEXT("slot_property"), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsWidgetVariableTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetKind.Equals(TEXT("widget_variable"), ESearchCase::IgnoreCase) ||
+			Target.TargetSubKind.Equals(TEXT("widget_variable"), ESearchCase::IgnoreCase);
+	}
+
+	static void ReadWidgetAndPropertyTarget(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const FString& TargetName,
+		FString& OutWidgetName,
+		FString& OutPropertyName)
+	{
+		OutWidgetName.Reset();
+		OutPropertyName.Reset();
+		TryReadAnchorString(Target, TEXT("widget_name"), OutWidgetName);
+		TryReadAnchorString(Target, TEXT("property_path"), OutPropertyName);
+		if (OutPropertyName.IsEmpty())
+		{
+			OutPropertyName = Target.PropertyPath;
+		}
+
+		FString TargetTail = TargetName;
+		const FString SlotPropertyPrefix = TEXT("slot_property:");
+		const FString WidgetVariablePrefix = TEXT("widget_variable:");
+		if (Target.TargetKey.StartsWith(SlotPropertyPrefix, ESearchCase::IgnoreCase))
+		{
+			TargetTail = Target.TargetKey.Mid(SlotPropertyPrefix.Len());
+		}
+		else if (Target.TargetKey.StartsWith(WidgetVariablePrefix, ESearchCase::IgnoreCase))
+		{
+			TargetTail = Target.TargetKey.Mid(WidgetVariablePrefix.Len());
+		}
+
+		if (IsWidgetVariableTarget(Target))
+		{
+			if (OutWidgetName.IsEmpty())
+			{
+				OutWidgetName = TargetTail;
+			}
+			if (OutPropertyName.IsEmpty())
+			{
+				OutPropertyName = TEXT("is_variable");
+			}
+			return;
+		}
+
+		FString ParsedWidgetName;
+		FString ParsedPropertyPath;
+		if (TargetTail.Split(TEXT("."), &ParsedWidgetName, &ParsedPropertyPath) && !ParsedWidgetName.IsEmpty())
+		{
+			if (OutWidgetName.IsEmpty())
+			{
+				OutWidgetName = ParsedWidgetName;
+			}
+			if (OutPropertyName.IsEmpty())
+			{
+				OutPropertyName = ParsedPropertyPath;
+			}
+		}
+	}
+
+	static bool IsWidgetVariableRegistered(UWidgetBlueprint* WidgetBlueprint, const UWidget* Widget)
+	{
+#if WITH_EDITORONLY_DATA
+		if (!WidgetBlueprint || !Widget)
+		{
+			return false;
+		}
+#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		return WidgetBlueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName());
+#else
+		return Widget->bIsVariable;
+#endif
+#else
+		return false;
+#endif
 	}
 
 	static TSharedRef<FJsonObject> BuildNamedSlotContentSnapshot(
@@ -951,7 +1036,19 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 
 			FString WidgetName;
 			FString PropertyName;
-			FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
+			if (FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsSlotPropertyTarget(Target) ||
+				FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsWidgetVariableTarget(Target))
+			{
+				FBlueprintHelperReviewWidgetTreeSnapshotHelper::ReadWidgetAndPropertyTarget(
+					Target,
+					TargetName,
+					WidgetName,
+					PropertyName);
+			}
+			else
+			{
+				FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
+			}
 			UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
 			if (!Widget)
 			{
@@ -977,7 +1074,56 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 			{
 				Json->SetStringField(TEXT("property_path"), PropertyName);
-				if (FProperty* Property = Widget->GetClass() ? Widget->GetClass()->FindPropertyByName(FName(*PropertyName)) : nullptr)
+				if (FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsSlotPropertyTarget(Target))
+				{
+					Json->SetStringField(TEXT("target_subkind"), TEXT("slot_property"));
+					if (!Widget->Slot)
+					{
+						Json->SetBoolField(TEXT("slot_exists"), false);
+						return Json;
+					}
+					Json->SetBoolField(TEXT("slot_exists"), true);
+					Json->SetStringField(TEXT("slot_class_path"), Widget->Slot->GetClass()->GetPathName());
+					FProperty* Property = nullptr;
+					void* ValuePtr = nullptr;
+					FString ExpectedType;
+					FString ErrorCode;
+					FString ErrorMessage;
+					if (FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+						Widget->Slot,
+						PropertyName,
+						Property,
+						ValuePtr,
+						ExpectedType,
+						ErrorCode,
+						ErrorMessage) &&
+						Property &&
+						ValuePtr)
+					{
+						Json->SetStringField(TEXT("property_class"), Property->GetClass()->GetName());
+						Json->SetStringField(TEXT("expected_type"), ExpectedType);
+						FString Value;
+						Property->ExportText_Direct(Value, ValuePtr, nullptr, Widget->Slot, PPF_None);
+						Json->SetStringField(TEXT("value"), Value);
+					}
+					else
+					{
+						Json->SetStringField(TEXT("resolve_error_code"), ErrorCode);
+						Json->SetStringField(TEXT("resolve_error_message"), ErrorMessage);
+					}
+				}
+				else if (FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsWidgetVariableTarget(Target))
+				{
+					Json->SetStringField(TEXT("target_subkind"), TEXT("widget_variable"));
+					Json->SetBoolField(TEXT("is_variable"), Widget->bIsVariable);
+					Json->SetStringField(TEXT("value"), Widget->bIsVariable ? TEXT("true") : TEXT("false"));
+					Json->SetStringField(
+						TEXT("variable_guid_state"),
+						FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsWidgetVariableRegistered(WidgetBlueprint, Widget)
+							? TEXT("valid")
+							: TEXT("missing"));
+				}
+				else if (FProperty* Property = Widget->GetClass() ? Widget->GetClass()->FindPropertyByName(FName(*PropertyName)) : nullptr)
 				{
 					Json->SetStringField(TEXT("property_class"), Property->GetClass()->GetName());
 					FString Value;

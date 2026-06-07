@@ -631,7 +631,6 @@ test('develop timing records read_context logic_flow stages and UE nested timing
     'cli.parse_args',
     'cli.invoke_tool',
     'read_context.parse_input',
-    'read_context.resolve_format',
     'read_context.resolve_bridge_request',
     'read_context.build_bridge_payload',
     'read_context.bridge_send_receive',

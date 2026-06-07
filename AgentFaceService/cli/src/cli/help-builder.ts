@@ -4,8 +4,10 @@ import {
   formatManifestUsage,
   getBlueprintHelperTool,
   globalCliCommandUsageLines,
+  listCliSubcommandUsageLines,
   manifestSpecificNotes,
   resolveCliCommandHelpManifest,
+  templateNavigationUsageLinesForInputShapes,
   type CommandHelpEntry,
   type ToolCommandManifest,
   type ToolCommandManifestRegistry,
@@ -66,25 +68,14 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     '  bh bridge call --command <read_only_command>',
     '  bh tools domains --format json',
     '  bh tools list <domain> <kind> --format json',
-    '  bh tools templates families --workflow preview_execute --format json',
-    '  bh tools templates write-modes --family <family> --format json',
-    '  bh tools templates clusters --family <family> --format json',
-    '  bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
-    '  bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
-    '  bh tools templates compose --family <family> --write-mode <mode> --templates <template_id[,template_id...]> --out <task-spec.json> --format json',
-    '  bh tools read-templates domains --format json',
-    '  bh tools read-templates clusters --domain <domain> --format json',
-    '  bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
-    '  bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
-    '  bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
-    '  bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
+    ...listCliSubcommandUsageLines().map((line) => `  ${line}`),
     ...globalCliCommandUsageLines().map((line) => `  ${line}`),
     '',
     'Tool and template selection:',
     '  Start with: bh tools domains --format json',
     '  Filter with: bh tools list <domain> <kind> --format json',
-    '  Discover TaskSpec templates with: bh tools templates families --workflow preview_execute --format json',
-    '  Discover ReadContext templates with: bh tools read-templates domains --format json',
+    `  Discover TaskSpec templates with: ${listCliSubcommandUsageLines('tools.templates')[0]}`,
+    `  Discover ReadContext templates with: ${listCliSubcommandUsageLines('tools.read_templates')[0]}`,
     '  Compose a temporary TaskSpec or ReadSpec, then run bh task preview, bh task execute, or bh context read.',
     '',
     'Default tool names:',
@@ -184,14 +175,7 @@ function formatTemplateNavigation(
 ): string[] {
   const hasReadSpecWorkflow = manifests.some((manifest) => manifest.input_shapes.includes('readspec'));
   if (hasReadSpecWorkflow) {
-    return [
-      'bh tools read-templates domains --format json',
-      'bh tools read-templates clusters --domain <domain> --format json',
-      'bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
-      'bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
-      'bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
-      'bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
-    ];
+    return templateNavigationUsageLinesForInputShapes(['readspec']);
   }
 
   const hasTaskSpecWorkflow = manifests.some((manifest) =>
@@ -201,14 +185,7 @@ function formatTemplateNavigation(
   if (!hasTaskSpecWorkflow) {
     return [];
   }
-  return [
-    'bh tools templates families --workflow preview_execute --format json',
-    'bh tools templates write-modes --family <family> --format json',
-    'bh tools templates clusters --family <family> --format json',
-    'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
-    'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
-    'bh tools templates compose --family <family> --write-mode <mode> --templates <template_id[,template_id...]> --out <task-spec.json> --format json',
-  ];
+  return templateNavigationUsageLinesForInputShapes(['bare_taskspec']);
 }
 
 function formatManifestNotes(manifest: ToolCommandManifest): string[] {

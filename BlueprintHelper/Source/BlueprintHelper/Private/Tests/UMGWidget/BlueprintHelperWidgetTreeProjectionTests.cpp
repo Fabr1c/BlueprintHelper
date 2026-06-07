@@ -5,10 +5,12 @@
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/ExpandableArea.h"
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "UObject/Package.h"
 #include "WidgetBlueprint.h"
 
@@ -147,6 +149,48 @@ bool FBlueprintHelperWidgetTreeProjectionRootAndIndexTest::RunTest(const FString
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTreeProjectionVariableFlagUsesWidgetStateTest,
+	"BlueprintHelper.UMGWidget.Projection.VariableFlagUsesWidgetState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTreeProjectionVariableFlagUsesWidgetStateTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperWidgetTreeProjectionTestsLocalUtils::FProjectionFixture Fixture =
+		FBlueprintHelperWidgetTreeProjectionTestsLocalUtils::MakeFixture(TEXT("VariableFlagUsesWidgetState"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	TestNotNull(TEXT("first child"), Fixture.FirstChild);
+	if (!Fixture.Blueprint || !Fixture.FirstChild)
+	{
+		return false;
+	}
+
+	FBlueprintHelperWidgetVersionCompat::SetWidgetVariableState(Fixture.Blueprint, Fixture.FirstChild, false);
+	TestTrue(
+		TEXT("source GUID is valid before projection"),
+		FBlueprintHelperWidgetVersionCompat::HasWidgetSourceGuid(Fixture.Blueprint, Fixture.FirstChild));
+
+	FBlueprintHelperWidgetTreeSummary Summary;
+	FString ErrorCode;
+	FString ErrorMessage;
+	TestTrue(TEXT("projection builds widget tree summary"),
+		FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+			Fixture.Blueprint,
+			Summary,
+			ErrorCode,
+			ErrorMessage));
+
+	const FBlueprintHelperWidgetTreeItem* Child = Summary.Index.Find(TEXT("TitleText"));
+	TestNotNull(TEXT("projection index contains target child"), Child);
+	if (!Child)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("projection reports bIsVariable, not source GUID presence"), Child->bIsVariable);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperWidgetTreeProjectionJsonShapeTest,
 	"BlueprintHelper.UMGWidget.Projection.JsonOmitsEmptySlotFields",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -182,6 +226,66 @@ bool FBlueprintHelperWidgetTreeProjectionJsonShapeTest::RunTest(const FString& P
 	TestTrue(TEXT("root JSON includes is_inherited"),
 		RootJson->HasField(TEXT("is_inherited")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTreeProjectionSlotPropertiesTest,
+	"BlueprintHelper.UMGWidget.Projection.SlotPropertiesExposeWritablePaths",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTreeProjectionSlotPropertiesTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperWidgetTreeProjectionTestsLocalUtils::FProjectionFixture Fixture =
+		FBlueprintHelperWidgetTreeProjectionTestsLocalUtils::MakeFixture(TEXT("SlotProperties"));
+	UCanvasPanelSlot* Slot = Fixture.FirstChild ? Cast<UCanvasPanelSlot>(Fixture.FirstChild->Slot) : nullptr;
+	TestNotNull(TEXT("first child has CanvasPanelSlot"), Slot);
+	if (!Slot)
+	{
+		return false;
+	}
+
+	FAnchorData Layout = Slot->GetLayout();
+	Layout.Offsets.Left = 24.0f;
+	Slot->SetLayout(Layout);
+
+	FBlueprintHelperWidgetTreeSummary Summary;
+	FString ErrorCode;
+	FString ErrorMessage;
+	TestTrue(TEXT("projection builds widget tree summary"),
+		FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+			Fixture.Blueprint,
+			Summary,
+			ErrorCode,
+			ErrorMessage));
+
+	const FBlueprintHelperWidgetTreeItem* Child = Summary.Index.Find(TEXT("TitleText"));
+	TestNotNull(TEXT("projection index contains target child"), Child);
+	if (!Child || !Child->SlotProperties.IsValid())
+	{
+		return false;
+	}
+
+	FString LeftValue;
+	TestTrue(TEXT("slot properties expose canonical nested property path"),
+		Child->SlotProperties->TryGetStringField(TEXT("LayoutData.Offsets.Left"), LeftValue));
+	TestTrue(TEXT("slot property readback contains updated value"),
+		LeftValue.Contains(TEXT("24")));
+
+	const TSharedRef<FJsonObject> ChildJson = Child->ToJson();
+	const TSharedPtr<FJsonObject>* SlotPropertiesJson = nullptr;
+	TestTrue(TEXT("item JSON includes slot_properties"),
+		ChildJson->TryGetObjectField(TEXT("slot_properties"), SlotPropertiesJson));
+	if (!SlotPropertiesJson || !SlotPropertiesJson->IsValid())
+	{
+		return false;
+	}
+
+	FString JsonLeftValue;
+	TestTrue(TEXT("item JSON preserves canonical nested property path"),
+		(*SlotPropertiesJson)->TryGetStringField(TEXT("LayoutData.Offsets.Left"), JsonLeftValue));
+	TestTrue(TEXT("item JSON preserves updated value"),
+		JsonLeftValue.Contains(TEXT("24")));
 	return true;
 }
 

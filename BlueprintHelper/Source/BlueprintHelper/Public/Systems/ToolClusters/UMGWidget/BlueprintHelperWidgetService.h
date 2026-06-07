@@ -115,6 +115,25 @@ struct BLUEPRINTHELPER_API FBlueprintHelperSetNamedSlotContentRequest
 	bool bDryRun = false;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperSetSlotPropertyRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	FString PropertyPath;
+	FString Value;
+	FString ExpectedSlotClassPath;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperSetWidgetAsVariableRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	bool bIsVariable = false;
+	FString ExpectedWidgetClassPath;
+	bool bDryRun = false;
+};
+
 /**
  * UMG Widget Tree 操作服务。
  * 提供 WidgetBlueprint 的 WidgetTree 查询、增删、移动、属性读写等操作。
@@ -169,6 +188,12 @@ public:
 
 	FBlueprintHelperWidgetMutationResult SetNamedSlotContent(
 		const FBlueprintHelperSetNamedSlotContentRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult SetSlotProperty(
+		const FBlueprintHelperSetSlotPropertyRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult SetWidgetAsVariable(
+		const FBlueprintHelperSetWidgetAsVariableRequest& Request) const;
 
 	/** 获取 Widget 的可编辑属性列表。 */
 	FBlueprintHelperWidgetPropertyResult GetWidgetProperties(

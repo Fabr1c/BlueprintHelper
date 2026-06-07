@@ -15,7 +15,9 @@
 #include "Misc/Guid.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
 #include "Systems/SharedServices/Utils/BlueprintHelperBlueprintStructureUtils.h"
+#include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2FunctionBodyAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2MacroBodyAdapter.h"
@@ -33,7 +35,7 @@ public:
 			TEXT("%s_%s"),
 			*Prefix,
 			*FGuid::NewGuid().ToString(EGuidFormats::Digits));
-		UPackage* Package = CreatePackage(*FString::Printf(TEXT("/Game/BlueprintHelperGraphBody/%s"), *UniqueName));
+		UPackage* Package = GetTransientPackage();
 		Package->SetDirtyFlag(false);
 
 		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
@@ -44,6 +46,11 @@ public:
 			UBlueprint::StaticClass(),
 			UBlueprintGeneratedClass::StaticClass(),
 			TEXT("BlueprintHelperGraphBodyAdapterTests"));
+		if (Blueprint)
+		{
+			Blueprint->SetFlags(RF_Transient);
+			Blueprint->ClearFlags(RF_Standalone);
+		}
 		Package->SetDirtyFlag(false);
 		return Blueprint;
 	}
@@ -75,6 +82,25 @@ public:
 		return MacroGraph;
 	}
 
+	static UEdGraph* AddEmptyMacroGraphShell(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		UEdGraph* MacroGraph = FBlueprintEditorUtils::CreateNewGraph(
+			Blueprint,
+			FName(*MacroName),
+			UEdGraph::StaticClass(),
+			UEdGraphSchema_K2::StaticClass());
+		if (MacroGraph)
+		{
+			Blueprint->MacroGraphs.Add(MacroGraph);
+		}
+		return MacroGraph;
+	}
+
 	static UBlueprint* LoadOrCreatePersistentNodeGraphBodyFixture()
 	{
 		const FString PackageName = TEXT("/Game/BlueprintHelper/NodeGraphBody/BP_NodeGraphBodyAdapter");
@@ -85,25 +111,19 @@ public:
 			return ExistingBlueprint;
 		}
 
-		UPackage* Package = CreatePackage(*PackageName);
-		if (!Package)
+		const FBlueprintHelperAssetFactoryService AssetFactoryService;
+		const FBlueprintHelperAssetFactoryData FactoryData = AssetFactoryService.CreateAsset(
+			PackageName,
+			EBlueprintHelperAssetType::BlueprintClass,
+			TEXT("Actor"),
+			TEXT(""),
+			EBlueprintHelperAssetCollisionPolicy::ReuseIfExists,
+			false);
+		if (!FactoryData.Asset.bCreated && !FactoryData.Collision.bHandled)
 		{
 			return nullptr;
 		}
-
-		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
-			AActor::StaticClass(),
-			Package,
-			*AssetName,
-			BPTYPE_Normal,
-			UBlueprint::StaticClass(),
-			UBlueprintGeneratedClass::StaticClass(),
-			TEXT("BlueprintHelperNodeGraphBodyFixture"));
-		if (Blueprint)
-		{
-			FAssetRegistryModule::AssetCreated(Blueprint);
-		}
-		return Blueprint;
+		return LoadObject<UBlueprint>(nullptr, *ObjectPath);
 	}
 
 	static TSharedPtr<FJsonObject> MakePinPayload(const FString& PinName, const FString& PinCategory)
@@ -220,6 +240,40 @@ public:
 		return false;
 	}
 
+	static bool MacroGraphEntryExitExecLinked(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		UEdGraph* MacroGraph = FindMacroGraph(Blueprint, MacroName);
+		if (!MacroGraph)
+		{
+			return false;
+		}
+
+		UEdGraphPin* EntryExecOut = nullptr;
+		UEdGraphPin* ExitExecIn = nullptr;
+		for (UEdGraphNode* Node : MacroGraph->Nodes)
+		{
+			UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node);
+			if (!Tunnel)
+			{
+				continue;
+			}
+
+			if (!EntryExecOut && FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelEntry(Tunnel))
+			{
+				EntryExecOut = FindFirstExecPin(Tunnel, EGPD_Output);
+			}
+			if (!ExitExecIn && FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelExit(Tunnel))
+			{
+				ExitExecIn = FindFirstExecPin(Tunnel, EGPD_Input);
+			}
+		}
+
+		return EntryExecOut &&
+			ExitExecIn &&
+			EntryExecOut->LinkedTo.Contains(ExitExecIn) &&
+			ExitExecIn->LinkedTo.Contains(EntryExecOut);
+	}
+
 	static bool BoundaryArrayContainsNodeRef(
 		const TSharedPtr<FJsonObject>& Json,
 		const FString& FieldName,
@@ -268,6 +322,40 @@ public:
 	}
 
 private:
+	static UEdGraph* FindMacroGraph(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetName().Equals(MacroName, ESearchCase::IgnoreCase))
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
+	static UEdGraphPin* FindFirstExecPin(UEdGraphNode* Node, const EEdGraphPinDirection Direction)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
 	static void EnsureFunctionResult(UEdGraph* FunctionGraph)
 	{
 		if (!FunctionGraph)
@@ -335,6 +423,11 @@ bool FBlueprintHelperNodeGraphBodyAdapterE2EFixturePreparesAssetTest::RunTest(co
 			TEXT("ClampScoreMacro"),
 			false,
 			EGPD_Input));
+	TestTrue(
+		TEXT("fixture macro entry exec links to exit exec"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphEntryExitExecLinked(
+			Blueprint,
+			TEXT("ClampScoreMacro")));
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	Error.Reset();
@@ -345,6 +438,90 @@ bool FBlueprintHelperNodeGraphBodyAdapterE2EFixturePreparesAssetTest::RunTest(co
 	{
 		AddInfo(Error);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAddMacroGraphDirectConnectsDefaultTunnelExecTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.K2Macro.AddMacroGraphDirectConnectsDefaultTunnelExec",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAddMacroGraphDirectConnectsDefaultTunnelExecTest::RunTest(const FString&)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MakeActorBlueprint(TEXT("MacroDirect"));
+	TestTrue(TEXT("blueprint exists"), Blueprint != nullptr);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FString Error;
+	TestTrue(
+		TEXT("macro graph direct add succeeds"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::EnsurePersistentMacroGraph(Blueprint, Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(Error);
+	}
+	TestTrue(
+		TEXT("new macro entry exec links directly to exit exec"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphEntryExitExecLinked(
+			Blueprint,
+			TEXT("ClampScoreMacro")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAddMacroGraphDirectRepairsEmptyShellTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.K2Macro.AddMacroGraphDirectRepairsEmptyShell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAddMacroGraphDirectRepairsEmptyShellTest::RunTest(const FString&)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MakeActorBlueprint(TEXT("MacroShell"));
+	TestTrue(TEXT("blueprint exists"), Blueprint != nullptr);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	UEdGraph* Shell = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::AddEmptyMacroGraphShell(
+		Blueprint,
+		TEXT("ClampScoreMacro"));
+	TestTrue(TEXT("empty macro shell exists"), Shell != nullptr);
+	TestFalse(
+		TEXT("empty shell initially has no tunnel exec connection"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphEntryExitExecLinked(
+			Blueprint,
+			TEXT("ClampScoreMacro")));
+
+	FString Error;
+	TestTrue(
+		TEXT("macro graph direct add repairs empty shell"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::EnsurePersistentMacroGraph(Blueprint, Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(Error);
+	}
+	TestTrue(
+		TEXT("repaired macro entry has exec output"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphHasTunnelExecPin(
+			Blueprint,
+			TEXT("ClampScoreMacro"),
+			true,
+			EGPD_Output));
+	TestTrue(
+		TEXT("repaired macro exit has exec input"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphHasTunnelExecPin(
+			Blueprint,
+			TEXT("ClampScoreMacro"),
+			false,
+			EGPD_Input));
+	TestTrue(
+		TEXT("repaired macro entry exec links directly to exit exec"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MacroGraphEntryExitExecLinked(
+			Blueprint,
+			TEXT("ClampScoreMacro")));
 	return true;
 }
 
@@ -378,6 +555,37 @@ bool FBlueprintHelperGraphBodyReadbackServiceUsesRegistryTest::RunTest(const FSt
 		TestFalse(
 			FString::Printf(TEXT("readback service does not contain %s"), *Token),
 			Source.Contains(Token));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyAdapterTemporaryFixturesAreTransientTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.TestAssets.TemporaryFixturesAreTransient",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyAdapterTemporaryFixturesAreTransientTest::RunTest(const FString&)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MakeActorBlueprint(TEXT("TransientFixture"));
+	TestTrue(TEXT("temporary fixture blueprint exists"), Blueprint != nullptr);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	UPackage* Package = Blueprint->GetOutermost();
+	TestTrue(TEXT("temporary fixture package exists"), Package != nullptr);
+	TestFalse(
+		TEXT("temporary fixture package is not under /Game content"),
+		Package && Package->GetName().StartsWith(TEXT("/Game/")));
+
+	FBlueprintHelperGraphBodyAdapterExtractionTestUtils::AddFunctionGraph(Blueprint, TEXT("ComputeScore"));
+	TestFalse(
+		TEXT("temporary fixture remains outside /Game after graph mutation"),
+		Package && Package->GetName().StartsWith(TEXT("/Game/")));
+	if (Package)
+	{
+		Package->SetDirtyFlag(false);
 	}
 	return true;
 }

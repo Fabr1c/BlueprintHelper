@@ -57,17 +57,84 @@ public:
 			return false;
 		}
 
-#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
-		return Widget->bIsVariable
-			|| (WidgetBlueprint && WidgetBlueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName()));
-#else
+		(void)WidgetBlueprint;
 		return Widget->bIsVariable;
-#endif
 #else
 		return false;
 #endif
 	}
 
+	static void AppendPropertyValue(
+		const TSharedRef<FJsonObject>& OutProperties,
+		UObject* OwnerObject,
+		const FString& PropertyPath,
+		FProperty* Property,
+		const void* ValuePtr)
+	{
+		if (!Property || !ValuePtr)
+		{
+			return;
+		}
+
+		FString Value;
+		Property->ExportText_Direct(Value, ValuePtr, nullptr, OwnerObject, PPF_None);
+		OutProperties->SetStringField(PropertyPath, Value);
+
+		const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+		if (!StructProperty || !StructProperty->Struct)
+		{
+			return;
+		}
+
+		for (TFieldIterator<FProperty> It(StructProperty->Struct); It; ++It)
+		{
+			FProperty* ChildProperty = *It;
+			if (!ChildProperty || ChildProperty->HasAnyPropertyFlags(CPF_Transient))
+			{
+				continue;
+			}
+
+			const void* ChildValuePtr = ChildProperty->ContainerPtrToValuePtr<void>(ValuePtr);
+			AppendPropertyValue(
+				OutProperties,
+				OwnerObject,
+				FString::Printf(TEXT("%s.%s"), *PropertyPath, *ChildProperty->GetName()),
+				ChildProperty,
+				ChildValuePtr);
+		}
+	}
+
+	static TSharedPtr<FJsonObject> BuildSlotProperties(UPanelSlot* Slot)
+	{
+		if (!Slot)
+		{
+			return nullptr;
+		}
+
+		TSharedRef<FJsonObject> Properties = MakeShared<FJsonObject>();
+		for (TFieldIterator<FProperty> It(Slot->GetClass()); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (!Property
+				|| !Property->HasAnyPropertyFlags(CPF_Edit)
+				|| Property->HasAnyPropertyFlags(CPF_Transient))
+			{
+				continue;
+			}
+
+			const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Slot);
+			AppendPropertyValue(
+				Properties,
+				Slot,
+				Property->GetName(),
+				Property,
+				ValuePtr);
+		}
+
+		return Properties->Values.Num() > 0
+			? TSharedPtr<FJsonObject>(Properties)
+			: nullptr;
+	}
 };
 
 bool FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
@@ -152,6 +219,7 @@ FBlueprintHelperWidgetTreeItem FBlueprintHelperWidgetTreeProjectionService::Buil
 	if (Widget->Slot)
 	{
 		Item.SlotClassPath = FBlueprintHelperWidgetTreeProjectionServiceLocalUtils::GetClassPath(Widget->Slot);
+		Item.SlotProperties = FBlueprintHelperWidgetTreeProjectionServiceLocalUtils::BuildSlotProperties(Widget->Slot);
 	}
 
 	AppendPanelChildren(WidgetBlueprint, Widget, Item);

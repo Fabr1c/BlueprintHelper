@@ -1,12 +1,17 @@
 import type { MetricsOperationIdentity } from '../../metrics/metrics-types.js';
+import type { ToolResultProjectionPolicyId } from '../manifest/tool-command-manifest.js';
 
 export interface ToolCapabilityDescriptor {
   readonly tool_id: string;
   readonly tool_name: string;
+  readonly result_policy_id: ToolResultProjectionPolicyId;
   readonly route_refs: readonly string[];
   readonly stop_conditions: readonly string[];
   readonly recommended_invocations: readonly string[];
+  readonly help_usage: readonly string[];
+  readonly help_notes: readonly string[];
   readonly metrics_identity?: MetricsOperationIdentity;
+  readonly source: 'capability_descriptor_registry';
 }
 
 export interface ToolCapabilityDescriptorRegistryInput {

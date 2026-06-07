@@ -57,6 +57,25 @@ test('edit_blueprint_signature rejects legacy string pin_type', () => {
   );
 });
 
+test('edit_blueprint_signature lowers macro signature inputs and outputs', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSignatureSpec([{
+    kind: 'ensure_macro',
+    macro_name: 'ClampScore',
+    inputs: [{ name: 'Execute', pin_type: { category: 'exec' } }],
+    outputs: [{ name: 'Then', pin_type: { category: 'exec' } }],
+  }]) as never);
+
+  const step = plan.steps[0] as Record<string, unknown>;
+  const write = step.write as Record<string, unknown>;
+  const op = (write.ops as Array<Record<string, unknown>>)[0];
+  assert.equal(step.capability, 'blueprint_signature');
+  assert.equal(write.strategy, 'macro_signature');
+  assert.equal(op.op, 'ensure_macro');
+  assert.equal(op.macro_name, 'ClampScore');
+  assert.deepEqual(op.inputs, [{ name: 'Execute', pin_type: { category: 'exec' } }]);
+  assert.deepEqual(op.outputs, [{ name: 'Then', pin_type: { category: 'exec' } }]);
+});
+
 test('remove_signature defaults require_reference_context to true', () => {
   const plan = compileTaskSpecToTaskPlan(makeSignatureSpec([{
     kind: 'remove_signature',

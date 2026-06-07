@@ -21,8 +21,6 @@
 #include "K2Node_MacroInstance.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
-#include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
 #include "ScopedTransaction.h"
 #include "Serialization/JsonTypes.h"
 #include "Serialization/JsonReader.h"
@@ -30,26 +28,6 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectIterator.h"
 #include "EdGraphNode_Comment.h"
-
-
-void FBlueprintGraphExistingNodeMapper::MapFunctionEntryResultNodes(UEdGraph* TargetGraph, TMap<FString, UK2Node*>& IdToSpawnedNode)
-{
-	if (!TargetGraph)
-	{
-		return;
-	}
-	for (UEdGraphNode* ExistingNode : TargetGraph->Nodes)
-	{
-		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("FunctionEntry"), Entry);
-		}
-		else if (UK2Node_FunctionResult* ResultNode = Cast<UK2Node_FunctionResult>(ExistingNode))
-		{
-			IdToSpawnedNode.FindOrAdd(TEXT("FunctionResult"), ResultNode);
-		}
-	}
-}
 
 void FBlueprintGraphExistingNodeMapper::MapExistingNodeRefs(UEdGraph* TargetGraph, const TSharedPtr<FJsonObject>& GraphJsonObject, TMap<FString, UK2Node*>& IdToSpawnedNode)
 {

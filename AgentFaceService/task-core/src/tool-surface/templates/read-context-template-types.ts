@@ -24,6 +24,27 @@ export type ReadContextTemplateView =
   | 'property_json'
   | 'diagnostics_json';
 
+export type ReadContextRequestBuilderId =
+  | 'blueprint_logic'
+  | 'graph_context'
+  | 'asset_context'
+  | 'component_context'
+  | 'variable_context'
+  | 'widget_tree'
+  | 'widget_property'
+  | 'data_table'
+  | 'data_asset'
+  | 'object_property';
+
+export type ReadContextPayloadProjectorId =
+  | 'logic'
+  | 'asset_context'
+  | 'widget_tree'
+  | 'component_tree'
+  | 'variable_schema'
+  | 'data_table_schema'
+  | 'object_property';
+
 export interface ReadContextTemplateDiagnostic {
   code: string;
   domain?: string;
@@ -50,6 +71,10 @@ export interface ReadContextRouteDescriptor {
   bridge_command?: string;
   output_schema: string;
   required_target_fields: string[];
+  request_builder_id: ReadContextRequestBuilderId;
+  payload_projector_id: ReadContextPayloadProjectorId;
+  supported_asset_types: readonly string[];
+  supported_formats: readonly string[];
   reason?: string;
 }
 

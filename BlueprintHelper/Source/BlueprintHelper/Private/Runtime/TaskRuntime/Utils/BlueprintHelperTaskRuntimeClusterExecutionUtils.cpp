@@ -426,6 +426,10 @@ static FString ResolveTaskRuntimeSignatureReviewSubKind(
 	{
 		return TEXT("custom_event");
 	}
+	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureMacro)
+	{
+		return TEXT("macro");
+	}
 	if (AdapterOperation == FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureEventDispatcher)
 	{
 		return TEXT("dispatcher");
@@ -448,6 +452,10 @@ static FString ResolveTaskRuntimeSignatureReviewSubKind(
 	if (SignatureKind == TEXT("custom_event") || SignatureKind == TEXT("interface_event"))
 	{
 		return TEXT("custom_event");
+	}
+	if (SignatureKind == TEXT("macro"))
+	{
+		return TEXT("macro");
 	}
 	if (SignatureKind == TEXT("event_dispatcher") || SignatureKind == TEXT("dispatcher"))
 	{
@@ -853,11 +861,17 @@ static FBlueprintHelperToolResultBase MakeWidgetMutationResult(
 	FString AssetPath;
 	FString WidgetName;
 	FString PropertyName;
+	FString PropertyPath;
 	if (Payload.IsValid())
 	{
 		Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 		Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
 		Payload->TryGetStringField(TEXT("property_name"), PropertyName);
+		Payload->TryGetStringField(TEXT("property_path"), PropertyPath);
+		if (PropertyName.IsEmpty())
+		{
+			PropertyName = PropertyPath;
+		}
 	}
 	Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("widget"), WidgetName, TEXT(""), PropertyName);
 
@@ -871,6 +885,10 @@ static FBlueprintHelperToolResultBase MakeWidgetMutationResult(
 	if (!PropertyName.IsEmpty())
 	{
 		Data->SetStringField(TEXT("property_name"), PropertyName);
+	}
+	if (!PropertyPath.IsEmpty())
+	{
+		Data->SetStringField(TEXT("property_path"), PropertyPath);
 	}
 	if (MutationResult.ReadbackContext.IsValid())
 	{
@@ -1177,6 +1195,10 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 			if (SignatureName.IsEmpty())
 			{
 				SignatureName = ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("event_name"));
+			}
+			if (SignatureName.IsEmpty())
+			{
+				SignatureName = ReadTaskRuntimeReviewStringField(LoweredStep.Payload, TEXT("macro_name"));
 			}
 			if (SignatureName.IsEmpty())
 			{
@@ -1857,13 +1879,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 	FString WidgetClass;
 	FString WidgetName;
 	FString PropertyName;
+	FString PropertyPath;
 	FString Value;
 	FString SlotName;
 	FString HostWidgetName;
 	FString ExpectedParentName;
 	FString ExpectedContentWidgetName;
+	FString ExpectedSlotClassPath;
+	FString ExpectedWidgetClassPath;
 	bool bDryRun = false;
 	bool bReplaceExisting = false;
+	bool bIsVariable = false;
 	TOptional<int32> VirtualIndex;
 	TOptional<int32> ExpectedVirtualIndex;
 	if (Payload.IsValid())
@@ -1874,13 +1900,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		Payload->TryGetStringField(TEXT("widget_class"), WidgetClass);
 		Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
 		Payload->TryGetStringField(TEXT("property_name"), PropertyName);
+		Payload->TryGetStringField(TEXT("property_path"), PropertyPath);
 		Payload->TryGetStringField(TEXT("value"), Value);
 		Payload->TryGetStringField(TEXT("slot_name"), SlotName);
 		Payload->TryGetStringField(TEXT("host_widget_name"), HostWidgetName);
 		Payload->TryGetStringField(TEXT("expected_parent_name"), ExpectedParentName);
 		Payload->TryGetStringField(TEXT("expected_content_widget_name"), ExpectedContentWidgetName);
+		Payload->TryGetStringField(TEXT("expected_slot_class_path"), ExpectedSlotClassPath);
+		Payload->TryGetStringField(TEXT("expected_widget_class_path"), ExpectedWidgetClassPath);
 		Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		Payload->TryGetBoolField(TEXT("replace_existing"), bReplaceExisting);
+		Payload->TryGetBoolField(TEXT("is_variable"), bIsVariable);
 		double NumberValue = 0.0;
 		if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
 		{
@@ -1945,6 +1975,31 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		[&Service, AssetPath, WidgetName, PropertyName, Value, bDryRun]()
 		{
 			return Service.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value, bDryRun);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty,
+		[&Service, AssetPath, WidgetName, PropertyPath, Value, ExpectedSlotClassPath, bDryRun]()
+		{
+			FBlueprintHelperSetSlotPropertyRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.PropertyPath = PropertyPath;
+			Request.Value = Value;
+			Request.ExpectedSlotClassPath = ExpectedSlotClassPath;
+			Request.bDryRun = bDryRun;
+			return Service.SetSlotProperty(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable,
+		[&Service, AssetPath, WidgetName, bIsVariable, ExpectedWidgetClassPath, bDryRun]()
+		{
+			FBlueprintHelperSetWidgetAsVariableRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.bIsVariable = bIsVariable;
+			Request.ExpectedWidgetClassPath = ExpectedWidgetClassPath;
+			Request.bDryRun = bDryRun;
+			return Service.SetWidgetAsVariable(Request);
 		});
 	OperationHandlers.Add(
 		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget,
@@ -2064,6 +2119,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 	FString AssetPath;
 	FString FunctionName;
 	FString EventName;
+	FString MacroName;
 	FString GraphName;
 	FString DispatcherName;
 	FString EventKind;
@@ -2083,6 +2139,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 		Payload->TryGetStringField(TEXT("function_name"), FunctionName);
 		Payload->TryGetStringField(TEXT("event_name"), EventName);
+		Payload->TryGetStringField(TEXT("macro_name"), MacroName);
 		Payload->TryGetStringField(TEXT("graph_name"), GraphName);
 		Payload->TryGetStringField(TEXT("dispatcher_name"), DispatcherName);
 		Payload->TryGetStringField(TEXT("event_kind"), EventKind);
@@ -2147,6 +2204,25 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 				Request.Inputs = *Inputs;
 			}
 			return SignatureService.EnsureCustomEvent(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureMacro,
+		[&SignatureService, AssetPath, MacroName, NameCollisionPolicy, bDryRun, Inputs, Outputs]()
+		{
+			FBlueprintHelperEnsureMacroSignatureRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.MacroName = MacroName;
+			Request.NameCollisionPolicy = NameCollisionPolicy;
+			Request.bDryRun = bDryRun;
+			if (Inputs)
+			{
+				Request.Inputs = *Inputs;
+			}
+			if (Outputs)
+			{
+				Request.Outputs = *Outputs;
+			}
+			return SignatureService.EnsureMacro(Request);
 		});
 	OperationHandlers.Add(
 		FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureEventDispatcher,

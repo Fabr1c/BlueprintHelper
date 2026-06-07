@@ -9,6 +9,7 @@ import { TaskSpecSchema } from './task-schemas.js';
 
 test('BlueprintPinTypeSpec accepts scalar, object, soft class, struct, enum, and map value type', () => {
   const samples = [
+    { category: 'exec' },
     { category: 'bool' },
     { category: 'int' },
     { category: 'double' },

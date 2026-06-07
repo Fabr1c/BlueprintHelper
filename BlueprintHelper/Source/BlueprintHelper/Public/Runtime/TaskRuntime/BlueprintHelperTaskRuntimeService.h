@@ -64,20 +64,6 @@ public:
 		FBlueprintHelperTaskRuntimeLoweredStep& OutLoweredStep,
 		FBlueprintHelperToolError& OutError);
 
-	static TSharedRef<FJsonObject> BuildRuntimeDataForStep(
-		const TSharedPtr<FJsonObject>& TaskPlan,
-		const FString& TaskRunId,
-		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
-		const FBlueprintHelperToolResultBase& StepResult,
-		bool bDryRun);
-
-	static TSharedRef<FJsonObject> BuildRuntimeDataForSteps(
-		const TSharedPtr<FJsonObject>& TaskPlan,
-		const FString& TaskRunId,
-		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
-		const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords,
-		bool bDryRun);
-
 	static TSharedRef<FJsonObject> BuildTaskRunJournalForStep(
 		const FString& TaskRunId,
 		const TSharedPtr<FJsonObject>& TaskPlan,

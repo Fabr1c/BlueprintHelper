@@ -16,6 +16,44 @@
 class FBlueprintHelperWidgetVersionCompat
 {
 public:
+	static FORCEINLINE bool HasWidgetSourceGuid(UWidgetBlueprint* WidgetBlueprint, const UWidget* Widget)
+	{
+#if WITH_EDITORONLY_DATA && BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		return WidgetBlueprint && Widget
+			&& WidgetBlueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName());
+#else
+		return true;
+#endif
+	}
+
+	static FORCEINLINE void EnsureWidgetSourceGuid(UWidgetBlueprint* WidgetBlueprint, UWidget* Widget)
+	{
+#if WITH_EDITORONLY_DATA && BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		if (!WidgetBlueprint || !Widget)
+		{
+			return;
+		}
+
+		if (!WidgetBlueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName()))
+		{
+			WidgetBlueprint->OnVariableAdded(Widget->GetFName());
+		}
+#endif
+	}
+
+	static FORCEINLINE void SetWidgetVariableState(UWidgetBlueprint* WidgetBlueprint, UWidget* Widget, bool bIsVariable)
+	{
+#if WITH_EDITORONLY_DATA
+		if (!Widget)
+		{
+			return;
+		}
+
+		Widget->bIsVariable = bIsVariable;
+		EnsureWidgetSourceGuid(WidgetBlueprint, Widget);
+#endif
+	}
+
 	static FORCEINLINE void RegisterWidgetVariable(UWidgetBlueprint* WidgetBlueprint, UWidget* Widget)
 	{
 #if WITH_EDITORONLY_DATA
@@ -24,13 +62,10 @@ public:
 			return;
 		}
 
-#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
-		if (!WidgetBlueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName()))
-		{
-			WidgetBlueprint->OnVariableAdded(Widget->GetFName());
-		}
-#else
 		Widget->bIsVariable = true;
+#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		EnsureWidgetSourceGuid(WidgetBlueprint, Widget);
+#else
 #endif
 #endif
 	}
@@ -49,8 +84,8 @@ public:
 			WidgetBlueprint->OnVariableRemoved(Widget->GetFName());
 		}
 #else
-		Widget->bIsVariable = false;
 #endif
+		Widget->bIsVariable = false;
 #endif
 	}
 

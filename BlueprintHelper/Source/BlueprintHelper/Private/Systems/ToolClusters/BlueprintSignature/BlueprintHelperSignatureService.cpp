@@ -21,6 +21,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_Tunnel.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
@@ -256,6 +257,17 @@ public:
 		Result.Target->Event = EventName;
 	}
 
+	static void SetMacroTarget(
+		FBlueprintHelperToolResultBase& Result,
+		const FString& AssetPath,
+		const FString& MacroName)
+	{
+		Result.Target = FBlueprintHelperTargetRef();
+		Result.Target->AssetPath = AssetPath;
+		Result.Target->TargetType = EBlueprintHelperTargetType::Graph;
+		Result.Target->Graph = MacroName;
+	}
+
 	static void SetRemoveSignatureTarget(
 		FBlueprintHelperToolResultBase& Result,
 		const FBlueprintHelperRemoveSignatureRequest& Request)
@@ -335,6 +347,47 @@ public:
 			}
 		}
 		return false;
+	}
+
+	static bool TryGetMacroGraphState(
+		const FBlueprintHelperBlueprintStructureService& StructureService,
+		const FString& AssetPath,
+		const FString& MacroName,
+		bool& bOutExists,
+		FString& OutConflictType,
+		FString& OutError)
+	{
+		bOutExists = false;
+		OutConflictType.Reset();
+		OutError.Reset();
+
+		const FBlueprintHelperListGraphsResult Graphs = StructureService.ListGraphs(MakeGraphTarget(AssetPath));
+		if (!Graphs.bSuccess)
+		{
+			OutError = Graphs.ErrorMessage.IsEmpty()
+				? FString::Printf(TEXT("Unable to list Blueprint graphs for %s."), *AssetPath)
+				: Graphs.ErrorMessage;
+			return false;
+		}
+
+		for (const FBlueprintHelperGraphInfo& Graph : Graphs.Graphs)
+		{
+			if (!Graph.Name.Equals(MacroName, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			if (Graph.GraphType.Equals(TEXT("Macro"), ESearchCase::IgnoreCase))
+			{
+				bOutExists = true;
+				return true;
+			}
+
+			OutConflictType = Graph.GraphType;
+			return true;
+		}
+
+		return true;
 	}
 
 	static bool BlueprintCanBeListed(
@@ -684,6 +737,23 @@ public:
 		return nullptr;
 	}
 
+	static UEdGraph* FindMacroGraph(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetName().Equals(MacroName, ESearchCase::IgnoreCase))
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
 	static UK2Node_FunctionEntry* FindFunctionEntry(UEdGraph* Graph)
 	{
 		if (!Graph)
@@ -716,6 +786,51 @@ public:
 			}
 		}
 		return nullptr;
+	}
+
+	static void FindMacroTunnelNodes(UEdGraph* Graph, UK2Node_Tunnel*& OutInputNode, UK2Node_Tunnel*& OutOutputNode)
+	{
+		OutInputNode = nullptr;
+		OutOutputNode = nullptr;
+		if (!Graph)
+		{
+			return;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node);
+			if (!Tunnel)
+			{
+				continue;
+			}
+
+			if (Tunnel->bCanHaveOutputs && !OutInputNode)
+			{
+				OutInputNode = Tunnel;
+			}
+			else if (Tunnel->bCanHaveInputs && !OutOutputNode)
+			{
+				OutOutputNode = Tunnel;
+			}
+		}
+	}
+
+	static bool MacroGraphHasBodyNodes(UEdGraph* Graph)
+	{
+		if (!Graph)
+		{
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (Node && !Cast<UK2Node_Tunnel>(Node))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static void AppendFunctionUserPinSnapshots(
@@ -768,6 +883,38 @@ public:
 		{
 			AppendFunctionUserPinSnapshots(Result->UserDefinedPins, TEXT("output"), OutOutputs);
 		}
+		return true;
+	}
+
+	static bool BuildExistingMacroSignature(
+		UBlueprint* Blueprint,
+		const FString& MacroName,
+		TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& OutInputs,
+		TArray<FBlueprintHelperFunctionSignaturePinSnapshot>& OutOutputs,
+		FString& OutError)
+	{
+		OutInputs.Reset();
+		OutOutputs.Reset();
+		OutError.Reset();
+
+		UEdGraph* MacroGraph = FindMacroGraph(Blueprint, MacroName);
+		if (!MacroGraph)
+		{
+			OutError = FString::Printf(TEXT("Macro graph not found: %s."), *MacroName);
+			return false;
+		}
+
+		UK2Node_Tunnel* InputNode = nullptr;
+		UK2Node_Tunnel* OutputNode = nullptr;
+		FindMacroTunnelNodes(MacroGraph, InputNode, OutputNode);
+		if (!InputNode || !OutputNode)
+		{
+			OutError = FString::Printf(TEXT("Macro tunnel boundary nodes not found: %s."), *MacroName);
+			return false;
+		}
+
+		AppendFunctionUserPinSnapshots(InputNode->UserDefinedPins, TEXT("input"), OutInputs);
+		AppendFunctionUserPinSnapshots(OutputNode->UserDefinedPins, TEXT("output"), OutOutputs);
 		return true;
 	}
 
@@ -1857,6 +2004,243 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureCustomEve
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("custom_event_result"), TEXT("added_inputs"), EventNode == Target.ExistingEvent ? Target.MissingPins.Num() : Target.RequestedPins.Num());
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_path"), Request.InterfacePath);
 	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("custom_event_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
+	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
+	return Result;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureMacro(
+	const FBlueprintHelperEnsureMacroSignatureRequest& Request) const
+{
+	if (Request.AssetPath.IsEmpty() || Request.MacroName.IsEmpty())
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("invalid_signature_payload"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("ensure_macro requires asset_path and macro_name."),
+			TEXT("task_plan.steps[0].write.ops[0]"));
+	}
+
+	if (!FBlueprintHelperSignatureServiceLocalUtils::IsValidNameCollisionPolicy(Request.NameCollisionPolicy))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("invalid_name_collision_policy"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("ensure_macro name_collision_policy must be reuse_if_exists or fail_if_exists."),
+			TEXT("name_collision_policy"));
+	}
+
+	TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperSignaturePinSpec> ExpectedInputs;
+	TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperSignaturePinSpec> ExpectedOutputs;
+	FString PinMessage;
+	FString PinField;
+	FString PinCode;
+	if (!FBlueprintHelperSignatureServiceLocalUtils::TryBuildSignaturePinSpecs(
+		Request.Inputs,
+		ExpectedInputs,
+		PinMessage,
+		PinField,
+		TEXT("inputs"),
+		&PinCode))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			PinCode.IsEmpty() ? TEXT("invalid_pin_type") : PinCode,
+			EBlueprintHelperToolStage::ParseInput,
+			PinMessage,
+			PinField);
+	}
+	if (!FBlueprintHelperSignatureServiceLocalUtils::TryBuildSignaturePinSpecs(
+		Request.Outputs,
+		ExpectedOutputs,
+		PinMessage,
+		PinField,
+		TEXT("outputs"),
+		&PinCode))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			PinCode.IsEmpty() ? TEXT("invalid_pin_type") : PinCode,
+			EBlueprintHelperToolStage::ParseInput,
+			PinMessage,
+			PinField);
+	}
+
+	bool bExists = false;
+	FString ConflictType;
+	FString ListError;
+	if (!FBlueprintHelperSignatureServiceLocalUtils::TryGetMacroGraphState(
+		StructureService,
+		Request.AssetPath,
+		Request.MacroName,
+		bExists,
+		ConflictType,
+		ListError))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("target_blueprint_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			ListError,
+			TEXT("asset_path"));
+	}
+
+	if (!ConflictType.IsEmpty())
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("macro_graph_name_conflict"),
+			EBlueprintHelperToolStage::Preflight,
+			FString::Printf(TEXT("Macro graph name conflicts with an existing %s graph: %s."), *ConflictType, *Request.MacroName),
+			TEXT("macro_name"));
+	}
+
+	if (bExists && Request.NameCollisionPolicy == TEXT("fail_if_exists"))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("macro_already_exists"),
+			EBlueprintHelperToolStage::Preflight,
+			FString::Printf(TEXT("Macro already exists: %s"), *Request.MacroName),
+			TEXT("macro_name"));
+	}
+
+	bool bExistingMacroNeedsRepair = false;
+	if (bExists)
+	{
+		UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Request.AssetPath);
+		if (!Blueprint)
+		{
+			return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+				TEXT("ensure_macro"),
+				TEXT("target_blueprint_not_found"),
+				EBlueprintHelperToolStage::ResolveTarget,
+				FString::Printf(TEXT("Blueprint asset not found: %s."), *Request.AssetPath),
+				TEXT("asset_path"));
+		}
+
+		TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignaturePinSnapshot> ActualInputs;
+		TArray<FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignaturePinSnapshot> ActualOutputs;
+		FString SnapshotError;
+		if (!FBlueprintHelperSignatureServiceLocalUtils::BuildExistingMacroSignature(
+			Blueprint,
+			Request.MacroName,
+			ActualInputs,
+			ActualOutputs,
+			SnapshotError))
+		{
+			UEdGraph* MacroGraph = FBlueprintHelperSignatureServiceLocalUtils::FindMacroGraph(Blueprint, Request.MacroName);
+			if (!MacroGraph || FBlueprintHelperSignatureServiceLocalUtils::MacroGraphHasBodyNodes(MacroGraph))
+			{
+				return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+					TEXT("ensure_macro"),
+					TEXT("macro_signature_snapshot_failed"),
+					EBlueprintHelperToolStage::Preflight,
+					SnapshotError.IsEmpty()
+						? FString::Printf(TEXT("Unable to inspect existing macro signature: %s."), *Request.MacroName)
+						: SnapshotError,
+					TEXT("macro_name"));
+			}
+
+			bExistingMacroNeedsRepair = true;
+		}
+		else
+		{
+			const FBlueprintHelperSignatureServiceLocalUtils::FBlueprintHelperFunctionSignatureDiff Diff =
+				FBlueprintHelperSignatureServiceLocalUtils::CompareFunctionSignature(
+					ExpectedInputs,
+					ExpectedOutputs,
+					ActualInputs,
+					ActualOutputs);
+			if (!Diff.bMatches)
+			{
+				FBlueprintHelperToolError Error =
+					FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureError(
+						TEXT("macro_signature_mismatch"),
+						EBlueprintHelperToolStage::Preflight,
+						FString::Printf(TEXT("Macro signature mismatch: %s."), *Request.MacroName),
+						TEXT("inputs"));
+				FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("ensure_macro"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+					Error);
+				FBlueprintHelperSignatureServiceLocalUtils::SetMacroTarget(Result, Request.AssetPath, Request.MacroName);
+				Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(Request.bDryRun, TEXT("macro_result"), false);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("success"), false);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("exists"), true);
+				FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("signature_matches"), false);
+				Result.Data->SetArrayField(TEXT("signature_differences"), Diff.Differences);
+				Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+				return Result;
+			}
+		}
+	}
+
+	if (Request.bDryRun)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			TEXT("ensure_macro"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		FBlueprintHelperSignatureServiceLocalUtils::SetMacroTarget(Result, Request.AssetPath, Request.MacroName);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(true, TEXT("macro_result"), false);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("exists"), bExists);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("signature_matches"), !bExistingMacroNeedsRepair);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("needs_boundary_repair"), bExistingMacroNeedsRepair);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("input_count"), ExpectedInputs.Num());
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("output_count"), ExpectedOutputs.Num());
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(!bExists || bExistingMacroNeedsRepair, !bExists || bExistingMacroNeedsRepair);
+		return Result;
+	}
+
+	if (bExists && !bExistingMacroNeedsRepair)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::NoOp(
+			TEXT("ensure_macro"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		FBlueprintHelperSignatureServiceLocalUtils::SetMacroTarget(Result, Request.AssetPath, Request.MacroName);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("macro_result"), false);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("exists"), true);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("signature_matches"), true);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("input_count"), ExpectedInputs.Num());
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("output_count"), ExpectedOutputs.Num());
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("name"), Request.MacroName);
+	Params->SetStringField(TEXT("graph_type"), TEXT("Macro"));
+	if (Request.Inputs.Num() > 0)
+	{
+		Params->SetArrayField(TEXT("inputs"), Request.Inputs);
+	}
+	if (Request.Outputs.Num() > 0)
+	{
+		Params->SetArrayField(TEXT("outputs"), Request.Outputs);
+	}
+
+	FString Error;
+	if (!StructureService.AddGraph(FBlueprintHelperSignatureServiceLocalUtils::MakeGraphTarget(Request.AssetPath), Params, Error))
+	{
+		return FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_macro"),
+			TEXT("macro_create_failed"),
+			EBlueprintHelperToolStage::Execute,
+			Error.IsEmpty() ? TEXT("Failed to create Blueprint macro graph.") : Error,
+			TEXT("macro_name"));
+	}
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Applied(
+		TEXT("ensure_macro"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	FBlueprintHelperSignatureServiceLocalUtils::SetMacroTarget(Result, Request.AssetPath, Request.MacroName);
+	Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureResultData(false, TEXT("macro_result"), false);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("exists"), true);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("signature_matches"), true);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("macro_result"), TEXT("repaired_boundary"), bExistingMacroNeedsRepair);
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("input_count"), ExpectedInputs.Num());
+	FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("macro_result"), TEXT("output_count"), ExpectedOutputs.Num());
 	Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(true, true);
 	return Result;
 }

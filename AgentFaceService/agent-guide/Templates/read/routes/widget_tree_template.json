@@ -6,6 +6,6 @@
     "target_type": "blueprint"
   },
   "view": {
-    "format": "logic_json"
+    "format": "tree_json"
   }
 }

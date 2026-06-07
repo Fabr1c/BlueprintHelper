@@ -52,8 +52,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
 #include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipeline.h"
-#include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationExecutor.h"
-#include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationPlanner.h"
+#include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipelineExecutors.h"
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationTypes.h"
 #include "Runtime/TaskRuntime/Projection/BlueprintHelperTaskRuntimeResultProjection.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
@@ -390,6 +389,87 @@ public:
 				}
 			}
 		}
+	}
+
+	static void ApplyCachedTaskRuntimeReviewTargetSnapshots(
+		FBlueprintHelperWriteReviewEvidence& Evidence,
+		const TMap<FString, FBlueprintHelperReviewTargetSnapshotCacheValue>& SnapshotCache)
+	{
+		for (FBlueprintHelperReviewAtomicTarget& Target : Evidence.AtomicTargets)
+		{
+			const FString CacheKey = FString::Printf(
+				TEXT("%s|%s|%s|%s"),
+				*Target.AssetPath,
+				*Target.GraphName,
+				*Target.TargetKind,
+				*Target.TargetKey);
+			const FBlueprintHelperReviewTargetSnapshotCacheValue* CachedSnapshot = SnapshotCache.Find(CacheKey);
+			if (!CachedSnapshot)
+			{
+				continue;
+			}
+
+			Target.BeforeSnapshotJson = CachedSnapshot->SnapshotJson;
+			Target.BaselineHash = CachedSnapshot->SnapshotHash;
+		}
+	}
+
+	static bool IsUmgWidgetReviewPreStepCandidate(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		return LoweredStep.Capability.Equals(TEXT("umg_widget"), ESearchCase::IgnoreCase)
+			|| LoweredStep.RuntimeOperation.Equals(TEXT("umg_widget"), ESearchCase::IgnoreCase)
+			|| LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty, ESearchCase::IgnoreCase)
+			|| LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable, ESearchCase::IgnoreCase)
+			|| LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent, ESearchCase::IgnoreCase);
+	}
+
+	static FBlueprintHelperToolResultBase MakeTaskRuntimePreStepReviewResult(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		const FString StepOperation = LoweredStep.AdapterOperation.IsEmpty()
+			? LoweredStep.RuntimeOperation
+			: LoweredStep.AdapterOperation;
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+			StepOperation.IsEmpty() ? TEXT("task_runtime_pre_step_review") : StepOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		Result.bModified = false;
+
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("TaskRuntimePreStepReview.v1"));
+		TSharedRef<FJsonObject> ReadbackContext = MakeShared<FJsonObject>();
+		if (LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty, ESearchCase::IgnoreCase))
+		{
+			ReadbackContext->SetStringField(TEXT("target_kind"), TEXT("slot_property"));
+		}
+		else if (LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable, ESearchCase::IgnoreCase))
+		{
+			ReadbackContext->SetStringField(TEXT("target_kind"), TEXT("widget_variable"));
+		}
+		else if (LoweredStep.AdapterOperation.Equals(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent, ESearchCase::IgnoreCase))
+		{
+			ReadbackContext->SetStringField(TEXT("target_kind"), TEXT("named_slot_content"));
+		}
+		if (LoweredStep.Payload.IsValid())
+		{
+			FString WidgetName;
+			if (LoweredStep.Payload->TryGetStringField(TEXT("widget_name"), WidgetName) && !WidgetName.IsEmpty())
+			{
+				ReadbackContext->SetStringField(TEXT("widget_name"), WidgetName);
+			}
+			FString PropertyPath;
+			if (LoweredStep.Payload->TryGetStringField(TEXT("property_path"), PropertyPath) && !PropertyPath.IsEmpty())
+			{
+				ReadbackContext->SetStringField(TEXT("property_path"), PropertyPath);
+			}
+			FString SlotName;
+			if (LoweredStep.Payload->TryGetStringField(TEXT("slot_name"), SlotName) && !SlotName.IsEmpty())
+			{
+				ReadbackContext->SetStringField(TEXT("slot_name"), SlotName);
+			}
+		}
+		Data->SetObjectField(TEXT("readback_context"), ReadbackContext);
+		Result.Data = Data;
+		return Result;
 	}
 
 	static bool IsGraphWriteTaskPlanOperation(const FString& Operation)
@@ -3755,26 +3835,6 @@ public:
 		return false;
 	}
 
-	static TSharedRef<FJsonObject> MakeStepResultJson(
-		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
-		const FBlueprintHelperToolResultBase& StepResult)
-	{
-		TSharedRef<FJsonObject> StepJson = MakeShared<FJsonObject>();
-		StepJson->SetStringField(TEXT("step_id"), LoweredStep.StepId);
-		if (!LoweredStep.Capability.IsEmpty())
-		{
-			StepJson->SetStringField(TEXT("capability"), LoweredStep.Capability);
-		}
-		StepJson->SetStringField(TEXT("operation"), LoweredStep.RuntimeOperation);
-		if (!LoweredStep.AdapterOperation.IsEmpty())
-		{
-			StepJson->SetStringField(TEXT("adapter_operation"), LoweredStep.AdapterOperation);
-		}
-		StepJson->SetStringField(TEXT("status"), ToolStatusToString(StepResult.Status));
-		StepJson->SetObjectField(TEXT("result"), StepResult.ToJson());
-		return StepJson;
-	}
-
 	static TSharedRef<FJsonObject> MakePostOperationResultJson(
 		const FBlueprintHelperTaskRuntimePostOperationRecord& PostOperation)
 	{
@@ -3796,38 +3856,6 @@ public:
 		PostJson->SetNumberField(TEXT("duration_ms"), PostOperation.DurationMs);
 		PostJson->SetObjectField(TEXT("result"), PostOperation.Result.ToJson());
 		return PostJson;
-	}
-
-	static FBlueprintHelperTaskRuntimePostOperationRecord MakeRuntimePostOperationRecord(
-		const FBlueprintHelperTaskRuntimePostOperationRecordEx& Record)
-	{
-		FBlueprintHelperTaskRuntimePostOperationRecord RuntimeRecord;
-		RuntimeRecord.Operation = Record.Operation;
-		RuntimeRecord.Result = Record.Result;
-		RuntimeRecord.AssetPath = Record.AssetPath;
-		RuntimeRecord.Status = FBlueprintHelperTaskRuntimePostOperationJson::StatusToString(Record.Status);
-		RuntimeRecord.Reason = Record.Reason;
-		RuntimeRecord.DurationMs = Record.DurationMs;
-		return RuntimeRecord;
-	}
-
-	static FBlueprintHelperTaskRuntimePostOperationPlan FilterPostOperationPlanByKind(
-		const FBlueprintHelperTaskRuntimePostOperationPlan& Plan,
-		EBlueprintHelperTaskRuntimePostOperationKind Kind)
-	{
-		FBlueprintHelperTaskRuntimePostOperationPlan FilteredPlan;
-		FilteredPlan.bRequestedCompile = Kind == EBlueprintHelperTaskRuntimePostOperationKind::Compile && Plan.bRequestedCompile;
-		FilteredPlan.bRequestedSave = Kind == EBlueprintHelperTaskRuntimePostOperationKind::Save && Plan.bRequestedSave;
-		FilteredPlan.bHasTargetAssets = Plan.bHasTargetAssets;
-		FilteredPlan.MissingTargetAssetsReason = Plan.MissingTargetAssetsReason;
-		for (const FBlueprintHelperTaskRuntimePostOperationPlanItem& Item : Plan.Items)
-		{
-			if (Item.Kind == Kind)
-			{
-				FilteredPlan.Items.Add(Item);
-			}
-		}
-		return FilteredPlan;
 	}
 
 	static bool HasFailedStep(
@@ -4058,93 +4086,6 @@ public:
 		}
 
 		return StepJson;
-	}
-
-	static TSharedRef<FJsonObject> MakeRuntimeData(
-		const TSharedPtr<FJsonObject>& TaskPlan,
-		const FString& TaskRunId,
-		const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
-		const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords,
-		bool bDryRun)
-	{
-		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
-		Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskRuntimeResult.v1"));
-		if (!TaskRunId.IsEmpty())
-		{
-			Data->SetStringField(TEXT("task_run_id"), TaskRunId);
-		}
-		if (TaskPlan.IsValid())
-		{
-			FString TaskPlanSchema;
-			if (TaskPlan->TryGetStringField(TEXT("schema"), TaskPlanSchema))
-			{
-				Data->SetStringField(TEXT("task_plan_schema"), TaskPlanSchema);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* TargetAssets = nullptr;
-			if (TaskPlan->TryGetArrayField(TEXT("target_assets"), TargetAssets) && TargetAssets)
-			{
-				Data->SetArrayField(TEXT("target_assets"), *TargetAssets);
-			}
-		}
-
-		TArray<TSharedPtr<FJsonValue>> Steps;
-		for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
-		{
-			Steps.Add(MakeShared<FJsonValueObject>(MakeStepResultJson(StepRecord.Step, StepRecord.Result)));
-		}
-		Data->SetArrayField(TEXT("steps"), Steps);
-
-		if (PostOperationRecords.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> PostOperations;
-			for (const FBlueprintHelperTaskRuntimePostOperationRecord& PostOperation : PostOperationRecords)
-			{
-				PostOperations.Add(MakeShared<FJsonValueObject>(MakePostOperationResultJson(PostOperation)));
-			}
-			Data->SetArrayField(TEXT("post_operations"), PostOperations);
-		}
-
-		if (bDryRun)
-		{
-			for (const FBlueprintHelperTaskRuntimeStepRecord& StepRecord : StepRecords)
-			{
-				if (StepRecord.Result.Data.IsValid())
-				{
-					const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
-					if (StepRecord.Result.Data->TryGetObjectField(TEXT("dry_run"), DryRunObject) &&
-						DryRunObject && DryRunObject->IsValid())
-					{
-						Data->SetObjectField(TEXT("dry_run"), *DryRunObject);
-						break;
-					}
-				}
-			}
-		}
-
-		return Data;
-	}
-
-	static TSharedRef<FJsonObject> MakeRuntimeData(
-		const TSharedPtr<FJsonObject>& TaskPlan,
-		const FString& TaskRunId,
-		const FString& StepId,
-		const FString& StepOperation,
-		const FBlueprintHelperToolResultBase& StepResult,
-		bool bDryRun)
-	{
-		FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
-		LoweredStep.StepId = StepId;
-		LoweredStep.RuntimeOperation = StepOperation;
-		LoweredStep.AdapterOperation = StepOperation;
-		TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
-		StepRecords.Add({LoweredStep, StepResult});
-		return MakeRuntimeData(
-			TaskPlan,
-			TaskRunId,
-			StepRecords,
-			{},
-			bDryRun);
 	}
 
 	static TSharedRef<FJsonObject> MakeTaskRunJournal(
@@ -7367,28 +7308,6 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	return true;
 }
 
-TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForStep(
-	const TSharedPtr<FJsonObject>& TaskPlan,
-	const FString& TaskRunId,
-	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
-	const FBlueprintHelperToolResultBase& StepResult,
-	bool bDryRun)
-{
-	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
-	StepRecords.Add({LoweredStep, StepResult});
-	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, {}, bDryRun);
-}
-
-TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildRuntimeDataForSteps(
-	const TSharedPtr<FJsonObject>& TaskPlan,
-	const FString& TaskRunId,
-	const TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords,
-	const TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords,
-	bool bDryRun)
-{
-	return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimeData(TaskPlan, TaskRunId, StepRecords, PostOperationRecords, bDryRun);
-}
-
 TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeService::BuildTaskRunJournalForStep(
 	const FString& TaskRunId,
 	const TSharedPtr<FJsonObject>& TaskPlan,
@@ -7712,16 +7631,41 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const FString& TaskRunId = PreparedRun.TaskRunId;
 	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
 	FBlueprintHelperTaskRuntimePipelineRunner PipelineRunner(*TaskPlanPtr, TaskRunId, bDryRun);
-	auto RecordPipelineStage = [&PipelineRunner](EBlueprintHelperTaskRuntimePipelineStage Stage)
+	FBlueprintHelperTaskRuntimePipelineExecutionContext PipelineContext =
+		PipelineRunner.MakeExecutionContext();
+	auto MakePipelineStageExecutor = [](
+		EBlueprintHelperTaskRuntimePipelineStage Stage,
+		FBlueprintHelperTaskRuntimeCallbackStageExecutor::FCallback Callback =
+			FBlueprintHelperTaskRuntimeCallbackStageExecutor::FCallback())
+		-> TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>
 	{
-		PipelineRunner.RecordStageOnce(Stage);
+		return MakeUnique<FBlueprintHelperTaskRuntimeCallbackStageExecutor>(Stage, MoveTemp(Callback));
+	};
+	auto ExecutePipelineBatch = [&PipelineRunner, &PipelineContext](
+		TArray<TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>> Executors)
+	{
+		FBlueprintHelperTaskRuntimePipeline Pipeline(MoveTemp(Executors));
+		return Pipeline.Execute(PipelineRunner, PipelineContext);
+	};
+	auto ExecutePipelineStage = [&MakePipelineStageExecutor, &ExecutePipelineBatch](
+		EBlueprintHelperTaskRuntimePipelineStage Stage,
+		FBlueprintHelperTaskRuntimeCallbackStageExecutor::FCallback Callback =
+			FBlueprintHelperTaskRuntimeCallbackStageExecutor::FCallback())
+	{
+		TArray<TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>> Executors;
+		Executors.Add(MakePipelineStageExecutor(Stage, MoveTemp(Callback)));
+		return ExecutePipelineBatch(MoveTemp(Executors));
 	};
 	auto AttachPipelineToResult = [&PipelineRunner](FBlueprintHelperToolResultBase& RuntimeResult)
 	{
 		PipelineRunner.AttachToResult(RuntimeResult);
 	};
-	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ValidateCompiledPlanContract);
-	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ResolveBridgeRoute);
+	TArray<TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>> InitialPipelineStages;
+	InitialPipelineStages.Add(MakePipelineStageExecutor(
+		EBlueprintHelperTaskRuntimePipelineStage::ValidateCompiledPlanContract));
+	InitialPipelineStages.Add(MakePipelineStageExecutor(
+		EBlueprintHelperTaskRuntimePipelineStage::ResolveBridgeRoute));
+	ExecutePipelineBatch(MoveTemp(InitialPipelineStages));
 	const FBlueprintHelperTaskRuntimeCacheConfig CacheConfig = FBlueprintHelperTaskRuntimeCacheConfig::Default();
 	if (PartialPreviewCache.IsValid())
 	{
@@ -7882,8 +7826,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperReviewContext ReviewContext(!bDryRun, ArchiveSessionId, TaskRunId);
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedBlueprintHelperGraphLayoutTask GraphLayoutTask(!bDryRun);
 
-	TArray<FBlueprintHelperTaskRuntimeStepRecord> StepRecords;
-	TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PostOperationRecords;
+	TArray<FBlueprintHelperTaskRuntimeStepRecord>& StepRecords = PipelineContext.StepRecords;
+	TArray<FBlueprintHelperTaskRuntimePostOperationRecord>& PostOperationRecords =
+		PipelineContext.PostOperationRecords;
 	TArray<FBlueprintHelperTaskRuntimeServiceLocalUtils::FResolvedCallFunctionRuntimeFact> ResolvedCallFunctionFacts;
 	TArray<TSharedPtr<FJsonValue>> CachedRuntimeFactValues;
 	FBlueprintHelperValidationSummary BaseValidation;
@@ -8007,12 +7952,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 		if (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0)
 		{
-			RuntimeResult.Data = BuildRuntimeDataForSteps(
-				*TaskPlanPtr,
-				TaskRunId,
+			RuntimeResult.Data = PipelineRunner.BuildRuntimeData(
 				StepRecords,
-				PostOperationRecords,
-				bDryRun);
+				PostOperationRecords);
 		}
 
 		if (bDryRun && StepRecords.Num() > 0 && RuntimeResult.Data.IsValid())
@@ -8072,26 +8014,40 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			CachedRuntimeFactValues);
 		AttachCacheDiagnostics(RuntimeResult);
 		PipelineRunner.SetStepRecords(StepRecords);
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildJournal);
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse);
-		AttachPipelineToResult(RuntimeResult);
+		ExecutePipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
-			TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
-				TaskRunId,
-				*TaskPlanPtr,
-				StepRecords,
-				PostOperationRecords,
-				true,
-				FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
-			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
-				Journal,
-				ResolvedCallFunctionFacts);
-			FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
-			PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
+			ExecutePipelineStage(
+				EBlueprintHelperTaskRuntimePipelineStage::BuildJournal,
+				[&](FBlueprintHelperTaskRuntimePipelineExecutionContext& Context)
+				{
+					TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
+						TaskRunId,
+						*TaskPlanPtr,
+						Context.StepRecords,
+						Context.PostOperationRecords,
+						true,
+						FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+						Journal,
+						ResolvedCallFunctionFacts);
+					FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
+					PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
+					return FBlueprintHelperToolResultBuilder::Applied(
+						TEXT("task_runtime_build_journal"),
+						FBlueprintHelperToolResultBuilder::GenerateTraceId());
+				});
 		}
+		ExecutePipelineStage(
+			EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse,
+			[&](FBlueprintHelperTaskRuntimePipelineExecutionContext&)
+			{
+				AttachPipelineToResult(RuntimeResult);
+				return FBlueprintHelperToolResultBuilder::Applied(
+					TEXT("task_runtime_finalize_response"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			});
 
 		if (DebugEntryService)
 		{
@@ -8139,9 +8095,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	auto ExecuteLoweredStep = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) -> FBlueprintHelperToolResultBase
 	{
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ResolveClusterFamilyAdapter);
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ExecuteCluster);
-		return CommitService.ExecuteStep(LoweredStep, bDryRun);
+		TArray<TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>> ClusterStages;
+		ClusterStages.Add(MakePipelineStageExecutor(
+			EBlueprintHelperTaskRuntimePipelineStage::ResolveClusterFamilyAdapter));
+		ClusterStages.Add(MakeUnique<FBlueprintHelperTaskRuntimeClusterExecuteStageExecutor>(
+			CommitService,
+			LoweredStep,
+			bDryRun));
+		return ExecutePipelineBatch(MoveTemp(ClusterStages));
 	};
 
 	auto TrackDryRunPlannedState = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep, const FBlueprintHelperToolResultBase& StepResult)
@@ -8414,12 +8375,28 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (!bDryRun)
 		{
 			const double ReviewBeforeStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-			bHasPreStepReviewEvidence = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
-				LoweredStep,
-				ArchiveSessionId,
-				TaskRunId,
-				StepIndex,
-				PreStepReviewEvidence);
+			if (FBlueprintHelperTaskRuntimeServiceLocalUtils::IsUmgWidgetReviewPreStepCandidate(LoweredStep))
+			{
+				const FBlueprintHelperToolResultBase PreStepResult =
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimePreStepReviewResult(LoweredStep);
+				bHasPreStepReviewEvidence = PipelineRunner.BuildReviewEvidence(
+					*ClusterHub,
+					LoweredStep,
+					PreStepResult,
+					ArchiveSessionId,
+					TaskRunId,
+					StepIndex,
+					PreStepReviewEvidence);
+			}
+			if (!bHasPreStepReviewEvidence)
+			{
+				bHasPreStepReviewEvidence = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+					LoweredStep,
+					ArchiveSessionId,
+					TaskRunId,
+					StepIndex,
+					PreStepReviewEvidence);
+			}
 			if (bHasPreStepReviewEvidence)
 			{
 				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
@@ -8510,21 +8487,35 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (!bDryRun && StepResult.bOk)
 		{
 			const double ReviewAfterStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-			FBlueprintHelperWriteReviewEvidence RuntimeEvidence = PreStepReviewEvidence;
-			RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildReviewEvidence);
-			const bool bHasReviewEvidence = bHasPreStepReviewEvidence || ClusterHub->BuildReviewEvidence(
+			FBlueprintHelperWriteReviewEvidence RuntimeEvidence;
+			const bool bHasRuntimeReviewEvidence = PipelineRunner.BuildReviewEvidence(
+				*ClusterHub,
 				LoweredStep,
 				StepResult,
 				ArchiveSessionId,
 				TaskRunId,
 				StepIndex,
 				RuntimeEvidence);
-			if (bHasReviewEvidence)
+			if (bHasRuntimeReviewEvidence)
 			{
+				if (bHasPreStepReviewEvidence)
+				{
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::ApplyCachedTaskRuntimeReviewTargetSnapshots(
+						RuntimeEvidence,
+						ReviewBeforeSnapshotCache);
+				}
 				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
 					RuntimeEvidence,
 					false);
 				PostIoBatch.AddReviewEvidence(RuntimeEvidence);
+			}
+			else if (bHasPreStepReviewEvidence)
+			{
+				FBlueprintHelperWriteReviewEvidence FallbackEvidence = PreStepReviewEvidence;
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::PopulateTaskRuntimeReviewTargetSnapshots(
+					FallbackEvidence,
+					false);
+				PostIoBatch.AddReviewEvidence(FallbackEvidence);
 			}
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
@@ -8581,97 +8572,48 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 	}
 
-	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::RunPostOperations);
-	if (!bDryRun)
 	{
-		const double PostOperationPlanStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-		const FBlueprintHelperTaskRuntimePostOperationPlan PostOperationPlan =
-			FBlueprintHelperTaskRuntimePostOperationPlanner::BuildPlan(*TaskPlanPtr, bDryRun);
-		FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
-			TimingTrace,
-			TEXT("main_thread_commit.post_operation_plan"),
-			PostOperationPlanStageStart);
-
-		if (!PostOperationPlan.bHasTargetAssets)
+		TArray<TUniquePtr<IBlueprintHelperTaskRuntimePipelineStageExecutor>> PostOperationStages;
+		TUniquePtr<FBlueprintHelperTaskRuntimePostOperationSequenceStageExecutor> PostOperationExecutor =
+			MakeUnique<FBlueprintHelperTaskRuntimePostOperationSequenceStageExecutor>(
+				&CommitService,
+				&TimingTrace);
+		FBlueprintHelperTaskRuntimePostOperationSequenceStageExecutor* PostOperationExecutorPtr =
+			PostOperationExecutor.Get();
+		PostOperationStages.Add(MoveTemp(PostOperationExecutor));
+		FBlueprintHelperTaskRuntimePipeline PostOperationPipeline(MoveTemp(PostOperationStages));
+		const FBlueprintHelperToolResultBase PostOperationStageResult =
+			PostOperationPipeline.Execute(PipelineRunner, PipelineContext);
+		if (!PostOperationStageResult.bOk)
 		{
-			return BuildFailureResult(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
-				TEXT("missing_target_assets_for_post_operation"),
-				EBlueprintHelperToolStage::ParseInput,
-				TEXT("TaskPlan execution_policy compile/save requires target_assets."),
-				TEXT("task_plan.target_assets")));
-		}
-
-		FBlueprintHelperTaskRuntimePostOperationExecutor PostOperationExecutor;
-		auto AppendPostOperationExecutionRecords = [&](const FBlueprintHelperTaskRuntimePostOperationExecutionResult& ExecutionResult)
-		{
-			for (const FBlueprintHelperTaskRuntimePostOperationRecordEx& Record : ExecutionResult.Records)
+			const FBlueprintHelperTaskRuntimePostOperationExecutionResult& ExecutionResult =
+				PostOperationExecutorPtr->GetLastExecutionResult();
+			FBlueprintHelperToolError Error = PostOperationStageResult.Error.IsSet()
+				? *PostOperationStageResult.Error
+				: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
+					TEXT("task_post_operation_failed"),
+					EBlueprintHelperToolStage::Execute,
+					TEXT("TaskPlan post operation failed."));
+			if (ExecutionResult.FirstError.IsSet())
 			{
-				PostOperationRecords.Add(FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeRuntimePostOperationRecord(Record));
+				Error = *ExecutionResult.FirstError;
 			}
-		};
-
-		auto ExecutePostOperationStage =
-			[&](EBlueprintHelperTaskRuntimePostOperationKind Kind, const FString& TimingName)
+			FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(Error);
+			if (!FailureResult.Data.IsValid())
 			{
-				const FBlueprintHelperTaskRuntimePostOperationPlan StagePlan =
-					FBlueprintHelperTaskRuntimeServiceLocalUtils::FilterPostOperationPlanByKind(PostOperationPlan, Kind);
-				FBlueprintHelperTaskRuntimePostOperationExecutionResult StageResult;
-				if (StagePlan.Items.Num() == 0)
-				{
-					return StageResult;
-				}
-
-				const double StageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-				StageResult = PostOperationExecutor.Execute(StagePlan, &CommitService);
-				FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TimingName, StageStart);
-				AppendPostOperationExecutionRecords(StageResult);
-				return StageResult;
-			};
-
-		auto BuildPostOperationFailureResult =
-			[&](const FBlueprintHelperTaskRuntimePostOperationExecutionResult& ExecutionResult)
+				FailureResult.Data = MakeShared<FJsonObject>();
+			}
+			if (ExecutionResult.Records.Num() > 0)
 			{
-				FBlueprintHelperToolResultBase FailureResult = BuildFailureResult(
-					ExecutionResult.FirstError.IsSet()
-						? *ExecutionResult.FirstError
-						: FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRuntimeError(
-							TEXT("task_post_operation_failed"),
-							EBlueprintHelperToolStage::Execute,
-							TEXT("TaskPlan post operation failed.")));
-				if (!FailureResult.Data.IsValid())
-				{
-					FailureResult.Data = MakeShared<FJsonObject>();
-				}
-				if (ExecutionResult.Records.Num() > 0)
-				{
-					FailureResult.Data->SetObjectField(
-						TEXT("post_operation_failure"),
-						FBlueprintHelperTaskRuntimePostOperationJson::RecordToJson(ExecutionResult.Records.Last()));
-				}
-				return FailureResult;
-			};
-
-		const FBlueprintHelperTaskRuntimePostOperationExecutionResult CompilePostOperationResult =
-			ExecutePostOperationStage(
-				EBlueprintHelperTaskRuntimePostOperationKind::Compile,
-				TEXT("main_thread_commit.compile"));
-		if (!CompilePostOperationResult.bOk)
-		{
-			return BuildPostOperationFailureResult(CompilePostOperationResult);
-		}
-
-		const FBlueprintHelperTaskRuntimePostOperationExecutionResult SavePostOperationResult =
-			ExecutePostOperationStage(
-				EBlueprintHelperTaskRuntimePostOperationKind::Save,
-				TEXT("main_thread_commit.save"));
-		if (!SavePostOperationResult.bOk)
-		{
-			return BuildPostOperationFailureResult(SavePostOperationResult);
+				FailureResult.Data->SetObjectField(
+					TEXT("post_operation_failure"),
+					FBlueprintHelperTaskRuntimePostOperationJson::RecordToJson(ExecutionResult.Records.Last()));
+			}
+			return FailureResult;
 		}
 	}
 
 	FinishMainThreadCommitStage();
-	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
 	const double ResultWrapStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 	FBlueprintHelperToolResultBase RuntimeResult = bDryRun
 		? FBlueprintHelperToolResultBuilder::DryRun(RuntimeOperation, FBlueprintHelperToolResultBuilder::GenerateTraceId())
@@ -8691,13 +8633,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		RuntimeResult.Validation = BuildRuntimeValidation(*TaskPlanPtr, BaseValidation);
 	}
 
-	RuntimeResult.Data = BuildRuntimeDataForSteps(
-		*TaskPlanPtr,
-		TaskRunId,
+	RuntimeResult.Data = PipelineRunner.BuildRuntimeData(
 		StepRecords,
-		PostOperationRecords,
-		bDryRun);
-	PipelineRunner.SetStepRecords(StepRecords);
+		PostOperationRecords);
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
 		RuntimeResult.Data,
 		ResolvedCallFunctionFacts);
@@ -8722,22 +8660,36 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{
-		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildJournal);
-		TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
-			TaskRunId,
-			*TaskPlanPtr,
-			StepRecords,
-			PostOperationRecords,
-			false,
-			FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
-		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
-			Journal,
-			ResolvedCallFunctionFacts);
-		FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
-		PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
+		ExecutePipelineStage(
+			EBlueprintHelperTaskRuntimePipelineStage::BuildJournal,
+			[&](FBlueprintHelperTaskRuntimePipelineExecutionContext& Context)
+			{
+				TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
+					TaskRunId,
+					*TaskPlanPtr,
+					Context.StepRecords,
+					Context.PostOperationRecords,
+					false,
+					FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeReviewBaselinePolicyJson(BaselinePolicy));
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
+					Journal,
+					ResolvedCallFunctionFacts);
+				FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
+				PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
+				return FBlueprintHelperToolResultBuilder::Applied(
+					TEXT("task_runtime_build_journal"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId());
+			});
 	}
-	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse);
-	AttachPipelineToResult(RuntimeResult);
+	ExecutePipelineStage(
+		EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse,
+		[&](FBlueprintHelperTaskRuntimePipelineExecutionContext&)
+		{
+			AttachPipelineToResult(RuntimeResult);
+			return FBlueprintHelperToolResultBuilder::Applied(
+				TEXT("task_runtime_finalize_response"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		});
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("result_wrap"), ResultWrapStageStart);
 
 	FlushPostIo(RuntimeResult);

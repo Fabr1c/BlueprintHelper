@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_md', 'logic_json'] as const;
 export type ReadContextLogicFormat = (typeof READ_CONTEXT_LOGIC_FORMATS)[number];
+export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_md', 'logic_json', 'tree_json'] as const;
+export type ReadContextViewFormat = (typeof READ_CONTEXT_VIEW_FORMATS)[number];
 
 export const LOGIC_PROJECTION_CALLBACK_CAPABILITIES = [
   'ue.raw_snapshot.logic_json',
@@ -51,7 +53,7 @@ export const ReadContextInputSchema = z.object({
     block_id: z.string().optional(),
   }),
   view: z.object({
-    format: z.enum(['logic_flow', 'logic_md', 'logic_json']).optional(),
+    format: z.enum(READ_CONTEXT_VIEW_FORMATS).optional(),
     max_items: z.number().int().positive().optional(),
     detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
   }).optional().default({}),
@@ -61,8 +63,8 @@ export const ReadContextInputSchema = z.object({
   }).optional(),
 }).superRefine((input, ctx) => {
   const format = input.view?.format;
-  const isLogicRead = input.read_type === 'blueprint_logic' || input.read_type === 'graph_context';
-  const isWidgetTreeRead = input.read_type === 'widget_context' && !input.target.target_name;
+  const isLogicRead = new Set(['blueprint_logic', 'graph_context']).has(input.read_type);
+  const isWidgetTreeRead = new Set(['widget_context']).has(input.read_type) && !input.target.target_name;
   if (!isLogicRead && !isWidgetTreeRead && format) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -70,18 +72,18 @@ export const ReadContextInputSchema = z.object({
       message: 'view.format is only supported for blueprint_logic, graph_context, or widget_context tree reads; omit it for this read_type.',
     });
   }
-  if (input.read_type === 'graph_context' && format && format !== 'logic_json') {
+  if (new Set(['graph_context']).has(input.read_type) && format && format !== 'logic_json') {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
       message: 'graph_context only supports logic_json format.',
     });
   }
-  if (isWidgetTreeRead && format === 'logic_md') {
+  if (isWidgetTreeRead && format && !new Set(['tree_json', 'logic_flow']).has(format)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
-      message: 'widget_context only supports logic_json and logic_flow formats.',
+      message: 'widget_context tree reads only support tree_json and logic_flow formats.',
     });
   }
 });

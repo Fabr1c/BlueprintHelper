@@ -40,6 +40,19 @@
         "replace_existing": true
       },
       {
+        "kind": "set_slot_property",
+        "widget_name": "__REQUIRED_WIDGET_NAME_FROM_LOGIC_JSON_INDEX__",
+        "property_path": "__REQUIRED_SLOT_PROPERTY_PATH_FROM_SLOT_FACTS__",
+        "value": "__REQUIRED_VALUE__",
+        "expected_slot_class_path": "__OPTIONAL_EXPECTED_SLOT_CLASS_PATH__"
+      },
+      {
+        "kind": "set_widget_as_variable",
+        "widget_name": "__REQUIRED_WIDGET_NAME_FROM_LOGIC_JSON_INDEX__",
+        "is_variable": true,
+        "expected_widget_class_path": "__OPTIONAL_EXPECTED_WIDGET_CLASS_PATH__"
+      },
+      {
         "kind": "update_widget_property",
         "widget_name": "__REQUIRED_CHILD_WIDGET_NAME__",
         "property_path": "__REQUIRED_PROPERTY_PATH__",

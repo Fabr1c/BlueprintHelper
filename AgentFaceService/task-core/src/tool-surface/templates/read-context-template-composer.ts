@@ -104,9 +104,6 @@ function composeReadSpec(route: ReadContextRouteDescriptor): Record<string, unkn
 }
 
 function toReadSpecFormat(route: ReadContextRouteDescriptor): string {
-  if (route.view_template === 'tree_json' && route.format === 'logic_json') {
-    return 'logic_json';
-  }
   return route.format ?? route.view_template;
 }
 

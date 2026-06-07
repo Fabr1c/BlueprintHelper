@@ -1246,7 +1246,15 @@ export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
 }).passthrough();
 
 const UMGWidgetChangeSchema = z.object({
-  kind: z.enum(['create_widget', 'update_widget_property', 'delete_widget', 'move_widget', 'set_named_slot_content']),
+  kind: z.enum([
+    'create_widget',
+    'update_widget_property',
+    'delete_widget',
+    'move_widget',
+    'set_named_slot_content',
+    'set_slot_property',
+    'set_widget_as_variable',
+  ]),
   widget_name: z.string().min(1).optional(),
   widget_class: z.string().min(1).optional(),
   parent_name: z.string().min(1).optional(),
@@ -1260,6 +1268,9 @@ const UMGWidgetChangeSchema = z.object({
   replace_existing: z.boolean().optional(),
   property_name: z.string().min(1).optional(),
   property_path: z.string().min(1).optional(),
+  expected_slot_class_path: z.string().min(1).optional(),
+  expected_widget_class_path: z.string().min(1).optional(),
+  is_variable: z.boolean().optional(),
   value: z.unknown().optional(),
 }).passthrough().superRefine((change, ctx) => {
   if (Object.hasOwn(change, 'parent_widget_name')) {
@@ -1316,6 +1327,7 @@ const BlueprintSignatureChangeSchema = z.object({
     'ensure_interface_function',
     'ensure_custom_event',
     'ensure_interface_event',
+    'ensure_macro',
     'ensure_event_dispatcher',
     'ensure_override_event',
     'remove_signature',
@@ -1323,6 +1335,7 @@ const BlueprintSignatureChangeSchema = z.object({
   function_name: z.string().min(1).optional(),
   event_name: z.string().min(1).optional(),
   graph_name: z.string().min(1).optional(),
+  macro_name: z.string().min(1).optional(),
   dispatcher_name: z.string().min(1).optional(),
   signature_kind: z.enum([
     'function',
@@ -1365,6 +1378,9 @@ export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
     }
     if (change.kind === 'ensure_interface_event' && (!change.event_name || !change.graph_name || !change.interface_path)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'ensure_interface_event requires event_name, graph_name, and interface_path.' });
+    }
+    if (change.kind === 'ensure_macro' && !change.macro_name) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'macro_name'], message: 'ensure_macro requires macro_name.' });
     }
     if (change.kind === 'ensure_event_dispatcher' && !change.dispatcher_name) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'dispatcher_name'], message: 'ensure_event_dispatcher requires dispatcher_name.' });
@@ -1693,7 +1709,7 @@ export const BlueprintClassSettingsTaskPlanStepSchema = structuredCapabilityStep
 
 export const BlueprintSignatureTaskPlanStepSchema = structuredCapabilityStepSchema(
   'blueprint_signature',
-  ['function_signature', 'custom_event_signature', 'event_dispatcher_signature', 'override_event_signature'],
+  ['function_signature', 'custom_event_signature', 'macro_signature', 'event_dispatcher_signature', 'override_event_signature'],
 );
 
 export const UMGWidgetTaskPlanStepSchema = structuredCapabilityStepSchema(

@@ -1,9 +1,13 @@
 ﻿#if WITH_DEV_AUTOMATION_TESTS
 
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextBlock.h"
@@ -64,6 +68,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/Class.h"
@@ -90,19 +95,62 @@ public:
 		return Package;
 	}
 
+	static FString GetGraphWriteTestPackageAssetName(const UPackage* Package)
+	{
+		return Package
+			? FPackageName::GetLongPackageAssetName(Package->GetName())
+			: FString();
+	}
+
 	static UBlueprint* MakeGraphWriteTestBlueprint(const FString& Prefix)
 	{
 		UPackage* Package = MakeGraphWriteTestPackage(Prefix);
 		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
 			AActor::StaticClass(),
 			Package,
-			*MakeGraphWriteTestObjectName(TEXT("BP_GraphWriteToolResult")),
+			*GetGraphWriteTestPackageAssetName(Package),
 			BPTYPE_Normal,
 			UBlueprint::StaticClass(),
 			UBlueprintGeneratedClass::StaticClass(),
 			TEXT("BlueprintHelperGraphWriteToolResultBaseTests"));
 		Package->SetDirtyFlag(false);
 		return Blueprint;
+	}
+
+	static UWidgetBlueprint* MakeGraphWriteTestWidgetBlueprint(UPackage* Package, const TCHAR* CallingContext)
+	{
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		return Cast<UWidgetBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+			UUserWidget::StaticClass(),
+			Package,
+			*GetGraphWriteTestPackageAssetName(Package),
+			BPTYPE_Normal,
+			UWidgetBlueprint::StaticClass(),
+			UWidgetBlueprintGeneratedClass::StaticClass(),
+			CallingContext));
+	}
+
+	static bool EnsureGraphWriteTestWidgetTree(UWidgetBlueprint* Blueprint)
+	{
+		if (!Blueprint)
+		{
+			return false;
+		}
+
+		if (!Blueprint->WidgetTree)
+		{
+			Blueprint->WidgetTree = NewObject<UWidgetTree>(
+				Blueprint,
+				UWidgetTree::StaticClass(),
+				TEXT("WidgetTree"),
+				RF_Transactional);
+		}
+
+		return Blueprint->WidgetTree != nullptr;
 	}
 
 	static UEdGraph* AddGraphWriteFunctionGraph(UBlueprint* Blueprint, const FString& FunctionName)
@@ -2024,28 +2072,29 @@ public:
 		UPackage* Package = nullptr;
 		UWidgetBlueprint* Blueprint = nullptr;
 		UCanvasPanel* Root = nullptr;
+
+		~FWidgetRuntimeDryRunFixture()
+		{
+			if (Package)
+			{
+				Package->SetDirtyFlag(false);
+			}
+		}
 	};
 
 	static FWidgetRuntimeDryRunFixture MakeWidgetRuntimeDryRunFixture(const FString& Prefix)
 	{
 		FWidgetRuntimeDryRunFixture Fixture;
 		Fixture.Package = MakeGraphWriteTestPackage(Prefix);
-		Fixture.Blueprint = NewObject<UWidgetBlueprint>(
+		Fixture.Blueprint = MakeGraphWriteTestWidgetBlueprint(
 			Fixture.Package,
-			UWidgetBlueprint::StaticClass(),
-			*MakeGraphWriteTestObjectName(TEXT("WBP_TaskRuntimeDryRun")),
-			RF_Public | RF_Standalone | RF_Transactional);
+			TEXT("BlueprintHelperGraphWriteWidgetRuntimeDryRunFixture"));
 		if (!Fixture.Blueprint)
 		{
 			return Fixture;
 		}
 
-		Fixture.Blueprint->WidgetTree = NewObject<UWidgetTree>(
-			Fixture.Blueprint,
-			UWidgetTree::StaticClass(),
-			TEXT("WidgetTree"),
-			RF_Transactional);
-		if (!Fixture.Blueprint->WidgetTree)
+		if (!EnsureGraphWriteTestWidgetTree(Fixture.Blueprint))
 		{
 			return Fixture;
 		}
@@ -2054,6 +2103,8 @@ public:
 			UCanvasPanel::StaticClass(),
 			TEXT("CanvasRoot"));
 		Fixture.Blueprint->WidgetTree->RootWidget = Fixture.Root;
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Fixture.Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
 		Fixture.Package->SetDirtyFlag(false);
 		return Fixture;
 	}
@@ -2062,23 +2113,39 @@ public:
 	{
 		FWidgetRuntimeDryRunFixture Fixture;
 		Fixture.Package = MakeGraphWriteTestPackage(Prefix);
-		Fixture.Blueprint = NewObject<UWidgetBlueprint>(
+		Fixture.Blueprint = MakeGraphWriteTestWidgetBlueprint(
 			Fixture.Package,
-			UWidgetBlueprint::StaticClass(),
-			*MakeGraphWriteTestObjectName(TEXT("WBP_TaskRuntimeExecute")),
-			RF_Public | RF_Standalone | RF_Transactional);
+			TEXT("BlueprintHelperGraphWriteWidgetRuntimeExecuteFixture"));
 		if (!Fixture.Blueprint)
 		{
 			return Fixture;
 		}
 
-		Fixture.Blueprint->WidgetTree = NewObject<UWidgetTree>(
-			Fixture.Blueprint,
-			UWidgetTree::StaticClass(),
-			TEXT("WidgetTree"),
-			RF_Transactional);
+		if (!EnsureGraphWriteTestWidgetTree(Fixture.Blueprint))
+		{
+			return Fixture;
+		}
+
+		FKismetEditorUtilities::CompileBlueprint(Fixture.Blueprint);
 		Fixture.Package->SetDirtyFlag(false);
 		return Fixture;
+	}
+
+	static bool IsWidgetVariableRegistered(UWidgetBlueprint* Blueprint, UWidget* Widget)
+	{
+#if WITH_EDITORONLY_DATA
+		if (!Blueprint || !Widget)
+		{
+			return false;
+		}
+#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		return Blueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName());
+#else
+		return Widget->bIsVariable;
+#endif
+#else
+		return false;
+#endif
 	}
 
 	static UDataTable* MakeVectorDataTableRuntimeDryRunFixture(const FString& Prefix)
@@ -2087,7 +2154,7 @@ public:
 		UDataTable* DataTable = NewObject<UDataTable>(
 			Package,
 			UDataTable::StaticClass(),
-			*MakeGraphWriteTestObjectName(TEXT("DT_TaskRuntimeDryRun")),
+			*GetGraphWriteTestPackageAssetName(Package),
 			RF_Public | RF_Standalone | RF_Transactional);
 		if (!DataTable)
 		{
@@ -2281,6 +2348,99 @@ public:
 
 		return MakeMultiStepTaskPlanPayload(
 			TEXT("WidgetTreeExecuteSmoke"),
+			TEXT("edit_umg_widget"),
+			AssetPath,
+			Steps);
+	}
+
+	static TSharedRef<FJsonObject> MakeWidgetSlotPropertyExecutePayload(const FString& AssetPath)
+	{
+		TSharedRef<FJsonObject> AddRootOp = MakeShared<FJsonObject>();
+		AddRootOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddRootOp->SetStringField(TEXT("widget_class"), TEXT("CanvasPanel"));
+		AddRootOp->SetStringField(TEXT("widget_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> AddChildOp = MakeShared<FJsonObject>();
+		AddChildOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddChildOp->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
+		AddChildOp->SetStringField(TEXT("widget_name"), TEXT("SlotTargetText"));
+		AddChildOp->SetStringField(TEXT("parent_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> SetSlotOp = MakeShared<FJsonObject>();
+		SetSlotOp->SetStringField(TEXT("op"), TEXT("set_slot_property"));
+		SetSlotOp->SetStringField(TEXT("widget_name"), TEXT("SlotTargetText"));
+		SetSlotOp->SetStringField(TEXT("property_path"), TEXT("LayoutData.Offsets.Left"));
+		SetSlotOp->SetStringField(TEXT("value"), TEXT("24"));
+		SetSlotOp->SetStringField(TEXT("expected_slot_class_path"), UCanvasPanelSlot::StaticClass()->GetPathName());
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_root"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddRootOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_child"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddChildOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_set_slot_left"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_property_edit"),
+			SetSlotOp)));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("WidgetSlotPropertyExecute"),
+			TEXT("edit_umg_widget"),
+			AssetPath,
+			Steps);
+	}
+
+	static TSharedRef<FJsonObject> MakeWidgetVariableExecutePayload(const FString& AssetPath)
+	{
+		TSharedRef<FJsonObject> AddRootOp = MakeShared<FJsonObject>();
+		AddRootOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddRootOp->SetStringField(TEXT("widget_class"), TEXT("CanvasPanel"));
+		AddRootOp->SetStringField(TEXT("widget_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> AddButtonOp = MakeShared<FJsonObject>();
+		AddButtonOp->SetStringField(TEXT("op"), TEXT("add_widget"));
+		AddButtonOp->SetStringField(TEXT("widget_class"), TEXT("Button"));
+		AddButtonOp->SetStringField(TEXT("widget_name"), TEXT("RuntimeStartButton"));
+		AddButtonOp->SetStringField(TEXT("parent_name"), TEXT("RootCanvas"));
+
+		TSharedRef<FJsonObject> SetVariableOp = MakeShared<FJsonObject>();
+		SetVariableOp->SetStringField(TEXT("op"), TEXT("set_widget_as_variable"));
+		SetVariableOp->SetStringField(TEXT("widget_name"), TEXT("RuntimeStartButton"));
+		SetVariableOp->SetBoolField(TEXT("is_variable"), true);
+		SetVariableOp->SetStringField(TEXT("expected_widget_class_path"), UButton::StaticClass()->GetPathName());
+
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_root"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddRootOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_add_button"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			AddButtonOp)));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeStructuredStep(
+			TEXT("step_set_button_variable"),
+			TEXT("umg_widget"),
+			AssetPath,
+			TEXT("widget_tree_edit"),
+			SetVariableOp)));
+
+		return MakeMultiStepTaskPlanPayload(
+			TEXT("WidgetVariableExecute"),
 			TEXT("edit_umg_widget"),
 			AssetPath,
 			Steps);
@@ -7167,6 +7327,147 @@ bool FBlueprintHelperTaskRuntimeUMGWidgetTreeExecuteSmokeTest::RunTest(const FSt
 		Cast<UWidget>(SmokeText));
 
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetFixtureAssetPathValidityTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.FixtureAssetPathValidity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetFixtureAssetPathValidityTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeExecuteFixture(TEXT("RuntimeUMGPathValidity"));
+	TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("WidgetBlueprint fixture package is created"), Fixture.Package);
+	if (!Fixture.Blueprint || !Fixture.Package)
+	{
+		return false;
+	}
+
+	const FString PackageAssetName = FPackageName::GetLongPackageAssetName(Fixture.Package->GetName());
+	TestEqual(TEXT("fixture object name matches package asset name"), Fixture.Blueprint->GetName(), PackageAssetName);
+	TestEqual(
+		TEXT("fixture path validates as package-qualified main asset"),
+		Fixture.Blueprint->GetPathName(),
+		FString::Printf(TEXT("%s.%s"), *Fixture.Package->GetName(), *PackageAssetName));
+	TestEqual(
+		TEXT("fixture widget blueprint keeps a valid UUserWidget parent"),
+		Fixture.Blueprint->ParentClass.Get(),
+		UUserWidget::StaticClass());
+	TestNotNull(
+		TEXT("fixture widget blueprint has a generated class"),
+		Fixture.Blueprint->GeneratedClass.Get());
+	TestNotNull(
+		TEXT("fixture widget blueprint has a skeleton generated class"),
+		Fixture.Blueprint->SkeletonGeneratedClass.Get());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetSetSlotPropertyExecuteTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.SetSlotPropertyExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetFixtureClearsDirtyPackageAfterMutationTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.FixtureClearsDirtyPackageAfterMutation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetFixtureClearsDirtyPackageAfterMutationTest::RunTest(const FString& Parameters)
+{
+	UPackage* FixturePackage = nullptr;
+	bool bExecuteOk = false;
+	{
+		const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeExecuteFixture(TEXT("RuntimeUMGPackageClean"));
+		TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+		TestNotNull(TEXT("WidgetTree fixture is created"), Fixture.Blueprint ? Fixture.Blueprint->WidgetTree.Get() : nullptr);
+		FixturePackage = Fixture.Package;
+		if (!Fixture.Blueprint || !Fixture.Blueprint->WidgetTree || !FixturePackage)
+		{
+			return false;
+		}
+
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+		const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetSlotPropertyExecutePayload(Fixture.Blueprint->GetPathName()));
+		bExecuteOk = ExecuteResult.bOk;
+		TestTrue(TEXT("UMG slot property execute succeeds"), ExecuteResult.bOk);
+		TestTrue(TEXT("runtime mutation dirties the fixture package before fixture cleanup"), FixturePackage->IsDirty());
+	}
+
+	TestNotNull(TEXT("fixture package remains inspectable after fixture scope"), FixturePackage);
+	TestFalse(TEXT("fixture cleanup clears dirty state before editor save-all can persist test assets"),
+		FixturePackage ? FixturePackage->IsDirty() : true);
+	return bExecuteOk && FixturePackage && !FixturePackage->IsDirty();
+}
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetSetSlotPropertyExecuteTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeExecuteFixture(TEXT("RuntimeUMGSlotProperty"));
+	TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("WidgetTree fixture is created"), Fixture.Blueprint ? Fixture.Blueprint->WidgetTree.Get() : nullptr);
+	if (!Fixture.Blueprint || !Fixture.Blueprint->WidgetTree)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetSlotPropertyExecutePayload(Fixture.Blueprint->GetPathName()));
+
+	TestTrue(TEXT("UMG slot property execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestEqual(TEXT("UMG slot property execute status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	UTextBlock* SlotTargetText = Cast<UTextBlock>(Fixture.Blueprint->WidgetTree->FindWidget(FName(TEXT("SlotTargetText"))));
+	TestNotNull(TEXT("SlotTargetText child is created"), SlotTargetText);
+	UCanvasPanelSlot* Slot = SlotTargetText ? Cast<UCanvasPanelSlot>(SlotTargetText->Slot) : nullptr;
+	TestNotNull(TEXT("SlotTargetText has a CanvasPanelSlot"), Slot);
+	TestEqual(TEXT("runtime slot property writes CanvasPanelSlot LayoutData Offsets.Left"),
+		Slot ? Slot->GetLayout().Offsets.Left : -1.0f,
+		24.0f);
+	return ExecuteResult.bOk;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeUMGWidgetSetWidgetAsVariableExecuteTest,
+	"BlueprintHelper.TaskRuntime.UMGWidget.SetWidgetAsVariableExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeUMGWidgetSetWidgetAsVariableExecuteTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FWidgetRuntimeDryRunFixture Fixture =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetRuntimeExecuteFixture(TEXT("RuntimeUMGWidgetVariable"));
+	TestNotNull(TEXT("WidgetBlueprint fixture is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("WidgetTree fixture is created"), Fixture.Blueprint ? Fixture.Blueprint->WidgetTree.Get() : nullptr);
+	if (!Fixture.Blueprint || !Fixture.Blueprint->WidgetTree)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FGraphWriteRuntimeHarness Harness;
+	const FBlueprintHelperToolResultBase ExecuteResult = Harness.RuntimeService.ExecuteTaskPlan(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeWidgetVariableExecutePayload(Fixture.Blueprint->GetPathName()));
+
+	TestTrue(TEXT("UMG widget variable execute succeeds"), ExecuteResult.bOk);
+	if (!ExecuteResult.bOk && ExecuteResult.Error.IsSet())
+	{
+		TestFalse(TEXT("execute failure has diagnosable message"), ExecuteResult.Error->Message.IsEmpty());
+	}
+	TestEqual(TEXT("UMG widget variable execute status is applied"), ExecuteResult.Status, EBlueprintHelperToolStatus::Applied);
+
+	UButton* StartButton = Cast<UButton>(Fixture.Blueprint->WidgetTree->FindWidget(FName(TEXT("RuntimeStartButton"))));
+	TestNotNull(TEXT("RuntimeStartButton child is created"), StartButton);
+	TestTrue(TEXT("runtime widget variable flag is true"), StartButton && StartButton->bIsVariable);
+	TestTrue(TEXT("runtime widget variable GUID state is registered"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, StartButton));
+	return ExecuteResult.bOk;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

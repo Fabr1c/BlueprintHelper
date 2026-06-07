@@ -83,6 +83,100 @@ bool FBlueprintHelperUMGWidgetReviewEvidenceNamedSlotContentTest::RunTest(const 
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperUMGWidgetReviewEvidenceSlotPropertyTest,
+	"BlueprintHelper.TaskRuntime.UMGWidgetReviewEvidence.SlotProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperUMGWidgetReviewEvidenceSlotPropertyTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/UI/WBP_Menu"));
+	Payload->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+	Payload->SetStringField(TEXT("property_path"), TEXT("LayoutData.Offsets.Left"));
+	Payload->SetStringField(TEXT("value"), TEXT("24"));
+	Payload->SetStringField(TEXT("expected_slot_class_path"), TEXT("/Script/UMG.CanvasPanelSlot"));
+
+	FBlueprintHelperWidgetTreeReviewEvidenceBuildInput Input =
+		FBlueprintHelperUMGWidgetReviewEvidenceTestsLocalUtils::MakeInput(
+			FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty,
+			Payload);
+
+	TSharedRef<FJsonObject> Mutation = MakeShared<FJsonObject>();
+	Mutation->SetStringField(TEXT("target_kind"), TEXT("slot_property"));
+	Mutation->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+	Mutation->SetStringField(TEXT("slot_class_path"), TEXT("/Script/UMG.CanvasPanelSlot"));
+	Mutation->SetStringField(TEXT("property_path"), TEXT("LayoutData.Offsets.Left"));
+	Mutation->SetStringField(TEXT("before_value"), TEXT("0"));
+	Mutation->SetStringField(TEXT("after_value"), TEXT("24"));
+	Input.StepResult.Data->SetObjectField(TEXT("readback_context"), Mutation);
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(Input, Evidence);
+	TestTrue(TEXT("slot-property evidence builds"), bBuilt);
+	TestEqual(TEXT("one atomic target"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& Target = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind is slot_property"), Target.TargetKind, FString(TEXT("slot_property")));
+	TestEqual(TEXT("target subkind is slot_property"), Target.TargetSubKind, FString(TEXT("slot_property")));
+	TestEqual(TEXT("target key uses widget and property path"), Target.TargetKey, FString(TEXT("slot_property:StartButton.LayoutData.Offsets.Left")));
+	TestEqual(TEXT("slot class path is carried"), Target.ComponentPath, FString(TEXT("/Script/UMG.CanvasPanelSlot")));
+	TestEqual(TEXT("before value fingerprint"), Target.ReadbackFingerprintBefore, FString(TEXT("slot_property:0")));
+	TestEqual(TEXT("after value fingerprint"), Target.ReadbackFingerprintAfter, FString(TEXT("slot_property:24")));
+	TestTrue(TEXT("changed properties carries before value"), Target.ChangedPropertiesJson.Contains(TEXT("\"before_value\":\"0\"")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperUMGWidgetReviewEvidenceWidgetVariableTest,
+	"BlueprintHelper.TaskRuntime.UMGWidgetReviewEvidence.WidgetVariable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperUMGWidgetReviewEvidenceWidgetVariableTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/UI/WBP_Menu"));
+	Payload->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+	Payload->SetBoolField(TEXT("is_variable"), true);
+	Payload->SetStringField(TEXT("expected_widget_class_path"), TEXT("/Script/UMG.Button"));
+
+	FBlueprintHelperWidgetTreeReviewEvidenceBuildInput Input =
+		FBlueprintHelperUMGWidgetReviewEvidenceTestsLocalUtils::MakeInput(
+			FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable,
+			Payload);
+
+	TSharedRef<FJsonObject> Mutation = MakeShared<FJsonObject>();
+	Mutation->SetStringField(TEXT("target_kind"), TEXT("widget_variable"));
+	Mutation->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+	Mutation->SetBoolField(TEXT("before_is_variable"), false);
+	Mutation->SetBoolField(TEXT("after_is_variable"), true);
+	Mutation->SetStringField(TEXT("variable_guid_state"), TEXT("valid"));
+	Input.StepResult.Data->SetObjectField(TEXT("readback_context"), Mutation);
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(Input, Evidence);
+	TestTrue(TEXT("widget-variable evidence builds"), bBuilt);
+	TestEqual(TEXT("one atomic target"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& Target = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind is widget_variable"), Target.TargetKind, FString(TEXT("widget_variable")));
+	TestEqual(TEXT("target subkind is widget_variable"), Target.TargetSubKind, FString(TEXT("widget_variable")));
+	TestEqual(TEXT("target key uses widget variable identity"), Target.TargetKey, FString(TEXT("widget_variable:StartButton")));
+	TestEqual(TEXT("property path is variable flag"), Target.PropertyPath, FString(TEXT("is_variable")));
+	TestEqual(TEXT("before variable fingerprint"), Target.ReadbackFingerprintBefore, FString(TEXT("is_variable:false")));
+	TestEqual(TEXT("after variable fingerprint"), Target.ReadbackFingerprintAfter, FString(TEXT("is_variable:true")));
+	TestEqual(TEXT("variable guid state carried"), Target.ComponentOrigin, FString(TEXT("valid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperUMGWidgetReviewEvidenceDiagnosticsTest,
 	"BlueprintHelper.TaskRuntime.UMGWidgetReviewEvidence.Diagnostics",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

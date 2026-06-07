@@ -10,7 +10,6 @@ import type {
 } from '../catalog/tool-capability-types.js';
 import type {
   ToolCommandManifest,
-  ToolResultProjectionPolicyId,
 } from './tool-command-manifest.js';
 import { TOOL_COMMAND_MANIFEST_SCHEMA } from './tool-command-manifest.js';
 import { inferInputShapesFromTemplateIds } from './tool-input-shape-metadata.js';
@@ -61,6 +60,9 @@ export function buildReadonlyToolCommandManifestRegistry(): ToolCommandManifestR
 
 function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommandManifest {
   const descriptor = getToolCapabilityDescriptor(capability.id);
+  if (!descriptor) {
+    throw new Error(`Missing BlueprintHelper capability descriptor for ${capability.id}.`);
+  }
   return {
     schema: TOOL_COMMAND_MANIFEST_SCHEMA,
     tool_id: capability.id,
@@ -79,57 +81,16 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
       requiresBridge: capability.requires_bridge,
     }),
     handler_id: capability.tool_name,
-    result_policy_id: inferResultPolicyId(capability),
-    metrics_identity: inferMetricsIdentity(capability),
+    result_policy_id: descriptor.result_policy_id,
+    metrics_identity: descriptor.metrics_identity,
     template_refs: [...capability.cli_template_ids],
-    route_refs: [...(descriptor?.route_refs ?? [])],
-    recommended_invocations: [...(descriptor?.recommended_invocations ?? defaultRecommendedInvocations(capability.tool_name))],
-    stop_conditions: [...(descriptor?.stop_conditions ?? defaultStopConditions(capability))],
+    route_refs: [...descriptor.route_refs],
+    recommended_invocations: [...descriptor.recommended_invocations],
+    help_usage: [...descriptor.help_usage],
+    help_notes: [...descriptor.help_notes],
+    stop_conditions: [...descriptor.stop_conditions],
     source: 'readonly_mirror',
   };
-}
-
-function inferResultPolicyId(capability: ToolCapabilityItem): ToolResultProjectionPolicyId {
-  if (capability.tool_name === 'blueprinthelper_preview_task') {
-    return 'task_preview_default';
-  }
-  if (capability.tool_name === 'blueprinthelper_execute_task') {
-    return 'task_execute_default';
-  }
-  if (capability.tool_name === 'blueprinthelper_get_task_result') {
-    return 'task_result_default';
-  }
-  if (capability.tool_name === 'blueprinthelper_read_context') {
-    return 'read_context_default';
-  }
-  if (
-    capability.tool_name === 'blueprinthelper_diagnostics'
-    || capability.tool_name === 'blueprinthelper_diagnostics_runtime'
-    || capability.tool_name.startsWith('blueprinthelper_get_debug_')
-    || capability.tool_name === 'blueprinthelper_list_debug_cases'
-    || capability.tool_name === 'blueprinthelper_export_debug_bundle'
-  ) {
-    return 'diagnostics_default';
-  }
-  if (capability.tool_name === 'blueprinthelper_apply_review_action') {
-    return 'review_expert_default';
-  }
-  return capability.requires_bridge ? 'bridge_default' : 'local_default';
-}
-
-function inferMetricsIdentity(capability: ToolCapabilityItem): { capability: string; semantic_operation: string } {
-  return {
-    capability: `${capability.domain}.${capability.kind}`,
-    semantic_operation: capability.id,
-  };
-}
-
-function defaultStopConditions(capability: ToolCapabilityItem): string[] {
-  return capability.requires_bridge ? ['tool_unavailable', 'bridge_unavailable'] : ['tool_unavailable'];
-}
-
-function defaultRecommendedInvocations(toolName: string): string[] {
-  return [`bh ${toolName} --file <filled-template.json> --select status,artifacts.full_result`];
 }
 
 function listGroupedAliasCapabilities(): ToolCapabilityItem[] {

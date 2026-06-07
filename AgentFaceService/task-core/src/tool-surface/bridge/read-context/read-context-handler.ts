@@ -8,13 +8,8 @@ import {
   measureTaskTimingAsync,
 } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
-import { extractBridgePayload, normalizeBridgeToolResult } from '../bridge-tool-result-utils.js';
-import {
-  buildReadContextLogicBridgeRoute,
-  buildBlueprintLogicReadPayload,
-  buildReadContextBridgeRequest,
-  resolveReadContextLogicFormat,
-} from './read-context-route-builder.js';
+import { extractBridgePayload } from '../bridge-tool-result-utils.js';
+import { buildReadContextBridgeRequest } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
 import {
   postProcessReadContextPayloadWithDebug,
@@ -22,6 +17,7 @@ import {
 } from './read-context-payload.js';
 import { buildPayloadSizeMetric } from './read-context-payload-metrics.js';
 import type { ReadContextInput } from './read-context-schemas.js';
+import type { ReadContextRouteDescriptor } from '../../templates/read-context-template-types.js';
 
 type ReadPayloadWithDebug = {
   payload: Record<string, unknown>;
@@ -34,55 +30,6 @@ export async function executeReadContext(
 ): Promise<ToolResultBase> {
   const timing = context.timing;
   const input = measureTaskTiming(timing, 'read_context.parse_input', () => rawInput as ReadContextInput);
-  const format = measureTaskTiming(timing, 'read_context.resolve_format', () => (
-    resolveReadContextLogicFormat(input)
-  ));
-
-  if (input.read_type !== 'blueprint_logic' && input.read_type !== 'graph_context') {
-    return executeBridgeBackedReadContext(input, context);
-  }
-
-  const bridgeFormat = format ?? 'logic_flow';
-  const route = measureTaskTiming(timing, 'read_context.resolve_bridge_request', () => (
-    buildReadContextLogicBridgeRoute(bridgeFormat)
-  ));
-  const payload = measureTaskTiming(timing, 'read_context.build_bridge_payload', () => (
-    withReadTimingPayload(buildBlueprintLogicReadPayload(input), context)
-  ));
-  const response = await measureTaskTimingAsync(timing, 'read_context.bridge_send_receive', () => (
-    context.bridge.sendCommand(route.command, payload, {
-      timing,
-      timingPrefix: 'read_context.bridge_transport',
-    })
-  ));
-  addReadPayloadSizeMarker(timing, 'read_context.bridge_payload_bytes', response.result);
-  addNestedTaskTiming(timing, `bridge.${route.command}`, extractBridgeTransportTiming(response));
-  addNestedTaskTiming(timing, `ue.${route.command}`, extractBridgeTiming(response.result));
-  if (!response.success) {
-    return normalizeBridgeToolResult('read_context', response);
-  }
-
-  const payloadResult = measureTaskTiming(timing, 'read_context.bridge_payload_extract', () => (
-    extractBridgePayload(response.result)
-  ));
-  if (!payloadResult.ok) {
-    return failureResult('read_context', {
-      code: 'invalid_read_context_payload',
-      stage: 'bridge',
-      message: payloadResult.message,
-      retryable: false,
-      rollback_result: 'not_needed',
-    });
-  }
-  const readPayloadResult = buildReadPayloadWithTiming(input, route.payloadSchema, payloadResult.payload, context);
-  return measureTaskTiming(timing, 'read_context.result_wrap', () => buildReadContextResult(input, readPayloadResult));
-}
-
-async function executeBridgeBackedReadContext(
-  input: ReadContextInput,
-  context: BlueprintHelperToolContext,
-): Promise<ToolResultBase> {
-  const timing = context.timing;
   const request = measureTaskTiming(timing, 'read_context.resolve_bridge_request', () => (
     buildReadContextBridgeRequest(input)
   ));
@@ -132,7 +79,7 @@ async function executeBridgeBackedReadContext(
     }, buildReadContextTarget(input) as never);
   }
 
-  const readPayloadResult = buildReadPayloadWithTiming(input, request.payloadSchema, payloadResult.payload, context);
+  const readPayloadResult = buildReadPayloadWithTiming(input, request.route, request.payloadSchema, payloadResult.payload, context);
   return measureTaskTiming(timing, 'read_context.result_wrap', () => buildReadContextResult(input, readPayloadResult));
 }
 
@@ -145,6 +92,7 @@ function withReadTimingPayload(
 
 function buildReadPayloadWithTiming(
   input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
   payloadSchema: string,
   payload: Record<string, unknown>,
   context: BlueprintHelperToolContext,
@@ -154,8 +102,8 @@ function buildReadPayloadWithTiming(
   const strippedPayload = measureTaskTiming(timing, 'read_context.ue_timing_extract', () => (
     stripTimingPayload(payload)
   ));
-  const postProcessResult = measureTaskTiming(timing, resolveReadContextPostProcessStage(payloadSchema, input), () => (
-    postProcessReadContextPayloadWithDebug(input, payloadSchema, strippedPayload)
+  const postProcessResult = measureTaskTiming(timing, resolveReadContextPostProcessStage(route, input), () => (
+    postProcessReadContextPayloadWithDebug(input, route, payloadSchema, strippedPayload)
   ));
   addReadPayloadSizeMarker(timing, 'read_context.post_processed_payload_bytes', postProcessResult.payload);
   return postProcessResult;

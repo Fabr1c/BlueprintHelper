@@ -278,29 +278,16 @@ FBlueprintHelperGraphBodyAdapterRegistry::ValidateGeneratedRouteSync()
 			continue;
 		}
 
-		if (Status.Equals(TEXT("hidden"), ESearchCase::IgnoreCase) &&
-			!AdapterSync.Equals(TEXT("hidden_route_not_agent_executable"), ESearchCase::IgnoreCase))
+		if (!Status.Equals(TEXT("active"), ESearchCase::IgnoreCase) &&
+			!AdapterSync.Equals(TEXT("reserved_hidden_from_agent"), ESearchCase::IgnoreCase))
 		{
 			BlueprintHelperAddGraphWriteRouteSyncIssue(
 				Issues,
 				RouteId,
 				RuntimeAdapterId,
 				Status,
-				TEXT("hidden_adapter_sync_semantics_invalid"),
-				TEXT("Hidden generated route must declare hidden_route_not_agent_executable."));
-			continue;
-		}
-
-		if (Status.Equals(TEXT("planned"), ESearchCase::IgnoreCase) &&
-			!AdapterSync.Equals(TEXT("planned_route_not_agent_executable"), ESearchCase::IgnoreCase))
-		{
-			BlueprintHelperAddGraphWriteRouteSyncIssue(
-				Issues,
-				RouteId,
-				RuntimeAdapterId,
-				Status,
-				TEXT("planned_adapter_sync_semantics_invalid"),
-				TEXT("Planned generated route must declare planned_route_not_agent_executable."));
+				TEXT("reserved_adapter_sync_semantics_invalid"),
+				TEXT("Reserved generated route must declare reserved_hidden_from_agent."));
 			continue;
 		}
 

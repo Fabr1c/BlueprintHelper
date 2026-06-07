@@ -30,6 +30,16 @@ struct BLUEPRINTHELPER_API FBlueprintHelperEnsureCustomEventSignatureRequest
 	bool bDryRun = false;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperEnsureMacroSignatureRequest
+{
+	FString AssetPath;
+	FString MacroName;
+	FString NameCollisionPolicy = TEXT("reuse_if_exists");
+	TArray<TSharedPtr<FJsonValue>> Inputs;
+	TArray<TSharedPtr<FJsonValue>> Outputs;
+	bool bDryRun = false;
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperRemoveSignatureRequest
 {
 	FString AssetPath;

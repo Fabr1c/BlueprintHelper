@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { BridgeClient, type BridgeResponse, type BridgeSendCommandOptions } from '@blueprinthelper/task-core/bridge/bridge-client';
-import { getBlueprintHelperTool } from '@blueprinthelper/task-core/tool-surface/tool-registry';
+import {
+  getBlueprintHelperTool,
+  routeCliSubcommand,
+} from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   createTaskSpecRunner,
   type TaskRunnerBridge,
@@ -909,77 +912,15 @@ function parseToolsTemplatesCommand(
   },
   base: Omit<CliCommand, 'kind'>,
 ): ParseResult {
-  const subcommand = positionals[2];
-  if (positionals.length !== 3) {
-    return { ok: false, message: `Unsupported BlueprintHelper CLI tools templates command: ${subcommand ?? ''}` };
-  }
-
-  switch (subcommand) {
-    case 'families':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.families',
-          workflow: options.workflow ?? 'preview_execute',
-        },
-      };
-    case 'write-modes':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.write_modes',
-          family: options.family,
-        },
-      };
-    case 'clusters':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.clusters',
-          family: options.family,
-        },
-      };
-    case 'operations':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.operations',
-          family: options.family,
-          cluster: options.cluster,
-          writeMode: options.writeMode,
-        },
-      };
-    case 'quick-access':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.quick_access',
-          family: options.family,
-          cluster: options.cluster,
-          operation: options.operation,
-          writeMode: options.writeMode,
-        },
-      };
-    case 'compose':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates.compose',
-          family: options.family,
-          writeMode: options.writeMode,
-          templateIds: options.templates ?? [],
-          outputPath: options.out,
-        },
-      };
-    default:
-      return { ok: false, message: `Unsupported BlueprintHelper CLI tools templates command: ${subcommand ?? ''}` };
-  }
+  const routed = routeCliSubcommand({
+    group: 'tools.templates',
+    positionals,
+    options: options as Record<string, unknown>,
+    base: base as Record<string, unknown>,
+  });
+  return routed.ok
+    ? { ok: true, command: routed.command as unknown as CliCommand }
+    : routed;
 }
 
 function parseToolsReadTemplatesCommand(
@@ -994,79 +935,15 @@ function parseToolsReadTemplatesCommand(
   },
   base: Omit<CliCommand, 'kind'>,
 ): ParseResult {
-  const subcommand = positionals[2];
-  if (positionals.length !== 3) {
-    return { ok: false, message: `Unsupported BlueprintHelper CLI tools read-templates command: ${subcommand ?? ''}` };
-  }
-
-  switch (subcommand) {
-    case 'domains':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.domains',
-        },
-      };
-    case 'clusters':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.clusters',
-          domain: options.domain,
-        },
-      };
-    case 'targets':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.targets',
-          domain: options.domain,
-          readCluster: options.readCluster,
-        },
-      };
-    case 'views':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.views',
-          domain: options.domain,
-          readCluster: options.readCluster,
-          targetKind: options.targetKind,
-        },
-      };
-    case 'quick-access':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.quick_access',
-          domain: options.domain,
-          readCluster: options.readCluster,
-          targetKind: options.targetKind,
-          viewTemplate: options.viewTemplate,
-        },
-      };
-    case 'compose':
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.read_templates.compose',
-          domain: options.domain,
-          readCluster: options.readCluster,
-          targetKind: options.targetKind,
-          viewTemplate: options.viewTemplate,
-          templateIds: options.templates ?? [],
-          outputPath: options.out,
-        },
-      };
-    default:
-      return { ok: false, message: `Unsupported BlueprintHelper CLI tools read-templates command: ${subcommand ?? ''}` };
-  }
+  const routed = routeCliSubcommand({
+    group: 'tools.read_templates',
+    positionals,
+    options: options as Record<string, unknown>,
+    base: base as Record<string, unknown>,
+  });
+  return routed.ok
+    ? { ok: true, command: routed.command as unknown as CliCommand }
+    : routed;
 }
 
 function required(value: string | undefined): string {

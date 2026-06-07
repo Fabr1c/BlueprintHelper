@@ -20,29 +20,7 @@ type ManifestHelpOverride = {
   notes?: string[];
 };
 
-const MANIFEST_HELP_OVERRIDES: Record<string, ManifestHelpOverride> = {
-  blueprinthelper_capture_screenshot: {
-    usage: ['bh blueprinthelper_capture_screenshot --file <capture-screenshot.json> --select status,artifacts.full_result'],
-    notes: [
-      'graph_name is required when block_ref or node_ref is provided.',
-      'Use capture_target:auto for graph_name/block_ref/node_ref requests; graph targets capture Graph-only PNGs.',
-    ],
-  },
-  blueprinthelper_find_assets: {
-    usage: ['bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result'],
-    notes: [
-      'Resolve one explicit Unreal asset_path before preview_task or any write request.',
-      'Do not infer Unreal asset_path values from filesystem .uasset paths.',
-    ],
-  },
-  blueprinthelper_read_context: {
-    usage: [
-      'bh blueprinthelper_read_context --file <read-spec.json> --select status,artifacts.full_result',
-      '$json | bh blueprinthelper_read_context --stdin --format full',
-      'bh context read --file <read-spec.json> --select status,artifacts.full_result',
-    ],
-  },
-};
+const MANIFEST_HELP_OVERRIDES: Record<string, ManifestHelpOverride> = {};
 
 const METRICS_COMMON_OPTIONS = [
   '  --format json|markdown',
@@ -123,11 +101,11 @@ export function globalCliCommandUsageLines(): string[] {
 }
 
 export function formatManifestUsage(manifest: ToolCommandManifest): string[] {
-  return MANIFEST_HELP_OVERRIDES[manifest.tool_name]?.usage ?? [...manifest.recommended_invocations];
+  return MANIFEST_HELP_OVERRIDES[manifest.tool_name]?.usage ?? [...manifest.help_usage];
 }
 
 export function manifestSpecificNotes(manifest: ToolCommandManifest): string[] {
-  return MANIFEST_HELP_OVERRIDES[manifest.tool_name]?.notes ?? [];
+  return MANIFEST_HELP_OVERRIDES[manifest.tool_name]?.notes ?? [...manifest.help_notes];
 }
 
 function metricReportHelp(

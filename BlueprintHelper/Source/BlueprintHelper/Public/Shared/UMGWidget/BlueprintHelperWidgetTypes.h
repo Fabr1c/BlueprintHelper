@@ -141,6 +141,7 @@ struct FBlueprintHelperWidgetTreeItem
 	FString ParentName;
 	FString SlotClassPath;
 	FString SlotName;
+	TSharedPtr<FJsonObject> SlotProperties;
 	int32 VirtualIndex = 0;
 	bool bIsVariable = false;
 	bool bIsInherited = false;
@@ -163,6 +164,10 @@ struct FBlueprintHelperWidgetTreeItem
 		if (!SlotName.IsEmpty())
 		{
 			J->SetStringField(TEXT("slot_name"), SlotName);
+		}
+		if (SlotProperties.IsValid() && SlotProperties->Values.Num() > 0)
+		{
+			J->SetObjectField(TEXT("slot_properties"), SlotProperties);
 		}
 		J->SetNumberField(TEXT("virtual_index"), VirtualIndex);
 		J->SetBoolField(TEXT("is_variable"), bIsVariable);

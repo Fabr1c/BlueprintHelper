@@ -32,6 +32,25 @@ test('ReadContext template registry exposes active routes and hides reserved dom
   assert.equal(functionFlow?.target_type, 'function');
   assert.equal(functionFlow?.format, 'logic_flow');
   assert.equal(functionFlow?.status, 'active');
+  assert.equal(functionFlow?.request_builder_id, 'blueprint_logic');
+  assert.equal(functionFlow?.payload_projector_id, 'logic');
+  assert.deepEqual(functionFlow?.supported_asset_types, ['blueprint', 'function']);
+  assert.deepEqual(functionFlow?.supported_formats, ['logic_flow']);
+
+  const widgetTree = getReadContextRouteDescriptor('read.widget_blueprint.structure_tree.widget_tree.tree_json');
+  assert.equal(widgetTree?.format, 'tree_json');
+  assert.equal(widgetTree?.output_schema, 'WidgetTreeJson.v1');
+  assert.equal(widgetTree?.request_builder_id, 'widget_tree');
+  assert.equal(widgetTree?.payload_projector_id, 'widget_tree');
+});
+
+test('ReadContext active route descriptors own request and payload routing facts', () => {
+  for (const route of getActiveReadContextRouteDescriptors()) {
+    assert.equal(Boolean(route.request_builder_id), true, `${route.route_id} has request builder id`);
+    assert.equal(Boolean(route.payload_projector_id), true, `${route.route_id} has payload projector id`);
+    assert.equal(route.supported_asset_types.length > 0, true, `${route.route_id} has supported asset types`);
+    assert.equal(route.supported_formats.length > 0, true, `${route.route_id} has supported formats`);
+  }
 });
 
 test('ReadContext template index exposes domain cluster target and view discovery', () => {
@@ -51,7 +70,7 @@ test('ReadContext template index exposes domain cluster target and view discover
     readCluster: 'logic',
     targetKind: 'function',
   });
-  assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow']);
+  assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
 
   const quickAccess = listReadContextTemplateQuickAccess({
     domain: 'blueprint',
@@ -61,6 +80,30 @@ test('ReadContext template index exposes domain cluster target and view discover
   });
   assert.equal(quickAccess.items[0]?.template_id, 'read.blueprint.logic.function.logic_flow');
   assert.equal(quickAccess.items[0]?.required_target_fields.includes('target_name'), true);
+});
+
+test('ReadContext template composer writes widget tree tree_json ReadSpec from descriptor-backed route', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'widget-tree.readspec.json');
+
+  const result = composeReadContextTemplate({
+    domain: 'widget_blueprint',
+    readCluster: 'structure_tree',
+    targetKind: 'widget_tree',
+    viewTemplate: 'tree_json',
+    templateIds: [],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'read.widget_blueprint.structure_tree.widget_tree.tree_json');
+
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, unknown>;
+  assert.equal(readSpec.read_type, 'widget_context');
+  assert.deepEqual(readSpec.target, {
+    asset_path: '__REQUIRED_ASSET_PATH__',
+    target_type: 'blueprint',
+  });
+  assert.deepEqual(readSpec.view, { format: 'tree_json' });
 });
 
 test('ReadContext template composer writes bare ReadSpec from descriptor-backed route', () => {

@@ -24,6 +24,19 @@ FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadStringField(
 	return Value;
 }
 
+bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadBoolField(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FieldName,
+	bool bDefaultValue)
+{
+	bool bValue = bDefaultValue;
+	if (Object.IsValid())
+	{
+		Object->TryGetBoolField(FieldName, bValue);
+	}
+	return bValue;
+}
+
 TOptional<int32> FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadOptionalIntField(
 	const TSharedPtr<FJsonObject>& Object,
 	const TCHAR* FieldName)
@@ -39,6 +52,28 @@ TOptional<int32> FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadOptionalIn
 		return TOptional<int32>();
 	}
 	return FMath::RoundToInt(Number);
+}
+
+TSharedPtr<FJsonObject> FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadMutationContext(
+	const FBlueprintHelperWidgetTreeReviewEvidenceBuildInput& Input)
+{
+	const TSharedPtr<FJsonObject>* ReadbackContext = nullptr;
+	const TSharedPtr<FJsonObject>* MutationContext = nullptr;
+	if (Input.StepResult.Data.IsValid() &&
+		Input.StepResult.Data->TryGetObjectField(TEXT("readback_context"), ReadbackContext) &&
+		ReadbackContext &&
+		ReadbackContext->IsValid())
+	{
+		if ((*ReadbackContext)->TryGetObjectField(TEXT("mutation"), MutationContext) &&
+			MutationContext &&
+			MutationContext->IsValid())
+		{
+			return *MutationContext;
+		}
+
+		return *ReadbackContext;
+	}
+	return nullptr;
 }
 
 FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadOperationKind(
@@ -71,7 +106,8 @@ FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::SerializeJsonObject(
 	const TSharedRef<FJsonObject>& Object)
 {
 	FString Output;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
 	FJsonSerializer::Serialize(Object, Writer);
 	return Output;
 }
@@ -130,9 +166,23 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 	const FString ParentName = ReadStringField(Input.LoweredStep.Payload, TEXT("parent_name"));
 	const FString NewParentName = ReadStringField(Input.LoweredStep.Payload, TEXT("new_parent_name"));
 	const FString PropertyName = ReadStringField(Input.LoweredStep.Payload, TEXT("property_name"));
+	const FString PayloadPropertyPath = ReadStringField(Input.LoweredStep.Payload, TEXT("property_path"));
+	const TSharedPtr<FJsonObject> MutationContext = ReadMutationContext(Input);
+	const FString MutationTargetKind = ReadStringField(MutationContext, TEXT("target_kind"));
+	const FString MutationPropertyPath = ReadStringField(MutationContext, TEXT("property_path"));
+	const FString SlotPropertyPath = MutationPropertyPath.IsEmpty() ? PayloadPropertyPath : MutationPropertyPath;
+	const FString SlotClassPath = ReadStringField(MutationContext, TEXT("slot_class_path"));
+	const FString BeforeValue = ReadStringField(MutationContext, TEXT("before_value"));
+	const FString AfterValue = ReadStringField(MutationContext, TEXT("after_value"));
+	const bool bBeforeIsVariable = ReadBoolField(MutationContext, TEXT("before_is_variable"), false);
+	const bool bAfterIsVariable = ReadBoolField(MutationContext, TEXT("after_is_variable"), false);
+	const FString VariableGuidState = ReadStringField(MutationContext, TEXT("variable_guid_state"));
 	const TOptional<int32> VirtualIndex = ReadOptionalIntField(Input.LoweredStep.Payload, TEXT("virtual_index"));
 	const TSharedRef<FJsonObject> Anchor = BuildAnchorJson(OperationKind, Input);
 	const FString AnchorJson = SerializeJsonObject(Anchor);
+	const FString MutationJson = MutationContext.IsValid()
+		? SerializeJsonObject(MutationContext.ToSharedRef())
+		: FString();
 
 	OutEvidence = FBlueprintHelperWriteReviewEvidence();
 	OutEvidence.ArchiveSessionId = Input.ArchiveSessionId;
@@ -185,6 +235,46 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 		Target.LifecycleParentKey = FString::Printf(TEXT("widget:%s"), *HostWidgetName.ToLower());
 		Target.AfterParent = HostWidgetName;
 		Target.PropertyPath = SlotName;
+	}
+	else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetSlotProperty)
+	{
+		if (TargetWidgetName.IsEmpty() || SlotPropertyPath.IsEmpty())
+		{
+			return false;
+		}
+		Target.TargetKind = MutationTargetKind.IsEmpty() ? TEXT("slot_property") : MutationTargetKind;
+		Target.TargetSubKind = TEXT("slot_property");
+		Target.TargetKey = FString::Printf(TEXT("slot_property:%s.%s"), *TargetWidgetName, *SlotPropertyPath);
+		Target.VisualGroupKey = Target.TargetKey;
+		Target.DisplayLabel = FString::Printf(TEXT("%s.%s"), *TargetWidgetName, *SlotPropertyPath);
+		Target.LifecycleObjectKey = FString::Printf(TEXT("slot_property:%s.%s"), *TargetWidgetName.ToLower(), *SlotPropertyPath.ToLower());
+		Target.LifecycleParentKey = FString::Printf(TEXT("widget:%s"), *TargetWidgetName.ToLower());
+		Target.PropertyPath = SlotPropertyPath;
+		Target.ComponentPath = SlotClassPath;
+		Target.ReadbackFingerprintBefore = BeforeValue.IsEmpty() ? FString() : FString::Printf(TEXT("slot_property:%s"), *BeforeValue);
+		Target.ReadbackFingerprintAfter = AfterValue.IsEmpty() ? FString() : FString::Printf(TEXT("slot_property:%s"), *AfterValue);
+		Target.ChangedPropertiesJson = MutationJson;
+	}
+	else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetAsVariable)
+	{
+		if (TargetWidgetName.IsEmpty())
+		{
+			return false;
+		}
+		Target.TargetKind = MutationTargetKind.IsEmpty() ? TEXT("widget_variable") : MutationTargetKind;
+		Target.TargetSubKind = TEXT("widget_variable");
+		Target.TargetKey = FString::Printf(TEXT("widget_variable:%s"), *TargetWidgetName);
+		Target.VisualGroupKey = Target.TargetKey;
+		Target.DisplayLabel = FString::Printf(TEXT("%s.is_variable"), *TargetWidgetName);
+		Target.LifecycleObjectKey = FString::Printf(TEXT("widget:%s"), *TargetWidgetName.ToLower());
+		Target.PropertyPath = TEXT("is_variable");
+		Target.ReadbackFingerprintBefore = FString::Printf(TEXT("is_variable:%s"), bBeforeIsVariable ? TEXT("true") : TEXT("false"));
+		Target.ReadbackFingerprintAfter = FString::Printf(TEXT("is_variable:%s"), bAfterIsVariable ? TEXT("true") : TEXT("false"));
+		Target.ChangedPropertiesJson = MutationJson;
+		if (!VariableGuidState.IsEmpty())
+		{
+			Target.ComponentOrigin = VariableGuidState;
+		}
 	}
 	else
 	{

@@ -11,7 +11,19 @@ public:
 	virtual ~IBlueprintHelperWriteFamilyAdapter() = default;
 	virtual FString GetWriteFamily() const = 0;
 	virtual FString GetRuntimeAdapterId() const = 0;
-	virtual bool BuildUnitOfWorkRequest(
+	virtual bool BuildPreflight(
+		const FBlueprintHelperAcceptedPayloadModel& AcceptedPayload,
+		FBlueprintHelperWriteUnitOfWorkRequest& OutRequest,
+		FBlueprintHelperToolError& OutError) const = 0;
+	virtual bool BuildMutationPlan(
+		const FBlueprintHelperAcceptedPayloadModel& AcceptedPayload,
+		FBlueprintHelperWriteUnitOfWorkRequest& OutRequest,
+		FBlueprintHelperToolError& OutError) const = 0;
+	virtual bool BuildDryRunProjection(
+		const FBlueprintHelperAcceptedPayloadModel& AcceptedPayload,
+		FBlueprintHelperWriteUnitOfWorkRequest& OutRequest,
+		FBlueprintHelperToolError& OutError) const = 0;
+	virtual bool BuildReviewAndReadback(
 		const FBlueprintHelperAcceptedPayloadModel& AcceptedPayload,
 		FBlueprintHelperWriteUnitOfWorkRequest& OutRequest,
 		FBlueprintHelperToolError& OutError) const = 0;

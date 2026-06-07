@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const ScalarPinCategorySchema = z.enum([
+  'exec',
   'bool',
   'boolean',
   'byte',

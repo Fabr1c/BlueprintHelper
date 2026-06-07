@@ -76,6 +76,214 @@ public:
 		return Target.TargetSubKind.Equals(TEXT("named_slot_content"), ESearchCase::IgnoreCase);
 	}
 
+	static bool IsSlotPropertyTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetKind.Equals(TEXT("slot_property"), ESearchCase::IgnoreCase) ||
+			Target.TargetSubKind.Equals(TEXT("slot_property"), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsWidgetVariableTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetKind.Equals(TEXT("widget_variable"), ESearchCase::IgnoreCase) ||
+			Target.TargetSubKind.Equals(TEXT("widget_variable"), ESearchCase::IgnoreCase);
+	}
+
+	static void ReadWidgetAndPropertyTarget(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutWidgetName,
+		FString& OutPropertyName)
+	{
+		OutWidgetName.Reset();
+		OutPropertyName.Reset();
+		if (Snapshot.IsValid())
+		{
+			Snapshot->TryGetStringField(TEXT("widget_name"), OutWidgetName);
+			Snapshot->TryGetStringField(TEXT("property_path"), OutPropertyName);
+		}
+		TryReadAnchorString(Target, TEXT("widget_name"), OutWidgetName);
+		TryReadAnchorString(Target, TEXT("property_path"), OutPropertyName);
+		if (OutPropertyName.IsEmpty())
+		{
+			OutPropertyName = Target.PropertyPath;
+		}
+
+		const FString SlotPropertyPrefix = TEXT("slot_property:");
+		const FString WidgetVariablePrefix = TEXT("widget_variable:");
+		if (Target.TargetKey.StartsWith(SlotPropertyPrefix, ESearchCase::IgnoreCase))
+		{
+			const FString TargetTail = Target.TargetKey.Mid(SlotPropertyPrefix.Len());
+			FString ParsedWidgetName;
+			FString ParsedPropertyPath;
+			if (TargetTail.Split(TEXT("."), &ParsedWidgetName, &ParsedPropertyPath) && !ParsedWidgetName.IsEmpty())
+			{
+				if (OutWidgetName.IsEmpty())
+				{
+					OutWidgetName = ParsedWidgetName;
+				}
+				if (OutPropertyName.IsEmpty())
+				{
+					OutPropertyName = ParsedPropertyPath;
+				}
+			}
+		}
+		else if (Target.TargetKey.StartsWith(WidgetVariablePrefix, ESearchCase::IgnoreCase) && OutWidgetName.IsEmpty())
+		{
+			OutWidgetName = Target.TargetKey.Mid(WidgetVariablePrefix.Len());
+		}
+
+		if (IsWidgetVariableTarget(Target) && OutPropertyName.IsEmpty())
+		{
+			OutPropertyName = TEXT("is_variable");
+		}
+	}
+
+	static bool RestoreSlotProperty(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+		{
+			OutError = FString::Printf(TEXT("widget_blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+		if (!Snapshot.IsValid())
+		{
+			OutError = TEXT("slot_property_restore_missing_snapshot");
+			return false;
+		}
+
+		FString WidgetName;
+		FString PropertyPath;
+		ReadWidgetAndPropertyTarget(Target, Snapshot, WidgetName, PropertyPath);
+		if (WidgetName.IsEmpty() || PropertyPath.IsEmpty())
+		{
+			OutError = TEXT("slot_property_restore_missing_widget_or_property");
+			return false;
+		}
+
+		UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
+		if (!Widget)
+		{
+			OutError = FString::Printf(TEXT("slot_property_restore_widget_not_found:%s"), *WidgetName);
+			return false;
+		}
+		if (!Widget->Slot)
+		{
+			OutError = FString::Printf(TEXT("slot_property_restore_slot_missing:%s"), *WidgetName);
+			return false;
+		}
+
+		FString ValueText;
+		if (!Snapshot->TryGetStringField(TEXT("value"), ValueText))
+		{
+			return true;
+		}
+
+		FProperty* Property = nullptr;
+		void* ValuePtr = nullptr;
+		FString ExpectedType;
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (!FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+			Widget->Slot,
+			PropertyPath,
+			Property,
+			ValuePtr,
+			ExpectedType,
+			ErrorCode,
+			ErrorMessage) ||
+			!Property ||
+			!ValuePtr)
+		{
+			OutError = FString::Printf(TEXT("slot_property_restore_not_found:%s:%s:%s"), *PropertyPath, *ErrorCode, *ErrorMessage);
+			return false;
+		}
+
+		WidgetBlueprint->Modify();
+		WidgetBlueprint->WidgetTree->Modify();
+		Widget->Slot->Modify();
+		Widget->Slot->PreEditChange(Property);
+		if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+		{
+			bool bBoolValue = false;
+			if (!FBlueprintHelperReviewSnapshotRestoreService::ParseSnapshotBoolValue(ValueText, bBoolValue))
+			{
+				OutError = FString::Printf(TEXT("slot_property_bool_restore_failed:%s"), *PropertyPath);
+				return false;
+			}
+			BoolProperty->SetPropertyValue(ValuePtr, bBoolValue);
+		}
+		else if (!Property->ImportText_Direct(*ValueText, ValuePtr, Widget->Slot, PPF_None))
+		{
+			OutError = FString::Printf(TEXT("slot_property_restore_failed:%s"), *PropertyPath);
+			return false;
+		}
+		FPropertyChangedEvent PropertyChangedEvent(Property, EPropertyChangeType::ValueSet);
+		Widget->Slot->PostEditChangeProperty(PropertyChangedEvent);
+		Widget->Slot->SynchronizeProperties();
+		FBlueprintHelperReviewSnapshotRestoreService::MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+		return true;
+	}
+
+	static bool RestoreWidgetVariable(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+		{
+			OutError = FString::Printf(TEXT("widget_blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+		if (!Snapshot.IsValid())
+		{
+			OutError = TEXT("widget_variable_restore_missing_snapshot");
+			return false;
+		}
+
+		FString WidgetName;
+		FString PropertyPath;
+		ReadWidgetAndPropertyTarget(Target, Snapshot, WidgetName, PropertyPath);
+		if (WidgetName.IsEmpty())
+		{
+			OutError = TEXT("widget_variable_restore_missing_widget");
+			return false;
+		}
+
+		UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
+		if (!Widget)
+		{
+			OutError = FString::Printf(TEXT("widget_variable_restore_widget_not_found:%s"), *WidgetName);
+			return false;
+		}
+
+		bool bIsVariable = false;
+		FString ValueText;
+		if (!Snapshot->TryGetBoolField(TEXT("is_variable"), bIsVariable))
+		{
+			if (!Snapshot->TryGetStringField(TEXT("value"), ValueText))
+			{
+				return true;
+			}
+			if (!FBlueprintHelperReviewSnapshotRestoreService::ParseSnapshotBoolValue(ValueText, bIsVariable))
+			{
+				OutError = FString::Printf(TEXT("widget_variable_bool_restore_failed:%s"), *WidgetName);
+				return false;
+			}
+		}
+
+		WidgetBlueprint->Modify();
+		WidgetBlueprint->WidgetTree->Modify();
+		Widget->Modify();
+		FBlueprintHelperWidgetVersionCompat::SetWidgetVariableState(WidgetBlueprint, Widget, bIsVariable);
+		FBlueprintHelperReviewSnapshotRestoreService::MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+		return true;
+	}
+
 	static bool RestoreNamedSlotContent(
 		UWidgetBlueprint* WidgetBlueprint,
 		const FBlueprintHelperReviewAtomicTarget& Target,
@@ -1158,6 +1366,24 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
 		{
 			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Named Slot")));
 			return FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreNamedSlotContent(
+				WidgetBlueprint,
+				Target,
+				Snapshot,
+				OutError);
+		}
+		if (FBlueprintHelperReviewWidgetTreeRestoreHelper::IsSlotPropertyTarget(Target))
+		{
+			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Widget Slot Property")));
+			return FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreSlotProperty(
+				WidgetBlueprint,
+				Target,
+				Snapshot,
+				OutError);
+		}
+		if (FBlueprintHelperReviewWidgetTreeRestoreHelper::IsWidgetVariableTarget(Target))
+		{
+			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Widget Variable")));
+			return FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreWidgetVariable(
 				WidgetBlueprint,
 				Target,
 				Snapshot,

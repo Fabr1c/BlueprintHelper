@@ -92,6 +92,50 @@ public:
 		return Step;
 	}
 
+	static TSharedPtr<FJsonObject> MakeMacroSignatureStep()
+	{
+		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
+		Step->SetStringField(TEXT("step_id"), TEXT("step_signature_macro"));
+		Step->SetStringField(TEXT("capability"), TEXT("blueprint_signature"));
+
+		TSharedPtr<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), TEXT("/Game/Blueprints/BP_Door"));
+		Step->SetObjectField(TEXT("target"), Target);
+
+		TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), TEXT("ensure_macro"));
+		Op->SetStringField(TEXT("macro_name"), TEXT("ClampScore"));
+		Op->SetStringField(TEXT("name_collision_policy"), TEXT("reuse_if_exists"));
+
+		TSharedPtr<FJsonObject> InputPinType = MakeShared<FJsonObject>();
+		InputPinType->SetStringField(TEXT("category"), TEXT("exec"));
+		TSharedPtr<FJsonObject> Input = MakeShared<FJsonObject>();
+		Input->SetStringField(TEXT("name"), TEXT("Execute"));
+		Input->SetObjectField(TEXT("pin_type"), InputPinType);
+		TArray<TSharedPtr<FJsonValue>> Inputs;
+		Inputs.Add(MakeShared<FJsonValueObject>(Input.ToSharedRef()));
+		Op->SetArrayField(TEXT("inputs"), Inputs);
+
+		TSharedPtr<FJsonObject> OutputPinType = MakeShared<FJsonObject>();
+		OutputPinType->SetStringField(TEXT("category"), TEXT("exec"));
+		TSharedPtr<FJsonObject> Output = MakeShared<FJsonObject>();
+		Output->SetStringField(TEXT("name"), TEXT("Then"));
+		Output->SetObjectField(TEXT("pin_type"), OutputPinType);
+		TArray<TSharedPtr<FJsonValue>> Outputs;
+		Outputs.Add(MakeShared<FJsonValueObject>(Output.ToSharedRef()));
+		Op->SetArrayField(TEXT("outputs"), Outputs);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+		TSharedPtr<FJsonObject> Write = MakeShared<FJsonObject>();
+		Write->SetStringField(TEXT("strategy"), TEXT("macro_signature"));
+		Write->SetArrayField(TEXT("ops"), Ops);
+		Step->SetObjectField(TEXT("write"), Write);
+
+		return Step;
+	}
+
 	static TSharedPtr<FJsonObject> MakeRemoveCustomEventSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
@@ -299,6 +343,48 @@ bool FBlueprintHelperTaskPlanSignatureAdapterEnsureCustomEventTest::RunTest(cons
 	const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 	TestTrue(TEXT("payload carries inputs"), LoweredStep.Payload->TryGetArrayField(TEXT("inputs"), Inputs));
 	TestTrue(TEXT("payload inputs not empty"), Inputs && Inputs->Num() == 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterEnsureMacroTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.EnsureMacro",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterEnsureMacroTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeMacroSignatureStep();
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("macro signature step lowers successfully"), bLowered);
+	TestEqual(TEXT("capability is blueprint_signature"), LoweredStep.Capability, FString(TEXT("blueprint_signature")));
+	TestEqual(TEXT("adapter operation is ensure_macro"), LoweredStep.AdapterOperation, FString(TEXT("ensure_macro")));
+	TestTrue(TEXT("payload exists"), LoweredStep.Payload.IsValid());
+
+	FString MacroName;
+	TestTrue(TEXT("payload carries macro_name"), LoweredStep.Payload->TryGetStringField(TEXT("macro_name"), MacroName));
+	TestEqual(TEXT("macro name preserved"), MacroName, FString(TEXT("ClampScore")));
+
+	const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+	TestTrue(TEXT("payload carries inputs"), LoweredStep.Payload->TryGetArrayField(TEXT("inputs"), Inputs));
+	TestTrue(TEXT("payload inputs not empty"), Inputs && Inputs->Num() == 1);
+
+	const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
+	TestTrue(TEXT("payload carries outputs"), LoweredStep.Payload->TryGetArrayField(TEXT("outputs"), Outputs));
+	TestTrue(TEXT("payload outputs not empty"), Outputs && Outputs->Num() == 1);
+
+	bool bDryRun = false;
+	TestTrue(TEXT("payload carries dry_run"), LoweredStep.Payload->TryGetBoolField(TEXT("dry_run"), bDryRun));
+	TestTrue(TEXT("dry_run preserved"), bDryRun);
 
 	return true;
 }

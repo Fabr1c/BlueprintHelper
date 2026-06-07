@@ -75,7 +75,9 @@ bool FBlueprintHelperUMGWidgetBridgeRoutes::IsUMGWidgetCommand(const FString& Co
 		Command == TEXT("move_widget") ||
 		Command == TEXT("set_named_slot_content") ||
 		Command == TEXT("get_widget_properties") ||
-		Command == TEXT("set_widget_property");
+		Command == TEXT("set_widget_property") ||
+		Command == TEXT("set_slot_property") ||
+		Command == TEXT("set_widget_as_variable");
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequest(
@@ -337,6 +339,80 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 		Response.Result->SetStringField(TEXT("widget"), Result.AffectedWidget);
 		Response.Result->SetStringField(TEXT("property"), PropertyName);
 		Response.Result->SetStringField(TEXT("new_value"), Value);
+		return Response;
+	}
+
+	if (Request.Command == TEXT("set_slot_property"))
+	{
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		const FString PropertyPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_path"));
+		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || PropertyPath.IsEmpty())
+		{
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload missing asset_path / widget_name / property_path."));
+		}
+
+		FBlueprintHelperSetSlotPropertyRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.WidgetName = WidgetName;
+		ServiceRequest.PropertyPath = PropertyPath;
+		ServiceRequest.Value = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("value"));
+		ServiceRequest.ExpectedSlotClassPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_slot_class_path"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.SetSlotProperty(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(
+				Request.RequestId,
+				EBlueprintHelperBridgeError::ExecutionFailed,
+				Result.ErrorMessage);
+		}
+
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("widget"), Result.AffectedWidget);
+		Response.Result->SetStringField(TEXT("property_path"), PropertyPath);
+		Response.Result->SetStringField(TEXT("new_value"), ServiceRequest.Value);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("set_widget_as_variable"))
+	{
+		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		bool bIsVariable = false;
+		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || !Request.Payload.IsValid() || !Request.Payload->TryGetBoolField(TEXT("is_variable"), bIsVariable))
+		{
+			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload missing asset_path / widget_name / boolean is_variable."));
+		}
+
+		FBlueprintHelperSetWidgetAsVariableRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.WidgetName = WidgetName;
+		ServiceRequest.bIsVariable = bIsVariable;
+		ServiceRequest.ExpectedWidgetClassPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_widget_class_path"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.SetWidgetAsVariable(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(
+				Request.RequestId,
+				EBlueprintHelperBridgeError::ExecutionFailed,
+				Result.ErrorMessage);
+		}
+
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("widget"), Result.AffectedWidget);
+		Response.Result->SetBoolField(TEXT("is_variable"), bIsVariable);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
 		return Response;
 	}
 

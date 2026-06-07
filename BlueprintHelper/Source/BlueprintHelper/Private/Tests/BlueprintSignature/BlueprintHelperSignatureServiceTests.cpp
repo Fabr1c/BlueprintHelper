@@ -12,6 +12,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_Tunnel.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
@@ -152,6 +153,23 @@ public:
 		return nullptr;
 	}
 
+	static UEdGraph* FindMacroGraph(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		if (!Blueprint)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraph* Graph : Blueprint->MacroGraphs)
+		{
+			if (Graph && Graph->GetName() == MacroName)
+			{
+				return Graph;
+			}
+		}
+		return nullptr;
+	}
+
 	static FString MakeCustomEventBlockId(UBlueprint* Blueprint, UEdGraph* Graph, const FString& EventName)
 	{
 		FBlueprintHelperBlockIdService BlockIdService;
@@ -254,6 +272,49 @@ public:
 		return nullptr;
 	}
 
+	static bool MacroGraphEntryExitExecLinked(UBlueprint* Blueprint, const FString& MacroName)
+	{
+		UEdGraph* MacroGraph = FindMacroGraph(Blueprint, MacroName);
+		if (!MacroGraph)
+		{
+			return false;
+		}
+
+		UEdGraphPin* EntryExecOut = nullptr;
+		UEdGraphPin* ExitExecIn = nullptr;
+		for (UEdGraphNode* Node : MacroGraph->Nodes)
+		{
+			UK2Node_Tunnel* Tunnel = Cast<UK2Node_Tunnel>(Node);
+			if (!Tunnel)
+			{
+				continue;
+			}
+
+			const EEdGraphPinDirection Direction = Tunnel->bCanHaveOutputs ? EGPD_Output : EGPD_Input;
+			for (UEdGraphPin* Pin : Tunnel->Pins)
+			{
+				if (!Pin || Pin->Direction != Direction || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+
+				if (Direction == EGPD_Output && !EntryExecOut)
+				{
+					EntryExecOut = Pin;
+				}
+				else if (Direction == EGPD_Input && !ExitExecIn)
+				{
+					ExitExecIn = Pin;
+				}
+			}
+		}
+
+		return EntryExecOut &&
+			ExitExecIn &&
+			EntryExecOut->LinkedTo.Contains(ExitExecIn) &&
+			ExitExecIn->LinkedTo.Contains(EntryExecOut);
+	}
+
 	static bool HasUserDefinedPin(UK2Node_CustomEvent* EventNode, const FString& PinName)
 	{
 		if (!EventNode)
@@ -315,6 +376,21 @@ public:
 		Request.NameCollisionPolicy = TEXT("reuse_if_exists");
 		Request.bDryRun = bDryRun;
 		Request.Inputs.Add(MakeSignatureParamValue(TEXT("bPressed"), TEXT("bool")));
+		return Request;
+	}
+
+	static FBlueprintHelperEnsureMacroSignatureRequest MakeEnsureMacroRequest(
+		UBlueprint* Blueprint,
+		const FString& MacroName,
+		bool bDryRun)
+	{
+		FBlueprintHelperEnsureMacroSignatureRequest Request;
+		Request.AssetPath = Blueprint ? Blueprint->GetPathName() : TEXT("");
+		Request.MacroName = MacroName;
+		Request.NameCollisionPolicy = TEXT("reuse_if_exists");
+		Request.bDryRun = bDryRun;
+		Request.Inputs.Add(MakeSignatureParamValue(TEXT("Execute"), TEXT("exec")));
+		Request.Outputs.Add(MakeSignatureParamValue(TEXT("Then"), TEXT("exec")));
 		return Request;
 	}
 
@@ -718,6 +794,78 @@ bool FBlueprintHelperSignatureServiceEnsureCustomEventExecuteTest::RunTest(const
 	UK2Node_CustomEvent* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureCustomEvent(Graph, EventName);
 	TestNotNull(TEXT("custom event node created"), EventNode);
 	TestTrue(TEXT("input pin added"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasUserDefinedPin(EventNode, TEXT("bPressed")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureMacroDryRunTest,
+	"BlueprintHelper.Signature.Service.EnsureMacroDryRun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureMacroDryRunTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("MacroDryRun"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString MacroName = TEXT("BH_ClampScoreMacro");
+	const int32 MacroCountBefore = Blueprint ? Blueprint->MacroGraphs.Num() : 0;
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureMacro(
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureMacroRequest(Blueprint, MacroName, true));
+
+	TestTrue(TEXT("macro dry-run succeeds"), Result.bOk);
+	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_macro")));
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::DryRun);
+	TestFalse(TEXT("dry-run does not modify"), Result.bModified);
+	TestTrue(TEXT("dry-run uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
+	TestEqual(TEXT("dry-run keeps macro graph count"), Blueprint ? Blueprint->MacroGraphs.Num() : 0, MacroCountBefore);
+	TestNull(TEXT("dry-run does not create macro graph"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindMacroGraph(Blueprint, MacroName));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureMacroExecuteTest,
+	"BlueprintHelper.Signature.Service.EnsureMacroExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureMacroExecuteTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("MacroExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString MacroName = TEXT("BH_ClampScoreMacro");
+	const FBlueprintHelperEnsureMacroSignatureRequest Request =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureMacroRequest(Blueprint, MacroName, false);
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureMacro(Request);
+
+	TestTrue(TEXT("macro ensure executes"), Result.bOk);
+	TestEqual(TEXT("operation"), Result.Operation, FString(TEXT("ensure_macro")));
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("execute modifies"), Result.bModified);
+	TestTrue(TEXT("execute uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
+	TestNotNull(TEXT("macro graph exists"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindMacroGraph(Blueprint, MacroName));
+	TestTrue(TEXT("macro entry exec links directly to exit exec"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MacroGraphEntryExitExecLinked(Blueprint, MacroName));
+
+	const int32 MacroCountAfterFirst = Blueprint ? Blueprint->MacroGraphs.Num() : 0;
+	const FBlueprintHelperToolResultBase SecondResult = SignatureService.EnsureMacro(Request);
+	TestTrue(TEXT("second macro ensure succeeds"), SecondResult.bOk);
+	TestEqual(TEXT("second macro ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
+	TestFalse(TEXT("second macro ensure does not modify"), SecondResult.bModified);
+	TestEqual(TEXT("second macro ensure does not add graph"), Blueprint ? Blueprint->MacroGraphs.Num() : 0, MacroCountAfterFirst);
 	return true;
 }
 

@@ -25,9 +25,15 @@ private:
 	static FString ReadStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName);
+	static bool ReadBoolField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		bool bDefaultValue);
 	static TOptional<int32> ReadOptionalIntField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName);
+	static TSharedPtr<FJsonObject> ReadMutationContext(
+		const FBlueprintHelperWidgetTreeReviewEvidenceBuildInput& Input);
 	static FString ReadOperationKind(const FBlueprintHelperWidgetTreeReviewEvidenceBuildInput& Input);
 	static FString ReadTargetWidgetName(
 		const FString& OperationKind,

@@ -67,7 +67,7 @@ function validateRoutes(routes) {
   const ids = new Set();
   const behaviorFieldByStrategy = new Map();
   for (const route of routes) {
-    for (const field of ['route_id', 'task_type', 'write_mode', 'graph_strategy', 'public_scope', 'behavior_field', 'taskplan_op', 'runtime_adapter_id', 'compiler_id', 'status']) {
+    for (const field of ['route_id', 'task_type', 'write_mode', 'graph_strategy', 'public_scope', 'behavior_field', 'taskplan_op', 'runtime_adapter_id', 'compiler_id', 'status', 'adapter_sync']) {
       if (typeof route[field] !== 'string' || route[field].length === 0) {
         throw new Error(`GraphWrite route ${route.route_id ?? '<unknown>'} has invalid ${field}.`);
       }
@@ -78,6 +78,18 @@ function validateRoutes(routes) {
     ids.add(route.route_id);
     if (!['active', 'planned', 'hidden'].includes(route.status)) {
       throw new Error(`GraphWrite route ${route.route_id} has invalid status: ${route.status}`);
+    }
+    if (route.adapter_sync === 'generated_active_stub') {
+      throw new Error(`GraphWrite route ${route.route_id} uses deprecated generated_active_stub adapter_sync.`);
+    }
+    if (!['active_requires_registered_non_reserved_adapter', 'reserved_hidden_from_agent'].includes(route.adapter_sync)) {
+      throw new Error(`GraphWrite route ${route.route_id} has invalid adapter_sync: ${route.adapter_sync}`);
+    }
+    if (route.status === 'active' && route.adapter_sync !== 'active_requires_registered_non_reserved_adapter') {
+      throw new Error(`Active GraphWrite route ${route.route_id} must require a registered non-reserved adapter.`);
+    }
+    if (route.status !== 'active' && route.adapter_sync !== 'reserved_hidden_from_agent') {
+      throw new Error(`Reserved GraphWrite route ${route.route_id} must stay hidden from agent discovery.`);
     }
     if (!['graph.append', 'graph.replace', 'graph.merge', 'graph.patch'].includes(route.write_mode)) {
       throw new Error(`GraphWrite route ${route.route_id} has invalid write_mode: ${route.write_mode}`);
@@ -116,9 +128,7 @@ function toSyncEntry(route) {
     compiler_id: route.compiler_id,
     taskplan_op: route.taskplan_op,
     status: route.status,
-    adapter_sync: route.status === 'active'
-      ? 'active_requires_registered_non_reserved_adapter'
-      : `${route.status}_route_not_agent_executable`,
+    adapter_sync: route.adapter_sync,
   };
 }
 

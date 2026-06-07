@@ -1,6 +1,7 @@
 import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { toolMetas } from '../registry/tool-metas.js';
 import { summarizeToolInputShape } from '../manifest/tool-input-shape-metadata.js';
+import type { ToolResultProjectionPolicyId } from '../manifest/tool-command-manifest.js';
 import {
   createToolCapabilityDescriptorRegistry,
   type ToolCapabilityDescriptor,
@@ -87,11 +88,19 @@ const SOURCE_CONTROL_CHECKOUT_STOP_CONDITIONS = ['tool_unavailable', 'bridge_una
 const TASK_PREVIEW_INVOCATION = ['bh task preview --file <filled_taskspec.json> --format summary'] as const;
 const TASK_EXECUTE_INVOCATION = ['bh task execute --file <filled_taskspec.json> --preview-token <preview_token> --format summary'] as const;
 const READ_CONTEXT_CAPABILITIES_INVOCATION = ['bh blueprinthelper_read_context_capabilities --json "{}" --format json'] as const;
+const READ_CONTEXT_HELP_USAGE = [
+  'bh blueprinthelper_read_context --file <read-spec.json> --select status,artifacts.full_result',
+  '$json | bh blueprinthelper_read_context --stdin --format full',
+  'bh context read --file <read-spec.json> --select status,artifacts.full_result',
+] as const;
 
 interface ToolCapabilityDescriptorOptions {
+  readonly result_policy_id?: ToolResultProjectionPolicyId;
   readonly route_refs?: readonly string[];
   readonly stop_conditions?: readonly string[];
   readonly recommended_invocations?: readonly string[];
+  readonly help_usage?: readonly string[];
+  readonly help_notes?: readonly string[];
 }
 
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {
@@ -172,53 +181,91 @@ function createDescriptorRegistry() {
 function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescriptorOptions> {
   const graphWriteRouteRefs = getGraphWriteRoutesForTemplateDiscovery().map((route) => route.route_id);
   return new Map<string, ToolCapabilityDescriptorOptions>([
-    ['blueprint.discover.assets', { stop_conditions: FIND_ASSETS_STOP_CONDITIONS }],
+    ['blueprint.discover.assets', {
+      stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
+      help_usage: ['bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result'],
+    }],
     ['blueprint.read.context.logic_flow', {
       route_refs: ['read.blueprint.logic.function.logic_flow', 'read.blueprint.logic.event.logic_flow', 'read.blueprint.logic.custom_event.logic_flow'],
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['blueprint.read.context.logic_json', {
       route_refs: ['read.blueprint.logic.graph.logic_json', 'read.blueprint.logic.block.logic_json'],
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
     }],
-    ['blueprint.read.context.components', { route_refs: ['read.blueprint.components.blueprint.tree_json'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
-    ['blueprint.read.context.variables', { route_refs: ['read.blueprint.variables.blueprint.schema_json'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
+    ['blueprint.read.context.components', {
+      route_refs: ['read.blueprint.components.blueprint.tree_json'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['blueprint.read.context.variables', {
+      route_refs: ['read.blueprint.variables.blueprint.schema_json'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
     ['blueprint.read.reference.dependencies', { stop_conditions: READ_REFERENCE_STOP_CONDITIONS }],
     ['blueprint.read.function_chain', { stop_conditions: FUNCTION_CHAIN_STOP_CONDITIONS }],
     ['blueprint.plan.taskspec.preview', {
+      result_policy_id: 'task_preview_default',
       route_refs: ['blueprint.create_feature', ...graphWriteRouteRefs],
       stop_conditions: PREVIEW_STOP_CONDITIONS,
       recommended_invocations: TASK_PREVIEW_INVOCATION,
     }],
     ['blueprint.write.taskspec.execute', {
+      result_policy_id: 'task_execute_default',
       route_refs: ['blueprint.create_feature', ...graphWriteRouteRefs],
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],
     ['blueprint.diagnose.compile', { stop_conditions: COMPILE_STOP_CONDITIONS }],
-    ['umg.read.widget_tree', { route_refs: ['read.widget_blueprint.structure_tree.widget_tree.tree_json', 'read.widget_blueprint.structure_tree.widget_tree.logic_flow'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
-    ['umg.read.widget_property', { route_refs: ['read.widget_blueprint.structure_tree.widget.property_json'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
+    ['umg.read.widget_tree', {
+      route_refs: ['read.widget_blueprint.structure_tree.widget_tree.tree_json', 'read.widget_blueprint.structure_tree.widget_tree.logic_flow'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['umg.read.widget_property', {
+      route_refs: ['read.widget_blueprint.structure_tree.widget.property_json'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
     ['umg.plan.taskspec.preview', {
+      result_policy_id: 'task_preview_default',
       route_refs: ['umg.widget'],
       stop_conditions: PREVIEW_STOP_CONDITIONS,
       recommended_invocations: TASK_PREVIEW_INVOCATION,
     }],
     ['umg.write.taskspec.execute', {
+      result_policy_id: 'task_execute_default',
       route_refs: ['umg.widget'],
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],
-    ['data.read.data_asset', { route_refs: ['read.data_asset.schema.data_asset.property_json'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
-    ['data.read.data_table', { route_refs: ['read.data_table.schema.data_table.schema_json', 'read.data_table.schema.data_table_row.schema_json'], stop_conditions: READ_CONTEXT_STOP_CONDITIONS }],
+    ['data.read.data_asset', {
+      route_refs: ['read.data_asset.schema.data_asset.property_json'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['data.read.data_table', {
+      route_refs: ['read.data_table.schema.data_table.schema_json', 'read.data_table.schema.data_table_row.schema_json'],
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
     ['data.plan.taskspec.preview', {
+      result_policy_id: 'task_preview_default',
       route_refs: ['data.object_properties', 'data.table.rows', 'data.asset.create'],
       stop_conditions: PREVIEW_STOP_CONDITIONS,
       recommended_invocations: TASK_PREVIEW_INVOCATION,
     }],
     ['data.write.taskspec.execute', {
+      result_policy_id: 'task_execute_default',
       route_refs: ['data.object_properties', 'data.table.rows', 'data.asset.create'],
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
+    }],
+    ['editor.read.screenshot', {
+      help_usage: ['bh blueprinthelper_capture_screenshot --file <capture-screenshot.json> --select status,artifacts.full_result'],
     }],
     ['editor.write.asset.save', { stop_conditions: SAVE_STOP_CONDITIONS }],
     ['editor.write.source_control.checkout', { stop_conditions: SOURCE_CONTROL_CHECKOUT_STOP_CONDITIONS }],
@@ -239,14 +286,40 @@ function toToolCapabilityDescriptor(
   return {
     tool_id: capabilityItem.id,
     tool_name: capabilityItem.tool_name,
+    result_policy_id: options.result_policy_id ?? defaultResultPolicyId(capabilityItem),
     route_refs: [...(options.route_refs ?? [])],
     stop_conditions: [...(options.stop_conditions ?? defaultStopConditions(capabilityItem))],
     recommended_invocations: [...(options.recommended_invocations ?? defaultRecommendedInvocations(capabilityItem.tool_name))],
+    help_usage: [...(options.help_usage ?? options.recommended_invocations ?? defaultRecommendedInvocations(capabilityItem.tool_name))],
+    help_notes: [...(options.help_notes ?? defaultHelpNotes(capabilityItem))],
     metrics_identity: {
       capability: `${capabilityItem.domain}.${capabilityItem.kind}`,
       semantic_operation: capabilityItem.id,
     },
+    source: 'capability_descriptor_registry',
   };
+}
+
+function defaultResultPolicyId(capabilityItem: ToolCapabilityItem): ToolResultProjectionPolicyId {
+  if (capabilityItem.tool_name === 'blueprinthelper_get_task_result') {
+    return 'task_result_default';
+  }
+  if (capabilityItem.tool_name === 'blueprinthelper_read_context') {
+    return 'read_context_default';
+  }
+  if (
+    capabilityItem.tool_name === 'blueprinthelper_diagnostics'
+    || capabilityItem.tool_name === 'blueprinthelper_diagnostics_runtime'
+    || capabilityItem.tool_name.startsWith('blueprinthelper_get_debug_')
+    || capabilityItem.tool_name === 'blueprinthelper_list_debug_cases'
+    || capabilityItem.tool_name === 'blueprinthelper_export_debug_bundle'
+  ) {
+    return 'diagnostics_default';
+  }
+  if (capabilityItem.tool_name === 'blueprinthelper_apply_review_action') {
+    return 'review_expert_default';
+  }
+  return capabilityItem.requires_bridge ? 'bridge_default' : 'local_default';
 }
 
 function defaultStopConditions(capabilityItem: ToolCapabilityItem): readonly string[] {
@@ -255,6 +328,22 @@ function defaultStopConditions(capabilityItem: ToolCapabilityItem): readonly str
 
 function defaultRecommendedInvocations(toolName: string): readonly string[] {
   return [`bh ${toolName} --file <filled-template.json> --select status,artifacts.full_result`];
+}
+
+function defaultHelpNotes(capabilityItem: ToolCapabilityItem): readonly string[] {
+  if (capabilityItem.tool_name === 'blueprinthelper_capture_screenshot') {
+    return [
+      'graph_name is required when block_ref or node_ref is provided.',
+      'Use capture_target:auto for graph_name/block_ref/node_ref requests; graph targets capture Graph-only PNGs.',
+    ];
+  }
+  if (capabilityItem.tool_name === 'blueprinthelper_find_assets') {
+    return [
+      'Resolve one explicit Unreal asset_path before preview_task or any write request.',
+      'Do not infer Unreal asset_path values from filesystem .uasset paths.',
+    ];
+  }
+  return [];
 }
 
 function capability(
@@ -282,6 +371,7 @@ function capability(
     requires_bridge: requiresBridge,
     requires_write_session: requiresWriteSession,
     cli_template_ids: [...cliTemplateIds],
+    source: 'capability_catalog',
   };
 }
 

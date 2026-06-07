@@ -7,42 +7,21 @@ export const ReadContextCapabilitiesInputSchema = z.object({}).strict();
 
 export type ReadContextCapabilitiesInput = z.infer<typeof ReadContextCapabilitiesInputSchema>;
 
-const ASSET_TYPES = [
-  'asset',
-  'blueprint',
-  'graph',
-  'function',
-  'event',
-  'custom_event',
-  'component',
-  'member_variable',
-  'event_dispatcher',
-  'widget',
-  'data_table',
-  'data_table_row',
-  'data_asset',
-  'object_property',
-  'property',
-  'block',
-] as const;
-
-const FORMATS = [
-  'logic_flow',
-  'logic_md',
-  'logic_json',
-] as const;
-
 export function buildReadContextCapabilitiesPayload(): Record<string, unknown> {
-  const capabilities = buildCapabilitiesFromRegistry();
+  const activeRoutes = getActiveReadContextRouteDescriptors();
+  const capabilities = buildCapabilitiesFromRegistry(activeRoutes);
+  const assetTypes = uniqueSorted(activeRoutes.flatMap((route) => route.supported_asset_types));
+  const formats = uniqueSorted(activeRoutes.flatMap((route) => route.supported_formats));
+
   return {
     schema: 'ReadContextCapabilities.v1',
-    asset_types: [...ASSET_TYPES],
-    formats: [...FORMATS],
+    asset_types: assetTypes,
+    formats,
     read_type_ids: capabilities.map((capability) => capability.read_type),
     read_types: capabilities.map((capability) => ({
       read_type: capability.read_type,
-      unsupported_asset_types: difference(ASSET_TYPES, capability.asset_types),
-      unsupported_formats: difference(FORMATS, capability.formats),
+      unsupported_asset_types: difference(assetTypes, capability.asset_types),
+      unsupported_formats: difference(formats, capability.formats),
     })),
   };
 }
@@ -58,7 +37,7 @@ export function executeReadContextCapabilities(
   );
 }
 
-function buildCapabilitiesFromRegistry(): Array<{
+function buildCapabilitiesFromRegistry(routes = getActiveReadContextRouteDescriptors()): Array<{
   read_type: string;
   asset_types: string[];
   formats: string[];
@@ -68,17 +47,13 @@ function buildCapabilitiesFromRegistry(): Array<{
     formats: Set<string>;
   }>();
 
-  for (const route of getActiveReadContextRouteDescriptors()) {
+  for (const route of routes) {
     const entry = byReadType.get(route.read_type) ?? {
       assetTypes: new Set<string>(),
       formats: new Set<string>(),
     };
-    if (route.target_type) {
-      entry.assetTypes.add(route.target_type);
-    }
-    if (route.format && FORMATS.includes(route.format as typeof FORMATS[number])) {
-      entry.formats.add(route.format);
-    }
+    route.supported_asset_types.forEach((assetType) => entry.assetTypes.add(assetType));
+    route.supported_formats.forEach((format) => entry.formats.add(format));
     byReadType.set(route.read_type, entry);
   }
 
@@ -97,4 +72,8 @@ function difference<T extends string>(
 ): T[] {
   const supported = new Set(supportedValues);
   return allValues.filter((value) => !supported.has(value));
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }

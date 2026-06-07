@@ -1,84 +1,64 @@
 #include "Runtime/TaskRuntime/WriteUnitOfWork/BlueprintHelperWriteFamilyAdapterRegistry.h"
 
-#include "Runtime/TaskRuntime/WriteContracts/BlueprintHelperWriteFamilyDescriptor.h"
-
-class FBlueprintHelperStaticWriteFamilyAdapter final : public IBlueprintHelperWriteFamilyAdapter
-{
-public:
-	explicit FBlueprintHelperStaticWriteFamilyAdapter(
-		const FBlueprintHelperWriteFamilyDescriptor& InDescriptor)
-		: Descriptor(InDescriptor)
-	{
-	}
-
-	FString GetWriteFamily() const override
-	{
-		return Descriptor.WriteFamily;
-	}
-
-	FString GetRuntimeAdapterId() const override
-	{
-		return Descriptor.RuntimeAdapterId;
-	}
-
-	bool BuildUnitOfWorkRequest(
-		const FBlueprintHelperAcceptedPayloadModel& AcceptedPayload,
-		FBlueprintHelperWriteUnitOfWorkRequest& OutRequest,
-		FBlueprintHelperToolError& OutError) const override
-	{
-		if (Descriptor.WriteFamily.IsEmpty() || Descriptor.RuntimeAdapterId.IsEmpty())
-		{
-			OutError.Code = TEXT("write_family_descriptor_invalid");
-			OutError.Stage = EBlueprintHelperToolStage::ParseInput;
-			OutError.Message = TEXT("Write-family descriptor must declare write_family and runtime_adapter_id.");
-			OutError.Field = TEXT("write_family_descriptor");
-			OutError.bRetryable = false;
-			OutError.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
-			return false;
-		}
-
-		OutRequest.AcceptedPayload = AcceptedPayload;
-		OutRequest.Descriptor = Descriptor;
-		return true;
-	}
-
-private:
-	FBlueprintHelperWriteFamilyDescriptor Descriptor;
-};
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperAssetFactoryFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperBlueprintComponentFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperBlueprintVariablesFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperClassSettingsFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperDataTableFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperGraphWriteFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperObjectPropertyFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperSignatureFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperUMGWidgetFamilyAdapter.h"
 
 class FBlueprintHelperWriteFamilyAdapterCatalog
 {
 public:
 	static const TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>>& Get()
 	{
-		static const TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>> Adapters = BuildAdapters();
-		return Adapters;
-	}
-
-private:
-	static TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>> BuildAdapters()
-	{
-		TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>> Adapters;
-		for (const FBlueprintHelperWriteFamilyDescriptor& Descriptor :
-			FBlueprintHelperWriteFamilyDescriptorRegistry::GetKnownDescriptors())
-		{
-			if (Descriptor.Status == EBlueprintHelperWriteFamilyCapabilityStatus::Active)
-			{
-				Adapters.Add(MakeShared<FBlueprintHelperStaticWriteFamilyAdapter>(Descriptor));
-			}
-		}
+		static const TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>> Adapters = {
+			MakeShared<FBlueprintHelperGraphWriteFamilyAdapter>(),
+			MakeShared<FBlueprintHelperAssetFactoryFamilyAdapter>(),
+			MakeShared<FBlueprintHelperSignatureFamilyAdapter>(),
+			MakeShared<FBlueprintHelperBlueprintVariablesFamilyAdapter>(),
+			MakeShared<FBlueprintHelperClassSettingsFamilyAdapter>(),
+			MakeShared<FBlueprintHelperBlueprintComponentFamilyAdapter>(),
+			MakeShared<FBlueprintHelperObjectPropertyFamilyAdapter>(),
+			MakeShared<FBlueprintHelperDataTableFamilyAdapter>(),
+			MakeShared<FBlueprintHelperUMGWidgetFamilyAdapter>()
+		};
 		return Adapters;
 	}
 };
+
+const TArray<TSharedPtr<IBlueprintHelperWriteFamilyAdapter>>&
+FBlueprintHelperWriteFamilyAdapterRegistry::GetAdapters()
+{
+	return FBlueprintHelperWriteFamilyAdapterCatalog::Get();
+}
 
 bool FBlueprintHelperWriteFamilyAdapterRegistry::TryFindByWriteFamily(
 	const FString& WriteFamily,
 	TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& OutAdapter)
 {
-	for (const TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& Adapter :
-		FBlueprintHelperWriteFamilyAdapterCatalog::Get())
+	for (const TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& Adapter : GetAdapters())
 	{
 		if (Adapter.IsValid() && Adapter->GetWriteFamily().Equals(WriteFamily, ESearchCase::IgnoreCase))
+		{
+			OutAdapter = Adapter;
+			return true;
+		}
+	}
+	OutAdapter.Reset();
+	return false;
+}
+
+bool FBlueprintHelperWriteFamilyAdapterRegistry::TryFindByRuntimeAdapterId(
+	const FString& RuntimeAdapterId,
+	TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& OutAdapter)
+{
+	for (const TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& Adapter : GetAdapters())
+	{
+		if (Adapter.IsValid() && Adapter->GetRuntimeAdapterId().Equals(RuntimeAdapterId, ESearchCase::IgnoreCase))
 		{
 			OutAdapter = Adapter;
 			return true;
@@ -91,8 +71,7 @@ bool FBlueprintHelperWriteFamilyAdapterRegistry::TryFindByWriteFamily(
 TArray<FString> FBlueprintHelperWriteFamilyAdapterRegistry::GetRegisteredWriteFamilies()
 {
 	TArray<FString> WriteFamilies;
-	for (const TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& Adapter :
-		FBlueprintHelperWriteFamilyAdapterCatalog::Get())
+	for (const TSharedPtr<IBlueprintHelperWriteFamilyAdapter>& Adapter : GetAdapters())
 	{
 		if (Adapter.IsValid())
 		{

@@ -30,6 +30,12 @@ export {
   EMPTY_OBJECT_INPUT_NOTE,
 } from './manifest/tool-input-shape-metadata.js';
 export {
+  listCliSubcommandDescriptors,
+  listCliSubcommandUsageLines,
+  routeCliSubcommand,
+  templateNavigationUsageLinesForInputShapes,
+} from './cli/cli-subcommand-descriptor.js';
+export {
   formatManifestUsage,
   globalCliCommandUsageLines,
   manifestSpecificNotes,
@@ -81,6 +87,12 @@ export type {
   ToolInputShapeId,
   ToolResultProjectionPolicyId,
 } from './manifest/tool-command-manifest.js';
+export type {
+  CliSubcommandDescriptor,
+  CliSubcommandGroup,
+  RouteCliSubcommandInput,
+  RouteCliSubcommandResult,
+} from './cli/cli-subcommand-descriptor.js';
 export type {
   ProjectToolResultForCliInput,
   ProjectToolResultForCliOutput,

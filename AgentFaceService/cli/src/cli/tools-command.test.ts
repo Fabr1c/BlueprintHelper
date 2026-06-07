@@ -227,7 +227,7 @@ test('runCli exposes ReadContext template four-layer index and compose output', 
     '--format',
     'json',
   ]);
-  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow']);
+  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
 
   const quickAccess = await runCliJson([
     'tools',
@@ -280,7 +280,7 @@ test('runCli rejects old tool-id template dispatch path', async () => {
 
   assert.equal(exitCode, 64);
   assert.equal(stdout.join(''), '');
-  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI tools templates command/);
+  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI subcommand: tools\.templates/);
 });
 
 test('runCli supports compile-only task preview without bridge access', async (t) => {

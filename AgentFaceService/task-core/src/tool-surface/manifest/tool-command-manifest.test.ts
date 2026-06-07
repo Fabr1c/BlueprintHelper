@@ -37,6 +37,8 @@ test('ToolCommandManifest exports the stable read-only schema id', () => {
     template_refs: ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec'],
     route_refs: ['blueprint.create_feature', 'graph.append.container_action'],
     recommended_invocations: ['bh task preview --file <filled_taskspec.json> --format summary'],
+    help_usage: ['bh task preview --file <filled_taskspec.json> --format summary'],
+    help_notes: [],
     stop_conditions: ['tool_unavailable', 'preview_blocked'],
     source: 'readonly_mirror',
   };
@@ -55,6 +57,7 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   assert.deepEqual(preview.aliases, ['task preview']);
   assert.equal(preview.handler_id, 'blueprinthelper_preview_task');
   assert.equal(preview.result_policy_id, 'task_preview_default');
+  assert.deepEqual(preview.help_usage, ['bh task preview --file <filled_taskspec.json> --format summary']);
   assert.deepEqual(preview.metrics_identity, {
     capability: 'blueprint.plan',
     semantic_operation: 'blueprint.plan.taskspec.preview',
@@ -143,6 +146,8 @@ function makeManifest(overrides: Partial<ToolCommandManifest>): ToolCommandManif
     template_refs: [],
     route_refs: [],
     recommended_invocations: [],
+    help_usage: [],
+    help_notes: [],
     stop_conditions: ['tool_unavailable'],
     source: 'readonly_mirror',
     ...overrides,

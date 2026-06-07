@@ -92,6 +92,18 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
     });
   }
 
+  if (kind === 'ensure_macro') {
+    const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
+    const outputs = optionalSignaturePinSpecs(change['outputs'], `${path}.outputs`);
+    return omitUndefined({
+      op: 'ensure_macro',
+      macro_name: getRequiredString(change, 'macro_name', `${path}.macro_name`),
+      inputs,
+      outputs,
+      name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
+    });
+  }
+
   if (kind === 'ensure_event_dispatcher') {
     const inputs = optionalSignaturePinSpecs(change['inputs'], `${path}.inputs`);
     return omitUndefined({
@@ -142,7 +154,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
     {
       code: 'unsupported_signature_change',
       path: `${path}.kind`,
-      message: 'Use ensure_function, ensure_interface_function, ensure_custom_event, ensure_interface_event, ensure_event_dispatcher, ensure_override_event, or remove_signature.',
+      message: 'Use ensure_function, ensure_interface_function, ensure_custom_event, ensure_interface_event, ensure_macro, ensure_event_dispatcher, ensure_override_event, or remove_signature.',
     },
   ]);
 }
@@ -185,6 +197,7 @@ function blueprintSignatureStrategyForOp(op: Record<string, unknown>): string {
   if (op['op'] === 'ensure_event_dispatcher') return 'event_dispatcher_signature';
   if (op['op'] === 'ensure_override_event') return 'override_event_signature';
   if (op['op'] === 'ensure_custom_event') return 'custom_event_signature';
+  if (op['op'] === 'ensure_macro') return 'macro_signature';
   if (op['op'] === 'remove_signature') {
     const kind = String(op['signature_kind'] ?? 'function');
     if (kind === 'event_dispatcher') return 'event_dispatcher_signature';

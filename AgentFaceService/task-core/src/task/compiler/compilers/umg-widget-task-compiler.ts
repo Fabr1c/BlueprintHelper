@@ -139,6 +139,71 @@ function compileUMGWidgetTaskSpecToTaskPlan(
       );
     }
 
+    if (kind === 'set_slot_property') {
+      if (!Object.hasOwn(change, 'value')) {
+        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
+          {
+            code: 'missing_umg_slot_property_value',
+            path: `${path}.value`,
+            message: 'Provide value for set_slot_property.',
+          },
+        ]);
+      }
+
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'umg_widget',
+        taskSpec.target.asset_path,
+        'widget_property_edit',
+        [omitUndefined({
+          op: 'set_slot_property',
+          widget_name: getRequiredStringWithCode(
+            change,
+            'widget_name',
+            `${path}.widget_name`,
+            'missing_umg_widget_name',
+            'Provide widget_name for set_slot_property.',
+          ),
+          property_path: getRequiredStringWithCode(
+            change,
+            'property_path',
+            `${path}.property_path`,
+            'missing_umg_slot_property_path',
+            'Provide property_path for set_slot_property.',
+          ),
+          value: literalValue(change['value']),
+          expected_slot_class_path: optionalString(change, 'expected_slot_class_path'),
+        })],
+      );
+    }
+
+    if (kind === 'set_widget_as_variable') {
+      return makeCompositeCapabilityStep(
+        index + 1,
+        'umg_widget',
+        taskSpec.target.asset_path,
+        'widget_tree_edit',
+        [omitUndefined({
+          op: 'set_widget_as_variable',
+          widget_name: getRequiredStringWithCode(
+            change,
+            'widget_name',
+            `${path}.widget_name`,
+            'missing_umg_widget_name',
+            'Provide widget_name for set_widget_as_variable.',
+          ),
+          is_variable: getRequiredBooleanWithCode(
+            change,
+            'is_variable',
+            `${path}.is_variable`,
+            'missing_umg_widget_variable_state',
+            'Provide boolean is_variable for set_widget_as_variable.',
+          ),
+          expected_widget_class_path: optionalString(change, 'expected_widget_class_path'),
+        })],
+      );
+    }
+
     if (kind === 'delete_widget') {
       return makeCompositeCapabilityStep(
         index + 1,
@@ -156,7 +221,7 @@ function compileUMGWidgetTaskSpecToTaskPlan(
       {
         code: 'unsupported_umg_widget_change_kind',
         path: `${path}.kind`,
-        message: 'Use create_widget, update_widget_property, delete_widget, move_widget, or set_named_slot_content.',
+        message: 'Use create_widget, update_widget_property, delete_widget, move_widget, set_named_slot_content, set_slot_property, or set_widget_as_variable.',
       },
     ]);
   });
@@ -175,6 +240,40 @@ function optionalInt(record: Record<string, unknown>, field: string, path: strin
     }]);
   }
   return value as number;
+}
+
+function getRequiredStringWithCode(
+  record: Record<string, unknown>,
+  field: string,
+  path: string,
+  code: string,
+  message: string,
+): string {
+  const value = record[field];
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be a non-empty string.`, [
+    { code, path, message },
+  ]);
+}
+
+function getRequiredBooleanWithCode(
+  record: Record<string, unknown>,
+  field: string,
+  path: string,
+  code: string,
+  message: string,
+): boolean {
+  const value = record[field];
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path} must be a boolean.`, [
+    { code, path, message },
+  ]);
 }
 
 function rejectLegacyWidgetTreeFields(change: Record<string, unknown>, path: string): void {

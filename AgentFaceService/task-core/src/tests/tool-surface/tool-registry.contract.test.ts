@@ -8,6 +8,7 @@ import { bridgeToolSchemas } from '../../tool-surface/bridge/bridge-tool-schemas
 import { ReadFunctionChainContextInputSchema } from '../../tool-surface/bridge/function-chain-context-schema.js';
 import { bridgeCommandByToolName } from '../../tool-surface/bridge/bridge-tool-command-map.js';
 import { ReadContextInputSchema } from '../../tool-surface/bridge/read-context/read-context-schemas.js';
+import { getActiveReadContextRouteDescriptors } from '../../tool-surface/templates/read-context-template-registry.js';
 import { getBlueprintHelperToolRegistry } from '../../tool-surface/tool-registry.js';
 import type { TaskSpecRunner } from '../../task/service/task-spec-runner.js';
 
@@ -824,44 +825,39 @@ test('read context capabilities is a compact local discovery tool', async () => 
   assert.equal(result.ok, true);
   assert.equal(result.operation, 'read_context_capabilities');
   assert.equal(result.data?.['schema'], 'ReadContextCapabilities.v1');
-  assert.deepEqual(result.data?.['formats'], ['logic_flow', 'logic_md', 'logic_json']);
-  assert.deepEqual(result.data?.['read_type_ids'], [
-    'blueprint_logic',
-    'component_context',
-    'data_asset_context',
-    'data_table_context',
-    'graph_context',
-    'variable_context',
-    'widget_context',
-  ]);
+  const activeRoutes = getActiveReadContextRouteDescriptors();
+  const expectedFormats = uniqueSorted(activeRoutes.flatMap((route) => route.supported_formats));
+  const expectedAssetTypes = uniqueSorted(activeRoutes.flatMap((route) => route.supported_asset_types));
+  const expectedReadTypeIds = uniqueSorted(activeRoutes.map((route) => route.read_type));
+  assert.deepEqual(result.data?.['formats'], expectedFormats);
+  assert.deepEqual(result.data?.['asset_types'], expectedAssetTypes);
+  assert.deepEqual(result.data?.['read_type_ids'], expectedReadTypeIds);
 
   const readTypes = result.data?.['read_types'] as Array<Record<string, unknown>>;
   const blueprintLogic = readTypes.find((entry) => entry['read_type'] === 'blueprint_logic');
   assert.ok(blueprintLogic);
-  assert.deepEqual(blueprintLogic['unsupported_formats'], ['logic_md']);
-  assert.deepEqual(blueprintLogic['unsupported_asset_types'], [
-    'asset',
-    'blueprint',
-    'graph',
-    'component',
-    'member_variable',
-    'event_dispatcher',
-    'widget',
-    'data_table',
-    'data_table_row',
-    'data_asset',
-    'object_property',
-    'property',
-  ]);
-
+  assert.deepEqual(
+    blueprintLogic['unsupported_formats'],
+    difference(expectedFormats, supportedRouteValues(activeRoutes, 'blueprint_logic', 'supported_formats')),
+  );
+  assert.deepEqual(
+    blueprintLogic['unsupported_asset_types'],
+    difference(expectedAssetTypes, supportedRouteValues(activeRoutes, 'blueprint_logic', 'supported_asset_types')),
+  );
   const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
-  assert.equal(assetContext, undefined);
+  assert.ok(assetContext);
   const graphContext = readTypes.find((entry) => entry['read_type'] === 'graph_context');
   assert.ok(graphContext);
-  assert.deepEqual(graphContext['unsupported_formats'], ['logic_flow', 'logic_md']);
+  assert.deepEqual(
+    graphContext['unsupported_formats'],
+    difference(expectedFormats, supportedRouteValues(activeRoutes, 'graph_context', 'supported_formats')),
+  );
   const widgetContext = readTypes.find((entry) => entry['read_type'] === 'widget_context');
   assert.ok(widgetContext);
-  assert.deepEqual(widgetContext['unsupported_formats'], ['logic_md']);
+  assert.deepEqual(
+    widgetContext['unsupported_formats'],
+    difference(expectedFormats, supportedRouteValues(activeRoutes, 'widget_context', 'supported_formats')),
+  );
 });
 
 test('read_context rejects removed and unsupported view formats', () => {
@@ -1173,6 +1169,29 @@ test('execute task registry adapter rejects direct TaskSpec preview token', asyn
     },
   );
 });
+
+type ActiveReadContextRoute = ReturnType<typeof getActiveReadContextRouteDescriptors>[number];
+
+function supportedRouteValues(
+  routes: readonly ActiveReadContextRoute[],
+  readType: string,
+  field: 'supported_asset_types' | 'supported_formats',
+): string[] {
+  return uniqueSorted(
+    routes
+      .filter((route) => route.read_type === readType)
+      .flatMap((route) => route[field]),
+  );
+}
+
+function difference(allValues: readonly string[], supportedValues: readonly string[]): string[] {
+  const supported = new Set(supportedValues);
+  return allValues.filter((value) => !supported.has(value));
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
 
 function assertNoUnsafeAgentFacingKeys(value: unknown): void {
   const violations = collectUnsafeAgentFacingKeys(value);

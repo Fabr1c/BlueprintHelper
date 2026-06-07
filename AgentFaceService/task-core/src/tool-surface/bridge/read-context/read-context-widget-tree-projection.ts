@@ -5,30 +5,32 @@ type WidgetNode = Record<string, unknown> & {
   widget_class_path: string;
   virtual_index: number;
   children: WidgetNode[];
+  slot_properties?: Record<string, unknown>;
 };
 
-export function buildWidgetTreeLogicJsonPayload(payload: Record<string, unknown>): Record<string, unknown> {
+export const WIDGET_TREE_JSON_SCHEMA = 'WidgetTreeJson.v1' as const;
+
+export function buildWidgetTreeJsonPayload(payload: Record<string, unknown>): Record<string, unknown> {
   return {
-    schema: 'WidgetTreeLogicJson.v1',
-    format: 'logic_json',
+    schema: WIDGET_TREE_JSON_SCHEMA,
+    format: 'tree_json',
     domain: 'widget_blueprint',
     asset_path: readString(payload, 'asset_path') ?? '',
-    logic_json: normalizeWidgetTree(payload),
+    ...normalizeWidgetTree(payload),
   };
 }
 
 export function buildWidgetTreeLogicFlowPayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const logicJsonPayload = buildWidgetTreeLogicJsonPayload(payload);
-  const logicJson = logicJsonPayload['logic_json'];
-  const root = isRecord(logicJson) ? logicJson['root'] : undefined;
-  const namedSlots = isRecord(logicJson) ? readRecordArray(logicJson, 'named_slots') : [];
-  const index = isRecord(logicJson) && isRecord(logicJson['index']) ? logicJson['index'] : {};
+  const treeJsonPayload = buildWidgetTreeJsonPayload(payload);
+  const root = treeJsonPayload['root'];
+  const namedSlots = readRecordArray(treeJsonPayload, 'named_slots');
+  const index = isRecord(treeJsonPayload['index']) ? treeJsonPayload['index'] : {};
   const warnings = collectWidgetFlowWarnings(root, namedSlots, index);
   return {
     schema: 'WidgetTreeLogicFlow.v1',
     format: 'logic_flow',
     domain: 'widget_blueprint',
-    asset_path: logicJsonPayload['asset_path'],
+    asset_path: treeJsonPayload['asset_path'],
     flow: buildWidgetFlow(root, namedSlots, index),
     warnings,
   };
@@ -107,6 +109,8 @@ function normalizeNode(node: Record<string, unknown>, parentName: string | undef
   if (slotClassPath) normalized.slot_class_path = slotClassPath;
   const slotName = readString(node, 'slot_name');
   if (slotName) normalized.slot_name = slotName;
+  const slotProperties = readSlotProperties(node);
+  if (slotProperties) normalized.slot_properties = slotProperties;
   assignVirtualIndexes(normalized);
   return normalized;
 }
@@ -145,6 +149,9 @@ function buildWidgetIndex(root: WidgetNode | null): Record<string, unknown> {
     if (typeof node.slot_name === 'string' && node.slot_name.length > 0) {
       entry['slot_name'] = node.slot_name;
     }
+    if (isRecord(node.slot_properties) && Object.keys(node.slot_properties).length > 0) {
+      entry['slot_properties'] = node.slot_properties;
+    }
     index[node.widget_name] = entry;
   });
   return index;
@@ -172,9 +179,25 @@ function normalizeWidgetIndex(payload: Record<string, unknown>): Record<string, 
     if (slotClassPath) entry['slot_class_path'] = slotClassPath;
     const slotName = readString(rawEntry, 'slot_name');
     if (slotName) entry['slot_name'] = slotName;
+    const slotProperties = readSlotProperties(rawEntry);
+    if (slotProperties) entry['slot_properties'] = slotProperties;
     normalized[widgetName] = entry;
   }
   return normalized;
+}
+
+function readSlotProperties(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  const rawProperties = record['slot_properties'];
+  if (!isRecord(rawProperties)) return undefined;
+
+  const properties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rawProperties)) {
+    if (key.length === 0) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      properties[key] = value;
+    }
+  }
+  return Object.keys(properties).length > 0 ? properties : undefined;
 }
 
 function normalizeNamedSlots(payload: Record<string, unknown>): Record<string, unknown>[] {

@@ -17,6 +17,8 @@
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreePositionPolicy.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreeProjectionService.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetSlotPropertyPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetVariablePolicy.h"
 #include "WidgetBlueprint.h"
 #include "UObject/UObjectIterator.h"
 
@@ -231,7 +233,12 @@ static void AttachReadbackContext(
 		ErrorCode,
 		ErrorMessage))
 	{
+		const TSharedPtr<FJsonObject> MutationContext = Result.ReadbackContext;
 		Result.ReadbackContext = Summary.ToJson();
+		if (MutationContext.IsValid())
+		{
+			Result.ReadbackContext->SetObjectField(TEXT("mutation"), MutationContext.ToSharedRef());
+		}
 	}
 }
 
@@ -1062,6 +1069,50 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetNamedSlot
 
 	Result.bSuccess = true;
 	Result.AffectedWidget = NewWidget->GetName();
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetSlotProperty(
+	const FBlueprintHelperSetSlotPropertyRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
+	Result.AffectedWidget = Request.WidgetName;
+
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (!FBlueprintHelperWidgetSlotPropertyPolicy::Apply(WBP, Request, Result))
+	{
+		return Result;
+	}
+
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetWidgetAsVariable(
+	const FBlueprintHelperSetWidgetAsVariableRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
+	Result.AffectedWidget = Request.WidgetName;
+
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (!FBlueprintHelperWidgetVariablePolicy::Apply(WBP, Request, Result))
+	{
+		return Result;
+	}
+
 	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
 	return Result;
 }

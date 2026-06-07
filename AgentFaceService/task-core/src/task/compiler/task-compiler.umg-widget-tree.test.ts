@@ -92,6 +92,94 @@ test('edit_umg_widget lowers set_named_slot_content as standalone op', () => {
   });
 });
 
+test('edit_umg_widget lowers set_slot_property to widget property runtime op', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSpec([{
+    kind: 'set_slot_property',
+    widget_name: 'StartButton',
+    property_path: 'Offsets.Left',
+    value: 24,
+    expected_slot_class_path: '/Script/UMG.CanvasPanelSlot',
+  }]) as never);
+
+  assert.deepEqual(firstOp(plan), {
+    op: 'set_slot_property',
+    widget_name: 'StartButton',
+    property_path: 'Offsets.Left',
+    value: 24,
+    expected_slot_class_path: '/Script/UMG.CanvasPanelSlot',
+  });
+});
+
+test('edit_umg_widget lowers set_widget_as_variable to widget variable runtime op', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSpec([{
+    kind: 'set_widget_as_variable',
+    widget_name: 'StartButton',
+    is_variable: true,
+    expected_widget_class_path: '/Script/UMG.Button',
+  }]) as never);
+
+  assert.deepEqual(firstOp(plan), {
+    op: 'set_widget_as_variable',
+    widget_name: 'StartButton',
+    is_variable: true,
+    expected_widget_class_path: '/Script/UMG.Button',
+  });
+});
+
+test('edit_umg_widget validates set_slot_property required fields', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeSpec([{
+      kind: 'set_slot_property',
+      widget_name: 'StartButton',
+      value: 24,
+    }]) as never),
+    (error) => {
+      assert.ok(error instanceof TaskSpecCompileError);
+      assert.equal(error.issues[0]?.code, 'missing_umg_slot_property_path');
+      return true;
+    },
+  );
+
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeSpec([{
+      kind: 'set_slot_property',
+      widget_name: 'StartButton',
+      property_path: 'Offsets.Left',
+    }]) as never),
+    (error) => {
+      assert.ok(error instanceof TaskSpecCompileError);
+      assert.equal(error.issues[0]?.code, 'missing_umg_slot_property_value');
+      return true;
+    },
+  );
+});
+
+test('edit_umg_widget validates set_widget_as_variable required fields', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeSpec([{
+      kind: 'set_widget_as_variable',
+      is_variable: true,
+    }]) as never),
+    (error) => {
+      assert.ok(error instanceof TaskSpecCompileError);
+      assert.equal(error.issues[0]?.code, 'missing_umg_widget_name');
+      return true;
+    },
+  );
+
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeSpec([{
+      kind: 'set_widget_as_variable',
+      widget_name: 'StartButton',
+    }]) as never),
+    (error) => {
+      assert.ok(error instanceof TaskSpecCompileError);
+      assert.equal(error.issues[0]?.code, 'missing_umg_widget_variable_state');
+      return true;
+    },
+  );
+});
+
 test('edit_umg_widget rejects old parent_widget_name and insert_index fields', () => {
   assert.throws(
     () => compileTaskSpecToTaskPlan(makeSpec([{

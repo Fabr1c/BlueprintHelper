@@ -123,7 +123,55 @@ test('every readonly tool command manifest declares input shape and result polic
   for (const manifest of registry.list()) {
     assert.equal(manifest.input_shapes.length > 0, true, `${manifest.tool_id} declares input shape`);
     assert.equal(Boolean(manifest.result_policy_id), true, `${manifest.tool_id} declares result policy`);
+    assert.equal(manifest.help_usage.length > 0, true, `${manifest.tool_id} declares help usage`);
+    assert.equal(manifest.source, 'readonly_mirror', `${manifest.tool_id} declares manifest source`);
   }
+});
+
+test('CLI grouped template subcommand routing is descriptor-owned', () => {
+  const runSource = readFileSync(
+    path.resolve(pluginRoot(), 'AgentFaceService', 'cli', 'src', 'cli', 'run.ts'),
+    'utf8',
+  );
+  const descriptorSource = readFileSync(
+    path.resolve(taskCoreRoot(), 'src', 'tool-surface', 'cli', 'cli-subcommand-descriptor.ts'),
+    'utf8',
+  );
+
+  const oldTemplatesError = ['Unsupported BlueprintHelper CLI tools', 'templates command'].join(' ');
+  const oldReadTemplatesError = ['Unsupported BlueprintHelper CLI tools', 'read-templates command'].join(' ');
+  assert.equal(runSource.includes(oldTemplatesError), false);
+  assert.equal(runSource.includes(oldReadTemplatesError), false);
+  assert.equal(/case\s+'families'/.test(runSource), false);
+  assert.equal(/case\s+'domains'/.test(runSource), false);
+  assert.equal(runSource.includes('routeCliSubcommand'), true);
+  assert.equal(descriptorSource.includes('routeCliSubcommand'), true);
+});
+
+test('CLI help consumes template navigation from task-core command descriptors', () => {
+  const helpBuilderSource = readFileSync(
+    path.resolve(pluginRoot(), 'AgentFaceService', 'cli', 'src', 'cli', 'help-builder.ts'),
+    'utf8',
+  );
+
+  assert.equal(/bh tools templates/.test(helpBuilderSource), false);
+  assert.equal(/bh tools read-templates/.test(helpBuilderSource), false);
+  assert.equal(helpBuilderSource.includes('templateNavigationUsageLinesForInputShapes'), true);
+});
+
+test('Bridge dispatcher uses registered handlers instead of tool-name if-chain', () => {
+  const dispatcherSource = readFileSync(
+    path.resolve(taskCoreRoot(), 'src', 'tool-surface', 'bridge', 'bridge-tool-dispatcher.ts'),
+    'utf8',
+  );
+  const registrySource = readFileSync(
+    path.resolve(taskCoreRoot(), 'src', 'tool-surface', 'bridge', 'bridge-tool-handler-registry.ts'),
+    'utf8',
+  );
+
+  assert.equal(/if\s*\(\s*toolName\s*===\s*['"]blueprinthelper_/.test(dispatcherSource), false);
+  assert.equal(dispatcherSource.includes('getBridgeToolHandler'), true);
+  assert.equal(registrySource.includes('registerBridgeToolHandler'), true);
 });
 
 function taskCoreRoot(): string {

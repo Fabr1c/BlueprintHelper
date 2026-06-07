@@ -438,6 +438,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     assert.deepEqual(blueprintSignature.runtime_adapter_operations, [
       'ensure_function',
       'ensure_custom_event',
+      'ensure_macro',
       'ensure_event_dispatcher',
       'ensure_override_event',
       'remove_signature',

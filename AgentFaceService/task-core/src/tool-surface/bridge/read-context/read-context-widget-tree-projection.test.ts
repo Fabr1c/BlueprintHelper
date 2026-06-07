@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildWidgetTreeJsonPayload,
   buildWidgetTreeLogicFlowPayload,
-  buildWidgetTreeLogicJsonPayload,
+  WIDGET_TREE_JSON_SCHEMA,
 } from './read-context-widget-tree-projection.js';
 
-test('widget_tree logic_json omits empty slot fields and builds virtual_index', () => {
-  const payload = buildWidgetTreeLogicJsonPayload({
+test('widget_tree tree_json omits empty slot fields and builds virtual_index', () => {
+  const payload = buildWidgetTreeJsonPayload({
     asset_path: '/Game/UI/WBP_Menu',
     root_widget: 'Canvas_Root',
     widgets: [
@@ -15,12 +16,47 @@ test('widget_tree logic_json omits empty slot fields and builds virtual_index', 
       { name: 'Button_Start', class: 'Button', parent: 'Canvas_Root', slot_class: 'CanvasPanelSlot', child_count: 0, depth: 1 },
     ],
   });
-  const logic = payload.logic_json as Record<string, unknown>;
-  const root = logic.root as Record<string, unknown>;
+  assert.equal(payload.schema, WIDGET_TREE_JSON_SCHEMA);
+  assert.equal(payload.format, 'tree_json');
+  const root = payload.root as Record<string, unknown>;
   assert.equal(root.slot_class_path, undefined);
   assert.equal(root.slot_name, undefined);
   const child = (root.children as Record<string, unknown>[])[0];
   assert.equal(child.virtual_index, 0);
+});
+
+test('widget_tree tree_json preserves slot property facts for read-write closure', () => {
+  const payload = buildWidgetTreeJsonPayload({
+    asset_path: '/Game/UI/WBP_Menu',
+    root: {
+      widget_name: 'Canvas_Root',
+      widget_class_path: '/Script/UMG.CanvasPanel',
+      virtual_index: 0,
+      children: [
+        {
+          widget_name: 'Button_Start',
+          widget_class_path: '/Script/UMG.Button',
+          parent_name: 'Canvas_Root',
+          slot_class_path: '/Script/UMG.CanvasPanelSlot',
+          slot_properties: {
+            'LayoutData.Offsets.Left': '24.000000',
+          },
+          virtual_index: 0,
+          children: [],
+        },
+      ],
+    },
+  });
+
+  const root = payload.root as Record<string, unknown>;
+  const child = (root.children as Record<string, unknown>[])[0];
+  assert.deepEqual(child.slot_properties, {
+    'LayoutData.Offsets.Left': '24.000000',
+  });
+  const index = payload.index as Record<string, Record<string, unknown>>;
+  assert.deepEqual(index.Button_Start.slot_properties, {
+    'LayoutData.Offsets.Left': '24.000000',
+  });
 });
 
 test('widget_tree logic_flow renders hierarchy and named slot content', () => {

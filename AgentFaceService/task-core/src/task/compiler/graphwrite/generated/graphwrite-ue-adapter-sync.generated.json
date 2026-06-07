@@ -110,7 +110,7 @@
       "compiler_id": "patch_external_graph",
       "taskplan_op": "set_external_node_comment",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.patch_external_graph.pin_default",
@@ -121,7 +121,7 @@
       "compiler_id": "patch_external_graph",
       "taskplan_op": "set_external_pin_default",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.patch.connect_pins",
@@ -198,7 +198,7 @@
       "compiler_id": "replace_external_body",
       "taskplan_op": "replace_external_body",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.replace.block_implementation",
@@ -209,7 +209,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.replace.custom_event_body",
@@ -220,7 +220,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.replace.custom_event_definition",
@@ -231,7 +231,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.replace.event_body",
@@ -264,7 +264,7 @@
       "compiler_id": "replace_body",
       "taskplan_op": "replace_body",
       "status": "hidden",
-      "adapter_sync": "hidden_route_not_agent_executable"
+      "adapter_sync": "reserved_hidden_from_agent"
     },
     {
       "route_id": "graph.replace.macro_body",
