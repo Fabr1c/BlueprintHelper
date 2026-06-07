@@ -348,9 +348,7 @@ Read these references as needed:
 - `references/08_User_Preferences.md`
 - `references/00_Agent_Onboarding_Index_20260504.md`
 - `references/01_Preflight_And_Boundary.md`
-- `references/02_TaskSpec_First_Tool_Selection.md`
 - `references/03_Runtime_Profile_And_Diagnostics.md`
-- `references/04_Tool_Surface_Field_Templates_20260512.md`
 - `references/09_SideAgent_Tool_Execution.md`
 - `references/04_TaskSpec_Edit_Blueprint_Workflow.md`
 - `references/05_Edit_Blueprint_Workflow.md`

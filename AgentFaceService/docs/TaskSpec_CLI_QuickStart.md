@@ -66,9 +66,12 @@ bh tools templates families --workflow preview_execute --format json
 bh tools templates write-modes --family graph_write --format json
 bh tools templates clusters --family graph_write --format json
 bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
-bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
-bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation expression --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
 ```
+
+Use `quick-access.items[].slot_type` to choose roots: `statement` templates can be used as top-level `--templates` entries, while `expression` templates must be nested inside an input slot. Use `quick-access.items[].arg_slots` as the positional argument order for `template_id(...)`. Use `0` only as a skip placeholder, not as numeric data.
 
 After compose, fill the generated TaskSpec with concrete asset paths, graph names, selectors, and values from ReadContext evidence. The composer output includes the next preview and execute command strings for the generated file.
 

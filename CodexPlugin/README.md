@@ -94,4 +94,4 @@ The root installer removes npm-generated PowerShell `.ps1` shims when `.cmd` lau
 
 Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not use CLI lifecycle aliases for editor startup/shutdown. Deprecated MCP ordinary tools are not fallback paths.
 
-For editor-asset writes, keep the workflow TaskSpec-first. Prefer `AgentFaceService/agent-guide/Templates/` for copy-and-edit JSON inputs.
+For editor-asset writes, keep the workflow TaskSpec-first. Use CLI template discovery and the TaskSpec Template Composer to generate JSON inputs; do not scan `AgentFaceService/agent-guide/Templates/` directly for tool selection.

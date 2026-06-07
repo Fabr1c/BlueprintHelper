@@ -28,9 +28,18 @@ bh tools templates families --workflow preview_execute --format json
 bh tools templates write-modes --family graph_write --format json
 bh tools templates clusters --family graph_write --format json
 bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
-bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
-bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation expression --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
+
+## GraphWrite Slot Expression
+
+`quick-access` 返回的 `slot_type` 和 `arg_slots` 是组合输入的导航信息。`slot_type="statement"` 的模板可以作为 `--templates` 顶层 root；`slot_type="expression"` 的模板只能填入某个 statement 或 expression 的输入位，不能单独 compose 成 statement。
+
+`arg_slots` 的数组顺序就是括号内参数顺序。例如 statement 返回 `arg_slots:["value(ValueType)"]` 时，`generic_ops.let.default(generic_ops.expression.literal)` 表示把 literal expression 填入第 1 个输入位。动态输入返回多个同名 slot 时按位置使用；只填写第 3 个输入位时写 `generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)`，其中 `0` 是跳过符号，不是数字 literal。数字 0 必须通过 literal expression 在生成文件里填值。
+
+多个顶层 statement 用顶层逗号连接；括号内逗号属于当前 slot expression。PowerShell 中把整个 `--templates` 值用双引号包住。不要把 expression quick-access 直接作为 root，也不要手写完整 statement JSON 来绕过 composer。
 
 调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口或 `task preview --file` / `task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认 wrapper 与裸 TaskSpec 的差异。不要把 wrapper 传给分组命令，也不要额外包 `args`。
 

@@ -97,7 +97,7 @@ Use `-InstallClaudeAgents` only when you want to copy the Claude subagent defini
 
 `/blueprint-helper:setup` is retained only as a compatibility pointer to the repository-root `install.cmd`; it no longer owns first-run setup.
 
-Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../AgentFaceService/docs/Install_CLI_QuickStart.md). CLI command syntax lives in [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md). Copy-and-edit JSON templates live in [AgentFaceService/agent-guide/Templates](../AgentFaceService/agent-guide/Templates/README.md).
+Detailed manual setup lives in [Docs/Install_CLI_QuickStart.md](../AgentFaceService/docs/Install_CLI_QuickStart.md). CLI command syntax and TaskSpec Template Composer usage live in [Docs/TaskSpec_CLI_QuickStart.md](../AgentFaceService/docs/TaskSpec_CLI_QuickStart.md). Agents should use CLI template discovery and composer output instead of scanning `AgentFaceService/agent-guide/Templates/` directly.
 
 ## Agent Entry Points
 

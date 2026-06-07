@@ -20,11 +20,12 @@ bh tools templates families --workflow preview_execute --format json
 bh tools templates write-modes --family graph_write --format json
 bh tools templates clusters --family graph_write --format json
 bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
-bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
-bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation expression --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
 
-Do not use old tool-id template dispatch or template-directory scans as the safety entry.
+Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
 
 For GraphWrite branch insertion into an owned block, preview must verify:
 

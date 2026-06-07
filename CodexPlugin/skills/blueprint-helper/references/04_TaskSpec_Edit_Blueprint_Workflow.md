@@ -5,7 +5,7 @@
 ```text
 1. get_runtime_profile
 2. read_context / read_reference_context as needed
-3. build TaskSpec
+3. use TaskSpec Template Composer to create a temporary TaskSpec
 4. preview_task
 5. 如果 context_required/context_stale：重新 read_context / read_reference_context
 6. 如果 TaskSpec error：按 suggested_patch 修正
@@ -18,8 +18,7 @@
 13. report summary
 ```
 
-TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_policy、resources、components、variables、class_settings、behavior、validation。
-`feature_name` 只作为任务显示名 / journal 标签；图表名、函数名、变量名、block_id 必须显式填写，不能由 `feature_name` 推断。不要填写 `intent`，执行后的 `generated_intent` 由编排层写入 Journal。
+TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和 CLI help 负责说明。本文档不列字段清单。不要用任务显示名推断图表名、函数名、变量名或 block 标识；这些定位信息必须来自读回上下文和模板要求。
 
 调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口时，优先使用：
 
@@ -32,6 +31,27 @@ TaskSpec 必须描述：目标资产、feature_name、scope_policy、asset_polic
 ```
 
 使用 `task preview --file` / `task execute --file` 分组命令时，文件根对象必须是裸 `BlueprintHelper.TaskSpec.v1`。不要把 wrapper 传给分组命令，也不要额外包 `args`。
+
+## TaskSpec Template Composer
+
+GraphWrite 写入前先用 CLI 四层索引收敛模板，不要扫描模板目录或手写完整 statement JSON：
+
+```text
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation expression --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+```
+
+## GraphWrite Slot Expression
+
+`quick-access.items[].template_id` 是 `compose --templates` 使用的 slot id。`quick-access.items[].slot_type` 说明这个 slot 能放在哪里：`statement` 可以作为顶层 root；`expression` 只能嵌套在某个 statement 的输入 slot 中。
+
+`arg_slots` 的数组顺序就是括号内参数顺序。例如 statement 返回 `arg_slots:["value(ValueType)"]` 时，`generic_ops.let.default(generic_ops.expression.literal)` 表示把 literal expression 填入第 1 个输入位。动态输入返回多个同名 slot 时按位置使用；只填写第 3 个输入位时写 `generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)`，其中 `0` 是跳过符号，不是数字 literal。数字 0 必须通过 literal expression 在生成文件里填值。
+
+多个顶层 statement 用逗号分隔，例如 `"slotA(...),slotB(...)"`。PowerShell 下必须把整个 `--templates` 字符串加引号。不要把 expression slot 放在顶层，也不要绕过 quick-access 返回的 slot id 去手写内部 statement 结构。
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`。写入锚点必须来自 grouped block：`block_id + group_entry_node_path + node_ref + pin_ref`，`insert_between` 额外需要 `link_ref`。不要把全图级 `nodes[0]`、显示名、GUID-first selector 当普通主线写锚点。
 
@@ -51,21 +71,7 @@ execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败�
 
 `checkout_required` 时调用 `blueprinthelper_source_control_checkout`。如果返回 `checked_out_by_other`、`source_control_conflicted`、`source_control_unavailable`、`checkout_failed` 或 `not_editable`，立即停止并把结果中的 `agent_message` / `recommended_action` 报给主 Agent；不要继续 execute，也不要在 close editor 时把保存失败当成已关闭成功。
 
-GraphWrite body 内的函数调用优先使用 GraphStatement 短名 `kind="call"` + `target`。`args` 表达函数参数，每个参数值是结构化 literal：
-
-```json
-{
-  "kind": "call",
-  "target": "PrintString",
-  "args": {
-    "InString": {
-      "kind": "literal",
-      "value_type": "string",
-      "value": "message"
-    }
-  }
-}
-```
+GraphWrite body 内的函数调用形状由 TaskSpec Template Composer 返回的 GraphWrite quick-access 模板负责说明；本文档只保留策略规则，不复制具体 statement JSON。
 
 GraphWrite `branch_fork` 成功 execute 后必须读回。读回应确认：
 
@@ -78,20 +84,4 @@ execute_task 成功后，普通报告只输出任务摘要、目标资产、主�
 
 ## 2026-05-07 调用参数检查点
 
-在执行 smoke 或写入任务前，对照：
-
-```text
-AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates.md
-```
-
-执行顺序中的参数形状应为：
-
-```text
-read_context: schema/read_type/target/view/context 位于工具参数根对象
-preview_task: 根对象只有 task_spec
-execute_task: 根对象只有 task_spec
-task preview/execute grouped command: 裸 BlueprintHelper.TaskSpec.v1 文件
-get_task_result: 根对象只有 task_run_id
-```
-
-不要把 `schema`、`read_type`、`target` 或 `task_spec` 再包进额外 `args`。如果客户端要求对象字段传 JSON string，字段名仍保持在根对象。
+在执行 smoke 或写入任务前，先用当前 per-command help 和 CLI discovery/index 确认精确参数形状。不要把模板返回的根字段再包进额外 `args`。如果客户端要求对象字段传 JSON string，字段名仍保持在根对象。

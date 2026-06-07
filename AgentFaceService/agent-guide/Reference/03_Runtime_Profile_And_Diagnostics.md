@@ -23,9 +23,12 @@ bh tools templates families --workflow preview_execute --format json
 bh tools templates write-modes --family graph_write --format json
 bh tools templates clusters --family graph_write --format json
 bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
-bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
-bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation expression --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
+
+For GraphWrite, `quick-access.items[].slot_type` tells whether a template can be a top-level compose root. `quick-access.items[].arg_slots` gives the positional slot order used by `template_id(...)`; expression templates must be nested into those slots.
 
 Runtime diagnostics must not direct Agents back to old tool-id template dispatch or template-directory scans.
 

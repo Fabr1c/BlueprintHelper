@@ -81,17 +81,16 @@ Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/ki
 阅读顺序:
 
 1. `AgentFaceService/agent-guide/Reference/01_Preflight_And_Boundary.md`
-2. `AgentFaceService/agent-guide/Reference/02_TaskSpec_First_Tool_Selection.md`
-3. `AgentFaceService/agent-guide/Reference/03_Runtime_Profile_And_Diagnostics.md`
-4. `AgentFaceService/agent-guide/Reference/04_Tool_Surface_Field_Templates.md`
-5. `AgentFaceService/agent-guide/Reference/05_UE_Blueprint_Write_Architecture_Rules.md`
-6. `AgentFaceService/agent-guide/Reference/06_UE_Blueprint_Write_CodingStyle.md`
-7. `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`
-8. Use `bh tools domains/list/templates` to select one concrete tool template when a task requires CLI input.
-9. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-10. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
-11. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
-12. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
+2. `AgentFaceService/agent-guide/Reference/03_Runtime_Profile_And_Diagnostics.md`
+3. `AgentFaceService/agent-guide/Reference/05_UE_Blueprint_Write_Architecture_Rules.md`
+4. `AgentFaceService/agent-guide/Reference/06_UE_Blueprint_Write_CodingStyle.md`
+5. `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`
+6. `AgentFaceService/docs/TaskSpec_CLI_QuickStart.md`
+7. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+8. Use `bh tools domains/list/templates` and `bh tools templates quick-access/compose` to build one concrete CLI input when a task requires TaskSpec or ReadSpec JSON.
+9. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
+10. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
+11. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 规则:
 

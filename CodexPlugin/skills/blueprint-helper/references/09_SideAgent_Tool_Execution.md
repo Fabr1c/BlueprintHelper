@@ -29,8 +29,8 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 ## 执行规则
 
-1. 读取本文件和必要字段模板：`04_Tool_Surface_Field_Templates_20260512.md`。构造复杂 CLI JSON 时，优先从 `AgentFaceService/agent-guide/Templates/` 复制模板到工作文件后再修改。
-2. 按需要读取任务 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。
+1. 读取本文件和必要 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。构造 TaskSpec 写入 JSON 时，先走 CLI template composer 的 `families -> write-modes -> clusters -> operations -> quick-access -> compose` 导航，不扫描 `Templates/` 目录或旧语义索引。
+2. `quick-access` 返回 `slot_type` 和 `arg_slots`；`statement` 可作为 `compose --templates` 根，`expression` 只能嵌入 statement 输入位。`arg_slots` 顺序就是 `template_id(...)` 的位置顺序，需要跳过前置输入位时用 `0` 占位。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。
 3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，直接使用 `blueprinthelper_read_context`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。

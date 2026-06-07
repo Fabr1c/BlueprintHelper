@@ -172,9 +172,7 @@ Stop before write delegation when:
 - `references/00_Agent_Onboarding_Index_20260504.md` - Agent-facing guide index
 - `references/09_SideAgent_Tool_Execution.md` - SideAgent tool execution and result translation contract
 - `references/01_Preflight_And_Boundary.md` - preflight and scope boundaries
-- `references/02_TaskSpec_First_Tool_Selection.md` - TaskSpec-first tool selection
 - `references/03_Runtime_Profile_And_Diagnostics.md` - runtime_profile and diagnostics
-- `references/04_Tool_Surface_Field_Templates_20260512.md` - tool surface field templates
 - `references/04_TaskSpec_Edit_Blueprint_Workflow.md` - TaskSpec Blueprint edit workflow
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
