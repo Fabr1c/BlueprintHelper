@@ -1,0 +1,44 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "__CONTEXT_ID__",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EventGraph",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "merge_external_flow",
+    "external_merges": [
+      {
+        "kind": "insert_external_flow",
+        "insert_strategy": "append_after",
+        "anchor": {
+          "schema": "BlueprintHelper.LogicJsonAnchorSelector.v1",
+          "asset_path": "__BLUEPRINT_ASSET_PATH__",
+          "graph_name": "__GRAPH_NAME__",
+          "entry_name": "__ENTRY_NAME__",
+          "node_ref": "__NODE_REF__",
+          "pin_ref": "__PIN_REF__"
+        },
+        "inserted": {
+          "body": {
+            "schema": "BlueprintLogicSpec.v2",
+            "statements": []
+          }
+        }
+      }
+    ]
+  },
+  "execution_policy": {
+    "dry_run_mode": "full"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}

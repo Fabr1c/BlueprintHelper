@@ -1,0 +1,25 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "__CONTEXT_ID__",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__FEATURE_NAME__",
+  "target": {
+    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "EventGraph",
+    "allow_modify_user_nodes": false
+  },
+  "behavior": {
+    "graph_strategy": "patch_owned_graph",
+    "patches": []
+  },
+  "execution_policy": {
+    "dry_run_mode": "full"
+  },
+  "validation": {
+    "should_compile": false,
+    "should_save": false
+  }
+}
