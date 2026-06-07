@@ -7,14 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { createHelpBuilder } from './help-builder.js';
 import { buildHelpText } from './help.js';
 
-test('HelpBuilder renders preview help from manifest and template dispatch', () => {
+test('HelpBuilder renders preview help from manifest and TaskSpec composer navigation', () => {
   const builder = createHelpBuilder();
   const help = builder.build(['blueprinthelper_preview_task']);
 
   assert.match(help, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
   assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
-  assert.match(help, /write\/blueprinthelper_preview_task_wrapper_template\.json/);
-  assert.match(help, /write\/task_preview_bare_taskspec_template\.json/);
+  assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(help, /bh tools templates compose --family <family>/);
+  assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
   assert.doesNotMatch(help, /execution_policy/);
   assert.doesNotMatch(help, /scope_policy/);
   assert.doesNotMatch(help, /validation/);
@@ -29,6 +30,34 @@ test('HelpBuilder resolves grouped task preview alias through manifest', () => {
   assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
 });
 
+test('HelpBuilder renders read_context help from ReadContext template navigation', () => {
+	const builder = createHelpBuilder();
+	const help = builder.build(['blueprinthelper_read_context']);
+
+  assert.match(help, /BlueprintHelper CLI help: blueprinthelper_read_context/);
+  assert.match(help, /bh context read --file <read-spec\.json>/);
+  assert.match(help, /bh tools read-templates domains --format json/);
+  assert.match(help, /bh tools read-templates compose --domain <domain>/);
+	assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
+});
+
+test('HelpBuilder renders read_context_capabilities help from manifest', () => {
+	const builder = createHelpBuilder();
+	const help = builder.build(['blueprinthelper_read_context_capabilities']);
+
+	assert.match(help, /BlueprintHelper CLI help: blueprinthelper_read_context_capabilities/);
+	assert.match(help, /bh blueprinthelper_read_context_capabilities --json "\{\}" --format json/);
+	assert.match(help, /Root JSON: \{\}/);
+	assert.doesNotMatch(help, /No tool-specific help is registered/);
+});
+
+test('global help includes ReadContext template navigation', () => {
+	const help = buildHelpText();
+
+  assert.match(help, /bh tools read-templates domains --format json/);
+  assert.match(help, /bh tools read-templates compose --domain <domain>/);
+});
+
 test('cli help source does not hardcode route template paths for manifest-backed tools', () => {
   const source = fs.readFileSync(sourcePath('help.ts'), 'utf8');
 
@@ -41,13 +70,13 @@ test('buildHelpText keeps manifest-backed help compact', () => {
   const previewHelp = buildHelpText(['blueprinthelper_preview_task']);
   const readContextHelp = buildHelpText(['blueprinthelper_read_context']);
 
-  assert.match(previewHelp, /write\/blueprinthelper_preview_task_wrapper_template\.json/);
+  assert.match(previewHelp, /bh tools templates families --workflow preview_execute --format json/);
   assert.match(previewHelp, /bh task preview --file <filled_taskspec\.json> --format summary/);
   assert.doesNotMatch(previewHelp, /routes: \[/);
   assert.doesNotMatch(previewHelp, /execution_policy/);
   assert.doesNotMatch(previewHelp, /scope_policy/);
   assert.doesNotMatch(previewHelp, /validation/);
-  assert.match(readContextHelp, /read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
+  assert.doesNotMatch(readContextHelp, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
 });
 
 function sourcePath(fileName: string): string {

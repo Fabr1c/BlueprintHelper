@@ -1,4 +1,9 @@
 export type GraphWriteRouteStatus = 'active' | 'planned' | 'hidden';
+export type GraphWriteTemplateWriteMode =
+  | 'graph.append'
+  | 'graph.replace'
+  | 'graph.merge'
+  | 'graph.patch';
 
 export interface GraphWriteSelectorDescriptor {
   expected_kind: string;
@@ -11,6 +16,7 @@ export interface GraphWriteSelectorDescriptor {
 export interface GraphWriteRouteDescriptor {
   route_id: string;
   task_type: 'edit_blueprint_graph';
+  write_mode: GraphWriteTemplateWriteMode;
   graph_strategy: string;
   public_scope: string;
   behavior_field: string;

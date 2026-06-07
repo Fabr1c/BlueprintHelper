@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Shared/UMGWidget/BlueprintHelperWidgetTypes.h"
 
 class UWidgetBlueprint;
 class UWidget;
@@ -58,6 +59,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperWidgetTreeResult
 	FString ErrorMessage;
 	FString RootWidgetName;
 	TArray<FBlueprintHelperWidgetInfo> Widgets;
+	FBlueprintHelperWidgetTreeSummary Summary;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperWidgetPropertyResult
@@ -72,6 +74,44 @@ struct BLUEPRINTHELPER_API FBlueprintHelperWidgetMutationResult
 	bool bSuccess = false;
 	FString ErrorMessage;
 	FString AffectedWidget;
+	bool bDryRun = false;
+	TSharedPtr<FJsonObject> ReadbackContext;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperAddWidgetRequest
+{
+	FString AssetPath;
+	FString ParentName;
+	FString SlotName;
+	FString WidgetClass;
+	FString WidgetName;
+	TOptional<int32> VirtualIndex;
+	FString ExpectedParentName;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperMoveWidgetRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	FString NewParentName;
+	FString SlotName;
+	TOptional<int32> VirtualIndex;
+	FString ExpectedParentName;
+	TOptional<int32> ExpectedVirtualIndex;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperSetNamedSlotContentRequest
+{
+	FString AssetPath;
+	FString HostWidgetName;
+	FString SlotName;
+	FString WidgetClass;
+	FString WidgetName;
+	TOptional<int32> VirtualIndex;
+	FString ExpectedContentWidgetName;
+	bool bReplaceExisting = false;
 	bool bDryRun = false;
 };
 
@@ -96,6 +136,9 @@ public:
 	 * @param WidgetName 新 Widget 的名称（空则自动生成）
 	 */
 	FBlueprintHelperWidgetMutationResult AddWidget(
+		const FBlueprintHelperAddWidgetRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult AddWidget(
 		const FString& AssetPath,
 		const FString& ParentName,
 		const FString& WidgetClass,
@@ -113,13 +156,19 @@ public:
 	 * @param AssetPath  WidgetBlueprint 资产路径
 	 * @param WidgetName 要移动的 Widget 名称
 	 * @param NewParentName 新父面板名称
-	 * @param InsertIndex 插入位置（-1 = 尾部）
+	 * @param VirtualIndex virtual child position (-1 = append)
 	 */
+	FBlueprintHelperWidgetMutationResult MoveWidget(
+		const FBlueprintHelperMoveWidgetRequest& Request) const;
+
 	FBlueprintHelperWidgetMutationResult MoveWidget(
 		const FString& AssetPath,
 		const FString& WidgetName,
 		const FString& NewParentName,
-		int32 InsertIndex = -1) const;
+		int32 VirtualIndex = -1) const;
+
+	FBlueprintHelperWidgetMutationResult SetNamedSlotContent(
+		const FBlueprintHelperSetNamedSlotContentRequest& Request) const;
 
 	/** 获取 Widget 的可编辑属性列表。 */
 	FBlueprintHelperWidgetPropertyResult GetWidgetProperties(

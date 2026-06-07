@@ -29,7 +29,8 @@
       ],
       "compiler_id": "append_new_owned_graph",
       "status": "active",
-      "behavior_field": "entries"
+      "behavior_field": "entries",
+      "write_mode": "graph.append"
     },
     {
       "route_id": "graph.append.custom_event",
@@ -58,7 +59,8 @@
       ],
       "compiler_id": "append_new_owned_graph",
       "status": "active",
-      "behavior_field": "entries"
+      "behavior_field": "entries",
+      "write_mode": "graph.append"
     },
     {
       "route_id": "graph.append.event_delegate",
@@ -89,7 +91,8 @@
       ],
       "compiler_id": "append_new_owned_graph",
       "status": "active",
-      "behavior_field": "entries"
+      "behavior_field": "entries",
+      "write_mode": "graph.append"
     },
     {
       "route_id": "graph.append.generic_ops",
@@ -118,7 +121,8 @@
       ],
       "compiler_id": "append_new_owned_graph",
       "status": "active",
-      "behavior_field": "entries"
+      "behavior_field": "entries",
+      "write_mode": "graph.append"
     },
     {
       "route_id": "graph.append.generic_schedule",
@@ -148,7 +152,8 @@
       ],
       "compiler_id": "append_new_owned_graph",
       "status": "active",
-      "behavior_field": "entries"
+      "behavior_field": "entries",
+      "write_mode": "graph.append"
     },
     {
       "route_id": "graph.merge.append_after",
@@ -176,7 +181,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "merge_owned_graph",
       "status": "active",
-      "behavior_field": "merges"
+      "behavior_field": "merges",
+      "write_mode": "graph.merge"
     },
     {
       "route_id": "graph.merge.branch_fork",
@@ -205,7 +211,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "merge_owned_graph",
       "status": "active",
-      "behavior_field": "merges"
+      "behavior_field": "merges",
+      "write_mode": "graph.merge"
     },
     {
       "route_id": "graph.merge.insert_between",
@@ -233,7 +240,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "merge_owned_graph",
       "status": "active",
-      "behavior_field": "merges"
+      "behavior_field": "merges",
+      "write_mode": "graph.merge"
     },
     {
       "route_id": "graph.merge_external_flow.append_after",
@@ -263,7 +271,8 @@
       ],
       "compiler_id": "merge_external_flow",
       "status": "active",
-      "behavior_field": "external_merges"
+      "behavior_field": "external_merges",
+      "write_mode": "graph.merge"
     },
     {
       "route_id": "graph.patch.connect_pins",
@@ -290,7 +299,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch.delete_owned_node",
@@ -317,7 +327,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch.disconnect_link",
@@ -343,7 +354,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch.node_comment",
@@ -370,7 +382,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch.pin_default",
@@ -397,7 +410,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch.replace_link",
@@ -424,7 +438,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_owned_graph",
       "status": "active",
-      "behavior_field": "patches"
+      "behavior_field": "patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.replace.event_body",
@@ -469,7 +484,8 @@
       ],
       "compiler_id": "replace_body",
       "status": "active",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.function_body",
@@ -518,7 +534,8 @@
       ],
       "compiler_id": "replace_body",
       "status": "active",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.custom_event_definition",
@@ -559,7 +576,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "replace_body",
       "status": "hidden",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.custom_event_body",
@@ -600,7 +618,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "replace_body",
       "status": "hidden",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.graph",
@@ -636,7 +655,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "replace_body",
       "status": "hidden",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.block_implementation",
@@ -679,7 +699,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "replace_body",
       "status": "hidden",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.replace.macro_body",
@@ -725,7 +746,8 @@
       ],
       "compiler_id": "replace_body",
       "status": "active",
-      "behavior_field": "replace"
+      "behavior_field": "replace",
+      "write_mode": "graph.replace"
     },
     {
       "route_id": "graph.patch_external_graph.node_comment",
@@ -747,7 +769,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_external_graph",
       "status": "hidden",
-      "behavior_field": "external_patches"
+      "behavior_field": "external_patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.patch_external_graph.pin_default",
@@ -769,7 +792,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "patch_external_graph",
       "status": "hidden",
-      "behavior_field": "external_patches"
+      "behavior_field": "external_patches",
+      "write_mode": "graph.patch"
     },
     {
       "route_id": "graph.replace_external_body.body",
@@ -791,7 +815,8 @@
       "allowed_slot_ids": [],
       "compiler_id": "replace_external_body",
       "status": "hidden",
-      "behavior_field": "external_replace"
+      "behavior_field": "external_replace",
+      "write_mode": "graph.replace"
     }
   ]
 }

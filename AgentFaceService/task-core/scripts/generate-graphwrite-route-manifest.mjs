@@ -67,7 +67,7 @@ function validateRoutes(routes) {
   const ids = new Set();
   const behaviorFieldByStrategy = new Map();
   for (const route of routes) {
-    for (const field of ['route_id', 'task_type', 'graph_strategy', 'public_scope', 'behavior_field', 'taskplan_op', 'runtime_adapter_id', 'compiler_id', 'status']) {
+    for (const field of ['route_id', 'task_type', 'write_mode', 'graph_strategy', 'public_scope', 'behavior_field', 'taskplan_op', 'runtime_adapter_id', 'compiler_id', 'status']) {
       if (typeof route[field] !== 'string' || route[field].length === 0) {
         throw new Error(`GraphWrite route ${route.route_id ?? '<unknown>'} has invalid ${field}.`);
       }
@@ -78,6 +78,9 @@ function validateRoutes(routes) {
     ids.add(route.route_id);
     if (!['active', 'planned', 'hidden'].includes(route.status)) {
       throw new Error(`GraphWrite route ${route.route_id} has invalid status: ${route.status}`);
+    }
+    if (!['graph.append', 'graph.replace', 'graph.merge', 'graph.patch'].includes(route.write_mode)) {
+      throw new Error(`GraphWrite route ${route.route_id} has invalid write_mode: ${route.write_mode}`);
     }
     const existingBehaviorField = behaviorFieldByStrategy.get(route.graph_strategy);
     if (existingBehaviorField && existingBehaviorField !== route.behavior_field) {

@@ -24,12 +24,18 @@ test('global help points Agents to CLI catalog and per-tool help', async () => {
   assert.match(output, /bh <tool_name> --help/);
   assert.match(output, /bh tools domains --format json/);
   assert.match(output, /bh tools list <domain> <kind> --format json/);
-  assert.match(output, /bh tools templates <tool_id> --format json/);
-  assert.match(output, /Fill the returned template path, then run the returned recommended_invocation/);
+  assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /bh tools read-templates domains --format json/);
+  assert.match(
+    output,
+    /Compose a temporary TaskSpec or ReadSpec, then run bh task preview, bh task execute, or bh context read/,
+  );
+  assert.doesNotMatch(output, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
   assert.doesNotMatch(output, new RegExp(legacyTemplateIndexName));
 });
 
-test('tool help is specific and includes concrete ReadContext template paths', async () => {
+test('tool help is specific for ReadContext without concrete template dispatch paths', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['blueprinthelper_read_context', '--help'],
@@ -44,8 +50,9 @@ test('tool help is specific and includes concrete ReadContext template paths', a
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_read_context/);
   assert.match(output, /Root JSON: bare BlueprintHelper\.ReadSpec\.v1/);
-  assert.match(output, /read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
-  assert.match(output, /read\/routes\/blueprint_logic_graph_logic_json_template\.json/);
+  assert.match(output, /bh blueprinthelper_read_context --file <read-spec\.json> --select status,artifacts\.full_result/);
+  assert.doesNotMatch(output, /read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
+  assert.doesNotMatch(output, /read\/routes\/blueprint_logic_graph_logic_json_template\.json/);
   assert.doesNotMatch(output, /Templates\/read\/read_context_/);
   assert.doesNotMatch(output, new RegExp(String.raw`read/${legacyTemplateIndexName}\.md`));
   assert.doesNotMatch(output, /Default tool names:/);
@@ -65,10 +72,12 @@ test('tool help is specific for preview wrapper and bare TaskSpec templates', as
   const output = writes.join('');
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
-  assert.match(output, /blueprinthelper_preview_task_wrapper_template\.json/);
-  assert.match(output, /task_preview_bare_taskspec_template\.json/);
   assert.match(output, /Direct tool input: \{ "task_spec"/);
   assert.match(output, /Grouped command input: bare BlueprintHelper\.TaskSpec\.v1 file/);
+  assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.doesNotMatch(output, /blueprinthelper_preview_task_wrapper_template\.json/);
+  assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
 
 test('tool help is specific for find assets and points to the request template', async () => {
@@ -86,7 +95,8 @@ test('tool help is specific for find assets and points to the request template',
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_find_assets/);
   assert.match(output, /bh blueprinthelper_find_assets --file <find-assets\.json> --select status,artifacts\.full_result/);
-  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_find_assets_template\.json/);
+  assert.match(output, /Root JSON: Bridge tool payload object/);
+  assert.doesNotMatch(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_find_assets_template\.json/);
   assert.doesNotMatch(output, /Default tool names:/);
 });
 
@@ -105,7 +115,8 @@ test('tool help is specific for capture screenshot and points to the request tem
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_capture_screenshot/);
   assert.match(output, /graph_name is required when block_ref or node_ref is provided/);
-  assert.match(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_capture_screenshot_template\.json/);
+  assert.match(output, /Root JSON: Bridge tool payload object/);
+  assert.doesNotMatch(output, /AgentFaceService\/agent-guide\/Templates\/blueprinthelper_capture_screenshot_template\.json/);
   assert.doesNotMatch(output, /Default tool names:/);
 });
 
@@ -259,7 +270,7 @@ test('direct capture screenshot orchestrates open, focus, and graph-only screens
   );
 });
 
-test('grouped command help includes the matching template path', async () => {
+test('grouped command help points TaskSpec preview to composer navigation', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['task', 'preview', '--help'],
@@ -273,8 +284,10 @@ test('grouped command help includes the matching template path', async () => {
   const output = writes.join('');
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: task preview/);
-  assert.match(output, /task_preview_bare_taskspec_template\.json/);
   assert.match(output, /Input file root: bare BlueprintHelper\.TaskSpec\.v1/);
+  assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
 
 test('lifecycle help directs Agents to global MCP instead of CLI aliases', async () => {

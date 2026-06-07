@@ -5,22 +5,34 @@
 ```text
 1. get_runtime_profile
 2. read_context / read_reference_context as needed
-3. build TaskSpec
-4. preview_task
-5. 如果 context_required/context_stale：重新 read_context / read_reference_context
-6. 如果 TaskSpec error：按 suggested_patch 修正
-7. 如果 preview_blocked：stop_and_report 或修改 TaskSpec
-8. Only continue toward execute when preview completed without blockers
-9. 如果版本控制启用、目标资产可能只读，或 close/save 返回 `checkout_required`，先调用 `blueprinthelper_source_control_status` / `blueprinthelper_source_control_checkout`
-10. If `write_permission` is disabled, call `blueprinthelper_request_write_session`; continue only if the user accepts the simple Editor prompt
-11. execute_task
-12. get_task_result if needed
-13. report summary
+3. use TaskSpec Template Composer to create a temporary TaskSpec
+4. fill the generated TaskSpec with concrete read_context evidence and intent
+5. preview_task
+6. 如果 context_required/context_stale：重新 read_context / read_reference_context
+7. 如果 TaskSpec error：按 suggested_patch 修正
+8. 如果 preview_blocked：stop_and_report 或修改 TaskSpec
+9. Only continue toward execute when preview completed without blockers
+10. 如果版本控制启用、目标资产可能只读，或 close/save 返回 `checkout_required`，先调用 `blueprinthelper_source_control_status` / `blueprinthelper_source_control_checkout`
+11. If `write_permission` is disabled, call `blueprinthelper_request_write_session`; continue only if the user accepts the simple Editor prompt
+12. execute_task
+13. get_task_result if needed
+14. report summary
 ```
 
-TaskSpec 输入字段由 CLI discovery/index 返回的模板负责说明。本文档不列字段清单。不要用任务显示名推断图表名、函数名、变量名或 block 标识；这些定位信息必须来自读回上下文和模板要求。
+TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和 CLI help 负责说明。本文档不列字段清单。不要用任务显示名推断图表名、函数名、变量名或 block 标识；这些定位信息必须来自读回上下文和模板要求。
 
-调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口或 `task preview --file` / `task execute --file` 分组命令前，必须通过当前 CLI discovery/index 读取对应模板文件来确认 wrapper 与裸 TaskSpec 的差异。不要把 wrapper 传给分组命令，也不要额外包 `args`。
+TaskSpec 模板发现和生成只走 `bh tools templates` 四层索引，不使用旧 tool-id 模板发现入口，也不手扫 `AgentFaceService/agent-guide/Templates` 目录：
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+```
+
+调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口或 `task preview --file` / `task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认 wrapper 与裸 TaskSpec 的差异。不要把 wrapper 传给分组命令，也不要额外包 `args`。
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用读工具获取结构化上下文。写入锚点必须来自当前模板要求的 grouped block 读回信息。不要把全图级数组位置、显示名或 GUID-first selector 当普通主线写锚点。
 
@@ -40,7 +52,7 @@ execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败�
 
 `checkout_required` 时调用 `blueprinthelper_source_control_checkout`。如果返回 `checked_out_by_other`、`source_control_conflicted`、`source_control_unavailable`、`checkout_failed` 或 `not_editable`，立即停止并把结果中的 `agent_message` / `recommended_action` 报给主 Agent；不要继续 execute，也不要在 close editor 时把保存失败当成已关闭成功。
 
-GraphWrite body 内的函数调用形状由 CLI discovery/index 返回的 GraphWrite 模板负责说明；本文档只保留策略规则，不复制具体 statement JSON。
+GraphWrite body 内的函数调用形状由 TaskSpec Template Composer 返回的 GraphWrite quick-access 模板负责说明；本文档只保留策略规则，不复制具体 statement JSON。
 
 ## GraphWrite AutoSearch Candidate Flow
 

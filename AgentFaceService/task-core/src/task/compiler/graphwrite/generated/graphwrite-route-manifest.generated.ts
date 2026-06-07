@@ -35,7 +35,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
-    "behavior_field": "entries"
+    "behavior_field": "entries",
+    "write_mode": "graph.append"
   },
   {
     "route_id": "graph.append.custom_event",
@@ -64,7 +65,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
-    "behavior_field": "entries"
+    "behavior_field": "entries",
+    "write_mode": "graph.append"
   },
   {
     "route_id": "graph.append.event_delegate",
@@ -95,7 +97,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
-    "behavior_field": "entries"
+    "behavior_field": "entries",
+    "write_mode": "graph.append"
   },
   {
     "route_id": "graph.append.generic_ops",
@@ -124,7 +127,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
-    "behavior_field": "entries"
+    "behavior_field": "entries",
+    "write_mode": "graph.append"
   },
   {
     "route_id": "graph.append.generic_schedule",
@@ -154,7 +158,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "append_new_owned_graph",
     "status": "active",
-    "behavior_field": "entries"
+    "behavior_field": "entries",
+    "write_mode": "graph.append"
   },
   {
     "route_id": "graph.merge_external_flow.append_after",
@@ -184,7 +189,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "merge_external_flow",
     "status": "active",
-    "behavior_field": "external_merges"
+    "behavior_field": "external_merges",
+    "write_mode": "graph.merge"
   },
   {
     "route_id": "graph.merge.append_after",
@@ -212,7 +218,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
-    "behavior_field": "merges"
+    "behavior_field": "merges",
+    "write_mode": "graph.merge"
   },
   {
     "route_id": "graph.merge.branch_fork",
@@ -241,7 +248,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
-    "behavior_field": "merges"
+    "behavior_field": "merges",
+    "write_mode": "graph.merge"
   },
   {
     "route_id": "graph.merge.insert_between",
@@ -269,7 +277,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "merge_owned_graph",
     "status": "active",
-    "behavior_field": "merges"
+    "behavior_field": "merges",
+    "write_mode": "graph.merge"
   },
   {
     "route_id": "graph.patch_external_graph.node_comment",
@@ -291,7 +300,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_external_graph",
     "status": "hidden",
-    "behavior_field": "external_patches"
+    "behavior_field": "external_patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch_external_graph.pin_default",
@@ -313,7 +323,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_external_graph",
     "status": "hidden",
-    "behavior_field": "external_patches"
+    "behavior_field": "external_patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.connect_pins",
@@ -340,7 +351,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.delete_owned_node",
@@ -367,7 +379,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.disconnect_link",
@@ -393,7 +406,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.node_comment",
@@ -420,7 +434,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.pin_default",
@@ -447,7 +462,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.patch.replace_link",
@@ -474,7 +490,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "patch_owned_graph",
     "status": "active",
-    "behavior_field": "patches"
+    "behavior_field": "patches",
+    "write_mode": "graph.patch"
   },
   {
     "route_id": "graph.replace_external_body.body",
@@ -496,7 +513,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_external_body",
     "status": "hidden",
-    "behavior_field": "external_replace"
+    "behavior_field": "external_replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.block_implementation",
@@ -539,7 +557,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.custom_event_body",
@@ -580,7 +599,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.custom_event_definition",
@@ -621,7 +641,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.event_body",
@@ -666,7 +687,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.function_body",
@@ -715,7 +737,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.graph",
@@ -751,7 +774,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [],
     "compiler_id": "replace_body",
     "status": "hidden",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   },
   {
     "route_id": "graph.replace.macro_body",
@@ -797,6 +821,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     ],
     "compiler_id": "replace_body",
     "status": "active",
-    "behavior_field": "replace"
+    "behavior_field": "replace",
+    "write_mode": "graph.replace"
   }
 ] as const satisfies readonly GraphWriteRouteDescriptor[];

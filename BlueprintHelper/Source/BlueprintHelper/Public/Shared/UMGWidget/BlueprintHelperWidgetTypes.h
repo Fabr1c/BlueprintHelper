@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 // ─── 枚举 ───
 
@@ -134,30 +135,101 @@ struct FBlueprintHelperRemoveWidgetResultData
 
 struct FBlueprintHelperWidgetTreeItem
 {
-	FString WidgetName, WidgetClass;
-	TArray<FString> Children;
+	FString WidgetName;
+	FString WidgetClass;
+	FString WidgetClassPath;
+	FString ParentName;
+	FString SlotClassPath;
+	FString SlotName;
+	int32 VirtualIndex = 0;
+	bool bIsVariable = false;
+	bool bIsInherited = false;
+	TArray<FBlueprintHelperWidgetTreeItem> Children;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
 		J->SetStringField(TEXT("widget_name"), WidgetName);
 		J->SetStringField(TEXT("widget_class"), WidgetClass);
-		if (Children.Num() > 0) { TArray<TSharedPtr<FJsonValue>> A; for (const auto& C : Children) A.Add(MakeShared<FJsonValueString>(C)); J->SetArrayField(TEXT("children"), A); }
+		J->SetStringField(TEXT("widget_class_path"), WidgetClassPath);
+		if (!ParentName.IsEmpty())
+		{
+			J->SetStringField(TEXT("parent_name"), ParentName);
+		}
+		if (!SlotClassPath.IsEmpty())
+		{
+			J->SetStringField(TEXT("slot_class_path"), SlotClassPath);
+		}
+		if (!SlotName.IsEmpty())
+		{
+			J->SetStringField(TEXT("slot_name"), SlotName);
+		}
+		J->SetNumberField(TEXT("virtual_index"), VirtualIndex);
+		J->SetBoolField(TEXT("is_variable"), bIsVariable);
+		J->SetBoolField(TEXT("is_inherited"), bIsInherited);
+
+		TArray<TSharedPtr<FJsonValue>> A;
+		for (const FBlueprintHelperWidgetTreeItem& Child : Children)
+		{
+			A.Add(MakeShared<FJsonValueObject>(Child.ToJson()));
+		}
+		J->SetArrayField(TEXT("children"), A);
+		return J;
+	}
+};
+
+struct FBlueprintHelperNamedSlotEntry
+{
+	FString HostWidgetName;
+	FString SlotName;
+	FString ContentWidgetName;
+	int32 VirtualIndex = 0;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+		J->SetStringField(TEXT("host_widget_name"), HostWidgetName);
+		J->SetStringField(TEXT("slot_name"), SlotName);
+		J->SetStringField(TEXT("content_widget_name"), ContentWidgetName);
+		J->SetNumberField(TEXT("virtual_index"), VirtualIndex);
 		return J;
 	}
 };
 
 struct FBlueprintHelperWidgetTreeSummary
 {
-	FString Root;
-	TArray<FBlueprintHelperWidgetTreeItem> Widgets;
+	FString AssetClass;
+	FString ParentClass;
+	FBlueprintHelperWidgetTreeItem Root;
+	TMap<FString, FBlueprintHelperWidgetTreeItem> Index;
+	TArray<FBlueprintHelperNamedSlotEntry> NamedSlots;
 
 	TSharedRef<FJsonObject> ToJson() const
 	{
 		TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
-		J->SetStringField(TEXT("root"), Root);
-		TArray<TSharedPtr<FJsonValue>> A; for (const auto& W : Widgets) A.Add(MakeShared<FJsonValueObject>(W.ToJson()));
-		J->SetArrayField(TEXT("widgets"), A);
+		if (!AssetClass.IsEmpty())
+		{
+			J->SetStringField(TEXT("asset_class"), AssetClass);
+		}
+		if (!ParentClass.IsEmpty())
+		{
+			J->SetStringField(TEXT("parent_class"), ParentClass);
+		}
+		J->SetObjectField(TEXT("root"), Root.ToJson());
+
+		TSharedRef<FJsonObject> IndexJson = MakeShared<FJsonObject>();
+		for (const TPair<FString, FBlueprintHelperWidgetTreeItem>& Pair : Index)
+		{
+			IndexJson->SetObjectField(Pair.Key, Pair.Value.ToJson());
+		}
+		J->SetObjectField(TEXT("index"), IndexJson);
+
+		TArray<TSharedPtr<FJsonValue>> NamedSlotArray;
+		for (const FBlueprintHelperNamedSlotEntry& Entry : NamedSlots)
+		{
+			NamedSlotArray.Add(MakeShared<FJsonValueObject>(Entry.ToJson()));
+		}
+		J->SetArrayField(TEXT("named_slots"), NamedSlotArray);
 		return J;
 	}
 };

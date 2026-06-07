@@ -62,11 +62,12 @@ export const ReadContextInputSchema = z.object({
 }).superRefine((input, ctx) => {
   const format = input.view?.format;
   const isLogicRead = input.read_type === 'blueprint_logic' || input.read_type === 'graph_context';
-  if (!isLogicRead && format) {
+  const isWidgetTreeRead = input.read_type === 'widget_context' && !input.target.target_name;
+  if (!isLogicRead && !isWidgetTreeRead && format) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
-      message: 'view.format is only supported for blueprint_logic or graph_context; omit it for this read_type.',
+      message: 'view.format is only supported for blueprint_logic, graph_context, or widget_context tree reads; omit it for this read_type.',
     });
   }
   if (input.read_type === 'graph_context' && format && format !== 'logic_json') {
@@ -74,6 +75,13 @@ export const ReadContextInputSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
       message: 'graph_context only supports logic_json format.',
+    });
+  }
+  if (isWidgetTreeRead && format === 'logic_md') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['view', 'format'],
+      message: 'widget_context only supports logic_json and logic_flow formats.',
     });
   }
 });

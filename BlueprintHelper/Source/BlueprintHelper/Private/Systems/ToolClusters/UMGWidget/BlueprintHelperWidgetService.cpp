@@ -6,13 +6,17 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/NamedSlotInterface.h"
 #include "Components/PanelSlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
+#include "Dom/JsonObject.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreePositionPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreeProjectionService.h"
 #include "WidgetBlueprint.h"
 #include "UObject/UObjectIterator.h"
 
@@ -199,6 +203,130 @@ static bool RestoreSlotSnapshot(UWidget* Widget, const FBlueprintHelperSlotSnaps
 	return ApplySlotSnapshotToSlot(RestoredSlot, Snapshot, true, OutError);
 }
 
+static FBlueprintHelperWidgetMutationResult MakeRejectedMutationResult(
+	const FString& ErrorMessage,
+	bool bDryRun = false)
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.ErrorMessage = ErrorMessage;
+	Result.bDryRun = bDryRun;
+	return Result;
+}
+
+static void AttachReadbackContext(
+	UWidgetBlueprint* WidgetBlueprint,
+	FBlueprintHelperWidgetMutationResult& Result)
+{
+	if (!WidgetBlueprint)
+	{
+		return;
+	}
+
+	FBlueprintHelperWidgetTreeSummary Summary;
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+		WidgetBlueprint,
+		Summary,
+		ErrorCode,
+		ErrorMessage))
+	{
+		Result.ReadbackContext = Summary.ToJson();
+	}
+}
+
+static bool HasNamedSlot(
+	INamedSlotInterface* NamedSlotHost,
+	const FName& SlotName)
+{
+	if (!NamedSlotHost || SlotName.IsNone())
+	{
+		return false;
+	}
+
+	TArray<FName> SlotNames;
+	NamedSlotHost->GetSlotNames(SlotNames);
+	return SlotNames.Contains(SlotName);
+}
+
+static bool FindNamedSlotOwnerForContent(
+	UWidgetBlueprint* WidgetBlueprint,
+	UWidget* ContentWidget,
+	UWidget*& OutHostWidget,
+	FName& OutSlotName)
+{
+	OutHostWidget = nullptr;
+	OutSlotName = NAME_None;
+	if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree || !ContentWidget)
+	{
+		return false;
+	}
+
+	WidgetBlueprint->WidgetTree->ForEachWidget([&OutHostWidget, &OutSlotName, ContentWidget](UWidget* Candidate)
+	{
+		if (OutHostWidget || !Candidate)
+		{
+			return;
+		}
+
+		INamedSlotInterface* CandidateNamedSlotHost = Cast<INamedSlotInterface>(Candidate);
+		if (!CandidateNamedSlotHost)
+		{
+			return;
+		}
+
+		TArray<FName> CandidateSlotNames;
+		CandidateNamedSlotHost->GetSlotNames(CandidateSlotNames);
+		for (const FName& CandidateSlotName : CandidateSlotNames)
+		{
+			if (CandidateNamedSlotHost->GetContentForSlot(CandidateSlotName) == ContentWidget)
+			{
+				OutHostWidget = Candidate;
+				OutSlotName = CandidateSlotName;
+				return;
+			}
+		}
+	});
+	return OutHostWidget != nullptr;
+}
+
+static bool IsWidgetInSubtree(UWidget* RootWidget, UWidget* CandidateWidget)
+{
+	if (!RootWidget || !CandidateWidget)
+	{
+		return false;
+	}
+	if (RootWidget == CandidateWidget)
+	{
+		return true;
+	}
+
+	TArray<UWidget*> ChildWidgets;
+	UWidgetTree::GetChildWidgets(RootWidget, ChildWidgets);
+	return ChildWidgets.Contains(CandidateWidget);
+}
+
+static bool TryReadCurrentWidgetTreeSummary(
+	UWidgetBlueprint* WidgetBlueprint,
+	FBlueprintHelperWidgetTreeSummary& OutSummary,
+	FString& OutError)
+{
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+		WidgetBlueprint,
+		OutSummary,
+		ErrorCode,
+		ErrorMessage))
+	{
+		OutError = ErrorCode.IsEmpty()
+			? ErrorMessage
+			: FString::Printf(TEXT("%s:%s"), *ErrorCode, *ErrorMessage);
+		return false;
+	}
+	return true;
+}
+
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -346,11 +474,174 @@ FBlueprintHelperWidgetTreeResult FBlueprintHelperWidgetService::GetWidgetTree(
 
 	if (Tree->RootWidget)
 	{
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (!FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+			WBP,
+			Result.Summary,
+			ErrorCode,
+			ErrorMessage))
+		{
+			Result.ErrorMessage = ErrorMessage.IsEmpty() ? ErrorCode : ErrorMessage;
+			return Result;
+		}
 		Result.RootWidgetName = Tree->RootWidget->GetName();
 		CollectWidgetInfo(Tree->RootWidget, TEXT(""), 0, Result.Widgets);
 	}
 
 	Result.bSuccess = true;
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
+	const FBlueprintHelperAddWidgetRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
+
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	UWidgetTree* Tree = WBP->WidgetTree;
+	if (!Tree)
+	{
+		Result.ErrorMessage = TEXT("WidgetBlueprint does not have a WidgetTree.");
+		return Result;
+	}
+
+	if (!Request.ExpectedParentName.IsEmpty()
+		&& Request.ExpectedParentName != Request.ParentName)
+	{
+		Result.ErrorMessage = TEXT("widget_expected_parent_mismatch");
+		return Result;
+	}
+
+	if (!Request.SlotName.IsEmpty())
+	{
+		FBlueprintHelperSetNamedSlotContentRequest SlotRequest;
+		SlotRequest.AssetPath = Request.AssetPath;
+		SlotRequest.HostWidgetName = Request.ParentName;
+		SlotRequest.SlotName = Request.SlotName;
+		SlotRequest.WidgetClass = Request.WidgetClass;
+		SlotRequest.WidgetName = Request.WidgetName;
+		SlotRequest.VirtualIndex = Request.VirtualIndex;
+		SlotRequest.bReplaceExisting = false;
+		SlotRequest.bDryRun = Request.bDryRun;
+		return SetNamedSlotContent(SlotRequest);
+	}
+
+	UClass* Cls = FindWidgetClass(Request.WidgetClass, Result.ErrorMessage);
+	if (!Cls)
+	{
+		return Result;
+	}
+
+	const FName NewName = Request.WidgetName.IsEmpty() ? NAME_None : FName(*Request.WidgetName);
+	if (!NewName.IsNone() && Tree->FindWidget(NewName))
+	{
+		Result.ErrorMessage = TEXT("widget_name_already_exists");
+		return Result;
+	}
+
+	UPanelWidget* ParentPanel = nullptr;
+	if (!Request.ParentName.IsEmpty())
+	{
+		UWidget* ParentWidget = Tree->FindWidget(FName(*Request.ParentName));
+		if (!ParentWidget)
+		{
+			Result.ErrorMessage = FString::Printf(TEXT("Parent widget '%s' was not found."), *Request.ParentName);
+			return Result;
+		}
+		ParentPanel = Cast<UPanelWidget>(ParentWidget);
+		if (!ParentPanel)
+		{
+			Result.ErrorMessage = FString::Printf(TEXT("Parent widget '%s' is not a panel widget."), *Request.ParentName);
+			return Result;
+		}
+	}
+	else if (Tree->RootWidget)
+	{
+		ParentPanel = Cast<UPanelWidget>(Tree->RootWidget);
+		if (!ParentPanel)
+		{
+			Result.ErrorMessage = TEXT("Root widget is not a panel widget; specify an explicit parent_name.");
+			return Result;
+		}
+	}
+
+	const int32 VirtualIndex = ParentPanel
+		? FBlueprintHelperWidgetTreePositionPolicy::NormalizePanelVirtualIndex(Request.VirtualIndex)
+		: FBlueprintHelperWidgetTreePositionPolicy::NormalizeSingleContentVirtualIndex(Request.VirtualIndex);
+	FString ErrorCode;
+	FString ErrorMessage;
+	const bool bPositionValid = ParentPanel
+		? FBlueprintHelperWidgetTreePositionPolicy::ValidateVirtualIndexForPanel(
+			ParentPanel,
+			VirtualIndex,
+			true,
+			ErrorCode,
+			ErrorMessage)
+		: FBlueprintHelperWidgetTreePositionPolicy::ValidateSingleContentVirtualIndex(
+			VirtualIndex,
+			ErrorCode,
+			ErrorMessage);
+	if (!bPositionValid)
+	{
+		Result.ErrorMessage = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+		return Result;
+	}
+
+	if (Request.bDryRun)
+	{
+		Result.bSuccess = true;
+		Result.AffectedWidget = Request.WidgetName;
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Add Widget")), WBP);
+	Mutation.Modify(Tree);
+	if (ParentPanel)
+	{
+		Mutation.Modify(ParentPanel);
+	}
+
+	UWidget* NewWidget = Tree->ConstructWidget<UWidget>(Cls, NewName);
+	if (!NewWidget)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Could not construct widget class '%s'."), *Request.WidgetClass);
+		Mutation.Rollback();
+		return Result;
+	}
+
+	NewWidget->SetFlags(RF_Transactional);
+
+	if (ParentPanel)
+	{
+		UPanelSlot* Slot = ParentPanel->InsertChildAt(VirtualIndex, NewWidget);
+		if (!Slot)
+		{
+			Result.ErrorMessage = TEXT("InsertChildAt returned null for add_widget.");
+			Mutation.Rollback();
+			return Result;
+		}
+	}
+	else
+	{
+		Tree->RootWidget = NewWidget;
+	}
+
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WBP, NewWidget);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
+
+	Result.bSuccess = true;
+	Result.AffectedWidget = NewWidget->GetName();
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
 	return Result;
 }
 
@@ -361,115 +652,13 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::AddWidget(
 	const FString& WidgetName,
 	bool bDryRun) const
 {
-	FBlueprintHelperWidgetMutationResult Result;
-	Result.bDryRun = bDryRun;
-
-	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(AssetPath, Result.ErrorMessage);
-	if (!WBP) return Result;
-
-	UWidgetTree* Tree = WBP->WidgetTree;
-	if (!Tree)
-	{
-		Result.ErrorMessage = TEXT("WidgetBlueprint 没有 WidgetTree。");
-		return Result;
-	}
-
-	// 查找 Widget 类
-	UClass* Cls = FindWidgetClass(WidgetClass, Result.ErrorMessage);
-	if (!Cls) return Result;
-
-	// 确定父面板
-	UPanelWidget* ParentPanel = nullptr;
-	if (!ParentName.IsEmpty())
-	{
-		UWidget* ParentWidget = Tree->FindWidget(FName(*ParentName));
-		if (!ParentWidget)
-		{
-			Result.ErrorMessage = FString::Printf(TEXT("父 Widget '%s' 不存在。"), *ParentName);
-			return Result;
-		}
-		ParentPanel = Cast<UPanelWidget>(ParentWidget);
-		if (!ParentPanel)
-		{
-			Result.ErrorMessage = FString::Printf(TEXT("'%s' 不是面板 Widget，不能添加子节点。"), *ParentName);
-			return Result;
-		}
-	}
-	else
-	{
-		// 添加到根面板
-		if (Tree->RootWidget)
-		{
-			ParentPanel = Cast<UPanelWidget>(Tree->RootWidget);
-			if (!ParentPanel)
-			{
-				Result.ErrorMessage = TEXT("根 Widget 不是面板，无法添加子节点。需要先指定一个面板作为父节点。");
-				return Result;
-			}
-		}
-		else
-		{
-			// 没有根 Widget，新 Widget 将成为根
-			// 只有面板类型可以作为根
-			if (!Cls->IsChildOf(UPanelWidget::StaticClass()))
-			{
-				Result.ErrorMessage = TEXT("WidgetTree 没有根节点，只能设置面板类型为根。");
-				return Result;
-			}
-		}
-	}
-
-	// 确定名称
-	FName NewName = WidgetName.IsEmpty() ? NAME_None : FName(*WidgetName);
-
-	if (bDryRun)
-	{
-		Result.bSuccess = true;
-		Result.AffectedWidget = WidgetName;
-		return Result;
-	}
-
-	FBlueprintHelperScopedAssetMutation Mutation(
-		FText::FromString(TEXT("BlueprintHelper Add Widget")), WBP);
-	Mutation.Modify(Tree);
-
-	// 构造新 Widget
-	UWidget* NewWidget = Tree->ConstructWidget<UWidget>(Cls, NewName);
-	if (!NewWidget)
-	{
-		Result.ErrorMessage = FString::Printf(TEXT("无法创建 Widget 类 '%s' 的实例。"), *WidgetClass);
-		Mutation.Rollback();
-		return Result;
-	}
-
-	NewWidget->SetFlags(RF_Transactional);
-
-	if (ParentPanel)
-	{
-		UPanelSlot* Slot = ParentPanel->AddChild(NewWidget);
-		if (!Slot)
-		{
-			Result.ErrorMessage = TEXT("AddChild 返回 null，可能面板已满或类型不兼容。");
-			Mutation.Rollback();
-			return Result;
-		}
-	}
-	else
-	{
-		// 设置为根
-		Tree->RootWidget = NewWidget;
-	}
-
-	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WBP, NewWidget);
-
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
-	Mutation.Commit();
-
-	Result.bSuccess = true;
-	Result.AffectedWidget = NewWidget->GetName();
-	UE_LOG(LogWidgetService, Log, TEXT("设置 Widget '%s' 属性 '%s' = '%s'"),
-		*Result.AffectedWidget, *WidgetClass, *ParentName);
-	return Result;
+	FBlueprintHelperAddWidgetRequest Request;
+	Request.AssetPath = AssetPath;
+	Request.ParentName = ParentName;
+	Request.WidgetClass = WidgetClass;
+	Request.WidgetName = WidgetName;
+	Request.bDryRun = bDryRun;
+	return AddWidget(Request);
 }
 
 FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget(
@@ -525,35 +714,164 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveWidget
 }
 
 FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
-	const FString& AssetPath,
-	const FString& WidgetName,
-	const FString& NewParentName,
-	int32 InsertIndex) const
+	const FBlueprintHelperMoveWidgetRequest& Request) const
 {
 	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
 
-	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(AssetPath, Result.ErrorMessage);
-	if (!WBP) return Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
 
-	UWidget* Widget = FindWidgetByName(WBP, WidgetName, Result.ErrorMessage);
-	if (!Widget) return Result;
+	UWidget* Widget = FindWidgetByName(WBP, Request.WidgetName, Result.ErrorMessage);
+	if (!Widget)
+	{
+		return Result;
+	}
 
-	UWidget* NewParentWidget = FindWidgetByName(WBP, NewParentName, Result.ErrorMessage);
-	if (!NewParentWidget) return Result;
+	if (Request.ExpectedVirtualIndex.IsSet() || !Request.ExpectedParentName.IsEmpty())
+	{
+		FBlueprintHelperWidgetTreeSummary Summary;
+		if (!FBlueprintHelperWidgetServiceLocalUtils::TryReadCurrentWidgetTreeSummary(WBP, Summary, Result.ErrorMessage))
+		{
+			return Result;
+		}
+
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (!FBlueprintHelperWidgetTreePositionPolicy::ValidateExpectedPosition(
+			Summary,
+			Request.WidgetName,
+			Request.ExpectedParentName,
+			Request.ExpectedVirtualIndex,
+			ErrorCode,
+			ErrorMessage))
+		{
+			Result.ErrorMessage = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+			return Result;
+		}
+	}
+
+	if (!Request.SlotName.IsEmpty())
+	{
+		UWidget* HostWidget = FindWidgetByName(WBP, Request.NewParentName, Result.ErrorMessage);
+		if (!HostWidget)
+		{
+			return Result;
+		}
+
+		INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+		const FName SlotFName(*Request.SlotName);
+		if (!FBlueprintHelperWidgetServiceLocalUtils::HasNamedSlot(NamedSlotHost, SlotFName))
+		{
+			Result.ErrorMessage = TEXT("named_slot_not_found");
+			return Result;
+		}
+
+		const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizeNamedSlotVirtualIndex(Request.VirtualIndex);
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (!FBlueprintHelperWidgetTreePositionPolicy::ValidateNamedSlotVirtualIndex(VirtualIndex, ErrorCode, ErrorMessage))
+		{
+			Result.ErrorMessage = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+			return Result;
+		}
+
+		if (UWidget* ExistingContent = NamedSlotHost->GetContentForSlot(SlotFName))
+		{
+			if (ExistingContent != Widget)
+			{
+				Result.ErrorMessage = TEXT("named_slot_content_exists");
+				return Result;
+			}
+		}
+
+		if (Request.bDryRun)
+		{
+			Result.bSuccess = true;
+			Result.AffectedWidget = Request.WidgetName;
+			FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+			return Result;
+		}
+
+		int32 OldPanelChildIndex = INDEX_NONE;
+		UPanelWidget* OldPanelParent = UWidgetTree::FindWidgetParent(Widget, OldPanelChildIndex);
+		UWidget* OldNamedSlotHostWidget = nullptr;
+		FName OldNamedSlotName = NAME_None;
+		FBlueprintHelperWidgetServiceLocalUtils::FindNamedSlotOwnerForContent(
+			WBP,
+			Widget,
+			OldNamedSlotHostWidget,
+			OldNamedSlotName);
+		UWidgetTree* Tree = WBP->WidgetTree;
+		if (!Tree)
+		{
+			Result.ErrorMessage = TEXT("WidgetBlueprint does not have a WidgetTree.");
+			return Result;
+		}
+
+		FBlueprintHelperScopedAssetMutation Mutation(
+			FText::FromString(TEXT("BlueprintHelper Move Widget To Named Slot")), WBP);
+		Mutation.Modify(Tree);
+		Mutation.Modify(HostWidget);
+		Mutation.Modify(Widget);
+		if (OldPanelParent)
+		{
+			Mutation.Modify(OldPanelParent);
+			OldPanelParent->RemoveChild(Widget);
+		}
+		if (OldNamedSlotHostWidget)
+		{
+			Mutation.Modify(OldNamedSlotHostWidget);
+			if (INamedSlotInterface* OldNamedSlotHost = Cast<INamedSlotInterface>(OldNamedSlotHostWidget))
+			{
+				OldNamedSlotHost->SetContentForSlot(OldNamedSlotName, nullptr);
+			}
+		}
+		NamedSlotHost->SetContentForSlot(SlotFName, Widget);
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+		Mutation.Commit();
+
+		Result.bSuccess = true;
+		Result.AffectedWidget = Request.WidgetName;
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+		return Result;
+	}
+
+	UWidget* NewParentWidget = FindWidgetByName(WBP, Request.NewParentName, Result.ErrorMessage);
+	if (!NewParentWidget)
+	{
+		return Result;
+	}
 
 	UPanelWidget* NewParent = Cast<UPanelWidget>(NewParentWidget);
 	if (!NewParent)
 	{
-		Result.ErrorMessage = FString::Printf(TEXT("'%s' 不是面板 Widget。"), *NewParentName);
+		Result.ErrorMessage = FString::Printf(TEXT("'%s' is not a panel widget."), *Request.NewParentName);
 		return Result;
 	}
 
-	// 不允许移动到自己的子树下
 	TArray<UWidget*> Descendants;
 	UWidgetTree::GetChildWidgets(Widget, Descendants);
 	if (Descendants.Contains(NewParentWidget))
 	{
-		Result.ErrorMessage = TEXT("不能将 Widget 移动到自己的子树下。");
+		Result.ErrorMessage = TEXT("Cannot move widget into its own subtree.");
+		return Result;
+	}
+
+	const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizePanelVirtualIndex(Request.VirtualIndex);
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!FBlueprintHelperWidgetTreePositionPolicy::ValidateVirtualIndexForPanel(
+		NewParent,
+		VirtualIndex,
+		true,
+		ErrorCode,
+		ErrorMessage))
+	{
+		Result.ErrorMessage = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
 		return Result;
 	}
 
@@ -563,10 +881,18 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 		return Result;
 	}
 
+	if (Request.bDryRun)
+	{
+		Result.bSuccess = true;
+		Result.AffectedWidget = Request.WidgetName;
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+		return Result;
+	}
+
 	UWidgetTree* Tree = WBP->WidgetTree;
 	if (!Tree)
 	{
-		Result.ErrorMessage = TEXT("WidgetBlueprint 没有 WidgetTree。");
+		Result.ErrorMessage = TEXT("WidgetBlueprint does not have a WidgetTree.");
 		return Result;
 	}
 
@@ -581,36 +907,18 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 		OldSlotSnapshot.Parent->RemoveChild(Widget);
 	}
 
-	// 添加到新父节点
-	UPanelSlot* NewSlot = nullptr;
-	if (InsertIndex >= 0 && InsertIndex <= NewParent->GetChildrenCount())
-	{
-		NewSlot = NewParent->InsertChildAt(InsertIndex, Widget);
-	}
-	else
-	{
-		NewSlot = NewParent->AddChild(Widget);
-	}
-
+	UPanelSlot* NewSlot = NewParent->InsertChildAt(VirtualIndex, Widget);
 	if (!NewSlot)
 	{
 		FString RestoreError;
 		if (!FBlueprintHelperWidgetServiceLocalUtils::RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
 		{
-			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，且恢复旧 Slot 失败: %s"), *RestoreError);
+			Result.ErrorMessage = FString::Printf(TEXT("move_widget failed and restore failed: %s"), *RestoreError);
 			Mutation.Rollback();
 			return Result;
 		}
 		Mutation.Rollback();
-		RestoreError.Reset();
-		if (!FBlueprintHelperWidgetServiceLocalUtils::RestoreSlotSnapshot(Widget, OldSlotSnapshot, RestoreError))
-		{
-			Result.ErrorMessage = FString::Printf(TEXT("移动 Widget 失败，事务取消后恢复旧 Slot 失败: %s"), *RestoreError);
-			Mutation.RestorePrimaryPackageDirtyState();
-			return Result;
-		}
-		Mutation.RestorePrimaryPackageDirtyState();
-		Result.ErrorMessage = TEXT("移动 Widget 失败，已恢复旧父节点、索引和 Slot 属性。");
+		Result.ErrorMessage = TEXT("move_widget failed and old slot was restored.");
 		return Result;
 	}
 
@@ -618,8 +926,143 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
 	Mutation.Commit();
 
 	Result.bSuccess = true;
-	Result.AffectedWidget = WidgetName;
-	UE_LOG(LogWidgetService, Log, TEXT("移动 Widget '%s' 到 '%s'"), *WidgetName, *NewParentName);
+	Result.AffectedWidget = Request.WidgetName;
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::MoveWidget(
+	const FString& AssetPath,
+	const FString& WidgetName,
+	const FString& NewParentName,
+	int32 VirtualIndex) const
+{
+	FBlueprintHelperMoveWidgetRequest Request;
+	Request.AssetPath = AssetPath;
+	Request.WidgetName = WidgetName;
+	Request.NewParentName = NewParentName;
+	if (VirtualIndex >= 0)
+	{
+		Request.VirtualIndex = VirtualIndex;
+	}
+	return MoveWidget(Request);
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetNamedSlotContent(
+	const FBlueprintHelperSetNamedSlotContentRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
+
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	UWidgetTree* Tree = WBP->WidgetTree;
+	if (!Tree)
+	{
+		Result.ErrorMessage = TEXT("WidgetBlueprint does not have a WidgetTree.");
+		return Result;
+	}
+
+	UWidget* HostWidget = FindWidgetByName(WBP, Request.HostWidgetName, Result.ErrorMessage);
+	if (!HostWidget)
+	{
+		return Result;
+	}
+
+	INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+	const FName SlotFName(*Request.SlotName);
+	if (!FBlueprintHelperWidgetServiceLocalUtils::HasNamedSlot(NamedSlotHost, SlotFName))
+	{
+		Result.ErrorMessage = TEXT("named_slot_not_found");
+		return Result;
+	}
+
+	const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizeNamedSlotVirtualIndex(Request.VirtualIndex);
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!FBlueprintHelperWidgetTreePositionPolicy::ValidateNamedSlotVirtualIndex(VirtualIndex, ErrorCode, ErrorMessage))
+	{
+		Result.ErrorMessage = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+		return Result;
+	}
+
+	UWidget* ExistingContent = NamedSlotHost->GetContentForSlot(SlotFName);
+	if (!Request.ExpectedContentWidgetName.IsEmpty())
+	{
+		const FString ActualContentName = ExistingContent ? ExistingContent->GetName() : FString();
+		if (ActualContentName != Request.ExpectedContentWidgetName)
+		{
+			Result.ErrorMessage = TEXT("named_slot_expected_content_mismatch");
+			return Result;
+		}
+	}
+	if (ExistingContent && !Request.bReplaceExisting)
+	{
+		Result.ErrorMessage = TEXT("named_slot_content_exists");
+		return Result;
+	}
+	const FName NewName = Request.WidgetName.IsEmpty() ? NAME_None : FName(*Request.WidgetName);
+	UWidget* ExistingNameWidget = NewName.IsNone() ? nullptr : Tree->FindWidget(NewName);
+	const bool bNameCollisionRetiresWithExistingContent =
+		ExistingContent &&
+		ExistingNameWidget &&
+		FBlueprintHelperWidgetServiceLocalUtils::IsWidgetInSubtree(ExistingContent, ExistingNameWidget);
+	if (ExistingNameWidget && !bNameCollisionRetiresWithExistingContent)
+	{
+		Result.ErrorMessage = TEXT("widget_name_already_exists");
+		return Result;
+	}
+
+	UClass* Cls = FindWidgetClass(Request.WidgetClass, Result.ErrorMessage);
+	if (!Cls)
+	{
+		return Result;
+	}
+
+	if (Request.bDryRun)
+	{
+		Result.bSuccess = true;
+		Result.AffectedWidget = Request.WidgetName;
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Set Named Slot Content")), WBP);
+	Mutation.Modify(Tree);
+	Mutation.Modify(HostWidget);
+	if (ExistingContent)
+	{
+		ExistingContent->Modify();
+		NamedSlotHost->SetContentForSlot(SlotFName, nullptr);
+		if (!FBlueprintHelperWidgetVersionCompat::RetireSourceWidget(WBP, ExistingContent, Result.ErrorMessage))
+		{
+			Mutation.Rollback();
+			return Result;
+		}
+	}
+
+	UWidget* NewWidget = Tree->ConstructWidget<UWidget>(Cls, NewName);
+	if (!NewWidget)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Could not construct widget class '%s'."), *Request.WidgetClass);
+		Mutation.Rollback();
+		return Result;
+	}
+
+	NewWidget->SetFlags(RF_Transactional);
+	NamedSlotHost->SetContentForSlot(SlotFName, NewWidget);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WBP, NewWidget);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
+
+	Result.bSuccess = true;
+	Result.AffectedWidget = NewWidget->GetName();
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
 	return Result;
 }
 

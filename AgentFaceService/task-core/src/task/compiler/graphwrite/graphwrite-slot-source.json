@@ -7,7 +7,10 @@
       "compiler_id": "expression.construct",
       "kind": "construct",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_construct_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -19,10 +22,28 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["type", "struct_path", "args", "context_evidence"],
-      "keywords": ["construct", "struct"],
+      "validation_hints": [
+        "type",
+        "struct_path",
+        "args",
+        "context_evidence"
+      ],
+      "keywords": [
+        "construct",
+        "struct"
+      ],
       "when_to_use": "Use for struct construction expressions.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.construct",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "construct",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.expression.get.function_param",
@@ -30,13 +51,39 @@
       "compiler_id": "expression.get_function_param",
       "kind": "field",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_get_function_param_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
-      "supported_routes": ["graph.replace.function_body"],
-      "validation_hints": ["capability_id", "field_operation", "field_scope", "target", "function_name", "function_parameter"],
-      "keywords": ["field", "function_param", "parameter"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
+      "supported_routes": [
+        "graph.replace.function_body"
+      ],
+      "validation_hints": [
+        "capability_id",
+        "field_operation",
+        "field_scope",
+        "target",
+        "function_name",
+        "function_parameter"
+      ],
+      "keywords": [
+        "field",
+        "function_param",
+        "parameter"
+      ],
       "when_to_use": "Use inside function_body to consume an existing function input parameter.",
       "when_not_to_use": "Do not use for member variables or graph-local result_symbol values.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.get_function_param",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "get_function_param",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.expression.get.symbol_or_variable",
@@ -44,7 +91,10 @@
       "compiler_id": "expression.get",
       "kind": "get",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_get_symbol_or_variable_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -56,10 +106,28 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "name", "context_evidence"],
-      "keywords": ["get", "symbol", "variable"],
+      "validation_hints": [
+        "target",
+        "name",
+        "context_evidence"
+      ],
+      "keywords": [
+        "get",
+        "symbol",
+        "variable"
+      ],
       "when_to_use": "Use to consume a graph-local symbol or member variable.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.get_symbol_or_variable",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "get_symbol_or_variable",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.expression.literal",
@@ -67,7 +135,10 @@
       "compiler_id": "expression.literal",
       "kind": "literal",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_literal_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -79,10 +150,27 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["value_type", "value"],
-      "keywords": ["literal", "value_type", "value"],
+      "validation_hints": [
+        "value_type",
+        "value"
+      ],
+      "keywords": [
+        "literal",
+        "value_type",
+        "value"
+      ],
       "when_to_use": "Use for scalar literal values inside statement inputs.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.literal",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "literal",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.expression.op",
@@ -90,7 +178,10 @@
       "compiler_id": "expression.op",
       "kind": "op",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_op_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -102,10 +193,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["op", "args", "left", "right", "context_evidence"],
-      "keywords": ["op", "generic_ops"],
+      "validation_hints": [
+        "op",
+        "args",
+        "left",
+        "right",
+        "context_evidence"
+      ],
+      "keywords": [
+        "op",
+        "generic_ops"
+      ],
       "when_to_use": "Use for generic operator expressions such as boolean_and.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.op",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "op",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.expression.select",
@@ -113,7 +223,10 @@
       "compiler_id": "expression.select",
       "kind": "select",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_expression_select_template.json",
-      "insert_paths": ["statement.value", "statement.args.<pin>"],
+      "insert_paths": [
+        "statement.value",
+        "statement.args.<pin>"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -125,10 +238,28 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["condition", "options", "context_evidence"],
-      "keywords": ["select", "condition", "options"],
+      "validation_hints": [
+        "condition",
+        "options",
+        "context_evidence"
+      ],
+      "keywords": [
+        "select",
+        "condition",
+        "options"
+      ],
       "when_to_use": "Use for generic select expressions with explicit result type proof.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.expression.select",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "expression",
+        "quick_access_id": "select",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.call.auto_search",
@@ -136,7 +267,9 @@
       "compiler_id": "statement.call",
       "kind": "call",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_call_auto_search_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -148,10 +281,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "args", "resolution_policy", "action_selection"],
-      "keywords": ["call", "auto_search", "candidate"],
+      "validation_hints": [
+        "target",
+        "args",
+        "resolution_policy",
+        "action_selection"
+      ],
+      "keywords": [
+        "call",
+        "auto_search",
+        "candidate"
+      ],
       "when_to_use": "Use when the Agent knows intent but needs preview candidate search.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.call.auto_search",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "call",
+        "quick_access_id": "auto_search",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.call.direct",
@@ -159,7 +311,9 @@
       "compiler_id": "statement.call",
       "kind": "call",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_call_direct_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -171,10 +325,27 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "args"],
-      "keywords": ["call", "function", "args"],
+      "validation_hints": [
+        "target",
+        "args"
+      ],
+      "keywords": [
+        "call",
+        "function",
+        "args"
+      ],
       "when_to_use": "Use when the callable target is already known.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.call.direct",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "call",
+        "quick_access_id": "direct",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.call.result_symbol",
@@ -182,7 +353,9 @@
       "compiler_id": "statement.call",
       "kind": "call",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_call_result_symbol_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -194,10 +367,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "args", "result_symbol", "value_type"],
-      "keywords": ["call", "result_symbol", "impure"],
+      "validation_hints": [
+        "target",
+        "args",
+        "result_symbol",
+        "value_type"
+      ],
+      "keywords": [
+        "call",
+        "result_symbol",
+        "impure"
+      ],
       "when_to_use": "Use when an impure call produces a value consumed by a later statement.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.call.result_symbol",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "call",
+        "quick_access_id": "result_symbol",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.component_bound_event",
@@ -205,12 +397,34 @@
       "compiler_id": "statement.component_bound_event",
       "kind": "component_bound_event",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_component_bound_event_template.json",
-      "insert_paths": ["body.statements[]"],
-      "supported_routes": ["graph.append.event_delegate"],
-      "validation_hints": ["component", "delegate", "handler"],
-      "keywords": ["component_bound_event", "delegate", "handler"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
+      "supported_routes": [
+        "graph.append.event_delegate"
+      ],
+      "validation_hints": [
+        "component",
+        "delegate",
+        "handler"
+      ],
+      "keywords": [
+        "component_bound_event",
+        "delegate",
+        "handler"
+      ],
       "when_to_use": "Use to declare a component-bound event handler relationship.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "event_delegate.component.bound_event",
+        "family": "graph_write",
+        "cluster_id": "event_delegate",
+        "operation_id": "component",
+        "quick_access_id": "bound_event",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.container_action",
@@ -218,12 +432,35 @@
       "compiler_id": "statement.container_action",
       "kind": "container_action",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_container_action_template.json",
-      "insert_paths": ["body.statements[]"],
-      "supported_routes": ["graph.append.container_action"],
-      "validation_hints": ["container_kind", "container_operation", "target"],
-      "keywords": ["container_action", "array", "set", "map"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
+      "supported_routes": [
+        "graph.append.container_action"
+      ],
+      "validation_hints": [
+        "container_kind",
+        "container_operation",
+        "target"
+      ],
+      "keywords": [
+        "container_action",
+        "array",
+        "set",
+        "map"
+      ],
       "when_to_use": "Use for array, set, or map operations.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "container.action.default",
+        "family": "graph_write",
+        "cluster_id": "container",
+        "operation_id": "action",
+        "quick_access_id": "default",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.control.branch",
@@ -231,7 +468,9 @@
       "compiler_id": "statement.control.branch",
       "kind": "control",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_control_branch_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -243,10 +482,28 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["control", "condition", "then", "else"],
-      "keywords": ["control", "branch"],
+      "validation_hints": [
+        "control",
+        "condition",
+        "then",
+        "else"
+      ],
+      "keywords": [
+        "control",
+        "branch"
+      ],
       "when_to_use": "Use for explicit if/else execution flow.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.control.branch",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "control",
+        "quick_access_id": "branch",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.control.return",
@@ -254,12 +511,34 @@
       "compiler_id": "statement.control.return",
       "kind": "control",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_control_return_template.json",
-      "insert_paths": ["body.statements[]"],
-      "supported_routes": ["graph.replace.function_body"],
-      "validation_hints": ["control", "return", "value"],
-      "keywords": ["control", "return", "function"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
+      "supported_routes": [
+        "graph.replace.function_body"
+      ],
+      "validation_hints": [
+        "control",
+        "return",
+        "value"
+      ],
+      "keywords": [
+        "control",
+        "return",
+        "function"
+      ],
       "when_to_use": "Use as the terminal return statement in a function body.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.control.return",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "control",
+        "quick_access_id": "return",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.control.switch",
@@ -267,7 +546,9 @@
       "compiler_id": "statement.control.generic",
       "kind": "control",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_control_switch_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -279,10 +560,28 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["control", "selector", "cases", "default"],
-      "keywords": ["control", "switch"],
+      "validation_hints": [
+        "control",
+        "selector",
+        "cases",
+        "default"
+      ],
+      "keywords": [
+        "control",
+        "switch"
+      ],
       "when_to_use": "Use for switch-style control statements with explicit operation evidence.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.control.switch",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "control",
+        "quick_access_id": "switch",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.convert",
@@ -290,7 +589,9 @@
       "compiler_id": "statement.convert",
       "kind": "convert",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_convert_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -302,10 +603,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["transform_operation", "target_class_path", "args", "context_evidence"],
-      "keywords": ["convert", "dynamic_cast", "transform"],
+      "validation_hints": [
+        "transform_operation",
+        "target_class_path",
+        "args",
+        "context_evidence"
+      ],
+      "keywords": [
+        "convert",
+        "dynamic_cast",
+        "transform"
+      ],
       "when_to_use": "Use for conversion or transform statements that need GenericOps evidence.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.convert.default",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "convert",
+        "quick_access_id": "default",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.create",
@@ -313,7 +633,9 @@
       "compiler_id": "statement.create",
       "kind": "create",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_create_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -325,10 +647,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["create_operation", "target", "class_path", "args"],
-      "keywords": ["create", "construct_object", "asset_action"],
+      "validation_hints": [
+        "create_operation",
+        "target",
+        "class_path",
+        "args"
+      ],
+      "keywords": [
+        "create",
+        "construct_object",
+        "asset_action"
+      ],
       "when_to_use": "Use for object construction, asset action create, or function-backed create statements.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.create.default",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "create",
+        "quick_access_id": "default",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.delegate_bind",
@@ -336,12 +677,33 @@
       "compiler_id": "statement.delegate",
       "kind": "delegate.bind",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_delegate_bind_template.json",
-      "insert_paths": ["body.statements[]"],
-      "supported_routes": ["graph.append.event_delegate"],
-      "validation_hints": ["target", "delegate", "handler"],
-      "keywords": ["delegate.bind", "event_delegate"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
+      "supported_routes": [
+        "graph.append.event_delegate"
+      ],
+      "validation_hints": [
+        "target",
+        "delegate",
+        "handler"
+      ],
+      "keywords": [
+        "delegate.bind",
+        "event_delegate"
+      ],
       "when_to_use": "Use to bind a delegate to a handler.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "event_delegate.delegate.bind",
+        "family": "graph_write",
+        "cluster_id": "event_delegate",
+        "operation_id": "delegate",
+        "quick_access_id": "bind",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.field.struct_member_set",
@@ -349,7 +711,9 @@
       "compiler_id": "statement.field",
       "kind": "field",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_field_struct_member_set_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -361,10 +725,29 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["field_operation", "field_scope", "target", "property_path", "capability_facts"],
-      "keywords": ["field", "struct_member_set"],
+      "validation_hints": [
+        "field_operation",
+        "field_scope",
+        "target",
+        "property_path",
+        "capability_facts"
+      ],
+      "keywords": [
+        "field",
+        "struct_member_set"
+      ],
       "when_to_use": "Use for struct member field writes with capability facts.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.field.struct_member_set",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "field",
+        "quick_access_id": "struct_member_set",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.let",
@@ -372,7 +755,9 @@
       "compiler_id": "statement.let",
       "kind": "let",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_let_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -384,10 +769,27 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["symbol", "value"],
-      "keywords": ["let", "symbol", "value"],
+      "validation_hints": [
+        "symbol",
+        "value"
+      ],
+      "keywords": [
+        "let",
+        "symbol",
+        "value"
+      ],
       "when_to_use": "Use when a reusable graph-local symbol should be produced by an expression.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.let.default",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "let",
+        "quick_access_id": "default",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.schedule",
@@ -395,12 +797,34 @@
       "compiler_id": "statement.schedule",
       "kind": "schedule",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_schedule_template.json",
-      "insert_paths": ["body.statements[]"],
-      "supported_routes": ["graph.append.generic_schedule"],
-      "validation_hints": ["schedule_operation", "args", "graph_latent_allowed"],
-      "keywords": ["schedule", "timer", "delay"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
+      "supported_routes": [
+        "graph.append.generic_schedule"
+      ],
+      "validation_hints": [
+        "schedule_operation",
+        "args",
+        "graph_latent_allowed"
+      ],
+      "keywords": [
+        "schedule",
+        "timer",
+        "delay"
+      ],
       "when_to_use": "Use for delay, timer, or other scheduled execution operations.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "schedule.timer.default",
+        "family": "graph_write",
+        "cluster_id": "schedule",
+        "operation_id": "timer",
+        "quick_access_id": "default",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.set.variable",
@@ -408,7 +832,9 @@
       "compiler_id": "statement.set",
       "kind": "set",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_set_variable_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -420,10 +846,26 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "value"],
-      "keywords": ["set", "variable"],
+      "validation_hints": [
+        "target",
+        "value"
+      ],
+      "keywords": [
+        "set",
+        "variable"
+      ],
       "when_to_use": "Use for member variable assignment with a value expression.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.set.variable",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "set",
+        "quick_access_id": "variable",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     },
     {
       "slot_id": "graph.statement.set_property",
@@ -431,7 +873,9 @@
       "compiler_id": "statement.set_property",
       "kind": "set_property",
       "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_set_property_template.json",
-      "insert_paths": ["body.statements[]"],
+      "insert_paths": [
+        "body.statements[]"
+      ],
       "supported_routes": [
         "graph.append.container_action",
         "graph.append.custom_event",
@@ -443,10 +887,27 @@
         "graph.replace.function_body",
         "graph.replace.macro_body"
       ],
-      "validation_hints": ["target", "property_path", "value"],
-      "keywords": ["set_property", "property_path"],
+      "validation_hints": [
+        "target",
+        "property_path",
+        "value"
+      ],
+      "keywords": [
+        "set_property",
+        "property_path"
+      ],
       "when_to_use": "Use for object or component property assignment.",
-      "status": "active"
+      "status": "active",
+      "quick_access": {
+        "template_id": "generic_ops.set.property",
+        "family": "graph_write",
+        "cluster_id": "generic_ops",
+        "operation_id": "set",
+        "quick_access_id": "property",
+        "unsupported_write_modes": [
+          "graph.patch"
+        ]
+      }
     }
   ]
 }

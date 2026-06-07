@@ -826,23 +826,23 @@ test('read context capabilities is a compact local discovery tool', async () => 
   assert.equal(result.data?.['schema'], 'ReadContextCapabilities.v1');
   assert.deepEqual(result.data?.['formats'], ['logic_flow', 'logic_md', 'logic_json']);
   assert.deepEqual(result.data?.['read_type_ids'], [
-    'asset_context',
     'blueprint_logic',
-    'graph_context',
     'component_context',
+    'data_asset_context',
+    'data_table_context',
+    'graph_context',
     'variable_context',
     'widget_context',
-    'data_table_context',
-    'data_asset_context',
-    'object_property_context',
   ]);
 
   const readTypes = result.data?.['read_types'] as Array<Record<string, unknown>>;
   const blueprintLogic = readTypes.find((entry) => entry['read_type'] === 'blueprint_logic');
   assert.ok(blueprintLogic);
-  assert.deepEqual(blueprintLogic['unsupported_formats'], []);
+  assert.deepEqual(blueprintLogic['unsupported_formats'], ['logic_md']);
   assert.deepEqual(blueprintLogic['unsupported_asset_types'], [
     'asset',
+    'blueprint',
+    'graph',
     'component',
     'member_variable',
     'event_dispatcher',
@@ -855,11 +855,13 @@ test('read context capabilities is a compact local discovery tool', async () => 
   ]);
 
   const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
-  assert.ok(assetContext);
-  assert.deepEqual(assetContext['unsupported_formats'], ['logic_flow', 'logic_md', 'logic_json']);
+  assert.equal(assetContext, undefined);
   const graphContext = readTypes.find((entry) => entry['read_type'] === 'graph_context');
   assert.ok(graphContext);
   assert.deepEqual(graphContext['unsupported_formats'], ['logic_flow', 'logic_md']);
+  const widgetContext = readTypes.find((entry) => entry['read_type'] === 'widget_context');
+  assert.ok(widgetContext);
+  assert.deepEqual(widgetContext['unsupported_formats'], ['logic_md']);
 });
 
 test('read_context rejects removed and unsupported view formats', () => {

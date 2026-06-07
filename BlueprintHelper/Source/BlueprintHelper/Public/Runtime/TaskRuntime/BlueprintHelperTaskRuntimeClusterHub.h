@@ -43,6 +43,12 @@ enum class EBlueprintHelperTaskRuntimeCluster : uint8
 	ObjectProperty
 };
 
+struct FBlueprintHelperTaskRuntimeClusterExecutor
+{
+	EBlueprintHelperTaskRuntimeCluster Cluster = EBlueprintHelperTaskRuntimeCluster::Unknown;
+	TFunction<FBlueprintHelperToolResultBase(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)> ExecuteStep;
+};
+
 class BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimeClusterHub
 {
 public:
@@ -83,6 +89,10 @@ public:
 		FBlueprintHelperWriteReviewEvidence& OutEvidence) const;
 
 private:
+	void RegisterClusterExecutors();
+	const FBlueprintHelperTaskRuntimeClusterExecutor* FindClusterExecutor(
+		EBlueprintHelperTaskRuntimeCluster Cluster) const;
+
 	FBlueprintHelperGraphWriteTaskRuntimeCluster GraphWriteCluster;
 	FBlueprintHelperBlueprintVariablesTaskRuntimeCluster BlueprintVariablesCluster;
 	FBlueprintHelperSignatureTaskRuntimeCluster SignatureCluster;
@@ -92,4 +102,5 @@ private:
 	FBlueprintHelperUMGWidgetTaskRuntimeCluster UMGWidgetCluster;
 	FBlueprintHelperDataTableTaskRuntimeCluster DataTableCluster;
 	FBlueprintHelperObjectPropertyTaskRuntimeCluster ObjectPropertyCluster;
+	TArray<FBlueprintHelperTaskRuntimeClusterExecutor> ClusterExecutors;
 };

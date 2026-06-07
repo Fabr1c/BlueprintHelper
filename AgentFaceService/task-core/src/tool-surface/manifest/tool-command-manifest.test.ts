@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  getToolTemplateDispatch,
   listToolCapabilities,
   TOOL_COMMAND_MANIFEST_SCHEMA as exportedSchema,
 } from '../tool-registry.js';
@@ -72,15 +71,11 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   assert.equal(registry.get('blueprinthelper_get_task_result')?.tool_id, 'project.read.task_result');
 });
 
-test('manifest mirror keeps tools templates route ids aligned with catalog dispatch', () => {
+test('manifest mirror keeps GraphWrite route ids descriptor-backed', () => {
   const registry = buildReadonlyToolCommandManifestRegistry();
   const manifest = registry.require('blueprint.write.taskspec.execute');
-  const dispatch = getToolTemplateDispatch('blueprint.write.taskspec.execute');
-  assert.deepEqual(
-    manifest.route_refs,
-    dispatch.routes.map((route) => route.route_id),
-  );
   assert.equal(manifest.route_refs.includes('graph.replace.function_body'), true);
+  assert.equal(manifest.route_refs.includes('blueprint.create_feature'), true);
 });
 
 test('manifest registry rejects duplicate ids and ambiguous lookup keys without canonical aliases', () => {

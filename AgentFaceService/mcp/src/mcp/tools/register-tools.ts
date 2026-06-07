@@ -2207,15 +2207,26 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           .describe('Widget class name without U prefix, e.g. TextBlock, Button, CanvasPanel, VerticalBox, Image'),
         parent_name: z.string().optional()
           .describe('Parent panel widget name. Omit to add to root panel.'),
+        slot_name: z.string().optional()
+          .describe('Named slot on parent_name host. Omit for panel insertion.'),
+        virtual_index: z.number().int().min(0).optional()
+          .describe('Authoritative insert position within the target parent or slot.'),
+        expected_parent_name: z.string().optional()
+          .describe('Optional stale-context guard for the expected current parent.'),
         widget_name: z.string().optional()
           .describe('Name for the new widget. Auto-generated if omitted.'),
+        dry_run: z.boolean().optional().default(false),
       }),
     },
-    async ({ asset_path, widget_class, parent_name, widget_name }) => {
+    async ({ asset_path, widget_class, parent_name, slot_name, virtual_index, expected_parent_name, widget_name, dry_run }) => {
       try {
         const payload: Record<string, unknown> = { asset_path, widget_class };
         if (parent_name) payload.parent_name = parent_name;
+        if (slot_name) payload.slot_name = slot_name;
+        if (virtual_index !== undefined) payload.virtual_index = virtual_index;
+        if (expected_parent_name) payload.expected_parent_name = expected_parent_name;
         if (widget_name) payload.widget_name = widget_name;
+        if (dry_run !== undefined) payload.dry_run = dry_run;
         const resp = await bridge.sendCommand('add_widget', payload);
         return toToolResult(resp);
       } catch (err) {
@@ -2252,15 +2263,26 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       inputSchema: z.object({
         asset_path: widgetAssetPath,
         widget_name: z.string().describe('Name of the widget to move'),
-        new_parent: z.string().describe('Name of the new parent panel widget'),
-        insert_index: z.number().optional()
-          .describe('Position to insert at (-1 or omit for end)'),
+        new_parent_name: z.string().describe('Name of the new parent panel widget or named-slot host'),
+        slot_name: z.string().optional()
+          .describe('Named slot on new_parent_name host. Omit for panel move.'),
+        virtual_index: z.number().int().min(0).optional()
+          .describe('Authoritative insert position within the target parent or slot.'),
+        expected_parent_name: z.string().optional()
+          .describe('Optional stale-context guard for the expected current parent.'),
+        expected_virtual_index: z.number().int().min(0).optional()
+          .describe('Optional stale-context guard for current virtual_index.'),
+        dry_run: z.boolean().optional().default(false),
       }),
     },
-    async ({ asset_path, widget_name, new_parent, insert_index }) => {
+    async ({ asset_path, widget_name, new_parent_name, slot_name, virtual_index, expected_parent_name, expected_virtual_index, dry_run }) => {
       try {
-        const payload: Record<string, unknown> = { asset_path, widget_name, new_parent };
-        if (insert_index !== undefined) payload.insert_index = insert_index;
+        const payload: Record<string, unknown> = { asset_path, widget_name, new_parent_name };
+        if (slot_name) payload.slot_name = slot_name;
+        if (virtual_index !== undefined) payload.virtual_index = virtual_index;
+        if (expected_parent_name) payload.expected_parent_name = expected_parent_name;
+        if (expected_virtual_index !== undefined) payload.expected_virtual_index = expected_virtual_index;
+        if (dry_run !== undefined) payload.dry_run = dry_run;
         const resp = await bridge.sendCommand('move_widget', payload);
         return toToolResult(resp);
       } catch (err) {
@@ -2270,6 +2292,40 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   );
 
   // 鈹€鈹€鈹€ 27. get_widget_properties 鈹€鈹€鈹€
+  server.registerTool(
+    'blueprint_set_named_slot_content',
+    {
+      description: legacyWriteExpertDescription('Set or replace content for a named slot in a WidgetBlueprint.'),
+      inputSchema: z.object({
+        asset_path: widgetAssetPath,
+        host_widget_name: z.string().describe('Widget that exposes the named slot'),
+        slot_name: z.string().describe('Named slot to set, e.g. Body'),
+        widget_class: z.string().describe('Widget class or blueprint class for the content'),
+        widget_name: z.string().optional().describe('Name for the content widget. Auto-generated if omitted.'),
+        virtual_index: z.number().int().min(0).optional()
+          .describe('Named slots accept 0 or omission.'),
+        expected_content_widget_name: z.string().optional()
+          .describe('Optional stale-context guard for current content.'),
+        replace_existing: z.boolean().optional().default(false),
+        dry_run: z.boolean().optional().default(false),
+      }),
+    },
+    async ({ asset_path, host_widget_name, slot_name, widget_class, widget_name, virtual_index, expected_content_widget_name, replace_existing, dry_run }) => {
+      try {
+        const payload: Record<string, unknown> = { asset_path, host_widget_name, slot_name, widget_class };
+        if (widget_name) payload.widget_name = widget_name;
+        if (virtual_index !== undefined) payload.virtual_index = virtual_index;
+        if (expected_content_widget_name) payload.expected_content_widget_name = expected_content_widget_name;
+        if (replace_existing !== undefined) payload.replace_existing = replace_existing;
+        if (dry_run !== undefined) payload.dry_run = dry_run;
+        const resp = await bridge.sendCommand('set_named_slot_content', payload);
+        return toToolResult(resp);
+      } catch (err) {
+        return toErrorResult(err);
+      }
+    },
+  );
+
   server.registerTool(
     'blueprint_get_widget_properties',
     {

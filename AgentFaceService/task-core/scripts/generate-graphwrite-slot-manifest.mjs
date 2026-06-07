@@ -87,6 +87,7 @@ function validateSlots(slots, visibleRouteIds) {
     if (!['active', 'planned', 'hidden'].includes(slot.status)) {
       throw new Error(`GraphWrite slot ${slot.slot_id} has invalid status: ${slot.status}`);
     }
+    validateQuickAccess(slot);
     for (const arrayField of ['insert_paths', 'supported_routes', 'validation_hints', 'keywords']) {
       if (!Array.isArray(slot[arrayField]) || slot[arrayField].some((entry) => typeof entry !== 'string' || entry.length === 0)) {
         throw new Error(`GraphWrite slot ${slot.slot_id} has invalid ${arrayField}.`);
@@ -104,6 +105,29 @@ function validateSlots(slots, visibleRouteIds) {
           throw new Error(`Active GraphWrite slot ${slot.slot_id} exposes hidden, planned, or unknown route: ${routeId}`);
         }
       }
+    }
+  }
+}
+
+function validateQuickAccess(slot) {
+  const quickAccess = slot.quick_access;
+  if (!quickAccess || typeof quickAccess !== 'object' || Array.isArray(quickAccess)) {
+    throw new Error(`GraphWrite slot ${slot.slot_id} requires quick_access metadata.`);
+  }
+  for (const field of ['template_id', 'family', 'cluster_id', 'operation_id', 'quick_access_id']) {
+    if (typeof quickAccess[field] !== 'string' || quickAccess[field].length === 0) {
+      throw new Error(`GraphWrite slot ${slot.slot_id} has invalid quick_access.${field}.`);
+    }
+  }
+  if (quickAccess.family !== 'graph_write') {
+    throw new Error(`GraphWrite slot ${slot.slot_id} has invalid quick_access.family: ${quickAccess.family}`);
+  }
+  if (!Array.isArray(quickAccess.unsupported_write_modes)) {
+    return;
+  }
+  for (const writeMode of quickAccess.unsupported_write_modes) {
+    if (!['graph.append', 'graph.replace', 'graph.merge', 'graph.patch'].includes(writeMode)) {
+      throw new Error(`GraphWrite slot ${slot.slot_id} has invalid unsupported write mode: ${writeMode}`);
     }
   }
 }

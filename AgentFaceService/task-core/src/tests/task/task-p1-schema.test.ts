@@ -127,12 +127,13 @@ describe('P1 TaskSpec schema validation', () => {
       baseSpec('edit_umg_widget', {
         widget_strategy: 'widget_blueprint_edit',
         changes: [
-          {
-            kind: 'create_widget',
-            widget_class: 'TextBlock',
-            widget_name: 'TitleText',
-            parent_widget_name: '',
-          },
+            {
+              kind: 'create_widget',
+              widget_class: 'TextBlock',
+              widget_name: 'TitleText',
+              parent_name: 'Root',
+              virtual_index: 0,
+            },
         ],
       }, {
         target: {

@@ -4,5 +4,8 @@
   "target": {
     "asset_path": "__WIDGET_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
+  },
+  "view": {
+    "format": "logic_json"
   }
 }

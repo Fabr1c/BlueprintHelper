@@ -4,6 +4,8 @@ import test from 'node:test';
 import type { BridgeResponse } from '../../../bridge/bridge-client.js';
 import { TaskTimingTrace } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
+import { getActiveReadContextRouteDescriptors } from '../../templates/read-context-template-registry.js';
+import { buildReadContextCapabilitiesPayload } from './read-context-capabilities.js';
 import { executeReadContext } from './read-context-handler.js';
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
 import {
@@ -52,6 +54,17 @@ test('read_context logic formats declare UE callback capabilities with task-core
     ],
   );
   assert.equal(LOGIC_PROJECTION_OWNER, 'task-core');
+});
+
+test('read_context capabilities are derived from active ReadContext template registry routes', () => {
+  const payload = buildReadContextCapabilitiesPayload();
+  const activeRoutes = getActiveReadContextRouteDescriptors();
+  const readTypeIds = payload['read_type_ids'] as string[];
+
+  assert.equal(activeRoutes.every((route) => readTypeIds.includes(route.read_type)), true);
+  assert.equal(readTypeIds.includes('widget_context'), true);
+  assert.equal(readTypeIds.includes('data_table_context'), true);
+  assert.equal(readTypeIds.includes('material_context'), false);
 });
 
 function makeLogicJsonWithExternalAnchors(): Record<string, unknown> {
@@ -486,6 +499,84 @@ test('read_context component filter preserves component readback facts', async (
   assert.deepEqual(components[0]?.['selected_defaults'], { mobility: 'movable' });
   assert.equal(components[0]?.['readback_fingerprint'], 'abcdef0123456789');
   assert.equal(components[0]?.['can_reparent'], true);
+});
+
+test('read_context widget tree routes through bridge and projects logic_flow', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'widget_tree',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'WidgetContext.v1',
+        asset_path: '/Game/UI/WBP_Menu',
+        root: {
+          widget_name: 'Canvas_Root',
+          widget_class_path: '/Script/UMG.CanvasPanel',
+          virtual_index: 0,
+          children: [
+            { widget_name: 'Dialog_Shell', widget_class_path: '/Script/UMG.ExpandableArea', virtual_index: 0, children: [] },
+          ],
+        },
+        index: {
+          Canvas_Root: { widget_class_path: '/Script/UMG.CanvasPanel', virtual_index: 0 },
+          Dialog_Shell: {
+            widget_class_path: '/Script/UMG.ExpandableArea',
+            parent_name: 'Canvas_Root',
+            virtual_index: 0,
+          },
+          BodyText: {
+            widget_class_path: '/Script/UMG.TextBlock',
+            parent_name: 'Dialog_Shell',
+            slot_name: 'Body',
+            virtual_index: 0,
+          },
+        },
+        named_slots: [
+          {
+            host_widget_name: 'Dialog_Shell',
+            slot_name: 'Body',
+            content_widget_name: 'BodyText',
+            virtual_index: 0,
+          },
+        ],
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'widget_context',
+    target: {
+      asset_path: '/Game/UI/WBP_Menu',
+      target_type: 'blueprint',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_widget_tree');
+  assert.deepEqual(bridgeCalls[0]?.payload, { asset_path: '/Game/UI/WBP_Menu' });
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'WidgetTreeLogicFlow.v1');
+  assert.equal(payload['asset_path'], '/Game/UI/WBP_Menu');
+  assert.equal(payload['flow'], 'widgetroot[CanvasPanel] -> (Dialog_Shell[ExpandableArea](Body[NamedSlot](BodyText[TextBlock])))');
+  assert.deepEqual(payload['warnings'], []);
 });
 
 test('read_context handler records timing around bridge and post-processing stages', async () => {

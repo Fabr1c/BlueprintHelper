@@ -76,6 +76,16 @@ test('GraphWrite return slot is scoped to function body discovery', () => {
   }
 });
 
+test('GraphWrite slots declare four-layer quick-access metadata', () => {
+  for (const slot of getAllGraphWriteSlotDescriptors()) {
+    assert.equal(slot.quick_access.family, 'graph_write');
+    assert.equal(slot.quick_access.template_id.split('.').length >= 3, true, `${slot.slot_id} template_id`);
+    assert.equal(slot.quick_access.cluster_id.length > 0, true, `${slot.slot_id} cluster`);
+    assert.equal(slot.quick_access.operation_id.length > 0, true, `${slot.slot_id} operation`);
+    assert.equal(slot.quick_access.quick_access_id.length > 0, true, `${slot.slot_id} quick access`);
+  }
+});
+
 function resolvePluginPath(relativePath: string): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../..', relativePath);
 }

@@ -4,10 +4,12 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/ExpandableArea.h"
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 #include "UObject/Package.h"
 #include "WidgetBlueprint.h"
@@ -35,6 +37,8 @@ struct FWidgetServiceDryRunFixture
 	UWidgetBlueprint* Blueprint = nullptr;
 	UCanvasPanel* Root = nullptr;
 	UTextBlock* ExistingText = nullptr;
+	UTextBlock* SecondText = nullptr;
+	UExpandableArea* NamedSlotHost = nullptr;
 };
 
 static FWidgetServiceDryRunFixture MakeWidgetServiceDryRunFixture(const FString& Prefix)
@@ -54,15 +58,40 @@ static FWidgetServiceDryRunFixture MakeWidgetServiceDryRunFixture(const FString&
 		UCanvasPanel::StaticClass(),
 		TEXT("RootCanvas"));
 	Fixture.Blueprint->WidgetTree->RootWidget = Fixture.Root;
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.Root);
 
 	Fixture.ExistingText = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
 		UTextBlock::StaticClass(),
 		TEXT("ExistingText"));
 	Fixture.ExistingText->SetRenderOpacity(1.0f);
 	Fixture.Root->AddChild(Fixture.ExistingText);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.ExistingText);
+
+	Fixture.SecondText = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(),
+		TEXT("SecondText"));
+	Fixture.Root->AddChild(Fixture.SecondText);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.SecondText);
 
 	Fixture.Package->SetDirtyFlag(false);
 	return Fixture;
+}
+
+static bool IsWidgetVariableRegistered(UWidgetBlueprint* Blueprint, UWidget* Widget)
+{
+#if WITH_EDITORONLY_DATA
+	if (!Blueprint || !Widget)
+	{
+		return false;
+	}
+#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+	return Blueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName());
+#else
+	return Widget->bIsVariable;
+#endif
+#else
+	return false;
+#endif
 }
 
 static TSharedPtr<FJsonObject> MakeWidgetTaskPlanStep(
@@ -124,9 +153,11 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 {
 	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
 	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::AddWidget);
-	Op->SetStringField(TEXT("parent_widget_name"), TEXT("CanvasRoot"));
+	Op->SetStringField(TEXT("parent_name"), TEXT("CanvasRoot"));
 	Op->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
 	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
+	Op->SetNumberField(TEXT("virtual_index"), 1);
+	Op->SetStringField(TEXT("expected_parent_name"), TEXT("CanvasRoot"));
 
 	TArray<TSharedPtr<FJsonValue>> Ops;
 	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
@@ -164,7 +195,15 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 
 	FString ParentName;
 	TestTrue(TEXT("payload carries parent_name for current service"), LoweredOp.Payload->TryGetStringField(TEXT("parent_name"), ParentName));
-	TestEqual(TEXT("parent_widget_name lowers to parent_name"), ParentName, FString(TEXT("CanvasRoot")));
+	TestEqual(TEXT("parent_name preserved"), ParentName, FString(TEXT("CanvasRoot")));
+
+	double VirtualIndex = -1.0;
+	TestTrue(TEXT("payload carries virtual_index"), LoweredOp.Payload->TryGetNumberField(TEXT("virtual_index"), VirtualIndex));
+	TestEqual(TEXT("virtual_index preserved"), static_cast<int32>(FMath::RoundToInt(VirtualIndex)), 1);
+
+	FString ExpectedParentName;
+	TestTrue(TEXT("payload carries expected_parent_name"), LoweredOp.Payload->TryGetStringField(TEXT("expected_parent_name"), ExpectedParentName));
+	TestEqual(TEXT("expected_parent_name preserved"), ExpectedParentName, FString(TEXT("CanvasRoot")));
 
 	FString WidgetClass;
 	TestTrue(TEXT("payload carries widget_class"), LoweredOp.Payload->TryGetStringField(TEXT("widget_class"), WidgetClass));
@@ -178,6 +217,143 @@ bool FBlueprintHelperWidgetTaskPlanAddWidgetLoweringTest::RunTest(const FString&
 	TestTrue(TEXT("payload carries dry_run"), LoweredOp.Payload->TryGetBoolField(TEXT("dry_run"), bPayloadDryRun));
 	TestTrue(TEXT("preview payload preserves dry_run=true"), bPayloadDryRun);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanMoveWidgetLoweringTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.MoveWidgetLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanMoveWidgetLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::MoveWidget);
+	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
+	Op->SetStringField(TEXT("new_parent_name"), TEXT("CanvasRoot"));
+	Op->SetNumberField(TEXT("virtual_index"), 1);
+	Op->SetStringField(TEXT("expected_parent_name"), TEXT("OldRoot"));
+	Op->SetNumberField(TEXT("expected_virtual_index"), 0);
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("umg_widget move_widget lowers successfully"), bLowered);
+	TestEqual(TEXT("one lowered widget op emitted"), LoweredStep.Ops.Num(), 1);
+	if (LoweredStep.Ops.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
+	TestEqual(TEXT("move op lowers to service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget));
+
+	double VirtualIndex = -1.0;
+	TestTrue(TEXT("payload carries virtual_index"), LoweredOp.Payload->TryGetNumberField(TEXT("virtual_index"), VirtualIndex));
+	TestEqual(TEXT("virtual_index preserved"), static_cast<int32>(FMath::RoundToInt(VirtualIndex)), 1);
+
+	double ExpectedVirtualIndex = -1.0;
+	TestTrue(TEXT("payload carries expected_virtual_index"), LoweredOp.Payload->TryGetNumberField(TEXT("expected_virtual_index"), ExpectedVirtualIndex));
+	TestEqual(TEXT("expected_virtual_index preserved"), static_cast<int32>(FMath::RoundToInt(ExpectedVirtualIndex)), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanSetNamedSlotContentLoweringTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.SetNamedSlotContentLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanSetNamedSlotContentLoweringTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::SetNamedSlotContent);
+	Op->SetStringField(TEXT("host_widget_name"), TEXT("DialogShell"));
+	Op->SetStringField(TEXT("slot_name"), TEXT("Body"));
+	Op->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
+	Op->SetStringField(TEXT("widget_name"), TEXT("BodyText"));
+	Op->SetNumberField(TEXT("virtual_index"), 0);
+	Op->SetBoolField(TEXT("replace_existing"), true);
+	Op->SetStringField(TEXT("expected_content_widget_name"), TEXT("OldBody"));
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestTrue(TEXT("umg_widget set_named_slot_content lowers successfully"), bLowered);
+	TestEqual(TEXT("one lowered widget op emitted"), LoweredStep.Ops.Num(), 1);
+	if (LoweredStep.Ops.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
+	TestEqual(TEXT("named slot op lowers to service adapter name"), LoweredOp.AdapterOperation, FString(FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent));
+
+	FString HostWidgetName;
+	TestTrue(TEXT("payload carries host_widget_name"), LoweredOp.Payload->TryGetStringField(TEXT("host_widget_name"), HostWidgetName));
+	TestEqual(TEXT("host widget preserved"), HostWidgetName, FString(TEXT("DialogShell")));
+
+	FString SlotName;
+	TestTrue(TEXT("payload carries slot_name"), LoweredOp.Payload->TryGetStringField(TEXT("slot_name"), SlotName));
+	TestEqual(TEXT("slot name preserved"), SlotName, FString(TEXT("Body")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanInsertIndexRejectedTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.InsertIndexRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanInsertIndexRejectedTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::MoveWidget);
+	Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
+	Op->SetStringField(TEXT("new_parent_name"), TEXT("CanvasRoot"));
+	Op->SetNumberField(TEXT("insert_index"), 0);
+
+	TArray<TSharedPtr<FJsonValue>> Ops;
+	Ops.Add(MakeShared<FJsonValueObject>(Op.ToSharedRef()));
+
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops);
+	const TSharedPtr<FJsonObject> TaskPlan = FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+	FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+		TaskPlan,
+		Step,
+		false,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("insert_index is rejected"), bLowered);
+	TestEqual(TEXT("insert_index reports stable error code"), Error.Code, FString(TEXT("unsupported_umg_widget_legacy_position_field")));
 	return true;
 }
 
@@ -318,6 +494,38 @@ bool FBlueprintHelperWidgetServiceAddWidgetDryRunDoesNotCreateWidgetTest::RunTes
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceAddWidgetUsesVirtualIndexTest,
+	"BlueprintHelper.UMGWidget.Service.AddWidgetUsesVirtualIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceAddWidgetUsesVirtualIndexTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetAddVirtualIndex"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	FBlueprintHelperAddWidgetRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.ParentName = TEXT("RootCanvas");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("InsertedText");
+	Request.VirtualIndex = 1;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.AddWidget(Request);
+
+	TestTrue(TEXT("add by virtual_index succeeds"), Result.bSuccess);
+	TestEqual(TEXT("affected widget records inserted name"), Result.AffectedWidget, FString(TEXT("InsertedText")));
+	TestEqual(TEXT("root child count includes inserted widget"), Fixture.Root->GetChildrenCount(), 3);
+	TestEqual(TEXT("inserted widget lands at requested virtual_index"),
+		Fixture.Root->GetChildAt(1)->GetName(),
+		FString(TEXT("InsertedText")));
+	TestTrue(TEXT("mutation result includes readback context"), Result.ReadbackContext.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperWidgetServiceSetWidgetPropertyDryRunDoesNotModifyPropertyTest,
 	"BlueprintHelper.UMGWidget.Service.SetWidgetPropertyDryRunDoesNotModifyProperty",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -372,6 +580,347 @@ bool FBlueprintHelperWidgetServiceRemoveWidgetDryRunDoesNotDeleteWidgetTest::Run
 	TestEqual(TEXT("dry-run remove keeps widget in tree"), Fixture.Blueprint->WidgetTree->FindWidget(FName(TEXT("ExistingText"))), Cast<UWidget>(Fixture.ExistingText));
 	TestFalse(TEXT("dry-run remove does not dirty package"), Fixture.Package->IsDirty());
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceMoveWidgetUsesVirtualIndexTest,
+	"BlueprintHelper.UMGWidget.Service.MoveWidgetUsesVirtualIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceMoveWidgetUsesVirtualIndexTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetMoveVirtualIndex"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	FBlueprintHelperMoveWidgetRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.WidgetName = TEXT("ExistingText");
+	Request.NewParentName = TEXT("RootCanvas");
+	Request.VirtualIndex = 1;
+	Request.ExpectedParentName = TEXT("RootCanvas");
+	Request.ExpectedVirtualIndex = 0;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.MoveWidget(Request);
+
+	TestTrue(TEXT("move by virtual_index succeeds"), Result.bSuccess);
+	TestEqual(TEXT("moved widget lands at requested virtual_index"),
+		Fixture.Root->GetChildAt(1)->GetName(),
+		FString(TEXT("ExistingText")));
+	TestTrue(TEXT("move result includes readback context"), Result.ReadbackContext.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceMoveWidgetToNamedSlotDetachesOldParentTest,
+	"BlueprintHelper.UMGWidget.Service.MoveWidgetToNamedSlotDetachesOldParent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceMoveWidgetToNamedSlotDetachesOldParentTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetMoveNamedSlotDetach"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("DialogShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	FBlueprintHelperMoveWidgetRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.WidgetName = TEXT("ExistingText");
+	Request.NewParentName = TEXT("DialogShell");
+	Request.SlotName = TEXT("Body");
+	Request.VirtualIndex = 0;
+	Request.ExpectedParentName = TEXT("RootCanvas");
+	Request.ExpectedVirtualIndex = 0;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.MoveWidget(Request);
+
+	TestTrue(TEXT("move to named slot succeeds"), Result.bSuccess);
+	TestEqual(
+		TEXT("named slot receives moved widget"),
+		Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body"))),
+		Cast<UWidget>(Fixture.ExistingText));
+	for (int32 ChildIndex = 0; ChildIndex < Fixture.Root->GetChildrenCount(); ++ChildIndex)
+	{
+		TestNotEqual(
+			TEXT("old panel parent no longer owns moved widget"),
+			Fixture.Root->GetChildAt(ChildIndex),
+			Cast<UWidget>(Fixture.ExistingText));
+	}
+	return Result.bSuccess;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceMoveWidgetToNamedSlotClearsOldNamedSlotTest,
+	"BlueprintHelper.UMGWidget.Service.MoveWidgetToNamedSlotClearsOldNamedSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceMoveWidgetToNamedSlotClearsOldNamedSlotTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetMoveOldNamedSlotDetach"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("SourceShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	UExpandableArea* TargetHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("TargetShell"));
+	Fixture.Root->AddChild(TargetHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, TargetHost);
+
+	UTextBlock* SlottedText = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(),
+		TEXT("SlottedText"));
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, SlottedText);
+	Fixture.NamedSlotHost->SetContentForSlot(FName(TEXT("Body")), SlottedText);
+
+	FBlueprintHelperMoveWidgetRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.WidgetName = TEXT("SlottedText");
+	Request.NewParentName = TEXT("TargetShell");
+	Request.SlotName = TEXT("Body");
+	Request.VirtualIndex = 0;
+	Request.ExpectedParentName = TEXT("SourceShell");
+	Request.ExpectedVirtualIndex = 0;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.MoveWidget(Request);
+
+	TestTrue(TEXT("move from old named slot to new named slot succeeds"), Result.bSuccess);
+	TestNull(
+		TEXT("old named slot is cleared"),
+		Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body"))));
+	TestEqual(
+		TEXT("target named slot receives moved widget"),
+		TargetHost->GetContentForSlot(FName(TEXT("Body"))),
+		Cast<UWidget>(SlottedText));
+	return Result.bSuccess;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetNamedSlotContentTest,
+	"BlueprintHelper.UMGWidget.Service.SetNamedSlotContent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetNamedSlotContentTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetNamedSlotContent"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("DialogShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	FBlueprintHelperSetNamedSlotContentRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.HostWidgetName = TEXT("DialogShell");
+	Request.SlotName = TEXT("Body");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("BodyText");
+	Request.VirtualIndex = 0;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetNamedSlotContent(Request);
+
+	TestTrue(TEXT("set named slot content succeeds"), Result.bSuccess);
+	TestEqual(TEXT("affected widget records slot content"), Result.AffectedWidget, FString(TEXT("BodyText")));
+	TestNotNull(TEXT("named slot body has content"),
+		Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body"))));
+	TestEqual(TEXT("named slot body content has requested name"),
+		Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body")))->GetName(),
+		FString(TEXT("BodyText")));
+	TestTrue(TEXT("named slot result includes readback context"), Result.ReadbackContext.IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceAddWidgetRejectsDuplicateNameTest,
+	"BlueprintHelper.UMGWidget.Service.AddWidgetRejectsDuplicateName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceAddWidgetRejectsDuplicateNameTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetAddDuplicateName"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	const int32 InitialChildCount = Fixture.Root ? Fixture.Root->GetChildrenCount() : 0;
+	FBlueprintHelperAddWidgetRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.ParentName = TEXT("RootCanvas");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("ExistingText");
+	Request.VirtualIndex = 1;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.AddWidget(Request);
+
+	TestFalse(TEXT("duplicate add is rejected"), Result.bSuccess);
+	TestEqual(TEXT("duplicate add reports stable error"), Result.ErrorMessage, FString(TEXT("widget_name_already_exists")));
+	TestEqual(TEXT("duplicate add does not change child count"), Fixture.Root->GetChildrenCount(), InitialChildCount);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetNamedSlotContentRejectsDuplicateNameTest,
+	"BlueprintHelper.UMGWidget.Service.SetNamedSlotContentRejectsDuplicateName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetNamedSlotContentRejectsDuplicateNameTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetNamedSlotDuplicateName"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("DialogShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	FBlueprintHelperSetNamedSlotContentRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.HostWidgetName = TEXT("DialogShell");
+	Request.SlotName = TEXT("Body");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("ExistingText");
+	Request.VirtualIndex = 0;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetNamedSlotContent(Request);
+
+	TestFalse(TEXT("duplicate named slot content is rejected"), Result.bSuccess);
+	TestEqual(TEXT("duplicate named slot reports stable error"), Result.ErrorMessage, FString(TEXT("widget_name_already_exists")));
+	TestNull(TEXT("named slot remains empty"), Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body"))));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetNamedSlotContentReplaceUnregistersOldWidgetTest,
+	"BlueprintHelper.UMGWidget.Service.SetNamedSlotContentReplaceUnregistersOldWidget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetNamedSlotContentReplaceUnregistersOldWidgetTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetNamedSlotReplace"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("DialogShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	UTextBlock* OldBody = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(),
+		TEXT("OldBody"));
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, OldBody);
+	Fixture.NamedSlotHost->SetContentForSlot(FName(TEXT("Body")), OldBody);
+	TestTrue(
+		TEXT("old body starts registered"),
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, OldBody));
+
+	FBlueprintHelperSetNamedSlotContentRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.HostWidgetName = TEXT("DialogShell");
+	Request.SlotName = TEXT("Body");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("NewBody");
+	Request.VirtualIndex = 0;
+	Request.ExpectedContentWidgetName = TEXT("OldBody");
+	Request.bReplaceExisting = true;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetNamedSlotContent(Request);
+	UWidget* NewBody = Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body")));
+
+	TestTrue(TEXT("replace named slot succeeds"), Result.bSuccess);
+	TestNotNull(TEXT("new named slot content exists"), NewBody);
+	TestFalse(
+		TEXT("old named slot content variable is unregistered"),
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, OldBody));
+	TestTrue(
+		TEXT("new named slot content variable is registered"),
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, NewBody));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetServiceSetNamedSlotContentReusesRetiringSubtreeNameTest,
+	"BlueprintHelper.UMGWidget.Service.SetNamedSlotContentReusesRetiringSubtreeName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetServiceSetNamedSlotContentReusesRetiringSubtreeNameTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::FWidgetServiceDryRunFixture Fixture =
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetServiceDryRunFixture(TEXT("WidgetNamedSlotRetiringSubtreeName"));
+	TestNotNull(TEXT("WidgetBlueprint is created"), Fixture.Blueprint);
+	TestNotNull(TEXT("root canvas is created"), Fixture.Root);
+
+	Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+		UExpandableArea::StaticClass(),
+		TEXT("DialogShell"));
+	Fixture.Root->AddChild(Fixture.NamedSlotHost);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+	UCanvasPanel* OldBody = Fixture.Blueprint->WidgetTree->ConstructWidget<UCanvasPanel>(
+		UCanvasPanel::StaticClass(),
+		TEXT("OldBodyPanel"));
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, OldBody);
+	UTextBlock* RetiringChild = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(),
+		TEXT("ReusableName"));
+	OldBody->AddChild(RetiringChild);
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, RetiringChild);
+	Fixture.NamedSlotHost->SetContentForSlot(FName(TEXT("Body")), OldBody);
+
+	FBlueprintHelperSetNamedSlotContentRequest Request;
+	Request.AssetPath = Fixture.Blueprint->GetPathName();
+	Request.HostWidgetName = TEXT("DialogShell");
+	Request.SlotName = TEXT("Body");
+	Request.WidgetClass = TEXT("TextBlock");
+	Request.WidgetName = TEXT("ReusableName");
+	Request.VirtualIndex = 0;
+	Request.ExpectedContentWidgetName = TEXT("OldBodyPanel");
+	Request.bReplaceExisting = true;
+
+	FBlueprintHelperWidgetService Service;
+	const FBlueprintHelperWidgetMutationResult Result = Service.SetNamedSlotContent(Request);
+	UWidget* NewBody = Fixture.NamedSlotHost->GetContentForSlot(FName(TEXT("Body")));
+
+	TestTrue(TEXT("replace can reuse name from retiring subtree"), Result.bSuccess);
+	TestNotNull(TEXT("new named slot content exists"), NewBody);
+	TestEqual(TEXT("new named slot content uses requested name"), NewBody ? NewBody->GetName() : FString(), FString(TEXT("ReusableName")));
+	TestEqual(
+		TEXT("retiring child is moved out of the WidgetBlueprint package"),
+		RetiringChild->GetOutermost(),
+		GetTransientPackage());
+	TestTrue(
+		TEXT("new reused-name widget variable is registered"),
+		FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, NewBody));
+	return Result.bSuccess;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

@@ -27,7 +27,18 @@ export type CliCommandKind =
   | 'task.result'
   | 'tools.domains'
   | 'tools.list'
-  | 'tools.templates'
+  | 'tools.templates.families'
+  | 'tools.templates.write_modes'
+  | 'tools.templates.clusters'
+  | 'tools.templates.operations'
+  | 'tools.templates.quick_access'
+  | 'tools.templates.compose'
+  | 'tools.read_templates.domains'
+  | 'tools.read_templates.clusters'
+  | 'tools.read_templates.targets'
+  | 'tools.read_templates.views'
+  | 'tools.read_templates.quick_access'
+  | 'tools.read_templates.compose'
   | 'bridge.ping'
   | 'bridge.call'
   | 'context.read'
@@ -51,10 +62,17 @@ export interface CliCommand {
   audience?: 'default' | 'compat' | 'expert';
   toolDomain?: string;
   toolCatalogKind?: string;
-  toolId?: string;
-  routeId?: string;
-  slot?: boolean;
-  slotKind?: string;
+  workflow?: string;
+  family?: string;
+  writeMode?: string;
+  cluster?: string;
+  operation?: string;
+  templateIds?: string[];
+  outputPath?: string;
+  domain?: string;
+  readCluster?: string;
+  targetKind?: string;
+  viewTemplate?: string;
   requiresBridge?: boolean;
   risks?: string[];
   bridgeCommand?: string;
@@ -148,7 +166,7 @@ export function writeCliResult(
 ): CliWriteOutcome {
   const projectionPolicy = resolveResultProjectionPolicy({
     commandKind: command.kind,
-    toolIdOrAlias: command.toolId ?? command.toolName,
+    toolIdOrAlias: command.toolName,
   });
   const debugResult = buildCliDebugArtifactSource({
     command_kind: command.kind,

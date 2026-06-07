@@ -34,7 +34,7 @@ cd <PLUGIN_ROOT>
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-The installer builds the Agent runtime, links `bh`, registers the repository local marketplace through the official Codex plugin install entry, installs `blueprint-helper@blueprint-helper-local`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
+The installer builds the Agent runtime, links `bh`, writes the Codex local marketplace and enabled plugin entries directly into `config.toml`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
 
 交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
 
@@ -109,9 +109,9 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select <fields>
-bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
-bh task preview --file <copied-template.json> --select <fields>
-bh task execute --file <copied-template.json> --select <fields>
+bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
+bh task preview --file <generated-task-spec.json> --select <fields>
+bh task execute --file <generated-task-spec.json> --select <fields>
 ```
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
@@ -151,24 +151,37 @@ Expected bridge facts are a completed status, reachable Bridge summary, and curr
 Read compact Blueprint asset context:
 
 ```powershell
-bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
+bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
 ```
 
 Read a graph as Markdown:
 
 ```powershell
-bh blueprinthelper_read_context --file <copied-template.json> --select <fields>
+bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
 ```
 
 Read the project-authored function/event chain from a known Blueprint entry:
 
 ```powershell
-bh blueprinthelper_read_function_chain_context --file <copied-template.json> --select <fields>
+bh blueprinthelper_read_function_chain_context --file <function-chain-request.json> --select <fields>
 ```
 
 Use current CLI discovery to locate the FunctionChain request template. The result is a compact index; use current CLI help/discovery for exact result fields.
 
 Use the current CLI discovery output or per-command help to prepare JSON input, then pass it with `--file` instead of embedding complex JSON in PowerShell.
+
+TaskSpec write templates are generated through the TaskSpec Template Composer four-layer index:
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
+```
+
+Do not use old tool-id template dispatch or scan template directories to choose TaskSpec files. Fill the generated TaskSpec with evidence from ReadContext, then preview and execute that generated file.
 
 ## 8. Safe Write Checklist
 
@@ -176,11 +189,11 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
 - Run `bh blueprint_get_runtime_profile --json "{}" --select <fields>`.
-- Run `bh blueprinthelper_read_context --file <copied-template.json> --select <fields>`.
-- Produce the TaskSpec from the current CLI-discovered template, filling only the task-specific placeholders required by that template.
+- Run `bh blueprinthelper_read_context --file <read-spec.json> --select <fields>`.
+- Produce the TaskSpec through `bh tools templates ... compose`, filling only the task-specific placeholders required by the generated file.
 - Do not submit TaskPlan directly; it is produced by the canonical AgentFace task-core TypeScript compiler.
-- Run `bh task preview --file <copied-template.json> --select <fields>` and stop on blocked / failed preview.
-- Run `bh task execute --file <copied-template.json> --select <fields>` only after preview passes.
+- Run `bh task preview --file <generated-task-spec.json> --select <fields>` and stop on blocked / failed preview.
+- Run `bh task execute --file <generated-task-spec.json> --select <fields>` only after preview passes.
 - Let UE Task Runtime handle TaskPlan execution, compile/save policy, transaction grouping, rollback, and diagnostics.
 
 Low-level legacy/internal/debug/expert commands are not part of the supported Agent entry. Use current CLI discovery for supported ordinary Agent flows.

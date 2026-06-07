@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { compileTaskSpecToTaskPlan } from '../../task/compiler/task-compiler.js';
-import { getToolTemplateDispatch } from '../tool-registry.js';
 import {
   buildReadonlyToolCommandManifestRegistry,
 } from './tool-command-manifest-builder.js';
@@ -146,13 +145,6 @@ test('preview manifest route compiles minimal create_blueprint_feature TaskSpec 
   assert.equal(
     taskPlan.steps.some((step) => (step as Record<string, unknown>)['capability'] === 'blueprint_variable'),
     true,
-  );
-});
-
-test('unknown template route still fails through catalog dispatch', () => {
-  assert.throws(
-    () => getToolTemplateDispatch('blueprint.write.taskspec.execute', { route: 'graph.unknown.route' }),
-    /Unknown BlueprintHelper template route/,
   );
 });
 

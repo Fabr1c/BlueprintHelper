@@ -1,6 +1,5 @@
 import {
   buildReadonlyToolCommandManifestRegistry,
-  createToolsTemplateBuilder,
   formatManifestUsage,
   getBlueprintHelperTool,
   globalCliCommandUsageLines,
@@ -9,7 +8,6 @@ import {
   type CommandHelpEntry,
   type ToolCommandManifest,
   type ToolCommandManifestRegistry,
-  type ToolTemplateDispatchResult,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 
 export interface HelpBuilder {
@@ -29,10 +27,8 @@ export function createHelpBuilder(
       const key = normalizedTarget.join(' ');
       const manifest = registry.get(key);
       if (manifest) {
-        const templateBuilder = createToolsTemplateBuilder(registry);
         const manifests = resolveDisplayManifests(registry, key, manifest);
-        const dispatches = manifests.map((entry) => templateBuilder.getTemplateDispatch(entry.tool_id));
-        return formatManifestEntry(key, manifest, manifests, dispatches);
+        return formatManifestEntry(key, manifest, manifests);
       }
 
       const cliCommandEntry = resolveCliCommandHelpManifest(key);
@@ -69,17 +65,26 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     '  bh bridge call --command <read_only_command>',
     '  bh tools domains --format json',
     '  bh tools list <domain> <kind> --format json',
-    '  bh tools templates <tool_id> --format json',
-    '  bh tools templates <tool_id> --route <route_id> --slot [--kind statement|expression|target|view|patch|merge] --format json',
+    '  bh tools templates families --workflow preview_execute --format json',
+    '  bh tools templates write-modes --family <family> --format json',
+    '  bh tools templates clusters --family <family> --format json',
+    '  bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
+    '  bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
+    '  bh tools templates compose --family <family> --write-mode <mode> --templates <template_id[,template_id...]> --out <task-spec.json> --format json',
+    '  bh tools read-templates domains --format json',
+    '  bh tools read-templates clusters --domain <domain> --format json',
+    '  bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
+    '  bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
+    '  bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
+    '  bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
     ...globalCliCommandUsageLines().map((line) => `  ${line}`),
     '',
     'Tool and template selection:',
     '  Start with: bh tools domains --format json',
     '  Filter with: bh tools list <domain> <kind> --format json',
-    '  Fetch templates with: bh tools templates <tool_id> --format json',
-    '  Fill the returned template path, then run the returned recommended_invocation.',
-    '  Pick a returned route_id, then fetch route slots with: bh tools templates <tool_id> --route <route_id> --slot --format json',
-    '  For route-first tools, fill the returned template or slot path before running the returned recommended_invocation.',
+    '  Discover TaskSpec templates with: bh tools templates families --workflow preview_execute --format json',
+    '  Discover ReadContext templates with: bh tools read-templates domains --format json',
+    '  Compose a temporary TaskSpec or ReadSpec, then run bh task preview, bh task execute, or bh context read.',
     '',
     'Default tool names:',
     ...defaultTools.map((toolName) => {
@@ -105,16 +110,15 @@ function formatManifestEntry(
   title: string,
   manifest: ToolCommandManifest,
   manifests: ToolCommandManifest[],
-  dispatches: ToolTemplateDispatchResult[],
 ): string {
   return formatEntry(title, {
     summary: manifestPurpose(manifest),
     usage: uniqueStrings([
       ...formatManifestUsage(manifest),
-      ...dispatches.map((dispatch) => dispatch.recommended_invocation),
+      ...manifests.flatMap((entry) => entry.recommended_invocations),
     ]),
     input: formatInputShapes(uniqueStrings(manifests.flatMap((entry) => entry.input_shapes))),
-    templates: formatTemplateNavigation(manifests, dispatches),
+    templates: formatTemplateNavigation(manifests),
     notes: formatManifestNotes(manifest),
   });
 }
@@ -176,14 +180,34 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
 
 function formatTemplateNavigation(
   manifests: ToolCommandManifest[],
-  dispatches: ToolTemplateDispatchResult[],
 ): string[] {
-  const templatePaths = [
-    ...manifests.map((manifest) => `bh tools templates ${manifest.tool_id} --format json`),
-    ...dispatches.flatMap((dispatch) => dispatch.cli_invocation_templates.map((template) => template.path)),
-    ...dispatches.flatMap((dispatch) => dispatch.routes.flatMap((route) => route.template_paths)),
+  const hasReadSpecWorkflow = manifests.some((manifest) => manifest.input_shapes.includes('readspec'));
+  if (hasReadSpecWorkflow) {
+    return [
+      'bh tools read-templates domains --format json',
+      'bh tools read-templates clusters --domain <domain> --format json',
+      'bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
+      'bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
+      'bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
+      'bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
+    ];
+  }
+
+  const hasTaskSpecWorkflow = manifests.some((manifest) =>
+    manifest.input_shapes.includes('bare_taskspec')
+    || manifest.input_shapes.includes('wrapped_taskspec_preview')
+    || manifest.input_shapes.includes('wrapped_taskspec_execute'));
+  if (!hasTaskSpecWorkflow) {
+    return [];
+  }
+  return [
+    'bh tools templates families --workflow preview_execute --format json',
+    'bh tools templates write-modes --family <family> --format json',
+    'bh tools templates clusters --family <family> --format json',
+    'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
+    'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
+    'bh tools templates compose --family <family> --write-mode <mode> --templates <template_id[,template_id...]> --out <task-spec.json> --format json',
   ];
-  return uniqueStrings(templatePaths);
 }
 
 function formatManifestNotes(manifest: ToolCommandManifest): string[] {

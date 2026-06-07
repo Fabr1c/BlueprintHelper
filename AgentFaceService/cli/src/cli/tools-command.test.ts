@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -31,7 +32,7 @@ test('runCli returns reserved tool domains only when requested', async () => {
   assert.equal(output.reserved.some((item: Record<string, unknown>) => item.id === 'material'), true);
 });
 
-test('runCli filters tool capability catalog by domain kind and options', async () => {
+test('runCli filters tool capability catalog and points read workflows to ReadContext template index', async () => {
   const { output } = await runCliJson([
     'tools',
     'list',
@@ -51,126 +52,193 @@ test('runCli filters tool capability catalog by domain kind and options', async 
   assert.equal(output.items.some((item: Record<string, unknown>) => item.id === 'blueprint.read.context.logic_flow'), true);
   assert.equal(output.items.every((item: Record<string, unknown>) => item.requires_bridge === true), true);
   assert.equal(output.items.every((item: Record<string, unknown>) => item.risk === 'low'), true);
-});
-
-test('runCli returns template dispatch package for a selected tool id', async () => {
-  const { output } = await runCliJson(['tools', 'templates', 'blueprint.read.context.logic_flow', '--format', 'json']);
-
-  assert.equal(output.schema, 'BlueprintHelper.ToolTemplateSelection.v1');
-  assert.equal(output.tool_id, 'blueprint.read.context.logic_flow');
-  assert.equal(output.tool_name, 'blueprinthelper_read_context');
-  assert.deepEqual(output.allowed_tools, ['blueprinthelper_read_context']);
-  assert.match(output.recommended_invocation, /blueprinthelper_read_context/);
-  assert.doesNotMatch(output.recommended_invocation, /Templates\/read\/read_context_/);
-  assert.equal('taskspec_semantic_templates' in output, false);
   assert.equal(
-    output.cli_invocation_templates.every((template: Record<string, unknown>) => {
-      return String(template.path).includes('/read/routes/');
-    }),
-    true,
+    output.next.template_index_command,
+    'bh tools read-templates domains --format json',
   );
-  assert.equal('show_command' in output, false);
 });
 
-test('runCli resolves tools templates by capability id and tool alias through shared builder', async () => {
-  const byCapability = await runCliJson(['tools', 'templates', 'blueprint.plan.taskspec.preview', '--format', 'json']);
-  const byToolName = await runCliJson(['tools', 'templates', 'blueprinthelper_preview_task', '--format', 'json']);
+test('runCli exposes TaskSpec template four-layer index and compose output', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'graph-append.taskspec.json');
 
-  assert.equal(byCapability.output.schema, 'BlueprintHelper.ToolTemplateSelection.v1');
-  assert.deepEqual(byToolName.output.routes, byCapability.output.routes);
-  assert.equal(byToolName.output.tool_id, 'blueprint.plan.taskspec.preview');
+  const families = await runCliJson(['tools', 'templates', 'families', '--workflow', 'preview_execute', '--format', 'json']);
+  assert.equal(families.output.schema, 'BlueprintHelper.TaskSpecTemplateFamilies.v1');
+  assert.equal(families.output.items.some((item: Record<string, unknown>) => item.family === 'graph_write'), true);
+
+  const writeModes = await runCliJson(['tools', 'templates', 'write-modes', '--family', 'graph_write', '--format', 'json']);
+  assert.equal(writeModes.output.items.some((item: Record<string, unknown>) => item.write_mode === 'graph.append'), true);
+  assert.equal(
+    writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.base_template_path,
+    'AgentFaceService/agent-guide/Templates/write/taskspec/graph_append_template.json',
+  );
+
+  const clusters = await runCliJson(['tools', 'templates', 'clusters', '--family', 'graph_write', '--format', 'json']);
+  assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.cluster_id === 'generic_ops'), true);
+
+  const operations = await runCliJson([
+    'tools',
+    'templates',
+    'operations',
+    '--family',
+    'graph_write',
+    '--cluster',
+    'generic_ops',
+    '--write-mode',
+    'graph.append',
+    '--format',
+    'json',
+  ]);
+  assert.equal(operations.output.items.some((item: Record<string, unknown>) => item.operation_id === 'call'), true);
+
+  const quickAccess = await runCliJson([
+    'tools',
+    'templates',
+    'quick-access',
+    '--family',
+    'graph_write',
+    '--cluster',
+    'generic_ops',
+    '--operation',
+    'call',
+    '--write-mode',
+    'graph.append',
+    '--format',
+    'json',
+  ]);
+  const directCall = quickAccess.output.items.find((item: Record<string, unknown>) => item.template_id === 'generic_ops.call.direct');
+  assert.equal(directCall?.write_mode, 'graph.append');
+  assert.deepEqual(directCall?.insert_paths, ['behavior.entries[].body.statements[]']);
+
+  const composed = await runCliJson([
+    'tools',
+    'templates',
+    'compose',
+    '--family',
+    'graph_write',
+    '--write-mode',
+    'graph.append',
+    '--templates',
+    'generic_ops.call.direct',
+    '--out',
+    outputPath,
+    '--format',
+    'json',
+  ]);
+  assert.equal(composed.output.schema, 'BlueprintHelper.TaskSpecTemplateComposition.v1');
+  assert.equal(composed.output.status, 'ok');
+  assert.equal('inserted_slots' in composed.output, false);
+  assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.entries[0].body.statements.length, 1);
 });
 
-test('runCli resolves grouped alias templates through shared builder', async () => {
-  const { output } = await runCliJson(['tools', 'templates', 'task preview', '--format', 'json']);
+test('runCli composes supported non-GraphWrite base TaskSpec without template ids', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'data-table.taskspec.json');
 
-  assert.equal(output.tool_id, 'blueprint.plan.taskspec.preview');
-  assert.equal(output.tool_name, 'blueprinthelper_preview_task');
-});
-
-test('ReadContext help points to route-owned templates only', () => {
-  const readContextHelp = buildHelpText(['blueprinthelper_read_context']);
-  const groupedReadHelp = buildHelpText(['context', 'read']);
-
-  assert.doesNotMatch(readContextHelp, /Templates\/read\/read_context_/);
-  assert.doesNotMatch(groupedReadHelp, /Templates\/read\/read_context_/);
-  assert.match(readContextHelp, /Templates\/read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
-  assert.match(groupedReadHelp, /Templates\/read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
-});
-
-test('runCli returns route-filtered slot templates for a selected tool id', async () => {
   const { output } = await runCliJson([
     'tools',
     'templates',
-    'blueprint.write.taskspec.execute',
-    '--route',
-    'graph.replace.function_body',
-    '--slot',
-    '--kind',
-    'statement',
+    'compose',
+    '--family',
+    'data_table',
+    '--write-mode',
+    'table.rows',
+    '--out',
+    outputPath,
     '--format',
     'json',
   ]);
 
-  assert.equal(output.schema, 'BlueprintHelper.ToolTemplateSelection.v1');
-  assert.equal(output.selected_route.route_id, 'graph.replace.function_body');
-  assert.equal(output.slot_templates.every((slot: Record<string, unknown>) => slot.slot_type === 'statement'), true);
-  assert.equal(
-    output.slot_templates.some((slot: Record<string, unknown>) =>
-      slot.slot_id === 'graph.statement.call.direct'
-      && String(slot.path).endsWith('graph_statement_call_direct_template.json')),
-    true,
-  );
+  assert.equal(output.status, 'ok');
+  assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).task_type, 'edit_data_table');
 });
 
-test('runCli scopes GraphWrite function-only expression slots by route', async () => {
-  const functionDispatch = await runCliJson([
+test('runCli exposes ReadContext template four-layer index and compose output', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-read-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'function-flow.readspec.json');
+
+  const domains = await runCliJson(['tools', 'read-templates', 'domains', '--format', 'json']);
+  assert.equal(domains.output.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');
+  assert.equal(domains.output.items.some((item: Record<string, unknown>) => item.domain === 'blueprint'), true);
+
+  const clusters = await runCliJson(['tools', 'read-templates', 'clusters', '--domain', 'blueprint', '--format', 'json']);
+  assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.read_cluster === 'logic'), true);
+
+  const targets = await runCliJson([
     'tools',
-    'templates',
-    'blueprint.plan.taskspec.preview',
-    '--route',
-    'graph.replace.function_body',
-    '--slot',
-    '--kind',
-    'expression',
+    'read-templates',
+    'targets',
+    '--domain',
+    'blueprint',
+    '--read-cluster',
+    'logic',
     '--format',
     'json',
   ]);
-  const eventDispatch = await runCliJson([
+  assert.equal(targets.output.items.some((item: Record<string, unknown>) => item.target_kind === 'function'), true);
+
+  const views = await runCliJson([
     'tools',
-    'templates',
-    'blueprint.plan.taskspec.preview',
-    '--route',
-    'graph.replace.event_body',
-    '--slot',
-    '--kind',
-    'expression',
+    'read-templates',
+    'views',
+    '--domain',
+    'blueprint',
+    '--read-cluster',
+    'logic',
+    '--target-kind',
+    'function',
     '--format',
     'json',
   ]);
+  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow']);
 
-  const functionSlotIds = new Set(functionDispatch.output.slot_templates.map((slot: Record<string, unknown>) => slot.slot_id));
-  const eventSlotIds = new Set(eventDispatch.output.slot_templates.map((slot: Record<string, unknown>) => slot.slot_id));
+  const quickAccess = await runCliJson([
+    'tools',
+    'read-templates',
+    'quick-access',
+    '--domain',
+    'blueprint',
+    '--read-cluster',
+    'logic',
+    '--target-kind',
+    'function',
+    '--view-template',
+    'logic_flow',
+    '--format',
+    'json',
+  ]);
+  assert.equal(quickAccess.output.items[0]?.template_id, 'read.blueprint.logic.function.logic_flow');
 
-  assert.equal(functionSlotIds.has('graph.expression.get.function_param'), true);
-  assert.equal(eventSlotIds.has('graph.expression.get.function_param'), false);
+  const composed = await runCliJson([
+    'tools',
+    'read-templates',
+    'compose',
+    '--domain',
+    'blueprint',
+    '--read-cluster',
+    'logic',
+    '--target-kind',
+    'function',
+    '--view-template',
+    'logic_flow',
+    '--out',
+    outputPath,
+    '--format',
+    'json',
+  ]);
+  assert.equal(composed.output.schema, 'BlueprintHelper.ReadContextTemplateComposition.v1');
+  assert.equal(composed.output.status, 'ok');
+  assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).schema, 'BlueprintHelper.ReadSpec.v1');
 });
 
-test('runCli rejects template slot kind without slot output', async () => {
+test('runCli rejects old tool-id template dispatch path', async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const exitCode = await runCli({
-    argv: [
-      'tools',
-      'templates',
-      'blueprint.write.taskspec.execute',
-      '--route',
-      'graph.replace.function_body',
-      '--kind',
-      'statement',
-      '--format',
-      'json',
-    ],
+    argv: ['tools', 'templates', 'blueprint.write.taskspec.execute', '--format', 'json'],
     cwd: workspaceRoot(),
     stdout: (text) => stdout.push(text),
     stderr: (text) => stderr.push(text),
@@ -178,16 +246,17 @@ test('runCli rejects template slot kind without slot output', async () => {
 
   assert.equal(exitCode, 64);
   assert.equal(stdout.join(''), '');
-  assert.match(stderr.join(''), /--kind requires --slot/);
+  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI tools templates command/);
 });
 
 test('runCli supports compile-only task preview without bridge access', async (t) => {
-  const workspace = await fs.mkdtemp(path.join(process.cwd(), 'tmp-cli-compile-only-'));
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'tmp-cli-compile-only-'));
   t.after(async () => {
     await fs.rm(workspace, { recursive: true, force: true });
   });
+  const taskSpecPath = path.join(workspace, 'replace-function-body.taskspec.json');
   await fs.writeFile(
-    path.join(workspace, 'replace-function-body.taskspec.json'),
+    taskSpecPath,
     JSON.stringify(makeReplaceFunctionBodyTaskSpec(), null, 2),
     'utf8',
   );
@@ -198,12 +267,12 @@ test('runCli supports compile-only task preview without bridge access', async (t
       'task',
       'preview',
       '--file',
-      'replace-function-body.taskspec.json',
+      taskSpecPath,
       '--compile-only',
       '--format',
       'json',
     ],
-    cwd: workspace,
+    cwd: workspaceRoot(),
     runner: {
       async readReferenceContext() {
         throw new Error('compile-only preview must not read reference context.');
@@ -232,108 +301,15 @@ test('runCli supports compile-only task preview without bridge access', async (t
     && step.write.ops.some((op: Record<string, unknown>) => op.op === 'replace_body')), true);
 });
 
-test('runCli compile-only preview accepts function parameter return slot fixture', async () => {
-  const { output } = await runCliJson([
-    'task',
-    'preview',
-    '--file',
-    'AgentFaceService/cli/test-fixtures/graphwrite-slots/replace-function-body-with-param-return.taskspec.json',
-    '--compile-only',
-    '--format',
-    'json',
-  ]);
-
-  const taskPlanText = JSON.stringify(await readJsonArtifact(output.artifacts.task_plan));
-  assert.match(taskPlanText, /field\.function_param_get/);
-  assert.match(taskPlanText, /InputValue/);
-  assert.match(taskPlanText, /replace_body/);
-});
-
-test('runCli compile-only preview accepts custom event call slot fixture', async () => {
-  const { output } = await runCliJson([
-    'task',
-    'preview',
-    '--file',
-    'AgentFaceService/cli/test-fixtures/graphwrite-slots/append-custom-event-with-call.taskspec.json',
-    '--compile-only',
-    '--format',
-    'json',
-  ]);
-
-  const taskPlanText = JSON.stringify(await readJsonArtifact(output.artifacts.task_plan));
-  assert.match(taskPlanText, /PrintString/);
-  assert.match(taskPlanText, /ensure_entry/);
-  assert.doesNotMatch(taskPlanText, /field\.function_param_get/);
-});
-
-test('runCli does not register an independent tool detail command', async () => {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  const exitCode = await runCli({
-    argv: ['tools', 'show', 'blueprint.read.context.logic_flow', '--format', 'json'],
-    cwd: workspaceRoot(),
-    stdout: (text) => stdout.push(text),
-    stderr: (text) => stderr.push(text),
-  });
-
-  assert.equal(exitCode, 64);
-  assert.equal(stdout.join(''), '');
-  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI tools command: show/);
-});
-
-test('global help points tool selection to tools catalog and not semantic indexes', () => {
+test('global help points template selection to TaskSpec composer index', () => {
   const help = buildHelpText();
 
   assert.match(help, /bh tools domains --format json/);
   assert.match(help, /bh tools list <domain> <kind> --format json/);
-  assert.match(help, /bh tools templates <tool_id> --format json/);
-  assert.match(help, /blueprint_compile_blueprint/);
-  assert.match(help, /blueprint_save_asset/);
-  assert.doesNotMatch(help, new RegExp(['SEMANTIC', 'INDEX'].join('_')));
-});
-
-test('runCli exposes compile and save tools through catalog templates', async () => {
-  const { output: diagnoseList } = await runCliJson(['tools', 'list', 'blueprint', 'diagnose', '--format', 'json']);
-  assert.equal(diagnoseList.items.some((item: Record<string, unknown>) => item.id === 'blueprint.diagnose.compile'), true);
-
-  const { output: writeList } = await runCliJson(['tools', 'list', 'editor', 'write', '--format', 'json']);
-  assert.equal(writeList.items.some((item: Record<string, unknown>) => item.id === 'editor.write.asset.save'), true);
-
-  const { output: compileDispatch } = await runCliJson(['tools', 'templates', 'blueprint.diagnose.compile', '--format', 'json']);
-  assert.equal(compileDispatch.tool_name, 'blueprint_compile_blueprint');
-  assert.deepEqual(compileDispatch.allowed_tools, ['blueprint_compile_blueprint']);
-  assert.equal(
-    compileDispatch.cli_invocation_templates.some((template: Record<string, unknown>) =>
-      String(template.path).endsWith('blueprint_compile_blueprint_template.json')),
-    true,
-  );
-  assert.equal(compileDispatch.stop_conditions.includes('compile_failed'), true);
-
-  const { output: saveDispatch } = await runCliJson(['tools', 'templates', 'editor.write.asset.save', '--format', 'json']);
-  assert.equal(saveDispatch.tool_name, 'blueprint_save_asset');
-  assert.deepEqual(saveDispatch.allowed_tools, ['blueprint_save_asset']);
-  assert.equal(
-    saveDispatch.cli_invocation_templates.some((template: Record<string, unknown>) =>
-      String(template.path).endsWith('blueprint_save_asset_template.json')),
-    true,
-  );
-  assert.equal(saveDispatch.stop_conditions.includes('source_control_conflicted'), true);
-  assert.equal(saveDispatch.stop_conditions.includes('save_failed'), true);
-});
-
-test('compile and save help are tool-specific and point to catalog templates', () => {
-  const compileHelp = buildHelpText(['blueprint_compile_blueprint']);
-  const saveHelp = buildHelpText(['blueprint_save_asset']);
-
-  assert.match(compileHelp, /BlueprintHelper CLI help: blueprint_compile_blueprint/);
-  assert.match(compileHelp, /blueprint_compile_blueprint_template\.json/);
-  assert.match(compileHelp, /bh tools templates blueprint\.diagnose\.compile --format json/);
-  assert.match(compileHelp, /Risk: medium/);
-
-  assert.match(saveHelp, /BlueprintHelper CLI help: blueprint_save_asset/);
-  assert.match(saveHelp, /blueprint_save_asset_template\.json/);
-  assert.match(saveHelp, /bh tools templates editor\.write\.asset\.save --format json/);
-  assert.match(saveHelp, /source-control\/editability preflight/);
+  assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(help, /bh tools read-templates domains --format json/);
+  assert.match(help, /bh tools templates compose --family <family>/);
+  assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
 });
 
 async function runCliJson(argv: string[]): Promise<{ output: Record<string, any>; stderr: string[] }> {

@@ -1,12 +1,11 @@
 import {
-  getRawToolTemplateDispatch,
+  getToolCapabilityDescriptor,
   isToolCapabilityDomain,
   isToolCapabilityKind,
   listToolCapabilities,
   listToolDomains,
 } from '../catalog/tool-capability-catalog.js';
 import type {
-  CliInvocationTemplateRef,
   ToolCapabilityItem,
 } from '../catalog/tool-capability-types.js';
 import type {
@@ -61,7 +60,7 @@ export function buildReadonlyToolCommandManifestRegistry(): ToolCommandManifestR
 }
 
 function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommandManifest {
-  const dispatch = getRawToolTemplateDispatch(capability.id);
+  const descriptor = getToolCapabilityDescriptor(capability.id);
   return {
     schema: TOOL_COMMAND_MANIFEST_SCHEMA,
     tool_id: capability.id,
@@ -75,50 +74,48 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     requires_bridge: capability.requires_bridge,
     requires_write_session: capability.requires_write_session,
     ...(capability.lifecycle_mcp_only === undefined ? {} : { lifecycle_mcp_only: capability.lifecycle_mcp_only }),
-    input_shapes: inferInputShapes(capability, dispatch.cli_invocation_templates),
+    input_shapes: inferInputShapes(capability),
     handler_id: capability.tool_name,
     result_policy_id: inferResultPolicyId(capability),
     metrics_identity: inferMetricsIdentity(capability),
-    template_refs: dispatch.cli_invocation_templates.map((template) => template.cli_template_id),
-    route_refs: dispatch.routes.map((route) => route.route_id),
-    recommended_invocations: [dispatch.recommended_invocation],
-    stop_conditions: [...dispatch.stop_conditions],
+    template_refs: [...capability.cli_template_ids],
+    route_refs: [...(descriptor?.route_refs ?? [])],
+    recommended_invocations: [...(descriptor?.recommended_invocations ?? defaultRecommendedInvocations(capability.tool_name))],
+    stop_conditions: [...(descriptor?.stop_conditions ?? defaultStopConditions(capability))],
     source: 'readonly_mirror',
   };
 }
 
 function inferInputShapes(
   capability: ToolCapabilityItem,
-  templates: CliInvocationTemplateRef[],
 ): ToolInputShapeId[] {
   const shapes = new Set<ToolInputShapeId>();
 
-  for (const template of templates) {
-    if (template.cli_template_id === 'blueprinthelper_preview_task_wrapper') {
+  for (const templateId of capability.cli_template_ids) {
+    if (templateId === 'blueprinthelper_preview_task_wrapper') {
       shapes.add('wrapped_taskspec_preview');
       continue;
     }
-    if (template.cli_template_id === 'blueprinthelper_execute_task_wrapper') {
+    if (templateId === 'blueprinthelper_execute_task_wrapper') {
       shapes.add('wrapped_taskspec_execute');
       continue;
     }
     if (
-      template.cli_template_id === 'task_preview_bare_taskspec'
-      || template.cli_template_id === 'task_execute_bare_taskspec'
+      templateId === 'task_preview_bare_taskspec'
+      || templateId === 'task_execute_bare_taskspec'
     ) {
       shapes.add('bare_taskspec');
       continue;
     }
-    const inputShape = template.input_shape ?? '';
-    if (inputShape === '{}') {
+    if (EMPTY_OBJECT_TEMPLATE_IDS.has(templateId)) {
       shapes.add('empty_object');
       continue;
     }
-    if (inputShape === 'BlueprintHelper.ReadSpec.v1') {
+    if (templateId.startsWith('read_context_')) {
       shapes.add('readspec');
       continue;
     }
-    if (inputShape === 'BlueprintHelper.ReferenceContextRequest.v1') {
+    if (templateId === 'blueprinthelper_read_reference_context_dependencies') {
       shapes.add('read_reference_context');
       continue;
     }
@@ -130,6 +127,15 @@ function inferInputShapes(
   }
   return [...shapes];
 }
+
+const EMPTY_OBJECT_TEMPLATE_IDS = new Set([
+  'blueprint_get_runtime_profile',
+	'blueprinthelper_diagnostics',
+	'blueprinthelper_diagnostics_runtime',
+	'blueprinthelper_read_agent_guide',
+	'blueprinthelper_read_context_capabilities',
+	'blueprinthelper_list_debug_cases',
+]);
 
 function inferResultPolicyId(capability: ToolCapabilityItem): ToolResultProjectionPolicyId {
   if (capability.tool_name === 'blueprinthelper_preview_task') {
@@ -164,6 +170,14 @@ function inferMetricsIdentity(capability: ToolCapabilityItem): { capability: str
     capability: `${capability.domain}.${capability.kind}`,
     semantic_operation: capability.id,
   };
+}
+
+function defaultStopConditions(capability: ToolCapabilityItem): string[] {
+  return capability.requires_bridge ? ['tool_unavailable', 'bridge_unavailable'] : ['tool_unavailable'];
+}
+
+function defaultRecommendedInvocations(toolName: string): string[] {
+  return [`bh ${toolName} --file <filled-template.json> --select status,artifacts.full_result`];
 }
 
 function listGroupedAliasCapabilities(): ToolCapabilityItem[] {

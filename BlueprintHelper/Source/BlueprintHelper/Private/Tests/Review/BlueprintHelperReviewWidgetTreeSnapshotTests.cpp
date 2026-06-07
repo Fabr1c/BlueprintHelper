@@ -1,0 +1,238 @@
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
+#include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
+
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/ExpandableArea.h"
+#include "Components/NamedSlotInterface.h"
+#include "Components/TextBlock.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Misc/AutomationTest.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
+#include "UObject/Package.h"
+#include "WidgetBlueprint.h"
+
+class FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils
+{
+public:
+	struct FWidgetTreeFixture
+	{
+		UPackage* Package = nullptr;
+		UWidgetBlueprint* Blueprint = nullptr;
+		UCanvasPanel* Root = nullptr;
+		UTextBlock* FirstText = nullptr;
+		UTextBlock* SecondText = nullptr;
+		UExpandableArea* NamedSlotHost = nullptr;
+		UTextBlock* SlotContent = nullptr;
+	};
+
+	static FString MakeUniqueName(const FString& Prefix)
+	{
+		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	}
+
+	static FWidgetTreeFixture MakeFixture(const FString& Prefix)
+	{
+		FWidgetTreeFixture Fixture;
+		Fixture.Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReviewWidgetTree/%s"),
+			*MakeUniqueName(Prefix)));
+		Fixture.Blueprint = NewObject<UWidgetBlueprint>(
+			Fixture.Package,
+			*MakeUniqueName(TEXT("WBP_WidgetTreeSnapshot")),
+			RF_Public | RF_Standalone | RF_Transactional);
+		Fixture.Blueprint->WidgetTree = NewObject<UWidgetTree>(
+			Fixture.Blueprint,
+			TEXT("WidgetTree"),
+			RF_Transactional);
+
+		Fixture.Root = Fixture.Blueprint->WidgetTree->ConstructWidget<UCanvasPanel>(
+			UCanvasPanel::StaticClass(),
+			TEXT("Canvas_Root"));
+		Fixture.Blueprint->WidgetTree->RootWidget = Fixture.Root;
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.Root);
+
+		Fixture.FirstText = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(),
+			TEXT("FirstText"));
+		Fixture.Root->AddChild(Fixture.FirstText);
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.FirstText);
+
+		Fixture.SecondText = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(),
+			TEXT("SecondText"));
+		Fixture.Root->AddChild(Fixture.SecondText);
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.SecondText);
+
+		Fixture.NamedSlotHost = Fixture.Blueprint->WidgetTree->ConstructWidget<UExpandableArea>(
+			UExpandableArea::StaticClass(),
+			TEXT("DialogShell"));
+		Fixture.Root->AddChild(Fixture.NamedSlotHost);
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.NamedSlotHost);
+
+		Fixture.SlotContent = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(),
+			TEXT("OldBody"));
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, Fixture.SlotContent);
+		if (INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(Fixture.NamedSlotHost))
+		{
+			NamedSlotHost->SetContentForSlot(FName(TEXT("Body")), Fixture.SlotContent);
+		}
+		Fixture.Package->SetDirtyFlag(false);
+		return Fixture;
+	}
+
+	static bool IsWidgetVariableRegistered(UWidgetBlueprint* Blueprint, UWidget* Widget)
+	{
+#if WITH_EDITORONLY_DATA
+		if (!Blueprint || !Widget)
+		{
+			return false;
+		}
+#if BLUEPRINTHELPER_UE_HAS_WIDGET_VARIABLE_GUID_EVENTS
+		return Blueprint->WidgetVariableNameToGuidMap.Contains(Widget->GetFName());
+#else
+		return Widget->bIsVariable;
+#endif
+#else
+		return false;
+#endif
+	}
+};
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeSnapshotVirtualIndexTest,
+	"BlueprintHelper.Review.WidgetTree.SnapshotSerializesVirtualIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeSnapshotVirtualIndexTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("VirtualIndex"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	if (!Fixture.Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FBlueprintHelperReviewAtomicTarget RootTarget;
+	RootTarget.AssetPath = Fixture.Blueprint->GetPathName();
+	RootTarget.TargetKind = TEXT("umg_widget");
+	RootTarget.TargetKey = TEXT("umg_widget:Canvas_Root");
+	RootTarget.VisualGroupKey = RootTarget.TargetKey;
+	FString RootSnapshotJson;
+	FString RootHash;
+	FString RootError;
+	TestTrue(
+		TEXT("root target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(RootTarget, RootSnapshotJson, RootHash, RootError));
+
+	FBlueprintHelperReviewAtomicTarget SecondTarget;
+	SecondTarget.AssetPath = Fixture.Blueprint->GetPathName();
+	SecondTarget.TargetKind = TEXT("umg_widget");
+	SecondTarget.TargetKey = TEXT("umg_widget:SecondText");
+	SecondTarget.VisualGroupKey = SecondTarget.TargetKey;
+	FString SecondSnapshotJson;
+	FString SecondHash;
+	FString SecondError;
+	TestTrue(
+		TEXT("child target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(SecondTarget, SecondSnapshotJson, SecondHash, SecondError));
+
+	TSharedPtr<FJsonObject> RootSnapshot;
+	TSharedPtr<FJsonObject> SecondSnapshot;
+	TestTrue(
+		TEXT("root snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(RootSnapshotJson), RootSnapshot) && RootSnapshot.IsValid());
+	TestTrue(
+		TEXT("child snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(SecondSnapshotJson), SecondSnapshot) && SecondSnapshot.IsValid());
+	if (!RootSnapshot.IsValid() || !SecondSnapshot.IsValid())
+	{
+		return false;
+	}
+
+	double VirtualIndex = -1.0;
+	const bool bSecondHasVirtualIndex =
+		SecondSnapshot->TryGetNumberField(TEXT("virtual_index"), VirtualIndex) &&
+		FMath::RoundToInt(VirtualIndex) == 1;
+	TestFalse(TEXT("root omits empty slot_class"), RootSnapshot->HasField(TEXT("slot_class")));
+	TestFalse(TEXT("root omits empty slot_class_path"), RootSnapshot->HasField(TEXT("slot_class_path")));
+	TestTrue(TEXT("second child has virtual_index 1"), bSecondHasVirtualIndex);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeRestoreNamedSlotTest,
+	"BlueprintHelper.Review.WidgetTree.RestoreNamedSlotContent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeRestoreNamedSlotTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("NamedSlotRestore"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	if (!Fixture.Blueprint || !Fixture.NamedSlotHost)
+	{
+		return false;
+	}
+
+	INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(Fixture.NamedSlotHost);
+	TestNotNull(TEXT("named slot host"), NamedSlotHost);
+	if (!NamedSlotHost)
+	{
+		return false;
+	}
+
+	UTextBlock* NewBody = Fixture.Blueprint->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(),
+		TEXT("NewBody"));
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(Fixture.Blueprint, NewBody);
+	NamedSlotHost->SetContentForSlot(FName(TEXT("Body")), NewBody);
+
+	TSharedRef<FJsonObject> Snapshot = MakeShared<FJsonObject>();
+	Snapshot->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
+	Snapshot->SetStringField(TEXT("target_subkind"), TEXT("named_slot_content"));
+	Snapshot->SetBoolField(TEXT("exists"), true);
+	Snapshot->SetBoolField(TEXT("content_exists"), true);
+	Snapshot->SetStringField(TEXT("host_widget_name"), TEXT("DialogShell"));
+	Snapshot->SetStringField(TEXT("slot_name"), TEXT("Body"));
+	Snapshot->SetStringField(TEXT("content_widget_name"), TEXT("OldBody"));
+	Snapshot->SetStringField(TEXT("content_widget_class"), UTextBlock::StaticClass()->GetPathName());
+	Snapshot->SetNumberField(TEXT("virtual_index"), 0);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Fixture.Blueprint->GetPathName();
+	Target.TargetKind = TEXT("umg_widget_tree");
+	Target.TargetSubKind = TEXT("named_slot_content");
+	Target.TargetKey = TEXT("umg_widget_tree:DialogShell:slot:Body");
+	Target.VisualGroupKey = Target.TargetKey;
+
+	FString Error;
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
+		Target,
+		Snapshot,
+		Error);
+	TestTrue(FString::Printf(TEXT("restore succeeds: %s"), *Error), bRestored);
+	UWidget* RestoredContent = NamedSlotHost->GetContentForSlot(FName(TEXT("Body")));
+	TestNotNull(TEXT("slot has restored content"), RestoredContent);
+	if (RestoredContent)
+	{
+		TestEqual(TEXT("old content restored"), RestoredContent->GetName(), FString(TEXT("OldBody")));
+	}
+	TestFalse(
+		TEXT("replaced content variable is unregistered"),
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, NewBody));
+	TestTrue(
+		TEXT("restored content variable is registered"),
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::IsWidgetVariableRegistered(Fixture.Blueprint, RestoredContent));
+	return true;
+}
+
+#endif

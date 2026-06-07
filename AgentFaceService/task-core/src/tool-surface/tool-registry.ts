@@ -1,6 +1,5 @@
 export { getBlueprintHelperTool, getBlueprintHelperToolRegistry } from './registry/tool-registry-builder.js';
 export {
-  getToolTemplateDispatch,
   getToolCapabilityDescriptor,
   isToolCapabilityDomain,
   isToolCapabilityKind,
@@ -8,11 +7,21 @@ export {
   listToolDomains,
 } from './catalog/tool-capability-catalog.js';
 export {
-  createToolsTemplateBuilder,
-} from './manifest/tools-template-builder.js';
-export type {
-  ToolsTemplateBuilder,
-} from './manifest/tools-template-builder.js';
+  composeTaskSpecTemplate,
+  listTaskSpecTemplateClusters,
+  listTaskSpecTemplateFamilies,
+  listTaskSpecTemplateOperations,
+  listTaskSpecTemplateQuickAccess,
+  listTaskSpecTemplateWriteModes,
+} from './templates/taskspec-template-composer.js';
+export {
+  composeReadContextTemplate,
+  listReadContextTemplateClusters,
+  listReadContextTemplateDomains,
+  listReadContextTemplateQuickAccess,
+  listReadContextTemplateTargets,
+  listReadContextTemplateViews,
+} from './templates/read-context-template-composer.js';
 export {
   buildReadonlyToolCommandManifestRegistry,
   buildReadonlyToolCommandManifests,
@@ -49,6 +58,19 @@ export type {
   ToolRisk,
 } from './types.js';
 export type {
+  ComposeTaskSpecTemplateInput,
+  TaskSpecTemplateCompositionResult,
+  TaskSpecTemplateDiagnostic,
+  TaskSpecTemplateFamily,
+  TaskSpecTemplateWriteMode,
+} from './templates/taskspec-template-types.js';
+export type {
+  ComposeReadContextTemplateInput,
+  ReadContextTemplateCompositionResult,
+  ReadContextTemplateDiagnostic,
+  ReadContextTemplateDomain,
+} from './templates/read-context-template-types.js';
+export type {
   ToolCommandManifestRegistry,
 } from './manifest/tool-command-manifest-registry.js';
 export type {
@@ -63,10 +85,8 @@ export type {
   ResultProjectionPolicy,
 } from './result/result-projection-policy.js';
 export type {
-  CliInvocationTemplateRef,
   ListToolCapabilitiesOptions,
   ListToolDomainsOptions,
-  GetToolTemplateDispatchOptions,
   ToolCapabilityDomain,
   ToolCapabilityItem,
   ToolCapabilityKind,
@@ -74,9 +94,4 @@ export type {
   ToolDomainCatalogItem,
   ToolDomainListResult,
   ToolDomainStatus,
-  ToolTemplateDispatchResult,
-  ToolTemplateRouteKind,
-  ToolTemplateRouteRef,
-  ToolTemplateSlotKind,
-  ToolTemplateSlotRef,
 } from './catalog/tool-capability-types.js';

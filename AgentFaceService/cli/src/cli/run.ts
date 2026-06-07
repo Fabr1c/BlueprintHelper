@@ -31,7 +31,7 @@ import {
 import { createInputIoSummary, createOutputIoSummary } from './io-stats.js';
 import { buildHelpText } from './help.js';
 import { runMetricsCommand, type MetricsCliCommand } from './metrics-command.js';
-import { parseToolAudience, parseToolRisk, parseToolTemplateSlotKind, runToolsCommand } from './tools-command.js';
+import { parseToolAudience, parseToolRisk, runToolsCommand } from './tools-command.js';
 import {
   createCliMetricsService,
   recordCliIoCompleted,
@@ -128,7 +128,12 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
     }
 
-    if (command.kind === 'tools.domains' || command.kind === 'tools.list' || command.kind === 'tools.templates') {
+    if (
+      command.kind === 'tools.domains'
+      || command.kind === 'tools.list'
+      || command.kind.startsWith('tools.templates.')
+      || command.kind.startsWith('tools.read_templates.')
+    ) {
       const output = shapeCliOutput(runToolsCommand(command), command.fields, command.omitFields);
       runtime.stdout(`${JSON.stringify(output)}\n`);
       return 0;
@@ -367,9 +372,17 @@ function parseArgs(argv: string[]): ParseResult {
     audience?: 'default' | 'compat' | 'expert';
     requiresBridge?: boolean;
     risks?: string[];
-    routeId?: string;
-    slot?: boolean;
-    slotKind?: string;
+    workflow?: string;
+    family?: string;
+    writeMode?: string;
+    cluster?: string;
+    operation?: string;
+    domain?: string;
+    readCluster?: string;
+    targetKind?: string;
+    viewTemplate?: string;
+    templates?: string[];
+    out?: string;
     compileOnly?: boolean;
   } = {};
 
@@ -416,20 +429,30 @@ function parseArgs(argv: string[]): ParseResult {
         }
       }
       options.risks = risks;
-    } else if (arg === '--route') {
-      options.routeId = readOptionValue(argv, ++index, arg);
-    } else if (arg === '--slot') {
-      options.slot = true;
+    } else if (arg === '--workflow') {
+      options.workflow = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--family') {
+      options.family = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--write-mode') {
+      options.writeMode = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--cluster') {
+      options.cluster = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--operation') {
+      options.operation = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--domain') {
+      options.domain = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--read-cluster') {
+      options.readCluster = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--target-kind') {
+      options.targetKind = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--view-template') {
+      options.viewTemplate = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--templates') {
+      options.templates = parseCommaList(readOptionValue(argv, ++index, arg));
+    } else if (arg === '--out') {
+      options.out = readOptionValue(argv, ++index, arg);
     } else if (arg === '--compile-only') {
       options.compileOnly = true;
-    } else if (arg === '--kind') {
-      const slotKind = readOptionValue(argv, ++index, arg);
-      try {
-        parseToolTemplateSlotKind(slotKind);
-      } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : String(err) };
-      }
-      options.slotKind = slotKind;
     } else if (arg === '--preview-token') {
       options.previewToken = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
@@ -523,21 +546,11 @@ function parseArgs(argv: string[]): ParseResult {
         },
       };
     }
-    if (action === 'templates' && positionals.length === 3) {
-      if (options.slotKind && options.slot !== true) {
-        return { ok: false, message: '--kind requires --slot for tools templates.' };
-      }
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.templates',
-          toolId: positionals[2],
-          routeId: options.routeId,
-          slot: options.slot,
-          slotKind: options.slotKind,
-        },
-      };
+    if (action === 'templates') {
+      return parseToolsTemplatesCommand(positionals, options, base);
+    }
+    if (action === 'read-templates') {
+      return parseToolsReadTemplatesCommand(positionals, options, base);
     }
     return { ok: false, message: `Unsupported BlueprintHelper CLI tools command: ${action ?? ''}` };
   }
@@ -694,8 +707,17 @@ function parseHelpTarget(argv: string[]): string[] {
     '--audience',
     '--requires-bridge',
     '--risk',
-    '--route',
-    '--kind',
+    '--workflow',
+    '--family',
+    '--write-mode',
+    '--cluster',
+    '--operation',
+    '--domain',
+    '--read-cluster',
+    '--target-kind',
+    '--view-template',
+    '--templates',
+    '--out',
     '--select',
     '--limit',
     '--window',
@@ -874,6 +896,179 @@ function isTaskFileCommand(command: CliCommand): boolean {
   return command.kind === 'task.preview' || command.kind === 'task.execute';
 }
 
+function parseToolsTemplatesCommand(
+  positionals: string[],
+  options: {
+    workflow?: string;
+    family?: string;
+    writeMode?: string;
+    cluster?: string;
+    operation?: string;
+    templates?: string[];
+    out?: string;
+  },
+  base: Omit<CliCommand, 'kind'>,
+): ParseResult {
+  const subcommand = positionals[2];
+  if (positionals.length !== 3) {
+    return { ok: false, message: `Unsupported BlueprintHelper CLI tools templates command: ${subcommand ?? ''}` };
+  }
+
+  switch (subcommand) {
+    case 'families':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.families',
+          workflow: options.workflow ?? 'preview_execute',
+        },
+      };
+    case 'write-modes':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.write_modes',
+          family: options.family,
+        },
+      };
+    case 'clusters':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.clusters',
+          family: options.family,
+        },
+      };
+    case 'operations':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.operations',
+          family: options.family,
+          cluster: options.cluster,
+          writeMode: options.writeMode,
+        },
+      };
+    case 'quick-access':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.quick_access',
+          family: options.family,
+          cluster: options.cluster,
+          operation: options.operation,
+          writeMode: options.writeMode,
+        },
+      };
+    case 'compose':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.templates.compose',
+          family: options.family,
+          writeMode: options.writeMode,
+          templateIds: options.templates ?? [],
+          outputPath: options.out,
+        },
+      };
+    default:
+      return { ok: false, message: `Unsupported BlueprintHelper CLI tools templates command: ${subcommand ?? ''}` };
+  }
+}
+
+function parseToolsReadTemplatesCommand(
+  positionals: string[],
+  options: {
+    domain?: string;
+    readCluster?: string;
+    targetKind?: string;
+    viewTemplate?: string;
+    templates?: string[];
+    out?: string;
+  },
+  base: Omit<CliCommand, 'kind'>,
+): ParseResult {
+  const subcommand = positionals[2];
+  if (positionals.length !== 3) {
+    return { ok: false, message: `Unsupported BlueprintHelper CLI tools read-templates command: ${subcommand ?? ''}` };
+  }
+
+  switch (subcommand) {
+    case 'domains':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.domains',
+        },
+      };
+    case 'clusters':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.clusters',
+          domain: options.domain,
+        },
+      };
+    case 'targets':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.targets',
+          domain: options.domain,
+          readCluster: options.readCluster,
+        },
+      };
+    case 'views':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.views',
+          domain: options.domain,
+          readCluster: options.readCluster,
+          targetKind: options.targetKind,
+        },
+      };
+    case 'quick-access':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.quick_access',
+          domain: options.domain,
+          readCluster: options.readCluster,
+          targetKind: options.targetKind,
+          viewTemplate: options.viewTemplate,
+        },
+      };
+    case 'compose':
+      return {
+        ok: true,
+        command: {
+          ...base,
+          kind: 'tools.read_templates.compose',
+          domain: options.domain,
+          readCluster: options.readCluster,
+          targetKind: options.targetKind,
+          viewTemplate: options.viewTemplate,
+          templateIds: options.templates ?? [],
+          outputPath: options.out,
+        },
+      };
+    default:
+      return { ok: false, message: `Unsupported BlueprintHelper CLI tools read-templates command: ${subcommand ?? ''}` };
+  }
+}
+
 function required(value: string | undefined): string {
   if (!value) {
     throw new Error('Missing required CLI argument.');
@@ -900,6 +1095,13 @@ function isBridgeUnavailable(err: unknown): boolean {
     return false;
   }
   return /Bridge connection|ECONNREFUSED|timed out|closed|ended/i.test(err.message);
+}
+
+function parseCommaList(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function isMetricsAction(value: string | undefined): value is MetricsCliCommand['metricsKind'] {

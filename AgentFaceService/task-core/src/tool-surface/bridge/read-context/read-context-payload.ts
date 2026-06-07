@@ -3,6 +3,10 @@ import {
   projectReadContextLogic,
   type ReadContextLogicFormat,
 } from './read-context-logic-projector.js';
+import {
+  buildWidgetTreeLogicFlowPayload,
+  buildWidgetTreeLogicJsonPayload,
+} from './read-context-widget-tree-projection.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
 export type ReadContextPostProcessResult = {
@@ -28,6 +32,11 @@ export function postProcessReadContextPayloadWithDebug(
       debug: result.debug,
     };
   }
+  if (isWidgetTreeProjectionSchema(payloadSchema, input)) {
+    return {
+      payload: buildWidgetTreePayload(input, payload),
+    };
+  }
 
   return {
     payload: postProcessReadContextPayload(input, payloadSchema, payload),
@@ -48,6 +57,9 @@ export function postProcessReadContextPayload(
       view: { ...input.view },
     });
     return compactLogicContextPayload(result.payload);
+  }
+  if (isWidgetTreeProjectionSchema(payloadSchema, input)) {
+    return buildWidgetTreePayload(input, payload);
   }
 
   const normalized: Record<string, unknown> = {
@@ -108,6 +120,25 @@ function isLogicProjectionSchema(payloadSchema: string): payloadSchema is LogicP
     || payloadSchema === 'LogicMd.v1'
     || payloadSchema === 'LogicJson.v1'
     || payloadSchema === 'LogicSnapshot.v1';
+}
+
+function isWidgetTreeProjectionSchema(payloadSchema: string, input: ReadContextInput): boolean {
+  return payloadSchema === 'WidgetContext.v1'
+    && input.read_type === 'widget_context'
+    && !input.target.target_name;
+}
+
+function buildWidgetTreePayload(
+  input: ReadContextInput,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const payloadWithTarget = typeof payload['asset_path'] === 'string' && payload['asset_path'].length > 0
+    ? payload
+    : { ...payload, asset_path: input.target.asset_path };
+  if (input.view?.format === 'logic_flow') {
+    return buildWidgetTreeLogicFlowPayload(payloadWithTarget);
+  }
+  return buildWidgetTreeLogicJsonPayload(payloadWithTarget);
 }
 
 function resolveRequestedLogicFormat(

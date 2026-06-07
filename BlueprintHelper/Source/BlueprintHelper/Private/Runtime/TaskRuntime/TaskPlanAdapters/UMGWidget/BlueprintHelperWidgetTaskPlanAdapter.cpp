@@ -153,6 +153,98 @@ public:
 		return true;
 	}
 
+	static bool WidgetTryCopyOptionalNumber(
+		const TSharedPtr<FJsonObject>& Source,
+		const TCHAR* SourceFieldName,
+		const FString& SourceFieldPath,
+		const TCHAR* DestinationFieldName,
+		const TSharedRef<FJsonObject>& Destination,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Source, SourceFieldName);
+		if (!FoundValue.IsValid())
+		{
+			return true;
+		}
+		if (FoundValue->Type != EJson::Number)
+		{
+			OutError = MakeWidgetTaskPlanError(
+				TEXT("invalid_umg_widget_op"),
+				FString::Printf(
+					TEXT("UMG widget op %s must be a number when present; actual type is %s."),
+					SourceFieldName,
+					*WidgetJsonValueTypeToString(FoundValue)),
+				SourceFieldPath);
+			return false;
+		}
+
+		const double Number = FoundValue->AsNumber();
+		if (Number < 0.0)
+		{
+			OutError = MakeWidgetTaskPlanError(
+				TEXT("invalid_umg_widget_virtual_index"),
+				FString::Printf(TEXT("UMG widget op %s must be non-negative."), SourceFieldName),
+				SourceFieldPath);
+			return false;
+		}
+
+		Destination->SetNumberField(DestinationFieldName, Number);
+		return true;
+	}
+
+	static bool WidgetTryCopyOptionalBool(
+		const TSharedPtr<FJsonObject>& Source,
+		const TCHAR* SourceFieldName,
+		const FString& SourceFieldPath,
+		const TCHAR* DestinationFieldName,
+		const TSharedRef<FJsonObject>& Destination,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TSharedPtr<FJsonValue> FoundValue = FBlueprintHelperVersionCompat::FindJsonValue(Source, SourceFieldName);
+		if (!FoundValue.IsValid())
+		{
+			return true;
+		}
+		if (FoundValue->Type != EJson::Boolean)
+		{
+			OutError = MakeWidgetTaskPlanError(
+				TEXT("invalid_umg_widget_op"),
+				FString::Printf(
+					TEXT("UMG widget op %s must be a bool when present; actual type is %s."),
+					SourceFieldName,
+					*WidgetJsonValueTypeToString(FoundValue)),
+				SourceFieldPath);
+			return false;
+		}
+
+		Destination->SetBoolField(DestinationFieldName, FoundValue->AsBool());
+		return true;
+	}
+
+	static bool WidgetRejectLegacyPositionFields(
+		const TSharedPtr<FJsonObject>& OpObject,
+		FBlueprintHelperToolError& OutError)
+	{
+		const TCHAR* LegacyFields[] = {
+			TEXT("parent_widget_name"),
+			TEXT("insert_index"),
+			TEXT("child_index")
+		};
+
+		for (const TCHAR* FieldName : LegacyFields)
+		{
+			if (FBlueprintHelperVersionCompat::FindJsonValue(OpObject, FieldName).IsValid())
+			{
+				OutError = MakeWidgetTaskPlanError(
+					TEXT("unsupported_umg_widget_legacy_position_field"),
+					TEXT("UMG WidgetTree TaskPlan uses parent_name and virtual_index only."),
+					WidgetBuildOpFieldPath(FieldName));
+				return false;
+			}
+		}
+		return true;
+	}
+
 	static bool WidgetTryReadPropertyName(
 		const TSharedPtr<FJsonObject>& OpObject,
 		FString& OutPropertyName,
@@ -364,14 +456,61 @@ public:
 			return false;
 		}
 
-		if (FBlueprintHelperVersionCompat::FindJsonValue(OpObject, TEXT("parent_widget_name")).IsValid())
+		if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_name"), WidgetBuildOpFieldPath(TEXT("parent_name")), TEXT("parent_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalString(OpObject, TEXT("slot_name"), WidgetBuildOpFieldPath(TEXT("slot_name")), TEXT("slot_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalString(OpObject, TEXT("expected_parent_name"), WidgetBuildOpFieldPath(TEXT("expected_parent_name")), TEXT("expected_parent_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalNumber(OpObject, TEXT("virtual_index"), WidgetBuildOpFieldPath(TEXT("virtual_index")), TEXT("virtual_index"), Payload, OutError))
 		{
-			if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_widget_name"), WidgetBuildOpFieldPath(TEXT("parent_widget_name")), TEXT("parent_name"), Payload, OutError))
-			{
-				return false;
-			}
+			return false;
 		}
-		else if (!WidgetTryCopyOptionalString(OpObject, TEXT("parent_name"), WidgetBuildOpFieldPath(TEXT("parent_name")), TEXT("parent_name"), Payload, OutError))
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool WidgetTryBuildMovePayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		if (!WidgetTryCopyRequiredString(OpObject, TEXT("widget_name"), WidgetBuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError) ||
+			!WidgetTryCopyRequiredString(OpObject, TEXT("new_parent_name"), WidgetBuildOpFieldPath(TEXT("new_parent_name")), TEXT("new_parent_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalString(OpObject, TEXT("slot_name"), WidgetBuildOpFieldPath(TEXT("slot_name")), TEXT("slot_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalString(OpObject, TEXT("expected_parent_name"), WidgetBuildOpFieldPath(TEXT("expected_parent_name")), TEXT("expected_parent_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalNumber(OpObject, TEXT("virtual_index"), WidgetBuildOpFieldPath(TEXT("virtual_index")), TEXT("virtual_index"), Payload, OutError) ||
+			!WidgetTryCopyOptionalNumber(OpObject, TEXT("expected_virtual_index"), WidgetBuildOpFieldPath(TEXT("expected_virtual_index")), TEXT("expected_virtual_index"), Payload, OutError))
+		{
+			return false;
+		}
+
+		OutPayload = Payload;
+		return true;
+	}
+
+	static bool WidgetTryBuildSetNamedSlotContentPayload(
+		const FString& AssetPath,
+		const TSharedPtr<FJsonObject>& OpObject,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), AssetPath);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		if (!WidgetTryCopyRequiredString(OpObject, TEXT("host_widget_name"), WidgetBuildOpFieldPath(TEXT("host_widget_name")), TEXT("host_widget_name"), Payload, OutError) ||
+			!WidgetTryCopyRequiredString(OpObject, TEXT("slot_name"), WidgetBuildOpFieldPath(TEXT("slot_name")), TEXT("slot_name"), Payload, OutError) ||
+			!WidgetTryCopyRequiredString(OpObject, TEXT("widget_class"), WidgetBuildOpFieldPath(TEXT("widget_class")), TEXT("widget_class"), Payload, OutError) ||
+			!WidgetTryCopyRequiredString(OpObject, TEXT("widget_name"), WidgetBuildOpFieldPath(TEXT("widget_name")), TEXT("widget_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalNumber(OpObject, TEXT("virtual_index"), WidgetBuildOpFieldPath(TEXT("virtual_index")), TEXT("virtual_index"), Payload, OutError) ||
+			!WidgetTryCopyOptionalString(OpObject, TEXT("expected_content_widget_name"), WidgetBuildOpFieldPath(TEXT("expected_content_widget_name")), TEXT("expected_content_widget_name"), Payload, OutError) ||
+			!WidgetTryCopyOptionalBool(OpObject, TEXT("replace_existing"), WidgetBuildOpFieldPath(TEXT("replace_existing")), TEXT("replace_existing"), Payload, OutError))
 		{
 			return false;
 		}
@@ -512,6 +651,12 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	{
 		return false;
 	}
+	if (!FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetRejectLegacyPositionFields(
+		OpObject,
+		OutError))
+	{
+		return false;
+	}
 
 	TSharedPtr<FJsonObject> Payload;
 	FString AdapterOperation;
@@ -527,6 +672,38 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 		}
 		AdapterOperation = FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget;
 		if (!FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetTryBuildAddPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == FBlueprintHelperWidgetTaskPlan::Op::MoveWidget)
+	{
+		if (Strategy != FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit)
+		{
+			OutError = FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::MakeWidgetTaskPlanError(
+				TEXT("unsupported_umg_widget_strategy_for_op"),
+				TEXT("move_widget requires widget_tree_edit strategy."),
+				FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetBuildStepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+		AdapterOperation = FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget;
+		if (!FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetTryBuildMovePayload(AssetPath, OpObject, bDryRun, Payload, OutError))
+		{
+			return false;
+		}
+	}
+	else if (OpName == FBlueprintHelperWidgetTaskPlan::Op::SetNamedSlotContent)
+	{
+		if (Strategy != FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit)
+		{
+			OutError = FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::MakeWidgetTaskPlanError(
+				TEXT("unsupported_umg_widget_strategy_for_op"),
+				TEXT("set_named_slot_content requires widget_tree_edit strategy."),
+				FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetBuildStepFieldPath(TEXT("write.strategy")));
+			return false;
+		}
+		AdapterOperation = FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent;
+		if (!FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetTryBuildSetNamedSlotContentPayload(AssetPath, OpObject, bDryRun, Payload, OutError))
 		{
 			return false;
 		}
@@ -567,7 +744,7 @@ bool FBlueprintHelperWidgetTaskPlanAdapter::TryBuildPayloadFromTaskPlanStep(
 	{
 		OutError = FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::MakeWidgetTaskPlanError(
 			TEXT("unsupported_umg_widget_op"),
-			TEXT("UMG widget adapter currently supports add_widget, set_widget_property, and remove_widget only."),
+			TEXT("UMG widget adapter supports add_widget, move_widget, set_named_slot_content, set_widget_property, and remove_widget."),
 			FBlueprintHelperWidgetTaskPlanAdapterLocalUtils::WidgetBuildOpFieldPath(TEXT("op")));
 		return false;
 	}

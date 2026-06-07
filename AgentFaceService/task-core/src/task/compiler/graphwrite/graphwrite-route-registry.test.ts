@@ -67,6 +67,15 @@ test('GraphWrite route registry derives required behavior fields from descriptor
   assert.equal(requiredFieldByStrategy.replace_external_body, 'external_replace');
 });
 
+test('GraphWrite routes declare explicit template write modes', () => {
+  for (const route of getAllGraphWriteRoutes()) {
+    assert.ok(
+      ['graph.append', 'graph.replace', 'graph.merge', 'graph.patch'].includes(route.write_mode),
+      `${route.route_id} has valid write_mode`,
+    );
+  }
+});
+
 test('generated UE adapter sync uses runtime requirement semantics, not active stubs', () => {
   const deprecatedActiveStubSync = ['generated', 'active', 'stub'].join('_');
   const sync = readGeneratedAdapterSync('task-core');

@@ -29,7 +29,7 @@ test('edit_blueprint_components lowers to existing blueprint_component TaskPlan 
   );
 });
 
-test('edit_umg_widget lowers create/update/delete changes to existing umg_widget TaskPlan shape', () => {
+test('edit_umg_widget lowers supported WidgetTree changes to existing umg_widget TaskPlan shape', () => {
   assert.deepEqual(
     compileTaskSpecToTaskPlan(widgetTaskSpecFixture as never),
     widgetTaskPlanFixture,

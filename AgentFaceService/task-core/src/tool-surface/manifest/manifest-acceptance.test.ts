@@ -8,9 +8,8 @@ import {
   getAllGraphWriteRoutes,
   getGraphWriteRoutesForTemplateDiscovery,
 } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
-import { getGraphWriteSlotsForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
+import { getGraphWriteSlotsForRoute } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
 import {
-  getToolTemplateDispatch,
   listToolCapabilities,
   listToolDomains,
 } from '../tool-registry.js';
@@ -63,23 +62,21 @@ test('every task tool manifest declares input shape adapters', () => {
   }
 });
 
-test('tools templates exposes only active public graph write routes by default', () => {
-  const dispatch = getToolTemplateDispatch('blueprint.plan.taskspec.preview');
+test('manifest exposes only active public graph write route refs by default', () => {
+  const manifest = buildReadonlyToolCommandManifestRegistry().require('blueprint.plan.taskspec.preview');
   const expectedRouteIds = getGraphWriteRoutesForTemplateDiscovery()
     .map((route) => route.route_id)
     .sort();
-  const actualRouteIds = dispatch.routes
-    .filter((entry) => entry.route_kind === 'graph_write')
-    .map((route) => route.route_id)
+  const actualRouteIds = manifest.route_refs
+    .filter((routeId) => routeId.startsWith('graph.'))
     .sort();
 
   assert.deepEqual(actualRouteIds, expectedRouteIds);
 });
 
 test('default template discovery excludes non-active graph write routes', () => {
-  const defaultRouteIds = new Set(getToolTemplateDispatch('blueprint.write.taskspec.execute')
-    .routes
-    .map((route) => route.route_id));
+  const manifest = buildReadonlyToolCommandManifestRegistry().require('blueprint.write.taskspec.execute');
+  const defaultRouteIds = new Set(manifest.route_refs);
   const nonActiveRouteIds = getAllGraphWriteRoutes()
     .filter((route) => route.status !== 'active')
     .map((route) => route.route_id);
@@ -92,9 +89,9 @@ test('default template discovery excludes non-active graph write routes', () => 
 
 test('route slot template refs resolve to existing template files', () => {
   for (const route of getGraphWriteRoutesForTemplateDiscovery()) {
-    for (const slot of getGraphWriteSlotsForTemplateDiscovery(route.route_id)) {
-      assert.equal(fs.existsSync(path.resolve(pluginRoot(), slot.path)), true, `${slot.slot_id} path must exist`);
-      assert.equal(slot.applies_to_routes.includes(route.route_id), true, `${slot.slot_id} must apply to ${route.route_id}`);
+    for (const slot of getGraphWriteSlotsForRoute(route.route_id)) {
+      assert.equal(fs.existsSync(path.resolve(pluginRoot(), slot.template_path)), true, `${slot.slot_id} path must exist`);
+      assert.equal(slot.supported_routes.includes(route.route_id), true, `${slot.slot_id} must apply to ${route.route_id}`);
     }
   }
 });
@@ -119,6 +116,32 @@ test('metrics identities resolve for preview execute read diagnostics and GraphW
   );
 });
 
+test('active GraphWrite route runtime adapters resolve to generated TS and UE sync artifacts', () => {
+  const activeRuntimeAdapterIds = new Set(
+    getGraphWriteRoutesForTemplateDiscovery().map((route) => route.runtime_adapter_id),
+  );
+  const taskCoreSync = readGraphWriteSyncArtifact(
+    'AgentFaceService/task-core/src/task/compiler/graphwrite/generated/graphwrite-ue-adapter-sync.generated.json',
+  );
+  const ueSync = readGraphWriteSyncArtifact(
+    'BlueprintHelper/Source/BlueprintHelper/Private/Generated/BlueprintHelperGraphWriteRouteAdapterSync.generated.json',
+  );
+
+  assert.equal(activeRuntimeAdapterIds.size > 0, true, 'active GraphWrite routes must expose runtime adapters');
+  for (const runtimeAdapterId of activeRuntimeAdapterIds) {
+    assert.equal(
+      taskCoreSync.has(runtimeAdapterId),
+      true,
+      `${runtimeAdapterId} must exist in task-core generated sync artifact`,
+    );
+    assert.equal(
+      ueSync.has(runtimeAdapterId),
+      true,
+      `${runtimeAdapterId} must exist in UE generated sync artifact`,
+    );
+  }
+});
+
 function listDefaultPublicCapabilities() {
   return listToolDomains().items.flatMap((domain) =>
     domain.default_kinds.flatMap((kind) =>
@@ -127,4 +150,20 @@ function listDefaultPublicCapabilities() {
 
 function pluginRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..', '..');
+}
+
+function readGraphWriteSyncArtifact(relativePath: string): Set<string> {
+  const raw = fs.readFileSync(path.resolve(pluginRoot(), relativePath), 'utf8');
+  const parsed = JSON.parse(raw) as {
+    routes?: Array<{
+      runtime_adapter_id?: string;
+      status?: string;
+    }>;
+  };
+  return new Set(
+    (parsed.routes ?? [])
+      .filter((route) => route.status === 'active')
+      .map((route) => route.runtime_adapter_id)
+      .filter((runtimeAdapterId): runtimeAdapterId is string => typeof runtimeAdapterId === 'string' && runtimeAdapterId.length > 0),
+  );
 }

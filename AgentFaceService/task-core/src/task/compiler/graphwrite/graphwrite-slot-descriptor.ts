@@ -1,5 +1,16 @@
+import type { GraphWriteTemplateWriteMode } from './graphwrite-route-descriptor.js';
+
 export type GraphWriteSlotType = 'statement' | 'expression';
 export type GraphWriteSlotStatus = 'active' | 'planned' | 'hidden';
+
+export interface GraphWriteQuickAccessDescriptor {
+  template_id: string;
+  family: 'graph_write';
+  cluster_id: string;
+  operation_id: string;
+  quick_access_id: string;
+  unsupported_write_modes?: GraphWriteTemplateWriteMode[];
+}
 
 export interface GraphWriteSlotDescriptor {
   slot_id: string;
@@ -11,6 +22,7 @@ export interface GraphWriteSlotDescriptor {
   supported_routes: string[];
   validation_hints: string[];
   keywords: string[];
+  quick_access: GraphWriteQuickAccessDescriptor;
   when_to_use: string;
   when_not_to_use?: string;
   status: GraphWriteSlotStatus;

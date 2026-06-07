@@ -18,7 +18,26 @@
         "kind": "create_widget",
         "widget_name": "__CHILD_WIDGET_NAME__",
         "widget_class": "__CHILD_WIDGET_CLASS__",
-        "parent_widget_name": "__ROOT_WIDGET_NAME__"
+        "parent_name": "__ROOT_WIDGET_NAME__",
+        "virtual_index": 0,
+        "expected_parent_name": "__ROOT_WIDGET_NAME__"
+      },
+      {
+        "kind": "move_widget",
+        "widget_name": "__CHILD_WIDGET_NAME__",
+        "new_parent_name": "__NEW_PARENT_WIDGET_NAME__",
+        "virtual_index": 0,
+        "expected_parent_name": "__ROOT_WIDGET_NAME__",
+        "expected_virtual_index": 0
+      },
+      {
+        "kind": "set_named_slot_content",
+        "host_widget_name": "__SLOT_HOST_WIDGET_NAME__",
+        "slot_name": "__NAMED_SLOT_NAME__",
+        "virtual_index": 0,
+        "widget_name": "__SLOT_CONTENT_WIDGET_NAME__",
+        "widget_class": "__SLOT_CONTENT_WIDGET_CLASS__",
+        "replace_existing": true
       },
       {
         "kind": "update_widget_property",

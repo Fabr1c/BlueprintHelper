@@ -47,50 +47,6 @@ export interface ToolCapabilityItem {
   cli_template_ids: string[];
 }
 
-export interface CliInvocationTemplateRef {
-  cli_template_id: string;
-  path: string;
-  template_kind: 'cli_invocation';
-  recommended_for?: string[];
-  input_shape?: string;
-}
-
-export type ToolTemplateRouteKind =
-  | 'read_context'
-  | 'graph_write'
-  | 'taskspec';
-
-export type ToolTemplateSlotKind =
-  | 'statement'
-  | 'expression'
-  | 'target'
-  | 'view'
-  | 'patch'
-  | 'merge';
-
-export interface ToolTemplateRouteRef {
-  route_id: string;
-  route_kind: ToolTemplateRouteKind;
-  purpose: string;
-  template_paths: string[];
-  required_fields: string[];
-  optional_fields: string[];
-  insert_paths: string[];
-  when_to_use?: string;
-  when_not_to_use?: string;
-}
-
-export interface ToolTemplateSlotRef {
-  slot_id: string;
-  slot_type: ToolTemplateSlotKind;
-  path: string;
-  applies_to_routes: string[];
-  insert_path: string;
-  keywords: string[];
-  when_to_use: string;
-  when_not_to_use?: string;
-}
-
 export interface ToolDomainListResult {
   schema: 'BlueprintHelper.ToolDomainList.v1';
   audience: ToolAudience;
@@ -110,25 +66,9 @@ export interface ToolCapabilityListResult {
   };
   items: ToolCapabilityItem[];
   next: {
-    templates_command: 'bh tools templates <tool_id> --format json';
-  };
-}
-
-export interface ToolTemplateDispatchResult {
-  schema: 'BlueprintHelper.ToolTemplateSelection.v1';
-  tool_id: string;
-  tool_name: string;
-  cli_invocation_templates: CliInvocationTemplateRef[];
-  routes: ToolTemplateRouteRef[];
-  selected_route?: ToolTemplateRouteRef;
-  slot_templates: ToolTemplateSlotRef[];
-  input_shape?: string;
-  recommended_invocation: string;
-  allowed_tools: string[];
-  stop_conditions: string[];
-  next: {
-    route_command?: string;
-    slot_command?: string;
+    template_index_command:
+      | 'bh tools templates families --workflow preview_execute --format json'
+      | 'bh tools read-templates domains --format json';
   };
 }
 
@@ -144,10 +84,4 @@ export interface ListToolCapabilitiesOptions {
   expert?: boolean;
   requiresBridge?: boolean;
   risks?: ToolRisk[];
-}
-
-export interface GetToolTemplateDispatchOptions {
-  route?: string;
-  slot?: boolean;
-  slotKind?: ToolTemplateSlotKind;
 }

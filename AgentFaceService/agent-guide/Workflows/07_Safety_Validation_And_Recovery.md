@@ -13,6 +13,19 @@
 
 Preview is the write gate for every S1-S3 write. If preview returns `preview_blocked`, `context_required`, `context_stale`, or `failed`, do not execute; either repair the TaskSpec, refresh context, or stop and report.
 
+TaskSpec writes should be generated through the TaskSpec Template Composer four-layer index before preview:
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
+```
+
+Do not use old tool-id template dispatch or template-directory scans as the safety entry.
+
 For GraphWrite branch insertion into an owned block, preview must verify:
 
 - The anchor is a block-scoped LogicJson anchor from a BlueprintHelper-owned block.
@@ -31,9 +44,9 @@ Source-control checkout is separate from write authorization. In P4/Perforce or 
 
 ## Validation
 
-Use the compile/save validation policy from the current CLI-discovered template. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
+Use the compile/save validation policy from the composer-generated TaskSpec and current CLI help. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
 
-When compile or save is an explicit tool step, discover the tool through `bh tools list blueprint diagnose --format json` or `bh tools list editor write --format json`, fetch the matching template with `bh tools templates`, and run the returned `allowed_tools` only. `blueprint_compile_blueprint` should target a specific Blueprint asset even though the Bridge accepts an empty compatibility payload. `blueprint_save_asset` must target a specific `asset_path`, requires write-session authorization, and must not bypass source-control/editability stops.
+When compile or save is an explicit tool step, discover the tool through `bh tools list blueprint diagnose --format json` or `bh tools list editor write --format json`, then use the tool-specific payload template documented by that tool's help output. `blueprint_compile_blueprint` should target a specific Blueprint asset even though the Bridge accepts an empty compatibility payload. `blueprint_save_asset` must target a specific `asset_path`, requires write-session authorization, and must not bypass source-control/editability stops.
 
 ## Recovery
 

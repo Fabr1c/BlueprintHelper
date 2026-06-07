@@ -6,7 +6,6 @@ import {
   type GraphWriteSlotDescriptor,
   type GraphWriteSlotType,
 } from './graphwrite-slot-descriptor.js';
-import type { ToolTemplateSlotRef } from '../../../tool-surface/catalog/tool-capability-types.js';
 
 const ALL_GRAPHWRITE_SLOTS: readonly GraphWriteSlotDescriptor[] = GRAPHWRITE_SLOT_MANIFEST;
 const SLOTS_BY_ID = new Map(ALL_GRAPHWRITE_SLOTS.map((slot) => [slot.slot_id, slot]));
@@ -41,19 +40,6 @@ export function requireGraphWriteSlotById(slotId: string): GraphWriteSlotDescrip
 export function getGraphWriteSlotsForTemplateDiscovery(
   routeId: string,
   slotType?: GraphWriteSlotType,
-): readonly ToolTemplateSlotRef[] {
-  return getGraphWriteSlotsForRoute(routeId, slotType).map(toToolTemplateSlotRef);
-}
-
-function toToolTemplateSlotRef(slot: GraphWriteSlotDescriptor): ToolTemplateSlotRef {
-  return {
-    slot_id: slot.slot_id,
-    slot_type: slot.slot_type,
-    path: slot.template_path,
-    applies_to_routes: [...slot.supported_routes],
-    insert_path: slot.insert_paths.join(' | '),
-    keywords: [...slot.keywords],
-    when_to_use: slot.when_to_use,
-    when_not_to_use: slot.when_not_to_use,
-  };
+): readonly GraphWriteSlotDescriptor[] {
+  return getGraphWriteSlotsForRoute(routeId, slotType);
 }

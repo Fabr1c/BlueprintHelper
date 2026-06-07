@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -133,31 +133,76 @@ test('CLI graph body adapter loop previews, executes, then reads context', async
   assert.match(serializedOutput, /Macro In/);
 });
 
-test('CLI tools templates route output is descriptor-backed and does not contact Bridge', async (t) => {
+test('CLI tools templates composer output is descriptor-backed and does not contact Bridge', async (t) => {
   const workspace = await createTempDir(t, 'bph-cli-e2e-templates-');
   const stdout: string[] = [];
+  const outputPath = path.join(workspace, 'graph-append.taskspec.json');
 
   const exitCode = await runCli({
-    argv: ['tools', 'templates', 'blueprinthelper_preview_task', '--route', 'graph.replace.function_body', '--slot', '--format', 'json'],
+    argv: [
+      'tools',
+      'templates',
+      'compose',
+      '--family',
+      'graph_write',
+      '--write-mode',
+      'graph.append',
+      '--templates',
+      'generic_ops.let.default',
+      '--out',
+      outputPath,
+      '--format',
+      'json',
+    ],
     cwd: workspace,
     bridge: createFailingBridge(),
     stdout: (text) => stdout.push(text),
     stderr: () => {},
   });
   const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
-  const selectedRoute = output.selected_route as Record<string, unknown>;
-  const slotTemplates = output.slot_templates as Array<Record<string, unknown>>;
 
   assert.equal(exitCode, 0);
-  assert.equal(selectedRoute.route_id, 'graph.replace.function_body');
-  assert.equal(selectedRoute.route_kind, 'graph_write');
-  assert.equal((selectedRoute.template_paths as string[]).some((entry) => entry.endsWith('graph_replace_owned_template.json')), true);
-  assert.equal((selectedRoute.required_fields as string[]).includes('behavior.replace.scope=function_body'), true);
-  assert.equal(output.input_shape, '{ "task_spec": BlueprintHelper.TaskSpec.v1 }');
-  assert.equal((output.cli_invocation_templates as Array<Record<string, unknown>>)
-    .some((template) => template.input_shape === 'BlueprintHelper.TaskSpec.v1'), true);
-  assert.equal(Array.isArray(slotTemplates), true);
-  assert.equal(slotTemplates.some((slot) => slot.slot_id === 'graph.expression.get.function_param'), true);
+  assert.equal(output.schema, 'BlueprintHelper.TaskSpecTemplateComposition.v1');
+  assert.equal(output.status, 'ok');
+  assert.equal('inserted_slots' in output, false);
+});
+
+test('CLI read-template composer output is descriptor-backed and does not contact Bridge', async (t) => {
+  const workspace = await createTempDir(t, 'bph-cli-e2e-read-templates-');
+  const stdout: string[] = [];
+  const outputPath = path.join(workspace, 'function-flow.readspec.json');
+
+  const exitCode = await runCli({
+    argv: [
+      'tools',
+      'read-templates',
+      'compose',
+      '--domain',
+      'blueprint',
+      '--read-cluster',
+      'logic',
+      '--target-kind',
+      'function',
+      '--view-template',
+      'logic_flow',
+      '--out',
+      outputPath,
+      '--format',
+      'json',
+    ],
+    cwd: workspace,
+    bridge: createFailingBridge(),
+    stdout: (text) => stdout.push(text),
+    stderr: () => {},
+  });
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  const readSpec = JSON.parse(await readFile(outputPath, 'utf8')) as Record<string, unknown>;
+
+  assert.equal(exitCode, 0);
+  assert.equal(output.schema, 'BlueprintHelper.ReadContextTemplateComposition.v1');
+  assert.equal(output.status, 'ok');
+  assert.equal(readSpec.schema, 'BlueprintHelper.ReadSpec.v1');
+  assert.equal(readSpec.read_type, 'blueprint_logic');
 });
 
 test('CLI help output is manifest-backed and does not contact Bridge', async (t) => {
@@ -176,7 +221,8 @@ test('CLI help output is manifest-backed and does not contact Bridge', async (t)
   const help = stdout.join('');
   assert.match(help, /blueprint\.plan\.taskspec\.preview/);
   assert.match(help, /blueprinthelper_preview_task/);
-  assert.match(help, /tools templates blueprint\.plan\.taskspec\.preview/);
+  assert.match(help, /tools templates families --workflow preview_execute/);
+  assert.doesNotMatch(help, new RegExp(['tools templates', '<tool_id>'].join(' ')));
   assert.doesNotMatch(help, /helpEntries/);
 });
 

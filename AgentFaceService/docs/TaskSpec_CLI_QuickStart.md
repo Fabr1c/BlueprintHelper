@@ -19,7 +19,7 @@ Deprecated MCP ordinary tools are not an alternate transport or fallback path.
 - Complete the Bridge and project profile setup before running CLI commands.
 - Build `task-core` and the CLI package so the CLI entry exists under `AgentFaceService/cli/build/cli/`.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
-- Prepare a TaskSpec file by copying the matching template returned by current CLI discovery.
+- Prepare TaskSpec files through the TaskSpec Template Composer before preview or execute.
 
 ## Direct Tool Name Invocation
 
@@ -36,9 +36,9 @@ Examples:
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select <fields>
 bh blueprinthelper_read_context_capabilities --json "{}" --select <fields>
-bh blueprinthelper_read_function_chain_context --file <copied-template.json> --select <fields>
-bh blueprinthelper_preview_task --file <copied-template.json> --select <fields>
-bh blueprinthelper_execute_task --file <copied-template.json> --select <fields>
+bh blueprinthelper_read_function_chain_context --file <function-chain-request.json> --select <fields>
+bh blueprinthelper_preview_task --file <wrapped-preview-request.json> --select <fields>
+bh blueprinthelper_execute_task --file <wrapped-execute-request.json> --select <fields>
 ```
 
 Generated JSON example:
@@ -55,7 +55,22 @@ bh blueprinthelper_preview_task --help
 bh task preview --help
 ```
 
-Tool help and current CLI discovery provide concrete template file paths. Prefer copying the returned template, replacing placeholders, and passing the result with `--file` instead of building large JSON directly in the shell.
+Tool help and current CLI discovery describe the accepted input roots. Prefer composer-generated TaskSpec files or saved JSON request files with `--file` instead of building large JSON directly in the shell.
+
+## TaskSpec Template Composer
+
+TaskSpec writes start with the `bh tools templates` four-layer index. Do not use tool-id template dispatch or scan `AgentFaceService/agent-guide/Templates` to choose TaskSpec files.
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
+bh tools templates quick-access --family graph_write --cluster generic_ops --operation call --write-mode graph.append --format json
+bh tools templates compose --family graph_write --write-mode graph.append --templates generic_ops.call.direct --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
+```
+
+After compose, fill the generated TaskSpec with concrete asset paths, graph names, selectors, and values from ReadContext evidence. The composer output includes the next preview and execute command strings for the generated file.
 
 The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
@@ -74,7 +89,7 @@ Use current CLI help/discovery for the result fields to select.
 Run preview first. This compiles `BlueprintHelper.TaskSpec.v1`, then uses the Bridge preview and UE-side validation path.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file <copied-template.json> --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file <generated-task-spec.json> --format summary
 ```
 
 Use `--format summary` for normal Agent loops so the shell returns compact text plus artifact paths instead of large escaped JSON blobs.
@@ -82,7 +97,7 @@ Use `--format summary` for normal Agent loops so the shell returns compact text 
 The direct tool-name command uses the tool input shape returned by CLI discovery:
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file <copied-template.json> --select <fields>
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file <wrapped-preview-request.json> --select <fields>
 ```
 
 ## Execute
@@ -90,7 +105,7 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_previ
 Execute only after preview passes. This uses the same canonical TypeScript compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <copied-template.json> --format summary
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <generated-task-spec.json> --format summary
 ```
 
 ## Read Full Result
@@ -124,14 +139,14 @@ For graph writes, `call.name` may be a native name, display name, owner-qualifie
 Use `--fields` or `--select` to return only the fields the Agent needs in stdout. Field paths can address top-level fields or nested fields with dot notation. Fields that are not selected are omitted, so routine Agent loops do not need to carry `ok`, `schema`, or the full normalized ToolResult envelope.
 
 ```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <copied-template.json> --fields <fields>
+node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <generated-task-spec.json> --fields <fields>
 ```
 
 ## Rules
 
 - Keep writes TaskSpec-first. Any CLI write should start from `BlueprintHelper.TaskSpec.v1`.
-- Use CLI-discovered templates to distinguish grouped commands from direct tool-name wrappers.
-- Prefer CLI-discovered copy-and-edit JSON files or `--stdin` over inline PowerShell `--json` for complex inputs.
+- Use the TaskSpec Template Composer to create grouped-command TaskSpec files; use CLI help to distinguish grouped commands from direct tool-name wrappers.
+- Prefer composer-generated TaskSpec files, saved JSON request files, or `--stdin` over inline PowerShell `--json` for complex inputs.
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the canonical AgentFace task-core TypeScript compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.

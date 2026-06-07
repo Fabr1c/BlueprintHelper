@@ -1,13 +1,22 @@
 import {
-  buildReadonlyToolCommandManifestRegistry,
-  createToolsTemplateBuilder,
+  composeReadContextTemplate,
+  composeTaskSpecTemplate,
   isToolCapabilityDomain,
   isToolCapabilityKind,
+  listReadContextTemplateClusters,
+  listReadContextTemplateDomains,
+  listReadContextTemplateQuickAccess,
+  listReadContextTemplateTargets,
+  listReadContextTemplateViews,
+  listTaskSpecTemplateClusters,
+  listTaskSpecTemplateFamilies,
+  listTaskSpecTemplateOperations,
+  listTaskSpecTemplateQuickAccess,
+  listTaskSpecTemplateWriteModes,
   listToolCapabilities,
   listToolDomains,
   type ToolAudience,
   type ToolRisk,
-  type ToolTemplateSlotKind,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import type { CliCommand } from './output.js';
 
@@ -39,11 +48,92 @@ export function runToolsCommand(command: CliCommand): Record<string, unknown> {
     }) as unknown as Record<string, unknown>;
   }
 
-  if (command.kind === 'tools.templates') {
-    return createToolsTemplateBuilder(buildReadonlyToolCommandManifestRegistry()).getTemplateDispatch(required(command.toolId, 'Missing tools template tool id.'), {
-      route: command.routeId,
-      slot: command.slot,
-      slotKind: command.slotKind ? parseToolTemplateSlotKind(command.slotKind) : undefined,
+  if (command.kind === 'tools.templates.families') {
+    return listTaskSpecTemplateFamilies({
+      workflow: command.workflow ?? 'preview_execute',
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.templates.write_modes') {
+    return listTaskSpecTemplateWriteModes({
+      family: required(command.family, 'Missing template family.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.templates.clusters') {
+    return listTaskSpecTemplateClusters({
+      family: required(command.family, 'Missing template family.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.templates.operations') {
+    return listTaskSpecTemplateOperations({
+      family: required(command.family, 'Missing template family.'),
+      cluster: required(command.cluster, 'Missing template cluster.'),
+      writeMode: required(command.writeMode, 'Missing template write mode.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.templates.quick_access') {
+    return listTaskSpecTemplateQuickAccess({
+      family: required(command.family, 'Missing template family.'),
+      cluster: required(command.cluster, 'Missing template cluster.'),
+      operation: required(command.operation, 'Missing template operation.'),
+      writeMode: required(command.writeMode, 'Missing template write mode.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.templates.compose') {
+    return composeTaskSpecTemplate({
+      family: required(command.family, 'Missing template family.'),
+      writeMode: required(command.writeMode, 'Missing template write mode.'),
+      templateIds: command.templateIds ?? [],
+      outputPath: required(command.outputPath, 'Missing template output path.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.domains') {
+    return listReadContextTemplateDomains() as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.clusters') {
+    return listReadContextTemplateClusters({
+      domain: required(command.domain, 'Missing read template domain.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.targets') {
+    return listReadContextTemplateTargets({
+      domain: required(command.domain, 'Missing read template domain.'),
+      readCluster: required(command.readCluster, 'Missing read template cluster.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.views') {
+    return listReadContextTemplateViews({
+      domain: required(command.domain, 'Missing read template domain.'),
+      readCluster: required(command.readCluster, 'Missing read template cluster.'),
+      targetKind: required(command.targetKind, 'Missing read template target kind.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.quick_access') {
+    return listReadContextTemplateQuickAccess({
+      domain: required(command.domain, 'Missing read template domain.'),
+      readCluster: required(command.readCluster, 'Missing read template cluster.'),
+      targetKind: required(command.targetKind, 'Missing read template target kind.'),
+      viewTemplate: required(command.viewTemplate, 'Missing read template view.'),
+    }) as unknown as Record<string, unknown>;
+  }
+
+  if (command.kind === 'tools.read_templates.compose') {
+    return composeReadContextTemplate({
+      domain: required(command.domain, 'Missing read template domain.'),
+      readCluster: required(command.readCluster, 'Missing read template cluster.'),
+      targetKind: required(command.targetKind, 'Missing read template target kind.'),
+      viewTemplate: required(command.viewTemplate, 'Missing read template view.'),
+      templateIds: command.templateIds ?? [],
+      outputPath: required(command.outputPath, 'Missing read template output path.'),
     }) as unknown as Record<string, unknown>;
   }
 
@@ -62,20 +152,6 @@ export function parseToolRisk(value: string): ToolRisk {
     return value;
   }
   throw new Error(`Unsupported BlueprintHelper tools risk: ${value}`);
-}
-
-export function parseToolTemplateSlotKind(value: string): ToolTemplateSlotKind {
-  if (
-    value === 'statement'
-    || value === 'expression'
-    || value === 'target'
-    || value === 'view'
-    || value === 'patch'
-    || value === 'merge'
-  ) {
-    return value;
-  }
-  throw new Error(`Unsupported BlueprintHelper template slot kind: ${value}`);
 }
 
 function required(value: string | undefined, message: string): string {

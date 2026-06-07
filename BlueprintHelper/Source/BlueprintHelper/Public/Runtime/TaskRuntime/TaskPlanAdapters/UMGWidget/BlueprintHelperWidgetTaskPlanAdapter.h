@@ -23,6 +23,8 @@ public:
 	struct Op
 	{
 		static constexpr const TCHAR* AddWidget = TEXT("add_widget");
+		static constexpr const TCHAR* MoveWidget = TEXT("move_widget");
+		static constexpr const TCHAR* SetNamedSlotContent = TEXT("set_named_slot_content");
 		static constexpr const TCHAR* SetWidgetProperty = TEXT("set_widget_property");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
 	};
@@ -30,6 +32,8 @@ public:
 	struct AdapterOperation
 	{
 		static constexpr const TCHAR* AddWidget = TEXT("add_widget");
+		static constexpr const TCHAR* MoveWidget = TEXT("move_widget");
+		static constexpr const TCHAR* SetNamedSlotContent = TEXT("set_named_slot_content");
 		static constexpr const TCHAR* SetWidgetProperty = TEXT("set_widget_property");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
 	};

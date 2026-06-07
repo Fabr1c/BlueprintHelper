@@ -1245,20 +1245,44 @@ export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
   }),
 }).passthrough();
 
+const UMGWidgetChangeSchema = z.object({
+  kind: z.enum(['create_widget', 'update_widget_property', 'delete_widget', 'move_widget', 'set_named_slot_content']),
+  widget_name: z.string().min(1).optional(),
+  widget_class: z.string().min(1).optional(),
+  parent_name: z.string().min(1).optional(),
+  new_parent_name: z.string().min(1).optional(),
+  slot_name: z.string().min(1).optional(),
+  host_widget_name: z.string().min(1).optional(),
+  virtual_index: z.number().int().min(0).optional(),
+  expected_parent_name: z.string().min(1).optional(),
+  expected_virtual_index: z.number().int().min(0).optional(),
+  expected_content_widget_name: z.string().min(1).optional(),
+  replace_existing: z.boolean().optional(),
+  property_name: z.string().min(1).optional(),
+  property_path: z.string().min(1).optional(),
+  value: z.unknown().optional(),
+}).passthrough().superRefine((change, ctx) => {
+  if (Object.hasOwn(change, 'parent_widget_name')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['parent_widget_name'],
+      message: 'Use parent_name for WidgetTree parent targeting.',
+    });
+  }
+  if (Object.hasOwn(change, 'insert_index') || Object.hasOwn(change, 'child_index')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: Object.hasOwn(change, 'insert_index') ? ['insert_index'] : ['child_index'],
+      message: 'Use virtual_index for WidgetTree position targeting.',
+    });
+  }
+});
+
 export const UMGWidgetTaskSpecSchema = TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_umg_widget'),
   behavior: z.object({
     widget_strategy: z.literal('widget_blueprint_edit'),
-    changes: z.array(z.object({
-      kind: z.string().min(1),
-      widget_name: z.string().min(1).optional(),
-      widget_class: z.string().min(1).optional(),
-      parent_widget_name: z.string().optional(),
-      parent_name: z.string().optional(),
-      property_name: z.string().min(1).optional(),
-      property_path: z.string().min(1).optional(),
-      value: z.unknown().optional(),
-    }).passthrough()).min(1),
+    changes: z.array(UMGWidgetChangeSchema).min(1),
   }).passthrough(),
 }).passthrough();
 

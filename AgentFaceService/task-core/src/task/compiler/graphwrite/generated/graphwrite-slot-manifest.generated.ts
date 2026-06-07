@@ -39,7 +39,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "struct"
     ],
     "when_to_use": "Use for struct construction expressions.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.construct",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "construct",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.expression.get.function_param",
@@ -69,7 +79,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     ],
     "when_to_use": "Use inside function_body to consume an existing function input parameter.",
     "when_not_to_use": "Do not use for member variables or graph-local result_symbol values.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.get_function_param",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "get_function_param",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.expression.get.symbol_or_variable",
@@ -103,7 +123,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "variable"
     ],
     "when_to_use": "Use to consume a graph-local symbol or member variable.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.get_symbol_or_variable",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "get_symbol_or_variable",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.expression.literal",
@@ -136,7 +166,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "value"
     ],
     "when_to_use": "Use for scalar literal values inside statement inputs.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.literal",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "literal",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.expression.op",
@@ -171,7 +211,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "generic_ops"
     ],
     "when_to_use": "Use for generic operator expressions such as boolean_and.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.op",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "op",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.expression.select",
@@ -205,7 +255,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "options"
     ],
     "when_to_use": "Use for generic select expressions with explicit result type proof.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.expression.select",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "expression",
+      "quick_access_id": "select",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.call.auto_search",
@@ -239,7 +299,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "candidate"
     ],
     "when_to_use": "Use when the Agent knows intent but needs preview candidate search.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.call.auto_search",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "call",
+      "quick_access_id": "auto_search",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.call.direct",
@@ -271,7 +341,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "args"
     ],
     "when_to_use": "Use when the callable target is already known.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.call.direct",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "call",
+      "quick_access_id": "direct",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.call.result_symbol",
@@ -305,7 +385,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "impure"
     ],
     "when_to_use": "Use when an impure call produces a value consumed by a later statement.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.call.result_symbol",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "call",
+      "quick_access_id": "result_symbol",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.component_bound_event",
@@ -330,7 +420,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "handler"
     ],
     "when_to_use": "Use to declare a component-bound event handler relationship.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "event_delegate.component.bound_event",
+      "family": "graph_write",
+      "cluster_id": "event_delegate",
+      "operation_id": "component",
+      "quick_access_id": "bound_event",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.container_action",
@@ -356,7 +456,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "map"
     ],
     "when_to_use": "Use for array, set, or map operations.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "container.action.default",
+      "family": "graph_write",
+      "cluster_id": "container",
+      "operation_id": "action",
+      "quick_access_id": "default",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.control.branch",
@@ -389,7 +499,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "branch"
     ],
     "when_to_use": "Use for explicit if/else execution flow.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.control.branch",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "control",
+      "quick_access_id": "branch",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.control.return",
@@ -414,7 +534,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "function"
     ],
     "when_to_use": "Use as the terminal return statement in a function body.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.control.return",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "control",
+      "quick_access_id": "return",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.control.switch",
@@ -447,7 +577,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "switch"
     ],
     "when_to_use": "Use for switch-style control statements with explicit operation evidence.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.control.switch",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "control",
+      "quick_access_id": "switch",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.convert",
@@ -481,7 +621,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "transform"
     ],
     "when_to_use": "Use for conversion or transform statements that need GenericOps evidence.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.convert.default",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "convert",
+      "quick_access_id": "default",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.create",
@@ -515,7 +665,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "asset_action"
     ],
     "when_to_use": "Use for object construction, asset action create, or function-backed create statements.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.create.default",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "create",
+      "quick_access_id": "default",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.delegate_bind",
@@ -539,7 +699,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "event_delegate"
     ],
     "when_to_use": "Use to bind a delegate to a handler.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "event_delegate.delegate.bind",
+      "family": "graph_write",
+      "cluster_id": "event_delegate",
+      "operation_id": "delegate",
+      "quick_access_id": "bind",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.field.struct_member_set",
@@ -573,7 +743,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "struct_member_set"
     ],
     "when_to_use": "Use for struct member field writes with capability facts.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.field.struct_member_set",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "field",
+      "quick_access_id": "struct_member_set",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.let",
@@ -605,7 +785,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "value"
     ],
     "when_to_use": "Use when a reusable graph-local symbol should be produced by an expression.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.let.default",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "let",
+      "quick_access_id": "default",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.schedule",
@@ -630,7 +820,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "delay"
     ],
     "when_to_use": "Use for delay, timer, or other scheduled execution operations.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "schedule.timer.default",
+      "family": "graph_write",
+      "cluster_id": "schedule",
+      "operation_id": "timer",
+      "quick_access_id": "default",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.set_property",
@@ -662,7 +862,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "property_path"
     ],
     "when_to_use": "Use for object or component property assignment.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.set.property",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "set",
+      "quick_access_id": "property",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   },
   {
     "slot_id": "graph.statement.set.variable",
@@ -693,6 +903,16 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "variable"
     ],
     "when_to_use": "Use for member variable assignment with a value expression.",
-    "status": "active"
+    "status": "active",
+    "quick_access": {
+      "template_id": "generic_ops.set.variable",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "set",
+      "quick_access_id": "variable",
+      "unsupported_write_modes": [
+        "graph.patch"
+      ]
+    }
   }
 ] as const satisfies readonly GraphWriteSlotDescriptor[];
