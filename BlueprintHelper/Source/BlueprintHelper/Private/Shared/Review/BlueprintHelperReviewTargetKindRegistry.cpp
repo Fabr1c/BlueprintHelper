@@ -43,6 +43,7 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 		{ TEXT("class_setting"), EBlueprintHelperReviewSurface::Details, true, TEXT("class_setting"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
 		{ TEXT("class_setting_interface"), EBlueprintHelperReviewSurface::Details, true, TEXT("interface"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
 		{ TEXT("class_default_property"), EBlueprintHelperReviewSurface::Details, true, TEXT("property"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
+		{ TEXT("umg_widget_tree"), EBlueprintHelperReviewSurface::UMGWidgetTree, false, TEXT("widget_tree"), EBlueprintHelperReviewTargetHandlerKind::UMGWidget },
 		{ TEXT("umg_widget"), EBlueprintHelperReviewSurface::UMGWidgetTree, false, TEXT("widget"), EBlueprintHelperReviewTargetHandlerKind::UMGWidget },
 		{ TEXT("umg_widget_property"), EBlueprintHelperReviewSurface::UMGWidgetTree, true, TEXT("widget_property"), EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty },
 		{ TEXT("datatable_row"), EBlueprintHelperReviewSurface::DataTable, false, TEXT("row"), EBlueprintHelperReviewTargetHandlerKind::DataTableRow },

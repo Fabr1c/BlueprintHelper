@@ -14,6 +14,9 @@ public:
 	static FString NodeRef(const UEdGraphNode* Node);
 	static bool IsFunctionEntry(const UEdGraphNode* Node);
 	static bool IsFunctionResult(const UEdGraphNode* Node);
+	static bool IsFunctionEntryNodeClass(const UClass* NodeClass);
+	static bool IsFunctionResultNodeClass(const UClass* NodeClass);
+	static bool IsProtectedFunctionBoundaryNode(const UEdGraphNode* Node);
 	static bool IsTunnelEntry(const UK2Node_Tunnel* Tunnel);
 	static bool IsTunnelExit(const UK2Node_Tunnel* Tunnel);
 	static bool IsCustomEventEntry(const UEdGraphNode* Node, const FString& EntryName);

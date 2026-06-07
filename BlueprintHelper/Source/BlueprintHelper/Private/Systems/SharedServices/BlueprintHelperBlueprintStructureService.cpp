@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer — 蓝图结构查询与操作服务实现
 
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphLocalVariableService.h"
@@ -12,8 +13,6 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
-#include "K2Node_Tunnel.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "EdGraph/EdGraphNodeUtils.h"
 #include "ScopedTransaction.h"
@@ -402,7 +401,7 @@ bool FBlueprintHelperBlueprintStructureService::DeleteNodes(
 			return false;
 		}
 
-		if (Cast<UK2Node_FunctionEntry>(*Found) || Cast<UK2Node_FunctionResult>(*Found))
+		if (FBlueprintHelperK2GraphBodyAdapterUtils::IsProtectedFunctionBoundaryNode(*Found))
 		{
 			OutError = FString::Printf(TEXT("受保护节点不能删除: %s"), *NodeId);
 			return false;

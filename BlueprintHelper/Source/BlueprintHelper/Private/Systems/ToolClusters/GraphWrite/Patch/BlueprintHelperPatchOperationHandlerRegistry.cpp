@@ -7,25 +7,30 @@
 #include "Systems/ToolClusters/GraphWrite/Patch/Handlers/BlueprintHelperSetNodeCommentPatchHandler.h"
 #include "Systems/ToolClusters/GraphWrite/Patch/Handlers/BlueprintHelperSetPinDefaultPatchHandler.h"
 
-static TArray<TUniquePtr<IBlueprintHelperPatchOperationHandler>>& BlueprintHelperPatchOperationHandlers()
+class FBlueprintHelperPatchOperationHandlerCatalog
 {
-	static TArray<TUniquePtr<IBlueprintHelperPatchOperationHandler>> Handlers;
-	if (Handlers.Num() == 0)
+public:
+	static TArray<TUniquePtr<IBlueprintHelperPatchOperationHandler>>& GetHandlers()
 	{
-		Handlers.Add(CreateBlueprintHelperSetPinDefaultPatchHandler());
-		Handlers.Add(CreateBlueprintHelperSetNodeCommentPatchHandler());
-		Handlers.Add(CreateBlueprintHelperConnectPinsPatchHandler());
-		Handlers.Add(CreateBlueprintHelperDisconnectLinkPatchHandler());
-		Handlers.Add(CreateBlueprintHelperReplaceLinkPatchHandler());
-		Handlers.Add(CreateBlueprintHelperDeleteOwnedNodePatchHandler());
+		static TArray<TUniquePtr<IBlueprintHelperPatchOperationHandler>> Handlers;
+		if (Handlers.Num() == 0)
+		{
+			Handlers.Add(CreateBlueprintHelperSetPinDefaultPatchHandler());
+			Handlers.Add(CreateBlueprintHelperSetNodeCommentPatchHandler());
+			Handlers.Add(CreateBlueprintHelperConnectPinsPatchHandler());
+			Handlers.Add(CreateBlueprintHelperDisconnectLinkPatchHandler());
+			Handlers.Add(CreateBlueprintHelperReplaceLinkPatchHandler());
+			Handlers.Add(CreateBlueprintHelperDeleteOwnedNodePatchHandler());
+		}
+		return Handlers;
 	}
-	return Handlers;
-}
+};
 
 TArray<FString> FBlueprintHelperPatchOperationHandlerRegistry::GetRegisteredPatchKinds()
 {
 	TArray<FString> PatchKinds;
-	for (const TUniquePtr<IBlueprintHelperPatchOperationHandler>& Handler : BlueprintHelperPatchOperationHandlers())
+	for (const TUniquePtr<IBlueprintHelperPatchOperationHandler>& Handler :
+		FBlueprintHelperPatchOperationHandlerCatalog::GetHandlers())
 	{
 		if (Handler.IsValid())
 		{
@@ -43,7 +48,8 @@ bool FBlueprintHelperPatchOperationHandlerRegistry::IsPatchKindRegistered(const 
 const IBlueprintHelperPatchOperationHandler* FBlueprintHelperPatchOperationHandlerRegistry::FindHandler(
 	const FString& PatchKind)
 {
-	for (const TUniquePtr<IBlueprintHelperPatchOperationHandler>& Handler : BlueprintHelperPatchOperationHandlers())
+	for (const TUniquePtr<IBlueprintHelperPatchOperationHandler>& Handler :
+		FBlueprintHelperPatchOperationHandlerCatalog::GetHandlers())
 	{
 		if (Handler.IsValid() && Handler->GetPatchKind().Equals(PatchKind, ESearchCase::IgnoreCase))
 		{

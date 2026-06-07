@@ -5,6 +5,7 @@
 #include "Misc/DateTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Runtime/TaskRuntime/Review/BlueprintHelperWriteReviewEvidenceProjection.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteOwnershipValidator.h"
@@ -583,6 +584,9 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 		Target.ExecutionOrder = Input.StepIndex;
 		Target.TaskStepIndex = Input.StepIndex;
 		Target.AtomicIndex = TargetIndex;
+		FBlueprintHelperWriteReviewEvidenceProjection::ApplyBoundaryToAtomicTarget(
+			FBlueprintHelperReviewBoundaryModelBuilder::FromAtomicTarget(Target),
+			Target);
 		ApplySignatureDependencyMetadata(
 			Target,
 			Input.LoweredStep,

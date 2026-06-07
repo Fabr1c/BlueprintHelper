@@ -872,6 +872,10 @@ static FBlueprintHelperToolResultBase MakeWidgetMutationResult(
 	{
 		Data->SetStringField(TEXT("property_name"), PropertyName);
 	}
+	if (MutationResult.ReadbackContext.IsValid())
+	{
+		Data->SetObjectField(TEXT("readback_context"), MutationResult.ReadbackContext.ToSharedRef());
+	}
 	Result.Data = Data;
 	return Result;
 }
@@ -1854,25 +1858,87 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 	FString WidgetName;
 	FString PropertyName;
 	FString Value;
+	FString SlotName;
+	FString HostWidgetName;
+	FString ExpectedParentName;
+	FString ExpectedContentWidgetName;
 	bool bDryRun = false;
+	bool bReplaceExisting = false;
+	TOptional<int32> VirtualIndex;
+	TOptional<int32> ExpectedVirtualIndex;
 	if (Payload.IsValid())
 	{
 		Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
 		Payload->TryGetStringField(TEXT("parent_name"), ParentName);
+		Payload->TryGetStringField(TEXT("new_parent_name"), ParentName);
 		Payload->TryGetStringField(TEXT("widget_class"), WidgetClass);
 		Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
 		Payload->TryGetStringField(TEXT("property_name"), PropertyName);
 		Payload->TryGetStringField(TEXT("value"), Value);
+		Payload->TryGetStringField(TEXT("slot_name"), SlotName);
+		Payload->TryGetStringField(TEXT("host_widget_name"), HostWidgetName);
+		Payload->TryGetStringField(TEXT("expected_parent_name"), ExpectedParentName);
+		Payload->TryGetStringField(TEXT("expected_content_widget_name"), ExpectedContentWidgetName);
 		Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
+		Payload->TryGetBoolField(TEXT("replace_existing"), bReplaceExisting);
+		double NumberValue = 0.0;
+		if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
+		{
+			VirtualIndex = FMath::RoundToInt(NumberValue);
+		}
+		if (Payload->TryGetNumberField(TEXT("expected_virtual_index"), NumberValue))
+		{
+			ExpectedVirtualIndex = FMath::RoundToInt(NumberValue);
+		}
 	}
 
 	using FWidgetOperationHandler = TFunction<FBlueprintHelperWidgetMutationResult()>;
 	TMap<FString, FWidgetOperationHandler> OperationHandlers;
 	OperationHandlers.Add(
 		FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget,
-		[&Service, AssetPath, ParentName, WidgetClass, WidgetName, bDryRun]()
+		[&Service, AssetPath, ParentName, SlotName, WidgetClass, WidgetName, ExpectedParentName, VirtualIndex, bDryRun]()
 		{
-			return Service.AddWidget(AssetPath, ParentName, WidgetClass, WidgetName, bDryRun);
+			FBlueprintHelperAddWidgetRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.ParentName = ParentName;
+			Request.SlotName = SlotName;
+			Request.WidgetClass = WidgetClass;
+			Request.WidgetName = WidgetName;
+			Request.VirtualIndex = VirtualIndex;
+			Request.ExpectedParentName = ExpectedParentName;
+			Request.bDryRun = bDryRun;
+			return Service.AddWidget(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget,
+		[&Service, AssetPath, ParentName, SlotName, WidgetName, ExpectedParentName, VirtualIndex, ExpectedVirtualIndex, bDryRun]()
+		{
+			FBlueprintHelperMoveWidgetRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.NewParentName = ParentName;
+			Request.SlotName = SlotName;
+			Request.VirtualIndex = VirtualIndex;
+			Request.ExpectedParentName = ExpectedParentName;
+			Request.ExpectedVirtualIndex = ExpectedVirtualIndex;
+			Request.bDryRun = bDryRun;
+			return Service.MoveWidget(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent,
+		[&Service, AssetPath, HostWidgetName, SlotName, WidgetClass, WidgetName, ExpectedContentWidgetName, VirtualIndex, bReplaceExisting, bDryRun]()
+		{
+			FBlueprintHelperSetNamedSlotContentRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.HostWidgetName = HostWidgetName;
+			Request.SlotName = SlotName;
+			Request.WidgetClass = WidgetClass;
+			Request.WidgetName = WidgetName;
+			Request.VirtualIndex = VirtualIndex;
+			Request.ExpectedContentWidgetName = ExpectedContentWidgetName;
+			Request.bReplaceExisting = bReplaceExisting;
+			Request.bDryRun = bDryRun;
+			return Service.SetNamedSlotContent(Request);
 		});
 	OperationHandlers.Add(
 		FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty,

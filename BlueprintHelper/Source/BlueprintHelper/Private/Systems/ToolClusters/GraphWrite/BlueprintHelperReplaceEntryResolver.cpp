@@ -1,11 +1,11 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceEntryResolver.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 #include "Systems/ToolClusters/GraphWrite/Utils/GraphWriteCoreUtils.h"
 
 #include "EdGraph/EdGraphNode.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
 
 bool FBlueprintHelperReplaceEntryResolver::MatchesEntryClass(
 	const FBlueprintHelperReplaceEntryResolveRequest& Request,
@@ -27,7 +27,7 @@ bool FBlueprintHelperReplaceEntryResolver::MatchesEntryClass(
 	}
 	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody)
 	{
-		return NodeClass->IsChildOf(UK2Node_FunctionEntry::StaticClass());
+		return FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntryNodeClass(NodeClass);
 	}
 	return false;
 }
@@ -45,7 +45,7 @@ bool FBlueprintHelperReplaceEntryResolver::ShouldPreserveEntryNode(
 		return NodeClass->IsChildOf(UK2Node_Event::StaticClass());
 	}
 	if (Request.Scope == EBlueprintHelperReplaceScope::FunctionBody &&
-		NodeClass->IsChildOf(UK2Node_FunctionResult::StaticClass()))
+		FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResultNodeClass(NodeClass))
 	{
 		return true;
 	}

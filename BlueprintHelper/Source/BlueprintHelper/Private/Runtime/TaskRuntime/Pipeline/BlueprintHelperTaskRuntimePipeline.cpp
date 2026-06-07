@@ -1,28 +1,30 @@
 #include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipeline.h"
 
+#include "Runtime/TaskRuntime/Projection/BlueprintHelperTaskRuntimeResultProjection.h"
+
 const TCHAR* FBlueprintHelperTaskRuntimePipelineStageNames::ToString(
 	EBlueprintHelperTaskRuntimePipelineStage Stage)
 {
 	switch (Stage)
 	{
-	case EBlueprintHelperTaskRuntimePipelineStage::Prepare:
-		return TEXT("prepare");
-	case EBlueprintHelperTaskRuntimePipelineStage::ResolvePreviewToken:
-		return TEXT("resolve_preview_token");
-	case EBlueprintHelperTaskRuntimePipelineStage::CaptureReviewBaseline:
-		return TEXT("capture_review_baseline");
-	case EBlueprintHelperTaskRuntimePipelineStage::ExecuteSteps:
-		return TEXT("execute_steps");
+	case EBlueprintHelperTaskRuntimePipelineStage::ValidateCompiledPlanContract:
+		return TEXT("validate_compiled_plan_contract");
+	case EBlueprintHelperTaskRuntimePipelineStage::ResolveBridgeRoute:
+		return TEXT("resolve_bridge_route");
+	case EBlueprintHelperTaskRuntimePipelineStage::ResolveClusterFamilyAdapter:
+		return TEXT("resolve_cluster_family_adapter");
+	case EBlueprintHelperTaskRuntimePipelineStage::ExecuteCluster:
+		return TEXT("execute_cluster");
 	case EBlueprintHelperTaskRuntimePipelineStage::BuildReviewEvidence:
 		return TEXT("build_review_evidence");
+	case EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult:
+		return TEXT("project_metrics_and_result");
 	case EBlueprintHelperTaskRuntimePipelineStage::RunPostOperations:
 		return TEXT("run_post_operations");
 	case EBlueprintHelperTaskRuntimePipelineStage::BuildJournal:
 		return TEXT("build_journal");
-	case EBlueprintHelperTaskRuntimePipelineStage::AttachRuntimeFacts:
-		return TEXT("attach_runtime_facts");
-	case EBlueprintHelperTaskRuntimePipelineStage::FinalizeResult:
-		return TEXT("finalize_result");
+	case EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse:
+		return TEXT("finalize_bridge_response");
 	default:
 		return TEXT("unknown");
 	}
@@ -57,14 +59,59 @@ TArray<EBlueprintHelperTaskRuntimePipelineStage>
 FBlueprintHelperTaskRuntimePipeline::GetDefaultStageOrder()
 {
 	return {
-		EBlueprintHelperTaskRuntimePipelineStage::Prepare,
-		EBlueprintHelperTaskRuntimePipelineStage::ResolvePreviewToken,
-		EBlueprintHelperTaskRuntimePipelineStage::CaptureReviewBaseline,
-		EBlueprintHelperTaskRuntimePipelineStage::ExecuteSteps,
+		EBlueprintHelperTaskRuntimePipelineStage::ValidateCompiledPlanContract,
+		EBlueprintHelperTaskRuntimePipelineStage::ResolveBridgeRoute,
+		EBlueprintHelperTaskRuntimePipelineStage::ResolveClusterFamilyAdapter,
+		EBlueprintHelperTaskRuntimePipelineStage::ExecuteCluster,
 		EBlueprintHelperTaskRuntimePipelineStage::BuildReviewEvidence,
+		EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult,
 		EBlueprintHelperTaskRuntimePipelineStage::RunPostOperations,
 		EBlueprintHelperTaskRuntimePipelineStage::BuildJournal,
-		EBlueprintHelperTaskRuntimePipelineStage::AttachRuntimeFacts,
-		EBlueprintHelperTaskRuntimePipelineStage::FinalizeResult,
+		EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse,
 	};
+}
+
+FBlueprintHelperTaskRuntimePipelineRunner::FBlueprintHelperTaskRuntimePipelineRunner(
+	const TSharedPtr<FJsonObject>& InTaskPlan,
+	const FString& InTaskRunId,
+	bool bInDryRun)
+{
+	Context.TaskPlan = InTaskPlan;
+	Context.TaskRunId = InTaskRunId;
+	Context.bDryRun = bInDryRun;
+}
+
+void FBlueprintHelperTaskRuntimePipelineRunner::RecordStageOnce(
+	EBlueprintHelperTaskRuntimePipelineStage Stage)
+{
+	if (!Context.HasStage(Stage))
+	{
+		Context.RecordStage(Stage);
+	}
+}
+
+bool FBlueprintHelperTaskRuntimePipelineRunner::HasStage(
+	EBlueprintHelperTaskRuntimePipelineStage Stage) const
+{
+	return Context.HasStage(Stage);
+}
+
+void FBlueprintHelperTaskRuntimePipelineRunner::SetStepRecords(
+	const TArray<FBlueprintHelperTaskRuntimeStepRecord>& InStepRecords)
+{
+	Context.StepRecords = InStepRecords;
+}
+
+void FBlueprintHelperTaskRuntimePipelineRunner::AttachToResult(
+	FBlueprintHelperToolResultBase& RuntimeResult) const
+{
+	FBlueprintHelperTaskRuntimeResultProjection::AttachPipelineTrace(
+		RuntimeResult.Data,
+		Context);
+}
+
+const FBlueprintHelperTaskRuntimePipelineContext&
+FBlueprintHelperTaskRuntimePipelineRunner::GetContext() const
+{
+	return Context;
 }

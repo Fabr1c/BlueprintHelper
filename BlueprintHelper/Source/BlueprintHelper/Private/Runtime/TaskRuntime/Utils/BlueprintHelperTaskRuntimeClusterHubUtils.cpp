@@ -4,51 +4,12 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Runtime/TaskRuntime/Clusters/BlueprintHelperTaskRuntimeClusterFamilyRegistry.h"
 
 EBlueprintHelperTaskRuntimeCluster FBlueprintHelperTaskRuntimeClusterHubUtils::ResolveClusterForLoweredStep(
 	const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 {
-	using FClusterRoute = TTuple<EBlueprintHelperTaskRuntimeCluster, FCanExecutePredicate>;
-
-	const FClusterRoute Routes[] = {
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::GraphWrite,
-			&FBlueprintHelperGraphWriteTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::BlueprintVariables,
-			&FBlueprintHelperBlueprintVariablesTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::AssetFactory,
-			&FBlueprintHelperAssetFactoryTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::Component,
-			&FBlueprintHelperComponentTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::ClassSettings,
-			&FBlueprintHelperClassSettingsTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::Signature,
-			&FBlueprintHelperSignatureTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::UMGWidget,
-			&FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::DataTable,
-			&FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep),
-		MakeTuple(
-			EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
-			&FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep)
-	};
-
-	for (const FClusterRoute& Route : Routes)
-	{
-		if (Route.Get<1>()(LoweredStep))
-		{
-			return Route.Get<0>();
-		}
-	}
-
-	return EBlueprintHelperTaskRuntimeCluster::Unknown;
+	return FBlueprintHelperTaskRuntimeClusterFamilyRegistry::ResolveClusterForLoweredStep(LoweredStep);
 }
 
 TSharedRef<FJsonObject> FBlueprintHelperTaskRuntimeClusterHubUtils::MakeSyntheticDryRunData()

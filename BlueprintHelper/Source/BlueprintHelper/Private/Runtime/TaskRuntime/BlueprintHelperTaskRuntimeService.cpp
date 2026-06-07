@@ -20,6 +20,8 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/DataTable/BlueprintHelperDataTableService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreePositionPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreeProjectionService.h"
 #include "Systems/Debug/BlueprintHelperAssetBrowseService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
@@ -49,9 +51,11 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
+#include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipeline.h"
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationExecutor.h"
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationPlanner.h"
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationTypes.h"
+#include "Runtime/TaskRuntime/Projection/BlueprintHelperTaskRuntimeResultProjection.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
 #include "Systems/ToolClusters/GraphWrite/AutoSearch/BlueprintHelperGraphWriteAutoSearchPolicyResolver.h"
@@ -64,6 +68,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphStatementTypeUtils.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 
+#include "Components/NamedSlotInterface.h"
+#include "Components/PanelWidget.h"
+#include "Components/Widget.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
@@ -80,6 +87,8 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/Class.h"
 #include "UObject/Package.h"
+#include "UObject/UObjectIterator.h"
+#include "WidgetBlueprint.h"
 
 class FBlueprintHelperTaskRuntimeServiceLocalUtils
 {
@@ -812,6 +821,48 @@ public:
 		TSharedRef<FJsonObject> DryRunObject = MakeShared<FJsonObject>();
 		DryRunObject->SetStringField(TEXT("strategy"), DryRunPolicy.ToDiagnosticString());
 		Data->SetObjectField(TEXT("dry_run"), DryRunObject);
+	}
+
+	static void AttachDryRunOutcomeFields(
+		TSharedPtr<FJsonObject> Data,
+		bool bPassed)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		Data->SetBoolField(TEXT("passed"), bPassed);
+		Data->SetBoolField(TEXT("blocked"), !bPassed);
+
+		TSharedPtr<FJsonObject> DryRunObject;
+		const TSharedPtr<FJsonObject>* DryRunObjectPtr = nullptr;
+		if (Data->TryGetObjectField(TEXT("dry_run"), DryRunObjectPtr) &&
+			DryRunObjectPtr && DryRunObjectPtr->IsValid())
+		{
+			DryRunObject = *DryRunObjectPtr;
+		}
+		else
+		{
+			DryRunObject = MakeShared<FJsonObject>();
+			Data->SetObjectField(TEXT("dry_run"), DryRunObject.ToSharedRef());
+		}
+
+		if (!bPassed)
+		{
+			DryRunObject->SetBoolField(TEXT("can_execute"), false);
+			DryRunObject->SetStringField(TEXT("result"), TEXT("blocked"));
+			return;
+		}
+
+		if (!DryRunObject->HasField(TEXT("can_execute")))
+		{
+			DryRunObject->SetBoolField(TEXT("can_execute"), true);
+		}
+		if (!DryRunObject->HasField(TEXT("result")))
+		{
+			DryRunObject->SetStringField(TEXT("result"), TEXT("passed"));
+		}
 	}
 
 	static bool IsPreviewResultExecutable(const FBlueprintHelperToolResultBase& Result)
@@ -4355,6 +4406,905 @@ public:
 		return FString::Printf(TEXT("%s\n%s"), *AssetPath, *WidgetName);
 	}
 
+	struct FPlannedWidgetTreeState
+	{
+		FBlueprintHelperWidgetTreeSummary Summary;
+		TMap<FString, FBlueprintHelperWidgetTreeItem> NamedSlotContentItemsByName;
+		bool bInitialized = false;
+
+		static FBlueprintHelperWidgetTreeItem MakeItem(
+			const FString& WidgetName,
+			const FString& WidgetClass,
+			const FString& ParentName,
+			const FString& SlotName,
+			int32 VirtualIndex)
+		{
+			FBlueprintHelperWidgetTreeItem Item;
+			Item.WidgetName = WidgetName;
+			Item.WidgetClass = WidgetClass;
+			Item.WidgetClassPath = ResolveWidgetClassPath(WidgetClass, FString());
+			Item.ParentName = ParentName;
+			Item.SlotName = SlotName;
+			Item.VirtualIndex = VirtualIndex;
+			Item.bIsVariable = true;
+			Item.bIsInherited = false;
+			return Item;
+		}
+
+		static UClass* ResolveWidgetClass(const FString& WidgetClass, const FString& WidgetClassPath)
+		{
+			if (!WidgetClassPath.IsEmpty())
+			{
+				if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *WidgetClassPath))
+				{
+					return LoadedClass;
+				}
+			}
+
+			FString FullName = WidgetClass;
+			if (!FullName.StartsWith(TEXT("U")))
+			{
+				FullName = TEXT("U") + FullName;
+			}
+
+			for (TObjectIterator<UClass> It; It; ++It)
+			{
+				UClass* Class = *It;
+				if (Class &&
+					Class->IsChildOf(UWidget::StaticClass()) &&
+					!Class->HasAnyClassFlags(CLASS_Abstract) &&
+					(Class->GetName() == FullName || Class->GetName() == WidgetClass))
+				{
+					return Class;
+				}
+			}
+			return nullptr;
+		}
+
+		static FString ResolveWidgetClassPath(const FString& WidgetClass, const FString& WidgetClassPath)
+		{
+			if (UClass* Class = ResolveWidgetClass(WidgetClass, WidgetClassPath))
+			{
+				return Class->GetPathName();
+			}
+			return WidgetClassPath;
+		}
+
+		static FString NormalizeWidgetClassName(const FString& WidgetClass, const FString& WidgetClassPath)
+		{
+			if (UClass* Class = ResolveWidgetClass(WidgetClass, WidgetClassPath))
+			{
+				FString ClassName = Class->GetName();
+				if (ClassName.StartsWith(TEXT("U")))
+				{
+					ClassName.RemoveFromStart(TEXT("U"));
+				}
+				return ClassName;
+			}
+			return WidgetClass;
+		}
+
+		static bool ClassSupportsNamedSlot(
+			const FBlueprintHelperWidgetTreeItem& HostItem,
+			const FString& SlotName)
+		{
+			UClass* Class = ResolveWidgetClass(HostItem.WidgetClass, HostItem.WidgetClassPath);
+			if (!Class)
+			{
+				return false;
+			}
+
+			UWidget* ProbeWidget = NewObject<UWidget>(GetTransientPackage(), Class);
+			INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(ProbeWidget);
+			if (!NamedSlotHost)
+			{
+				return false;
+			}
+
+			TArray<FName> SlotNames;
+			NamedSlotHost->GetSlotNames(SlotNames);
+			return SlotNames.Contains(FName(*SlotName));
+		}
+
+		static bool ClassSupportsPanelChildren(const FBlueprintHelperWidgetTreeItem& Item)
+		{
+			UClass* Class = ResolveWidgetClass(Item.WidgetClass, Item.WidgetClassPath);
+			return Class && Class->IsChildOf(UPanelWidget::StaticClass());
+		}
+
+		static FBlueprintHelperWidgetTreeItem* FindInChildren(
+			TArray<FBlueprintHelperWidgetTreeItem>& Children,
+			const FString& WidgetName)
+		{
+			for (FBlueprintHelperWidgetTreeItem& Child : Children)
+			{
+				if (Child.WidgetName == WidgetName)
+				{
+					return &Child;
+				}
+				if (FBlueprintHelperWidgetTreeItem* Found = FindInChildren(Child.Children, WidgetName))
+				{
+					return Found;
+				}
+			}
+			return nullptr;
+		}
+
+		FBlueprintHelperWidgetTreeItem* FindItem(const FString& WidgetName)
+		{
+			if (!Summary.Root.WidgetName.IsEmpty() && Summary.Root.WidgetName == WidgetName)
+			{
+				return &Summary.Root;
+			}
+			if (FBlueprintHelperWidgetTreeItem* Found = FindInChildren(Summary.Root.Children, WidgetName))
+			{
+				return Found;
+			}
+			if (FBlueprintHelperWidgetTreeItem* NamedSlotContent = NamedSlotContentItemsByName.Find(WidgetName))
+			{
+				return NamedSlotContent;
+			}
+			for (TPair<FString, FBlueprintHelperWidgetTreeItem>& Pair : NamedSlotContentItemsByName)
+			{
+				if (FBlueprintHelperWidgetTreeItem* Found = FindInChildren(Pair.Value.Children, WidgetName))
+				{
+					return Found;
+				}
+			}
+			return nullptr;
+		}
+
+		const FBlueprintHelperWidgetTreeItem* FindItem(const FString& WidgetName) const
+		{
+			return const_cast<FPlannedWidgetTreeState*>(this)->FindItem(WidgetName);
+		}
+
+		bool ContainsWidget(const FString& WidgetName) const
+		{
+			return FindItem(WidgetName) != nullptr;
+		}
+
+		static bool ContainsDescendant(
+			const FBlueprintHelperWidgetTreeItem& Item,
+			const FString& WidgetName)
+		{
+			for (const FBlueprintHelperWidgetTreeItem& Child : Item.Children)
+			{
+				if (Child.WidgetName == WidgetName || ContainsDescendant(Child, WidgetName))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		static bool ContainsSelfOrDescendant(
+			const FBlueprintHelperWidgetTreeItem& Item,
+			const FString& WidgetName)
+		{
+			return Item.WidgetName == WidgetName || ContainsDescendant(Item, WidgetName);
+		}
+
+		static void ReindexChildren(TArray<FBlueprintHelperWidgetTreeItem>& Children, const FString& ParentName)
+		{
+			for (int32 Index = 0; Index < Children.Num(); ++Index)
+			{
+				Children[Index].ParentName = ParentName;
+				Children[Index].SlotName.Empty();
+				Children[Index].VirtualIndex = Index;
+				ReindexChildren(Children[Index].Children, Children[Index].WidgetName);
+			}
+		}
+
+		static void BuildFlatIndex(
+			const FBlueprintHelperWidgetTreeItem& Item,
+			TMap<FString, FBlueprintHelperWidgetTreeItem>& OutIndex)
+		{
+			if (!Item.WidgetName.IsEmpty())
+			{
+				OutIndex.Add(Item.WidgetName, Item);
+			}
+			for (const FBlueprintHelperWidgetTreeItem& Child : Item.Children)
+			{
+				BuildFlatIndex(Child, OutIndex);
+			}
+		}
+
+		void RebuildIndex()
+		{
+			Summary.Index.Reset();
+			if (!Summary.Root.WidgetName.IsEmpty())
+			{
+				ReindexChildren(Summary.Root.Children, Summary.Root.WidgetName);
+				BuildFlatIndex(Summary.Root, Summary.Index);
+			}
+			for (const TPair<FString, FBlueprintHelperWidgetTreeItem>& Pair : NamedSlotContentItemsByName)
+			{
+				BuildFlatIndex(Pair.Value, Summary.Index);
+			}
+		}
+
+		static bool RemoveFromChildren(
+			TArray<FBlueprintHelperWidgetTreeItem>& Children,
+			const FString& WidgetName,
+			FBlueprintHelperWidgetTreeItem& OutItem)
+		{
+			for (int32 Index = 0; Index < Children.Num(); ++Index)
+			{
+				if (Children[Index].WidgetName == WidgetName)
+				{
+					OutItem = Children[Index];
+					Children.RemoveAt(Index);
+					return true;
+				}
+				if (RemoveFromChildren(Children[Index].Children, WidgetName, OutItem))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		bool RemoveWidget(const FString& WidgetName, FBlueprintHelperWidgetTreeItem& OutItem)
+		{
+			if (NamedSlotContentItemsByName.RemoveAndCopyValue(WidgetName, OutItem))
+			{
+				Summary.NamedSlots.RemoveAll([&WidgetName](const FBlueprintHelperNamedSlotEntry& Entry)
+				{
+					return Entry.ContentWidgetName == WidgetName;
+				});
+				RebuildIndex();
+				return true;
+			}
+
+			if (Summary.Root.WidgetName == WidgetName)
+			{
+				return false;
+			}
+
+			if (RemoveFromChildren(Summary.Root.Children, WidgetName, OutItem))
+			{
+				RebuildIndex();
+				return true;
+			}
+			return false;
+		}
+
+		bool ApplyAdd(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString ParentName;
+			FString SlotName;
+			FString WidgetClass;
+			FString WidgetName;
+			FString ExpectedParentName;
+			TOptional<int32> VirtualIndexValue;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("parent_name"), ParentName);
+				Payload->TryGetStringField(TEXT("slot_name"), SlotName);
+				Payload->TryGetStringField(TEXT("widget_class"), WidgetClass);
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("expected_parent_name"), ExpectedParentName);
+				double NumberValue = 0.0;
+				if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
+				{
+					VirtualIndexValue = FMath::RoundToInt(NumberValue);
+				}
+			}
+
+			if (!ExpectedParentName.IsEmpty() && ExpectedParentName != ParentName)
+			{
+				OutError = TEXT("widget_expected_parent_mismatch");
+				return false;
+			}
+			if (WidgetName.IsEmpty() || WidgetClass.IsEmpty())
+			{
+				OutError = TEXT("invalid_widget_add_payload");
+				return false;
+			}
+			if (ContainsWidget(WidgetName))
+			{
+				OutError = TEXT("widget_name_already_exists");
+				return false;
+			}
+			if (!SlotName.IsEmpty())
+			{
+				return ApplySetNamedSlotContent(Payload, OutAffectedWidget, OutError, false);
+			}
+
+			const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizePanelVirtualIndex(VirtualIndexValue);
+			FBlueprintHelperWidgetTreeItem NewItem = MakeItem(
+				WidgetName,
+				NormalizeWidgetClassName(WidgetClass, FString()),
+				ParentName,
+				FString(),
+				VirtualIndex);
+
+			if (ParentName.IsEmpty() && Summary.Root.WidgetName.IsEmpty())
+			{
+				NewItem.VirtualIndex = 0;
+				Summary.Root = MoveTemp(NewItem);
+				OutAffectedWidget = WidgetName;
+				RebuildIndex();
+				return true;
+			}
+
+			FBlueprintHelperWidgetTreeItem* ParentItem = ParentName.IsEmpty()
+				? (!Summary.Root.WidgetName.IsEmpty() ? &Summary.Root : nullptr)
+				: FindItem(ParentName);
+			if (!ParentItem)
+			{
+				OutError = FString::Printf(TEXT("Parent widget '%s' was not found."), *ParentName);
+				return false;
+			}
+			if (ParentName.IsEmpty() && !ClassSupportsPanelChildren(*ParentItem))
+			{
+				OutError = TEXT("Root widget is not a panel widget; specify an explicit parent_name.");
+				return false;
+			}
+
+			if (VirtualIndex < 0 || VirtualIndex > ParentItem->Children.Num())
+			{
+				OutError = TEXT("invalid_virtual_index");
+				return false;
+			}
+
+			NewItem.ParentName = ParentItem->WidgetName;
+			ParentItem->Children.Insert(MoveTemp(NewItem), VirtualIndex);
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
+
+		bool ApplyMove(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString WidgetName;
+			FString NewParentName;
+			FString SlotName;
+			FString ExpectedParentName;
+			TOptional<int32> VirtualIndexValue;
+			TOptional<int32> ExpectedVirtualIndex;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("new_parent_name"), NewParentName);
+				Payload->TryGetStringField(TEXT("slot_name"), SlotName);
+				Payload->TryGetStringField(TEXT("expected_parent_name"), ExpectedParentName);
+				double NumberValue = 0.0;
+				if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
+				{
+					VirtualIndexValue = FMath::RoundToInt(NumberValue);
+				}
+				if (Payload->TryGetNumberField(TEXT("expected_virtual_index"), NumberValue))
+				{
+					ExpectedVirtualIndex = FMath::RoundToInt(NumberValue);
+				}
+			}
+
+			FString ErrorCode;
+			FString ErrorMessage;
+			if (!FBlueprintHelperWidgetTreePositionPolicy::ValidateExpectedPosition(
+				Summary,
+				WidgetName,
+				ExpectedParentName,
+				ExpectedVirtualIndex,
+				ErrorCode,
+				ErrorMessage))
+			{
+				OutError = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+				return false;
+			}
+
+			if (!SlotName.IsEmpty())
+			{
+				return ApplyMoveToNamedSlot(
+					WidgetName,
+					NewParentName,
+					SlotName,
+					VirtualIndexValue,
+					OutAffectedWidget,
+					OutError);
+			}
+
+			FBlueprintHelperWidgetTreeItem* MovingItemPtr = FindItem(WidgetName);
+			FBlueprintHelperWidgetTreeItem* NewParentItem = FindItem(NewParentName);
+			if (!MovingItemPtr)
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			if (!NewParentItem)
+			{
+				OutError = FString::Printf(TEXT("Widget '%s' does not exist in the planned WidgetTree."), *NewParentName);
+				return false;
+			}
+			if (ContainsDescendant(*MovingItemPtr, NewParentName))
+			{
+				OutError = TEXT("Cannot move widget into its own subtree.");
+				return false;
+			}
+
+			const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizePanelVirtualIndex(VirtualIndexValue);
+			if (VirtualIndex < 0 || VirtualIndex > NewParentItem->Children.Num())
+			{
+				OutError = TEXT("invalid_virtual_index");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem MovingItem;
+			if (!RemoveWidget(WidgetName, MovingItem))
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+
+			NewParentItem = FindItem(NewParentName);
+			if (!NewParentItem)
+			{
+				OutError = TEXT("planned_parent_lost_after_move");
+				return false;
+			}
+
+			MovingItem.ParentName = NewParentItem->WidgetName;
+			MovingItem.SlotName.Empty();
+			MovingItem.VirtualIndex = VirtualIndex;
+			NewParentItem->Children.Insert(MoveTemp(MovingItem), VirtualIndex);
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
+
+		bool ApplyMoveToNamedSlot(
+			const FString& WidgetName,
+			const FString& HostWidgetName,
+			const FString& SlotName,
+			TOptional<int32> VirtualIndexValue,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			if (WidgetName.IsEmpty() || HostWidgetName.IsEmpty() || SlotName.IsEmpty())
+			{
+				OutError = TEXT("invalid_named_slot_move_payload");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem* MovingItemPtr = FindItem(WidgetName);
+			FBlueprintHelperWidgetTreeItem* HostItem = FindItem(HostWidgetName);
+			if (!MovingItemPtr)
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			if (!HostItem)
+			{
+				OutError = FString::Printf(TEXT("Widget '%s' does not exist in the planned WidgetTree."), *HostWidgetName);
+				return false;
+			}
+			if (WidgetName == HostWidgetName || ContainsDescendant(*MovingItemPtr, HostWidgetName))
+			{
+				OutError = TEXT("Cannot move widget into its own subtree.");
+				return false;
+			}
+			if (!ClassSupportsNamedSlot(*HostItem, SlotName))
+			{
+				OutError = TEXT("named_slot_not_found");
+				return false;
+			}
+
+			const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizeNamedSlotVirtualIndex(VirtualIndexValue);
+			if (VirtualIndex != 0)
+			{
+				OutError = TEXT("invalid_virtual_index");
+				return false;
+			}
+
+			FString ExistingContentName;
+			for (const FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+			{
+				if (Entry.HostWidgetName == HostWidgetName && Entry.SlotName == SlotName)
+				{
+					ExistingContentName = Entry.ContentWidgetName;
+					break;
+				}
+			}
+			if (!ExistingContentName.IsEmpty() && ExistingContentName != WidgetName)
+			{
+				OutError = TEXT("named_slot_content_exists");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem MovingItem;
+			if (!RemoveWidget(WidgetName, MovingItem))
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+
+			HostItem = FindItem(HostWidgetName);
+			if (!HostItem)
+			{
+				OutError = TEXT("planned_parent_lost_after_move");
+				return false;
+			}
+
+			MovingItem.ParentName = HostItem->WidgetName;
+			MovingItem.SlotName = SlotName;
+			MovingItem.VirtualIndex = 0;
+			NamedSlotContentItemsByName.Add(WidgetName, MovingItem);
+
+			FBlueprintHelperNamedSlotEntry* TargetSlot = nullptr;
+			for (FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+			{
+				if (Entry.HostWidgetName == HostWidgetName && Entry.SlotName == SlotName)
+				{
+					TargetSlot = &Entry;
+					break;
+				}
+			}
+			if (TargetSlot)
+			{
+				TargetSlot->ContentWidgetName = WidgetName;
+				TargetSlot->VirtualIndex = 0;
+			}
+			else
+			{
+				FBlueprintHelperNamedSlotEntry Entry;
+				Entry.HostWidgetName = HostWidgetName;
+				Entry.SlotName = SlotName;
+				Entry.ContentWidgetName = WidgetName;
+				Entry.VirtualIndex = 0;
+				Summary.NamedSlots.Add(Entry);
+			}
+
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
+
+		bool ApplySetNamedSlotContent(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError,
+			bool bUsePayloadReplaceExisting = true)
+		{
+			FString HostWidgetName;
+			FString SlotName;
+			FString WidgetClass;
+			FString WidgetName;
+			FString ExpectedContentWidgetName;
+			bool bReplaceExisting = false;
+			TOptional<int32> VirtualIndexValue;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("host_widget_name"), HostWidgetName);
+				Payload->TryGetStringField(TEXT("slot_name"), SlotName);
+				Payload->TryGetStringField(TEXT("widget_class"), WidgetClass);
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("expected_content_widget_name"), ExpectedContentWidgetName);
+				if (bUsePayloadReplaceExisting)
+				{
+					Payload->TryGetBoolField(TEXT("replace_existing"), bReplaceExisting);
+				}
+				double NumberValue = 0.0;
+				if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
+				{
+					VirtualIndexValue = FMath::RoundToInt(NumberValue);
+				}
+			}
+
+			if (HostWidgetName.IsEmpty() || SlotName.IsEmpty() || WidgetName.IsEmpty() || WidgetClass.IsEmpty())
+			{
+				OutError = TEXT("invalid_named_slot_payload");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem* HostItem = FindItem(HostWidgetName);
+			if (!HostItem)
+			{
+				OutError = FString::Printf(TEXT("Widget '%s' does not exist in the planned WidgetTree."), *HostWidgetName);
+				return false;
+			}
+			if (!ClassSupportsNamedSlot(*HostItem, SlotName))
+			{
+				OutError = TEXT("named_slot_not_found");
+				return false;
+			}
+
+			const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizeNamedSlotVirtualIndex(VirtualIndexValue);
+			if (VirtualIndex != 0)
+			{
+				OutError = TEXT("invalid_virtual_index");
+				return false;
+			}
+
+			FBlueprintHelperNamedSlotEntry* ExistingSlot = nullptr;
+			for (FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+			{
+				if (Entry.HostWidgetName == HostWidgetName && Entry.SlotName == SlotName)
+				{
+					ExistingSlot = &Entry;
+					break;
+				}
+			}
+
+			const FString ExistingContentName = ExistingSlot ? ExistingSlot->ContentWidgetName : FString();
+			const FBlueprintHelperWidgetTreeItem* ExistingContentItem = ExistingContentName.IsEmpty()
+				? nullptr
+				: FindItem(ExistingContentName);
+			if (!ExpectedContentWidgetName.IsEmpty() && ExistingContentName != ExpectedContentWidgetName)
+			{
+				OutError = TEXT("named_slot_expected_content_mismatch");
+				return false;
+			}
+			if (!ExistingContentName.IsEmpty() && !bReplaceExisting)
+			{
+				OutError = TEXT("named_slot_content_exists");
+				return false;
+			}
+			const bool bNameCollisionRetiresWithExistingContent =
+				ExistingContentItem && ContainsSelfOrDescendant(*ExistingContentItem, WidgetName);
+			if (ContainsWidget(WidgetName) && !bNameCollisionRetiresWithExistingContent)
+			{
+				OutError = TEXT("widget_name_already_exists");
+				return false;
+			}
+
+			if (!ExistingContentName.IsEmpty())
+			{
+				FBlueprintHelperWidgetTreeItem RemovedItem;
+				RemoveWidget(ExistingContentName, RemovedItem);
+			}
+
+			FBlueprintHelperWidgetTreeItem ContentItem = MakeItem(
+				WidgetName,
+				NormalizeWidgetClassName(WidgetClass, FString()),
+				HostWidgetName,
+				SlotName,
+				0);
+			NamedSlotContentItemsByName.Add(WidgetName, ContentItem);
+
+			FBlueprintHelperNamedSlotEntry* TargetSlot = nullptr;
+			for (FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+			{
+				if (Entry.HostWidgetName == HostWidgetName && Entry.SlotName == SlotName)
+				{
+					TargetSlot = &Entry;
+					break;
+				}
+			}
+
+			if (TargetSlot)
+			{
+				TargetSlot->ContentWidgetName = WidgetName;
+				TargetSlot->VirtualIndex = 0;
+			}
+			else
+			{
+				FBlueprintHelperNamedSlotEntry Entry;
+				Entry.HostWidgetName = HostWidgetName;
+				Entry.SlotName = SlotName;
+				Entry.ContentWidgetName = WidgetName;
+				Entry.VirtualIndex = 0;
+				Summary.NamedSlots.Add(Entry);
+			}
+
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
+	};
+
+	using FPlannedWidgetTreesByAsset = TMap<FString, FPlannedWidgetTreeState>;
+
+	static bool IsPlannedWidgetTreeStructuralDryRunStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+	{
+		return LoweredStep.Capability == FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget &&
+			(LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget ||
+				LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ||
+				LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent);
+	}
+
+	static UWidgetBlueprint* ResolvePlannedWidgetBlueprint(
+		const FString& AssetPath,
+		FString& OutError)
+	{
+		OutError.Reset();
+		if (AssetPath.IsEmpty())
+		{
+			OutError = TEXT("asset_path is required for planned WidgetTree preview.");
+			return nullptr;
+		}
+
+		UObject* Object = StaticFindObject(UWidgetBlueprint::StaticClass(), nullptr, *AssetPath);
+		if (!Object)
+		{
+			Object = StaticLoadObject(UWidgetBlueprint::StaticClass(), nullptr, *AssetPath);
+		}
+
+		UWidgetBlueprint* WidgetBlueprint = Cast<UWidgetBlueprint>(Object);
+		if (!WidgetBlueprint)
+		{
+			OutError = FString::Printf(TEXT("WidgetBlueprint was not found for planned preview: %s"), *AssetPath);
+			return nullptr;
+		}
+		return WidgetBlueprint;
+	}
+
+	static void PopulateNamedSlotContentItems(FPlannedWidgetTreeState& State)
+	{
+		State.NamedSlotContentItemsByName.Reset();
+		for (const FBlueprintHelperNamedSlotEntry& Entry : State.Summary.NamedSlots)
+		{
+			if (const FBlueprintHelperWidgetTreeItem* Item = State.Summary.Index.Find(Entry.ContentWidgetName))
+			{
+				State.NamedSlotContentItemsByName.Add(Entry.ContentWidgetName, *Item);
+			}
+		}
+	}
+
+	static bool TryInitializePlannedWidgetTreeState(
+		const FString& AssetPath,
+		FPlannedWidgetTreeState& State,
+		FString& OutError)
+	{
+		OutError.Reset();
+		if (State.bInitialized)
+		{
+			return true;
+		}
+
+		UWidgetBlueprint* WidgetBlueprint = ResolvePlannedWidgetBlueprint(AssetPath, OutError);
+		if (!WidgetBlueprint)
+		{
+			return false;
+		}
+
+		FString ErrorCode;
+		FString ErrorMessage;
+		if (FBlueprintHelperWidgetTreeProjectionService::BuildWidgetTreeSummary(
+			WidgetBlueprint,
+			State.Summary,
+			ErrorCode,
+			ErrorMessage))
+		{
+			PopulateNamedSlotContentItems(State);
+			State.bInitialized = true;
+			return true;
+		}
+
+		if (ErrorCode != TEXT("widget_tree_root_not_found"))
+		{
+			OutError = ErrorCode.IsEmpty() ? ErrorMessage : ErrorCode;
+			return false;
+		}
+
+		State.Summary = FBlueprintHelperWidgetTreeSummary();
+		State.Summary.AssetClass = WidgetBlueprint->GetClass() ? WidgetBlueprint->GetClass()->GetPathName() : FString();
+		State.Summary.ParentClass = WidgetBlueprint->ParentClass ? WidgetBlueprint->ParentClass->GetPathName() : FString();
+		State.bInitialized = true;
+		return true;
+	}
+
+	static FPlannedWidgetTreeState* FindOrCreatePlannedWidgetTreeState(
+		const FString& AssetPath,
+		FPlannedWidgetTreesByAsset& PlannedWidgetTreesByAsset,
+		FString& OutError)
+	{
+		const FString StateKey = NormalizePlannedStateAssetPath(AssetPath);
+		FPlannedWidgetTreeState& State = PlannedWidgetTreesByAsset.FindOrAdd(StateKey);
+		return TryInitializePlannedWidgetTreeState(AssetPath, State, OutError) ? &State : nullptr;
+	}
+
+	static FBlueprintHelperToolResultBase MakePlannedWidgetTreeDryRunResult(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FPlannedWidgetTreeState& State,
+		const FString& AffectedWidget)
+	{
+		FString AssetPath;
+		FString WidgetName;
+		TryReadWidgetPayloadIdentity(LoweredStep, AssetPath, WidgetName);
+		const FString TargetWidgetName = !AffectedWidget.IsEmpty() ? AffectedWidget : WidgetName;
+
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::DryRun(
+			LoweredStep.AdapterOperation,
+			FBlueprintHelperToolResultBuilder::GenerateTraceId());
+		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("widget"), TargetWidgetName);
+
+		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		DryRun->SetStringField(TEXT("preview_kind"), TEXT("task_runtime_planned_widget_tree"));
+		DryRun->SetBoolField(TEXT("can_execute"), true);
+		DryRun->SetStringField(TEXT("result"), TEXT("passed"));
+		DryRun->SetNumberField(TEXT("would_change_count"), 1);
+		DryRun->SetNumberField(
+			TEXT("would_create_count"),
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ? 0 : 1);
+		DryRun->SetNumberField(
+			TEXT("would_update_count"),
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ? 1 : 0);
+		DryRun->SetNumberField(TEXT("would_remove_count"), 0);
+		DryRun->SetNumberField(TEXT("would_no_op_count"), 0);
+		DryRun->SetArrayField(TEXT("conflicts"), {});
+		DryRun->SetArrayField(TEXT("errors"), {});
+
+		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
+		Data->SetStringField(TEXT("schema"), TEXT("WidgetMutation.v1"));
+		Data->SetBoolField(TEXT("dry_run"), true);
+		if (!TargetWidgetName.IsEmpty())
+		{
+			Data->SetStringField(TEXT("widget_name"), TargetWidgetName);
+		}
+		Data->SetObjectField(TEXT("readback_context"), State.Summary.ToJson());
+		Data->SetObjectField(TEXT("dry_run"), DryRun);
+		Result.Data = Data;
+
+		FBlueprintHelperValidationSummary Validation;
+		Validation.bShouldCompile = false;
+		Validation.bShouldSave = false;
+		Result.Validation = Validation;
+		return Result;
+	}
+
+	static FBlueprintHelperToolResultBase ExecutePlannedWidgetTreeDryRunStep(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		FPlannedWidgetTreesByAsset& PlannedWidgetTreesByAsset)
+	{
+		const FString AssetPath = ReadPayloadAssetPath(LoweredStep.Payload);
+		FString ErrorMessage;
+		FPlannedWidgetTreeState* State = FindOrCreatePlannedWidgetTreeState(
+			AssetPath,
+			PlannedWidgetTreesByAsset,
+			ErrorMessage);
+		if (!State)
+		{
+			return MakeFailure(
+				LoweredStep.AdapterOperation,
+				TEXT("widget_tree_planned_state_init_failed"),
+				EBlueprintHelperToolStage::DryRun,
+				ErrorMessage.IsEmpty() ? TEXT("Failed to initialize planned WidgetTree preview state.") : ErrorMessage,
+				TEXT("asset_path"));
+		}
+
+		FString AffectedWidget;
+		FString OperationError;
+		bool bApplied = false;
+		if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
+		{
+			bApplied = State->ApplyAdd(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget)
+		{
+			bApplied = State->ApplyMove(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent)
+		{
+			bApplied = State->ApplySetNamedSlotContent(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else
+		{
+			return MakeFailure(
+				LoweredStep.AdapterOperation,
+				TEXT("unsupported_planned_widget_tree_operation"),
+				EBlueprintHelperToolStage::DryRun,
+				TEXT("Unsupported planned WidgetTree dry-run operation."));
+		}
+
+		if (!bApplied)
+		{
+			return MakeFailure(
+				LoweredStep.AdapterOperation,
+				TEXT("widget_operation_failed"),
+				EBlueprintHelperToolStage::DryRun,
+				OperationError.IsEmpty() ? TEXT("Planned WidgetTree dry-run operation failed.") : OperationError);
+		}
+		return MakePlannedWidgetTreeDryRunResult(LoweredStep, *State, AffectedWidget);
+	}
+
 	static FString MakePlannedDataTableRowKey(
 		const FString& AssetPath,
 		const FString& RowName)
@@ -6761,6 +7711,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
 	const FString& TaskRunId = PreparedRun.TaskRunId;
 	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
+	FBlueprintHelperTaskRuntimePipelineRunner PipelineRunner(*TaskPlanPtr, TaskRunId, bDryRun);
+	auto RecordPipelineStage = [&PipelineRunner](EBlueprintHelperTaskRuntimePipelineStage Stage)
+	{
+		PipelineRunner.RecordStageOnce(Stage);
+	};
+	auto AttachPipelineToResult = [&PipelineRunner](FBlueprintHelperToolResultBase& RuntimeResult)
+	{
+		PipelineRunner.AttachToResult(RuntimeResult);
+	};
+	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ValidateCompiledPlanContract);
+	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ResolveBridgeRoute);
 	const FBlueprintHelperTaskRuntimeCacheConfig CacheConfig = FBlueprintHelperTaskRuntimeCacheConfig::Default();
 	if (PartialPreviewCache.IsValid())
 	{
@@ -6887,6 +7848,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			RuntimeOperation,
 			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
 			BaselinePolicyError);
+		AttachPipelineToResult(Result);
 		AttachTimingToResult(Result);
 		return Result;
 	}
@@ -6931,6 +7893,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TSet<FString> DryRunPlannedWidgetKeys;
 	TSet<FString> DryRunPlannedDataTableRowKeys;
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::FPlannedMemberVariablesByAsset DryRunPlannedMemberVariablesByAsset;
+	FBlueprintHelperTaskRuntimeServiceLocalUtils::FPlannedWidgetTreesByAsset DryRunPlannedWidgetTreesByAsset;
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewTargetSnapshotCacheValue> ReviewBeforeSnapshotCache;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
@@ -7089,6 +8052,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		if (bDryRun)
 		{
 			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunOutcomeFields(RuntimeResult.Data, false);
 		}
 		if (GraphWriteCandidateArtifactJson.IsValid())
 		{
@@ -7107,6 +8071,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			RuntimeResult.Data,
 			CachedRuntimeFactValues);
 		AttachCacheDiagnostics(RuntimeResult);
+		PipelineRunner.SetStepRecords(StepRecords);
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildJournal);
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse);
+		AttachPipelineToResult(RuntimeResult);
 
 		if (!bDryRun && !TaskRunId.IsEmpty() && (StepRecords.Num() > 0 || PostOperationRecords.Num() > 0))
 		{
@@ -7170,6 +8139,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	auto ExecuteLoweredStep = [&](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) -> FBlueprintHelperToolResultBase
 	{
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ResolveClusterFamilyAdapter);
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ExecuteCluster);
 		return CommitService.ExecuteStep(LoweredStep, bDryRun);
 	};
 
@@ -7195,7 +8166,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			return;
 		}
 
-		if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
+		if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget ||
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent)
 		{
 			FString PlannedAssetPath;
 			FString PlannedWidgetName;
@@ -7296,7 +8268,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 
 		const FBlueprintHelperPartialPreviewCacheKey PartialCacheKey = BuildPartialPreviewCacheKey(PreparedStep);
-		if (bDryRun && PartialPreviewCache.IsValid())
+		const bool bUsePartialPreviewCache =
+			!FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedWidgetTreeStructuralDryRunStep(LoweredStep);
+		if (bDryRun && bUsePartialPreviewCache && PartialPreviewCache.IsValid())
 		{
 			const double PartialPreviewCacheLookupStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 			FBlueprintHelperPartialPreviewCacheEntry CachedPartialPreview;
@@ -7480,16 +8454,25 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		else
 		{
 			const double ExecuteStepStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
-			TUniquePtr<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay> PlannedMemberVariableOverlay;
-			if (bDryRun && LoweredStep.Capability == TEXT("graph_write"))
+			if (bDryRun && FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPlannedWidgetTreeStructuralDryRunStep(LoweredStep))
 			{
-				PlannedMemberVariableOverlay =
-					MakeUnique<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay>(
-						LoweredStep,
-						DryRunPlannedMemberVariablesByAsset);
+				StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::ExecutePlannedWidgetTreeDryRunStep(
+					LoweredStep,
+					DryRunPlannedWidgetTreesByAsset);
 			}
-			StepResult = ExecuteLoweredStep(LoweredStep);
-			PlannedMemberVariableOverlay.Reset();
+			else
+			{
+				TUniquePtr<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay> PlannedMemberVariableOverlay;
+				if (bDryRun && LoweredStep.Capability == TEXT("graph_write"))
+				{
+					PlannedMemberVariableOverlay =
+						MakeUnique<FBlueprintHelperTaskRuntimeServiceLocalUtils::FScopedDryRunPlannedMemberVariableOverlay>(
+							LoweredStep,
+							DryRunPlannedMemberVariablesByAsset);
+				}
+				StepResult = ExecuteLoweredStep(LoweredStep);
+				PlannedMemberVariableOverlay.Reset();
+			}
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
 				FString::Printf(TEXT("step.%s.cluster_execute"), *LoweredStep.StepId),
@@ -7508,7 +8491,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			StepResult = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakePlannedDataTableRowUpdateDryRunResult(LoweredStep);
 		}
 		StepRecords.Add({LoweredStep, StepResult});
-		if (bDryRun && StepResult.bOk && PartialPreviewCache.IsValid())
+		if (bDryRun && bUsePartialPreviewCache && StepResult.bOk && PartialPreviewCache.IsValid())
 		{
 			FBlueprintHelperPartialPreviewCacheEntry PartialEntry;
 			PartialEntry.StepId = LoweredStep.StepId;
@@ -7528,6 +8511,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		{
 			const double ReviewAfterStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 			FBlueprintHelperWriteReviewEvidence RuntimeEvidence = PreStepReviewEvidence;
+			RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildReviewEvidence);
 			const bool bHasReviewEvidence = bHasPreStepReviewEvidence || ClusterHub->BuildReviewEvidence(
 				LoweredStep,
 				StepResult,
@@ -7597,6 +8581,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		}
 	}
 
+	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::RunPostOperations);
 	if (!bDryRun)
 	{
 		const double PostOperationPlanStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
@@ -7686,6 +8671,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	}
 
 	FinishMainThreadCommitStage();
+	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
 	const double ResultWrapStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 	FBlueprintHelperToolResultBase RuntimeResult = bDryRun
 		? FBlueprintHelperToolResultBuilder::DryRun(RuntimeOperation, FBlueprintHelperToolResultBuilder::GenerateTraceId())
@@ -7711,6 +8697,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		StepRecords,
 		PostOperationRecords,
 		bDryRun);
+	PipelineRunner.SetStepRecords(StepRecords);
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachRuntimeFacts(
 		RuntimeResult.Data,
 		ResolvedCallFunctionFacts);
@@ -7720,6 +8707,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	if (bDryRun)
 	{
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunStrategy(RuntimeResult.Data, DryRunPolicy);
+		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachDryRunOutcomeFields(RuntimeResult.Data, true);
 	}
 	FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachCallFunctionResolutionCacheStats(
 		RuntimeResult.Data,
@@ -7734,6 +8722,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 
 	if (!bDryRun && !TaskRunId.IsEmpty())
 	{
+		RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::BuildJournal);
 		TSharedRef<FJsonObject> Journal = FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeTaskRunJournal(
 			TaskRunId,
 			*TaskPlanPtr,
@@ -7747,6 +8736,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
 		PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
 	}
+	RecordPipelineStage(EBlueprintHelperTaskRuntimePipelineStage::FinalizeBridgeResponse);
+	AttachPipelineToResult(RuntimeResult);
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("result_wrap"), ResultWrapStageStart);
 
 	FlushPostIo(RuntimeResult);

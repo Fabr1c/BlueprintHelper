@@ -77,6 +77,21 @@ bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(const UEdGraphNod
 	return Node && Node->IsA<UK2Node_FunctionResult>();
 }
 
+bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntryNodeClass(const UClass* NodeClass)
+{
+	return NodeClass && NodeClass->IsChildOf(UK2Node_FunctionEntry::StaticClass());
+}
+
+bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResultNodeClass(const UClass* NodeClass)
+{
+	return NodeClass && NodeClass->IsChildOf(UK2Node_FunctionResult::StaticClass());
+}
+
+bool FBlueprintHelperK2GraphBodyAdapterUtils::IsProtectedFunctionBoundaryNode(const UEdGraphNode* Node)
+{
+	return IsFunctionEntry(Node) || IsFunctionResult(Node);
+}
+
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelEntry(const UK2Node_Tunnel* Tunnel)
 {
 	return Tunnel && (Tunnel->bCanHaveOutputs || HasExecPin(Tunnel, EGPD_Output));

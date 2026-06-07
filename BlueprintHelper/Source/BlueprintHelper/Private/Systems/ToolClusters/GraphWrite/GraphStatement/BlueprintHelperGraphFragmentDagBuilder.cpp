@@ -34,14 +34,14 @@ bool FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(
 	TArray<TMap<FString, FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer>> SymbolScopes;
 	SymbolScopes.AddDefaulted();
 
-	const FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow TopLevelFlow = FBlueprintHelperGraphFragmentDagBuilderUtils::BuildStatementArray(
+	const FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow RootStatementFlow = FBlueprintHelperGraphFragmentDagBuilderUtils::BuildStatementArray(
 		SemanticIR.Statements,
 		TEXT("$.statements"),
 		State,
 		SymbolScopes);
 
-	OutDag.EntryExitRefs.Entries = TopLevelFlow.Entries;
-	OutDag.EntryExitRefs.Exits = TopLevelFlow.Exits;
+	OutDag.EntryExitRefs.Entries = RootStatementFlow.Entries;
+	OutDag.EntryExitRefs.Exits = RootStatementFlow.Exits;
 
 	if (SemanticIR.Statements.Num() == 0)
 	{

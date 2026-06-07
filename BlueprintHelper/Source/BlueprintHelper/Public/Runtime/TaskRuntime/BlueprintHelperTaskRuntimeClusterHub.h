@@ -28,6 +28,7 @@ class FBlueprintHelperWidgetService;
 class FBlueprintHelperDataTableService;
 class FBlueprintHelperPropertyReflectionService;
 struct FBlueprintHelperWriteReviewEvidence;
+class FBlueprintHelperTaskRuntimeClusterExecutorRegistry;
 
 enum class EBlueprintHelperTaskRuntimeCluster : uint8
 {
@@ -62,6 +63,7 @@ public:
 		const FBlueprintHelperWidgetService& InWidgetService,
 		const FBlueprintHelperDataTableService& InDataTableService,
 		const FBlueprintHelperPropertyReflectionService& InPropertyReflectionService);
+	~FBlueprintHelperTaskRuntimeClusterHub();
 
 	static bool TryLowerStep(
 		const TSharedPtr<FJsonObject>& TaskPlan,
@@ -89,10 +91,6 @@ public:
 		FBlueprintHelperWriteReviewEvidence& OutEvidence) const;
 
 private:
-	void RegisterClusterExecutors();
-	const FBlueprintHelperTaskRuntimeClusterExecutor* FindClusterExecutor(
-		EBlueprintHelperTaskRuntimeCluster Cluster) const;
-
 	FBlueprintHelperGraphWriteTaskRuntimeCluster GraphWriteCluster;
 	FBlueprintHelperBlueprintVariablesTaskRuntimeCluster BlueprintVariablesCluster;
 	FBlueprintHelperSignatureTaskRuntimeCluster SignatureCluster;
@@ -102,5 +100,5 @@ private:
 	FBlueprintHelperUMGWidgetTaskRuntimeCluster UMGWidgetCluster;
 	FBlueprintHelperDataTableTaskRuntimeCluster DataTableCluster;
 	FBlueprintHelperObjectPropertyTaskRuntimeCluster ObjectPropertyCluster;
-	TArray<FBlueprintHelperTaskRuntimeClusterExecutor> ClusterExecutors;
+	TUniquePtr<FBlueprintHelperTaskRuntimeClusterExecutorRegistry> ClusterExecutorRegistry;
 };

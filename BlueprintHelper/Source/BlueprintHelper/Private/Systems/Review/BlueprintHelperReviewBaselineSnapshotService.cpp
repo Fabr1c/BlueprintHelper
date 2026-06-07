@@ -8,6 +8,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/ActorComponent.h"
+#include "Components/NamedSlotInterface.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Dom/JsonObject.h"
@@ -93,6 +94,126 @@ private:
 			MetadataKey,
 			Value);
 		return Value;
+	}
+};
+
+class FBlueprintHelperReviewWidgetTreeSnapshotHelper
+{
+public:
+	static bool IsNamedSlotContentTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetSubKind.Equals(TEXT("named_slot_content"), ESearchCase::IgnoreCase);
+	}
+
+	static TSharedRef<FJsonObject> BuildNamedSlotContentSnapshot(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
+		Json->SetStringField(TEXT("target_subkind"), TEXT("named_slot_content"));
+
+		FString HostWidgetName;
+		FString SlotName;
+		ReadNamedSlotTargetFields(Target, HostWidgetName, SlotName);
+		Json->SetStringField(TEXT("host_widget_name"), HostWidgetName);
+		Json->SetStringField(TEXT("slot_name"), SlotName);
+		Json->SetNumberField(TEXT("virtual_index"), 0);
+
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree || HostWidgetName.IsEmpty() || SlotName.IsEmpty())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			return Json;
+		}
+
+		UWidget* HostWidget = WidgetBlueprint->WidgetTree->FindWidget(FName(*HostWidgetName));
+		INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+		if (!HostWidget || !HasNamedSlot(NamedSlotHost, FName(*SlotName)))
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			return Json;
+		}
+
+		Json->SetBoolField(TEXT("exists"), true);
+		UWidget* ContentWidget = NamedSlotHost->GetContentForSlot(FName(*SlotName));
+		Json->SetBoolField(TEXT("content_exists"), ContentWidget != nullptr);
+		if (ContentWidget)
+		{
+			Json->SetStringField(TEXT("content_widget_name"), ContentWidget->GetName());
+			Json->SetStringField(
+				TEXT("content_widget_class"),
+				ContentWidget->GetClass() ? ContentWidget->GetClass()->GetPathName() : FString());
+		}
+		return Json;
+	}
+
+private:
+	static bool HasNamedSlot(INamedSlotInterface* NamedSlotHost, const FName& SlotName)
+	{
+		if (!NamedSlotHost || SlotName.IsNone())
+		{
+			return false;
+		}
+
+		TArray<FName> SlotNames;
+		NamedSlotHost->GetSlotNames(SlotNames);
+		return SlotNames.Contains(SlotName);
+	}
+
+	static bool TryReadAnchorString(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TCHAR* FieldName,
+		FString& OutValue)
+	{
+		TSharedPtr<FJsonObject> Anchor;
+		if (Target.AnchorJson.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Target.AnchorJson);
+		if (!FJsonSerializer::Deserialize(Reader, Anchor) || !Anchor.IsValid())
+		{
+			return false;
+		}
+		return Anchor->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+	}
+
+	static void ReadNamedSlotTargetFields(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		FString& OutHostWidgetName,
+		FString& OutSlotName)
+	{
+		TryReadAnchorString(Target, TEXT("host_widget_name"), OutHostWidgetName);
+		TryReadAnchorString(Target, TEXT("slot_name"), OutSlotName);
+		if (!OutSlotName.IsEmpty() || Target.PropertyPath.IsEmpty())
+		{
+			if (!OutHostWidgetName.IsEmpty())
+			{
+				return;
+			}
+		}
+
+		OutSlotName = OutSlotName.IsEmpty() ? Target.PropertyPath : OutSlotName;
+		const FString Prefix = TEXT("umg_widget_tree:");
+		const FString SlotDelimiter = TEXT(":slot:");
+		if (Target.TargetKey.StartsWith(Prefix) && Target.TargetKey.Contains(SlotDelimiter))
+		{
+			FString Remainder = Target.TargetKey.Mid(Prefix.Len());
+			FString Host;
+			FString Slot;
+			if (Remainder.Split(SlotDelimiter, &Host, &Slot))
+			{
+				if (OutHostWidgetName.IsEmpty())
+				{
+					OutHostWidgetName = Host;
+				}
+				if (OutSlotName.IsEmpty())
+				{
+					OutSlotName = Slot;
+				}
+			}
+		}
 	}
 };
 
@@ -821,6 +942,13 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				return Json;
 			}
 
+			if (FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsNamedSlotContentTarget(Target))
+			{
+				return FBlueprintHelperReviewWidgetTreeSnapshotHelper::BuildNamedSlotContentSnapshot(
+					WidgetBlueprint,
+					Target);
+			}
+
 			FString WidgetName;
 			FString PropertyName;
 			FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
@@ -843,7 +971,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			if (UPanelWidget* ParentWidget = UWidgetTree::FindWidgetParent(Widget, ChildIndex))
 			{
 				Json->SetStringField(TEXT("parent_widget"), ParentWidget->GetName());
-				Json->SetNumberField(TEXT("child_index"), ChildIndex);
+				Json->SetNumberField(TEXT("virtual_index"), ChildIndex);
 				Json->SetStringField(TEXT("slot_class"), Widget->Slot ? Widget->Slot->GetClass()->GetPathName() : FString());
 			}
 			if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
@@ -1140,6 +1268,59 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty)
 	{
 		Json->SetStringField(TEXT("surface"), TEXT("umg_widget_tree"));
+		if (FBlueprintHelperReviewWidgetTreeSnapshotHelper::IsNamedSlotContentTarget(Target))
+		{
+			FString HostWidgetName;
+			FString SlotName;
+			Json->SetStringField(TEXT("target_subkind"), TEXT("named_slot_content"));
+			Json->SetBoolField(TEXT("exists"), false);
+			const TSharedPtr<FJsonObject>* WidgetTreePtr = nullptr;
+			const TSharedPtr<FJsonObject> WidgetTreeSnapshot =
+				BlueprintSnapshot.IsValid() && BlueprintSnapshot->TryGetObjectField(TEXT("widget_tree"), WidgetTreePtr) && WidgetTreePtr
+					? *WidgetTreePtr
+					: nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* NamedSlotValues = nullptr;
+			if (WidgetTreeSnapshot.IsValid() &&
+				WidgetTreeSnapshot->TryGetArrayField(TEXT("named_slots"), NamedSlotValues) &&
+				NamedSlotValues)
+			{
+				TSharedRef<FJsonObject> TargetFields =
+					FBlueprintHelperReviewWidgetTreeSnapshotHelper::BuildNamedSlotContentSnapshot(nullptr, Target);
+				TargetFields->TryGetStringField(TEXT("host_widget_name"), HostWidgetName);
+				TargetFields->TryGetStringField(TEXT("slot_name"), SlotName);
+				Json->SetStringField(TEXT("host_widget_name"), HostWidgetName);
+				Json->SetStringField(TEXT("slot_name"), SlotName);
+				for (const TSharedPtr<FJsonValue>& NamedSlotValue : *NamedSlotValues)
+				{
+					const TSharedPtr<FJsonObject> NamedSlotObject = NamedSlotValue.IsValid() ? NamedSlotValue->AsObject() : nullptr;
+					if (UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(NamedSlotObject, TEXT("host_widget_name"), HostWidgetName) &&
+						UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(NamedSlotObject, TEXT("slot_name"), SlotName))
+					{
+						Json->SetBoolField(TEXT("exists"), true);
+						bool bContentExists = false;
+						if (NamedSlotObject.IsValid())
+						{
+							NamedSlotObject->TryGetBoolField(TEXT("content_exists"), bContentExists);
+						}
+						Json->SetBoolField(TEXT("content_exists"), bContentExists);
+						FString ContentWidgetName;
+						if (NamedSlotObject.IsValid() && NamedSlotObject->TryGetStringField(TEXT("content_widget_name"), ContentWidgetName))
+						{
+							Json->SetStringField(TEXT("content_widget_name"), ContentWidgetName);
+						}
+						FString ContentWidgetClass;
+						if (NamedSlotObject.IsValid() && NamedSlotObject->TryGetStringField(TEXT("content_widget_class"), ContentWidgetClass))
+						{
+							Json->SetStringField(TEXT("content_widget_class"), ContentWidgetClass);
+						}
+						Json->SetNumberField(TEXT("virtual_index"), 0);
+						return Json;
+					}
+				}
+			}
+			return Json;
+		}
+
 		FString WidgetName;
 		FString PropertyName;
 		FBlueprintHelperReviewBaselineSnapshotServiceUtils::SplitWidgetPropertyTarget(TargetName, WidgetName, PropertyName);
@@ -1160,9 +1341,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			if (UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(WidgetObject, TEXT("name"), WidgetName))
 			{
 				Json->SetBoolField(TEXT("exists"), true);
-				FString WidgetClass;
-				WidgetObject->TryGetStringField(TEXT("class"), WidgetClass);
-				Json->SetStringField(TEXT("widget_class"), WidgetClass);
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : WidgetObject->Values)
+				{
+					Json->SetField(FBlueprintHelperVersionCompat::JsonKeyToString(Field.Key), Field.Value);
+				}
 				return Json;
 			}
 		}
@@ -1453,11 +1635,12 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildWidg
 	Json->SetStringField(TEXT("root_widget"), WidgetTree && WidgetTree->RootWidget ? WidgetTree->RootWidget->GetName() : FString());
 
 	TArray<TSharedPtr<FJsonValue>> Widgets;
+	TArray<TSharedPtr<FJsonValue>> NamedSlots;
 	if (WidgetTree)
 	{
 		TArray<UWidget*> AllWidgets;
 		WidgetTree->GetAllWidgets(AllWidgets);
-		for (const UWidget* Widget : AllWidgets)
+		for (UWidget* Widget : AllWidgets)
 		{
 			if (!Widget)
 			{
@@ -1467,10 +1650,48 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildWidg
 			TSharedRef<FJsonObject> WidgetJson = MakeShared<FJsonObject>();
 			WidgetJson->SetStringField(TEXT("name"), Widget->GetName());
 			WidgetJson->SetStringField(TEXT("class"), Widget->GetClass() ? Widget->GetClass()->GetPathName() : FString());
+			int32 VirtualIndex = INDEX_NONE;
+			if (UPanelWidget* ParentWidget = UWidgetTree::FindWidgetParent(Widget, VirtualIndex))
+			{
+				WidgetJson->SetStringField(TEXT("parent_widget"), ParentWidget->GetName());
+				WidgetJson->SetNumberField(TEXT("virtual_index"), VirtualIndex);
+				if (Widget->Slot)
+				{
+					WidgetJson->SetStringField(TEXT("slot_class_path"), Widget->Slot->GetClass()->GetPathName());
+				}
+			}
+			else
+			{
+				WidgetJson->SetNumberField(TEXT("virtual_index"), 0);
+			}
 			Widgets.Add(MakeShared<FJsonValueObject>(WidgetJson));
+
+			if (INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(Widget))
+			{
+				TArray<FName> SlotNames;
+				NamedSlotHost->GetSlotNames(SlotNames);
+				for (const FName& SlotName : SlotNames)
+				{
+					TSharedRef<FJsonObject> NamedSlotJson = MakeShared<FJsonObject>();
+					NamedSlotJson->SetStringField(TEXT("host_widget_name"), Widget->GetName());
+					NamedSlotJson->SetStringField(TEXT("slot_name"), SlotName.ToString());
+					NamedSlotJson->SetNumberField(TEXT("virtual_index"), 0);
+					UWidget* ContentWidget = NamedSlotHost->GetContentForSlot(SlotName);
+					NamedSlotJson->SetBoolField(TEXT("content_exists"), ContentWidget != nullptr);
+					if (ContentWidget)
+					{
+						NamedSlotJson->SetStringField(TEXT("content_widget_name"), ContentWidget->GetName());
+						NamedSlotJson->SetStringField(
+							TEXT("content_widget_class"),
+							ContentWidget->GetClass() ? ContentWidget->GetClass()->GetPathName() : FString());
+					}
+					NamedSlots.Add(MakeShared<FJsonValueObject>(NamedSlotJson));
+				}
+			}
 		}
 	}
 	Json->SetArrayField(TEXT("widgets"), Widgets);
+	Json->SetArrayField(TEXT("named_slots"), NamedSlots);
 	return Json;
 }
 

@@ -2251,7 +2251,7 @@ public:
 		AddChildOp->SetStringField(TEXT("op"), TEXT("add_widget"));
 		AddChildOp->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
 		AddChildOp->SetStringField(TEXT("widget_name"), TEXT("SmokeText"));
-		AddChildOp->SetStringField(TEXT("parent_widget_name"), TEXT("RootCanvas"));
+		AddChildOp->SetStringField(TEXT("parent_name"), TEXT("RootCanvas"));
 
 		TSharedRef<FJsonObject> SetOpacityOp = MakeShared<FJsonObject>();
 		SetOpacityOp->SetStringField(TEXT("op"), TEXT("set_widget_property"));
@@ -2292,7 +2292,7 @@ public:
 		AddOp->SetStringField(TEXT("op"), TEXT("add_widget"));
 		AddOp->SetStringField(TEXT("widget_class"), TEXT("TextBlock"));
 		AddOp->SetStringField(TEXT("widget_name"), TEXT("PlannedText"));
-		AddOp->SetStringField(TEXT("parent_widget_name"), TEXT("CanvasRoot"));
+		AddOp->SetStringField(TEXT("parent_name"), TEXT("CanvasRoot"));
 
 		TSharedRef<FJsonObject> SetOp = MakeShared<FJsonObject>();
 		SetOp->SetStringField(TEXT("op"), TEXT("set_widget_property"));

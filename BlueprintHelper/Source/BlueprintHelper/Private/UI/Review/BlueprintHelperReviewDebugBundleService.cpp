@@ -12,9 +12,29 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/Review/BlueprintHelperReviewBoundaryModel.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "UI/Review/Utils/BlueprintHelperReviewDebugBundleUtils.h"
+
+static TSharedRef<FJsonObject> BlueprintHelperReviewDebugBundleBoundaryJsonFromModel(
+	const FBlueprintHelperReviewBoundaryModel& Boundary)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("asset_key"), Boundary.AssetKey);
+	Json->SetStringField(TEXT("location_key"), Boundary.LocationKey);
+	Json->SetStringField(TEXT("target_key"), Boundary.TargetKey);
+	Json->SetStringField(TEXT("target_kind"), Boundary.TargetKind);
+	Json->SetStringField(TEXT("target_sub_kind"), Boundary.TargetSubKind);
+	Json->SetStringField(TEXT("scope_identity"), Boundary.ScopeIdentity);
+	Json->SetStringField(TEXT("lifecycle_object_key"), Boundary.LifecycleObjectKey);
+	Json->SetStringField(TEXT("lifecycle_parent_key"), Boundary.LifecycleParentKey);
+	Json->SetStringField(TEXT("visual_group_key"), Boundary.VisualGroupKey);
+	Json->SetBoolField(TEXT("is_asset_lifecycle_root"), Boundary.bIsAssetLifecycleRoot);
+	Json->SetBoolField(TEXT("is_object_lifecycle_root"), Boundary.bIsObjectLifecycleRoot);
+	Json->SetBoolField(TEXT("reject_removes_children"), Boundary.bRejectRemovesChildren);
+	return Json;
+}
 
 FString FBlueprintHelperReviewDebugBundleService::GetDebugRootDir()
 {
@@ -109,6 +129,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 	Json->SetBoolField(TEXT("has_before_snapshot"), !Change->BeforeSnapshotJson.IsEmpty());
 	Json->SetBoolField(TEXT("has_after_snapshot"), !Change->AfterSnapshotJson.IsEmpty());
 	Json->SetNumberField(TEXT("atomic_target_count"), Change->AtomicTargets.Num());
+	Json->SetObjectField(
+		TEXT("boundary_model"),
+		BlueprintHelperReviewDebugBundleBoundaryJsonFromModel(
+			FBlueprintHelperReviewBoundaryModelBuilder::FromVisibleChange(*Change)));
 
 	TArray<TSharedPtr<FJsonValue>> Targets;
 	for (const FBlueprintHelperReviewAtomicTarget& Target : Change->AtomicTargets)
@@ -128,6 +152,10 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildChangeSum
 		TargetJson->SetStringField(TEXT("snapshot_schema"), BundleConfig.SchemaSnapshot);
 		TargetJson->SetBoolField(TEXT("has_before_snapshot"), !Target.BeforeSnapshotJson.IsEmpty());
 		TargetJson->SetBoolField(TEXT("has_after_snapshot"), !Target.AfterSnapshotJson.IsEmpty());
+		TargetJson->SetObjectField(
+			TEXT("boundary_model"),
+			BlueprintHelperReviewDebugBundleBoundaryJsonFromModel(
+				FBlueprintHelperReviewBoundaryModelBuilder::FromAtomicTarget(Target)));
 		Targets.Add(MakeShared<FJsonValueObject>(TargetJson));
 	}
 	Json->SetArrayField(TEXT("atomic_targets"), Targets);

@@ -53,6 +53,7 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("add_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 	{TEXT("remove_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 	{TEXT("move_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
+	{TEXT("set_named_slot_content"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 	{TEXT("get_widget_properties"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 	{TEXT("set_widget_property"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 	{TEXT("get_datatable_rows"), EBlueprintHelperBridgeRouteCluster::DataTable},

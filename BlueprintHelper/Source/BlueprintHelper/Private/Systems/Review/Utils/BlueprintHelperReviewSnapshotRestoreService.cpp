@@ -4,6 +4,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/ActorComponent.h"
+#include "Components/NamedSlotInterface.h"
 #include "Components/PanelSlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
@@ -32,6 +33,7 @@
 #include "ScopedTransaction.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Shared/BlueprintHelperWidgetVersionCompat.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
@@ -65,6 +67,170 @@ static FText BlueprintHelperReviewCategoryTextFromSnapshot(const FString& Catego
 
 	return FText::FromString(Category);
 }
+
+class FBlueprintHelperReviewWidgetTreeRestoreHelper
+{
+public:
+	static bool IsNamedSlotContentTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetSubKind.Equals(TEXT("named_slot_content"), ESearchCase::IgnoreCase);
+	}
+
+	static bool RestoreNamedSlotContent(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+	{
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+		{
+			OutError = FString::Printf(TEXT("widget_blueprint_not_found:%s"), *Target.AssetPath);
+			return false;
+		}
+		if (!Snapshot.IsValid())
+		{
+			OutError = TEXT("named_slot_restore_missing_snapshot");
+			return false;
+		}
+
+		FString HostWidgetName;
+		FString SlotName;
+		ReadHostAndSlot(Target, Snapshot, HostWidgetName, SlotName);
+		if (HostWidgetName.IsEmpty() || SlotName.IsEmpty())
+		{
+			OutError = TEXT("named_slot_restore_missing_host_or_slot");
+			return false;
+		}
+
+		UWidget* HostWidget = WidgetBlueprint->WidgetTree->FindWidget(FName(*HostWidgetName));
+		INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+		if (!HostWidget || !HasNamedSlot(NamedSlotHost, FName(*SlotName)))
+		{
+			OutError = FString::Printf(TEXT("named_slot_restore_slot_not_found:%s.%s"), *HostWidgetName, *SlotName);
+			return false;
+		}
+
+		bool bSnapshotExists = false;
+		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+		bool bContentExists = false;
+		Snapshot->TryGetBoolField(TEXT("content_exists"), bContentExists);
+
+		WidgetBlueprint->Modify();
+		WidgetBlueprint->WidgetTree->Modify();
+		HostWidget->Modify();
+
+		UWidget* CurrentContent = NamedSlotHost->GetContentForSlot(FName(*SlotName));
+		if (!bSnapshotExists || !bContentExists)
+		{
+			if (CurrentContent)
+			{
+				CurrentContent->Modify();
+				NamedSlotHost->SetContentForSlot(FName(*SlotName), nullptr);
+				if (!FBlueprintHelperWidgetVersionCompat::RetireSourceWidget(WidgetBlueprint, CurrentContent, OutError))
+				{
+					return false;
+				}
+			}
+			FBlueprintHelperReviewSnapshotRestoreService::MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+			return true;
+		}
+
+		FString ContentWidgetName;
+		FString ContentWidgetClass;
+		Snapshot->TryGetStringField(TEXT("content_widget_name"), ContentWidgetName);
+		Snapshot->TryGetStringField(TEXT("content_widget_class"), ContentWidgetClass);
+		if (ContentWidgetName.IsEmpty() || ContentWidgetClass.IsEmpty())
+		{
+			OutError = TEXT("named_slot_restore_missing_content_snapshot");
+			return false;
+		}
+
+		UWidget* DesiredContent = WidgetBlueprint->WidgetTree->FindWidget(FName(*ContentWidgetName));
+		if (!DesiredContent)
+		{
+			UClass* WidgetClass = LoadObject<UClass>(nullptr, *ContentWidgetClass);
+			if (!WidgetClass || !WidgetClass->IsChildOf(UWidget::StaticClass()))
+			{
+				OutError = FString::Printf(TEXT("named_slot_restore_invalid_content_class:%s"), *ContentWidgetClass);
+				return false;
+			}
+			DesiredContent = WidgetBlueprint->WidgetTree->ConstructWidget<UWidget>(WidgetClass, FName(*ContentWidgetName));
+			if (!DesiredContent)
+			{
+				OutError = FString::Printf(TEXT("named_slot_restore_construct_failed:%s"), *ContentWidgetName);
+				return false;
+			}
+			DesiredContent->SetFlags(RF_Transactional);
+		}
+
+		if (CurrentContent && CurrentContent != DesiredContent)
+		{
+			CurrentContent->Modify();
+			NamedSlotHost->SetContentForSlot(FName(*SlotName), nullptr);
+			if (!FBlueprintHelperWidgetVersionCompat::RetireSourceWidget(WidgetBlueprint, CurrentContent, OutError))
+			{
+				return false;
+			}
+		}
+		NamedSlotHost->SetContentForSlot(FName(*SlotName), DesiredContent);
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WidgetBlueprint, DesiredContent);
+		FBlueprintHelperReviewSnapshotRestoreService::MarkBlueprintReviewRestoreModified(WidgetBlueprint);
+		return true;
+	}
+
+private:
+	static bool HasNamedSlot(INamedSlotInterface* NamedSlotHost, const FName& SlotName)
+	{
+		if (!NamedSlotHost || SlotName.IsNone())
+		{
+			return false;
+		}
+
+		TArray<FName> SlotNames;
+		NamedSlotHost->GetSlotNames(SlotNames);
+		return SlotNames.Contains(SlotName);
+	}
+
+	static bool TryReadAnchorString(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TCHAR* FieldName,
+		FString& OutValue)
+	{
+		if (Target.AnchorJson.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Anchor;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Target.AnchorJson);
+		if (!FJsonSerializer::Deserialize(Reader, Anchor) || !Anchor.IsValid())
+		{
+			return false;
+		}
+		return Anchor->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+	}
+
+	static void ReadHostAndSlot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutHostWidgetName,
+		FString& OutSlotName)
+	{
+		if (Snapshot.IsValid())
+		{
+			Snapshot->TryGetStringField(TEXT("host_widget_name"), OutHostWidgetName);
+			Snapshot->TryGetStringField(TEXT("slot_name"), OutSlotName);
+		}
+		if (OutHostWidgetName.IsEmpty())
+		{
+			TryReadAnchorString(Target, TEXT("host_widget_name"), OutHostWidgetName);
+		}
+		if (OutSlotName.IsEmpty())
+		{
+			TryReadAnchorString(Target, TEXT("slot_name"), OutSlotName);
+		}
+	}
+};
 
 static bool BlueprintHelperRestoreVariableReplicationFromSnapshot(
 	UBlueprint* Blueprint,
@@ -988,6 +1154,16 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
 			return false;
 		}
 
+		if (FBlueprintHelperReviewWidgetTreeRestoreHelper::IsNamedSlotContentTarget(Target))
+		{
+			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Named Slot")));
+			return FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreNamedSlotContent(
+				WidgetBlueprint,
+				Target,
+				Snapshot,
+				OutError);
+		}
+
 		FString WidgetName;
 		FString PropertyName;
 		SplitWidgetPropertyTarget(ExtractTargetName(Target), WidgetName, PropertyName);
@@ -1052,7 +1228,7 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
 
 				int32 ChildIndex = INDEX_NONE;
 				double ChildIndexNumber = INDEX_NONE;
-				if (Snapshot->TryGetNumberField(TEXT("child_index"), ChildIndexNumber))
+				if (Snapshot->TryGetNumberField(TEXT("virtual_index"), ChildIndexNumber))
 				{
 					ChildIndex = FMath::RoundToInt(ChildIndexNumber);
 				}

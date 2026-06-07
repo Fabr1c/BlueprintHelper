@@ -1941,6 +1941,9 @@ bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(
 			TEXT("tx_debug_semantic"),
 			TEXT("crc32_after"));
 	Target.NodeGuid = TEXT("00112233445566778899aabbccddeeff");
+	Target.ScopeIdentity = TEXT("/Game/BP_DebugSemantic|EventGraph|graph:EventGraph:node:DebugSemantic");
+	Target.LifecycleObjectKey = TEXT("node:DebugSemantic");
+	Target.LifecycleParentKey = TEXT("asset:asset");
 	Change->AtomicTargets.Add(Target);
 
 	const TSharedRef<FJsonObject> Event = FBlueprintHelperReviewDebugBundleService::BuildLogEvent(
@@ -1968,6 +1971,21 @@ bool FBlueprintHelperReviewDebugBundleSummarizesSemanticHashSourceTest::RunTest(
 	TestEqual(TEXT("snapshot schema is target snapshot"),
 		SnapshotSchema,
 		FString(TEXT("BlueprintHelper.ReviewTargetSnapshot.v2")));
+	const TSharedPtr<FJsonObject>* BoundaryPtr = nullptr;
+	TestTrue(TEXT("debug summary consumes shared boundary model"),
+		(*SelectedChangePtr)->TryGetObjectField(TEXT("boundary_model"), BoundaryPtr) && BoundaryPtr && BoundaryPtr->IsValid());
+	if (!BoundaryPtr || !BoundaryPtr->IsValid())
+	{
+		return false;
+	}
+	FString BoundaryScope;
+	FString BoundaryLifecycleParent;
+	TestTrue(TEXT("boundary model exposes scope identity"),
+		(*BoundaryPtr)->TryGetStringField(TEXT("scope_identity"), BoundaryScope));
+	TestEqual(TEXT("boundary scope comes from review target"), BoundaryScope, Target.ScopeIdentity);
+	TestTrue(TEXT("boundary model exposes lifecycle parent"),
+		(*BoundaryPtr)->TryGetStringField(TEXT("lifecycle_parent_key"), BoundaryLifecycleParent));
+	TestEqual(TEXT("boundary lifecycle parent comes from review target"), BoundaryLifecycleParent, Target.LifecycleParentKey);
 
 	FString SerializedEvent;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SerializedEvent);

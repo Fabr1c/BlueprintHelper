@@ -4,15 +4,15 @@
 
 enum class EBlueprintHelperTaskRuntimePipelineStage : uint8
 {
-	Prepare,
-	ResolvePreviewToken,
-	CaptureReviewBaseline,
-	ExecuteSteps,
+	ValidateCompiledPlanContract,
+	ResolveBridgeRoute,
+	ResolveClusterFamilyAdapter,
+	ExecuteCluster,
 	BuildReviewEvidence,
+	ProjectMetricsAndResult,
 	RunPostOperations,
 	BuildJournal,
-	AttachRuntimeFacts,
-	FinalizeResult
+	FinalizeBridgeResponse
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperTaskRuntimePipelineStageNames

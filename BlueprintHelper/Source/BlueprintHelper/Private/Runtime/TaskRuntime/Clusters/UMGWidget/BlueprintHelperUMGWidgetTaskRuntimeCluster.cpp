@@ -2,6 +2,7 @@
 
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
 
+#include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperWidgetTreeReviewEvidenceBuilder.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 
@@ -25,12 +26,13 @@ bool FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
-		LoweredStep,
-		ArchiveSessionId,
-		TaskRunId,
-		StepIndex,
-		OutEvidence);
+	FBlueprintHelperWidgetTreeReviewEvidenceBuildInput Input;
+	Input.LoweredStep = LoweredStep;
+	Input.StepResult = StepResult;
+	Input.ArchiveSessionId = ArchiveSessionId;
+	Input.TaskRunId = TaskRunId;
+	Input.StepIndex = StepIndex;
+	return FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(Input, OutEvidence);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperUMGWidgetTaskRuntimeCluster::ExecuteStep(
