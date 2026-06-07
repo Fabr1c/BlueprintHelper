@@ -1,8 +1,8 @@
 {
-  "asset_path": "__ASSET_PATH__",
+  "asset_path": "__REQUIRED_ASSET_PATH__",
   "target_type": "local_variable",
-  "target_name": "__VARIABLE_NAME__",
-  "graph_name": "__GRAPH_NAME__",
+  "target_name": "__REQUIRED_VARIABLE_NAME__",
+  "graph_name": "__REQUIRED_GRAPH_NAME__",
   "search_scope": "asset",
   "resolution_policy": "ue_only",
   "detail": "samples",

@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_graph",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "behavior": {
@@ -11,23 +11,23 @@
     "entries": [
       {
         "entry_type": "custom_event",
-        "name": "__CUSTOM_EVENT_NAME__",
+        "name": "__REQUIRED_CUSTOM_EVENT_NAME__",
         "body": {
           "schema": "BlueprintLogicSpec.v2",
           "statements": [
             {
               "kind": "let",
-              "name": "__CONDITION_SYMBOL__",
+              "name": "__REQUIRED_CONDITION_SYMBOL__",
               "value": {
                 "kind": "op",
                 "op": "boolean_and",
                 "left": {
                   "kind": "get",
-                  "target": "__BOOL_A_VARIABLE__"
+                  "target": "__REQUIRED_BOOL_A_VARIABLE__"
                 },
                 "right": {
                   "kind": "get",
-                  "target": "__BOOL_B_VARIABLE__"
+                  "target": "__REQUIRED_BOOL_B_VARIABLE__"
                 },
                 "context_evidence": {
                   "op.operation_id": "boolean_and",
@@ -40,23 +40,23 @@
               "control": "branch",
               "condition": {
                 "kind": "get",
-                "target": "__CONDITION_SYMBOL__"
+                "target": "__REQUIRED_CONDITION_SYMBOL__"
               },
               "then": [
                 {
                   "kind": "convert",
                   "function_operation": "convert_function",
                   "transform_operation": "dynamic_cast",
-                  "target_class_path": "__TARGET_CLASS_PATH__",
+                  "target_class_path": "__REQUIRED_TARGET_CLASS_PATH__",
                   "context_evidence": {
                     "generic.transform.operation": "dynamic_cast",
                     "generic.transform.source_pin_type": "object",
-                    "generic.transform.target_pin_type": "__TARGET_CLASS_PATH__"
+                    "generic.transform.target_pin_type": "__REQUIRED_TARGET_CLASS_PATH__"
                   },
                   "args": {
                     "value": {
                       "kind": "get",
-                      "target": "__OBJECT_VARIABLE__"
+                      "target": "__REQUIRED_OBJECT_VARIABLE__"
                     }
                   }
                 },
@@ -67,7 +67,7 @@
                     "InString": {
                       "kind": "literal",
                       "value_type": "string",
-                      "value": "__THEN_MESSAGE__"
+                      "value": "__REQUIRED_THEN_MESSAGE__"
                     }
                   }
                 }
@@ -80,7 +80,7 @@
                     "InString": {
                       "kind": "literal",
                       "value_type": "string",
-                      "value": "__ELSE_MESSAGE__"
+                      "value": "__REQUIRED_ELSE_MESSAGE__"
                     }
                   }
                 }
@@ -88,20 +88,20 @@
             },
             {
               "kind": "let",
-              "name": "__STRUCT_SYMBOL__",
+              "name": "__REQUIRED_STRUCT_SYMBOL__",
               "value": {
                 "kind": "construct",
-                "type": "__STRUCT_PATH__",
+                "type": "__REQUIRED_STRUCT_PATH__",
                 "args": {
-                  "__FIELD_NAME__": {
+                  "__REQUIRED_FIELD_NAME__": {
                     "kind": "literal",
                     "value_type": "int",
                     "value": 1
                   }
                 },
                 "context_evidence": {
-                  "generic.struct.struct_path": "__STRUCT_PATH__",
-                  "generic.struct.selected_field_paths": "__FIELD_NAME__"
+                  "generic.struct.struct_path": "__REQUIRED_STRUCT_PATH__",
+                  "generic.struct.selected_field_paths": "__REQUIRED_FIELD_NAME__"
                 }
               }
             },
@@ -109,12 +109,12 @@
               "kind": "field",
               "field_operation": "set",
               "field_scope": "field_access",
-              "target": "__STRUCT_SYMBOL__",
-              "property_path": "__FIELD_NAME__",
+              "target": "__REQUIRED_STRUCT_SYMBOL__",
+              "property_path": "__REQUIRED_FIELD_NAME__",
               "capability_id": "field.struct_member_set",
               "capability_facts": {
-                "generic.struct.struct_path": "__STRUCT_PATH__",
-                "generic.struct.selected_field_paths": "__FIELD_NAME__"
+                "generic.struct.struct_path": "__REQUIRED_STRUCT_PATH__",
+                "generic.struct.selected_field_paths": "__REQUIRED_FIELD_NAME__"
               },
               "value": {
                 "kind": "literal",
@@ -124,7 +124,7 @@
             },
             {
               "kind": "let",
-              "name": "__SELECT_SYMBOL__",
+              "name": "__REQUIRED_SELECT_SYMBOL__",
               "value": {
                 "kind": "select",
                 "condition": {
@@ -136,12 +136,12 @@
                   {
                     "kind": "literal",
                     "value_type": "string",
-                    "value": "__OPTION_A__"
+                    "value": "__REQUIRED_OPTION_A__"
                   },
                   {
                     "kind": "literal",
                     "value_type": "string",
-                    "value": "__OPTION_B__"
+                    "value": "__REQUIRED_OPTION_B__"
                   }
                 ],
                 "context_evidence": {
@@ -152,10 +152,10 @@
             {
               "kind": "create",
               "create_operation": "construct_object",
-              "class_path": "__OBJECT_CLASS_PATH__",
+              "class_path": "__REQUIRED_OBJECT_CLASS_PATH__",
               "context_evidence": {
                 "generic.create.operation": "construct_object",
-                "generic.create.class_path": "__OBJECT_CLASS_PATH__",
+                "generic.create.class_path": "__REQUIRED_OBJECT_CLASS_PATH__",
                 "generic.create.expose_on_spawn": "false"
               },
               "args": {}
@@ -163,12 +163,12 @@
             {
               "kind": "create",
               "create_operation": "asset_action",
-              "asset_path": "__ASSET_PATH__",
+              "asset_path": "__REQUIRED_ASSET_PATH__",
               "context_evidence": {
                 "generic.create.operation": "asset_action",
-                "generic.create.asset_path": "__ASSET_PATH__",
-                "asset_action_stable_id": "__ASSET_ACTION_STABLE_ID__",
-                "asset_action_spawner_signature": "__ASSET_ACTION_SPAWNER_SIGNATURE__"
+                "generic.create.asset_path": "__REQUIRED_ASSET_PATH__",
+                "asset_action_stable_id": "__REQUIRED_ASSET_ACTION_STABLE_ID__",
+                "asset_action_spawner_signature": "__REQUIRED_ASSET_ACTION_SPAWNER_SIGNATURE__"
               },
               "args": {}
             },
@@ -176,11 +176,11 @@
               "kind": "create",
               "function_operation": "create_function",
               "create_operation": "function_backed_create",
-              "target": "__FACTORY_FUNCTION_NAME__",
-              "class_path": "__FACTORY_RESULT_CLASS_PATH__",
+              "target": "__REQUIRED_FACTORY_FUNCTION_NAME__",
+              "class_path": "__REQUIRED_FACTORY_RESULT_CLASS_PATH__",
               "context_evidence": {
                 "generic.create.operation": "function_backed_create",
-                "generic.create.class_path": "__FACTORY_RESULT_CLASS_PATH__"
+                "generic.create.class_path": "__REQUIRED_FACTORY_RESULT_CLASS_PATH__"
               },
               "args": {}
             },
@@ -195,7 +195,7 @@
               "args": {
                 "selection": {
                   "kind": "get",
-                  "target": "__INT_SELECTION_VARIABLE__"
+                  "target": "__REQUIRED_INT_SELECTION_VARIABLE__"
                 }
               }
             }

@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_object_properties",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__OBJECT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_OBJECT_ASSET_PATH__",
     "target_type": "asset"
   },
   "behavior": {
@@ -11,8 +11,8 @@
     "changes": [
       {
         "kind": "set_object_property",
-        "property_path": "__PROPERTY_PATH__",
-        "value": "__VALUE__"
+        "property_path": "__REQUIRED_PROPERTY_PATH__",
+        "value": "__REQUIRED_VALUE__"
       }
     ]
   }

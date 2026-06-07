@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_graph",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "behavior": {
@@ -14,11 +14,11 @@
         "insert_strategy": "append_after",
         "anchor": {
           "schema": "BlueprintHelper.LogicJsonAnchorSelector.v1",
-          "asset_path": "__BLUEPRINT_ASSET_PATH__",
-          "graph_name": "__GRAPH_NAME__",
-          "entry_name": "__ENTRY_NAME__",
-          "node_ref": "__NODE_REF__",
-          "pin_ref": "__PIN_REF__"
+          "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+          "graph_name": "__REQUIRED_GRAPH_NAME__",
+          "entry_name": "__REQUIRED_ENTRY_NAME__",
+          "node_ref": "__REQUIRED_NODE_REF__",
+          "pin_ref": "__REQUIRED_PIN_REF__"
         },
         "inserted": {
           "body": {
@@ -31,7 +31,7 @@
                   "InString": {
                     "kind": "literal",
                     "value_type": "string",
-                    "value": "__MESSAGE__"
+                    "value": "__REQUIRED_MESSAGE__"
                   }
                 }
               }

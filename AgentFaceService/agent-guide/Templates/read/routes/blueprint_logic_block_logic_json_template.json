@@ -2,9 +2,9 @@
   "schema": "BlueprintHelper.ReadSpec.v1",
   "read_type": "blueprint_logic",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "block",
-    "block_id": "__BLOCK_ID__"
+    "block_id": "__REQUIRED_BLOCK_ID__"
   },
   "view": {
     "format": "logic_json",

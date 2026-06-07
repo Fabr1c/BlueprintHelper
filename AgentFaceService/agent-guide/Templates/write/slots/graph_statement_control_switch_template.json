@@ -1,15 +1,15 @@
 {
   "kind": "control",
-  "control_operation": "__SWITCH_OPERATION__",
+  "control_operation": "__REQUIRED_SWITCH_OPERATION__",
   "context_evidence": {
-    "generic.control.operation": "__SWITCH_OPERATION__",
-    "generic.control.case_values": "__CASE_VALUES__",
-    "generic.control.default_policy": "__DEFAULT_POLICY__"
+    "generic.control.operation": "__REQUIRED_SWITCH_OPERATION__",
+    "generic.control.case_values": "__REQUIRED_CASE_VALUES__",
+    "generic.control.default_policy": "__REQUIRED_DEFAULT_POLICY__"
   },
   "args": {
     "selection": {
       "kind": "get",
-      "target": "__SELECTION_SYMBOL_OR_VARIABLE__"
+      "target": "__REQUIRED_SELECTION_SYMBOL_OR_VARIABLE__"
     }
   }
 }

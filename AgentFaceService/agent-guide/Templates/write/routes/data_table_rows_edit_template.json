@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_data_table",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "asset_path": "__REQUIRED_DATA_TABLE_ASSET_PATH__",
     "target_type": "data_table"
   },
   "behavior": {
@@ -11,9 +11,9 @@
     "rows": [
       {
         "action": "add",
-        "row_name": "__ROW_NAME__",
+        "row_name": "__REQUIRED_ROW_NAME__",
         "fields": {
-          "__FIELD_NAME__": "__VALUE__"
+          "__REQUIRED_FIELD_NAME__": "__REQUIRED_VALUE__"
         }
       }
     ]

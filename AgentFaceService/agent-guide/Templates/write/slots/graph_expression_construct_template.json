@@ -1,15 +1,15 @@
 {
   "kind": "construct",
-  "type": "__STRUCT_PATH__",
+  "type": "__REQUIRED_STRUCT_PATH__",
   "args": {
-    "__FIELD_NAME__": {
+    "__REQUIRED_FIELD_NAME__": {
       "kind": "literal",
-      "value_type": "__VALUE_TYPE__",
-      "value": "__VALUE__"
+      "value_type": "__REQUIRED_VALUE_TYPE__",
+      "value": "__REQUIRED_VALUE__"
     }
   },
   "context_evidence": {
-    "generic.struct.struct_path": "__STRUCT_PATH__",
-    "generic.struct.selected_field_paths": "__FIELD_NAME__"
+    "generic.struct.struct_path": "__REQUIRED_STRUCT_PATH__",
+    "generic.struct.selected_field_paths": "__REQUIRED_FIELD_NAME__"
   }
 }

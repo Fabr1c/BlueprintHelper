@@ -1,6 +1,6 @@
 {
   "target": {
-    "asset_path": "__DATA_TABLE_ASSET_PATH__",
-    "row_name": "__ROW_NAME__"
+    "asset_path": "__REQUIRED_DATA_TABLE_ASSET_PATH__",
+    "row_name": "__REQUIRED_ROW_NAME__"
   }
 }

@@ -2,21 +2,21 @@
   "kind": "select",
   "condition": {
     "kind": "get",
-    "target": "__CONDITION_SYMBOL_OR_VARIABLE__"
+    "target": "__REQUIRED_CONDITION_SYMBOL_OR_VARIABLE__"
   },
   "options": [
     {
       "kind": "literal",
-      "value_type": "__VALUE_TYPE__",
-      "value": "__OPTION_A__"
+      "value_type": "__REQUIRED_VALUE_TYPE__",
+      "value": "__REQUIRED_OPTION_A__"
     },
     {
       "kind": "literal",
-      "value_type": "__VALUE_TYPE__",
-      "value": "__OPTION_B__"
+      "value_type": "__REQUIRED_VALUE_TYPE__",
+      "value": "__REQUIRED_OPTION_B__"
     }
   ],
   "context_evidence": {
-    "generic.select.result_type_proof": "__VALUE_TYPE__"
+    "generic.select.result_type_proof": "__REQUIRED_VALUE_TYPE__"
   }
 }

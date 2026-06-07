@@ -1,7 +1,7 @@
 {
   "kind": "call",
-  "target": "__FUNCTION_OR_ACTION_TARGET__",
-  "value_type": "__RESULT_VALUE_TYPE__",
-  "result_symbol": "__RESULT_SYMBOL__",
+  "target": "__REQUIRED_FUNCTION_OR_ACTION_TARGET__",
+  "value_type": "__REQUIRED_RESULT_VALUE_TYPE__",
+  "result_symbol": "__REQUIRED_RESULT_SYMBOL__",
   "args": {}
 }

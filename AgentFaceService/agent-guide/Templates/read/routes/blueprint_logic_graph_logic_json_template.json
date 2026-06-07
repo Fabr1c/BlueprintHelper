@@ -2,9 +2,9 @@
   "schema": "BlueprintHelper.ReadSpec.v1",
   "read_type": "blueprint_logic",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "graph",
-    "target_name": "__GRAPH_NAME__"
+    "target_name": "__REQUIRED_GRAPH_NAME__"
   },
   "view": {
     "format": "logic_json",

@@ -3,7 +3,7 @@
   "control": "branch",
   "condition": {
     "kind": "get",
-    "target": "__BOOLEAN_SYMBOL_OR_VARIABLE__"
+    "target": "__REQUIRED_BOOLEAN_SYMBOL_OR_VARIABLE__"
   },
   "then": [],
   "else": []

@@ -2,9 +2,9 @@
   "task_spec": {
     "schema": "BlueprintHelper.TaskSpec.v1",
     "task_type": "create_asset",
-    "feature_name": "__FEATURE_NAME__",
+    "feature_name": "__REQUIRED_FEATURE_NAME__",
     "target": {
-      "asset_path": "__ASSET_PATH__",
+      "asset_path": "__REQUIRED_ASSET_PATH__",
       "target_type": "asset"
     },
     "behavior": {

@@ -15,6 +15,7 @@ test('HelpBuilder renders preview help from manifest and TaskSpec composer navig
   assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
   assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
   assert.match(help, /bh tools templates compose --family <family>/);
+  assert.match(help, /Placeholder style: replace __REQUIRED_NAME__; replace or delete __OPTIONAL_NAME__ fields\./);
   assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
   assert.doesNotMatch(help, /execution_policy/);
   assert.doesNotMatch(help, /scope_policy/);

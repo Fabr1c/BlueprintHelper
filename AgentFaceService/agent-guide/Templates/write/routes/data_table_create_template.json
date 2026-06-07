@@ -1,16 +1,16 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "create_asset",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "asset_path": "__REQUIRED_DATA_TABLE_ASSET_PATH__",
     "target_type": "asset"
   },
   "behavior": {
     "asset_strategy": "ensure_asset",
     "asset": {
       "asset_type": "data_table",
-      "row_struct": "__ROW_STRUCT_ASSET_PATH__",
+      "row_struct": "__REQUIRED_ROW_STRUCT_ASSET_PATH__",
       "collision_policy": "reuse_if_exists"
     }
   }

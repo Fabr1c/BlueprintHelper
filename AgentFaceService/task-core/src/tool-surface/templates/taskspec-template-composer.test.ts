@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   composeTaskSpecTemplate,
@@ -12,6 +13,8 @@ import {
   listTaskSpecTemplateQuickAccess,
   listTaskSpecTemplateWriteModes,
 } from './taskspec-template-composer.js';
+
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' });
@@ -25,7 +28,11 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   );
   assert.equal(
     writeModes.items.find((item) => item.write_mode === 'graph.append')?.base_template_path,
-    'AgentFaceService/agent-guide/Templates/write/taskspec/graph_append_template.json',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json',
+  );
+  assert.equal(
+    writeModes.items.every((item) => !item.base_template_path.includes('/write/taskspec/')),
+    true,
   );
 
   const clusters = listTaskSpecTemplateClusters({ family: 'graph_write' });
@@ -84,6 +91,51 @@ test('TaskSpec template composer writes GraphWrite append TaskSpec without inser
   };
   assert.equal(taskSpec.task_type, 'edit_blueprint_graph');
   assert.equal(taskSpec.behavior.entries[0]?.body.statements.length, 1);
+  assert.equal(Object.hasOwn(taskSpec, 'scope_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'execution_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
+});
+
+test('agent-facing write templates do not expose hidden execution policy fields', () => {
+  const templateRoot = path.join(PLUGIN_ROOT, 'AgentFaceService/agent-guide/Templates/write');
+  const forbiddenKeys = new Set([
+    'scope_policy',
+    'execution_policy',
+    'validation',
+    'dry_run_mode',
+    'review_baseline_dirty_asset_policy',
+    'should_compile',
+    'should_save',
+    'allow_modify_user_nodes',
+  ]);
+  const hits: string[] = [];
+
+  for (const filePath of listJsonFiles(templateRoot)) {
+    const relativePath = normalizePath(path.relative(PLUGIN_ROOT, filePath));
+    assert.equal(relativePath.includes('/write/taskspec/'), false, `${relativePath} is a removed legacy template path`);
+    collectForbiddenKeys(JSON.parse(fs.readFileSync(filePath, 'utf8')), forbiddenKeys, relativePath, '', hits);
+  }
+
+  assert.deepEqual(hits, []);
+});
+
+test('GraphWrite route templates use current BlueprintLogicSpec schema', () => {
+  const mergeTemplatePath = path.join(
+    PLUGIN_ROOT,
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_flow_template.json',
+  );
+  const taskSpec = JSON.parse(fs.readFileSync(mergeTemplatePath, 'utf8')) as {
+    behavior: {
+      external_merges: Array<{
+        inserted: {
+          body: {
+            schema: string;
+          };
+        };
+      }>;
+    };
+  };
+  assert.equal(taskSpec.behavior.external_merges[0]?.inserted.body.schema, 'BlueprintLogicSpec.v2');
 });
 
 test('TaskSpec template composer reports diagnostics and does not write unsupported output', () => {
@@ -144,4 +196,43 @@ function writeModeForFamily(family: string): string {
     default:
       throw new Error(`Unexpected test family: ${family}`);
   }
+}
+
+function listJsonFiles(root: string): string[] {
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      return listJsonFiles(fullPath);
+    }
+    return entry.isFile() && entry.name.endsWith('.json') ? [fullPath] : [];
+  });
+}
+
+function collectForbiddenKeys(
+  value: unknown,
+  forbiddenKeys: Set<string>,
+  filePath: string,
+  pointer: string,
+  hits: string[],
+): void {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectForbiddenKeys(item, forbiddenKeys, filePath, `${pointer}/${index}`, hits));
+    return;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const childPointer = `${pointer}/${key}`;
+    if (forbiddenKeys.has(key)) {
+      hits.push(`${filePath}:${childPointer}`);
+    }
+    collectForbiddenKeys(child, forbiddenKeys, filePath, childPointer, hits);
+  }
+}
+
+function normalizePath(filePath: string): string {
+  return filePath.replaceAll('\\', '/');
 }

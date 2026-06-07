@@ -2,7 +2,7 @@
   "schema": "BlueprintHelper.ReadSpec.v1",
   "read_type": "data_asset_context",
   "target": {
-    "asset_path": "__DATA_ASSET_PATH__",
+    "asset_path": "__REQUIRED_DATA_ASSET_PATH__",
     "target_type": "data_asset"
   }
 }

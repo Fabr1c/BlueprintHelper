@@ -1,7 +1,7 @@
 {
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "function",
-    "target_name": "__FUNCTION_NAME__"
+    "target_name": "__REQUIRED_FUNCTION_NAME__"
   }
 }

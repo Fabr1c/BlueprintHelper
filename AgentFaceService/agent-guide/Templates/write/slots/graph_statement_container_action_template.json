@@ -1,18 +1,18 @@
 {
   "kind": "container_action",
-  "container_kind": "__array|set|map__",
-  "container_operation": "__OPERATION__",
-  "target": "__CONTAINER_VARIABLE_NAME__",
+  "container_kind": "__REQUIRED_CONTAINER_KIND__",
+  "container_operation": "__REQUIRED_OPERATION__",
+  "target": "__REQUIRED_CONTAINER_VARIABLE_NAME__",
   "item": {
     "kind": "literal",
-    "value_type": "__ELEMENT_VALUE_TYPE__",
-    "value": "__ITEM_VALUE__"
+    "value_type": "__REQUIRED_ELEMENT_VALUE_TYPE__",
+    "value": "__REQUIRED_ITEM_VALUE__"
   },
-  "element_type": "__ELEMENT_VALUE_TYPE__",
+  "element_type": "__REQUIRED_ELEMENT_VALUE_TYPE__",
   "context_evidence": {
-    "container.kind": "__array|set|map__",
-    "container.operation": "__OPERATION__",
-    "container.collection_pin_type": "__COLLECTION_PIN_TYPE__",
-    "container.element_pin_type": "__ELEMENT_PIN_TYPE__"
+    "container.kind": "__REQUIRED_CONTAINER_KIND__",
+    "container.operation": "__REQUIRED_OPERATION__",
+    "container.collection_pin_type": "__REQUIRED_COLLECTION_PIN_TYPE__",
+    "container.element_pin_type": "__REQUIRED_ELEMENT_PIN_TYPE__"
   }
 }

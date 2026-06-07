@@ -2,9 +2,9 @@
   "schema": "BlueprintHelper.ReadSpec.v1",
   "read_type": "blueprint_logic",
   "target": {
-    "asset_path": "/Game/Path/To/BP_Asset",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "custom_event",
-    "target_name": "CustomEventName"
+    "target_name": "__REQUIRED_CUSTOM_EVENT_NAME__"
   },
   "view": {
     "format": "logic_flow"

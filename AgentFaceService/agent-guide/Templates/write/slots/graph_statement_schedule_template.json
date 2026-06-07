@@ -1,16 +1,16 @@
 {
   "kind": "schedule",
-  "schedule_operation": "__SCHEDULE_OPERATION__",
+  "schedule_operation": "__REQUIRED_SCHEDULE_OPERATION__",
   "context_evidence": {
-    "generic.schedule.operation": "__SCHEDULE_OPERATION__",
-    "schedule_action_stable_id": "__SCHEDULE_ACTION_STABLE_ID__",
-    "schedule_spawner_signature": "__SCHEDULE_SPAWNER_SIGNATURE__"
+    "generic.schedule.operation": "__REQUIRED_SCHEDULE_OPERATION__",
+    "schedule_action_stable_id": "__REQUIRED_SCHEDULE_ACTION_STABLE_ID__",
+    "schedule_spawner_signature": "__REQUIRED_SCHEDULE_SPAWNER_SIGNATURE__"
   },
   "args": {
-    "__PIN_NAME__": {
+    "__REQUIRED_PIN_NAME__": {
       "kind": "literal",
-      "value_type": "__VALUE_TYPE__",
-      "value": "__VALUE__"
+      "value_type": "__REQUIRED_VALUE_TYPE__",
+      "value": "__REQUIRED_VALUE__"
     }
   }
 }

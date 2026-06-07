@@ -111,7 +111,9 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
 
   const taskSpec = readJson(pluginPath(writeModeItem.base_template_path)) as Record<string, unknown>;
   if (writeMode !== 'graph.patch') {
-    getGraphWriteStatementTarget(taskSpec, writeMode).push(...statements);
+    const target = getGraphWriteStatementTarget(taskSpec, writeMode);
+    target.length = 0;
+    target.push(...statements);
   }
   writeJson(input.outputPath, taskSpec);
   return ok(input);

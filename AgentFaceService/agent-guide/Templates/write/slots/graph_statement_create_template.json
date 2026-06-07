@@ -1,10 +1,10 @@
 {
   "kind": "create",
-  "create_operation": "__CREATE_OPERATION__",
-  "class_path": "__CLASS_PATH__",
+  "create_operation": "__REQUIRED_CREATE_OPERATION__",
+  "class_path": "__REQUIRED_CLASS_PATH__",
   "context_evidence": {
-    "generic.create.operation": "__CREATE_OPERATION__",
-    "generic.create.class_path": "__CLASS_PATH__"
+    "generic.create.operation": "__REQUIRED_CREATE_OPERATION__",
+    "generic.create.class_path": "__REQUIRED_CLASS_PATH__"
   },
   "args": {}
 }

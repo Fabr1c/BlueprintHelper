@@ -1,17 +1,17 @@
 {
   "kind": "delegate.bind",
-  "target": "__BINDING_OBJECT_NAME__",
-  "delegate": "__DELEGATE_NAME__",
-  "handler": "__HANDLER_CUSTOM_EVENT_NAME__",
+  "target": "__REQUIRED_BINDING_OBJECT_NAME__",
+  "delegate": "__REQUIRED_DELEGATE_NAME__",
+  "handler": "__REQUIRED_HANDLER_CUSTOM_EVENT_NAME__",
   "context_evidence": {
-    "event_delegate.binding_object_kind": "__component|self|object__",
-    "event_delegate.binding_object_evidence_id": "__BINDING_OBJECT_EVIDENCE_ID__",
-    "event_delegate.delegate_owner_class_path": "__DELEGATE_OWNER_CLASS_PATH__",
-    "event_delegate.delegate_property_name": "__DELEGATE_NAME__",
-    "event_delegate.delegate_property_path": "__DELEGATE_PROPERTY_PATH__",
-    "event_delegate.delegate_signature_function_path": "__DELEGATE_SIGNATURE_FUNCTION_PATH__",
-    "event_delegate.handler_function_path": "__HANDLER_FUNCTION_PATH__",
+    "event_delegate.binding_object_kind": "__REQUIRED_BINDING_OBJECT_KIND__",
+    "event_delegate.binding_object_evidence_id": "__REQUIRED_BINDING_OBJECT_EVIDENCE_ID__",
+    "event_delegate.delegate_owner_class_path": "__REQUIRED_DELEGATE_OWNER_CLASS_PATH__",
+    "event_delegate.delegate_property_name": "__REQUIRED_DELEGATE_NAME__",
+    "event_delegate.delegate_property_path": "__REQUIRED_DELEGATE_PROPERTY_PATH__",
+    "event_delegate.delegate_signature_function_path": "__REQUIRED_DELEGATE_SIGNATURE_FUNCTION_PATH__",
+    "event_delegate.handler_function_path": "__REQUIRED_HANDLER_FUNCTION_PATH__",
     "event_delegate.handler_source_cluster": "BlueprintSignature",
-    "event_delegate.signature_evidence_id": "__SIGNATURE_EVIDENCE_ID__"
+    "event_delegate.signature_evidence_id": "__REQUIRED_SIGNATURE_EVIDENCE_ID__"
   }
 }

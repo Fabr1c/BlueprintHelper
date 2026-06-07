@@ -77,16 +77,16 @@ function composeReadSpec(route: ReadContextRouteDescriptor): Record<string, unkn
   const template = readJson(pluginPath(route.base_template_path)) as Record<string, unknown>;
   const target: Record<string, unknown> = {
     ...readRecord(template['target']),
-    asset_path: '<asset_path>',
+    asset_path: '__REQUIRED_ASSET_PATH__',
   };
   if (route.target_type) {
     target['target_type'] = route.target_type;
   }
   if (route.required_target_fields.includes('target_name')) {
-    target['target_name'] = '<target_name>';
+    target['target_name'] = '__REQUIRED_TARGET_NAME__';
   }
   if (route.required_target_fields.includes('block_id')) {
-    target['block_id'] = '<block_id>';
+    target['block_id'] = '__REQUIRED_BLOCK_ID__';
     delete target['target_name'];
   }
 

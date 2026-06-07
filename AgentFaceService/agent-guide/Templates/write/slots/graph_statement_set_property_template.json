@@ -1,10 +1,10 @@
 {
   "kind": "set_property",
-  "target": "__OBJECT_OR_COMPONENT_TARGET__",
-  "property_path": "__PROPERTY_PATH__",
+  "target": "__REQUIRED_OBJECT_OR_COMPONENT_TARGET__",
+  "property_path": "__REQUIRED_PROPERTY_PATH__",
   "value": {
     "kind": "literal",
-    "value_type": "__VALUE_TYPE__",
-    "value": "__VALUE__"
+    "value_type": "__REQUIRED_VALUE_TYPE__",
+    "value": "__REQUIRED_VALUE__"
   }
 }

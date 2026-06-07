@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_graph",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "behavior": {
@@ -14,15 +14,15 @@
         "scope": "owned_block_call",
         "insert_strategy": "branch_fork",
         "anchor": {
-          "block_id": "__ANCHOR_BLOCK_ID__",
-          "group_entry_node_path": "__GROUP_ENTRY_NODE_PATH__",
-          "node_ref": "__NODE_REF__",
-          "pin_ref": "__PIN_REF__",
-          "link_ref": "__LINK_REF__"
+          "block_id": "__REQUIRED_ANCHOR_BLOCK_ID__",
+          "group_entry_node_path": "__REQUIRED_GROUP_ENTRY_NODE_PATH__",
+          "node_ref": "__REQUIRED_NODE_REF__",
+          "pin_ref": "__REQUIRED_PIN_REF__",
+          "link_ref": "__REQUIRED_LINK_REF__"
         },
         "inserted": {
           "call_kind": "owned_block_call",
-          "block_id": "__INSERTED_CUSTOM_EVENT_BLOCK_ID__"
+          "block_id": "__REQUIRED_INSERTED_CUSTOM_EVENT_BLOCK_ID__"
         },
         "sequence_order": [
           "original_successor",

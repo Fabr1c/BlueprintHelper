@@ -84,9 +84,9 @@ test('ReadContext template composer writes bare ReadSpec from descriptor-backed 
   assert.equal(readSpec.schema, 'BlueprintHelper.ReadSpec.v1');
   assert.equal(readSpec.read_type, 'blueprint_logic');
   assert.deepEqual(readSpec.target, {
-    asset_path: '<asset_path>',
+    asset_path: '__REQUIRED_ASSET_PATH__',
     target_type: 'function',
-    target_name: '<target_name>',
+    target_name: '__REQUIRED_TARGET_NAME__',
   });
   assert.deepEqual(readSpec.view, { format: 'logic_flow' });
   assert.equal(Object.hasOwn(readSpec, 'task_spec'), false);

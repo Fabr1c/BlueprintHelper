@@ -1,16 +1,16 @@
 {
   "kind": "op",
-  "op": "__OPERATION_ID__",
+  "op": "__REQUIRED_OPERATION_ID__",
   "left": {
     "kind": "get",
-    "target": "__LEFT_SYMBOL_OR_VARIABLE__"
+    "target": "__REQUIRED_LEFT_SYMBOL_OR_VARIABLE__"
   },
   "right": {
     "kind": "get",
-    "target": "__RIGHT_SYMBOL_OR_VARIABLE__"
+    "target": "__REQUIRED_RIGHT_SYMBOL_OR_VARIABLE__"
   },
   "context_evidence": {
-    "op.operation_id": "__OPERATION_ID__",
-    "op.spawn_family": "__SPAWN_FAMILY__"
+    "op.operation_id": "__REQUIRED_OPERATION_ID__",
+    "op.spawn_family": "__REQUIRED_SPAWN_FAMILY__"
   }
 }

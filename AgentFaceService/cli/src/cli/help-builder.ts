@@ -266,6 +266,7 @@ function formatTemplateSection(templates: string[] | undefined): string[] {
     '',
     'Template navigation:',
     ...templates.map((line) => `  ${line}`),
+    '  Placeholder style: replace __REQUIRED_NAME__; replace or delete __OPTIONAL_NAME__ fields.',
     '  Copy a matching template, replace placeholders, then pass it with --file.',
   ];
 }

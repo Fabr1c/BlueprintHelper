@@ -353,6 +353,47 @@ test('logic_flow remaps macro tunnel boundary refs to raw logic_json node refs',
   });
 });
 
+test('logic_flow remaps adapter boundary refs from semantic exec boundary anchors without graph-type guards', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.macro_body',
+      entry_boundaries: [{ node_ref: 'AdapterEntry', display_name: 'Macro In' }],
+      exit_boundaries: [{ node_ref: 'AdapterExit', display_name: 'Macro Out' }],
+      visible_boundary_node_refs: ['AdapterEntry', 'AdapterExit'],
+    },
+    logic: {
+      nodes: [
+        {
+          node_ref: 'raw-entry',
+          name: 'Inputs',
+          kind: 'unknown',
+          external_anchors: [{ semantic_role: 'exec_boundary', pin_direction: 'output' }],
+          links: [
+            { type: 'exec', from_pin: 'Execute', to_node: 'body-call', to_pin: 'execute' },
+          ],
+        },
+        {
+          node_ref: 'raw-exit',
+          name: 'Outputs',
+          kind: 'unknown',
+          external_anchors: [{ semantic_role: 'exec_boundary', pin_direction: 'input' }],
+        },
+        { node_ref: 'body-call', name: 'Print String', kind: 'call_function', links: [
+          { type: 'exec', from_pin: 'then', to_node: 'raw-exit', to_pin: 'Then' },
+        ] },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['flow'], 'Macro In -> Print String -> Macro Out');
+  assert.deepEqual(result.payload['adapter_boundary'], {
+    runtime_adapter_id: 'k2.macro_body',
+    entry_count: 1,
+    exit_count: 1,
+  });
+});
+
 test('logic_flow payload degrades to logic_json when links are unknown', () => {
   const result = buildLogicFlowPayload(makeLogicJsonWithUnknownLink());
 

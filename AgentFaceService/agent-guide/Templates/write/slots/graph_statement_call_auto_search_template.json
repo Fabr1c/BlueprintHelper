@@ -1,6 +1,6 @@
 {
   "kind": "call",
-  "target": "__CALLABLE_SEARCH_TEXT__",
+  "target": "__REQUIRED_CALLABLE_SEARCH_TEXT__",
   "resolution_policy": "auto_search",
   "args": {}
 }

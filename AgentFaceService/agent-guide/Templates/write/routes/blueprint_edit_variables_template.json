@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_variables",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "behavior": {
@@ -11,16 +11,16 @@
     "changes": [
       {
         "kind": "ensure_member_variable",
-        "name": "__VARIABLE_NAME__",
+        "name": "__REQUIRED_VARIABLE_NAME__",
         "pin_type": {
-          "category": "__PIN_CATEGORY__",
-          "subcategory": "__PIN_SUBCATEGORY__"
+          "category": "__REQUIRED_PIN_CATEGORY__",
+          "subcategory": "__OPTIONAL_PIN_SUBCATEGORY__"
         },
-        "default": "__DEFAULT_VALUE__"
+        "default": "__OPTIONAL_DEFAULT_VALUE__"
       },
       {
         "kind": "configure_member_variable",
-        "name": "__VARIABLE_NAME__",
+        "name": "__REQUIRED_VARIABLE_NAME__",
         "properties": [
           {
             "property_path": "replication",

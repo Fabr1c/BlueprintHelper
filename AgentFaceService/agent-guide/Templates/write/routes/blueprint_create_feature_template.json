@@ -1,38 +1,38 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "create_blueprint_feature",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "components": [
     {
-      "name": "__COMPONENT_NAME__",
-      "class": "__COMPONENT_CLASS__",
+      "name": "__REQUIRED_COMPONENT_NAME__",
+      "class": "__REQUIRED_COMPONENT_CLASS__",
       "attach_to": null,
       "set_as_root": false,
       "properties": [
         {
-          "property_path": "__PROPERTY_PATH__",
-          "value": "__VALUE__"
+          "property_path": "__REQUIRED_PROPERTY_PATH__",
+          "value": "__REQUIRED_VALUE__"
         }
       ]
     }
   ],
   "variables": [
     {
-      "name": "__VARIABLE_NAME__",
-      "type": "__VARIABLE_TYPE__",
-      "default": "__DEFAULT_VALUE__",
-      "category": "__CATEGORY__"
+      "name": "__REQUIRED_VARIABLE_NAME__",
+      "type": "__REQUIRED_VARIABLE_TYPE__",
+      "default": "__OPTIONAL_DEFAULT_VALUE__",
+      "category": "__OPTIONAL_CATEGORY__"
     }
   ],
   "class_settings": {
     "implemented_interfaces": [],
     "class_defaults": [],
     "reparent": {
-      "new_parent_class": "__NEW_PARENT_CLASS__"
+      "new_parent_class": "__REQUIRED_NEW_PARENT_CLASS__"
     }
   },
   "behavior": {
@@ -40,7 +40,7 @@
     "entries": [
       {
         "entry_type": "custom_event",
-        "name": "__CUSTOM_EVENT_NAME__",
+        "name": "__REQUIRED_CUSTOM_EVENT_NAME__",
         "body": {
           "schema": "BlueprintLogicSpec.v2",
           "statements": [
@@ -51,7 +51,7 @@
                 "InString": {
                   "kind": "literal",
                   "value_type": "string",
-                  "value": "__MESSAGE__"
+                  "value": "__REQUIRED_MESSAGE__"
                 }
               }
             }

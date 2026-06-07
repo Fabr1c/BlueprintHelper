@@ -1,17 +1,17 @@
 {
   "kind": "convert",
   "function_operation": "convert_function",
-  "transform_operation": "__TRANSFORM_OPERATION__",
-  "target_class_path": "__TARGET_CLASS_PATH__",
+  "transform_operation": "__REQUIRED_TRANSFORM_OPERATION__",
+  "target_class_path": "__REQUIRED_TARGET_CLASS_PATH__",
   "context_evidence": {
-    "generic.transform.operation": "__TRANSFORM_OPERATION__",
-    "generic.transform.source_pin_type": "__SOURCE_PIN_TYPE__",
-    "generic.transform.target_pin_type": "__TARGET_PIN_TYPE__"
+    "generic.transform.operation": "__REQUIRED_TRANSFORM_OPERATION__",
+    "generic.transform.source_pin_type": "__REQUIRED_SOURCE_PIN_TYPE__",
+    "generic.transform.target_pin_type": "__REQUIRED_TARGET_PIN_TYPE__"
   },
   "args": {
     "value": {
       "kind": "get",
-      "target": "__SOURCE_SYMBOL_OR_VARIABLE__"
+      "target": "__REQUIRED_SOURCE_SYMBOL_OR_VARIABLE__"
     }
   }
 }

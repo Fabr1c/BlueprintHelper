@@ -522,22 +522,32 @@ function findAdapterBoundaryNode(
   links: LogicFlowLink[],
   role: 'entry' | 'exit',
 ): LogicFlowNode | undefined {
-  return nodes.find((node) => {
-    if (!isTunnelBoundaryNode(node)) {
-      return false;
-    }
-    if (hasExecBoundaryAnchor(node, role === 'entry' ? 'output' : 'input')) {
-      return true;
-    }
-    return role === 'entry'
-      ? links.some((link) => link.type === 'exec' && link.fromNode === node.ref)
-      : links.some((link) => link.type === 'exec' && link.toNode === node.ref);
-  });
+  const pinDirection = role === 'entry' ? 'output' : 'input';
+  const anchoredNode = nodes.find((node) => hasExecBoundaryAnchor(node, pinDirection));
+  if (anchoredNode) {
+    return anchoredNode;
+  }
+
+  return nodes.find((node) => isExecBoundaryEndpoint(node, links, role));
 }
 
-function isTunnelBoundaryNode(node: LogicFlowNode): boolean {
-  const nodeClass = readAnchorString(node.externalAnchor ?? {}, 'node_class').toLowerCase();
-  return nodeClass.includes('k2node_tunnel');
+function isExecBoundaryEndpoint(
+  node: LogicFlowNode,
+  links: LogicFlowLink[],
+  role: 'entry' | 'exit',
+): boolean {
+  if (!hasExternalAnchorMetadata(node)) {
+    return false;
+  }
+  const hasIncomingExec = links.some((link) => link.type === 'exec' && link.toNode === node.ref);
+  const hasOutgoingExec = links.some((link) => link.type === 'exec' && link.fromNode === node.ref);
+  return role === 'entry'
+    ? hasOutgoingExec && !hasIncomingExec
+    : hasIncomingExec && !hasOutgoingExec;
+}
+
+function hasExternalAnchorMetadata(node: LogicFlowNode): boolean {
+  return Boolean(node.externalAnchors?.length || Object.keys(node.externalAnchor ?? {}).length);
 }
 
 function hasExecBoundaryAnchor(node: LogicFlowNode, pinDirection: 'input' | 'output'): boolean {

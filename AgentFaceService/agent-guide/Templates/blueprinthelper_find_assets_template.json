@@ -1,6 +1,6 @@
 {
   "schema": "BlueprintHelper.FindAssetsRequest.v1",
-  "query": "__SEARCH_TEXT__",
+  "query": "__OPTIONAL_SEARCH_TEXT__",
   "path_prefixes": [
     "/Game"
   ],

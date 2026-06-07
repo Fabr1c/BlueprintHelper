@@ -3,6 +3,6 @@
   "control": "return",
   "value": {
     "kind": "get",
-    "target": "__RETURN_SYMBOL_OR_VARIABLE__"
+    "target": "__REQUIRED_RETURN_SYMBOL_OR_VARIABLE__"
   }
 }

@@ -1,7 +1,7 @@
 {
-  "asset_path": "__ASSET_PATH__",
+  "asset_path": "__REQUIRED_ASSET_PATH__",
   "target_type": "event_dispatcher",
-  "target_name": "__DISPATCHER_NAME__",
+  "target_name": "__REQUIRED_DISPATCHER_NAME__",
   "search_scope": "project",
   "resolution_policy": "ue_then_name",
   "detail": "samples",

@@ -2,8 +2,8 @@
   "schema": "BlueprintHelper.ReadSpec.v1",
   "read_type": "data_table_context",
   "target": {
-    "asset_path": "__DATA_TABLE_ASSET_PATH__",
+    "asset_path": "__REQUIRED_DATA_TABLE_ASSET_PATH__",
     "target_type": "data_table_row",
-    "target_name": "__ROW_NAME__"
+    "target_name": "__REQUIRED_ROW_NAME__"
   }
 }

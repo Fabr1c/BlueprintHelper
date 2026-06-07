@@ -1,5 +1,5 @@
 {
   "kind": "literal",
-  "value_type": "__string|int|number|bool|name__",
-  "value": "__VALUE__"
+  "value_type": "__REQUIRED_LITERAL_VALUE_TYPE__",
+  "value": "__REQUIRED_VALUE__"
 }

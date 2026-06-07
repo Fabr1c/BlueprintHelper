@@ -1,5 +1,5 @@
 {
-  "asset_path": "__ASSET_PATH__",
-  "task_run_id": "__TASK_RUN_ID__",
+  "asset_path": "__OPTIONAL_ASSET_PATH__",
+  "task_run_id": "__OPTIONAL_TASK_RUN_ID__",
   "pending_only": true
 }

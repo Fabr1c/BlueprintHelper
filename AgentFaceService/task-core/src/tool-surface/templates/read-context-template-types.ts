@@ -22,8 +22,7 @@ export type ReadContextTemplateView =
   | 'tree_json'
   | 'schema_json'
   | 'property_json'
-  | 'diagnostics_json'
-  | 'summary';
+  | 'diagnostics_json';
 
 export interface ReadContextTemplateDiagnostic {
   code: string;

@@ -1,5 +1,6 @@
 import {
   getAgentVisibleGraphWriteRoutes,
+  getGraphWriteRouteById,
   getGraphWriteRoutesForTemplateDiscovery,
 } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { getAllGraphWriteSlotDescriptors } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
@@ -13,11 +14,11 @@ import type {
   TaskSpecTemplateWriteModeItem,
 } from './taskspec-template-types.js';
 
-const BASE_TEMPLATE_BY_WRITE_MODE: Record<GraphWriteTemplateWriteMode, string> = {
-  'graph.append': 'AgentFaceService/agent-guide/Templates/write/taskspec/graph_append_template.json',
-  'graph.replace': 'AgentFaceService/agent-guide/Templates/write/taskspec/graph_replace_template.json',
-  'graph.merge': 'AgentFaceService/agent-guide/Templates/write/taskspec/graph_merge_external_flow_template.json',
-  'graph.patch': 'AgentFaceService/agent-guide/Templates/write/taskspec/graph_patch_owned_template.json',
+const CANONICAL_ROUTE_BY_WRITE_MODE: Record<GraphWriteTemplateWriteMode, string> = {
+  'graph.append': 'graph.append.custom_event',
+  'graph.replace': 'graph.replace.event_body',
+  'graph.merge': 'graph.merge_external_flow.append_after',
+  'graph.patch': 'graph.patch.connect_pins',
 };
 
 export function listGraphWriteTemplateWriteModes(): TaskSpecTemplateWriteModeItem[] {
@@ -26,7 +27,7 @@ export function listGraphWriteTemplateWriteModes(): TaskSpecTemplateWriteModeIte
       .map((route) => ({
         family: 'graph_write' as const,
         write_mode: route.write_mode,
-        base_template_path: BASE_TEMPLATE_BY_WRITE_MODE[route.write_mode],
+        base_template_path: getBaseTemplatePathForWriteMode(route.write_mode),
       })),
     (item) => item.write_mode,
   ).sort((a, b) => a.write_mode.localeCompare(b.write_mode));
@@ -137,7 +138,20 @@ function visibleRouteById(): Map<string, GraphWriteRouteDescriptor> {
 }
 
 function isGraphWriteTemplateWriteMode(value: unknown): value is GraphWriteTemplateWriteMode {
-  return typeof value === 'string' && Object.hasOwn(BASE_TEMPLATE_BY_WRITE_MODE, value);
+  return typeof value === 'string' && Object.hasOwn(CANONICAL_ROUTE_BY_WRITE_MODE, value);
+}
+
+function getBaseTemplatePathForWriteMode(writeMode: GraphWriteTemplateWriteMode): string {
+  const canonicalRoute = getGraphWriteRouteById(CANONICAL_ROUTE_BY_WRITE_MODE[writeMode]);
+  if (canonicalRoute?.template_path) {
+    return canonicalRoute.template_path;
+  }
+  const fallbackRoute = getGraphWriteRoutesForTemplateDiscovery()
+    .find((route) => route.write_mode === writeMode && route.template_path);
+  if (fallbackRoute?.template_path) {
+    return fallbackRoute.template_path;
+  }
+  throw new Error(`GraphWrite write mode has no template path: ${writeMode}`);
 }
 
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string): T[] {

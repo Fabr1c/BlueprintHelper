@@ -1,8 +1,8 @@
 {
-  "asset_path": "__ASSET_PATH__",
+  "asset_path": "__REQUIRED_ASSET_PATH__",
   "target_type": "function",
-  "target_name": "__FUNCTION_OR_EVENT_NAME__",
-  "graph_name": "__GRAPH_NAME_OPTIONAL__",
+  "target_name": "__REQUIRED_FUNCTION_OR_EVENT_NAME__",
+  "graph_name": "__OPTIONAL_GRAPH_NAME__",
   "max_depth": 3,
   "include_data_dependencies": true,
   "expand_cross_asset": true

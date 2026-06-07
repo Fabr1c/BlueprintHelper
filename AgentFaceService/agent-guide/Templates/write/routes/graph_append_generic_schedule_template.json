@@ -1,9 +1,9 @@
 {
   "schema": "BlueprintHelper.TaskSpec.v1",
   "task_type": "edit_blueprint_graph",
-  "feature_name": "__FEATURE_NAME__",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
   "target": {
-    "asset_path": "__BLUEPRINT_ASSET_PATH__",
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
   "behavior": {
@@ -11,7 +11,7 @@
     "entries": [
       {
         "entry_type": "custom_event",
-        "name": "__HANDLER_CUSTOM_EVENT_NAME__",
+        "name": "__REQUIRED_HANDLER_CUSTOM_EVENT_NAME__",
         "body": {
           "schema": "BlueprintLogicSpec.v2",
           "statements": [
@@ -22,7 +22,7 @@
                 "InString": {
                   "kind": "literal",
                   "value_type": "string",
-                  "value": "__TIMER_MESSAGE__"
+                  "value": "__REQUIRED_TIMER_MESSAGE__"
                 }
               }
             }
@@ -31,7 +31,7 @@
       },
       {
         "entry_type": "custom_event",
-        "name": "__START_TIMER_EVENT_NAME__",
+        "name": "__REQUIRED_START_TIMER_EVENT_NAME__",
         "body": {
           "schema": "BlueprintLogicSpec.v2",
           "statements": [
@@ -40,14 +40,14 @@
               "schedule_operation": "timer_delegate_node",
               "context_evidence": {
                 "generic.schedule.operation": "timer_delegate_node",
-                "schedule_action_stable_id": "__SCHEDULE_ACTION_STABLE_ID__",
+                "schedule_action_stable_id": "__REQUIRED_SCHEDULE_ACTION_STABLE_ID__",
                 "schedule_node_class": "/Script/BlueprintGraph.K2Node_CallFunction",
-                "schedule_spawner_signature": "__SCHEDULE_SPAWNER_SIGNATURE__",
+                "schedule_spawner_signature": "__REQUIRED_SCHEDULE_SPAWNER_SIGNATURE__",
                 "schedule_owner_path": "/Script/Engine.KismetSystemLibrary",
-                "handler_name": "__HANDLER_CUSTOM_EVENT_NAME__",
-                "handler_function_path": "__HANDLER_FUNCTION_PATH__",
+                "handler_name": "__REQUIRED_HANDLER_CUSTOM_EVENT_NAME__",
+                "handler_function_path": "__REQUIRED_HANDLER_FUNCTION_PATH__",
                 "handler_source_cluster": "BlueprintSignature",
-                "signature_evidence_id": "__SIGNATURE_EVIDENCE_ID__"
+                "signature_evidence_id": "__REQUIRED_SIGNATURE_EVIDENCE_ID__"
               },
               "args": {
                 "time": {
@@ -65,8 +65,8 @@
               "context_evidence": {
                 "generic.schedule.operation": "delay",
                 "generic.schedule.graph_latent_allowed": "true",
-                "schedule_action_stable_id": "__DELAY_ACTION_STABLE_ID__",
-                "schedule_spawner_signature": "__DELAY_SPAWNER_SIGNATURE__"
+                "schedule_action_stable_id": "__REQUIRED_DELAY_ACTION_STABLE_ID__",
+                "schedule_spawner_signature": "__REQUIRED_DELAY_SPAWNER_SIGNATURE__"
               },
               "args": {
                 "duration": {
