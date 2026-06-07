@@ -1,5 +1,6 @@
 import {
   buildReadonlyToolCommandManifestRegistry,
+  EMPTY_OBJECT_INPUT_NOTE,
   formatManifestUsage,
   getBlueprintHelperTool,
   globalCliCommandUsageLines,
@@ -155,7 +156,7 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
   return inputShapes.map((shape) => {
     switch (shape) {
       case 'empty_object':
-        return 'Root JSON: {}';
+        return `Root JSON: {}. ${EMPTY_OBJECT_INPUT_NOTE}`;
       case 'bare_taskspec':
         return 'Input file root: bare BlueprintHelper.TaskSpec.v1. Grouped command input: bare BlueprintHelper.TaskSpec.v1 file. Do not wrap it in { "task_spec": ... }.';
       case 'wrapped_taskspec_preview':

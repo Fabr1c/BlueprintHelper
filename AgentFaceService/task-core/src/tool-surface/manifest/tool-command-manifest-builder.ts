@@ -10,10 +10,10 @@ import type {
 } from '../catalog/tool-capability-types.js';
 import type {
   ToolCommandManifest,
-  ToolInputShapeId,
   ToolResultProjectionPolicyId,
 } from './tool-command-manifest.js';
 import { TOOL_COMMAND_MANIFEST_SCHEMA } from './tool-command-manifest.js';
+import { inferInputShapesFromTemplateIds } from './tool-input-shape-metadata.js';
 import {
   createToolCommandManifestRegistry,
   type ToolCommandManifestRegistry,
@@ -74,7 +74,10 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     requires_bridge: capability.requires_bridge,
     requires_write_session: capability.requires_write_session,
     ...(capability.lifecycle_mcp_only === undefined ? {} : { lifecycle_mcp_only: capability.lifecycle_mcp_only }),
-    input_shapes: inferInputShapes(capability),
+    input_shapes: inferInputShapesFromTemplateIds({
+      templateIds: capability.cli_template_ids,
+      requiresBridge: capability.requires_bridge,
+    }),
     handler_id: capability.tool_name,
     result_policy_id: inferResultPolicyId(capability),
     metrics_identity: inferMetricsIdentity(capability),
@@ -85,57 +88,6 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     source: 'readonly_mirror',
   };
 }
-
-function inferInputShapes(
-  capability: ToolCapabilityItem,
-): ToolInputShapeId[] {
-  const shapes = new Set<ToolInputShapeId>();
-
-  for (const templateId of capability.cli_template_ids) {
-    if (templateId === 'blueprinthelper_preview_task_wrapper') {
-      shapes.add('wrapped_taskspec_preview');
-      continue;
-    }
-    if (templateId === 'blueprinthelper_execute_task_wrapper') {
-      shapes.add('wrapped_taskspec_execute');
-      continue;
-    }
-    if (
-      templateId === 'task_preview_bare_taskspec'
-      || templateId === 'task_execute_bare_taskspec'
-    ) {
-      shapes.add('bare_taskspec');
-      continue;
-    }
-    if (EMPTY_OBJECT_TEMPLATE_IDS.has(templateId)) {
-      shapes.add('empty_object');
-      continue;
-    }
-    if (templateId.startsWith('read_context_')) {
-      shapes.add('readspec');
-      continue;
-    }
-    if (templateId === 'blueprinthelper_read_reference_context_dependencies') {
-      shapes.add('read_reference_context');
-      continue;
-    }
-    shapes.add(capability.requires_bridge ? 'bridge_payload' : 'tool_payload');
-  }
-
-  if (shapes.size === 0) {
-    shapes.add(capability.requires_bridge ? 'bridge_payload' : 'tool_payload');
-  }
-  return [...shapes];
-}
-
-const EMPTY_OBJECT_TEMPLATE_IDS = new Set([
-  'blueprint_get_runtime_profile',
-	'blueprinthelper_diagnostics',
-	'blueprinthelper_diagnostics_runtime',
-	'blueprinthelper_read_agent_guide',
-	'blueprinthelper_read_context_capabilities',
-	'blueprinthelper_list_debug_cases',
-]);
 
 function inferResultPolicyId(capability: ToolCapabilityItem): ToolResultProjectionPolicyId {
   if (capability.tool_name === 'blueprinthelper_preview_task') {

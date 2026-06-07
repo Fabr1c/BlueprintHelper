@@ -27,6 +27,9 @@ export {
   buildReadonlyToolCommandManifests,
 } from './manifest/tool-command-manifest-builder.js';
 export {
+  EMPTY_OBJECT_INPUT_NOTE,
+} from './manifest/tool-input-shape-metadata.js';
+export {
   formatManifestUsage,
   globalCliCommandUsageLines,
   manifestSpecificNotes,

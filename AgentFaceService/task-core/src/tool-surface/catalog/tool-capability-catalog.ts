@@ -1,5 +1,6 @@
 import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { toolMetas } from '../registry/tool-metas.js';
+import { summarizeToolInputShape } from '../manifest/tool-input-shape-metadata.js';
 import {
   createToolCapabilityDescriptorRegistry,
   type ToolCapabilityDescriptor,
@@ -10,6 +11,7 @@ import type {
   ListToolDomainsOptions,
   ToolCapabilityDomain,
   ToolCapabilityItem,
+  ToolCapabilityListItem,
   ToolCapabilityKind,
   ToolCapabilityListResult,
   ToolDomainCatalogItem,
@@ -122,13 +124,23 @@ export function listToolCapabilities(options: ListToolCapabilitiesOptions): Tool
       kind: options.kind,
       audience,
     },
-    items,
+    items: items.map(toToolCapabilityListItem),
     next: {
       template_index_command: options.kind === 'read'
         ? 'bh tools read-templates domains --format json'
         : 'bh tools templates families --workflow preview_execute --format json',
     },
   };
+}
+
+function toToolCapabilityListItem(capabilityItem: ToolCapabilityItem): ToolCapabilityListItem {
+	return {
+		...capabilityItem,
+		...summarizeToolInputShape({
+			templateIds: capabilityItem.cli_template_ids,
+			requiresBridge: capabilityItem.requires_bridge,
+		}),
+	};
 }
 
 export function getToolCapabilityDescriptor(toolId: string): ToolCapabilityDescriptor | undefined {

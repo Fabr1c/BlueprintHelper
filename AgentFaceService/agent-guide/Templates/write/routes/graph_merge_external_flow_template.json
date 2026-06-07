@@ -22,7 +22,7 @@
         },
         "inserted": {
           "body": {
-            "schema": "BlueprintLogicSpec.v1",
+            "schema": "BlueprintLogicSpec.v2",
             "statements": [
               {
                 "kind": "call",

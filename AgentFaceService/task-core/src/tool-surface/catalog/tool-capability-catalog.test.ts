@@ -93,6 +93,29 @@ test('tool catalog exposes ReadContext capabilities matrix as local discovery', 
 	);
 });
 
+test('tool catalog marks empty-object templates as no-input requests', () => {
+	const projectDiscover = listToolCapabilities({
+		domain: 'project',
+		kind: 'discover',
+	});
+	const agentGuide = projectDiscover.items.find((item) => item.tool_name === 'blueprinthelper_read_agent_guide');
+	assert.ok(agentGuide);
+	assert.equal(agentGuide.input_shape, 'empty_object');
+	assert.equal(agentGuide.no_input, true);
+	assert.match(agentGuide.input_note ?? '', /No parameters/);
+	assert.match(agentGuide.input_note ?? '', /\{\}/);
+
+	const editorRead = listToolCapabilities({
+		domain: 'editor',
+		kind: 'read',
+	});
+	const runtimeProfile = editorRead.items.find((item) => item.tool_name === 'blueprint_get_runtime_profile');
+	assert.ok(runtimeProfile);
+	assert.equal(runtimeProfile.input_shape, 'empty_object');
+	assert.equal(runtimeProfile.no_input, true);
+	assert.match(runtimeProfile.input_note ?? '', /Use the empty-object template as-is/);
+});
+
 test('tool capability descriptors keep manifest facts without exposing old template selection schema', () => {
 	const descriptor = getToolCapabilityDescriptor('blueprint.write.taskspec.execute');
 	assert.ok(descriptor);

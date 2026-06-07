@@ -47,8 +47,17 @@ test('HelpBuilder renders read_context_capabilities help from manifest', () => {
 
 	assert.match(help, /BlueprintHelper CLI help: blueprinthelper_read_context_capabilities/);
 	assert.match(help, /bh blueprinthelper_read_context_capabilities --json "\{\}" --format json/);
-	assert.match(help, /Root JSON: \{\}/);
+	assert.match(help, /Root JSON: \{\}\. No parameters\. Use the empty-object template as-is\./);
 	assert.doesNotMatch(help, /No tool-specific help is registered/);
+});
+
+test('HelpBuilder explains empty-object templates for no-input tools', () => {
+	const builder = createHelpBuilder();
+	const agentGuideHelp = builder.build(['blueprinthelper_read_agent_guide']);
+	const runtimeProfileHelp = builder.build(['blueprint_get_runtime_profile']);
+
+	assert.match(agentGuideHelp, /Root JSON: \{\}\. No parameters\. Use the empty-object template as-is\./);
+	assert.match(runtimeProfileHelp, /Root JSON: \{\}\. No parameters\. Use the empty-object template as-is\./);
 });
 
 test('global help includes ReadContext template navigation', () => {

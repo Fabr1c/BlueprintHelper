@@ -58,6 +58,36 @@ test('runCli filters tool capability catalog and points read workflows to ReadCo
   );
 });
 
+test('runCli marks empty-object tool templates as no-input requests', async () => {
+	const projectDiscover = await runCliJson([
+		'tools',
+		'list',
+		'project',
+		'discover',
+		'--format',
+		'json',
+	]);
+	const agentGuide = projectDiscover.output.items.find((item: Record<string, unknown>) =>
+		item.tool_name === 'blueprinthelper_read_agent_guide');
+	assert.equal(agentGuide?.input_shape, 'empty_object');
+	assert.equal(agentGuide?.no_input, true);
+	assert.match(agentGuide?.input_note as string, /Use the empty-object template as-is/);
+
+	const editorRead = await runCliJson([
+		'tools',
+		'list',
+		'editor',
+		'read',
+		'--format',
+		'json',
+	]);
+	const runtimeProfile = editorRead.output.items.find((item: Record<string, unknown>) =>
+		item.tool_name === 'blueprint_get_runtime_profile');
+	assert.equal(runtimeProfile?.input_shape, 'empty_object');
+	assert.equal(runtimeProfile?.no_input, true);
+	assert.match(runtimeProfile?.input_note as string, /No parameters/);
+});
+
 test('runCli exposes TaskSpec template four-layer index and compose output', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
@@ -71,7 +101,11 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   assert.equal(writeModes.output.items.some((item: Record<string, unknown>) => item.write_mode === 'graph.append'), true);
   assert.equal(
     writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.base_template_path,
-    'AgentFaceService/agent-guide/Templates/write/taskspec/graph_append_template.json',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json',
+  );
+  assert.equal(
+    writeModes.output.items.every((item: Record<string, unknown>) => !(item.base_template_path as string).includes('/write/taskspec/')),
+    true,
   );
 
   const clusters = await runCliJson(['tools', 'templates', 'clusters', '--family', 'graph_write', '--format', 'json']);

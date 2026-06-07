@@ -23,6 +23,7 @@ const REQUIRED_WRITE_FAMILIES = [
 
 type UERuntimeFamilyExpectation = {
   runtime_adapter_id: string;
+  task_spec_strategy: string;
   cluster_family: string;
   readback_projection_mode: string;
   metrics_identity: string;
@@ -31,54 +32,63 @@ type UERuntimeFamilyExpectation = {
 const UE_RUNTIME_FAMILY_MATRIX: ReadonlyMap<string, UERuntimeFamilyExpectation> = new Map([
   ['graphwrite', {
     runtime_adapter_id: 'graphwrite',
+    task_spec_strategy: 'graphwrite_route_descriptor',
     cluster_family: 'GraphWrite',
     readback_projection_mode: 'graph_body_adapter',
     metrics_identity: 'blueprint.write.graphwrite',
   }],
   ['asset_factory', {
     runtime_adapter_id: 'asset_factory',
+    task_spec_strategy: 'asset_factory',
     cluster_family: 'AssetFactory',
     readback_projection_mode: 'asset_factory',
     metrics_identity: 'blueprint.write.asset_factory',
   }],
   ['blueprint_signature', {
     runtime_adapter_id: 'blueprint_signature',
+    task_spec_strategy: 'blueprint_signature',
     cluster_family: 'Signature',
     readback_projection_mode: 'blueprint_signature',
     metrics_identity: 'blueprint.write.signature',
   }],
   ['blueprint_variables', {
     runtime_adapter_id: 'blueprint_variables',
+    task_spec_strategy: 'blueprint_variables',
     cluster_family: 'BlueprintVariables',
     readback_projection_mode: 'blueprint_variables',
     metrics_identity: 'blueprint.write.variables',
   }],
   ['class_settings', {
     runtime_adapter_id: 'class_settings',
+    task_spec_strategy: 'class_settings',
     cluster_family: 'ClassSettings',
     readback_projection_mode: 'class_settings',
     metrics_identity: 'blueprint.write.class_settings',
   }],
   ['blueprint_component', {
     runtime_adapter_id: 'blueprint_component',
+    task_spec_strategy: 'blueprint_component',
     cluster_family: 'Component',
     readback_projection_mode: 'blueprint_component',
     metrics_identity: 'blueprint.write.component',
   }],
   ['object_property', {
     runtime_adapter_id: 'object_property',
+    task_spec_strategy: 'property_strategy',
     cluster_family: 'ObjectProperty',
     readback_projection_mode: 'object_property',
     metrics_identity: 'blueprint.write.object_property',
   }],
   ['data_table', {
     runtime_adapter_id: 'data_table',
+    task_spec_strategy: 'row_strategy',
     cluster_family: 'DataTable',
     readback_projection_mode: 'data_table',
     metrics_identity: 'blueprint.write.data_table',
   }],
   ['umg_widget', {
     runtime_adapter_id: 'umg_widget',
+    task_spec_strategy: 'widget_strategy',
     cluster_family: 'UMGWidget',
     readback_projection_mode: 'widget_tree',
     metrics_identity: 'umg.write.umg_widget',
@@ -119,6 +129,7 @@ test('task-core write family descriptors mirror UE runtime family identifiers', 
     const expected = UE_RUNTIME_FAMILY_MATRIX.get(descriptor.write_family);
     assert.ok(expected, `${descriptor.write_family} must be in the UE runtime family matrix`);
     assert.equal(descriptor.runtime_adapter_id, expected.runtime_adapter_id, `${descriptor.write_family} runtime_adapter_id`);
+    assert.equal(descriptor.task_spec_strategy, expected.task_spec_strategy, `${descriptor.write_family} task_spec_strategy`);
     assert.equal(descriptor.cluster_family, expected.cluster_family, `${descriptor.write_family} cluster_family`);
     assert.equal(descriptor.readback_projection_mode, expected.readback_projection_mode, `${descriptor.write_family} readback_projection_mode`);
     assert.equal(descriptor.metrics_identity, expected.metrics_identity, `${descriptor.write_family} metrics_identity`);

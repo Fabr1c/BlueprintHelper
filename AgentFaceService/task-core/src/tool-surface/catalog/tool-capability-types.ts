@@ -1,4 +1,5 @@
 import type { ToolAudience, ToolRisk } from '../types.js';
+import type { ToolInputShapeId } from '../manifest/tool-command-manifest.js';
 
 export type ToolCapabilityDomain =
   | 'blueprint'
@@ -47,6 +48,13 @@ export interface ToolCapabilityItem {
   cli_template_ids: string[];
 }
 
+export interface ToolCapabilityListItem extends ToolCapabilityItem {
+	input_shape: ToolInputShapeId | 'multiple';
+	input_shapes: ToolInputShapeId[];
+	no_input: boolean;
+	input_note?: string;
+}
+
 export interface ToolDomainListResult {
   schema: 'BlueprintHelper.ToolDomainList.v1';
   audience: ToolAudience;
@@ -64,7 +72,7 @@ export interface ToolCapabilityListResult {
     kind: ToolCapabilityKind;
     audience: ToolAudience;
   };
-  items: ToolCapabilityItem[];
+  items: ToolCapabilityListItem[];
   next: {
     template_index_command:
       | 'bh tools templates families --workflow preview_execute --format json'
