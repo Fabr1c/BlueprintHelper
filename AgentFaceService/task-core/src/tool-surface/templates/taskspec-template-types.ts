@@ -74,6 +74,8 @@ export interface TaskSpecTemplateQuickAccessItem {
   operation_id: string;
   quick_access_id: string;
   source_slot_id: string;
+  slot_type: 'statement' | 'expression';
+  arg_slots: string[];
   template_path: string;
   insert_paths: string[];
   unsupported_write_modes: TaskSpecTemplateWriteMode[];

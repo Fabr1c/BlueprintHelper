@@ -5,6 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { compileTaskSpecToTaskPlan } from '../../task/compiler/task-compiler.js';
+import { TaskSpecSchema } from '../../task/schema/task-schemas.js';
 import {
   composeTaskSpecTemplate,
   listTaskSpecTemplateClusters,
@@ -59,6 +61,8 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   assert.notEqual(directCall, undefined);
   assert.equal(directCall?.write_mode, 'graph.append');
   assert.equal(directCall?.source_slot_id, 'graph.statement.call.direct');
+  assert.equal(directCall?.slot_type, 'statement');
+  assert.deepEqual(directCall?.arg_slots, ['args(*)', 'args(*)', 'args(*)']);
   assert.deepEqual(directCall?.insert_paths, ['behavior.entries[].body.statements[]']);
 });
 
@@ -94,6 +98,93 @@ test('TaskSpec template composer writes GraphWrite append TaskSpec without inser
   assert.equal(Object.hasOwn(taskSpec, 'scope_policy'), false);
   assert.equal(Object.hasOwn(taskSpec, 'execution_policy'), false);
   assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
+});
+
+test('TaskSpec template composer writes nested expression slots into GraphWrite statements', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'nested.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.let.default(generic_ops.expression.literal)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: unknown[] } }> };
+  };
+  assert.deepEqual(taskSpec.behavior.entries[0]?.body.statements[0], {
+    kind: 'let',
+    name: '__REQUIRED_SYMBOL_NAME__',
+    value: {
+      kind: 'literal',
+      value_type: '__REQUIRED_LITERAL_VALUE_TYPE__',
+      value: '__REQUIRED_VALUE__',
+    },
+  });
+});
+
+test('TaskSpec template composer writes skipped dynamic args by descriptor position', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'call-arg.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<{ args: Record<string, unknown> }> } }> };
+  };
+  assert.deepEqual(Object.keys(taskSpec.behavior.entries[0]?.body.statements[0]?.args ?? {}), ['__REQUIRED_ARG_2_NAME__']);
+});
+
+test('TaskSpec template composer rejects expression quick-access at root', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'invalid.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.expression.literal'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'root_expression_slot_not_composable');
+  assert.equal(fs.existsSync(outputPath), false);
+});
+
+test('Nested slot expression composed TaskSpec compiles after placeholders are filled', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'compile-nested.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.let.default(generic_ops.expression.literal)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  taskSpec.feature_name = 'NestedSlotExpressionSmoke';
+  taskSpec.target.asset_path = '/Game/BlueprintHelperSmoke/BP_NestedSlotExpressionSmoke';
+  taskSpec.behavior.entries[0].name = 'NestedSlotExpressionEvent';
+  const statement = taskSpec.behavior.entries[0].body.statements[0];
+  statement.name = 'LocalGreeting';
+  statement.value.value_type = 'string';
+  statement.value.value = 'hello';
+
+  const parsed = TaskSpecSchema.parse(taskSpec);
+  const plan = compileTaskSpecToTaskPlan(parsed);
+  assert.equal(Array.isArray(plan.steps), true);
+  assert.equal(plan.steps.length > 0, true);
 });
 
 test('agent-facing write templates do not expose hidden execution policy fields', () => {
@@ -151,7 +242,49 @@ test('TaskSpec template composer reports diagnostics and does not write unsuppor
 
   assert.equal(result.status, 'failed');
   assert.equal(fs.existsSync(outputPath), false);
-  assert.equal(result.diagnostics?.[0]?.code, 'cluster_not_supported_for_write_mode');
+  assert.equal(result.diagnostics?.[0]?.code, 'slot_not_supported_for_write_mode');
+});
+
+test('all expression quick-access templates are rejected as compose roots', () => {
+  const expressionItems = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: 'generic_ops',
+    operation: 'expression',
+    writeMode: 'graph.append',
+  }).items;
+
+  assert.equal(expressionItems.length > 0, true);
+  for (const item of expressionItems) {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+    const outputPath = path.join(outDir, 'expression-root.taskspec.json');
+    const result = composeTaskSpecTemplate({
+      family: 'graph_write',
+      writeMode: 'graph.append',
+      templateIds: [item.template_id],
+      outputPath,
+    });
+    assert.equal(result.status, 'failed', item.template_id);
+    assert.equal(result.diagnostics[0]?.code, 'root_expression_slot_not_composable', item.template_id);
+    assert.equal(fs.existsSync(outputPath), false, item.template_id);
+  }
+});
+
+test('active quick-access items expose slot type and arg slots without internal paths', () => {
+  const items = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: '',
+    operation: '',
+    writeMode: '',
+  }).items;
+
+  for (const item of items) {
+    assert.ok(item.slot_type === 'statement' || item.slot_type === 'expression', `${item.template_id} slot_type`);
+    assert.equal(Array.isArray(item.arg_slots), true, `${item.template_id} arg_slots`);
+    for (const argSlot of item.arg_slots) {
+      assert.equal(argSlot.includes('__REQUIRED_'), false, `${item.template_id} exposes raw placeholder`);
+      assert.equal(argSlot.includes('.'), false, `${item.template_id} exposes path-like arg slot`);
+    }
+  }
 });
 
 test('TaskSpec template composer writes supported non-GraphWrite base templates', () => {

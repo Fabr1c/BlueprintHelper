@@ -17,6 +17,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "statement.value",
       "statement.args.<pin>"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "args",
+        "path": "args.__REQUIRED_FIELD_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
+    ],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -61,6 +72,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "statement.value",
       "statement.args.<pin>"
     ],
+    "input_slots": [],
     "supported_routes": [
       "graph.replace.function_body"
     ],
@@ -101,6 +113,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "statement.value",
       "statement.args.<pin>"
     ],
+    "input_slots": [],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -145,6 +158,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "statement.value",
       "statement.args.<pin>"
     ],
+    "input_slots": [],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -187,6 +201,26 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "statement.value",
       "statement.args.<pin>"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "left",
+        "path": "left",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 1,
+        "name": "right",
+        "path": "right",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -233,6 +267,35 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "statement.value",
       "statement.args.<pin>"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "condition",
+        "path": "condition",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "bool"
+      },
+      {
+        "index": 1,
+        "name": "optionA",
+        "path": "options.0",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      },
+      {
+        "index": 2,
+        "name": "optionB",
+        "path": "options.1",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      }
+    ],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -275,6 +338,35 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_call_auto_search_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_0_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 1,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_1_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 2,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_2_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -320,6 +412,35 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_0_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 1,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_1_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 2,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_2_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
+    ],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -361,6 +482,35 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_call_result_symbol_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_0_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 1,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_1_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 2,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_2_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -406,6 +556,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [],
     "supported_routes": [
       "graph.append.event_delegate"
     ],
@@ -440,6 +591,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_container_action_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "item",
+        "path": "item",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_ELEMENT_VALUE_TYPE__"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action"
@@ -476,6 +638,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_control_branch_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "condition",
+        "path": "condition",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "bool"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -520,6 +693,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
+    ],
     "supported_routes": [
       "graph.replace.function_body"
     ],
@@ -554,6 +738,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_control_switch_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "selector",
+        "path": "args.selector",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "int"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -597,6 +792,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_convert_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "args.value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_SOURCE_PIN_TYPE__"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -642,6 +848,35 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_0_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 1,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_1_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      },
+      {
+        "index": 2,
+        "name": "args",
+        "path": "args.__REQUIRED_ARG_2_NAME__",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "*"
+      }
+    ],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -686,6 +921,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [],
     "supported_routes": [
       "graph.append.event_delegate"
     ],
@@ -719,6 +955,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_field_struct_member_set_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -764,6 +1011,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      }
+    ],
     "supported_routes": [
       "graph.append.container_action",
       "graph.append.custom_event",
@@ -806,6 +1064,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "insert_paths": [
       "body.statements[]"
     ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "duration",
+        "path": "args.duration",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "number"
+      }
+    ],
     "supported_routes": [
       "graph.append.generic_schedule"
     ],
@@ -840,6 +1109,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_set_property_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",
@@ -882,6 +1162,17 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "template_path": "AgentFaceService/agent-guide/Templates/write/slots/graph_statement_set_variable_template.json",
     "insert_paths": [
       "body.statements[]"
+    ],
+    "input_slots": [
+      {
+        "index": 0,
+        "name": "value",
+        "path": "value",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "__REQUIRED_VALUE_TYPE__"
+      }
     ],
     "supported_routes": [
       "graph.append.container_action",

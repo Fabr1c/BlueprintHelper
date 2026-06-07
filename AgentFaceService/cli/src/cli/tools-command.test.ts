@@ -143,6 +143,8 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   ]);
   const directCall = quickAccess.output.items.find((item: Record<string, unknown>) => item.template_id === 'generic_ops.call.direct');
   assert.equal(directCall?.write_mode, 'graph.append');
+  assert.equal(directCall?.slot_type, 'statement');
+  assert.deepEqual(directCall?.arg_slots, ['args(*)', 'args(*)', 'args(*)']);
   assert.deepEqual(directCall?.insert_paths, ['behavior.entries[].body.statements[]']);
 
   const composed = await runCliJson([
@@ -164,6 +166,32 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   assert.equal(composed.output.status, 'ok');
   assert.equal('inserted_slots' in composed.output, false);
   assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.entries[0].body.statements.length, 1);
+});
+
+test('runCli composes nested slot expression without splitting inner commas', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'nested-op.taskspec.json');
+
+  const { output } = await runCliJson([
+    'tools',
+    'templates',
+    'compose',
+    '--family',
+    'graph_write',
+    '--write-mode',
+    'graph.append',
+    '--templates',
+    'generic_ops.let.default(generic_ops.expression.op(generic_ops.expression.get_symbol_or_variable,generic_ops.expression.literal))',
+    '--out',
+    outputPath,
+    '--format',
+    'json',
+  ]);
+
+  assert.equal(output.status, 'ok');
+  const taskSpec = JSON.parse(await fs.readFile(outputPath, 'utf8'));
+  assert.equal(taskSpec.behavior.entries[0].body.statements[0].value.kind, 'op');
 });
 
 test('runCli composes supported non-GraphWrite base TaskSpec without template ids', async (t) => {

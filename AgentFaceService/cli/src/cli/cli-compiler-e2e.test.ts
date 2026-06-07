@@ -148,7 +148,7 @@ test('CLI tools templates composer output is descriptor-backed and does not cont
       '--write-mode',
       'graph.append',
       '--templates',
-      'generic_ops.let.default',
+      'generic_ops.let.default(generic_ops.expression.literal)',
       '--out',
       outputPath,
       '--format',
@@ -165,6 +165,10 @@ test('CLI tools templates composer output is descriptor-backed and does not cont
   assert.equal(output.schema, 'BlueprintHelper.TaskSpecTemplateComposition.v1');
   assert.equal(output.status, 'ok');
   assert.equal('inserted_slots' in output, false);
+  const taskSpec = JSON.parse(await readFile(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<{ value: { kind: string } }> } }> };
+  };
+  assert.equal(taskSpec.behavior.entries[0]?.body.statements[0]?.value.kind, 'literal');
 });
 
 test('CLI read-template composer output is descriptor-backed and does not contact Bridge', async (t) => {

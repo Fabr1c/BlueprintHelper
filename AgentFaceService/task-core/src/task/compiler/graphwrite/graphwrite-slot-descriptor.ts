@@ -2,6 +2,7 @@ import type { GraphWriteTemplateWriteMode } from './graphwrite-route-descriptor.
 
 export type GraphWriteSlotType = 'statement' | 'expression';
 export type GraphWriteSlotStatus = 'active' | 'planned' | 'hidden';
+export type GraphWriteSlotInputAccepts = 'expression' | 'statement[]';
 
 export interface GraphWriteQuickAccessDescriptor {
   template_id: string;
@@ -12,6 +13,14 @@ export interface GraphWriteQuickAccessDescriptor {
   unsupported_write_modes?: GraphWriteTemplateWriteMode[];
 }
 
+export interface GraphWriteSlotInputDescriptor {
+  index: number;
+  name: string;
+  path: string;
+  accepts: GraphWriteSlotInputAccepts[];
+  type_hint?: string;
+}
+
 export interface GraphWriteSlotDescriptor {
   slot_id: string;
   slot_type: GraphWriteSlotType;
@@ -19,6 +28,7 @@ export interface GraphWriteSlotDescriptor {
   kind: string;
   template_path: string;
   insert_paths: string[];
+  input_slots: GraphWriteSlotInputDescriptor[];
   supported_routes: string[];
   validation_hints: string[];
   keywords: string[];

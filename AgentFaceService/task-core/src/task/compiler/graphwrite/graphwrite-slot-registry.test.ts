@@ -86,6 +86,24 @@ test('GraphWrite slots declare four-layer quick-access metadata', () => {
   }
 });
 
+test('GraphWrite active slots declare positional input slots', () => {
+  for (const slot of getAllGraphWriteSlotDescriptors()) {
+    assert.equal(Array.isArray(slot.input_slots), true, `${slot.slot_id} input_slots`);
+    const indexes = new Set<number>();
+    for (const input of slot.input_slots) {
+      assert.equal(Number.isInteger(input.index), true, `${slot.slot_id} input index`);
+      assert.equal(indexes.has(input.index), false, `${slot.slot_id} duplicate input index ${input.index}`);
+      indexes.add(input.index);
+      assert.equal(typeof input.name, 'string', `${slot.slot_id} input name`);
+      assert.equal(input.name.length > 0, true, `${slot.slot_id} input name`);
+      assert.equal(typeof input.path, 'string', `${slot.slot_id} input path`);
+      assert.equal(input.path.length > 0, true, `${slot.slot_id} input path`);
+      assert.equal(Array.isArray(input.accepts), true, `${slot.slot_id} input accepts`);
+      assert.equal(input.accepts.includes('expression'), true, `${slot.slot_id} input must accept expression in P1`);
+    }
+  }
+});
+
 function resolvePluginPath(relativePath: string): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../..', relativePath);
 }

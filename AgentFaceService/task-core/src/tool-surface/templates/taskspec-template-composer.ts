@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getNonGraphWriteTemplateFamily } from './non-graphwrite-template-metadata.js';
+import { composeSlotExpressionTemplate } from './slot-expression-composer.js';
 import {
   listTaskSpecTemplateClusters,
   listTaskSpecTemplateFamilies,
@@ -15,7 +16,6 @@ import type {
   GraphWriteTemplateWriteMode,
   TaskSpecTemplateCompositionResult,
   TaskSpecTemplateDiagnostic,
-  TaskSpecTemplateQuickAccessItem,
 } from './taskspec-template-types.js';
 
 export {
@@ -56,53 +56,20 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
   const diagnostics: TaskSpecTemplateDiagnostic[] = [];
   const statements: unknown[] = [];
   for (const templateId of input.templateIds) {
-    const candidates = quickAccessCatalog.filter((item) => item.template_id === templateId);
-    const match: TaskSpecTemplateQuickAccessItem | undefined = candidates
-      .find((item) => item.write_mode === writeMode);
-    if (!match) {
-      const unsupported = candidates.find((item) => item.unsupported_write_modes.includes(writeMode));
-      if (unsupported) {
-        diagnostics.push({
-          code: 'cluster_not_supported_for_write_mode',
-          family: input.family,
-          write_mode: writeMode,
-          cluster_id: unsupported.cluster_id,
-          operation_id: unsupported.operation_id,
-          template_id: templateId,
-        });
-        continue;
-      }
-      diagnostics.push({
-        code: 'unknown_quick_access_template',
+    const composed = composeSlotExpressionTemplate({
+      expression: templateId,
+      writeMode,
+      quickAccessCatalog,
+    });
+    if (!composed.ok) {
+      diagnostics.push(...composed.diagnostics.map((diagnostic) => ({
+        ...diagnostic,
         family: input.family,
         write_mode: writeMode,
-        template_id: templateId,
-      });
+      })));
       continue;
     }
-    if (match.unsupported_write_modes.includes(writeMode)) {
-      diagnostics.push({
-        code: 'cluster_not_supported_for_write_mode',
-        family: input.family,
-        write_mode: writeMode,
-        cluster_id: match.cluster_id,
-        operation_id: match.operation_id,
-        template_id: templateId,
-      });
-      continue;
-    }
-    if (match.write_mode !== writeMode || match.insert_paths.length === 0) {
-      diagnostics.push({
-        code: 'template_not_supported_for_write_mode',
-        family: input.family,
-        write_mode: writeMode,
-        cluster_id: match.cluster_id,
-        operation_id: match.operation_id,
-        template_id: templateId,
-      });
-      continue;
-    }
-    statements.push(readJson(pluginPath(match.template_path)));
+    statements.push(composed.value);
   }
 
   if (diagnostics.length > 0) {

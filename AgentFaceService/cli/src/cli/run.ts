@@ -4,6 +4,7 @@ import { BridgeClient, type BridgeResponse, type BridgeSendCommandOptions } from
 import {
   getBlueprintHelperTool,
   routeCliSubcommand,
+  splitTopLevelSlotExpressions,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   createTaskSpecRunner,
@@ -451,7 +452,7 @@ function parseArgs(argv: string[]): ParseResult {
     } else if (arg === '--view-template') {
       options.viewTemplate = readOptionValue(argv, ++index, arg);
     } else if (arg === '--templates') {
-      options.templates = parseCommaList(readOptionValue(argv, ++index, arg));
+      options.templates = splitTopLevelSlotExpressions(readOptionValue(argv, ++index, arg));
     } else if (arg === '--out') {
       options.out = readOptionValue(argv, ++index, arg);
     } else if (arg === '--compile-only') {

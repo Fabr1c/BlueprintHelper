@@ -64,7 +64,7 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
     group: 'tools.templates',
     subcommand: 'compose',
     kind: 'tools.templates.compose',
-    usage: 'bh tools templates compose --family <family> --write-mode <mode> --templates <template_id[,template_id...]> --out <task-spec.json> --format json',
+    usage: 'bh tools templates compose --family <family> --write-mode <mode> --templates <slot_expr[,slot_expr...]> --out <task-spec.json> --format json',
     option_map: { family: 'family', writeMode: 'writeMode', outputPath: 'out' },
     array_option_map: { templateIds: 'templates' },
   },

@@ -15,6 +15,9 @@ export {
   listTaskSpecTemplateWriteModes,
 } from './templates/taskspec-template-composer.js';
 export {
+  splitTopLevelSlotExpressions,
+} from './templates/slot-expression-parser.js';
+export {
   composeReadContextTemplate,
   listReadContextTemplateClusters,
   listReadContextTemplateDomains,

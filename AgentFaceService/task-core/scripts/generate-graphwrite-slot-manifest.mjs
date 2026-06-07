@@ -56,6 +56,12 @@ function normalizeSlot(slot) {
   return {
     ...slot,
     insert_paths: cloneArray(slot.insert_paths),
+    input_slots: Array.isArray(slot.input_slots)
+      ? slot.input_slots.map((input) => ({
+        ...input,
+        accepts: cloneArray(input.accepts),
+      }))
+      : slot.input_slots,
     supported_routes: cloneArray(slot.supported_routes),
     validation_hints: cloneArray(slot.validation_hints),
     keywords: cloneArray(slot.keywords),
@@ -105,6 +111,39 @@ function validateSlots(slots, visibleRouteIds) {
           throw new Error(`Active GraphWrite slot ${slot.slot_id} exposes hidden, planned, or unknown route: ${routeId}`);
         }
       }
+    }
+    validateInputSlots(slot);
+  }
+}
+
+function validateInputSlots(slot) {
+  if (!Array.isArray(slot.input_slots)) {
+    throw new Error(`GraphWrite slot ${slot.slot_id} requires input_slots array.`);
+  }
+  const inputIndexes = new Set();
+  for (const input of slot.input_slots) {
+    if (!Number.isInteger(input.index) || input.index < 0) {
+      throw new Error(`GraphWrite slot ${slot.slot_id} has invalid input_slots.index.`);
+    }
+    if (inputIndexes.has(input.index)) {
+      throw new Error(`GraphWrite slot ${slot.slot_id} has duplicate input_slots index ${input.index}.`);
+    }
+    inputIndexes.add(input.index);
+    for (const field of ['name', 'path']) {
+      if (typeof input[field] !== 'string' || input[field].length === 0) {
+        throw new Error(`GraphWrite slot ${slot.slot_id} has invalid input_slots.${field}.`);
+      }
+    }
+    if (!Array.isArray(input.accepts) || input.accepts.length === 0) {
+      throw new Error(`GraphWrite slot ${slot.slot_id} input ${input.index} requires accepts.`);
+    }
+    for (const accepts of input.accepts) {
+      if (accepts !== 'expression' && accepts !== 'statement[]') {
+        throw new Error(`GraphWrite slot ${slot.slot_id} input ${input.index} has invalid accepts: ${accepts}`);
+      }
+    }
+    if (input.type_hint !== undefined && typeof input.type_hint !== 'string') {
+      throw new Error(`GraphWrite slot ${slot.slot_id} input ${input.index} has invalid type_hint.`);
     }
   }
 }

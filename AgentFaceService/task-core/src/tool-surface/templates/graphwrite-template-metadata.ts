@@ -111,10 +111,40 @@ function toQuickAccessItems(
     operation_id: quickAccess.operation_id,
     quick_access_id: quickAccess.quick_access_id,
     source_slot_id: slot.slot_id,
+    slot_type: slot.slot_type,
+    arg_slots: formatArgSlots(slot),
     template_path: slot.template_path,
-    insert_paths: [entry.insertPath],
+    insert_paths: slot.slot_type === 'expression' ? [...slot.insert_paths] : [entry.insertPath],
     unsupported_write_modes: [...(quickAccess.unsupported_write_modes ?? [])],
   }));
+}
+
+function formatArgSlots(slot: GraphWriteSlotDescriptor): string[] {
+  return [...slot.input_slots]
+    .sort((a, b) => a.index - b.index)
+    .map((input) => {
+      const typeHint = formatTypeHint(input.type_hint);
+      return typeHint ? `${input.name}(${typeHint})` : input.name;
+    });
+}
+
+function formatTypeHint(typeHint: string | undefined): string {
+  if (!typeHint) {
+    return '';
+  }
+  if (typeHint === '*') {
+    return '*';
+  }
+  const placeholderMatch = /^__REQUIRED_(.+)__$/.exec(typeHint);
+  if (!placeholderMatch) {
+    return typeHint;
+  }
+  return placeholderMatch[1]
+    .toLowerCase()
+    .split('_')
+    .filter((part) => part.length > 0)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join('');
 }
 
 function supportsWriteMode(item: TaskSpecTemplateQuickAccessItem, writeMode: string): boolean {

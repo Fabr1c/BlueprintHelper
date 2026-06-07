@@ -104,16 +104,25 @@ test('TaskRuntime post operations use planner and executor boundaries', () => {
     'TaskRuntime',
     'BlueprintHelperTaskRuntimeService.cpp',
   );
-  const source = fs.readFileSync(servicePath, 'utf8');
+  const pipelineExecutorPath = path.resolve(
+    UE_SOURCE_ROOT,
+    'Private',
+    'Runtime',
+    'TaskRuntime',
+    'Pipeline',
+    'BlueprintHelperTaskRuntimePipelineExecutors.cpp',
+  );
+  const serviceSource = fs.readFileSync(servicePath, 'utf8');
+  const pipelineExecutorSource = fs.readFileSync(pipelineExecutorPath, 'utf8');
 
-  assert.match(source, /FBlueprintHelperTaskRuntimePostOperationPlanner::BuildPlan/u);
-  assert.match(source, /FBlueprintHelperTaskRuntimePostOperationExecutor/u);
+  assert.match(pipelineExecutorSource, /FBlueprintHelperTaskRuntimePostOperationPlanner::BuildPlan/u);
+  assert.match(pipelineExecutorSource, /FBlueprintHelperTaskRuntimePostOperationExecutor/u);
   assert.doesNotMatch(
-    source,
+    serviceSource,
     /for\s*\(\s*const\s+FString&\s+AssetPath\s*:\s*TargetAssets\s*\)\s*\{\s*FBlueprintHelperToolResultBase\s+CompileResult/su,
   );
   assert.doesNotMatch(
-    source,
+    serviceSource,
     /for\s*\(\s*const\s+FString&\s+AssetPath\s*:\s*TargetAssets\s*\)\s*\{\s*FBlueprintHelperToolResultBase\s+SaveResult/su,
   );
 });
