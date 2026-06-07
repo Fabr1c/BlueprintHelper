@@ -22,18 +22,35 @@ const block = [
   ']',
   'type = "stdio"',
   '',
+  '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
+  'approval_mode = "approve"',
+  '',
+  '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
+  'approval_mode = "approve"',
+  '',
+  '[mcp_servers."blueprint-helper".tools.blueprint_developer_exec_console_command]',
+  'approval_mode = "approve"',
+  '',
 ].join('\n');
 
 function replaceBlueprintHelperMcpBlock(text) {
   const lines = text.split(/\r?\n/);
   const output = [];
   let skipping = false;
+  const ownedSections = new Set([
+    '[mcp_servers."blueprint-helper"]',
+    '[mcp_servers.blueprint-helper]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_developer_exec_console_command]',
+  ]);
 
   for (const line of lines) {
-    const isBlueprintHelperSection = /^\[mcp_servers\.(?:"blueprint-helper"|blueprint-helper)\]\s*$/.test(line);
-    const isNextSection = /^\[/.test(line) && !isBlueprintHelperSection;
+    const normalized = line.trim();
+    const isOwnedSection = ownedSections.has(normalized);
+    const isNextSection = /^\[/.test(line) && !isOwnedSection;
 
-    if (isBlueprintHelperSection) {
+    if (isOwnedSection) {
       skipping = true;
       continue;
     }
@@ -69,6 +86,7 @@ console.log(JSON.stringify({
   surface: 'lifecycle_plus_developer',
   agent_facing_tools: ['blueprint_open_editor', 'blueprint_close_editor'],
   developer_tools: ['blueprint_developer_exec_console_command'],
+  approval_mode: 'approve',
   command: 'node',
   args: [mcpScriptPath],
 }, null, 2));

@@ -300,48 +300,161 @@ function Get-ClaudePluginInstallInfo {
   }
 }
 
-function Get-OfficialPluginCommands {
-  param([Parameter(Mandatory = $true)][string[]]$Names)
-
-  $Commands = @()
-  foreach ($Name in $Names) {
-    $Command = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($Command -and $Command.Source) {
-      $Commands += [pscustomobject]@{
-        name = $Name
-        path = $Command.Source
-      }
-    }
-  }
-  return $Commands
-}
-
-function Uninstall-PluginViaOfficialEntry {
+function Remove-TomlTableSections {
   param(
-    [Parameter(Mandatory = $true)]
-    [string]$Surface,
-    [Parameter(Mandatory = $true)]
-    [object]$Info,
     [AllowNull()]
-    [AllowEmptyCollection()]
-    [object[]]$Commands = @()
+    [string]$Text,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Headers
   )
 
-  if (-not $Info) {
-    Write-Warning "$Surface plugin manifest or marketplace was not found; skipping official uninstall."
-    return
+  $HeaderSet = @{}
+  foreach ($Header in $Headers) {
+    $HeaderSet[$Header.Trim()] = $true
   }
-  if ($Commands.Count -eq 0) {
-    Write-Warning "No callable $Surface official plugin CLI was found; remove '$($Info.install_spec)' from the $Surface Plugins UI if it is installed."
+
+  $Lines = if ($null -eq $Text) { @() } else { $Text -split "\r?\n" }
+  $Output = @()
+  $Skipping = $false
+  $Removed = $false
+
+  foreach ($Line in $Lines) {
+    $Trimmed = $Line.Trim()
+    $IsTableHeader = $Trimmed -match '^\[[^\]]+\]\s*$'
+
+    if ($IsTableHeader) {
+      if ($HeaderSet.ContainsKey($Trimmed)) {
+        $Skipping = $true
+        $Removed = $true
+        continue
+      }
+      $Skipping = $false
+    }
+
+    if (-not $Skipping) {
+      $Output += $Line
+    }
+  }
+
+  return [pscustomobject]@{
+    text = ($Output -join "`n")
+    removed = $Removed
+  }
+}
+
+function Remove-TomlOwnedSectionsFromFile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Headers,
+    [Parameter(Mandatory = $true)]
+    [string]$Description
+  )
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $false
+  }
+
+  $Current = Get-Content -Raw -LiteralPath $Path
+  $Result = Remove-TomlTableSections -Text $Current -Headers $Headers
+  if (-not $Result.removed) {
+    return $false
+  }
+
+  $Next = (($Result.text -replace "\s+$", '') + "`n")
+  if ($PSCmdlet.ShouldProcess($Path, $Description)) {
+    Set-Content -LiteralPath $Path -Value $Next -Encoding UTF8
+    Write-Host "Updated: $Path"
+  }
+  return $true
+}
+
+function Get-JsonProperty {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  $Property = $Object.PSObject.Properties[$Name]
+  if ($Property) {
+    return $Property.Value
+  }
+  return $null
+}
+
+function Remove-JsonProperty {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  $Property = $Object.PSObject.Properties[$Name]
+  if (-not $Property) {
+    return $false
+  }
+
+  $Object.PSObject.Properties.Remove($Name)
+  return $true
+}
+
+function Remove-CodexPluginConfig {
+  $Info = Get-CodexPluginInstallInfo
+  if (-not $Info) {
+    Write-Warning 'Codex plugin manifest or marketplace was not found; skipping Codex config cleanup.'
     return
   }
 
-  foreach ($Command in $Commands) {
-    $RemovedPlugin = Invoke-ExternalSoft -Description "$Surface official plugin uninstall ($($Command.name))" -FilePath $Command.path -Arguments @('plugin', 'uninstall', $Info.install_spec)
-    $RemovedMarketplace = Invoke-ExternalSoft -Description "$Surface official marketplace remove ($($Command.name))" -FilePath $Command.path -Arguments @('plugin', 'marketplace', 'remove', $Info.marketplace_source)
-    if ($RemovedPlugin -or $RemovedMarketplace) {
-      return
-    }
+  $ConfigPath = Join-Path (Get-UserHome) '.codex\config.toml'
+  $Headers = @(
+    "[marketplaces.$($Info.marketplace_name)]",
+    "[plugins.`"$($Info.install_spec)`"]"
+  )
+
+  Remove-TomlOwnedSectionsFromFile -Path $ConfigPath -Headers $Headers -Description 'Remove BlueprintHelper Codex plugin config' | Out-Null
+}
+
+function Remove-ClaudePluginConfig {
+  $Info = Get-ClaudePluginInstallInfo
+  if (-not $Info) {
+    Write-Warning 'Claude plugin manifest or marketplace was not found; skipping Claude settings cleanup.'
+    return
+  }
+
+  $SettingsPath = Join-Path (Get-UserHome) '.claude\settings.json'
+  if (-not (Test-Path -LiteralPath $SettingsPath -PathType Leaf)) {
+    return
+  }
+
+  $RawSettings = Get-Content -Raw -LiteralPath $SettingsPath
+  if ([string]::IsNullOrWhiteSpace($RawSettings)) {
+    return
+  }
+
+  $Settings = $RawSettings | ConvertFrom-Json
+  $Changed = $false
+
+  $EnabledPlugins = Get-JsonProperty -Object $Settings -Name 'enabledPlugins'
+  if ($EnabledPlugins -and $EnabledPlugins -is [pscustomobject]) {
+    $Changed = (Remove-JsonProperty -Object $EnabledPlugins -Name $Info.install_spec) -or $Changed
+  }
+
+  $ExtraKnownMarketplaces = Get-JsonProperty -Object $Settings -Name 'extraKnownMarketplaces'
+  if ($ExtraKnownMarketplaces -and $ExtraKnownMarketplaces -is [pscustomobject]) {
+    $Changed = (Remove-JsonProperty -Object $ExtraKnownMarketplaces -Name $Info.marketplace_name) -or $Changed
+  }
+
+  if (-not $Changed) {
+    return
+  }
+
+  if ($PSCmdlet.ShouldProcess($SettingsPath, 'Remove BlueprintHelper Claude plugin config')) {
+    Set-Content -LiteralPath $SettingsPath -Value ($Settings | ConvertTo-Json -Depth 32) -Encoding UTF8
+    Write-Host "Updated: $SettingsPath"
   }
 }
 
@@ -366,44 +479,15 @@ function Remove-ClaudeAgents {
 function Remove-CodexLifecycleMcpConfig {
   $HomeDir = Get-UserHome
   $ConfigPath = Join-Path $HomeDir '.codex\config.toml'
-  if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-    return
-  }
+  $Headers = @(
+    '[mcp_servers."blueprint-helper"]',
+    '[mcp_servers.blueprint-helper]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_developer_exec_console_command]'
+  )
 
-  $Current = Get-Content -Raw -LiteralPath $ConfigPath
-  $Lines = $Current -split "\r?\n"
-  $Output = @()
-  $Skipping = $false
-  $Removed = $false
-
-  foreach ($Line in $Lines) {
-    $IsBlueprintHelperSection = $Line -match '^\[mcp_servers\.(?:"blueprint-helper"|blueprint-helper)\]\s*$'
-    $IsNextSection = $Line -match '^\[' -and -not $IsBlueprintHelperSection
-
-    if ($IsBlueprintHelperSection) {
-      $Skipping = $true
-      $Removed = $true
-      continue
-    }
-    if ($Skipping -and $IsNextSection) {
-      $Skipping = $false
-    }
-    if (-not $Skipping) {
-      $Output += $Line
-    }
-  }
-
-  if (-not $Removed) {
-    return
-  }
-
-  $Next = (($Output -join "`n") -replace "\s+$", '') + "`n"
-  if ($Current -ne $Next) {
-    if ($PSCmdlet.ShouldProcess($ConfigPath, 'Remove BlueprintHelper lifecycle MCP config')) {
-      Set-Content -LiteralPath $ConfigPath -Value $Next -Encoding UTF8
-      Write-Host "Updated: $ConfigPath"
-    }
-  }
+  Remove-TomlOwnedSectionsFromFile -Path $ConfigPath -Headers $Headers -Description 'Remove BlueprintHelper lifecycle MCP config' | Out-Null
 }
 
 function Resolve-ProjectProfilePath {
@@ -513,10 +597,10 @@ function Invoke-InteractiveUninstallWizard {
   Write-Host ''
 
   $script:SkipCliUnlink = -not (Read-UninstallYesNo -Prompt 'Unlink the global bh CLI' -DefaultYes:(-not $SkipCliUnlink))
-  $script:SkipCodexPlugin = -not (Read-UninstallYesNo -Prompt 'Uninstall Codex plugin through official entry when available' -DefaultYes:(-not $SkipCodexPlugin))
+  $script:SkipCodexPlugin = -not (Read-UninstallYesNo -Prompt 'Remove Codex local plugin config' -DefaultYes:(-not $SkipCodexPlugin))
   $script:SkipCodexAgents = -not (Read-UninstallYesNo -Prompt 'Remove Codex subagents' -DefaultYes:(-not $SkipCodexAgents))
   $script:SkipLifecycleMcp = -not (Read-UninstallYesNo -Prompt 'Remove Codex lifecycle MCP config' -DefaultYes:(-not $SkipLifecycleMcp))
-  $script:SkipClaudePlugin = -not (Read-UninstallYesNo -Prompt 'Uninstall Claude Code plugin through official entry when available' -DefaultYes:(-not $SkipClaudePlugin))
+  $script:SkipClaudePlugin = -not (Read-UninstallYesNo -Prompt 'Remove Claude local plugin config' -DefaultYes:(-not $SkipClaudePlugin))
   $script:SkipClaudeAgents = -not (Read-UninstallYesNo -Prompt 'Remove Claude sideAgents' -DefaultYes:(-not $SkipClaudeAgents))
   $script:RemoveProjectProfile = Read-UninstallYesNo -Prompt 'Remove project .blueprinthelper/project-profile.json, AgentWorkFlow, and root BlueprintHelper markers' -DefaultYes:$RemoveProjectProfile
   if ($script:RemoveProjectProfile) {
@@ -540,7 +624,7 @@ if (-not $SkipCliUnlink) {
   Uninstall-BlueprintHelperCliLink
 }
 if (-not $SkipCodexPlugin) {
-  Uninstall-PluginViaOfficialEntry -Surface 'Codex' -Info (Get-CodexPluginInstallInfo) -Commands (Get-OfficialPluginCommands -Names @('droid', 'codex'))
+  Remove-CodexPluginConfig
 }
 if (-not $SkipCodexAgents) {
   Remove-CodexAgents
@@ -549,7 +633,7 @@ if (-not $SkipLifecycleMcp) {
   Remove-CodexLifecycleMcpConfig
 }
 if (-not $SkipClaudePlugin) {
-  Uninstall-PluginViaOfficialEntry -Surface 'Claude' -Info (Get-ClaudePluginInstallInfo) -Commands (Get-OfficialPluginCommands -Names @('claude', 'claude-code'))
+  Remove-ClaudePluginConfig
 }
 if (-not $SkipClaudeAgents) {
   Remove-ClaudeAgents

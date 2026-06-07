@@ -759,7 +759,7 @@ function Invoke-SequentialInstallWizard {
   $script:SkipCliLink = -not (Read-InstallYesNo -Prompt 'Link the bh CLI globally' -DefaultYes:(-not $SkipCliLink))
 
   if (Read-InstallYesNo -Prompt 'Install Codex Desktop plugin support' -DefaultYes:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp))) {
-    $script:SkipCodexMarketplace = -not (Read-InstallYesNo -Prompt '  Install Codex plugin through official entry' -DefaultYes:(-not $SkipCodexMarketplace))
+    $script:SkipCodexMarketplace = -not (Read-InstallYesNo -Prompt '  Register Codex local plugin config' -DefaultYes:(-not $SkipCodexMarketplace))
     $script:SkipCodexAgents = -not (Read-InstallYesNo -Prompt '  Install Codex subagents' -DefaultYes:(-not $SkipCodexAgents))
     $script:SkipLifecycleMcp = -not (Read-InstallYesNo -Prompt '  Install global lifecycle-only MCP config' -DefaultYes:(-not $SkipLifecycleMcp))
   } else {
@@ -831,11 +831,11 @@ function New-InstallMenuOptions {
   return @(
     (New-InstallMenuOption -Key 'build' -Label 'Build AgentFaceService packages' -Selected:(-not $SkipBuild) -Tip 'Install and build the shared task-core package, CLI package, and MCP compatibility package. Requires Node.js and npm on PATH.'),
     (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package, then remove npm PowerShell .ps1 shims so bh resolves through the .cmd launcher and is not blocked by ExecutionPolicy.'),
-    (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control official plugin installation, subagents, and lifecycle MCP config.'),
-    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Install Codex plugin via official entry' -Selected:(-not $SkipCodexMarketplace) -Tip 'Register the repository local marketplace with the official Codex plugin installer, then install blueprint-helper from that marketplace.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control local plugin config registration, subagents, and lifecycle MCP config.'),
+    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local plugin config' -Selected:(-not $SkipCodexMarketplace) -Tip 'Write the repository local marketplace and enabled plugin entries directly into the user Codex config.toml.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'codexAgents' -Label 'Install Codex subagents' -Selected:(-not $SkipCodexAgents) -Tip 'Install BlueprintHelper Codex subagent definitions into the user Codex agents directory.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'lifecycleMcp' -Label 'Install lifecycle MCP config' -Selected:(-not $SkipLifecycleMcp) -Tip 'Install the global lifecycle-only MCP config used for opening and closing Unreal Editor from Codex.' -Indent 1 -Parent 'codexSupport'),
-    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Register the Claude plugin marketplace through the official Claude plugin installer, then install blueprint-helper from that marketplace when a callable Claude CLI is available.'),
+    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Write the Claude local marketplace and enabled plugin entries directly into the user settings.json.'),
     (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
     (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/project-profile.json for the detected Unreal project. Project AgentWorkFlow and root AGENTS/CLAUDE markers are refreshed even when this is skipped. Path prompts appear after menu confirmation.'),
     (New-InstallMenuOption -Key 'defaultPreferences' -Label 'Create default user preference files' -Selected:(-not $SkipDefaultPreferences) -Tip 'Create missing Claude/Codex BlueprintHelper user preference files without overwriting existing preference files.'),
@@ -1066,61 +1066,144 @@ function Get-CodexPluginInstallInfo {
   }
 }
 
-function Get-CodexOfficialPluginCommands {
-  $Commands = @()
-  foreach ($Name in @('droid', 'codex')) {
-    $Command = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($Command -and $Command.Source) {
-      $Commands += [pscustomobject]@{
-        name = $Name
-        path = $Command.Source
+function ConvertTo-CodexLocalSourcePath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $ResolvedPath = [System.IO.Path]::GetFullPath($Path)
+  if ($ResolvedPath.StartsWith('\\?\')) {
+    return $ResolvedPath
+  }
+  if ($ResolvedPath.StartsWith('\\')) {
+    return "\\?\UNC\$($ResolvedPath.Substring(2))"
+  }
+  return "\\?\$ResolvedPath"
+}
+
+function ConvertTo-TomlString {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if (-not $Value.Contains("'")) {
+    return "'$Value'"
+  }
+
+  $Escaped = $Value.Replace('\', '\\').Replace('"', '\"')
+  return "`"$Escaped`""
+}
+
+function Remove-TomlTableSections {
+  param(
+    [AllowNull()]
+    [string]$Text,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Headers
+  )
+
+  $HeaderSet = @{}
+  foreach ($Header in $Headers) {
+    $HeaderSet[$Header.Trim()] = $true
+  }
+
+  $Lines = if ($null -eq $Text) { @() } else { $Text -split "\r?\n" }
+  $Output = @()
+  $Skipping = $false
+  $Removed = $false
+
+  foreach ($Line in $Lines) {
+    $Trimmed = $Line.Trim()
+    $IsTableHeader = $Trimmed -match '^\[[^\]]+\]\s*$'
+
+    if ($IsTableHeader) {
+      if ($HeaderSet.ContainsKey($Trimmed)) {
+        $Skipping = $true
+        $Removed = $true
+        continue
       }
+      $Skipping = $false
+    }
+
+    if (-not $Skipping) {
+      $Output += $Line
     }
   }
 
-  return $Commands
+  return [pscustomobject]@{
+    text = ($Output -join "`n")
+    removed = $Removed
+  }
 }
 
-function Install-CodexPluginViaOfficialEntry {
+function Set-TomlOwnedSections {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Headers,
+    [Parameter(Mandatory = $true)]
+    [string]$Block,
+    [Parameter(Mandatory = $true)]
+    [string]$Description
+  )
+
+  $Current = if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    Get-Content -Raw -LiteralPath $Path
+  } else {
+    ''
+  }
+
+  $WithoutOwnedSections = Remove-TomlTableSections -Text $Current -Headers $Headers
+  $Prefix = $WithoutOwnedSections.text -replace "\s+$", ''
+  $Next = if ($Prefix) {
+    "$Prefix`n`n$($Block.Trim())`n"
+  } else {
+    "$($Block.Trim())`n"
+  }
+
+  if ($Current -eq $Next) {
+    Write-Host "==> ${Description}: already up to date"
+    return $false
+  }
+
+  $Parent = Split-Path -Parent $Path
+  if ($script:ThisCmdlet.ShouldProcess($Path, $Description)) {
+    New-Item -ItemType Directory -Force -Path $Parent | Out-Null
+    Set-Content -LiteralPath $Path -Value $Next -Encoding UTF8
+    Write-Host "Updated: $Path"
+  }
+  return $true
+}
+
+function Install-CodexPluginViaConfig {
   $Info = Get-CodexPluginInstallInfo
-  $MarketplaceArgs = @('plugin', 'marketplace', 'add', $Info.marketplace_source)
-  $InstallArgs = @('plugin', 'install', $Info.install_spec)
-  $Failures = @()
+  $ConfigPath = Join-Path $UserHome '.codex\config.toml'
+  $LocalSource = ConvertTo-CodexLocalSourcePath -Path $Info.marketplace_source
+  $LastUpdated = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+  $Block = @(
+    "[marketplaces.$($Info.marketplace_name)]",
+    "last_updated = `"$LastUpdated`"",
+    'source_type = "local"',
+    "source = $(ConvertTo-TomlString -Value $LocalSource)",
+    '',
+    "[plugins.`"$($Info.install_spec)`"]",
+    'enabled = true'
+  ) -join "`n"
 
   Write-Host "==> Codex marketplace source: $($Info.marketplace_source)"
   Write-Host "==> Codex plugin install spec: $($Info.install_spec)"
-
-  foreach ($Command in (Get-CodexOfficialPluginCommands)) {
-    try {
-      Invoke-External -Description "Codex official marketplace install ($($Command.name))" -FilePath $Command.path -Arguments $MarketplaceArgs
-      Invoke-External -Description "Codex official plugin install ($($Command.name))" -FilePath $Command.path -Arguments $InstallArgs
-
-      return [pscustomobject]@{
-        status = if ($WhatIfPreference) { 'whatif' } else { 'installed_via_official_entry' }
-        command = $Command.name
-        marketplace_command = "$($Command.name) $($MarketplaceArgs -join ' ')"
-        install_command = "$($Command.name) $($InstallArgs -join ' ')"
-        install_spec = $Info.install_spec
-        marketplace_source = $Info.marketplace_source
-      }
-    } catch {
-      $Failures += "$($Command.name): $($_.Exception.Message)"
-      Write-Warning "Codex official plugin command failed through '$($Command.name)'. $($_.Exception.Message)"
-    }
-  }
-
-  Write-Warning 'No callable Codex official plugin installer was available. The repository marketplace is ready; install from the Codex Plugins UI or run the commands below with the official Codex plugin CLI.'
-  Write-Host "    plugin marketplace add $($Info.marketplace_source)"
-  Write-Host "    plugin install $($Info.install_spec)"
+  Write-Host "==> Codex plugin config: $ConfigPath"
+  Set-TomlOwnedSections `
+    -Path $ConfigPath `
+    -Headers @("[marketplaces.$($Info.marketplace_name)]", "[plugins.`"$($Info.install_spec)`"]") `
+    -Block $Block `
+    -Description 'Register Codex local plugin config' | Out-Null
 
   return [pscustomobject]@{
-    status = 'manual_official_install_required'
+    status = if ($WhatIfPreference) { 'whatif' } else { 'registered_via_config' }
     command = $null
-    marketplace_command = "plugin marketplace add $($Info.marketplace_source)"
-    install_command = "plugin install $($Info.install_spec)"
+    marketplace_command = $null
+    install_command = $null
     install_spec = $Info.install_spec
     marketplace_source = $Info.marketplace_source
-    failures = $Failures
+    config_path = $ConfigPath
   }
 }
 
@@ -1155,63 +1238,54 @@ function Get-ClaudePluginInstallInfo {
   }
 }
 
-function Get-ClaudeOfficialPluginCommands {
-  $Commands = @()
-  foreach ($Name in @('claude', 'claude-code')) {
-    $Command = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($Command -and $Command.Source) {
-      $Commands += [pscustomobject]@{
-        name = $Name
-        path = $Command.Source
-      }
+function Install-ClaudePluginViaConfig {
+  $Info = Get-ClaudePluginInstallInfo
+  $SettingsPath = Join-Path $UserHome '.claude\settings.json'
+
+  $Settings = if (Test-Path -LiteralPath $SettingsPath -PathType Leaf) {
+    $RawSettings = Get-Content -Raw -LiteralPath $SettingsPath
+    if ([string]::IsNullOrWhiteSpace($RawSettings)) {
+      [pscustomobject]@{}
+    } else {
+      $RawSettings | ConvertFrom-Json
     }
+  } else {
+    [pscustomobject]@{}
   }
 
-  return $Commands
-}
+  $EnabledPlugins = Ensure-JsonObjectProperty -Object $Settings -Name 'enabledPlugins'
+  Set-JsonProperty -Object $EnabledPlugins -Name $Info.install_spec -Value $true
 
-function Install-ClaudePluginViaOfficialEntry {
-  $Info = Get-ClaudePluginInstallInfo
-  $MarketplaceArgs = @('plugin', 'marketplace', 'add', $Info.marketplace_source)
-  $InstallArgs = @('plugin', 'install', $Info.install_spec)
-  $Failures = @()
+  $ExtraKnownMarketplaces = Ensure-JsonObjectProperty -Object $Settings -Name 'extraKnownMarketplaces'
+  $MarketplaceEntry = [pscustomobject]@{
+    source = [pscustomobject]@{
+      source = 'directory'
+      path = [System.IO.Path]::GetFullPath($Info.marketplace_source)
+    }
+    autoUpdate = $true
+  }
+  Set-JsonProperty -Object $ExtraKnownMarketplaces -Name $Info.marketplace_name -Value $MarketplaceEntry
+
+  $Next = ($Settings | ConvertTo-Json -Depth 32)
 
   Write-Host "==> Claude marketplace source: $($Info.marketplace_source)"
   Write-Host "==> Claude plugin install spec: $($Info.install_spec)"
-
-  foreach ($Command in (Get-ClaudeOfficialPluginCommands)) {
-    try {
-      Invoke-External -Description "Claude official marketplace install ($($Command.name))" -FilePath $Command.path -Arguments $MarketplaceArgs
-      Invoke-External -Description "Claude official plugin install ($($Command.name))" -FilePath $Command.path -Arguments $InstallArgs
-
-      return [pscustomobject]@{
-        status = if ($WhatIfPreference) { 'whatif' } else { 'installed_via_official_entry' }
-        command = $Command.name
-        source_path = $Info.marketplace_source
-        marketplace_command = "$($Command.name) $($MarketplaceArgs -join ' ')"
-        install_command = "$($Command.name) $($InstallArgs -join ' ')"
-        install_spec = $Info.install_spec
-        marketplace_source = $Info.marketplace_source
-      }
-    } catch {
-      $Failures += "$($Command.name): $($_.Exception.Message)"
-      Write-Warning "Claude official plugin command failed through '$($Command.name)'. $($_.Exception.Message)"
-    }
+  Write-Host "==> Claude settings config: $SettingsPath"
+  if ($script:ThisCmdlet.ShouldProcess($SettingsPath, 'Register Claude local plugin config')) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $SettingsPath) | Out-Null
+    Set-Content -LiteralPath $SettingsPath -Value $Next -Encoding UTF8
+    Write-Host "Updated: $SettingsPath"
   }
 
-  Write-Warning 'No callable Claude official plugin installer was available. The local Claude marketplace is ready; install from Claude Code with the official /plugin commands below.'
-  Write-Host "    /plugin marketplace add $($Info.marketplace_source)"
-  Write-Host "    /plugin install $($Info.install_spec)"
-
   return [pscustomobject]@{
-    status = 'manual_official_install_required'
+    status = if ($WhatIfPreference) { 'whatif' } else { 'registered_via_config' }
     command = $null
     source_path = $Info.marketplace_source
-    marketplace_command = "/plugin marketplace add $($Info.marketplace_source)"
-    install_command = "/plugin install $($Info.install_spec)"
+    marketplace_command = $null
+    install_command = $null
     install_spec = $Info.install_spec
     marketplace_source = $Info.marketplace_source
-    failures = $Failures
+    config_path = $SettingsPath
   }
 }
 
@@ -1253,7 +1327,7 @@ function Ensure-JsonObjectProperty {
   )
 
   $Value = Get-JsonProperty -Object $Object -Name $Name
-  if ($null -eq $Value) {
+  if ($null -eq $Value -or $Value -is [array] -or $Value -isnot [pscustomobject]) {
     $Value = [pscustomobject]@{}
     Set-JsonProperty -Object $Object -Name $Name -Value $Value
   }
@@ -1688,10 +1762,11 @@ $CodexPluginResult = [pscustomobject]@{
   install_command = $null
   install_spec = $null
   marketplace_source = $null
+  config_path = $null
 }
 
 if (-not $SkipCodexMarketplace) {
-  $CodexPluginResult = Install-CodexPluginViaOfficialEntry
+  $CodexPluginResult = Install-CodexPluginViaConfig
 }
 
 if (-not $SkipCodexAgents) {
@@ -1718,6 +1793,8 @@ $ClaudePluginResult = [pscustomobject]@{
   source_path = $null
   marketplace_command = $null
   install_command = $null
+  install_spec = $null
+  config_path = $null
 }
 
 $ClaudeAgentsStatus = 'skipped'
@@ -1738,7 +1815,7 @@ if ($RunDiagnostics) {
 }
 
 if ($InstallClaudePlugin) {
-  $ClaudePluginResult = Install-ClaudePluginViaOfficialEntry
+  $ClaudePluginResult = Install-ClaudePluginViaConfig
 }
 
 if ($InstallClaudeAgents -or $InstallClaudePlugin) {
@@ -1766,6 +1843,9 @@ if ($CodexPluginResult.install_spec) {
 if ($CodexPluginResult.marketplace_source) {
   Write-Host "Codex marketplace source: $($CodexPluginResult.marketplace_source)"
 }
+if ($CodexPluginResult.config_path) {
+  Write-Host "Codex config path: $($CodexPluginResult.config_path)"
+}
 if ($CodexPluginResult.command) {
   Write-Host "Codex installer command: $($CodexPluginResult.command)"
 } elseif ($CodexPluginResult.install_command) {
@@ -1781,6 +1861,9 @@ if ($ClaudePluginResult.source_path) {
 }
 if ($ClaudePluginResult.install_spec) {
   Write-Host "Claude plugin install spec: $($ClaudePluginResult.install_spec)"
+}
+if ($ClaudePluginResult.config_path) {
+  Write-Host "Claude config path: $($ClaudePluginResult.config_path)"
 }
 if ($ClaudePluginResult.command) {
   Write-Host "Claude installer command: $($ClaudePluginResult.command)"

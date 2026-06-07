@@ -26,7 +26,7 @@ install.cmd
 
 - 构建 `AgentFaceService/task-core`、`AgentFaceService/cli`、`AgentFaceService/mcp`。
 - 全局链接 CLI，使 `bh` 和 `blueprinthelper-cli` 可用。
-- 通过 Codex 官方插件入口注册仓库本地 marketplace，并安装 `blueprint-helper@blueprint-helper-local`。
+- 直接写入 Codex `config.toml`，注册仓库本地 marketplace 并启用 `blueprint-helper@blueprint-helper-local`。
 - 安装 Codex subagents 和 lifecycle-only MCP 配置。
 - 在能确认唯一 `.uproject` 和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/project-profile.json`，生成 `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`，并刷新项目根 `AGENTS.md` / `CLAUDE.md` 的 BlueprintHelper marker。
 - 仅在缺失时创建 Claude/Codex 用户偏好文件。
@@ -50,21 +50,19 @@ install.cmd
 
 交互式安装优先使用 Node.js 内置终端交互。启用 Codex subagents 时，`blueprint-explorer`、`sourcecode-explorer`、`task-worker` 会以表格显示，模型和思考等级是独立字段。模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`；思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`task-worker` 使用 `gpt-5.4 / high`。
 
-当前安装脚本会通过 Codex 官方插件入口注册仓库本地 marketplace，并安装 `blueprint-helper@blueprint-helper-local`。如果当前机器没有可调用的 Codex 官方插件 CLI，脚本会打印可在 Codex Desktop 或官方 CLI 中继续执行的 marketplace/install 命令。
-
 仓库包含本地 marketplace：
 
 ```text
 .agents/plugins/marketplace.json
 ```
 
-安装脚本会通过官方入口安装该 marketplace 中的插件：
+安装脚本会直接写入 `%USERPROFILE%\.codex\config.toml`，把该 marketplace 注册为 `blueprint-helper-local`，并启用：
 
 ```text
 blueprint-helper@blueprint-helper-local
 ```
 
-官方安装入口会读取仓库根目录下的 `.agents/plugins/marketplace.json`，并安装其中的 `blueprint-helper@blueprint-helper-local`。
+同一个 `config.toml` 也会写入 lifecycle MCP server 和三个需要确认的工具 approval section：`blueprint_open_editor`、`blueprint_close_editor`、`blueprint_developer_exec_console_command`。
 
 ### Claude Code
 
@@ -74,12 +72,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudePlugin
 ```
 
-该选项会验证本地 `ClaudePlugin` 包，并通过 Claude 官方插件入口安装 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。如果当前机器没有可调用的 Claude 官方插件 CLI，脚本会打印可在 Claude Code 中执行的官方命令：
-
-```text
-/plugin marketplace add <BlueprintHelper repository root>\ClaudePlugin
-/plugin install blueprint-helper@blueprint-helper-dev
-```
+该选项会验证本地 `ClaudePlugin` 包，直接写入 `%USERPROFILE%\.claude\settings.json`，在 `extraKnownMarketplaces` 中注册 `blueprint-helper-dev`，在 `enabledPlugins` 中启用 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。
 
 如果只想复制 sideAgent 定义，不想验证 Claude 插件源，使用：
 
@@ -164,7 +157,7 @@ install.cmd
 
 - Builds `AgentFaceService/task-core`, `AgentFaceService/cli`, and `AgentFaceService/mcp`.
 - Links the CLI globally so `bh` and `blueprinthelper-cli` are available, then removes npm-generated `.ps1` shims when `.cmd` launchers exist so PowerShell ExecutionPolicy does not block `bh`.
-- Registers the repository local marketplace through the official Codex plugin install entry, then installs `blueprint-helper@blueprint-helper-local`.
+- Writes the Codex `config.toml` directly to register the repository local marketplace and enable `blueprint-helper@blueprint-helper-local`.
 - Installs Codex subagents and the lifecycle-only MCP config.
 - Writes `<ProjectDir>/.blueprinthelper/project-profile.json`, creates `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`, and refreshes the project-root `AGENTS.md` / `CLAUDE.md` BlueprintHelper markers when a unique `.uproject` and UE root are available.
 - Creates Claude/Codex user preference files only when they are missing.
@@ -194,18 +187,13 @@ The repository includes a local marketplace:
 .agents/plugins/marketplace.json
 ```
 
-The installer registers that marketplace through the official Codex plugin install entry, then installs:
+The installer writes `%USERPROFILE%\.codex\config.toml` directly, registers that marketplace as `blueprint-helper-local`, and enables:
 
 ```text
 blueprint-helper@blueprint-helper-local
 ```
 
-When a callable official Codex plugin CLI is unavailable, the installer prints the marketplace and install commands so the same official path can be completed from Codex Desktop or an available Codex plugin CLI:
-
-```text
-plugin marketplace add <BlueprintHelper repository root>
-plugin install blueprint-helper@blueprint-helper-local
-```
+The same `config.toml` also receives the lifecycle MCP server and explicit approval sections for `blueprint_open_editor`, `blueprint_close_editor`, and `blueprint_developer_exec_console_command`.
 
 ### Claude Code
 
@@ -215,12 +203,7 @@ Claude Code plugin support is optional:
 .\install.cmd -InstallClaudePlugin
 ```
 
-This validates the local `ClaudePlugin` package, installs `blueprint-helper@blueprint-helper-dev` through the official Claude plugin entry when a callable Claude plugin CLI is available, and installs the Claude sideAgent definitions. If no callable Claude plugin CLI is available, the installer prints the official commands to run in Claude Code:
-
-```text
-/plugin marketplace add <BlueprintHelper repository root>\ClaudePlugin
-/plugin install blueprint-helper@blueprint-helper-dev
-```
+This validates the local `ClaudePlugin` package, writes `%USERPROFILE%\.claude\settings.json` directly, registers `blueprint-helper-dev` in `extraKnownMarketplaces`, enables `blueprint-helper@blueprint-helper-dev` in `enabledPlugins`, and installs the Claude sideAgent definitions.
 
 If you only want to copy the sideAgent definitions without validating the Claude plugin source, use:
 

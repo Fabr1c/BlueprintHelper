@@ -79,7 +79,9 @@ Run the repository-root installer first:
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-Add `-InstallClaudePlugin` when you want the installer to register the Claude marketplace through the official Claude plugin entry and install `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
+需要 Claude 插件支持时追加 `-InstallClaudePlugin`。安装器会写入 `%USERPROFILE%\.claude\settings.json`，注册本地 `ClaudePlugin` marketplace，并启用 `blueprint-helper@blueprint-helper-dev`；同时也会复制 Claude subagent 定义到用户目录。
+
+Add `-InstallClaudePlugin` when you want the installer to write `%USERPROFILE%\.claude\settings.json`, register the local `ClaudePlugin` marketplace, and enable `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
 
 Use repository-root `uninstall.cmd` to remove installed Claude plugin entries, Claude sideAgents, Codex companion entries, and CLI links without deleting the source checkout.
 
@@ -87,12 +89,9 @@ Use repository-root `uninstall.cmd` to remove installed Claude plugin entries, C
 
 Interactive install prefers Node.js built-in terminal prompts. Before copying Claude sideAgent definitions, the three sideAgents are shown in a table with separate model and reasoning fields; model options are `haiku` and `sonnet`, with reasoning `high`. Non-interactive install uses the recommended defaults automatically, with `task-worker` on `sonnet / high`.
 
-If no callable Claude plugin CLI is available, the installer prints the official commands to run inside Claude Code:
+安装器不依赖可调用的 Claude 插件 CLI 来完成注册；它会直接更新 `enabledPlugins` 和 `extraKnownMarketplaces`。
 
-```text
-/plugin marketplace add <BlueprintHelper repository root>\ClaudePlugin
-/plugin install blueprint-helper@blueprint-helper-dev
-```
+The installer does not depend on a callable Claude plugin CLI for this registration; it updates `enabledPlugins` and `extraKnownMarketplaces` directly.
 
 Use `-InstallClaudeAgents` only when you want to copy the Claude subagent definitions without installing the Claude plugin.
 
