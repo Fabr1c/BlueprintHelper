@@ -738,6 +738,58 @@ bool FBlueprintHelperFieldVariableActionClusterFieldAccessRequiresOwnerTypeTest:
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperFieldVariableActionClusterFieldAccessUsesOwnerClassFieldTest,
+	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.FieldAccessUsesOwnerClassField",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperFieldVariableActionClusterFieldAccessUsesOwnerClassFieldTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* GraphBlueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("graph blueprint"), GraphBlueprint);
+
+	UBlueprint* OwnerBlueprint = MakeFieldVariableActionTestBlueprint();
+	TestNotNull(TEXT("owner blueprint"), OwnerBlueprint);
+	TestTrue(TEXT("add owner field"), AddFieldVariableActionTestVariable(
+		OwnerBlueprint,
+		TEXT("SavedHealth"),
+		MakeFieldVariableActionTestPinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+
+	const FString OwnerClassPath = OwnerBlueprint && OwnerBlueprint->GeneratedClass
+		? OwnerBlueprint->GeneratedClass->GetPathName()
+		: FString();
+	TestFalse(TEXT("owner class path"), OwnerClassPath.IsEmpty());
+
+	FBlueprintHelperActionResolutionRequest Request = MakeFieldVariableActionRequest(
+		GraphBlueprint,
+		GetFieldVariableActionTestGraph(GraphBlueprint),
+		TEXT("get"),
+		TEXT("field_access"),
+		TEXT("SavedHealth"));
+	Request.Semantic.TargetPath = TEXT("LoadedVitalsSave");
+	Request.Semantic.PropertyPath = TEXT("SavedHealth");
+	Request.Semantic.TargetObjectType = OwnerClassPath;
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.owner_class"), OwnerClassPath);
+	Request.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("SavedHealth"));
+	Request.ContextEvidence.Add(TEXT("field_owner_class"), OwnerClassPath);
+	Request.ContextEvidence.Add(TEXT("target_object_type"), OwnerClassPath);
+	Request.ContextEvidence.Add(TEXT("field_name"), TEXT("SavedHealth"));
+	Request.ContextEvidence.Add(TEXT("property_path"), TEXT("SavedHealth"));
+
+	const FBlueprintHelperActionResolutionResult Result = FBlueprintHelperActionResolutionCore::Resolve(Request);
+	TestEqual(TEXT("status"), Result.Status, EBlueprintHelperActionResolutionStatus::Resolved);
+	TestTrue(TEXT("field access stable id"), Result.SelectedStableId.StartsWith(TEXT("field_access:")));
+	TestEqual(TEXT("one candidate"), Result.CandidateActions.Num(), 1);
+	if (Result.CandidateActions.Num() > 0)
+	{
+		TestEqual(TEXT("candidate display name"), Result.CandidateActions[0].DisplayName, FString(TEXT("SavedHealth")));
+		TestEqual(TEXT("candidate owner"), Result.CandidateActions[0].OwnerClassPath, OwnerClassPath);
+		TestEqual(TEXT("candidate category"), Result.CandidateActions[0].Category, FString(TEXT("field_access")));
+		TestTrue(TEXT("match reason contains member"), Result.CandidateActions[0].MatchReason.Contains(TEXT("field=SavedHealth")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperFieldVariableActionClusterComplexPropertyPathKeepsFullPathEvidenceTest,
 	"BlueprintHelper.GraphWrite.ActionResolution.FieldVariable.ComplexPropertyPathKeepsFullPathEvidence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

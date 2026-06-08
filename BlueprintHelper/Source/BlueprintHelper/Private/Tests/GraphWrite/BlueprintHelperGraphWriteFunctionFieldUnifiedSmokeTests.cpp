@@ -476,6 +476,92 @@ bool FBlueprintHelperGraphWriteUnifiedSmokeFieldComponentRefAndFieldAccessTest::
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteUnifiedSmokeFieldAccessSetRegistryInfersCapabilityTest,
+	"BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.FieldAccessSetRegistryInfersCapability",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteUnifiedSmokeFieldAccessSetRegistryInfersCapabilityTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeUnifiedSmokeBlueprint();
+	UEdGraph* Graph = GetUnifiedSmokeGraph(Blueprint);
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("add health variable"), AddUnifiedSmokeVariable(
+		Blueprint,
+		TEXT("SavedHealth"),
+		MakeUnifiedSmokePinType(UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Float)));
+	FBlueprintActionDatabase::Get().RefreshAll();
+
+	const FString StatementId = MakeUnifiedSmokeObjectName(TEXT("Stmt"));
+	FBlueprintHelperGraphStatementIR Statement;
+	Statement.StatementId = StatementId;
+	Statement.Path = TEXT("$.statements[0]");
+	Statement.Kind = EBlueprintHelperGraphStatementKind::Field;
+	Statement.PatternName = TEXT("field");
+	Statement.FieldOperation = TEXT("set");
+	Statement.FieldScope = TEXT("field_access");
+	Statement.Target = TEXT("CreatedVitalsSave");
+	Statement.Property = TEXT("SavedHealth");
+	Statement.ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
+	Statement.ResolvedTarget.Raw = TEXT("CreatedVitalsSave");
+	Statement.ResolvedTarget.Owner = TEXT("CreatedVitalsSave");
+	Statement.ResolvedTarget.Member = TEXT("SavedHealth");
+	Statement.ResolvedTarget.PropertyPath = TEXT("SavedHealth");
+	Statement.ResolvedTarget.Type = Blueprint->GeneratedClass ? Blueprint->GeneratedClass->GetPathName() : FString();
+	Statement.ContextEvidence.Add(TEXT("field_owner_class"), Statement.ResolvedTarget.Type);
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> Value = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	Value->ExpressionId = StatementId + TEXT("_value");
+	Value->Path = TEXT("$.statements[0].value");
+	Value->Kind = EBlueprintHelperGraphExpressionKind::Literal;
+	Value->Type = TEXT("float");
+	Value->LiteralValue = TEXT("75.0");
+	Statement.Value = Value;
+
+	FBlueprintHelperActionContextScope ActionContextScope;
+	FString ScopeError;
+	TestTrue(
+		TEXT("build action context scope"),
+		BuildUnifiedSmokeActionContextScopeForStatement(*this, Blueprint, Graph, Statement, ActionContextScope, ScopeError));
+	if (!ScopeError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("action context scope detail: %s"), *ScopeError));
+	}
+	if (!ActionContextScope.IsValid())
+	{
+		return false;
+	}
+
+	FBlueprintHelperNodeFragment Fragment;
+	FString Error;
+	TestTrue(
+		TEXT("registry infers field_access set capability"),
+		FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
+			Graph,
+			&ActionContextScope,
+			Statement,
+			Fragment,
+			Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("field_access set registry detail: %s"), *Error));
+	}
+	if (!Fragment.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("field capability inferred"), Fragment.OwnershipTags.FindRef(TEXT("field.capability_id")), FString(TEXT("field.object_pin_member_set")));
+	TestEqual(TEXT("semantic kind ownership"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("field")));
+	TestNotNull(TEXT("target self data input exists"), Fragment.DataInputs.Find(TEXT("self")) ? Fragment.DataInputs.Find(TEXT("self"))->Pin : nullptr);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteUnifiedSmokeEventSignatureBoundaryTest,
 	"BlueprintHelper.GraphWrite.FunctionFieldUnifiedSmoke.EventSignatureBoundary",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -262,6 +262,12 @@ bool UGraphWriteGraphStatementUtils::StatementResultSymbolRequiresTypeEvidence(c
 
 FString UGraphWriteGraphStatementUtils::ResolveStatementResultTypeToken(const FBlueprintHelperGraphStatementIR& Statement)
 {
+    if (Statement.Kind == EBlueprintHelperGraphStatementKind::Create
+        && !Statement.ClassPath.IsEmpty())
+    {
+        return Statement.ClassPath;
+    }
+
     const FString ContainerResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
         Statement.ContainerKind,
         Statement.ContainerOperation,
@@ -1841,6 +1847,24 @@ void UGraphWriteGraphStatementUtils::PopulateSelectPins(
 // ============================================================================
 FString UGraphWriteGraphStatementUtils::GetStatementId(const FBlueprintHelperGraphStatementIR& Statement)
 {
+    if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field)
+    {
+        const FString NormalizedScope = NormalizeFieldToken(Statement.FieldScope);
+        const TCHAR* Suffix = TEXT("set");
+        if (NormalizedScope == TEXT("property_path"))
+        {
+            Suffix = TEXT("set_property");
+        }
+        else if (NormalizedScope == TEXT("component_ref"))
+        {
+            Suffix = TEXT("set_component_ref");
+        }
+        else if (NormalizedScope == TEXT("field_access"))
+        {
+            Suffix = TEXT("set_field_access");
+        }
+        return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement, Suffix);
+    }
     return FBlueprintHelperGraphStatementTypeUtils::MakeStatementFragmentId(Statement);
 }
 

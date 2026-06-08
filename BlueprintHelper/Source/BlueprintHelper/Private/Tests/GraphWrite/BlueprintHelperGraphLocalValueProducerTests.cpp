@@ -14,6 +14,7 @@ static bool BuildLogicSpecForGraphLocalValueProducer(
 	FAutomationTestBase& Test,
 	const FString& Json,
 	FBlueprintHelperGraphSemanticIR& OutIR,
+	const FBlueprintHelperGraphSemanticContext* Context = nullptr,
 	const bool bTreatDiagnosticsAsErrors = true)
 {
 	TSharedPtr<FJsonObject> Root;
@@ -23,7 +24,9 @@ static bool BuildLogicSpecForGraphLocalValueProducer(
 		return false;
 	}
 
-	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Root, OutIR);
+	const bool bBuilt = Context
+		? FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Root, *Context, OutIR)
+		: FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Root, OutIR);
 	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : OutIR.Diagnostics)
 	{
 		if (bTreatDiagnosticsAsErrors && Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
@@ -113,7 +116,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperGraphLocalValueProducerRejectsVoidCallResultSymbolTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperGraphSemanticIR IR;
-	if (!BuildLogicSpecForGraphLocalValueProducer(*this, VoidCallGraphLocalValueSpec(), IR, false))
+	if (!BuildLogicSpecForGraphLocalValueProducer(*this, VoidCallGraphLocalValueSpec(), IR, nullptr, false))
 	{
 		return false;
 	}
@@ -184,6 +187,284 @@ bool FBlueprintHelperGraphLocalValueProducerFragmentDagTest::RunTest(const FStri
 		});
 
 	TestTrue(TEXT("call result_symbol feeds later field set"), bHasReturnValueEdge);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLocalValueProducerFieldAccessKeepsGetterFragmentTest,
+	"BlueprintHelper.GraphWrite.GraphLocalValueProducer.FieldAccessKeepsGetterFragment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLocalValueProducerFieldAccessKeepsGetterFragmentTest::RunTest(const FString& Parameters)
+{
+	const FString Json = TEXT(R"JSON({
+		"schema": "BlueprintLogicSpec.v2",
+		"statements": [{
+			"id": "stmt_create_widget",
+			"kind": "create",
+			"create_operation": "create_widget",
+			"class_path": "/Script/UMG.UserWidget",
+			"value_type": "/Script/UMG.UserWidget",
+			"result_symbol": "CreatedVitalsHud",
+			"args": {}
+		}, {
+			"id": "stmt_set_percent",
+			"kind": "call",
+			"target": "SetPercent",
+			"target_object": {
+				"kind": "field",
+				"field_operation": "get",
+				"field_scope": "field_access",
+				"target": "CreatedVitalsHud",
+				"property_path": "StaminaBar",
+				"context_evidence": {
+					"field_owner_class": "/Script/UMG.UserWidget"
+				}
+			},
+			"args": {
+				"InPercent": { "kind": "literal", "value_type": "float", "value": 1.0 }
+			}
+		}]
+	})JSON");
+
+	FBlueprintHelperGraphSemanticIR IR;
+	if (!BuildLogicSpecForGraphLocalValueProducer(*this, Json, IR))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("call target_object exists"), IR.Statements.Num() == 2 && IR.Statements[1]->TargetObject.IsValid());
+	if (IR.Statements.Num() != 2 || !IR.Statements[1]->TargetObject.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(
+		TEXT("field_access target stays a field expression"),
+		IR.Statements[1]->TargetObject->FieldScope,
+		FString(TEXT("field_access")));
+	TestEqual(
+		TEXT("field_access expression does not inherit owner object as return type"),
+		IR.Statements[1]->TargetObject->Type,
+		FString());
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	TestFalse(TEXT("dag has no errors"), Dag.HasErrors());
+
+	FString FieldAccessFragmentId;
+	for (const FBlueprintHelperGraphFragmentRef& Fragment : Dag.Fragments)
+	{
+		if (Fragment.Kind == TEXT("expr_get_field_access"))
+		{
+			FieldAccessFragmentId = Fragment.FragmentId;
+			break;
+		}
+	}
+	TestFalse(TEXT("field_access emits a getter fragment"), FieldAccessFragmentId.IsEmpty());
+
+	const bool bWidgetFeedsGetterSelf = Dag.DataEdges.ContainsByPredicate(
+		[&FieldAccessFragmentId](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.From.FragmentId == TEXT("stmt_create_widget")
+				&& Edge.From.PinName == TEXT("value")
+				&& Edge.To.FragmentId == FieldAccessFragmentId
+				&& Edge.To.PinName == TEXT("self");
+		});
+
+	TestTrue(TEXT("create_widget result feeds field_access getter self pin"), bWidgetFeedsGetterSelf);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLocalValueProducerFieldAccessMemberTargetFeedsGetterSelfTest,
+	"BlueprintHelper.GraphWrite.GraphLocalValueProducer.FieldAccessMemberTargetFeedsGetterSelf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLocalValueProducerFieldAccessMemberTargetFeedsGetterSelfTest::RunTest(const FString& Parameters)
+{
+	const FString Json = TEXT(R"JSON({
+		"schema": "BlueprintLogicSpec.v2",
+		"statements": [{
+			"id": "stmt_set_percent",
+			"kind": "call",
+			"target": "SetPercent",
+			"target_object": {
+				"id": "VitalsHudWidget_StaminaBar",
+				"kind": "field",
+				"field_operation": "get",
+				"field_scope": "field_access",
+				"target": "VitalsHudWidget",
+				"property_path": "StaminaBar",
+				"context_evidence": {
+					"field_owner_class": "/Game/ThirdPerson/UI/WBP_ThirdPersonVitalsHUD.WBP_ThirdPersonVitalsHUD_C"
+				}
+			},
+			"args": {
+				"InPercent": { "kind": "literal", "value_type": "float", "value": 0.5 }
+			}
+		}]
+	})JSON");
+
+	FBlueprintHelperGraphSemanticContext Context;
+	Context.VariableNames.Add(TEXT("vitalshudwidget"));
+	Context.TargetTypes.Add(
+		TEXT("vitalshudwidget"),
+		TEXT("/Game/ThirdPerson/UI/WBP_ThirdPersonVitalsHUD.WBP_ThirdPersonVitalsHUD_C"));
+
+	FBlueprintHelperGraphSemanticIR IR;
+	if (!BuildLogicSpecForGraphLocalValueProducer(*this, Json, IR, &Context))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("call target_object exists"), IR.Statements.Num() == 1 && IR.Statements[0]->TargetObject.IsValid());
+	if (IR.Statements.Num() != 1 || !IR.Statements[0]->TargetObject.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>& FieldAccess = IR.Statements[0]->TargetObject;
+	TestEqual(TEXT("field_access reads requested widget member"), FieldAccess->ResolvedTarget.Member, FString(TEXT("StaminaBar")));
+	TestEqual(TEXT("field_access keeps property path"), FieldAccess->ResolvedTarget.PropertyPath, FString(TEXT("StaminaBar")));
+	TestTrue(TEXT("field_access synthesizes owner getter"), FieldAccess->TargetObject.IsValid());
+	if (!FieldAccess->TargetObject.IsValid())
+	{
+		return false;
+	}
+	TestEqual(TEXT("owner getter targets widget variable"), FieldAccess->TargetObject->Target, FString(TEXT("VitalsHudWidget")));
+	TestEqual(
+		TEXT("owner getter carries widget class"),
+		FieldAccess->TargetObject->Type,
+		FString(TEXT("/Game/ThirdPerson/UI/WBP_ThirdPersonVitalsHUD.WBP_ThirdPersonVitalsHUD_C")));
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	TestFalse(TEXT("dag has no errors"), Dag.HasErrors());
+
+	const bool bWidgetVariableFeedsGetterSelf = Dag.DataEdges.ContainsByPredicate(
+		[](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.From.FragmentId == TEXT("VitalsHudWidget_StaminaBar__target_object")
+				&& Edge.From.PinName == TEXT("value")
+				&& Edge.To.FragmentId == TEXT("VitalsHudWidget_StaminaBar")
+				&& Edge.To.PinName == TEXT("self");
+		});
+
+	TestTrue(TEXT("widget member getter feeds field_access self pin"), bWidgetVariableFeedsGetterSelf);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLocalValueProducerFieldAccessStatementTargetFeedsSetterSelfTest,
+	"BlueprintHelper.GraphWrite.GraphLocalValueProducer.FieldAccessStatementTargetFeedsSetterSelf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLocalValueProducerFieldAccessStatementTargetFeedsSetterSelfTest::RunTest(const FString& Parameters)
+{
+	const FString Json = TEXT(R"JSON({
+		"schema": "BlueprintLogicSpec.v2",
+		"statements": [{
+			"id": "stmt_create_save",
+			"kind": "create",
+			"create_operation": "construct_object",
+			"class_path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonHealthSaveGame.BP_ThirdPersonHealthSaveGame_C",
+			"value_type": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonHealthSaveGame.BP_ThirdPersonHealthSaveGame_C",
+			"result_symbol": "CreatedVitalsSave",
+			"args": {}
+		}, {
+			"id": "stmt_set_saved_health",
+			"kind": "field",
+			"field_operation": "set",
+			"field_scope": "field_access",
+			"target": "CreatedVitalsSave",
+			"property_path": "SavedHealth",
+			"value": { "kind": "literal", "value_type": "float", "value": 75.0 },
+			"context_evidence": {
+				"field_owner_class": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonHealthSaveGame.BP_ThirdPersonHealthSaveGame_C"
+			}
+		}]
+	})JSON");
+
+	FBlueprintHelperGraphSemanticIR IR;
+	if (!BuildLogicSpecForGraphLocalValueProducer(*this, Json, IR))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("field statement exists"), IR.Statements.Num() == 2 && IR.Statements[1].IsValid());
+	if (IR.Statements.Num() != 2 || !IR.Statements[1].IsValid())
+	{
+		return false;
+	}
+	const TSharedPtr<FBlueprintHelperGraphStatementIR>& FieldStatement = IR.Statements[1];
+	TestEqual(TEXT("field_access statement target is temporary"), FieldStatement->ResolvedTarget.Kind, EBlueprintHelperGraphTargetKind::Temporary);
+	TestEqual(TEXT("field_access statement reads requested member"), FieldStatement->ResolvedTarget.Member, FString(TEXT("SavedHealth")));
+	TestEqual(TEXT("field_access statement keeps property path"), FieldStatement->ResolvedTarget.PropertyPath, FString(TEXT("SavedHealth")));
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	TestFalse(TEXT("dag has no errors"), Dag.HasErrors());
+
+	const bool bSaveObjectFeedsSetterSelf = Dag.DataEdges.ContainsByPredicate(
+		[](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.From.FragmentId == TEXT("stmt_create_save")
+				&& Edge.From.PinName == TEXT("value")
+				&& Edge.To.FragmentId == TEXT("stmt_set_saved_health")
+				&& Edge.To.PinName == TEXT("self");
+		});
+
+	TestTrue(TEXT("create result_symbol feeds field_access setter self pin"), bSaveObjectFeedsSetterSelf);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLocalValueProducerCreateResultSymbolCarriesClassPathTypeTest,
+	"BlueprintHelper.GraphWrite.GraphLocalValueProducer.CreateResultSymbolCarriesClassPathType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLocalValueProducerCreateResultSymbolCarriesClassPathTypeTest::RunTest(const FString& Parameters)
+{
+	const FString SaveClassPath = TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonHealthSaveGame.BP_ThirdPersonHealthSaveGame_C");
+	const FString Json = FString::Printf(TEXT(R"JSON({
+		"schema": "BlueprintLogicSpec.v2",
+		"statements": [{
+			"id": "stmt_create_save",
+			"kind": "create",
+			"create_operation": "construct_object",
+			"class_path": "%s",
+			"result_symbol": "CreatedVitalsSave",
+			"args": {}
+		}, {
+			"id": "stmt_set_saved_health",
+			"kind": "field",
+			"field_operation": "set",
+			"field_scope": "field_access",
+			"target": "CreatedVitalsSave",
+			"property_path": "SavedHealth",
+			"value": { "kind": "literal", "value_type": "float", "value": 75.0 },
+			"context_evidence": {
+				"field_owner_class": "%s"
+			}
+		}]
+	})JSON"), *SaveClassPath, *SaveClassPath);
+
+	FBlueprintHelperGraphSemanticIR IR;
+	if (!BuildLogicSpecForGraphLocalValueProducer(*this, Json, IR))
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphSymbol CreatedSymbol;
+	TestTrue(TEXT("created save symbol registered"), IR.TryFindSymbol(TEXT("CreatedVitalsSave"), CreatedSymbol));
+	TestEqual(TEXT("create result_symbol uses class_path as type"), CreatedSymbol.Type, SaveClassPath);
+	TestTrue(TEXT("field statement exists"), IR.Statements.Num() == 2 && IR.Statements[1].IsValid());
+	if (IR.Statements.Num() != 2 || !IR.Statements[1].IsValid())
+	{
+		return false;
+	}
+	TestEqual(TEXT("field_access owner keeps class type"), IR.Statements[1]->ResolvedTarget.Type, SaveClassPath);
 	return true;
 }
 

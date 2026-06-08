@@ -279,6 +279,49 @@ FBlueprintHelperResolvedActionContext FBlueprintHelperActionContextInferenceServ
 				TEXT("linked_source_pin_type"),
 				UGraphWriteActionContextUtils::DescribePinTypeEvidence(LinkedSourcePinType));
 		}
+		if (!Context.Semantic.TargetObjectPinType.IsValid()
+			&& !Demand.TargetObjectType.TrimStartAndEnd().IsEmpty())
+		{
+			Context.Semantic.TargetObjectPinType.Category = TEXT("object");
+			Context.Semantic.TargetObjectPinType.ObjectPath = Demand.TargetObjectType.TrimStartAndEnd();
+		}
+		else if (Context.Semantic.TargetObjectPinType.IsValid()
+			&& Context.Semantic.TargetObjectPinType.ObjectPath.TrimStartAndEnd().IsEmpty()
+			&& !Demand.TargetObjectType.TrimStartAndEnd().IsEmpty())
+		{
+			Context.Semantic.TargetObjectPinType.ObjectPath = Demand.TargetObjectType.TrimStartAndEnd();
+		}
+		if (Context.Semantic.TargetObjectPinType.IsValid()
+			&& Context.Semantic.FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase))
+		{
+			FString TargetPinRef = Context.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_ref")).TrimStartAndEnd();
+			if (TargetPinRef.IsEmpty() && Demand.SourceSymbolIds.Num() > 0)
+			{
+				TargetPinRef = FString::Printf(TEXT("source_symbol:%s"), *Demand.SourceSymbolIds[0].TrimStartAndEnd());
+			}
+			if (TargetPinRef.IsEmpty() && !Demand.TargetPath.TrimStartAndEnd().IsEmpty())
+			{
+				TargetPinRef = FString::Printf(TEXT("target:%s"), *Demand.TargetPath.TrimStartAndEnd());
+			}
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("target_pin_ref"), TargetPinRef);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("linked_pin_type_category"), Context.Semantic.TargetObjectPinType.Category);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("linked_pin_type_object_path"), Context.Semantic.TargetObjectPinType.ObjectPath);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.target_pin_ref"), TargetPinRef);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.target_pin_type"), Context.Semantic.TargetObjectPinType.Category);
+			UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.target_pin_object_path"), Context.Semantic.TargetObjectPinType.ObjectPath);
+			if (!TargetPinRef.IsEmpty())
+			{
+				Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_ref")) = TargetPinRef;
+			}
+			if (!Context.Semantic.TargetObjectPinType.Category.TrimStartAndEnd().IsEmpty())
+			{
+				Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_type")) = Context.Semantic.TargetObjectPinType.Category.TrimStartAndEnd();
+			}
+			if (!Context.Semantic.TargetObjectPinType.ObjectPath.TrimStartAndEnd().IsEmpty())
+			{
+				Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.target_pin_object_path")) = Context.Semantic.TargetObjectPinType.ObjectPath.TrimStartAndEnd();
+			}
+		}
 
 		FBlueprintHelperCallFunctionPinType LinkedConsumerPinType;
 		if (!Context.Semantic.ExpectedReturnPinType.IsValid()

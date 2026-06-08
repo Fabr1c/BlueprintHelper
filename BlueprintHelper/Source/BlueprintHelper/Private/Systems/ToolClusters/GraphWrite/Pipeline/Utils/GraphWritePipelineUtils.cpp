@@ -643,9 +643,12 @@ void UGraphWritePipelineUtils::BuildSemanticExpressionFragments(
 	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->Left, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 	BuildSemanticExpressionFragments(TargetGraph, ActionContextScope, Expression->Right, GeneratedFragments, GeneratedFragmentIds, OutUnresolvedNodes, GeneratedNodeCount);
 
+	const bool bFieldAccessField = Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 	if (Expression->Kind == EBlueprintHelperGraphExpressionKind::Literal
 		|| (Expression->Kind == EBlueprintHelperGraphExpressionKind::Field
-			&& Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary))
+			&& Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary
+			&& !bFieldAccessField))
 	{
 		return;
 	}

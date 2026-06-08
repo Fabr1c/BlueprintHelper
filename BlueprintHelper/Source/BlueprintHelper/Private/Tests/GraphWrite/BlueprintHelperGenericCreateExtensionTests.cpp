@@ -5,6 +5,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
 
+#include "Blueprint/UserWidget.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -12,6 +13,7 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
 #include "K2Node.h"
+#include "K2Node_ConstructObjectFromClass.h"
 #include "K2Node_MakeArray.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
@@ -192,6 +194,98 @@ bool FBlueprintHelperGenericOpsMakeArrayJsonPinTypeFragmentTest::RunTest(const F
 	bPassed &= TestEqual(TEXT("make array output category"), OutputPin->PinType.PinCategory, UEdGraphSchema_K2::PC_String);
 	bPassed &= TestEqual(TEXT("make array output container"), OutputPin->PinType.ContainerType, EPinContainerType::Array);
 	bPassed &= TestEqual(TEXT("make array first input category"), FirstInputPin->PinType.PinCategory, UEdGraphSchema_K2::PC_String);
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGenericOpsCreateWidgetFragmentAppliesClassPathTest,
+	"BlueprintHelper.GraphWrite.GenericOps.Create.CreateWidgetFragmentAppliesClassPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGenericOpsCreateWidgetFragmentAppliesClassPathTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = MakeGenericCreateBlueprint();
+	UEdGraph* Graph = Blueprint && Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+	TestNotNull(TEXT("blueprint"), Blueprint);
+	TestNotNull(TEXT("graph"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphStatementIR Statement;
+	Statement.StatementId = MakeGenericCreateName(TEXT("Stmt"));
+	Statement.Path = TEXT("$.statements[0]");
+	Statement.Kind = EBlueprintHelperGraphStatementKind::Create;
+	Statement.PatternName = TEXT("create");
+	Statement.CreateOperation = TEXT("create_widget");
+	Statement.ClassPath = UUserWidget::StaticClass()->GetPathName();
+
+	FBlueprintHelperActionContextScope ActionContextScope;
+	FString ScopeError;
+	const bool bScopeBuilt = FBlueprintHelperGraphWriteTestUtils::BuildActionContextScopeForStatement(
+		*this,
+		Blueprint,
+		Graph,
+		Statement,
+		TEXT("create widget action context demands exist"),
+		TEXT("generic_create_extension_tests"),
+		TEXT("create_widget_class_path"),
+		ActionContextScope,
+		ScopeError);
+	TestTrue(TEXT("create widget action context scope builds"), bScopeBuilt);
+	if (!ScopeError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("scope error: %s"), *ScopeError));
+	}
+	if (!bScopeBuilt)
+	{
+		return false;
+	}
+
+	FBlueprintHelperNodeFragment Fragment;
+	FString BuildError;
+	const bool bBuilt = FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
+		Graph,
+		&ActionContextScope,
+		Statement,
+		Fragment,
+		BuildError);
+	TestTrue(TEXT("create widget fragment builds"), bBuilt);
+	if (!BuildError.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("build error: %s"), *BuildError));
+	}
+	if (!bBuilt)
+	{
+		return false;
+	}
+
+	UK2Node_ConstructObjectFromClass* CreateWidgetNode =
+		Cast<UK2Node_ConstructObjectFromClass>(Fragment.PrimaryNode);
+	TestNotNull(TEXT("create widget class-backed node"), CreateWidgetNode);
+	if (!CreateWidgetNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* ClassPin = CreateWidgetNode->GetClassPin();
+	UEdGraphPin* ResultPin = CreateWidgetNode->GetResultPin();
+	bool bPassed = true;
+	bPassed &= TestNotNull(TEXT("create widget class pin"), ClassPin);
+	bPassed &= TestNotNull(TEXT("create widget result pin"), ResultPin);
+	if (ClassPin)
+	{
+		bPassed &= TestTrue(
+			TEXT("create widget class pin default"),
+			ClassPin->DefaultObject == UUserWidget::StaticClass());
+	}
+	if (ResultPin)
+	{
+		bPassed &= TestTrue(
+			TEXT("create widget result pin type"),
+			ResultPin->PinType.PinSubCategoryObject.Get() == UUserWidget::StaticClass());
+	}
 	return bPassed;
 }
 

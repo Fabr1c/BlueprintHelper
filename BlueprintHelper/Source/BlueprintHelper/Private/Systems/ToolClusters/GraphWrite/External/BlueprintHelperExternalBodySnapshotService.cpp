@@ -39,6 +39,12 @@ namespace BlueprintHelperExternalBodySnapshot
 		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
 	}
 
+	struct FQueuedBodyNode
+	{
+		UEdGraphNode* Node = nullptr;
+		bool bFollowExecOutputs = false;
+	};
+
 	static FBlueprintHelperExternalBodyEndpoint MakeEndpoint(const UEdGraphPin* Pin)
 	{
 		FBlueprintHelperExternalBodyEndpoint Endpoint;
@@ -142,7 +148,25 @@ TArray<UEdGraphNode*> FBlueprintHelperExternalBodySnapshotService::CollectBodyNo
 	}
 
 	TSet<UEdGraphNode*> Visited;
-	TArray<UEdGraphNode*> Queue;
+	TSet<UEdGraphNode*> ExecScanned;
+	TSet<UEdGraphNode*> DataScanned;
+	TArray<BlueprintHelperExternalBodySnapshot::FQueuedBodyNode> Queue;
+	auto EnqueueBodyNode = [&BodyNodes, &EntryNode, &Queue, &Visited](
+		UEdGraphNode* Node,
+		const bool bFollowExecOutputs)
+	{
+		if (!Node || Node == EntryNode)
+		{
+			return;
+		}
+		if (!Visited.Contains(Node))
+		{
+			Visited.Add(Node);
+			BodyNodes.Add(Node);
+		}
+		Queue.Add({ Node, bFollowExecOutputs });
+	};
+
 	for (UEdGraphPin* Pin : EntryNode->Pins)
 	{
 		if (!BlueprintHelperExternalBodySnapshot::IsExecPin(Pin) || Pin->Direction != EGPD_Output)
@@ -152,36 +176,56 @@ TArray<UEdGraphNode*> FBlueprintHelperExternalBodySnapshotService::CollectBodyNo
 		for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
 		{
 			UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
-			if (LinkedNode && LinkedNode != EntryNode && !Visited.Contains(LinkedNode))
-			{
-				Visited.Add(LinkedNode);
-				Queue.Add(LinkedNode);
-			}
+			EnqueueBodyNode(LinkedNode, true);
 		}
 	}
 
 	for (int32 Index = 0; Index < Queue.Num(); ++Index)
 	{
-		UEdGraphNode* Node = Queue[Index];
+		UEdGraphNode* Node = Queue[Index].Node;
 		if (!Node)
 		{
 			continue;
 		}
-		BodyNodes.Add(Node);
+
+		if (Queue[Index].bFollowExecOutputs && !ExecScanned.Contains(Node))
+		{
+			ExecScanned.Add(Node);
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				if (!BlueprintHelperExternalBodySnapshot::IsExecPin(Pin) || Pin->Direction != EGPD_Output)
+				{
+					continue;
+				}
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					EnqueueBodyNode(LinkedPin ? LinkedPin->GetOwningNode() : nullptr, true);
+				}
+			}
+		}
+
+		if (DataScanned.Contains(Node))
+		{
+			continue;
+		}
+		DataScanned.Add(Node);
 		for (UEdGraphPin* Pin : Node->Pins)
 		{
-			if (!BlueprintHelperExternalBodySnapshot::IsExecPin(Pin) || Pin->Direction != EGPD_Output)
+			if (!Pin
+				|| Pin->Direction != EGPD_Input
+				|| BlueprintHelperExternalBodySnapshot::IsExecPin(Pin))
 			{
 				continue;
 			}
 			for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
 			{
-				UEdGraphNode* LinkedNode = LinkedPin ? LinkedPin->GetOwningNode() : nullptr;
-				if (LinkedNode && LinkedNode != EntryNode && !Visited.Contains(LinkedNode))
+				if (!LinkedPin
+					|| LinkedPin->Direction != EGPD_Output
+					|| BlueprintHelperExternalBodySnapshot::IsExecPin(LinkedPin))
 				{
-					Visited.Add(LinkedNode);
-					Queue.Add(LinkedNode);
+					continue;
 				}
+				EnqueueBodyNode(LinkedPin->GetOwningNode(), false);
 			}
 		}
 	}

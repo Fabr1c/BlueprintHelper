@@ -2,6 +2,8 @@
 
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 
@@ -70,6 +72,81 @@ static FString BlueprintHelperResolveK2BlockRef(
 		return BlockId.Mid(Prefix.Len());
 	}
 	return FallbackTargetRef;
+}
+
+static bool BlueprintHelperIsK2ExecPin(const UEdGraphPin* Pin)
+{
+	return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec;
+}
+
+static void BlueprintHelperAppendK2BlockBoundaryNodes(FBlueprintHelperGraphBodyTarget& InOutTarget)
+{
+	TSet<UEdGraphNode*> DeletableNodeSet;
+	for (UEdGraphNode* Node : InOutTarget.DeletableNodes)
+	{
+		if (Node)
+		{
+			DeletableNodeSet.Add(Node);
+		}
+	}
+	if (DeletableNodeSet.Num() == 0)
+	{
+		return;
+	}
+
+	for (UEdGraphNode* Node : InOutTarget.DeletableNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!BlueprintHelperIsK2ExecPin(Pin))
+			{
+				continue;
+			}
+
+			for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+			{
+				if (!BlueprintHelperIsK2ExecPin(LinkedPin))
+				{
+					continue;
+				}
+
+				UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+				if (!LinkedNode || DeletableNodeSet.Contains(LinkedNode))
+				{
+					continue;
+				}
+
+				if (Pin->Direction == EGPD_Input && LinkedPin->Direction == EGPD_Output)
+				{
+					InOutTarget.EntryBoundaryNodes.AddUnique(LinkedNode);
+					InOutTarget.ProtectedNodes.AddUnique(LinkedNode);
+				}
+				else if (Pin->Direction == EGPD_Output && LinkedPin->Direction == EGPD_Input)
+				{
+					InOutTarget.ExitBoundaryNodes.AddUnique(LinkedNode);
+					InOutTarget.ProtectedNodes.AddUnique(LinkedNode);
+				}
+			}
+		}
+	}
+}
+
+static void BlueprintHelperAppendK2BoundaryRefs(
+	const TArray<UEdGraphNode*>& Nodes,
+	TArray<FString>& OutRefs)
+{
+	for (UEdGraphNode* Node : Nodes)
+	{
+		if (Node)
+		{
+			OutRefs.AddUnique(FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node));
+		}
+	}
 }
 
 FBlueprintHelperK2BlockBodyAdapter::FBlueprintHelperK2BlockBodyAdapter()
@@ -181,6 +258,7 @@ bool FBlueprintHelperK2BlockBodyAdapter::ResolveTarget(
 			: FString::Printf(TEXT("Target block %s was not found or is not owned by BlueprintHelper."), *SearchBlockId);
 		return false;
 	}
+	BlueprintHelperAppendK2BlockBoundaryNodes(OutTarget);
 	OutTarget.EntryName = FoundBlockRef;
 
 	OutTarget.BodyIdentity = FString::Printf(
@@ -281,6 +359,9 @@ FBlueprintHelperGraphBodyBoundaryModel FBlueprintHelperK2BlockBodyAdapter::Build
 		}
 		Boundary.DeletableNodeRefs.AddUnique(FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node));
 	}
+	BlueprintHelperAppendK2BoundaryRefs(Target.EntryBoundaryNodes, Boundary.EntryNodeRefs);
+	BlueprintHelperAppendK2BoundaryRefs(Target.ExitBoundaryNodes, Boundary.ExitNodeRefs);
+	BlueprintHelperAppendK2BoundaryRefs(Target.ProtectedNodes, Boundary.ProtectedNodeRefs);
 	return Boundary;
 }
 

@@ -136,6 +136,18 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForStatement(
 			? Statement.TargetObject->ResolvedTarget.Raw
 			: Statement.TargetObject->Target;
 	}
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
+		&& FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase))
+	{
+		if (!Statement.ResolvedTarget.Type.IsEmpty())
+		{
+			Demand.TargetObjectType = Statement.ResolvedTarget.Type;
+		}
+		if (!Statement.Target.TrimStartAndEnd().IsEmpty())
+		{
+			Demand.SourceSymbolIds.AddUnique(Statement.Target.TrimStartAndEnd().ToLower());
+		}
+	}
 	UGraphWriteActionContextUtils::ApplyEventDelegateStatementEvidence(Statement, Demand);
 
 	if (Demand.SemanticKind != EBlueprintHelperActionSemanticKind::Unknown)
@@ -172,8 +184,11 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	const FString& OwnerStatementId,
 	TArray<FBlueprintHelperActionContextDemand>& OutDemands)
 {
+	const bool bTemporaryFieldAccessExpression = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& Expression.FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
-		&& Expression.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary)
+		&& Expression.ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary
+		&& !bTemporaryFieldAccessExpression)
 	{
 		if (Expression.TargetObject.IsValid())
 		{
@@ -197,6 +212,8 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 	const FString FieldScope = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
 		? Expression.FieldScope
 		: FString();
+	const bool bFieldAccessExpression = Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 	const FString StableId = Expression.ExpressionId.IsEmpty()
 		? UGraphWriteActionContextUtils::DemandIdFromPath(TEXT("expression"), Expression.Path)
 		: Expression.ExpressionId;
@@ -213,9 +230,11 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		FirstNonEmpty(
 			Expression.Property,
 			Expression.ResolvedTarget.PropertyPath),
-		FirstNonEmpty(
-			Expression.Type,
-			Expression.ResolvedTarget.Type),
+		bFieldAccessExpression
+			? Expression.Type
+			: FirstNonEmpty(
+				Expression.Type,
+				Expression.ResolvedTarget.Type),
 		Expression.SearchMode,
 		Expression.AmbiguityPolicy,
 		Expression.CategoryPriority,
@@ -254,6 +273,17 @@ void FBlueprintHelperActionContextDemandCollector::AppendDemandForExpression(
 		Demand.BindingObjectPath = !Expression.TargetObject->ResolvedTarget.Raw.IsEmpty()
 			? Expression.TargetObject->ResolvedTarget.Raw
 			: Expression.TargetObject->Target;
+	}
+	if (bFieldAccessExpression)
+	{
+		if (!Expression.ResolvedTarget.Type.IsEmpty())
+		{
+			Demand.TargetObjectType = Expression.ResolvedTarget.Type;
+		}
+		if (!Expression.Target.TrimStartAndEnd().IsEmpty())
+		{
+			Demand.SourceSymbolIds.AddUnique(Expression.Target.TrimStartAndEnd().ToLower());
+		}
 	}
 	UGraphWriteActionContextUtils::ApplyEventDelegateExpressionEvidence(Expression, Demand);
 

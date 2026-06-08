@@ -305,6 +305,12 @@ static bool StatementResultSymbolRequiresTypeEvidence(const FBlueprintHelperGrap
 
 static FString ResolveStatementResultEndpointType(const FBlueprintHelperGraphStatementIR& Statement)
 {
+	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Create
+		&& !Statement.ClassPath.IsEmpty())
+	{
+		return Statement.ClassPath;
+	}
+
 	const FString ContainerResultType = FBlueprintHelperGraphStatementTypeUtils::ResolveContainerActionResultTypeToken(
 		Statement.ContainerKind,
 		Statement.ContainerOperation,
@@ -682,7 +688,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		ConnectExpressionToInput(
 			Expression->TargetObject,
 			Expression->TargetObject->Path,
-			TEXT("target"),
+			TEXT("target_object"),
 			Expression->TargetObject->Type,
 			FragmentId,
 			State,
@@ -758,7 +764,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		ConnectExpressionToInput(
 			Expression->TargetObject,
 			Expression->TargetObject->Path,
-			TEXT("target"),
+			TEXT("target_object"),
 			Expression->TargetObject->Type,
 			FragmentId,
 			State,
@@ -813,6 +819,16 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		const bool bPropertyPathField = Expression->FieldScope.Equals(TEXT("property_path"), ESearchCase::IgnoreCase);
 		const bool bComponentRefField = Expression->FieldScope.Equals(TEXT("component_ref"), ESearchCase::IgnoreCase);
 		const bool bFieldAccessField = Expression->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
+		const bool bSelfField = !bPropertyPathField
+			&& !bComponentRefField
+			&& !bFieldAccessField
+			&& (Expression->Target.Equals(TEXT("self"), ESearchCase::IgnoreCase)
+				|| Expression->ResolvedTarget.Member.Equals(TEXT("self"), ESearchCase::IgnoreCase));
+		if (bSelfField)
+		{
+			FBlueprintHelperGraphFragmentRef& Fragment = AddExpressionFragment(*Expression, TEXT("expr_self"), TEXT("self"), State);
+			return MakeExpressionProducer(*Expression, Fragment, TEXT("self"), Expression->Type);
+		}
 		if (!bPropertyPathField && !bComponentRefField && !bFieldAccessField)
 		{
 			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer Producer;
@@ -822,7 +838,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 				return Producer;
 			}
 		}
-		if (Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary)
+		if (Expression->ResolvedTarget.Kind == EBlueprintHelperGraphTargetKind::Temporary && !bFieldAccessField)
 		{
 			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer Producer;
 			const FString SymbolName = !Expression->Target.IsEmpty() ? Expression->Target : Expression->Name;
@@ -853,11 +869,23 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 			ConnectExpressionToInput(
 				Expression->TargetObject,
 				Expression->TargetObject->Path,
-				TEXT("target"),
+				bFieldAccessField ? TEXT("self") : TEXT("target"),
 				Expression->TargetObject->Type,
 				Fragment.FragmentId,
 				State,
 				SymbolScopes);
+		}
+		if (bFieldAccessField && !Expression->TargetObject.IsValid() && !Expression->Target.TrimStartAndEnd().IsEmpty())
+		{
+			FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer TargetProducer;
+			if (FindSymbolProducer(Expression->Target, SymbolScopes, TargetProducer))
+			{
+				AddDataEdge(
+					State,
+					TargetProducer,
+					MakeDataInput(Fragment.FragmentId, TEXT("self"), !TargetProducer.Type.IsEmpty() ? TargetProducer.Type : Expression->ResolvedTarget.Type),
+					Expression->Path + TEXT(".target"));
+			}
 		}
 		return MakeExpressionProducer(*Expression, Fragment, TEXT("value"), Expression->Type);
 	}
@@ -1094,13 +1122,17 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	const FString FragmentId = Fragment.FragmentId;
 	Flow.Entries.Add(MakeExecEntry(FragmentId));
 	Flow.Exits.Add(MakeExecExit(FragmentId));
+	const bool bStatementFieldAccess = Statement->Kind == EBlueprintHelperGraphStatementKind::Field
+		&& Statement->FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase);
 
 	ConnectExpressionMapToInputs(Statement->Args, Statement->Path + TEXT(".args"), FragmentId, State, SymbolScopes);
 	if (Statement->TargetObject.IsValid())
 	{
-		const TCHAR* TargetInputName = Statement->Kind == EBlueprintHelperGraphStatementKind::Call
+		const TCHAR* TargetInputName = bStatementFieldAccess
+			? TEXT("self")
+			: (Statement->Kind == EBlueprintHelperGraphStatementKind::Call
 			? TEXT("target_object")
-			: TEXT("target");
+			: TEXT("target"));
 		ConnectExpressionToInput(
 			Statement->TargetObject,
 			Statement->TargetObject->Path,
@@ -1109,6 +1141,18 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 			FragmentId,
 			State,
 			SymbolScopes);
+	}
+	if (bStatementFieldAccess && !Statement->TargetObject.IsValid() && !Statement->Target.TrimStartAndEnd().IsEmpty())
+	{
+		FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer TargetProducer;
+		if (FindSymbolProducer(Statement->Target, SymbolScopes, TargetProducer))
+		{
+			AddDataEdge(
+				State,
+				TargetProducer,
+				MakeDataInput(FragmentId, TEXT("self"), !TargetProducer.Type.IsEmpty() ? TargetProducer.Type : Statement->ResolvedTarget.Type),
+				Statement->Path + TEXT(".target"));
+		}
 	}
 	if (Statement->Value.IsValid())
 	{

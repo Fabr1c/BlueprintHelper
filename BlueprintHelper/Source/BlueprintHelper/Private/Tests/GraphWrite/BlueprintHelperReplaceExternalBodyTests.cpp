@@ -21,6 +21,7 @@
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
@@ -236,6 +237,32 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeVariableGetExpression(const FString& VariableName)
+	{
+		TSharedRef<FJsonObject> Expression = MakeShared<FJsonObject>();
+		Expression->SetStringField(TEXT("kind"), TEXT("get"));
+		Expression->SetStringField(TEXT("target"), VariableName);
+		return Expression;
+	}
+
+	static TSharedRef<FJsonObject> MakeVariableSetLogicSpec(const FString& TargetVariable, const FString& SourceVariable)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("field"));
+		Statement->SetStringField(TEXT("field_operation"), TEXT("set"));
+		Statement->SetStringField(TEXT("field_scope"), TEXT("variable"));
+		Statement->SetStringField(TEXT("target"), TargetVariable);
+		Statement->SetObjectField(TEXT("value"), MakeVariableGetExpression(SourceVariable));
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static bool BuildBodyEntryAnchor(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
@@ -289,6 +316,39 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
 		Payload->SetStringField(TEXT("feature_name"), TEXT("ReplaceExternalBodyTest"));
 		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplacePayloadWithBody(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FBlueprintHelperExternalGraphAnchor& Anchor,
+		const FString& ExpectedBodyFingerprint,
+		const FString& Scope,
+		const TSharedRef<FJsonObject>& Body,
+		bool bDryRun)
+	{
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : FString());
+		Target->SetStringField(TEXT("graph"), Graph ? Graph->GetName() : FString());
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("target"), Target);
+		Payload->SetStringField(TEXT("scope"), Scope);
+		Payload->SetObjectField(TEXT("anchor"), Anchor.ToJson());
+		Payload->SetObjectField(TEXT("body"), Body);
+		Payload->SetStringField(TEXT("expected_body_fingerprint"), ExpectedBodyFingerprint);
+		Payload->SetBoolField(TEXT("require_full_dry_run"), true);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		Payload->SetStringField(TEXT("feature_name"), TEXT("ReplaceExternalBodyVariableSetTest"));
+		return Payload;
+	}
+
+	static void AddFloatMemberVariable(UBlueprint* Blueprint, const FString& VariableName)
+	{
+		FEdGraphPinType PinType;
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+		PinType.PinSubCategory = UEdGraphSchema_K2::PC_Float;
+		FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*VariableName), PinType);
 	}
 
 	struct FExternalBodyFixture
@@ -365,6 +425,58 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		}
 		return nullptr;
 	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalBodySnapshotIncludesUpstreamDataDependenciesTest,
+	"BlueprintHelper.GraphWrite.ExternalBodyReplace.SnapshotIncludesUpstreamDataDependencies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalBodySnapshotIncludesUpstreamDataDependenciesTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("SnapshotIncludesUpstreamDataDependencies"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EntryNode = AddCustomEventNode(Graph, TEXT("ExternalBodyDataDependencyEntry"));
+	UEdGraphNode* BodyNode = AddGenericNodeWithPins(Graph);
+	UEdGraphNode* DataProducerNode = AddGenericNodeWithPins(Graph);
+	UEdGraphNode* UpstreamDataProducerNode = AddGenericNodeWithPins(Graph);
+	if (!Blueprint || !Graph || !EntryNode || !BodyNode || !DataProducerNode || !UpstreamDataProducerNode)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("body is reachable from entry"),
+		ForceConnectPins(FindExecPin(EntryNode, EGPD_Output), FindExecPin(BodyNode, EGPD_Input)));
+	TestTrue(TEXT("body consumes upstream data producer"),
+		ForceConnectPins(FindPinByName(DataProducerNode, TEXT("value")), FindPinByName(BodyNode, TEXT("input_value"))));
+	TestTrue(TEXT("upstream data producer is recursive"),
+		ForceConnectPins(FindPinByName(UpstreamDataProducerNode, TEXT("value")), FindPinByName(DataProducerNode, TEXT("input_value"))));
+
+	FBlueprintHelperExternalBodySnapshotService SnapshotService;
+	FBlueprintHelperExternalBodySnapshot Snapshot;
+	FString SnapshotError;
+	TestTrue(TEXT("snapshot captures body"),
+		SnapshotService.CaptureBody(Graph, EntryNode, Snapshot, SnapshotError));
+	TestEqual(TEXT("snapshot has no error"), SnapshotError, FString());
+
+	const FString BodyNodeGuid = BodyNode->NodeGuid.ToString(EGuidFormats::Digits);
+	const FString DataProducerGuid = DataProducerNode->NodeGuid.ToString(EGuidFormats::Digits);
+	const FString UpstreamDataProducerGuid = UpstreamDataProducerNode->NodeGuid.ToString(EGuidFormats::Digits);
+	TestTrue(TEXT("exec body node is captured"), Snapshot.BodyNodeGuids.Contains(BodyNodeGuid));
+	TestTrue(TEXT("direct upstream data producer is captured"), Snapshot.BodyNodeGuids.Contains(DataProducerGuid));
+	TestTrue(TEXT("recursive upstream data producer is captured"), Snapshot.BodyNodeGuids.Contains(UpstreamDataProducerGuid));
+	TestEqual(TEXT("upstream data links are internal to the body"), Snapshot.BodyToExternalLinks.Num(), 0);
+
+	FBlueprintHelperExternalDependentsAnalysisService DependentsAnalysisService;
+	FBlueprintHelperExternalDependentsAnalysis Analysis;
+	FString AnalysisError;
+	TestTrue(TEXT("dependents analysis succeeds"),
+		DependentsAnalysisService.Analyze(Graph, Snapshot, Analysis, AnalysisError));
+	TestTrue(TEXT("upstream data dependency body is supported"), Analysis.bSupported);
+	TestEqual(TEXT("analysis has no unsupported dependents"), Analysis.UnsupportedDependents.Num(), 0);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -452,6 +564,56 @@ bool FBlueprintHelperReplaceExternalBodyExecutePreservesEntryTest::RunTest(const
 		MetaData.GetValue(Fixture.EntryNode, TEXT("BlueprintHelperOwned")).IsEmpty());
 	TestTrue(TEXT("external entry has no replacement block id"),
 		MetaData.GetValue(Fixture.EntryNode, TEXT("BlueprintHelperBlockId")).IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReplaceExternalBodyExecuteAcceptsVariableSetBodyTest,
+	"BlueprintHelper.GraphWrite.ExternalBodyReplace.CustomEventExecuteAcceptsVariableSetBody",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperReplaceExternalBodyExecuteAcceptsVariableSetBodyTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	FExternalBodyFixture Fixture = MakeExternalBodyFixture(TEXT("CustomEventExecuteAcceptsVariableSetBody"));
+	if (!Fixture.Blueprint || !Fixture.Graph || !Fixture.EntryNode || !Fixture.BodyNode)
+	{
+		return false;
+	}
+
+	AddFloatMemberVariable(Fixture.Blueprint, TEXT("CurrentHealth"));
+	AddFloatMemberVariable(Fixture.Blueprint, TEXT("MaxHealth"));
+
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperExternalBodySnapshotService SnapshotService;
+	FBlueprintHelperExternalDependentsAnalysisService DependentsAnalysisService;
+	FBlueprintHelperReplaceExternalBodyService Service = MakeService(
+		BlockIdService,
+		OwnershipService,
+		SnapshotService,
+		DependentsAnalysisService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeReplacePayloadWithBody(
+		Fixture.Blueprint,
+		Fixture.Graph,
+		Fixture.Anchor,
+		Fixture.BodyFingerprint,
+		TEXT("custom_event_body"),
+		MakeVariableSetLogicSpec(TEXT("CurrentHealth"), TEXT("MaxHealth")),
+		false));
+
+	if (!Result.bOk && Result.Error.IsSet())
+	{
+		AddError(FString::Printf(
+			TEXT("replace_external_body failed with code=%s message=%s"),
+			*Result.Error->Code,
+			*Result.Error->Message));
+	}
+	TestTrue(TEXT("execute ok"), Result.bOk);
+	TestEqual(TEXT("old body removed"), CountCallFunctionNodes(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor)), 0);
+	TestTrue(TEXT("entry exec links to replacement variable set"), FindExecPin(Fixture.EntryNode, EGPD_Output)->LinkedTo.Num() > 0);
 	return true;
 }
 

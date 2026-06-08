@@ -8,9 +8,11 @@
 #include "Engine/Blueprint.h"
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_ConstructObjectFromClass.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_MakeContainer.h"
 #include "K2Node_PromotableOperator.h"
+#include "K2Node_Self.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintGraphWriteFacade.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
@@ -35,6 +37,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentWrappers.h"
+#include "UObject/SoftObjectPath.h"
 
 static void ApplyCallPatternBindings(FBlueprintHelperGraphFragmentBuildRequest& Request)
 {
@@ -297,6 +300,85 @@ static void ApplyCreateActionRequestOverrides(
 		InOutRequest.Semantic.ArgumentTypes.Add(TEXT("value"), DescribeCreatePinTypeEvidence(ValuePinType, BoundRequest.ValuePinType));
 		InOutRequest.Semantic.ContainerValuePinType = ValuePinType;
 	}
+}
+
+static bool IsClassBackedCreateOperation(const FString& CreateOperation)
+{
+	const FString NormalizedOperation = CreateOperation.TrimStartAndEnd().ToLower();
+	return NormalizedOperation.Equals(TEXT("create_widget"), ESearchCase::IgnoreCase)
+		|| NormalizedOperation.Equals(TEXT("spawn_actor"), ESearchCase::IgnoreCase)
+		|| NormalizedOperation.Equals(TEXT("construct_object"), ESearchCase::IgnoreCase);
+}
+
+static UClass* ResolveCreateClassPath(const FString& ClassPath)
+{
+	const FString CleanClassPath = ClassPath.TrimStartAndEnd();
+	if (CleanClassPath.IsEmpty())
+	{
+		return nullptr;
+	}
+	if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *CleanClassPath))
+	{
+		return LoadedClass;
+	}
+	return FSoftClassPath(CleanClassPath).TryLoadClass<UObject>();
+}
+
+static bool ConfigureClassBackedCreateNode(
+	UK2Node& SpawnedNode,
+	const FString& CreateOperation,
+	const FString& ClassPath,
+	FString& OutError)
+{
+	if (!IsClassBackedCreateOperation(CreateOperation) || ClassPath.TrimStartAndEnd().IsEmpty())
+	{
+		return true;
+	}
+
+	UK2Node_ConstructObjectFromClass* ConstructNode = Cast<UK2Node_ConstructObjectFromClass>(&SpawnedNode);
+	if (!ConstructNode)
+	{
+		OutError = FString::Printf(
+			TEXT("create node class configuration failed: operation '%s' did not spawn a class-backed construct node."),
+			*CreateOperation);
+		return false;
+	}
+
+	UClass* ResolvedClass = ResolveCreateClassPath(ClassPath);
+	if (!ResolvedClass)
+	{
+		OutError = FString::Printf(
+			TEXT("create node class configuration failed: could not resolve class_path '%s'."),
+			*ClassPath);
+		return false;
+	}
+
+	UEdGraphPin* ClassPin = ConstructNode->GetClassPin();
+	if (!ClassPin)
+	{
+		OutError = FString::Printf(
+			TEXT("create node class configuration failed: operation '%s' spawned node without a class pin."),
+			*CreateOperation);
+		return false;
+	}
+
+	if (UClass* BaseClass = Cast<UClass>(ClassPin->PinType.PinSubCategoryObject.Get()))
+	{
+		if (!ResolvedClass->IsChildOf(BaseClass))
+		{
+			OutError = FString::Printf(
+				TEXT("create node class configuration failed: class_path '%s' is not a child of required base '%s'."),
+				*ResolvedClass->GetPathName(),
+				*BaseClass->GetPathName());
+			return false;
+		}
+	}
+
+	ClassPin->DefaultObject = ResolvedClass;
+	ClassPin->DefaultValue.Reset();
+	ClassPin->DefaultTextValue = FText::GetEmpty();
+	ConstructNode->PinDefaultValueChanged(ClassPin);
+	return true;
 }
 
 static FString NormalizeContainerToken(const FString& Token)
@@ -1279,6 +1361,54 @@ static bool BuildDeconstructExpressionFragment(
 	PopulateStructExpressionFragment(Expression, SpawnedNode, TEXT("deconstruct"), OutFragment);
 	return true;
 }
+
+static bool IsSelfReceiverExpression(const FBlueprintHelperGraphExpressionIR& Expression)
+{
+	const FString FieldScope = Expression.FieldScope.IsEmpty() ? TEXT("variable") : Expression.FieldScope;
+	return Expression.Kind == EBlueprintHelperGraphExpressionKind::Field
+		&& FieldScope.Equals(TEXT("variable"), ESearchCase::IgnoreCase)
+		&& (Expression.Target.Equals(TEXT("self"), ESearchCase::IgnoreCase)
+			|| Expression.ResolvedTarget.Member.Equals(TEXT("self"), ESearchCase::IgnoreCase));
+}
+
+static bool BuildSelfReceiverExpressionFragment(
+	UEdGraph* TargetGraph,
+	const FBlueprintHelperGraphExpressionIR& Expression,
+	FBlueprintHelperNodeFragment& OutFragment,
+	FString& OutError)
+{
+	if (!TargetGraph)
+	{
+		OutError = TEXT("self receiver fragment build failed: target graph is null.");
+		return false;
+	}
+
+	UK2Node_Self* SelfNode = NewObject<UK2Node_Self>(TargetGraph);
+	if (!SelfNode)
+	{
+		OutError = TEXT("self receiver fragment build failed: could not allocate UK2Node_Self.");
+		return false;
+	}
+
+	TargetGraph->Modify();
+	TargetGraph->AddNode(SelfNode, true, false);
+	SelfNode->CreateNewGuid();
+	SelfNode->SetFlags(RF_Transactional);
+	SelfNode->PostPlacedNewNode();
+	SelfNode->AllocateDefaultPins();
+
+	OutFragment = FBlueprintHelperNodeFragment();
+	OutFragment.FragmentId = FBlueprintHelperGraphStatementTypeUtils::MakeExpressionFragmentId(Expression);
+	OutFragment.SourceStatementId = Expression.ExpressionId;
+	OutFragment.PrimaryNode = SelfNode;
+	OutFragment.Nodes.Add(SelfNode);
+	FBlueprintHelperActionFragmentBuildUtils::PopulateActionProviderFragmentPins(SelfNode, OutFragment);
+	OutFragment.OwnershipTags.Add(TEXT("expression_id"), Expression.ExpressionId);
+	OutFragment.OwnershipTags.Add(TEXT("semantic_kind"), TEXT("self_receiver"));
+	OutFragment.ReviewTargets.Add(Expression.ExpressionId);
+	return true;
+}
+
 bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	UEdGraph* TargetGraph,
 	const FBlueprintHelperGraphFragmentBuildRequest& Request,
@@ -1564,6 +1694,14 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 	FBlueprintHelperActionNodeSpawnOptions SpawnOptions;
 	SpawnOptions.NodeId = Request.FragmentId;
 	SpawnOptions.DefaultValues = Request.DefaultValues;
+	SpawnOptions.NodeConfigurationHook =
+		[CreateOperation = Request.CreateOperation, ClassPath = Request.ClassPath](
+			UK2Node& SpawnedNode,
+			const FBlueprintHelperActionNodeSpawnContext&,
+			FString& HookError)
+	{
+		return ConfigureClassBackedCreateNode(SpawnedNode, CreateOperation, ClassPath, HookError);
+	};
 	UK2Node* SpawnedNode = FBlueprintHelperActionNodeSpawnerAdapter::InvokeSelectedSpawner(
 		TargetGraph,
 		ActionResult,
@@ -1981,6 +2119,11 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 	const EBlueprintHelperActionSemanticKind SemanticKind = ResolveActionSemanticKindForExpressionKind(Expression.Kind);
 	if (Expression.Kind == EBlueprintHelperGraphExpressionKind::Field)
 	{
+		if (IsSelfReceiverExpression(Expression))
+		{
+			return BuildSelfReceiverExpressionFragment(TargetGraph, Expression, OutFragment, OutError);
+		}
+
 		if (!Expression.CapabilityId.TrimStartAndEnd().IsEmpty())
 		{
 			FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromExpression(Expression);

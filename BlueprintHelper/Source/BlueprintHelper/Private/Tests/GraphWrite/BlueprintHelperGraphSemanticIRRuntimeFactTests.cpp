@@ -6,6 +6,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphSemanticIRUtils.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -119,6 +120,38 @@ public:
 		Statement->SetStringField(TEXT("kind"), TEXT("call"));
 		Statement->SetStringField(TEXT("target"), TEXT("K2_SetRelativeRotation"));
 		Statement->SetObjectField(TEXT("target_object"), TargetObject);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
+	static TSharedRef<FJsonObject> MakeLogicSpecWithTargetObjectCallExpression()
+	{
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+
+		TSharedRef<FJsonObject> TargetObject = MakeShared<FJsonObject>();
+		TargetObject->SetStringField(TEXT("kind"), TEXT("get"));
+		TargetObject->SetStringField(TEXT("target"), TEXT("self"));
+		TargetObject->SetStringField(TEXT("type"), TEXT("/Script/Engine.Actor"));
+
+		TSharedRef<FJsonObject> GetVelocity = MakeShared<FJsonObject>();
+		GetVelocity->SetStringField(TEXT("id"), TEXT("expr_get_velocity"));
+		GetVelocity->SetStringField(TEXT("kind"), TEXT("call"));
+		GetVelocity->SetStringField(TEXT("target"), TEXT("GetVelocity"));
+		GetVelocity->SetStringField(TEXT("type"), TEXT("Vector"));
+		GetVelocity->SetObjectField(TEXT("target_object"), TargetObject);
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("A"), GetVelocity);
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), TEXT("stmt_vsize"));
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("/Script/Engine.KismetMathLibrary:VSize"));
+		Statement->SetObjectField(TEXT("args"), Args);
 
 		TArray<TSharedPtr<FJsonValue>> Statements;
 		Statements.Add(MakeShared<FJsonValueObject>(Statement));
@@ -642,6 +675,89 @@ bool FBlueprintHelperGraphSemanticIRTargetObject_UsesDedicatedDagPort::RunTest(c
 
 	TestEqual(TEXT("target_object uses dedicated port"), Dag.DataEdges[0].To.PinName, FString(TEXT("target_object")));
 	TestNotEqual(TEXT("target_object is not a callable arg named target"), Dag.DataEdges[0].To.PinName, FString(TEXT("target")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRTargetObject_ExpressionUsesDedicatedDagPort,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.TargetObject.ExpressionUsesDedicatedDagPort",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRTargetObject_ExpressionUsesDedicatedDagPort::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithTargetObjectCallExpression(),
+		IR);
+	TestTrue(TEXT("target_object call expression logic spec builds"), bBuilt);
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("target_object call expression dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	const bool bExpressionUsesTargetObjectPort = Dag.DataEdges.ContainsByPredicate(
+		[](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.To.FragmentId == TEXT("expr_get_velocity")
+				&& Edge.To.PinName == TEXT("target_object");
+		});
+	const bool bExpressionUsesLegacyTargetPort = Dag.DataEdges.ContainsByPredicate(
+		[](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.To.FragmentId == TEXT("expr_get_velocity")
+				&& Edge.To.PinName == TEXT("target");
+		});
+
+	TestTrue(TEXT("call expression target_object uses dedicated port"), bExpressionUsesTargetObjectPort);
+	TestFalse(TEXT("call expression target_object is not a callable arg named target"), bExpressionUsesLegacyTargetPort);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphSemanticIRTargetObject_SelfReceiverResolvesInContext,
+	"BlueprintHelper.GraphWrite.GraphSemanticIR.TargetObject.SelfReceiverResolvesInContext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphSemanticIRTargetObject_SelfReceiverResolvesInContext::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphSemanticContext Context;
+	Context.VariableNames.Add(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(TEXT("CurrentHealth")));
+	Context.TargetTypes.Add(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(TEXT("CurrentHealth")), TEXT("float"));
+	Context.FunctionNames.Add(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(TEXT("GetVelocity")));
+	Context.FunctionNames.Add(FBlueprintHelperGraphSemanticIRUtils::NormalizeSymbolKey(TEXT("VSize")));
+
+	FBlueprintHelperGraphSemanticIR IR;
+	const bool bBuilt = FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::MakeLogicSpecWithTargetObjectCallExpression(),
+		Context,
+		IR);
+	TestTrue(TEXT("target_object self receiver builds in Blueprint context"), bBuilt);
+	TestFalse(TEXT("self receiver has no target_unverified diagnostic"),
+		FBlueprintHelperGraphSemanticIRRuntimeFactTestsLocalUtils::HasDiagnosticCode(IR, TEXT("target_unverified")));
+	if (IR.Statements.Num() == 0 || !IR.Statements[0].IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FBlueprintHelperGraphExpressionIR>* GetVelocityExpression = IR.Statements[0]->Args.Find(TEXT("A"));
+	TestTrue(TEXT("GetVelocity expression exists"), GetVelocityExpression && GetVelocityExpression->IsValid());
+	if (!GetVelocityExpression || !GetVelocityExpression->IsValid() || !(*GetVelocityExpression)->TargetObject.IsValid())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperGraphResolvedTarget& SelfTarget = (*GetVelocityExpression)->TargetObject->ResolvedTarget;
+	TestEqual(TEXT("self target is preserved"), SelfTarget.Member, FString(TEXT("self")));
+	TestTrue(TEXT("self target is verified"), SelfTarget.bVerifiedByContext);
+
+	FBlueprintHelperGraphFragmentDag Dag;
+	TestTrue(TEXT("self receiver target_object dag builds"), FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(IR, Dag));
+	const bool bSelfFeedsTargetObject = Dag.DataEdges.ContainsByPredicate(
+		[](const FBlueprintHelperGraphFragmentDataEdge& Edge)
+		{
+			return Edge.From.PinName == TEXT("self")
+				&& Edge.To.FragmentId == TEXT("expr_get_velocity")
+				&& Edge.To.PinName == TEXT("target_object");
+		});
+	TestTrue(TEXT("self receiver feeds target_object from self output"), bSelfFeedsTargetObject);
 	return true;
 }
 

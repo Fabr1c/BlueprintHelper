@@ -489,7 +489,16 @@ const FProperty* UGraphWriteActionResolverUtils::FindVariableProperty(UBlueprint
 UClass* UGraphWriteActionResolverUtils::FindClassByPath_FieldVarResolver(const FString& ClassPath)
 {
     const FString CleanPath = ClassPath.TrimStartAndEnd();
-    return CleanPath.IsEmpty() ? nullptr : FindObject<UClass>(nullptr, *CleanPath);
+    if (CleanPath.IsEmpty())
+    {
+        return nullptr;
+    }
+
+    if (UClass* ExistingClass = FindObject<UClass>(nullptr, *CleanPath))
+    {
+        return ExistingClass;
+    }
+    return LoadObject<UClass>(nullptr, *CleanPath);
 }
 
 const FProperty* UGraphWriteActionResolverUtils::FindPropertyOnClass(UClass* OwnerClass, const FName PropertyName)
@@ -520,11 +529,15 @@ const FProperty* UGraphWriteActionResolverUtils::ResolveFieldProperty(
         return nullptr;
     }
 
-    if (CapabilitySpec && CapabilitySpec->bRequiresTargetPin)
+    if (IsFieldAccessFieldScope(Request.Semantic.FieldScope)
+        || (CapabilitySpec && CapabilitySpec->bRequiresTargetPin))
     {
         const FString OwnerClassPath = FirstNonEmptyFieldValue(
             Request.Semantic.CapabilityFacts.FindRef(TEXT("field.owner_class")),
-            Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")));
+            Request.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")),
+            FirstNonEmptyFieldValue(
+                Request.Semantic.TargetObjectType,
+                Request.Semantic.TargetObjectPinType.ObjectPath));
         if (const FProperty* TargetProperty = FindPropertyOnClass(FindClassByPath_FieldVarResolver(OwnerClassPath), FieldFName))
         {
             return TargetProperty;

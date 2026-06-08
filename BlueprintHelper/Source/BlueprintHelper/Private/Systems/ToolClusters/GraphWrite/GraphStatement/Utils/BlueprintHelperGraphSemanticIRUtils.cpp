@@ -325,6 +325,14 @@ FBlueprintHelperGraphResolvedTarget FBlueprintHelperGraphSemanticIRUtils::Resolv
 	{
 		return Target;
 	}
+	if (Target.Raw.Equals(TEXT("self"), ESearchCase::IgnoreCase))
+	{
+		Target.Kind = EBlueprintHelperGraphTargetKind::Variable;
+		Target.Member = TEXT("self");
+		Target.Type = Context.FindTargetType(TEXT("self"));
+		Target.bVerifiedByContext = true;
+		return Target;
+	}
 
 	FString Owner;
 	FString Remainder;

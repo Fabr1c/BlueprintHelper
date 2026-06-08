@@ -1,16 +1,29 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/ProgressBar.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/Actor.h"
+#include "K2Node_VariableGet.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBundleProjector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextDemandCollector.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextInferenceService.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "UObject/Package.h"
 
 namespace
 {
@@ -116,6 +129,107 @@ static FBlueprintHelperCallFunctionPinType MakeActionContextTestPinType(const FS
 	PinType.Category = Category;
 	PinType.ObjectPath = ObjectPath;
 	return PinType;
+}
+
+static FString MakeActionContextPipelineTestObjectName(const FString& Prefix)
+{
+	return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+}
+
+static UBlueprint* MakeActionContextPipelineTestBlueprint(UClass* ParentClass, const FString& PackagePrefix, const FString& BlueprintPrefix)
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperActionContextPipeline/%s"),
+		*MakeActionContextPipelineTestObjectName(PackagePrefix)));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		ParentClass,
+		Package,
+		*MakeActionContextPipelineTestObjectName(BlueprintPrefix),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperActionContextPipelineTests"));
+	Package->SetDirtyFlag(false);
+	return Blueprint;
+}
+
+static bool AddActionContextPipelineObjectVariable(UBlueprint* Blueprint, const FString& Name, UClass* ObjectClass)
+{
+	if (!Blueprint || Name.IsEmpty() || !ObjectClass)
+	{
+		return false;
+	}
+
+	const FEdGraphPinType PinType(
+		UEdGraphSchema_K2::PC_Object,
+		NAME_None,
+		ObjectClass,
+		EPinContainerType::None,
+		false,
+		FEdGraphTerminalType());
+	if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), PinType))
+	{
+		return false;
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	return true;
+}
+
+static FBlueprintHelperResolvedActionContext MakeWidgetFieldAccessContext(
+	const FString& StatementId,
+	const FString& MemberName,
+	const FString& WidgetOwnerClassPath)
+{
+	FBlueprintHelperResolvedActionContext Context;
+	Context.StatementId = StatementId;
+	Context.ClusterKind = EBlueprintHelperSpawnerClusterKind::FieldVariableAction;
+	Context.GraphName = TEXT("EventGraph");
+	Context.SourceThread = EBlueprintHelperActionContextSourceThread::WorkerInference;
+	Context.Semantic.Kind = EBlueprintHelperActionSemanticKind::Field;
+	Context.Semantic.Query = MemberName;
+	Context.Semantic.TargetPath = TEXT("CreatedVitalsHud");
+	Context.Semantic.PropertyPath = MemberName;
+	Context.Semantic.FieldOperation = TEXT("get");
+	Context.Semantic.FieldScope = TEXT("field_access");
+	Context.Semantic.TargetObjectPinType = MakeActionContextTestPinType(TEXT("object"), WidgetOwnerClassPath);
+	Context.Semantic.ExpectedReturnPinType = MakeActionContextTestPinType(TEXT("object"), UProgressBar::StaticClass()->GetPathName());
+	Context.Semantic.CapabilityFacts.Add(TEXT("field.member_name"), MemberName);
+	Context.Semantic.CapabilityFacts.Add(TEXT("field.owner_class"), WidgetOwnerClassPath);
+	Context.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_ref"), TEXT("node:CreatedVitalsHud pin:ReturnValue"));
+	Context.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_type"), TEXT("object"));
+	Context.Semantic.CapabilityFacts.Add(TEXT("field.target_pin_object_path"), WidgetOwnerClassPath);
+	Context.Evidence.Add(TEXT("field_name"), MemberName);
+	Context.Evidence.Add(TEXT("field_owner_class"), WidgetOwnerClassPath);
+	Context.Evidence.Add(TEXT("property_path"), MemberName);
+	Context.Evidence.Add(TEXT("target_pin_ref"), TEXT("node:CreatedVitalsHud pin:ReturnValue"));
+	Context.Evidence.Add(TEXT("linked_pin_type_category"), TEXT("object"));
+	Context.Evidence.Add(TEXT("linked_pin_type_object_path"), WidgetOwnerClassPath);
+	return Context;
+}
+
+static FBlueprintHelperGraphExpressionIR MakeWidgetFieldAccessExpression(const FString& ExpressionId, const FString& MemberName)
+{
+	FBlueprintHelperGraphExpressionIR Expression;
+	Expression.Kind = EBlueprintHelperGraphExpressionKind::Field;
+	Expression.ExpressionId = ExpressionId;
+	Expression.Path = FString::Printf(TEXT("$.statements[0].%s"), *ExpressionId);
+	Expression.Target = TEXT("CreatedVitalsHud");
+	Expression.Property = MemberName;
+	Expression.ResolvedTarget.PropertyPath = MemberName;
+	Expression.Type = UProgressBar::StaticClass()->GetPathName();
+	Expression.FieldOperation = TEXT("get");
+	Expression.FieldScope = TEXT("field_access");
+	return Expression;
+}
+
+static FString GetVariableGetMemberName(const FBlueprintHelperNodeFragment& Fragment)
+{
+	const UK2Node_VariableGet* VariableGet = Cast<UK2Node_VariableGet>(Fragment.PrimaryNode);
+	return VariableGet ? VariableGet->VariableReference.GetMemberName().ToString() : FString();
 }
 
 static bool CollectActionContextSourceFiles(FAutomationTestBase& Test, TArray<FString>& OutFiles)
@@ -767,7 +881,277 @@ bool FBlueprintHelperActionContextFieldScopesAndTypedPinInferenceTest::RunTest(c
 	TestTrue(TEXT("target object pin inferred"), FieldAccessContext.Semantic.TargetObjectPinType.IsValid());
 	TestTrue(TEXT("expected return pin inferred"), FieldAccessContext.Semantic.ExpectedReturnPinType.IsValid());
 	TestEqual(TEXT("linked source evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_source_pin_type")), FString(TEXT("object|/Script/Engine.SceneComponent")));
+	TestEqual(TEXT("target pin ref evidence"), FieldAccessContext.Evidence.FindRef(TEXT("target_pin_ref")), FString(TEXT("source_symbol:symbol_owner")));
+	TestEqual(TEXT("target pin category evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_pin_type_category")), FString(TEXT("object")));
+	TestEqual(TEXT("target pin object evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_pin_type_object_path")), FString(TEXT("/Script/Engine.SceneComponent")));
+	TestEqual(TEXT("target pin ref capability fact"), FieldAccessContext.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_ref")), FString(TEXT("source_symbol:symbol_owner")));
+	TestEqual(TEXT("target pin type capability fact"), FieldAccessContext.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_type")), FString(TEXT("object")));
+	TestEqual(TEXT("target pin object capability fact"), FieldAccessContext.Semantic.CapabilityFacts.FindRef(TEXT("field.target_pin_object_path")), FString(TEXT("/Script/Engine.SceneComponent")));
 	TestEqual(TEXT("linked consumer evidence"), FieldAccessContext.Evidence.FindRef(TEXT("linked_consumer_pin_type")), FString(TEXT("struct|/Script/CoreUObject.Rotator")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldAccessKeepsRequestedWidgetMemberTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldAccessKeepsRequestedWidgetMember",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldAccessKeepsRequestedWidgetMemberTest::RunTest(const FString& Parameters)
+{
+	const FString WidgetOwnerClass = TEXT("/Game/ThirdPerson/UI/WBP_ThirdPersonVitalsHUD.WBP_ThirdPersonVitalsHUD_C");
+
+	FBlueprintHelperActionContextDemand FieldAccessDemand =
+		FBlueprintHelperActionContextDemandCollector::BuildSingleDemand(
+			TEXT("expr_field_access_stamina_bar"),
+			TEXT("$.statements[0].target_object"),
+			EBlueprintHelperActionSemanticKind::Field,
+			TEXT("StaminaBar"),
+			TEXT("CreatedVitalsHud"),
+			TEXT("StaminaBar"),
+			FString(),
+			TEXT("contextual"),
+			TEXT("fail_on_ambiguity"),
+			TArray<FString>(),
+			TArray<FString>(),
+			TEXT("get"),
+			TEXT("field_access"));
+	FieldAccessDemand.SourceSymbolIds.Add(TEXT("created_widget"));
+	FieldAccessDemand.ConsumerSymbolIds.Add(TEXT("set_percent_call"));
+
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+
+	FBlueprintHelperActionContextFieldSnapshot HealthBarField;
+	HealthBarField.Name = TEXT("HealthBar");
+	HealthBarField.OwnerClassPath = WidgetOwnerClass;
+	HealthBarField.FieldPath = WidgetOwnerClass + TEXT(".HealthBar");
+	HealthBarField.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("HealthBar"));
+	Snapshot.Fields.Add(HealthBarField);
+
+	FBlueprintHelperActionContextFieldSnapshot StaminaBarField;
+	StaminaBarField.Name = TEXT("StaminaBar");
+	StaminaBarField.OwnerClassPath = WidgetOwnerClass;
+	StaminaBarField.FieldPath = WidgetOwnerClass + TEXT(".StaminaBar");
+	StaminaBarField.CapabilityFacts.Add(TEXT("field.member_name"), TEXT("StaminaBar"));
+	Snapshot.Fields.Add(StaminaBarField);
+
+	Snapshot.SymbolPinTypes.Add(TEXT("created_widget"), MakeActionContextTestPinType(TEXT("object"), WidgetOwnerClass));
+	Snapshot.SymbolPinTypes.Add(TEXT("set_percent_call"), MakeActionContextTestPinType(TEXT("object"), TEXT("/Script/UMG.ProgressBar")));
+
+	const FBlueprintHelperResolvedActionContext FieldAccessContext =
+		FBlueprintHelperActionContextInferenceService::BuildContextForTest(Snapshot, FieldAccessDemand);
+	TestEqual(TEXT("field access member fact"), FieldAccessContext.Semantic.CapabilityFacts.FindRef(TEXT("field.member_name")), FString(TEXT("StaminaBar")));
+	TestEqual(TEXT("field access property path"), FieldAccessContext.Semantic.PropertyPath, FString(TEXT("StaminaBar")));
+	TestEqual(TEXT("field access owner class"), FieldAccessContext.Semantic.CapabilityFacts.FindRef(TEXT("field.owner_class")), WidgetOwnerClass);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldAccessTemporaryTargetDemandTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldAccessTemporaryTargetDemand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldAccessTemporaryTargetDemandTest::RunTest(const FString& Parameters)
+{
+	const FString SaveGameOwnerClass = TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonHealthSaveGame.BP_ThirdPersonHealthSaveGame_C");
+
+	TSharedPtr<FBlueprintHelperGraphExpressionIR> SavedHealthExpression = MakeShared<FBlueprintHelperGraphExpressionIR>();
+	SavedHealthExpression->Kind = EBlueprintHelperGraphExpressionKind::Field;
+	SavedHealthExpression->ExpressionId = TEXT("expr_saved_health");
+	SavedHealthExpression->Path = TEXT("$.statements[0].value");
+	SavedHealthExpression->Target = TEXT("LoadedVitalsSave");
+	SavedHealthExpression->Property = TEXT("SavedHealth");
+	SavedHealthExpression->Type = TEXT("float");
+	SavedHealthExpression->FieldOperation = TEXT("get");
+	SavedHealthExpression->FieldScope = TEXT("field_access");
+	SavedHealthExpression->ContextEvidence.Add(TEXT("field_owner_class"), SaveGameOwnerClass);
+	SavedHealthExpression->ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
+	SavedHealthExpression->ResolvedTarget.Raw = TEXT("LoadedVitalsSave");
+	SavedHealthExpression->ResolvedTarget.Member = TEXT("SavedHealth");
+	SavedHealthExpression->ResolvedTarget.PropertyPath = TEXT("SavedHealth");
+	SavedHealthExpression->ResolvedTarget.Type = SaveGameOwnerClass;
+	SavedHealthExpression->ResolvedTarget.bVerifiedByContext = true;
+
+	TSharedPtr<FBlueprintHelperGraphStatementIR> Statement = MakeShared<FBlueprintHelperGraphStatementIR>();
+	Statement->StatementId = TEXT("stmt_set_current_health");
+	Statement->Path = TEXT("$.statements[0]");
+	Statement->Kind = EBlueprintHelperGraphStatementKind::Field;
+	Statement->Target = TEXT("CurrentHealth");
+	Statement->FieldOperation = TEXT("set");
+	Statement->FieldScope = TEXT("variable");
+	Statement->Value = SavedHealthExpression;
+
+	TArray<TSharedPtr<FBlueprintHelperGraphStatementIR>> Statements;
+	Statements.Add(Statement);
+	const TArray<FBlueprintHelperActionContextDemand> Demands =
+		FBlueprintHelperActionContextDemandCollector::CollectFromStatements(Statements);
+
+	const FBlueprintHelperActionContextDemand* SavedHealthDemand = Demands.FindByPredicate([](const FBlueprintHelperActionContextDemand& Demand)
+	{
+		return Demand.StatementId == TEXT("expr_saved_health");
+	});
+
+	TestNotNull(TEXT("temporary field_access demand exists"), SavedHealthDemand);
+	if (!SavedHealthDemand)
+	{
+		return false;
+	}
+
+	bool bPassed = true;
+	bPassed &= TestEqual(TEXT("field access target path"), SavedHealthDemand->TargetPath, FString(TEXT("LoadedVitalsSave")));
+	bPassed &= TestEqual(TEXT("field access property path"), SavedHealthDemand->PropertyPath, FString(TEXT("SavedHealth")));
+	bPassed &= TestEqual(TEXT("field access result type"), SavedHealthDemand->ExpectedReturnType, FString(TEXT("float")));
+	bPassed &= TestEqual(TEXT("field access target object type"), SavedHealthDemand->TargetObjectType, SaveGameOwnerClass);
+	bPassed &= TestEqual(TEXT("field access owner fact"), SavedHealthDemand->CapabilityFacts.FindRef(TEXT("field.owner_class")), SaveGameOwnerClass);
+	bPassed &= TestEqual(TEXT("field access member fact"), SavedHealthDemand->CapabilityFacts.FindRef(TEXT("field.member_name")), FString(TEXT("SavedHealth")));
+	bPassed &= TestTrue(TEXT("field access source symbol"), SavedHealthDemand->SourceSymbolIds.Contains(TEXT("loadedvitalssave")));
+	return bPassed;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldAccessBuilderKeepsRequestedWidgetMemberTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldAccessBuilder.KeepsRequestedWidgetMember",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldAccessBuilderKeepsRequestedWidgetMemberTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* WidgetBlueprint = MakeActionContextPipelineTestBlueprint(
+		UUserWidget::StaticClass(),
+		TEXT("WidgetPkg"),
+		TEXT("WBP_FieldAccessBuilder"));
+	TestNotNull(TEXT("widget blueprint"), WidgetBlueprint);
+	TestTrue(TEXT("add HealthBar"), AddActionContextPipelineObjectVariable(WidgetBlueprint, TEXT("HealthBar"), UProgressBar::StaticClass()));
+	TestTrue(TEXT("add StaminaBar"), AddActionContextPipelineObjectVariable(WidgetBlueprint, TEXT("StaminaBar"), UProgressBar::StaticClass()));
+	FKismetEditorUtilities::CompileBlueprint(WidgetBlueprint);
+
+	UBlueprint* GraphBlueprint = MakeActionContextPipelineTestBlueprint(
+		AActor::StaticClass(),
+		TEXT("ActorPkg"),
+		TEXT("BP_FieldAccessBuilder"));
+	TestNotNull(TEXT("graph blueprint"), GraphBlueprint);
+	UEdGraph* Graph = GraphBlueprint && GraphBlueprint->UbergraphPages.Num() > 0 ? GraphBlueprint->UbergraphPages[0] : nullptr;
+	TestNotNull(TEXT("target graph"), Graph);
+	if (!WidgetBlueprint || !WidgetBlueprint->GeneratedClass || !Graph)
+	{
+		return false;
+	}
+
+	const FString WidgetOwnerClassPath = WidgetBlueprint->GeneratedClass->GetPathName();
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	Snapshot.Graph.BlueprintClassPath = GraphBlueprint && GraphBlueprint->GeneratedClass ? GraphBlueprint->GeneratedClass->GetPathName() : FString();
+	Snapshot.SymbolPinTypes.Add(TEXT("CreatedVitalsHud"), MakeActionContextTestPinType(TEXT("object"), WidgetOwnerClassPath));
+
+	FBlueprintHelperResolvedActionContextBundle Bundle;
+	Bundle.Contexts.Add(MakeWidgetFieldAccessContext(TEXT("expr_health_bar"), TEXT("HealthBar"), WidgetOwnerClassPath));
+	Bundle.Contexts.Add(MakeWidgetFieldAccessContext(TEXT("expr_stamina_bar"), TEXT("StaminaBar"), WidgetOwnerClassPath));
+	FBlueprintHelperActionContextScope Scope = FBlueprintHelperActionContextScope::FromResolved(MoveTemp(Snapshot), MoveTemp(Bundle));
+
+	FBlueprintHelperNodeFragment HealthFragment;
+	FBlueprintHelperNodeFragment StaminaFragment;
+	FString Error;
+	const FBlueprintHelperGraphExpressionIR HealthExpression = MakeWidgetFieldAccessExpression(TEXT("expr_health_bar"), TEXT("HealthBar"));
+	const FBlueprintHelperGraphExpressionIR StaminaExpression = MakeWidgetFieldAccessExpression(TEXT("expr_stamina_bar"), TEXT("StaminaBar"));
+
+	const bool bHealthBuilt = FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
+		Graph,
+		HealthExpression,
+		HealthFragment,
+		Error,
+		nullptr,
+		&Scope);
+	if (!bHealthBuilt)
+	{
+		AddError(FString::Printf(TEXT("HealthBar field_access fragment failed: %s"), *Error));
+	}
+	TestTrue(TEXT("HealthBar field_access builds"), bHealthBuilt);
+
+	Error.Reset();
+	const bool bStaminaBuilt = FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
+		Graph,
+		StaminaExpression,
+		StaminaFragment,
+		Error,
+		nullptr,
+		&Scope);
+	if (!bStaminaBuilt)
+	{
+		AddError(FString::Printf(TEXT("StaminaBar field_access fragment failed: %s"), *Error));
+	}
+	TestTrue(TEXT("StaminaBar field_access builds"), bStaminaBuilt);
+
+	TestEqual(TEXT("Health getter member"), GetVariableGetMemberName(HealthFragment), FString(TEXT("HealthBar")));
+	TestEqual(TEXT("Stamina getter member"), GetVariableGetMemberName(StaminaFragment), FString(TEXT("StaminaBar")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperActionContextFieldAccessPipelineMaterializesTemporaryTargetTest,
+	"BlueprintHelper.GraphWrite.ActionContext.FieldAccessPipeline.MaterializesTemporaryTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperActionContextFieldAccessPipelineMaterializesTemporaryTargetTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* WidgetBlueprint = MakeActionContextPipelineTestBlueprint(
+		UUserWidget::StaticClass(),
+		TEXT("WidgetPkg"),
+		TEXT("WBP_FieldAccessPipeline"));
+	TestNotNull(TEXT("widget blueprint"), WidgetBlueprint);
+	TestTrue(TEXT("add StaminaBar"), AddActionContextPipelineObjectVariable(WidgetBlueprint, TEXT("StaminaBar"), UProgressBar::StaticClass()));
+	FKismetEditorUtilities::CompileBlueprint(WidgetBlueprint);
+
+	UBlueprint* GraphBlueprint = MakeActionContextPipelineTestBlueprint(
+		AActor::StaticClass(),
+		TEXT("ActorPkg"),
+		TEXT("BP_FieldAccessPipeline"));
+	TestNotNull(TEXT("graph blueprint"), GraphBlueprint);
+	UEdGraph* Graph = GraphBlueprint && GraphBlueprint->UbergraphPages.Num() > 0 ? GraphBlueprint->UbergraphPages[0] : nullptr;
+	TestNotNull(TEXT("target graph"), Graph);
+	if (!WidgetBlueprint || !WidgetBlueprint->GeneratedClass || !Graph)
+	{
+		return false;
+	}
+
+	const FString WidgetOwnerClassPath = WidgetBlueprint->GeneratedClass->GetPathName();
+	FBlueprintHelperActionContextSnapshot Snapshot;
+	Snapshot.Graph.GraphName = TEXT("EventGraph");
+	Snapshot.Graph.BlueprintClassPath = GraphBlueprint && GraphBlueprint->GeneratedClass ? GraphBlueprint->GeneratedClass->GetPathName() : FString();
+	Snapshot.SymbolPinTypes.Add(TEXT("CreatedVitalsHud"), MakeActionContextTestPinType(TEXT("object"), WidgetOwnerClassPath));
+
+	FBlueprintHelperResolvedActionContextBundle Bundle;
+	Bundle.Contexts.Add(MakeWidgetFieldAccessContext(TEXT("expr_stamina_bar"), TEXT("StaminaBar"), WidgetOwnerClassPath));
+	FBlueprintHelperActionContextScope Scope = FBlueprintHelperActionContextScope::FromResolved(MoveTemp(Snapshot), MoveTemp(Bundle));
+
+	FBlueprintHelperGraphExpressionIR Expression = MakeWidgetFieldAccessExpression(TEXT("expr_stamina_bar"), TEXT("StaminaBar"));
+	Expression.Type.Reset();
+	Expression.ResolvedTarget.Kind = EBlueprintHelperGraphTargetKind::Temporary;
+	Expression.ResolvedTarget.Raw = TEXT("CreatedVitalsHud");
+	Expression.ResolvedTarget.Member = TEXT("StaminaBar");
+	Expression.ResolvedTarget.PropertyPath = TEXT("StaminaBar");
+	Expression.ResolvedTarget.Type = WidgetOwnerClassPath;
+	Expression.ResolvedTarget.bVerifiedByContext = true;
+
+	TArray<FBlueprintHelperNodeFragment> GeneratedFragments;
+	TSet<FString> GeneratedFragmentIds;
+	TArray<TSharedPtr<FUnresolvedNodeItem>> UnresolvedNodes;
+	int32 GeneratedNodeCount = 0;
+	UGraphWritePipelineUtils::BuildSemanticExpressionFragments(
+		Graph,
+		&Scope,
+		MakeShared<FBlueprintHelperGraphExpressionIR>(Expression),
+		GeneratedFragments,
+		GeneratedFragmentIds,
+		UnresolvedNodes,
+		GeneratedNodeCount);
+
+	TestEqual(TEXT("no unresolved field_access expression"), UnresolvedNodes.Num(), 0);
+	TestEqual(TEXT("one field_access fragment materialized"), GeneratedFragments.Num(), 1);
+	if (GeneratedFragments.Num() != 1)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("pipeline generated StaminaBar getter"), GetVariableGetMemberName(GeneratedFragments[0]), FString(TEXT("StaminaBar")));
 	return true;
 }
 

@@ -1,6 +1,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
 
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
+#include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperFieldCapabilityTypes.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperControlFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperEventDelegateFragmentBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuildRequest.h"
@@ -138,13 +139,29 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			ActionContextScope);
 	}
 
-	if (Statement.Kind == EBlueprintHelperGraphStatementKind::Field
-		&& !Statement.CapabilityId.TrimStartAndEnd().IsEmpty())
+	const bool bFieldStatement = Statement.Kind == EBlueprintHelperGraphStatementKind::Field;
+	FString EffectiveFieldCapabilityId = bFieldStatement
+		? Statement.CapabilityId.TrimStartAndEnd()
+		: FString();
+	if (bFieldStatement
+		&& EffectiveFieldCapabilityId.IsEmpty()
+		&& Statement.FieldScope.Equals(TEXT("field_access"), ESearchCase::IgnoreCase))
+	{
+		if (const FBlueprintHelperFieldCapabilitySpec* InferredSpec =
+			FBlueprintHelperFieldCapabilityRegistry::InferFromOperationAndScope(
+				Statement.FieldOperation,
+				Statement.FieldScope))
+		{
+			EffectiveFieldCapabilityId = InferredSpec->Id;
+		}
+	}
+	if (bFieldStatement && !EffectiveFieldCapabilityId.IsEmpty())
 	{
 		const FString FieldName = !Statement.ResolvedTarget.Member.IsEmpty()
 			? Statement.ResolvedTarget.Member
 			: (!Statement.Property.IsEmpty() ? Statement.Property : (!Statement.Target.IsEmpty() ? Statement.Target : Statement.Name));
 		FBlueprintHelperGraphFragmentBuildRequest Request = FBlueprintHelperGraphFragmentBuildRequest::FromStatement(Statement);
+		Request.CapabilityId = EffectiveFieldCapabilityId;
 		Request.FragmentId = StatementId;
 		Request.SourceStatementId = StatementId;
 		Request.ActionContextStatementId = StatementContextId;

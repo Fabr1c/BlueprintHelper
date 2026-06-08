@@ -122,6 +122,29 @@ namespace BlueprintHelperReplaceExternalBody
 				: TEXT("payload"));
 	}
 
+	static void AppendDiagnosticsSummary(
+		FString& InOutMessage,
+		const FString& Label,
+		const TArray<FBlueprintGeneratorDiagnostic>& Diagnostics)
+	{
+		if (Diagnostics.Num() == 0)
+		{
+			return;
+		}
+
+		InOutMessage += TEXT(" ") + Label + TEXT(":");
+		for (int32 Index = 0; Index < Diagnostics.Num(); ++Index)
+		{
+			const FBlueprintGeneratorDiagnostic& Diagnostic = Diagnostics[Index];
+			InOutMessage += FString::Printf(
+				TEXT(" [%d] %s node=%s message=%s"),
+				Index,
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message);
+		}
+	}
+
 	static UBlueprint* FindBlueprint(const FString& AssetPath)
 	{
 		if (AssetPath.IsEmpty())
@@ -414,6 +437,100 @@ namespace BlueprintHelperReplaceExternalBody
 		return true;
 	}
 
+	static bool DataChainReachesReachableExecConsumer(
+		const UEdGraphNode* Node,
+		const TSet<UEdGraphNode*>& GeneratedSet,
+		const TSet<UEdGraphNode*>& ReachableExecNodes,
+		TSet<const UEdGraphNode*>& VisitedNodes)
+	{
+		if (!Node || VisitedNodes.Contains(Node))
+		{
+			return false;
+		}
+		VisitedNodes.Add(Node);
+
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->Direction != EGPD_Output || UGraphWriteCoreUtils::IsExecPin(Pin))
+			{
+				continue;
+			}
+			for (const UEdGraphPin* LinkedPin : Pin->LinkedTo)
+			{
+				if (!LinkedPin || LinkedPin->Direction != EGPD_Input || UGraphWriteCoreUtils::IsExecPin(LinkedPin))
+				{
+					continue;
+				}
+
+				UEdGraphNode* LinkedNode = LinkedPin->GetOwningNode();
+				if (!LinkedNode || !GeneratedSet.Contains(LinkedNode))
+				{
+					continue;
+				}
+
+				if (HasExecPin(LinkedNode))
+				{
+					return ReachableExecNodes.Contains(LinkedNode);
+				}
+
+				if (DataChainReachesReachableExecConsumer(LinkedNode, GeneratedSet, ReachableExecNodes, VisitedNodes))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static bool GeneratedPureDataChainsReachBodyEntryExecFlow(
+		const TArray<UEdGraphNode*>& GeneratedNodes,
+		const TSet<UEdGraphNode*>& GeneratedSet,
+		const TSet<UEdGraphNode*>& ReachableExecNodes)
+	{
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (!Node || HasExecPin(Node))
+			{
+				continue;
+			}
+
+			TSet<const UEdGraphNode*> VisitedNodes;
+			if (!DataChainReachesReachableExecConsumer(Node, GeneratedSet, ReachableExecNodes, VisitedNodes))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool GeneratedBodyNodesAreInternallyConnected(
+		const TArray<UEdGraphNode*>& GeneratedNodes,
+		UEdGraphPin* BodyEntryPin)
+	{
+		TSet<UEdGraphNode*> GeneratedSet;
+		for (UEdGraphNode* Node : GeneratedNodes)
+		{
+			if (Node)
+			{
+				GeneratedSet.Add(Node);
+			}
+		}
+		if (!BodyEntryPin || !GeneratedSet.Contains(BodyEntryPin->GetOwningNode()))
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> ReachableExecNodes;
+		CollectExecReachableFromBodyEntry(BodyEntryPin, GeneratedSet, ReachableExecNodes);
+		if (ReachableExecNodes.Num() == 0)
+		{
+			return false;
+		}
+
+		return AreGeneratedExecNodesReachableFromBodyEntry(GeneratedNodes, BodyEntryPin)
+			&& GeneratedPureDataChainsReachBodyEntryExecFlow(GeneratedNodes, GeneratedSet, ReachableExecNodes);
+	}
+
 	static bool CanDeferEntryResolvedConnectivityFailure(
 		const FBlueprintGenerateResult& GenerateResult,
 		const TArray<UEdGraphNode*>& GeneratedNodes)
@@ -427,7 +544,8 @@ namespace BlueprintHelperReplaceExternalBody
 
 		for (const FBlueprintGeneratorDiagnostic& Diagnostic : GenerateResult.ConnectivityDiagnostics)
 		{
-			if (Diagnostic.Code != TEXT("unreachable_exec_node"))
+			if (Diagnostic.Code != TEXT("unreachable_exec_node")
+				&& Diagnostic.Code != TEXT("unreachable_pure_data_chain"))
 			{
 				return false;
 			}
@@ -435,7 +553,7 @@ namespace BlueprintHelperReplaceExternalBody
 
 		UEdGraphNode* BodyEntryNode = FindFirstImportedExecutableBodyNode(GeneratedNodes);
 		UEdGraphPin* BodyEntryPin = UGraphWriteCoreUtils::FindFirstExecPin(BodyEntryNode, EGPD_Input);
-		return AreGeneratedExecNodesReachableFromBodyEntry(GeneratedNodes, BodyEntryPin);
+		return GeneratedBodyNodesAreInternallyConnected(GeneratedNodes, BodyEntryPin);
 	}
 
 	static bool ReconnectEntryToGeneratedBody(
@@ -840,6 +958,19 @@ bool FBlueprintHelperReplaceExternalBodyService::ApplyReplacement(
 		OutErrorMessage = GenerateResult.Message.IsEmpty()
 			? TEXT("Failed to create replacement external body through SemanticIR.")
 			: GenerateResult.Message;
+		OutErrorMessage += FString::Printf(
+			TEXT(" Link stats: requested=%d created=%d generated_nodes=%d."),
+			GenerateResult.RequestedConnectionCount,
+			GenerateResult.CreatedConnectionCount,
+			GenerateResult.GeneratedNodeCount);
+		BlueprintHelperReplaceExternalBody::AppendDiagnosticsSummary(
+			OutErrorMessage,
+			TEXT("Connection diagnostics"),
+			GenerateResult.ConnectionDiagnostics);
+		BlueprintHelperReplaceExternalBody::AppendDiagnosticsSummary(
+			OutErrorMessage,
+			TEXT("Connectivity diagnostics"),
+			GenerateResult.ConnectivityDiagnostics);
 		if (UnresolvedNodes.Num() > 0 && UnresolvedNodes[0].IsValid())
 		{
 			OutErrorMessage += FString::Printf(
