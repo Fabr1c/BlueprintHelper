@@ -39,10 +39,16 @@ const CANONICAL_LOOKUP_ALIASES = new Map<string, string>([
 export function buildReadonlyToolCommandManifests(): ToolCommandManifest[] {
   const manifests = listToolDomains().items.flatMap((domain) =>
     domain.default_kinds.flatMap((kind) =>
-      listToolCapabilities({ domain: domain.id, kind }).items.map(buildManifestForCapability)));
+      listManifestCapabilitiesForDomainKind(domain.id, kind).map(buildManifestForCapability)));
   const coveredIds = new Set(manifests.map((manifest) => manifest.tool_id));
 
   for (const capability of listGroupedAliasCapabilities()) {
+    if (!coveredIds.has(capability.id)) {
+      manifests.push(buildManifestForCapability(capability));
+      coveredIds.add(capability.id);
+    }
+  }
+  for (const capability of listLifecycleMcpOnlyCapabilities()) {
     if (!coveredIds.has(capability.id)) {
       manifests.push(buildManifestForCapability(capability));
       coveredIds.add(capability.id);
@@ -91,6 +97,28 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     stop_conditions: [...descriptor.stop_conditions],
     source: 'readonly_mirror',
   };
+}
+
+function listManifestCapabilitiesForDomainKind(
+  domain: ToolCapabilityItem['domain'],
+  kind: ToolCapabilityItem['kind'],
+): ToolCapabilityItem[] {
+  const capabilitiesById = new Map<string, ToolCapabilityItem>();
+  for (const capability of [
+    ...listToolCapabilities({ domain, kind }).items,
+    ...listToolCapabilities({ domain, kind, audience: 'expert', expert: true }).items,
+  ]) {
+    capabilitiesById.set(capability.id, capability);
+  }
+  return [...capabilitiesById.values()];
+}
+
+function listLifecycleMcpOnlyCapabilities(): ToolCapabilityItem[] {
+  return listToolCapabilities({
+    domain: 'editor',
+    kind: 'write',
+    audience: 'compat',
+  }).items.filter((capability) => capability.lifecycle_mcp_only === true);
 }
 
 function listGroupedAliasCapabilities(): ToolCapabilityItem[] {

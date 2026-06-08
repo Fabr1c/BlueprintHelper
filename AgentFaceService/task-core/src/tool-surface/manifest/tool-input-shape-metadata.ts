@@ -1,6 +1,7 @@
 import type { ToolInputShapeId } from './tool-command-manifest.js';
 
 export const EMPTY_OBJECT_INPUT_NOTE = 'No parameters. Use the empty-object template as-is. Template content: {}.';
+export const MCP_ONLY_INPUT_NOTE = 'Editor lifecycle is global MCP-only. Use mcp__blueprint_helper__blueprint_open_editor or mcp__blueprint_helper__blueprint_close_editor; do not invoke CLI lifecycle aliases.';
 
 const EMPTY_OBJECT_TEMPLATE_IDS = new Set([
   'blueprint_get_runtime_profile',
@@ -11,11 +12,11 @@ const EMPTY_OBJECT_TEMPLATE_IDS = new Set([
   'blueprinthelper_list_debug_cases',
 ]);
 
-export type ToolInputShapeSummaryId = ToolInputShapeId | 'multiple';
+export type ToolInputShapeSummaryId = ToolInputShapeId | 'multiple' | 'mcp_only';
 
 export interface ToolInputShapeSummary {
 	input_shape: ToolInputShapeSummaryId;
-	input_shapes: ToolInputShapeId[];
+	input_shapes: Array<ToolInputShapeId | 'mcp_only'>;
 	no_input: boolean;
 	input_note?: string;
 }
@@ -66,7 +67,16 @@ export function inferInputShapesFromTemplateIds(input: {
 export function summarizeToolInputShape(input: {
 	templateIds: readonly string[];
 	requiresBridge: boolean;
+	lifecycleMcpOnly?: boolean;
 }): ToolInputShapeSummary {
+	if (input.lifecycleMcpOnly === true) {
+		return {
+			input_shape: 'mcp_only',
+			input_shapes: ['mcp_only'],
+			no_input: true,
+			input_note: MCP_ONLY_INPUT_NOTE,
+		};
+	}
 	const inputShapes = inferInputShapesFromTemplateIds(input);
 	const noInput = inputShapes.length === 1 && inputShapes[0] === 'empty_object';
 	return {

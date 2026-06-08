@@ -21,6 +21,9 @@ export type NonGraphWriteFamily =
 
 export type NonGraphWriteTemplateWriteMode =
   | 'variables.edit'
+  | 'components.edit'
+  | 'class_settings.edit'
+  | 'signature.edit'
   | 'feature.create'
   | 'widget.edit'
   | 'table.rows'

@@ -417,6 +417,34 @@ bool FBlueprintHelperComponentBridgeValidatorRejectsInvalidPolicyEnums::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperUMGWidgetBridgeValidatorConsumesDescriptorEnumRules,
+	"BlueprintHelper.Router.Cluster.UMGWidgetValidatorConsumesDescriptorEnumRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperUMGWidgetBridgeValidatorConsumesDescriptorEnumRules::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeValidationError Error;
+
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/WBP_Test.WBP_Test"));
+	Payload->SetStringField(TEXT("root_widget_name"), TEXT("CanvasRoot"));
+	Payload->SetStringField(TEXT("replacement_policy"), TEXT("promote_single_child"));
+	TestTrue(
+		TEXT("remove_root_widget accepts descriptor-owned replacement policy"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("remove_root_widget"), Payload, Error));
+
+	Payload->SetStringField(TEXT("replacement_policy"), TEXT("invalid_policy_for_descriptor_e2e"));
+	TestFalse(
+		TEXT("remove_root_widget rejects descriptor-owned replacement policy enum"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("remove_root_widget"), Payload, Error));
+	TestEqual(TEXT("replacement policy validation field"), Error.Field, FString(TEXT("payload.replacement_policy")));
+	TestTrue(
+		TEXT("replacement policy expected values come from descriptor enum rules"),
+		Error.ExpectedType.Contains(TEXT("one_of[")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperClassSettingsBridgeRoutes_ReparentForwardsPayload,
 	"BlueprintHelper.Router.Cluster.ClassSettingsReparentForwardsPayload",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

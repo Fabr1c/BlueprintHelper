@@ -96,9 +96,17 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   const families = await runCliJson(['tools', 'templates', 'families', '--workflow', 'preview_execute', '--format', 'json']);
   assert.equal(families.output.schema, 'BlueprintHelper.TaskSpecTemplateFamilies.v1');
   assert.equal(families.output.items.some((item: Record<string, unknown>) => item.family === 'graph_write'), true);
+  assert.match(
+    families.output.items.find((item: Record<string, unknown>) => item.family === 'graph_write')?.description as string,
+    /Blueprint graph/i,
+  );
 
   const writeModes = await runCliJson(['tools', 'templates', 'write-modes', '--family', 'graph_write', '--format', 'json']);
   assert.equal(writeModes.output.items.some((item: Record<string, unknown>) => item.write_mode === 'graph.append'), true);
+  assert.match(
+    writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.description as string,
+    /new owned graph/i,
+  );
   assert.equal(
     writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.base_template_path,
     'AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json',
@@ -110,6 +118,10 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
 
   const clusters = await runCliJson(['tools', 'templates', 'clusters', '--family', 'graph_write', '--format', 'json']);
   assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.cluster_id === 'generic_ops'), true);
+  assert.match(
+    clusters.output.items.find((item: Record<string, unknown>) => item.cluster_id === 'generic_ops')?.description as string,
+    /general Blueprint statements/i,
+  );
 
   const operations = await runCliJson([
     'tools',
@@ -125,6 +137,10 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
     'json',
   ]);
   assert.equal(operations.output.items.some((item: Record<string, unknown>) => item.operation_id === 'call'), true);
+  assert.match(
+    operations.output.items.find((item: Record<string, unknown>) => item.operation_id === 'call')?.description as string,
+    /function/i,
+  );
 
   const quickAccess = await runCliJson([
     'tools',
@@ -225,9 +241,17 @@ test('runCli exposes ReadContext template four-layer index and compose output', 
   const domains = await runCliJson(['tools', 'read-templates', 'domains', '--format', 'json']);
   assert.equal(domains.output.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');
   assert.equal(domains.output.items.some((item: Record<string, unknown>) => item.domain === 'blueprint'), true);
+  assert.match(
+    domains.output.items.find((item: Record<string, unknown>) => item.domain === 'blueprint')?.description as string,
+    /Blueprint/i,
+  );
 
   const clusters = await runCliJson(['tools', 'read-templates', 'clusters', '--domain', 'blueprint', '--format', 'json']);
   assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.read_cluster === 'logic'), true);
+  assert.match(
+    clusters.output.items.find((item: Record<string, unknown>) => item.read_cluster === 'logic')?.description as string,
+    /logic/i,
+  );
 
   const targets = await runCliJson([
     'tools',
@@ -241,6 +265,10 @@ test('runCli exposes ReadContext template four-layer index and compose output', 
     'json',
   ]);
   assert.equal(targets.output.items.some((item: Record<string, unknown>) => item.target_kind === 'function'), true);
+  assert.match(
+    targets.output.items.find((item: Record<string, unknown>) => item.target_kind === 'function')?.description as string,
+    /function/i,
+  );
 
   const views = await runCliJson([
     'tools',
@@ -256,6 +284,10 @@ test('runCli exposes ReadContext template four-layer index and compose output', 
     'json',
   ]);
   assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
+  assert.match(
+    views.output.items.find((item: Record<string, unknown>) => item.view_template === 'logic_flow')?.description as string,
+    /flow/i,
+  );
 
   const quickAccess = await runCliJson([
     'tools',

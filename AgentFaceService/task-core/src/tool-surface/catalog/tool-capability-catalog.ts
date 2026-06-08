@@ -1,7 +1,10 @@
 import { getGraphWriteRoutesForTemplateDiscovery } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
+import { getActiveReadContextRouteDescriptors } from '../templates/read-context-template-registry.js';
+import type { ReadContextRouteDescriptor } from '../templates/read-context-template-types.js';
 import { toolMetas } from '../registry/tool-metas.js';
 import { summarizeToolInputShape } from '../manifest/tool-input-shape-metadata.js';
 import type { ToolResultProjectionPolicyId } from '../manifest/tool-command-manifest.js';
+import { templateIndexCommandForCapabilityKind } from '../cli/cli-subcommand-descriptor.js';
 import {
   createToolCapabilityDescriptorRegistry,
   type ToolCapabilityDescriptor,
@@ -37,8 +40,11 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.discover.assets', 'blueprint', 'discover', 'blueprinthelper_find_assets', 'Resolve unknown Unreal asset paths before reads or writes.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_find_assets']),
   capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow', 'read_context_event_logic_flow', 'read_context_custom_event_logic_flow']),
   capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json', 'read_context_block_logic_json']),
+  capability('blueprint.read.context.logic_md', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Markdown Blueprint logic summaries for supported Blueprint targets.', 'blueprint-explorer', 'low', true, false, ['read_context_logic_md']),
+  capability('blueprint.read.context.asset', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint asset diagnostics context.', 'blueprint-explorer', 'low', true, false, ['read_context_asset']),
   capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, ['read_context_components']),
   capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, ['read_context_variables']),
+  capability('blueprint.read.context.properties', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint object property context.', 'blueprint-explorer', 'low', true, false, ['read_context_properties']),
   capability('blueprint.read.reference.dependencies', 'blueprint', 'read', 'blueprinthelper_read_reference_context', 'Read dependency ReferenceContextPack before risky edits.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_reference_context_dependencies']),
   capability('blueprint.read.function_chain', 'blueprint', 'read', 'blueprinthelper_read_function_chain_context', 'Trace project-authored function/event/custom-event calls.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_function_chain_context']),
   capability('blueprint.plan.taskspec.preview', 'blueprint', 'plan', 'blueprinthelper_preview_task', 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.', 'task-worker', 'low', false, false, ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec']),
@@ -57,6 +63,8 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
   capability('editor.write.source_control.checkout', 'editor', 'write', 'blueprinthelper_source_control_checkout', 'Check out source-controlled assets or files before editing under Perforce/source control.', 'task-worker', 'medium', true, false, ['blueprinthelper_source_control_checkout']),
   capability('editor.write.asset.save', 'editor', 'write', 'blueprint_save_asset', 'Persist an explicit Unreal asset package after write-session and source-control checks.', 'task-worker', 'high', true, true, ['blueprint_save_asset']),
+  capability('editor.write.lifecycle.open_mcp_only', 'editor', 'write', 'blueprint_open_editor', 'Compatibility lifecycle name; Agents must use global MCP editor open instead of CLI.', 'main-agent', 'medium', false, false, [], { lifecycle_mcp_only: true }),
+  capability('editor.write.lifecycle.close_mcp_only', 'editor', 'write', 'blueprint_close_editor', 'Compatibility lifecycle name; Agents must use global MCP editor close instead of CLI.', 'main-agent', 'medium', false, false, [], { lifecycle_mcp_only: true }),
 	capability('editor.diagnose.static', 'editor', 'diagnose', 'blueprinthelper_diagnostics', 'Run static installation/configuration diagnostics.', 'main-agent', 'none', false, false, ['blueprinthelper_diagnostics']),
 	capability('editor.diagnose.runtime', 'editor', 'diagnose', 'blueprinthelper_diagnostics_runtime', 'Run runtime diagnostics through the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_diagnostics_runtime']),
 	capability('project.discover.agent_guide', 'project', 'discover', 'blueprinthelper_read_agent_guide', 'Read the AgentGuide onboarding entry.', 'main-agent', 'none', false, false, ['blueprinthelper_read_agent_guide']),
@@ -103,6 +111,10 @@ interface ToolCapabilityDescriptorOptions {
   readonly help_notes?: readonly string[];
 }
 
+interface ToolCapabilityOptions {
+  readonly lifecycle_mcp_only?: boolean;
+}
+
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {
   const audience = options.audience ?? 'default';
   return {
@@ -135,11 +147,17 @@ export function listToolCapabilities(options: ListToolCapabilitiesOptions): Tool
     },
     items: items.map(toToolCapabilityListItem),
     next: {
-      template_index_command: options.kind === 'read'
-        ? 'bh tools read-templates domains --format json'
-        : 'bh tools templates families --workflow preview_execute --format json',
+      template_index_command: resolveTemplateIndexCommand(options.kind),
     },
   };
+}
+
+function resolveTemplateIndexCommand(kind: ToolCapabilityKind): ToolCapabilityListResult['next']['template_index_command'] {
+  const command = templateIndexCommandForCapabilityKind(kind);
+  if (!command) {
+    throw new Error(`No BlueprintHelper CLI template index command registered for capability kind: ${kind}`);
+  }
+  return command;
 }
 
 function toToolCapabilityListItem(capabilityItem: ToolCapabilityItem): ToolCapabilityListItem {
@@ -148,6 +166,7 @@ function toToolCapabilityListItem(capabilityItem: ToolCapabilityItem): ToolCapab
 		...summarizeToolInputShape({
 			templateIds: capabilityItem.cli_template_ids,
 			requiresBridge: capabilityItem.requires_bridge,
+			lifecycleMcpOnly: capabilityItem.lifecycle_mcp_only,
 		}),
 	};
 }
@@ -180,28 +199,68 @@ function createDescriptorRegistry() {
 
 function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescriptorOptions> {
   const graphWriteRouteRefs = getGraphWriteRoutesForTemplateDiscovery().map((route) => route.route_id);
+  const blueprintLogicFlowRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'logic' && route.view_template === 'logic_flow');
+  const blueprintLogicJsonRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && (
+      (route.read_cluster === 'logic' && route.view_template === 'logic_json')
+      || route.read_cluster === 'graph_context'
+    ));
+  const blueprintLogicMdRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'logic' && route.view_template === 'logic_md');
+  const blueprintAssetRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'asset');
+  const blueprintComponentRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'components');
+  const blueprintVariableRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'variables');
+  const blueprintPropertyRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'blueprint' && route.read_cluster === 'properties');
+  const widgetTreeRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'widget_blueprint' && route.target_kind === 'widget_tree');
+  const widgetPropertyRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'widget_blueprint' && route.target_kind === 'widget');
+  const dataAssetRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'data_asset');
+  const dataTableRouteRefs = readContextRouteRefs((route) =>
+    route.domain === 'data_table');
   return new Map<string, ToolCapabilityDescriptorOptions>([
     ['blueprint.discover.assets', {
       stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
       help_usage: ['bh blueprinthelper_find_assets --file <find-assets.json> --select status,artifacts.full_result'],
     }],
     ['blueprint.read.context.logic_flow', {
-      route_refs: ['read.blueprint.logic.function.logic_flow', 'read.blueprint.logic.event.logic_flow', 'read.blueprint.logic.custom_event.logic_flow'],
+      route_refs: blueprintLogicFlowRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['blueprint.read.context.logic_json', {
-      route_refs: ['read.blueprint.logic.graph.logic_json', 'read.blueprint.logic.block.logic_json'],
+      route_refs: blueprintLogicJsonRouteRefs,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['blueprint.read.context.logic_md', {
+      route_refs: blueprintLogicMdRouteRefs,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['blueprint.read.context.asset', {
+      route_refs: blueprintAssetRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['blueprint.read.context.components', {
-      route_refs: ['read.blueprint.components.blueprint.tree_json'],
+      route_refs: blueprintComponentRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['blueprint.read.context.variables', {
-      route_refs: ['read.blueprint.variables.blueprint.schema_json'],
+      route_refs: blueprintVariableRouteRefs,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['blueprint.read.context.properties', {
+      route_refs: blueprintPropertyRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
@@ -221,12 +280,12 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['blueprint.diagnose.compile', { stop_conditions: COMPILE_STOP_CONDITIONS }],
     ['umg.read.widget_tree', {
-      route_refs: ['read.widget_blueprint.structure_tree.widget_tree.tree_json', 'read.widget_blueprint.structure_tree.widget_tree.logic_flow'],
+      route_refs: widgetTreeRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['umg.read.widget_property', {
-      route_refs: ['read.widget_blueprint.structure_tree.widget.property_json'],
+      route_refs: widgetPropertyRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
@@ -243,12 +302,12 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],
     ['data.read.data_asset', {
-      route_refs: ['read.data_asset.schema.data_asset.property_json'],
+      route_refs: dataAssetRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
     ['data.read.data_table', {
-      route_refs: ['read.data_table.schema.data_table.schema_json', 'read.data_table.schema.data_table_row.schema_json'],
+      route_refs: dataTableRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
@@ -277,6 +336,14 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['project.write.write_session', { stop_conditions: WRITE_SESSION_STOP_CONDITIONS }],
   ]);
+}
+
+function readContextRouteRefs(
+  predicate: (route: ReadContextRouteDescriptor) => boolean,
+): string[] {
+  return getActiveReadContextRouteDescriptors()
+    .filter(predicate)
+    .map((route) => route.route_id);
 }
 
 function toToolCapabilityDescriptor(
@@ -357,6 +424,7 @@ function capability(
   requiresBridge: boolean,
   requiresWriteSession: boolean,
   cliTemplateIds: string[],
+  options: ToolCapabilityOptions = {},
 ): ToolCapabilityItem {
   const meta = toolMetaByName.get(toolName);
   return {
@@ -370,6 +438,7 @@ function capability(
     risk: meta?.risk ?? fallbackRisk,
     requires_bridge: requiresBridge,
     requires_write_session: requiresWriteSession,
+    ...(options.lifecycle_mcp_only === undefined ? {} : { lifecycle_mcp_only: options.lifecycle_mcp_only }),
     cli_template_ids: [...cliTemplateIds],
     source: 'capability_catalog',
   };

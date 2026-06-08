@@ -50,8 +50,8 @@ export interface ToolCapabilityItem {
 }
 
 export interface ToolCapabilityListItem extends ToolCapabilityItem {
-	input_shape: ToolInputShapeId | 'multiple';
-	input_shapes: ToolInputShapeId[];
+	input_shape: ToolInputShapeId | 'multiple' | 'mcp_only';
+	input_shapes: Array<ToolInputShapeId | 'mcp_only'>;
 	no_input: boolean;
 	input_note?: string;
 }

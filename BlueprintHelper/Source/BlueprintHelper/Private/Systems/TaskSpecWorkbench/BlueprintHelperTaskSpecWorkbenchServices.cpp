@@ -1,7 +1,7 @@
 // BlueprintHelper TaskSpec / ReadContext workbench services.
 
 #include "Systems/TaskSpecWorkbench/BlueprintHelperTaskSpecWorkbenchServices.h"
-#include "Systems/TaskSpecWorkbench/BlueprintHelperReadContextProjectionBridge.h"
+#include "Systems/ReadContext/BlueprintHelperReadContextProjectionGateway.h"
 #include "Systems/TaskSpecWorkbench/Utils/BlueprintHelperTaskSpecWorkbenchUtils.h"
 
 #include "Dom/JsonObject.h"
@@ -61,6 +61,57 @@ FBlueprintHelperInputDocument FBlueprintHelperWorkbenchInputClassifier::Classify
 	return Document;
 }
 
+class FBlueprintHelperReadContextExportServiceLocalUtils
+{
+public:
+	static FString FormatToString(EBlueprintHelperReadContextExportFormat Format)
+	{
+		if (Format == EBlueprintHelperReadContextExportFormat::LogicFlow)
+		{
+			return TEXT("logic_flow");
+		}
+		if (Format == EBlueprintHelperReadContextExportFormat::LogicJson)
+		{
+			return TEXT("logic_json");
+		}
+		return TEXT("logic_md");
+	}
+
+	static FString BuildStructuredErrorText(const FBlueprintHelperToolError& Error)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("code"), Error.Code);
+		Payload->SetStringField(TEXT("message"), Error.Message);
+		Payload->SetStringField(TEXT("requested_format"), Error.Actual);
+		Payload->SetObjectField(TEXT("error"), Error.ToJson());
+		return UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
+	}
+
+	static void CompleteProjectedExport(
+		EBlueprintHelperReadContextExportFormat Format,
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperReadContextExportResult& Result)
+	{
+		if (Format == EBlueprintHelperReadContextExportFormat::LogicMd)
+		{
+			FString MarkdownContent;
+			if (Payload.IsValid() && Payload->TryGetStringField(TEXT("content"), MarkdownContent))
+			{
+				Result.ExportText = MoveTemp(MarkdownContent);
+				Result.bSucceeded = true;
+				Result.Message = TEXT("logicmd copied to clipboard.");
+				return;
+			}
+		}
+
+		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
+		Result.bSucceeded = true;
+		Result.Message = FString::Printf(
+			TEXT("%s copied to clipboard."),
+			*FormatToString(Format));
+	}
+};
+
 FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService::Export(
 	const FBlueprintHelperReadContextExportRequest& Request)
 {
@@ -86,44 +137,26 @@ FBlueprintHelperReadContextExportResult FBlueprintHelperReadContextExportService
 		return Result;
 	}
 
-	if (Request.Format == EBlueprintHelperReadContextExportFormat::LogicFlow)
+	const FString RequestedFormat =
+		FBlueprintHelperReadContextExportServiceLocalUtils::FormatToString(Request.Format);
+	TSharedPtr<FJsonObject> Payload;
+	FBlueprintHelperToolError ProjectionError;
+	if (!FBlueprintHelperReadContextProjectionGateway::Project(
+		RawJsonRoot.ToSharedRef(),
+		RequestedFormat,
+		Payload,
+		ProjectionError))
 	{
-		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(RawJsonRoot, Payload);
-		Payload->SetStringField(TEXT("requested_format"), TEXT("logic_flow"));
-
-		TArray<TSharedPtr<FJsonValue>> WarningValues;
-		WarningValues.Add(MakeShared<FJsonValueString>(
-			TEXT("logic_flow_degraded_workbench_canonical_builder_unavailable")));
-		Payload->SetArrayField(TEXT("warnings"), WarningValues);
-		FBlueprintHelperReadContextProjectionBridge::AttachTaskCoreProjectionMetadata(
-			Payload,
-			TEXT("logic_flow"),
-			true);
-
-		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
-		Result.bSucceeded = true;
-		Result.Message = TEXT("logicflow degraded to logicjson because canonical builder lives in AgentFaceService/task-core.");
+		Result.Message = ProjectionError.Message;
+		Result.ExportText =
+			FBlueprintHelperReadContextExportServiceLocalUtils::BuildStructuredErrorText(ProjectionError);
 		return Result;
 	}
 
-	if (Request.Format == EBlueprintHelperReadContextExportFormat::LogicJson)
-	{
-		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-		UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicJsonPayload(RawJsonRoot, Payload);
-		FBlueprintHelperReadContextProjectionBridge::AttachTaskCoreProjectionMetadata(
-			Payload,
-			TEXT("logic_json"),
-			false);
-		Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::SerializeJsonObject(Payload);
-		Result.bSucceeded = true;
-		Result.Message = TEXT("logicjson copied to clipboard.");
-		return Result;
-	}
-
-	Result.ExportText = UBlueprintHelperTaskSpecWorkbenchUtils::BuildLogicMdFromRawJson(RawJsonRoot);
-	Result.bSucceeded = true;
-	Result.Message = TEXT("logicmd copied to clipboard.");
+	FBlueprintHelperReadContextExportServiceLocalUtils::CompleteProjectedExport(
+		Request.Format,
+		Payload,
+		Result);
 	return Result;
 }
 

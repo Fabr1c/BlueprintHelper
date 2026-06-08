@@ -9,6 +9,7 @@ test('CLI summary exposes preview-blocked connectivity violations concisely', ()
   const command: CliCommand = {
     kind: 'task.preview',
     format: 'summary',
+    resultPolicyId: 'task.preview.default',
   };
   const toolResult: ToolResultBase = {
     ok: true,
@@ -51,6 +52,7 @@ test('CLI execute summary keeps preview connectivity blocker visible', () => {
   const command: CliCommand = {
     kind: 'task.execute',
     format: 'summary',
+    resultPolicyId: 'task.execute.default',
   };
   const toolResult = {
     ok: false,
@@ -93,6 +95,7 @@ test('CLI full output exposes preview-blocked issue code for selected fields', (
   const command: CliCommand = {
     kind: 'task.preview',
     format: 'full',
+    resultPolicyId: 'task.preview.default',
     fields: ['status', 'error_code', 'message', 'artifacts.full_result'],
   };
   const toolResult: ToolResultBase = {
@@ -128,6 +131,7 @@ test('CLI preview summary exposes static preflight issue from error payload', ()
   const command: CliCommand = {
     kind: 'task.preview',
     format: 'summary',
+    resultPolicyId: 'task.preview.default',
   };
   const toolResult = {
     ok: false,
@@ -197,6 +201,7 @@ test('CLI full result keeps validation errors but drops validation policy keys',
   }, {
     kind: 'task.execute',
     format: 'full',
+    resultPolicyId: 'task.execute.default',
   }, {
     ok: false,
     schema: 'BlueprintHelper.ToolResult.v1',

@@ -44,7 +44,7 @@ export interface RecordCliToolThrownErrorOptions {
 
 export interface RecordCliIoCompletedOptions {
   metrics: MetricsService;
-  command: Pick<CliCommand, 'kind' | 'toolName'>;
+  command: Pick<CliCommand, 'metricsToolName' | 'toolName'>;
   inputIo?: MetricsIoSummary;
   outputIo?: MetricsIoSummary;
   operationInput?: unknown;
@@ -236,18 +236,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function resolveCliIoToolName(command: Pick<CliCommand, 'kind' | 'toolName'>): string | undefined {
+function resolveCliIoToolName(command: Pick<CliCommand, 'metricsToolName' | 'toolName'>): string | undefined {
+  if (command.metricsToolName) {
+    return command.metricsToolName;
+  }
   if (command.toolName) {
     return command.toolName;
-  }
-  if (command.kind === 'task.preview') {
-    return 'blueprinthelper_preview_task';
-  }
-  if (command.kind === 'task.execute') {
-    return 'blueprinthelper_execute_task';
-  }
-  if (command.kind === 'task.result') {
-    return 'blueprinthelper_get_task_result';
   }
   return undefined;
 }

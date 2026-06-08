@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildReadonlyToolCommandManifestRegistry } from '../manifest/tool-command-manifest-builder.js';
-import { resolveResultProjectionPolicy } from './result-projection-registry.js';
+import { getBuiltinResultProjectionPolicy, resolveResultProjectionPolicy } from './result-projection-registry.js';
 
 test('resolveResultProjectionPolicy uses manifest result_policy_id', () => {
   const registry = buildReadonlyToolCommandManifestRegistry();
@@ -26,10 +26,14 @@ test('resolveResultProjectionPolicy maps execute aliases to execute policy', () 
   assert.equal(resolveResultProjectionPolicy({ manifestRegistry: registry, toolIdOrAlias: 'task execute' }).policy_id, 'task.execute.default');
 });
 
-test('resolveResultProjectionPolicy falls back to generic policy for compat tools', () => {
-  const policy = resolveResultProjectionPolicy({ commandKind: 'bridge.call' });
+test('resolveResultProjectionPolicy does not infer policy from CLI command kind', () => {
+  const policy = resolveResultProjectionPolicy({});
 
   assert.equal(policy.policy_id, 'tool.generic.default');
+});
+
+test('CLI command descriptors use explicit built-in result policies', () => {
+  assert.equal(getBuiltinResultProjectionPolicy('task.execute.default').policy_id, 'task.execute.default');
 });
 
 test('all public task tool manifests declare result_policy_id', () => {

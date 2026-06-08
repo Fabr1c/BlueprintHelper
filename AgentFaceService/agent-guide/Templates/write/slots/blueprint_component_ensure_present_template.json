@@ -1,0 +1,9 @@
+{
+  "kind": "ensure_component_present",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "class": "__REQUIRED_COMPONENT_CLASS__",
+  "parent": "__OPTIONAL_PARENT_COMPONENT_NAME__",
+  "socket": "__OPTIONAL_SOCKET_NAME__",
+  "attach_rule": "__OPTIONAL_ATTACH_RULE__",
+  "name_collision_policy": "reuse_if_exists"
+}

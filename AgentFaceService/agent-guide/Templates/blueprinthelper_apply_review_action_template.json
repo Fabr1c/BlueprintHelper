@@ -1,0 +1,8 @@
+{
+  "$comment": "Developer mode only. Use this expert template only when operating BlueprintHelper review actions with explicit developer authorization.",
+  "review_record_id": "__REQUIRED_REVIEW_RECORD_ID__",
+  "action": "accept",
+  "target_keys": [
+    "__OPTIONAL_TARGET_KEY__"
+  ]
+}

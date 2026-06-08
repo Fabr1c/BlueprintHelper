@@ -126,6 +126,102 @@ test('edit_umg_widget lowers set_widget_as_variable to widget variable runtime o
   });
 });
 
+test('edit_umg_widget lowers P2 descriptor-backed operations', () => {
+  const cases: Array<{ change: Record<string, unknown>; expected: Record<string, unknown> }> = [
+    {
+      change: {
+        kind: 'rename_widget',
+        widget_name: 'OldName',
+        new_widget_name: 'NewName',
+      },
+      expected: {
+        op: 'rename_widget',
+        widget_name: 'OldName',
+        new_widget_name: 'NewName',
+      },
+    },
+    {
+      change: {
+        kind: 'remove_root_widget',
+        root_widget_name: 'RootCanvas',
+        replacement_policy: 'promote_single_child',
+      },
+      expected: {
+        op: 'remove_root_widget',
+        root_widget_name: 'RootCanvas',
+        replacement_policy: 'promote_single_child',
+      },
+    },
+    {
+      change: {
+        kind: 'reparent_widget_blueprint',
+        new_parent_class: '/Game/UI/WBP_Base',
+        expected_parent_class: '/Script/UMG.UserWidget',
+      },
+      expected: {
+        op: 'reparent_widget_blueprint',
+        new_parent_class: '/Game/UI/WBP_Base',
+        expected_parent_class: '/Script/UMG.UserWidget',
+      },
+    },
+    {
+      change: {
+        kind: 'duplicate_widget_subtree',
+        source_widget_name: 'InventoryPanel',
+        target_parent_name: 'RootCanvas',
+        virtual_index: 1,
+        name_mapping: {
+          InventoryPanel: 'InventoryPanel_Copy',
+        },
+      },
+      expected: {
+        op: 'duplicate_widget_subtree',
+        source_widget_name: 'InventoryPanel',
+        target_parent_name: 'RootCanvas',
+        virtual_index: 1,
+        name_mapping: {
+          InventoryPanel: 'InventoryPanel_Copy',
+        },
+      },
+    },
+    {
+      change: {
+        kind: 'wrap_widget',
+        widget_name: 'Icon',
+        wrapper_class: '/Script/UMG.Border',
+        wrapper_name: 'IconFrame',
+      },
+      expected: {
+        op: 'wrap_widget',
+        widget_name: 'Icon',
+        wrapper_class: '/Script/UMG.Border',
+        wrapper_name: 'IconFrame',
+      },
+    },
+    {
+      change: {
+        kind: 'replace_widget_class',
+        widget_name: 'OldButton',
+        new_widget_class: '/Script/UMG.Button',
+        preserve_children: true,
+        preserve_slot: true,
+      },
+      expected: {
+        op: 'replace_widget_class',
+        widget_name: 'OldButton',
+        new_widget_class: '/Script/UMG.Button',
+        preserve_children: true,
+        preserve_slot: true,
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    const plan = compileTaskSpecToTaskPlan(makeSpec([item.change]) as never);
+    assert.deepEqual(firstOp(plan), item.expected);
+  }
+});
+
 test('edit_umg_widget validates set_slot_property required fields', () => {
   assert.throws(
     () => compileTaskSpecToTaskPlan(makeSpec([{

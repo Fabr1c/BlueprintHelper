@@ -1,0 +1,5 @@
+{
+  "kind": "remove_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "delete_policy": "promote_children"
+}

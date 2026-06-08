@@ -1887,11 +1887,27 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 	FString ExpectedContentWidgetName;
 	FString ExpectedSlotClassPath;
 	FString ExpectedWidgetClassPath;
+	FString NewWidgetName;
+	FString RootWidgetName;
+	FString ReplacementPolicy;
+	FString ReplacementWidgetClass;
+	FString ReplacementWidgetName;
+	FString ExpectedRootClassPath;
+	FString NewParentClass;
+	FString ExpectedParentClass;
+	FString SourceWidgetName;
+	FString TargetParentName;
+	FString WrapperClass;
+	FString WrapperName;
+	FString NewWidgetClass;
 	bool bDryRun = false;
 	bool bReplaceExisting = false;
 	bool bIsVariable = false;
+	bool bPreserveChildren = true;
+	bool bPreserveSlot = true;
 	TOptional<int32> VirtualIndex;
 	TOptional<int32> ExpectedVirtualIndex;
+	TMap<FString, FString> NameMapping;
 	if (Payload.IsValid())
 	{
 		Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
@@ -1908,9 +1924,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		Payload->TryGetStringField(TEXT("expected_content_widget_name"), ExpectedContentWidgetName);
 		Payload->TryGetStringField(TEXT("expected_slot_class_path"), ExpectedSlotClassPath);
 		Payload->TryGetStringField(TEXT("expected_widget_class_path"), ExpectedWidgetClassPath);
+		Payload->TryGetStringField(TEXT("new_widget_name"), NewWidgetName);
+		Payload->TryGetStringField(TEXT("root_widget_name"), RootWidgetName);
+		Payload->TryGetStringField(TEXT("replacement_policy"), ReplacementPolicy);
+		Payload->TryGetStringField(TEXT("replacement_widget_class"), ReplacementWidgetClass);
+		Payload->TryGetStringField(TEXT("replacement_widget_name"), ReplacementWidgetName);
+		Payload->TryGetStringField(TEXT("expected_root_class_path"), ExpectedRootClassPath);
+		Payload->TryGetStringField(TEXT("new_parent_class"), NewParentClass);
+		Payload->TryGetStringField(TEXT("expected_parent_class"), ExpectedParentClass);
+		Payload->TryGetStringField(TEXT("source_widget_name"), SourceWidgetName);
+		Payload->TryGetStringField(TEXT("target_parent_name"), TargetParentName);
+		Payload->TryGetStringField(TEXT("wrapper_class"), WrapperClass);
+		Payload->TryGetStringField(TEXT("wrapper_name"), WrapperName);
+		Payload->TryGetStringField(TEXT("new_widget_class"), NewWidgetClass);
 		Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
 		Payload->TryGetBoolField(TEXT("replace_existing"), bReplaceExisting);
 		Payload->TryGetBoolField(TEXT("is_variable"), bIsVariable);
+		Payload->TryGetBoolField(TEXT("preserve_children"), bPreserveChildren);
+		Payload->TryGetBoolField(TEXT("preserve_slot"), bPreserveSlot);
 		double NumberValue = 0.0;
 		if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
 		{
@@ -1919,6 +1950,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		if (Payload->TryGetNumberField(TEXT("expected_virtual_index"), NumberValue))
 		{
 			ExpectedVirtualIndex = FMath::RoundToInt(NumberValue);
+		}
+		const TSharedPtr<FJsonObject>* NameMappingObject = nullptr;
+		if (Payload->TryGetObjectField(TEXT("name_mapping"), NameMappingObject) &&
+			NameMappingObject &&
+			NameMappingObject->IsValid())
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : (*NameMappingObject)->Values)
+			{
+				if (Field.Value.IsValid() && Field.Value->Type == EJson::String)
+				{
+					NameMapping.Add(Field.Key, Field.Value->AsString());
+				}
+			}
 		}
 	}
 
@@ -2006,6 +2050,83 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 		[&Service, AssetPath, WidgetName, bDryRun]()
 		{
 			return Service.RemoveWidget(AssetPath, WidgetName, bDryRun);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget,
+		[&Service, AssetPath, WidgetName, NewWidgetName, ExpectedWidgetClassPath, bDryRun]()
+		{
+			FBlueprintHelperRenameWidgetRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.NewWidgetName = NewWidgetName;
+			Request.ExpectedWidgetClassPath = ExpectedWidgetClassPath;
+			Request.bDryRun = bDryRun;
+			return Service.RenameWidget(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget,
+		[&Service, AssetPath, RootWidgetName, ReplacementPolicy, ReplacementWidgetClass, ReplacementWidgetName, ExpectedRootClassPath, bDryRun]()
+		{
+			FBlueprintHelperRemoveRootWidgetRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.RootWidgetName = RootWidgetName;
+			Request.ReplacementPolicy = ReplacementPolicy;
+			Request.ReplacementWidgetClass = ReplacementWidgetClass;
+			Request.ReplacementWidgetName = ReplacementWidgetName;
+			Request.ExpectedRootClassPath = ExpectedRootClassPath;
+			Request.bDryRun = bDryRun;
+			return Service.RemoveRootWidget(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReparentWidgetBlueprint,
+		[&Service, AssetPath, NewParentClass, ExpectedParentClass, bDryRun]()
+		{
+			FBlueprintHelperReparentWidgetBlueprintRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.NewParentClass = NewParentClass;
+			Request.ExpectedParentClass = ExpectedParentClass;
+			Request.bDryRun = bDryRun;
+			return Service.ReparentWidgetBlueprint(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree,
+		[&Service, AssetPath, SourceWidgetName, TargetParentName, SlotName, VirtualIndex, NameMapping, bDryRun]()
+		{
+			FBlueprintHelperDuplicateWidgetSubtreeRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.SourceWidgetName = SourceWidgetName;
+			Request.TargetParentName = TargetParentName;
+			Request.SlotName = SlotName;
+			Request.VirtualIndex = VirtualIndex;
+			Request.NameMapping = NameMapping;
+			Request.bDryRun = bDryRun;
+			return Service.DuplicateWidgetSubtree(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget,
+		[&Service, AssetPath, WidgetName, WrapperClass, WrapperName, bDryRun]()
+		{
+			FBlueprintHelperWrapWidgetRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.WrapperClass = WrapperClass;
+			Request.WrapperName = WrapperName;
+			Request.bDryRun = bDryRun;
+			return Service.WrapWidget(Request);
+		});
+	OperationHandlers.Add(
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReplaceWidgetClass,
+		[&Service, AssetPath, WidgetName, NewWidgetClass, ExpectedWidgetClassPath, bPreserveChildren, bPreserveSlot, bDryRun]()
+		{
+			FBlueprintHelperReplaceWidgetClassRequest Request;
+			Request.AssetPath = AssetPath;
+			Request.WidgetName = WidgetName;
+			Request.NewWidgetClass = NewWidgetClass;
+			Request.ExpectedWidgetClassPath = ExpectedWidgetClassPath;
+			Request.bPreserveChildren = bPreserveChildren;
+			Request.bPreserveSlot = bPreserveSlot;
+			Request.bDryRun = bDryRun;
+			return Service.ReplaceWidgetClass(Request);
 		});
 
 	if (const FWidgetOperationHandler* Handler = OperationHandlers.Find(AdapterOperation))

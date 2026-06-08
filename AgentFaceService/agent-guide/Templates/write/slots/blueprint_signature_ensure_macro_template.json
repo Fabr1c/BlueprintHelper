@@ -1,0 +1,7 @@
+{
+  "kind": "ensure_macro",
+  "macro_name": "__REQUIRED_MACRO_NAME__",
+  "inputs": [],
+  "outputs": [],
+  "name_collision_policy": "reuse_if_exists"
+}

@@ -2,8 +2,23 @@ import type { ToolInputShapeId } from '../manifest/tool-command-manifest.js';
 
 export type CliSubcommandGroup = 'tools.templates' | 'tools.read_templates';
 
+export type CliTemplateIndexCommand =
+  | 'bh tools templates families --workflow preview_execute --format json'
+  | 'bh tools read-templates domains --format json';
+
+type CliSubcommandCapabilityKind = 'discover' | 'read' | 'plan' | 'write' | 'diagnose';
+
+export interface CliSubcommandGroupDescriptor {
+  readonly group: CliSubcommandGroup;
+  readonly command_prefix: readonly string[];
+  readonly input_shapes: readonly ToolInputShapeId[];
+  readonly capability_kinds: readonly CliSubcommandCapabilityKind[];
+  readonly template_index_command: CliTemplateIndexCommand;
+}
+
 export interface CliSubcommandDescriptor {
   readonly group: CliSubcommandGroup;
+  readonly positionals: readonly string[];
   readonly subcommand: string;
   readonly kind: string;
   readonly usage: string;
@@ -23,9 +38,31 @@ export type RouteCliSubcommandResult<TBase extends Record<string, unknown>> =
   | { ok: true; command: TBase & { kind: string } & Record<string, unknown> }
   | { ok: false; message: string };
 
-const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
+type CliSubcommandDefinition = Omit<CliSubcommandDescriptor, 'group' | 'positionals'>;
+
+const TASKSPEC_TEMPLATE_GROUP_DESCRIPTOR: CliSubcommandGroupDescriptor = {
+  group: 'tools.templates',
+  command_prefix: ['tools', 'templates'],
+  input_shapes: ['bare_taskspec', 'wrapped_taskspec_preview', 'wrapped_taskspec_execute'],
+  capability_kinds: ['discover', 'plan', 'write', 'diagnose'],
+  template_index_command: 'bh tools templates families --workflow preview_execute --format json',
+};
+
+const READ_CONTEXT_TEMPLATE_GROUP_DESCRIPTOR: CliSubcommandGroupDescriptor = {
+  group: 'tools.read_templates',
+  command_prefix: ['tools', 'read-templates'],
+  input_shapes: ['readspec'],
+  capability_kinds: ['read'],
+  template_index_command: 'bh tools read-templates domains --format json',
+};
+
+const CLI_SUBCOMMAND_GROUP_DESCRIPTORS: readonly CliSubcommandGroupDescriptor[] = [
+  TASKSPEC_TEMPLATE_GROUP_DESCRIPTOR,
+  READ_CONTEXT_TEMPLATE_GROUP_DESCRIPTOR,
+];
+
+const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
   {
-    group: 'tools.templates',
     subcommand: 'families',
     kind: 'tools.templates.families',
     usage: 'bh tools templates families --workflow preview_execute --format json',
@@ -33,35 +70,30 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
     option_map: { workflow: 'workflow' },
   },
   {
-    group: 'tools.templates',
     subcommand: 'write-modes',
     kind: 'tools.templates.write_modes',
     usage: 'bh tools templates write-modes --family <family> --format json',
     option_map: { family: 'family' },
   },
   {
-    group: 'tools.templates',
     subcommand: 'clusters',
     kind: 'tools.templates.clusters',
     usage: 'bh tools templates clusters --family <family> --format json',
     option_map: { family: 'family' },
   },
   {
-    group: 'tools.templates',
     subcommand: 'operations',
     kind: 'tools.templates.operations',
     usage: 'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
     option_map: { family: 'family', cluster: 'cluster', writeMode: 'writeMode' },
   },
   {
-    group: 'tools.templates',
     subcommand: 'quick-access',
     kind: 'tools.templates.quick_access',
     usage: 'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
     option_map: { family: 'family', cluster: 'cluster', operation: 'operation', writeMode: 'writeMode' },
   },
   {
-    group: 'tools.templates',
     subcommand: 'compose',
     kind: 'tools.templates.compose',
     usage: 'bh tools templates compose --family <family> --write-mode <mode> --templates <slot_expr[,slot_expr...]> --out <task-spec.json> --format json',
@@ -70,36 +102,31 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
   },
 ];
 
-const READ_CONTEXT_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
+const READ_CONTEXT_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
   {
-    group: 'tools.read_templates',
     subcommand: 'domains',
     kind: 'tools.read_templates.domains',
     usage: 'bh tools read-templates domains --format json',
   },
   {
-    group: 'tools.read_templates',
     subcommand: 'clusters',
     kind: 'tools.read_templates.clusters',
     usage: 'bh tools read-templates clusters --domain <domain> --format json',
     option_map: { domain: 'domain' },
   },
   {
-    group: 'tools.read_templates',
     subcommand: 'targets',
     kind: 'tools.read_templates.targets',
     usage: 'bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
     option_map: { domain: 'domain', readCluster: 'readCluster' },
   },
   {
-    group: 'tools.read_templates',
     subcommand: 'views',
     kind: 'tools.read_templates.views',
     usage: 'bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
     option_map: { domain: 'domain', readCluster: 'readCluster', targetKind: 'targetKind' },
   },
   {
-    group: 'tools.read_templates',
     subcommand: 'quick-access',
     kind: 'tools.read_templates.quick_access',
     usage: 'bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
@@ -111,7 +138,6 @@ const READ_CONTEXT_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
     },
   },
   {
-    group: 'tools.read_templates',
     subcommand: 'compose',
     kind: 'tools.read_templates.compose',
     usage: 'bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
@@ -127,13 +153,33 @@ const READ_CONTEXT_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDescriptor[] = [
 ];
 
 const CLI_SUBCOMMAND_DESCRIPTORS: readonly CliSubcommandDescriptor[] = [
-  ...TASKSPEC_TEMPLATE_SUBCOMMANDS,
-  ...READ_CONTEXT_TEMPLATE_SUBCOMMANDS,
+  ...buildCliSubcommandDescriptors(TASKSPEC_TEMPLATE_GROUP_DESCRIPTOR, TASKSPEC_TEMPLATE_SUBCOMMANDS),
+  ...buildCliSubcommandDescriptors(READ_CONTEXT_TEMPLATE_GROUP_DESCRIPTOR, READ_CONTEXT_TEMPLATE_SUBCOMMANDS),
 ];
+
+export function listCliSubcommandGroupDescriptors(): CliSubcommandGroupDescriptor[] {
+  return CLI_SUBCOMMAND_GROUP_DESCRIPTORS.map(cloneCliSubcommandGroupDescriptor);
+}
+
+export function getCliSubcommandGroupDescriptor(group: CliSubcommandGroup): CliSubcommandGroupDescriptor {
+  const descriptor = CLI_SUBCOMMAND_GROUP_DESCRIPTORS.find((entry) => entry.group === group);
+  if (!descriptor) {
+    throw new Error(`Unknown BlueprintHelper CLI subcommand group: ${group}`);
+  }
+  return cloneCliSubcommandGroupDescriptor(descriptor);
+}
+
+export function resolveCliSubcommandGroupFromPositionals(
+  positionals: readonly string[],
+): CliSubcommandGroupDescriptor | undefined {
+  const descriptor = CLI_SUBCOMMAND_GROUP_DESCRIPTORS.find((entry) =>
+    entry.command_prefix.every((token, index) => positionals[index] === token));
+  return descriptor ? cloneCliSubcommandGroupDescriptor(descriptor) : undefined;
+}
 
 export function listCliSubcommandDescriptors(group?: CliSubcommandGroup): CliSubcommandDescriptor[] {
   return CLI_SUBCOMMAND_DESCRIPTORS.filter((descriptor) => group === undefined || descriptor.group === group)
-    .map((descriptor) => ({ ...descriptor }));
+    .map(cloneCliSubcommandDescriptor);
 }
 
 export function listCliSubcommandUsageLines(group?: CliSubcommandGroup): string[] {
@@ -141,24 +187,26 @@ export function listCliSubcommandUsageLines(group?: CliSubcommandGroup): string[
 }
 
 export function templateNavigationUsageLinesForInputShapes(inputShapes: readonly ToolInputShapeId[]): string[] {
-  if (inputShapes.includes('readspec')) {
-    return listCliSubcommandUsageLines('tools.read_templates');
-  }
-  if (
-    inputShapes.includes('bare_taskspec')
-    || inputShapes.includes('wrapped_taskspec_preview')
-    || inputShapes.includes('wrapped_taskspec_execute')
-  ) {
-    return listCliSubcommandUsageLines('tools.templates');
-  }
-  return [];
+  const inputShapeSet = new Set(inputShapes);
+  return CLI_SUBCOMMAND_GROUP_DESCRIPTORS
+    .filter((groupDescriptor) => groupDescriptor.input_shapes.some((shape) => inputShapeSet.has(shape)))
+    .flatMap((groupDescriptor) => listCliSubcommandUsageLines(groupDescriptor.group));
+}
+
+export function templateIndexCommandForCapabilityKind(
+  capabilityKind: string,
+): CliTemplateIndexCommand | undefined {
+  return CLI_SUBCOMMAND_GROUP_DESCRIPTORS.find((groupDescriptor) =>
+    groupDescriptor.capability_kinds.some((kind) => kind === capabilityKind))?.template_index_command;
 }
 
 export function routeCliSubcommand<TBase extends Record<string, unknown>>(
   input: RouteCliSubcommandInput<TBase>,
 ): RouteCliSubcommandResult<TBase> {
-  const subcommand = input.positionals[2];
-  if (input.positionals.length !== 3 || !subcommand) {
+  const groupDescriptor = getCliSubcommandGroupDescriptor(input.group);
+  const subcommand = input.positionals[groupDescriptor.command_prefix.length];
+  const hasExpectedPrefix = groupDescriptor.command_prefix.every((token, index) => input.positionals[index] === token);
+  if (input.positionals.length !== groupDescriptor.command_prefix.length + 1 || !subcommand || !hasExpectedPrefix) {
     return reject(input.group, subcommand);
   }
 
@@ -191,5 +239,34 @@ function reject<TBase extends Record<string, unknown>>(
   return {
     ok: false,
     message: `Unsupported BlueprintHelper CLI subcommand: ${group} ${subcommand ?? ''}`.trim(),
+  };
+}
+
+function buildCliSubcommandDescriptors(
+  groupDescriptor: CliSubcommandGroupDescriptor,
+  definitions: readonly CliSubcommandDefinition[],
+): CliSubcommandDescriptor[] {
+  return definitions.map((definition) => ({
+    ...definition,
+    group: groupDescriptor.group,
+    positionals: [...groupDescriptor.command_prefix, definition.subcommand],
+  }));
+}
+
+function cloneCliSubcommandDescriptor(descriptor: CliSubcommandDescriptor): CliSubcommandDescriptor {
+  return {
+    ...descriptor,
+    positionals: [...descriptor.positionals],
+  };
+}
+
+function cloneCliSubcommandGroupDescriptor(
+  descriptor: CliSubcommandGroupDescriptor,
+): CliSubcommandGroupDescriptor {
+  return {
+    ...descriptor,
+    command_prefix: [...descriptor.command_prefix],
+    input_shapes: [...descriptor.input_shapes],
+    capability_kinds: [...descriptor.capability_kinds],
   };
 }

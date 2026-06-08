@@ -1,6 +1,6 @@
 import { failureResult, type ToolResultBase } from '../../result/tool-result.js';
 import type { BlueprintHelperToolContext } from '../types.js';
-import { bridgeCommandByToolName } from './bridge-tool-command-map.js';
+import { getBridgeToolDescriptor } from './bridge-tool-descriptor.js';
 import { executeGenericBridgeTool } from './generic-bridge-tool-handler.js';
 import { executeReadContextCapabilities } from './read-context/read-context-capabilities.js';
 import { executeReadContext } from './read-context/read-context-handler.js';
@@ -13,40 +13,39 @@ export type BridgeToolHandler = (
   context: BlueprintHelperToolContext,
 ) => ToolResultBase | Promise<ToolResultBase>;
 
-const BRIDGE_TOOL_HANDLERS = new Map<string, BridgeToolHandler>();
+const BRIDGE_TOOL_HANDLERS_BY_ID = new Map<string, BridgeToolHandler>();
 
-export function registerBridgeToolHandler(toolName: string, handler: BridgeToolHandler): void {
-  if (BRIDGE_TOOL_HANDLERS.has(toolName)) {
-    throw new Error(`Duplicate BlueprintHelper Bridge tool handler: ${toolName}`);
+export function registerBridgeToolHandler(handlerId: string, handler: BridgeToolHandler): void {
+  if (BRIDGE_TOOL_HANDLERS_BY_ID.has(handlerId)) {
+    throw new Error(`Duplicate BlueprintHelper Bridge tool handler: ${handlerId}`);
   }
-  BRIDGE_TOOL_HANDLERS.set(toolName, handler);
+  BRIDGE_TOOL_HANDLERS_BY_ID.set(handlerId, handler);
 }
 
 export function getBridgeToolHandler(toolName: string): BridgeToolHandler {
-  const handler = BRIDGE_TOOL_HANDLERS.get(toolName);
+  const descriptor = getBridgeToolDescriptor(toolName);
+  const handler = descriptor ? BRIDGE_TOOL_HANDLERS_BY_ID.get(descriptor.handler_id) : undefined;
   if (handler) {
     return handler;
   }
-
-  const bridgeCommand = bridgeCommandByToolName[toolName];
-  if (bridgeCommand) {
-    return (input, context) => executeGenericBridgeTool(toolName, bridgeCommand, input, context);
+  if (descriptor?.bridge_command) {
+    return (input, context) => executeGenericBridgeTool(toolName, descriptor.bridge_command!, input, context);
   }
 
   return async () => failureResult(toolName, {
     code: 'bridge_tool_not_mapped',
     stage: 'parse_input',
-    message: `No Bridge command mapping for ${toolName}.`,
+        message: `No Bridge tool descriptor for ${toolName}.`,
     retryable: false,
     rollback_result: 'not_needed',
   });
 }
 
-registerBridgeToolHandler('blueprinthelper_read_context', (input, context) =>
+registerBridgeToolHandler('read_context', (input, context) =>
   executeReadContext(input as ReadContextInput, context));
-registerBridgeToolHandler('blueprinthelper_read_context_capabilities', (input) =>
+registerBridgeToolHandler('read_context_capabilities', (input) =>
   executeReadContextCapabilities(input));
-registerBridgeToolHandler('blueprinthelper_request_write_session', (input, context) =>
+registerBridgeToolHandler('write_session', (input, context) =>
   executeWriteSessionRequest(input, context));
-registerBridgeToolHandler('blueprinthelper_capture_screenshot', (input, context) =>
+registerBridgeToolHandler('capture_screenshot', (input, context) =>
   executeCaptureScreenshot(input, context));

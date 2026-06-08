@@ -40,6 +40,20 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
     assert.equal(umgHeader.includes(`TEXT("${descriptor.bridge_command}")`), true, `UE UMG manifest contains ${descriptor.bridge_command}`);
     assert.equal(umgHeader.includes(`TEXT("${descriptor.kind}")`), true, `UE UMG manifest contains ${descriptor.kind}`);
   }
+  const rootRemovalDescriptor = UMG_WIDGET_OPERATION_MANIFEST.find(
+    (descriptor) => descriptor.kind === 'remove_root_widget',
+  );
+  assert.ok(rootRemovalDescriptor);
+  assert.deepEqual(rootRemovalDescriptor.string_enum_fields?.replacement_policy, [
+    'promote_single_child',
+    'replace_with_empty_root',
+    'remove_empty_root',
+  ]);
+  assert.equal(
+    umgHeader.includes('replacement_policy=promote_single_child|replace_with_empty_root|remove_empty_root'),
+    true,
+    'UE UMG manifest mirrors descriptor-owned replacement policy enum rules',
+  );
 
   const readContextHeader = readFileSync(
     path.join(PLUGIN_ROOT, 'BlueprintHelper/Source/BlueprintHelper/Private/Generated/BlueprintHelperReadContextRouteManifest.generated.h'),

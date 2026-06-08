@@ -1,0 +1,5 @@
+{
+  "kind": "rename_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "new_name": "__REQUIRED_NEW_COMPONENT_NAME__"
+}

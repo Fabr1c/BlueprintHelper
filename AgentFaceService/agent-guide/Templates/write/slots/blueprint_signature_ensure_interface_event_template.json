@@ -1,0 +1,8 @@
+{
+  "kind": "ensure_interface_event",
+  "event_name": "__REQUIRED_EVENT_NAME__",
+  "graph_name": "__REQUIRED_GRAPH_NAME__",
+  "interface_path": "__REQUIRED_INTERFACE_PATH__",
+  "inputs": [],
+  "name_collision_policy": "reuse_if_exists"
+}

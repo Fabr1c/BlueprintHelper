@@ -1,0 +1,7 @@
+{
+  "kind": "ensure_event_dispatcher",
+  "dispatcher_name": "__REQUIRED_DISPATCHER_NAME__",
+  "inputs": [],
+  "name_collision_policy": "reuse_if_exists",
+  "signature_mismatch_policy": "block"
+}

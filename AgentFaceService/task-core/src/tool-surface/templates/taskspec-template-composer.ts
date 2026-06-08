@@ -111,12 +111,36 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
     }]);
   }
   if (input.templateIds.length > 0) {
-    return failed(input, input.templateIds.map((templateId) => ({
-      code: 'unsupported_template_for_family',
+    const taskSpec = readJson(pluginPath(family.base_template_path)) as Record<string, unknown>;
+    clearInsertTargets(taskSpec, family.insert_targets);
+    const diagnostics: TaskSpecTemplateDiagnostic[] = [];
+    const quickAccessCatalog = listTaskSpecTemplateQuickAccess({
       family: input.family,
-      write_mode: input.writeMode,
-      template_id: templateId,
-    })));
+      cluster: '',
+      operation: '',
+      writeMode: input.writeMode,
+    }).items;
+    for (const templateId of input.templateIds) {
+      const item = quickAccessCatalog.find((candidate) => candidate.template_id === templateId);
+      if (!item) {
+        diagnostics.push({
+          code: 'unknown_quick_access_template',
+          family: input.family,
+          write_mode: input.writeMode,
+          template_id: templateId,
+        });
+        continue;
+      }
+      const fragment = readJson(pluginPath(item.template_path));
+      for (const insertPath of item.insert_paths) {
+        insertTemplateFragment(taskSpec, insertPath, fragment);
+      }
+    }
+    if (diagnostics.length > 0) {
+      return failed(input, diagnostics);
+    }
+    writeJson(input.outputPath, taskSpec);
+    return ok(input);
   }
 
   writeJson(input.outputPath, readJson(pluginPath(family.base_template_path)));
@@ -203,6 +227,80 @@ function requireArray(value: unknown, label: string): unknown[] {
     return value;
   }
   throw new Error(`TaskSpec template is missing array: ${label}`);
+}
+
+function clearInsertTargets(root: Record<string, unknown>, insertTargets: readonly string[]): void {
+  for (const insertTarget of insertTargets) {
+    if (insertTarget.endsWith('[]')) {
+      getPathArray(root, insertTarget.slice(0, -2)).length = 0;
+      continue;
+    }
+    deletePath(root, insertTarget);
+  }
+}
+
+function insertTemplateFragment(root: Record<string, unknown>, insertPath: string, fragment: unknown): void {
+  if (insertPath.endsWith('[]')) {
+    getPathArray(root, insertPath.slice(0, -2)).push(fragment);
+    return;
+  }
+  setPathValue(root, insertPath, fragment);
+}
+
+function getPathArray(root: Record<string, unknown>, pathExpression: string): unknown[] {
+  const parent = ensurePathParent(root, pathExpression);
+  const value = parent.record[parent.key];
+  if (Array.isArray(value)) {
+    return value;
+  }
+  parent.record[parent.key] = [];
+  return parent.record[parent.key] as unknown[];
+}
+
+function setPathValue(root: Record<string, unknown>, pathExpression: string, value: unknown): void {
+  const parent = ensurePathParent(root, pathExpression);
+  parent.record[parent.key] = value;
+}
+
+function deletePath(root: Record<string, unknown>, pathExpression: string): void {
+  const parent = resolvePathParent(root, pathExpression);
+  if (parent) {
+    delete parent.record[parent.key];
+  }
+}
+
+function ensurePathParent(root: Record<string, unknown>, pathExpression: string): { record: Record<string, unknown>; key: string } {
+  const parts = pathExpression.split('.');
+  const key = parts.pop();
+  if (!key) {
+    throw new Error(`Invalid insert path: ${pathExpression}`);
+  }
+  let cursor = root;
+  for (const part of parts) {
+    const child = cursor[part];
+    if (!child || typeof child !== 'object' || Array.isArray(child)) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part] as Record<string, unknown>;
+  }
+  return { record: cursor, key };
+}
+
+function resolvePathParent(root: Record<string, unknown>, pathExpression: string): { record: Record<string, unknown>; key: string } | undefined {
+  const parts = pathExpression.split('.');
+  const key = parts.pop();
+  if (!key) {
+    return undefined;
+  }
+  let cursor: Record<string, unknown> = root;
+  for (const part of parts) {
+    const child = cursor[part];
+    if (!child || typeof child !== 'object' || Array.isArray(child)) {
+      return undefined;
+    }
+    cursor = child as Record<string, unknown>;
+  }
+  return { record: cursor, key };
 }
 
 function isGraphWriteTemplateWriteMode(value: string): value is GraphWriteTemplateWriteMode {

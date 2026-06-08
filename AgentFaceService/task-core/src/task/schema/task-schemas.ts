@@ -7,6 +7,7 @@ import {
   getGraphWriteRouteByScope,
   getGraphWriteRequiredFieldByStrategy,
 } from '../compiler/graphwrite/graphwrite-route-registry.js';
+import { UMG_WIDGET_OPERATION_MANIFEST } from '../../tool-surface/templates/generated/umg-widget-operation-manifest.generated.js';
 
 export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
 export {
@@ -1245,18 +1246,21 @@ export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
   }),
 }).passthrough();
 
+const UMG_WIDGET_CHANGE_KIND_VALUES = UMG_WIDGET_OPERATION_MANIFEST
+  .map((descriptor) => descriptor.kind) as [string, ...string[]];
+
 const UMGWidgetChangeSchema = z.object({
-  kind: z.enum([
-    'create_widget',
-    'update_widget_property',
-    'delete_widget',
-    'move_widget',
-    'set_named_slot_content',
-    'set_slot_property',
-    'set_widget_as_variable',
-  ]),
+  kind: z.enum(UMG_WIDGET_CHANGE_KIND_VALUES),
   widget_name: z.string().min(1).optional(),
+  root_widget_name: z.string().min(1).optional(),
+  source_widget_name: z.string().min(1).optional(),
+  target_parent_name: z.string().min(1).optional(),
   widget_class: z.string().min(1).optional(),
+  wrapper_class: z.string().min(1).optional(),
+  wrapper_name: z.string().min(1).optional(),
+  new_widget_class: z.string().min(1).optional(),
+  new_widget_name: z.string().min(1).optional(),
+  new_parent_class: z.string().min(1).optional(),
   parent_name: z.string().min(1).optional(),
   new_parent_name: z.string().min(1).optional(),
   slot_name: z.string().min(1).optional(),
@@ -1270,6 +1274,14 @@ const UMGWidgetChangeSchema = z.object({
   property_path: z.string().min(1).optional(),
   expected_slot_class_path: z.string().min(1).optional(),
   expected_widget_class_path: z.string().min(1).optional(),
+  expected_parent_class: z.string().min(1).optional(),
+  replacement_policy: z.enum(['promote_single_child', 'replace_with_empty_root', 'remove_empty_root']).optional(),
+  replacement_widget_class: z.string().min(1).optional(),
+  replacement_widget_name: z.string().min(1).optional(),
+  expected_root_class_path: z.string().min(1).optional(),
+  name_mapping: z.record(z.string().min(1)).optional(),
+  preserve_children: z.boolean().optional(),
+  preserve_slot: z.boolean().optional(),
   is_variable: z.boolean().optional(),
   value: z.unknown().optional(),
 }).passthrough().superRefine((change, ctx) => {

@@ -4,13 +4,21 @@ import {
   type ToolResultBase,
 } from '@blueprinthelper/task-core/result/tool-result';
 import {
+  buildReadonlyToolCommandManifestRegistry,
   buildCliDebugArtifactSource,
   compactExtraForDefaultCliOutput,
   compactTaskPlanForArtifact,
+  getBuiltinResultProjectionPolicy,
   projectToolResultForCli,
   projectMetricsReportDataForCli,
-} from '@blueprinthelper/task-core/tool-surface/result/result-projection-policy';
-import { resolveResultProjectionPolicy } from '@blueprinthelper/task-core/tool-surface/result/result-projection-registry';
+  resolveResultProjectionPolicy,
+  type BuiltinResultProjectionPolicyId,
+  type CliCommandInputIoKind,
+  type CliCommandOutputDataPolicyId,
+  type CliCommandRunIdPolicyId,
+  type CliCommandStatusPolicyId,
+  type ResultProjectionPolicy,
+} from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
 import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
 import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
@@ -48,6 +56,12 @@ export type CliCommandKind =
 export interface CliCommand {
   kind: CliCommandKind;
   format: CliFormat;
+  resultPolicyId?: BuiltinResultProjectionPolicyId;
+  statusPolicyId?: CliCommandStatusPolicyId;
+  runIdPolicyId?: CliCommandRunIdPolicyId;
+  outputDataPolicyId?: CliCommandOutputDataPolicyId;
+  metricsToolName?: string;
+  inputIoKind?: CliCommandInputIoKind;
   toolName?: string;
   file?: string;
   json?: string;
@@ -86,6 +100,8 @@ export interface CliCommand {
   omitFields?: string[];
 }
 
+const TOOL_COMMAND_MANIFEST_REGISTRY = buildReadonlyToolCommandManifestRegistry();
+
 export interface CliOutputRuntime {
   cwd: string;
   stdout: (text: string) => void;
@@ -118,15 +134,16 @@ export function buildCliSummary(input: {
   const targetAssets = collectTargetAssets(input.toolResult, data, task, taskPlan);
   const taskType = readString(taskPlan?.task_type) ?? readString(data?.['task_type']) ?? readString(task?.['task_type']);
   const violations = collectConnectivityViolations(data, input.toolResult.error);
-  const status = mapStatus(input.command, input.toolResult, data);
+  const policies = resolveCliOutputPolicies(input.command);
+  const status = mapStatus(policies.statusPolicyId, input.toolResult, data);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
   const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
-  const previewId = isPreviewCommand(input.command)
+  const previewId = policies.runIdPolicyId === 'task.preview_run_id'
     ? readString(extra['previewId'])
       ?? readString(data?.['preview_id'])
       ?? readString(input.toolResult.trace_id)
     : undefined;
-  const previewToken = isPreviewCommand(input.command)
+  const previewToken = policies.runIdPolicyId === 'task.preview_run_id'
     ? readString(extra['previewToken'])
       ?? readString(data?.['preview_token'])
     : undefined;
@@ -164,10 +181,8 @@ export function writeCliResult(
   toolResult: ToolResultBase,
   extra: Record<string, unknown> = {},
 ): CliWriteOutcome {
-  const projectionPolicy = resolveResultProjectionPolicy({
-    commandKind: command.kind,
-    toolIdOrAlias: command.toolName,
-  });
+  const outputPolicies = resolveCliOutputPolicies(command);
+  const projectionPolicy = outputPolicies.projectionPolicy;
   const debugResult = buildCliDebugArtifactSource({
     command_kind: command.kind,
     tool_name: command.toolName,
@@ -180,7 +195,7 @@ export function writeCliResult(
   const safeToolResult = sanitizeAgentFacingToolResult(toolResult);
   const safeExtra = sanitizeAgentFacingValue(extra);
   const artifactRoot = resolveArtifactRoot({ cwd: runtime.cwd, cliDir: command.artifactDir });
-  const runId = inferRunId(command, safeToolResult, safeExtra);
+  const runId = inferRunId(outputPolicies.runIdPolicyId, command, safeToolResult, safeExtra);
   const projected = projectToolResultForCli({
     command_kind: command.kind,
     tool_name: command.toolName,
@@ -228,7 +243,7 @@ export function writeCliResult(
   const output = shapeCliOutput(
     command.format === 'summary'
       ? buildCliSummary({ command, toolResult: safeToolResult, artifactRefs, extra: safeExtra })
-      : buildOutput(command, safeToolResult, fullToolResult, artifactRefs, compactCliExtraForOutput(safeExtra)),
+      : buildOutput(command, outputPolicies, safeToolResult, fullToolResult, artifactRefs, compactCliExtraForOutput(safeExtra)),
     command.fields,
     command.omitFields,
   );
@@ -327,18 +342,19 @@ export function omitCliFields(
 
 function buildOutput(
   command: CliCommand,
+  outputPolicies: CliOutputPolicies,
   toolResult: ToolResultBase,
   outputToolResult: Record<string, unknown>,
   artifactRefs: Record<string, string>,
   extra: Record<string, unknown>,
 ): Record<string, unknown> {
   const data = asRecord(toolResult.data);
-  const status = mapStatus(command, toolResult, data);
+  const status = mapStatus(outputPolicies.statusPolicyId, toolResult, data);
   const issues = arrayOfRecords(data?.['issues']);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
   const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
 
-  if (command.kind === 'metrics.report') {
+  if (outputPolicies.outputDataPolicyId === 'metrics.report_data') {
     const metricsData = data ?? {};
     return omitUndefined({
       ok: toolResult.ok,
@@ -375,44 +391,76 @@ function outputTooLargeResult(command: CliCommand, artifactRefs: Record<string, 
   });
 }
 
+interface CliOutputPolicies {
+  readonly projectionPolicy: ResultProjectionPolicy;
+  readonly statusPolicyId: CliCommandStatusPolicyId;
+  readonly runIdPolicyId: CliCommandRunIdPolicyId;
+  readonly outputDataPolicyId: CliCommandOutputDataPolicyId;
+}
+
+function resolveCliOutputPolicies(command: CliCommand): CliOutputPolicies {
+  const projectionPolicy = command.resultPolicyId
+    ? getBuiltinResultProjectionPolicy(command.resultPolicyId)
+    : resolveResultProjectionPolicy({
+      manifestRegistry: TOOL_COMMAND_MANIFEST_REGISTRY,
+      toolIdOrAlias: command.toolName,
+    });
+  return {
+    projectionPolicy,
+    statusPolicyId: command.statusPolicyId ?? statusPolicyIdForProjectionPolicy(projectionPolicy.policy_id),
+    runIdPolicyId: command.runIdPolicyId ?? runIdPolicyIdForProjectionPolicy(projectionPolicy.policy_id),
+    outputDataPolicyId: command.outputDataPolicyId ?? outputDataPolicyIdForProjectionPolicy(projectionPolicy.policy_id),
+  };
+}
+
+function statusPolicyIdForProjectionPolicy(policyId: string): CliCommandStatusPolicyId {
+  if (policyId === 'task.preview.default') return 'task.preview_status';
+  if (policyId === 'task.execute.default') return 'task.execute_status';
+  if (policyId === 'task.result.default') return 'task.result_status';
+  if (policyId === 'metrics.report.default') return 'metrics.report_status';
+  return 'tool.result_status';
+}
+
+function runIdPolicyIdForProjectionPolicy(policyId: string): CliCommandRunIdPolicyId {
+  if (policyId === 'task.preview.default') return 'task.preview_run_id';
+  if (policyId === 'metrics.report.default') return 'metrics.report_run_id';
+  return 'tool.result_task_or_cli';
+}
+
+function outputDataPolicyIdForProjectionPolicy(policyId: string): CliCommandOutputDataPolicyId {
+  return policyId === 'metrics.report.default' ? 'metrics.report_data' : 'tool.result_data';
+}
+
 function mapStatus(
-  command: CliCommand,
+  statusPolicyId: CliCommandStatusPolicyId,
   toolResult: ToolResultBase,
   data: Record<string, unknown> | undefined,
 ): string {
-  if (command.kind === 'metrics.report') {
+  if (statusPolicyId === 'metrics.report_status') {
     return toolResult.ok ? 'reported' : 'report_failed';
   }
-  if (command.kind === 'task.preview') {
+  if (statusPolicyId === 'task.preview_status') {
     return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
   }
-  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_preview_task') {
-    return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
-  }
-  if (command.kind === 'task.execute') {
+  if (statusPolicyId === 'task.execute_status') {
     return toolResult.ok ? 'executed' : 'execute_failed';
   }
-  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_execute_task') {
-    return toolResult.ok ? 'executed' : 'execute_failed';
-  }
-  if (command.kind === 'task.result') {
+  if (statusPolicyId === 'task.result_status') {
     return toolResult.ok ? 'result_found' : 'result_missing';
   }
-  if (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_get_task_result') {
-    return toolResult.ok ? 'result_found' : 'result_missing';
-  }
-  if (command.kind === 'bridge.ping') {
+  if (statusPolicyId === 'bridge.ping_status') {
     return toolResult.ok ? 'bridge_available' : 'bridge_unavailable';
   }
   return toolResult.status;
 }
 
 function inferRunId(
+  runIdPolicyId: CliCommandRunIdPolicyId,
   command: CliCommand,
   toolResult: ToolResultBase,
   extra: Record<string, unknown>,
 ): string {
-  if (command.kind === 'metrics.report') {
+  if (runIdPolicyId === 'metrics.report_run_id') {
     return `metrics_${Date.now()}`;
   }
 
@@ -421,7 +469,7 @@ function inferRunId(
   const taskRunId = readString(data?.['task_run_id'])
     ?? readString(task?.['task_run_id'])
     ?? command.taskRunId;
-  if (!isPreviewCommand(command)) {
+  if (runIdPolicyId !== 'task.preview_run_id') {
     return taskRunId ?? `cli_${Date.now()}`;
   }
   return readString(extra['previewId'])
@@ -541,11 +589,6 @@ function readNumber(value: unknown): number | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
-}
-
-function isPreviewCommand(command: CliCommand): boolean {
-  return command.kind === 'task.preview'
-    || (command.kind === 'tool.invoke' && command.toolName === 'blueprinthelper_preview_task');
 }
 
 function compactCliExtraForOutput(extra: Record<string, unknown>): Record<string, unknown> {

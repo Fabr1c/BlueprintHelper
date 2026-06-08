@@ -1,0 +1,8 @@
+{
+  "kind": "attach_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "parent": "__REQUIRED_PARENT_COMPONENT_NAME__",
+  "socket": "__OPTIONAL_SOCKET_NAME__",
+  "attach_rule": "__OPTIONAL_ATTACH_RULE__",
+  "transform_policy": "preserve_relative"
+}

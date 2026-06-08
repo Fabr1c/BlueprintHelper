@@ -28,18 +28,6 @@ const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
   ...blueprintLogicRoutes('event', ['logic_flow', 'logic_json', 'logic_md']),
   ...blueprintLogicRoutes('custom_event', ['logic_flow', 'logic_json', 'logic_md']),
   ...blueprintLogicRoutes('graph', ['logic_flow', 'logic_json', 'logic_md']),
-  active('read.blueprint.graph_context.graph.logic_json', 'blueprint', 'logic', 'graph', 'logic_json', {
-    read_type: 'graph_context',
-    target_type: 'graph',
-    format: 'logic_json',
-    base_template_path: BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET.graph,
-    bridge_command: 'read_blueprint_logic_json',
-    output_schema: 'LogicJson.v1',
-    required_target_fields: ['asset_path', 'target_name'],
-    request_builder_id: 'graph_context',
-    payload_projector_id: 'logic',
-    supported_asset_types: ['blueprint', 'graph'],
-  }),
   active('read.blueprint.logic.block.logic_json', 'blueprint', 'logic', 'block', 'logic_json', {
     read_type: 'blueprint_logic',
     target_type: 'block',

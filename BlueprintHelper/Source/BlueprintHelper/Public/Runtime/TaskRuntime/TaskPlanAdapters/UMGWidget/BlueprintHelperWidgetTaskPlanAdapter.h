@@ -18,6 +18,7 @@ public:
 	{
 		static constexpr const TCHAR* WidgetTreeEdit = TEXT("widget_tree_edit");
 		static constexpr const TCHAR* WidgetPropertyEdit = TEXT("widget_property_edit");
+		static constexpr const TCHAR* WidgetBlueprintClassEdit = TEXT("widget_blueprint_class_edit");
 	};
 
 	struct Op
@@ -29,6 +30,12 @@ public:
 		static constexpr const TCHAR* SetSlotProperty = TEXT("set_slot_property");
 		static constexpr const TCHAR* SetWidgetAsVariable = TEXT("set_widget_as_variable");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
+		static constexpr const TCHAR* RenameWidget = TEXT("rename_widget");
+		static constexpr const TCHAR* RemoveRootWidget = TEXT("remove_root_widget");
+		static constexpr const TCHAR* ReparentWidgetBlueprint = TEXT("reparent_widget_blueprint");
+		static constexpr const TCHAR* DuplicateWidgetSubtree = TEXT("duplicate_widget_subtree");
+		static constexpr const TCHAR* WrapWidget = TEXT("wrap_widget");
+		static constexpr const TCHAR* ReplaceWidgetClass = TEXT("replace_widget_class");
 	};
 
 	struct AdapterOperation
@@ -40,6 +47,12 @@ public:
 		static constexpr const TCHAR* SetSlotProperty = TEXT("set_slot_property");
 		static constexpr const TCHAR* SetWidgetAsVariable = TEXT("set_widget_as_variable");
 		static constexpr const TCHAR* RemoveWidget = TEXT("remove_widget");
+		static constexpr const TCHAR* RenameWidget = TEXT("rename_widget");
+		static constexpr const TCHAR* RemoveRootWidget = TEXT("remove_root_widget");
+		static constexpr const TCHAR* ReparentWidgetBlueprint = TEXT("reparent_widget_blueprint");
+		static constexpr const TCHAR* DuplicateWidgetSubtree = TEXT("duplicate_widget_subtree");
+		static constexpr const TCHAR* WrapWidget = TEXT("wrap_widget");
+		static constexpr const TCHAR* ReplaceWidgetClass = TEXT("replace_widget_class");
 	};
 };
 

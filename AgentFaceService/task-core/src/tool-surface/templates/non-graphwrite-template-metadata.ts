@@ -1,4 +1,5 @@
 import type { NonGraphWriteTemplateFamilyMetadata } from './taskspec-template-types.js';
+import { NON_GRAPHWRITE_OPERATION_DESCRIPTORS } from './non-graphwrite-operation-metadata.js';
 import { UMG_WIDGET_OPERATION_MANIFEST } from './generated/umg-widget-operation-manifest.generated.js';
 import type {
   TaskSpecTemplateClusterItem,
@@ -22,30 +23,30 @@ export const NON_GRAPHWRITE_TEMPLATE_FAMILIES: readonly NonGraphWriteTemplateFam
     task_type: 'edit_blueprint_components',
     description: 'Edit Blueprint component tree entries when the dedicated component template path is active.',
     strategy_field: 'component_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
+    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_components_template.json',
     insert_targets: ['behavior.changes[]'],
-    status: 'blocked',
-    blocked_until: ['dedicated component TaskSpec template path is separated from create_blueprint_feature route template'],
+    status: 'supported',
+    write_mode: 'components.edit',
   },
   {
     family: 'blueprint_class_settings',
     task_type: 'edit_blueprint_class_settings',
     description: 'Edit Blueprint class settings such as interfaces, defaults, and reparenting.',
     strategy_field: 'class_settings_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
-    insert_targets: ['behavior.interfaces', 'behavior.class_defaults[]', 'behavior.reparent'],
-    status: 'blocked',
-    blocked_until: ['dedicated class settings TaskSpec template path is separated from create_blueprint_feature route template'],
+    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_class_settings_template.json',
+    insert_targets: ['behavior.interfaces.ensure_present[]', 'behavior.interfaces.ensure_absent[]', 'behavior.class_defaults[]', 'behavior.reparent'],
+    status: 'supported',
+    write_mode: 'class_settings.edit',
   },
   {
     family: 'blueprint_signature',
     task_type: 'edit_blueprint_signature',
     description: 'Edit function, event, or macro signatures before writing bodies.',
     strategy_field: 'signature_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
+    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_signature_template.json',
     insert_targets: ['behavior.changes[]'],
-    status: 'blocked',
-    blocked_until: ['dedicated signature TaskSpec template path is added'],
+    status: 'supported',
+    write_mode: 'signature.edit',
   },
   {
     family: 'blueprint_create_feature',
@@ -112,6 +113,18 @@ export function getNonGraphWriteTemplateFamily(
 export function listNonGraphWriteTemplateClusters(input: {
   family: string;
 }): TaskSpecTemplateClusterItem[] {
+  const descriptorClusters = uniqueSorted(
+    NON_GRAPHWRITE_OPERATION_DESCRIPTORS.filter((descriptor) => descriptor.family === input.family),
+    (descriptor) => descriptor.cluster_id,
+  );
+  if (descriptorClusters.length > 0) {
+    return descriptorClusters.map((clusterId) => ({
+      family: input.family as TaskSpecTemplateClusterItem['family'],
+      cluster_id: clusterId,
+      description: describeNonGraphWriteCluster(clusterId),
+      unsupported_write_modes: [],
+    }));
+  }
   if (input.family !== 'umg_widget') {
     return [];
   }
@@ -130,6 +143,18 @@ export function listNonGraphWriteTemplateOperations(input: {
   cluster: string;
   writeMode: string;
 }): TaskSpecTemplateOperationItem[] {
+  const descriptors = NON_GRAPHWRITE_OPERATION_DESCRIPTORS.filter((descriptor) =>
+    descriptor.family === input.family
+    && descriptor.cluster_id === input.cluster
+    && descriptor.write_mode === input.writeMode);
+  if (descriptors.length > 0) {
+    return descriptors.map((descriptor) => ({
+      family: descriptor.family,
+      cluster_id: descriptor.cluster_id,
+      operation_id: descriptor.operation_id,
+      description: descriptor.description,
+    }));
+  }
   if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
     return [];
   }
@@ -152,6 +177,27 @@ export function listNonGraphWriteTemplateQuickAccess(input: {
   operation: string;
   writeMode: string;
 }): TaskSpecTemplateQuickAccessItem[] {
+  const descriptors = NON_GRAPHWRITE_OPERATION_DESCRIPTORS.filter((descriptor) =>
+    descriptor.family === input.family
+    && (input.cluster.length === 0 || descriptor.cluster_id === input.cluster)
+    && (input.operation.length === 0 || descriptor.operation_id === input.operation)
+    && (input.writeMode.length === 0 || descriptor.write_mode === input.writeMode));
+  if (descriptors.length > 0) {
+    return descriptors.map((descriptor) => ({
+      template_id: descriptor.template_id,
+      family: descriptor.family,
+      write_mode: descriptor.write_mode,
+      cluster_id: descriptor.cluster_id,
+      operation_id: descriptor.operation_id,
+      quick_access_id: descriptor.operation_id,
+      source_slot_id: descriptor.source_slot_id,
+      slot_type: 'statement',
+      arg_slots: [...descriptor.arg_slots],
+      template_path: descriptor.template_path,
+      insert_paths: [...descriptor.insert_paths],
+      unsupported_write_modes: [],
+    }));
+  }
   if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
     return [];
   }
@@ -171,4 +217,17 @@ export function listNonGraphWriteTemplateQuickAccess(input: {
       insert_paths: ['behavior.changes[]'],
       unsupported_write_modes: [],
     }));
+}
+
+function describeNonGraphWriteCluster(clusterId: string): string {
+  const descriptions: Readonly<Record<string, string>> = {
+    component_tree: 'Blueprint component tree mutation operations.',
+    class_settings: 'Blueprint class setting operations including interfaces, defaults, and reparenting.',
+    signature: 'Blueprint function, event, macro, and dispatcher signature operations.',
+  };
+  return descriptions[clusterId] ?? `Non-GraphWrite ${clusterId} operations.`;
+}
+
+function uniqueSorted<T>(items: readonly T[], keyOf: (item: T) => string): string[] {
+  return [...new Set(items.map(keyOf))].sort((left, right) => left.localeCompare(right));
 }

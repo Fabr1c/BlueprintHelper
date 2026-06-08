@@ -2,6 +2,7 @@
 
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeUtils.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
 #include "Systems/Config/BlueprintHelperSafetyProfileResolver.h"
 #include "Dom/JsonObject.h"
@@ -408,6 +409,121 @@ public:
 		return Command.Equals(Expected, ESearchCase::IgnoreCase);
 	}
 
+	static TArray<FString> SplitGeneratedFieldList(const TCHAR* FieldList)
+	{
+		TArray<FString> Fields;
+		if (FieldList == nullptr || FString(FieldList).IsEmpty())
+		{
+			return Fields;
+		}
+		FString(FieldList).ParseIntoArray(Fields, TEXT(","), true);
+		for (FString& Field : Fields)
+		{
+			Field = Field.TrimStartAndEnd();
+		}
+		return Fields;
+	}
+
+	static EBlueprintHelperJsonExpectedType ResolveUmgGeneratedFieldType(const FString& FieldName)
+	{
+		static const TSet<FString> BoolFields = {
+			TEXT("dry_run"),
+			TEXT("replace_existing"),
+			TEXT("is_variable"),
+			TEXT("preserve_children"),
+			TEXT("preserve_slot"),
+		};
+		static const TSet<FString> NumberFields = {
+			TEXT("virtual_index"),
+			TEXT("expected_virtual_index"),
+		};
+		static const TSet<FString> ObjectFields = {
+			TEXT("name_mapping"),
+		};
+
+		const FString Canonical = FieldName.ToLower();
+		if (BoolFields.Contains(Canonical))
+		{
+			return EBlueprintHelperJsonExpectedType::Bool;
+		}
+		if (NumberFields.Contains(Canonical))
+		{
+			return EBlueprintHelperJsonExpectedType::Number;
+		}
+		if (ObjectFields.Contains(Canonical))
+		{
+			return EBlueprintHelperJsonExpectedType::Object;
+		}
+		return EBlueprintHelperJsonExpectedType::String;
+	}
+
+	static void AppendGeneratedUmgFieldRules(
+		const TCHAR* FieldList,
+		bool bRequired,
+		TArray<FBlueprintHelperFieldRule>& OutRules,
+		TArray<FString>& OutOwnedFieldNames)
+	{
+		for (const FString& FieldName : SplitGeneratedFieldList(FieldList))
+		{
+			if (FieldName.IsEmpty())
+			{
+				continue;
+			}
+
+			OutOwnedFieldNames.Add(FieldName);
+			OutRules.Add({
+				*OutOwnedFieldNames.Last(),
+				ResolveUmgGeneratedFieldType(FieldName),
+				bRequired,
+			});
+		}
+	}
+
+	static const FBlueprintHelperGeneratedCommandDescriptor* FindGeneratedUmgCommandDescriptor(const FString& Command)
+	{
+		for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+		{
+			if (Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+			{
+				return &Descriptor;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool ValidateGeneratedUmgWidgetCommand(
+		const FBlueprintHelperGeneratedCommandDescriptor& Descriptor,
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		TArray<FBlueprintHelperFieldRule> Rules;
+		TArray<FString> OwnedFieldNames;
+		OwnedFieldNames.Reserve(16);
+		OwnedFieldNames.Add(TEXT("asset_path"));
+		Rules.Add({*OwnedFieldNames.Last(), EBlueprintHelperJsonExpectedType::String, true});
+		AppendGeneratedUmgFieldRules(Descriptor.RequiredFields, true, Rules, OwnedFieldNames);
+		AppendGeneratedUmgFieldRules(Descriptor.OptionalFields, false, Rules, OwnedFieldNames);
+
+		if (!ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		if (CommandEquals(FString(Descriptor.Command), TEXT("set_widget_property")))
+		{
+			FString PropertyName;
+			FString PropertyPath;
+			if (!Payload->TryGetStringField(TEXT("property_name"), PropertyName) &&
+				!Payload->TryGetStringField(TEXT("property_path"), PropertyPath))
+			{
+				SetValidationError(OutError, TEXT("payload.property_path"), TEXT("string"), TEXT("missing"));
+				return false;
+			}
+		}
+
+		return ValidateGeneratedStringEnumRules(Descriptor, Payload, OutError);
+	}
+
 	static bool ValidateOptionalStringEnum(
 		const TSharedPtr<FJsonObject>& Payload,
 		const TCHAR* FieldName,
@@ -428,6 +544,45 @@ public:
 				FString::Printf(TEXT("one_of[%s]"), *FString::Join(AllowedValues.Array(), TEXT(","))),
 				Value);
 			return false;
+		}
+		return true;
+	}
+
+	static bool ValidateGeneratedStringEnumRules(
+		const FBlueprintHelperGeneratedCommandDescriptor& Descriptor,
+		const TSharedPtr<FJsonObject>& Payload,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		const FString RuleText(Descriptor.StringEnumFields);
+		if (RuleText.IsEmpty())
+		{
+			return true;
+		}
+
+		TArray<FString> Rules;
+		RuleText.ParseIntoArray(Rules, TEXT(";"), true);
+		for (const FString& Rule : Rules)
+		{
+			FString FieldName;
+			FString ValuesText;
+			if (!Rule.Split(TEXT("="), &FieldName, &ValuesText) || FieldName.IsEmpty() || ValuesText.IsEmpty())
+			{
+				continue;
+			}
+
+			TArray<FString> Values;
+			ValuesText.ParseIntoArray(Values, TEXT("|"), true);
+			TSet<FString> AllowedValues;
+			AllowedValues.Reserve(Values.Num());
+			for (const FString& Value : Values)
+			{
+				AllowedValues.Add(Value.ToLower());
+			}
+
+			if (!ValidateOptionalStringEnum(Payload, *FieldName, AllowedValues, OutError))
+			{
+				return false;
+			}
 		}
 		return true;
 	}
@@ -793,20 +948,6 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("add_widget")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_class"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("parent_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("slot_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("virtual_index"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("expected_parent_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_widget_tree")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -814,7 +955,7 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("remove_widget")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_widget_properties")))
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_widget_properties")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
@@ -822,44 +963,13 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("move_widget")))
+	if (const FBlueprintHelperGeneratedCommandDescriptor* GeneratedUmgDescriptor =
+		FBlueprintHelperRequestValidatorLocalUtils::FindGeneratedUmgCommandDescriptor(Command))
 	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("new_parent_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("slot_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("virtual_index"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("expected_parent_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("expected_virtual_index"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_named_slot_content")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("host_widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("slot_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_class"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("virtual_index"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Number, false},
-			{TEXT("expected_content_widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
-			{TEXT("replace_existing"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-			{TEXT("dry_run"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Bool, false},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
-	}
-	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_widget_property")))
-	{
-		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
-			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("widget_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("property_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-			{TEXT("value"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
-		};
-		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateGeneratedUmgWidgetCommand(
+			*GeneratedUmgDescriptor,
+			Payload,
+			OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_object_properties")))
 	{
@@ -1615,6 +1725,14 @@ bool FBlueprintHelperRequestValidator::ValidateAuthorization(
 
 bool FBlueprintHelperRequestValidator::IsWriteCommand(const FString& Command)
 {
+	for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+	{
+		if (Descriptor.bWriteCommand && Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+
 	static const TSet<FString> WriteCommands = {
 		TEXT("compile_blueprint"),
 		TEXT("save_asset"),
@@ -1624,10 +1742,6 @@ bool FBlueprintHelperRequestValidator::IsWriteCommand(const FString& Command)
 		TEXT("remove_graph"),
 		TEXT("add_event_dispatcher"),
 		TEXT("delete_nodes"),
-		TEXT("add_widget"),
-		TEXT("remove_widget"),
-		TEXT("move_widget"),
-		TEXT("set_widget_property"),
 		TEXT("set_object_property"),
 		TEXT("add_datatable_row"),
 		TEXT("update_datatable_row"),

@@ -8,6 +8,7 @@
 class UWidgetBlueprint;
 class UWidget;
 class UPanelWidget;
+class FBlueprintHelperClassSettingsService;
 
 // ─── Widget 节点信息 ───
 
@@ -134,6 +135,65 @@ struct BLUEPRINTHELPER_API FBlueprintHelperSetWidgetAsVariableRequest
 	bool bDryRun = false;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperRenameWidgetRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	FString NewWidgetName;
+	FString ExpectedWidgetClassPath;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperRemoveRootWidgetRequest
+{
+	FString AssetPath;
+	FString RootWidgetName;
+	FString ReplacementPolicy;
+	FString ReplacementWidgetClass;
+	FString ReplacementWidgetName;
+	FString ExpectedRootClassPath;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperReparentWidgetBlueprintRequest
+{
+	FString AssetPath;
+	FString NewParentClass;
+	FString ExpectedParentClass;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperDuplicateWidgetSubtreeRequest
+{
+	FString AssetPath;
+	FString SourceWidgetName;
+	FString TargetParentName;
+	FString SlotName;
+	TOptional<int32> VirtualIndex;
+	TMap<FString, FString> NameMapping;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperWrapWidgetRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	FString WrapperClass;
+	FString WrapperName;
+	bool bDryRun = false;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperReplaceWidgetClassRequest
+{
+	FString AssetPath;
+	FString WidgetName;
+	FString NewWidgetClass;
+	FString ExpectedWidgetClassPath;
+	bool bPreserveChildren = true;
+	bool bPreserveSlot = true;
+	bool bDryRun = false;
+};
+
 /**
  * UMG Widget Tree 操作服务。
  * 提供 WidgetBlueprint 的 WidgetTree 查询、增删、移动、属性读写等操作。
@@ -145,6 +205,8 @@ public:
 #pragma region API
 
 	/** 获取 WidgetBlueprint 的完整 Widget 树。 */
+	void SetClassSettingsService(const FBlueprintHelperClassSettingsService* InClassSettingsService);
+
 	FBlueprintHelperWidgetTreeResult GetWidgetTree(const FString& AssetPath) const;
 
 	/**
@@ -195,6 +257,24 @@ public:
 	FBlueprintHelperWidgetMutationResult SetWidgetAsVariable(
 		const FBlueprintHelperSetWidgetAsVariableRequest& Request) const;
 
+	FBlueprintHelperWidgetMutationResult RenameWidget(
+		const FBlueprintHelperRenameWidgetRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult RemoveRootWidget(
+		const FBlueprintHelperRemoveRootWidgetRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult ReparentWidgetBlueprint(
+		const FBlueprintHelperReparentWidgetBlueprintRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult DuplicateWidgetSubtree(
+		const FBlueprintHelperDuplicateWidgetSubtreeRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult WrapWidget(
+		const FBlueprintHelperWrapWidgetRequest& Request) const;
+
+	FBlueprintHelperWidgetMutationResult ReplaceWidgetClass(
+		const FBlueprintHelperReplaceWidgetClassRequest& Request) const;
+
 	/** 获取 Widget 的可编辑属性列表。 */
 	FBlueprintHelperWidgetPropertyResult GetWidgetProperties(
 		const FString& AssetPath,
@@ -223,4 +303,6 @@ private:
 
 	/** 根据类名查找 UWidget 子类。 */
 	UClass* FindWidgetClass(const FString& ClassName, FString& OutError) const;
+
+	const FBlueprintHelperClassSettingsService* ClassSettingsService = nullptr;
 };

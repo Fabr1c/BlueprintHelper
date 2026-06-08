@@ -1,5 +1,8 @@
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.h"
 
+#include "Generated/BlueprintHelperReadContextRouteManifest.generated.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
+
 static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintHelperBridgeRouteCommandClusters[] = {
 	{TEXT("get_rule_markdown"), EBlueprintHelperBridgeRouteCluster::Core},
 	{TEXT("get_editor_context"), EBlueprintHelperBridgeRouteCluster::Core},
@@ -16,18 +19,13 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("capture_focused_graph_screenshot"), EBlueprintHelperBridgeRouteCluster::Debug},
 	{TEXT("read_reference_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("read_function_chain_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
-	{TEXT("read_blueprint_logic_md"), EBlueprintHelperBridgeRouteCluster::SharedServices},
-	{TEXT("read_blueprint_logic_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("validate_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("export_to_json"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("export_logic"), EBlueprintHelperBridgeRouteCluster::SharedServices},
 	{TEXT("open_asset"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
 	{TEXT("save_asset"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
-	{TEXT("get_asset_info"), EBlueprintHelperBridgeRouteCluster::AssetBrowser},
 	{TEXT("find_assets"), EBlueprintHelperBridgeRouteCluster::AssetDiscovery},
 	{TEXT("list_graphs"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
-	{TEXT("list_variables"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
-	{TEXT("list_event_dispatchers"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
 	{TEXT("add_variable"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
 	{TEXT("remove_variable"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
 	{TEXT("add_graph"), EBlueprintHelperBridgeRouteCluster::BlueprintStructure},
@@ -49,18 +47,9 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("set_blueprint_local_variable_properties"), EBlueprintHelperBridgeRouteCluster::BlueprintVariables},
 	{TEXT("remove_blueprint_local_variable"), EBlueprintHelperBridgeRouteCluster::BlueprintVariables},
 	{TEXT("remove_blueprint_local_variables"), EBlueprintHelperBridgeRouteCluster::BlueprintVariables},
-	{TEXT("get_widget_tree"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("add_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("remove_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("move_widget"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("set_named_slot_content"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("get_widget_properties"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("set_widget_property"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
-	{TEXT("get_datatable_rows"), EBlueprintHelperBridgeRouteCluster::DataTable},
 	{TEXT("add_datatable_row"), EBlueprintHelperBridgeRouteCluster::DataTable},
 	{TEXT("update_datatable_row"), EBlueprintHelperBridgeRouteCluster::DataTable},
 	{TEXT("delete_datatable_row"), EBlueprintHelperBridgeRouteCluster::DataTable},
-	{TEXT("get_object_properties"), EBlueprintHelperBridgeRouteCluster::ObjectProperty},
 	{TEXT("set_object_property"), EBlueprintHelperBridgeRouteCluster::ObjectProperty},
 	{TEXT("undo"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
 	{TEXT("redo"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
@@ -120,6 +109,53 @@ static const TPair<EBlueprintHelperBridgeRouteCluster, const TCHAR*> GBlueprintH
 	{EBlueprintHelperBridgeRouteCluster::Review, TEXT("Review")},
 };
 
+class FBlueprintHelperGeneratedRouteClusterUtils
+{
+public:
+	static EBlueprintHelperBridgeRouteCluster ResolveClusterFromGeneratedName(const TCHAR* ClusterName)
+	{
+		if (ClusterName == nullptr)
+		{
+			return EBlueprintHelperBridgeRouteCluster::Unknown;
+		}
+
+		for (const TPair<EBlueprintHelperBridgeRouteCluster, const TCHAR*>& Entry : GBlueprintHelperBridgeRouteClusterNames)
+		{
+			if (FString(ClusterName).Equals(Entry.Value, ESearchCase::IgnoreCase))
+			{
+				return Entry.Key;
+			}
+		}
+		return EBlueprintHelperBridgeRouteCluster::Unknown;
+	}
+
+	static EBlueprintHelperBridgeRouteCluster FindGeneratedUmgCluster(const FString& Command)
+	{
+		for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+		{
+			if (Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+			{
+				return ResolveClusterFromGeneratedName(Descriptor.Cluster);
+			}
+		}
+		return EBlueprintHelperBridgeRouteCluster::Unknown;
+	}
+
+	static EBlueprintHelperBridgeRouteCluster FindGeneratedReadContextCluster(const FString& Command)
+	{
+		for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Descriptor : GBlueprintHelperReadContextRoutes)
+		{
+			if (FString(Descriptor.Status).Equals(TEXT("active"), ESearchCase::IgnoreCase) &&
+				!FString(Descriptor.Command).IsEmpty() &&
+				Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+			{
+				return ResolveClusterFromGeneratedName(Descriptor.Cluster);
+			}
+		}
+		return EBlueprintHelperBridgeRouteCluster::Unknown;
+	}
+};
+
 FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlannerUtils::MakePlan(
 	const FString& Command,
 	EBlueprintHelperBridgeRouteCluster Cluster)
@@ -134,9 +170,23 @@ FBlueprintHelperBridgeRoutePlan FBlueprintHelperBridgeRoutePlannerUtils::MakePla
 
 EBlueprintHelperBridgeRouteCluster FBlueprintHelperBridgeRoutePlannerUtils::FindClusterForCommand(const FString& Command)
 {
+	const EBlueprintHelperBridgeRouteCluster UMGCluster =
+		FBlueprintHelperGeneratedRouteClusterUtils::FindGeneratedUmgCluster(Command);
+	if (UMGCluster != EBlueprintHelperBridgeRouteCluster::Unknown)
+	{
+		return UMGCluster;
+	}
+
+	const EBlueprintHelperBridgeRouteCluster ReadContextCluster =
+		FBlueprintHelperGeneratedRouteClusterUtils::FindGeneratedReadContextCluster(Command);
+	if (ReadContextCluster != EBlueprintHelperBridgeRouteCluster::Unknown)
+	{
+		return ReadContextCluster;
+	}
+
 	for (const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster>& Entry : GBlueprintHelperBridgeRouteCommandClusters)
 	{
-		if (Command == Entry.Key)
+		if (Command.Equals(Entry.Key, ESearchCase::IgnoreCase))
 		{
 			return Entry.Value;
 		}

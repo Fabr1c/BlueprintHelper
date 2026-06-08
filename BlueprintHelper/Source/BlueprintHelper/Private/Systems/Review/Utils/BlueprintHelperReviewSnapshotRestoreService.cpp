@@ -88,6 +88,16 @@ public:
 			Target.TargetSubKind.Equals(TEXT("widget_variable"), ESearchCase::IgnoreCase);
 	}
 
+	static bool IsWidgetRenameTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetSubKind.Equals(TEXT("widget_rename"), ESearchCase::IgnoreCase);
+	}
+
+	static bool IsRootWidgetRemovalTarget(const FBlueprintHelperReviewAtomicTarget& Target)
+	{
+		return Target.TargetSubKind.Equals(TEXT("root_widget_removal"), ESearchCase::IgnoreCase);
+	}
+
 	static void ReadWidgetAndPropertyTarget(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const TSharedPtr<FJsonObject>& Snapshot,
@@ -418,6 +428,215 @@ private:
 		return Anchor->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
 	}
 
+	static bool TryReadChangedPropertiesString(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TCHAR* FieldName,
+		FString& OutValue)
+	{
+		if (Target.ChangedPropertiesJson.IsEmpty())
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> ChangedProperties;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Target.ChangedPropertiesJson);
+		if (!FJsonSerializer::Deserialize(Reader, ChangedProperties) || !ChangedProperties.IsValid())
+		{
+			return false;
+		}
+		return ChangedProperties->TryGetStringField(FieldName, OutValue) && !OutValue.IsEmpty();
+	}
+
+public:
+	static bool RestoreWidgetRenameIdentity(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& InOutWidgetName,
+		FString& OutError)
+	{
+		if (!IsWidgetRenameTarget(Target))
+		{
+			return true;
+		}
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree || !Snapshot.IsValid())
+		{
+			return true;
+		}
+
+		FString BeforeWidgetName;
+		Snapshot->TryGetStringField(TEXT("widget_name"), BeforeWidgetName);
+		if (BeforeWidgetName.IsEmpty())
+		{
+			BeforeWidgetName = InOutWidgetName;
+		}
+		if (BeforeWidgetName.IsEmpty())
+		{
+			OutError = TEXT("widget_rename_restore_missing_before_name");
+			return false;
+		}
+
+		InOutWidgetName = BeforeWidgetName;
+		if (WidgetBlueprint->WidgetTree->FindWidget(FName(*BeforeWidgetName)))
+		{
+			return true;
+		}
+
+		FString AfterWidgetName;
+		TryReadChangedPropertiesString(Target, TEXT("after_widget_name"), AfterWidgetName);
+		if (AfterWidgetName.IsEmpty())
+		{
+			TryReadAnchorString(Target, TEXT("new_widget_name"), AfterWidgetName);
+		}
+		if (AfterWidgetName.IsEmpty() || AfterWidgetName.Equals(BeforeWidgetName, ESearchCase::CaseSensitive))
+		{
+			return true;
+		}
+
+		UWidget* RenamedWidget = WidgetBlueprint->WidgetTree->FindWidget(FName(*AfterWidgetName));
+		if (!RenamedWidget)
+		{
+			return true;
+		}
+
+		RenamedWidget->Modify();
+		FBlueprintHelperWidgetVersionCompat::UnregisterWidgetVariableByName(
+			WidgetBlueprint,
+			RenamedWidget->GetFName());
+		if (!RenamedWidget->Rename(*BeforeWidgetName, WidgetBlueprint->WidgetTree, REN_DontCreateRedirectors))
+		{
+			OutError = FString::Printf(
+				TEXT("widget_rename_restore_rename_failed:%s:%s"),
+				*AfterWidgetName,
+				*BeforeWidgetName);
+			return false;
+		}
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WidgetBlueprint, RenamedWidget);
+		return true;
+	}
+
+	static bool RestoreRootWidgetIdentity(
+		UWidgetBlueprint* WidgetBlueprint,
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& InOutWidgetName,
+		FString& OutError)
+	{
+		if (!IsRootWidgetRemovalTarget(Target))
+		{
+			return true;
+		}
+		if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree || !Snapshot.IsValid())
+		{
+			return true;
+		}
+
+		FString BeforeRootWidgetName;
+		Snapshot->TryGetStringField(TEXT("widget_name"), BeforeRootWidgetName);
+		if (BeforeRootWidgetName.IsEmpty())
+		{
+			BeforeRootWidgetName = InOutWidgetName;
+		}
+		if (BeforeRootWidgetName.IsEmpty())
+		{
+			OutError = TEXT("root_widget_restore_missing_before_name");
+			return false;
+		}
+		InOutWidgetName = BeforeRootWidgetName;
+
+		UWidgetTree* Tree = WidgetBlueprint->WidgetTree;
+		if (Tree->RootWidget && Tree->RootWidget->GetName().Equals(BeforeRootWidgetName, ESearchCase::CaseSensitive))
+		{
+			return true;
+		}
+
+		UWidget* RestoredRoot = Tree->FindWidget(FName(*BeforeRootWidgetName));
+		if (!RestoredRoot)
+		{
+			FString WidgetClassPath;
+			if (!Snapshot->TryGetStringField(TEXT("widget_class"), WidgetClassPath) || WidgetClassPath.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("root_widget_restore_missing_class:%s"), *BeforeRootWidgetName);
+				return false;
+			}
+
+			UClass* WidgetClass = LoadObject<UClass>(nullptr, *WidgetClassPath);
+			if (!WidgetClass || !WidgetClass->IsChildOf(UWidget::StaticClass()))
+			{
+				OutError = FString::Printf(TEXT("root_widget_restore_invalid_class:%s"), *WidgetClassPath);
+				return false;
+			}
+
+			RestoredRoot = Tree->ConstructWidget<UWidget>(WidgetClass, FName(*BeforeRootWidgetName));
+			if (!RestoredRoot)
+			{
+				OutError = FString::Printf(TEXT("root_widget_restore_construct_failed:%s"), *BeforeRootWidgetName);
+				return false;
+			}
+			RestoredRoot->SetFlags(RF_Transactional);
+		}
+
+		FString ReplacementPolicy;
+		TryReadChangedPropertiesString(Target, TEXT("replacement_policy"), ReplacementPolicy);
+		const FString NormalizedPolicy = ReplacementPolicy.ToLower();
+		FString AfterRootWidgetName;
+		TryReadChangedPropertiesString(Target, TEXT("after_root_widget_name"), AfterRootWidgetName);
+		if (AfterRootWidgetName.IsEmpty())
+		{
+			TryReadAnchorString(Target, TEXT("replacement_widget_name"), AfterRootWidgetName);
+		}
+
+		UWidget* PromotedRoot = !AfterRootWidgetName.IsEmpty()
+			? Tree->FindWidget(FName(*AfterRootWidgetName))
+			: Tree->RootWidget.Get();
+		Tree->RootWidget = RestoredRoot;
+		FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WidgetBlueprint, RestoredRoot);
+
+		const bool bShouldReattachPromotedRoot =
+			(NormalizedPolicy.IsEmpty() || NormalizedPolicy == TEXT("promote_single_child")) &&
+			PromotedRoot &&
+			PromotedRoot != RestoredRoot;
+		if (bShouldReattachPromotedRoot)
+		{
+			UPanelWidget* RestoredRootPanel = Cast<UPanelWidget>(RestoredRoot);
+			if (!RestoredRootPanel)
+			{
+				OutError = FString::Printf(TEXT("root_widget_restore_parent_not_panel:%s"), *BeforeRootWidgetName);
+				return false;
+			}
+
+			int32 ExistingChildIndex = INDEX_NONE;
+			if (UPanelWidget* CurrentParent = UWidgetTree::FindWidgetParent(PromotedRoot, ExistingChildIndex))
+			{
+				CurrentParent->Modify();
+				CurrentParent->RemoveChild(PromotedRoot);
+			}
+
+			bool bAlreadyChild = false;
+			for (int32 ChildIndex = 0; ChildIndex < RestoredRootPanel->GetChildrenCount(); ++ChildIndex)
+			{
+				if (RestoredRootPanel->GetChildAt(ChildIndex) == PromotedRoot)
+				{
+					bAlreadyChild = true;
+					break;
+				}
+			}
+			if (!bAlreadyChild)
+			{
+				RestoredRootPanel->Modify();
+				if (!RestoredRootPanel->AddChild(PromotedRoot))
+				{
+					OutError = FString::Printf(TEXT("root_widget_restore_attach_failed:%s"), *PromotedRoot->GetName());
+					return false;
+				}
+			}
+			FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WidgetBlueprint, PromotedRoot);
+		}
+
+		return true;
+	}
+
+private:
 	static void ReadHostAndSlot(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const TSharedPtr<FJsonObject>& Snapshot,
@@ -1401,11 +1620,32 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
 
 		bool bSnapshotExists = false;
 		Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
-		UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
 
 		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Widget")));
 		WidgetBlueprint->Modify();
 		WidgetBlueprint->WidgetTree->Modify();
+		if (bSnapshotExists &&
+			!FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreWidgetRenameIdentity(
+				WidgetBlueprint,
+				Target,
+				Snapshot,
+				WidgetName,
+				OutError))
+		{
+			return false;
+		}
+		if (bSnapshotExists &&
+			!FBlueprintHelperReviewWidgetTreeRestoreHelper::RestoreRootWidgetIdentity(
+				WidgetBlueprint,
+				Target,
+				Snapshot,
+				WidgetName,
+				OutError))
+		{
+			return false;
+		}
+
+		UWidget* Widget = WidgetBlueprint->WidgetTree->FindWidget(FName(*WidgetName));
 		if (!bSnapshotExists)
 		{
 			if (Widget)

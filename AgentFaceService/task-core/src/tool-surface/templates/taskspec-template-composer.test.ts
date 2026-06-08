@@ -261,6 +261,82 @@ test('TaskSpec template composer reports diagnostics and does not write unsuppor
   assert.equal(result.diagnostics?.[0]?.code, 'slot_not_supported_for_write_mode');
 });
 
+test('TaskSpec template composer writes component quick-access changes', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'components.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_components',
+    writeMode: 'components.edit',
+    templateIds: ['blueprint_components.component_tree.ensure_component_present'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    task_type: string;
+    behavior: { changes: Array<Record<string, unknown>> };
+  };
+  assert.equal(taskSpec.task_type, 'edit_blueprint_components');
+  assert.deepEqual(taskSpec.behavior.changes.map((change) => change.kind), ['ensure_component_present']);
+  assert.equal(Object.hasOwn(taskSpec, 'scope_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'execution_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
+});
+
+test('TaskSpec template composer writes class settings quick-access into object and array paths', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'class-settings.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_class_settings',
+    writeMode: 'class_settings.edit',
+    templateIds: [
+      'blueprint_class_settings.class_settings.add_interface',
+      'blueprint_class_settings.class_settings.reparent',
+    ],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: {
+      interfaces: { ensure_present: unknown[]; ensure_absent: unknown[] };
+      class_defaults: unknown[];
+      reparent: Record<string, unknown>;
+    };
+  };
+  assert.deepEqual(taskSpec.behavior.interfaces.ensure_present, ['__REQUIRED_INTERFACE_PATH__']);
+  assert.deepEqual(taskSpec.behavior.interfaces.ensure_absent, []);
+  assert.deepEqual(taskSpec.behavior.class_defaults, []);
+  assert.deepEqual(taskSpec.behavior.reparent, { new_parent_class: '__REQUIRED_NEW_PARENT_CLASS__' });
+});
+
+test('TaskSpec template composer writes signature quick-access changes that compile after placeholders are filled', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'signature.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_signature',
+    writeMode: 'signature.edit',
+    templateIds: ['blueprint_signature.signature.ensure_function'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  taskSpec.feature_name = 'TemplateSignatureSmoke';
+  taskSpec.target.asset_path = '/Game/BH_Tests/BP_TemplateSignatureSmoke';
+  const change = taskSpec.behavior.changes[0];
+  change.function_name = 'ComputeTemplateScore';
+  change.inputs = [{ name: 'BaseScore', pin_type: { category: 'int' } }];
+  change.outputs = [{ name: 'FinalScore', pin_type: { category: 'int' } }];
+  const parsed = TaskSpecSchema.parse(taskSpec);
+  const plan = compileTaskSpecToTaskPlan(parsed);
+  const step = plan.steps[0] as Record<string, unknown> | undefined;
+  assert.equal(step?.capability, 'blueprint_signature');
+});
+
 test('all expression quick-access templates are rejected as compose roots', () => {
   const expressionItems = listTaskSpecTemplateQuickAccess({
     family: 'graph_write',

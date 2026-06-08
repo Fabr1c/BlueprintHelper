@@ -1,0 +1,6 @@
+{
+  "kind": "set_root_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "old_root_policy": "remove_default_scene_root_when_empty",
+  "default_root_policy": "require_scene_component"
+}

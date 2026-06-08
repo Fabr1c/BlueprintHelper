@@ -373,4 +373,136 @@ bool FBlueprintHelperReviewWidgetTreeRestoreWidgetVariableTest::RunTest(const FS
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeRestoreRenameTest,
+	"BlueprintHelper.Review.WidgetTree.RestoreRename",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeRestoreRenameTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("WidgetRenameRestore"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	TestNotNull(TEXT("first text"), Fixture.FirstText);
+	if (!Fixture.Blueprint || !Fixture.FirstText)
+	{
+		return false;
+	}
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Fixture.Blueprint->GetPathName();
+	Target.TargetKind = TEXT("umg_widget_tree");
+	Target.TargetSubKind = TEXT("widget_rename");
+	Target.TargetKey = TEXT("umg_widget:FirstText");
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.DisplayLabel = TEXT("FirstText -> RenamedText");
+	Target.ChangedPropertiesJson = TEXT("{\"before_widget_name\":\"FirstText\",\"after_widget_name\":\"RenamedText\"}");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(
+		TEXT("rename before snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+
+	TSharedPtr<FJsonObject> Snapshot;
+	TestTrue(
+		TEXT("rename before snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(SnapshotJson), Snapshot) && Snapshot.IsValid());
+	if (!Snapshot.IsValid())
+	{
+		return false;
+	}
+
+	TestTrue(
+		TEXT("fixture widget renamed"),
+		Fixture.FirstText->Rename(TEXT("RenamedText"), Fixture.Blueprint->WidgetTree, REN_DontCreateRedirectors));
+	TestNull(TEXT("old widget name missing before restore"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("FirstText")));
+	TestNotNull(TEXT("new widget name exists before restore"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("RenamedText")));
+
+	FString RestoreError;
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
+		Target,
+		Snapshot,
+		RestoreError);
+	TestTrue(FString::Printf(TEXT("rename restore succeeds: %s"), *RestoreError), bRestored);
+	TestNotNull(TEXT("old widget name restored"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("FirstText")));
+	TestNull(TEXT("new widget name removed"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("RenamedText")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewWidgetTreeRestoreRootRemovalTest,
+	"BlueprintHelper.Review.WidgetTree.RestoreRootRemoval",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewWidgetTreeRestoreRootRemovalTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::FWidgetTreeFixture Fixture =
+		FBlueprintHelperReviewWidgetTreeSnapshotTestsLocalUtils::MakeFixture(TEXT("RootRemovalRestore"));
+	TestNotNull(TEXT("fixture blueprint"), Fixture.Blueprint);
+	TestNotNull(TEXT("root"), Fixture.Root);
+	TestNotNull(TEXT("first text"), Fixture.FirstText);
+	if (!Fixture.Blueprint || !Fixture.Root || !Fixture.FirstText)
+	{
+		return false;
+	}
+
+	Fixture.Root->RemoveChild(Fixture.SecondText);
+	Fixture.Root->RemoveChild(Fixture.NamedSlotHost);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Fixture.Blueprint->GetPathName();
+	Target.TargetKind = TEXT("umg_widget_tree");
+	Target.TargetSubKind = TEXT("root_widget_removal");
+	Target.TargetKey = TEXT("umg_widget:Canvas_Root");
+	Target.VisualGroupKey = Target.TargetKey;
+	Target.DisplayLabel = TEXT("Canvas_Root");
+	Target.ChangedPropertiesJson =
+		TEXT("{\"before_root_widget_name\":\"Canvas_Root\",\"after_root_widget_name\":\"FirstText\",\"replacement_policy\":\"promote_single_child\"}");
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(
+		TEXT("root before snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+
+	TSharedPtr<FJsonObject> Snapshot;
+	TestTrue(
+		TEXT("root before snapshot parses"),
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(SnapshotJson), Snapshot) && Snapshot.IsValid());
+	if (!Snapshot.IsValid())
+	{
+		return false;
+	}
+
+	Fixture.Root->RemoveChild(Fixture.FirstText);
+	Fixture.Blueprint->WidgetTree->RootWidget = Fixture.FirstText;
+	FString RetireError;
+	TestTrue(
+		TEXT("old root retired"),
+		FBlueprintHelperWidgetVersionCompat::RetireSourceWidget(Fixture.Blueprint, Fixture.Root, RetireError));
+	TestNull(TEXT("old root missing before restore"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("Canvas_Root")));
+	TestEqual(TEXT("promoted child is root before restore"), Fixture.Blueprint->WidgetTree->RootWidget.Get(), Cast<UWidget>(Fixture.FirstText));
+
+	FString RestoreError;
+	const bool bRestored = FBlueprintHelperReviewSnapshotRestoreService::RestoreWidgetFromSnapshot(
+		Target,
+		Snapshot,
+		RestoreError);
+	TestTrue(FString::Printf(TEXT("root removal restore succeeds: %s"), *RestoreError), bRestored);
+	TestNotNull(TEXT("old root restored"), Fixture.Blueprint->WidgetTree->FindWidget(TEXT("Canvas_Root")));
+	TestEqual(TEXT("old root is root after restore"), Fixture.Blueprint->WidgetTree->RootWidget->GetName(), FString(TEXT("Canvas_Root")));
+	UPanelWidget* RestoredRoot = Cast<UPanelWidget>(Fixture.Blueprint->WidgetTree->RootWidget);
+	TestNotNull(TEXT("restored root is panel"), RestoredRoot);
+	if (RestoredRoot)
+	{
+		TestEqual(TEXT("promoted child reattached"), RestoredRoot->GetChildAt(0), Cast<UWidget>(Fixture.FirstText));
+	}
+	return true;
+}
+
 #endif

@@ -33,11 +33,25 @@ export {
   EMPTY_OBJECT_INPUT_NOTE,
 } from './manifest/tool-input-shape-metadata.js';
 export {
+  getCliSubcommandGroupDescriptor,
+  listCliSubcommandGroupDescriptors,
   listCliSubcommandDescriptors,
   listCliSubcommandUsageLines,
+  resolveCliSubcommandGroupFromPositionals,
   routeCliSubcommand,
+  templateIndexCommandForCapabilityKind,
   templateNavigationUsageLinesForInputShapes,
 } from './cli/cli-subcommand-descriptor.js';
+export {
+  listCliCommandDescriptors,
+} from './cli/cli-command-descriptor.js';
+export {
+  routeCliCommand,
+} from './cli/cli-command-router.js';
+export {
+  listCliCommandKindsByExecutorId,
+  resolveCliCommandExecutorDescriptor,
+} from './cli/cli-command-executor-registry.js';
 export {
   formatManifestUsage,
   globalCliCommandUsageLines,
@@ -56,11 +70,18 @@ export {
   compactExtraForDefaultCliOutput,
   compactTaskPlanForArtifact,
   compactToolResultForDefaultCliOutput,
+  projectMetricsReportDataForCli,
   projectToolResultForCli,
 } from './result/result-projection-policy.js';
 export {
   getBuiltinResultProjectionPolicy,
   resolveResultProjectionPolicy,
+} from './result/result-projection-registry.js';
+export {
+  isCliBridgeCallAllowed,
+} from './bridge/bridge-tool-descriptor.js';
+export type {
+  BuiltinResultProjectionPolicyId,
 } from './result/result-projection-registry.js';
 export {
   TOOL_COMMAND_MANIFEST_SCHEMA,
@@ -91,11 +112,29 @@ export type {
   ToolResultProjectionPolicyId,
 } from './manifest/tool-command-manifest.js';
 export type {
+  CliSubcommandGroupDescriptor,
   CliSubcommandDescriptor,
   CliSubcommandGroup,
+  CliTemplateIndexCommand,
   RouteCliSubcommandInput,
   RouteCliSubcommandResult,
 } from './cli/cli-subcommand-descriptor.js';
+export type {
+  CliCommandDescriptor,
+  CliCommandDescriptorToken,
+  CliCommandInputIoKind,
+  CliCommandOutputDataPolicyId,
+  CliCommandRequiredOption,
+  CliCommandRunIdPolicyId,
+  CliCommandStatusPolicyId,
+} from './cli/cli-command-descriptor.js';
+export type {
+  RouteCliCommandInput,
+  RouteCliCommandResult,
+} from './cli/cli-command-router.js';
+export type {
+  CliCommandExecutorDescriptor,
+} from './cli/cli-command-executor-registry.js';
 export type {
   ProjectToolResultForCliInput,
   ProjectToolResultForCliOutput,

@@ -57,6 +57,7 @@
 #include "Runtime/TaskRuntime/Projection/BlueprintHelperTaskRuntimeResultProjection.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeTimingUtils.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
 #include "Systems/ToolClusters/GraphWrite/AutoSearch/BlueprintHelperGraphWriteAutoSearchPolicyResolver.h"
 #include "Systems/ToolClusters/GraphWrite/AutoSearch/BlueprintHelperGraphWriteCandidateArtifactStore.h"
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -4611,6 +4612,159 @@ public:
 			return false;
 		}
 
+		static bool RenameInChildren(
+			TArray<FBlueprintHelperWidgetTreeItem>& Children,
+			const FString& WidgetName,
+			const FString& NewWidgetName)
+		{
+			for (FBlueprintHelperWidgetTreeItem& Child : Children)
+			{
+				if (Child.WidgetName == WidgetName)
+				{
+					Child.WidgetName = NewWidgetName;
+					ReindexChildren(Child.Children, NewWidgetName);
+					return true;
+				}
+				if (RenameInChildren(Child.Children, WidgetName, NewWidgetName))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		static FString ResolveMappedWidgetName(
+			const FString& SourceName,
+			const TSharedPtr<FJsonObject>& NameMapping)
+		{
+			FString MappedName;
+			if (NameMapping.IsValid() &&
+				NameMapping->TryGetStringField(SourceName, MappedName) &&
+				!MappedName.IsEmpty())
+			{
+				return MappedName;
+			}
+			return SourceName + TEXT("_Copy");
+		}
+
+		FBlueprintHelperWidgetTreeItem CloneItemWithMapping(
+			const FBlueprintHelperWidgetTreeItem& SourceItem,
+			const TSharedPtr<FJsonObject>& NameMapping,
+			const FString& ParentName,
+			int32 VirtualIndex,
+			bool& bOutValid,
+			FString& OutError) const
+		{
+			bOutValid = false;
+			FBlueprintHelperWidgetTreeItem Clone = SourceItem;
+			Clone.WidgetName = ResolveMappedWidgetName(SourceItem.WidgetName, NameMapping);
+			if (Clone.WidgetName.IsEmpty())
+			{
+				OutError = TEXT("clone_widget_name_empty");
+				return Clone;
+			}
+			if (ContainsWidget(Clone.WidgetName))
+			{
+				OutError = FString::Printf(TEXT("widget_name_mapping_conflict:%s"), *Clone.WidgetName);
+				return Clone;
+			}
+			Clone.ParentName = ParentName;
+			Clone.SlotName.Empty();
+			Clone.VirtualIndex = VirtualIndex;
+			for (int32 ChildIndex = 0; ChildIndex < Clone.Children.Num(); ++ChildIndex)
+			{
+				bool bChildValid = false;
+				Clone.Children[ChildIndex] = CloneItemWithMapping(
+					Clone.Children[ChildIndex],
+					NameMapping,
+					Clone.WidgetName,
+					ChildIndex,
+					bChildValid,
+					OutError);
+				if (!bChildValid)
+				{
+					return Clone;
+				}
+			}
+			bOutValid = true;
+			return Clone;
+		}
+
+		bool AttachItemToTarget(
+			FBlueprintHelperWidgetTreeItem&& Item,
+			const FString& TargetParentName,
+			const FString& SlotName,
+			TOptional<int32> VirtualIndexValue,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			if (TargetParentName.IsEmpty())
+			{
+				OutError = TEXT("target_parent_name_required");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem* ParentItem = FindItem(TargetParentName);
+			if (!ParentItem)
+			{
+				OutError = FString::Printf(TEXT("target_parent_not_found:%s"), *TargetParentName);
+				return false;
+			}
+
+			if (!SlotName.IsEmpty())
+			{
+				if (!ClassSupportsNamedSlot(*ParentItem, SlotName))
+				{
+					OutError = TEXT("named_slot_not_found");
+					return false;
+				}
+				for (const FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+				{
+					if (Entry.HostWidgetName == TargetParentName &&
+						Entry.SlotName == SlotName &&
+						!Entry.ContentWidgetName.IsEmpty())
+					{
+						OutError = TEXT("named_slot_content_exists");
+						return false;
+					}
+				}
+				Item.ParentName = TargetParentName;
+				Item.SlotName = SlotName;
+				Item.VirtualIndex = 0;
+				const FString ItemName = Item.WidgetName;
+				NamedSlotContentItemsByName.Add(ItemName, MoveTemp(Item));
+				FBlueprintHelperNamedSlotEntry Entry;
+				Entry.HostWidgetName = TargetParentName;
+				Entry.SlotName = SlotName;
+				Entry.ContentWidgetName = ItemName;
+				Entry.VirtualIndex = 0;
+				Summary.NamedSlots.Add(Entry);
+				OutAffectedWidget = ItemName;
+				RebuildIndex();
+				return true;
+			}
+
+			if (!ClassSupportsPanelChildren(*ParentItem))
+			{
+				OutError = TEXT("target_parent_is_not_panel");
+				return false;
+			}
+			const int32 VirtualIndex = FBlueprintHelperWidgetTreePositionPolicy::NormalizePanelVirtualIndex(VirtualIndexValue);
+			if (VirtualIndex < 0 || VirtualIndex > ParentItem->Children.Num())
+			{
+				OutError = TEXT("invalid_virtual_index");
+				return false;
+			}
+			Item.ParentName = ParentItem->WidgetName;
+			Item.SlotName.Empty();
+			Item.VirtualIndex = VirtualIndex;
+			const FString ItemName = Item.WidgetName;
+			ParentItem->Children.Insert(MoveTemp(Item), VirtualIndex);
+			OutAffectedWidget = ItemName;
+			RebuildIndex();
+			return true;
+		}
+
 		bool ApplyAdd(
 			const TSharedPtr<FJsonObject>& Payload,
 			FString& OutAffectedWidget,
@@ -5039,16 +5193,357 @@ public:
 			RebuildIndex();
 			return true;
 		}
+
+		bool ApplyRemove(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString WidgetName;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+			}
+			if (WidgetName.IsEmpty())
+			{
+				OutError = TEXT("invalid_widget_remove_payload");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem RemovedItem;
+			if (!RemoveWidget(WidgetName, RemovedItem))
+			{
+				OutError = Summary.Root.WidgetName == WidgetName
+					? TEXT("root_widget_requires_remove_root_widget")
+					: TEXT("widget_not_found");
+				return false;
+			}
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
+
+		bool ApplyRename(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString WidgetName;
+			FString NewWidgetName;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("new_widget_name"), NewWidgetName);
+			}
+			if (WidgetName.IsEmpty() || NewWidgetName.IsEmpty())
+			{
+				OutError = TEXT("invalid_widget_rename_payload");
+				return false;
+			}
+			if (!ContainsWidget(WidgetName))
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			if (WidgetName != NewWidgetName && ContainsWidget(NewWidgetName))
+			{
+				OutError = TEXT("widget_name_already_exists");
+				return false;
+			}
+
+			if (Summary.Root.WidgetName == WidgetName)
+			{
+				Summary.Root.WidgetName = NewWidgetName;
+				ReindexChildren(Summary.Root.Children, NewWidgetName);
+			}
+			else if (FBlueprintHelperWidgetTreeItem* NamedSlotItem = NamedSlotContentItemsByName.Find(WidgetName))
+			{
+				FBlueprintHelperWidgetTreeItem RenamedItem = *NamedSlotItem;
+				NamedSlotContentItemsByName.Remove(WidgetName);
+				RenamedItem.WidgetName = NewWidgetName;
+				ReindexChildren(RenamedItem.Children, NewWidgetName);
+				NamedSlotContentItemsByName.Add(NewWidgetName, MoveTemp(RenamedItem));
+			}
+			else if (!RenameInChildren(Summary.Root.Children, WidgetName, NewWidgetName))
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+
+			for (FBlueprintHelperNamedSlotEntry& Entry : Summary.NamedSlots)
+			{
+				if (Entry.ContentWidgetName == WidgetName)
+				{
+					Entry.ContentWidgetName = NewWidgetName;
+				}
+				if (Entry.HostWidgetName == WidgetName)
+				{
+					Entry.HostWidgetName = NewWidgetName;
+				}
+			}
+			OutAffectedWidget = NewWidgetName;
+			RebuildIndex();
+			return true;
+		}
+
+		bool ApplyRemoveRoot(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString RootWidgetName;
+			FString ReplacementPolicy;
+			FString ReplacementWidgetClass;
+			FString ReplacementWidgetName;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("root_widget_name"), RootWidgetName);
+				Payload->TryGetStringField(TEXT("replacement_policy"), ReplacementPolicy);
+				Payload->TryGetStringField(TEXT("replacement_widget_class"), ReplacementWidgetClass);
+				Payload->TryGetStringField(TEXT("replacement_widget_name"), ReplacementWidgetName);
+			}
+			if (Summary.Root.WidgetName.IsEmpty())
+			{
+				OutError = TEXT("root_widget_missing");
+				return false;
+			}
+			if (!RootWidgetName.IsEmpty() && Summary.Root.WidgetName != RootWidgetName)
+			{
+				OutError = TEXT("root_widget_name_mismatch");
+				return false;
+			}
+			const FString Policy = ReplacementPolicy.ToLower();
+			if (Policy == TEXT("promote_single_child"))
+			{
+				if (Summary.Root.Children.Num() != 1)
+				{
+					OutError = TEXT("root_promote_single_child_requires_exactly_one_child");
+					return false;
+				}
+				FBlueprintHelperWidgetTreeItem PromotedChild = Summary.Root.Children[0];
+				PromotedChild.ParentName.Empty();
+				PromotedChild.SlotName.Empty();
+				PromotedChild.VirtualIndex = 0;
+				Summary.Root = MoveTemp(PromotedChild);
+				OutAffectedWidget = Summary.Root.WidgetName;
+				RebuildIndex();
+				return true;
+			}
+			if (Policy == TEXT("replace_with_empty_root"))
+			{
+				if (ReplacementWidgetClass.IsEmpty())
+				{
+					OutError = TEXT("replacement_widget_class_required");
+					return false;
+				}
+				const FString NewRootName = ReplacementWidgetName.IsEmpty()
+					? Summary.Root.WidgetName
+					: ReplacementWidgetName;
+				if (NewRootName != Summary.Root.WidgetName && ContainsWidget(NewRootName))
+				{
+					OutError = TEXT("replacement_widget_name_already_exists");
+					return false;
+				}
+				Summary.Root = MakeItem(
+					NewRootName,
+					NormalizeWidgetClassName(ReplacementWidgetClass, FString()),
+					FString(),
+					FString(),
+					0);
+				OutAffectedWidget = NewRootName;
+				RebuildIndex();
+				return true;
+			}
+			if (Policy == TEXT("remove_empty_root"))
+			{
+				if (Summary.Root.Children.Num() > 0)
+				{
+					OutError = TEXT("root_remove_empty_requires_no_children");
+					return false;
+				}
+				OutAffectedWidget = Summary.Root.WidgetName;
+				Summary.Root = FBlueprintHelperWidgetTreeItem();
+				Summary.NamedSlots.Reset();
+				NamedSlotContentItemsByName.Reset();
+				RebuildIndex();
+				return true;
+			}
+			OutError = TEXT("unsupported_root_removal_policy");
+			return false;
+		}
+
+		bool ApplyDuplicateSubtree(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString SourceWidgetName;
+			FString TargetParentName;
+			FString SlotName;
+			TOptional<int32> VirtualIndexValue;
+			const TSharedPtr<FJsonObject>* NameMappingPtr = nullptr;
+			TSharedPtr<FJsonObject> NameMapping;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("source_widget_name"), SourceWidgetName);
+				Payload->TryGetStringField(TEXT("target_parent_name"), TargetParentName);
+				Payload->TryGetStringField(TEXT("slot_name"), SlotName);
+				Payload->TryGetObjectField(TEXT("name_mapping"), NameMappingPtr);
+				if (NameMappingPtr && NameMappingPtr->IsValid())
+				{
+					NameMapping = *NameMappingPtr;
+				}
+				double NumberValue = 0.0;
+				if (Payload->TryGetNumberField(TEXT("virtual_index"), NumberValue))
+				{
+					VirtualIndexValue = FMath::RoundToInt(NumberValue);
+				}
+			}
+			const FBlueprintHelperWidgetTreeItem* SourceItem = FindItem(SourceWidgetName);
+			if (!SourceItem)
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			bool bCloneValid = false;
+			FBlueprintHelperWidgetTreeItem Clone = CloneItemWithMapping(
+				*SourceItem,
+				NameMapping,
+				TargetParentName,
+				VirtualIndexValue.IsSet() ? VirtualIndexValue.GetValue() : 0,
+				bCloneValid,
+				OutError);
+			if (!bCloneValid)
+			{
+				return false;
+			}
+			return AttachItemToTarget(MoveTemp(Clone), TargetParentName, SlotName, VirtualIndexValue, OutAffectedWidget, OutError);
+		}
+
+		bool ApplyWrap(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString WidgetName;
+			FString WrapperClass;
+			FString WrapperName;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("wrapper_class"), WrapperClass);
+				Payload->TryGetStringField(TEXT("wrapper_name"), WrapperName);
+			}
+			if (WidgetName.IsEmpty() || WrapperClass.IsEmpty() || WrapperName.IsEmpty())
+			{
+				OutError = TEXT("invalid_wrap_widget_payload");
+				return false;
+			}
+			if (ContainsWidget(WrapperName))
+			{
+				OutError = TEXT("wrapper_name_already_exists");
+				return false;
+			}
+			const FBlueprintHelperWidgetTreeItem* Widget = FindItem(WidgetName);
+			if (!Widget)
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			const FString OldParentName = Widget->ParentName;
+			const FString OldSlotName = Widget->SlotName;
+			const int32 OldVirtualIndex = Widget->VirtualIndex;
+			const bool bWasRoot = Summary.Root.WidgetName == WidgetName;
+			FBlueprintHelperWidgetTreeItem WrappedItem;
+			if (bWasRoot)
+			{
+				WrappedItem = Summary.Root;
+				Summary.Root = FBlueprintHelperWidgetTreeItem();
+			}
+			else if (!RemoveWidget(WidgetName, WrappedItem))
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+
+			FBlueprintHelperWidgetTreeItem Wrapper = MakeItem(
+				WrapperName,
+				NormalizeWidgetClassName(WrapperClass, FString()),
+				OldParentName,
+				OldSlotName,
+				OldVirtualIndex);
+			WrappedItem.ParentName = WrapperName;
+			WrappedItem.SlotName.Empty();
+			WrappedItem.VirtualIndex = 0;
+			Wrapper.Children.Add(MoveTemp(WrappedItem));
+
+			if (bWasRoot)
+			{
+				Wrapper.ParentName.Empty();
+				Wrapper.SlotName.Empty();
+				Wrapper.VirtualIndex = 0;
+				Summary.Root = MoveTemp(Wrapper);
+				OutAffectedWidget = WrapperName;
+				RebuildIndex();
+				return true;
+			}
+			return AttachItemToTarget(MoveTemp(Wrapper), OldParentName, OldSlotName, OldVirtualIndex, OutAffectedWidget, OutError);
+		}
+
+		bool ApplyReplaceWidgetClass(
+			const TSharedPtr<FJsonObject>& Payload,
+			FString& OutAffectedWidget,
+			FString& OutError)
+		{
+			FString WidgetName;
+			FString NewWidgetClass;
+			bool bPreserveChildren = true;
+			if (Payload.IsValid())
+			{
+				Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
+				Payload->TryGetStringField(TEXT("new_widget_class"), NewWidgetClass);
+				Payload->TryGetBoolField(TEXT("preserve_children"), bPreserveChildren);
+			}
+			FBlueprintHelperWidgetTreeItem* Item = FindItem(WidgetName);
+			if (!Item)
+			{
+				OutError = TEXT("widget_not_found");
+				return false;
+			}
+			if (NewWidgetClass.IsEmpty())
+			{
+				OutError = TEXT("new_widget_class_required");
+				return false;
+			}
+			Item->WidgetClass = NormalizeWidgetClassName(NewWidgetClass, FString());
+			Item->WidgetClassPath = ResolveWidgetClassPath(NewWidgetClass, FString());
+			if (!bPreserveChildren)
+			{
+				Item->Children.Reset();
+			}
+			OutAffectedWidget = WidgetName;
+			RebuildIndex();
+			return true;
+		}
 	};
 
 	using FPlannedWidgetTreesByAsset = TMap<FString, FPlannedWidgetTreeState>;
 
 	static bool IsPlannedWidgetTreeStructuralDryRunStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 	{
-		return LoweredStep.Capability == FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget &&
-			(LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget ||
-				LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ||
-				LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent);
+		if (LoweredStep.Capability != FBlueprintHelperWidgetTaskPlan::Capability::UMGWidget)
+		{
+			return false;
+		}
+		for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+		{
+			if (LoweredStep.AdapterOperation.Equals(Descriptor.TaskPlanOp, ESearchCase::IgnoreCase) ||
+				LoweredStep.AdapterOperation.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+			{
+				return FString(Descriptor.PlannedPreviewEffect).Equals(TEXT("widget_tree_structural"), ESearchCase::IgnoreCase);
+			}
+		}
+		return false;
 	}
 
 	static UWidgetBlueprint* ResolvePlannedWidgetBlueprint(
@@ -5158,17 +5653,22 @@ public:
 		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("widget"), TargetWidgetName);
 
 		TSharedRef<FJsonObject> DryRun = MakeShared<FJsonObject>();
+		const bool bWouldCreate =
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget ||
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent ||
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree ||
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget;
+		const bool bWouldRemove =
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget ||
+			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget;
+		const bool bWouldUpdate = !bWouldCreate && !bWouldRemove;
 		DryRun->SetStringField(TEXT("preview_kind"), TEXT("task_runtime_planned_widget_tree"));
 		DryRun->SetBoolField(TEXT("can_execute"), true);
 		DryRun->SetStringField(TEXT("result"), TEXT("passed"));
 		DryRun->SetNumberField(TEXT("would_change_count"), 1);
-		DryRun->SetNumberField(
-			TEXT("would_create_count"),
-			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ? 0 : 1);
-		DryRun->SetNumberField(
-			TEXT("would_update_count"),
-			LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::MoveWidget ? 1 : 0);
-		DryRun->SetNumberField(TEXT("would_remove_count"), 0);
+		DryRun->SetNumberField(TEXT("would_create_count"), bWouldCreate ? 1 : 0);
+		DryRun->SetNumberField(TEXT("would_update_count"), bWouldUpdate ? 1 : 0);
+		DryRun->SetNumberField(TEXT("would_remove_count"), bWouldRemove ? 1 : 0);
 		DryRun->SetNumberField(TEXT("would_no_op_count"), 0);
 		DryRun->SetArrayField(TEXT("conflicts"), {});
 		DryRun->SetArrayField(TEXT("errors"), {});
@@ -5225,6 +5725,30 @@ public:
 		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent)
 		{
 			bApplied = State->ApplySetNamedSlotContent(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
+		{
+			bApplied = State->ApplyRemove(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget)
+		{
+			bApplied = State->ApplyRename(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget)
+		{
+			bApplied = State->ApplyRemoveRoot(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree)
+		{
+			bApplied = State->ApplyDuplicateSubtree(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget)
+		{
+			bApplied = State->ApplyWrap(LoweredStep.Payload, AffectedWidget, OperationError);
+		}
+		else if (LoweredStep.AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReplaceWidgetClass)
+		{
+			bApplied = State->ApplyReplaceWidgetClass(LoweredStep.Payload, AffectedWidget, OperationError);
 		}
 		else
 		{
@@ -6601,96 +7125,6 @@ public:
 			TEXT("unsupported_class_settings_adapter_operation"),
 			EBlueprintHelperToolStage::ParseInput,
 			TEXT("Unsupported class settings adapter operation."));
-	}
-
-	static FBlueprintHelperToolResultBase MakeWidgetMutationResult(
-		const FString& Operation,
-		const TSharedPtr<FJsonObject>& Payload,
-		const FBlueprintHelperWidgetMutationResult& MutationResult)
-	{
-		const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
-		FBlueprintHelperToolResultBase Result = MutationResult.bSuccess
-			? (MutationResult.bDryRun
-				? FBlueprintHelperToolResultBuilder::DryRun(Operation, TraceId)
-				: FBlueprintHelperToolResultBuilder::Applied(Operation, TraceId))
-			: FBlueprintHelperToolResultBuilder::Failure(
-				Operation,
-				TraceId,
-				MakeTaskRuntimeError(
-					TEXT("widget_operation_failed"),
-					EBlueprintHelperToolStage::Execute,
-					MutationResult.ErrorMessage));
-
-		FString AssetPath;
-		FString WidgetName;
-		FString PropertyName;
-		if (Payload.IsValid())
-		{
-			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
-			Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
-			Payload->TryGetStringField(TEXT("property_name"), PropertyName);
-		}
-		Result.CustomTargetJson = MakeRuntimeTarget(AssetPath, TEXT("widget"), WidgetName, TEXT(""), PropertyName);
-
-		TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
-		Data->SetStringField(TEXT("schema"), TEXT("WidgetMutation.v1"));
-		Data->SetBoolField(TEXT("dry_run"), MutationResult.bDryRun);
-		if (!MutationResult.AffectedWidget.IsEmpty())
-		{
-			Data->SetStringField(TEXT("widget_name"), MutationResult.AffectedWidget);
-		}
-		if (!PropertyName.IsEmpty())
-		{
-			Data->SetStringField(TEXT("property_name"), PropertyName);
-		}
-		Result.Data = Data;
-		return Result;
-	}
-
-	static FBlueprintHelperToolResultBase ExecuteWidgetTaskPlanStep(
-		const FBlueprintHelperWidgetService& Service,
-		const FString& AdapterOperation,
-		const TSharedPtr<FJsonObject>& Payload)
-	{
-		FString AssetPath;
-		FString ParentName;
-		FString WidgetClass;
-		FString WidgetName;
-		FString PropertyName;
-		FString Value;
-		bool bDryRun = false;
-		if (Payload.IsValid())
-		{
-			Payload->TryGetStringField(TEXT("asset_path"), AssetPath);
-			Payload->TryGetStringField(TEXT("parent_name"), ParentName);
-			Payload->TryGetStringField(TEXT("widget_class"), WidgetClass);
-			Payload->TryGetStringField(TEXT("widget_name"), WidgetName);
-			Payload->TryGetStringField(TEXT("property_name"), PropertyName);
-			Payload->TryGetStringField(TEXT("value"), Value);
-			Payload->TryGetBoolField(TEXT("dry_run"), bDryRun);
-		}
-
-		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::AddWidget)
-		{
-			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.AddWidget(AssetPath, ParentName, WidgetClass, WidgetName, bDryRun));
-		}
-		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetWidgetProperty)
-		{
-			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.SetWidgetProperty(AssetPath, WidgetName, PropertyName, Value, bDryRun));
-		}
-		if (AdapterOperation == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
-		{
-			return MakeWidgetMutationResult(AdapterOperation, Payload,
-				Service.RemoveWidget(AssetPath, WidgetName, bDryRun));
-		}
-
-		return MakeFailure(
-			TEXT("umg_widget"),
-			TEXT("unsupported_widget_adapter_operation"),
-			EBlueprintHelperToolStage::ParseInput,
-			TEXT("Unsupported widget adapter operation."));
 	}
 
 	static FBlueprintHelperToolResultBase MakeDataTableMutationResult(

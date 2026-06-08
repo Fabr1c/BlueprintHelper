@@ -3,8 +3,12 @@ import * as path from 'node:path';
 import { BridgeClient, type BridgeResponse, type BridgeSendCommandOptions } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   getBlueprintHelperTool,
-  routeCliSubcommand,
+  isCliBridgeCallAllowed,
+  listCliCommandKindsByExecutorId,
+  resolveCliCommandExecutorDescriptor,
+  routeCliCommand,
   splitTopLevelSlotExpressions,
+  type CliCommandExecutorDescriptor,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   createTaskSpecRunner,
@@ -31,6 +35,7 @@ import {
   writeCliResult,
   type CliCommand,
   type CliFormat,
+  type CliCommandKind,
 } from './output.js';
 import { createInputIoSummary, createOutputIoSummary } from './io-stats.js';
 import { buildHelpText } from './help.js';
@@ -92,67 +97,58 @@ const runtimeBridgeCache = new WeakMap<CliRuntime, CliBridge>();
 const runtimeRunnerCache = new WeakMap<CliRuntime, TaskSpecRunner>();
 const runtimeMetricsCache = new WeakMap<CliRuntime, ReturnType<typeof createCliMetricsService>>();
 
-const READ_ONLY_BRIDGE_COMMANDS = new Set([
-  'get_editor_context',
-  'get_runtime_profile',
-  'diagnostics_runtime',
-  'read_reference_context',
-  'get_debug_case',
-  'list_debug_cases',
-  'export_debug_bundle',
-  'get_task_run_journal',
-]);
+interface CliCommandExecutionContext {
+  readonly runtime: CliRuntime;
+  readonly command: CliCommand;
+  readonly timing: TaskTimingTrace | undefined;
+}
 
-export async function runCli(runtime: CliRuntime): Promise<number> {
-  const cliTiming = startTaskTiming(runtime.argv.includes('--develop'), 'cli_command', 'agentface_cli');
-  let parsed: ParseResult;
-  try {
-    parsed = measureTaskTiming(cliTiming, 'cli.parse_args', () => parseArgs(runtime.argv));
-  } catch (err) {
-    runtime.stderr(`${err instanceof Error ? err.message : String(err)}\n`);
-    return 64;
-  }
-  if (!parsed.ok) {
-    runtime.stderr(`${parsed.message}\n`);
-    return 64;
-  }
-  if ('help' in parsed) {
-    runtime.stdout(`${buildHelpText(parsed.helpTarget)}\n`);
-    return 0;
-  }
+interface CliCommandExecutor extends CliCommandExecutorDescriptor<CliCommandKind> {
+  readonly id: string;
+  readonly kinds: readonly CliCommandKind[];
+  readonly execute: (context: CliCommandExecutionContext) => Promise<number>;
+}
 
-  const command = parsed.command;
-  const timing = command.develop === true ? cliTiming : undefined;
+function commandKindsForExecutor(executorId: string): readonly CliCommandKind[] {
+  return listCliCommandKindsByExecutorId(executorId) as CliCommandKind[];
+}
 
-  try {
-    if (command.kind === 'tool.invoke') {
+const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
+  {
+    id: 'tool.invoke',
+    kinds: ['tool.invoke'],
+    execute: async ({ runtime, command, timing }) => {
       const result = await runDirectCliTool(runtime, command, timing, 'cli.invoke_tool');
       const outcome = writeTimedCliResult(runtime, command, result.toolResult, timing);
       await recordCliIo(runtime, command, outcome, result.inputIo, result.parsedParams ?? result.rawParams);
       return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
-    }
-
-    if (
-      command.kind === 'tools.domains'
-      || command.kind === 'tools.list'
-      || command.kind.startsWith('tools.templates.')
-      || command.kind.startsWith('tools.read_templates.')
-    ) {
+    },
+  },
+  {
+    id: 'tools.registry',
+    kinds: commandKindsForExecutor('tools.registry'),
+    execute: async ({ runtime, command }) => {
       const output = shapeCliOutput(runToolsCommand(command), command.fields, command.omitFields);
       runtime.stdout(`${JSON.stringify(output)}\n`);
       return 0;
-    }
-
-    if (command.kind === 'metrics.report') {
+    },
+  },
+  {
+    id: 'metrics.report',
+    kinds: commandKindsForExecutor('metrics.report'),
+    execute: async ({ runtime, command, timing }) => {
       const metricsCommand = resolveMetricsCommand(command, runtime.cwd);
       const toolResult = await measureTaskTimingAsync(timing, 'cli.metrics_report', () => runMetricsCommand({
         command: metricsCommand,
       }));
       const outcome = writeTimedCliResult(runtime, metricsCommand, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
-    }
-
-    if (command.kind === 'task.preview') {
+    },
+  },
+  {
+    id: 'task.preview',
+    kinds: commandKindsForExecutor('task.preview'),
+    execute: async ({ runtime, command, timing }) => {
       const taskSpecInput = measureTaskTiming(timing, 'taskspec_file_read_parse', () => readTaskSpecInput(
         path.resolve(runtime.cwd, required(command.file)),
       ));
@@ -190,9 +186,12 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       });
       await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : preview.passed ? 0 : 2;
-    }
-
-    if (command.kind === 'task.execute') {
+    },
+  },
+  {
+    id: 'task.execute',
+    kinds: commandKindsForExecutor('task.execute'),
+    execute: async ({ runtime, command, timing }) => {
       const taskSpecInput = measureTaskTiming(timing, 'taskspec_file_read_parse', () => readTaskSpecInput(
         path.resolve(runtime.cwd, required(command.file)),
       ));
@@ -201,23 +200,32 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
-    }
-
-    if (command.kind === 'task.result') {
+    },
+  },
+  {
+    id: 'task.result',
+    kinds: commandKindsForExecutor('task.result'),
+    execute: async ({ runtime, command, timing }) => {
       const toolResult = await measureTaskTimingAsync(timing, 'cli.get_task_result', () => getRunner(runtime).getTaskResult(required(command.taskRunId)));
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       await recordCliIo(runtime, command, outcome, undefined, { task_run_id: command.taskRunId });
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
-    }
-
-    if (command.kind === 'context.read') {
+    },
+  },
+  {
+    id: 'context.read',
+    kinds: commandKindsForExecutor('context.read'),
+    execute: async ({ runtime, command, timing }) => {
       const result = await runDirectCliTool(runtime, command, timing, 'cli.read_context');
       const outcome = writeTimedCliResult(runtime, command, result.toolResult, timing);
       await recordCliIo(runtime, command, outcome, result.inputIo, result.parsedParams ?? result.rawParams);
       return outcome.outputTooLarge ? 3 : result.toolResult.ok ? 0 : 2;
-    }
-
-    if (command.kind === 'bridge.ping') {
+    },
+  },
+  {
+    id: 'bridge.ping',
+    kinds: commandKindsForExecutor('bridge.ping'),
+    execute: async ({ runtime, command, timing }) => {
       const bridge = getBridge(runtime);
       const response = await measureTaskTimingAsync(timing, 'bridge.ping', () => bridge.sendCommand('ping', {}));
       const toolResult = response.success
@@ -225,11 +233,14 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         : bridgeFailureResult('bridge_ping', response);
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
-    }
-
-    if (command.kind === 'bridge.call') {
+    },
+  },
+  {
+    id: 'bridge.call',
+    kinds: commandKindsForExecutor('bridge.call'),
+    execute: async ({ runtime, command, timing }) => {
       const bridgeCommand = required(command.bridgeCommand);
-      if (!READ_ONLY_BRIDGE_COMMANDS.has(bridgeCommand)) {
+      if (!isCliBridgeCallAllowed(bridgeCommand)) {
         runtime.stderr(`Bridge command is not allowed through CLI: ${bridgeCommand}\n`);
         return 64;
       }
@@ -239,7 +250,38 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
         : bridgeFailureResult(`bridge.${bridgeCommand}`, response);
       const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
+    },
+  },
+];
+
+export async function runCli(runtime: CliRuntime): Promise<number> {
+  const cliTiming = startTaskTiming(runtime.argv.includes('--develop'), 'cli_command', 'agentface_cli');
+  let parsed: ParseResult;
+  try {
+    parsed = measureTaskTiming(cliTiming, 'cli.parse_args', () => parseArgs(runtime.argv));
+  } catch (err) {
+    runtime.stderr(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 64;
+  }
+  if (!parsed.ok) {
+    runtime.stderr(`${parsed.message}\n`);
+    return 64;
+  }
+  if ('help' in parsed) {
+    runtime.stdout(`${buildHelpText(parsed.helpTarget)}\n`);
+    return 0;
+  }
+
+  const command = parsed.command;
+  const timing = command.develop === true ? cliTiming : undefined;
+
+  try {
+    const executor = resolveCliCommandExecutor(command);
+    if (!executor) {
+      runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
+      return 64;
     }
+    return await executor.execute({ runtime, command, timing });
   } catch (err) {
     const status = isBridgeUnavailable(err) ? 'bridge_unavailable' : 'cli_error';
     const errorText = `${JSON.stringify(buildCliError({
@@ -264,6 +306,10 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
 
   runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
   return 64;
+}
+
+function resolveCliCommandExecutor(command: CliCommand): CliCommandExecutor | undefined {
+  return resolveCliCommandExecutorDescriptor(CLI_COMMAND_EXECUTORS, command.kind);
 }
 
 function writeTimedCliResult(
@@ -523,70 +569,13 @@ function parseArgs(argv: string[]): ParseResult {
     return { ok: false, message: metricsOnlyOptionError };
   }
 
-  if (group === 'tools') {
-    if (action === 'domains' && positionals.length === 2) {
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.domains',
-          includeReserved: options.includeReserved,
-          audience: options.audience ?? 'default',
-        },
-      };
-    }
-    if (action === 'list' && positionals.length === 4) {
-      return {
-        ok: true,
-        command: {
-          ...base,
-          kind: 'tools.list',
-          toolDomain: positionals[2],
-          toolCatalogKind: positionals[3],
-          audience: options.audience ?? 'default',
-          requiresBridge: options.requiresBridge,
-          risks: options.risks,
-          expert: options.expert,
-        },
-      };
-    }
-    if (action === 'templates') {
-      return parseToolsTemplatesCommand(positionals, options, base);
-    }
-    if (action === 'read-templates') {
-      return parseToolsReadTemplatesCommand(positionals, options, base);
-    }
-    return { ok: false, message: `Unsupported BlueprintHelper CLI tools command: ${action ?? ''}` };
-  }
-
-  if (positionals.length === 1 && (group === 'open_editor' || group === 'close_editor')) {
-    const toolName = group === 'open_editor' ? 'blueprint_open_editor' : 'blueprint_close_editor';
-    const hasInputSource = options.file !== undefined || options.json !== undefined || options.stdin === true;
-    return {
-      ok: true,
-      command: {
-        ...base,
-        kind: 'tool.invoke',
-        toolName,
-        params: hasInputSource ? undefined : {},
-        file: options.file,
-        json: options.json,
-        stdin: options.stdin,
-        expert: options.expert,
-      },
-    };
-  }
-
-  if (positionals.length === 1 && group === 'blueprinthelper_get_task_result' && options.id) {
-    return {
-      ok: true,
-      command: {
-        ...base,
-        kind: 'tool.invoke',
-        toolName: group,
-        params: { task_run_id: options.id },
-      },
-    };
+  const routed = routeCliCommand({
+    positionals,
+    options: options as Record<string, unknown>,
+    base,
+  });
+  if (routed.ok) {
+    return { ok: true, command: routed.command as unknown as CliCommand };
   }
 
   if (positionals.length === 1 && getBlueprintHelperTool(group)) {
@@ -604,46 +593,7 @@ function parseArgs(argv: string[]): ParseResult {
     };
   }
 
-  if (group === 'task' && action === 'preview' && options.file) {
-    return { ok: true, command: { ...base, kind: 'task.preview', file: options.file, compileOnly: options.compileOnly } };
-  }
-  if (group === 'task' && action === 'execute' && options.file) {
-    return { ok: true, command: { ...base, kind: 'task.execute', file: options.file, previewToken: options.previewToken } };
-  }
-  if (group === 'task' && action === 'result' && options.id) {
-    return { ok: true, command: { ...base, kind: 'task.result', taskRunId: options.id } };
-  }
-  if (group === 'bridge' && action === 'ping') {
-    return { ok: true, command: { ...base, kind: 'bridge.ping' } };
-  }
-  if (group === 'bridge' && action === 'call' && options.command) {
-    return { ok: true, command: { ...base, kind: 'bridge.call', bridgeCommand: options.command } };
-  }
-  if (group === 'context' && action === 'read' && options.file) {
-    return { ok: true, command: { ...base, kind: 'context.read', toolName: 'blueprinthelper_read_context', file: options.file } };
-  }
-  if (group === 'metrics' && isMetricsAction(action)) {
-    if (options.format !== undefined && options.format !== 'json' && options.format !== 'markdown') {
-      return { ok: false, message: `Unsupported --format value for bh metrics ${action}: ${options.format}` };
-    }
-    return {
-      ok: true,
-      command: {
-        kind: 'metrics.report',
-        format: options.format ?? 'json',
-        metricsKind: action,
-        window: options.window ?? '7d',
-        limit: options.limit ?? 20,
-        artifactDir: options.artifactDir,
-        maxBytes: options.maxBytes,
-        fields: options.fields,
-        omitFields: options.omitFields,
-        develop: options.develop,
-      },
-    };
-  }
-
-  return { ok: false, message: `Unsupported BlueprintHelper CLI command: ${argv.join(' ')}` };
+  return routed;
 }
 
 function readOptionValue(argv: string[], index: number, flag: string): string {
@@ -890,61 +840,10 @@ function readCommandInputIoBestEffort(runtime: CliRuntime, command: CliCommand):
 
   try {
     const text = fs.readFileSync(path.resolve(runtime.cwd, command.file), 'utf8');
-    return createInputIoSummary(isTaskFileCommand(command) ? 'task_file' : 'file', text);
+    return createInputIoSummary(command.inputIoKind ?? 'file', text);
   } catch {
     return undefined;
   }
-}
-
-function isTaskFileCommand(command: CliCommand): boolean {
-  return command.kind === 'task.preview' || command.kind === 'task.execute';
-}
-
-function parseToolsTemplatesCommand(
-  positionals: string[],
-  options: {
-    workflow?: string;
-    family?: string;
-    writeMode?: string;
-    cluster?: string;
-    operation?: string;
-    templates?: string[];
-    out?: string;
-  },
-  base: Omit<CliCommand, 'kind'>,
-): ParseResult {
-  const routed = routeCliSubcommand({
-    group: 'tools.templates',
-    positionals,
-    options: options as Record<string, unknown>,
-    base: base as Record<string, unknown>,
-  });
-  return routed.ok
-    ? { ok: true, command: routed.command as unknown as CliCommand }
-    : routed;
-}
-
-function parseToolsReadTemplatesCommand(
-  positionals: string[],
-  options: {
-    domain?: string;
-    readCluster?: string;
-    targetKind?: string;
-    viewTemplate?: string;
-    templates?: string[];
-    out?: string;
-  },
-  base: Omit<CliCommand, 'kind'>,
-): ParseResult {
-  const routed = routeCliSubcommand({
-    group: 'tools.read_templates',
-    positionals,
-    options: options as Record<string, unknown>,
-    base: base as Record<string, unknown>,
-  });
-  return routed.ok
-    ? { ok: true, command: routed.command as unknown as CliCommand }
-    : routed;
 }
 
 function required(value: string | undefined): string {
@@ -982,13 +881,6 @@ function parseCommaList(value: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-function isMetricsAction(value: string | undefined): value is MetricsCliCommand['metricsKind'] {
-  return value === 'report'
-    || value === 'top-errors'
-    || value === 'tool-usage'
-    || value === 'task-health';
-}
-
 function readMetricsOnlyOptionError(options: {
   format?: CliFormat;
   window?: '1d' | '7d' | '30d' | 'all';
@@ -1006,14 +898,24 @@ function readMetricsOnlyOptionError(options: {
   return undefined;
 }
 
-function resolveMetricsCommand(command: CliCommand, cwd: string): MetricsCliCommand {
+function resolveMetricsCommand(command: CliCommand, cwd: string): MetricsCliCommand & CliCommand {
   return {
     kind: 'metrics.report',
     format: command.format === 'markdown' ? 'markdown' : 'json',
+    resultPolicyId: command.resultPolicyId,
+    statusPolicyId: command.statusPolicyId,
+    runIdPolicyId: command.runIdPolicyId,
+    outputDataPolicyId: command.outputDataPolicyId,
     metricsKind: command.metricsKind ?? 'report',
     metricsRoot: command.metricsRoot ?? resolveMetricsRoot(cwd),
     window: command.window ?? '7d',
     limit: command.limit ?? 20,
+    artifactDir: command.artifactDir,
+    maxBytes: command.maxBytes,
+    fields: command.fields,
+    omitFields: command.omitFields,
+    develop: command.develop,
+    expert: command.expert,
   };
 }
 

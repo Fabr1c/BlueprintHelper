@@ -78,34 +78,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.graph_context.graph.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_json",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "graph_context",
-    "target_type": "graph",
-    "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
-    "bridge_command": "read_blueprint_logic_json",
-    "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "graph_context",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "graph"
-    ],
-    "supported_formats": [
-      "logic_json"
-    ]
-  },
-  {
     "route_id": "read.blueprint.logic.block.logic_json",
     "domain": "blueprint",
     "read_cluster": "logic",

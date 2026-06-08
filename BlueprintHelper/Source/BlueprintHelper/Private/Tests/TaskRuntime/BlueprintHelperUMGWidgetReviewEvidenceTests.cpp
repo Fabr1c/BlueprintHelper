@@ -223,4 +223,128 @@ bool FBlueprintHelperUMGWidgetReviewEvidenceDiagnosticsTest::RunTest(const FStri
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperUMGWidgetReviewEvidenceP2DescriptorSubKindsTest,
+	"BlueprintHelper.TaskRuntime.UMGWidgetReviewEvidence.P2DescriptorSubKinds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperUMGWidgetReviewEvidenceP2DescriptorSubKindsTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		const TCHAR* Operation;
+		const TCHAR* ExpectedSubKind;
+		TFunction<void(const TSharedRef<FJsonObject>&)> FillPayload;
+		const TCHAR* ExpectedTargetKeyFragment;
+		const TCHAR* ResultWidgetName;
+	};
+
+	TArray<FCase> Cases;
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget,
+		TEXT("widget_rename"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("widget_name"), TEXT("OldButton"));
+			Payload->SetStringField(TEXT("new_widget_name"), TEXT("StartButton"));
+		},
+		TEXT("OldButton"),
+		TEXT("StartButton")
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget,
+		TEXT("root_widget_removal"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("root_widget_name"), TEXT("RootCanvas"));
+			Payload->SetStringField(TEXT("replacement_policy"), TEXT("remove_empty_root"));
+		},
+		TEXT("RootCanvas"),
+		TEXT("PromotedPanel")
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReparentWidgetBlueprint,
+		TEXT("widget_blueprint_reparent"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("new_parent_class"), TEXT("/Script/UMG.UserWidget"));
+		},
+		TEXT("widget_blueprint"),
+		TEXT("widget_blueprint")
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree,
+		TEXT("widget_subtree_duplicate"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("source_widget_name"), TEXT("SourcePanel"));
+			Payload->SetStringField(TEXT("target_parent_name"), TEXT("RootCanvas"));
+			TSharedRef<FJsonObject> NameMapping = MakeShared<FJsonObject>();
+			NameMapping->SetStringField(TEXT("SourcePanel"), TEXT("SourcePanelCopy"));
+			Payload->SetObjectField(TEXT("name_mapping"), NameMapping);
+		},
+		TEXT("SourcePanelCopy"),
+		TEXT("SourcePanelCopy")
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget,
+		TEXT("widget_wrap"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+			Payload->SetStringField(TEXT("wrapper_name"), TEXT("StartButtonWrapper"));
+		},
+		TEXT("StartButtonWrapper"),
+		TEXT("StartButtonWrapper")
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReplaceWidgetClass,
+		TEXT("widget_class_replace"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			Payload->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+			Payload->SetStringField(TEXT("new_widget_class"), TEXT("TextBlock"));
+		},
+		TEXT("StartButton"),
+		TEXT("StartButton")
+	});
+
+	for (const FCase& Case : Cases)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("asset_path"), TEXT("/Game/UI/WBP_Menu"));
+		Case.FillPayload(Payload);
+
+		FBlueprintHelperWidgetTreeReviewEvidenceBuildInput Input =
+			FBlueprintHelperUMGWidgetReviewEvidenceTestsLocalUtils::MakeInput(Case.Operation, Payload);
+		Input.StepResult.Data->SetStringField(TEXT("widget_name"), Case.ResultWidgetName);
+
+		FBlueprintHelperWriteReviewEvidence Evidence;
+		const bool bBuilt = FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(Input, Evidence);
+		TestTrue(FString::Printf(TEXT("%s evidence builds"), Case.Operation), bBuilt);
+		TestEqual(FString::Printf(TEXT("%s one target"), Case.Operation), Evidence.AtomicTargets.Num(), 1);
+		if (!bBuilt || Evidence.AtomicTargets.Num() != 1)
+		{
+			continue;
+		}
+
+		const FBlueprintHelperReviewAtomicTarget& Target = Evidence.AtomicTargets[0];
+		TestEqual(FString::Printf(TEXT("%s target subkind"), Case.Operation), Target.TargetSubKind, FString(Case.ExpectedSubKind));
+		TestTrue(
+			FString::Printf(TEXT("%s target key contains expected identity"), Case.Operation),
+			Target.TargetKey.Contains(Case.ExpectedTargetKeyFragment));
+		if (FString(Case.Operation) == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget)
+		{
+			TestTrue(
+				TEXT("root removal changed properties carry before root"),
+				Target.ChangedPropertiesJson.Contains(TEXT("\"before_root_widget_name\":\"RootCanvas\"")));
+			TestTrue(
+				TEXT("root removal changed properties carry after root"),
+				Target.ChangedPropertiesJson.Contains(TEXT("\"after_root_widget_name\":\"PromotedPanel\"")));
+		}
+	}
+
+	return true;
+}
+
 #endif

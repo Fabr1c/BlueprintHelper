@@ -9,7 +9,9 @@ import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface
 import type { TaskSpecRunnerMetrics } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
 import {
+  buildReadonlyToolCommandManifestRegistry,
   getBlueprintHelperTool,
+  type ToolInputShapeId,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { normalizeToolInputForManifest } from '@blueprinthelper/task-core/tool-surface/input/default-input-shape-adapters';
 import { readCliInputObjectWithStats } from './input.js';
@@ -21,6 +23,8 @@ export interface CliToolInvocationResult {
   parsedParams?: Record<string, unknown>;
   inputIo?: MetricsIoSummary;
 }
+
+const TOOL_COMMAND_MANIFEST_REGISTRY = buildReadonlyToolCommandManifestRegistry();
 
 export async function invokeCliTool(input: {
   command: CliCommand;
@@ -62,8 +66,11 @@ export async function invokeCliTool(input: {
     };
   }
 
+  const manifest = TOOL_COMMAND_MANIFEST_REGISTRY.get(toolName);
   const inputObject = input.command.params
     ? { value: input.command.params, io: undefined }
+    : shouldUseEmptyObjectInput(input.command, manifest?.input_shapes ?? [])
+      ? { value: {}, io: undefined }
     : await readCliInputObjectWithStats({
       cwd: input.cwd,
       file: input.command.file,
@@ -72,10 +79,12 @@ export async function invokeCliTool(input: {
       readStdin: input.readStdin,
   });
   const rawParams = inputObject.value;
-  const params = applyDevelopFlag(toolName, rawParams, input.command.develop === true);
+  const params = applyDevelopFlag(manifest?.input_shapes ?? [], rawParams, input.command.develop === true);
   const normalizedParams = normalizeToolInputForManifest({
     toolName,
     value: params as Record<string, unknown>,
+    manifestRegistry: TOOL_COMMAND_MANIFEST_REGISTRY,
+    requireManifest: true,
   });
   const parsed = tool.inputSchema.parse(normalizedParams) as Record<string, unknown>;
   return {
@@ -95,8 +104,8 @@ export async function invokeCliTool(input: {
   };
 }
 
-function applyDevelopFlag(toolName: string, params: unknown, develop: boolean): unknown {
-  if (!develop || !isTaskSpecExecutionTool(toolName) || !isRecord(params)) {
+function applyDevelopFlag(inputShapes: readonly ToolInputShapeId[], params: unknown, develop: boolean): unknown {
+  if (!develop || !acceptsTaskSpecInput(inputShapes) || !isRecord(params)) {
     return params;
   }
 
@@ -107,8 +116,18 @@ function applyDevelopFlag(toolName: string, params: unknown, develop: boolean): 
   return { task_spec: params, develop: true };
 }
 
-function isTaskSpecExecutionTool(toolName: string): boolean {
-  return toolName === 'blueprinthelper_preview_task' || toolName === 'blueprinthelper_execute_task';
+function acceptsTaskSpecInput(inputShapes: readonly ToolInputShapeId[]): boolean {
+  return inputShapes.some((shape) =>
+    shape === 'bare_taskspec'
+    || shape === 'wrapped_taskspec_preview'
+    || shape === 'wrapped_taskspec_execute');
+}
+
+function shouldUseEmptyObjectInput(command: CliCommand, inputShapes: readonly ToolInputShapeId[]): boolean {
+  return command.file === undefined
+    && command.json === undefined
+    && command.stdin !== true
+    && inputShapes.includes('empty_object');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

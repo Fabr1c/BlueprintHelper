@@ -1,0 +1,22 @@
+{
+  "kind": "ensure_function",
+  "function_name": "__REQUIRED_FUNCTION_NAME__",
+  "inputs": [
+    {
+      "name": "__OPTIONAL_INPUT_NAME__",
+      "pin_type": {
+        "category": "__OPTIONAL_INPUT_PIN_CATEGORY__"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "__OPTIONAL_OUTPUT_NAME__",
+      "pin_type": {
+        "category": "__OPTIONAL_OUTPUT_PIN_CATEGORY__"
+      }
+    }
+  ],
+  "is_pure": false,
+  "name_collision_policy": "reuse_if_exists"
+}

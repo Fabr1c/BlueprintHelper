@@ -12,7 +12,7 @@ import {
   projectMetricsReportDataForCli,
   projectToolResultForCli,
 } from './result-projection-policy.js';
-import { resolveResultProjectionPolicy } from './result-projection-registry.js';
+import { getBuiltinResultProjectionPolicy } from './result-projection-registry.js';
 
 const FORBIDDEN_LOCAL_PRUNING_PATTERNS: readonly [string, RegExp][] = [
   ['schema local key equality', /key\s*===\s*['"]schema['"]/],
@@ -128,7 +128,7 @@ test('task execute projection policy omits execute preview_id from returned data
         task_run_id: 'task_cli_001',
       },
     } as ToolResultBase,
-    policy: resolveResultProjectionPolicy({ commandKind: 'task.execute' }),
+    policy: getBuiltinResultProjectionPolicy('task.execute.default'),
   });
 
   const data = projected.tool_result.data as Record<string, unknown>;

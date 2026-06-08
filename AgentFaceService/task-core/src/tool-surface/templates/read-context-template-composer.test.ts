@@ -53,6 +53,37 @@ test('ReadContext active route descriptors own request and payload routing facts
   }
 });
 
+test('ReadContext active graph logic_json route keeps blueprint logic route only', () => {
+  const routes = getActiveReadContextRouteDescriptors().filter((route) =>
+    route.domain === 'blueprint'
+    && route.read_cluster === 'logic'
+    && route.target_kind === 'graph'
+    && route.view_template === 'logic_json');
+
+  assert.deepEqual(routes.map((route) => route.route_id), ['read.blueprint.logic.graph.logic_json']);
+  assert.equal(routes[0]?.read_type, 'blueprint_logic');
+  assert.equal(routes[0]?.request_builder_id, 'blueprint_logic');
+});
+
+test('ReadContext template composer writes graph logic_json using blueprint logic route', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'graph-logic-json.readspec.json');
+
+  const result = composeReadContextTemplate({
+    domain: 'blueprint',
+    readCluster: 'logic',
+    targetKind: 'graph',
+    viewTemplate: 'logic_json',
+    templateIds: [],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'read.blueprint.logic.graph.logic_json');
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+  assert.equal(readSpec.read_type, 'blueprint_logic');
+  assert.equal(readSpec.target.target_type, 'graph');
+});
+
 test('ReadContext template index exposes domain cluster target and view discovery', () => {
   const domains = listReadContextTemplateDomains();
   assert.equal(domains.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');

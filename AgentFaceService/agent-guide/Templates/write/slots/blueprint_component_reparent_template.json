@@ -1,0 +1,8 @@
+{
+  "kind": "reparent_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "new_parent": "__REQUIRED_NEW_PARENT_COMPONENT_NAME__",
+  "socket": "__OPTIONAL_SOCKET_NAME__",
+  "attach_rule": "__OPTIONAL_ATTACH_RULE__",
+  "transform_policy": "preserve_world"
+}

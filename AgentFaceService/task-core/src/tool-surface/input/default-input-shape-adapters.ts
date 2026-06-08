@@ -16,10 +16,14 @@ export function normalizeToolInputForManifest(input: {
   readonly value: Record<string, unknown>;
   readonly manifestRegistry?: ToolCommandManifestRegistry;
   readonly inputShapeAdapters?: InputShapeAdapterRegistry;
+  readonly requireManifest?: boolean;
 }): Record<string, unknown> {
   const manifestRegistry = input.manifestRegistry ?? buildReadonlyToolCommandManifestRegistry();
   const manifest = manifestRegistry.get(input.toolName);
   if (!manifest) {
+    if (input.requireManifest === true) {
+      throw new Error(`ToolCommandManifest is required before input normalization: ${input.toolName}`);
+    }
     return input.value;
   }
 

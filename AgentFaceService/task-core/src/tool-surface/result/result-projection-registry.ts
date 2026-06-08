@@ -46,14 +46,11 @@ const BUILTIN_POLICIES = new Map<BuiltinResultProjectionPolicyId, ResultProjecti
 export function resolveResultProjectionPolicy(input: {
   manifestRegistry?: ToolCommandManifestRegistry;
   toolIdOrAlias?: string;
-  commandKind?: string;
   resultPolicyId?: ToolResultProjectionPolicyId;
 }): ResultProjectionPolicy {
   const manifestPolicyId = input.resultPolicyId
     ?? (input.toolIdOrAlias ? input.manifestRegistry?.get(input.toolIdOrAlias)?.result_policy_id : undefined);
-  const policyId = manifestPolicyId
-    ? POLICY_BY_MANIFEST_ID.get(manifestPolicyId)
-    : policyIdForCommandKind(input.commandKind);
+  const policyId = manifestPolicyId ? POLICY_BY_MANIFEST_ID.get(manifestPolicyId) : undefined;
   if (!policyId) {
     return GENERIC_RESULT_PROJECTION_POLICY;
   }
@@ -73,15 +70,6 @@ export function getBuiltinResultProjectionPolicy(policyId: BuiltinResultProjecti
     throw new Error(`Unknown BlueprintHelper built-in result projection policy: ${policyId}`);
   }
   return policy;
-}
-
-function policyIdForCommandKind(commandKind: string | undefined): BuiltinResultProjectionPolicyId | undefined {
-  if (commandKind === 'task.preview') return 'task.preview.default';
-  if (commandKind === 'task.execute') return 'task.execute.default';
-  if (commandKind === 'task.result') return 'task.result.default';
-  if (commandKind === 'context.read') return 'context.read.default';
-  if (commandKind === 'metrics.report') return 'metrics.report.default';
-  return undefined;
 }
 
 function definePolicy(

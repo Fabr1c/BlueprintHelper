@@ -1,0 +1,7 @@
+{
+  "kind": "ensure_custom_event",
+  "event_name": "__REQUIRED_EVENT_NAME__",
+  "graph_name": "__REQUIRED_GRAPH_NAME__",
+  "inputs": [],
+  "name_collision_policy": "reuse_if_exists"
+}

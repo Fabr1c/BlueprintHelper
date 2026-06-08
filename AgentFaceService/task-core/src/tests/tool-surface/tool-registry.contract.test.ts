@@ -847,11 +847,7 @@ test('read context capabilities is a compact local discovery tool', async () => 
   const assetContext = readTypes.find((entry) => entry['read_type'] === 'asset_context');
   assert.ok(assetContext);
   const graphContext = readTypes.find((entry) => entry['read_type'] === 'graph_context');
-  assert.ok(graphContext);
-  assert.deepEqual(
-    graphContext['unsupported_formats'],
-    difference(expectedFormats, supportedRouteValues(activeRoutes, 'graph_context', 'supported_formats')),
-  );
+  assert.equal(graphContext, undefined);
   const widgetContext = readTypes.find((entry) => entry['read_type'] === 'widget_context');
   assert.ok(widgetContext);
   assert.deepEqual(

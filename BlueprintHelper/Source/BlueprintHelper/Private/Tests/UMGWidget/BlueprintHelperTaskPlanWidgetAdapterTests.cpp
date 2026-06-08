@@ -756,6 +756,171 @@ bool FBlueprintHelperWidgetServiceSetWidgetAsVariableTest::RunTest(const FString
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWidgetTaskPlanP2DescriptorOpsLoweringTest,
+	"BlueprintHelper.TaskPlan.WidgetAdapter.P2DescriptorOpsLowering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWidgetTaskPlanP2DescriptorOpsLoweringTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		const TCHAR* Op;
+		const TCHAR* Strategy;
+		const TCHAR* AdapterOperation;
+		TFunction<void(const TSharedRef<FJsonObject>&)> Fill;
+		TFunction<void(FAutomationTestBase&, const TSharedPtr<FJsonObject>&)> AssertPayload;
+	};
+
+	TArray<FCase> Cases;
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::RenameWidget,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("widget_name"), TEXT("OldButton"));
+			Op->SetStringField(TEXT("new_widget_name"), TEXT("StartButton"));
+			Op->SetStringField(TEXT("expected_widget_class_path"), TEXT("/Script/UMG.Button"));
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			FString NewWidgetName;
+			Test.TestTrue(TEXT("rename payload carries new_widget_name"), Payload->TryGetStringField(TEXT("new_widget_name"), NewWidgetName));
+			Test.TestEqual(TEXT("new_widget_name preserved"), NewWidgetName, FString(TEXT("StartButton")));
+		}
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::RemoveRootWidget,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("root_widget_name"), TEXT("RootCanvas"));
+			Op->SetStringField(TEXT("replacement_policy"), TEXT("replace_with_empty_root"));
+			Op->SetStringField(TEXT("replacement_widget_class"), TEXT("CanvasPanel"));
+			Op->SetStringField(TEXT("replacement_widget_name"), TEXT("RootCanvas"));
+			Op->SetStringField(TEXT("expected_root_class_path"), TEXT("/Script/UMG.CanvasPanel"));
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			FString ExpectedRootClassPath;
+			Test.TestTrue(TEXT("remove root payload carries expected_root_class_path"), Payload->TryGetStringField(TEXT("expected_root_class_path"), ExpectedRootClassPath));
+			Test.TestEqual(TEXT("expected root class path preserved"), ExpectedRootClassPath, FString(TEXT("/Script/UMG.CanvasPanel")));
+		}
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::ReparentWidgetBlueprint,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetBlueprintClassEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReparentWidgetBlueprint,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("new_parent_class"), TEXT("/Script/UMG.UserWidget"));
+			Op->SetStringField(TEXT("expected_parent_class"), TEXT("/Script/UMG.UserWidget"));
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			FString NewParentClass;
+			Test.TestTrue(TEXT("reparent payload carries new_parent_class"), Payload->TryGetStringField(TEXT("new_parent_class"), NewParentClass));
+			Test.TestEqual(TEXT("new parent class preserved"), NewParentClass, FString(TEXT("/Script/UMG.UserWidget")));
+		}
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::DuplicateWidgetSubtree,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("source_widget_name"), TEXT("SourcePanel"));
+			Op->SetStringField(TEXT("target_parent_name"), TEXT("RootCanvas"));
+			TSharedRef<FJsonObject> NameMapping = MakeShared<FJsonObject>();
+			NameMapping->SetStringField(TEXT("SourcePanel"), TEXT("SourcePanelCopy"));
+			Op->SetObjectField(TEXT("name_mapping"), NameMapping);
+			Op->SetNumberField(TEXT("virtual_index"), 1);
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			const TSharedPtr<FJsonObject>* NameMapping = nullptr;
+			Test.TestTrue(TEXT("duplicate payload carries name_mapping"), Payload->TryGetObjectField(TEXT("name_mapping"), NameMapping));
+			Test.TestTrue(TEXT("duplicate name_mapping object is valid"), NameMapping && NameMapping->IsValid());
+		}
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::WrapWidget,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+			Op->SetStringField(TEXT("wrapper_class"), TEXT("CanvasPanel"));
+			Op->SetStringField(TEXT("wrapper_name"), TEXT("StartButtonWrapper"));
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			FString WrapperName;
+			Test.TestTrue(TEXT("wrap payload carries wrapper_name"), Payload->TryGetStringField(TEXT("wrapper_name"), WrapperName));
+			Test.TestEqual(TEXT("wrapper name preserved"), WrapperName, FString(TEXT("StartButtonWrapper")));
+		}
+	});
+	Cases.Add({
+		FBlueprintHelperWidgetTaskPlan::Op::ReplaceWidgetClass,
+		FBlueprintHelperWidgetTaskPlan::Strategy::WidgetTreeEdit,
+		FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReplaceWidgetClass,
+		[](const TSharedRef<FJsonObject>& Op)
+		{
+			Op->SetStringField(TEXT("widget_name"), TEXT("StartButton"));
+			Op->SetStringField(TEXT("new_widget_class"), TEXT("TextBlock"));
+			Op->SetStringField(TEXT("expected_widget_class_path"), TEXT("/Script/UMG.Button"));
+			Op->SetBoolField(TEXT("preserve_children"), false);
+			Op->SetBoolField(TEXT("preserve_slot"), true);
+		},
+		[](FAutomationTestBase& Test, const TSharedPtr<FJsonObject>& Payload)
+		{
+			bool bPreserveSlot = false;
+			Test.TestTrue(TEXT("replace payload carries preserve_slot"), Payload->TryGetBoolField(TEXT("preserve_slot"), bPreserveSlot));
+			Test.TestTrue(TEXT("preserve_slot preserved"), bPreserveSlot);
+		}
+	});
+
+	for (const FCase& Case : Cases)
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), Case.Op);
+		Case.Fill(Op);
+
+		TArray<TSharedPtr<FJsonValue>> Ops;
+		Ops.Add(MakeShared<FJsonValueObject>(Op));
+		const TSharedPtr<FJsonObject> Step =
+			FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlanStep(Ops, Case.Strategy);
+		const TSharedPtr<FJsonObject> TaskPlan =
+			FBlueprintHelperTaskPlanWidgetAdapterTestsLocalUtils::MakeWidgetTaskPlan(Step);
+
+		FBlueprintHelperWidgetTaskPlanLoweredStep LoweredStep;
+		FBlueprintHelperToolError Error;
+		const bool bLowered = FBlueprintHelperWidgetTaskPlanAdapter::TryLowerTaskPlanStep(
+			TaskPlan,
+			Step,
+			false,
+			LoweredStep,
+			Error);
+
+		TestTrue(FString::Printf(TEXT("%s lowers successfully"), Case.Op), bLowered);
+		TestEqual(FString::Printf(TEXT("%s emits one op"), Case.Op), LoweredStep.Ops.Num(), 1);
+		if (!bLowered || LoweredStep.Ops.Num() != 1)
+		{
+			AddError(FString::Printf(TEXT("P2 op %s failed with error %s"), Case.Op, *Error.Code));
+			continue;
+		}
+
+		const FBlueprintHelperWidgetTaskPlanLoweredOp& LoweredOp = LoweredStep.Ops[0];
+		TestEqual(FString::Printf(TEXT("%s adapter operation"), Case.Op), LoweredOp.AdapterOperation, FString(Case.AdapterOperation));
+		TestNotNull(FString::Printf(TEXT("%s payload exists"), Case.Op), LoweredOp.Payload.Get());
+		Case.AssertPayload(*this, LoweredOp.Payload);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperWidgetServiceRemoveWidgetDryRunDoesNotDeleteWidgetTest,
 	"BlueprintHelper.UMGWidget.Service.RemoveWidgetDryRunDoesNotDeleteWidget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

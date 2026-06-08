@@ -1,0 +1,7 @@
+{
+  "kind": "remove_signature",
+  "signature_kind": "function",
+  "signature_name": "__REQUIRED_SIGNATURE_NAME__",
+  "require_reference_context": true,
+  "execute_policy": "blocked_preflight"
+}

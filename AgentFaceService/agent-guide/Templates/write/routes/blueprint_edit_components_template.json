@@ -1,0 +1,29 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_components",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "component_strategy": "component_tree",
+    "changes": [
+      {
+        "kind": "ensure_component_present",
+        "name": "__REQUIRED_COMPONENT_NAME__",
+        "class": "__REQUIRED_COMPONENT_CLASS__",
+        "parent": "__OPTIONAL_PARENT_COMPONENT_NAME__",
+        "socket": "__OPTIONAL_SOCKET_NAME__",
+        "attach_rule": "__OPTIONAL_ATTACH_RULE__",
+        "name_collision_policy": "reuse_if_exists",
+        "properties": [
+          {
+            "property_path": "__OPTIONAL_PROPERTY_PATH__",
+            "value": "__OPTIONAL_VALUE__"
+          }
+        ]
+      }
+    ]
+  }
+}

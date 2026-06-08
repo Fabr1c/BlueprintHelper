@@ -219,6 +219,66 @@ public:
 		return Op;
 	}
 
+	static TSharedRef<FJsonObject> MakeRenameOp()
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::RenameWidget);
+		Op->SetStringField(TEXT("widget_name"), TEXT("TitleText"));
+		Op->SetStringField(TEXT("new_widget_name"), TEXT("HeaderText"));
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeDuplicateSubtreeOp()
+	{
+		TSharedRef<FJsonObject> NameMapping = MakeShared<FJsonObject>();
+		NameMapping->SetStringField(TEXT("HeaderText"), TEXT("HeaderCopy"));
+
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::DuplicateWidgetSubtree);
+		Op->SetStringField(TEXT("source_widget_name"), TEXT("HeaderText"));
+		Op->SetStringField(TEXT("target_parent_name"), TEXT("RootCanvas"));
+		Op->SetNumberField(TEXT("virtual_index"), 1);
+		Op->SetObjectField(TEXT("name_mapping"), NameMapping);
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeWrapOp()
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::WrapWidget);
+		Op->SetStringField(TEXT("widget_name"), TEXT("HeaderCopy"));
+		Op->SetStringField(TEXT("wrapper_class"), TEXT("CanvasPanel"));
+		Op->SetStringField(TEXT("wrapper_name"), TEXT("WrapperPanel"));
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeReplaceWidgetClassOp()
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::ReplaceWidgetClass);
+		Op->SetStringField(TEXT("widget_name"), TEXT("WrapperPanel"));
+		Op->SetStringField(TEXT("new_widget_class"), TEXT("Border"));
+		Op->SetBoolField(TEXT("preserve_children"), true);
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeRemoveOp()
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::RemoveWidget);
+		Op->SetStringField(TEXT("widget_name"), TEXT("HeaderText"));
+		return Op;
+	}
+
+	static TSharedRef<FJsonObject> MakeRemoveRootOp()
+	{
+		TSharedRef<FJsonObject> Op = MakeShared<FJsonObject>();
+		Op->SetStringField(TEXT("op"), FBlueprintHelperWidgetTaskPlan::Op::RemoveRootWidget);
+		Op->SetStringField(TEXT("root_widget_name"), TEXT("RootCanvas"));
+		Op->SetStringField(TEXT("replacement_policy"), TEXT("promote_single_child"));
+		return Op;
+	}
+
 	static TSharedRef<FJsonObject> MakeTaskPlanPayload(const FString& AssetPath)
 	{
 		TArray<TSharedPtr<FJsonValue>> Steps;
@@ -255,6 +315,63 @@ public:
 		TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
 		TaskPlan->SetStringField(TEXT("task_type"), TEXT("edit_umg_widget"));
 		TaskPlan->SetStringField(TEXT("task_name"), TEXT("UMGWidgetPreviewPlannedState"));
+		TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
+		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
+		TaskPlan->SetArrayField(TEXT("steps"), Steps);
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("task_plan"), TaskPlan);
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeP2StructuralOpsPayload(const FString& AssetPath)
+	{
+		TArray<TSharedPtr<FJsonValue>> Steps;
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_create_root"),
+			AssetPath,
+			MakeAddOp(TEXT("RootCanvas"), TEXT("CanvasPanel")))));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_add_title"),
+			AssetPath,
+			MakeAddOp(TEXT("TitleText"), TEXT("TextBlock"), TEXT("RootCanvas"), 0))));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_rename_title"),
+			AssetPath,
+			MakeRenameOp())));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_duplicate_header"),
+			AssetPath,
+			MakeDuplicateSubtreeOp())));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_wrap_header_copy"),
+			AssetPath,
+			MakeWrapOp())));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_replace_wrapper_class"),
+			AssetPath,
+			MakeReplaceWidgetClassOp())));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_remove_original_header"),
+			AssetPath,
+			MakeRemoveOp())));
+		Steps.Add(MakeShared<FJsonValueObject>(MakeWidgetStep(
+			TEXT("step_promote_single_child_root"),
+			AssetPath,
+			MakeRemoveRootOp())));
+
+		TArray<TSharedPtr<FJsonValue>> TargetAssets;
+		TargetAssets.Add(MakeShared<FJsonValueString>(AssetPath));
+
+		TSharedRef<FJsonObject> ExecutionPolicy = MakeShared<FJsonObject>();
+		ExecutionPolicy->SetStringField(TEXT("dry_run_mode"), TEXT("full"));
+		ExecutionPolicy->SetBoolField(TEXT("should_compile"), false);
+		ExecutionPolicy->SetBoolField(TEXT("should_save"), false);
+
+		TSharedRef<FJsonObject> TaskPlan = MakeShared<FJsonObject>();
+		TaskPlan->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.TaskPlan.v1"));
+		TaskPlan->SetStringField(TEXT("task_type"), TEXT("edit_umg_widget"));
+		TaskPlan->SetStringField(TEXT("task_name"), TEXT("UMGWidgetPreviewP2StructuralOps"));
 		TaskPlan->SetArrayField(TEXT("target_assets"), TargetAssets);
 		TaskPlan->SetObjectField(TEXT("execution_policy"), ExecutionPolicy);
 		TaskPlan->SetArrayField(TEXT("steps"), Steps);
@@ -506,6 +623,106 @@ bool FBlueprintHelperUMGWidgetPreviewPlannedStateSetNamedSlotContentReusesRetiri
 		Cast<UWidget>(OldBody));
 	TestFalse(TEXT("preview does not dirty package"), WidgetBlueprint->GetOutermost()->IsDirty());
 	return Result.bOk && bPassed && !bBlocked && DialogShell->GetContentForSlot(FName(TEXT("Body"))) == OldBody;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperUMGWidgetPreviewPlannedStateChainsP2StructuralOpsTest,
+	"BlueprintHelper.TaskRuntime.UMGWidgetPreview.PlannedStateChainsP2StructuralOps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperUMGWidgetPreviewPlannedStateChainsP2StructuralOpsTest::RunTest(const FString& Parameters)
+{
+	UWidgetBlueprint* WidgetBlueprint =
+		FBlueprintHelperUMGWidgetPreviewPlannedStateTestsLocalUtils::MakeEmptyWidgetBlueprint();
+	TestNotNull(TEXT("empty WidgetBlueprint fixture exists"), WidgetBlueprint);
+	TestNotNull(TEXT("empty WidgetBlueprint has a WidgetTree"), WidgetBlueprint ? WidgetBlueprint->WidgetTree.Get() : nullptr);
+	if (!WidgetBlueprint || !WidgetBlueprint->WidgetTree)
+	{
+		return false;
+	}
+
+	const FString AssetPath = WidgetBlueprint->GetPathName();
+	FBlueprintHelperUMGWidgetPreviewPlannedStateTestsLocalUtils::FRuntimeServices Services;
+	const FBlueprintHelperToolResultBase Result = Services.RuntimeService.PreviewTaskPlan(
+		FBlueprintHelperUMGWidgetPreviewPlannedStateTestsLocalUtils::MakeP2StructuralOpsPayload(AssetPath));
+
+	bool bPassed = false;
+	bool bBlocked = true;
+	FString PlannedRootName;
+	FString PlannedRootClass;
+	bool bHasWrapperPanel = false;
+	bool bHasHeaderCopy = false;
+	bool bHasOriginalHeader = true;
+	bool bHasOriginalRoot = true;
+	if (Result.Data.IsValid())
+	{
+		Result.Data->TryGetBoolField(TEXT("passed"), bPassed);
+		Result.Data->TryGetBoolField(TEXT("blocked"), bBlocked);
+
+		const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
+		TSharedPtr<FJsonObject> ReadbackContext;
+		if (Result.Data->TryGetArrayField(TEXT("steps"), Steps) && Steps && Steps->Num() > 0)
+		{
+			const TSharedPtr<FJsonObject> LastStep = (*Steps)[Steps->Num() - 1]->AsObject();
+			const TSharedPtr<FJsonObject>* StepResult = nullptr;
+			const TSharedPtr<FJsonObject>* StepData = nullptr;
+			const TSharedPtr<FJsonObject>* StepReadbackContext = nullptr;
+			if (LastStep.IsValid() &&
+				LastStep->TryGetObjectField(TEXT("result"), StepResult) &&
+				StepResult &&
+				StepResult->IsValid() &&
+				(*StepResult)->TryGetObjectField(TEXT("data"), StepData) &&
+				StepData &&
+				StepData->IsValid() &&
+				(*StepData)->TryGetObjectField(TEXT("readback_context"), StepReadbackContext) &&
+				StepReadbackContext &&
+				StepReadbackContext->IsValid())
+			{
+				ReadbackContext = *StepReadbackContext;
+			}
+		}
+
+		if (ReadbackContext.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* RootObject = nullptr;
+			if (ReadbackContext->TryGetObjectField(TEXT("root"), RootObject) && RootObject && RootObject->IsValid())
+			{
+				(*RootObject)->TryGetStringField(TEXT("widget_name"), PlannedRootName);
+				(*RootObject)->TryGetStringField(TEXT("widget_class"), PlannedRootClass);
+			}
+
+			const TSharedPtr<FJsonObject>* IndexObject = nullptr;
+			if (ReadbackContext->TryGetObjectField(TEXT("index"), IndexObject) && IndexObject && IndexObject->IsValid())
+			{
+				bHasWrapperPanel = (*IndexObject)->HasField(TEXT("WrapperPanel"));
+				bHasHeaderCopy = (*IndexObject)->HasField(TEXT("HeaderCopy"));
+				bHasOriginalHeader = (*IndexObject)->HasField(TEXT("HeaderText"));
+				bHasOriginalRoot = (*IndexObject)->HasField(TEXT("RootCanvas"));
+			}
+		}
+	}
+
+	TestTrue(TEXT("preview succeeds through planned P2 WidgetTree state"), Result.bOk);
+	TestTrue(TEXT("P2 chain preview passes"), bPassed);
+	TestFalse(TEXT("P2 chain preview is not blocked"), bBlocked);
+	TestEqual(TEXT("remove_root promotes wrapper as planned root"), PlannedRootName, FString(TEXT("WrapperPanel")));
+	TestEqual(TEXT("replace_widget_class updates planned wrapper class"), PlannedRootClass, FString(TEXT("Border")));
+	TestTrue(TEXT("duplicate subtree copy remains in planned index"), bHasHeaderCopy);
+	TestTrue(TEXT("wrapper remains in planned index"), bHasWrapperPanel);
+	TestFalse(TEXT("removed original widget is absent from planned index"), bHasOriginalHeader);
+	TestFalse(TEXT("removed original root is absent from planned index"), bHasOriginalRoot);
+	TestNull(TEXT("preview does not mutate real root widget"), WidgetBlueprint->WidgetTree->RootWidget);
+	TestFalse(TEXT("preview does not dirty package"), WidgetBlueprint->GetOutermost()->IsDirty());
+	return Result.bOk &&
+		bPassed &&
+		!bBlocked &&
+		PlannedRootName == TEXT("WrapperPanel") &&
+		PlannedRootClass == TEXT("Border") &&
+		bHasHeaderCopy &&
+		bHasWrapperPanel &&
+		!bHasOriginalHeader &&
+		!bHasOriginalRoot &&
+		WidgetBlueprint->WidgetTree->RootWidget == nullptr;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

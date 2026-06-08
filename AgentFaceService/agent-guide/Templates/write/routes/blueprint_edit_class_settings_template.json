@@ -1,0 +1,29 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_class_settings",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "class_settings_strategy": "class_settings",
+    "interfaces": {
+      "ensure_present": [
+        "__OPTIONAL_INTERFACE_PATH_TO_ADD__"
+      ],
+      "ensure_absent": [
+        "__OPTIONAL_INTERFACE_PATH_TO_REMOVE__"
+      ]
+    },
+    "class_defaults": [
+      {
+        "property_path": "__OPTIONAL_CLASS_DEFAULT_PROPERTY_PATH__",
+        "value": "__OPTIONAL_CLASS_DEFAULT_VALUE__"
+      }
+    ],
+    "reparent": {
+      "new_parent_class": "__OPTIONAL_NEW_PARENT_CLASS__"
+    }
+  }
+}

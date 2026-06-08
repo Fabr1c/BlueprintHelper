@@ -8,7 +8,13 @@ import { buildCliSummary, omitCliFields, projectCliFields } from '../../cli/outp
 
 test('summary output omits full task_plan and points to artifacts', () => {
   const result = buildCliSummary({
-    command: { kind: 'task.preview', format: 'summary', artifactDir: 'artifacts', maxBytes: 4096 },
+    command: {
+      kind: 'task.preview',
+      format: 'summary',
+      resultPolicyId: 'task.preview.default',
+      artifactDir: 'artifacts',
+      maxBytes: 4096,
+    },
     toolResult: {
       ok: true,
       schema: 'BlueprintHelper.ToolResult.v1',
@@ -41,7 +47,13 @@ test('summary output omits full task_plan and points to artifacts', () => {
 
 test('output budget failure still points to full result artifact', () => {
   const result = buildCliSummary({
-    command: { kind: 'task.preview', format: 'summary', artifactDir: 'artifacts', maxBytes: 40 },
+    command: {
+      kind: 'task.preview',
+      format: 'summary',
+      resultPolicyId: 'task.preview.default',
+      artifactDir: 'artifacts',
+      maxBytes: 40,
+    },
     toolResult: {
       ok: true,
       schema: 'BlueprintHelper.ToolResult.v1',
@@ -68,7 +80,7 @@ test('output budget failure still points to full result artifact', () => {
 
 test('execute summary does not expose preview_id even if the tool result contains one', () => {
   const result = buildCliSummary({
-    command: { kind: 'task.execute', format: 'summary' },
+    command: { kind: 'task.execute', format: 'summary', resultPolicyId: 'task.execute.default' },
     toolResult: {
       ok: true,
       schema: 'BlueprintHelper.ToolResult.v1',

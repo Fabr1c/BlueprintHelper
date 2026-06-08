@@ -4,8 +4,17 @@ import {
   TASK_RUN_JOURNAL_SCHEMA,
   TASK_SPEC_SCHEMA,
 } from './task-schemas.js';
+import { UMG_WIDGET_OPERATION_MANIFEST } from '../../tool-surface/templates/generated/umg-widget-operation-manifest.generated.js';
 
 export const TASK_PROTOCOL_CONTRACT_VERSION = 'BlueprintHelper.TaskProtocolContract.v1';
+
+const UMG_WIDGET_OPERATION_KINDS = UMG_WIDGET_OPERATION_MANIFEST.map((descriptor) => descriptor.kind);
+const UMG_WIDGET_TASKPLAN_OPERATIONS = UMG_WIDGET_OPERATION_MANIFEST.map((descriptor) => descriptor.taskplan_op);
+const UMG_WIDGET_BRIDGE_COMMANDS = UMG_WIDGET_OPERATION_MANIFEST.map((descriptor) => descriptor.bridge_command);
+const UMG_WIDGET_AGENT_FIELDS = [...new Set(UMG_WIDGET_OPERATION_MANIFEST.flatMap((descriptor) => [
+  ...descriptor.required_fields,
+  ...descriptor.optional_fields,
+]))].map((field) => `behavior.changes[].${field}`);
 
 export const TASK_PROTOCOL_CONTRACT_V1 = {
   schema: TASK_PROTOCOL_CONTRACT_VERSION,
@@ -780,27 +789,11 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       task_type: 'edit_umg_widget',
       target_type: 'widget_blueprint',
       widget_strategy: 'widget_blueprint_edit',
-      change_kinds: [
-        'create_widget',
-        'update_widget_property',
-        'delete_widget',
-        'move_widget',
-        'set_named_slot_content',
-        'set_slot_property',
-        'set_widget_as_variable',
-      ],
+      change_kinds: UMG_WIDGET_OPERATION_KINDS,
       agent_semantic_paths: [
         'behavior.widget_strategy=widget_blueprint_edit',
         'behavior.changes[].kind',
-        'behavior.changes[].widget_name',
-        'behavior.changes[].parent_name',
-        'behavior.changes[].virtual_index',
-        'behavior.changes[].expected_parent_name',
-        'behavior.changes[].expected_virtual_index',
-        'behavior.changes[].host_widget_name',
-        'behavior.changes[].slot_name',
-        'behavior.changes[].property_path',
-        'behavior.changes[].is_variable',
+        ...UMG_WIDGET_AGENT_FIELDS,
       ],
       forbidden_agent_fields: [
         'behavior.changes[].op',
@@ -808,24 +801,8 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'write.ops[].op',
       ],
       task_plan_capability: 'umg_widget',
-      runtime_supported_structural_ops: [
-        'add_widget',
-        'move_widget',
-        'set_named_slot_content',
-        'set_widget_property',
-        'set_slot_property',
-        'set_widget_as_variable',
-        'remove_widget',
-      ],
-      runtime_lowering_adapters: [
-        'add_widget',
-        'move_widget',
-        'set_named_slot_content',
-        'set_widget_property',
-        'set_slot_property',
-        'set_widget_as_variable',
-        'remove_widget',
-      ],
+      runtime_supported_structural_ops: UMG_WIDGET_TASKPLAN_OPERATIONS,
+      runtime_lowering_adapters: UMG_WIDGET_TASKPLAN_OPERATIONS,
     },
     {
       task_type: 'edit_data_table',
@@ -1246,21 +1223,11 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         cluster: 'umg_widget_blueprint',
         agent_exposure: 'taskspec_only',
         taskplan_capability: 'umg_widget',
-        runtime_adapter_operations: [
-          'add_widget',
-          'move_widget',
-          'set_named_slot_content',
-          'set_widget_property',
-          'remove_widget',
-        ],
+        runtime_adapter_operations: UMG_WIDGET_TASKPLAN_OPERATIONS,
         ue_commands: [
           'get_widget_tree',
-          'add_widget',
-          'remove_widget',
-          'move_widget',
-          'set_named_slot_content',
           'get_widget_properties',
-          'set_widget_property',
+          ...UMG_WIDGET_BRIDGE_COMMANDS,
         ],
         documents: [
           'BlueprintHelper_UMG_WidgetBlueprint_UE_CPP_Implementation_Plan_20260503.md',

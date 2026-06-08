@@ -76,8 +76,4 @@ public:
 	static void CollectPreviewBlocksFromObject(const TSharedPtr<FJsonObject>& Object, const FString& Path, FBlueprintHelperTaskSpecPreviewModel& Model);
 
 	static void AddTopLevelNonGraphBlock(const TSharedPtr<FJsonObject>& RootObject, const TCHAR* FieldName, FBlueprintHelperTaskSpecPreviewModel& Model);
-
-	static void BuildLogicJsonPayload(const TSharedPtr<FJsonObject>& RawJsonRoot, TSharedRef<FJsonObject> OutPayload);
-
-	static FString BuildLogicMdFromRawJson(const TSharedPtr<FJsonObject>& RawJsonRoot);
 };

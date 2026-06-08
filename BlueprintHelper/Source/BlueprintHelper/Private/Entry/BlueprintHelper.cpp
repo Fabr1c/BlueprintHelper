@@ -114,6 +114,7 @@ void FBlueprintHelperModule::StartupModule()
 	AssetFactoryService = MakeUnique<FBlueprintHelperAssetFactoryService>();
 	ComponentService = MakeUnique<FBlueprintHelperComponentService>(*GraphResolver);
 	ClassSettingsService = MakeUnique<FBlueprintHelperClassSettingsService>(*GraphResolver);
+	WidgetService->SetClassSettingsService(ClassSettingsService.Get());
 
 	BlockIdService = MakeUnique<FBlueprintHelperBlockIdService>();
 	OwnershipService = MakeUnique<FBlueprintHelperOwnershipService>();

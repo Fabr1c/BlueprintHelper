@@ -1,15 +1,14 @@
-import { bridgeCommandByToolName } from '../bridge/bridge-tool-command-map.js';
+import { getBridgeToolDescriptor } from '../bridge/bridge-tool-descriptor.js';
 import { executeBridgeTool } from '../bridge/bridge-tool-dispatcher.js';
-import { bridgeToolSchemas } from '../bridge/bridge-tool-schemas.js';
 import type { ToolSource } from './tool-source.js';
 
 export const bridgeToolSource: ToolSource = {
   id: 'bridge',
   canHandle(toolName: string): boolean {
-    return toolName in bridgeCommandByToolName || bridgeToolSchemas[toolName] !== undefined;
+    return getBridgeToolDescriptor(toolName) !== undefined;
   },
   getInputSchema(toolName: string) {
-    return bridgeToolSchemas[toolName];
+    return getBridgeToolDescriptor(toolName)?.schema;
   },
   execute(toolName, input, context) {
     return executeBridgeTool(toolName, input, context);

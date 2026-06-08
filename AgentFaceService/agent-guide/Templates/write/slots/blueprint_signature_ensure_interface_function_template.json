@@ -1,0 +1,8 @@
+{
+  "kind": "ensure_interface_function",
+  "function_name": "__REQUIRED_FUNCTION_NAME__",
+  "interface_path": "__REQUIRED_INTERFACE_PATH__",
+  "inputs": [],
+  "outputs": [],
+  "name_collision_policy": "reuse_if_exists"
+}

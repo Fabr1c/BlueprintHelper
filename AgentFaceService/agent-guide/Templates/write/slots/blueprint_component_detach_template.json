@@ -1,0 +1,6 @@
+{
+  "kind": "detach_component",
+  "name": "__REQUIRED_COMPONENT_NAME__",
+  "transform_policy": "preserve_relative",
+  "default_root_policy": "create_default_scene_root_when_needed"
+}

@@ -18,6 +18,9 @@
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreePositionPolicy.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetTreeProjectionService.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetSlotPropertyPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetBlueprintReparentPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetRootRemovalPolicy.h"
+#include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetSubtreeClonePolicy.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetVariablePolicy.h"
 #include "WidgetBlueprint.h"
 #include "UObject/UObjectIterator.h"
@@ -463,6 +466,12 @@ void FBlueprintHelperWidgetService::CollectWidgetInfo(
 // ═══════════════════════════════════════════════════════════
 // 公开 API
 // ═══════════════════════════════════════════════════════════
+
+void FBlueprintHelperWidgetService::SetClassSettingsService(
+	const FBlueprintHelperClassSettingsService* InClassSettingsService)
+{
+	ClassSettingsService = InClassSettingsService;
+}
 
 FBlueprintHelperWidgetTreeResult FBlueprintHelperWidgetService::GetWidgetTree(
 	const FString& AssetPath) const
@@ -1114,6 +1123,155 @@ FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::SetWidgetAsV
 	}
 
 	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RenameWidget(
+	const FBlueprintHelperRenameWidgetRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	Result.bDryRun = Request.bDryRun;
+	Result.AffectedWidget = Request.WidgetName;
+
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP || !WBP->WidgetTree)
+	{
+		return Result;
+	}
+
+	UWidget* Widget = FindWidgetByName(WBP, Request.WidgetName, Result.ErrorMessage);
+	if (!Widget)
+	{
+		return Result;
+	}
+	if (!Request.ExpectedWidgetClassPath.IsEmpty() &&
+		!Widget->GetClass()->GetPathName().Equals(Request.ExpectedWidgetClassPath, ESearchCase::IgnoreCase))
+	{
+		Result.ErrorMessage = TEXT("widget_class_mismatch");
+		return Result;
+	}
+	if (Request.NewWidgetName.IsEmpty())
+	{
+		Result.ErrorMessage = TEXT("new_widget_name_required");
+		return Result;
+	}
+	if (WBP->WidgetTree->FindWidget(FName(*Request.NewWidgetName)))
+	{
+		Result.ErrorMessage = TEXT("widget_name_already_exists");
+		return Result;
+	}
+
+	if (Request.bDryRun)
+	{
+		Result.bSuccess = true;
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+		return Result;
+	}
+
+	FBlueprintHelperScopedAssetMutation Mutation(
+		FText::FromString(TEXT("BlueprintHelper Rename Widget")), WBP);
+	Mutation.Modify(WBP->WidgetTree);
+	Mutation.Modify(Widget);
+	const FName OldName = Widget->GetFName();
+	FBlueprintHelperWidgetVersionCompat::UnregisterWidgetVariableByName(WBP, OldName);
+	if (!Widget->Rename(*Request.NewWidgetName, WBP->WidgetTree, REN_DontCreateRedirectors))
+	{
+		Result.ErrorMessage = TEXT("rename_widget_failed");
+		Mutation.Rollback();
+		return Result;
+	}
+	FBlueprintHelperWidgetVersionCompat::RegisterWidgetVariable(WBP, Widget);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+	Mutation.Commit();
+
+	Result.bSuccess = true;
+	Result.AffectedWidget = Request.NewWidgetName;
+	FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::RemoveRootWidget(
+	const FBlueprintHelperRemoveRootWidgetRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperWidgetRootRemovalPolicy::Apply(WBP, Request, Result))
+	{
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	}
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::ReparentWidgetBlueprint(
+	const FBlueprintHelperReparentWidgetBlueprintRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperWidgetBlueprintReparentPolicy::Apply(WBP, Request, ClassSettingsService, Result))
+	{
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	}
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::DuplicateWidgetSubtree(
+	const FBlueprintHelperDuplicateWidgetSubtreeRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperWidgetSubtreeClonePolicy::DuplicateSubtree(WBP, Request, Result))
+	{
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	}
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::WrapWidget(
+	const FBlueprintHelperWrapWidgetRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperWidgetSubtreeClonePolicy::WrapWidget(WBP, Request, Result))
+	{
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	}
+	return Result;
+}
+
+FBlueprintHelperWidgetMutationResult FBlueprintHelperWidgetService::ReplaceWidgetClass(
+	const FBlueprintHelperReplaceWidgetClassRequest& Request) const
+{
+	FBlueprintHelperWidgetMutationResult Result;
+	UWidgetBlueprint* WBP = ResolveWidgetBlueprint(Request.AssetPath, Result.ErrorMessage);
+	if (!WBP)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperWidgetSubtreeClonePolicy::ReplaceWidgetClass(WBP, Request, Result))
+	{
+		FBlueprintHelperWidgetServiceLocalUtils::AttachReadbackContext(WBP, Result);
+	}
 	return Result;
 }
 

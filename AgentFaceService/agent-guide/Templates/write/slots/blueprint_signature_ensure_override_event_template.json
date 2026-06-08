@@ -1,0 +1,8 @@
+{
+  "kind": "ensure_override_event",
+  "event_name": "__REQUIRED_EVENT_NAME__",
+  "event_kind": "native_event",
+  "graph_name": "__OPTIONAL_GRAPH_NAME__",
+  "inputs": [],
+  "execute_policy": "blocked_preflight"
+}

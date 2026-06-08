@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   getToolCapabilityDescriptor,
   listToolCapabilities,
   listToolDomains,
 } from '../tool-registry.js';
+
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 test('tool catalog lists active domains and points TaskSpec write discovery to family index', () => {
   const domains = listToolDomains();
@@ -114,6 +119,45 @@ test('tool catalog marks empty-object templates as no-input requests', () => {
 	assert.equal(runtimeProfile.input_shape, 'empty_object');
 	assert.equal(runtimeProfile.no_input, true);
 	assert.match(runtimeProfile.input_note ?? '', /Use the empty-object template as-is/);
+});
+
+test('expert review action exposes a developer-mode template file', () => {
+  const reviewWrite = listToolCapabilities({
+    domain: 'review',
+    kind: 'write',
+    audience: 'expert',
+    expert: true,
+  });
+  const applyAction = reviewWrite.items.find((item) => item.tool_name === 'blueprinthelper_apply_review_action');
+  assert.ok(applyAction);
+  assert.deepEqual(applyAction.cli_template_ids, ['blueprinthelper_apply_review_action']);
+
+  const templatePath = path.join(
+    PLUGIN_ROOT,
+    'AgentFaceService/agent-guide/Templates/blueprinthelper_apply_review_action_template.json',
+  );
+  assert.equal(fs.existsSync(templatePath), true);
+  const template = JSON.parse(fs.readFileSync(templatePath, 'utf8')) as Record<string, unknown>;
+  assert.match(String(template['$comment'] ?? ''), /Developer mode only/i);
+  assert.equal(template.review_record_id, '__REQUIRED_REVIEW_RECORD_ID__');
+  assert.equal(template.action, 'accept');
+});
+
+test('MCP-only lifecycle compat entries do not expose CLI template ids', () => {
+  const editorWrite = listToolCapabilities({
+    domain: 'editor',
+    kind: 'write',
+    audience: 'compat',
+  });
+  const lifecycleItems = editorWrite.items.filter((item) => item.lifecycle_mcp_only === true);
+
+  assert.equal(lifecycleItems.length, 2);
+  for (const item of lifecycleItems) {
+    assert.deepEqual(item.cli_template_ids, []);
+    assert.equal(item.input_shape, 'mcp_only');
+    assert.equal(item.no_input, true);
+    assert.match(item.input_note ?? '', /global MCP/i);
+  }
 });
 
 test('tool capability descriptors keep manifest facts without exposing old template selection schema', () => {

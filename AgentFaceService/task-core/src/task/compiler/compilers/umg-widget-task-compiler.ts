@@ -1,4 +1,6 @@
 import type { TaskPlan, TaskSpec } from '../../schema/task-schemas.js';
+import { UMG_WIDGET_OPERATION_MANIFEST } from '../../../tool-surface/templates/generated/umg-widget-operation-manifest.generated.js';
+import type { UmgWidgetOperationDescriptor } from '../../../tool-surface/templates/umg-widget-operation-descriptors.js';
 import {
   assertExactString,
   getRequiredString,
@@ -49,171 +51,16 @@ function compileUMGWidgetTaskSpecToTaskPlan(
     rejectLegacyWidgetTreeFields(change, path);
 
     const kind = getRequiredString(change, 'kind', `${path}.kind`);
-    if (kind === 'create_widget') {
+    const descriptor = getDescriptor(kind);
+    if (descriptor) {
+      validateRequiredDescriptorFields(change, descriptor, path);
+      validateDescriptorSpecificRules(change, descriptor, path);
       return makeCompositeCapabilityStep(
         index + 1,
         'umg_widget',
         taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [omitUndefined({
-          op: 'add_widget',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          widget_class: getRequiredString(change, 'widget_class', `${path}.widget_class`),
-          parent_name: optionalString(change, 'parent_name'),
-          slot_name: optionalString(change, 'slot_name'),
-          virtual_index: optionalInt(change, 'virtual_index', path),
-          expected_parent_name: optionalString(change, 'expected_parent_name'),
-        })],
-      );
-    }
-
-    if (kind === 'move_widget') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [omitUndefined({
-          op: 'move_widget',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          new_parent_name: getRequiredString(change, 'new_parent_name', `${path}.new_parent_name`),
-          virtual_index: optionalInt(change, 'virtual_index', path),
-          expected_parent_name: optionalString(change, 'expected_parent_name'),
-          expected_virtual_index: optionalInt(change, 'expected_virtual_index', path),
-        })],
-      );
-    }
-
-    if (kind === 'set_named_slot_content') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [omitUndefined({
-          op: 'set_named_slot_content',
-          host_widget_name: getRequiredString(change, 'host_widget_name', `${path}.host_widget_name`),
-          slot_name: getRequiredString(change, 'slot_name', `${path}.slot_name`),
-          virtual_index: optionalInt(change, 'virtual_index', path),
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          widget_class: getRequiredString(change, 'widget_class', `${path}.widget_class`),
-          replace_existing: change['replace_existing'] === true ? true : undefined,
-          expected_content_widget_name: optionalString(change, 'expected_content_widget_name'),
-        })],
-      );
-    }
-
-    if (kind === 'update_widget_property') {
-      if (!Object.hasOwn(change, 'value')) {
-        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
-          {
-            code: 'missing_umg_widget_property_value',
-            path: `${path}.value`,
-            message: 'Provide value for update_widget_property.',
-          },
-        ]);
-      }
-      const propertyPath = optionalString(change, 'property_path');
-      const propertyName = optionalString(change, 'property_name');
-      if (!propertyPath && !propertyName) {
-        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.property_path is required.`, [
-          {
-            code: 'missing_umg_widget_property_path',
-            path: `${path}.property_path`,
-            message: 'Provide property_path or property_name.',
-          },
-        ]);
-      }
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_property_edit',
-        [omitUndefined({
-          op: 'set_widget_property',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-          property_path: propertyPath,
-          property_name: propertyName,
-          value: literalValue(change['value']),
-        })],
-      );
-    }
-
-    if (kind === 'set_slot_property') {
-      if (!Object.hasOwn(change, 'value')) {
-        throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.value is required.`, [
-          {
-            code: 'missing_umg_slot_property_value',
-            path: `${path}.value`,
-            message: 'Provide value for set_slot_property.',
-          },
-        ]);
-      }
-
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_property_edit',
-        [omitUndefined({
-          op: 'set_slot_property',
-          widget_name: getRequiredStringWithCode(
-            change,
-            'widget_name',
-            `${path}.widget_name`,
-            'missing_umg_widget_name',
-            'Provide widget_name for set_slot_property.',
-          ),
-          property_path: getRequiredStringWithCode(
-            change,
-            'property_path',
-            `${path}.property_path`,
-            'missing_umg_slot_property_path',
-            'Provide property_path for set_slot_property.',
-          ),
-          value: literalValue(change['value']),
-          expected_slot_class_path: optionalString(change, 'expected_slot_class_path'),
-        })],
-      );
-    }
-
-    if (kind === 'set_widget_as_variable') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [omitUndefined({
-          op: 'set_widget_as_variable',
-          widget_name: getRequiredStringWithCode(
-            change,
-            'widget_name',
-            `${path}.widget_name`,
-            'missing_umg_widget_name',
-            'Provide widget_name for set_widget_as_variable.',
-          ),
-          is_variable: getRequiredBooleanWithCode(
-            change,
-            'is_variable',
-            `${path}.is_variable`,
-            'missing_umg_widget_variable_state',
-            'Provide boolean is_variable for set_widget_as_variable.',
-          ),
-          expected_widget_class_path: optionalString(change, 'expected_widget_class_path'),
-        })],
-      );
-    }
-
-    if (kind === 'delete_widget') {
-      return makeCompositeCapabilityStep(
-        index + 1,
-        'umg_widget',
-        taskSpec.target.asset_path,
-        'widget_tree_edit',
-        [{
-          op: 'remove_widget',
-          widget_name: getRequiredString(change, 'widget_name', `${path}.widget_name`),
-        }],
+        descriptor.taskplan_strategy,
+        [buildDescriptorOperation(change, descriptor, path)],
       );
     }
 
@@ -221,12 +68,107 @@ function compileUMGWidgetTaskSpecToTaskPlan(
       {
         code: 'unsupported_umg_widget_change_kind',
         path: `${path}.kind`,
-        message: 'Use create_widget, update_widget_property, delete_widget, move_widget, set_named_slot_content, set_slot_property, or set_widget_as_variable.',
+        message: `Use one of: ${UMG_WIDGET_OPERATION_MANIFEST.map((entry) => entry.kind).join(', ')}.`,
       },
     ]);
   });
 
   return makeTaskPlanWithSteps(taskSpec, steps);
+}
+
+function getDescriptor(kind: string): UmgWidgetOperationDescriptor | undefined {
+  return UMG_WIDGET_OPERATION_MANIFEST.find((descriptor) => descriptor.kind === kind);
+}
+
+function buildDescriptorOperation(
+  change: Record<string, unknown>,
+  descriptor: UmgWidgetOperationDescriptor,
+  path: string,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = { op: descriptor.taskplan_op };
+  for (const field of [...descriptor.required_fields, ...descriptor.optional_fields]) {
+    if (!Object.hasOwn(change, field)) {
+      continue;
+    }
+    payload[field] = coerceDescriptorField(change, field, path);
+  }
+  return omitUndefined(payload);
+}
+
+function validateRequiredDescriptorFields(
+  change: Record<string, unknown>,
+  descriptor: UmgWidgetOperationDescriptor,
+  path: string,
+): void {
+  for (const field of descriptor.required_fields) {
+    if (field === 'value') {
+      if (!Object.hasOwn(change, field)) {
+        throwMissingField(descriptor, field, path);
+      }
+      continue;
+    }
+    if (field === 'is_variable' || field === 'preserve_children' || field === 'preserve_slot') {
+      getRequiredBooleanWithCode(
+        change,
+        field,
+        `${path}.${field}`,
+        missingCodeForField(descriptor, field),
+        `Provide boolean ${field} for ${descriptor.kind}.`,
+      );
+      continue;
+    }
+    if (field === 'virtual_index' || field === 'expected_virtual_index') {
+      optionalInt(change, field, path);
+      continue;
+    }
+    if (field === 'name_mapping') {
+      if (!isRecord(change[field])) {
+        throwMissingField(descriptor, field, path);
+      }
+      continue;
+    }
+    getRequiredStringWithCode(
+      change,
+      field,
+      `${path}.${field}`,
+      missingCodeForField(descriptor, field),
+      `Provide ${field} for ${descriptor.kind}.`,
+    );
+  }
+}
+
+function validateDescriptorSpecificRules(
+  change: Record<string, unknown>,
+  descriptor: UmgWidgetOperationDescriptor,
+  path: string,
+): void {
+  if (descriptor.kind === 'update_widget_property') {
+    const propertyPath = optionalString(change, 'property_path');
+    const propertyName = optionalString(change, 'property_name');
+    if (!propertyPath && !propertyName) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.property_path is required.`, [
+        {
+          code: 'missing_umg_widget_property_path',
+          path: `${path}.property_path`,
+          message: 'Provide property_path or property_name.',
+        },
+      ]);
+    }
+  }
+}
+
+function coerceDescriptorField(
+  change: Record<string, unknown>,
+  field: string,
+  path: string,
+): unknown {
+  if (field === 'virtual_index' || field === 'expected_virtual_index') {
+    return optionalInt(change, field, path);
+  }
+  if (field === 'value') {
+    return literalValue(change[field]);
+  }
+  return change[field];
 }
 
 function optionalInt(record: Record<string, unknown>, field: string, path: string): number | undefined {
@@ -240,6 +182,38 @@ function optionalInt(record: Record<string, unknown>, field: string, path: strin
     }]);
   }
   return value as number;
+}
+
+function throwMissingField(
+  descriptor: UmgWidgetOperationDescriptor,
+  field: string,
+  path: string,
+): never {
+  throw new TaskSpecCompileError('taskspec_semantic_invalid', `${path}.${field} is required.`, [
+    {
+      code: missingCodeForField(descriptor, field),
+      path: `${path}.${field}`,
+      message: `Provide ${field} for ${descriptor.kind}.`,
+    },
+  ]);
+}
+
+function missingCodeForField(
+  descriptor: UmgWidgetOperationDescriptor,
+  field: string,
+): string {
+  const explicitCodes: Readonly<Record<string, string>> = {
+    'update_widget_property.value': 'missing_umg_widget_property_value',
+    'update_widget_property.property_path': 'missing_umg_widget_property_path',
+    'update_widget_property.property_name': 'missing_umg_widget_property_path',
+    'update_widget_property.widget_name': 'missing_umg_widget_name',
+    'set_slot_property.value': 'missing_umg_slot_property_value',
+    'set_slot_property.property_path': 'missing_umg_slot_property_path',
+    'set_slot_property.widget_name': 'missing_umg_widget_name',
+    'set_widget_as_variable.widget_name': 'missing_umg_widget_name',
+    'set_widget_as_variable.is_variable': 'missing_umg_widget_variable_state',
+  };
+  return explicitCodes[`${descriptor.kind}.${field}`] ?? `missing_umg_${field}`;
 }
 
 function getRequiredStringWithCode(

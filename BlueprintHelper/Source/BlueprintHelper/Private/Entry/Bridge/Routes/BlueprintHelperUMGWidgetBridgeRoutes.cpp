@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
 #include "Systems/ToolClusters/UMGWidget/BlueprintHelperWidgetService.h"
 
 class FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils
@@ -49,6 +50,33 @@ public:
 		return bValue;
 	}
 
+	static TMap<FString, FString> ReadUMGWidgetRouteStringMapField(
+		const TSharedPtr<FJsonObject>& Payload,
+		const TCHAR* FieldName)
+	{
+		TMap<FString, FString> Result;
+		if (!Payload.IsValid())
+		{
+			return Result;
+		}
+
+		const TSharedPtr<FJsonObject>* Object = nullptr;
+		if (!Payload->TryGetObjectField(FieldName, Object) || !Object || !Object->IsValid())
+		{
+			return Result;
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Object)->Values)
+		{
+			FString Value;
+			if (Pair.Value.IsValid() && Pair.Value->TryGetString(Value))
+			{
+				Result.Add(Pair.Key, Value);
+			}
+		}
+		return Result;
+	}
+
 	static FBlueprintHelperBridgeResponse MakeMissingWidgetFieldResponse(
 		const FBlueprintHelperBridgeRequest& Request,
 		const FString& Message)
@@ -69,15 +97,20 @@ FBlueprintHelperUMGWidgetBridgeRoutes::FBlueprintHelperUMGWidgetBridgeRoutes(
 
 bool FBlueprintHelperUMGWidgetBridgeRoutes::IsUMGWidgetCommand(const FString& Command)
 {
-	return Command == TEXT("get_widget_tree") ||
-		Command == TEXT("add_widget") ||
-		Command == TEXT("remove_widget") ||
-		Command == TEXT("move_widget") ||
-		Command == TEXT("set_named_slot_content") ||
-		Command == TEXT("get_widget_properties") ||
-		Command == TEXT("set_widget_property") ||
-		Command == TEXT("set_slot_property") ||
-		Command == TEXT("set_widget_as_variable");
+	if (Command.Equals(TEXT("get_widget_tree"), ESearchCase::IgnoreCase) ||
+		Command.Equals(TEXT("get_widget_properties"), ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+
+	for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+	{
+		if (Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequest(
@@ -317,7 +350,11 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 	if (Request.Command == TEXT("set_widget_property"))
 	{
 		const FString WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
-		const FString PropertyName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_name"));
+		FString PropertyName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_name"));
+		if (PropertyName.IsEmpty())
+		{
+			PropertyName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("property_path"));
+		}
 		if (AssetPath.IsEmpty() || WidgetName.IsEmpty() || PropertyName.IsEmpty())
 		{
 			return FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::MakeMissingWidgetFieldResponse(Request, TEXT("payload 缺少 asset_path / widget_name / property_name 字段。"));
@@ -339,6 +376,149 @@ FBlueprintHelperBridgeResponse FBlueprintHelperUMGWidgetBridgeRoutes::HandleRequ
 		Response.Result->SetStringField(TEXT("widget"), Result.AffectedWidget);
 		Response.Result->SetStringField(TEXT("property"), PropertyName);
 		Response.Result->SetStringField(TEXT("new_value"), Value);
+		return Response;
+	}
+
+	if (Request.Command == TEXT("rename_widget"))
+	{
+		FBlueprintHelperRenameWidgetRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		ServiceRequest.NewWidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_widget_name"));
+		ServiceRequest.ExpectedWidgetClassPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_widget_class_path"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.RenameWidget(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("renamed_widget"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("remove_root_widget"))
+	{
+		FBlueprintHelperRemoveRootWidgetRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.RootWidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("root_widget_name"));
+		ServiceRequest.ReplacementPolicy = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("replacement_policy"));
+		ServiceRequest.ReplacementWidgetClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("replacement_widget_class"));
+		ServiceRequest.ReplacementWidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("replacement_widget_name"));
+		ServiceRequest.ExpectedRootClassPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_root_class_path"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.RemoveRootWidget(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("root_widget"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("reparent_widget_blueprint"))
+	{
+		FBlueprintHelperReparentWidgetBlueprintRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.NewParentClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_parent_class"));
+		ServiceRequest.ExpectedParentClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_parent_class"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.ReparentWidgetBlueprint(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("widget_blueprint"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("duplicate_widget_subtree"))
+	{
+		FBlueprintHelperDuplicateWidgetSubtreeRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.SourceWidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("source_widget_name"));
+		ServiceRequest.TargetParentName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("target_parent_name"));
+		ServiceRequest.SlotName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("slot_name"));
+		ServiceRequest.VirtualIndex = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteOptionalIntField(Request.Payload, TEXT("virtual_index"));
+		ServiceRequest.NameMapping = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringMapField(Request.Payload, TEXT("name_mapping"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.DuplicateWidgetSubtree(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("duplicated_widget"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("wrap_widget"))
+	{
+		FBlueprintHelperWrapWidgetRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		ServiceRequest.WrapperClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("wrapper_class"));
+		ServiceRequest.WrapperName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("wrapper_name"));
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.WrapWidget(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("wrapper_widget"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
+		return Response;
+	}
+
+	if (Request.Command == TEXT("replace_widget_class"))
+	{
+		FBlueprintHelperReplaceWidgetClassRequest ServiceRequest;
+		ServiceRequest.AssetPath = AssetPath;
+		ServiceRequest.WidgetName = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("widget_name"));
+		ServiceRequest.NewWidgetClass = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("new_widget_class"));
+		ServiceRequest.ExpectedWidgetClassPath = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteStringField(Request.Payload, TEXT("expected_widget_class_path"));
+		ServiceRequest.bPreserveChildren = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("preserve_children"), true);
+		ServiceRequest.bPreserveSlot = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("preserve_slot"), true);
+		ServiceRequest.bDryRun = FBlueprintHelperUMGWidgetBridgeRoutesLocalUtils::ReadUMGWidgetRouteBoolField(Request.Payload, TEXT("dry_run"), false);
+		const FBlueprintHelperWidgetMutationResult Result = WidgetService.ReplaceWidgetClass(ServiceRequest);
+		if (!Result.bSuccess)
+		{
+			return FBlueprintHelperBridgeResponse::Error(Request.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		}
+		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);
+		Response.Result = MakeShared<FJsonObject>();
+		Response.Result->SetStringField(TEXT("replaced_widget"), Result.AffectedWidget);
+		if (Result.ReadbackContext.IsValid())
+		{
+			Response.Result->SetObjectField(TEXT("readback_context"), Result.ReadbackContext.ToSharedRef());
+		}
 		return Response;
 	}
 

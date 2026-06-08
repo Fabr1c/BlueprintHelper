@@ -173,19 +173,9 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
 function formatTemplateNavigation(
   manifests: ToolCommandManifest[],
 ): string[] {
-  const hasReadSpecWorkflow = manifests.some((manifest) => manifest.input_shapes.includes('readspec'));
-  if (hasReadSpecWorkflow) {
-    return templateNavigationUsageLinesForInputShapes(['readspec']);
-  }
-
-  const hasTaskSpecWorkflow = manifests.some((manifest) =>
-    manifest.input_shapes.includes('bare_taskspec')
-    || manifest.input_shapes.includes('wrapped_taskspec_preview')
-    || manifest.input_shapes.includes('wrapped_taskspec_execute'));
-  if (!hasTaskSpecWorkflow) {
-    return [];
-  }
-  return templateNavigationUsageLinesForInputShapes(['bare_taskspec']);
+  return templateNavigationUsageLinesForInputShapes(uniqueStrings(
+    manifests.flatMap((manifest) => manifest.input_shapes),
+  ));
 }
 
 function formatManifestNotes(manifest: ToolCommandManifest): string[] {

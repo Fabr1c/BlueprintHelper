@@ -7,9 +7,48 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+
+class FBlueprintHelperWidgetTreeReviewEvidenceDescriptorUtils
+{
+public:
+	static FString ResolveReviewTargetSubKind(const FString& OperationKind)
+	{
+		for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+		{
+			if (OperationKind.Equals(Descriptor.TaskPlanOp, ESearchCase::IgnoreCase) ||
+				OperationKind.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+			{
+				return Descriptor.ReviewTargetSubkind ? FString(Descriptor.ReviewTargetSubkind) : FString();
+			}
+		}
+		return FString();
+	}
+
+	static FString ReadFirstNameMappingValue(const TSharedPtr<FJsonObject>& Payload)
+	{
+		const TSharedPtr<FJsonObject>* NameMapping = nullptr;
+		if (!Payload.IsValid() ||
+			!Payload->TryGetObjectField(TEXT("name_mapping"), NameMapping) ||
+			!NameMapping ||
+			!NameMapping->IsValid())
+		{
+			return FString();
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : (*NameMapping)->Values)
+		{
+			if (Field.Value.IsValid() && Field.Value->Type == EJson::String)
+			{
+				return Field.Value->AsString();
+			}
+		}
+		return FString();
+	}
+};
 
 FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadStringField(
 	const TSharedPtr<FJsonObject>& Object,
@@ -88,6 +127,23 @@ FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadTargetWidgetName(
 	const FString& OperationKind,
 	const FBlueprintHelperWidgetTreeReviewEvidenceBuildInput& Input)
 {
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget)
+	{
+		const FString OriginalWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("widget_name"));
+		if (!OriginalWidgetName.IsEmpty())
+		{
+			return OriginalWidgetName;
+		}
+	}
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget)
+	{
+		const FString RootWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("root_widget_name"));
+		if (!RootWidgetName.IsEmpty())
+		{
+			return RootWidgetName;
+		}
+	}
+
 	const FString ResultWidgetName = ReadStringField(Input.StepResult.Data, TEXT("widget_name"));
 	if (!ResultWidgetName.IsEmpty())
 	{
@@ -97,6 +153,36 @@ FString FBlueprintHelperWidgetTreeReviewEvidenceBuilder::ReadTargetWidgetName(
 	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::SetNamedSlotContent)
 	{
 		return ReadStringField(Input.LoweredStep.Payload, TEXT("widget_name"));
+	}
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget)
+	{
+		const FString NewWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("new_widget_name"));
+		if (!NewWidgetName.IsEmpty())
+		{
+			return NewWidgetName;
+		}
+	}
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReparentWidgetBlueprint)
+	{
+		return TEXT("widget_blueprint");
+	}
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree)
+	{
+		const FString MappedName =
+			FBlueprintHelperWidgetTreeReviewEvidenceDescriptorUtils::ReadFirstNameMappingValue(Input.LoweredStep.Payload);
+		if (!MappedName.IsEmpty())
+		{
+			return MappedName;
+		}
+		return ReadStringField(Input.LoweredStep.Payload, TEXT("source_widget_name"));
+	}
+	if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::WrapWidget)
+	{
+		const FString WrapperName = ReadStringField(Input.LoweredStep.Payload, TEXT("wrapper_name"));
+		if (!WrapperName.IsEmpty())
+		{
+			return WrapperName;
+		}
 	}
 
 	return ReadStringField(Input.LoweredStep.Payload, TEXT("widget_name"));
@@ -160,6 +246,8 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 	}
 
 	const FString OperationKind = ReadOperationKind(Input);
+	const FString DescriptorTargetSubKind =
+		FBlueprintHelperWidgetTreeReviewEvidenceDescriptorUtils::ResolveReviewTargetSubKind(OperationKind);
 	const FString TargetWidgetName = ReadTargetWidgetName(OperationKind, Input);
 	const FString HostWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("host_widget_name"));
 	const FString SlotName = ReadStringField(Input.LoweredStep.Payload, TEXT("slot_name"));
@@ -167,6 +255,11 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 	const FString NewParentName = ReadStringField(Input.LoweredStep.Payload, TEXT("new_parent_name"));
 	const FString PropertyName = ReadStringField(Input.LoweredStep.Payload, TEXT("property_name"));
 	const FString PayloadPropertyPath = ReadStringField(Input.LoweredStep.Payload, TEXT("property_path"));
+	const FString RenameAfterWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("new_widget_name"));
+	const FString RootReplacementPolicy = ReadStringField(Input.LoweredStep.Payload, TEXT("replacement_policy"));
+	const FString RootReplacementWidgetClass = ReadStringField(Input.LoweredStep.Payload, TEXT("replacement_widget_class"));
+	const FString RootReplacementWidgetName = ReadStringField(Input.LoweredStep.Payload, TEXT("replacement_widget_name"));
+	const FString RootAfterWidgetName = ReadStringField(Input.StepResult.Data, TEXT("widget_name"));
 	const TSharedPtr<FJsonObject> MutationContext = ReadMutationContext(Input);
 	const FString MutationTargetKind = ReadStringField(MutationContext, TEXT("target_kind"));
 	const FString MutationPropertyPath = ReadStringField(MutationContext, TEXT("property_path"));
@@ -198,7 +291,12 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 	{
 		OutEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
 	}
-	else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget)
+	else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::DuplicateWidgetSubtree)
+	{
+		OutEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	}
+	else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveWidget ||
+		OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget)
 	{
 		OutEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Removed;
 	}
@@ -211,7 +309,7 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 	Target.AssetPath = AssetPath;
 	Target.Surface = EBlueprintHelperReviewSurface::UMGWidgetTree;
 	Target.TargetKind = TEXT("umg_widget_tree");
-	Target.TargetSubKind = TEXT("widget_tree");
+	Target.TargetSubKind = DescriptorTargetSubKind.IsEmpty() ? TEXT("widget_tree") : DescriptorTargetSubKind;
 	Target.DisplayLabel = TargetWidgetName.IsEmpty() ? OperationKind : TargetWidgetName;
 	Target.LatestEvidenceId = OutEvidence.EvidenceId;
 	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
@@ -282,9 +380,65 @@ bool FBlueprintHelperWidgetTreeReviewEvidenceBuilder::Build(
 		{
 			return false;
 		}
-		Target.TargetKey = FString::Printf(TEXT("umg_widget:%s"), *TargetWidgetName);
-		Target.VisualGroupKey = Target.TargetKey;
-		Target.LifecycleObjectKey = FString::Printf(TEXT("widget:%s"), *TargetWidgetName.ToLower());
+		if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::ReparentWidgetBlueprint)
+		{
+			Target.TargetKind = TEXT("umg_widget_blueprint");
+			Target.TargetKey = FString::Printf(TEXT("umg_widget_blueprint:%s"), *AssetPath);
+			Target.VisualGroupKey = Target.TargetKey;
+			Target.DisplayLabel = TEXT("WidgetBlueprint ParentClass");
+			Target.LifecycleObjectKey = FString::Printf(TEXT("umg_widget_blueprint:%s"), *AssetPath.ToLower());
+			Target.PropertyPath = TEXT("ParentClass");
+			Target.ReadbackFingerprintAfter = ReadStringField(Input.LoweredStep.Payload, TEXT("new_parent_class"));
+		}
+		else
+		{
+			Target.TargetKey = FString::Printf(TEXT("umg_widget:%s"), *TargetWidgetName);
+			Target.VisualGroupKey = Target.TargetKey;
+			Target.LifecycleObjectKey = FString::Printf(TEXT("widget:%s"), *TargetWidgetName.ToLower());
+			if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RenameWidget)
+			{
+				Target.TargetSubKind = TEXT("widget_rename");
+				if (!RenameAfterWidgetName.IsEmpty())
+				{
+					Target.DisplayLabel = FString::Printf(TEXT("%s -> %s"), *TargetWidgetName, *RenameAfterWidgetName);
+					Target.ReadbackFingerprintBefore = FString::Printf(TEXT("widget_name:%s"), *TargetWidgetName);
+					Target.ReadbackFingerprintAfter = FString::Printf(TEXT("widget_name:%s"), *RenameAfterWidgetName);
+					TSharedRef<FJsonObject> RenameProperties = MakeShared<FJsonObject>();
+					RenameProperties->SetStringField(TEXT("before_widget_name"), TargetWidgetName);
+					RenameProperties->SetStringField(TEXT("after_widget_name"), RenameAfterWidgetName);
+					Target.ChangedPropertiesJson = SerializeJsonObject(RenameProperties);
+				}
+			}
+			else if (OperationKind == FBlueprintHelperWidgetTaskPlan::AdapterOperation::RemoveRootWidget)
+			{
+				Target.TargetSubKind = TEXT("root_widget_removal");
+				Target.DisplayLabel = TargetWidgetName;
+				Target.ReadbackFingerprintBefore = FString::Printf(TEXT("root_widget:%s"), *TargetWidgetName);
+				if (!RootAfterWidgetName.IsEmpty())
+				{
+					Target.ReadbackFingerprintAfter = FString::Printf(TEXT("root_widget:%s"), *RootAfterWidgetName);
+				}
+				TSharedRef<FJsonObject> RootRemovalProperties = MakeShared<FJsonObject>();
+				RootRemovalProperties->SetStringField(TEXT("before_root_widget_name"), TargetWidgetName);
+				if (!RootAfterWidgetName.IsEmpty())
+				{
+					RootRemovalProperties->SetStringField(TEXT("after_root_widget_name"), RootAfterWidgetName);
+				}
+				if (!RootReplacementPolicy.IsEmpty())
+				{
+					RootRemovalProperties->SetStringField(TEXT("replacement_policy"), RootReplacementPolicy);
+				}
+				if (!RootReplacementWidgetClass.IsEmpty())
+				{
+					RootRemovalProperties->SetStringField(TEXT("replacement_widget_class"), RootReplacementWidgetClass);
+				}
+				if (!RootReplacementWidgetName.IsEmpty())
+				{
+					RootRemovalProperties->SetStringField(TEXT("replacement_widget_name"), RootReplacementWidgetName);
+				}
+				Target.ChangedPropertiesJson = SerializeJsonObject(RootRemovalProperties);
+			}
+		}
 		const FString ParentForLifecycle = !NewParentName.IsEmpty() ? NewParentName : ParentName;
 		if (!ParentForLifecycle.IsEmpty())
 		{
