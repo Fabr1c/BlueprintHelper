@@ -22,6 +22,7 @@
 #include "K2Node_Self.h"
 #include "InputCoreTypes.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutGroupAvoidancePolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
@@ -136,6 +137,24 @@ static const FGraphLayoutPreviewNodeSpec* FindPreviewNodeSpec(const FGraphLayout
 	return nullptr;
 }
 
+static UEdGraphNode_Comment* FindCommentNodeByComment(UEdGraph* Graph, const FString& CommentText)
+{
+	if (!Graph)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UEdGraphNode_Comment* CommentNode = Cast<UEdGraphNode_Comment>(Node);
+		if (CommentNode && CommentNode->NodeComment == CommentText)
+		{
+			return CommentNode;
+		}
+	}
+	return nullptr;
+}
+
 static bool MaterializedNodeMatchesPlacement(
 	const FGraphLayoutPreviewMaterializerResult& Result,
 	const FString& NodeId,
@@ -195,6 +214,143 @@ static FRuleSet MakeRuleSetWithScalarInputOffsets()
 	RuleSet.bMoveGeneratedNodes = true;
 	RuleSet.bMoveExistingNodes = false;
 	return RuleSet;
+}
+
+static void AssignLayoutBlock(
+	FNodeSnapshot& Node,
+	const FString& LayoutBlockId,
+	const int32 LayoutBlockOrder,
+	const int32 LayoutNodeOrder)
+{
+	Node.LayoutBlockId = LayoutBlockId;
+	Node.LayoutBlockOrder = LayoutBlockOrder;
+	Node.LayoutNodeOrder = LayoutNodeOrder;
+}
+
+static FGraphSnapshot BuildSetClampMinusMultiplyLeafFixture()
+{
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	const FString LayoutBlockId = TEXT("StaminaFunctionEvent");
+	int32 NodeOrder = 0;
+
+	FNodeSnapshot Event = MakeNode(
+		TEXT("EventStart"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event Start"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("SetStamina")})});
+	AssignLayoutBlock(Event, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(Event);
+
+	FNodeSnapshot SetStamina = MakeNode(
+		TEXT("SetStamina"),
+		TEXT("K2Node_VariableSet"),
+		TEXT("Set Current Stamina"),
+		FVector2D::ZeroVector,
+		FVector2D(220.0f, 90.0f),
+		false,
+		{
+			MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("EventStart")}),
+			MakePin(TEXT("Then"), EPinDirection::Output, true),
+			MakePin(TEXT("Value"), EPinDirection::Input, false, {TEXT("ClampFloat")})
+		});
+	AssignLayoutBlock(SetStamina, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(SetStamina);
+
+	FNodeSnapshot ClampFloat = MakeNode(
+		TEXT("ClampFloat"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Clamp (Float)"),
+		FVector2D::ZeroVector,
+		FVector2D(220.0f, 120.0f),
+		false,
+		{
+			MakePin(TEXT("Value"), EPinDirection::Input, false, {TEXT("Subtract")}),
+			MakePin(TEXT("Min"), EPinDirection::Input, false),
+			MakePin(TEXT("Max"), EPinDirection::Input, false, {TEXT("MaxStamina")}),
+			MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("SetStamina")})
+		});
+	AssignLayoutBlock(ClampFloat, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(ClampFloat);
+
+	FNodeSnapshot Subtract = MakeNode(
+		TEXT("Subtract"),
+		TEXT("K2Node_CommutativeAssociativeBinaryOperator"),
+		TEXT("-"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 90.0f),
+		false,
+		{
+			MakePin(TEXT("A"), EPinDirection::Input, false, {TEXT("CurrentStamina")}),
+			MakePin(TEXT("B"), EPinDirection::Input, false, {TEXT("Multiply")}),
+			MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("ClampFloat")})
+		});
+	AssignLayoutBlock(Subtract, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(Subtract);
+
+	FNodeSnapshot Multiply = MakeNode(
+		TEXT("Multiply"),
+		TEXT("K2Node_CommutativeAssociativeBinaryOperator"),
+		TEXT("*"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 90.0f),
+		false,
+		{
+			MakePin(TEXT("A"), EPinDirection::Input, false, {TEXT("StaminaDrainPerSecond")}),
+			MakePin(TEXT("B"), EPinDirection::Input, false, {TEXT("WorldDeltaSeconds")}),
+			MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("Subtract")})
+		});
+	AssignLayoutBlock(Multiply, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(Multiply);
+
+	FNodeSnapshot CurrentStamina = MakeNode(
+		TEXT("CurrentStamina"),
+		TEXT("K2Node_VariableGet"),
+		TEXT("Current Stamina"),
+		FVector2D::ZeroVector,
+		FVector2D(170.0f, 60.0f),
+		false,
+		{MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("Subtract")})});
+	AssignLayoutBlock(CurrentStamina, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(CurrentStamina);
+
+	FNodeSnapshot StaminaDrain = MakeNode(
+		TEXT("StaminaDrainPerSecond"),
+		TEXT("K2Node_VariableGet"),
+		TEXT("Stamina Drain Per Second"),
+		FVector2D::ZeroVector,
+		FVector2D(210.0f, 60.0f),
+		false,
+		{MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("Multiply")})});
+	AssignLayoutBlock(StaminaDrain, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(StaminaDrain);
+
+	FNodeSnapshot DeltaSeconds = MakeNode(
+		TEXT("WorldDeltaSeconds"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Get World Delta Seconds"),
+		FVector2D::ZeroVector,
+		FVector2D(210.0f, 60.0f),
+		false,
+		{MakePin(TEXT("ReturnValue"), EPinDirection::Output, false, {TEXT("Multiply")})});
+	AssignLayoutBlock(DeltaSeconds, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(DeltaSeconds);
+
+	FNodeSnapshot MaxStamina = MakeNode(
+		TEXT("MaxStamina"),
+		TEXT("K2Node_VariableGet"),
+		TEXT("Max Stamina"),
+		FVector2D::ZeroVector,
+		FVector2D(170.0f, 60.0f),
+		false,
+		{MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("ClampFloat")})});
+	AssignLayoutBlock(MaxStamina, LayoutBlockId, 0, NodeOrder++);
+	Snapshot.Nodes.Add(MaxStamina);
+
+	return Snapshot;
 }
 
 static UEdGraphNode* AddCoordinatorTestNode(
@@ -1115,6 +1271,218 @@ bool FBlueprintHelperGraphLayout_OccupancyResolverFallsBackDownWhenSameRowBlocke
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_OccupancyIgnoresSameGroupForLocalPlacement,
+	"BlueprintHelper.GraphLayout.Occupancy.IgnoresSameGroupForLocalPlacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_OccupancyIgnoresSameGroupForLocalPlacement::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 80.0f;
+	RuleSet.CollisionPaddingY = 80.0f;
+	RuleSet.CollisionStepY = 100.0f;
+	RuleSet.MaxCollisionAttempts = 4;
+
+	FOccupancyResolver Occupancy(RuleSet);
+	Occupancy.ReserveTarget(
+		TEXT("SameGroupA"),
+		FVector2D(0.0f, 0.0f),
+		FVector2D(180.0f, 80.0f),
+		true,
+		TEXT("GroupA"));
+
+	FResolveTargetRequest Request;
+	Request.NodeId = TEXT("SameGroupB");
+	Request.LayoutGroupId = TEXT("GroupA");
+	Request.DesiredPosition = FVector2D(0.0f, 0.0f);
+	Request.Size = FVector2D(180.0f, 80.0f);
+	Request.SearchMode = EGraphLayoutCollisionSearchMode::PreferSameRow;
+	Request.bIgnoreSameGroupReservations = true;
+
+	const FVector2D Resolved = Occupancy.ResolveTarget(Request);
+	TestEqual(TEXT("same group local placement keeps y"), static_cast<double>(Resolved.Y), 0.0);
+	TestEqual(TEXT("same group local placement keeps x when ignored"), static_cast<double>(Resolved.X), 0.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_OccupancyKeepsDifferentGroupBlocking,
+	"BlueprintHelper.GraphLayout.Occupancy.KeepsDifferentGroupBlocking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_OccupancyKeepsDifferentGroupBlocking::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 80.0f;
+	RuleSet.CollisionPaddingY = 80.0f;
+	RuleSet.CollisionStepY = 100.0f;
+	RuleSet.MaxCollisionAttempts = 4;
+
+	FOccupancyResolver Occupancy(RuleSet);
+	Occupancy.ReserveTarget(
+		TEXT("OtherGroup"),
+		FVector2D(0.0f, 0.0f),
+		FVector2D(180.0f, 80.0f),
+		true,
+		TEXT("GroupA"));
+
+	FResolveTargetRequest Request;
+	Request.NodeId = TEXT("Candidate");
+	Request.LayoutGroupId = TEXT("GroupB");
+	Request.DesiredPosition = FVector2D(0.0f, 0.0f);
+	Request.Size = FVector2D(180.0f, 80.0f);
+	Request.SearchMode = EGraphLayoutCollisionSearchMode::DownwardOnly;
+
+	const FVector2D Resolved = Occupancy.ResolveTarget(Request);
+	TestTrue(TEXT("different group moves down"), Resolved.Y > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_GroupAvoidancePolicyOffsetsOnlyWholeGroups,
+	"BlueprintHelper.GraphLayout.GroupAvoidance.PolicyOffsetsOnlyWholeGroups",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_GroupAvoidancePolicyOffsetsOnlyWholeGroups::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	TArray<FGraphLayoutGroupNode> Nodes;
+	FGraphLayoutGroupNode& Existing = Nodes.AddDefaulted_GetRef();
+	Existing.NodeId = TEXT("ExistingBlocker");
+	Existing.LayoutGroupId = TEXT("existing");
+	Existing.LayoutGroupOrder = 0;
+	Existing.NodeOrder = 0;
+	Existing.TargetPosition = FVector2D(0.0f, 0.0f);
+	Existing.Size = FVector2D(500.0f, 180.0f);
+	Existing.bGenerated = false;
+
+	FGraphLayoutGroupNode& Entry = Nodes.AddDefaulted_GetRef();
+	Entry.NodeId = TEXT("Entry");
+	Entry.LayoutGroupId = TEXT("GeneratedEvent");
+	Entry.LayoutGroupOrder = 1;
+	Entry.NodeOrder = 0;
+	Entry.TargetPosition = FVector2D(0.0f, 0.0f);
+	Entry.Size = FVector2D(180.0f, 80.0f);
+	Entry.bGenerated = true;
+
+	FGraphLayoutGroupNode& Exec = Nodes.AddDefaulted_GetRef();
+	Exec.NodeId = TEXT("Exec");
+	Exec.LayoutGroupId = TEXT("GeneratedEvent");
+	Exec.LayoutGroupOrder = 1;
+	Exec.NodeOrder = 1;
+	Exec.TargetPosition = FVector2D(360.0f, 0.0f);
+	Exec.Size = FVector2D(220.0f, 90.0f);
+	Exec.bGenerated = true;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+	RuleSet.CollisionStepY = 160.0f;
+	RuleSet.MaxCollisionAttempts = 4;
+
+	const TArray<FGraphLayoutGroupOffset> Offsets =
+		FGraphLayoutGroupAvoidancePolicy::ResolveGroupOffsets(Nodes, RuleSet);
+	TestEqual(TEXT("one generated group offset"), Offsets.Num(), 1);
+	if (Offsets.Num() != 1)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("offset applies to generated group id"), Offsets[0].LayoutGroupId, FString(TEXT("GeneratedEvent")));
+	TestTrue(TEXT("group offset moves downward"), Offsets[0].Offset.Y > 0.0f);
+	TestTrue(TEXT("reason is group collision"), Offsets[0].Reason.Contains(TEXT("group_avoided_overlap")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_SolverPinnedExistingSameGroupActsAsExternalBlocker,
+	"BlueprintHelper.GraphLayout.Solver.PinnedExistingSameGroupActsAsExternalBlocker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_SolverPinnedExistingSameGroupActsAsExternalBlocker::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("EventGraph");
+	const FString SharedLayoutBlockId = TEXT("SharedFunctionOrEvent");
+
+	FNodeSnapshot ExistingComment = MakeNode(
+		TEXT("ExistingComment"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("Existing Comment"),
+		FVector2D(0.0f, 0.0f),
+		FVector2D(520.0f, 180.0f),
+		true,
+		{});
+	AssignLayoutBlock(ExistingComment, SharedLayoutBlockId, 0, 0);
+	Snapshot.Nodes.Add(ExistingComment);
+
+	FNodeSnapshot Event = MakeNode(
+		TEXT("Event"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Event"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("Exec")})});
+	AssignLayoutBlock(Event, SharedLayoutBlockId, 0, 1);
+	Snapshot.Nodes.Add(Event);
+
+	FNodeSnapshot Exec = MakeNode(
+		TEXT("Exec"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Print"),
+		FVector2D::ZeroVector,
+		FVector2D(220.0f, 90.0f),
+		false,
+		{MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Event")})});
+	AssignLayoutBlock(Exec, SharedLayoutBlockId, 0, 2);
+	Snapshot.Nodes.Add(Exec);
+
+	FRuleSet RuleSet = MakeRuleSetWithScalarInputOffsets();
+	RuleSet.CollisionPaddingX = 0.0f;
+	RuleSet.CollisionPaddingY = 0.0f;
+	RuleSet.CollisionStepY = 180.0f;
+	RuleSet.MaxCollisionAttempts = 4;
+	RuleSet.bMoveExistingNodes = false;
+	RuleSet.bUsePatternRowHeightBudget = false;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* ExistingPlacement = FindPlacement(Plan, TEXT("ExistingComment"));
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("Event"));
+	const FNodePlacement* ExecPlacement = FindPlacement(Plan, TEXT("Exec"));
+	TestNotNull(TEXT("existing placement exists"), ExistingPlacement);
+	TestNotNull(TEXT("event placement exists"), EventPlacement);
+	TestNotNull(TEXT("exec placement exists"), ExecPlacement);
+	if (!ExistingPlacement || !EventPlacement || !ExecPlacement)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("existing comment remains pinned"), ExistingPlacement->bMoveExisting);
+	TestEqual(TEXT("existing comment keeps x"), ExistingPlacement->TargetPosition.X, 0.0);
+	TestEqual(TEXT("existing comment keeps y"), ExistingPlacement->TargetPosition.Y, 0.0);
+	TestTrue(TEXT("event group is moved below pinned existing blocker"), EventPlacement->TargetPosition.Y > 0.0f);
+	TestTrue(TEXT("exec group is moved with event group"), ExecPlacement->TargetPosition.Y > 0.0f);
+	TestTrue(TEXT("event reason records group avoidance"), EventPlacement->Reason.Contains(TEXT("group_avoided_overlap")));
+	TestTrue(TEXT("exec reason records group avoidance"), ExecPlacement->Reason.Contains(TEXT("group_avoided_overlap")));
+	TestFalse(
+		TEXT("event no longer overlaps pinned existing blocker"),
+		RectsOverlap(*EventPlacement, FVector2D(180.0f, 80.0f), *ExistingPlacement, FVector2D(520.0f, 180.0f)));
+	TestFalse(
+		TEXT("exec no longer overlaps pinned existing blocker"),
+		RectsOverlap(*ExecPlacement, FVector2D(220.0f, 90.0f), *ExistingPlacement, FVector2D(520.0f, 180.0f)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_RootExecSuccessorPrefersSameRowHorizontalAvoidance,
 	"BlueprintHelper.GraphLayout.Solver.RootExecSuccessorPrefersSameRowHorizontalAvoidance",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1470,6 +1838,83 @@ bool FBlueprintHelperGraphLayout_IntraBlockDataInputsInheritExecPriority::RunTes
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_DataPriorityDecaysPerDataLink,
+	"BlueprintHelper.GraphLayout.Solver.DataPriorityDecaysPerDataLink",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_DataPriorityDecaysPerDataLink::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FGraphSnapshot Snapshot = BuildSetClampMinusMultiplyLeafFixture();
+	const FGraphTopology Topology = FGraphLayoutTopology::Build(Snapshot);
+	const FNodeInputClusterBudget Budget =
+		FNodeInputClusterPolicy::MeasureForConsumer(Snapshot, Topology, TEXT("SetStamina"), FRuleSet());
+
+	TestEqual(TEXT("Clamp direct depth"), Budget.DataDepthByNodeId.FindRef(TEXT("ClampFloat")), 1);
+	TestEqual(TEXT("Minus depth"), Budget.DataDepthByNodeId.FindRef(TEXT("Subtract")), 2);
+	TestEqual(TEXT("Multiply depth"), Budget.DataDepthByNodeId.FindRef(TEXT("Multiply")), 3);
+	TestEqual(TEXT("CurrentStamina leaf depth"), Budget.DataDepthByNodeId.FindRef(TEXT("CurrentStamina")), 3);
+	TestEqual(TEXT("MaxStamina leaf depth"), Budget.DataDepthByNodeId.FindRef(TEXT("MaxStamina")), 2);
+
+	const float ClampPriority = Budget.LayoutPriorityByNodeId.FindRef(TEXT("ClampFloat"));
+	const float MinusPriority = Budget.LayoutPriorityByNodeId.FindRef(TEXT("Subtract"));
+	const float MultiplyPriority = Budget.LayoutPriorityByNodeId.FindRef(TEXT("Multiply"));
+	const float DrainPriority = Budget.LayoutPriorityByNodeId.FindRef(TEXT("StaminaDrainPerSecond"));
+
+	TestTrue(TEXT("minus priority decays by one link"), FMath::IsNearlyEqual(ClampPriority - MinusPriority, 0.1f));
+	TestTrue(TEXT("multiply priority decays by second link"), FMath::IsNearlyEqual(MinusPriority - MultiplyPriority, 0.1f));
+	TestTrue(TEXT("leaf priority decays from transform parent"), FMath::IsNearlyEqual(MultiplyPriority - DrainPriority, 0.1f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_DataTransformPrefersHorizontalAvoidance,
+	"BlueprintHelper.GraphLayout.Solver.DataTransformPrefersHorizontalAvoidance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_DataTransformPrefersHorizontalAvoidance::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const FGraphSnapshot Snapshot = BuildSetClampMinusMultiplyLeafFixture();
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 80.0f;
+	RuleSet.CollisionPaddingY = 80.0f;
+	RuleSet.CollisionStepY = 160.0f;
+	RuleSet.InputPinRowSpacing = 44.0f;
+	RuleSet.bUsePatternRowHeightBudget = true;
+	RuleSet.bUsePureDataSubgraphLayout = true;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* ClampPlacement = FindPlacement(Plan, TEXT("ClampFloat"));
+	const FNodePlacement* MinusPlacement = FindPlacement(Plan, TEXT("Subtract"));
+	const FNodePlacement* MultiplyPlacement = FindPlacement(Plan, TEXT("Multiply"));
+	const FNodePlacement* MaxPlacement = FindPlacement(Plan, TEXT("MaxStamina"));
+
+	TestNotNull(TEXT("clamp placement"), ClampPlacement);
+	TestNotNull(TEXT("minus placement"), MinusPlacement);
+	TestNotNull(TEXT("multiply placement"), MultiplyPlacement);
+	TestNotNull(TEXT("max leaf placement"), MaxPlacement);
+	if (!ClampPlacement || !MinusPlacement || !MultiplyPlacement || !MaxPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("minus transform stays left of clamp"), MinusPlacement->TargetPosition.X < ClampPlacement->TargetPosition.X);
+	TestTrue(TEXT("multiply transform stays left of minus"), MultiplyPlacement->TargetPosition.X < MinusPlacement->TargetPosition.X);
+	TestTrue(
+		TEXT("multiply remains on data chain row or pin row, not collision-pushed far down"),
+		FMath::Abs(MultiplyPlacement->TargetPosition.Y - MinusPlacement->TargetPosition.Y) <= RuleSet.InputPinRowSpacing * 2.0f);
+	TestTrue(
+		TEXT("max stamina leaf follows lower clamp pin"),
+		MaxPlacement->TargetPosition.Y > ClampPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_InterBlockOrderOverridesSnapshotRootOrder,
 	"BlueprintHelper.GraphLayout.Solver.InterBlockOrderOverridesSnapshotRootOrder",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1527,6 +1972,82 @@ bool FBlueprintHelperGraphLayout_InterBlockOrderOverridesSnapshotRootOrder::RunT
 	TestTrue(
 		TEXT("older block entry keeps priority over later block even when snapshot order is reversed"),
 		OldPlacement->TargetPosition.Y < NewPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_GroupAvoidanceMovesWholeGeneratedGroup,
+	"BlueprintHelper.GraphLayout.Solver.GroupAvoidanceMovesWholeGeneratedGroup",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_GroupAvoidanceMovesWholeGeneratedGroup::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FNodeSnapshot Entry = MakeNode(
+		TEXT("Entry"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Entry"),
+		FVector2D::ZeroVector,
+		FVector2D(180.0f, 80.0f),
+		false,
+		{MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("Exec")})});
+	AssignLayoutBlock(Entry, TEXT("FunctionEventA"), 0, 0);
+
+	FNodeSnapshot Exec = MakeNode(
+		TEXT("Exec"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Exec"),
+		FVector2D::ZeroVector,
+		FVector2D(220.0f, 90.0f),
+		false,
+		{MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Entry")})});
+	AssignLayoutBlock(Exec, TEXT("FunctionEventA"), 0, 1);
+
+	FGraphSnapshot Snapshot;
+	Snapshot.GraphName = TEXT("GroupAvoidance");
+	Snapshot.Nodes.Add(Entry);
+	Snapshot.Nodes.Add(Exec);
+	Snapshot.Nodes.Add(MakeNode(
+		TEXT("ExistingBlocker"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("Existing Blocker"),
+		FVector2D(-40.0f, -120.0f),
+		FVector2D(760.0f, 260.0f),
+		true,
+		{}));
+
+	FRuleSet RuleSet;
+	RuleSet.ExecColumnSpacing = 360.0f;
+	RuleSet.ExecRowSpacing = 220.0f;
+	RuleSet.CollisionPaddingX = 20.0f;
+	RuleSet.CollisionPaddingY = 20.0f;
+	RuleSet.CollisionStepY = 180.0f;
+	RuleSet.MaxCollisionAttempts = 8;
+	RuleSet.bAlignExecNodesHorizontally = true;
+	RuleSet.bUsePatternRowHeightBudget = false;
+	RuleSet.bMoveExistingNodes = false;
+
+	const FLayoutPlan Plan = FSolver::Solve(Snapshot, RuleSet);
+	const FNodePlacement* EntryPlacement = FindPlacement(Plan, TEXT("Entry"));
+	const FNodePlacement* ExecPlacement = FindPlacement(Plan, TEXT("Exec"));
+	const FNodePlacement* BlockerPlacement = FindPlacement(Plan, TEXT("ExistingBlocker"));
+	TestNotNull(TEXT("entry placement exists"), EntryPlacement);
+	TestNotNull(TEXT("exec placement exists"), ExecPlacement);
+	TestNotNull(TEXT("blocker placement exists"), BlockerPlacement);
+	if (!EntryPlacement || !ExecPlacement || !BlockerPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("entry moved by group avoidance"), EntryPlacement->Reason.Contains(TEXT("group_avoided_overlap")));
+	TestTrue(TEXT("exec moved by group avoidance"), ExecPlacement->Reason.Contains(TEXT("group_avoided_overlap")));
+	TestTrue(TEXT("entry group clears blocker"), EntryPlacement->TargetPosition.Y > BlockerPlacement->TargetPosition.Y);
+	TestEqual(
+		TEXT("whole group preserves exec pin baseline after group offset"),
+		ExpectedExecBaselineY(*ExecPlacement, ENodeRole::ExecNode),
+		ExpectedExecBaselineY(*EntryPlacement, ENodeRole::EventEntry));
 	return true;
 }
 
@@ -2750,12 +3271,151 @@ bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::R
 			ExpectAnchor(TEXT("DelayAsync"), ENodeRole::AsyncNode);
 			ExpectAnchor(TEXT("CommentBlocker"), ENodeRole::Comment);
 			ExpectNotAnchor(TEXT("FallbackExec"));
+			ExpectNotAnchor(TEXT("HorizontalAvoidanceRange"));
+			ExpectNotAnchor(TEXT("VerticalAvoidanceRange"));
 			break;
 		default:
 			AddError(TEXT("unexpected semantic scene in preview sample catalog"));
 			return false;
 		}
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewDrawsEntryAvoidanceRangeComments,
+	"BlueprintHelper.GraphLayout.Preview.DrawsEntryAvoidanceRangeComments",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewDrawsEntryAvoidanceRangeComments::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	const FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindPreviewNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
+	const FGraphLayoutPreviewNodeSpec* VerticalSpec = FindPreviewNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
+	TestNotNull(TEXT("horizontal range spec"), HorizontalSpec);
+	TestNotNull(TEXT("vertical range spec"), VerticalSpec);
+	if (!HorizontalSpec || !VerticalSpec)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("horizontal range is preview overlay"), HorizontalSpec->bPreviewOverlay);
+	TestTrue(TEXT("vertical range is preview overlay"), VerticalSpec->bPreviewOverlay);
+	TestFalse(TEXT("horizontal range is not draggable anchor"), HorizontalSpec->bUsePreviewRoleAnchor);
+	TestFalse(TEXT("vertical range is not draggable anchor"), VerticalSpec->bUsePreviewRoleAnchor);
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 120.0f;
+	RuleSet.CollisionPaddingY = 40.0f;
+	RuleSet.CollisionStepY = 80.0f;
+	RuleSet.MaxCollisionAttempts = 5;
+
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
+	const FNodePlacement* HorizontalPlacement = FindPlacement(Plan, TEXT("HorizontalAvoidanceRange"));
+	const FNodePlacement* VerticalPlacement = FindPlacement(Plan, TEXT("VerticalAvoidanceRange"));
+	TestNotNull(TEXT("event placement"), EventPlacement);
+	TestNotNull(TEXT("horizontal range placement"), HorizontalPlacement);
+	TestNotNull(TEXT("vertical range placement"), VerticalPlacement);
+	if (!EventPlacement || !HorizontalPlacement || !VerticalPlacement)
+	{
+		return false;
+	}
+
+	const FVector2D EntrySize = FindPreviewNodeSize(Sample, TEXT("EventStart"));
+	const float ExpectedHorizontalWidth =
+		EntrySize.X + RuleSet.CollisionPaddingX * 2.0f +
+		RuleSet.MaxCollisionAttempts * FMath::Max(EntrySize.X, RuleSet.CollisionPaddingX);
+	const float ExpectedHorizontalHeight = EntrySize.Y + RuleSet.CollisionPaddingY * 2.0f;
+	const float ExpectedVerticalWidth = EntrySize.X + RuleSet.CollisionPaddingX * 2.0f;
+	const float ExpectedVerticalHeight =
+		EntrySize.Y + RuleSet.CollisionPaddingY * 2.0f +
+		RuleSet.MaxCollisionAttempts * RuleSet.CollisionStepY;
+
+	TestEqual(
+		TEXT("horizontal range width follows settings"),
+		static_cast<double>(HorizontalPlacement->TargetSize.X),
+		static_cast<double>(ExpectedHorizontalWidth));
+	TestEqual(
+		TEXT("horizontal range height follows settings"),
+		static_cast<double>(HorizontalPlacement->TargetSize.Y),
+		static_cast<double>(ExpectedHorizontalHeight));
+	TestEqual(
+		TEXT("vertical range width follows settings"),
+		static_cast<double>(VerticalPlacement->TargetSize.X),
+		static_cast<double>(ExpectedVerticalWidth));
+	TestEqual(
+		TEXT("vertical range height follows settings"),
+		static_cast<double>(VerticalPlacement->TargetSize.Y),
+		static_cast<double>(ExpectedVerticalHeight));
+	TestTrue(TEXT("horizontal range is drawn above entry"), HorizontalPlacement->TargetPosition.Y < EventPlacement->TargetPosition.Y);
+	TestTrue(TEXT("vertical range is drawn below entry"), VerticalPlacement->TargetPosition.Y > EventPlacement->TargetPosition.Y);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerAppliesAvoidanceCommentColors,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerAppliesAvoidanceCommentColors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerAppliesAvoidanceCommentColors::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 100.0f;
+	RuleSet.CollisionPaddingY = 50.0f;
+	RuleSet.CollisionStepY = 70.0f;
+	RuleSet.MaxCollisionAttempts = 3;
+
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("preview materializes"), Materializer.MaterializeForTest(Sample, Plan, Result));
+
+	UEdGraphNode_Comment* HorizontalComment = FindCommentNodeByComment(Result.PreviewGraph.Get(), TEXT("水平避让范围"));
+	UEdGraphNode_Comment* VerticalComment = FindCommentNodeByComment(Result.PreviewGraph.Get(), TEXT("垂直避让范围"));
+	TestNotNull(TEXT("horizontal comment"), HorizontalComment);
+	TestNotNull(TEXT("vertical comment"), VerticalComment);
+	if (!HorizontalComment || !VerticalComment)
+	{
+		return false;
+	}
+
+	const FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindPreviewNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
+	const FGraphLayoutPreviewNodeSpec* VerticalSpec = FindPreviewNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
+	const FNodePlacement* HorizontalPlacement = FindPlacement(Plan, TEXT("HorizontalAvoidanceRange"));
+	const FNodePlacement* VerticalPlacement = FindPlacement(Plan, TEXT("VerticalAvoidanceRange"));
+	TestNotNull(TEXT("horizontal spec"), HorizontalSpec);
+	TestNotNull(TEXT("vertical spec"), VerticalSpec);
+	TestNotNull(TEXT("horizontal placement"), HorizontalPlacement);
+	TestNotNull(TEXT("vertical placement"), VerticalPlacement);
+	if (!HorizontalSpec || !VerticalSpec || !HorizontalPlacement || !VerticalPlacement)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("horizontal comment color"), HorizontalComment->CommentColor, HorizontalSpec->CommentColor);
+	TestEqual(TEXT("vertical comment color"), VerticalComment->CommentColor, VerticalSpec->CommentColor);
+	TestEqual(
+		TEXT("horizontal comment width"),
+		static_cast<double>(HorizontalComment->NodeWidth),
+		static_cast<double>(HorizontalPlacement->TargetSize.X));
+	TestEqual(
+		TEXT("vertical comment height"),
+		static_cast<double>(VerticalComment->NodeHeight),
+		static_cast<double>(VerticalPlacement->TargetSize.Y));
 	return true;
 }
 
@@ -3545,6 +4205,69 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelDetectsMovedNodes::RunTe
 	TestEqual(TEXT("moved anchor role"), Commit.MovedNodes[0].AnchorRole, ENodeRole::EventEntry);
 	TestEqual(TEXT("moved target x"), Commit.MovedNodes[0].EndTopLeft.X, static_cast<double>(EventNode->NodePosX));
 	TestEqual(TEXT("moved target y"), Commit.MovedNodes[0].EndTopLeft.Y, static_cast<double>(EventNode->NodePosY));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresAvoidanceRangeOverlays,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelIgnoresAvoidanceRangeOverlays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresAvoidanceRangeOverlays::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 120.0f;
+	RuleSet.CollisionPaddingY = 40.0f;
+	RuleSet.CollisionStepY = 80.0f;
+	RuleSet.MaxCollisionAttempts = 5;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("materializer succeeds"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("preview graph exists"), Result.PreviewGraph.IsValid());
+	const FGuid* OverlayGuid = Result.NodeGuidsById.Find(TEXT("HorizontalAvoidanceRange"));
+	TestNotNull(TEXT("horizontal overlay guid exists"), OverlayGuid);
+	if (!Result.PreviewGraph.IsValid() || !OverlayGuid)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("horizontal overlay is registered as preview-only"), Result.PreviewOverlayGuids.Contains(*OverlayGuid));
+
+	UEdGraphNode* OverlayNode = nullptr;
+	for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == *OverlayGuid)
+		{
+			OverlayNode = Node;
+			break;
+		}
+	}
+	TestNotNull(TEXT("horizontal overlay node found"), OverlayNode);
+	if (!OverlayNode)
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewInteractionModel Model;
+	TestTrue(TEXT("model initializes with non-overlay nodes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+	Model.BeginInteraction(Result.PreviewGraph.Get());
+
+	OverlayNode->NodePosX += 256;
+	OverlayNode->NodePosY += 128;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	TestFalse(TEXT("overlay-only move does not create a commit"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+	TestEqual(TEXT("overlay-only move has no moved nodes"), Commit.MovedNodes.Num(), 0);
+	TestTrue(TEXT("overlay-only move is ignored without rejection"), Commit.RejectionReason.IsEmpty());
 	return true;
 }
 

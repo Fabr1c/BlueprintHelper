@@ -3,6 +3,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutClassifier.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutDataInputPlacement.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutExecPinAnchor.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutGroupAvoidancePolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRowAllocationPolicy.h"
@@ -19,13 +20,15 @@ struct FWorkingNode
 	bool bPinnedToCurrentPosition = false;
 	int32 SemanticRow = INDEX_NONE;
 	int32 ExecColumn = INDEX_NONE;
+	FString LayoutGroupId;
 	FString Reason;
 };
 
 enum class ETargetCollisionPolicy : uint8
 {
 	DownwardOnly,
-	PreferSameRow
+	PreferSameRow,
+	PreferSameRowLeft
 };
 
 static bool IsExecRole(ENodeRole Role)
@@ -39,21 +42,148 @@ static bool IsExecRole(ENodeRole Role)
 
 static ETargetCollisionPolicy GetExecCollisionPolicy(const FRuleSet& RuleSet, int32 ExecColumn)
 {
-	return RuleSet.bAlignExecNodesHorizontally && ExecColumn > 0
+	return RuleSet.bAlignExecNodesHorizontally && ExecColumn >= 0
 		? ETargetCollisionPolicy::PreferSameRow
 		: ETargetCollisionPolicy::DownwardOnly;
+}
+
+static EGraphLayoutCollisionSearchMode ToSearchMode(const ETargetCollisionPolicy CollisionPolicy)
+{
+	return CollisionPolicy == ETargetCollisionPolicy::PreferSameRow ||
+			CollisionPolicy == ETargetCollisionPolicy::PreferSameRowLeft
+		? EGraphLayoutCollisionSearchMode::PreferSameRow
+		: EGraphLayoutCollisionSearchMode::DownwardOnly;
+}
+
+static int32 ResolveHorizontalDirection(const ETargetCollisionPolicy CollisionPolicy)
+{
+	return CollisionPolicy == ETargetCollisionPolicy::PreferSameRowLeft ? -1 : 1;
+}
+
+static FString ResolveExplicitLayoutGroupId(const FNodeSnapshot& Node)
+{
+	if (!Node.LayoutBlockId.IsEmpty())
+	{
+		return Node.LayoutBlockId;
+	}
+	return Node.bExisting
+		? FString::Printf(TEXT("existing_node:%s"), *Node.NodeId)
+		: FString();
+}
+
+static TMap<FString, FString> BuildFallbackGeneratedLayoutGroupIds(
+	const FGraphSnapshot& Snapshot,
+	const TMap<FString, ENodeRole>& RolesById)
+{
+	TMap<FString, TSet<FString>> AdjacencyByNodeId;
+	TMap<FString, int32> OrderByNodeId;
+	TSet<FString> GeneratedNodesWithoutExplicitGroup;
+	for (const FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		OrderByNodeId.Add(Node.NodeId, OrderByNodeId.Num());
+		if (!Node.bExisting && Node.LayoutBlockId.IsEmpty())
+		{
+			GeneratedNodesWithoutExplicitGroup.Add(Node.NodeId);
+			AdjacencyByNodeId.FindOrAdd(Node.NodeId);
+		}
+	}
+
+	for (const FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		if (!GeneratedNodesWithoutExplicitGroup.Contains(Node.NodeId))
+		{
+			continue;
+		}
+
+		for (const FPinSnapshot& Pin : Node.Pins)
+		{
+			for (const FString& LinkedNodeId : Pin.LinkedNodeIds)
+			{
+				if (!GeneratedNodesWithoutExplicitGroup.Contains(LinkedNodeId))
+				{
+					continue;
+				}
+				AdjacencyByNodeId.FindOrAdd(Node.NodeId).Add(LinkedNodeId);
+				AdjacencyByNodeId.FindOrAdd(LinkedNodeId).Add(Node.NodeId);
+			}
+		}
+	}
+
+	TMap<FString, FString> GroupIdByNodeId;
+	TSet<FString> Visited;
+	for (const FNodeSnapshot& Node : Snapshot.Nodes)
+	{
+		if (!GeneratedNodesWithoutExplicitGroup.Contains(Node.NodeId) || Visited.Contains(Node.NodeId))
+		{
+			continue;
+		}
+
+		TArray<FString> ComponentNodes;
+		TArray<FString> Queue;
+		Queue.Add(Node.NodeId);
+		Visited.Add(Node.NodeId);
+		for (int32 QueueIndex = 0; QueueIndex < Queue.Num(); ++QueueIndex)
+		{
+			const FString CurrentNodeId = Queue[QueueIndex];
+			ComponentNodes.Add(CurrentNodeId);
+			const TSet<FString>* Neighbors = AdjacencyByNodeId.Find(CurrentNodeId);
+			if (!Neighbors)
+			{
+				continue;
+			}
+			for (const FString& Neighbor : *Neighbors)
+			{
+				if (!Visited.Contains(Neighbor))
+				{
+					Visited.Add(Neighbor);
+					Queue.Add(Neighbor);
+				}
+			}
+		}
+
+		ComponentNodes.Sort([&OrderByNodeId](const FString& Left, const FString& Right)
+		{
+			return OrderByNodeId.FindRef(Left) < OrderByNodeId.FindRef(Right);
+		});
+
+		FString AnchorNodeId = ComponentNodes.Num() > 0 ? ComponentNodes[0] : Node.NodeId;
+		for (const FString& ComponentNodeId : ComponentNodes)
+		{
+			if (RolesById.FindRef(ComponentNodeId) == ENodeRole::EventEntry)
+			{
+				AnchorNodeId = ComponentNodeId;
+				break;
+			}
+		}
+
+		const FString GroupId = FString::Printf(TEXT("entry:%s"), *AnchorNodeId);
+		for (const FString& ComponentNodeId : ComponentNodes)
+		{
+			GroupIdByNodeId.Add(ComponentNodeId, GroupId);
+		}
+	}
+
+	return GroupIdByNodeId;
 }
 
 static FVector2D ResolveTargetWithPolicy(
 	FOccupancyResolver& Occupancy,
 	const FString& NodeId,
+	const FString& LayoutGroupId,
 	const FVector2D& DesiredTarget,
 	const FVector2D& Size,
 	const ETargetCollisionPolicy CollisionPolicy)
 {
-	return CollisionPolicy == ETargetCollisionPolicy::PreferSameRow
-		? Occupancy.ResolveNearestFreeTargetPreferSameRow(NodeId, DesiredTarget, Size)
-		: Occupancy.ResolveNearestFreeTarget(NodeId, DesiredTarget, Size);
+	FResolveTargetRequest Request;
+	Request.NodeId = NodeId;
+	Request.LayoutGroupId = LayoutGroupId;
+	Request.DesiredPosition = DesiredTarget;
+	Request.Size = Size;
+	Request.SearchMode = ToSearchMode(CollisionPolicy);
+	Request.PreferredHorizontalDirection = ResolveHorizontalDirection(CollisionPolicy);
+	Request.bIgnoreSameGroupReservations = CollisionPolicy == ETargetCollisionPolicy::DownwardOnly;
+	Request.bIgnoreExternalGroupReservations = !LayoutGroupId.IsEmpty();
+	return Occupancy.ResolveTarget(Request);
 }
 
 static int32 ReserveRow(TMap<int32, TSet<int32>>& UsedRows, int32 Column, int32 PreferredRow)
@@ -171,13 +301,19 @@ static void SetTarget(
 		}
 
 		const FVector2D Size = Node->Snapshot ? Node->Snapshot->Size : FVector2D(180.0f, 80.0f);
-		const FVector2D Target = ResolveTargetWithPolicy(Occupancy, NodeId, DesiredTarget, Size, CollisionPolicy);
+		const FVector2D Target = ResolveTargetWithPolicy(
+			Occupancy,
+			NodeId,
+			Node->LayoutGroupId,
+			DesiredTarget,
+			Size,
+			CollisionPolicy);
 		Node->Target = Target;
 		Node->bHasTarget = true;
 		Node->Reason = Target.Equals(DesiredTarget)
 			? Reason
 			: FString::Printf(TEXT("%s_avoided_overlap"), *Reason);
-		Occupancy.ReserveTarget(NodeId, Target, Size, true);
+		Occupancy.ReserveTarget(NodeId, Target, Size, true, Node->LayoutGroupId);
 	}
 }
 
@@ -339,7 +475,8 @@ static bool AlignInputsToConsumerPinOrder(
 						Occupancy,
 						LinkedNodeId,
 						DesiredTarget,
-						FDataInputPlacement::GetReason(SourceNode->Role));
+						FDataInputPlacement::GetReason(SourceNode->Role),
+						ETargetCollisionPolicy::PreferSameRowLeft);
 					bChanged = true;
 				}
 			}
@@ -462,6 +599,7 @@ static void ReflowExecTargetsToAllocatedRows(
 				const FVector2D ResolvedTarget = ResolveTargetWithPolicy(
 					Occupancy,
 					NodeId,
+					Node->LayoutGroupId,
 					BuildExecTopLeftFromBaseline(*Node, Node->Target.X, ResolvedBaselineY),
 					Node->Snapshot->Size,
 					GetExecCollisionPolicy(RuleSet, Node->ExecColumn));
@@ -533,7 +671,19 @@ static bool PlaceInputClusters(
 
 		const FNodeInputClusterBudget ClusterBudget =
 			FNodeInputClusterPolicy::MeasureForConsumer(Snapshot, Topology, ConsumerNodeId, RuleSet);
-		for (const FString& ClusterNodeId : ClusterBudget.NodeIds)
+		TArray<FString> ClusterNodeIds = ClusterBudget.NodeIds;
+		ClusterNodeIds.Sort([&ClusterBudget, &SnapshotOrderByNodeId](const FString& Left, const FString& Right)
+		{
+			const float LeftPriority = ClusterBudget.LayoutPriorityByNodeId.FindRef(Left);
+			const float RightPriority = ClusterBudget.LayoutPriorityByNodeId.FindRef(Right);
+			if (!FMath::IsNearlyEqual(LeftPriority, RightPriority))
+			{
+				return LeftPriority > RightPriority;
+			}
+			return SnapshotOrderByNodeId.FindRef(Left) < SnapshotOrderByNodeId.FindRef(Right);
+		});
+
+		for (const FString& ClusterNodeId : ClusterNodeIds)
 		{
 			FWorkingNode* ClusterNode = Nodes.Find(ClusterNodeId);
 			if (!ClusterNode || !ClusterNode->Snapshot || ClusterNode->bHasTarget)
@@ -547,16 +697,81 @@ static bool PlaceInputClusters(
 				continue;
 			}
 
+			const EPureDataNodeKind ClusterKind = ClusterBudget.KindByNodeId.FindRef(ClusterNodeId);
+			const ETargetCollisionPolicy DataPolicy = ClusterKind == EPureDataNodeKind::None
+				? ETargetCollisionPolicy::DownwardOnly
+				: ETargetCollisionPolicy::PreferSameRowLeft;
 			SetTarget(
 				Nodes,
 				Occupancy,
 				ClusterNodeId,
 				ConsumerNode->Target + *RelativeTarget,
-				TEXT("pure_data_subgraph_alignment"));
+				TEXT("pure_data_subgraph_alignment"),
+				DataPolicy);
 			bChanged = true;
 		}
 	}
 	return bChanged;
+}
+
+static TArray<FGraphLayoutGroupNode> BuildGroupAvoidanceNodes(
+	const FGraphSnapshot& Snapshot,
+	const TMap<FString, FWorkingNode>& Nodes,
+	const TMap<FString, int32>& SnapshotOrderByNodeId)
+{
+	TArray<FGraphLayoutGroupNode> GroupNodes;
+	for (const FNodeSnapshot& SnapshotNode : Snapshot.Nodes)
+	{
+		const FWorkingNode* Node = Nodes.Find(SnapshotNode.NodeId);
+		if (!Node || !Node->bHasTarget)
+		{
+			continue;
+		}
+
+		FGraphLayoutGroupNode& GroupNode = GroupNodes.AddDefaulted_GetRef();
+		const bool bPinnedExistingNode = Node->bPinnedToCurrentPosition;
+		GroupNode.NodeId = SnapshotNode.NodeId;
+		GroupNode.LayoutGroupId = bPinnedExistingNode ? FString() : Node->LayoutGroupId;
+		GroupNode.LayoutGroupOrder = SnapshotNode.LayoutBlockOrder;
+		GroupNode.NodeOrder = SnapshotNode.LayoutNodeOrder != INDEX_NONE
+			? SnapshotNode.LayoutNodeOrder
+			: SnapshotOrderByNodeId.FindRef(SnapshotNode.NodeId);
+		GroupNode.TargetPosition = Node->Target;
+		GroupNode.Size = SnapshotNode.Size;
+		GroupNode.bGenerated = !bPinnedExistingNode;
+	}
+	return GroupNodes;
+}
+
+static void ApplyGroupOffsets(
+	TMap<FString, FWorkingNode>& Nodes,
+	const TArray<FGraphLayoutGroupOffset>& GroupOffsets)
+{
+	TMap<FString, FGraphLayoutGroupOffset> OffsetsByGroupId;
+	for (const FGraphLayoutGroupOffset& Offset : GroupOffsets)
+	{
+		OffsetsByGroupId.Add(Offset.LayoutGroupId, Offset);
+	}
+
+	for (TPair<FString, FWorkingNode>& Pair : Nodes)
+	{
+		FWorkingNode& Node = Pair.Value;
+		if (!Node.bHasTarget || Node.bPinnedToCurrentPosition)
+		{
+			continue;
+		}
+
+		const FGraphLayoutGroupOffset* Offset = OffsetsByGroupId.Find(Node.LayoutGroupId);
+		if (!Offset || Offset->Offset.IsNearlyZero())
+		{
+			continue;
+		}
+
+		Node.Target += Offset->Offset;
+		Node.Reason = Node.Reason.IsEmpty()
+			? Offset->Reason
+			: FString::Printf(TEXT("%s|%s"), *Node.Reason, *Offset->Reason);
+	}
 }
 
 FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleSet)
@@ -573,11 +788,18 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 
 	TMap<FString, FWorkingNode> Nodes;
 	TMap<FString, int32> SnapshotOrderByNodeId;
+	const TMap<FString, FString> FallbackGeneratedGroupIds =
+		BuildFallbackGeneratedLayoutGroupIds(Snapshot, RolesById);
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		FWorkingNode WorkingNode;
 		WorkingNode.Snapshot = &Node;
 		WorkingNode.Role = RolesById.FindRef(Node.NodeId);
+		WorkingNode.LayoutGroupId = ResolveExplicitLayoutGroupId(Node);
+		if (WorkingNode.LayoutGroupId.IsEmpty())
+		{
+			WorkingNode.LayoutGroupId = FallbackGeneratedGroupIds.FindRef(Node.NodeId);
+		}
 		WorkingNode.bPinnedToCurrentPosition = Node.bExisting && !RuleSet.bMoveExistingNodes;
 		if (WorkingNode.bPinnedToCurrentPosition)
 		{
@@ -670,6 +892,12 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 			}
 		}
 	}
+
+	ApplyGroupOffsets(
+		Nodes,
+		FGraphLayoutGroupAvoidancePolicy::ResolveGroupOffsets(
+			BuildGroupAvoidanceNodes(Snapshot, Nodes, SnapshotOrderByNodeId),
+			RuleSet));
 
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{

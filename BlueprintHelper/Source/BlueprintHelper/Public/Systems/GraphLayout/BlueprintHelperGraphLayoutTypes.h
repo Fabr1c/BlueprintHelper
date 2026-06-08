@@ -141,6 +141,7 @@ struct FNodePlacement
 	ENodeRole Role = ENodeRole::Unknown;
 	FVector2D CurrentPosition = FVector2D::ZeroVector;
 	FVector2D TargetPosition = FVector2D::ZeroVector;
+	FVector2D TargetSize = FVector2D::ZeroVector;
 	bool bMoveExisting = false;
 	FString Reason;
 };

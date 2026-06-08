@@ -21,6 +21,9 @@ struct FPureDataSubgraphEnvelope
 	FString RootNodeId;
 	TArray<FString> NodeIds;
 	TMap<FString, FVector2D> RelativeTargets;
+	TMap<FString, int32> DataDepthByNodeId;
+	TMap<FString, float> LayoutPriorityByNodeId;
+	TMap<FString, EPureDataNodeKind> KindByNodeId;
 	FVector2D Size = FVector2D::ZeroVector;
 };
 

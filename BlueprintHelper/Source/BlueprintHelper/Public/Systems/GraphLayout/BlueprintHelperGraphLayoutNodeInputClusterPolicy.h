@@ -11,6 +11,9 @@ struct FNodeInputClusterBudget
 	FString ConsumerNodeId;
 	TArray<FString> NodeIds;
 	TMap<FString, FVector2D> RelativeTargets;
+	TMap<FString, int32> DataDepthByNodeId;
+	TMap<FString, float> LayoutPriorityByNodeId;
+	TMap<FString, EPureDataNodeKind> KindByNodeId;
 	float Width = 0.0f;
 	float Height = 0.0f;
 };

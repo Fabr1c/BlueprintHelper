@@ -259,13 +259,17 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 		return false;
 	}
 
-	const FVector2D TargetPosition = FindPlacement(NodeSpec.NodeId)
-		? FindPlacement(NodeSpec.NodeId)->TargetPosition
+	const FNodePlacement* Placement = FindPlacement(NodeSpec.NodeId);
+	const FVector2D TargetPosition = Placement
+		? Placement->TargetPosition
 		: SnapshotNode->Position;
+	const FVector2D TargetSize = Placement && !Placement->TargetSize.IsNearlyZero()
+		? Placement->TargetSize
+		: FVector2D::ZeroVector;
 	Node->NodePosX = FMath::RoundToInt(TargetPosition.X);
 	Node->NodePosY = FMath::RoundToInt(TargetPosition.Y);
-	Node->NodeWidth = NodeSpec.Size.X > 0.0f ? NodeSpec.Size.X : SnapshotNode->Size.X;
-	Node->NodeHeight = NodeSpec.Size.Y > 0.0f ? NodeSpec.Size.Y : SnapshotNode->Size.Y;
+	Node->NodeWidth = TargetSize.X > 0.0f ? TargetSize.X : (NodeSpec.Size.X > 0.0f ? NodeSpec.Size.X : SnapshotNode->Size.X);
+	Node->NodeHeight = TargetSize.Y > 0.0f ? TargetSize.Y : (NodeSpec.Size.Y > 0.0f ? NodeSpec.Size.Y : SnapshotNode->Size.Y);
 	Node->CreateNewGuid();
 	Node->SetFlags(RF_Transient);
 
@@ -288,6 +292,10 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 	Result.AnchorRolesByGuid.Add(
 		Node->NodeGuid,
 		NodeSpec.bUsePreviewRoleAnchor ? NodeSpec.PreviewAnchorRole : NodeSpec.Role);
+	if (NodeSpec.bPreviewOverlay)
+	{
+		Result.PreviewOverlayGuids.Add(Node->NodeGuid);
+	}
 	++NextNodeIndex;
 	return true;
 }
@@ -427,6 +435,7 @@ UEdGraphNode* FGraphLayoutPreviewMaterializer::CreateNodeForSpec(const FGraphLay
 		UEdGraphNode_Comment* CommentNode = NewObject<UEdGraphNode_Comment>(Graph);
 		Graph->AddNode(CommentNode, true, false);
 		CommentNode->NodeComment = NodeSpec.Title;
+		CommentNode->CommentColor = NodeSpec.CommentColor;
 		return CommentNode;
 	}
 	case EGraphLayoutPreviewNodeFactory::GenericK2:

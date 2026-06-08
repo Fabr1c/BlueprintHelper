@@ -32,7 +32,9 @@ static void AddPreviewNode(
 	const FVector2D& Size,
 	const bool bExisting,
 	std::initializer_list<FPinSnapshot> Pins,
-	const ENodeRole PreviewAnchorRole = ENodeRole::Unknown)
+	const ENodeRole PreviewAnchorRole = ENodeRole::Unknown,
+	const FLinearColor CommentColor = FLinearColor::White,
+	const bool bPreviewOverlay = false)
 {
 	FNodeSnapshot SnapshotNode;
 	SnapshotNode.NodeId = NodeId;
@@ -56,6 +58,8 @@ static void AddPreviewNode(
 	NodeSpec.PreviewAnchorRole = PreviewAnchorRole;
 	NodeSpec.bUsePreviewRoleAnchor = PreviewAnchorRole != ENodeRole::Unknown;
 	NodeSpec.Size = Size;
+	NodeSpec.CommentColor = CommentColor;
+	NodeSpec.bPreviewOverlay = bPreviewOverlay;
 	Sample.Nodes.Add(NodeSpec);
 }
 
@@ -628,6 +632,34 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
+	AddPreviewNode(
+		OutSample,
+		TEXT("HorizontalAvoidanceRange"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("水平避让范围"),
+		EGraphLayoutPreviewNodeFactory::Comment,
+		ENodeRole::Comment,
+		FVector2D(-300.0f, -140.0f),
+		FVector2D(420.0f, 120.0f),
+		true,
+		{},
+		ENodeRole::Unknown,
+		FLinearColor(0.05f, 0.65f, 0.85f, 0.28f),
+		true);
+	AddPreviewNode(
+		OutSample,
+		TEXT("VerticalAvoidanceRange"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("垂直避让范围"),
+		EGraphLayoutPreviewNodeFactory::Comment,
+		ENodeRole::Comment,
+		FVector2D(-300.0f, 140.0f),
+		FVector2D(220.0f, 420.0f),
+		true,
+		{},
+		ENodeRole::Unknown,
+		FLinearColor(1.0f, 0.55f, 0.08f, 0.28f),
+		true);
 
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("CandidateExec"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("CandidateExec"), TEXT("then"), TEXT("FallbackExec"), TEXT("execute"), true, OutError) &&

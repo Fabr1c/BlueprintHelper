@@ -19,6 +19,7 @@ struct BLUEPRINTHELPER_API FGraphLayoutPreviewMaterializerResult
 	TMap<FGuid, FString> NodeIdsByGuid;
 	TMap<FGuid, ENodeRole> RolesByGuid;
 	TMap<FGuid, ENodeRole> AnchorRolesByGuid;
+	TSet<FGuid> PreviewOverlayGuids;
 	FString Error;
 };
 

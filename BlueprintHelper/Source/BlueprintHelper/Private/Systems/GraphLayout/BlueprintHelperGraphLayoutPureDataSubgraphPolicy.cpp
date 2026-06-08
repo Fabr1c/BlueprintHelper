@@ -2,7 +2,12 @@
 
 namespace BlueprintHelper::GraphLayout
 {
-namespace
+struct FBlueprintHelperPureDataPriorityPolicy
+{
+	static constexpr float DataPriorityDecayPerLink = 0.1f;
+};
+
+struct FBlueprintHelperPureDataSubgraphMeasureHelpers
 {
 static bool HasPin(const FNodeSnapshot& Node, EPinDirection Direction, bool bExec)
 {
@@ -20,7 +25,10 @@ static bool AddRelativeTarget(
 	FPureDataSubgraphEnvelope& Envelope,
 	TSet<FString>& ClaimedNodes,
 	const FNodeSnapshot& Node,
-	const FVector2D& RelativeTarget)
+	const FVector2D& RelativeTarget,
+	const EPureDataNodeKind Kind,
+	const int32 DataDepth,
+	const float LayoutPriority)
 {
 	if (ClaimedNodes.Contains(Node.NodeId))
 	{
@@ -30,6 +38,9 @@ static bool AddRelativeTarget(
 	ClaimedNodes.Add(Node.NodeId);
 	Envelope.NodeIds.Add(Node.NodeId);
 	Envelope.RelativeTargets.Add(Node.NodeId, RelativeTarget);
+	Envelope.KindByNodeId.Add(Node.NodeId, Kind);
+	Envelope.DataDepthByNodeId.Add(Node.NodeId, DataDepth);
+	Envelope.LayoutPriorityByNodeId.Add(Node.NodeId, LayoutPriority);
 	return true;
 }
 
@@ -38,6 +49,8 @@ static void MeasureNodeFromInputs(
 	const FString& NodeId,
 	const FVector2D& RelativeTarget,
 	const FRuleSet& RuleSet,
+	const int32 DataDepth,
+	const float LayoutPriority,
 	TSet<FString>& ClaimedNodes,
 	FPureDataSubgraphEnvelope& Envelope)
 {
@@ -53,7 +66,7 @@ static void MeasureNodeFromInputs(
 		return;
 	}
 
-	if (!AddRelativeTarget(Envelope, ClaimedNodes, *Node, RelativeTarget))
+	if (!AddRelativeTarget(Envelope, ClaimedNodes, *Node, RelativeTarget, Kind, DataDepth, LayoutPriority))
 	{
 		return;
 	}
@@ -82,7 +95,15 @@ static void MeasureNodeFromInputs(
 		const FVector2D SourceTarget(
 			RelativeTarget.X - RuleSet.VariableInputOffsetX,
 			RelativeTarget.Y + InputOrder * RuleSet.InputPinRowSpacing);
-		MeasureNodeFromInputs(Topology, Edge.SourceNodeId, SourceTarget, RuleSet, ClaimedNodes, Envelope);
+		MeasureNodeFromInputs(
+			Topology,
+			Edge.SourceNodeId,
+			SourceTarget,
+			RuleSet,
+			DataDepth + 1,
+			LayoutPriority - FBlueprintHelperPureDataPriorityPolicy::DataPriorityDecayPerLink,
+			ClaimedNodes,
+			Envelope);
 		++InputOrder;
 	}
 }
@@ -129,7 +150,7 @@ static void UpdateEnvelopeSize(
 		(Max.X - Min.X) + RuleSet.DataClusterPaddingX,
 		(Max.Y - Min.Y) + RuleSet.DataClusterPaddingY);
 }
-}
+};
 
 EPureDataNodeKind FPureDataSubgraphPolicy::ClassifyNode(const FNodeSnapshot& Node)
 {
@@ -141,8 +162,10 @@ EPureDataNodeKind FPureDataSubgraphPolicy::ClassifyNode(const FNodeSnapshot& Nod
 		}
 	}
 
-	const bool bHasDataInput = HasPin(Node, EPinDirection::Input, false);
-	const bool bHasDataOutput = HasPin(Node, EPinDirection::Output, false);
+	const bool bHasDataInput =
+		FBlueprintHelperPureDataSubgraphMeasureHelpers::HasPin(Node, EPinDirection::Input, false);
+	const bool bHasDataOutput =
+		FBlueprintHelperPureDataSubgraphMeasureHelpers::HasPin(Node, EPinDirection::Output, false);
 	if (!bHasDataInput && bHasDataOutput)
 	{
 		return EPureDataNodeKind::DataLeaf;
@@ -209,8 +232,16 @@ FPureDataSubgraphEnvelope FPureDataSubgraphPolicy::MeasureForRoot(
 
 	Envelope.RootNodeId = RootNodeId;
 	TSet<FString> ClaimedNodes;
-	MeasureNodeFromInputs(Topology, RootNodeId, FVector2D::ZeroVector, RuleSet, ClaimedNodes, Envelope);
-	UpdateEnvelopeSize(Envelope, Topology, RuleSet);
+	FBlueprintHelperPureDataSubgraphMeasureHelpers::MeasureNodeFromInputs(
+		Topology,
+		RootNodeId,
+		FVector2D::ZeroVector,
+		RuleSet,
+		1,
+		-FBlueprintHelperPureDataPriorityPolicy::DataPriorityDecayPerLink,
+		ClaimedNodes,
+		Envelope);
+	FBlueprintHelperPureDataSubgraphMeasureHelpers::UpdateEnvelopeSize(Envelope, Topology, RuleSet);
 	return Envelope;
 }
 }

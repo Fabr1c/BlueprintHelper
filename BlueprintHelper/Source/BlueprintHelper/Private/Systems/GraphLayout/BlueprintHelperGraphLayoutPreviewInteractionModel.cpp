@@ -34,6 +34,10 @@ bool FGraphLayoutPreviewInteractionModel::Initialize(
 		{
 			continue;
 		}
+		if (MaterializerResult.PreviewOverlayGuids.Contains(Node->NodeGuid))
+		{
+			continue;
+		}
 
 		FTrackedNode Tracked;
 		Tracked.NodeId = *NodeId;
@@ -288,12 +292,6 @@ bool FGraphLayoutPreviewInteractionModel::ValidateMoveOnly(UEdGraph* PreviewGrap
 			OutReason = FString::Printf(TEXT("preview graph tracked node disappeared: %s"), *Pair.Value.NodeId);
 			return false;
 		}
-	}
-
-	if (CurrentGuids.Num() != TrackedNodesByGuid.Num())
-	{
-		OutReason = TEXT("preview graph contains untracked nodes");
-		return false;
 	}
 
 	TMap<FGuid, FString> CurrentNodeSignaturesByGuid;

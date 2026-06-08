@@ -419,6 +419,10 @@ TSharedRef<FJsonObject> ToJson(const FLayoutPlan& Plan)
 		Item->SetStringField(TEXT("role"), ToString(Placement.Role));
 		Item->SetObjectField(TEXT("current_position"), VectorToJson(Placement.CurrentPosition));
 		Item->SetObjectField(TEXT("target_position"), VectorToJson(Placement.TargetPosition));
+		if (!Placement.TargetSize.IsNearlyZero())
+		{
+			Item->SetObjectField(TEXT("target_size"), VectorToJson(Placement.TargetSize));
+		}
 		Item->SetBoolField(TEXT("move_existing"), Placement.bMoveExisting);
 		Item->SetStringField(TEXT("reason"), Placement.Reason);
 		Placements.Add(MakeShared<FJsonValueObject>(Item));

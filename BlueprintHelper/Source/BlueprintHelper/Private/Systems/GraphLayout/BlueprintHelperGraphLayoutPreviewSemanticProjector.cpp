@@ -64,7 +64,8 @@ void FGraphLayoutPreviewSemanticProjector::AddPlacement(
 	const FGraphLayoutPreviewSample& Sample,
 	const FGraphLayoutPreviewNodeSpec& NodeSpec,
 	const FVector2D& TargetPosition,
-	const FString& Reason)
+	const FString& Reason,
+	const FVector2D& TargetSize)
 {
 	if (HasPlacementForNode(Plan, NodeSpec.NodeId))
 	{
@@ -77,9 +78,63 @@ void FGraphLayoutPreviewSemanticProjector::AddPlacement(
 	Placement.Role = NodeSpec.Role;
 	Placement.CurrentPosition = SnapshotNode ? SnapshotNode->Position : FVector2D::ZeroVector;
 	Placement.TargetPosition = TargetPosition;
+	Placement.TargetSize = TargetSize;
 	Placement.bMoveExisting = true;
 	Placement.Reason = Reason;
 	Plan.Placements.Add(Placement);
+}
+
+void FGraphLayoutPreviewSemanticProjector::ProjectEntryAvoidanceRangeComments(
+	const FGraphLayoutPreviewSample& Sample,
+	const FRuleSet& RuleSet,
+	FLayoutPlan& Plan)
+{
+	const FGraphLayoutPreviewNodeSpec* EntrySpec = FindNodeSpec(Sample, TEXT("EventStart"));
+	const FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
+	const FGraphLayoutPreviewNodeSpec* VerticalSpec = FindNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
+	if (!EntrySpec || !HorizontalSpec || !VerticalSpec)
+	{
+		return;
+	}
+
+	FVector2D EntryTarget = FVector2D::ZeroVector;
+	if (!TryBuildSampleRelativeTarget(Sample, Plan, EntrySpec->NodeId, EntryTarget))
+	{
+		return;
+	}
+
+	const float HorizontalWidth =
+		EntrySpec->Size.X + RuleSet.CollisionPaddingX * 2.0f +
+		RuleSet.MaxCollisionAttempts * FMath::Max(EntrySpec->Size.X, RuleSet.CollisionPaddingX);
+	const float HorizontalHeight = EntrySpec->Size.Y + RuleSet.CollisionPaddingY * 2.0f;
+	const float VerticalWidth = EntrySpec->Size.X + RuleSet.CollisionPaddingX * 2.0f;
+	const float VerticalHeight =
+		EntrySpec->Size.Y + RuleSet.CollisionPaddingY * 2.0f +
+		RuleSet.MaxCollisionAttempts * RuleSet.CollisionStepY;
+
+	const FVector2D HorizontalSize(HorizontalWidth, HorizontalHeight);
+	const FVector2D VerticalSize(VerticalWidth, VerticalHeight);
+	const FVector2D HorizontalTarget(
+		EntryTarget.X - RuleSet.CollisionPaddingX,
+		EntryTarget.Y - RuleSet.CollisionPaddingY - HorizontalHeight - 24.0f);
+	const FVector2D VerticalTarget(
+		EntryTarget.X - RuleSet.CollisionPaddingX,
+		EntryTarget.Y + EntrySpec->Size.Y + 24.0f);
+
+	AddPlacement(
+		Plan,
+		Sample,
+		*HorizontalSpec,
+		HorizontalTarget,
+		TEXT("preview_horizontal_avoidance_range"),
+		HorizontalSize);
+	AddPlacement(
+		Plan,
+		Sample,
+		*VerticalSpec,
+		VerticalTarget,
+		TEXT("preview_vertical_avoidance_range"),
+		VerticalSize);
 }
 
 void FGraphLayoutPreviewSemanticProjector::ProjectAnchoredNodesByRole(
@@ -436,6 +491,8 @@ void FGraphLayoutPreviewSemanticProjector::ProjectOccupancy(
 			BuildTopLeftFromAnchor(*ExistingGuardSpec, ENodeRole::ExecNode, ChainAnchor),
 			TEXT("preview_occupancy_fallback_row"));
 	}
+
+	ProjectEntryAvoidanceRangeComments(Sample, RuleSet, Plan);
 }
 
 FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(

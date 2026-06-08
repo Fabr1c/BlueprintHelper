@@ -33,7 +33,8 @@ private:
 		const FGraphLayoutPreviewSample& Sample,
 		const FGraphLayoutPreviewNodeSpec& NodeSpec,
 		const FVector2D& TargetPosition,
-		const FString& Reason);
+		const FString& Reason,
+		const FVector2D& TargetSize = FVector2D::ZeroVector);
 	static void ProjectAnchoredNodesByRole(
 		const FGraphLayoutPreviewSample& Sample,
 		const FEditorCanvasSceneState& SceneState,
@@ -65,6 +66,10 @@ private:
 		const FGraphLayoutPreviewSample& Sample,
 		const FRuleSet& RuleSet,
 		const FEditorCanvasSceneState& SceneState,
+		FLayoutPlan& Plan);
+	static void ProjectEntryAvoidanceRangeComments(
+		const FGraphLayoutPreviewSample& Sample,
+		const FRuleSet& RuleSet,
 		FLayoutPlan& Plan);
 };
 }

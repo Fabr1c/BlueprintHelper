@@ -26,6 +26,8 @@ struct FGraphLayoutPreviewNodeSpec
 	ENodeRole PreviewAnchorRole = ENodeRole::Unknown;
 	bool bUsePreviewRoleAnchor = false;
 	FVector2D Size = FVector2D(220.0f, 96.0f);
+	FLinearColor CommentColor = FLinearColor::White;
+	bool bPreviewOverlay = false;
 };
 
 struct FGraphLayoutPreviewLinkSpec

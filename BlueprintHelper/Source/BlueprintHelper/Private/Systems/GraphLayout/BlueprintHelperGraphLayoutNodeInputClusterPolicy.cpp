@@ -5,18 +5,21 @@
 
 namespace BlueprintHelper::GraphLayout
 {
-namespace
+struct FBlueprintHelperNodeInputClusterBudgetHelpers
 {
-struct FMeasuredBounds
-{
-	FVector2D Min = FVector2D::ZeroVector;
-	FVector2D Max = FVector2D::ZeroVector;
-};
+	struct FMeasuredBounds
+	{
+		FVector2D Min = FVector2D::ZeroVector;
+		FVector2D Max = FVector2D::ZeroVector;
+	};
 
 static void AddBudgetTarget(
 	FNodeInputClusterBudget& Budget,
 	const FString& NodeId,
-	const FVector2D& RelativeTarget)
+	const FVector2D& RelativeTarget,
+	const EPureDataNodeKind Kind = EPureDataNodeKind::None,
+	const int32 DataDepth = INDEX_NONE,
+	const float LayoutPriority = 0.0f)
 {
 	if (Budget.RelativeTargets.Contains(NodeId))
 	{
@@ -25,19 +28,31 @@ static void AddBudgetTarget(
 
 	Budget.NodeIds.Add(NodeId);
 	Budget.RelativeTargets.Add(NodeId, RelativeTarget);
+	if (Kind != EPureDataNodeKind::None)
+	{
+		Budget.KindByNodeId.Add(NodeId, Kind);
+	}
+	if (DataDepth != INDEX_NONE)
+	{
+		Budget.DataDepthByNodeId.Add(NodeId, DataDepth);
+	}
+	Budget.LayoutPriorityByNodeId.Add(NodeId, LayoutPriority);
 }
 
 static bool TryAddBudgetTarget(
 	FNodeInputClusterBudget& Budget,
 	const FString& NodeId,
-	const FVector2D& RelativeTarget)
+	const FVector2D& RelativeTarget,
+	const EPureDataNodeKind Kind = EPureDataNodeKind::None,
+	const int32 DataDepth = INDEX_NONE,
+	const float LayoutPriority = 0.0f)
 {
 	if (Budget.RelativeTargets.Contains(NodeId))
 	{
 		return false;
 	}
 
-	AddBudgetTarget(Budget, NodeId, RelativeTarget);
+	AddBudgetTarget(Budget, NodeId, RelativeTarget, Kind, DataDepth, LayoutPriority);
 	return true;
 }
 
@@ -163,7 +178,7 @@ static TOptional<FMeasuredBounds> MeasureEnvelopeBounds(
 	Bounds.Max = RootTarget + LocalMax + FVector2D(RuleSet.DataClusterPaddingX, RuleSet.DataClusterPaddingY);
 	return Bounds;
 }
-}
+};
 
 FNodeInputClusterBudget FNodeInputClusterPolicy::MeasureForConsumer(
 	const FGraphSnapshot& Snapshot,
@@ -180,7 +195,7 @@ FNodeInputClusterBudget FNodeInputClusterPolicy::MeasureForConsumer(
 		return Budget;
 	}
 
-	TArray<FMeasuredBounds> SupplementalBounds;
+	TArray<FBlueprintHelperNodeInputClusterBudgetHelpers::FMeasuredBounds> SupplementalBounds;
 	int32 SourceOrder = 0;
 	for (const FPinSnapshot& Pin : ConsumerNode->Pins)
 	{
@@ -202,7 +217,7 @@ FNodeInputClusterBudget FNodeInputClusterPolicy::MeasureForConsumer(
 
 			if (PureKind == EPureDataNodeKind::DataTransform)
 			{
-				const FVector2D RootTarget = BuildLeafRelativeTarget(
+				const FVector2D RootTarget = FBlueprintHelperNodeInputClusterBudgetHelpers::BuildLeafRelativeTarget(
 					RuleSet,
 					ConsumerNodeId,
 					LinkedNodeId,
@@ -224,13 +239,24 @@ FNodeInputClusterBudget FNodeInputClusterPolicy::MeasureForConsumer(
 						continue;
 					}
 
-					if (TryAddBudgetTarget(Budget, NodeId, RootTarget + *EnvelopeTarget))
+					if (FBlueprintHelperNodeInputClusterBudgetHelpers::TryAddBudgetTarget(
+							Budget,
+							NodeId,
+							RootTarget + *EnvelopeTarget,
+							Envelope.KindByNodeId.FindRef(NodeId),
+							Envelope.DataDepthByNodeId.FindRef(NodeId),
+							Envelope.LayoutPriorityByNodeId.FindRef(NodeId)))
 					{
 						ClaimedEnvelopeNodeIds.Add(NodeId);
 					}
 				}
-				if (const TOptional<FMeasuredBounds> EnvelopeBounds =
-						MeasureEnvelopeBounds(ClaimedEnvelopeNodeIds, Envelope, Topology, RootTarget, RuleSet))
+				if (const TOptional<FBlueprintHelperNodeInputClusterBudgetHelpers::FMeasuredBounds> EnvelopeBounds =
+						FBlueprintHelperNodeInputClusterBudgetHelpers::MeasureEnvelopeBounds(
+							ClaimedEnvelopeNodeIds,
+							Envelope,
+							Topology,
+							RootTarget,
+							RuleSet))
 				{
 					SupplementalBounds.Add(*EnvelopeBounds);
 				}
@@ -243,15 +269,23 @@ FNodeInputClusterBudget FNodeInputClusterPolicy::MeasureForConsumer(
 				continue;
 			}
 
-			AddBudgetTarget(
+			FBlueprintHelperNodeInputClusterBudgetHelpers::AddBudgetTarget(
 				Budget,
 				LinkedNodeId,
-				BuildLeafRelativeTarget(RuleSet, ConsumerNodeId, LinkedNodeId, SourceRole, SourceOrder));
+				FBlueprintHelperNodeInputClusterBudgetHelpers::BuildLeafRelativeTarget(
+					RuleSet,
+					ConsumerNodeId,
+					LinkedNodeId,
+					SourceRole,
+					SourceOrder),
+				EPureDataNodeKind::DataLeaf,
+				1,
+				-0.1f);
 			++SourceOrder;
 		}
 	}
 
-	UpdateBudgetSize(Budget, Topology, SupplementalBounds, RuleSet);
+	FBlueprintHelperNodeInputClusterBudgetHelpers::UpdateBudgetSize(Budget, Topology, SupplementalBounds, RuleSet);
 	return Budget;
 }
 }
