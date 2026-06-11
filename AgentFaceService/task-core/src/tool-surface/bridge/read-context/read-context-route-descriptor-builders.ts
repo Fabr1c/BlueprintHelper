@@ -20,12 +20,12 @@ export type ReadContextBridgeRequest =
       message: string;
     };
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_md' | 'logic_json';
+export type ReadContextLogicFormat = 'logic_flow' | 'logic_json';
 
 export type ReadContextLogicBridgeRoute = {
   format: ReadContextLogicFormat;
-  command: 'read_blueprint_logic_md' | 'read_blueprint_logic_json';
-  payloadSchema: 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1';
+  command: 'read_blueprint_logic_json';
+  payloadSchema: 'LogicFlow.v1' | 'LogicJson.v1';
 };
 
 export type ReadContextRequestBuilder = (
@@ -33,7 +33,7 @@ export type ReadContextRequestBuilder = (
   route: ReadContextRouteDescriptor,
 ) => ReadContextBridgeRequest;
 
-const LOGIC_FORMATS = new Set<ReadContextTemplateView>(['logic_flow', 'logic_md', 'logic_json']);
+const LOGIC_FORMATS = new Set<ReadContextTemplateView>(['logic_flow', 'logic_json']);
 
 const TARGET_PAYLOAD_KEY_BY_TYPE: Readonly<Record<string, string>> = {
   graph: 'graph',
@@ -107,22 +107,16 @@ export function buildReadContextLogicBridgeRoute(format: ReadContextLogicFormat)
 
 export function resolveReadContextBridgeCommand(
   format: ReadContextLogicFormat,
-): 'read_blueprint_logic_md' | 'read_blueprint_logic_json' {
-  const commands: Readonly<Record<ReadContextLogicFormat, 'read_blueprint_logic_md' | 'read_blueprint_logic_json'>> = {
-    logic_flow: 'read_blueprint_logic_json',
-    logic_json: 'read_blueprint_logic_json',
-    logic_md: 'read_blueprint_logic_md',
-  };
-  return commands[format];
+): 'read_blueprint_logic_json' {
+  return 'read_blueprint_logic_json';
 }
 
 export function resolveReadContextPayloadSchema(
   format: ReadContextLogicFormat,
-): 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1' {
-  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1'>> = {
+): 'LogicFlow.v1' | 'LogicJson.v1' {
+  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicJson.v1'>> = {
     logic_flow: 'LogicFlow.v1',
     logic_json: 'LogicJson.v1',
-    logic_md: 'LogicMd.v1',
   };
   return schemas[format];
 }

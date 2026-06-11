@@ -36,6 +36,23 @@ test('global help points Agents to CLI catalog and per-tool help', async () => {
   assert.doesNotMatch(output, new RegExp(legacyTemplateIndexName));
 });
 
+test('help command accepts text format alias for shell smoke checks', async () => {
+  const writes: string[] = [];
+  const exitCode = await runCli({
+    argv: ['help', '--format', 'text'],
+    cwd: process.cwd(),
+    bridge: {} as never,
+    runner: {} as never,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  const output = writes.join('');
+  assert.equal(exitCode, 0);
+  assert.match(output, /BlueprintHelper CLI/);
+  assert.match(output, /bh tools domains --format json/);
+});
+
 test('tool help is specific for ReadContext without concrete template dispatch paths', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({

@@ -82,6 +82,12 @@ function composeReadSpec(route: ReadContextRouteDescriptor): Record<string, unkn
   if (route.target_type) {
     target['target_type'] = route.target_type;
   }
+  if (!route.required_target_fields.includes('target_name')) {
+    delete target['target_name'];
+  }
+  if (!route.required_target_fields.includes('block_id')) {
+    delete target['block_id'];
+  }
   if (route.required_target_fields.includes('target_name')) {
     target['target_name'] = '__REQUIRED_TARGET_NAME__';
   }

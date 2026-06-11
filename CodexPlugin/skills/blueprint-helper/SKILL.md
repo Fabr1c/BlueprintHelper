@@ -183,7 +183,7 @@ safety_constraints:
   require_write_session_if_disabled: true
   write_session_scope: "running Editor/Bridge, usable by delegated sideAgents within approved scope and lifetime"
 read_strategy:
-  avoid_full_logic_md_when_graph_size_unknown: true
+  avoid_full_graph_text_when_graph_size_unknown: true
   large_graph_node_threshold: 80
   large_graph_policy: "estimate size first, then read summary, logic_flow, bounded logic_json, or block-scoped slices"
 tool_call_intent:
@@ -219,7 +219,7 @@ The sideAgent task package must make these responsibilities explicit:
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem;
 - never replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, local JSON parsing, plugin source inspection, or deprecated MCP ordinary tools;
 - never read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before requesting full graph `logic_md`; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
+- estimate graph size before any full graph read; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session request, execute, and result lookup only when the Main Agent assigned that step;
 - treat an approved write session as running Editor/Bridge permission, not a single-agent secret; never request, pass, print, or reveal `auth_session`;
 - return concise translated evidence to the Main Agent and stop instead of asking the user directly.
@@ -354,7 +354,7 @@ When the Unreal `asset_path` is unknown, dispatch `blueprint-explorer` to call `
 
 ## Read Strategy
 
-- Use `summary` before whole-graph `logic_md` when graph size is unknown.
+- Use `summary` before whole-graph reads when graph size is unknown.
 - If a graph has more than 80 nodes, use scoped reads, block reads, or structured anchors instead of full graph text.
 - Use `logic_json` when stable owned-block anchors or importability checks are needed.
 - Keep large payloads in artifacts; use `--select` or `--fields` for stdout.

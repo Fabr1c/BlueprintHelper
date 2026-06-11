@@ -1,4 +1,5 @@
 {
+  "schema": "BlueprintHelper.ReferenceContextRequest.v1",
   "asset_path": "__REQUIRED_ASSET_PATH__",
   "target_type": "function",
   "target_name": "__REQUIRED_FUNCTION_NAME__",

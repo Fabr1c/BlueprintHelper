@@ -11,7 +11,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReadContextExportRequest
 {
 	FString SourceText;
 	EBlueprintHelperReadContextExportFormat Format =
-		EBlueprintHelperReadContextExportFormat::LogicMd;
+		EBlueprintHelperReadContextExportFormat::LogicFlow;
 };
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReadContextExportResult

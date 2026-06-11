@@ -29,7 +29,6 @@ TArray<FBlueprintHelperBridgeCommandDescriptor> FBlueprintHelperBridgeCommandReg
 		TEXT("merge_external_flow"),
 		TEXT("patch_external_graph"),
 		TEXT("replace_external_body"),
-		TEXT("read_blueprint_logic_md"),
 		TEXT("read_blueprint_logic_json"),
 		TEXT("apply_review_action"),
 	};

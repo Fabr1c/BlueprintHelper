@@ -33,14 +33,6 @@ const bridgePayloadAdapter: InputShapeAdapter<Record<string, unknown>> = {
   },
 };
 
-const bridgeLogicMdPayloadAdapter: InputShapeAdapter<Record<string, unknown>> = {
-  id: 'bridge_logic_md_payload',
-  inputSchema: genericPayloadSchema,
-  adapt(input) {
-    return { format: 'logic_md', ...genericPayloadSchema.parse(input) };
-  },
-};
-
 const bridgeLogicJsonPayloadAdapter: InputShapeAdapter<Record<string, unknown>> = {
   id: 'bridge_logic_json_payload',
   inputSchema: genericPayloadSchema,
@@ -72,7 +64,6 @@ export function registerReadSpecInputShapeAdapters(
     .register(readSpecAdapter)
     .register(readReferenceContextAdapter)
     .register(bridgePayloadAdapter)
-    .register(bridgeLogicMdPayloadAdapter)
     .register(bridgeLogicJsonPayloadAdapter)
     .register(toolPayloadAdapter)
     .register(emptyObjectAdapter);

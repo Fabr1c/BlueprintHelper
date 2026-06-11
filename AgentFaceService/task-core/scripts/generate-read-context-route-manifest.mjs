@@ -172,7 +172,6 @@ function resolveCluster(route) {
     list_variables: 'BlueprintStructure',
     list_event_dispatchers: 'BlueprintStructure',
     read_blueprint_logic_json: 'SharedServices',
-    read_blueprint_logic_md: 'SharedServices',
   };
   return commandClusters[command] ?? 'SharedServices';
 }

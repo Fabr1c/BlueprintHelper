@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { compileTaskSpecToTaskPlan } from '../../task/compiler/task-compiler.js';
+import { getAgentVisibleGraphWriteRoutes } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { TaskSpecSchema } from '../../task/schema/task-schemas.js';
 import {
   composeTaskSpecTemplate,
@@ -161,6 +162,60 @@ test('TaskSpec template composer writes replace_external_body route with full dr
   assert.equal(taskSpec.execution_policy.dry_run_mode, 'full');
   assert.equal(taskSpec.scope_policy.allow_modify_user_nodes, false);
   assert.equal(taskSpec.scope_policy.external_mutation_policy.strategy, 'replace_external_body');
+});
+
+test('TaskSpec template composer writes every active GraphWrite route quick-access root', () => {
+  const quickAccess = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: '',
+    operation: '',
+    writeMode: '',
+  }).items;
+
+  for (const route of getAgentVisibleGraphWriteRoutes()) {
+    const routeItem = quickAccess.find((item) =>
+      item.slot_type === 'route'
+      && item.source_slot_id === route.route_id);
+    assert.notEqual(routeItem, undefined, `${route.route_id} route quick-access`);
+
+    const expression = routeItem?.arg_slots.some((slot) => slot.includes('statement[]'))
+      ? `${routeItem.template_id}(${firstStatementTemplateId(quickAccess, route.write_mode)})`
+      : routeItem?.template_id ?? '';
+    const outputPath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+      `${route.route_id}.taskspec.json`,
+    );
+    const result = composeTaskSpecTemplate({
+      family: 'graph_write',
+      writeMode: route.write_mode,
+      templateIds: [expression],
+      outputPath,
+    });
+
+    assert.equal(result.status, 'ok', `${route.route_id}: ${JSON.stringify(result)}`);
+    const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { schema?: string; task_type?: string };
+    assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1', route.route_id);
+    assert.equal(taskSpec.task_type, 'edit_blueprint_graph', route.route_id);
+  }
+});
+
+test('TaskSpec template composer preserves no-arg GraphWrite patch route placeholders', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'patch-connect-pins.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.patch',
+    templateIds: ['patch.connect_pins.default'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { patches: Array<{ target_ref?: Record<string, unknown>; source_ref?: Record<string, unknown> }> };
+  };
+  assert.equal(taskSpec.behavior.patches[0]?.target_ref?.node_ref, '__REQUIRED_TARGET_NODE_REF__');
+  assert.equal(taskSpec.behavior.patches[0]?.source_ref?.node_ref, '__REQUIRED_SOURCE_NODE_REF__');
 });
 
 test('TaskSpec template composer writes nested expression slots into GraphWrite statements', () => {
@@ -511,6 +566,15 @@ function writeModeForFamily(family: string): string {
     default:
       throw new Error(`Unexpected test family: ${family}`);
   }
+}
+
+function firstStatementTemplateId(
+  quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'],
+  writeMode: string,
+): string {
+  const statement = quickAccess.find((item) => item.slot_type === 'statement' && item.write_mode === writeMode);
+  assert.notEqual(statement, undefined, `statement quick-access for ${writeMode}`);
+  return statement?.template_id ?? '';
 }
 
 function listJsonFiles(root: string): string[] {

@@ -112,7 +112,9 @@ function composeGraphWriteRouteTaskSpecTemplate(
   const diagnostics: TaskSpecTemplateDiagnostic[] = [];
   const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
   const taskSpec = readJson(pluginPath(routeItem.template_path)) as Record<string, unknown>;
-  clearInsertTargets(taskSpec, routeItem.insert_paths);
+  if (routeNode.args.some((arg) => arg.kind !== 'skip')) {
+    clearInsertTargets(taskSpec, routeItem.insert_paths);
+  }
 
   for (const arg of routeNode.args) {
     if (arg.kind === 'skip') {

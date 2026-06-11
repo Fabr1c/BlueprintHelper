@@ -133,9 +133,9 @@ safety_constraints:
   require_write_session_if_disabled: true
   write_session_scope: "running Editor/Bridge, usable by delegated SideAgents within approved scope and lifetime"
 read_strategy:
-  avoid_full_logic_md_when_graph_size_unknown: true
+  avoid_full_graph_text_when_graph_size_unknown: true
   large_graph_node_threshold: 80
-  large_graph_policy: "estimate size first, then read summary or block-scoped slices"
+  large_graph_policy: "estimate size first, then read summary, logic_flow, bounded logic_json, or block-scoped slices"
 tool_call_intent:
   tool_name: "<single BlueprintHelper tool this SideAgent should execute>"
   missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
@@ -170,7 +170,7 @@ Tell the SideAgent its responsibility in the task package:
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
 - do not replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can repair CLI availability;
 - do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before requesting full graph `logic_md`; function, event, and custom-event `logic_md` target-entry reads are allowed when `target_name` is known; if the graph has more than 80 nodes, use summary, structured anchors, or block-scoped reads instead of whole-graph text;
+- estimate graph size before any full graph read; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
 - translate the returned tool results into a concise Chinese result for the Main Agent;

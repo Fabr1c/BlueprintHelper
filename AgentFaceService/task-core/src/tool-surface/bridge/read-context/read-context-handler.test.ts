@@ -12,6 +12,7 @@ import {
   LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
   LOGIC_PROJECTION_OWNER,
   READ_CONTEXT_LOGIC_FORMATS,
+  ReadContextInputSchema,
 } from './read-context-schemas.js';
 
 const nodeAnchor = {
@@ -43,17 +44,34 @@ const duplicateBoundaryAnchor = {
 test('read_context logic formats declare UE callback capabilities with task-core projection owner', () => {
   assert.deepEqual(
     READ_CONTEXT_LOGIC_FORMATS,
-    ['logic_flow', 'logic_md', 'logic_json'],
+    ['logic_flow', 'logic_json'],
   );
   assert.deepEqual(
     LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
     [
       'ue.raw_snapshot.logic_json',
-      'ue.raw_snapshot.logic_md',
       'ue.raw_snapshot.logic_flow',
     ],
   );
   assert.equal(LOGIC_PROJECTION_OWNER, 'task-core');
+});
+
+test('ReadContext rejects removed markdown logic view format', () => {
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  const result = ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Test',
+      target_type: 'function',
+      target_name: 'Run',
+    },
+    view: {
+      format: removedMarkdownFormat,
+    },
+  });
+
+  assert.equal(result.success, false);
 });
 
 test('read_context capabilities are derived from active ReadContext template registry routes', () => {

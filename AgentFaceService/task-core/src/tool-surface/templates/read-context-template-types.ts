@@ -17,7 +17,6 @@ export type ReadContextTemplateRouteStatus =
 
 export type ReadContextTemplateView =
   | 'logic_flow'
-  | 'logic_md'
   | 'logic_json'
   | 'tree_json'
   | 'schema_json'

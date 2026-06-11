@@ -86,7 +86,6 @@ export const BRIDGE_TOOL_DESCRIPTORS: readonly BridgeToolDescriptor[] = [
   { tool_name: 'blueprint_get_runtime_profile', bridge_command: 'get_runtime_profile', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
   { tool_name: 'blueprinthelper_diagnostics_runtime', bridge_command: 'diagnostics_runtime', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
   { tool_name: 'blueprint_get_editor_context', bridge_command: 'get_editor_context', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
-  { tool_name: 'blueprint_get_logic_md', bridge_command: 'read_blueprint_logic_md', handler_id: 'generic_bridge' },
   { tool_name: 'blueprint_create_asset', bridge_command: 'create_asset', handler_id: 'generic_bridge' },
   { tool_name: 'blueprint_read_components', bridge_command: 'read_components', handler_id: 'generic_bridge' },
   { tool_name: 'blueprint_add_component', bridge_command: 'add_component', handler_id: 'generic_bridge' },

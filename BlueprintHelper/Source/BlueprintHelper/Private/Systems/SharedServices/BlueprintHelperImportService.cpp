@@ -364,7 +364,7 @@ FString FBlueprintHelperImportService::ResolveImportJsonText(
 			if (SchemaValue.StartsWith(TEXT("BlueprintHelper.Logic")))
 			{
 				Result.Diagnostics.Add(EBlueprintHelperDiagnosticSeverity::Error,
-					FString::Printf(TEXT("导入被拒绝：schema=%s 是只读逻辑视图（LogicJson/LogicMD），不能作为 RawJson 导入。"),
+					FString::Printf(TEXT("导入被拒绝：schema=%s 是只读逻辑视图（LogicJson），不能作为 RawJson 导入。"),
 						*SchemaValue),
 					TEXT(""), TEXT("import_rejected_logic_schema"));
 				return FString();

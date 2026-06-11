@@ -32,7 +32,6 @@ public:
 
 private:
 	FReply OnExportLogicFlowClicked();
-	FReply OnExportLogicMdClicked();
 	FReply OnExportLogicJsonClicked();
 	void OnInputTextChanged(const FText& InText);
 	void HandlePresenterEvent(const struct FBlueprintHelperTaskSpecWorkbenchPresenterEvent& Event);

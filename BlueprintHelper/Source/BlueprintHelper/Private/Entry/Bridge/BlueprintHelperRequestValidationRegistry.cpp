@@ -82,10 +82,6 @@ FBlueprintHelperRequestValidationRegistry::GetRepresentativeDescriptors()
 			},
 			{BlueprintHelperRequestValidationField(TEXT("dry_run"), EBlueprintHelperRequestFieldType::Bool)}),
 		BlueprintHelperRequestValidationDescriptor(
-			TEXT("read_blueprint_logic_md"),
-			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
-			{BlueprintHelperRequestValidationField(TEXT("graph"), EBlueprintHelperRequestFieldType::String)}),
-		BlueprintHelperRequestValidationDescriptor(
 			TEXT("read_blueprint_logic_json"),
 			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
 			{BlueprintHelperRequestValidationField(TEXT("graph"), EBlueprintHelperRequestFieldType::String)}),

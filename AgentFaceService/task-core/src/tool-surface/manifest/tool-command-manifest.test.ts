@@ -70,6 +70,10 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   assert.equal(registry.get('blueprinthelper_execute_task')?.tool_id, 'blueprint.write.taskspec.execute');
   assert.equal(registry.get('context read')?.tool_id, 'blueprint.read.context.logic_flow');
   assert.equal(registry.get('blueprinthelper_read_context')?.tool_id, 'blueprint.read.context.logic_flow');
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  const removedMarkdownTool = ['blueprint_get', 'logic', 'md'].join('_');
+  assert.equal(registry.get(removedMarkdownTool), undefined);
+  assert.equal(registry.list().some((entry) => JSON.stringify(entry).includes(removedMarkdownFormat)), false);
   assert.equal(registry.get('task result')?.tool_id, 'project.read.task_result');
   assert.equal(registry.get('blueprinthelper_get_task_result')?.tool_id, 'project.read.task_result');
 });

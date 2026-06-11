@@ -116,13 +116,11 @@ bool FBlueprintHelperLogicReadSnapshotFormatter_FormatsPureDto::RunTest(const FS
 		JsonPayload.IsValid() ? JsonPayload->GetStringField(TEXT("schema")) : FString(),
 		FString(TEXT("LogicJson.v1")));
 
-	TSharedPtr<FJsonObject> MdPayload;
-	TestTrue(TEXT("logic_md payload builds from DTO"),
-		Formatter.BuildFormattedPayload(TEXT("logic_md"), Snapshot, MdPayload, Error));
-	TestTrue(TEXT("logic_md payload valid"), MdPayload.IsValid());
-	TestEqual(TEXT("logic_md schema"),
-		MdPayload.IsValid() ? MdPayload->GetStringField(TEXT("schema")) : FString(),
-		FString(TEXT("LogicMd.v1")));
+	TSharedPtr<FJsonObject> RemovedMarkdownPayload;
+	const FString RemovedMarkdownFormat = FString(TEXT("logic")) + TEXT("_md");
+	TestFalse(TEXT("removed markdown format fails"),
+		Formatter.BuildFormattedPayload(RemovedMarkdownFormat, Snapshot, RemovedMarkdownPayload, Error));
+	TestTrue(TEXT("removed markdown format reports error"), Error.Contains(TEXT("Unsupported read format")));
 
 	TSharedPtr<FJsonObject> UnsupportedPayload;
 	TestFalse(TEXT("unknown format fails"),
@@ -223,14 +221,6 @@ bool FBlueprintHelperLogicReadSnapshotFormatter_FormatsFunctionTargetWithoutExpo
 		}
 	}
 
-	TSharedPtr<FJsonObject> MdPayload;
-	TestTrue(TEXT("logic_md function target payload builds"),
-		Formatter.BuildFormattedPayload(TEXT("logic_md"), Snapshot, MdPayload, Error));
-	const FString Markdown = MdPayload.IsValid() ? MdPayload->GetStringField(TEXT("markdown")) : TEXT("");
-	TestTrue(TEXT("logic_md includes function entry boundary link"),
-		Markdown.Contains(TEXT("FunctionEntry.then -> nodes[0].execute")));
-	TestTrue(TEXT("logic_md includes function result boundary link"),
-		Markdown.Contains(TEXT("nodes[0].then -> FunctionResult.execute")));
 	return true;
 }
 

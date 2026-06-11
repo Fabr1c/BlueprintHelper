@@ -623,11 +623,11 @@ bool FBlueprintHelperK2FunctionBodyAdapterExtractsFunctionBoundariesTest::RunTes
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionAdapterBoundaryTest,
-	"BlueprintHelper.GraphWrite.GraphBodyAdapter.ReadbackService.BuildsFunctionAdapterBoundary",
+	FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionExternalBodyAuthoringBoundaryTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.ReadbackService.BuildsFunctionExternalBodyAuthoringBoundary",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionAdapterBoundaryTest::RunTest(const FString&)
+bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionExternalBodyAuthoringBoundaryTest::RunTest(const FString&)
 {
 	UBlueprint* Blueprint = FBlueprintHelperGraphBodyAdapterExtractionTestUtils::MakeActorBlueprint(TEXT("FunctionReadback"));
 	UEdGraph* FunctionGraph =
@@ -647,7 +647,10 @@ bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionAdapterBoundaryTest::
 	TestTrue(TEXT("function adapter boundary valid"), AdapterBoundary.IsValid());
 	TestEqual(TEXT("function runtime adapter id"),
 		AdapterBoundary.IsValid() ? AdapterBoundary->GetStringField(TEXT("runtime_adapter_id")) : FString(),
-		FString(TEXT("k2.function_body")));
+		FString(TEXT("k2.external_graph.replace_body")));
+	TestEqual(TEXT("function body kind"),
+		AdapterBoundary.IsValid() ? AdapterBoundary->GetStringField(TEXT("body_kind")) : FString(),
+		FString(TEXT("k2.external_body")));
 	TestEqual(TEXT("function adapter graph name"),
 		AdapterBoundary.IsValid() ? AdapterBoundary->GetStringField(TEXT("graph_name")) : FString(),
 		FString(TEXT("ComputeScore")));
@@ -661,11 +664,25 @@ bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionAdapterBoundaryTest::
 			AdapterBoundary,
 			TEXT("exit_boundaries"),
 			TEXT("FunctionResult")));
-	TestTrue(TEXT("function entry folded for compact readback"),
+	TestTrue(TEXT("function entry visible for external body readback"),
+		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::StringArrayContains(
+			AdapterBoundary,
+			TEXT("visible_boundary_node_refs"),
+			TEXT("FunctionEntry")));
+	TestFalse(TEXT("function entry is not folded by external body readback"),
 		FBlueprintHelperGraphBodyAdapterExtractionTestUtils::StringArrayContains(
 			AdapterBoundary,
 			TEXT("folded_boundary_node_refs"),
 			TEXT("FunctionEntry")));
+	const TSharedPtr<FJsonObject>* BodyEntry = nullptr;
+	TestTrue(TEXT("function external body readback includes body_entry"),
+		AdapterBoundary.IsValid()
+		&& AdapterBoundary->TryGetObjectField(TEXT("body_entry"), BodyEntry)
+		&& BodyEntry
+		&& BodyEntry->IsValid());
+	TestFalse(TEXT("function external body readback includes body_fingerprint"),
+		AdapterBoundary.IsValid()
+		&& AdapterBoundary->GetStringField(TEXT("body_fingerprint")).IsEmpty());
 	return true;
 }
 

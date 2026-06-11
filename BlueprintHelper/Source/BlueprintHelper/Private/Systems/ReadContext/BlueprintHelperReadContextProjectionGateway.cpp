@@ -51,7 +51,7 @@ FBlueprintHelperToolError FBlueprintHelperReadContextProjectionGateway::MakeBack
 	Error.Stage = EBlueprintHelperToolStage::Execute;
 	Error.Message = TEXT("TaskSpecWorkbench export requires the canonical ReadContext projection backend.");
 	Error.Field = TEXT("format");
-	Error.Expected = TEXT("logic_flow|logic_md|logic_json");
+	Error.Expected = TEXT("logic_flow|logic_json");
 	Error.Actual = RequestedFormat;
 	return Error;
 }

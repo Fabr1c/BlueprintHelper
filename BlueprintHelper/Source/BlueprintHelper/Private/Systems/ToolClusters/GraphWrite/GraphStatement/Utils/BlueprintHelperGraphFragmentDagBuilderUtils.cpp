@@ -688,7 +688,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		ConnectExpressionToInput(
 			Expression->TargetObject,
 			Expression->TargetObject->Path,
-			TEXT("target_object"),
+			Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction
+				? TEXT("target")
+				: TEXT("target_object"),
 			Expression->TargetObject->Type,
 			FragmentId,
 			State,
@@ -764,7 +766,9 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagDataProducer FB
 		ConnectExpressionToInput(
 			Expression->TargetObject,
 			Expression->TargetObject->Path,
-			TEXT("target_object"),
+			Expression->Kind == EBlueprintHelperGraphExpressionKind::ContainerAction
+				? TEXT("target")
+				: TEXT("target_object"),
 			Expression->TargetObject->Type,
 			FragmentId,
 			State,

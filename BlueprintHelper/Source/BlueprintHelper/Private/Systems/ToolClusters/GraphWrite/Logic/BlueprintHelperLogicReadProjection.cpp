@@ -4,7 +4,6 @@ TArray<FString> FBlueprintHelperLogicReadProjectionUtils::GetCallbackCapabilitie
 {
 	return {
 		TEXT("ue.raw_snapshot.logic_json"),
-		TEXT("ue.raw_snapshot.logic_md"),
 		TEXT("ue.raw_snapshot.logic_flow")
 	};
 }

@@ -1,9 +1,9 @@
-// BlueprintHelper GraphWrite classification utilities.
+﻿// BlueprintHelper GraphWrite classification utilities.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Shared/BlueprintHelperLogicMdTypes.h"
+#include "Shared/BlueprintHelperLogicReadTypes.h"
 
 class FJsonObject;
 

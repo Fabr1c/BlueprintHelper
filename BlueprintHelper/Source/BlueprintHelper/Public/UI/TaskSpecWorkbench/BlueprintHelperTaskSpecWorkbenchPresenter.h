@@ -23,7 +23,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperTaskSpecWorkbenchVisualEvent
 	FString CardId;
 	FString CandidateId;
 	EBlueprintHelperReadContextExportFormat ExportFormat =
-		EBlueprintHelperReadContextExportFormat::LogicMd;
+		EBlueprintHelperReadContextExportFormat::LogicFlow;
 
 	static FBlueprintHelperTaskSpecWorkbenchVisualEvent InputTextChanged(const FString& InText);
 	static FBlueprintHelperTaskSpecWorkbenchVisualEvent ExportReadContext(

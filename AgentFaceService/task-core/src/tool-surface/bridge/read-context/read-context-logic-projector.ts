@@ -2,11 +2,11 @@ import { buildLogicFlowPayload } from './read-context-logic-flow.js';
 import { LOGIC_PROJECTION_OWNER } from './read-context-schemas.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_md' | 'logic_json';
+export type ReadContextLogicFormat = 'logic_flow' | 'logic_json';
 
 export type LogicProjectionInput = {
   requestedFormat: ReadContextLogicFormat;
-  bridgePayloadSchema: 'LogicMd.v1' | 'LogicJson.v1' | 'LogicFlow.v1' | 'LogicSnapshot.v1';
+  bridgePayloadSchema: 'LogicJson.v1' | 'LogicFlow.v1' | 'LogicSnapshot.v1';
   bridgePayload: Record<string, unknown>;
   target: Record<string, unknown>;
   view?: Record<string, unknown>;
@@ -33,15 +33,6 @@ export function projectReadContextLogic(input: LogicProjectionInput): LogicProje
       format,
       payload: withProjectionMetadata(result.payload, source.metadata),
       debug: mergeDebug(source.metadata, result.debug ? { logic_flow: result.debug } : undefined),
-    };
-  }
-
-  if (input.requestedFormat === 'logic_md') {
-    const payload = buildLogicMdPayload(source.payload, input);
-    return {
-      format: 'logic_md',
-      payload: withProjectionMetadata(payload, source.metadata),
-      debug: mergeDebug(source.metadata, collectAnchorDebug(source.payload)),
     };
   }
 
@@ -79,49 +70,6 @@ function buildLogicJsonPayload(payload: Record<string, unknown>): Record<string,
   normalized['schema'] = 'LogicJson.v1';
   delete normalized['format'];
   return normalized;
-}
-
-function buildLogicMdPayload(payload: Record<string, unknown>, input: LogicProjectionInput): Record<string, unknown> {
-  if (payload['schema'] === 'LogicMd.v1' && typeof payload['markdown'] === 'string') {
-    const normalized: Record<string, unknown> = {
-      schema: 'LogicMd.v1',
-      ...payload,
-    };
-    delete normalized['format'];
-    return normalized;
-  }
-
-  const title = readTargetTitle(input.target);
-  return {
-    schema: 'LogicMd.v1',
-    markdown: [
-      `# ${title}`,
-      '',
-      renderLogicJsonAsMarkdown(payload),
-    ].join('\n'),
-    stats: isRecord(payload['stats']) ? payload['stats'] : undefined,
-  };
-}
-
-function renderLogicJsonAsMarkdown(payload: Record<string, unknown>): string {
-  const logic = isRecord(payload['logic']) ? payload['logic'] : payload;
-  const nodes = Array.isArray(logic['nodes']) ? logic['nodes'] : [];
-  const links = Array.isArray(logic['links']) ? logic['links'] : [];
-  const lines = [
-    `Nodes: ${nodes.length}`,
-    `Links: ${links.length}`,
-  ];
-
-  for (const node of nodes) {
-    if (!isRecord(node)) {
-      continue;
-    }
-    const name = readString(node, ['name', 'display_name', 'title', 'node_ref', 'ref']) ?? '<unnamed>';
-    const kind = readString(node, ['kind', 'category']);
-    lines.push(kind ? `- ${name} (${kind})` : `- ${name}`);
-  }
-
-  return lines.join('\n');
 }
 
 function withProjectionMetadata(
@@ -208,18 +156,4 @@ function stableUniqueRecords(records: Record<string, unknown>[]): Record<string,
   return [...byKey.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([, record]) => record);
-}
-
-function readTargetTitle(target: Record<string, unknown>): string {
-  return readString(target, ['target_name', 'graph', 'asset_path']) ?? 'ReadContext LogicMD';
-}
-
-function readString(record: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
-    }
-  }
-  return undefined;
 }

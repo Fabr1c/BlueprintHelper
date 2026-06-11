@@ -42,7 +42,6 @@ const expectedToolNames = [
 
 const frozenToolNames = [
   'blueprint_get_editor_context',
-  'blueprint_get_logic_md',
   'blueprint_create_asset',
   'blueprint_read_components',
   'blueprint_add_component',
@@ -378,11 +377,12 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   assert.equal(Object.hasOwn(logic, 'asset_path'), false);
 });
 
-test('read_context LogicMD payload keeps stats structured and strips duplicate markdown stats lines', async () => {
+test('read_context rejects removed markdown logic format before Bridge dispatch', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
   assert.ok(tool);
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
 
-  const result = await tool.execute({
+  await assert.rejects(() => tool.execute({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'blueprint_logic',
     target: {
@@ -391,60 +391,17 @@ test('read_context LogicMD payload keeps stats structured and strips duplicate m
       target_name: 'EventGraph',
     },
     view: {
-      format: 'logic_md',
+      format: removedMarkdownFormat,
     },
   }, {
     cwd: process.cwd(),
     bridge: {
-      async sendCommand(command: string) {
-        assert.equal(command, 'read_blueprint_logic_md');
-        return {
-          success: true,
-          request_id: 'read_context_logic_md_compact',
-          result: {
-            schema: 'LogicMd.v1',
-            format: 'logic_md',
-            markdown: [
-              '# Logic Graph',
-              '',
-              'Nodes: 3 | Exec Links: 1 | Data Links: 2 | Entry Points: 1 | Orphans: 0',
-              '',
-              '## Graph: EventGraph',
-              'Nodes: 3 | Exec Links: 1 | Data Links: 2 | Entry Points: 1 | Orphans: 0',
-              '',
-              '### Entry Points',
-              '- nodes[0] BeginPlay',
-            ].join('\n'),
-            stats: {
-              nodes: 3,
-              exec_links: 1,
-              data_links: 2,
-              orphan_nodes: 0,
-              events: 1,
-            },
-          },
-        };
+      async sendCommand() {
+        throw new Error('removed markdown logic format must fail before Bridge dispatch');
       },
     } as never,
     taskRunner: {} as TaskSpecRunner,
-  });
-
-  assert.equal(result.ok, true);
-  const data = result.data as Record<string, unknown>;
-  const payload = data['payload'] as Record<string, unknown>;
-  const markdown = String(payload['markdown'] ?? '');
-  assert.equal(payload['schema'], 'LogicMd.v1');
-  assert.deepEqual(payload['stats'], {
-    nodes: 3,
-    exec_links: 1,
-    data_links: 2,
-    orphan_nodes: 0,
-    events: 1,
-  });
-  assert.doesNotMatch(markdown, /^Nodes: 3 \| Exec Links: 1/m);
-  assert.match(markdown, /## Graph: EventGraph/);
-  assert.match(markdown, /### Entry Points/);
-  assert.equal(Object.hasOwn(payload, 'format'), false);
+  }), /Invalid enum value/);
 });
 
 test('read_context logic_flow returns execflow from structured logic_json payload', async () => {
@@ -906,6 +863,7 @@ test('read_context rejects removed and unsupported view formats', () => {
     },
   }), /view\.format is only supported/);
 
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
   assert.throws(() => ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'graph_context',
@@ -915,9 +873,9 @@ test('read_context rejects removed and unsupported view formats', () => {
       target_name: 'EventGraph',
     },
     view: {
-      format: 'logic_md',
+      format: removedMarkdownFormat,
     },
-  }), /graph_context only supports logic_json/);
+  }), /Invalid enum value/);
 
   assert.throws(() => ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',

@@ -27,6 +27,8 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 
 	TSet<FString> RouteIds;
 	int32 ActiveRoutes = 0;
+	const FString RemovedMarkdownView = FString(TEXT("logic")) + TEXT("_md");
+	const FString RemovedMarkdownCommand = FString(TEXT("read_blueprint_logic")) + TEXT("_md");
 	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Route : GBlueprintHelperReadContextRoutes)
 	{
 		TestFalse(TEXT("route id is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.RouteId));
@@ -38,7 +40,14 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 
 		const FString RouteId(Route.RouteId);
 		TestFalse(FString::Printf(TEXT("route id is unique: %s"), *RouteId), RouteIds.Contains(RouteId));
+		TestFalse(FString::Printf(TEXT("route id excludes removed markdown view: %s"), *RouteId),
+			RouteId.Contains(RemovedMarkdownView));
 		RouteIds.Add(RouteId);
+
+		TestFalse(TEXT("view template excludes removed markdown view"),
+			FString(Route.ViewTemplate).Equals(RemovedMarkdownView));
+		TestFalse(TEXT("command excludes removed markdown bridge command"),
+			FString(Route.Command).Equals(RemovedMarkdownCommand));
 
 		const FString Status(Route.Status);
 		if (Status == TEXT("active"))

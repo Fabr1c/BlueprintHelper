@@ -507,6 +507,38 @@ static UEdGraphPin* FindContainerActionExecPinByName(
 	}
 	return nullptr;
 }
+
+static void DumpContainerActionPinsForDiagnostics(
+	FAutomationTestBase& Test,
+	UEdGraph* Graph,
+	const TCHAR* FunctionName,
+	const TCHAR* Prefix)
+{
+	UK2Node_CallFunction* Node = FindContainerActionCallFunctionNode(Graph, FunctionName);
+	if (!Node)
+	{
+		Test.AddError(FString::Printf(TEXT("%s pin dump skipped: node %s not found."), Prefix, FunctionName));
+		return;
+	}
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin)
+		{
+			continue;
+		}
+		Test.AddError(FString::Printf(
+			TEXT("%s pin: name=%s direction=%d category=%s container=%d terminal=%s linked=%d hidden=%d"),
+			Prefix,
+			*Pin->PinName.ToString(),
+			static_cast<int32>(Pin->Direction),
+			*Pin->PinType.PinCategory.ToString(),
+			static_cast<int32>(Pin->PinType.ContainerType),
+			*Pin->PinType.PinValueType.TerminalCategory.ToString(),
+			Pin->LinkedTo.Num(),
+			Pin->bHidden ? 1 : 0));
+	}
+}
 } // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1420,6 +1452,15 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceShapeTest::RunTest(co
 				*Diagnostic.NodeId,
 				*Diagnostic.Message));
 		}
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(
+				TEXT("RestoreDevice-shape connection: %s node=%s %s"),
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message));
+		}
+		DumpContainerActionPinsForDiagnostics(*this, Graph, TEXT("Map_Find"), TEXT("RestoreDevice-shape Map_Find"));
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())
@@ -1528,6 +1569,31 @@ bool FBlueprintHelperGraphWriteContainerActionRestoreDeviceSequentialTaskPlanSha
 
 	if (!TestTrue(TEXT("sequential RestoreDevice generation succeeds"), Result.bSucceed))
 	{
+		AddError(FString::Printf(
+			TEXT("sequential RestoreDevice result: %s generated=%d unresolved=%d connectivity=%d requested_links=%d created_links=%d"),
+			*Result.Message,
+			Result.GeneratedNodeCount,
+			Result.UnresolvedNodeCount,
+			Result.ConnectivityViolationCount,
+			Result.RequestedConnectionCount,
+			Result.CreatedConnectionCount));
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectivityDiagnostics)
+		{
+			AddError(FString::Printf(
+				TEXT("sequential RestoreDevice connectivity: %s node=%s %s"),
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message));
+		}
+		for (const FBlueprintGeneratorDiagnostic& Diagnostic : Result.ConnectionDiagnostics)
+		{
+			AddError(FString::Printf(
+				TEXT("sequential RestoreDevice connection: %s node=%s %s"),
+				*Diagnostic.Code,
+				*Diagnostic.NodeId,
+				*Diagnostic.Message));
+		}
+		DumpContainerActionPinsForDiagnostics(*this, Graph, TEXT("Map_Find"), TEXT("sequential RestoreDevice Map_Find"));
 		for (const TSharedPtr<FUnresolvedNodeItem>& Item : Unresolved)
 		{
 			if (Item.IsValid())

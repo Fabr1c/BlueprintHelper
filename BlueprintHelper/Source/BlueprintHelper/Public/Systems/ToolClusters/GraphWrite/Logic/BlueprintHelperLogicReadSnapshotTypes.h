@@ -1,10 +1,10 @@
-// BlueprintHelper read-side pure snapshot DTOs.
+﻿// BlueprintHelper read-side pure snapshot DTOs.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
-#include "Shared/BlueprintHelperLogicMdTypes.h"
+#include "Shared/BlueprintHelperLogicReadTypes.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Shared/Services/BlueprintHelperExportService.h"

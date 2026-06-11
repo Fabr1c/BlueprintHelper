@@ -78,15 +78,6 @@ void SBlueprintHelperTaskSpecWorkbench::Construct(const FArguments& InArgs)
 			.Padding(WorkbenchSettings.ButtonSpacing)
 			[
 				SNew(SButton)
-				.Text(FText::FromString(TEXT("Export logicmd")))
-				.ToolTipText(FText::FromString(TEXT("Exports medium-density LogicMD readable nodes and links. Recommended when logicflow is too compact for branched or larger entries.")))
-				.OnClicked(this, &SBlueprintHelperTaskSpecWorkbench::OnExportLogicMdClicked)
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(WorkbenchSettings.ButtonSpacing)
-			[
-				SNew(SButton)
 				.Text(FText::FromString(TEXT("Export logicjson")))
 				.ToolTipText(FText::FromString(TEXT("Exports structured LogicJson with the most detail. Recommended for precise analysis, diff, patch/merge anchors, and debug.")))
 				.OnClicked(this, &SBlueprintHelperTaskSpecWorkbench::OnExportLogicJsonClicked)
@@ -169,15 +160,6 @@ FReply SBlueprintHelperTaskSpecWorkbench::OnExportLogicFlowClicked()
 		? Presenter->HandleVisualEvent(
 			FBlueprintHelperTaskSpecWorkbenchVisualEvent::ExportReadContext(
 				EBlueprintHelperReadContextExportFormat::LogicFlow))
-		: FReply::Handled();
-}
-
-FReply SBlueprintHelperTaskSpecWorkbench::OnExportLogicMdClicked()
-{
-	return Presenter.IsValid()
-		? Presenter->HandleVisualEvent(
-			FBlueprintHelperTaskSpecWorkbenchVisualEvent::ExportReadContext(
-				EBlueprintHelperReadContextExportFormat::LogicMd))
 		: FReply::Handled();
 }
 

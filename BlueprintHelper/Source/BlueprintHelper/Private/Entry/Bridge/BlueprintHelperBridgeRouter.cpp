@@ -1,4 +1,4 @@
-// BlueprintHelper Bridge Layer 。命令路由实现
+﻿// BlueprintHelper Bridge Layer 。命令路由实现
 
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
@@ -23,8 +23,7 @@
 #include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Shared/BlueprintHelperDependencyAnalysisTypes.h"
 #include "Shared/FunctionChain/BlueprintHelperFunctionChainContextTypes.h"
-#include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicMdReadService.h"
-#include "Shared/BlueprintHelperLogicMdTypes.h"
+#include "Shared/BlueprintHelperLogicReadTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
@@ -114,7 +113,6 @@ public:
 			TEXT("capture_editor_screenshot"),
 			TEXT("capture_focused_graph_screenshot"),
 			TEXT("read_function_chain_context"),
-			TEXT("read_blueprint_logic_md"),
 			TEXT("read_blueprint_logic_json"),
 			TEXT("export_to_json"),
 			TEXT("export_logic"),
@@ -784,7 +782,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	const FBlueprintHelperRuntimeProfileService& InRuntimeProfile,
 	const FBlueprintHelperDiagnosticsService& InDiagnostics,
 	const FBlueprintHelperDebugEntryService& InDebugEntryService,
-	const FBlueprintHelperLogicMdReadService& InLogicMdRead,
 	const FBlueprintHelperLogicJsonReadService& InLogicJsonRead,
 	const FBlueprintHelperAssetFactoryService& InAssetFactory,
 	const FBlueprintHelperComponentService& InComponentService,
@@ -810,7 +807,6 @@ FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
 	, RuntimeProfileService(InRuntimeProfile)
 	, DiagnosticsService(InDiagnostics)
 	, DebugEntryService(InDebugEntryService)
-	, LogicMdReadService(InLogicMdRead)
 	, LogicJsonReadService(InLogicJsonRead)
 	, AssetFactoryRoutes(InAssetFactory)
 	, ComponentRoutes(InComponentService)
@@ -912,7 +908,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 
 	BLUEPRINTHELPER_ROUTE("read_reference_context", SharedServices, HandleReadReferenceContext)
 	BLUEPRINTHELPER_ROUTE("read_function_chain_context", SharedServices, HandleReadFunctionChainContext)
-	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_md", SharedServices, HandleReadBlueprintLogicMd)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_json", SharedServices, HandleReadBlueprintLogicJson)
 	BLUEPRINTHELPER_ROUTE("validate_json", SharedServices, HandleValidateJson)
 	BLUEPRINTHELPER_ROUTE("export_to_json", SharedServices, HandleExportToJson)
@@ -1182,64 +1177,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadFunctionC
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = ContextPack.ToJson();
 	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
-	return Resp;
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprintLogicMd(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FBlueprintHelperToolTimingUtils::FTimingTrace* TimingTrace =
-		FBlueprintHelperToolTimingUtils::GetCurrentTrace();
-
-	const double ParseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
-	const FBlueprintHelperTargetRef Target = UBlueprintHelperBridgeUtils::ReadTargetRefFromPayload(Req.Payload);
-	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
-		TimingTrace,
-		TEXT("ue.route.read_request_parse"),
-		ParseStageStart);
-
-	FBlueprintHelperLogicReadRequestSnapshotCache RequestCache;
-	FBlueprintHelperLogicReadSnapshot Snapshot;
-	FString SnapshotError;
-	const double SnapshotStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
-	const bool bSnapshotOk = LogicMdReadService.BuildSnapshot(Target, Snapshot, SnapshotError, &RequestCache);
-	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
-		TimingTrace,
-		TEXT("ue.route.snapshot_read"),
-		SnapshotStageStart);
-	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
-		TimingTrace,
-		TEXT("ue.read_snapshot_cache_hit"),
-		RequestCache.GetHitCount());
-	FBlueprintHelperBridgeRouterLocalUtils::AddRouteCounter(
-		TimingTrace,
-		TEXT("ue.read_snapshot_cache_miss"),
-		RequestCache.GetMissCount());
-
-	const double FormatStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
-	FBlueprintHelperLogicMdData Data;
-	if (bSnapshotOk)
-	{
-		Data = LogicMdReadService.FormatSnapshot(Snapshot);
-	}
-	else
-	{
-		Data.Scope = FBlueprintHelperLogicReadSnapshotService::TargetTypeToScope(Target.TargetType);
-		Data.Markdown = TEXT("(导出失败)");
-		Data.bImportable = false;
-	}
-	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
-		TimingTrace,
-		TEXT("ue.route.format_output"),
-		FormatStageStart);
-
-	const double ResponseStageStart = FBlueprintHelperBridgeRouterLocalUtils::StartRouteStage(TimingTrace);
-	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = Data.ToJson();
-	FBlueprintHelperBridgeRouterLocalUtils::FinishRouteStage(
-		TimingTrace,
-		TEXT("ue.route.response_wrap"),
-		ResponseStageStart);
 	return Resp;
 }
 

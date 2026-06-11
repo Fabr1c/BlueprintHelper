@@ -40,7 +40,6 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.discover.assets', 'blueprint', 'discover', 'blueprinthelper_find_assets', 'Resolve unknown Unreal asset paths before reads or writes.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_find_assets']),
   capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow', 'read_context_event_logic_flow', 'read_context_custom_event_logic_flow']),
   capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json', 'read_context_block_logic_json']),
-  capability('blueprint.read.context.logic_md', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Markdown Blueprint logic summaries for supported Blueprint targets.', 'blueprint-explorer', 'low', true, false, ['read_context_logic_md']),
   capability('blueprint.read.context.asset', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint asset diagnostics context.', 'blueprint-explorer', 'low', true, false, ['read_context_asset']),
   capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, ['read_context_components']),
   capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, ['read_context_variables']),
@@ -206,8 +205,6 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
       (route.read_cluster === 'logic' && route.view_template === 'logic_json')
       || route.read_cluster === 'graph_context'
     ));
-  const blueprintLogicMdRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'logic' && route.view_template === 'logic_md');
   const blueprintAssetRouteRefs = readContextRouteRefs((route) =>
     route.domain === 'blueprint' && route.read_cluster === 'asset');
   const blueprintComponentRouteRefs = readContextRouteRefs((route) =>
@@ -236,11 +233,6 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['blueprint.read.context.logic_json', {
       route_refs: blueprintLogicJsonRouteRefs,
-      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
-      help_usage: READ_CONTEXT_HELP_USAGE,
-    }],
-    ['blueprint.read.context.logic_md', {
-      route_refs: blueprintLogicMdRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
@@ -278,7 +270,10 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],
-    ['blueprint.diagnose.compile', { stop_conditions: COMPILE_STOP_CONDITIONS }],
+    ['blueprint.diagnose.compile', {
+      stop_conditions: COMPILE_STOP_CONDITIONS,
+      help_notes: ['Requires an approved write-session gate when the running Editor Bridge enforces write-session policy.'],
+    }],
     ['umg.read.widget_tree', {
       route_refs: widgetTreeRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
@@ -326,7 +321,10 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     ['editor.read.screenshot', {
       help_usage: ['bh blueprinthelper_capture_screenshot --file <capture-screenshot.json> --select status,artifacts.full_result'],
     }],
-    ['editor.write.asset.save', { stop_conditions: SAVE_STOP_CONDITIONS }],
+    ['editor.write.asset.save', {
+      stop_conditions: SAVE_STOP_CONDITIONS,
+      help_notes: ['Requires an approved write-session gate before persisting an Unreal asset package.'],
+    }],
     ['editor.write.source_control.checkout', { stop_conditions: SOURCE_CONTROL_CHECKOUT_STOP_CONDITIONS }],
     ['editor.read.source_control.status', { stop_conditions: SOURCE_CONTROL_STATUS_STOP_CONDITIONS }],
     ['editor.diagnose.static', { stop_conditions: DIAGNOSTICS_STOP_CONDITIONS }],

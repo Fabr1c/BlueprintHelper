@@ -52,6 +52,15 @@ test('HelpBuilder renders read_context_capabilities help from manifest', () => {
 	assert.doesNotMatch(help, /No tool-specific help is registered/);
 });
 
+test('HelpBuilder renders read_reference_context help as schema-rooted request', () => {
+  const builder = createHelpBuilder();
+  const help = builder.build(['blueprinthelper_read_reference_context']);
+
+  assert.match(help, /BlueprintHelper CLI help: blueprinthelper_read_reference_context/);
+  assert.match(help, /Root JSON: BlueprintHelper\.ReferenceContextRequest\.v1 with schema field/);
+  assert.doesNotMatch(help, /bare BlueprintHelper\.ReferenceContextRequest\.v1/);
+});
+
 test('HelpBuilder explains empty-object templates for no-input tools', () => {
 	const builder = createHelpBuilder();
 	const agentGuideHelp = builder.build(['blueprinthelper_read_agent_guide']);

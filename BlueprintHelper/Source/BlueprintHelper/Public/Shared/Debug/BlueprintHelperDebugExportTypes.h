@@ -15,13 +15,12 @@ inline const TCHAR* ExportScopeToString(EBlueprintHelperExportScope S)
 
 enum class EBlueprintHelperSnapshotType : uint8
 {
-	LogicMd, LogicJson, RawJson, WidgetTree, ClassSettings, DataTableRows, DataAssetProperties
+	LogicJson, RawJson, WidgetTree, ClassSettings, DataTableRows, DataAssetProperties
 };
 inline const TCHAR* SnapshotTypeToString(EBlueprintHelperSnapshotType S)
 {
 	switch (S)
 	{
-	case EBlueprintHelperSnapshotType::LogicMd:            return TEXT("logic_md");
 	case EBlueprintHelperSnapshotType::LogicJson:          return TEXT("logic_json");
 	case EBlueprintHelperSnapshotType::RawJson:            return TEXT("raw_json");
 	case EBlueprintHelperSnapshotType::WidgetTree:         return TEXT("widget_tree");

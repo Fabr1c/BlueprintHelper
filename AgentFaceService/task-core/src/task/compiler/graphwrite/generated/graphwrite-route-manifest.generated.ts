@@ -33,6 +33,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "graph.body.*",
       "graph.statement.container_action"
     ],
+    "quick_access": {
+      "template_id": "container.action.route",
+      "family": "graph_write",
+      "cluster_id": "container",
+      "operation_id": "entry",
+      "quick_access_id": "route",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "append_new_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -64,6 +74,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [
       "graph.body.*"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.entry.custom_event",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "entry",
+      "quick_access_id": "custom_event",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "append_new_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -97,6 +117,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "graph.statement.component_bound_event",
       "graph.statement.delegate_bind"
     ],
+    "quick_access": {
+      "template_id": "event_delegate.entry.default",
+      "family": "graph_write",
+      "cluster_id": "event_delegate",
+      "operation_id": "entry",
+      "quick_access_id": "default",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "append_new_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -128,6 +158,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [
       "graph.body.*"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.entry.default",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "entry",
+      "quick_access_id": "default",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "append_new_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -160,6 +200,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "graph.body.*",
       "graph.statement.schedule"
     ],
+    "quick_access": {
+      "template_id": "schedule.entry.default",
+      "family": "graph_write",
+      "cluster_id": "schedule",
+      "operation_id": "entry",
+      "quick_access_id": "default",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "append_new_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -192,6 +242,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [
       "graph.body.*"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.merge.external_append_after",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "merge",
+      "quick_access_id": "external_append_after",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "merge_external_flow",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -222,6 +282,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Append an owned merge payload after an owned anchor.",
     "when_to_use": "Use for legacy owned merge payloads that are not BlueprintLogicSpec body statements.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "generic_ops.merge.append_after",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "merge",
+      "quick_access_id": "append_after",
+      "arg_slots": []
+    },
     "compiler_id": "merge_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -253,6 +321,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Fork owned flow around an owned anchor with explicit sequence order.",
     "when_to_use": "Use when inserting owned logic as an explicit branch fork.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "generic_ops.merge.branch_fork",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "merge",
+      "quick_access_id": "branch_fork",
+      "arg_slots": []
+    },
     "compiler_id": "merge_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -283,6 +359,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Insert an owned merge payload between an owned anchor and successor link.",
     "when_to_use": "Use for owned insertion between an anchor and an existing successor.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "generic_ops.merge.insert_between",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "merge",
+      "quick_access_id": "insert_between",
+      "arg_slots": []
+    },
     "compiler_id": "merge_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -360,6 +444,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Connect two pins in an owned GraphWrite block.",
     "when_to_use": "Use for GUID/ref based patching of BlueprintHelper-owned nodes.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.connect_pins.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "connect_pins",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -389,6 +481,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Delete a BlueprintHelper-owned node by stable node reference.",
     "when_to_use": "Use only for BlueprintHelper-owned nodes where delete_policy is explicit.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.delete_owned_node.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "delete_owned_node",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -417,6 +517,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Disconnect a link in a BlueprintHelper-owned graph block.",
     "when_to_use": "Use for link-level owned graph patches.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.disconnect_link.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "disconnect_link",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -446,6 +554,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Set comment text on a BlueprintHelper-owned node.",
     "when_to_use": "Use for owned node comment patches.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.node_comment.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "node_comment",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -475,6 +591,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Set a pin default value in an owned GraphWrite block.",
     "when_to_use": "Use for default-value edits when read_context returned stable pin refs.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.pin_default.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "pin_default",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -504,6 +628,14 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "purpose": "Replace an existing owned graph link with another endpoint reference.",
     "when_to_use": "Use for link replacement inside BlueprintHelper-owned graph content.",
     "allowed_slot_ids": [],
+    "quick_access": {
+      "template_id": "patch.replace_link.default",
+      "family": "graph_write",
+      "cluster_id": "patch",
+      "operation_id": "patch",
+      "quick_access_id": "replace_link",
+      "arg_slots": []
+    },
     "compiler_id": "patch_owned_graph",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -720,6 +852,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [
       "graph.body.*"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.replace.event_body",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "replace_body",
+      "quick_access_id": "event_body",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "replace_body",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -771,6 +913,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
       "graph.statement.control.return",
       "graph.expression.get.function_param"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.replace.function_body",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "replace_body",
+      "quick_access_id": "function_body",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "replace_body",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
@@ -857,6 +1009,16 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "allowed_slot_ids": [
       "graph.body.*"
     ],
+    "quick_access": {
+      "template_id": "generic_ops.replace.macro_body",
+      "family": "graph_write",
+      "cluster_id": "generic_ops",
+      "operation_id": "replace_body",
+      "quick_access_id": "macro_body",
+      "arg_slots": [
+        "body(statement[])"
+      ]
+    },
     "compiler_id": "replace_body",
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",

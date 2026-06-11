@@ -20,7 +20,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 - `safety_profile`: runtime_profile 中的当前安全档位
 - `allowed_tools`: 允许调用的 BlueprintHelper 工具名
 - `source_control_policy`: 写入前的版本控制 status/checkout 策略
-- `read_strategy`: 图表读取策略，必须包含是否避免未知规模全图 `logic_md` 和大图节点阈值
+- `read_strategy`: 图表读取策略，必须包含未知规模全图读取前的规模估算策略和大图节点阈值
 - `tool_call_intent`: 主 Agent 指定的单个工具调用意图，以及为什么需要这次缺失数据
 - `stop_conditions`: 必须停止并回交的条件
 - `return_format`: 主 Agent 要求的结果摘要格式
@@ -36,7 +36,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。
 2.3. 如果 `read_context`、截图/Editor 画面、preview、execute 或 readback 结果互相不一致，返回 `evidence_conflict` 并停止。不得读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
 3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，直接使用 `blueprinthelper_read_context`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。
-4. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量，不要直接读取整个图表的 `logic_md`。如果目标已经明确到 `function`、`event` 或 `custom_event`，可以直接用该 `target_type + target_name + view.format=logic_md` 读取目标入口切片。
+4. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量；目标明确到 `function`、`event` 或 `custom_event` 时，优先用该 `target_type + target_name` 的 `logic_flow` 或 bounded `logic_json` 读取目标入口切片。
 5. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
 6. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
 7. 工具参数必须使用 schema root object，不要额外包 `args`。

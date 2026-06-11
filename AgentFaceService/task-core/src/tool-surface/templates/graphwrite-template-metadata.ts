@@ -33,6 +33,7 @@ const GRAPH_WRITE_CLUSTER_DESCRIPTIONS: Readonly<Record<string, string>> = {
   event_delegate: 'Component-bound event and delegate binding statements.',
   external_body: 'External event or function body replacement through adapter-backed body anchors.',
   generic_ops: 'General Blueprint statements and expressions such as call, set, let, branch, return, construct, and literal values.',
+  patch: 'Owned graph reference, link, pin default, and node comment patch templates.',
   schedule: 'Delay, timer, and scheduled execution statements.',
 };
 
@@ -44,9 +45,12 @@ const GRAPH_WRITE_OPERATION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   convert: 'Run conversion or transform operations backed by GenericOps evidence.',
   create: 'Create objects, components, or assets through supported create operations.',
   delegate: 'Bind, assign, unbind, clear, or call delegates.',
+  entry: 'Create or select an owned graph entry route and optionally fill its body.',
   expression: 'Build nested value inputs such as literals, variables, function parameters, operators, structs, and selects.',
   field: 'Read or write structured field and property values.',
   let: 'Create a reusable graph-local symbol from an expression.',
+  merge: 'Insert owned graph logic at a supported merge point or external flow anchor.',
+  patch: 'Patch owned graph refs, links, pin defaults, comments, or owned nodes.',
   replace_body: 'Replace an adapter-backed external graph body using read_context body boundary evidence.',
   set: 'Assign member variables or object/component properties.',
   timer: 'Run delay, timer, or other scheduled execution operations.',

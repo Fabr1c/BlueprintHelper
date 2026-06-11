@@ -53,6 +53,10 @@ test('tool catalog filters by bridge and risk without old template dispatch', ()
   });
 
   assert.equal(reads.items.some((item) => item.id === 'blueprint.read.context.logic_flow'), true);
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  const removedMarkdownCapabilityId = `blueprint.read.context.${removedMarkdownFormat}`;
+  assert.equal(reads.items.some((item) => item.id === removedMarkdownCapabilityId), false);
+  assert.equal(reads.items.some((item) => JSON.stringify(item).includes(removedMarkdownFormat)), false);
   assert.equal(reads.items.every((item) => item.requires_bridge === true), true);
   assert.equal(reads.items.every((item) => item.risk === 'low'), true);
 });

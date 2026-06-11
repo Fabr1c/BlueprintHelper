@@ -137,7 +137,6 @@ function describeView(viewTemplate: string): string {
     diagnostics_json: 'Asset diagnostic JSON for validation and targeting.',
     logic_flow: 'Compact execution and data-flow view for Agent reasoning.',
     logic_json: 'Structured logic JSON with stable anchors for precise follow-up reads or writes.',
-    logic_md: 'Markdown logic summary for human-readable inspection.',
     property_json: 'Structured property JSON for object or widget property reads.',
     schema_json: 'Structured schema JSON for variables, rows, or object fields.',
     tree_json: 'Structured tree JSON for component or widget hierarchy reads.',

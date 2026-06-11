@@ -18,7 +18,7 @@ import {
 
 export type { ReadContextPostProcessResult } from './read-context-payload-projector-registry.js';
 
-const LOGIC_FORMATS = new Set<ReadContextLogicFormat>(['logic_flow', 'logic_md', 'logic_json']);
+const LOGIC_FORMATS = new Set<ReadContextLogicFormat>(['logic_flow', 'logic_json']);
 
 export function postProcessReadContextPayloadWithDebug(
   input: ReadContextInput,
@@ -162,10 +162,10 @@ function projectObjectPropertyPayload({
   };
 }
 
-type LogicProjectionSchema = 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicJson.v1' | 'LogicSnapshot.v1';
+type LogicProjectionSchema = 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicSnapshot.v1';
 
 function asLogicProjectionSchema(payloadSchema: string): LogicProjectionSchema {
-  const logicSchemas = new Set<string>(['LogicFlow.v1', 'LogicMd.v1', 'LogicJson.v1', 'LogicSnapshot.v1']);
+  const logicSchemas = new Set<string>(['LogicFlow.v1', 'LogicJson.v1', 'LogicSnapshot.v1']);
   if (logicSchemas.has(payloadSchema)) {
     return payloadSchema as LogicProjectionSchema;
   }
@@ -182,7 +182,6 @@ function resolveRequestedLogicFormat(
   const schemaFormats: Readonly<Record<string, ReadContextLogicFormat>> = {
     'LogicFlow.v1': 'logic_flow',
     'LogicJson.v1': 'logic_json',
-    'LogicMd.v1': 'logic_md',
   };
   return schemaFormats[payloadSchema] ?? 'logic_flow';
 }
@@ -197,43 +196,17 @@ function normalizePayload(payloadSchema: string, payload: Record<string, unknown
 }
 
 function compactLogicContextPayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const compactedPayload = compactLogicMdMarkdown(payload);
   const logic = payload['logic'];
   if (!isRecord(logic) || !Object.hasOwn(logic, 'asset_path')) {
-    return compactedPayload;
+    return payload;
   }
 
   const compactedLogic = { ...logic };
   delete compactedLogic['asset_path'];
   return {
-    ...compactedPayload,
+    ...payload,
     logic: compactedLogic,
   };
-}
-
-function compactLogicMdMarkdown(payload: Record<string, unknown>): Record<string, unknown> {
-  if (payload['schema'] !== 'LogicMd.v1' || typeof payload['markdown'] !== 'string') {
-    return payload;
-  }
-
-  const markdown = stripLogicMdStatsLines(payload['markdown']);
-  if (markdown === payload['markdown']) {
-    return payload;
-  }
-  return {
-    ...payload,
-    markdown,
-  };
-}
-
-function stripLogicMdStatsLines(markdown: string): string {
-  const lines = markdown.split(/\r?\n/);
-  const stripped = lines.filter((line) => !isLogicMdStatsLine(line));
-  return stripped.join('\n').replace(/\n{3,}/g, '\n\n');
-}
-
-function isLogicMdStatsLine(line: string): boolean {
-  return /^Nodes:\s*\d+\s*\|\s*Exec Links:\s*\d+\s*\|\s*Data Links:\s*\d+(?:\s*\|\s*Entry Points:\s*\d+)?\s*\|\s*Orphans:\s*\d+\s*$/i.test(line.trim());
 }
 
 function compactAssetContextPayload(payload: Record<string, unknown>): Record<string, unknown> {

@@ -1,9 +1,9 @@
-// BlueprintHelper Service Layer — LogicJson Read Service
+﻿// BlueprintHelper Service Layer — LogicJson Read Service
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Shared/BlueprintHelperLogicMdTypes.h"
+#include "Shared/BlueprintHelperLogicReadTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadRequestSnapshotCache.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadSnapshotFormatter.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicReadSnapshotService.h"

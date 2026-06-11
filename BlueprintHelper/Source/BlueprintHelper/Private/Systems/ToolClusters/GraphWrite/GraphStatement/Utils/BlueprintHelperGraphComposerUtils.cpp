@@ -202,15 +202,16 @@ bool FBlueprintHelperGraphComposerUtils::TryCreateSchemaDataConnection(
 		return true;
 	}
 
+	const FString PinDetail = FString::Printf(
+		TEXT("%s(%s)->%s(%s) response=%d"),
+		*FromPin->PinName.ToString(),
+		*FromPin->PinType.PinCategory.ToString(),
+		*ToPin->PinName.ToString(),
+		*ToPin->PinType.PinCategory.ToString(),
+		static_cast<int32>(ConnectionResponse.Response.GetValue()));
 	OutFailureReason = ConnectionResponse.Message.IsEmpty()
-		? FString::Printf(
-			TEXT("schema_data_connection_failed:%s(%s)->%s(%s) response=%d"),
-			*FromPin->PinName.ToString(),
-			*FromPin->PinType.PinCategory.ToString(),
-			*ToPin->PinName.ToString(),
-			*ToPin->PinType.PinCategory.ToString(),
-			static_cast<int32>(ConnectionResponse.Response.GetValue()))
-		: ConnectionResponse.Message.ToString();
+		? FString::Printf(TEXT("schema_data_connection_failed:%s"), *PinDetail)
+		: FString::Printf(TEXT("%s [%s]"), *ConnectionResponse.Message.ToString(), *PinDetail);
 	return false;
 }
 

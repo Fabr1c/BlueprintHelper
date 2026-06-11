@@ -49,7 +49,7 @@ The documentation mainline targets the CLI-first TaskSpec / TaskPlan orchestrati
 
 | Area | Supported |
 |---|---|
-| Blueprint logic | Read LogicMD, read LogicJson, export raw JSON, import raw JSON, import AgentImportGraph |
+| Blueprint logic | Read LogicFlow, read LogicJson, export raw JSON, import raw JSON, import AgentImportGraph |
 | Blueprint structure | List graphs, variables, dispatchers, add/remove variables, add/remove graphs, add dispatchers, delete nodes |
 | UMG | Read widget trees, add/remove/move widgets, read/set widget properties |
 | Data assets | Read/set editable UObject properties |
@@ -161,7 +161,7 @@ BlueprintHelper Bridge uses object-first responses. Large raw graph payloads sho
 ### Response Output Rules
 
 - Prefer object `json` over stringified JSON.
-- LogicJson and LogicMD reads should report importability explicitly through fields such as `importable` and `schema`.
+- LogicJson reads should report importability explicitly through fields such as `importable` and `schema`.
 
 ### MCP Lifecycle / Compatibility Behavior
 

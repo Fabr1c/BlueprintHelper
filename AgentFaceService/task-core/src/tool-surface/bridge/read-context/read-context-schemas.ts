@@ -1,13 +1,12 @@
 import { z } from 'zod';
 
-export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_md', 'logic_json'] as const;
+export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_json'] as const;
 export type ReadContextLogicFormat = (typeof READ_CONTEXT_LOGIC_FORMATS)[number];
-export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_md', 'logic_json', 'tree_json'] as const;
+export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_json', 'tree_json'] as const;
 export type ReadContextViewFormat = (typeof READ_CONTEXT_VIEW_FORMATS)[number];
 
 export const LOGIC_PROJECTION_CALLBACK_CAPABILITIES = [
   'ue.raw_snapshot.logic_json',
-  'ue.raw_snapshot.logic_md',
   'ue.raw_snapshot.logic_flow',
 ] as const;
 export type LogicProjectionCallbackCapability =

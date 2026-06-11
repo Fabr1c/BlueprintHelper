@@ -1,16 +1,16 @@
-// BlueprintHelper Service Layer — Logic Group Builder
+﻿// BlueprintHelper Service Layer — Logic Group Builder
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Shared/BlueprintHelperLogicMdTypes.h"
+#include "Shared/BlueprintHelperLogicReadTypes.h"
 
 class FJsonObject;
 
 /**
  * 逻辑分组构建器。
  * 从 RawJson 导出数据中扫描并构建 groups / entries / nodes / links。
- * 供 LogicMD / LogicJson 共用。
+ * 供 LogicJson 与 LogicFlow 读取共用。
  */
 class BLUEPRINTHELPER_API FBlueprintHelperLogicGroupBuilder
 {

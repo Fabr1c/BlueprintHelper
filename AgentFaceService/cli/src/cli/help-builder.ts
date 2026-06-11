@@ -157,11 +157,9 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
       case 'readspec':
         return 'Root JSON: bare BlueprintHelper.ReadSpec.v1. Do not wrap the input in args.';
       case 'read_reference_context':
-        return 'Root JSON: bare BlueprintHelper.ReferenceContextRequest.v1. Do not wrap the input in args.';
+        return 'Root JSON: BlueprintHelper.ReferenceContextRequest.v1 with schema field. Do not wrap the input in args.';
       case 'bridge_payload':
         return 'Root JSON: Bridge tool payload object. Use a template path before calling the tool.';
-      case 'bridge_logic_md_payload':
-        return 'Root JSON: Bridge logic payload object; format defaults to logic_md.';
       case 'bridge_logic_json_payload':
         return 'Root JSON: Bridge logic payload object; format defaults to logic_json.';
       case 'tool_payload':

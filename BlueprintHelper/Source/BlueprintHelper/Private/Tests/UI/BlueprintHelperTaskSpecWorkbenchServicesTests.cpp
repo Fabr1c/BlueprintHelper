@@ -46,11 +46,6 @@ public:
 		StatsObject->SetNumberField(TEXT("link_count"), Links ? Links->Num() : 0);
 		Payload->SetObjectField(TEXT("stats"), StatsObject);
 
-		if (RequestedFormat.Equals(TEXT("logic_md"), ESearchCase::IgnoreCase))
-		{
-			Payload->SetStringField(TEXT("content"), TEXT("# ReadContext LogicMD\n\n- source: fake canonical backend\n"));
-		}
-
 		OutPayload = Payload;
 		OutError = FBlueprintHelperToolError();
 		return true;
@@ -247,6 +242,9 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 
 	TestEqual(TEXT("input type"), Input.InputType, EBlueprintHelperWorkbenchInputType::T3D);
 	TestTrue(TEXT("parse succeeded"), Input.bParseSucceeded);
+	const FString RemovedMarkdownFormat = FString(TEXT("logic")) + TEXT("_md");
+	TestFalse(TEXT("T3D status does not advertise removed markdown format"),
+		Input.StatusText.Contains(RemovedMarkdownFormat));
 
 	FBlueprintHelperReadContextExportRequest LogicFlowRequest;
 	LogicFlowRequest.SourceText = T3DText;
@@ -305,17 +303,9 @@ bool FBlueprintHelperTaskSpecWorkbenchExportsT3DReadContextFormatsTest::RunTest(
 		TEXT("linked logicjson has exec link with pin types"),
 		FBlueprintHelperTaskSpecWorkbenchServicesTestData::HasExecLinkWithPinTypes(LinkedLogicJson));
 
-	FBlueprintHelperReadContextExportRequest LogicMdRequest;
-	LogicMdRequest.SourceText = T3DText;
-	LogicMdRequest.Format = EBlueprintHelperReadContextExportFormat::LogicMd;
-	const FBlueprintHelperReadContextExportResult LogicMdResult =
-		FBlueprintHelperReadContextExportService::Export(LogicMdRequest);
-
-	TestTrue(TEXT("logicmd export succeeds"), LogicMdResult.bSucceeded);
-	TestTrue(TEXT("logicmd has title"), LogicMdResult.ExportText.Contains(TEXT("ReadContext LogicMD")));
 	TestTrue(TEXT("backend receives logic_flow request"), Backend->RequestedFormats.Contains(TEXT("logic_flow")));
 	TestTrue(TEXT("backend receives logic_json request"), Backend->RequestedFormats.Contains(TEXT("logic_json")));
-	TestTrue(TEXT("backend receives logic_md request"), Backend->RequestedFormats.Contains(TEXT("logic_md")));
+	TestFalse(TEXT("backend does not receive removed markdown request"), Backend->RequestedFormats.Contains(RemovedMarkdownFormat));
 	FBlueprintHelperReadContextProjectionGateway::ClearBackend();
 	return true;
 }

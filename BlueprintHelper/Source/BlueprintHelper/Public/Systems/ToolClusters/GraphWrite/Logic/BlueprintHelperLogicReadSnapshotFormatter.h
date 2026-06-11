@@ -23,15 +23,9 @@ public:
 
 	FBlueprintHelperLogicJsonData BuildLogicJsonData(
 		const FBlueprintHelperLogicReadSnapshot& Snapshot) const;
-	FBlueprintHelperLogicMdData BuildLogicMdData(
-		const FBlueprintHelperLogicReadSnapshot& Snapshot) const;
 
 private:
 	bool BuildLogicJsonPayload(
-		const FBlueprintHelperLogicReadSnapshot& Snapshot,
-		TSharedPtr<FJsonObject>& OutPayload,
-		FString& OutError) const;
-	bool BuildLogicMdPayload(
 		const FBlueprintHelperLogicReadSnapshot& Snapshot,
 		TSharedPtr<FJsonObject>& OutPayload,
 		FString& OutError) const;

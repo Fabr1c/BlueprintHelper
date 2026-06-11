@@ -33,7 +33,6 @@ class FBlueprintHelperEditorCommandService;
 class FBlueprintHelperRuntimeProfileService;
 class FBlueprintHelperDiagnosticsService;
 class FBlueprintHelperDebugEntryService;
-class FBlueprintHelperLogicMdReadService;
 class FBlueprintHelperLogicJsonReadService;
 class FBlueprintHelperAssetFactoryService;
 class FBlueprintHelperComponentService;
@@ -72,7 +71,6 @@ public:
 		const FBlueprintHelperRuntimeProfileService& InRuntimeProfile,
 		const FBlueprintHelperDiagnosticsService& InDiagnostics,
 		const FBlueprintHelperDebugEntryService& InDebugEntryService,
-		const FBlueprintHelperLogicMdReadService& InLogicMdRead,
 		const FBlueprintHelperLogicJsonReadService& InLogicJsonRead,
 		const FBlueprintHelperAssetFactoryService& InAssetFactory,
 		const FBlueprintHelperComponentService& InComponentService,
@@ -102,7 +100,6 @@ private:
 	FBlueprintHelperBridgeResponse HandleExportDebugBundle(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadReferenceContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadFunctionChainContext(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleValidateJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExportToJson(const FBlueprintHelperBridgeRequest& Req) const;
@@ -161,7 +158,6 @@ private:
 	const FBlueprintHelperRuntimeProfileService& RuntimeProfileService;
 	const FBlueprintHelperDiagnosticsService& DiagnosticsService;
 	const FBlueprintHelperDebugEntryService& DebugEntryService;
-	const FBlueprintHelperLogicMdReadService& LogicMdReadService;
 	const FBlueprintHelperLogicJsonReadService& LogicJsonReadService;
 	FBlueprintHelperAssetFactoryBridgeRoutes AssetFactoryRoutes;
 	FBlueprintHelperComponentBridgeRoutes ComponentRoutes;

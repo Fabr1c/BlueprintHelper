@@ -160,33 +160,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.blueprint.logic_md",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "blueprint",
-    "view_template": "logic_md",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "blueprint_logic",
-    "target_type": "blueprint",
-    "format": "logic_md",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
-    "bridge_command": "read_blueprint_logic_md",
-    "output_schema": "LogicMd.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
-    "request_builder_id": "blueprint_logic",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "blueprint"
-    ],
-    "supported_formats": [
-      "logic_md"
-    ]
-  },
-  {
     "route_id": "read.blueprint.logic.custom_event.logic_flow",
     "domain": "blueprint",
     "read_cluster": "logic",
@@ -240,34 +213,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "supported_formats": [
       "logic_json"
-    ]
-  },
-  {
-    "route_id": "read.blueprint.logic.custom_event.logic_md",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "custom_event",
-    "view_template": "logic_md",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "blueprint_logic",
-    "target_type": "custom_event",
-    "format": "logic_md",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
-    "bridge_command": "read_blueprint_logic_md",
-    "output_schema": "LogicMd.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "blueprint_logic",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "custom_event"
-    ],
-    "supported_formats": [
-      "logic_md"
     ]
   },
   {
@@ -327,34 +272,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.event.logic_md",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "event",
-    "view_template": "logic_md",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "blueprint_logic",
-    "target_type": "event",
-    "format": "logic_md",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
-    "bridge_command": "read_blueprint_logic_md",
-    "output_schema": "LogicMd.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "blueprint_logic",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "event"
-    ],
-    "supported_formats": [
-      "logic_md"
-    ]
-  },
-  {
     "route_id": "read.blueprint.logic.function.logic_flow",
     "domain": "blueprint",
     "read_cluster": "logic",
@@ -411,34 +328,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.function.logic_md",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "function",
-    "view_template": "logic_md",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "blueprint_logic",
-    "target_type": "function",
-    "format": "logic_md",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
-    "bridge_command": "read_blueprint_logic_md",
-    "output_schema": "LogicMd.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "blueprint_logic",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "function"
-    ],
-    "supported_formats": [
-      "logic_md"
-    ]
-  },
-  {
     "route_id": "read.blueprint.logic.graph.logic_flow",
     "domain": "blueprint",
     "read_cluster": "logic",
@@ -492,34 +381,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "supported_formats": [
       "logic_json"
-    ]
-  },
-  {
-    "route_id": "read.blueprint.logic.graph.logic_md",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_md",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "blueprint_logic",
-    "target_type": "graph",
-    "format": "logic_md",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
-    "bridge_command": "read_blueprint_logic_md",
-    "output_schema": "LogicMd.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "blueprint_logic",
-    "payload_projector_id": "logic",
-    "supported_asset_types": [
-      "blueprint",
-      "graph"
-    ],
-    "supported_formats": [
-      "logic_md"
     ]
   },
   {

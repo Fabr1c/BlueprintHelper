@@ -310,7 +310,7 @@ test('runCli exposes ReadContext template four-layer index and compose output', 
     '--format',
     'json',
   ]);
-  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
+  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow', 'logic_json']);
   assert.match(
     views.output.items.find((item: Record<string, unknown>) => item.view_template === 'logic_flow')?.description as string,
     /flow/i,

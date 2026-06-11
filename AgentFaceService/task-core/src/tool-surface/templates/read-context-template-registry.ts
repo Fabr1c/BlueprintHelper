@@ -23,11 +23,11 @@ const BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET: Readonly<Record<string, string>> = {
 };
 
 const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
-  ...blueprintLogicRoutes('blueprint', ['logic_flow', 'logic_json', 'logic_md']),
-  ...blueprintLogicRoutes('function', ['logic_flow', 'logic_json', 'logic_md']),
-  ...blueprintLogicRoutes('event', ['logic_flow', 'logic_json', 'logic_md']),
-  ...blueprintLogicRoutes('custom_event', ['logic_flow', 'logic_json', 'logic_md']),
-  ...blueprintLogicRoutes('graph', ['logic_flow', 'logic_json', 'logic_md']),
+  ...blueprintLogicRoutes('blueprint', ['logic_flow', 'logic_json']),
+  ...blueprintLogicRoutes('function', ['logic_flow', 'logic_json']),
+  ...blueprintLogicRoutes('event', ['logic_flow', 'logic_json']),
+  ...blueprintLogicRoutes('custom_event', ['logic_flow', 'logic_json']),
+  ...blueprintLogicRoutes('graph', ['logic_flow', 'logic_json']),
   active('read.blueprint.logic.block.logic_json', 'blueprint', 'logic', 'block', 'logic_json', {
     read_type: 'blueprint_logic',
     target_type: 'block',
@@ -182,14 +182,14 @@ export function getReadContextRouteDescriptor(routeId: string): ReadContextRoute
 
 function blueprintLogicRoutes(
   targetKind: 'blueprint' | 'function' | 'event' | 'custom_event' | 'graph',
-  formats: readonly ('logic_flow' | 'logic_json' | 'logic_md')[],
+  formats: readonly ('logic_flow' | 'logic_json')[],
 ): ReadContextRouteDescriptor[] {
   return formats.map((format) => active(`read.blueprint.logic.${targetKind}.${format}`, 'blueprint', 'logic', targetKind, format, {
     read_type: 'blueprint_logic',
     target_type: targetKind,
     format,
     base_template_path: BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET[targetKind],
-    bridge_command: format === 'logic_md' ? 'read_blueprint_logic_md' : 'read_blueprint_logic_json',
+    bridge_command: 'read_blueprint_logic_json',
     output_schema: outputSchemaForLogicFormat(format),
     required_target_fields: targetKind === 'blueprint' ? ['asset_path'] : ['asset_path', 'target_name'],
     request_builder_id: 'blueprint_logic',
@@ -198,11 +198,10 @@ function blueprintLogicRoutes(
   }));
 }
 
-function outputSchemaForLogicFormat(format: 'logic_flow' | 'logic_json' | 'logic_md'): string {
+function outputSchemaForLogicFormat(format: 'logic_flow' | 'logic_json'): string {
   const outputSchemas: Readonly<Record<typeof format, string>> = {
     logic_flow: 'LogicFlow.v1',
     logic_json: 'LogicJson.v1',
-    logic_md: 'LogicMd.v1',
   };
   return outputSchemas[format];
 }

@@ -5,23 +5,6 @@
 class FBlueprintHelperLogicReadSnapshotFormatterLocalUtils
 {
 public:
-	static const TCHAR* GetTargetTitle(EBlueprintHelperLogicScope Scope)
-	{
-		if (Scope == EBlueprintHelperLogicScope::TargetFunction)
-		{
-			return TEXT("Function");
-		}
-		if (Scope == EBlueprintHelperLogicScope::TargetEvent)
-		{
-			return TEXT("Event");
-		}
-		if (Scope == EBlueprintHelperLogicScope::TargetCustomEvent)
-		{
-			return TEXT("Custom Event");
-		}
-		return TEXT("Target");
-	}
-
 	static int32 CountLinks(
 		const TArray<FBlueprintHelperLogicNode>& Nodes,
 		EBlueprintHelperLogicLinkType Type)
@@ -73,43 +56,9 @@ public:
 		return Count;
 	}
 
-	static void AppendLine(FString& Output, const FString& Line = TEXT(""))
-	{
-		Output += Line;
-		Output += TEXT("\n");
-	}
-
-	static FString FormatNodeLine(const FBlueprintHelperLogicNode& Node)
-	{
-		if (Node.Owner.IsEmpty())
-		{
-			return FString::Printf(
-				TEXT("- %s [%s] %s"),
-				*Node.NodeRef,
-				LogicNodeKindToString(Node.Kind),
-				*Node.Name);
-		}
-
-		return FString::Printf(
-			TEXT("- %s [%s] %s owner=%s"),
-			*Node.NodeRef,
-			LogicNodeKindToString(Node.Kind),
-			*Node.Name,
-			*Node.Owner);
-	}
-
-	static FString FormatEntryLine(const FBlueprintHelperLogicEntry& Entry)
-	{
-		return FString::Printf(
-			TEXT("- %s [%s] %s"),
-			*Entry.NodeRef,
-			LogicNodeKindToString(Entry.Kind),
-			*Entry.Name);
-	}
-
 	static void FillStatsFromPayload(
 		const FBlueprintHelperLogicJsonPayload& Payload,
-		FBlueprintHelperLogicMdStats& Stats)
+		FBlueprintHelperLogicStats& Stats)
 	{
 		Stats.Nodes = Payload.Nodes.Num();
 		Stats.ExecLinks = CountLinks(Payload.Nodes, EBlueprintHelperLogicLinkType::Exec);
@@ -117,109 +66,9 @@ public:
 		Stats.OrphanNodes = CountOrphanNodes(Payload);
 	}
 
-	static FString BuildTargetEntryMarkdown(
-		const FBlueprintHelperLogicJsonPayload& Payload,
-		EBlueprintHelperLogicScope Scope,
-		const FString& TargetName,
-		const FBlueprintHelperLogicMdStats& Stats)
-	{
-		FString Output;
-		const FString EffectiveTargetName = !TargetName.IsEmpty()
-			? TargetName
-			: (Payload.Entry.IsSet() ? Payload.Entry->Name : TEXT("<unnamed>"));
-
-		AppendLine(Output, TEXT("# Logic Graph"));
-		AppendLine(Output);
-		AppendLine(Output, FString::Printf(TEXT("%s: %s"), GetTargetTitle(Scope), *EffectiveTargetName));
-		if (!Payload.Graph.IsEmpty())
-		{
-			AppendLine(Output, FString::Printf(TEXT("Graph: %s"), *Payload.Graph));
-		}
-		AppendLine(Output, FString::Printf(
-			TEXT("Nodes: %d | Exec Links: %d | Data Links: %d | Orphans: %d"),
-			Stats.Nodes,
-			Stats.ExecLinks,
-			Stats.DataLinks,
-			Stats.OrphanNodes));
-
-		AppendLine(Output);
-		AppendLine(Output, TEXT("## Entry"));
-		if (Payload.Entry.IsSet())
-		{
-			AppendLine(Output, FormatEntryLine(Payload.Entry.GetValue()));
-		}
-		else
-		{
-			AppendLine(Output, TEXT("- <missing>"));
-		}
-
-		AppendLine(Output);
-		AppendLine(Output, TEXT("## Nodes"));
-		if (Payload.Nodes.Num() == 0)
-		{
-			AppendLine(Output, TEXT("- None"));
-		}
-		else
-		{
-			for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
-			{
-				AppendLine(Output, FormatNodeLine(Node));
-			}
-		}
-
-		AppendLine(Output);
-		AppendLine(Output, TEXT("## Execution"));
-		bool bHasExec = false;
-		for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
-		{
-			for (const FBlueprintHelperLogicLink& Link : Node.Links)
-			{
-				if (Link.Type != EBlueprintHelperLogicLinkType::Exec)
-				{
-					continue;
-				}
-				bHasExec = true;
-				AppendLine(Output, FString::Printf(
-					TEXT("- %s.%s -> %s.%s"),
-					*Node.NodeRef,
-					*Link.FromPin,
-					*Link.ToNode,
-					*Link.ToPin));
-			}
-		}
-		if (!bHasExec)
-		{
-			AppendLine(Output, TEXT("- None"));
-		}
-
-		if (Stats.DataLinks > 0)
-		{
-			AppendLine(Output);
-			AppendLine(Output, TEXT("## Data Dependencies"));
-			for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
-			{
-				for (const FBlueprintHelperLogicLink& Link : Node.Links)
-				{
-					if (Link.Type != EBlueprintHelperLogicLinkType::Data)
-					{
-						continue;
-					}
-					AppendLine(Output, FString::Printf(
-						TEXT("- %s.%s -> %s.%s"),
-						*Node.NodeRef,
-						*Link.FromPin,
-						*Link.ToNode,
-						*Link.ToPin));
-				}
-			}
-		}
-
-		return Output;
-	}
-
 	static void FillStatsFromLogicResult(
 		const FBlueprintHelperLogicResult& LogicResult,
-		FBlueprintHelperLogicMdStats& Stats)
+		FBlueprintHelperLogicStats& Stats)
 	{
 		Stats.Nodes = LogicResult.NodeCount;
 		Stats.ExecLinks = LogicResult.ExecLinkCount;
@@ -236,13 +85,6 @@ FBlueprintHelperLogicReadSnapshotFormatter::FBlueprintHelperLogicReadSnapshotFor
 		FString& OutError)
 	{
 		return BuildLogicJsonPayload(Snapshot, OutPayload, OutError);
-	});
-	FormatHandlers.Add(TEXT("logic_md"), [this](
-		const FBlueprintHelperLogicReadSnapshot& Snapshot,
-		TSharedPtr<FJsonObject>& OutPayload,
-		FString& OutError)
-	{
-		return BuildLogicMdPayload(Snapshot, OutPayload, OutError);
 	});
 }
 
@@ -298,14 +140,12 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicReadSnapshotFormatter::BuildL
 		FBlueprintHelperLogicReadSnapshotFormatterLocalUtils::FillStatsFromPayload(Data.Logic, Data.Stats);
 		return Data;
 	}
-	else
-	{
-		Data.Logic = GroupBuilder.BuildGroups(
-			Snapshot.RawJsonObject,
-			Snapshot.AssetPath,
-			Snapshot.GraphName,
-			Snapshot.Scope);
-	}
+
+	Data.Logic = GroupBuilder.BuildGroups(
+		Snapshot.RawJsonObject,
+		Snapshot.AssetPath,
+		Snapshot.GraphName,
+		Snapshot.Scope);
 
 	FBlueprintHelperLogicOptions LogicOptions;
 	LogicOptions.Format = EBlueprintHelperLogicOutputFormat::Markdown;
@@ -333,93 +173,6 @@ FBlueprintHelperLogicJsonData FBlueprintHelperLogicReadSnapshotFormatter::BuildL
 	return Data;
 }
 
-FBlueprintHelperLogicMdData FBlueprintHelperLogicReadSnapshotFormatter::BuildLogicMdData(
-	const FBlueprintHelperLogicReadSnapshot& Snapshot) const
-{
-	FBlueprintHelperLogicMdData Data;
-	Data.Scope = Snapshot.Scope;
-
-	if (!Snapshot.bExportSucceeded || !Snapshot.RawJsonObject.IsValid())
-	{
-		Data.Markdown = TEXT("(导出失败)");
-		Data.bImportable = false;
-		return Data;
-	}
-
-	if (Snapshot.bTargetEntryScope)
-	{
-		const FBlueprintHelperLogicJsonPayload Payload = GroupBuilder.BuildTargetEntry(
-			Snapshot.RawJsonObject,
-			Snapshot.AssetPath,
-			Snapshot.Target.Graph,
-			Snapshot.TargetEntryName,
-			Snapshot.Scope);
-
-		FBlueprintHelperLogicReadSnapshotFormatterLocalUtils::FillStatsFromPayload(Payload, Data.Stats);
-		Data.Markdown = FBlueprintHelperLogicReadSnapshotFormatterLocalUtils::BuildTargetEntryMarkdown(
-			Payload,
-			Snapshot.Scope,
-			Snapshot.TargetEntryName,
-			Data.Stats);
-		Data.bImportable = false;
-		return Data;
-	}
-
-	FBlueprintHelperLogicOptions LogicOptions;
-	LogicOptions.Format = EBlueprintHelperLogicOutputFormat::Markdown;
-	LogicOptions.DetailLevel = EBlueprintHelperLogicDetailLevel::Normal;
-	LogicOptions.bIncludeDataDependencies = true;
-	LogicOptions.bIncludeOrphanNodes = true;
-	LogicOptions.bIncludeNodeIds = false;
-	LogicOptions.bIncludePositions = false;
-	LogicOptions.bIncludeRawNodeTypes = false;
-
-	const FBlueprintHelperLogicResult LogicResult =
-		FBlueprintHelperLogicProcessor::ProcessRawJsonObject(Snapshot.RawJsonObject, LogicOptions);
-
-	if (!LogicResult.bSuccess)
-	{
-		Data.Markdown = TEXT("(Logic Processor 失败)");
-		Data.bImportable = false;
-		return Data;
-	}
-
-	Data.Markdown = LogicResult.OutputText;
-	Data.bImportable = false;
-	FBlueprintHelperLogicReadSnapshotFormatterLocalUtils::FillStatsFromLogicResult(LogicResult, Data.Stats);
-
-	const bool bIsMultiEntry = FBlueprintHelperLogicGroupBuilder::IsMultiEntryScope(Snapshot.Scope);
-	if (bIsMultiEntry)
-	{
-		const FBlueprintHelperLogicJsonPayload GroupPayload = GroupBuilder.BuildGroups(
-			Snapshot.RawJsonObject,
-			Snapshot.AssetPath,
-			Snapshot.GraphName,
-			Snapshot.Scope);
-		Data.Stats.Groups = GroupPayload.Groups.Num();
-		Data.bGrouped = true;
-	}
-
-	if (Snapshot.Scope == EBlueprintHelperLogicScope::Blueprint)
-	{
-		Data.Stats.Graphs = 1;
-		Data.Stats.Functions = 0;
-		Data.Stats.Events = LogicResult.EntryPointCount;
-		Data.bGrouped = true;
-	}
-	else if (Snapshot.Scope == EBlueprintHelperLogicScope::TargetGraph)
-	{
-		Data.Stats.Events = LogicResult.EntryPointCount;
-		Data.bGrouped = true;
-	}
-	else if (Snapshot.Scope == EBlueprintHelperLogicScope::MultiTarget)
-	{
-		Data.Stats.Targets = 1;
-	}
-
-	return Data;
-}
-
 bool FBlueprintHelperLogicReadSnapshotFormatter::BuildLogicJsonPayload(
 	const FBlueprintHelperLogicReadSnapshot& Snapshot,
 	TSharedPtr<FJsonObject>& OutPayload,
@@ -427,15 +180,5 @@ bool FBlueprintHelperLogicReadSnapshotFormatter::BuildLogicJsonPayload(
 {
 	OutError.Reset();
 	OutPayload = BuildLogicJsonData(Snapshot).ToJson();
-	return true;
-}
-
-bool FBlueprintHelperLogicReadSnapshotFormatter::BuildLogicMdPayload(
-	const FBlueprintHelperLogicReadSnapshot& Snapshot,
-	TSharedPtr<FJsonObject>& OutPayload,
-	FString& OutError) const
-{
-	OutError.Reset();
-	OutPayload = BuildLogicMdData(Snapshot).ToJson();
 	return true;
 }

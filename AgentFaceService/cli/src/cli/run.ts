@@ -400,6 +400,9 @@ function parseArgs(argv: string[]): ParseResult {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     return { ok: true, help: true, helpTarget: parseHelpTarget(argv) };
   }
+  if (argv[0] === 'help') {
+    return { ok: true, help: true, helpTarget: parseHelpTarget(argv.slice(1)) };
+  }
 
   const positionals: string[] = [];
   const options: {

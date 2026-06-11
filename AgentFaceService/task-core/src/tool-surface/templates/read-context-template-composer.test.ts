@@ -82,6 +82,30 @@ test('ReadContext template composer writes graph logic_json using blueprint logi
   const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
   assert.equal(readSpec.read_type, 'blueprint_logic');
   assert.equal(readSpec.target.target_type, 'graph');
+  assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
+});
+
+test('ReadContext template composer does not inherit graph target fields for blueprint logic routes', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'blueprint-logic-flow.readspec.json');
+
+  const result = composeReadContextTemplate({
+    domain: 'blueprint',
+    readCluster: 'logic',
+    targetKind: 'blueprint',
+    viewTemplate: 'logic_flow',
+    templateIds: [],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'read.blueprint.logic.blueprint.logic_flow');
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+  assert.equal(readSpec.read_type, 'blueprint_logic');
+  assert.deepEqual(readSpec.target, {
+    asset_path: '__REQUIRED_ASSET_PATH__',
+    target_type: 'blueprint',
+  });
+  assert.deepEqual(readSpec.view, { format: 'logic_flow' });
 });
 
 test('ReadContext template index exposes domain cluster target and view discovery', () => {
@@ -113,7 +137,12 @@ test('ReadContext template index exposes domain cluster target and view discover
     readCluster: 'logic',
     targetKind: 'function',
   });
-  assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow', 'logic_json', 'logic_md']);
+  assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow', 'logic_json']);
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  assert.equal(
+    views.items.some((item) => item.view_template === removedMarkdownFormat),
+    false,
+  );
   assert.match(
     views.items.find((item) => item.view_template === 'logic_flow')?.description ?? '',
     /flow/i,
@@ -224,4 +253,13 @@ test('ReadContext template composer reports diagnostics without writing unsuppor
   assert.equal(result.status, 'failed');
   assert.equal(fs.existsSync(outputPath), false);
   assert.equal(result.diagnostics?.[0]?.code, 'unsupported_read_context_template');
+});
+
+test('ReadContext active route descriptors do not expose removed markdown logic format', () => {
+  const active = getActiveReadContextRouteDescriptors();
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  const removedMarkdownCommand = ['read_blueprint', 'logic', 'md'].join('_');
+  assert.equal(active.some((route) => route.view_template === removedMarkdownFormat), false);
+  assert.equal(active.some((route) => route.route_id.includes(removedMarkdownFormat)), false);
+  assert.equal(active.some((route) => route.bridge_command === removedMarkdownCommand), false);
 });

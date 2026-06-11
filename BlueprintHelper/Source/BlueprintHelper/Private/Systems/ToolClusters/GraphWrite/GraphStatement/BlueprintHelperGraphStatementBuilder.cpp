@@ -513,14 +513,14 @@ static void ApplyContainerActionRolePinAliases(
 	for (const FBlueprintHelperContainerActionRoleBinding& Binding : Spec->RoleBindings)
 	{
 		const bool bOutputRole = !Binding.bProjectToCallableRequest;
-		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.PinBindings, bOutputRole);
+		AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.PinBindings, true);
 		if (bOutputRole)
 		{
 			AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataOutputs, true);
 		}
 		else
 		{
-			AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataInputs);
+			AddPinAlias(Binding.RoleName, Binding.FunctionPinName, InOutFragment.DataInputs, true);
 		}
 	}
 }

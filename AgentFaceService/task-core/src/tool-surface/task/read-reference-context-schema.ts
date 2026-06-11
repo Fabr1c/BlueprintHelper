@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-export const ReadReferenceContextInputSchema = z.object({
+const REFERENCE_CONTEXT_REQUEST_SCHEMA = 'BlueprintHelper.ReferenceContextRequest.v1';
+
+const ReadReferenceContextRequestSchema = z.object({
+  schema: z.literal(REFERENCE_CONTEXT_REQUEST_SCHEMA).optional(),
   asset_path: z.string(),
   target_type: z.enum([
     'asset',
@@ -51,6 +54,11 @@ export const ReadReferenceContextInputSchema = z.object({
       message: 'graph_name is required for local_variable reference context.',
     });
   }
+});
+
+export const ReadReferenceContextInputSchema = ReadReferenceContextRequestSchema.transform((input) => {
+  const { schema: _schema, ...bridgeInput } = input;
+  return bridgeInput;
 });
 
 export type ReadReferenceContextInput = z.infer<typeof ReadReferenceContextInputSchema>;
