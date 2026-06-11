@@ -27,6 +27,8 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
 
+Composer output is a temporary TaskSpec scaffold, not the final write input. Fill the generated TaskSpec with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent before preview; do not skip directly from template discovery to execute.
+
 For GraphWrite branch insertion into an owned block, preview must verify:
 
 - The anchor is a block-scoped LogicJson anchor from a BlueprintHelper-owned block.

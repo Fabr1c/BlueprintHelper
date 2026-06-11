@@ -44,10 +44,11 @@ For complex JSON input, use the CLI catalog first:
 ```powershell
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
-bh tools templates <tool_id> --format json
+bh tools templates families --workflow preview_execute --format json
+bh tools read-templates domains --format json
 ```
 
-Then read only the concrete template paths returned by `bh tools templates <tool_id>`, copy a returned template, edit the copy, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
 
 ## Tool Catalog Flow
 
@@ -160,7 +161,7 @@ Example: if the user says "在蓝图实现一个可以开关的物理门" and do
 Tell the SideAgent its responsibility in the task package:
 
 - construct valid BlueprintHelper tool parameters from the user's goal and target;
-- read only returned template paths from `bh tools templates <tool_id>` for CLI JSON input;
+- use the CLI TaskSpec composer or ReadSpec composer for CLI JSON input;
 - call only the assigned BlueprintHelper tool or the single atomic tool step explicitly requested by the Main Agent;
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;

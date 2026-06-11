@@ -64,10 +64,11 @@ For complex JSON, use the CLI catalog first:
 ```powershell
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
-bh tools templates <tool_id> --format json
+bh tools templates families --workflow preview_execute --format json
+bh tools read-templates domains --format json
 ```
 
-Then read only the concrete template paths returned by `bh tools templates <tool_id>`, copy a returned template, and call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent, then call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
 
 ## Tool Catalog Flow
 
@@ -282,7 +283,7 @@ returned_template_paths: []
 stop_conditions: []
 ```
 
-`task-worker` must read only returned template paths from `bh tools templates <tool_id>`, construct `BlueprintHelper.TaskSpec.v1`, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
+`task-worker` must use the CLI template composer or ReadSpec composer, construct a temporary `BlueprintHelper.TaskSpec.v1`, fill it with concrete `read_context` evidence and intent, run preview, request write session only when needed, run execute, and return filtered diagnostic results.
 
 For write tasks against existing UE assets, the Main Agent must include a source-control step before execute. Use `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` for the target assets after preview succeeds and before execute when source control is enabled or when any lifecycle/save result reports `checkout_required`. If the status or checkout result returns `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`, stop and report the returned `agent_message` / `recommended_action`; do not edit or close the editor as if the save succeeded.
 

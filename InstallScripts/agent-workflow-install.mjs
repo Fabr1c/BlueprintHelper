@@ -110,7 +110,8 @@ $BhCmd = Join-Path $NpmPrefix "bh.cmd"
 - The pre-dispatch gate is lightweight: run \`blueprint_get_runtime_profile\`; if the intended Editor/Bridge is unavailable, stale, or not the target project, the Main Agent may open the target Editor once through \`mcp__blueprint_helper__blueprint_open_editor\`, then rerun runtime profile.
 - If lifecycle MCP is unavailable, report \`lifecycle_mcp_unavailable\` instead of using CLI lifecycle aliases or shell-launched editor fallbacks.
 - If the Editor opens but Bridge remains unavailable, stop or assign only bounded diagnostics with \`Bridge unavailable\` as the stop condition; do not ask SideAgents to repair lifecycle.
-- Use TaskSpec-first writes: gather context, build a \`BlueprintHelper.TaskSpec.v1\`, preview, request write approval when required, execute, and read back results.
+- Use TaskSpec-first writes: gather \`read_context\` evidence, select the write route through CLI tool/template discovery, compose a temporary \`BlueprintHelper.TaskSpec.v1\` with TaskSpec Template Composer, fill the generated TaskSpec with concrete evidence and intent, preview, request write approval when required, execute, and read back results.
+- Do not skip from template discovery directly to execute. The generated TaskSpec is a scaffold that must be customized with current readback anchors, target asset data, and the user request before preview.
 - Use ReadSpec/read-context flows for Blueprint, UMG, DataAsset, and DataTable discovery.
 - If \`read_context\`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, stop and report \`evidence_conflict\`; do not inspect Unreal binary asset files as fallback.
 - Do not use deprecated MCP ordinary read/write/debug/task tools as fallback paths.
