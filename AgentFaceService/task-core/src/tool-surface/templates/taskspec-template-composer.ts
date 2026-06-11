@@ -11,11 +11,17 @@ import {
   listTaskSpecTemplateQuickAccess,
   listTaskSpecTemplateWriteModes,
 } from './taskspec-template-index.js';
+import {
+  parseSlotExpression,
+  type SlotExpressionArg,
+  type SlotExpressionNode,
+} from './slot-expression-parser.js';
 import type {
   ComposeTaskSpecTemplateInput,
   GraphWriteTemplateWriteMode,
   TaskSpecTemplateCompositionResult,
   TaskSpecTemplateDiagnostic,
+  TaskSpecTemplateQuickAccessItem,
 } from './taskspec-template-types.js';
 
 export {
@@ -53,13 +59,23 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
     operation: '',
     writeMode: '',
   }).items;
+
+  const routeRoot = findRouteRoot(input, writeMode, quickAccessCatalog);
+  if (routeRoot.status === 'failed') {
+    return failed(input, routeRoot.diagnostics);
+  }
+  if (routeRoot.status === 'route') {
+    return composeGraphWriteRouteTaskSpecTemplate(input, writeMode, quickAccessCatalog, routeRoot.item, routeRoot.node);
+  }
+
   const diagnostics: TaskSpecTemplateDiagnostic[] = [];
   const statements: unknown[] = [];
+  const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
   for (const templateId of input.templateIds) {
     const composed = composeSlotExpressionTemplate({
       expression: templateId,
       writeMode,
-      quickAccessCatalog,
+      quickAccessCatalog: slotQuickAccessCatalog,
     });
     if (!composed.ok) {
       diagnostics.push(...composed.diagnostics.map((diagnostic) => ({
@@ -84,6 +100,88 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
   }
   writeJson(input.outputPath, taskSpec);
   return ok(input);
+}
+
+function composeGraphWriteRouteTaskSpecTemplate(
+  input: ComposeTaskSpecTemplateInput,
+  writeMode: GraphWriteTemplateWriteMode,
+  quickAccessCatalog: TaskSpecTemplateQuickAccessItem[],
+  routeItem: TaskSpecTemplateQuickAccessItem,
+  routeNode: SlotExpressionNode,
+): TaskSpecTemplateCompositionResult {
+  const diagnostics: TaskSpecTemplateDiagnostic[] = [];
+  const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
+  const taskSpec = readJson(pluginPath(routeItem.template_path)) as Record<string, unknown>;
+  clearInsertTargets(taskSpec, routeItem.insert_paths);
+
+  for (const arg of routeNode.args) {
+    if (arg.kind === 'skip') {
+      continue;
+    }
+    const composed = composeSlotExpressionTemplate({
+      expression: stringifySlotExpressionNode(arg),
+      writeMode,
+      quickAccessCatalog: slotQuickAccessCatalog,
+    });
+    if (!composed.ok) {
+      diagnostics.push(...composed.diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        family: input.family,
+        write_mode: writeMode,
+      })));
+      continue;
+    }
+    for (const insertPath of routeItem.insert_paths) {
+      insertTemplateFragment(taskSpec, insertPath, composed.value);
+    }
+  }
+
+  if (diagnostics.length > 0) {
+    return failed(input, diagnostics);
+  }
+  writeJson(input.outputPath, taskSpec);
+  return ok(input);
+}
+
+function findRouteRoot(
+  input: ComposeTaskSpecTemplateInput,
+  writeMode: GraphWriteTemplateWriteMode,
+  quickAccessCatalog: TaskSpecTemplateQuickAccessItem[],
+): (
+  | { status: 'none' }
+  | { status: 'route'; item: TaskSpecTemplateQuickAccessItem; node: SlotExpressionNode }
+  | { status: 'failed'; diagnostics: TaskSpecTemplateDiagnostic[] }
+) {
+  const routeItems = quickAccessCatalog.filter((item) => item.slot_type === 'route' && item.write_mode === writeMode);
+  const routeRoots: Array<{ item: TaskSpecTemplateQuickAccessItem; node: SlotExpressionNode }> = [];
+  for (const templateExpression of input.templateIds) {
+    let node: SlotExpressionNode;
+    try {
+      node = parseSlotExpression(templateExpression);
+    } catch {
+      continue;
+    }
+    const item = routeItems.find((candidate) => candidate.template_id === node.templateId);
+    if (item) {
+      routeRoots.push({ item, node });
+    }
+  }
+
+  if (routeRoots.length === 0) {
+    return { status: 'none' };
+  }
+  if (routeRoots.length > 1 || input.templateIds.length !== 1) {
+    return {
+      status: 'failed',
+      diagnostics: [{
+        code: 'route_template_must_be_single_root',
+        family: input.family,
+        write_mode: writeMode,
+        message: 'Route-level templates must be the only top-level compose expression.',
+      }],
+    };
+  }
+  return { status: 'route', ...routeRoots[0] };
 }
 
 function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
@@ -205,6 +303,17 @@ function readJson(filePath: string): unknown {
 function writeJson(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function stringifySlotExpressionArg(arg: SlotExpressionArg): string {
+  return arg.kind === 'skip' ? '0' : stringifySlotExpressionNode(arg);
+}
+
+function stringifySlotExpressionNode(node: SlotExpressionNode): string {
+  if (node.args.length === 0) {
+    return node.templateId;
+  }
+  return `${node.templateId}(${node.args.map(stringifySlotExpressionArg).join(',')})`;
 }
 
 function pluginPath(relativePath: string): string {

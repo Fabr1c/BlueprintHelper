@@ -121,13 +121,13 @@ bool FBlueprintHelperGraphBodyAdapterResolver::TryCreateForReadTarget(
 	switch (Target.TargetType)
 	{
 	case EBlueprintHelperTargetType::Function:
-		RuntimeAdapterId = TEXT("k2.function_body");
+		RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
 		break;
 	case EBlueprintHelperTargetType::CustomEvent:
-		RuntimeAdapterId = TEXT("k2.custom_event_body");
+		RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
 		break;
 	case EBlueprintHelperTargetType::Event:
-		RuntimeAdapterId = TEXT("k2.event_body");
+		RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
 		break;
 	case EBlueprintHelperTargetType::Graph:
 		RuntimeAdapterId = TEXT("k2.macro_body");

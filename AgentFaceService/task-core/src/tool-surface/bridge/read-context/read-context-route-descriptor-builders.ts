@@ -133,12 +133,16 @@ export function buildBlueprintLogicReadPayload(
 ): Record<string, unknown> {
   const targetType = route?.target_type ?? input.target.target_type ?? 'blueprint';
   const targetName = input.target.target_name;
+  const graphName = resolveBlueprintLogicGraphName(input, targetType, targetName);
   const payload: Record<string, unknown> = {
     asset_path: input.target.asset_path,
     target_type: targetType,
   };
   if (targetName) {
     payload['target_name'] = targetName;
+  }
+  if (graphName) {
+    payload['graph_name'] = graphName;
   }
 
   const payloadKey = TARGET_PAYLOAD_KEY_BY_TYPE[targetType];
@@ -153,6 +157,23 @@ export function buildBlueprintLogicReadPayload(
 
   payload['scope'] = inferBlueprintLogicScope(input, route);
   return payload;
+}
+
+function resolveBlueprintLogicGraphName(
+  input: ReadContextInput,
+  targetType: string,
+  targetName: string | undefined,
+): string | undefined {
+  if (input.target.graph_name) {
+    return input.target.graph_name;
+  }
+  if (targetType === 'function') {
+    return targetName;
+  }
+  if (targetType === 'event' || targetType === 'custom_event') {
+    return 'EventGraph';
+  }
+  return undefined;
 }
 
 export function inferBlueprintLogicScope(

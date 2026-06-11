@@ -50,6 +50,7 @@ export const ReadContextInputSchema = z.object({
       'block',
     ]).optional().default('blueprint'),
     target_name: z.string().optional(),
+    graph_name: z.string().optional(),
     block_id: z.string().optional(),
   }),
   view: z.object({

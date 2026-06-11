@@ -259,6 +259,65 @@ test('logic_flow uses adapter boundary projection instead of local function gues
   });
 });
 
+test('logic_flow exposes adapter body entry and body fingerprint for replace_external_body', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.external_graph.replace_body',
+      graph_name: 'EventGraph',
+      entry_boundaries: [{ node_ref: 'BodyEntry', display_name: 'BeginPlay' }],
+      body_entry: {
+        node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        node_class: '/Script/BlueprintGraph.K2Node_Event',
+        semantic_role: 'body_entry',
+        fingerprint: 'body_entry_fp',
+      },
+      body_fingerprint: 'body_fp_before',
+    },
+    logic: {
+      nodes: [
+        { node_ref: 'BodyEntry', name: 'BeginPlay', kind: 'event' },
+        { node_ref: 'PrintString', name: 'Print String', kind: 'call' },
+      ],
+      links: [
+        { type: 'exec', from_node: 'BodyEntry', from_pin: 'then', to_node: 'PrintString', to_pin: 'execute' },
+      ],
+    },
+  });
+
+  assert.deepEqual(result.payload['adapter_boundary'], {
+    runtime_adapter_id: 'k2.external_graph.replace_body',
+    graph_name: 'EventGraph',
+    body_entry: {
+      node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      node_class: '/Script/BlueprintGraph.K2Node_Event',
+      semantic_role: 'body_entry',
+      fingerprint: 'body_entry_fp',
+    },
+    body_fingerprint: 'body_fp_before',
+    entry_count: 1,
+    exit_count: 0,
+  });
+});
+
+test('logic_flow does not synthesize body boundary evidence without adapter boundary', () => {
+  const result = buildLogicFlowPayload({
+    schema: 'LogicJson.v1',
+    logic: {
+      graph: 'EventGraph',
+      nodes: [
+        { node_ref: 'EventBeginPlay', name: 'Event BeginPlay', kind: 'event' },
+        { node_ref: 'PrintString', name: 'Print String', kind: 'call' },
+      ],
+      links: [
+        { type: 'exec', from_node: 'EventBeginPlay', from_pin: 'then', to_node: 'PrintString', to_pin: 'execute' },
+      ],
+    },
+  });
+
+  assert.equal(result.payload['adapter_boundary'], undefined);
+});
+
 test('logic_flow does not guess entry roots when adapter boundary is present but unmatched', () => {
   const result = buildLogicFlowPayload({
     schema: 'LogicJson.v1',
@@ -739,6 +798,7 @@ test('read_context handler records timing around bridge and post-processing stag
   assert.equal(bridgeCalls[0]?.command, 'read_blueprint_logic_json');
   assert.equal(bridgeCalls[0]?.payload?.['target_type'], 'function');
   assert.equal(bridgeCalls[0]?.payload?.['target_name'], 'ComputeValue');
+  assert.equal(bridgeCalls[0]?.payload?.['graph_name'], 'ComputeValue');
   assert.equal(bridgeCalls[0]?.payload?.['function'], 'ComputeValue');
   assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_function');
 
@@ -835,6 +895,7 @@ test('read_context logic_flow handler renders function graph synthetic entry and
   assert.equal(bridgeCalls[0]?.command, 'read_blueprint_logic_json');
   assert.equal(bridgeCalls[0]?.payload?.['target_type'], 'function');
   assert.equal(bridgeCalls[0]?.payload?.['target_name'], 'AddMazeRelativeRotation');
+  assert.equal(bridgeCalls[0]?.payload?.['graph_name'], 'AddMazeRelativeRotation');
   assert.equal(bridgeCalls[0]?.payload?.['function'], 'AddMazeRelativeRotation');
   assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_function');
 
@@ -842,4 +903,45 @@ test('read_context logic_flow handler renders function graph synthetic entry and
   assert.equal(payload['schema'], 'LogicFlow.v1');
   assert.equal(payload['mode'], 'execflow');
   assert.equal(payload['flow'], 'AddMazeRelativeRotation -> SetRelativeRotation -> Return');
+});
+
+test('read_context event logic_flow sends graph_name for adapter boundary readback', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'test',
+    success: true,
+    result: makeLogicJsonWithExternalAnchors(),
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter',
+      target_type: 'event',
+      target_name: 'ReceiveTick',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_blueprint_logic_json');
+  assert.equal(bridgeCalls[0]?.payload?.['target_type'], 'event');
+  assert.equal(bridgeCalls[0]?.payload?.['target_name'], 'ReceiveTick');
+  assert.equal(bridgeCalls[0]?.payload?.['graph_name'], 'EventGraph');
+  assert.equal(bridgeCalls[0]?.payload?.['event'], 'ReceiveTick');
+  assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_event');
 });

@@ -31,6 +31,7 @@ const GRAPH_WRITE_MODE_DESCRIPTIONS: Readonly<Record<GraphWriteTemplateWriteMode
 const GRAPH_WRITE_CLUSTER_DESCRIPTIONS: Readonly<Record<string, string>> = {
   container: 'Array, set, and map operation statements.',
   event_delegate: 'Component-bound event and delegate binding statements.',
+  external_body: 'External event or function body replacement through adapter-backed body anchors.',
   generic_ops: 'General Blueprint statements and expressions such as call, set, let, branch, return, construct, and literal values.',
   schedule: 'Delay, timer, and scheduled execution statements.',
 };
@@ -46,6 +47,7 @@ const GRAPH_WRITE_OPERATION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   expression: 'Build nested value inputs such as literals, variables, function parameters, operators, structs, and selects.',
   field: 'Read or write structured field and property values.',
   let: 'Create a reusable graph-local symbol from an expression.',
+  replace_body: 'Replace an adapter-backed external graph body using read_context body boundary evidence.',
   set: 'Assign member variables or object/component properties.',
   timer: 'Run delay, timer, or other scheduled execution operations.',
 };
@@ -121,9 +123,39 @@ export function listGraphWriteTemplateQuickAccess(input?: {
 
 function listGraphWriteTemplateQuickAccessItems(): TaskSpecTemplateQuickAccessItem[] {
   const routeById = visibleRouteById();
-  return getAllGraphWriteSlotDescriptors()
+  return [
+    ...listGraphWriteRouteQuickAccessItems(routeById),
+    ...getAllGraphWriteSlotDescriptors()
     .filter((slot) => isTemplateVisible(slot, routeById))
-    .flatMap((slot) => toQuickAccessItems(slot, routeById));
+    .flatMap((slot) => toQuickAccessItems(slot, routeById)),
+  ];
+}
+
+function listGraphWriteRouteQuickAccessItems(
+  routeById: Map<string, GraphWriteRouteDescriptor>,
+): TaskSpecTemplateQuickAccessItem[] {
+  return [...routeById.values()]
+    .filter((route) => route.quick_access !== undefined)
+    .map((route) => {
+      const quickAccess = route.quick_access;
+      if (!quickAccess || !route.template_path) {
+        throw new Error(`GraphWrite route quick-access is missing a route template: ${route.route_id}`);
+      }
+      return {
+        template_id: quickAccess.template_id,
+        family: quickAccess.family,
+        write_mode: route.write_mode,
+        cluster_id: quickAccess.cluster_id,
+        operation_id: quickAccess.operation_id,
+        quick_access_id: quickAccess.quick_access_id,
+        source_slot_id: route.route_id,
+        slot_type: 'route' as const,
+        arg_slots: [...(quickAccess.arg_slots ?? ['body(statement[])'])],
+        template_path: route.template_path,
+        insert_paths: [...route.insert_paths],
+        unsupported_write_modes: [],
+      };
+    });
 }
 
 function toQuickAccessItems(
@@ -131,16 +163,17 @@ function toQuickAccessItems(
   routeById: Map<string, GraphWriteRouteDescriptor>,
 ): TaskSpecTemplateQuickAccessItem[] {
   const quickAccess = slot.quick_access;
-  return uniqueBy(slot.supported_routes
+  const routeInsertions = uniqueBy(slot.supported_routes
     .map((routeId) => routeById.get(routeId))
     .filter((route): route is GraphWriteRouteDescriptor => route !== undefined)
     .filter((route) => !quickAccess.unsupported_write_modes?.includes(route.write_mode))
     .flatMap((route) => route.insert_paths.map((insertPath) => ({
       route,
       insertPath,
-    }))), (entry) => `${entry.route.write_mode}:${entry.insertPath}`)
-    .map((entry) => ({
-    template_id: quickAccess.template_id,
+    }))), (entry) => `${entry.route.write_mode}:${entry.insertPath}`);
+  const templateIds = [quickAccess.template_id, ...(slot.aliases ?? [])];
+  return routeInsertions.flatMap((entry) => templateIds.map((templateId) => ({
+    template_id: templateId,
     family: quickAccess.family,
     write_mode: entry.route.write_mode,
     cluster_id: quickAccess.cluster_id,
@@ -152,7 +185,7 @@ function toQuickAccessItems(
     template_path: slot.template_path,
     insert_paths: slot.slot_type === 'expression' ? [...slot.insert_paths] : [entry.insertPath],
     unsupported_write_modes: [...(quickAccess.unsupported_write_modes ?? [])],
-  }));
+  })));
 }
 
 function formatArgSlots(slot: GraphWriteSlotDescriptor): string[] {

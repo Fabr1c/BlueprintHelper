@@ -5,6 +5,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyRequest.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyTarget.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
 
 class FBlueprintHelperGraphBodyReadbackServiceLocalUtils
 {
@@ -20,6 +23,57 @@ public:
 			}
 		}
 		return JsonValues;
+	}
+
+	static bool SupportsBodyEvidence(const FBlueprintHelperGraphBodyBoundaryModel& Boundary)
+	{
+		return Boundary.RuntimeAdapterId.Equals(TEXT("k2.external_graph.replace_body"), ESearchCase::IgnoreCase)
+			|| Boundary.TaskSpecStrategy.Equals(TEXT("replace_external_body"), ESearchCase::IgnoreCase);
+	}
+
+	static void PopulateBodyEvidence(
+		const FBlueprintHelperGraphBodyTarget& Target,
+		const FBlueprintHelperGraphBodyBoundaryModel& Boundary,
+		FBlueprintHelperGraphBodyReadbackProjection& InOutProjection)
+	{
+		if (!SupportsBodyEvidence(Boundary)
+			|| !Target.Graph
+			|| Target.EntryBoundaryNodes.Num() == 0
+			|| !Target.EntryBoundaryNodes[0])
+		{
+			return;
+		}
+
+		FBlueprintHelperExternalGraphAnchor Anchor;
+		FString AnchorError;
+		const FBlueprintHelperExternalGraphAnchorService AnchorService;
+		if (!AnchorService.BuildNodeAnchor(
+			Boundary.TargetAssetPath.IsEmpty() ? Target.AssetPath : Boundary.TargetAssetPath,
+			Boundary.GraphName.IsEmpty() ? Target.GraphName : Boundary.GraphName,
+			Target.EntryBoundaryNodes[0],
+			Anchor,
+			AnchorError))
+		{
+			return;
+		}
+
+		FBlueprintHelperExternalBodySnapshot Snapshot;
+		FString SnapshotError;
+		const FBlueprintHelperExternalBodySnapshotService SnapshotService;
+		if (!SnapshotService.CaptureBody(
+			Target.Graph,
+			Target.EntryBoundaryNodes[0],
+			Snapshot,
+			SnapshotError))
+		{
+			return;
+		}
+
+		Anchor.SemanticRole = EBlueprintHelperExternalGraphAnchorRole::BodyEntry;
+		InOutProjection.BodyEntryNodeGuid = Anchor.NodeGuid;
+		InOutProjection.BodyEntryNodeClass = Anchor.NodeClass;
+		InOutProjection.BodyEntryFingerprint = Anchor.Fingerprint;
+		InOutProjection.BodyFingerprint = Snapshot.BodyFingerprint;
 	}
 
 	static FString DisplayNameForBoundaryRef(
@@ -117,6 +171,24 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBo
 	Json->SetArrayField(
 		TEXT("visible_boundary_node_refs"),
 		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.VisibleBoundaryNodeRefs));
+	if (!Projection.BodyEntryNodeGuid.IsEmpty())
+	{
+		TSharedRef<FJsonObject> BodyEntry = MakeShared<FJsonObject>();
+		BodyEntry->SetStringField(TEXT("schema"), FBlueprintHelperExternalGraphAnchor::SchemaString);
+		BodyEntry->SetStringField(TEXT("asset_path"), Boundary.TargetAssetPath);
+		BodyEntry->SetStringField(TEXT("graph_name"), Boundary.GraphName);
+		BodyEntry->SetStringField(TEXT("node_guid"), Projection.BodyEntryNodeGuid);
+		BodyEntry->SetStringField(TEXT("node_class"), Projection.BodyEntryNodeClass);
+		BodyEntry->SetStringField(
+			TEXT("semantic_role"),
+			FBlueprintHelperExternalGraphAnchor::RoleToString(EBlueprintHelperExternalGraphAnchorRole::BodyEntry));
+		BodyEntry->SetStringField(TEXT("fingerprint"), Projection.BodyEntryFingerprint);
+		Json->SetObjectField(TEXT("body_entry"), BodyEntry);
+	}
+	if (!Projection.BodyFingerprint.IsEmpty())
+	{
+		Json->SetStringField(TEXT("body_fingerprint"), Projection.BodyFingerprint);
+	}
 	return Json;
 }
 
@@ -133,8 +205,9 @@ bool FBlueprintHelperGraphBodyReadbackService::TryBuildAdapterBoundary(
 	}
 
 	const FBlueprintHelperGraphBodyBoundaryModel Boundary = Adapter.BuildBoundaryModel(Target, Request);
-	const FBlueprintHelperGraphBodyReadbackProjection Projection =
+	FBlueprintHelperGraphBodyReadbackProjection Projection =
 		Adapter.BuildReadbackProjection(Target, Boundary);
+	FBlueprintHelperGraphBodyReadbackServiceLocalUtils::PopulateBodyEvidence(Target, Boundary, Projection);
 	OutAdapterBoundaryJson = BuildAdapterBoundaryJson(Boundary, Projection);
 	OutError.Reset();
 	return true;

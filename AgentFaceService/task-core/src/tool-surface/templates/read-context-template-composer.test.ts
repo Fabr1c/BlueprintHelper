@@ -182,6 +182,33 @@ test('ReadContext template composer writes bare ReadSpec from descriptor-backed 
   assert.equal(Object.hasOwn(readSpec, 'task_spec'), false);
 });
 
+test('ReadContext template composer exposes entry body logic_flow templates for replace_external_body evidence', () => {
+  for (const targetKind of ['event', 'function', 'custom_event'] as const) {
+    const outputPath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')),
+      `${targetKind}-body-flow.readspec.json`,
+    );
+
+    const result = composeReadContextTemplate({
+      domain: 'blueprint',
+      readCluster: 'logic',
+      targetKind,
+      viewTemplate: 'logic_flow',
+      templateIds: [],
+      outputPath,
+    });
+
+    assert.equal(result.status, 'ok');
+    assert.equal(result.template_id, `read.blueprint.logic.${targetKind}.logic_flow`);
+
+    const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+    assert.equal(readSpec.read_type, 'blueprint_logic');
+    assert.equal(readSpec.target.target_type, targetKind);
+    assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
+    assert.deepEqual(readSpec.view, { format: 'logic_flow' });
+  }
+});
+
 test('ReadContext template composer reports diagnostics without writing unsupported reserved routes', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'material.readspec.json');
 

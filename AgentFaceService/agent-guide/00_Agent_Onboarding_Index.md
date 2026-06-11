@@ -3,6 +3,9 @@
 CLI is the ordinary TaskSpec, ReadSpec, diagnostics, and result-query mainline.
 Global MCP owns Unreal Editor open/close lifecycle. Deprecated MCP ordinary
 tools are not fallback paths for asset reads, writes, or lifecycle work.
+When BlueprintHelper evidence sources disagree, report `evidence_conflict` and
+stop. Direct `.uasset`, `.umap`, or other Unreal binary asset reads are not a
+fallback fact source.
 
 SideAgent unavailability is controlled by the active installed plugin skill, not
 by this shared guide. Codex must report `sideagent_unavailable` when required
@@ -23,6 +26,7 @@ runtime/profile preflight
 -> read this guide when needed
 -> resolve an explicit Unreal asset path before writes
 -> read context or reference context
+-> evidence_conflict means stop_and_report, not binary fallback
 -> build BlueprintHelper.TaskSpec.v1
 -> preview
 -> repair TaskSpec or stop_and_report
@@ -81,3 +85,6 @@ remains available through the artifact path.
   back to frozen or deprecated entry points.
 - Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback
   paths.
+- Evidence conflicts between `read_context`, screenshots/visible Editor state,
+  preview, execute, or readback are `stop_and_report`; do not inspect Unreal
+  binary asset files as fallback evidence.

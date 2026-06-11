@@ -1,5 +1,7 @@
 ﻿# 04 - TaskSpec 修改蓝图工作流
 
+硬规则：如果 `read_context`、截图/Editor 可见状态、preview、execute 或 readback 证据冲突，立即 `stop_and_report` 并报告 `evidence_conflict`。不允许读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
+
 标准流程：
 
 ```text
@@ -42,6 +44,12 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 多个顶层 statement 用顶层逗号连接；括号内逗号属于当前 slot expression。PowerShell 中把整个 `--templates` 值用双引号包住。不要把 expression quick-access 直接作为 root，也不要手写完整 statement JSON 来绕过 composer。
 
 调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口或 `task preview --file` / `task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认 wrapper 与裸 TaskSpec 的差异。不要把 wrapper 传给分组命令，也不要额外包 `args`。
+
+## Direct Compile Validation
+
+`blueprint_compile_blueprint` payload files are direct tool payloads, not `BlueprintHelper.TaskSpec.v1`.
+Run them only through the direct compile command selected by current CLI help.
+Do not pass them to `bh task preview --file` or `bh task execute --file`.
 
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用读工具获取结构化上下文。写入锚点必须来自当前模板要求的 grouped block 读回信息。不要把全图级数组位置、显示名或 GUID-first selector 当普通主线写锚点。
 

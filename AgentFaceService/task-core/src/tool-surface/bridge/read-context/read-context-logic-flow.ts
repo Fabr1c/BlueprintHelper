@@ -33,6 +33,9 @@ type AdapterBoundaryProjection = {
   hasBoundary: boolean;
   runtimeAdapterId?: string;
   bodyKind?: string;
+  graphName?: string;
+  bodyEntry?: Record<string, unknown>;
+  bodyFingerprint?: string;
   entryRefs: Set<string>;
   exitRefs: Set<string>;
   displayNameByRef: Map<string, string>;
@@ -127,12 +130,18 @@ function buildAdapterBoundarySummary(graphs: LogicFlowGraph[]): Record<string, u
 
   const runtimeAdapterIds = uniqueStrings(boundaries.map((boundary) => boundary.runtimeAdapterId ?? '').filter(Boolean));
   const bodyKinds = uniqueStrings(boundaries.map((boundary) => boundary.bodyKind ?? '').filter(Boolean));
+  const graphNames = uniqueStrings(boundaries.map((boundary) => boundary.graphName ?? '').filter(Boolean));
+  const bodyEntries = uniqueRecords(boundaries.map((boundary) => boundary.bodyEntry).filter((entry): entry is Record<string, unknown> => entry !== undefined));
+  const bodyFingerprints = uniqueStrings(boundaries.map((boundary) => boundary.bodyFingerprint ?? '').filter(Boolean));
   const entryCount = boundaries.reduce((sum, boundary) => sum + boundary.entryRefs.size, 0);
   const exitCount = boundaries.reduce((sum, boundary) => sum + boundary.exitRefs.size, 0);
 
   return {
     runtime_adapter_id: runtimeAdapterIds.length === 1 ? runtimeAdapterIds[0] : runtimeAdapterIds,
     ...(bodyKinds.length === 1 ? { body_kind: bodyKinds[0] } : {}),
+    ...(graphNames.length === 1 ? { graph_name: graphNames[0] } : {}),
+    ...(bodyEntries.length === 1 ? { body_entry: bodyEntries[0] } : {}),
+    ...(bodyFingerprints.length === 1 ? { body_fingerprint: bodyFingerprints[0] } : {}),
     entry_count: entryCount,
     exit_count: exitCount,
   };
@@ -428,12 +437,29 @@ function normalizeAdapterBoundary(value: unknown): AdapterBoundaryProjection {
     hasBoundary,
     runtimeAdapterId: readString(boundary, ['runtime_adapter_id', 'runtimeAdapterId']),
     bodyKind: readString(boundary, ['body_kind', 'bodyKind']),
+    graphName: readString(boundary, ['graph_name', 'graphName']),
+    bodyEntry: normalizeBodyEntryBoundary(readObject(boundary, ['body_entry', 'bodyEntry'])),
+    bodyFingerprint: readString(boundary, ['body_fingerprint', 'bodyFingerprint']),
     entryRefs,
     exitRefs,
     displayNameByRef,
     foldedRefs: new Set(readStringArray(boundary, ['folded_boundary_node_refs', 'foldedBoundaryNodeRefs'])),
     visibleRefs: new Set(readStringArray(boundary, ['visible_boundary_node_refs', 'visibleBoundaryNodeRefs'])),
   };
+}
+
+function normalizeBodyEntryBoundary(value: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of ['schema', 'asset_path', 'graph_name', 'node_guid', 'node_class', 'semantic_role', 'fingerprint']) {
+    const text = readString(value, [key]);
+    if (text) {
+      out[key] = text;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function collectBoundaryRefs(
@@ -770,6 +796,10 @@ function isDefaultValuePin(pin: string): boolean {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function uniqueRecords(values: Record<string, unknown>[]): Record<string, unknown>[] {
+  return [...new Map(values.map((value) => [JSON.stringify(value), value])).values()];
 }
 
 function dedupeLinks(links: LogicFlowLink[]): LogicFlowLink[] {

@@ -210,6 +210,33 @@ test('runCli composes nested slot expression without splitting inner commas', as
   assert.equal(taskSpec.behavior.entries[0].body.statements[0].value.kind, 'op');
 });
 
+test('runCli composes class-backed create alias through TaskSpec template composer', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'create-widget.taskspec.json');
+
+  const { output } = await runCliJson([
+    'tools',
+    'templates',
+    'compose',
+    '--family',
+    'graph_write',
+    '--write-mode',
+    'graph.append',
+    '--templates',
+    'generic_ops.create.class_backed',
+    '--out',
+    outputPath,
+    '--format',
+    'json',
+  ]);
+
+  assert.equal(output.status, 'ok');
+  const taskSpec = JSON.parse(await fs.readFile(outputPath, 'utf8'));
+  assert.equal(taskSpec.behavior.entries[0].body.statements[0].kind, 'create');
+  assert.equal(taskSpec.behavior.entries[0].body.statements[0].class_path, '__REQUIRED_CLASS_PATH__');
+});
+
 test('runCli composes supported non-GraphWrite base TaskSpec without template ids', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));

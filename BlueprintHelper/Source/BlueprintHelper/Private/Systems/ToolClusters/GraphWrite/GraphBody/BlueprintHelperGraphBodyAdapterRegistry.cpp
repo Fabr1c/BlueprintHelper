@@ -30,7 +30,7 @@ static FBlueprintHelperGraphBodyAdapterDescriptor BlueprintHelperMakeGraphBodyDe
 TArray<FBlueprintHelperGraphBodyAdapterDescriptor> FBlueprintHelperGraphBodyAdapterRegistry::GetKnownDescriptors()
 {
 	TArray<FBlueprintHelperGraphBodyAdapterDescriptor> Descriptors;
-	Descriptors.Reserve(18);
+	Descriptors.Reserve(19);
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
 		TEXT("k2.custom_event_body"),
 		TEXT("append_new_owned_graph"),
@@ -108,6 +108,13 @@ TArray<FBlueprintHelperGraphBodyAdapterDescriptor> FBlueprintHelperGraphBodyAdap
 		TEXT("merge_external_flow"),
 		EBlueprintHelperGraphBodyKind::K2ExternalBody,
 		TEXT("external_graph_merge_service"),
+		true,
+		true));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.external_graph.replace_body"),
+		TEXT("replace_external_body"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		TEXT("external_graph_replace_body_service"),
 		true,
 		true));
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(

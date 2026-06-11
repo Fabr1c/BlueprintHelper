@@ -682,12 +682,26 @@ function copyCreateSemanticFields(source: Record<string, unknown>, target: Recor
 
 function validateConvertScheduleOwnership(record: Record<string, unknown>, path: string): void {
   const kind = typeof record.kind === 'string' ? record.kind : '';
+  if (kind === 'convert') {
+    const functionOperation = normalizeSemanticToken(record.function_operation);
+    if (functionOperation.length > 0 && functionOperation !== 'convert_function') {
+      throw new TaskSpecCompileError('unsupported_convert_owner_mix', 'unsupported_convert_owner_mix: Generic convert operations must not specify function_operation.', [
+        {
+          code: 'unsupported_convert_owner_mix',
+          path: `${path}.function_operation`,
+          message: 'Remove function_operation for Generic convert operations. Use function_operation=convert_function only for FunctionAction-owned conversions.',
+        },
+      ]);
+    }
+    return;
+  }
+
   if (kind !== 'schedule') {
     return;
   }
 
-  const functionOperation = typeof record.function_operation === 'string' ? record.function_operation.trim() : '';
-  const scheduleOperation = typeof record.schedule_operation === 'string' ? record.schedule_operation.trim().toLowerCase() : '';
+  const functionOperation = normalizeSemanticToken(record.function_operation);
+  const scheduleOperation = normalizeSemanticToken(record.schedule_operation);
   if (functionOperation.length > 0 && GENERIC_SCHEDULE_OPERATIONS.has(scheduleOperation)) {
     throw new TaskSpecCompileError('unsupported_schedule_owner_mix', 'unsupported_schedule_owner_mix: Generic schedule operations must not specify function_operation.', [
       {
@@ -902,6 +916,33 @@ function registerGraphLocalSymbols(statement: BlueprintLogicStatement, options: 
 
 function fieldScopeUsesPropertyPath(scope: string): boolean {
   return FIELD_SCOPES_WITH_PROPERTY_PATH.has(scope);
+}
+
+function hasFieldAccessOwnerEvidence(record: Record<string, unknown>): boolean {
+  const evidence = record.context_evidence;
+  if (!isRecord(evidence)) {
+    return false;
+  }
+  for (const key of ['field_owner_class', 'target_object_type']) {
+    const value = evidence[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateFieldAccessOwnerEvidence(record: Record<string, unknown>, scope: string, path: string): void {
+  if (scope !== 'field_access' || !Object.hasOwn(record, 'target_object') || hasFieldAccessOwnerEvidence(record)) {
+    return;
+  }
+  throw new TaskSpecCompileError('missing_field_access_owner_evidence', 'field_access target_object requires owner evidence before preview.', [
+    {
+      code: 'missing_field_access_owner_evidence',
+      path: `${path}.context_evidence.field_owner_class`,
+      message: 'Provide context_evidence.field_owner_class or context_evidence.target_object_type when field_access uses target_object.',
+    },
+  ]);
 }
 
 function fieldOperationScope(record: Record<string, unknown>, path: string): { operation: string; scope: string } {
@@ -1192,7 +1233,7 @@ export function validateSupportedStatements(statements: BlueprintLogicStatement[
       validateConvertScheduleOwnership(statementRecord, statementPath);
       validateExpressionMap(statementRecord.args, `${statementPath}.args`);
     } else if (kind === 'field') {
-      const { operation } = fieldOperationScope(statementRecord, statementPath);
+      const { operation, scope } = fieldOperationScope(statementRecord, statementPath);
       if (operation !== 'set') {
         throw new TaskSpecCompileError('unsupported_field_operation', 'Field statements require field_operation=set.', [
           {
@@ -1201,6 +1242,10 @@ export function validateSupportedStatements(statements: BlueprintLogicStatement[
             message: 'Field statements require field_operation=set.',
           },
         ]);
+      }
+      validateFieldAccessOwnerEvidence(statementRecord, scope, statementPath);
+      if (Object.hasOwn(statementRecord, 'target_object')) {
+        validateSupportedExpression(statementRecord.target_object, `${statementPath}.target_object`);
       }
       validateSupportedExpression(statementRecord.value, `${statementPath}.value`);
     } else if (kind === 'let' || kind === 'set' || kind === 'set_property') {
@@ -1297,7 +1342,7 @@ function validateSupportedExpression(expression: unknown, path: string): void {
     return;
   }
   if (kind === 'field') {
-    const { operation } = fieldOperationScope(expression, path);
+    const { operation, scope } = fieldOperationScope(expression, path);
     if (operation !== 'get') {
       throw new TaskSpecCompileError('unsupported_field_operation', 'Field expressions require field_operation=get.', [
         {
@@ -1306,6 +1351,10 @@ function validateSupportedExpression(expression: unknown, path: string): void {
           message: 'Field expressions require field_operation=get.',
         },
       ]);
+    }
+    validateFieldAccessOwnerEvidence(expression, scope, path);
+    if (Object.hasOwn(expression, 'target_object')) {
+      validateSupportedExpression(expression.target_object, `${path}.target_object`);
     }
   }
   if (kind === 'create') {

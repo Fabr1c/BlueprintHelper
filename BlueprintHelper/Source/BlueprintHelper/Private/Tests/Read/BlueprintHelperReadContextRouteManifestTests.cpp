@@ -1,7 +1,9 @@
 #include "Generated/BlueprintHelperReadContextRouteManifest.generated.h"
 
 #include "Containers/Set.h"
+#include "Dom/JsonObject.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -52,6 +54,62 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 	}
 
 	TestTrue(TEXT("generated ReadContext route mirror exposes active routes"), ActiveRoutes > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReadContextAdapterBoundaryBodyEvidenceTest,
+	"BlueprintHelper.ReadContext.AdapterBoundary.BodyEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReadContextAdapterBoundaryBodyEvidenceTest::RunTest(const FString&)
+{
+	FBlueprintHelperGraphBodyBoundaryModel Boundary;
+	Boundary.RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
+	Boundary.TaskSpecStrategy = TEXT("replace_external_body");
+	Boundary.TargetAssetPath = TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter");
+	Boundary.GraphName = TEXT("EventGraph");
+	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2ExternalBody;
+	Boundary.EntryNodeRefs.Add(TEXT("BodyEntry"));
+
+	FBlueprintHelperGraphBodyReadbackProjection Projection;
+	Projection.BodyEntryNodeGuid = TEXT("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+	Projection.BodyEntryNodeClass = TEXT("/Script/BlueprintGraph.K2Node_Event");
+	Projection.BodyEntryFingerprint = TEXT("body_entry_fp");
+	Projection.BodyFingerprint = TEXT("body_fp_before");
+
+	const FBlueprintHelperGraphBodyReadbackService ReadbackService;
+	const TSharedRef<FJsonObject> Json = ReadbackService.BuildAdapterBoundaryJson(Boundary, Projection);
+
+	TestEqual(
+		TEXT("runtime adapter"),
+		Json->GetStringField(TEXT("runtime_adapter_id")),
+		FString(TEXT("k2.external_graph.replace_body")));
+	TestEqual(TEXT("graph name"), Json->GetStringField(TEXT("graph_name")), FString(TEXT("EventGraph")));
+	TestEqual(TEXT("body fingerprint"), Json->GetStringField(TEXT("body_fingerprint")), FString(TEXT("body_fp_before")));
+
+	const TSharedPtr<FJsonObject>* BodyEntry = nullptr;
+	TestTrue(TEXT("body entry object exists"), Json->TryGetObjectField(TEXT("body_entry"), BodyEntry) && BodyEntry && BodyEntry->IsValid());
+	if (BodyEntry && BodyEntry->IsValid())
+	{
+		TestEqual(
+			TEXT("body entry node guid"),
+			(*BodyEntry)->GetStringField(TEXT("node_guid")),
+			FString(TEXT("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")));
+		TestEqual(
+			TEXT("body entry node class"),
+			(*BodyEntry)->GetStringField(TEXT("node_class")),
+			FString(TEXT("/Script/BlueprintGraph.K2Node_Event")));
+		TestEqual(
+			TEXT("body entry semantic role"),
+			(*BodyEntry)->GetStringField(TEXT("semantic_role")),
+			FString(TEXT("body_entry")));
+		TestEqual(
+			TEXT("body entry fingerprint"),
+			(*BodyEntry)->GetStringField(TEXT("fingerprint")),
+			FString(TEXT("body_entry_fp")));
+	}
+
 	return true;
 }
 

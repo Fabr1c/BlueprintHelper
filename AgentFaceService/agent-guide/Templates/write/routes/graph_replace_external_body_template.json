@@ -1,0 +1,49 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "context_id": "__REQUIRED_CONTEXT_ID__",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "__REQUIRED_GRAPH_NAME__",
+    "allow_modify_user_nodes": false,
+    "external_mutation_policy": {
+      "strategy": "replace_external_body",
+      "allowed_mutations": [
+        "body_replace"
+      ]
+    }
+  },
+  "behavior": {
+    "graph_strategy": "replace_external_body",
+    "external_replace": {
+      "scope": "event_body",
+      "anchor": {
+        "schema": "BlueprintHelper.ExternalGraphAnchor.v1",
+        "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+        "graph_name": "__REQUIRED_GRAPH_NAME__",
+        "node_guid": "__REQUIRED_BODY_ENTRY_NODE_GUID__",
+        "node_class": "__REQUIRED_BODY_ENTRY_NODE_CLASS__",
+        "semantic_role": "body_entry",
+        "fingerprint": "__REQUIRED_BODY_ENTRY_FINGERPRINT__"
+      },
+      "expected_body_fingerprint": "__REQUIRED_BODY_FINGERPRINT__",
+      "require_full_dry_run": true,
+      "body": {
+        "schema": "BlueprintLogicSpec.v2",
+        "statements": []
+      }
+    }
+  },
+  "execution_policy": {
+    "dry_run_mode": "full",
+    "on_missing_capability": "stop_and_report"
+  },
+  "validation": {
+    "should_compile": true,
+    "should_save": true
+  }
+}

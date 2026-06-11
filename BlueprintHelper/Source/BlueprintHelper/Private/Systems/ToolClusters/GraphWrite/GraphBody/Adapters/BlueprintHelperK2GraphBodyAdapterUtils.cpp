@@ -127,7 +127,9 @@ bool FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(
 	{
 		return true;
 	}
-	return EventNode->GetNodeTitle(ENodeTitleType::ListView).ToString().Contains(EntryName);
+	const FString EventMemberName = EventNode->EventReference.GetMemberName().ToString();
+	return EventMemberName.Equals(EntryName, ESearchCase::IgnoreCase)
+		|| EventNode->GetNodeTitle(ENodeTitleType::ListView).ToString().Contains(EntryName);
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::HasExecPin(

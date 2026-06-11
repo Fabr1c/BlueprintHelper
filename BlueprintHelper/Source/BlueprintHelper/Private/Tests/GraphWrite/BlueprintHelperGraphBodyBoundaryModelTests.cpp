@@ -176,14 +176,16 @@ bool FBlueprintHelperGraphBodyBoundaryModelFamilyMatrixTest::RunTest(const FStri
 		TEXT("k2.function_body"),
 		TEXT("k2.macro_body"),
 		TEXT("k2.block_implementation"),
-		TEXT("k2.external_body")
+		TEXT("k2.external_body"),
+		TEXT("k2.external_graph.replace_body")
 	};
 	const TArray<FString> ExpectedTaskSpecStrategies =
 	{
 		TEXT("append_new_owned_graph"),
 		TEXT("replace_owned_graph"),
 		TEXT("patch_owned_graph"),
-		TEXT("merge_external_flow")
+		TEXT("merge_external_flow"),
+		TEXT("replace_external_body")
 	};
 
 	for (const FString& RuntimeAdapterId : ExpectedRuntimeAdapters)

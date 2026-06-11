@@ -87,3 +87,50 @@ test('logic projector preserves task-core ownership metadata for raw UE payloads
   assert.equal(result.payload.schema, 'LogicJson.v1');
   assert.equal(result.payload.projection_owner, 'task-core');
 });
+
+test('logic projector preserves body entry boundary evidence in logic_flow', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_flow',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      adapter_boundary: {
+        runtime_adapter_id: 'k2.external_graph.replace_body',
+        graph_name: 'EventGraph',
+        entry_boundaries: [{ node_ref: 'BodyEntry', display_name: 'BeginPlay' }],
+        body_entry: {
+          node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          node_class: '/Script/BlueprintGraph.K2Node_Event',
+          semantic_role: 'body_entry',
+          fingerprint: 'body_entry_fp',
+        },
+        body_fingerprint: 'body_fp_before',
+      },
+      logic: {
+        nodes: [
+          { node_ref: 'BodyEntry', name: 'BeginPlay', kind: 'event' },
+          { node_ref: 'PrintString', name: 'Print String', kind: 'call' },
+        ],
+        links: [
+          { type: 'exec', from_node: 'BodyEntry', from_pin: 'then', to_node: 'PrintString', to_pin: 'execute' },
+        ],
+      },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+  });
+
+  assert.equal(result.format, 'logic_flow');
+  assert.deepEqual(result.payload.adapter_boundary, {
+    runtime_adapter_id: 'k2.external_graph.replace_body',
+    graph_name: 'EventGraph',
+    body_entry: {
+      node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      node_class: '/Script/BlueprintGraph.K2Node_Event',
+      semantic_role: 'body_entry',
+      fingerprint: 'body_entry_fp',
+    },
+    body_fingerprint: 'body_fp_before',
+    entry_count: 1,
+    exit_count: 0,
+  });
+});

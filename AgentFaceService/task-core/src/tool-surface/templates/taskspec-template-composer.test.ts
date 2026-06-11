@@ -116,6 +116,53 @@ test('TaskSpec template composer writes GraphWrite append TaskSpec without inser
   assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
 });
 
+test('TaskSpec template composer writes replace_external_body route with full dry-run policy', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'replace-external-body.taskspec.json');
+
+  const quickAccess = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: 'external_body',
+    operation: 'replace_body',
+    writeMode: 'graph.replace',
+  });
+  assert.equal(
+    quickAccess.items.some((item) => item.template_id === 'external_body.replace_body.body'),
+    true,
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.replace',
+    templateIds: ['external_body.replace_body.body(generic_ops.call.direct)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    schema: string;
+    behavior: {
+      graph_strategy: string;
+      external_replace: {
+        require_full_dry_run: boolean;
+        body: { statements: Array<{ kind: string }> };
+      };
+    };
+    execution_policy: { dry_run_mode: string };
+    scope_policy: {
+      allow_modify_user_nodes: boolean;
+      external_mutation_policy: { strategy: string };
+    };
+  };
+  assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1');
+  assert.equal(taskSpec.behavior.graph_strategy, 'replace_external_body');
+  assert.equal(taskSpec.behavior.external_replace.require_full_dry_run, true);
+  assert.equal(taskSpec.behavior.external_replace.body.statements[0]?.kind, 'call');
+  assert.equal(taskSpec.execution_policy.dry_run_mode, 'full');
+  assert.equal(taskSpec.scope_policy.allow_modify_user_nodes, false);
+  assert.equal(taskSpec.scope_policy.external_mutation_policy.strategy, 'replace_external_body');
+});
+
 test('TaskSpec template composer writes nested expression slots into GraphWrite statements', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'nested.taskspec.json');
@@ -158,6 +205,46 @@ test('TaskSpec template composer writes skipped dynamic args by descriptor posit
     behavior: { entries: Array<{ body: { statements: Array<{ args: Record<string, unknown> }> } }> };
   };
   assert.deepEqual(Object.keys(taskSpec.behavior.entries[0]?.body.statements[0]?.args ?? {}), ['__REQUIRED_ARG_2_NAME__']);
+});
+
+test('TaskSpec template composer accepts class-backed create alias and nested class path args', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'create-widget.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.create.class_backed'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<Record<string, unknown>> } }> };
+  };
+  const statement = taskSpec.behavior.entries[0]?.body.statements[0];
+  assert.equal(statement?.kind, 'create');
+  assert.equal(statement?.create_operation, '__REQUIRED_CREATE_OPERATION__');
+  assert.equal(statement?.class_path, '__REQUIRED_CLASS_PATH__');
+});
+
+test('TaskSpec template composer nests expression quick-access under call args', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'call-with-symbol.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<{ kind: string; args?: Record<string, unknown> }> } }> };
+  };
+  assert.equal(taskSpec.behavior.entries[0]?.body.statements[0]?.kind, 'call');
+  assert.equal(Object.hasOwn(taskSpec.behavior.entries[0]?.body.statements[0]?.args ?? {}, '__REQUIRED_ARG_2_NAME__'), true);
 });
 
 test('TaskSpec template composer rejects expression quick-access at root', () => {
@@ -223,7 +310,7 @@ test('agent-facing write templates do not expose hidden execution policy fields'
     collectForbiddenKeys(JSON.parse(fs.readFileSync(filePath, 'utf8')), forbiddenKeys, relativePath, '', hits);
   }
 
-  assert.deepEqual(hits, []);
+  assert.deepEqual(hits.filter((hit) => !isAllowedRoutePolicyHit(hit)), []);
 });
 
 test('GraphWrite route templates use current BlueprintLogicSpec schema', () => {
@@ -370,7 +457,10 @@ test('active quick-access items expose slot type and arg slots without internal 
   }).items;
 
   for (const item of items) {
-    assert.ok(item.slot_type === 'statement' || item.slot_type === 'expression', `${item.template_id} slot_type`);
+    assert.ok(
+      item.slot_type === 'statement' || item.slot_type === 'expression' || item.slot_type === 'route',
+      `${item.template_id} slot_type`,
+    );
     assert.equal(Array.isArray(item.arg_slots), true, `${item.template_id} arg_slots`);
     for (const argSlot of item.arg_slots) {
       assert.equal(argSlot.includes('__REQUIRED_'), false, `${item.template_id} exposes raw placeholder`);
@@ -456,6 +546,23 @@ function collectForbiddenKeys(
     }
     collectForbiddenKeys(child, forbiddenKeys, filePath, childPointer, hits);
   }
+}
+
+function isAllowedRoutePolicyHit(hit: string): boolean {
+  const allowedPrefix = 'AgentFaceService/agent-guide/Templates/write/routes/graph_replace_external_body_template.json:';
+  const allowedPointers = new Set([
+    '/scope_policy',
+    '/scope_policy/allow_modify_user_nodes',
+    '/execution_policy',
+    '/execution_policy/dry_run_mode',
+    '/validation',
+    '/validation/should_compile',
+    '/validation/should_save',
+  ]);
+  if (!hit.startsWith(allowedPrefix)) {
+    return false;
+  }
+  return allowedPointers.has(hit.slice(allowedPrefix.length));
 }
 
 function normalizePath(filePath: string): string {

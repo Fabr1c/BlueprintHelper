@@ -1,6 +1,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperExternalBodyAdapter.h"
 
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraph.h"
+#include "Engine/Blueprint.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
 
 static void BlueprintHelperReadExternalBodyStringArray(
 	const TSharedRef<FJsonObject>& Payload,
@@ -41,6 +44,63 @@ static FBlueprintHelperGraphBodyAdapterDescriptor BlueprintHelperResolveDefaultE
 	return Descriptor;
 }
 
+static bool BlueprintHelperExternalBodyIsFunctionScope(const FString& ReplaceScope)
+{
+	return ReplaceScope.Equals(TEXT("function"), ESearchCase::IgnoreCase)
+		|| ReplaceScope.Equals(TEXT("function_body"), ESearchCase::IgnoreCase);
+}
+
+static bool BlueprintHelperExternalBodyIsEventScope(const FString& ReplaceScope)
+{
+	return ReplaceScope.Equals(TEXT("event"), ESearchCase::IgnoreCase)
+		|| ReplaceScope.Equals(TEXT("event_body"), ESearchCase::IgnoreCase);
+}
+
+static bool BlueprintHelperExternalBodyIsCustomEventScope(const FString& ReplaceScope)
+{
+	return ReplaceScope.Equals(TEXT("custom_event"), ESearchCase::IgnoreCase)
+		|| ReplaceScope.Equals(TEXT("custom_event_body"), ESearchCase::IgnoreCase);
+}
+
+static bool BlueprintHelperExternalBodyIsReadEntryScope(const FString& ReplaceScope)
+{
+	return BlueprintHelperExternalBodyIsFunctionScope(ReplaceScope)
+		|| BlueprintHelperExternalBodyIsEventScope(ReplaceScope)
+		|| BlueprintHelperExternalBodyIsCustomEventScope(ReplaceScope);
+}
+
+static UEdGraph* BlueprintHelperExternalBodyFindEntryGraph(
+	const FBlueprintHelperGraphBodyRequest& Request)
+{
+	if (!Request.Blueprint)
+	{
+		return nullptr;
+	}
+
+	if (BlueprintHelperExternalBodyIsFunctionScope(Request.ReplaceScope))
+	{
+		UEdGraph* FunctionGraph = FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
+			Request.Blueprint->FunctionGraphs,
+			Request.GraphName);
+		if (!FunctionGraph && !Request.EntryName.IsEmpty())
+		{
+			FunctionGraph = FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
+				Request.Blueprint->FunctionGraphs,
+				Request.EntryName);
+		}
+		return FunctionGraph;
+	}
+
+	UEdGraph* EventGraph = FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
+		Request.Blueprint->UbergraphPages,
+		Request.GraphName.IsEmpty() ? FString(TEXT("EventGraph")) : Request.GraphName);
+	if (!EventGraph && Request.Blueprint->UbergraphPages.Num() > 0)
+	{
+		EventGraph = Request.Blueprint->UbergraphPages[0];
+	}
+	return EventGraph;
+}
+
 FBlueprintHelperExternalBodyAdapter::FBlueprintHelperExternalBodyAdapter()
 	: Descriptor(BlueprintHelperResolveDefaultExternalDescriptor())
 {
@@ -67,6 +127,58 @@ bool FBlueprintHelperExternalBodyAdapter::ResolveTarget(
 	OutTarget.GraphName = Request.GraphName;
 	OutTarget.EntryName = Request.EntryName;
 
+	if (Request.Blueprint && BlueprintHelperExternalBodyIsReadEntryScope(Request.ReplaceScope))
+	{
+		UEdGraph* EntryGraph = BlueprintHelperExternalBodyFindEntryGraph(Request);
+		if (!EntryGraph)
+		{
+			OutError = FString::Printf(TEXT("External body graph %s was not found."), *Request.GraphName);
+			return false;
+		}
+
+		OutTarget.Graph = EntryGraph;
+		OutTarget.GraphName = EntryGraph->GetName();
+		for (UEdGraphNode* Node : EntryGraph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+
+			if (BlueprintHelperExternalBodyIsFunctionScope(Request.ReplaceScope))
+			{
+				if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(Node))
+				{
+					OutTarget.EntryBoundaryNodes.AddUnique(Node);
+					OutTarget.ProtectedNodes.AddUnique(Node);
+				}
+				else if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(Node))
+				{
+					OutTarget.ExitBoundaryNodes.AddUnique(Node);
+					OutTarget.ProtectedNodes.AddUnique(Node);
+				}
+			}
+			else if (BlueprintHelperExternalBodyIsEventScope(Request.ReplaceScope)
+				&& FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(Node, Request.EntryName))
+			{
+				OutTarget.EntryBoundaryNodes.AddUnique(Node);
+				OutTarget.ProtectedNodes.AddUnique(Node);
+			}
+			else if (BlueprintHelperExternalBodyIsCustomEventScope(Request.ReplaceScope)
+				&& FBlueprintHelperK2GraphBodyAdapterUtils::IsCustomEventEntry(Node, Request.EntryName))
+			{
+				OutTarget.EntryBoundaryNodes.AddUnique(Node);
+				OutTarget.ProtectedNodes.AddUnique(Node);
+			}
+		}
+
+		if (OutTarget.EntryBoundaryNodes.Num() == 0)
+		{
+			OutError = FString::Printf(TEXT("External body entry %s was not found."), *Request.EntryName);
+			return false;
+		}
+	}
+
 	if (Request.Payload.IsValid())
 	{
 		const TSharedPtr<FJsonObject>* Target = nullptr;
@@ -87,7 +199,7 @@ bool FBlueprintHelperExternalBodyAdapter::ResolveTarget(
 		TEXT("%s|%s|%s"),
 		*OutTarget.AssetPath,
 		*OutTarget.GraphName,
-		*FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Descriptor.BodyKind));
+		*Descriptor.RuntimeAdapterId);
 	OutError.Reset();
 	return true;
 }
@@ -149,6 +261,34 @@ FBlueprintHelperGraphBodyBoundaryModel FBlueprintHelperExternalBodyAdapter::Buil
 	if (Boundary.GraphName.IsEmpty())
 	{
 		Boundary.GraphName = Target.GraphName;
+	}
+	for (UEdGraphNode* Node : Target.EntryBoundaryNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		const FString Ref = FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node);
+		if (!Ref.IsEmpty())
+		{
+			Boundary.EntryNodeRefs.AddUnique(Ref);
+			Boundary.ProtectedNodeRefs.AddUnique(Ref);
+			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
+		}
+	}
+	for (UEdGraphNode* Node : Target.ExitBoundaryNodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		const FString Ref = FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(Node);
+		if (!Ref.IsEmpty())
+		{
+			Boundary.ExitNodeRefs.AddUnique(Ref);
+			Boundary.ProtectedNodeRefs.AddUnique(Ref);
+			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
+		}
 	}
 	return Boundary;
 }

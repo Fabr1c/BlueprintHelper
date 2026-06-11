@@ -33,6 +33,7 @@ export interface GraphWriteSlotDescriptor {
   validation_hints: string[];
   keywords: string[];
   quick_access: GraphWriteQuickAccessDescriptor;
+  aliases?: string[];
   when_to_use: string;
   when_not_to_use?: string;
   status: GraphWriteSlotStatus;

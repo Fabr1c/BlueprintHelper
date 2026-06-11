@@ -280,3 +280,26 @@ test('generic schedule expression rejects function_operation ownership mixing', 
     /unsupported_schedule_owner_mix/,
   );
 });
+
+test('generic convert expression rejects function_operation ownership mixing before preview', () => {
+  const input = {
+    kind: 'call',
+    target: 'PrintString',
+    args: {
+      value: {
+        kind: 'convert',
+        function_operation: 'dynamic_cast',
+        transform_operation: 'dynamic_cast',
+        target_class_path: '/Script/Engine.SaveGame',
+        args: {
+          value: { kind: 'get', name: 'LoadedSaveGame' },
+        },
+      },
+    },
+  };
+
+  assert.throws(
+    () => compileTaskPlanStatement(input),
+    /unsupported_convert_owner_mix|invalid convert expression/,
+  );
+});

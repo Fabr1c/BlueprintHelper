@@ -910,7 +910,10 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "unsupported_write_modes": [
         "graph.patch"
       ]
-    }
+    },
+    "aliases": [
+      "generic_ops.create.class_backed"
+    ]
   },
   {
     "slot_id": "graph.statement.delegate_bind",

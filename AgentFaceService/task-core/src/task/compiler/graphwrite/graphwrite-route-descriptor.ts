@@ -16,6 +16,15 @@ export interface GraphWriteSelectorDescriptor {
   passthrough_fields?: string[];
 }
 
+export interface GraphWriteRouteQuickAccessDescriptor {
+  template_id: string;
+  family: 'graph_write';
+  cluster_id: string;
+  operation_id: string;
+  quick_access_id: string;
+  arg_slots?: string[];
+}
+
 export interface GraphWriteRouteDescriptor {
   route_id: string;
   task_type: 'edit_blueprint_graph';
@@ -34,6 +43,7 @@ export interface GraphWriteRouteDescriptor {
   when_to_use?: string;
   when_not_to_use?: string;
   allowed_slot_ids: string[];
+  quick_access?: GraphWriteRouteQuickAccessDescriptor;
   compiler_id: string;
   status: GraphWriteRouteStatus;
   adapter_sync: GraphWriteRouteAdapterSync;

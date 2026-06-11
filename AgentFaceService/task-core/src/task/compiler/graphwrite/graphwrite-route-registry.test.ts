@@ -77,6 +77,20 @@ test('GraphWrite route registry exposes active macro route after runtime adapter
   assert.equal(getGraphWriteRouteById('graph.replace.macro_body')?.status, 'active');
 });
 
+test('replace_external_body route is descriptor-backed before composer exposure', () => {
+  const route = getGraphWriteRouteById('graph.replace_external_body.body');
+
+  assert.equal(route?.graph_strategy, 'replace_external_body');
+  assert.equal(route?.runtime_adapter_id, 'k2.external_graph.replace_body');
+  assert.equal(route?.adapter_sync, ACTIVE_ADAPTER_SYNC);
+  assert.equal(route?.status, 'active');
+  assert.equal(
+    route?.template_path,
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_replace_external_body_template.json',
+  );
+  assert.deepEqual(route?.insert_paths, ['behavior.external_replace.body.statements[]']);
+});
+
 test('agent-visible GraphWrite routes exactly match active runtime-backed route descriptors', () => {
   const expectedRouteIds = getAllGraphWriteRoutes()
     .filter((route) => (

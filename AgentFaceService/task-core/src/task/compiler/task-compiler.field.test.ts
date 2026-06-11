@@ -263,6 +263,52 @@ test('explicit field_access preserves member property path', () => {
   assert.equal(value.property_path, 'TargetRoll');
 });
 
+test('field_access over external owner requires owner evidence before preview', () => {
+  const input = {
+    kind: 'field',
+    field_operation: 'set',
+    field_scope: 'variable',
+    target: 'CachedHealth',
+    value: {
+      kind: 'field',
+      field_operation: 'get',
+      field_scope: 'field_access',
+      target: 'SavedHealth',
+      property_path: 'SavedHealth',
+      target_object: { kind: 'get', name: 'CreatedVitalsSave' },
+    },
+  };
+
+  assert.throws(
+    () => compileFirstStatement(input),
+    /field_owner_class|target object type|owner evidence/,
+  );
+});
+
+test('field_access over external owner preserves explicit owner evidence', () => {
+  const statement = compileFirstStatement({
+    kind: 'field',
+    field_operation: 'set',
+    field_scope: 'variable',
+    target: 'CachedHealth',
+    value: {
+      kind: 'field',
+      field_operation: 'get',
+      field_scope: 'field_access',
+      target: 'SavedHealth',
+      property_path: 'SavedHealth',
+      target_object: { kind: 'get', name: 'CreatedVitalsSave' },
+      context_evidence: { field_owner_class: '/Game/BP/BP_VitalsSave.BP_VitalsSave_C' },
+    },
+  });
+
+  const value = statement.value as Record<string, unknown>;
+  assert.deepEqual(
+    contextEvidence(value),
+    { field_owner_class: '/Game/BP/BP_VitalsSave.BP_VitalsSave_C' },
+  );
+});
+
 test('struct member field capability facts survive TaskPlan and bridge lowering', () => {
   const input = {
     kind: 'field',

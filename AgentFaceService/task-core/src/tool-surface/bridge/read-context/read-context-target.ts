@@ -7,6 +7,7 @@ export function buildReadContextTarget(input: ReadContextInput) {
     asset_type: input.target.asset_type,
     target_type: input.target.target_type,
     target_name: input.target.target_name,
+    graph_name: input.target.graph_name,
     block_id: input.target.block_id,
   }) as never;
 }

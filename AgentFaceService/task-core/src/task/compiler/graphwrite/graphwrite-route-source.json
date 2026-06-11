@@ -826,6 +826,7 @@
       "public_scope": "body_replace",
       "taskplan_op": "replace_external_body",
       "runtime_adapter_id": "k2.external_graph.replace_body",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_replace_external_body_template.json",
       "required_fields": [
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=replace_external_body",
@@ -835,11 +836,24 @@
       "insert_paths": [
         "behavior.external_replace.body.statements[]"
       ],
-      "purpose": "Internal external body replacement route.",
-      "allowed_slot_ids": [],
+      "purpose": "Replace a non-BlueprintHelper-owned event or function body through a fingerprinted external body anchor.",
+      "when_to_use": "Use when read_context returned adapter_boundary.body_entry and body_fingerprint for an external graph body.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
+      "quick_access": {
+        "template_id": "external_body.replace_body.body",
+        "family": "graph_write",
+        "cluster_id": "external_body",
+        "operation_id": "replace_body",
+        "quick_access_id": "body",
+        "arg_slots": [
+          "body(statement[])"
+        ]
+      },
       "compiler_id": "replace_external_body",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_replace",
       "write_mode": "graph.replace"
     }

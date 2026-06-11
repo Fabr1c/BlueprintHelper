@@ -2,13 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { requireGraphWriteSlotById } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
+import {
+  getAllGraphWriteSlotDescriptors,
+  requireGraphWriteSlotById,
+} from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
 import type { GraphWriteSlotDescriptor } from '../../task/compiler/graphwrite/graphwrite-slot-descriptor.js';
 import type { GraphWriteTemplateWriteMode } from './taskspec-template-types.js';
 import type {
   TaskSpecTemplateDiagnostic,
   TaskSpecTemplateQuickAccessItem,
 } from './taskspec-template-types.js';
+import { resolveSlotTemplateAlias } from './slot-template-alias.js';
 import {
   parseSlotExpression,
   type SlotExpressionArg,
@@ -152,7 +156,8 @@ class CompositionContext {
   private resolveQuickAccess(
     templateId: string,
   ): { ok: true; item: ResolvedSlotExpressionItem } | { ok: false; diagnostic: TaskSpecTemplateDiagnostic } {
-    const candidates = this.byTemplateId.get(templateId) ?? [];
+    const canonicalTemplateId = resolveSlotTemplateAlias(templateId, getAllGraphWriteSlotDescriptors());
+    const candidates = this.byTemplateId.get(canonicalTemplateId) ?? [];
     const item = candidates.find((candidate) => candidate.write_mode === this.writeMode);
     if (item) {
       return { ok: true, item: { quickAccess: item, slot: requireGraphWriteSlotById(item.source_slot_id) } };

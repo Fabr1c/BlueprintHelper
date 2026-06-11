@@ -10,6 +10,10 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyReadbackProjection
 	TArray<FString> FoldedBoundaryNodeRefs;
 	TArray<FString> VisibleBoundaryNodeRefs;
 	TMap<FString, FString> BoundaryDisplayNames;
+	FString BodyEntryNodeGuid;
+	FString BodyEntryNodeClass;
+	FString BodyEntryFingerprint;
+	FString BodyFingerprint;
 	bool bSynthesizeLogicEntry = false;
 	bool bSynthesizeLogicResult = false;
 };

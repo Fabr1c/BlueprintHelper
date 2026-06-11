@@ -197,8 +197,8 @@
       "behavior_field": "external_replace",
       "compiler_id": "replace_external_body",
       "taskplan_op": "replace_external_body",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent"
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.replace.block_implementation",
