@@ -5,6 +5,7 @@
   "handler": "__REQUIRED_HANDLER_CUSTOM_EVENT_NAME__",
   "context_evidence": {
     "event_delegate.binding_object_kind": "__REQUIRED_BINDING_OBJECT_KIND__",
+    "event_delegate.binding_object_kind.allowed_values": "self | component_ref | linked_pin_ref | function_return_ref",
     "event_delegate.binding_object_evidence_id": "__REQUIRED_BINDING_OBJECT_EVIDENCE_ID__",
     "event_delegate.delegate_owner_class_path": "__REQUIRED_DELEGATE_OWNER_CLASS_PATH__",
     "event_delegate.delegate_property_name": "__REQUIRED_DELEGATE_NAME__",

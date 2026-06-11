@@ -4,7 +4,9 @@
   "class_path": "__REQUIRED_CLASS_PATH__",
   "context_evidence": {
     "generic.create.operation": "__REQUIRED_CREATE_OPERATION__",
-    "generic.create.class_path": "__REQUIRED_CLASS_PATH__"
+    "generic.create.operation.allowed_values": "spawn_actor | create_widget | construct_object | make_array | make_map | make_set | asset_action | async_action | function_backed_create | function_backed_spawn | function_backed_construct",
+    "generic.create.class_path": "__REQUIRED_CLASS_PATH__",
+    "generic.create.class_path.source": "read_context, ActionDatabase candidate, or template composer output; do not guess"
   },
   "args": {}
 }

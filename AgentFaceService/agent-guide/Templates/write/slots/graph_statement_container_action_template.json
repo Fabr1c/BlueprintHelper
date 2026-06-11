@@ -11,8 +11,13 @@
   "element_type": "__REQUIRED_ELEMENT_VALUE_TYPE__",
   "context_evidence": {
     "container.kind": "__REQUIRED_CONTAINER_KIND__",
+    "container.kind.allowed_values": "array | map | set",
     "container.operation": "__REQUIRED_OPERATION__",
+    "container.operation.allowed_values.array": "get | set | add | add_unique | append | insert | remove_item | remove_index | clear | contains | find | length | shuffle | shuffle_from_stream | identical | resize | reverse | is_empty | is_not_empty | last_index | swap | filter_array | is_valid_index | random | random_from_stream | sort_string | sort_name | sort_byte | sort_int | sort_int64 | sort_float",
+    "container.operation.allowed_values.map": "add | remove | find | contains | keys | values | clear | length | is_empty | is_not_empty | get_key_value_by_index | get_last_index",
+    "container.operation.allowed_values.set": "add | remove | contains | clear | length | to_array | add_items | remove_items | is_empty | is_not_empty | intersection | union | difference | get_item_by_index | get_last_index",
     "container.collection_pin_type": "__REQUIRED_COLLECTION_PIN_TYPE__",
-    "container.element_pin_type": "__REQUIRED_ELEMENT_PIN_TYPE__"
+    "container.element_pin_type": "__REQUIRED_ELEMENT_PIN_TYPE__",
+    "container.type_source": "read_context variable pin_type or template composer output; do not guess"
   }
 }

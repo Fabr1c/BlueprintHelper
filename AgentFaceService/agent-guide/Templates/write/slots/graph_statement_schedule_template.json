@@ -3,8 +3,10 @@
   "schedule_operation": "__REQUIRED_SCHEDULE_OPERATION__",
   "context_evidence": {
     "generic.schedule.operation": "__REQUIRED_SCHEDULE_OPERATION__",
+    "generic.schedule.operation.allowed_values": "timer_delegate_node | latent_or_async_node",
     "schedule_action_stable_id": "__REQUIRED_SCHEDULE_ACTION_STABLE_ID__",
-    "schedule_spawner_signature": "__REQUIRED_SCHEDULE_SPAWNER_SIGNATURE__"
+    "schedule_spawner_signature": "__REQUIRED_SCHEDULE_SPAWNER_SIGNATURE__",
+    "schedule.metadata_source": "ActionDatabase candidate, read_context, or preview diagnostic; do not guess"
   },
   "args": {
     "__REQUIRED_PIN_NAME__": {

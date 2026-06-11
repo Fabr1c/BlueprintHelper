@@ -41,6 +41,8 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /blueprint_get_runtime_profile/);
     assert.match(workflow, /TaskSpec Template Composer/);
     assert.match(workflow, /fill the generated TaskSpec with concrete evidence and intent/);
+    assert.match(workflow, /Do not guess fixed enum-like payload fields/);
+    assert.match(workflow, /template `\*\.allowed_values`/);
     assert.match(workflow, /evidence_conflict/);
     assert.match(workflow, /binary asset files as fallback evidence/);
     assert.match(workflow, /`\.\\bh\.cmd`/);

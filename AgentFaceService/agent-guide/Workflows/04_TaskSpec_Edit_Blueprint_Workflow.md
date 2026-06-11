@@ -23,6 +23,8 @@
 
 TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和 CLI help 负责说明。本文档不列字段清单。不要用任务显示名推断图表名、函数名、变量名或 block 标识；这些定位信息必须来自读回上下文和模板要求。
 
+固定枚举/固定取值字段不得由 Agent 猜测或试错。`target_type`、`view.format`、`write_mode`、`cluster`、`operation`、`kind`、`container_kind`、`container_operation`、`control_operation`、`create_operation`、`transform_operation`、`schedule_operation`、delegate binding kind 等值必须来自 CLI discovery、template `*.allowed_values`、read-template quick-access、`read_context` 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch`。如果没有来源，停止并报告 `missing_capability` / `clarification_required` / `stop_and_report`。
+
 TaskSpec 模板发现和生成只走 `bh tools templates` 四层索引，不使用旧 tool-id 模板发现入口，也不手扫 `AgentFaceService/agent-guide/Templates` 目录：
 
 ```powershell

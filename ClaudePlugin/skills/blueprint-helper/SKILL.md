@@ -50,6 +50,8 @@ bh tools read-templates domains --format json
 
 Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
 
+Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
+
 ## Tool Catalog Flow
 
 Do not scan plugin source or template indexes to choose BlueprintHelper tools.
@@ -59,19 +61,20 @@ Use the CLI catalog:
 ```powershell
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
-bh tools templates <tool_id> --format json
+bh tools templates families --workflow preview_execute --format json
+bh tools read-templates domains --format json
 ```
 
-Then read only the concrete template paths returned by `bh tools templates <tool_id>`.
+Then use the TaskSpec composer or ReadSpec composer to select and compose the concrete JSON request.
 
 The standard read path is:
 
 1. Main Agent chooses `domain` and `kind`.
 2. Main Agent runs `bh tools list <domain> <kind> --format json`.
-3. Main Agent selects a `tool_id`.
-4. Main Agent runs `bh tools templates <tool_id> --format json`.
-5. Main Agent dispatches the required SideAgent with the selected `tool_id`, returned template paths, `allowed_tools`, and `stop_conditions`.
-6. The SideAgent fills the returned template and calls only the CLI tools listed in `allowed_tools`.
+3. Main Agent selects a capability and decides whether the next artifact is TaskSpec or ReadSpec.
+4. Main Agent runs the relevant composer navigation and `compose` command.
+5. Main Agent dispatches the required SideAgent with the selected capability, composed JSON path, allowed CLI command, and `stop_conditions`.
+6. The SideAgent fills placeholders in the composed JSON and calls only the assigned CLI tool or grouped command.
 
 There is no independent tool detail step.
 

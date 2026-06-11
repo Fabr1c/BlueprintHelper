@@ -29,6 +29,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability default: `stop_and_report`.
 - Evidence conflict default: `stop_and_report`. If `read_context`, screenshots/visible Editor state, preview, execute, or readback disagree, do not read `.uasset`, `.umap`, or other Unreal binary asset files as fallback evidence.
+- Enum/fixed-field default: do not guess values or try neighboring strings. Fixed payload fields such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`.
 - Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by scoped BlueprintHelper operations within the approved session.

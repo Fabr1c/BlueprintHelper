@@ -50,9 +50,7 @@ execute when target assets may be read-only or when close/save reports
 `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or
 `not_editable` and report the returned agent message.
 
-Ordinary Agents must not request, set, or forward
-`BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data
-is not part of the Agent contract.
+Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
 Unknown Unreal asset paths must be resolved before writes. Do not infer
 Unreal asset paths from filesystem `.uasset` paths. If multiple

@@ -11,6 +11,7 @@
   },
   "context_evidence": {
     "op.operation_id": "__REQUIRED_OPERATION_ID__",
+    "op.operation_id.source": "quick-access template, ActionDatabase candidate, read_context, or preview diagnostic; do not guess",
     "op.spawn_family": "__REQUIRED_SPAWN_FAMILY__"
   }
 }

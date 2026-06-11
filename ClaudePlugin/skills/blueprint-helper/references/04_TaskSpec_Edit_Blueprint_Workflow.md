@@ -23,6 +23,8 @@
 
 TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和 CLI help 负责说明。本文档不列字段清单。不要用任务显示名推断图表名、函数名、变量名或 block 标识；这些定位信息必须来自读回上下文和模板要求。
 
+固定枚举/固定取值字段不得由 Agent 猜测或试错。`target_type`、`view.format`、`write_mode`、`cluster`、`operation`、`kind`、`container_kind`、`container_operation`、`control_operation`、`create_operation`、`transform_operation`、`schedule_operation`、delegate binding kind 等值必须来自 CLI discovery、template `*.allowed_values`、read-template quick-access、`read_context` 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch`。如果没有来源，停止并报告 `missing_capability` / `clarification_required` / `stop_and_report`。
+
 调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口时，优先使用：
 
 ```json
@@ -71,7 +73,7 @@ execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败�
 
 ## Source Control / P4 Checkout
 
-写入已有 UE 资产前，如果项目启用了 P4/Perforce 或其他 UE SourceControl Provider，必须在 preview 通过后、execute 前确认目标资产可编辑。先按 CLI catalog 选择 `blueprinthelper_source_control_status` 或 `blueprinthelper_source_control_checkout`，只读取 `bh tools templates <tool_id>` 返回的模板路径。
+写入已有 UE 资产前，如果项目启用了 P4/Perforce 或其他 UE SourceControl Provider，必须在 preview 通过后、execute 前确认目标资产可编辑。先按 CLI catalog 选择 `blueprinthelper_source_control_status` 或 `blueprinthelper_source_control_checkout`，再按该工具 help/manifest 的输入形状准备 schema root JSON；不要使用旧的单 tool_id 模板分发。
 
 `checkout_required` 时调用 `blueprinthelper_source_control_checkout`。如果返回 `checked_out_by_other`、`source_control_conflicted`、`source_control_unavailable`、`checkout_failed` 或 `not_editable`，立即停止并把结果中的 `agent_message` / `recommended_action` 报给主 Agent；不要继续 execute，也不要在 close editor 时把保存失败当成已关闭成功。
 

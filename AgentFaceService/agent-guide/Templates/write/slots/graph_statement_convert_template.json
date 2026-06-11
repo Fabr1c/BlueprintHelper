@@ -5,8 +5,10 @@
   "target_class_path": "__REQUIRED_TARGET_CLASS_PATH__",
   "context_evidence": {
     "generic.transform.operation": "__REQUIRED_TRANSFORM_OPERATION__",
+    "generic.transform.operation.allowed_values": "dynamic_cast | type_promotion",
     "generic.transform.source_pin_type": "__REQUIRED_SOURCE_PIN_TYPE__",
-    "generic.transform.target_pin_type": "__REQUIRED_TARGET_PIN_TYPE__"
+    "generic.transform.target_pin_type": "__REQUIRED_TARGET_PIN_TYPE__",
+    "generic.transform.pin_type_source": "read_context pin_type, candidate metadata, or preview diagnostic; do not guess"
   },
   "args": {
     "value": {

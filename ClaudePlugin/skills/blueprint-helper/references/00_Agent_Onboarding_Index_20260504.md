@@ -71,12 +71,13 @@ Agent-facing tool and template selection is CLI-owned:
 ```powershell
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
-bh tools templates <tool_id> --format json
+bh tools templates families --workflow preview_execute --format json
+bh tools read-templates domains --format json
 ```
 
-After `bh tools templates <tool_id>` returns a template dispatch package, read only the returned template paths. Do not scan `Templates/` or old semantic indexes for tool selection. Prefer copying the returned JSON template, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
+After choosing the capability, use the TaskSpec composer or ReadSpec composer navigation to select a concrete quick-access item and compose a temporary JSON file. Do not scan `Templates/` or old semantic indexes for tool selection. Prefer composer output, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
-Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/kind/tool_id，再只读取 `bh tools templates <tool_id>` 返回的具体模板路径；不要扫描 `Templates/` 目录来选择工具。
+Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/kind/capability，再通过 TaskSpec composer 或 ReadSpec composer 选择 quick-access 并生成临时 JSON；不要扫描 `Templates/` 目录来选择工具。
 
 `blueprint_open_editor` / `blueprint_close_editor` 指全局 MCP lifecycle 工具，不是 CLI direct tool。用户明确需要启动或关闭目标 Unreal Editor 时，统一调用 `mcp__blueprint_helper__blueprint_open_editor` / `mcp__blueprint_helper__blueprint_close_editor`；不要通过 CLI lifecycle alias 做兼容路径。
 如果全局 MCP lifecycle 工具不可用，返回 `lifecycle_mcp_unavailable`；不要改用 `bh open_editor` / `bh close_editor` 或 direct CLI lifecycle 命令启动/关闭 Editor。

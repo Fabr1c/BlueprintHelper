@@ -3,8 +3,10 @@
   "control_operation": "__REQUIRED_SWITCH_OPERATION__",
   "context_evidence": {
     "generic.control.operation": "__REQUIRED_SWITCH_OPERATION__",
+    "generic.control.operation.allowed_values": "switch_int | switch_string | switch_name | switch_enum",
     "generic.control.case_values": "__REQUIRED_CASE_VALUES__",
-    "generic.control.default_policy": "__REQUIRED_DEFAULT_POLICY__"
+    "generic.control.default_policy": "__REQUIRED_DEFAULT_POLICY__",
+    "generic.control.default_policy.source": "template composer, read_context, or preview diagnostic; do not guess"
   },
   "args": {
     "selection": {
