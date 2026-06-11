@@ -33,6 +33,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 2. `quick-access` 返回 `slot_type` 和 `arg_slots`；`statement` 可作为 `compose --templates` 根，`expression` 只能嵌入 statement 输入位。`arg_slots` 顺序就是 `template_id(...)` 的位置顺序，需要跳过前置输入位时用 `0` 占位。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。
+2.3. 如果 `read_context`、截图/Editor 画面、preview、execute 或 readback 结果互相不一致，返回 `evidence_conflict` 并停止。不得读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
 3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，直接使用 `blueprinthelper_read_context`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。
 4. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量，不要直接读取整个图表的 `logic_md`。如果目标已经明确到 `function`、`event` 或 `custom_event`，可以直接用该 `target_type + target_name + view.format=logic_md` 读取目标入口切片。
 5. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
@@ -87,6 +88,7 @@ blueprinthelper_query_review_records
 
 - `clarification_required`: 任务包缺少目标资产、目标图表或创建/修改策略
 - `tool_unavailable`: 指定的 BlueprintHelper CLI 命令在当前执行环境不可用
+- `evidence_conflict`: `read_context`、截图/Editor 画面、preview、execute 或 readback 结果冲突；禁止读取 UE 二进制资产文件作为 fallback
 - `bridge_unavailable`: Bridge 不可达
 - `profile_blocked`: runtime_profile 不允许写入
 - `preview_blocked`: preview 返回阻断

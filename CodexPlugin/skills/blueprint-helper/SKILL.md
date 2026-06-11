@@ -27,6 +27,8 @@ Important: call editor lifecycle commands only through the global MCP tools `mcp
 
 Deprecated MCP ordinary read/write/debug/task tools are forbidden for Agent workflows. Do not use them as fallback.
 
+If `read_context`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, treat it as `evidence_conflict`: stop and report the conflict. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback fact source.
+
 ## Configure Routing
 
 When the user asks to configure BlueprintHelper safety/profile preferences for Codex, use the sibling `blueprint-helper-configure` skill. If that skill is not indexed in the current Codex session, follow `skills/blueprint-helper-configure/SKILL.md` from this plugin package as the fallback configure workflow.
@@ -141,7 +143,7 @@ Subagents must not call MCP tools.
 1. Read `references/08_User_Preferences.md`, `references/00_Agent_Onboarding_Index_20260504.md`, and `references/CODEX_ADAPTER.md` when BlueprintHelper guidance is needed.
 2. Convert the user's request into intent, target, scope, operation mode, and safety constraints.
 3. If the target asset, target graph/scope, or create-vs-modify strategy is unclear, ask the user before any write delegation.
-4. Run only bounded preflight checks locally: CLI availability, runtime profile, diagnostics/Bridge status, and global MCP editor lifecycle when explicitly needed.
+4. Run the pre-dispatch editor/Bridge gate locally: confirm CLI availability, run a lightweight runtime profile check, and start the target Editor through global MCP only when the profile/diagnostics show the Bridge or Editor is unavailable for this UE asset task.
 5. Dispatch the smallest required Codex sideAgent task package:
    - `blueprint-explorer` for Blueprint/UMG/DataAsset/DataTable/editor-asset reads.
    - `sourcecode-explorer` for source/schema/template context when the user task truly requires repository context.
@@ -193,6 +195,7 @@ stop_conditions:
   - "missing target asset or create/modify strategy"
   - "Bridge unavailable"
   - "runtime_profile blocks write"
+  - "evidence_conflict"
   - "preview blocked"
   - "write session rejected"
   - "tool unavailable"
@@ -211,23 +214,37 @@ The sideAgent task package must make these responsibilities explicit:
 - avoid broad investigation, adjacent repeated reads, full conversation analysis, or deciding whether prior context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem;
 - never replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, local JSON parsing, plugin source inspection, or deprecated MCP ordinary tools;
+- never read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
 - estimate graph size before requesting full graph `logic_md`; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session request, execute, and result lookup only when the Main Agent assigned that step;
 - treat an approved write session as running Editor/Bridge permission, not a single-agent secret; never request, pass, print, or reveal `auth_session`;
 - return concise translated evidence to the Main Agent and stop instead of asking the user directly.
+
+### Pre-dispatch editor/Bridge gate
+
+Run this gate after intent/target/scope assessment and before dispatching any BlueprintHelper sideAgent.
+
+1. Confirm BlueprintHelper CLI is available: `bh` or the built CLI entry.
+2. Run a lightweight runtime profile check:
+   `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
+3. If the runtime profile confirms the intended Editor/Bridge is reachable, dispatch the required sideAgent.
+4. If the runtime profile or diagnostics show the Editor/Bridge is unavailable, stale, or not the intended project, the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` once for the target project, then rerun the runtime profile check.
+5. If the global MCP lifecycle tool is unavailable, stop and report `lifecycle_mcp_unavailable`; do not use CLI lifecycle aliases or shell-launched editor fallbacks.
+6. If the Editor was opened but Bridge remains unavailable, stop or dispatch only a bounded diagnostics task with `Bridge unavailable` as the stop condition; do not ask a sideAgent to repair lifecycle.
+7. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+
+The gate is intentionally short. Use full diagnostics only when the runtime profile is unavailable, ambiguous, or reports a Bridge/runtime problem.
 
 ### Preflight before dispatch
 
 Before dispatching BlueprintHelper subagents:
 
 1. Identify the target UE project and `.uproject` path when editor launch/build may be required.
-2. Confirm BlueprintHelper CLI is available: `bh` or the built CLI entry.
-3. Check runtime profile with CLI:
-   `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
-4. Confirm Bridge connectivity with CLI diagnostics/runtime profile.
-5. If the editor must be launched or closed, use only the global MCP lifecycle tools. Never use CLI lifecycle aliases; if MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable`.
-6. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
-7. Never rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
+2. Complete the pre-dispatch editor/Bridge gate above.
+3. Confirm Bridge connectivity with CLI diagnostics/runtime profile.
+4. If the editor must be launched or closed, use only the global MCP lifecycle tools. Never use CLI lifecycle aliases; if MCP lifecycle tools are unavailable, report `lifecycle_mcp_unavailable`.
+5. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+6. Never rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.
 
 ### Explorer dispatch
 
@@ -286,6 +303,8 @@ Then the Main Agent may either:
 - ask the user for a missing decision;
 - stop and report the blocker.
 
+If the failure is an evidence mismatch between `read_context`, Editor screenshot/visible state, preview, execute, or readback, stop and report `evidence_conflict`. Do not use direct binary asset reads as a recovery path.
+
 ## Supported Agent-Facing CLI Commands
 
 Default Agent-facing commands:
@@ -335,10 +354,13 @@ When the Unreal `asset_path` is unknown, dispatch `blueprint-explorer` to call `
 - If a graph has more than 80 nodes, use scoped reads, block reads, or structured anchors instead of full graph text.
 - Use `logic_json` when stable owned-block anchors or importability checks are needed.
 - Keep large payloads in artifacts; use `--select` or `--fields` for stdout.
+- If `read_context` disagrees with screenshots, visible Editor state, preview, execute, or readback, stop and report `evidence_conflict`; do not inspect `.uasset`, `.umap`, or other Unreal binary assets as fallback evidence.
 
 ## Reporting
 
 Report results in the user's language. Include tool names, key arguments, status, blockers, validation, and the next step when useful. Do not claim completion unless preview/execute/result evidence supports it.
+
+Before the final response, if BlueprintHelper tool evidence and screenshots/Editor state disagree, report the mismatch as `evidence_conflict` and stop. Never claim that direct `.uasset` / `.umap` binary reads confirmed the result.
 
 ## References
 

@@ -37,6 +37,10 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /Editor lifecycle/);
     assert.match(workflow, /Get-Command bh\.cmd/);
     assert.match(workflow, /npm global prefix/);
+    assert.match(workflow, /pre-dispatch editor\/Bridge gate/);
+    assert.match(workflow, /blueprint_get_runtime_profile/);
+    assert.match(workflow, /evidence_conflict/);
+    assert.match(workflow, /binary asset files as fallback evidence/);
     assert.match(workflow, /`\.\\bh\.cmd`/);
     assert.doesNotMatch(workflow, /\u0008/);
     assert.match(await readFile(path.join(dir, 'AGENTS.md'), 'utf8'), /BEGIN BLUEPRINTHELPER CODEX/);

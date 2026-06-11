@@ -28,6 +28,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - Default entry mode: `cli_task_spec_first`.
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability default: `stop_and_report`.
+- Evidence conflict default: `stop_and_report`. If `read_context`, screenshots/visible Editor state, preview, execute, or readback disagree, do not read `.uasset`, `.umap`, or other Unreal binary asset files as fallback evidence.
 - Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by delegated SideAgents within scope and lifetime.

@@ -33,6 +33,8 @@ Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_
 
 Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them as fallback.
 
+If `read_context`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, treat it as `evidence_conflict`: stop and report the conflict. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback fact source.
+
 When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
@@ -79,13 +81,28 @@ On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by t
 1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
 2. Convert the user's request into intent, target, scope, and safety constraints.
 3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
-4. If BlueprintHelper access is required, first confirm the required CLI command is available. Read-only commands such as `bh blueprinthelper_find_assets` and `bh blueprinthelper_read_context` do not require a write session.
+4. If BlueprintHelper access is required, run the pre-dispatch editor/Bridge gate locally: confirm CLI availability, run a lightweight runtime profile check, and start the target Editor through global MCP only when the profile/diagnostics show the Bridge or Editor is unavailable for this UE asset task. Read-only commands such as `bh blueprinthelper_find_assets` and `bh blueprinthelper_read_context` do not require a write session.
 5. Send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`. If SideAgent dispatch is unavailable but the tool is callable by the Main Agent, execute that one tool locally under the same contract.
 6. Review the translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
 
 The Main Agent owns context reuse. Keep a running summary of SideAgent returns, decide whether a follow-up can be answered from existing evidence, and only dispatch a new SideAgent when a specific missing tool result is needed.
 
 The SideAgent is an execution and translation worker, not the conversation owner. Do not pass the full conversation or full `SKILL.md`; pass only the execution package and the reference paths it must read.
+
+## Pre-dispatch Editor/Bridge Gate
+
+Run this gate after intent/target/scope assessment and before dispatching any BlueprintHelper SideAgent.
+
+1. Confirm BlueprintHelper CLI is available: `bh` or the built CLI entry.
+2. Run a lightweight runtime profile check:
+   `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
+3. If the runtime profile confirms the intended Editor/Bridge is reachable, dispatch the required SideAgent.
+4. If the runtime profile or diagnostics show the Editor/Bridge is unavailable, stale, or not the intended project, the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` once for the target project, then rerun the runtime profile check.
+5. If the global MCP lifecycle tool is unavailable, stop and report `lifecycle_mcp_unavailable`; do not use CLI lifecycle aliases or shell-launched editor fallbacks.
+6. If the Editor was opened but Bridge remains unavailable, stop or delegate only a bounded diagnostics task with `Bridge unavailable` as the stop condition; do not ask a SideAgent to repair lifecycle.
+7. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
+
+The gate is intentionally short. Use full diagnostics only when the runtime profile is unavailable, ambiguous, or reports a Bridge/runtime problem.
 
 ## Main Agent Context Ledger
 
@@ -129,6 +146,7 @@ stop_conditions:
   - "missing target asset or create/modify strategy"
   - "Bridge unavailable"
   - "runtime_profile blocks write"
+  - "evidence_conflict"
   - "preview blocked"
   - "write session rejected"
   - "tool unavailable"
@@ -147,6 +165,7 @@ Tell the SideAgent its responsibility in the task package:
 - do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
 - do not replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can repair CLI availability;
+- do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
 - estimate graph size before requesting full graph `logic_md`; function, event, and custom-event `logic_md` target-entry reads are allowed when `target_name` is known; if the graph has more than 80 nodes, use summary, structured anchors, or block-scoped reads instead of whole-graph text;
 - run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
@@ -164,6 +183,7 @@ Stop before write delegation when:
 - the requested edit would modify user-owned nodes without explicit permission;
 - the request needs a capability not listed in the onboarding index;
 - the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, `checkout_required`, `compile_failed`, `save_failed`, or `tool_failed`;
+- `read_context`, Editor screenshot/visible state, preview, execute, or readback evidence disagrees; report `evidence_conflict` and do not inspect Unreal binary asset files as fallback evidence;
 - the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References

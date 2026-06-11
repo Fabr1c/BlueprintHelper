@@ -8,6 +8,8 @@ CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor
 
 普通 Agent 只走 CLI TaskSpec-first 主线。废弃 MCP 普通工具即使仍有历史代码，也不在本指南中作为可选工具暴露，不作为 fallback。
 
+如果 `read_context`、截图/Editor 画面、preview、execute 或 readback 证据冲突，返回 `evidence_conflict` 并 stop_and_report。不要读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
+
 默认流程:
 
 ```text
@@ -15,6 +17,7 @@ blueprint_get_runtime_profile
 -> blueprinthelper_read_agent_guide
 -> blueprinthelper_find_assets when the Unreal asset_path is unknown
 -> blueprinthelper_read_context or blueprinthelper_read_reference_context or blueprinthelper_read_function_chain_context
+-> evidence_conflict means stop_and_report, not binary fallback
 -> build BlueprintHelper.TaskSpec.v1
 -> blueprinthelper_preview_task
 -> repair TaskSpec or stop_and_report
@@ -98,6 +101,7 @@ Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/ki
 - TaskPlan、底层 capability、Bridge command 和冻结工具名不作为普通 Agent 选择项。
 - preview blocked 时停止报告或修正 TaskSpec，不回退到冻结入口。
 - 废弃 MCP 普通工具不作为普通 Agent 可选入口或 fallback。
+- 证据冲突时只允许 `stop_and_report`；不要把 `.uasset`、`.umap` 或其它 UE 二进制资产文件当作 fallback 事实源。
 Additional asset-path routing rules:
 
 - Unknown Unreal `asset_path` -> `blueprinthelper_find_assets`; known Unreal `asset_path` -> `blueprinthelper_read_context`.

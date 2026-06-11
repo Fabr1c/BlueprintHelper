@@ -1,5 +1,7 @@
 ﻿# 04 - TaskSpec 修改蓝图工作流
 
+硬规则：如果 `read_context`、截图/Editor 可见状态、preview、execute 或 readback 证据冲突，立即 `stop_and_report` 并报告 `evidence_conflict`。不允许读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
+
 标准流程：
 
 ```text
@@ -37,6 +39,7 @@ TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和
 GraphWrite 写入前先用 CLI 四层索引收敛模板，不要扫描模板目录或手写完整 statement JSON：
 
 ```text
+bh tools templates families --workflow preview_execute --format json
 bh tools templates write-modes --family graph_write --format json
 bh tools templates clusters --family graph_write --format json
 bh tools templates operations --family graph_write --cluster generic_ops --write-mode graph.append --format json
@@ -53,6 +56,12 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 多个顶层 statement 用逗号分隔，例如 `"slotA(...),slotB(...)"`。PowerShell 下必须把整个 `--templates` 字符串加引号。不要把 expression slot 放在顶层，也不要绕过 quick-access 返回的 slot id 去手写内部 statement 结构。
 
+## Direct Compile Validation
+
+`blueprint_compile_blueprint` payload files are direct tool payloads, not `BlueprintHelper.TaskSpec.v1`.
+Run them only through the direct compile command selected by current CLI help.
+Do not pass them to `bh task preview --file` or `bh task execute --file`.
+
 Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `blueprinthelper_read_context` 读取 `logic_json`。写入锚点必须来自 grouped block：`block_id + group_entry_node_path + node_ref + pin_ref`，`insert_between` 额外需要 `link_ref`。不要把全图级 `nodes[0]`、显示名、GUID-first selector 当普通主线写锚点。
 
 ## Non-BlueprintHelper-Owned Graph Boundary
@@ -67,7 +76,7 @@ execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败�
 
 ## Source Control / P4 Checkout
 
-写入已有 UE 资产前，如果项目启用了 P4/Perforce 或其他 UE SourceControl Provider，必须在 preview 通过后、execute 前确认目标资产可编辑。先按 CLI catalog 选择 `blueprinthelper_source_control_status` 或 `blueprinthelper_source_control_checkout`，只读取 `bh tools templates <tool_id>` 返回的模板路径。
+写入已有 UE 资产前，如果项目启用了 P4/Perforce 或其他 UE SourceControl Provider，必须在 preview 通过后、execute 前确认目标资产可编辑。先按当前 CLI help / catalog 选择 `blueprinthelper_source_control_status` 或 `blueprinthelper_source_control_checkout`，不要通过旧 tool-id template discovery 推断 source-control payload。
 
 `checkout_required` 时调用 `blueprinthelper_source_control_checkout`。如果返回 `checked_out_by_other`、`source_control_conflicted`、`source_control_unavailable`、`checkout_failed` 或 `not_editable`，立即停止并把结果中的 `agent_message` / `recommended_action` 报给主 Agent；不要继续 execute，也不要在 close editor 时把保存失败当成已关闭成功。
 

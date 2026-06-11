@@ -1,5 +1,7 @@
 ﻿# 04 - TaskSpec 修改蓝图工作流
 
+硬规则：如果 `read_context`、截图/Editor 可见状态、preview、execute 或 readback 证据冲突，立即 `stop_and_report` 并报告 `evidence_conflict`。不允许读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
+
 标准流程：
 
 ```text

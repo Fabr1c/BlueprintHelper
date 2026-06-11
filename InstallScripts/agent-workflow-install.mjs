@@ -76,6 +76,8 @@ function buildAgentWorkflowMarkdown() {
 
 This file is the project-level BlueprintHelper workflow prompt source for Codex and Claude agents.
 
+If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflict\`. Do not read \`.uasset\`, \`.umap\`, or other Unreal binary asset files as fallback evidence.
+
 ## Editor Lifecycle
 
 - Editor lifecycle is global MCP only.
@@ -104,8 +106,13 @@ $BhCmd = Join-Path $NpmPrefix "bh.cmd"
 ~~~
 
 - Do not call a relative \`.\\bh.cmd\` unless the current directory is the npm global bin directory. Bare \`bh\` may resolve to a blocked \`bh.ps1\` on old installs; rerun \`install.cmd\` or use the absolute \`bh.cmd\` path.
+- After intent, target, and scope assessment, run a pre-dispatch editor/Bridge gate before assigning any SideAgent work.
+- The pre-dispatch gate is lightweight: run \`blueprint_get_runtime_profile\`; if the intended Editor/Bridge is unavailable, stale, or not the target project, the Main Agent may open the target Editor once through \`mcp__blueprint_helper__blueprint_open_editor\`, then rerun runtime profile.
+- If lifecycle MCP is unavailable, report \`lifecycle_mcp_unavailable\` instead of using CLI lifecycle aliases or shell-launched editor fallbacks.
+- If the Editor opens but Bridge remains unavailable, stop or assign only bounded diagnostics with \`Bridge unavailable\` as the stop condition; do not ask SideAgents to repair lifecycle.
 - Use TaskSpec-first writes: gather context, build a \`BlueprintHelper.TaskSpec.v1\`, preview, request write approval when required, execute, and read back results.
 - Use ReadSpec/read-context flows for Blueprint, UMG, DataAsset, and DataTable discovery.
+- If \`read_context\`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, stop and report \`evidence_conflict\`; do not inspect Unreal binary asset files as fallback.
 - Do not use deprecated MCP ordinary read/write/debug/task tools as fallback paths.
 
 ## Source And Documentation Work
@@ -117,6 +124,7 @@ $BhCmd = Join-Path $NpmPrefix "bh.cmd"
 
 - Preview is the write gate. Do not execute writes when preview is blocked.
 - Missing capability policy is stop and report.
+- Evidence conflict policy is stop and report. Direct \`.uasset\` / \`.umap\` binary reads are not a fallback path.
 - Do not request, pass, or store raw Bridge tokens, auth sessions, or private environment details.
 - Before CLI writes, ensure the Bridge belongs to the intended running Editor session and that the Editor lifecycle was managed through the global MCP path.
 `;
