@@ -20,10 +20,32 @@ struct FGraphLayoutPreviewMovedNode
 	FVector2D Size = FVector2D::ZeroVector;
 };
 
+struct FGraphLayoutPreviewResizedOverlay
+{
+	FString NodeId;
+	FGuid NodeGuid;
+	FVector2D BeginSize = FVector2D::ZeroVector;
+	FVector2D EndSize = FVector2D::ZeroVector;
+};
+
 struct FGraphLayoutPreviewInteractionCommit
 {
 	TArray<FGraphLayoutPreviewMovedNode> MovedNodes;
+	TArray<FGraphLayoutPreviewResizedOverlay> ResizedOverlays;
+	FVector2D AvoidanceEntrySize = FVector2D::ZeroVector;
 	FString RejectionReason;
+};
+
+class BLUEPRINTHELPER_API FGraphLayoutPreviewInteractionCommitAccumulator
+{
+public:
+	void Reset();
+	bool HasPendingChanges() const;
+	void Append(const FGraphLayoutPreviewInteractionCommit& Commit);
+	const FGraphLayoutPreviewInteractionCommit& GetCommit() const;
+
+private:
+	FGraphLayoutPreviewInteractionCommit PendingCommit;
 };
 
 class BLUEPRINTHELPER_API FGraphLayoutPreviewInteractionModel
@@ -53,7 +75,16 @@ private:
 		FVector2D Size = FVector2D::ZeroVector;
 	};
 
+	struct FTrackedOverlay
+	{
+		FString NodeId;
+		FGuid NodeGuid;
+		FVector2D BeginSize = FVector2D::ZeroVector;
+		FVector2D LastSize = FVector2D::ZeroVector;
+	};
+
 	bool CapturePositions(UEdGraph* PreviewGraph, TMap<FGuid, FVector2D>& OutPositions) const;
+	bool CaptureOverlaySizes(UEdGraph* PreviewGraph, TMap<FGuid, FVector2D>& OutSizes) const;
 	bool CaptureTopology(
 		UEdGraph* PreviewGraph,
 		TMap<FGuid, FString>& OutNodeSignatures,
@@ -71,8 +102,10 @@ private:
 		const UEdGraphPin& ToPin) const;
 
 	TMap<FGuid, FTrackedNode> TrackedNodesByGuid;
+	TMap<FGuid, FTrackedOverlay> TrackedOverlaysByGuid;
 	TMap<FGuid, FString> InitialNodeSignaturesByGuid;
 	TSet<FString> InitialLinkSignatures;
+	FVector2D AvoidanceEntrySize = FVector2D::ZeroVector;
 	int32 InitialNodeCount = 0;
 	int32 InitialLinkEndpointCount = 0;
 	bool bInteractionActive = false;

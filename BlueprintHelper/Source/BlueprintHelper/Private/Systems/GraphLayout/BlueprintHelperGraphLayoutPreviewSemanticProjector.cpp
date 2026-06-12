@@ -137,6 +137,33 @@ void FGraphLayoutPreviewSemanticProjector::ProjectEntryAvoidanceRangeComments(
 		VerticalSize);
 }
 
+void FGraphLayoutPreviewSemanticProjector::ProjectSemanticLabelComments(
+	const FGraphLayoutPreviewSample& Sample,
+	FLayoutPlan& Plan)
+{
+	for (const FGraphLayoutPreviewNodeSpec& NodeSpec : Sample.Nodes)
+	{
+		if (!NodeSpec.bPreviewSemanticLabel || NodeSpec.PreviewLabelTargetNodeId.IsEmpty())
+		{
+			continue;
+		}
+
+		const FNodePlacement* TargetPlacement = FindPlacement(Plan, NodeSpec.PreviewLabelTargetNodeId);
+		if (!TargetPlacement)
+		{
+			continue;
+		}
+
+		AddPlacement(
+			Plan,
+			Sample,
+			NodeSpec,
+			TargetPlacement->TargetPosition + NodeSpec.PreviewLabelOffset,
+			TEXT("preview_semantic_label"),
+			NodeSpec.Size);
+	}
+}
+
 void FGraphLayoutPreviewSemanticProjector::ProjectAnchoredNodesByRole(
 	const FGraphLayoutPreviewSample& Sample,
 	const FEditorCanvasSceneState& SceneState,
@@ -526,6 +553,7 @@ FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(
 	}
 
 	ProjectEntryAvoidanceRangeComments(Sample, RuleSet, Plan);
+	ProjectSemanticLabelComments(Sample, Plan);
 	ProjectRemainingNodesBySampleOffset(Sample, Plan);
 	return Plan;
 }

@@ -28,6 +28,9 @@ struct FGraphLayoutPreviewNodeSpec
 	FVector2D Size = FVector2D(220.0f, 96.0f);
 	FLinearColor CommentColor = FLinearColor::White;
 	bool bPreviewOverlay = false;
+	bool bPreviewSemanticLabel = false;
+	FString PreviewLabelTargetNodeId;
+	FVector2D PreviewLabelOffset = FVector2D(-16.0f, -74.0f);
 };
 
 struct FGraphLayoutPreviewLinkSpec

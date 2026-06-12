@@ -27,6 +27,7 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionCommitCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionModel.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
@@ -148,6 +149,24 @@ static UEdGraphNode_Comment* FindCommentNodeByComment(UEdGraph* Graph, const FSt
 	{
 		UEdGraphNode_Comment* CommentNode = Cast<UEdGraphNode_Comment>(Node);
 		if (CommentNode && CommentNode->NodeComment == CommentText)
+		{
+			return CommentNode;
+		}
+	}
+	return nullptr;
+}
+
+static UEdGraphNode_Comment* FindCommentNodeContaining(UEdGraph* Graph, const FString& CommentText)
+{
+	if (!Graph)
+	{
+		return nullptr;
+	}
+
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		UEdGraphNode_Comment* CommentNode = Cast<UEdGraphNode_Comment>(Node);
+		if (CommentNode && CommentNode->NodeComment.Contains(CommentText))
 		{
 			return CommentNode;
 		}
@@ -3295,6 +3314,42 @@ bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::R
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSampleFactoryAddsSemanticLabelComments,
+	"BlueprintHelper.GraphLayout.Preview.SampleFactoryAddsSemanticLabelComments",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSampleFactoryAddsSemanticLabelComments::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	const FGraphLayoutPreviewNodeSpec* EventLabel = FindPreviewNodeSpec(Sample, TEXT("SemanticLabel_EventStart"));
+	const FGraphLayoutPreviewNodeSpec* ExecLabel = FindPreviewNodeSpec(Sample, TEXT("SemanticLabel_ResetState"));
+	TestNotNull(TEXT("event semantic label exists"), EventLabel);
+	TestNotNull(TEXT("exec semantic label exists"), ExecLabel);
+	if (!EventLabel || !ExecLabel)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("event label is preview overlay"), EventLabel->bPreviewOverlay);
+	TestTrue(TEXT("event label is semantic label"), EventLabel->bPreviewSemanticLabel);
+	TestEqual(TEXT("event label target"), EventLabel->PreviewLabelTargetNodeId, FString(TEXT("EventStart")));
+	TestTrue(TEXT("event label text contains Child"), EventLabel->Title.Contains(TEXT("Child:")));
+	TestTrue(TEXT("event label text contains role id"), EventLabel->Title.Contains(TEXT("EventEntry")));
+	TestTrue(
+		TEXT("exec label text contains writeback path"),
+		ExecLabel->Title.Contains(TEXT("editor_canvas.role_centers.ExecNode")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_PreviewDrawsEntryAvoidanceRangeComments,
 	"BlueprintHelper.GraphLayout.Preview.DrawsEntryAvoidanceRangeComments",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3432,6 +3487,46 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerAppliesAvoidanceCommentColor
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerCreatesSemanticLabelComments,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerCreatesSemanticLabelComments",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesSemanticLabelComments::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("preview materializes"), Materializer.MaterializeForTest(Sample, Plan, Result));
+
+	const FGuid* LabelGuid = Result.NodeGuidsById.Find(TEXT("SemanticLabel_EventStart"));
+	TestNotNull(TEXT("label guid exists"), LabelGuid);
+	if (!LabelGuid)
+	{
+		return false;
+	}
+	TestTrue(TEXT("semantic label is preview overlay"), Result.PreviewOverlayGuids.Contains(*LabelGuid));
+
+	UEdGraphNode_Comment* LabelComment = FindCommentNodeContaining(Result.PreviewGraph.Get(), TEXT("Child: EventEntry"));
+	TestNotNull(TEXT("semantic label comment exists"), LabelComment);
+	if (!LabelComment)
+	{
+		return false;
+	}
+	TestTrue(TEXT("semantic label contains Chinese effect"), LabelComment->NodeComment.Contains(TEXT("作用:")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_PreviewSampleFactoryProducesLayoutPlan,
 	"BlueprintHelper.GraphLayout.Preview.SampleFactoryProducesLayoutPlan",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3469,6 +3564,40 @@ bool FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult::RunTest(con
 	TestTrue(TEXT("result success"), Result.bSuccess);
 	TestEqual(TEXT("scene"), Result.Sample.Scene, ESemanticScene::PureDataSubgraph);
 	TestTrue(TEXT("has layout"), Result.LayoutPlan.Placements.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPlacesSemanticLabelsNearTargets,
+	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPlacesSemanticLabelsNearTargets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPlacesSemanticLabelsNearTargets::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FNodePlacement* TargetPlacement = FindPlacement(Plan, TEXT("EventStart"));
+	const FNodePlacement* LabelPlacement = FindPlacement(Plan, TEXT("SemanticLabel_EventStart"));
+	TestNotNull(TEXT("target placement exists"), TargetPlacement);
+	TestNotNull(TEXT("label placement exists"), LabelPlacement);
+	if (!TargetPlacement || !LabelPlacement)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("label sits above target"), LabelPlacement->TargetPosition.Y < TargetPlacement->TargetPosition.Y);
+	TestTrue(
+		TEXT("label stays horizontally near target"),
+		FMath::Abs(LabelPlacement->TargetPosition.X - TargetPlacement->TargetPosition.X) <= 48.0f);
 	return true;
 }
 
@@ -4285,6 +4414,63 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresAvoidanceRangeOve
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresSemanticLabelComments,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelIgnoresSemanticLabelComments",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresSemanticLabelComments::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+	FRuleSet RuleSet;
+	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("preview materializes"), Materializer.MaterializeForTest(Sample, Plan, Result));
+
+	const FGuid* LabelGuid = Result.NodeGuidsById.Find(TEXT("SemanticLabel_EventStart"));
+	TestNotNull(TEXT("label guid exists"), LabelGuid);
+	if (!LabelGuid)
+	{
+		return false;
+	}
+
+	UEdGraphNode* LabelNode = nullptr;
+	for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == *LabelGuid)
+		{
+			LabelNode = Node;
+			break;
+		}
+	}
+	TestNotNull(TEXT("label node found"), LabelNode);
+	if (!LabelNode)
+	{
+		return false;
+	}
+
+	FGraphLayoutPreviewInteractionModel Model;
+	TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+	Model.BeginInteraction(Result.PreviewGraph.Get());
+	LabelNode->NodePosX += 100;
+	LabelNode->NodePosY += 40;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	TestFalse(TEXT("moving only semantic label creates no commit"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+	TestEqual(TEXT("no moved nodes"), Commit.MovedNodes.Num(), 0);
+	TestEqual(TEXT("no resized overlays"), Commit.ResizedOverlays.Num(), 0);
+	TestTrue(TEXT("no rejection for moving ignored label"), Commit.RejectionReason.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsAvoidanceRangeOverlaySizesToRuleSet,
 	"BlueprintHelper.GraphLayout.Preview.InteractionModelCommitsAvoidanceRangeOverlaySizesToRuleSet",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -4391,6 +4577,63 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsAvoidanceRangeOve
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionAccumulatorMergesPendingCommits,
+	"BlueprintHelper.GraphLayout.Preview.InteractionAccumulatorMergesPendingCommits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionAccumulatorMergesPendingCommits::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewInteractionCommit FirstCommit;
+	FGraphLayoutPreviewMovedNode& FirstMoved = FirstCommit.MovedNodes.AddDefaulted_GetRef();
+	FirstMoved.NodeId = TEXT("ExecStep");
+	FirstMoved.NodeGuid = FGuid::NewGuid();
+	FirstMoved.Role = ENodeRole::ExecNode;
+	FirstMoved.AnchorRole = ENodeRole::ExecNode;
+	FirstMoved.BeginTopLeft = FVector2D(100.0, 100.0);
+	FirstMoved.EndTopLeft = FVector2D(200.0, 100.0);
+	FirstMoved.Size = FVector2D(220.0, 96.0);
+
+	FGraphLayoutPreviewInteractionCommit SecondCommit;
+	FGraphLayoutPreviewMovedNode& SecondMoved = SecondCommit.MovedNodes.AddDefaulted_GetRef();
+	SecondMoved.NodeId = TEXT("ExecStep");
+	SecondMoved.NodeGuid = FirstMoved.NodeGuid;
+	SecondMoved.Role = ENodeRole::ExecNode;
+	SecondMoved.AnchorRole = ENodeRole::ExecNode;
+	SecondMoved.BeginTopLeft = FVector2D(200.0, 100.0);
+	SecondMoved.EndTopLeft = FVector2D(340.0, 160.0);
+	SecondMoved.Size = FVector2D(220.0, 96.0);
+
+	FGraphLayoutPreviewResizedOverlay& ResizedOverlay = SecondCommit.ResizedOverlays.AddDefaulted_GetRef();
+	ResizedOverlay.NodeId = TEXT("HorizontalAvoidanceRange");
+	ResizedOverlay.NodeGuid = FGuid::NewGuid();
+	ResizedOverlay.BeginSize = FVector2D(420.0, 120.0);
+	ResizedOverlay.EndSize = FVector2D(520.0, 160.0);
+	SecondCommit.AvoidanceEntrySize = FVector2D(220.0, 96.0);
+
+	FGraphLayoutPreviewInteractionCommitAccumulator Accumulator;
+	TestFalse(TEXT("starts empty"), Accumulator.HasPendingChanges());
+
+	Accumulator.Append(FirstCommit);
+	Accumulator.Append(SecondCommit);
+
+	TestTrue(TEXT("has pending changes"), Accumulator.HasPendingChanges());
+	const FGraphLayoutPreviewInteractionCommit& PendingCommit = Accumulator.GetCommit();
+	TestEqual(TEXT("one moved node after merge"), PendingCommit.MovedNodes.Num(), 1);
+	TestEqual(TEXT("merged moved node keeps original begin x"), PendingCommit.MovedNodes[0].BeginTopLeft.X, 100.0);
+	TestEqual(TEXT("merged moved node keeps latest end x"), PendingCommit.MovedNodes[0].EndTopLeft.X, 340.0);
+	TestEqual(TEXT("one resized overlay"), PendingCommit.ResizedOverlays.Num(), 1);
+	TestEqual(TEXT("overlay keeps begin width"), PendingCommit.ResizedOverlays[0].BeginSize.X, 420.0);
+	TestEqual(TEXT("overlay keeps latest end width"), PendingCommit.ResizedOverlays[0].EndSize.X, 520.0);
+	TestEqual(TEXT("avoidance entry size retained"), PendingCommit.AvoidanceEntrySize.X, 220.0);
+
+	Accumulator.Reset();
+	TestFalse(TEXT("reset clears pending changes"), Accumulator.HasPendingChanges());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsMovedAnchorsToRuleSet,
 	"BlueprintHelper.GraphLayout.Preview.InteractionModelCommitsMovedAnchorsToRuleSet",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -4436,6 +4679,109 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsMovedAnchorsToRul
 	TestEqual(TEXT("exec center x follows moved preview node center"), ExecCenter.X, 590.0);
 	TestEqual(TEXT("exec center y follows moved preview node center"), ExecCenter.Y, 268.0);
 	TestTrue(TEXT("column spacing recalculated"), Parsed.ExecColumnSpacing > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionPendingCommitBuildsRuleSetJson,
+	"BlueprintHelper.GraphLayout.Preview.InteractionPendingCommitBuildsRuleSetJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionPendingCommitBuildsRuleSetJson::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	FGraphLayoutPreviewMovedNode& Moved = Commit.MovedNodes.AddDefaulted_GetRef();
+	Moved.NodeId = TEXT("ResetState");
+	Moved.NodeGuid = FGuid::NewGuid();
+	Moved.Role = ENodeRole::ExecNode;
+	Moved.AnchorRole = ENodeRole::ExecNode;
+	Moved.BeginTopLeft = FVector2D(100.0, 100.0);
+	Moved.EndTopLeft = FVector2D(520.0, 180.0);
+	Moved.Size = FVector2D(220.0, 96.0);
+
+	FGraphLayoutPreviewInteractionCommitAccumulator Accumulator;
+	Accumulator.Append(Commit);
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState SceneState;
+	SceneState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0, 100.0));
+	SceneState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(300.0, 100.0));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, SceneState);
+
+	const FString InputJson = FRuleSetJson::ExportString(RuleSet);
+	FString OutputJson;
+	FString Error;
+	TestTrue(
+		TEXT("pending commit builds RuleSet JSON"),
+		FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
+			InputJson,
+			ESemanticScene::LinearExecChain,
+			Accumulator.GetCommit(),
+			OutputJson,
+			Error));
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestTrue(TEXT("output imports"), FRuleSetJson::ImportString(OutputJson, Parsed, Validation));
+	const FEditorCanvasSceneState Resolved =
+		FSemanticSceneAdapter::ResolveSceneState(Parsed, ESemanticScene::LinearExecChain);
+	const FVector2D ExecCenter = Resolved.RoleCenters.FindRef(ENodeRole::ExecNode);
+	TestEqual(TEXT("exec center x follows pending moved preview node center"), ExecCenter.X, 630.0);
+	TestEqual(TEXT("exec center y follows pending moved preview node center"), ExecCenter.Y, 228.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionCoordinatorConsumesPendingRuleSetJson,
+	"BlueprintHelper.GraphLayout.Preview.InteractionCoordinatorConsumesPendingRuleSetJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionCoordinatorConsumesPendingRuleSetJson::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewInteractionCommit Commit;
+	FGraphLayoutPreviewMovedNode& Moved = Commit.MovedNodes.AddDefaulted_GetRef();
+	Moved.NodeId = TEXT("ResetState");
+	Moved.NodeGuid = FGuid::NewGuid();
+	Moved.Role = ENodeRole::ExecNode;
+	Moved.AnchorRole = ENodeRole::ExecNode;
+	Moved.BeginTopLeft = FVector2D(100.0, 100.0);
+	Moved.EndTopLeft = FVector2D(520.0, 180.0);
+	Moved.Size = FVector2D(220.0, 96.0);
+
+	FRuleSet RuleSet;
+	FEditorCanvasSceneState SceneState;
+	SceneState.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(100.0, 100.0));
+	SceneState.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(300.0, 100.0));
+	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, SceneState);
+
+	FGraphLayoutPreviewInteractionCommitCoordinator Coordinator;
+	TestFalse(TEXT("coordinator starts empty"), Coordinator.HasPendingChanges());
+	const FGraphLayoutPreviewInteractionApplyResult EmptyResult =
+		Coordinator.ConsumePendingRuleSetJson(FRuleSetJson::ExportString(RuleSet), ESemanticScene::LinearExecChain);
+	TestEqual(
+		TEXT("empty apply reports no pending changes"),
+		EmptyResult.Status,
+		EGraphLayoutPreviewInteractionApplyStatus::NoPendingChanges);
+
+	Coordinator.Append(Commit);
+	TestTrue(TEXT("coordinator has pending changes"), Coordinator.HasPendingChanges());
+	const FGraphLayoutPreviewInteractionApplyResult ApplyResult =
+		Coordinator.ConsumePendingRuleSetJson(FRuleSetJson::ExportString(RuleSet), ESemanticScene::LinearExecChain);
+	TestEqual(TEXT("coordinator applies pending changes"), ApplyResult.Status, EGraphLayoutPreviewInteractionApplyStatus::Applied);
+	TestFalse(TEXT("coordinator consumes pending changes"), Coordinator.HasPendingChanges());
+
+	FRuleSet Parsed;
+	FValidationResult Validation;
+	TestTrue(TEXT("coordinator output imports"), FRuleSetJson::ImportString(ApplyResult.UpdatedRuleSetJson, Parsed, Validation));
+	const FEditorCanvasSceneState Resolved =
+		FSemanticSceneAdapter::ResolveSceneState(Parsed, ESemanticScene::LinearExecChain);
+	const FVector2D ExecCenter = Resolved.RoleCenters.FindRef(ENodeRole::ExecNode);
+	TestEqual(TEXT("exec center x follows coordinator pending moved preview node center"), ExecCenter.X, 630.0);
+	TestEqual(TEXT("exec center y follows coordinator pending moved preview node center"), ExecCenter.Y, 228.0);
 	return true;
 }
 

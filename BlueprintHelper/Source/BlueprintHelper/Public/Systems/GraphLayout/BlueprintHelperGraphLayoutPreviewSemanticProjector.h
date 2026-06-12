@@ -71,5 +71,8 @@ private:
 		const FGraphLayoutPreviewSample& Sample,
 		const FRuleSet& RuleSet,
 		FLayoutPlan& Plan);
+	static void ProjectSemanticLabelComments(
+		const FGraphLayoutPreviewSample& Sample,
+		FLayoutPlan& Plan);
 };
 }

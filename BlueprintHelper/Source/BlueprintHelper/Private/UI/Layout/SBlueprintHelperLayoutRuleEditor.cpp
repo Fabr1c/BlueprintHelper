@@ -504,6 +504,22 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSceneToolbar()
 				LOCTEXT("PreviewLayoutRuleTooltip", "为当前语义场景重新构建可拖拽的原生蓝图图表预览。"),
 				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnPreviewClicked))
 		];
+	SceneToolbar->AddSlot()
+		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+		[
+			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+				LOCTEXT("ApplyPreviewChanges", "应用预览修改"),
+				LOCTEXT("ApplyPreviewChangesTooltip", "将当前预览中已拖动的节点和已调整的避让范围写入 RuleSet JSON、同步右侧设置并保存，然后刷新预览。"),
+				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnApplyPreviewChangesClicked))
+		];
+	SceneToolbar->AddSlot()
+		.Padding(0.0f, 0.0f, 6.0f, 6.0f)
+		[
+			BlueprintHelperLayoutRuleEditorLocal::BuildToolbarButton(
+				LOCTEXT("DiscardPreviewChanges", "放弃预览修改"),
+				LOCTEXT("DiscardPreviewChangesTooltip", "丢弃当前未应用的预览拖拽和避让范围大小修改，并按已保存的 RuleSet 重新构建预览。"),
+				FOnClicked::CreateSP(this, &SBlueprintHelperLayoutRuleEditor::OnDiscardPreviewChangesClicked))
+		];
 	return SceneToolbar;
 }
 
@@ -904,6 +920,7 @@ FString SBlueprintHelperLayoutRuleEditor::GetRuleSetJson() const
 
 void SBlueprintHelperLayoutRuleEditor::SetRuleSetJson(const FString& InRuleSetJson)
 {
+	ClearPendingPreviewInteractionCommit();
 	RuleSetJson = InRuleSetJson;
 
 	if (RuleSetTextBox.IsValid())
@@ -1052,6 +1069,27 @@ FReply SBlueprintHelperLayoutRuleEditor::OnPreviewClicked()
 	return FReply::Handled();
 }
 
+FReply SBlueprintHelperLayoutRuleEditor::OnApplyPreviewChangesClicked()
+{
+	ApplyPendingPreviewInteractionCommit();
+	return FReply::Handled();
+}
+
+FReply SBlueprintHelperLayoutRuleEditor::OnDiscardPreviewChangesClicked()
+{
+	if (!PreviewInteractionCommitCoordinator.HasPendingChanges())
+	{
+		SetStatusMessage(TEXT("没有待放弃的预览修改。"), true);
+		return FReply::Handled();
+	}
+
+	ClearPendingPreviewInteractionCommit();
+	SetStatusMessage(TEXT("已放弃未应用的预览修改。"), true);
+	SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在恢复预览..."));
+	StartPreviewBuild();
+	return FReply::Handled();
+}
+
 void SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged(const FText& InText)
 {
 	if (bUpdatingTextFromCode)
@@ -1059,6 +1097,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleRuleSetTextChanged(const FText& InT
 		return;
 	}
 
+	ClearPendingPreviewInteractionCommit();
 	RuleSetJson = InText.ToString();
 	SetStatusMessage(TEXT("RuleSet JSON 已编辑，请先校验再导出。"), false);
 	RefreshSettingsFromJson();
@@ -1324,6 +1363,7 @@ void SBlueprintHelperLayoutRuleEditor::HandleBoolSettingChanged(int32 SettingId,
 
 void SBlueprintHelperLayoutRuleEditor::CommitSettingsRuleSetJson(const FString& InUpdatedRuleSetJson)
 {
+	ClearPendingPreviewInteractionCommit();
 	RuleSetJson = InUpdatedRuleSetJson;
 
 	if (RuleSetTextBox.IsValid())
@@ -1441,6 +1481,7 @@ void SBlueprintHelperLayoutRuleEditor::RefreshWorkspace()
 
 void SBlueprintHelperLayoutRuleEditor::StartPreviewBuild()
 {
+	ClearPendingPreviewInteractionCommit();
 	if (!PreviewService.IsValid())
 	{
 		PreviewService = MakeUnique<BlueprintHelper::GraphLayout::FGraphLayoutPreviewService>();
@@ -1599,7 +1640,7 @@ void SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionEnd()
 		if (!Commit.RejectionReason.IsEmpty())
 		{
 			SetStatusMessage(
-				FString::Printf(TEXT("预览仅允许移动节点，已拒绝本次修改：%s"), *Commit.RejectionReason),
+				FString::Printf(TEXT("预览仅允许移动节点或调整避让范围大小，已拒绝本次修改：%s"), *Commit.RejectionReason),
 				false);
 			SetPreviewState(EPreviewState::PreviewLoading, TEXT("正在恢复预览..."));
 			StartPreviewBuild();
@@ -1607,32 +1648,35 @@ void SBlueprintHelperLayoutRuleEditor::HandlePreviewInteractionEnd()
 		return;
 	}
 
-	CommitPreviewInteraction(Commit);
+	PreviewInteractionCommitCoordinator.Append(Commit);
+	SetStatusMessage(TEXT("预览修改待确认。点击“应用预览修改”写入设置，或点击“放弃预览修改”还原。"), true);
+	SetPreviewState(EPreviewState::PreviewReady, TEXT("预览修改待确认。"));
 }
 
-bool SBlueprintHelperLayoutRuleEditor::CommitPreviewInteraction(
-	const BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommit& Commit)
+bool SBlueprintHelperLayoutRuleEditor::ApplyPendingPreviewInteractionCommit()
 {
-	FString UpdatedJson;
-	FString Error;
-	if (!BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
-		RuleSetJson,
-		CurrentScene,
-		Commit,
-		UpdatedJson,
-		Error))
+	const BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionApplyResult ApplyResult =
+		PreviewInteractionCommitCoordinator.ConsumePendingRuleSetJson(RuleSetJson, CurrentScene);
+	if (ApplyResult.Status == BlueprintHelper::GraphLayout::EGraphLayoutPreviewInteractionApplyStatus::NoPendingChanges)
 	{
-		SetStatusMessage(Error.IsEmpty() ? TEXT("预览拖拽提交失败。") : Error, false);
+		SetStatusMessage(ApplyResult.Message, true);
 		return false;
 	}
 
-	CommitSettingsRuleSetJson(UpdatedJson);
-	SetStatusMessage(TEXT("已从预览拖拽更新并保存 RuleSet。"), true);
+	if (ApplyResult.Status == BlueprintHelper::GraphLayout::EGraphLayoutPreviewInteractionApplyStatus::Failed)
+	{
+		SetStatusMessage(ApplyResult.Message, false);
+		return false;
+	}
+
+	CommitSettingsRuleSetJson(ApplyResult.UpdatedRuleSetJson);
+	SetStatusMessage(ApplyResult.Message, true);
 	return true;
 }
 
 void SBlueprintHelperLayoutRuleEditor::CancelActivePreview()
 {
+	ClearPendingPreviewInteractionCommit();
 	if (PreviewService.IsValid() && ActivePreviewJobId != 0)
 	{
 		PreviewService->Cancel(ActivePreviewJobId);
@@ -1649,6 +1693,11 @@ void SBlueprintHelperLayoutRuleEditor::CancelActivePreview()
 	{
 		PreviewMaterializer->Cancel();
 	}
+}
+
+void SBlueprintHelperLayoutRuleEditor::ClearPendingPreviewInteractionCommit()
+{
+	PreviewInteractionCommitCoordinator.Reset();
 }
 
 FString SBlueprintHelperLayoutRuleEditor::LoadJsonFromDefaultFile(FString& OutMessage) const

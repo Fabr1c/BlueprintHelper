@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionCommitCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionModel.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
@@ -70,6 +71,8 @@ private:
 	FReply OnResetToDefaultClicked();
 	FReply OnAlignExecRowClicked();
 	FReply OnPreviewClicked();
+	FReply OnApplyPreviewChangesClicked();
+	FReply OnDiscardPreviewChangesClicked();
 
 	void HandleRuleSetTextChanged(const FText& InText);
 	TSharedRef<SWidget> BuildSceneToolbar();
@@ -102,8 +105,8 @@ private:
 	void CancelActivePreview();
 	void HandlePreviewInteractionBegin();
 	void HandlePreviewInteractionEnd();
-	bool CommitPreviewInteraction(
-		const BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommit& Commit);
+	bool ApplyPendingPreviewInteractionCommit();
+	void ClearPendingPreviewInteractionCommit();
 
 	FString RuleSetJson;
 	FString DefaultRuleSetJson;
@@ -154,6 +157,7 @@ private:
 	TUniquePtr<BlueprintHelper::GraphLayout::FGraphLayoutPreviewMaterializer> PreviewMaterializer;
 	TOptional<BlueprintHelper::GraphLayout::FGraphLayoutPreviewBuildResult> PendingPreviewBuildResult;
 	BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionModel PreviewInteractionModel;
+	BlueprintHelper::GraphLayout::FGraphLayoutPreviewInteractionCommitCoordinator PreviewInteractionCommitCoordinator;
 	TWeakObjectPtr<UEdGraph> ActivePreviewGraph;
 	BlueprintHelper::GraphLayout::ESemanticScene CurrentScene =
 		BlueprintHelper::GraphLayout::ESemanticScene::LinearExecChain;

@@ -253,7 +253,7 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 	}
 
 	const FNodeSnapshot* SnapshotNode = FindSnapshotNode(NodeSpec.NodeId);
-	if (!SnapshotNode)
+	if (!SnapshotNode && !NodeSpec.bPreviewSemanticLabel)
 	{
 		FinishWithError(FString::Printf(TEXT("preview sample snapshot is missing node \"%s\""), *NodeSpec.NodeId));
 		return false;
@@ -262,26 +262,33 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 	const FNodePlacement* Placement = FindPlacement(NodeSpec.NodeId);
 	const FVector2D TargetPosition = Placement
 		? Placement->TargetPosition
-		: SnapshotNode->Position;
+		: (SnapshotNode ? SnapshotNode->Position : FVector2D::ZeroVector);
 	const FVector2D TargetSize = Placement && !Placement->TargetSize.IsNearlyZero()
 		? Placement->TargetSize
 		: FVector2D::ZeroVector;
 	Node->NodePosX = FMath::RoundToInt(TargetPosition.X);
 	Node->NodePosY = FMath::RoundToInt(TargetPosition.Y);
-	Node->NodeWidth = TargetSize.X > 0.0f ? TargetSize.X : (NodeSpec.Size.X > 0.0f ? NodeSpec.Size.X : SnapshotNode->Size.X);
-	Node->NodeHeight = TargetSize.Y > 0.0f ? TargetSize.Y : (NodeSpec.Size.Y > 0.0f ? NodeSpec.Size.Y : SnapshotNode->Size.Y);
+	Node->NodeWidth = TargetSize.X > 0.0f
+		? TargetSize.X
+		: (NodeSpec.Size.X > 0.0f ? NodeSpec.Size.X : (SnapshotNode ? SnapshotNode->Size.X : 220.0f));
+	Node->NodeHeight = TargetSize.Y > 0.0f
+		? TargetSize.Y
+		: (NodeSpec.Size.Y > 0.0f ? NodeSpec.Size.Y : (SnapshotNode ? SnapshotNode->Size.Y : 96.0f));
 	Node->CreateNewGuid();
 	Node->SetFlags(RF_Transient);
 
-	for (const FPinSnapshot& PinSnapshot : SnapshotNode->Pins)
+	if (SnapshotNode)
 	{
-		if (!FindOrCreatePin(Node, PinSnapshot))
+		for (const FPinSnapshot& PinSnapshot : SnapshotNode->Pins)
 		{
-			FinishWithError(FString::Printf(
-				TEXT("failed to create preview pin \"%s\" on node \"%s\""),
-				*PinSnapshot.Name,
-				*NodeSpec.NodeId));
-			return false;
+			if (!FindOrCreatePin(Node, PinSnapshot))
+			{
+				FinishWithError(FString::Printf(
+					TEXT("failed to create preview pin \"%s\" on node \"%s\""),
+					*PinSnapshot.Name,
+					*NodeSpec.NodeId));
+				return false;
+			}
 		}
 	}
 

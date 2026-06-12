@@ -63,6 +63,71 @@ static void AddPreviewNode(
 	Sample.Nodes.Add(NodeSpec);
 }
 
+static FString BuildRoleCenterWritebackPath(const ENodeRole Role)
+{
+	return FString::Printf(TEXT("editor_canvas.role_centers.%s"), ToString(Role));
+}
+
+static FString BuildSemanticLabelText(
+	const ENodeRole AnchorRole,
+	const FString& EffectText)
+{
+	return FString::Printf(
+		TEXT("Child: %s\n作用: %s\n写回: %s"),
+		ToString(AnchorRole),
+		*EffectText,
+		*BuildRoleCenterWritebackPath(AnchorRole));
+}
+
+static FLinearColor ResolveSemanticLabelColor(const ENodeRole AnchorRole)
+{
+	switch (AnchorRole)
+	{
+	case ENodeRole::EventEntry:
+		return FLinearColor(0.46f, 0.24f, 0.78f, 0.55f);
+	case ENodeRole::ExecNode:
+		return FLinearColor(0.82f, 0.16f, 0.14f, 0.55f);
+	case ENodeRole::BranchControl:
+		return FLinearColor(0.95f, 0.55f, 0.12f, 0.55f);
+	case ENodeRole::PureFunction:
+		return FLinearColor(0.24f, 0.78f, 0.42f, 0.55f);
+	case ENodeRole::OperatorOrCompare:
+		return FLinearColor(0.55f, 0.86f, 0.24f, 0.55f);
+	case ENodeRole::VariableInput:
+		return FLinearColor(0.0f, 0.62f, 0.9f, 0.55f);
+	case ENodeRole::AsyncNode:
+		return FLinearColor(0.0f, 0.72f, 0.85f, 0.55f);
+	case ENodeRole::DelegateNode:
+		return FLinearColor(0.94f, 0.82f, 0.22f, 0.55f);
+	case ENodeRole::Comment:
+		return FLinearColor(0.42f, 0.42f, 0.42f, 0.55f);
+	case ENodeRole::Unknown:
+	default:
+		return FLinearColor(0.12f, 0.18f, 0.22f, 0.55f);
+	}
+}
+
+static void AddSemanticLabelNode(
+	FGraphLayoutPreviewSample& Sample,
+	const FString& TargetNodeId,
+	const ENodeRole AnchorRole,
+	const FString& EffectText)
+{
+	FGraphLayoutPreviewNodeSpec LabelSpec;
+	LabelSpec.NodeId = FString::Printf(TEXT("SemanticLabel_%s"), *TargetNodeId);
+	LabelSpec.Title = BuildSemanticLabelText(AnchorRole, EffectText);
+	LabelSpec.Factory = EGraphLayoutPreviewNodeFactory::Comment;
+	LabelSpec.Role = ENodeRole::Comment;
+	LabelSpec.PreviewAnchorRole = ENodeRole::Unknown;
+	LabelSpec.bUsePreviewRoleAnchor = false;
+	LabelSpec.Size = FVector2D(260.0f, 72.0f);
+	LabelSpec.CommentColor = ResolveSemanticLabelColor(AnchorRole);
+	LabelSpec.bPreviewOverlay = true;
+	LabelSpec.bPreviewSemanticLabel = true;
+	LabelSpec.PreviewLabelTargetNodeId = TargetNodeId;
+	Sample.Nodes.Add(LabelSpec);
+}
+
 static FNodeSnapshot* FindPreviewNode(FGraphLayoutPreviewSample& Sample, const FString& NodeId)
 {
 	for (FNodeSnapshot& Node : Sample.Snapshot.Nodes)
@@ -247,6 +312,8 @@ static bool BuildLinearExecSample(FGraphLayoutPreviewSample& OutSample, FString&
 			MakePreviewPin(TEXT("Completed"), EPinDirection::Output, true)
 		});
 
+	AddSemanticLabelNode(OutSample, TEXT("EventStart"), ENodeRole::EventEntry, TEXT("入口基线"));
+	AddSemanticLabelNode(OutSample, TEXT("ResetState"), ENodeRole::ExecNode, TEXT("执行列 / 水平间距"));
 	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("ResetState"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ResetState"), TEXT("then"), TEXT("SetCounter"), TEXT("execute"), true, OutError) &&
@@ -340,6 +407,9 @@ static bool BuildPureDataSample(FGraphLayoutPreviewSample& OutSample, FString& O
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
 
+	AddSemanticLabelNode(OutSample, TEXT("SelfRef"), ENodeRole::VariableInput, TEXT("数据叶子 / 左侧输入偏移"));
+	AddSemanticLabelNode(OutSample, TEXT("ComposeKey"), ENodeRole::OperatorOrCompare, TEXT("中间数据转换 / 输入簇展开"));
+	AddSemanticLabelNode(OutSample, TEXT("BuildArray"), ENodeRole::PureFunction, TEXT("纯函数聚合 / 输入簇靠近消费者"));
 	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("ConsumeArray"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("SelfRef"), TEXT("Value"), TEXT("ComposeKey"), TEXT("A"), false, OutError) &&
@@ -461,6 +531,10 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		},
 		ENodeRole::PureFunction);
 
+	AddSemanticLabelNode(OutSample, TEXT("Consumer"), ENodeRole::ExecNode, TEXT("执行列 / 水平间距"));
+	AddSemanticLabelNode(OutSample, TEXT("ContextGet"), ENodeRole::VariableInput, TEXT("数据叶子 / 左侧输入偏移"));
+	AddSemanticLabelNode(OutSample, TEXT("IsValidGate"), ENodeRole::OperatorOrCompare, TEXT("中间数据转换 / 输入簇展开"));
+	AddSemanticLabelNode(OutSample, TEXT("ComposePayload"), ENodeRole::PureFunction, TEXT("纯函数聚合 / 输入簇靠近消费者"));
 	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("Consumer"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ContextGet"), TEXT("Value"), TEXT("Consumer"), TEXT("Context"), false, OutError) &&
@@ -574,6 +648,9 @@ static bool BuildMultiExecSample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
 
+	AddSemanticLabelNode(OutSample, TEXT("EventStart"), ENodeRole::EventEntry, TEXT("入口基线"));
+	AddSemanticLabelNode(OutSample, TEXT("PrimaryPrint"), ENodeRole::ExecNode, TEXT("执行列 / 水平间距"));
+	AddSemanticLabelNode(OutSample, TEXT("Branch"), ENodeRole::BranchControl, TEXT("分支行 / 垂直间距"));
 	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("Sequence"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("Sequence"), TEXT("Then_0"), TEXT("PrimaryPrint"), TEXT("execute"), true, OutError) &&
@@ -669,6 +746,9 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
 
+	AddSemanticLabelNode(OutSample, TEXT("CandidateExec"), ENodeRole::ExecNode, TEXT("执行列 / 水平间距"));
+	AddSemanticLabelNode(OutSample, TEXT("DelayAsync"), ENodeRole::AsyncNode, TEXT("避让候选行 / 垂直退避"));
+	AddSemanticLabelNode(OutSample, TEXT("CommentBlocker"), ENodeRole::Comment, TEXT("已有障碍物 / 避让 padding"));
 	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("CandidateExec"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("CandidateExec"), TEXT("then"), TEXT("FallbackExec"), TEXT("execute"), true, OutError) &&

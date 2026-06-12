@@ -97,6 +97,68 @@ static void ApplyAvoidanceRangeOverlaySizesToRuleSet(
 	RuleSet.CollisionStepY = CollisionStepY;
 }
 
+void FGraphLayoutPreviewInteractionCommitAccumulator::Reset()
+{
+	PendingCommit = FGraphLayoutPreviewInteractionCommit();
+}
+
+bool FGraphLayoutPreviewInteractionCommitAccumulator::HasPendingChanges() const
+{
+	return PendingCommit.MovedNodes.Num() > 0 || PendingCommit.ResizedOverlays.Num() > 0;
+}
+
+void FGraphLayoutPreviewInteractionCommitAccumulator::Append(const FGraphLayoutPreviewInteractionCommit& Commit)
+{
+	if (Commit.AvoidanceEntrySize.X > 0.0f && Commit.AvoidanceEntrySize.Y > 0.0f)
+	{
+		PendingCommit.AvoidanceEntrySize = Commit.AvoidanceEntrySize;
+	}
+
+	for (const FGraphLayoutPreviewMovedNode& MovedNode : Commit.MovedNodes)
+	{
+		FGraphLayoutPreviewMovedNode* ExistingMovedNode = PendingCommit.MovedNodes.FindByPredicate(
+			[&MovedNode](const FGraphLayoutPreviewMovedNode& Candidate)
+			{
+				return Candidate.NodeId == MovedNode.NodeId;
+			});
+		if (ExistingMovedNode)
+		{
+			ExistingMovedNode->NodeGuid = MovedNode.NodeGuid;
+			ExistingMovedNode->Role = MovedNode.Role;
+			ExistingMovedNode->AnchorRole = MovedNode.AnchorRole;
+			ExistingMovedNode->EndTopLeft = MovedNode.EndTopLeft;
+			ExistingMovedNode->Size = MovedNode.Size;
+		}
+		else
+		{
+			PendingCommit.MovedNodes.Add(MovedNode);
+		}
+	}
+
+	for (const FGraphLayoutPreviewResizedOverlay& ResizedOverlay : Commit.ResizedOverlays)
+	{
+		FGraphLayoutPreviewResizedOverlay* ExistingOverlay = PendingCommit.ResizedOverlays.FindByPredicate(
+			[&ResizedOverlay](const FGraphLayoutPreviewResizedOverlay& Candidate)
+			{
+				return Candidate.NodeId == ResizedOverlay.NodeId;
+			});
+		if (ExistingOverlay)
+		{
+			ExistingOverlay->NodeGuid = ResizedOverlay.NodeGuid;
+			ExistingOverlay->EndSize = ResizedOverlay.EndSize;
+		}
+		else
+		{
+			PendingCommit.ResizedOverlays.Add(ResizedOverlay);
+		}
+	}
+}
+
+const FGraphLayoutPreviewInteractionCommit& FGraphLayoutPreviewInteractionCommitAccumulator::GetCommit() const
+{
+	return PendingCommit;
+}
+
 bool FGraphLayoutPreviewInteractionModel::Initialize(
 	const FGraphLayoutPreviewMaterializerResult& MaterializerResult,
 	UEdGraph* PreviewGraph)
