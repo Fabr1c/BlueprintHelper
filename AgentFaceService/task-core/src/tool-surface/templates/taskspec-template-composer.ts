@@ -112,6 +112,7 @@ function composeGraphWriteRouteTaskSpecTemplate(
   const diagnostics: TaskSpecTemplateDiagnostic[] = [];
   const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
   const taskSpec = readJson(pluginPath(routeItem.template_path)) as Record<string, unknown>;
+  applyRouteSpecificDefaults(taskSpec, routeItem.source_slot_id);
   if (routeNode.args.some((arg) => arg.kind !== 'skip')) {
     clearInsertTargets(taskSpec, routeItem.insert_paths);
   }
@@ -143,6 +144,32 @@ function composeGraphWriteRouteTaskSpecTemplate(
   }
   writeJson(input.outputPath, taskSpec);
   return ok(input);
+}
+
+function applyRouteSpecificDefaults(taskSpec: Record<string, unknown>, routeId: string): void {
+  if (routeId !== 'graph.replace.event_body'
+    && routeId !== 'graph.replace.function_body'
+    && routeId !== 'graph.replace.macro_body') {
+    return;
+  }
+
+  const replace = requireRecord(requireRecord(taskSpec['behavior'], 'behavior')['replace'], 'behavior.replace');
+  const selector = requireRecord(replace['selector'], 'behavior.replace.selector');
+  if (routeId === 'graph.replace.event_body') {
+    replace['scope'] = 'event_body';
+    selector['kind'] = 'event';
+    selector['name'] = '__REQUIRED_EVENT_NAME__';
+    return;
+  }
+  if (routeId === 'graph.replace.function_body') {
+    replace['scope'] = 'function_body';
+    selector['kind'] = 'function';
+    selector['name'] = '__REQUIRED_FUNCTION_NAME__';
+    return;
+  }
+  replace['scope'] = 'macro_body';
+  selector['kind'] = 'macro';
+  selector['name'] = '__REQUIRED_MACRO_NAME__';
 }
 
 function findRouteRoot(
@@ -214,12 +241,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
     const taskSpec = readJson(pluginPath(family.base_template_path)) as Record<string, unknown>;
     clearInsertTargets(taskSpec, family.insert_targets);
     const diagnostics: TaskSpecTemplateDiagnostic[] = [];
-    const quickAccessCatalog = listTaskSpecTemplateQuickAccess({
-      family: input.family,
-      cluster: '',
-      operation: '',
-      writeMode: input.writeMode,
-    }).items;
+    const quickAccessCatalog = listNonGraphWriteQuickAccessCatalog(input.family, input.writeMode);
     for (const templateId of input.templateIds) {
       const item = quickAccessCatalog.find((candidate) => candidate.template_id === templateId);
       if (!item) {
@@ -231,7 +253,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
         });
         continue;
       }
-      const fragment = readJson(pluginPath(item.template_path));
+      const fragment = readNonGraphWriteQuickAccessFragment(item);
       for (const insertPath of item.insert_paths) {
         insertTemplateFragment(taskSpec, insertPath, fragment);
       }
@@ -245,6 +267,45 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
 
   writeJson(input.outputPath, readJson(pluginPath(family.base_template_path)));
   return ok(input);
+}
+
+function listNonGraphWriteQuickAccessCatalog(
+  family: string,
+  writeMode: string,
+): TaskSpecTemplateQuickAccessItem[] {
+  const byTemplateId = new Map<string, TaskSpecTemplateQuickAccessItem>();
+  for (const item of listTaskSpecTemplateQuickAccess({
+    family,
+    cluster: '',
+    operation: '',
+    writeMode,
+  }).items) {
+    byTemplateId.set(item.template_id, item);
+  }
+  for (const cluster of listTaskSpecTemplateClusters({ family }).items) {
+    for (const item of listTaskSpecTemplateQuickAccess({
+      family,
+      cluster: cluster.cluster_id,
+      operation: '',
+      writeMode,
+    }).items) {
+      byTemplateId.set(item.template_id, item);
+    }
+  }
+  return [...byTemplateId.values()];
+}
+
+function readNonGraphWriteQuickAccessFragment(item: TaskSpecTemplateQuickAccessItem): unknown {
+  if (item.family === 'umg_widget' && item.cluster_id === 'widget_tree') {
+    const fragment: Record<string, unknown> = { kind: item.operation_id };
+    for (const argSlot of item.arg_slots) {
+      const fieldName = argSlot.split('(')[0]?.trim();
+      if (!fieldName) continue;
+      fragment[fieldName] = `__REQUIRED_${fieldName.toUpperCase()}__`;
+    }
+    return fragment;
+  }
+  return readJson(pluginPath(item.template_path));
 }
 
 function getGraphWriteStatementTarget(taskSpec: Record<string, unknown>, writeMode: GraphWriteTemplateWriteMode): unknown[] {

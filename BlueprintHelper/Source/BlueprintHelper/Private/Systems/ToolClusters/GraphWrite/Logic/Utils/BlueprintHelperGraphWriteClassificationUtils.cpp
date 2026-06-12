@@ -137,6 +137,67 @@ FString FBlueprintHelperGraphWriteClassificationUtils::NormalizeExplicitLinkKind
 	return TEXT("unknown");
 }
 
+static bool BlueprintHelperGraphWriteReadOwnedValue(
+	const TSharedPtr<FJsonObject>& Object,
+	FString& OutValue)
+{
+	if (!Object.IsValid())
+	{
+		return false;
+	}
+
+	if (Object->TryGetStringField(TEXT("BlueprintHelperOwned"), OutValue) ||
+		Object->TryGetStringField(TEXT("blueprinthelper_owned"), OutValue) ||
+		Object->TryGetStringField(TEXT("owned_by_blueprinthelper"), OutValue))
+	{
+		return true;
+	}
+
+	const TSharedPtr<FJsonObject>* Metadata = nullptr;
+	if (Object->TryGetObjectField(TEXT("metadata"), Metadata) && Metadata && Metadata->IsValid() &&
+		BlueprintHelperGraphWriteReadOwnedValue(*Metadata, OutValue))
+	{
+		return true;
+	}
+
+	const TSharedPtr<FJsonObject>* Ownership = nullptr;
+	if (Object->TryGetObjectField(TEXT("ownership"), Ownership) && Ownership && Ownership->IsValid() &&
+		BlueprintHelperGraphWriteReadOwnedValue(*Ownership, OutValue))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+bool FBlueprintHelperGraphWriteClassificationUtils::IsBlueprintHelperOwnedNode(
+	const TSharedPtr<FJsonObject>& NodeObject)
+{
+	FString OwnedValue;
+	if (!BlueprintHelperGraphWriteReadOwnedValue(NodeObject, OwnedValue))
+	{
+		return false;
+	}
+
+	const FString Normalized = NormalizeToken(OwnedValue);
+	return Normalized.Equals(TEXT("true")) ||
+		Normalized.Equals(TEXT("1")) ||
+		Normalized.Equals(TEXT("yes"));
+}
+
+FString FBlueprintHelperGraphWriteClassificationUtils::ClassifyLinkOwnership(
+	bool bSourceOwned,
+	bool bTargetOwned)
+{
+	if (bSourceOwned && bTargetOwned)
+	{
+		return TEXT("owned_internal");
+	}
+	return bSourceOwned || bTargetOwned
+		? FString(TEXT("external_boundary"))
+		: FString(TEXT("external_user"));
+}
+
 bool FBlueprintHelperGraphWriteClassificationUtils::IsExecPinName(const FString& PinName)
 {
 	const FString Key = NormalizeToken(PinName);

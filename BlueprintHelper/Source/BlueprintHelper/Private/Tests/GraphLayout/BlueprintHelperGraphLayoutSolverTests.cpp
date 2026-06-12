@@ -3241,6 +3241,20 @@ bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::R
 			TestTrue(FString::Printf(TEXT("%s has no preview anchor role"), *NodeId), NodeSpec->PreviewAnchorRole == ENodeRole::Unknown);
 		};
 
+		auto ExpectOverlay = [this, &Sample, &ExpectNotAnchor](const FString& NodeId)
+		{
+			ExpectNotAnchor(NodeId);
+			const FGraphLayoutPreviewNodeSpec* NodeSpec = FindPreviewNodeSpec(Sample, NodeId);
+			if (!NodeSpec)
+			{
+				return;
+			}
+			TestTrue(FString::Printf(TEXT("%s is preview overlay"), *NodeId), NodeSpec->bPreviewOverlay);
+		};
+
+		ExpectOverlay(TEXT("HorizontalAvoidanceRange"));
+		ExpectOverlay(TEXT("VerticalAvoidanceRange"));
+
 		switch (Scene.Scene)
 		{
 		case ESemanticScene::LinearExecChain:
@@ -3271,8 +3285,6 @@ bool FBlueprintHelperGraphLayout_PreviewSampleFactoryBuildsFiveComplexSamples::R
 			ExpectAnchor(TEXT("DelayAsync"), ENodeRole::AsyncNode);
 			ExpectAnchor(TEXT("CommentBlocker"), ENodeRole::Comment);
 			ExpectNotAnchor(TEXT("FallbackExec"));
-			ExpectNotAnchor(TEXT("HorizontalAvoidanceRange"));
-			ExpectNotAnchor(TEXT("VerticalAvoidanceRange"));
 			break;
 		default:
 			AddError(TEXT("unexpected semantic scene in preview sample catalog"));
@@ -3294,7 +3306,7 @@ bool FBlueprintHelperGraphLayout_PreviewDrawsEntryAvoidanceRangeComments::RunTes
 
 	FGraphLayoutPreviewSample Sample;
 	FString Error;
-	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 
 	const FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindPreviewNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
 	const FGraphLayoutPreviewNodeSpec* VerticalSpec = FindPreviewNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
@@ -3371,7 +3383,7 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerAppliesAvoidanceCommentColor
 
 	FGraphLayoutPreviewSample Sample;
 	FString Error;
-	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 
 	FRuleSet RuleSet;
 	RuleSet.CollisionPaddingX = 100.0f;
@@ -4267,7 +4279,114 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresAvoidanceRangeOve
 	FGraphLayoutPreviewInteractionCommit Commit;
 	TestFalse(TEXT("overlay-only move does not create a commit"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
 	TestEqual(TEXT("overlay-only move has no moved nodes"), Commit.MovedNodes.Num(), 0);
+	TestEqual(TEXT("overlay-only move has no resized overlays"), Commit.ResizedOverlays.Num(), 0);
 	TestTrue(TEXT("overlay-only move is ignored without rejection"), Commit.RejectionReason.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsAvoidanceRangeOverlaySizesToRuleSet,
+	"BlueprintHelper.GraphLayout.Preview.InteractionModelCommitsAvoidanceRangeOverlaySizesToRuleSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsAvoidanceRangeOverlaySizesToRuleSet::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	const ESemanticScene TestScenes[] = {
+		ESemanticScene::LinearExecChain,
+		ESemanticScene::Occupancy
+	};
+	for (const ESemanticScene Scene : TestScenes)
+	{
+		FGraphLayoutPreviewSample Sample;
+		FString Error;
+		TestTrue(
+			FString::Printf(TEXT("%s sample builds"), ToString(Scene)),
+			FGraphLayoutPreviewSampleFactory::BuildSample(Scene, Sample, Error));
+
+		FRuleSet RuleSet;
+		RuleSet.CollisionPaddingX = 120.0f;
+		RuleSet.CollisionPaddingY = 40.0f;
+		RuleSet.CollisionStepY = 80.0f;
+		RuleSet.MaxCollisionAttempts = 5;
+		const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+
+		FGraphLayoutPreviewMaterializer Materializer;
+		FGraphLayoutPreviewMaterializerResult Result;
+		TestTrue(TEXT("materializer succeeds"), Materializer.MaterializeForTest(Sample, Plan, Result));
+		TestTrue(TEXT("preview graph exists"), Result.PreviewGraph.IsValid());
+		if (!Result.PreviewGraph.IsValid())
+		{
+			return false;
+		}
+
+		UEdGraphNode* HorizontalOverlay = nullptr;
+		UEdGraphNode* VerticalOverlay = nullptr;
+		for (UEdGraphNode* Node : Result.PreviewGraph->Nodes)
+		{
+			if (!Node)
+			{
+				continue;
+			}
+
+			const FString NodeId = Result.NodeIdsByGuid.FindRef(Node->NodeGuid);
+			if (NodeId == TEXT("HorizontalAvoidanceRange"))
+			{
+				HorizontalOverlay = Node;
+			}
+			else if (NodeId == TEXT("VerticalAvoidanceRange"))
+			{
+				VerticalOverlay = Node;
+			}
+		}
+		TestNotNull(TEXT("horizontal overlay node"), HorizontalOverlay);
+		TestNotNull(TEXT("vertical overlay node"), VerticalOverlay);
+		if (!HorizontalOverlay || !VerticalOverlay)
+		{
+			return false;
+		}
+
+		FGraphLayoutPreviewInteractionModel Model;
+		TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
+		Model.BeginInteraction(Result.PreviewGraph.Get());
+
+		const FVector2D EntrySize = FindPreviewNodeSize(Sample, TEXT("EventStart"));
+		const float DesiredPaddingX = 160.0f;
+		const float DesiredPaddingY = 55.0f;
+		const int32 DesiredAttempts = 7;
+		const float DesiredStepY = 90.0f;
+		HorizontalOverlay->NodeWidth = static_cast<int32>(
+			EntrySize.X + DesiredPaddingX * 2.0f + DesiredAttempts * FMath::Max(EntrySize.X, DesiredPaddingX));
+		HorizontalOverlay->NodeHeight = static_cast<int32>(EntrySize.Y + DesiredPaddingY * 2.0f);
+		VerticalOverlay->NodeWidth = static_cast<int32>(EntrySize.X + DesiredPaddingX * 2.0f);
+		VerticalOverlay->NodeHeight = static_cast<int32>(
+			EntrySize.Y + DesiredPaddingY * 2.0f + DesiredAttempts * DesiredStepY);
+
+		FGraphLayoutPreviewInteractionCommit Commit;
+		TestTrue(TEXT("overlay resize creates a commit"), Model.EndInteraction(Result.PreviewGraph.Get(), Commit));
+		TestEqual(TEXT("overlay resize does not move draggable anchors"), Commit.MovedNodes.Num(), 0);
+
+		FString UpdatedJson;
+		FString UpdateError;
+		TestTrue(
+			TEXT("overlay resize updates ruleset json"),
+			FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
+				FRuleSetJson::ExportString(RuleSet),
+				Scene,
+				Commit,
+				UpdatedJson,
+				UpdateError));
+
+		FRuleSet UpdatedRuleSet;
+		FValidationResult Validation;
+		TestTrue(TEXT("updated ruleset imports"), FRuleSetJson::ImportString(UpdatedJson, UpdatedRuleSet, Validation));
+		TestEqual(TEXT("collision padding x from vertical range width"), UpdatedRuleSet.CollisionPaddingX, DesiredPaddingX);
+		TestEqual(TEXT("collision padding y from horizontal range height"), UpdatedRuleSet.CollisionPaddingY, DesiredPaddingY);
+		TestEqual(TEXT("max collision attempts from horizontal range width"), UpdatedRuleSet.MaxCollisionAttempts, DesiredAttempts);
+		TestEqual(TEXT("collision step y from vertical range height"), UpdatedRuleSet.CollisionStepY, DesiredStepY);
+	}
 	return true;
 }
 

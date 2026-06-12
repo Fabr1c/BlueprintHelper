@@ -4,6 +4,7 @@
 
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteReviewEvidenceBuilder.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyAdapterRegistry.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperGraphWriteServiceRegistry.h"
 
 static FBlueprintHelperToolError BlueprintHelperGraphWriteTaskRuntimeClusterMakeUnsupportedGraphWriteOperationError()
@@ -19,12 +20,11 @@ static FBlueprintHelperToolError BlueprintHelperGraphWriteTaskRuntimeClusterMake
 static EBlueprintHelperGraphBodyKind BlueprintHelperGraphWriteTaskRuntimeClusterInferBodyKind(
 	const FString& AdapterOperation)
 {
-	if (AdapterOperation == TEXT("merge_external_flow") ||
-		AdapterOperation == TEXT("patch_external_graph") ||
-		AdapterOperation == TEXT("patch_external_links") ||
-		AdapterOperation == TEXT("replace_external_body"))
+	FBlueprintHelperGraphBodyAdapterDescriptor Descriptor;
+	if (FBlueprintHelperGraphBodyAdapterRegistry::TryFindByRuntimeAdapterId(AdapterOperation, Descriptor) ||
+		FBlueprintHelperGraphBodyAdapterRegistry::TryFindByTaskSpecStrategy(AdapterOperation, Descriptor))
 	{
-		return EBlueprintHelperGraphBodyKind::K2ExternalBody;
+		return Descriptor.BodyKind;
 	}
 	if (FBlueprintHelperGraphWriteServiceRegistry::IsKnownOperation(AdapterOperation))
 	{

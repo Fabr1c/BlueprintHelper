@@ -52,9 +52,12 @@ export interface BridgeSendCommandOptions {
   timingPrefix?: string;
 }
 
+export const DEFAULT_BRIDGE_HOST = '127.0.0.1';
+export const DEFAULT_BRIDGE_PORT = 32147;
+
 const DEFAULT_OPTIONS: Required<BridgeClientOptions> = {
-  host: '127.0.0.1',
-  port: 54321,
+  host: DEFAULT_BRIDGE_HOST,
+  port: DEFAULT_BRIDGE_PORT,
   connectTimeoutMs: 5000,
   requestTimeoutMs: 30000,
 };

@@ -485,12 +485,12 @@
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=patch_owned_graph",
         "behavior.patches[].kind=disconnect_link",
-        "behavior.patches[].link_ref"
+        "behavior.patches[].target_ref.link_ref"
       ],
       "optional_fields": [],
       "insert_paths": [
         "behavior.patches[]",
-        "behavior.patches[].link_ref"
+        "behavior.patches[].target_ref"
       ],
       "purpose": "Disconnect a link in a BlueprintHelper-owned graph block.",
       "when_to_use": "Use for link-level owned graph patches.",
@@ -522,7 +522,7 @@
         "behavior.graph_strategy=patch_owned_graph",
         "behavior.patches[].kind=set_node_comment",
         "behavior.patches[].target_ref",
-        "behavior.patches[].comment"
+        "behavior.patches[].value"
       ],
       "optional_fields": [],
       "insert_paths": [
@@ -595,7 +595,7 @@
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=patch_owned_graph",
         "behavior.patches[].kind=replace_link",
-        "behavior.patches[].link_ref",
+        "behavior.patches[].target_ref.link_ref",
         "behavior.patches[].replacement_ref"
       ],
       "optional_fields": [],

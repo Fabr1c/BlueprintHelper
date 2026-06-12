@@ -9,6 +9,94 @@
 
 namespace BlueprintHelper::GraphLayout
 {
+static bool IsAvoidanceRangeOverlayNodeId(const FString& NodeId)
+{
+	return NodeId == TEXT("HorizontalAvoidanceRange") || NodeId == TEXT("VerticalAvoidanceRange");
+}
+
+static bool DidSizeComponentChange(const float BeginValue, const float EndValue)
+{
+	return !FMath::IsNearlyEqual(BeginValue, EndValue, 0.5f);
+}
+
+static const FGraphLayoutPreviewResizedOverlay* FindResizedOverlay(
+	const FGraphLayoutPreviewInteractionCommit& Commit,
+	const FString& NodeId)
+{
+	for (const FGraphLayoutPreviewResizedOverlay& ResizedOverlay : Commit.ResizedOverlays)
+	{
+		if (ResizedOverlay.NodeId == NodeId)
+		{
+			return &ResizedOverlay;
+		}
+	}
+	return nullptr;
+}
+
+static FVector2D ResolveAvoidanceEntrySize(const FGraphLayoutPreviewInteractionCommit& Commit)
+{
+	return Commit.AvoidanceEntrySize.X > 0.0f && Commit.AvoidanceEntrySize.Y > 0.0f
+		? Commit.AvoidanceEntrySize
+		: FVector2D(220.0f, 88.0f);
+}
+
+static void ApplyAvoidanceRangeOverlaySizesToRuleSet(
+	const FGraphLayoutPreviewInteractionCommit& Commit,
+	FRuleSet& RuleSet)
+{
+	if (Commit.ResizedOverlays.Num() == 0)
+	{
+		return;
+	}
+
+	const FGraphLayoutPreviewResizedOverlay* HorizontalOverlay =
+		FindResizedOverlay(Commit, TEXT("HorizontalAvoidanceRange"));
+	const FGraphLayoutPreviewResizedOverlay* VerticalOverlay =
+		FindResizedOverlay(Commit, TEXT("VerticalAvoidanceRange"));
+	if (!HorizontalOverlay && !VerticalOverlay)
+	{
+		return;
+	}
+
+	const FVector2D EntrySize = ResolveAvoidanceEntrySize(Commit);
+	float CollisionPaddingX = RuleSet.CollisionPaddingX;
+	float CollisionPaddingY = RuleSet.CollisionPaddingY;
+	int32 MaxCollisionAttempts = RuleSet.MaxCollisionAttempts;
+	float CollisionStepY = RuleSet.CollisionStepY;
+
+	if (VerticalOverlay && DidSizeComponentChange(VerticalOverlay->BeginSize.X, VerticalOverlay->EndSize.X))
+	{
+		CollisionPaddingX = FMath::Clamp((VerticalOverlay->EndSize.X - EntrySize.X) * 0.5f, 1.0f, 400.0f);
+	}
+
+	if (HorizontalOverlay && DidSizeComponentChange(HorizontalOverlay->BeginSize.Y, HorizontalOverlay->EndSize.Y))
+	{
+		CollisionPaddingY = FMath::Clamp((HorizontalOverlay->EndSize.Y - EntrySize.Y) * 0.5f, 1.0f, 400.0f);
+	}
+
+	if (HorizontalOverlay && DidSizeComponentChange(HorizontalOverlay->BeginSize.X, HorizontalOverlay->EndSize.X))
+	{
+		const float HorizontalStepX = FMath::Max(EntrySize.X, CollisionPaddingX);
+		const float RawAttempts =
+			(HorizontalOverlay->EndSize.X - EntrySize.X - CollisionPaddingX * 2.0f) /
+			FMath::Max(1.0f, HorizontalStepX);
+		MaxCollisionAttempts = FMath::Clamp(FMath::RoundToInt(RawAttempts), 1, 256);
+	}
+
+	if (VerticalOverlay && DidSizeComponentChange(VerticalOverlay->BeginSize.Y, VerticalOverlay->EndSize.Y))
+	{
+		const float RawStepY =
+			(VerticalOverlay->EndSize.Y - EntrySize.Y - CollisionPaddingY * 2.0f) /
+			static_cast<float>(FMath::Max(1, MaxCollisionAttempts));
+		CollisionStepY = FMath::Clamp(RawStepY, 8.0f, 400.0f);
+	}
+
+	RuleSet.CollisionPaddingX = CollisionPaddingX;
+	RuleSet.CollisionPaddingY = CollisionPaddingY;
+	RuleSet.MaxCollisionAttempts = MaxCollisionAttempts;
+	RuleSet.CollisionStepY = CollisionStepY;
+}
+
 bool FGraphLayoutPreviewInteractionModel::Initialize(
 	const FGraphLayoutPreviewMaterializerResult& MaterializerResult,
 	UEdGraph* PreviewGraph)
@@ -34,8 +122,23 @@ bool FGraphLayoutPreviewInteractionModel::Initialize(
 		{
 			continue;
 		}
+
+		const FVector2D NodeSize = ResolveNodeSize(*Node);
+		if (*NodeId == TEXT("EventStart"))
+		{
+			AvoidanceEntrySize = NodeSize;
+		}
 		if (MaterializerResult.PreviewOverlayGuids.Contains(Node->NodeGuid))
 		{
+			if (IsAvoidanceRangeOverlayNodeId(*NodeId))
+			{
+				FTrackedOverlay TrackedOverlay;
+				TrackedOverlay.NodeId = *NodeId;
+				TrackedOverlay.NodeGuid = Node->NodeGuid;
+				TrackedOverlay.BeginSize = NodeSize;
+				TrackedOverlay.LastSize = NodeSize;
+				TrackedOverlaysByGuid.Add(Node->NodeGuid, TrackedOverlay);
+			}
 			continue;
 		}
 
@@ -46,7 +149,7 @@ bool FGraphLayoutPreviewInteractionModel::Initialize(
 		Tracked.AnchorRole = *AnchorRole;
 		Tracked.BeginTopLeft = FVector2D(static_cast<float>(Node->NodePosX), static_cast<float>(Node->NodePosY));
 		Tracked.LastTopLeft = Tracked.BeginTopLeft;
-		Tracked.Size = ResolveNodeSize(*Node);
+		Tracked.Size = NodeSize;
 		TrackedNodesByGuid.Add(Node->NodeGuid, Tracked);
 	}
 
@@ -66,8 +169,10 @@ bool FGraphLayoutPreviewInteractionModel::Initialize(
 void FGraphLayoutPreviewInteractionModel::Reset()
 {
 	TrackedNodesByGuid.Reset();
+	TrackedOverlaysByGuid.Reset();
 	InitialNodeSignaturesByGuid.Reset();
 	InitialLinkSignatures.Reset();
+	AvoidanceEntrySize = FVector2D::ZeroVector;
 	InitialNodeCount = 0;
 	InitialLinkEndpointCount = 0;
 	bInteractionActive = false;
@@ -82,12 +187,28 @@ void FGraphLayoutPreviewInteractionModel::BeginInteraction(UEdGraph* PreviewGrap
 		return;
 	}
 
+	TMap<FGuid, FVector2D> OverlaySizes;
+	if (!CaptureOverlaySizes(PreviewGraph, OverlaySizes))
+	{
+		bInteractionActive = false;
+		return;
+	}
+
 	for (TPair<FGuid, FTrackedNode>& Pair : TrackedNodesByGuid)
 	{
 		if (const FVector2D* Position = Positions.Find(Pair.Key))
 		{
 			Pair.Value.BeginTopLeft = *Position;
 			Pair.Value.LastTopLeft = *Position;
+		}
+	}
+
+	for (TPair<FGuid, FTrackedOverlay>& Pair : TrackedOverlaysByGuid)
+	{
+		if (const FVector2D* Size = OverlaySizes.Find(Pair.Key))
+		{
+			Pair.Value.BeginSize = *Size;
+			Pair.Value.LastSize = *Size;
 		}
 	}
 	bInteractionActive = true;
@@ -118,6 +239,14 @@ bool FGraphLayoutPreviewInteractionModel::EndInteraction(
 		return false;
 	}
 
+	TMap<FGuid, FVector2D> OverlaySizes;
+	if (!CaptureOverlaySizes(PreviewGraph, OverlaySizes))
+	{
+		OutCommit.RejectionReason = TEXT("preview overlay sizes could not be sampled");
+		return false;
+	}
+
+	OutCommit.AvoidanceEntrySize = AvoidanceEntrySize;
 	for (const TPair<FGuid, FTrackedNode>& Pair : TrackedNodesByGuid)
 	{
 		const FVector2D* EndTopLeft = Positions.Find(Pair.Key);
@@ -136,7 +265,22 @@ bool FGraphLayoutPreviewInteractionModel::EndInteraction(
 		Moved.Size = Pair.Value.Size;
 	}
 
-	return OutCommit.MovedNodes.Num() > 0;
+	for (const TPair<FGuid, FTrackedOverlay>& Pair : TrackedOverlaysByGuid)
+	{
+		const FVector2D* EndSize = OverlaySizes.Find(Pair.Key);
+		if (!EndSize || EndSize->Equals(Pair.Value.BeginSize, 0.5f))
+		{
+			continue;
+		}
+
+		FGraphLayoutPreviewResizedOverlay& ResizedOverlay = OutCommit.ResizedOverlays.AddDefaulted_GetRef();
+		ResizedOverlay.NodeId = Pair.Value.NodeId;
+		ResizedOverlay.NodeGuid = Pair.Value.NodeGuid;
+		ResizedOverlay.BeginSize = Pair.Value.BeginSize;
+		ResizedOverlay.EndSize = *EndSize;
+	}
+
+	return OutCommit.MovedNodes.Num() > 0 || OutCommit.ResizedOverlays.Num() > 0;
 }
 
 bool FGraphLayoutPreviewInteractionModel::HasActiveInteraction() const
@@ -181,6 +325,7 @@ bool FGraphLayoutPreviewInteractionModel::BuildRuleSetJsonForCommit(
 		SceneState,
 		RuleSet,
 		1.0f);
+	ApplyAvoidanceRangeOverlaySizesToRuleSet(Commit, RuleSet);
 	OutRuleSetJson = FRuleSetJson::ExportString(RuleSet);
 	return true;
 }
@@ -208,6 +353,29 @@ bool FGraphLayoutPreviewInteractionModel::CapturePositions(
 	}
 
 	return OutPositions.Num() == TrackedNodesByGuid.Num();
+}
+
+bool FGraphLayoutPreviewInteractionModel::CaptureOverlaySizes(
+	UEdGraph* PreviewGraph,
+	TMap<FGuid, FVector2D>& OutSizes) const
+{
+	OutSizes.Reset();
+	if (!PreviewGraph)
+	{
+		return false;
+	}
+
+	for (UEdGraphNode* Node : PreviewGraph->Nodes)
+	{
+		if (!Node || !TrackedOverlaysByGuid.Contains(Node->NodeGuid))
+		{
+			continue;
+		}
+
+		OutSizes.Add(Node->NodeGuid, ResolveNodeSize(*Node));
+	}
+
+	return OutSizes.Num() == TrackedOverlaysByGuid.Num();
 }
 
 bool FGraphLayoutPreviewInteractionModel::CaptureTopology(

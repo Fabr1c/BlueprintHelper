@@ -491,8 +491,6 @@ void FGraphLayoutPreviewSemanticProjector::ProjectOccupancy(
 			BuildTopLeftFromAnchor(*ExistingGuardSpec, ENodeRole::ExecNode, ChainAnchor),
 			TEXT("preview_occupancy_fallback_row"));
 	}
-
-	ProjectEntryAvoidanceRangeComments(Sample, RuleSet, Plan);
 }
 
 FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(
@@ -527,6 +525,7 @@ FLayoutPlan FGraphLayoutPreviewSemanticProjector::Project(
 		break;
 	}
 
+	ProjectEntryAvoidanceRangeComments(Sample, RuleSet, Plan);
 	ProjectRemainingNodesBySampleOffset(Sample, Plan);
 	return Plan;
 }

@@ -164,6 +164,7 @@ struct FBlueprintHelperLogicLink
 	FString LinkRef;
 	FString PinRef;
 	EBlueprintHelperLogicLinkType Type = EBlueprintHelperLogicLinkType::Exec;
+	FString Ownership;
 	FString FromPin;
 	FString ToNode;
 	FString ToPin;
@@ -175,6 +176,7 @@ struct FBlueprintHelperLogicLink
 		Json->SetStringField(TEXT("link_ref"), LinkRef);
 		if (!PinRef.IsEmpty()) { Json->SetStringField(TEXT("pin_ref"), PinRef); }
 		Json->SetStringField(TEXT("type"), LogicLinkTypeToString(Type));
+		if (!Ownership.IsEmpty()) { Json->SetStringField(TEXT("ownership"), Ownership); }
 		Json->SetStringField(TEXT("from_pin"), FromPin);
 		Json->SetStringField(TEXT("to_node"), ToNode);
 		Json->SetStringField(TEXT("to_pin"), ToPin);

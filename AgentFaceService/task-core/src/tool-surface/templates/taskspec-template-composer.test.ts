@@ -179,7 +179,7 @@ test('TaskSpec template composer writes every active GraphWrite route quick-acce
     assert.notEqual(routeItem, undefined, `${route.route_id} route quick-access`);
 
     const expression = routeItem?.arg_slots.some((slot) => slot.includes('statement[]'))
-      ? `${routeItem.template_id}(${firstStatementTemplateId(quickAccess, route.write_mode)})`
+      ? `${routeItem.template_id}(${statementTemplateIdForRoute(quickAccess, route)})`
       : routeItem?.template_id ?? '';
     const outputPath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
@@ -196,6 +196,7 @@ test('TaskSpec template composer writes every active GraphWrite route quick-acce
     const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { schema?: string; task_type?: string };
     assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1', route.route_id);
     assert.equal(taskSpec.task_type, 'edit_blueprint_graph', route.route_id);
+    assertRouteRequiredFields(taskSpec, route.required_fields, route.route_id);
   }
 });
 
@@ -629,6 +630,28 @@ test('TaskSpec template composer writes supported non-GraphWrite base templates'
   }
 });
 
+test('TaskSpec template composer writes UMG widget operation quick-access changes', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'umg-widget-create.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'umg_widget',
+    writeMode: 'widget.edit',
+    templateIds: ['umg.widget_tree.create_widget'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    task_type: string;
+    behavior: { changes: Array<Record<string, unknown>> };
+  };
+  assert.equal(taskSpec.task_type, 'edit_umg_widget');
+  assert.deepEqual(taskSpec.behavior.changes.map((change) => change.kind), ['create_widget']);
+});
+
 function writeModeForFamily(family: string): string {
   switch (family) {
     case 'blueprint_variables':
@@ -655,6 +678,59 @@ function firstStatementTemplateId(
   const statement = quickAccess.find((item) => item.slot_type === 'statement' && item.write_mode === writeMode);
   assert.notEqual(statement, undefined, `statement quick-access for ${writeMode}`);
   return statement?.template_id ?? '';
+}
+
+function statementTemplateIdForRoute(
+  quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'],
+  route: ReturnType<typeof getAgentVisibleGraphWriteRoutes>[number],
+): string {
+  const explicitStatement = quickAccess.find((item) =>
+    item.slot_type === 'statement'
+    && item.write_mode === route.write_mode
+    && route.allowed_slot_ids.includes(item.source_slot_id));
+  if (explicitStatement) {
+    return explicitStatement.template_id;
+  }
+  return firstStatementTemplateId(quickAccess, route.write_mode);
+}
+
+function assertRouteRequiredFields(taskSpec: unknown, requiredFields: readonly string[], routeId: string): void {
+  for (const requiredField of requiredFields) {
+    const separatorIndex = requiredField.indexOf('=');
+    const pathExpression = separatorIndex >= 0 ? requiredField.slice(0, separatorIndex) : requiredField;
+    const expectedValue = separatorIndex >= 0 ? requiredField.slice(separatorIndex + 1) : undefined;
+    const values = collectValuesAtPath(taskSpec, pathExpression.split('.'));
+    if (expectedValue === undefined) {
+      assert.notEqual(values.length, 0, `${routeId} missing ${requiredField}`);
+      continue;
+    }
+    const allowedValues = expectedValue.split('|');
+    assert.equal(
+      values.some((value) => allowedValues.includes(String(value))),
+      true,
+      `${routeId} missing ${requiredField}; actual values: ${values.map(String).join(', ')}`,
+    );
+  }
+}
+
+function collectValuesAtPath(value: unknown, segments: string[]): unknown[] {
+  if (segments.length === 0) {
+    return value === undefined || value === null ? [] : [value];
+  }
+  const [segment, ...rest] = segments;
+  const isArraySegment = segment.endsWith('[]');
+  const key = isArraySegment ? segment.slice(0, -2) : segment;
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+  const next = (value as Record<string, unknown>)[key];
+  if (isArraySegment) {
+    if (!Array.isArray(next)) {
+      return [];
+    }
+    return next.flatMap((item) => collectValuesAtPath(item, rest));
+  }
+  return collectValuesAtPath(next, rest);
 }
 
 function listJsonFiles(root: string): string[] {

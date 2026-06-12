@@ -139,6 +139,20 @@ TArray<FBlueprintHelperGraphBodyAdapterDescriptor> FBlueprintHelperGraphBodyAdap
 		true,
 		true));
 	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.external_graph.patch.node_property"),
+		TEXT("patch_external_graph"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		TEXT("external_graph_patch_service"),
+		true,
+		true));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
+		TEXT("k2.external_graph.patch.pin_default"),
+		TEXT("patch_external_graph"),
+		EBlueprintHelperGraphBodyKind::K2ExternalBody,
+		TEXT("external_graph_patch_service"),
+		true,
+		true));
+	Descriptors.Add(BlueprintHelperMakeGraphBodyDescriptor(
 		TEXT("k2.owned_graph.patch.connect_pins"),
 		TEXT("patch_owned_graph"),
 		EBlueprintHelperGraphBodyKind::Unknown,

@@ -139,6 +139,38 @@ static void ResetSample(const ESemanticScene Scene, FGraphLayoutPreviewSample& O
 	OutSample.Snapshot.GraphName = FString::Printf(TEXT("Preview_%s"), ToString(Scene));
 }
 
+static void AddAvoidanceRangeOverlayComments(FGraphLayoutPreviewSample& OutSample)
+{
+	AddPreviewNode(
+		OutSample,
+		TEXT("HorizontalAvoidanceRange"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("水平避让范围"),
+		EGraphLayoutPreviewNodeFactory::Comment,
+		ENodeRole::Comment,
+		FVector2D(0.0f, -140.0f),
+		FVector2D(420.0f, 120.0f),
+		true,
+		{},
+		ENodeRole::Unknown,
+		FLinearColor(0.05f, 0.65f, 0.85f, 0.28f),
+		true);
+	AddPreviewNode(
+		OutSample,
+		TEXT("VerticalAvoidanceRange"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("垂直避让范围"),
+		EGraphLayoutPreviewNodeFactory::Comment,
+		ENodeRole::Comment,
+		FVector2D(0.0f, 140.0f),
+		FVector2D(220.0f, 420.0f),
+		true,
+		{},
+		ENodeRole::Unknown,
+		FLinearColor(1.0f, 0.55f, 0.08f, 0.28f),
+		true);
+}
+
 static bool BuildLinearExecSample(FGraphLayoutPreviewSample& OutSample, FString& OutError)
 {
 	ResetSample(ESemanticScene::LinearExecChain, OutSample);
@@ -215,6 +247,7 @@ static bool BuildLinearExecSample(FGraphLayoutPreviewSample& OutSample, FString&
 			MakePreviewPin(TEXT("Completed"), EPinDirection::Output, true)
 		});
 
+	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("ResetState"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ResetState"), TEXT("then"), TEXT("SetCounter"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("SetCounter"), TEXT("then"), TEXT("PrintLabel"), TEXT("execute"), true, OutError) &&
@@ -307,6 +340,7 @@ static bool BuildPureDataSample(FGraphLayoutPreviewSample& OutSample, FString& O
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
 
+	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("ConsumeArray"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("SelfRef"), TEXT("Value"), TEXT("ComposeKey"), TEXT("A"), false, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ItemName"), TEXT("Value"), TEXT("ComposeKey"), TEXT("B"), false, OutError) &&
@@ -427,6 +461,7 @@ static bool BuildNodeInputClusterSample(FGraphLayoutPreviewSample& OutSample, FS
 		},
 		ENodeRole::PureFunction);
 
+	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("Consumer"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("ContextGet"), TEXT("Value"), TEXT("Consumer"), TEXT("Context"), false, OutError) &&
 		AddPreviewLink(OutSample, TEXT("FlagGet"), TEXT("Value"), TEXT("IsValidGate"), TEXT("Value"), false, OutError) &&
@@ -539,6 +574,7 @@ static bool BuildMultiExecSample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
 
+	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("Sequence"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("Sequence"), TEXT("Then_0"), TEXT("PrimaryPrint"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("Sequence"), TEXT("Then_1"), TEXT("Branch"), TEXT("execute"), true, OutError) &&
@@ -632,35 +668,8 @@ static bool BuildOccupancySample(FGraphLayoutPreviewSample& OutSample, FString& 
 			MakePreviewPin(TEXT("execute"), EPinDirection::Input, true),
 			MakePreviewPin(TEXT("then"), EPinDirection::Output, true)
 		});
-	AddPreviewNode(
-		OutSample,
-		TEXT("HorizontalAvoidanceRange"),
-		TEXT("EdGraphNode_Comment"),
-		TEXT("水平避让范围"),
-		EGraphLayoutPreviewNodeFactory::Comment,
-		ENodeRole::Comment,
-		FVector2D(-300.0f, -140.0f),
-		FVector2D(420.0f, 120.0f),
-		true,
-		{},
-		ENodeRole::Unknown,
-		FLinearColor(0.05f, 0.65f, 0.85f, 0.28f),
-		true);
-	AddPreviewNode(
-		OutSample,
-		TEXT("VerticalAvoidanceRange"),
-		TEXT("EdGraphNode_Comment"),
-		TEXT("垂直避让范围"),
-		EGraphLayoutPreviewNodeFactory::Comment,
-		ENodeRole::Comment,
-		FVector2D(-300.0f, 140.0f),
-		FVector2D(220.0f, 420.0f),
-		true,
-		{},
-		ENodeRole::Unknown,
-		FLinearColor(1.0f, 0.55f, 0.08f, 0.28f),
-		true);
 
+	AddAvoidanceRangeOverlayComments(OutSample);
 	return AddPreviewLink(OutSample, TEXT("EventStart"), TEXT("then"), TEXT("CandidateExec"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("CandidateExec"), TEXT("then"), TEXT("FallbackExec"), TEXT("execute"), true, OutError) &&
 		AddPreviewLink(OutSample, TEXT("FallbackExec"), TEXT("then"), TEXT("DelayAsync"), TEXT("execute"), true, OutError) &&

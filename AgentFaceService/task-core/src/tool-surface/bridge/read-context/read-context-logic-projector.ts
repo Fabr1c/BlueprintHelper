@@ -37,10 +37,17 @@ export function projectReadContextLogic(input: LogicProjectionInput): LogicProje
     };
   }
 
+  const logicJson = buildLogicJsonPayload(source.payload);
   return {
     format: 'logic_json',
-    payload: withProjectionMetadata(buildLogicJsonPayload(source.payload), source.metadata),
-    debug: mergeDebug(source.metadata, collectAnchorDebug(source.payload)),
+    payload: withProjectionMetadata(logicJson.payload, source.metadata),
+    debug: mergeDebug(
+      source.metadata,
+      mergeDebugObjects(
+        collectAnchorDebug(source.payload),
+        logicJson.diagnostics ? { compact_anchor_diagnostics: logicJson.diagnostics } : undefined,
+      ),
+    ),
   };
 }
 
@@ -63,14 +70,21 @@ function resolveProjectionSource(input: LogicProjectionInput): ProjectionSource 
   };
 }
 
-function buildLogicJsonPayload(payload: Record<string, unknown>): Record<string, unknown> {
+function buildLogicJsonPayload(payload: Record<string, unknown>): {
+  payload: Record<string, unknown>;
+  diagnostics: Record<string, unknown>[] | undefined;
+} {
   const normalized: Record<string, unknown> = {
     schema: 'LogicJson.v1',
     ...payload,
   };
   normalized['schema'] = 'LogicJson.v1';
   delete normalized['format'];
-  return enrichLogicJsonCompactAnchors(normalized);
+  const enriched = enrichLogicJsonCompactAnchors(normalized);
+  return {
+    payload: enriched.payload,
+    diagnostics: enriched.diagnostics.length > 0 ? enriched.diagnostics : undefined,
+  };
 }
 
 function withProjectionMetadata(
@@ -99,6 +113,19 @@ function mergeDebug(
     ...(debug ?? {}),
     projection: filtered,
   };
+}
+
+function mergeDebugObjects(
+  left: Record<string, unknown> | undefined,
+  right: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return { ...left, ...right };
 }
 
 function collectAnchorDebug(payload: Record<string, unknown>): Record<string, unknown> | undefined {

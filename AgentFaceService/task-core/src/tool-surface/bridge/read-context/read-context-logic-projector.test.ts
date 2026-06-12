@@ -131,6 +131,7 @@ test('logic_json projection adds compact anchor fields to external links with st
         ],
         links: [
           {
+            ownership: 'external_user',
             kind: 'exec',
             from_id: 'nodes[0]',
             from_pin: 'then',
@@ -186,6 +187,180 @@ test('logic_json projection adds compact anchor fields to external links with st
   assert.equal(links[1]?.anchor_ref, undefined);
 });
 
+test('logic_json projection requires ownership before adding external link compact anchor', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_json',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      logic: {
+        graph: 'EventGraph',
+        nodes: [
+          {
+            node_ref: 'nodes[0]',
+            name: 'Source',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'source_fp',
+            },
+          },
+          {
+            node_ref: 'nodes[1]',
+            name: 'Target',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'target_fp',
+            },
+          },
+        ],
+        links: [
+          {
+            kind: 'exec',
+            from_node: 'nodes[0]',
+            from_pin: 'then',
+            to_node: 'nodes[1]',
+            to_pin: 'execute',
+          },
+        ],
+      },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+  });
+
+  const logic = result.payload.logic as Record<string, unknown>;
+  const links = logic.links as Record<string, unknown>[];
+  assert.equal(links[0]?.anchor_type, undefined);
+  assert.equal(links[0]?.anchor_ref, undefined);
+  const diagnostics = result.debug?.compact_anchor_diagnostics as Record<string, unknown>[] | undefined;
+  assert.equal(diagnostics?.[0]?.code, 'missing_link_ownership');
+});
+
+test('logic_json projection adds external link compact anchor when ownership is external_user', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_json',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      logic: {
+        graph: 'EventGraph',
+        nodes: [
+          {
+            node_ref: 'nodes[0]',
+            name: 'Source',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'source_fp',
+            },
+          },
+          {
+            node_ref: 'nodes[1]',
+            name: 'Target',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'target_fp',
+            },
+          },
+        ],
+        links: [
+          {
+            ownership: 'external_user',
+            kind: 'exec',
+            from_node: 'nodes[0]',
+            from_pin: 'then',
+            to_node: 'nodes[1]',
+            to_pin: 'execute',
+          },
+        ],
+      },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+  });
+
+  const logic = result.payload.logic as Record<string, unknown>;
+  const links = logic.links as Record<string, unknown>[];
+  assert.equal(links[0]?.ownership, 'external_user');
+  assert.equal(links[0]?.anchor_type, 'external_link');
+  assert.match(String(links[0]?.anchor_ref), /^xlink:v1:e:aaaaaaaa\.then>bbbbbbbb\.execute#[a-f0-9]{10}$/u);
+});
+
+test('logic_json projection keeps owned_internal links unanchored', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_json',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      logic: {
+        graph: 'EventGraph',
+        nodes: [
+          {
+            node_ref: 'nodes[0]',
+            name: 'Owned Source',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'owned_source_fp',
+            },
+          },
+          {
+            node_ref: 'nodes[1]',
+            name: 'Owned Target',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              node_class: '/Script/BlueprintGraph.K2Node_CallFunction',
+              semantic_role: 'node',
+              fingerprint: 'owned_target_fp',
+            },
+          },
+        ],
+        links: [
+          {
+            ownership: 'owned_internal',
+            kind: 'exec',
+            from_node: 'nodes[0]',
+            from_pin: 'then',
+            to_node: 'nodes[1]',
+            to_pin: 'execute',
+          },
+        ],
+      },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+  });
+
+  const logic = result.payload.logic as Record<string, unknown>;
+  const links = logic.links as Record<string, unknown>[];
+  assert.equal(links[0]?.ownership, 'owned_internal');
+  assert.equal(links[0]?.anchor_type, undefined);
+  assert.equal(links[0]?.anchor_ref, undefined);
+});
+
 test('logic_json projection enriches grouped UE logic payloads recursively', () => {
   const result = projectReadContextLogic({
     requestedFormat: 'logic_json',
@@ -209,6 +384,7 @@ test('logic_json projection enriches grouped UE logic payloads recursively', () 
               },
               links: [{
                 link_ref: 'links[0]',
+                ownership: 'external_boundary',
                 type: 'exec',
                 from_pin: 'then',
                 to_node: 'nodes[2]',

@@ -837,6 +837,8 @@ public:
 
 		TMap<FString, int32> NodeIndexById;
 		TMap<FString, FString> NodeRefById;
+		TMap<FString, bool> NodeOwnedById;
+		TMap<FString, bool> NodeOwnedByRef;
 		TSet<FString> NodeRefsWithOutLinksField;
 		TMap<FString, int32> PayloadNodeIndexByRef;
 
@@ -909,6 +911,11 @@ public:
 			AddNodeAlias(NodeId, *PayloadIndex, NodeRef);
 			AddNodeAlias(NodeRef, *PayloadIndex, NodeRef);
 
+			const bool bNodeOwned =
+				FBlueprintHelperGraphWriteClassificationUtils::IsBlueprintHelperOwnedNode(*NodeObjPtr);
+			NodeOwnedById.Add(NodeId, bNodeOwned);
+			NodeOwnedByRef.Add(NodeRef, bNodeOwned);
+
 			if ((*NodeObjPtr)->HasField(TEXT("out_links")))
 			{
 				NodeRefsWithOutLinksField.Add(NodeRef);
@@ -956,6 +963,11 @@ public:
 			Link.PinRef = FromPin;
 			Link.ToNode = *TargetNodeRef;
 			Link.ToPin = ToPin;
+			const bool bSourceOwned = NodeOwnedById.FindRef(SourceId);
+			const bool bTargetOwned = NodeOwnedByRef.FindRef(*TargetNodeRef);
+			Link.Ownership = FBlueprintHelperGraphWriteClassificationUtils::ClassifyLinkOwnership(
+				bSourceOwned,
+				bTargetOwned);
 			const TSharedPtr<FJsonObject>* ExternalAnchorObj = nullptr;
 			if ((*LinkObjPtr)->TryGetObjectField(TEXT("external_anchor"), ExternalAnchorObj)
 				&& ExternalAnchorObj
@@ -1481,6 +1493,8 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
 	const TArray<TSharedPtr<FJsonValue>>* LinksArray = nullptr;
 	if (NodeObj->TryGetArrayField(TEXT("out_links"), LinksArray) && LinksArray)
 	{
+		const bool bSourceOwned =
+			FBlueprintHelperGraphWriteClassificationUtils::IsBlueprintHelperOwnedNode(NodeObj);
 		for (int32 j = 0; j < LinksArray->Num(); ++j)
 		{
 			const TSharedPtr<FJsonValue>& LinkVal = (*LinksArray)[j];
@@ -1502,6 +1516,19 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
 				TEXT("to_pin"),
 				TEXT("target_pin"));
 			Link.Type = FBlueprintHelperLogicGroupBuilderLocalUtils::IdentifyGraphLinkType(*LinkObjPtr, Link.FromPin, Link.ToPin);
+			FString ExplicitOwnership;
+			if ((*LinkObjPtr)->TryGetStringField(TEXT("ownership"), ExplicitOwnership) && !ExplicitOwnership.IsEmpty())
+			{
+				Link.Ownership = ExplicitOwnership;
+			}
+			else
+			{
+				bool bTargetOwned = false;
+				(*LinkObjPtr)->TryGetBoolField(TEXT("target_owned"), bTargetOwned);
+				Link.Ownership = FBlueprintHelperGraphWriteClassificationUtils::ClassifyLinkOwnership(
+					bSourceOwned,
+					bTargetOwned);
+			}
 			const TSharedPtr<FJsonObject>* LinkExternalAnchorObj = nullptr;
 			if ((*LinkObjPtr)->TryGetObjectField(TEXT("external_anchor"), LinkExternalAnchorObj)
 				&& LinkExternalAnchorObj

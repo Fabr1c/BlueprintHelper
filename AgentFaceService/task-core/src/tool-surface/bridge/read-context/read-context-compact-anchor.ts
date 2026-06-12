@@ -14,6 +14,17 @@ export type CompactAnchorProjection = {
   anchor_ref: string;
 };
 
+export type CompactAnchorDiagnostic = {
+  code: 'missing_link_ownership' | 'unsupported_link_ownership';
+  path: string;
+  message: string;
+};
+
+export type CompactAnchorEnrichmentResult = {
+  payload: Record<string, unknown>;
+  diagnostics: CompactAnchorDiagnostic[];
+};
+
 export type ParsedCompactAnchorRef =
   | {
     anchorType: 'external_node';
@@ -56,15 +67,19 @@ type AnchorFacts = {
   fingerprint: string;
 };
 
-export function enrichLogicJsonCompactAnchors(payload: Record<string, unknown>): Record<string, unknown> {
+export function enrichLogicJsonCompactAnchors(payload: Record<string, unknown>): CompactAnchorEnrichmentResult {
+  const diagnostics: CompactAnchorDiagnostic[] = [];
   const logic = isRecord(payload['logic']) ? payload['logic'] : payload;
   const nextPayload = { ...payload };
   if (logic === payload) {
-    return enrichLogicContainer(nextPayload);
+    return {
+      payload: enrichLogicContainer(nextPayload, diagnostics, '$'),
+      diagnostics,
+    };
   }
 
-  nextPayload['logic'] = enrichLogicContainer(logic);
-  return nextPayload;
+  nextPayload['logic'] = enrichLogicContainer(logic, diagnostics, '$.logic');
+  return { payload: nextPayload, diagnostics };
 }
 
 export function parseCompactAnchorRef(value: string): ParsedCompactAnchorRef | undefined {
@@ -123,28 +138,41 @@ export function parseCompactAnchorRef(value: string): ParsedCompactAnchorRef | u
   return undefined;
 }
 
-function enrichLogicContainer(container: Record<string, unknown>): Record<string, unknown> {
+function enrichLogicContainer(
+  container: Record<string, unknown>,
+  diagnostics: CompactAnchorDiagnostic[],
+  path: string,
+): Record<string, unknown> {
   const next = { ...container };
   const nodeAnchors = collectNodeAnchors(container);
 
   if (Array.isArray(container['links'])) {
-    next['links'] = container['links'].map((link) => enrichLink(link, nodeAnchors));
+    next['links'] = container['links'].map((link, index) => (
+      enrichLink(link, nodeAnchors, diagnostics, `${path}.links[${index}]`)
+    ));
   }
 
   if (Array.isArray(container['nodes'])) {
-    next['nodes'] = container['nodes'].map((node) => enrichNode(node, nodeAnchors));
+    next['nodes'] = container['nodes'].map((node, index) => (
+      enrichNode(node, nodeAnchors, diagnostics, `${path}.nodes[${index}]`)
+    ));
   }
 
   if (Array.isArray(container['groups'])) {
-    next['groups'] = container['groups'].map((group) => (
-      isRecord(group) ? enrichLogicContainer(group) : group
+    next['groups'] = container['groups'].map((group, index) => (
+      isRecord(group) ? enrichLogicContainer(group, diagnostics, `${path}.groups[${index}]`) : group
     ));
   }
 
   return next;
 }
 
-function enrichNode(value: unknown, nodeAnchors: Map<string, AnchorFacts>): unknown {
+function enrichNode(
+  value: unknown,
+  nodeAnchors: Map<string, AnchorFacts>,
+  diagnostics: CompactAnchorDiagnostic[],
+  path: string,
+): unknown {
   if (!isRecord(value)) {
     return value;
   }
@@ -166,7 +194,9 @@ function enrichNode(value: unknown, nodeAnchors: Map<string, AnchorFacts>): unkn
   }
 
   if (Array.isArray(next['links'])) {
-    next['links'] = next['links'].map((link) => enrichLink(link, nodeAnchors, nodeRef));
+    next['links'] = next['links'].map((link, index) => (
+      enrichLink(link, nodeAnchors, diagnostics, `${path}.links[${index}]`, nodeRef)
+    ));
   }
   return next;
 }
@@ -199,6 +229,8 @@ function enrichPin(value: unknown, nodeAnchor: AnchorFacts): unknown {
 function enrichLink(
   value: unknown,
   nodeAnchors: Map<string, AnchorFacts>,
+  diagnostics: CompactAnchorDiagnostic[],
+  path: string,
   fallbackFromNode?: string,
 ): unknown {
   if (!isRecord(value)) {
@@ -230,9 +262,40 @@ function enrichLink(
     toPin,
   });
   if (compactLink) {
+    if (!canProjectExternalLinkAnchor(next, path, diagnostics)) {
+      return next;
+    }
     applyCompact(next, compactLink);
   }
   return next;
+}
+
+function canProjectExternalLinkAnchor(
+  link: Record<string, unknown>,
+  path: string,
+  diagnostics: CompactAnchorDiagnostic[],
+): boolean {
+  const ownership = typeof link['ownership'] === 'string' ? link['ownership'].trim() : '';
+  if (ownership === 'external_user' || ownership === 'external_boundary') {
+    return true;
+  }
+  if (ownership === 'owned_internal') {
+    return false;
+  }
+  if (ownership.length === 0) {
+    diagnostics.push({
+      code: 'missing_link_ownership',
+      path,
+      message: 'External compact link anchors require logic_json.links[].ownership.',
+    });
+    return false;
+  }
+  diagnostics.push({
+    code: 'unsupported_link_ownership',
+    path,
+    message: `Unsupported link ownership '${ownership}'.`,
+  });
+  return false;
 }
 
 function buildCompactAnchor(value: unknown, context: CompactAnchorContext): CompactAnchorProjection | undefined {

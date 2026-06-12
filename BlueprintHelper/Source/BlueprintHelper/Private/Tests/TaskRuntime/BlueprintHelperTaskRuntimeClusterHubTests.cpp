@@ -621,8 +621,9 @@ bool FBlueprintHelperTaskRuntimeMergeExternalFlow_BuildsExternalBoundaryReviewEv
 	Step.Payload = Payload;
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
-	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Step,
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(Step.AdapterOperation),
 		TEXT("archive_external_flow"),
 		TEXT("task_external_flow"),
 		7,
@@ -712,8 +713,9 @@ bool FBlueprintHelperTaskRuntimePatchExternalGraph_BuildsExternalNodeReviewEvide
 	Step.Payload = Payload;
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
-	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Step,
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(Step.AdapterOperation),
 		TEXT("archive_external_patch"),
 		TEXT("task_external_patch"),
 		8,
@@ -782,8 +784,9 @@ bool FBlueprintHelperTaskRuntimePatchExternalLinks_BuildsExternalBoundaryReviewE
 	Step.Payload = Payload;
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
-	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Step,
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeClusterEvidenceAppliedResult(Step.AdapterOperation),
 		TEXT("archive_external_link_patch"),
 		TEXT("task_external_link_patch"),
 		9,

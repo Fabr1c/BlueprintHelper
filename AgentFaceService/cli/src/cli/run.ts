@@ -1,6 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BridgeClient, type BridgeResponse, type BridgeSendCommandOptions } from '@blueprinthelper/task-core/bridge/bridge-client';
+import {
+  BridgeClient,
+  DEFAULT_BRIDGE_HOST,
+  DEFAULT_BRIDGE_PORT,
+  type BridgeResponse,
+  type BridgeSendCommandOptions,
+} from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   getBlueprintHelperTool,
   isCliBridgeCallAllowed,
@@ -704,8 +710,8 @@ function getBridge(runtime: CliRuntime): CliBridge {
   }
 
   const baseBridge = runtime.bridge ?? new BridgeClient({
-    host: process.env['BRIDGE_HOST'] ?? '127.0.0.1',
-    port: Number(process.env['BRIDGE_PORT'] ?? 54321),
+    host: process.env['BRIDGE_HOST'] ?? DEFAULT_BRIDGE_HOST,
+    port: Number(process.env['BRIDGE_PORT'] ?? DEFAULT_BRIDGE_PORT),
     requestTimeoutMs: readPositiveEnvInt(
       'BPH_CLI_BRIDGE_REQUEST_TIMEOUT_MS',
       readPositiveEnvInt('BRIDGE_REQUEST_TIMEOUT_MS', DEFAULT_CLI_BRIDGE_REQUEST_TIMEOUT_MS),

@@ -8,6 +8,7 @@
 #include "Runtime/TaskRuntime/Review/BlueprintHelperWriteReviewEvidenceProjection.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
+#include "Systems/ToolClusters/GraphWrite/Policy/BlueprintHelperExternalGraphWriteOperationPolicy.h"
 #include "Systems/ToolClusters/GraphWrite/Validation/BlueprintHelperGraphWriteOwnershipValidator.h"
 
 FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::TrimmedPayloadString(
@@ -360,6 +361,124 @@ FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::MakeExternalLinkPatchAn
 	return FString();
 }
 
+FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::MakeExternalMergeBlockId(
+	const FString& GraphName,
+	const FString& InsertedBlockId)
+{
+	if (InsertedBlockId.IsEmpty())
+	{
+		return FString();
+	}
+	if (GraphName.IsEmpty())
+	{
+		return InsertedBlockId;
+	}
+
+	const FString GraphPrefix = GraphName + TEXT("_");
+	return InsertedBlockId.StartsWith(GraphPrefix)
+		? InsertedBlockId
+		: FString::Printf(TEXT("%s_%s"), *GraphName, *InsertedBlockId);
+}
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalMergeFlowEvidence(
+	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& OperationKind,
+	const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	const TSharedPtr<FJsonObject> Anchor = ReadObjectField(Input.LoweredStep.Payload, TEXT("anchor"));
+	const TSharedPtr<FJsonObject> Inserted = ReadObjectField(Input.LoweredStep.Payload, TEXT("inserted"));
+	if (!Anchor.IsValid() || !Inserted.IsValid())
+	{
+		return false;
+	}
+
+	const FString NodeGuid = ReadStringField(Anchor, TEXT("node_guid"));
+	const FString PinName = ReadStringField(Anchor, TEXT("pin_name"));
+	if (NodeGuid.IsEmpty() || PinName.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString SafeGraphName = MakeReviewKeySegment(GraphName);
+	const FString SafeNodeGuid = MakeReviewKeySegment(NodeGuid);
+	const FString SafePinName = MakeReviewKeySegment(PinName);
+	const FString BoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
+
+	FBlueprintHelperReviewAtomicTarget BoundaryTarget;
+	BoundaryTarget.AssetPath = AssetPath;
+	BoundaryTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+	BoundaryTarget.GraphName = GraphName;
+	BoundaryTarget.TargetKind = TEXT("graph_external_boundary");
+	BoundaryTarget.TargetKey = FString::Printf(
+		TEXT("graph_external_boundary:%s:node:%s:pin:%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafePinName);
+	BoundaryTarget.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, BoundaryTarget.TargetKey);
+	BoundaryTarget.LifecycleObjectKey = BoundaryTarget.TargetKey;
+	BoundaryTarget.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_boundary|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafePinName);
+	BoundaryTarget.DisplayLabel = FString::Printf(
+		TEXT("External exec boundary %s.%s"),
+		*GraphName,
+		*PinName);
+	BoundaryTarget.LatestEvidenceId = OutEvidence.EvidenceId;
+	BoundaryTarget.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+	BoundaryTarget.Ownership = TEXT("external_user_authored");
+	BoundaryTarget.NodeGuid = NodeGuid;
+	BoundaryTarget.PinPath = PinName;
+	BoundaryTarget.AnchorJson = SerializeJsonObject(Anchor.ToSharedRef());
+	BoundaryTarget.GraphBodyBoundaryJson = BoundaryJson;
+	BoundaryTarget.ExecutionOrder = Input.StepIndex;
+	BoundaryTarget.TaskStepIndex = Input.StepIndex;
+	BoundaryTarget.AtomicIndex = OutEvidence.AtomicTargets.Num();
+	OutEvidence.AtomicTargets.Add(BoundaryTarget);
+
+	const FString InsertedBlockId = ReadStringField(Inserted, TEXT("block_id"));
+	const FString FullBlockId = MakeExternalMergeBlockId(GraphName, InsertedBlockId);
+	if (!FullBlockId.IsEmpty())
+	{
+		const FString SafeBlockId = MakeReviewKeySegment(FullBlockId);
+		FBlueprintHelperReviewAtomicTarget InsertedBlockTarget;
+		InsertedBlockTarget.AssetPath = AssetPath;
+		InsertedBlockTarget.Surface = EBlueprintHelperReviewSurface::Graph;
+		InsertedBlockTarget.GraphName = GraphName;
+		InsertedBlockTarget.TargetKind = TEXT("graph_block");
+		InsertedBlockTarget.TargetSubKind =
+			FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(BoundaryModel.BodyKind);
+		InsertedBlockTarget.TargetKey = FString::Printf(TEXT("graph_block:block:%s"), *FullBlockId);
+		InsertedBlockTarget.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, InsertedBlockTarget.TargetKey);
+		InsertedBlockTarget.LifecycleObjectKey = InsertedBlockTarget.TargetKey;
+		InsertedBlockTarget.VisualGroupKey = FString::Printf(
+			TEXT("graph_block:block:%s:%s"),
+			*SafeGraphName,
+			*SafeBlockId);
+		InsertedBlockTarget.DisplayLabel = FString::Printf(
+			TEXT("Inserted external flow %s"),
+			*FullBlockId);
+		InsertedBlockTarget.LatestEvidenceId = OutEvidence.EvidenceId;
+		InsertedBlockTarget.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+		InsertedBlockTarget.Ownership = TEXT("blueprinthelper_owned");
+		InsertedBlockTarget.AnchorJson = SerializePayloadForAnchor(Input.LoweredStep.Payload);
+		InsertedBlockTarget.GraphBodyBoundaryJson = BoundaryJson;
+		InsertedBlockTarget.ExecutionOrder = Input.StepIndex;
+		InsertedBlockTarget.TaskStepIndex = Input.StepIndex;
+		InsertedBlockTarget.AtomicIndex = OutEvidence.AtomicTargets.Num();
+		OutEvidence.AtomicTargets.Add(InsertedBlockTarget);
+	}
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =
+		ReadReviewDiagnostics(Input.StepResult, GraphName);
+	AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
+	return OutEvidence.AtomicTargets.Num() > 0;
+}
+
 bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalLinkPatchEvidence(
 	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
 	const FString& AssetPath,
@@ -522,6 +641,81 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalPropertyPatch
 	Target.PinPath = PinName;
 	Target.PropertyPath = FieldKind;
 	Target.AnchorJson = SerializePayloadForAnchor(Input.LoweredStep.Payload);
+	Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
+	Target.ExecutionOrder = Input.StepIndex;
+	Target.TaskStepIndex = Input.StepIndex;
+	Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
+	OutEvidence.AtomicTargets.Add(Target);
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =
+		ReadReviewDiagnostics(Input.StepResult, GraphName);
+	AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
+	return OutEvidence.AtomicTargets.Num() > 0;
+}
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalBodyReplaceEvidence(
+	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& OperationKind,
+	const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	const TSharedPtr<FJsonObject> Anchor = ReadObjectField(Input.LoweredStep.Payload, TEXT("anchor"));
+	if (!Anchor.IsValid())
+	{
+		return false;
+	}
+
+	const FString NodeGuid = ReadStringField(Anchor, TEXT("node_guid"));
+	if (NodeGuid.IsEmpty())
+	{
+		return false;
+	}
+
+	FString ReplaceScope = ReadStringField(Input.LoweredStep.Payload, TEXT("scope"));
+	if (ReplaceScope.IsEmpty())
+	{
+		const TSharedPtr<FJsonObject> TargetObject = ReadObjectField(Input.LoweredStep.Payload, TEXT("target"));
+		ReplaceScope = ReadStringField(TargetObject, TEXT("replace_scope"));
+	}
+	if (ReplaceScope.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString SafeGraphName = MakeReviewKeySegment(GraphName);
+	const FString SafeNodeGuid = MakeReviewKeySegment(NodeGuid);
+	const FString SafeScope = MakeReviewKeySegment(ReplaceScope);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_body");
+	Target.TargetSubKind = ReplaceScope;
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_body:%s:node:%s:scope:%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeScope);
+	Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
+	Target.LifecycleObjectKey = Target.TargetKey;
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_body|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeScope);
+	Target.DisplayLabel = FString::Printf(
+		TEXT("External body %s %s"),
+		*GraphName,
+		*ReplaceScope);
+	Target.LatestEvidenceId = OutEvidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.NodeGuid = NodeGuid;
+	Target.PropertyPath = ReplaceScope;
+	Target.AnchorJson = SerializeJsonObject(Anchor.ToSharedRef());
 	Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
 	Target.ExecutionOrder = Input.StepIndex;
 	Target.TaskStepIndex = Input.StepIndex;
@@ -786,25 +980,52 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 	OutEvidence.DisplayLabel = OperationKind;
 	OutEvidence.TaskStepIndex = Input.StepIndex;
 
-	if (OperationKind == TEXT("patch_external_links"))
+	EBlueprintHelperExternalGraphWriteAdapterOperationKind ExternalOperationKind =
+		EBlueprintHelperExternalGraphWriteAdapterOperationKind::Unknown;
+	if (FBlueprintHelperExternalGraphWriteOperationPolicy::TryClassifyAdapterOperation(
+		OperationKind,
+		ExternalOperationKind))
 	{
-		return BuildExternalLinkPatchEvidence(
-			Input,
-			AssetPath,
-			GraphName,
-			OperationKind,
-			BoundaryModel,
-			OutEvidence);
-	}
-	if (OperationKind == TEXT("patch_external_graph"))
-	{
-		return BuildExternalPropertyPatchEvidence(
-			Input,
-			AssetPath,
-			GraphName,
-			OperationKind,
-			BoundaryModel,
-			OutEvidence);
+		if (ExternalOperationKind == EBlueprintHelperExternalGraphWriteAdapterOperationKind::MergeFlow)
+		{
+			return BuildExternalMergeFlowEvidence(
+				Input,
+				AssetPath,
+				GraphName,
+				OperationKind,
+				BoundaryModel,
+				OutEvidence);
+		}
+		if (ExternalOperationKind == EBlueprintHelperExternalGraphWriteAdapterOperationKind::PropertyPatch)
+		{
+			return BuildExternalPropertyPatchEvidence(
+				Input,
+				AssetPath,
+				GraphName,
+				OperationKind,
+				BoundaryModel,
+				OutEvidence);
+		}
+		if (ExternalOperationKind == EBlueprintHelperExternalGraphWriteAdapterOperationKind::LinkPatch)
+		{
+			return BuildExternalLinkPatchEvidence(
+				Input,
+				AssetPath,
+				GraphName,
+				OperationKind,
+				BoundaryModel,
+				OutEvidence);
+		}
+		if (ExternalOperationKind == EBlueprintHelperExternalGraphWriteAdapterOperationKind::BodyReplace)
+		{
+			return BuildExternalBodyReplaceEvidence(
+				Input,
+				AssetPath,
+				GraphName,
+				OperationKind,
+				BoundaryModel,
+				OutEvidence);
+		}
 	}
 
 	const TArray<FString> BlockRefs = ReadGraphBlockRefs(Input.StepResult);

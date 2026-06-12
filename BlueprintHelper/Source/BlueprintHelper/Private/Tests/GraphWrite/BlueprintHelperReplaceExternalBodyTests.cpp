@@ -6,9 +6,9 @@
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalDependentsAnalysisService.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Review/BlueprintHelperReviewTargetKindRegistry.h"
+#include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
-#include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -847,8 +847,9 @@ bool FBlueprintHelperTaskRuntimeReplaceExternalBodyBuildsReviewEvidenceTest::Run
 	Step.Payload = Payload;
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
-	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Step,
+		FBlueprintHelperToolResultBuilder::Applied(Step.AdapterOperation, TEXT("trace_replace_external_body_review")),
 		TEXT("archive_external_body"),
 		TEXT("task_external_body"),
 		9,

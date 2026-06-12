@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs';
 
-import { BridgeClient, type BridgeResponse } from '../../bridge/bridge-client.js';
+import { BridgeClient, DEFAULT_BRIDGE_HOST, DEFAULT_BRIDGE_PORT, type BridgeResponse } from '../../bridge/bridge-client.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -102,8 +102,8 @@ async function patchSpecWithBridgeEvidence(input: {
   if (requests.length === 0) return 0;
 
   const bridge = new BridgeClient({
-    host: input.host ?? process.env['BRIDGE_HOST'] ?? '127.0.0.1',
-    port: input.port ?? Number(process.env['BRIDGE_PORT'] ?? 54321),
+    host: input.host ?? process.env['BRIDGE_HOST'] ?? DEFAULT_BRIDGE_HOST,
+    port: input.port ?? Number(process.env['BRIDGE_PORT'] ?? DEFAULT_BRIDGE_PORT),
     requestTimeoutMs: readPositiveEnvInt('BPH_GRAPHWRITE_EVIDENCE_TIMEOUT_MS', 120000),
   });
   let response: BridgeResponse;

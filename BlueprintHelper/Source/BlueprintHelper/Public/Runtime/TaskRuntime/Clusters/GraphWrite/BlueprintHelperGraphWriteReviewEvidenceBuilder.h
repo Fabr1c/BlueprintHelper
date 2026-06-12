@@ -69,6 +69,16 @@ private:
 		const TCHAR* FieldName);
 	static FString MakeReviewKeySegment(const FString& Value);
 	static FString MakeExternalLinkPatchAnchorRef(const TSharedPtr<FJsonObject>& Payload);
+	static FString MakeExternalMergeBlockId(
+		const FString& GraphName,
+		const FString& InsertedBlockId);
+	static bool BuildExternalMergeFlowEvidence(
+		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OperationKind,
+		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 	static bool BuildExternalLinkPatchEvidence(
 		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
 		const FString& AssetPath,
@@ -77,6 +87,13 @@ private:
 		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
 		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 	static bool BuildExternalPropertyPatchEvidence(
+		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OperationKind,
+		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
+	static bool BuildExternalBodyReplaceEvidence(
 		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
 		const FString& AssetPath,
 		const FString& GraphName,
