@@ -1,0 +1,5 @@
+interface:
+  display_name: "BlueprintHelper Task Worker"
+  short_description: "Construct template-first TaskSpecs, run preview or execute, and return compact diagnostics."
+  default_prompt: "Use the BlueprintHelper task-worker sideAgent for a bounded TaskSpec preview or execute step."
+

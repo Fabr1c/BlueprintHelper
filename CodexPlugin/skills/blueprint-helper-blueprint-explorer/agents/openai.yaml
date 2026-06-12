@@ -1,0 +1,5 @@
+interface:
+  display_name: "BlueprintHelper Blueprint Explorer"
+  short_description: "Collect compact Unreal editor-asset context through BlueprintHelper CLI reads."
+  default_prompt: "Use the BlueprintHelper blueprint-explorer sideAgent for bounded UE asset context collection."
+

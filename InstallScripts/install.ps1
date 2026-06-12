@@ -316,6 +316,7 @@ function New-SubagentInstallProfile {
     model = $Model
     reasoning = $Reasoning
     reasoning_effort = $Reasoning
+    model_reasoning_effort = $Reasoning
   }
 }
 
@@ -414,7 +415,10 @@ function Convert-SubagentProfilesFromSelection {
     }
 
     $Model = Get-JsonProperty -Object $AgentProfile -Name 'model'
-    $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'reasoning'
+    $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'model_reasoning_effort'
+    if (-not $Reasoning) {
+      $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'reasoning'
+    }
     if (-not $Reasoning) {
       $Reasoning = Get-JsonProperty -Object $AgentProfile -Name 'reasoning_effort'
     }
@@ -674,7 +678,13 @@ function Format-SubagentProfileSummary {
   foreach ($Name in Get-SubagentInstallNames) {
     if ($Profiles.agents.Contains($Name)) {
       $Profile = $Profiles.agents[$Name]
-      $Reasoning = if ($Profile.reasoning) { $Profile.reasoning } else { $Profile.reasoning_effort }
+      $Reasoning = if ($Profile.model_reasoning_effort) {
+        $Profile.model_reasoning_effort
+      } elseif ($Profile.reasoning) {
+        $Profile.reasoning
+      } else {
+        $Profile.reasoning_effort
+      }
       $Parts += "$Name=$($Profile.model)/$Reasoning"
     }
   }

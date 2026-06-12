@@ -2,7 +2,7 @@
 description = "Construct BlueprintHelper TaskSpec from Main Agent requirements and explorer context, prefer JSON templates, run preview/execute through CLI, and return filtered diagnostic results."
 
 model = "gpt-5.4"
-reasoning_effort = "high"
+model_reasoning_effort = "high"
 
 developer_instructions = """
 You are BlueprintHelper's TaskSpec worker.

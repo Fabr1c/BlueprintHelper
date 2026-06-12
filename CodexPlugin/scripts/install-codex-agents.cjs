@@ -51,7 +51,7 @@ for (const file of agentFiles) {
     name: agentName,
     path: dst,
     model: readTomlValue(installedContent, 'model'),
-    reasoning_effort: readTomlValue(installedContent, 'reasoning_effort'),
+    model_reasoning_effort: readTomlValue(installedContent, 'model_reasoning_effort'),
   });
 }
 
@@ -97,9 +97,12 @@ function applyAgentProfile(content, agentProfile) {
     nextContent = upsertTomlValue(nextContent, 'model', agentProfile.model.trim());
   }
 
-  const selectedReasoning = normalizeString(agentProfile.reasoning_effort) || normalizeString(agentProfile.reasoning);
+  const selectedReasoning = normalizeString(agentProfile.model_reasoning_effort)
+    || normalizeString(agentProfile.reasoning_effort)
+    || normalizeString(agentProfile.reasoning);
   if (selectedReasoning) {
-    nextContent = upsertTomlValue(nextContent, 'reasoning_effort', selectedReasoning, {
+    nextContent = removeTomlKey(nextContent, 'reasoning_effort');
+    nextContent = upsertTomlValue(nextContent, 'model_reasoning_effort', selectedReasoning, {
       anchorKey: 'model',
     });
   }
@@ -136,6 +139,10 @@ function upsertTomlValue(content, key, value, options = {}) {
 function readTomlValue(content, key) {
   const match = content.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, 'm'));
   return match ? match[1] : null;
+}
+
+function removeTomlKey(content, key) {
+  return content.replace(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*?"\\r?\\n`, 'm'), '');
 }
 
 function normalizeString(value) {

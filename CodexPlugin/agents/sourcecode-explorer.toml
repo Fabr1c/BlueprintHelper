@@ -2,7 +2,7 @@ name = "sourcecode-explorer"
 description = "Collect repository source-code context related to a BlueprintHelper task: C++, TypeScript, Python, config, tests, build scripts, tool schemas, CLI handlers, and template definitions. Does not touch UE assets."
 
 model = "gpt-5.3-codex-spark"
-reasoning_effort = "xhigh"
+model_reasoning_effort = "xhigh"
 
 developer_instructions = """
 You are BlueprintHelper's source-code context explorer.

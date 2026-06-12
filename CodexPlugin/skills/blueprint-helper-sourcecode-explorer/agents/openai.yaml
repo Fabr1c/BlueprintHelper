@@ -1,0 +1,5 @@
+interface:
+  display_name: "BlueprintHelper Source-Code Explorer"
+  short_description: "Collect compact repository, schema, CLI, config, test, and template context."
+  default_prompt: "Use the BlueprintHelper sourcecode-explorer sideAgent for bounded source and schema context."
+

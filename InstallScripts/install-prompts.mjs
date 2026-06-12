@@ -456,6 +456,7 @@ function cycleProfileValue(profile, field, modelOptions, reasoningOptions, direc
   const nextIndex = (currentIndex + direction + values.length) % values.length;
   agentProfile[field.field] = values[nextIndex];
   agentProfile.reasoning_effort = agentProfile.reasoning;
+  agentProfile.model_reasoning_effort = agentProfile.reasoning;
 }
 
 async function runAgentProfileLineForm({ title, profile, modelOptions, reasoningOptions }) {
@@ -474,6 +475,7 @@ async function runAgentProfileLineForm({ title, profile, modelOptions, reasoning
     agentProfile.model = await promptChoice(`${agentName} model`, modelOptions, agentProfile.model);
     agentProfile.reasoning = await promptChoice(`${agentName} thinking`, reasoningOptions, agentProfile.reasoning);
     agentProfile.reasoning_effort = agentProfile.reasoning;
+    agentProfile.model_reasoning_effort = agentProfile.reasoning;
     writeLine('');
   }
 
@@ -629,11 +631,15 @@ function normalizeAgentProfile(profile, modelOptions, reasoningOptions) {
   const firstModel = modelOptions[0]?.value ?? 'default';
   const firstReasoning = reasoningOptions[0]?.value ?? 'high';
   const model = normalizeString(profile?.model) || firstModel;
-  const reasoning = normalizeString(profile?.reasoning) || normalizeString(profile?.reasoning_effort) || firstReasoning;
+  const reasoning = normalizeString(profile?.reasoning)
+    || normalizeString(profile?.model_reasoning_effort)
+    || normalizeString(profile?.reasoning_effort)
+    || firstReasoning;
   return {
     model,
     reasoning,
     reasoning_effort: reasoning,
+    model_reasoning_effort: reasoning,
   };
 }
 
