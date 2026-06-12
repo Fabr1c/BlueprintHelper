@@ -24,6 +24,11 @@ const logicJsonAnchorSelector = {
   pin_ref: 'then',
 };
 
+const externalExecLinkAnchor = {
+  anchor_type: 'external_link',
+  anchor_ref: 'xlink:v1:e:aaaaaaaa.then>bbbbbbbb.execute#execfp',
+};
+
 function makeMergeExternalFlowSpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   merge?: Record<string, unknown>;
@@ -112,6 +117,20 @@ test('merge_external_flow accepts LogicJson node_ref selector as authoring ancho
 
   assert.equal(write.strategy, 'external_graph_edit');
   assert.deepEqual(write.ops[0]?.anchor, logicJsonAnchorSelector);
+});
+
+test('merge_external_flow lowers external exec link compact anchor for insert_between', () => {
+  const step = compileMergeExternalStep({
+    merge: {
+      insert_strategy: 'insert_between',
+      anchor: externalExecLinkAnchor,
+    },
+  });
+  const write = step.write as { strategy: string; ops: Array<Record<string, unknown>> };
+
+  assert.equal(write.strategy, 'external_graph_edit');
+  assert.equal(write.ops[0]?.insert_strategy, 'insert_between');
+  assert.deepEqual(write.ops[0]?.anchor, externalExecLinkAnchor);
 });
 
 test('merge_external_flow normalizes LogicJson selector graph alias', () => {
@@ -275,6 +294,18 @@ test('merge_external_flow rejects raw LogicJson and ad hoc anchors', () => {
     }) as never),
     /node_guid/,
   );
+});
+
+test('merge_external_flow rejects display-only link refs in compact anchor slot', () => {
+  assert.throws(() => compileMergeExternalStep({
+    merge: {
+      insert_strategy: 'insert_between',
+      anchor: {
+        anchor_type: 'external_link',
+        anchor_ref: 'links[5]',
+      },
+    },
+  }), /links\[n\]|read-view|display-only/i);
 });
 
 test('merge_external_flow branch_fork requires sequence_order', () => {

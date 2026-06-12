@@ -587,7 +587,8 @@ public:
 
 	static void NormalizeGroupLocalRefs(
 		FBlueprintHelperLogicGroup& Group,
-		const TMap<FString, FString>* StableNodeRefByOriginalRef = nullptr)
+		const TMap<FString, FString>* StableNodeRefByOriginalRef = nullptr,
+		const TMap<FString, FString>* CrossGroupNodeRefByOriginalRef = nullptr)
 	{
 		TMap<FString, FString> LocalNodeRefByOriginalRef;
 		for (int32 NodeIndex = 0; NodeIndex < Group.Nodes.Num(); ++NodeIndex)
@@ -630,13 +631,16 @@ public:
 			{
 				FBlueprintHelperLogicLink& Link = Node.Links[LinkIndex];
 				const FString* LocalTargetNodeRef = LocalNodeRefByOriginalRef.Find(Link.ToNode);
-				if (!LocalTargetNodeRef)
+				const FString* CrossGroupTargetNodeRef = !LocalTargetNodeRef && CrossGroupNodeRefByOriginalRef
+					? CrossGroupNodeRefByOriginalRef->Find(Link.ToNode)
+					: nullptr;
+				if (!LocalTargetNodeRef && !CrossGroupTargetNodeRef)
 				{
 					Node.Links.RemoveAt(LinkIndex);
 					continue;
 				}
 
-				Link.ToNode = *LocalTargetNodeRef;
+				Link.ToNode = LocalTargetNodeRef ? *LocalTargetNodeRef : *CrossGroupTargetNodeRef;
 				Link.LinkRef = MakeLinkRef(LocalLinkIndex++);
 				if (Link.PinRef.IsEmpty())
 				{
@@ -731,14 +735,14 @@ public:
 				continue;
 			}
 			AssignGroupEntry(Group, GraphName);
-			NormalizeGroupLocalRefs(Group, &StableNodeRefByOriginalRef);
+			NormalizeGroupLocalRefs(Group, &StableNodeRefByOriginalRef, &StableNodeRefByOriginalRef);
 			Payload.Groups.Add(MoveTemp(Group));
 		}
 
 		if (UnownedGroup.Nodes.Num() > 0)
 		{
 			AssignGroupEntry(UnownedGroup, GraphName);
-			NormalizeGroupLocalRefs(UnownedGroup);
+			NormalizeGroupLocalRefs(UnownedGroup, &StableNodeRefByOriginalRef, &StableNodeRefByOriginalRef);
 			Payload.Groups.Add(MoveTemp(UnownedGroup));
 		}
 
@@ -1455,6 +1459,22 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
 	if (NodeObj->TryGetObjectField(TEXT("outputs"), OutputsObj) && OutputsObj && OutputsObj->IsValid())
 	{
 		Node.Outputs = *OutputsObj;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* PinsArray = nullptr;
+	if (NodeObj->TryGetArrayField(TEXT("pins"), PinsArray) && PinsArray)
+	{
+		for (const TSharedPtr<FJsonValue>& PinValue : *PinsArray)
+		{
+			const TSharedPtr<FJsonObject>* PinObj = nullptr;
+			if (PinValue.IsValid()
+				&& PinValue->TryGetObject(PinObj)
+				&& PinObj
+				&& PinObj->IsValid())
+			{
+				Node.Pins.Add(*PinObj);
+			}
+		}
 	}
 
 	// 提取 outgoing links

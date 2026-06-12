@@ -1,4 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorResolver.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorFingerprintService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperMergeExternalFlowService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
@@ -8,6 +9,7 @@
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonPathService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintTextConverter.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
@@ -19,10 +21,14 @@
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/PackageName.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
+#include "UObject/SavePackage.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -95,6 +101,67 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		return CallNode;
 	}
 
+	static UK2Node_CallFunction* AddCallFunctionNode(UEdGraph* Graph, UFunction* Function, const int32 NodePosX, const int32 NodePosY)
+	{
+		if (!Graph || !Function)
+		{
+			return nullptr;
+		}
+
+		UK2Node_CallFunction* CallNode = NewObject<UK2Node_CallFunction>(Graph);
+		Graph->AddNode(CallNode, true, false);
+		CallNode->CreateNewGuid();
+		CallNode->SetFromFunction(Function);
+		CallNode->PostPlacedNewNode();
+		CallNode->AllocateDefaultPins();
+		CallNode->NodePosX = NodePosX;
+		CallNode->NodePosY = NodePosY;
+		return CallNode;
+	}
+
+	static UK2Node_CallFunction* AddPrintStringNode(UEdGraph* Graph, const int32 NodePosX, const int32 NodePosY)
+	{
+		return AddCallFunctionNode(
+			Graph,
+			UKismetSystemLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString)),
+			NodePosX,
+			NodePosY);
+	}
+
+	static UK2Node_CallFunction* AddMakeLiteralStringNode(UEdGraph* Graph, const FString& Value, const int32 NodePosX, const int32 NodePosY)
+	{
+		UK2Node_CallFunction* Node = AddCallFunctionNode(
+			Graph,
+			UKismetSystemLibrary::StaticClass()->FindFunctionByName(GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, MakeLiteralString)),
+			NodePosX,
+			NodePosY);
+		if (Node)
+		{
+			if (UEdGraphPin* ValuePin = Node->FindPin(TEXT("Value")))
+			{
+				ValuePin->DefaultValue = Value;
+			}
+		}
+		return Node;
+	}
+
+	static UEdGraphPin* FindPinByName(UEdGraphNode* Node, const FString& PinName)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin && Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
 	static UEdGraphPin* FindExecPin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
 	{
 		if (!Node)
@@ -110,6 +177,82 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			}
 		}
 		return nullptr;
+	}
+
+	static FString CompactNodeKey(const UEdGraphNode* Node)
+	{
+		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
+		return Guid.Len() <= 8 ? Guid : Guid.Left(8);
+	}
+
+	static FString CompactPinKey(const UEdGraphPin* Pin)
+	{
+		FString Cleaned;
+		const FString Raw = Pin ? Pin->PinName.ToString() : FString();
+		Cleaned.Reserve(Raw.Len());
+		for (const TCHAR Ch : Raw)
+		{
+			if (FChar::IsAlnum(Ch) || Ch == TCHAR('_'))
+			{
+				Cleaned.AppendChar(Ch);
+			}
+		}
+		if (Cleaned.Len() > 16)
+		{
+			Cleaned = Cleaned.Left(16);
+		}
+		return Cleaned.IsEmpty() ? FString(TEXT("pin")) : Cleaned;
+	}
+
+	static FString CompactPinKindPrefix(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			? FString(TEXT("e"))
+			: FString(TEXT("d"));
+	}
+
+	static FString CompactLinkKind(const UEdGraphPin* SourcePin)
+	{
+		return SourcePin && SourcePin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			? FString(TEXT("exec"))
+			: FString(TEXT("data"));
+	}
+
+	static TSharedRef<FJsonObject> MakeCompactAnchorJson(const FString& AnchorType, const FString& AnchorRef)
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("anchor_type"), AnchorType);
+		Json->SetStringField(TEXT("anchor_ref"), AnchorRef);
+		return Json;
+	}
+
+	static FString BuildCompactPinRef(const UEdGraphPin* Pin)
+	{
+		const UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xpin:v1:%s:%s.%s#%s"),
+			*CompactPinKindPrefix(Pin),
+			*CompactNodeKey(Node),
+			*CompactPinKey(Pin),
+			*FingerprintService.BuildCompactPinFingerprint(Pin));
+	}
+
+	static FString BuildCompactLinkRef(const UEdGraphPin* SourcePin, const UEdGraphPin* TargetPin)
+	{
+		const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
+		const UEdGraphNode* TargetNode = TargetPin ? TargetPin->GetOwningNode() : nullptr;
+		const FString LinkKind = CompactLinkKind(SourcePin);
+		const FString KindPrefix = LinkKind == TEXT("exec") ? TEXT("e") : TEXT("d");
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xlink:v1:%s:%s.%s>%s.%s#%s"),
+			*KindPrefix,
+			*CompactNodeKey(SourceNode),
+			*CompactPinKey(SourcePin),
+			*CompactNodeKey(TargetNode),
+			*CompactPinKey(TargetPin),
+			*FingerprintService.BuildLinkFingerprint(SourcePin, TargetPin, LinkKind));
 	}
 
 	static bool ConnectExecPins(UEdGraphPin* FromPin, UEdGraphPin* ToPin)
@@ -311,6 +454,136 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			OutError);
 	}
 
+	static UBlueprint* LoadOrCreateExternalLinkPatchFixture()
+	{
+		const FString PackageName = TEXT("/Game/BlueprintHelperExternalLinkPatch/BP_ExternalLinkPatchFixture");
+		const FString AssetName = TEXT("BP_ExternalLinkPatchFixture");
+		const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
+		if (UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *ObjectPath))
+		{
+			return ExistingBlueprint;
+		}
+
+		UPackage* Package = CreatePackage(*PackageName);
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			AActor::StaticClass(),
+			Package,
+			*AssetName,
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperExternalGraphAnchorTests"));
+		if (Blueprint)
+		{
+			FAssetRegistryModule::AssetCreated(Blueprint);
+		}
+		return Blueprint;
+	}
+
+	static void ResetGraphNodes(UBlueprint* Blueprint, UEdGraph* Graph)
+	{
+		if (!Blueprint || !Graph)
+		{
+			return;
+		}
+
+		TArray<UEdGraphNode*> Nodes = Graph->Nodes;
+		for (UEdGraphNode* Node : Nodes)
+		{
+			if (Node)
+			{
+				FBlueprintEditorUtils::RemoveNode(Blueprint, Node, true);
+			}
+		}
+	}
+
+	static bool SaveFixtureBlueprint(UBlueprint* Blueprint, FString& OutError)
+	{
+		if (!Blueprint)
+		{
+			OutError = TEXT("fixture save failed: blueprint is null.");
+			return false;
+		}
+
+		UPackage* Package = Blueprint->GetOutermost();
+		if (!Package)
+		{
+			OutError = TEXT("fixture save failed: package is null.");
+			return false;
+		}
+
+		Package->MarkPackageDirty();
+		const FString Filename = FPackageName::LongPackageNameToFilename(
+			Package->GetName(),
+			FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		if (!UPackage::SavePackage(Package, Blueprint, *Filename, SaveArgs))
+		{
+			OutError = FString::Printf(TEXT("fixture save failed: %s"), *Filename);
+			return false;
+		}
+		Package->SetDirtyFlag(false);
+		return true;
+	}
+
+	static bool PrepareExternalLinkPatchFixture(FString& OutError)
+	{
+		UBlueprint* Blueprint = LoadOrCreateExternalLinkPatchFixture();
+		UEdGraph* Graph = GetEventGraph(Blueprint);
+		if (!Blueprint || !Graph)
+		{
+			OutError = TEXT("fixture prepare failed: blueprint or EventGraph missing.");
+			return false;
+		}
+
+		ResetGraphNodes(Blueprint, Graph);
+
+		UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("ExternalLinkPatchEntry"));
+		UK2Node_CallFunction* PrintNode = AddPrintStringNode(Graph, 520, 0);
+		UK2Node_CallFunction* BeforeValueNode = AddMakeLiteralStringNode(Graph, TEXT("before external link patch"), 160, 120);
+		UK2Node_CallFunction* AfterValueNode = AddMakeLiteralStringNode(Graph, TEXT("after external link patch"), 160, 300);
+		if (!EventNode || !PrintNode || !BeforeValueNode || !AfterValueNode)
+		{
+			OutError = TEXT("fixture prepare failed: node creation failed.");
+			return false;
+		}
+		EventNode->NodePosX = 0;
+		EventNode->NodePosY = 0;
+
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		UEdGraphPin* EventThen = FindExecPin(EventNode, EGPD_Output);
+		UEdGraphPin* PrintExecute = FindExecPin(PrintNode, EGPD_Input);
+		UEdGraphPin* PrintInString = FindPinByName(PrintNode, TEXT("InString"));
+		UEdGraphPin* BeforeReturnValue = FindPinByName(BeforeValueNode, TEXT("ReturnValue"));
+		if (!Schema || !EventThen || !PrintExecute || !PrintInString || !BeforeReturnValue)
+		{
+			OutError = TEXT("fixture prepare failed: required pins missing.");
+			return false;
+		}
+
+		if (!Schema->TryCreateConnection(EventThen, PrintExecute))
+		{
+			OutError = TEXT("fixture prepare failed: exec connection failed.");
+			return false;
+		}
+		if (!Schema->TryCreateConnection(BeforeReturnValue, PrintInString))
+		{
+			OutError = TEXT("fixture prepare failed: data connection failed.");
+			return false;
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Blueprint);
+		return SaveFixtureBlueprint(Blueprint, OutError);
+	}
+
 	static const TSharedPtr<FJsonObject>* FindExportedNodeObjectByGuid(
 		const TSharedPtr<FJsonObject>& Root,
 		const FString& NodeGuid)
@@ -381,6 +654,87 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		}
 		return nullptr;
 	}
+
+	static bool HasExportedPinForLiteralStringNode(
+		const TSharedPtr<FJsonObject>& Root,
+		const FString& LiteralValue,
+		const FString& PinName,
+		const FString& Direction,
+		const bool bConnected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+		if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("nodes"), Nodes) || !Nodes)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& NodeValue : *Nodes)
+		{
+			const TSharedPtr<FJsonObject>* NodeObj = nullptr;
+			if (!NodeValue.IsValid()
+				|| !NodeValue->TryGetObject(NodeObj)
+				|| !NodeObj
+				|| !NodeObj->IsValid())
+			{
+				continue;
+			}
+
+			FString FunctionName;
+			if (!(*NodeObj)->TryGetStringField(TEXT("function_name"), FunctionName)
+				|| !FunctionName.Equals(TEXT("MakeLiteralString"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			const TSharedPtr<FJsonObject>* InputDefaults = nullptr;
+			const TSharedPtr<FJsonObject>* ValueDefault = nullptr;
+			FString ValueText;
+			if (!(*NodeObj)->TryGetObjectField(TEXT("input_defaults"), InputDefaults)
+				|| !InputDefaults
+				|| !InputDefaults->IsValid()
+				|| !(*InputDefaults)->TryGetObjectField(TEXT("Value"), ValueDefault)
+				|| !ValueDefault
+				|| !ValueDefault->IsValid()
+				|| !(*ValueDefault)->TryGetStringField(TEXT("value"), ValueText)
+				|| !ValueText.Equals(LiteralValue, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Pins = nullptr;
+			if (!(*NodeObj)->TryGetArrayField(TEXT("pins"), Pins) || !Pins)
+			{
+				return false;
+			}
+
+			for (const TSharedPtr<FJsonValue>& PinValue : *Pins)
+			{
+				const TSharedPtr<FJsonObject>* PinObj = nullptr;
+				if (!PinValue.IsValid()
+					|| !PinValue->TryGetObject(PinObj)
+					|| !PinObj
+					|| !PinObj->IsValid())
+				{
+					continue;
+				}
+
+				FString ActualPinName;
+				FString ActualDirection;
+				bool bActualConnected = true;
+				if ((*PinObj)->TryGetStringField(TEXT("pin_ref"), ActualPinName)
+					&& (*PinObj)->TryGetStringField(TEXT("direction"), ActualDirection)
+					&& (*PinObj)->TryGetBoolField(TEXT("connected"), bActualConnected)
+					&& ActualPinName.Equals(PinName, ESearchCase::IgnoreCase)
+					&& ActualDirection.Equals(Direction, ESearchCase::IgnoreCase)
+					&& bActualConnected == bConnected)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -449,6 +803,122 @@ bool FBlueprintHelperExternalGraphAnchorExecBoundaryRoundTripTest::RunTest(const
 	const FBlueprintHelperExternalGraphAnchorResolver Resolver;
 	TestTrue(TEXT("boundary anchor resolves"), Resolver.ResolvePin(Anchor, ResolvedPin, Error));
 	TestTrue(TEXT("resolved pin"), ResolvedPin == SourcePin);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalCompactAnchorPinAndLinkRoundTripTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.CompactPinAndLinkRoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalCompactAnchorPinAndLinkRoundTripTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("CompactPinAndLinkRoundTrip"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("OpenDoor"));
+	UK2Node_CallFunction* CallNode = AddDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FindExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* TargetPin = FindExecPin(CallNode, EGPD_Input);
+	TestTrue(TEXT("exec pins connect"), ConnectExecPins(SourcePin, TargetPin));
+	if (!Blueprint || !Graph || !SourcePin || !TargetPin)
+	{
+		return false;
+	}
+
+	FString Error;
+	FBlueprintHelperExternalCompactAnchor CompactPin;
+	TestTrue(TEXT("compact pin parses"),
+		FBlueprintHelperExternalCompactAnchor::FromJson(
+			MakeCompactAnchorJson(TEXT("external_pin"), BuildCompactPinRef(SourcePin)),
+			CompactPin,
+			Error));
+	TestEqual(TEXT("compact pin type"),
+		static_cast<int32>(CompactPin.Type),
+		static_cast<int32>(EBlueprintHelperExternalCompactAnchorType::Pin));
+	TestEqual(TEXT("compact pin node key"), CompactPin.NodeKey, CompactNodeKey(SourcePin->GetOwningNode()));
+	TestEqual(TEXT("compact pin pin key"), CompactPin.PinKey, CompactPinKey(SourcePin));
+
+	UEdGraphPin* ResolvedPin = nullptr;
+	const FBlueprintHelperExternalGraphAnchorResolver Resolver;
+	TestTrue(TEXT("compact pin resolves"),
+		Resolver.ResolveCompactPin(Blueprint->GetPathName(), Graph->GetName(), CompactPin, ResolvedPin, Error));
+	TestTrue(TEXT("resolved compact pin"), ResolvedPin == SourcePin);
+
+	FBlueprintHelperExternalCompactAnchor StalePin = CompactPin;
+	StalePin.Fingerprint = TEXT("stale");
+	TestFalse(TEXT("stale compact pin is rejected"),
+		Resolver.ResolveCompactPin(Blueprint->GetPathName(), Graph->GetName(), StalePin, ResolvedPin, Error));
+	TestEqual(TEXT("stale compact pin error"), Error, FString(TEXT("external_anchor_stale")));
+
+	FBlueprintHelperExternalCompactAnchor CompactLink;
+	TestTrue(TEXT("compact link parses"),
+		FBlueprintHelperExternalCompactAnchor::FromJson(
+			MakeCompactAnchorJson(TEXT("external_link"), BuildCompactLinkRef(SourcePin, TargetPin)),
+			CompactLink,
+			Error));
+	TestEqual(TEXT("compact link type"),
+		static_cast<int32>(CompactLink.Type),
+		static_cast<int32>(EBlueprintHelperExternalCompactAnchorType::Link));
+	TestEqual(TEXT("compact link source node key"),
+		CompactLink.SourceNodeKey,
+		CompactNodeKey(SourcePin->GetOwningNode()));
+	TestEqual(TEXT("compact link target pin key"),
+		CompactLink.TargetPinKey,
+		CompactPinKey(TargetPin));
+
+	FBlueprintHelperExternalGraphLinkResolution ResolvedLink;
+	TestTrue(TEXT("compact link resolves"),
+		Resolver.ResolveCompactLink(Blueprint->GetPathName(), Graph->GetName(), CompactLink, ResolvedLink, Error));
+	TestTrue(TEXT("resolved link source pin"), ResolvedLink.SourcePin == SourcePin);
+	TestTrue(TEXT("resolved link target pin"), ResolvedLink.TargetPin == TargetPin);
+	TestEqual(TEXT("resolved link kind"), ResolvedLink.LinkKind, FString(TEXT("exec")));
+
+	FBlueprintHelperExternalCompactAnchor StaleLink = CompactLink;
+	StaleLink.Fingerprint = TEXT("stale");
+	TestFalse(TEXT("stale compact link is rejected"),
+		Resolver.ResolveCompactLink(Blueprint->GetPathName(), Graph->GetName(), StaleLink, ResolvedLink, Error));
+	TestEqual(TEXT("stale compact link error"), Error, FString(TEXT("external_anchor_stale")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalGraphAnchorPrepareExternalLinkPatchFixtureTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.E2EFixture.PrepareExternalLinkPatchFixture",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalGraphAnchorPrepareExternalLinkPatchFixtureTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	FString Error;
+	TestTrue(TEXT("external link patch fixture is prepared"), PrepareExternalLinkPatchFixture(Error));
+	if (!Error.IsEmpty())
+	{
+		AddInfo(Error);
+	}
+
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(
+		nullptr,
+		TEXT("/Game/BlueprintHelperExternalLinkPatch/BP_ExternalLinkPatchFixture.BP_ExternalLinkPatchFixture"));
+	TestNotNull(TEXT("fixture blueprint can be loaded"), Blueprint);
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	TestNotNull(TEXT("fixture EventGraph exists"), Graph);
+	if (!Blueprint || !Graph)
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> ExportedGraph = FBlueprintToTextConverter::ConvertGraphToJsonObject(Graph);
+	TestTrue(
+		TEXT("fixture readback exposes unlinked replacement output pin"),
+		HasExportedPinForLiteralStringNode(
+			ExportedGraph,
+			TEXT("after external link patch"),
+			TEXT("ReturnValue"),
+			TEXT("output"),
+			false));
 	return true;
 }
 
@@ -736,6 +1206,81 @@ bool FBlueprintHelperMergeExternalFlowExecuteAllowsAnchorResolvedBodyConnectivit
 
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 	TestFalse(TEXT("merged graph compiles"), Blueprint->Status == BS_Error);
+	return Blueprint->Status != BS_Error;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMergeExternalFlowInsertBetweenResolvesExternalLinkAnchorTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.MergeExternalFlowInsertBetweenResolvesExternalLinkAnchor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperMergeExternalFlowInsertBetweenResolvesExternalLinkAnchorTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("MergeExternalFlowExternalLinkAnchor"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("OpenDoorWithLinkAnchor"));
+	UK2Node_CallFunction* OriginalNode = AddDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FindExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* OriginalInputPin = FindExecPin(OriginalNode, EGPD_Input);
+	TestTrue(TEXT("initial exec link exists"), ConnectExecPins(SourcePin, OriginalInputPin));
+	if (!Blueprint || !Graph || !EventNode || !OriginalNode || !SourcePin || !OriginalInputPin)
+	{
+		return false;
+	}
+
+	const FString LinkRef = BuildCompactLinkRef(SourcePin, OriginalInputPin);
+	TSharedRef<FJsonObject> LinkAnchor = MakeCompactAnchorJson(TEXT("external_link"), LinkRef);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperLogicJsonPathService PathService;
+	const FBlueprintHelperMergeExternalFlowService Service(Resolver, BlockIdService, OwnershipService, PathService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeMergeExternalFlowPayloadWithAnchorObject(
+		Blueprint,
+		Graph,
+		LinkAnchor,
+		TEXT("insert_between"),
+		{},
+		MakePrintStringLogicSpec(TEXT("inserted via link anchor")),
+		false));
+	TestTrue(TEXT("merge external flow insert_between succeeds"), Result.bOk);
+	if (!Result.bOk)
+	{
+		AddError(FString::Printf(
+			TEXT("merge_external_flow failed: %s - %s"),
+			Result.Error.IsSet() ? *Result.Error->Code : TEXT("no_error_code"),
+			Result.Error.IsSet() ? *Result.Error->Message : TEXT("no_error_message")));
+		return false;
+	}
+
+	UK2Node_CallFunction* PrintStringNode = FindCallFunctionNode(Graph, FName(TEXT("PrintString")));
+	TestNotNull(TEXT("PrintString body node generated"), PrintStringNode);
+	if (!PrintStringNode)
+	{
+		return false;
+	}
+
+	UEdGraphPin* BodyEntryPin = FindExecPin(PrintStringNode, EGPD_Input);
+	UEdGraphPin* BodyExitPin = FindExecPin(PrintStringNode, EGPD_Output);
+	TestNotNull(TEXT("PrintString execute input"), BodyEntryPin);
+	TestNotNull(TEXT("PrintString then output"), BodyExitPin);
+	if (!BodyEntryPin || !BodyExitPin)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("original direct exec link removed"), SourcePin->LinkedTo.Contains(OriginalInputPin));
+	TestTrue(TEXT("anchor exec links to inserted body entry"),
+		SourcePin->LinkedTo.Contains(BodyEntryPin) && BodyEntryPin->LinkedTo.Contains(SourcePin));
+	TestTrue(TEXT("inserted body exit links to original successor"),
+		BodyExitPin->LinkedTo.Contains(OriginalInputPin) && OriginalInputPin->LinkedTo.Contains(BodyExitPin));
+
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	TestFalse(TEXT("insert_between graph compiles"), Blueprint->Status == BS_Error);
 	return Blueprint->Status != BS_Error;
 }
 

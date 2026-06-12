@@ -1,0 +1,44 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "__REQUIRED_GRAPH_NAME__",
+    "allow_modify_user_nodes": false,
+    "external_mutation_policy": {
+      "strategy": "patch_external_graph",
+      "allowed_mutations": [
+        "pin_default",
+        "node_comment",
+        "node_property"
+      ]
+    }
+  },
+  "behavior": {
+    "graph_strategy": "patch_external_graph",
+    "external_patches": [
+      {
+        "kind": "set_external_pin_default",
+        "anchor": {
+          "schema": "BlueprintHelper.ExternalGraphAnchor.v1",
+          "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+          "graph_name": "__REQUIRED_GRAPH_NAME__",
+          "node_guid": "__REQUIRED_NODE_GUID__",
+          "node_class": "__REQUIRED_NODE_CLASS__",
+          "semantic_role": "node",
+          "fingerprint": "__REQUIRED_NODE_FINGERPRINT__",
+          "pin_name": "__REQUIRED_PIN_NAME__",
+          "pin_direction": "__REQUIRED_PIN_DIRECTION__"
+        },
+        "value": "__REQUIRED_PIN_DEFAULT_VALUE__",
+        "expected_old_state": {
+          "value": "__REQUIRED_EXPECTED_OLD_VALUE__"
+        }
+      }
+    ]
+  }
+}

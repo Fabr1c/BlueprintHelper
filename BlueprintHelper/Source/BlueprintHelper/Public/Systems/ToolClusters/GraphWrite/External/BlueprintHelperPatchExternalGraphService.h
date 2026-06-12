@@ -6,6 +6,7 @@
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalNodePropertyDescriptorRegistry.h"
 
 class FJsonObject;
 class UBlueprint;
@@ -24,10 +25,14 @@ public:
 		FString GraphName;
 		FString PatchType;
 		FBlueprintHelperExternalGraphAnchor Anchor;
+		FBlueprintHelperExternalCompactAnchor CompactAnchor;
 		FString AnchorParseError;
+		FString PropertyDescriptorId;
 		FString Value;
 		FString ExpectedOldValue;
 		bool bExpectedOldStateProvided = false;
+		bool bHasExpandedAnchor = false;
+		bool bHasCompactAnchor = false;
 		bool bDryRun = false;
 	};
 
@@ -37,6 +42,8 @@ public:
 		UEdGraph* Graph = nullptr;
 		UEdGraphNode* Node = nullptr;
 		UEdGraphPin* Pin = nullptr;
+		FBlueprintHelperExternalNodePropertyDescriptor PropertyDescriptor;
+		bool bHasPropertyDescriptor = false;
 		FString BeforeValue;
 	};
 

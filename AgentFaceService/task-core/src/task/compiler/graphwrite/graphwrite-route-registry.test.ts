@@ -91,6 +91,28 @@ test('replace_external_body route is descriptor-backed before composer exposure'
   assert.deepEqual(route?.insert_paths, ['behavior.external_replace.body.statements[]']);
 });
 
+test('external user graph patch routes are active and template-backed', () => {
+  const expectedRoutes = [
+    'graph.merge_external_flow.insert_between',
+    'graph.patch_external_graph.node_comment',
+    'graph.patch_external_graph.node_property',
+    'graph.patch_external_graph.pin_default',
+    'graph.patch_external_links.connect_pins',
+    'graph.patch_external_links.disconnect_link',
+    'graph.patch_external_links.insert_pure_resolver_between_data_link',
+    'graph.patch_external_links.replace_link',
+  ];
+  const visibleRouteIds = new Set(getAgentVisibleGraphWriteRoutes().map((route) => route.route_id));
+
+  for (const routeId of expectedRoutes) {
+    const route = getGraphWriteRouteById(routeId);
+    assert.equal(route?.status, 'active', routeId);
+    assert.equal(route?.adapter_sync, ACTIVE_ADAPTER_SYNC, routeId);
+    assert.equal(typeof route?.template_path, 'string', routeId);
+    assert.equal(visibleRouteIds.has(routeId), true, routeId);
+  }
+});
+
 test('agent-visible GraphWrite routes exactly match active runtime-backed route descriptors', () => {
   const expectedRouteIds = getAllGraphWriteRoutes()
     .filter((route) => (
@@ -155,6 +177,7 @@ test('GraphWrite route registry derives required behavior fields from descriptor
   assert.equal(requiredFieldByStrategy.merge_owned_graph, 'merges');
   assert.equal(requiredFieldByStrategy.merge_external_flow, 'external_merges');
   assert.equal(requiredFieldByStrategy.patch_external_graph, 'external_patches');
+  assert.equal(requiredFieldByStrategy.patch_external_links, 'external_link_patches');
   assert.equal(requiredFieldByStrategy.replace_external_body, 'external_replace');
 });
 

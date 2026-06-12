@@ -21,6 +21,7 @@ static EBlueprintHelperGraphBodyKind BlueprintHelperGraphWriteTaskRuntimeCluster
 {
 	if (AdapterOperation == TEXT("merge_external_flow") ||
 		AdapterOperation == TEXT("patch_external_graph") ||
+		AdapterOperation == TEXT("patch_external_links") ||
 		AdapterOperation == TEXT("replace_external_body"))
 	{
 		return EBlueprintHelperGraphBodyKind::K2ExternalBody;

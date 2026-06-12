@@ -59,6 +59,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'behavior.merges[] for merge_owned_graph',
     'behavior.external_merges[] for merge_external_flow',
     'behavior.external_patches[] for patch_external_graph',
+    'behavior.external_link_patches[] for patch_external_links',
     'behavior.external_replace for replace_external_body',
     'validation.should_compile',
     'validation.should_save',
@@ -96,6 +97,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'merge_owned_graph',
       'merge_external_flow',
       'patch_external_graph',
+      'patch_external_links',
       'replace_external_body',
     ],
     entry_types: ['custom_event'],
@@ -126,6 +128,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'merge_blueprint_graph',
       'merge_external_flow',
       'patch_external_graph',
+      'patch_external_links',
       'replace_external_body',
     ],
     step_batching: 'append custom_event entries and custom_event_definition replacements compile signature dependency steps before graph_write body steps; other replace/patch/merge/external_merge paths compile to one structural op per step',
@@ -139,6 +142,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       merge_owned_graph: 'behavior.merges[]',
       merge_external_flow: 'behavior.external_merges[]',
       patch_external_graph: 'behavior.external_patches[]',
+      patch_external_links: 'behavior.external_link_patches[]',
       replace_external_body: 'behavior.external_replace',
     },
     forbidden_agent_shapes: [
@@ -270,7 +274,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       },
     },
     patch_external_graph: {
-      kinds: ['set_external_pin_default', 'set_external_node_comment'],
+      kinds: ['set_external_pin_default', 'set_external_node_comment', 'set_external_node_property'],
       required_anchor_fields: [
         'anchor.schema',
         'anchor.asset_path',
@@ -290,11 +294,46 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         'value',
         'expected_old_state',
       ],
+      node_property_descriptor_ids: [
+        'k2.node.comment',
+        'k2.call.function_target',
+        'k2.field.member_reference',
+      ],
       scope_policy_contract: {
         allow_modify_user_nodes: false,
         external_mutation_policy: {
           strategy: 'patch_external_graph',
-          allowed_mutations: ['pin_default', 'node_comment'],
+          allowed_mutations: ['pin_default', 'node_comment', 'node_property'],
+        },
+      },
+    },
+    patch_external_links: {
+      kinds: ['connect_pins', 'disconnect_link', 'replace_link'],
+      compact_anchor_shapes: {
+        pin: {
+          anchor_type: 'external_pin',
+          anchor_ref_prefix: 'xpin:v1:',
+        },
+        link: {
+          anchor_type: 'external_link',
+          anchor_ref_prefix: 'xlink:v1:',
+        },
+      },
+      required_patch_fields_by_kind: {
+        connect_pins: ['kind', 'source.anchor_ref', 'target.anchor_ref'],
+        disconnect_link: ['kind', 'anchor.anchor_ref'],
+        replace_link: ['kind', 'anchor.anchor_ref', 'replacement.anchor_ref'],
+      },
+      forbidden_anchor_shapes: [
+        'links[n] display refs',
+        'expanded ExternalGraphAnchor in ordinary template input',
+        'BlueprintHelper-owned block_id/node_ref/pin_ref/link_ref',
+      ],
+      scope_policy_contract: {
+        allow_modify_user_nodes: false,
+        external_mutation_policy: {
+          strategy: 'patch_external_links',
+          allowed_mutations: ['link_connect', 'link_disconnect', 'link_replace'],
         },
       },
     },
@@ -352,11 +391,21 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       external_patch_graph_edit: {
         capability: 'graph_write',
         write_strategy: 'external_graph_edit',
-        op: 'set_external_pin_default | set_external_node_comment',
+        op: 'set_external_pin_default | set_external_node_comment | set_external_node_property',
         ownership_scope: 'external_user_authored',
         constraints_external_mutation_policy: {
           strategy: 'patch_external_graph',
-          allowed_mutations: ['pin_default', 'node_comment'],
+          allowed_mutations: ['pin_default', 'node_comment', 'node_property'],
+        },
+      },
+      external_patch_links_edit: {
+        capability: 'graph_write',
+        write_strategy: 'external_graph_edit',
+        op: 'connect_external_pins | disconnect_external_link | replace_external_link',
+        ownership_scope: 'external_user_authored',
+        constraints_external_mutation_policy: {
+          strategy: 'patch_external_links',
+          allowed_mutations: ['link_connect', 'link_disconnect', 'link_replace'],
         },
       },
       external_replace_body_edit: {
@@ -861,6 +910,10 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'insert_external_flow',
       'set_external_pin_default',
       'set_external_node_comment',
+      'set_external_node_property',
+      'connect_external_pins',
+      'disconnect_external_link',
+      'replace_external_link',
       'replace_external_body',
     ],
     runtime_supported_structural_ops: [
@@ -876,6 +929,10 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       'insert_external_flow',
       'set_external_pin_default',
       'set_external_node_comment',
+      'set_external_node_property',
+      'connect_external_pins',
+      'disconnect_external_link',
+      'replace_external_link',
       'replace_external_body',
     ],
     ensure_entry_contract: {
@@ -893,7 +950,11 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
         },
         {
           strategy: 'patch_external_graph',
-          allowed_mutations: ['pin_default', 'node_comment'],
+          allowed_mutations: ['pin_default', 'node_comment', 'node_property'],
+        },
+        {
+          strategy: 'patch_external_links',
+          allowed_mutations: ['link_connect', 'link_disconnect', 'link_replace'],
         },
         {
           strategy: 'replace_external_body',
@@ -1006,6 +1067,28 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
           'args.value',
           'args.expected_old_state',
         ],
+        dry_run_bridge_path: 'root.dry_run',
+      },
+      {
+        operation: 'patch_external_links',
+        ue_command: 'patch_external_links',
+        target_required_paths: [
+          'target.asset_path',
+          'target.graph',
+        ],
+        args_required_paths_by_op: {
+          connect_external_pins: [
+            'args.source_anchor.anchor_ref',
+            'args.target_anchor.anchor_ref',
+          ],
+          disconnect_external_link: [
+            'args.link_anchor.anchor_ref',
+          ],
+          replace_external_link: [
+            'args.link_anchor.anchor_ref',
+            'args.replacement_anchor.anchor_ref',
+          ],
+        },
         dry_run_bridge_path: 'root.dry_run',
       },
       {

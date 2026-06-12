@@ -91,6 +91,7 @@ bool FBlueprintHelperTaskRuntimeClusterHub_ResolvesLoweredSteps::RunTest(const F
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("append_blueprint_graph")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("merge_external_flow")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("patch_external_graph")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
+		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("patch_external_links")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT(""), TEXT("replace_external_body")), EBlueprintHelperTaskRuntimeCluster::GraphWrite},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("blueprint_variable"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::BlueprintVariables},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("asset_factory"), TEXT("asset_factory.create_asset")), EBlueprintHelperTaskRuntimeCluster::AssetFactory},
@@ -167,6 +168,7 @@ bool FBlueprintHelperGraphWriteTaskRuntimeCluster_RecognizesOnlyGraphWriteSteps:
 		TEXT("merge_blueprint_graph"),
 		TEXT("merge_external_flow"),
 		TEXT("patch_external_graph"),
+		TEXT("patch_external_links"),
 		TEXT("replace_external_body"),
 	};
 
@@ -748,6 +750,77 @@ bool FBlueprintHelperTaskRuntimePatchExternalGraph_BuildsExternalNodeReviewEvide
 	TestEqual(TEXT("field kind is preserved"),
 		TargetEvidence.PropertyPath,
 		FString(TEXT("pin_default")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimePatchExternalLinks_BuildsExternalBoundaryReviewEvidence,
+	"BlueprintHelper.TaskRuntime.GraphWrite.PatchExternalLinks.BuildsExternalBoundaryReviewEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimePatchExternalLinks_BuildsExternalBoundaryReviewEvidence::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+	Payload->SetObjectField(TEXT("target"), Target);
+	Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+
+	TSharedRef<FJsonObject> LinkAnchor = MakeShared<FJsonObject>();
+	LinkAnchor->SetStringField(TEXT("anchor_type"), TEXT("external_link"));
+	LinkAnchor->SetStringField(TEXT("anchor_ref"), TEXT("xlink:v1:d:AAAA.ReturnValue>BBBB.AngleDegrees#1234567890"));
+	Payload->SetObjectField(TEXT("link_anchor"), LinkAnchor);
+
+	TSharedRef<FJsonObject> ReplacementAnchor = MakeShared<FJsonObject>();
+	ReplacementAnchor->SetStringField(TEXT("anchor_type"), TEXT("external_pin"));
+	ReplacementAnchor->SetStringField(TEXT("anchor_ref"), TEXT("xpin:v1:d:CCCC.ReturnValue#0987654321"));
+	Payload->SetObjectField(TEXT("replacement_anchor"), ReplacementAnchor);
+
+	FBlueprintHelperTaskRuntimeLoweredStep Step =
+		FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT("patch_external_links"));
+	Step.Payload = Payload;
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+		Step,
+		TEXT("archive_external_link_patch"),
+		TEXT("task_external_link_patch"),
+		9,
+		Evidence);
+
+	TestTrue(TEXT("patch_external_links builds Review evidence"), bBuilt);
+	TestEqual(TEXT("operation kind is patch_external_links"),
+		Evidence.OperationKind,
+		FString(TEXT("patch_external_links")));
+	TestEqual(TEXT("one atomic target is emitted"),
+		Evidence.AtomicTargets.Num(),
+		1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& TargetEvidence = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind"),
+		TargetEvidence.TargetKind,
+		FString(TEXT("graph_external_link")));
+	TestEqual(TEXT("handler kind is external link"),
+		static_cast<int32>(FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(TargetEvidence.TargetKind)),
+		static_cast<int32>(EBlueprintHelperReviewTargetHandlerKind::GraphExternalLink));
+	TestEqual(TEXT("ownership is external"),
+		TargetEvidence.Ownership,
+		FString(TEXT("external_user_authored")));
+	TestEqual(TEXT("graph name is preserved"),
+		TargetEvidence.GraphName,
+		FString(TEXT("EventGraph")));
+	TestEqual(TEXT("pin path stores compact link ref"),
+		TargetEvidence.PinPath,
+		FString(TEXT("xlink:v1:d:AAAA.ReturnValue>BBBB.AngleDegrees#1234567890")));
+	TestTrue(TEXT("anchor json preserves patch type"),
+		TargetEvidence.AnchorJson.Contains(TEXT("replace_link")));
+	TestTrue(TEXT("anchor json preserves compact link anchor"),
+		TargetEvidence.AnchorJson.Contains(TEXT("xlink:v1:d:AAAA.ReturnValue>BBBB.AngleDegrees#1234567890")));
 	return true;
 }
 

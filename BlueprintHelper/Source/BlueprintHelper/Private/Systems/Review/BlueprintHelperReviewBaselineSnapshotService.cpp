@@ -38,6 +38,9 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorResolver.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalNodePropertyDescriptorRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewConfigResolver.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewBaselineSnapshotServiceUtils.h"
 #include "UObject/MetaData.h"
@@ -800,9 +803,20 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 			return Json;
 		}
 
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalLink)
+		{
+			if (!FillExternalLinkTargetSnapshot(Target, Json))
+			{
+				return Json;
+			}
+			return Json;
+		}
+
 		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode)
 		{
 			const FString FieldKind = Target.PropertyPath;
+			const FString ResolvedFieldKind =
+				FBlueprintHelperExternalNodePropertyDescriptorRegistry::ResolveFieldKind(FieldKind);
 			Json->SetStringField(TEXT("surface"), TEXT("graph"));
 			Json->SetStringField(TEXT("graph_name"), Target.GraphName);
 			Json->SetStringField(TEXT("node_guid"), Target.NodeGuid);
@@ -825,7 +839,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				return Json;
 			}
 
-			if (FieldKind == TEXT("pin_default"))
+			if (ResolvedFieldKind == TEXT("pin_default"))
 			{
 				const UEdGraphPin* TargetPin = nullptr;
 				for (const UEdGraphPin* Pin : Node->Pins)
@@ -847,7 +861,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 				return Json;
 			}
 
-			if (FieldKind == TEXT("node_comment"))
+			if (ResolvedFieldKind == TEXT("node_comment"))
 			{
 				Json->SetBoolField(TEXT("exists"), true);
 				Json->SetStringField(TEXT("value"), Node->NodeComment);
@@ -1358,6 +1372,15 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildTarg
 		return Json;
 	}
 
+	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::GraphExternalLink)
+	{
+		if (!FillExternalLinkTargetSnapshotFromBaselineAssetSnapshot(Target, AssetSnapshot, Json))
+		{
+			return Json;
+		}
+		return Json;
+	}
+
 	if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable)
 	{
 		Json->SetStringField(TEXT("surface"), TEXT("my_blueprint"));
@@ -1839,5 +1862,426 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildWidg
 	Json->SetArrayField(TEXT("widgets"), Widgets);
 	Json->SetArrayField(TEXT("named_slots"), NamedSlots);
 	return Json;
+}
+
+TSharedPtr<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::FindBaselinePinObject(
+	const TSharedPtr<FJsonObject>& NodeObject,
+	const FString& PinName)
+{
+	const TArray<TSharedPtr<FJsonValue>>* PinValues = nullptr;
+	if (!NodeObject.IsValid() ||
+		PinName.IsEmpty() ||
+		!NodeObject->TryGetArrayField(TEXT("pins"), PinValues) ||
+		!PinValues)
+	{
+		return nullptr;
+	}
+
+	for (const TSharedPtr<FJsonValue>& PinValue : *PinValues)
+	{
+		const TSharedPtr<FJsonObject> PinObject = PinValue.IsValid() ? PinValue->AsObject() : nullptr;
+		if (UBlueprintHelperReviewUtils::BaselineJsonObjectStringFieldEquals(PinObject, TEXT("name"), PinName))
+		{
+			return PinObject;
+		}
+	}
+	return nullptr;
+}
+
+TSharedPtr<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::BuildBaselineNodePinSubsetSnapshot(
+	const TSharedPtr<FJsonObject>& NodeObject,
+	const FString& PinName)
+{
+	const TSharedPtr<FJsonObject> PinObject = FindBaselinePinObject(NodeObject, PinName);
+	if (!NodeObject.IsValid() || !PinObject.IsValid())
+	{
+		return nullptr;
+	}
+
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	FString StringValue;
+	if (NodeObject->TryGetStringField(TEXT("name"), StringValue))
+	{
+		Json->SetStringField(TEXT("name"), StringValue);
+	}
+	if (NodeObject->TryGetStringField(TEXT("guid"), StringValue))
+	{
+		Json->SetStringField(TEXT("guid"), StringValue);
+	}
+	if (NodeObject->TryGetStringField(TEXT("class"), StringValue))
+	{
+		Json->SetStringField(TEXT("class"), StringValue);
+	}
+	if (NodeObject->TryGetStringField(TEXT("title"), StringValue))
+	{
+		Json->SetStringField(TEXT("title"), StringValue);
+	}
+	if (NodeObject->TryGetStringField(TEXT("restore_text"), StringValue))
+	{
+		Json->SetStringField(TEXT("restore_text"), StringValue);
+	}
+	TArray<TSharedPtr<FJsonValue>> Pins;
+	Pins.Add(MakeShared<FJsonValueObject>(PinObject));
+	Json->SetArrayField(TEXT("pins"), Pins);
+	return Json;
+}
+
+TSharedPtr<FJsonObject> FBlueprintHelperReviewBaselineSnapshotService::FindBaselineNodeByCompactKey(
+	const TSharedPtr<FJsonObject>& GraphObject,
+	const FString& NodeKey)
+{
+	const TArray<TSharedPtr<FJsonValue>>* NodeValues = nullptr;
+	if (!GraphObject.IsValid() ||
+		NodeKey.IsEmpty() ||
+		!GraphObject->TryGetArrayField(TEXT("nodes"), NodeValues) ||
+		!NodeValues)
+	{
+		return nullptr;
+	}
+
+	for (const TSharedPtr<FJsonValue>& NodeValue : *NodeValues)
+	{
+		const TSharedPtr<FJsonObject> NodeObject = NodeValue.IsValid() ? NodeValue->AsObject() : nullptr;
+		FString NodeGuid;
+		if (NodeObject.IsValid() &&
+			NodeObject->TryGetStringField(TEXT("guid"), NodeGuid) &&
+			(NodeGuid.Equals(NodeKey, ESearchCase::IgnoreCase) ||
+				NodeGuid.StartsWith(NodeKey, ESearchCase::IgnoreCase)))
+		{
+			return NodeObject;
+		}
+	}
+	return nullptr;
+}
+
+bool FBlueprintHelperReviewBaselineSnapshotService::FillExternalLinkTargetSnapshotFromBaselineAssetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	const TSharedPtr<FJsonObject>& AssetSnapshot,
+	const TSharedRef<FJsonObject>& Json)
+{
+	Json->SetStringField(TEXT("surface"), TEXT("graph"));
+	Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+	Json->SetStringField(TEXT("anchor_ref"), Target.PinPath);
+	Json->SetStringField(TEXT("patch_type"), Target.PropertyPath.IsEmpty() ? Target.TargetSubKind : Target.PropertyPath);
+
+	TSharedPtr<FJsonObject> Payload;
+	if (Target.AnchorJson.IsEmpty())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_payload_missing"));
+		return false;
+	}
+
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Target.AnchorJson);
+	if (!FJsonSerializer::Deserialize(Reader, Payload) || !Payload.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_payload_invalid"));
+		return false;
+	}
+
+	FString PatchType;
+	Payload->TryGetStringField(TEXT("patch_type"), PatchType);
+	if (PatchType.IsEmpty())
+	{
+		PatchType = Target.PropertyPath.IsEmpty() ? Target.TargetSubKind : Target.PropertyPath;
+	}
+	Json->SetStringField(TEXT("patch_type"), PatchType);
+
+	const TSharedPtr<FJsonObject>* BlueprintSnapshotPtr = nullptr;
+	const TSharedPtr<FJsonObject> BlueprintSnapshot =
+		AssetSnapshot.IsValid() && AssetSnapshot->TryGetObjectField(TEXT("blueprint"), BlueprintSnapshotPtr) && BlueprintSnapshotPtr
+			? *BlueprintSnapshotPtr
+			: nullptr;
+	const TSharedPtr<FJsonObject> GraphObject = UBlueprintHelperReviewUtils::FindBaselineGraphObject(BlueprintSnapshot, Target.GraphName);
+	if (!GraphObject.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("graph_not_found"));
+		return false;
+	}
+
+	FString SourceNodeKey;
+	FString SourcePinName;
+	FString TargetNodeKey;
+	FString TargetPinName;
+	FString LinkKind;
+	FString ResolveError;
+	if (PatchType.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))
+	{
+		const TSharedPtr<FJsonObject>* SourceAnchorObject = nullptr;
+		const TSharedPtr<FJsonObject>* TargetAnchorObject = nullptr;
+		if (!Payload->TryGetObjectField(TEXT("source_anchor"), SourceAnchorObject) ||
+			!SourceAnchorObject || !SourceAnchorObject->IsValid() ||
+			!Payload->TryGetObjectField(TEXT("target_anchor"), TargetAnchorObject) ||
+			!TargetAnchorObject || !TargetAnchorObject->IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_pin_anchor_missing"));
+			return false;
+		}
+
+		FBlueprintHelperExternalCompactAnchor SourceAnchor;
+		FBlueprintHelperExternalCompactAnchor TargetAnchor;
+		if (!FBlueprintHelperExternalCompactAnchor::FromJson(*SourceAnchorObject, SourceAnchor, ResolveError) ||
+			!FBlueprintHelperExternalCompactAnchor::FromJson(*TargetAnchorObject, TargetAnchor, ResolveError))
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), ResolveError.IsEmpty() ? TEXT("external_anchor_ref_invalid") : ResolveError);
+			return false;
+		}
+		SourceNodeKey = SourceAnchor.NodeKey;
+		SourcePinName = SourceAnchor.PinKey;
+		TargetNodeKey = TargetAnchor.NodeKey;
+		TargetPinName = TargetAnchor.PinKey;
+		LinkKind = SourceAnchor.LinkKind == EBlueprintHelperExternalCompactLinkKind::Exec ? TEXT("exec") : TEXT("data");
+	}
+	else if (PatchType.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase) ||
+		PatchType.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))
+	{
+		const TSharedPtr<FJsonObject>* LinkAnchorObject = nullptr;
+		if (!Payload->TryGetObjectField(TEXT("link_anchor"), LinkAnchorObject) ||
+			!LinkAnchorObject || !LinkAnchorObject->IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_anchor_missing"));
+			return false;
+		}
+
+		FBlueprintHelperExternalCompactAnchor LinkAnchor;
+		if (!FBlueprintHelperExternalCompactAnchor::FromJson(*LinkAnchorObject, LinkAnchor, ResolveError))
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), ResolveError.IsEmpty() ? TEXT("external_anchor_ref_invalid") : ResolveError);
+			return false;
+		}
+		SourceNodeKey = LinkAnchor.SourceNodeKey;
+		SourcePinName = LinkAnchor.SourcePinKey;
+		TargetNodeKey = LinkAnchor.TargetNodeKey;
+		TargetPinName = LinkAnchor.TargetPinKey;
+		LinkKind = LinkAnchor.LinkKind == EBlueprintHelperExternalCompactLinkKind::Exec ? TEXT("exec") : TEXT("data");
+	}
+	else
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_patch_type_unsupported"));
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> SourceNode = FindBaselineNodeByCompactKey(GraphObject, SourceNodeKey);
+	const TSharedPtr<FJsonObject> TargetNode = FindBaselineNodeByCompactKey(GraphObject, TargetNodeKey);
+	if (!SourceNode.IsValid() || !TargetNode.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_node_not_found"));
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject> SourcePin = FindBaselinePinObject(SourceNode, SourcePinName);
+	const TSharedPtr<FJsonObject> TargetPin = FindBaselinePinObject(TargetNode, TargetPinName);
+	if (!SourcePin.IsValid() || !TargetPin.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_pin_not_found"));
+		return false;
+	}
+
+	if (PatchType.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase) ||
+		PatchType.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))
+	{
+		FString TargetGuid;
+		TargetNode->TryGetStringField(TEXT("guid"), TargetGuid);
+		const FString ExpectedLinkRef = TargetGuid + TEXT(":") + TargetPinName;
+		bool bLinkExists = false;
+		const TArray<TSharedPtr<FJsonValue>>* LinkedValues = nullptr;
+		if (SourcePin->TryGetArrayField(TEXT("linked_to"), LinkedValues) && LinkedValues)
+		{
+			for (const TSharedPtr<FJsonValue>& LinkedValue : *LinkedValues)
+			{
+				if (LinkedValue.IsValid() && LinkedValue->AsString().Equals(ExpectedLinkRef, ESearchCase::IgnoreCase))
+				{
+					bLinkExists = true;
+					break;
+				}
+			}
+		}
+		if (!bLinkExists)
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_not_found"));
+			return false;
+		}
+	}
+
+	FString SourceGuid;
+	FString TargetGuid;
+	SourceNode->TryGetStringField(TEXT("guid"), SourceGuid);
+	TargetNode->TryGetStringField(TEXT("guid"), TargetGuid);
+	Json->SetStringField(TEXT("source_node_guid"), SourceGuid);
+	Json->SetStringField(TEXT("source_pin_name"), SourcePinName);
+	Json->SetStringField(TEXT("target_node_guid"), TargetGuid);
+	Json->SetStringField(TEXT("target_pin_name"), TargetPinName);
+	Json->SetStringField(TEXT("link_kind"), LinkKind);
+
+	TArray<TSharedPtr<FJsonValue>> Nodes;
+	const TSharedPtr<FJsonObject> SourceSubset = BuildBaselineNodePinSubsetSnapshot(SourceNode, SourcePinName);
+	const TSharedPtr<FJsonObject> TargetSubset = BuildBaselineNodePinSubsetSnapshot(TargetNode, TargetPinName);
+	if (SourceSubset.IsValid())
+	{
+		Nodes.Add(MakeShared<FJsonValueObject>(SourceSubset));
+	}
+	if (TargetSubset.IsValid() && SourceNode != TargetNode)
+	{
+		Nodes.Add(MakeShared<FJsonValueObject>(TargetSubset));
+	}
+
+	Json->SetBoolField(TEXT("exists"), Nodes.Num() > 0);
+	Json->SetArrayField(TEXT("nodes"), Nodes);
+	if (Nodes.Num() == 0)
+	{
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_snapshot_empty"));
+		return false;
+	}
+	return true;
+}
+
+bool FBlueprintHelperReviewBaselineSnapshotService::FillExternalLinkTargetSnapshot(
+	const FBlueprintHelperReviewAtomicTarget& Target,
+	const TSharedRef<FJsonObject>& Json)
+{
+	Json->SetStringField(TEXT("surface"), TEXT("graph"));
+	Json->SetStringField(TEXT("graph_name"), Target.GraphName);
+	Json->SetStringField(TEXT("anchor_ref"), Target.PinPath);
+	Json->SetStringField(TEXT("patch_type"), Target.PropertyPath.IsEmpty() ? Target.TargetSubKind : Target.PropertyPath);
+
+	TSharedPtr<FJsonObject> Payload;
+	if (Target.AnchorJson.IsEmpty())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_payload_missing"));
+		return false;
+	}
+
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Target.AnchorJson);
+	if (!FJsonSerializer::Deserialize(Reader, Payload) || !Payload.IsValid())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_payload_invalid"));
+		return false;
+	}
+
+	FString PatchType;
+	Payload->TryGetStringField(TEXT("patch_type"), PatchType);
+	if (PatchType.IsEmpty())
+	{
+		PatchType = Target.PropertyPath.IsEmpty() ? Target.TargetSubKind : Target.PropertyPath;
+	}
+	Json->SetStringField(TEXT("patch_type"), PatchType);
+
+	const FBlueprintHelperExternalGraphAnchorResolver Resolver;
+	FString ResolveError;
+	UEdGraphPin* SourcePin = nullptr;
+	UEdGraphPin* TargetPin = nullptr;
+	if (PatchType.Equals(TEXT("connect_pins"), ESearchCase::IgnoreCase))
+	{
+		const TSharedPtr<FJsonObject>* SourceAnchorObject = nullptr;
+		const TSharedPtr<FJsonObject>* TargetAnchorObject = nullptr;
+		if (!Payload->TryGetObjectField(TEXT("source_anchor"), SourceAnchorObject) ||
+			!SourceAnchorObject || !SourceAnchorObject->IsValid() ||
+			!Payload->TryGetObjectField(TEXT("target_anchor"), TargetAnchorObject) ||
+			!TargetAnchorObject || !TargetAnchorObject->IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_pin_anchor_missing"));
+			return false;
+		}
+
+		FBlueprintHelperExternalCompactAnchor SourceAnchor;
+		FBlueprintHelperExternalCompactAnchor TargetAnchor;
+		if (!FBlueprintHelperExternalCompactAnchor::FromJson(*SourceAnchorObject, SourceAnchor, ResolveError) ||
+			!Resolver.ResolveCompactPin(Target.AssetPath, Target.GraphName, SourceAnchor, SourcePin, ResolveError) ||
+			!FBlueprintHelperExternalCompactAnchor::FromJson(*TargetAnchorObject, TargetAnchor, ResolveError) ||
+			!Resolver.ResolveCompactPin(Target.AssetPath, Target.GraphName, TargetAnchor, TargetPin, ResolveError))
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), ResolveError.IsEmpty() ? TEXT("external_link_pin_resolve_failed") : ResolveError);
+			return false;
+		}
+	}
+	else if (PatchType.Equals(TEXT("disconnect_link"), ESearchCase::IgnoreCase) ||
+		PatchType.Equals(TEXT("replace_link"), ESearchCase::IgnoreCase))
+	{
+		const TSharedPtr<FJsonObject>* LinkAnchorObject = nullptr;
+		if (!Payload->TryGetObjectField(TEXT("link_anchor"), LinkAnchorObject) ||
+			!LinkAnchorObject || !LinkAnchorObject->IsValid())
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_anchor_missing"));
+			return false;
+		}
+
+		FBlueprintHelperExternalCompactAnchor LinkAnchor;
+		FBlueprintHelperExternalGraphLinkResolution LinkResolution;
+		if (!FBlueprintHelperExternalCompactAnchor::FromJson(*LinkAnchorObject, LinkAnchor, ResolveError) ||
+			!Resolver.ResolveCompactLink(Target.AssetPath, Target.GraphName, LinkAnchor, LinkResolution, ResolveError))
+		{
+			Json->SetBoolField(TEXT("exists"), false);
+			Json->SetStringField(TEXT("resolve_error_code"), ResolveError.IsEmpty() ? TEXT("external_link_resolve_failed") : ResolveError);
+			return false;
+		}
+
+		SourcePin = LinkResolution.SourcePin;
+		TargetPin = LinkResolution.TargetPin;
+		Json->SetStringField(TEXT("link_kind"), LinkResolution.LinkKind);
+	}
+	else
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_patch_type_unsupported"));
+		return false;
+	}
+
+	if (!SourcePin || !TargetPin || !SourcePin->GetOwningNode() || !TargetPin->GetOwningNode())
+	{
+		Json->SetBoolField(TEXT("exists"), false);
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_pin_resolve_failed"));
+		return false;
+	}
+
+	Json->SetStringField(TEXT("source_node_guid"), SourcePin->GetOwningNode()->NodeGuid.ToString(EGuidFormats::Digits));
+	Json->SetStringField(TEXT("source_pin_name"), SourcePin->PinName.ToString());
+	Json->SetStringField(TEXT("target_node_guid"), TargetPin->GetOwningNode()->NodeGuid.ToString(EGuidFormats::Digits));
+	Json->SetStringField(TEXT("target_pin_name"), TargetPin->PinName.ToString());
+
+	TArray<TSharedPtr<FJsonValue>> Nodes;
+	TSet<FString> SeenPins;
+	auto AddPinSnapshot = [&Nodes, &SeenPins](const UEdGraphPin* Pin)
+	{
+		const UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
+		if (!Node)
+		{
+			return;
+		}
+
+		const FString PinKey = Node->NodeGuid.ToString(EGuidFormats::Digits) + TEXT(":") + Pin->PinName.ToString();
+		if (SeenPins.Contains(PinKey))
+		{
+			return;
+		}
+		SeenPins.Add(PinKey);
+		Nodes.Add(MakeShared<FJsonValueObject>(
+			FBlueprintHelperReviewBaselineSnapshotService::BuildNodePinSubsetSnapshot(Node, Pin->PinName.ToString())));
+	};
+	AddPinSnapshot(SourcePin);
+	AddPinSnapshot(TargetPin);
+
+	Json->SetBoolField(TEXT("exists"), Nodes.Num() > 0);
+	Json->SetArrayField(TEXT("nodes"), Nodes);
+	if (Nodes.Num() == 0)
+	{
+		Json->SetStringField(TEXT("resolve_error_code"), TEXT("external_link_snapshot_empty"));
+		return false;
+	}
+	return true;
 }
 

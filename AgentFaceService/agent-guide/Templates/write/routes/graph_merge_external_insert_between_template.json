@@ -6,19 +6,25 @@
     "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
+  "scope_policy": {
+    "graph_name": "__REQUIRED_GRAPH_NAME__",
+    "allow_modify_user_nodes": false,
+    "external_mutation_policy": {
+      "strategy": "merge_external_flow",
+      "allowed_mutations": [
+        "exec_boundary_link"
+      ]
+    }
+  },
   "behavior": {
     "graph_strategy": "merge_external_flow",
     "external_merges": [
       {
         "kind": "insert_external_flow",
-        "insert_strategy": "append_after",
+        "insert_strategy": "insert_between",
         "anchor": {
-          "schema": "BlueprintHelper.LogicJsonAnchorSelector.v1",
-          "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
-          "graph_name": "__REQUIRED_GRAPH_NAME__",
-          "entry_name": "__REQUIRED_ENTRY_NAME__",
-          "node_ref": "__REQUIRED_NODE_REF__",
-          "pin_ref": "__REQUIRED_PIN_REF__"
+          "anchor_type": "external_link",
+          "anchor_ref": "__REQUIRED_EXTERNAL_EXEC_LINK_ANCHOR_REF__"
         },
         "inserted": {
           "body": {

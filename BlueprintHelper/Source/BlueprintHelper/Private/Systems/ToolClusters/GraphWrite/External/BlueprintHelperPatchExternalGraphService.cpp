@@ -130,8 +130,17 @@ namespace BlueprintHelperPatchExternalGraph
 
 		TSharedRef<FJsonObject> Patch = MakeShared<FJsonObject>();
 		Patch->SetStringField(TEXT("patch_type"), Request.PatchType);
-		Patch->SetStringField(TEXT("node_guid"), Request.Anchor.NodeGuid);
+		const FString NodeGuid = Context.Node ? Context.Node->NodeGuid.ToString(EGuidFormats::Digits) : Request.Anchor.NodeGuid;
+		Patch->SetStringField(TEXT("node_guid"), NodeGuid);
 		Patch->SetStringField(TEXT("pin_name"), Request.Anchor.PinName);
+		if (!Request.PropertyDescriptorId.IsEmpty())
+		{
+			Patch->SetStringField(TEXT("property_descriptor_id"), Request.PropertyDescriptorId);
+		}
+		if (Context.bHasPropertyDescriptor)
+		{
+			Patch->SetStringField(TEXT("field_kind"), Context.PropertyDescriptor.FieldKind);
+		}
 		Patch->SetStringField(TEXT("before_value"), Context.BeforeValue);
 		Patch->SetStringField(TEXT("after_value"), Request.Value);
 		Data->SetObjectField(TEXT("external_patch"), Patch);
@@ -256,6 +265,7 @@ FBlueprintHelperPatchExternalGraphService::ParseRequest(const TSharedRef<FJsonOb
 	}
 
 	Payload->TryGetStringField(TEXT("patch_type"), Request.PatchType);
+	Payload->TryGetStringField(TEXT("property_descriptor_id"), Request.PropertyDescriptorId);
 	Payload->TryGetBoolField(TEXT("dry_run"), Request.bDryRun);
 	BlueprintHelperPatchExternalGraph::ReadStringValueField(Payload, Request.Value);
 
@@ -264,10 +274,23 @@ FBlueprintHelperPatchExternalGraphService::ParseRequest(const TSharedRef<FJsonOb
 		!AnchorObject || !AnchorObject->IsValid() ||
 		!FBlueprintHelperExternalGraphAnchor::FromJson(*AnchorObject, Request.Anchor, Request.AnchorParseError))
 	{
-		if (Request.AnchorParseError.IsEmpty())
+		FString CompactAnchorParseError;
+		if (AnchorObject && AnchorObject->IsValid() &&
+			FBlueprintHelperExternalCompactAnchor::FromJson(*AnchorObject, Request.CompactAnchor, CompactAnchorParseError))
 		{
-			Request.AnchorParseError = TEXT("external_anchor_schema_unsupported");
+			Request.bHasCompactAnchor = true;
+			Request.AnchorParseError.Reset();
 		}
+		else if (Request.AnchorParseError.IsEmpty())
+		{
+			Request.AnchorParseError = CompactAnchorParseError.IsEmpty()
+				? TEXT("external_anchor_schema_unsupported")
+				: CompactAnchorParseError;
+		}
+	}
+	else
+	{
+		Request.bHasExpandedAnchor = true;
 	}
 
 	const TSharedPtr<FJsonObject>* ExpectedOldState = nullptr;
@@ -305,27 +328,28 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 		return false;
 	}
 	if (Request.PatchType != TEXT("set_external_pin_default") &&
-		Request.PatchType != TEXT("set_external_node_comment"))
+		Request.PatchType != TEXT("set_external_node_comment") &&
+		Request.PatchType != TEXT("set_external_node_property"))
 	{
 		BlueprintHelperPatchExternalGraph::AddError(
 			OutResult,
 			TEXT("unsupported_external_patch_type"),
-			TEXT("patch_external_graph only supports set_external_pin_default and set_external_node_comment."),
+			TEXT("patch_external_graph only supports set_external_pin_default, set_external_node_comment, and set_external_node_property."),
 			TEXT("patch_type"),
 			TEXT("payload.patch_type"));
 		return false;
 	}
-	if (!Request.AnchorParseError.IsEmpty())
+	if (!Request.bHasExpandedAnchor && !Request.bHasCompactAnchor)
 	{
 		BlueprintHelperPatchExternalGraph::AddError(
 			OutResult,
 			Request.AnchorParseError,
-			TEXT("patch_external_graph requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor."),
+			TEXT("patch_external_graph requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor or compact external_node anchor."),
 			TEXT("anchor"),
 			TEXT("payload.anchor"));
 		return false;
 	}
-	if (Request.Anchor.SemanticRole != EBlueprintHelperExternalGraphAnchorRole::Node)
+	if (Request.bHasExpandedAnchor && Request.Anchor.SemanticRole != EBlueprintHelperExternalGraphAnchorRole::Node)
 	{
 		BlueprintHelperPatchExternalGraph::AddError(
 			OutResult,
@@ -335,8 +359,29 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 			TEXT("payload.anchor.semantic_role"));
 		return false;
 	}
-	if (!Request.Anchor.AssetPath.Equals(Request.AssetPath, ESearchCase::IgnoreCase) ||
-		!Request.Anchor.GraphName.Equals(Request.GraphName, ESearchCase::IgnoreCase))
+	if (Request.bHasCompactAnchor && Request.CompactAnchor.Type != EBlueprintHelperExternalCompactAnchorType::Node)
+	{
+		BlueprintHelperPatchExternalGraph::AddError(
+			OutResult,
+			TEXT("external_anchor_ref_unsupported"),
+			TEXT("patch_external_graph compact anchors must use anchor_type=external_node."),
+			TEXT("anchor.anchor_type"),
+			TEXT("payload.anchor.anchor_type"));
+		return false;
+	}
+	if (Request.bHasCompactAnchor && Request.PatchType == TEXT("set_external_pin_default"))
+	{
+		BlueprintHelperPatchExternalGraph::AddError(
+			OutResult,
+			TEXT("anchor_pin_required"),
+			TEXT("set_external_pin_default requires a node external anchor with pin_name."),
+			TEXT("anchor.pin_name"),
+			TEXT("payload.anchor.pin_name"));
+		return false;
+	}
+	if (Request.bHasExpandedAnchor &&
+		(!Request.Anchor.AssetPath.Equals(Request.AssetPath, ESearchCase::IgnoreCase) ||
+			!Request.Anchor.GraphName.Equals(Request.GraphName, ESearchCase::IgnoreCase)))
 	{
 		BlueprintHelperPatchExternalGraph::AddError(
 			OutResult,
@@ -372,7 +417,10 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 
 	FString AnchorResolveError;
 	const FBlueprintHelperExternalGraphAnchorResolver AnchorResolver;
-	if (!AnchorResolver.ResolveNode(Request.Anchor, Context.Node, AnchorResolveError))
+	const bool bResolvedNode = Request.bHasExpandedAnchor
+		? AnchorResolver.ResolveNode(Request.Anchor, Context.Node, AnchorResolveError)
+		: AnchorResolver.ResolveCompactNode(Request.AssetPath, Request.GraphName, Request.CompactAnchor, Context.Node, AnchorResolveError);
+	if (!bResolvedNode)
 	{
 		BlueprintHelperPatchExternalGraph::AddConflict(
 			OutResult,
@@ -380,6 +428,57 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 			TEXT("External node anchor is stale or cannot be resolved."),
 			TEXT("anchor"),
 			TEXT("payload.anchor"));
+		return false;
+	}
+
+	if (Request.PatchType == TEXT("set_external_node_property"))
+	{
+		if (Request.PropertyDescriptorId.IsEmpty())
+		{
+			BlueprintHelperPatchExternalGraph::AddError(
+				OutResult,
+				TEXT("external_property_descriptor_not_found"),
+				TEXT("set_external_node_property requires property_descriptor_id."),
+				TEXT("property_descriptor_id"),
+				TEXT("payload.property_descriptor_id"));
+			return false;
+		}
+
+		const FBlueprintHelperExternalNodePropertyDescriptor* Descriptor =
+			FBlueprintHelperExternalNodePropertyDescriptorRegistry::Find(Request.PropertyDescriptorId);
+		if (!Descriptor)
+		{
+			BlueprintHelperPatchExternalGraph::AddError(
+				OutResult,
+				TEXT("external_property_descriptor_not_found"),
+				TEXT("External node property descriptor was not found."),
+				TEXT("property_descriptor_id"),
+				TEXT("payload.property_descriptor_id"));
+			return false;
+		}
+		if (!Descriptor->IsWritable())
+		{
+			BlueprintHelperPatchExternalGraph::AddError(
+				OutResult,
+				TEXT("external_property_descriptor_not_allowed"),
+				Descriptor->DisabledReason.IsEmpty()
+					? TEXT("External node property descriptor is not writable.")
+					: Descriptor->DisabledReason,
+				TEXT("property_descriptor_id"),
+				TEXT("payload.property_descriptor_id"));
+			return false;
+		}
+		Context.PropertyDescriptor = *Descriptor;
+		Context.bHasPropertyDescriptor = true;
+	}
+	else if (!Request.PropertyDescriptorId.IsEmpty())
+	{
+		BlueprintHelperPatchExternalGraph::AddError(
+			OutResult,
+			TEXT("external_property_descriptor_not_allowed"),
+			TEXT("property_descriptor_id is only valid for set_external_node_property."),
+			TEXT("property_descriptor_id"),
+			TEXT("payload.property_descriptor_id"));
 		return false;
 	}
 
@@ -408,9 +507,20 @@ bool FBlueprintHelperPatchExternalGraphService::Preflight(
 		}
 		Context.BeforeValue = Context.Pin->DefaultValue;
 	}
-	else
+	else if (Request.PatchType == TEXT("set_external_node_comment") ||
+		(Context.bHasPropertyDescriptor && Context.PropertyDescriptor.FieldKind == TEXT("node_comment")))
 	{
 		Context.BeforeValue = Context.Node ? Context.Node->NodeComment : FString();
+	}
+	else
+	{
+		BlueprintHelperPatchExternalGraph::AddError(
+			OutResult,
+			TEXT("external_property_descriptor_not_allowed"),
+			TEXT("External node property descriptor has no active mutation handler."),
+			TEXT("property_descriptor_id"),
+			TEXT("payload.property_descriptor_id"));
+		return false;
 	}
 
 	if (Context.BeforeValue != Request.ExpectedOldValue)
@@ -554,7 +664,10 @@ bool FBlueprintHelperPatchExternalGraphService::ApplyPatch(
 		return true;
 	}
 
-	if (Request.PatchType == TEXT("set_external_node_comment"))
+	if (Request.PatchType == TEXT("set_external_node_comment") ||
+		(Request.PatchType == TEXT("set_external_node_property") &&
+			Context.bHasPropertyDescriptor &&
+			Context.PropertyDescriptor.FieldKind == TEXT("node_comment")))
 	{
 		if (!Context.Node)
 		{

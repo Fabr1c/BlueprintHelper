@@ -48,3 +48,40 @@ struct BLUEPRINTHELPER_API FBlueprintHelperLogicJsonAnchorSelector
 		FBlueprintHelperLogicJsonAnchorSelector& OutSelector,
 		FString& OutError);
 };
+
+enum class EBlueprintHelperExternalCompactAnchorType : uint8
+{
+	Node,
+	Pin,
+	Link,
+	Body,
+	Unknown
+};
+
+enum class EBlueprintHelperExternalCompactLinkKind : uint8
+{
+	Exec,
+	Data,
+	Unknown
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperExternalCompactAnchor
+{
+	FString AnchorType;
+	FString AnchorRef;
+
+	EBlueprintHelperExternalCompactAnchorType Type = EBlueprintHelperExternalCompactAnchorType::Unknown;
+	EBlueprintHelperExternalCompactLinkKind LinkKind = EBlueprintHelperExternalCompactLinkKind::Unknown;
+	FString NodeKey;
+	FString PinKey;
+	FString SourceNodeKey;
+	FString SourcePinKey;
+	FString TargetNodeKey;
+	FString TargetPinKey;
+	FString Fingerprint;
+
+	static bool FromJson(
+		const TSharedPtr<FJsonObject>& Json,
+		FBlueprintHelperExternalCompactAnchor& OutAnchor,
+		FString& OutError);
+};

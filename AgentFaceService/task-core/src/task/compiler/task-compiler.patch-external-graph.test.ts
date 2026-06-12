@@ -13,6 +13,11 @@ const externalNodeAnchor = {
   fingerprint: 'nodefp',
 };
 
+const compactExternalNodeAnchor = {
+  anchor_type: 'external_node',
+  anchor_ref: 'xnode:v1:aaaaaaaa#nodefp',
+};
+
 function makePatchExternalGraphSpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   patch?: Record<string, unknown>;
@@ -32,7 +37,7 @@ function makePatchExternalGraphSpec(overrides: {
       allow_modify_user_nodes: false,
       external_mutation_policy: {
         strategy: 'patch_external_graph',
-        allowed_mutations: ['pin_default', 'node_comment'],
+        allowed_mutations: ['pin_default', 'node_comment', 'node_property'],
       },
       ...overrides.scopePolicy,
     },
@@ -81,7 +86,7 @@ test('patch_external_graph lowers to external graph edit with exact mutation pol
     ownership_scope: 'external_user_authored',
     external_mutation_policy: {
       strategy: 'patch_external_graph',
-      allowed_mutations: ['pin_default', 'node_comment'],
+      allowed_mutations: ['pin_default', 'node_comment', 'node_property'],
     },
   });
 });
@@ -106,6 +111,62 @@ test('patch_external_graph accepts pin default patches with explicit pin anchor 
     pin_name: 'Value',
     pin_direction: 'input',
   });
+});
+
+test('patch_external_graph accepts descriptor-backed node property patches', () => {
+  const step = compilePatchExternalStep({
+    patch: {
+      kind: 'set_external_node_property',
+      property_descriptor_id: 'k2.node.comment',
+      value: 'descriptor comment',
+      expected_old_state: { value: '' },
+    },
+  });
+  const write = step.write as { ops: Array<Record<string, unknown>> };
+  assert.equal(write.ops[0]?.op, 'set_external_node_property');
+  assert.equal(write.ops[0]?.property_descriptor_id, 'k2.node.comment');
+  assert.deepEqual(write.ops[0]?.anchor, externalNodeAnchor);
+});
+
+test('patch_external_graph accepts compact node anchors for node property patches', () => {
+  const step = compilePatchExternalStep({
+    patch: {
+      kind: 'set_external_node_property',
+      anchor: compactExternalNodeAnchor,
+      property_descriptor_id: 'k2.node.comment',
+      value: 'descriptor comment',
+      expected_old_state: { value: '' },
+    },
+  });
+  const write = step.write as { ops: Array<Record<string, unknown>> };
+  assert.equal(write.ops[0]?.op, 'set_external_node_property');
+  assert.deepEqual(write.ops[0]?.anchor, compactExternalNodeAnchor);
+});
+
+test('patch_external_graph rejects compact node anchors for pin default patches', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makePatchExternalGraphSpec({
+      patch: {
+        kind: 'set_external_pin_default',
+        anchor: compactExternalNodeAnchor,
+        value: '42',
+        expected_old_state: { value: '0' },
+      },
+    }) as never),
+    /pin_name|set_external_pin_default/,
+  );
+});
+
+test('patch_external_graph rejects unknown node property descriptors', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makePatchExternalGraphSpec({
+      patch: {
+        kind: 'set_external_node_property',
+        property_descriptor_id: 'unsafe.raw.uobject.path',
+      },
+    }) as never),
+    /property_descriptor_id|registered external node property descriptor/,
+  );
 });
 
 test('patch_external_graph rejects broad policy, missing expected state, and non-field mutations', () => {

@@ -1196,6 +1196,29 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 			NodeObj->SetObjectField(TEXT("input_defaults"), InputDefaultsObj);
 		}
 
+		TArray<TSharedPtr<FJsonValue>> PinsArray;
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin)
+			{
+				continue;
+			}
+
+			TSharedRef<FJsonObject> PinObj = MakeShared<FJsonObject>();
+			PinObj->SetStringField(TEXT("pin_ref"), Pin->PinName.ToString());
+			PinObj->SetStringField(TEXT("direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(Pin));
+			PinObj->SetStringField(
+				TEXT("kind"),
+				Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec ? TEXT("exec") : TEXT("data"));
+			PinObj->SetBoolField(TEXT("connected"), Pin->LinkedTo.Num() > 0);
+			PinObj->SetObjectField(TEXT("pin_type"), PinTypeToJson(Pin->PinType));
+			PinsArray.Add(MakeShared<FJsonValueObject>(PinObj));
+		}
+		if (PinsArray.Num() > 0)
+		{
+			NodeObj->SetArrayField(TEXT("pins"), PinsArray);
+		}
+
 		OutNodes.Add(MakeShared<FJsonValueObject>(NodeObj));
 	}
 

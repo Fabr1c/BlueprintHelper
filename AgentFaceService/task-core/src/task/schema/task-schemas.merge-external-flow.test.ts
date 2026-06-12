@@ -24,6 +24,11 @@ const logicJsonAnchorSelector = {
   pin_ref: 'then',
 };
 
+const externalExecLinkAnchor = {
+  anchor_type: 'external_link',
+  anchor_ref: 'xlink:v1:e:aaaaaaaa.then>bbbbbbbb.execute#execfp',
+};
+
 function makeMergeExternalFlowSpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   merge?: Record<string, unknown>;
@@ -81,6 +86,27 @@ describe('GraphWrite merge_external_flow task schema', () => {
       },
     }));
     assert.equal(result.success, true);
+  });
+
+  it('accepts an external exec link compact anchor for insert_between', () => {
+    const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec({
+      merge: {
+        insert_strategy: 'insert_between',
+        anchor: externalExecLinkAnchor,
+      },
+    }));
+    assert.equal(result.success, true);
+  });
+
+  it('rejects external link compact anchors outside insert_between', () => {
+    const result = GraphWriteTaskSpecSchema.safeParse(makeMergeExternalFlowSpec({
+      merge: {
+        insert_strategy: 'append_after',
+        anchor: externalExecLinkAnchor,
+      },
+    }));
+    assert.equal(result.success, false);
+    assert.match(result.error.issues.map((issue) => issue.message).join('\n'), /insert_strategy="insert_between"/i);
   });
 
   it('rejects ambiguous LogicJson selector refs', () => {

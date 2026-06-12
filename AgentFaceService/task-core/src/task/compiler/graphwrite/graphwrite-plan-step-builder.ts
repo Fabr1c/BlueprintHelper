@@ -120,10 +120,16 @@ export function makeGraphWriteTaskPlanSteps(
     }
   }
 
-  if (strategy === 'merge_external_flow' || strategy === 'patch_external_graph' || strategy === 'replace_external_body') {
+  if (
+    strategy === 'merge_external_flow'
+    || strategy === 'patch_external_graph'
+    || strategy === 'patch_external_links'
+    || strategy === 'replace_external_body'
+  ) {
     const mutationPolicyByStrategy: Record<string, string[]> = {
       merge_external_flow: ['exec_boundary_link'],
-      patch_external_graph: ['pin_default', 'node_comment'],
+      patch_external_graph: ['pin_default', 'node_comment', 'node_property'],
+      patch_external_links: ['link_connect', 'link_disconnect', 'link_replace'],
       replace_external_body: ['body_replace'],
     };
     return graphWriteOps.map((op, index) => ({

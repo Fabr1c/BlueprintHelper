@@ -40,7 +40,7 @@ test('GraphWrite function parameter slot is scoped to function body discovery', 
     'graph.append.custom_event',
     'graph.replace.event_body',
     'graph.patch.pin_default',
-    'graph.merge_external_flow.append_after',
+    'graph.merge_external_flow.insert_between',
   ]) {
     assert.equal(
       getGraphWriteSlotsForRoute(routeId, 'expression')
@@ -65,7 +65,7 @@ test('GraphWrite return slot is scoped to function body discovery', () => {
     'graph.append.custom_event',
     'graph.replace.event_body',
     'graph.patch.pin_default',
-    'graph.merge_external_flow.append_after',
+    'graph.merge_external_flow.insert_between',
   ]) {
     assert.equal(
       getGraphWriteSlotsForRoute(routeId, 'statement')

@@ -44,6 +44,7 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperMergeExternalFlowService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperPatchExternalGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperPatchExternalLinksService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalDependentsAnalysisService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperReplaceExternalBodyService.h"
@@ -129,6 +130,7 @@ void FBlueprintHelperModule::StartupModule()
 	MergeExternalFlowService = MakeUnique<FBlueprintHelperMergeExternalFlowService>(
 		*GraphResolver, *BlockIdService, *OwnershipService, *LogicJsonPathService);
 	PatchExternalGraphService = MakeUnique<FBlueprintHelperPatchExternalGraphService>();
+	PatchExternalLinksService = MakeUnique<FBlueprintHelperPatchExternalLinksService>();
 	ExternalBodySnapshotService = MakeUnique<FBlueprintHelperExternalBodySnapshotService>();
 	ExternalDependentsAnalysisService = MakeUnique<FBlueprintHelperExternalDependentsAnalysisService>();
 	ReplaceExternalBodyService = MakeUnique<FBlueprintHelperReplaceExternalBodyService>(
@@ -172,6 +174,12 @@ void FBlueprintHelperModule::StartupModule()
 		[this](const TSharedRef<FJsonObject>& Payload)
 		{
 			return PatchExternalGraphService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("patch_external_links"),
+		[this](const TSharedRef<FJsonObject>& Payload)
+		{
+			return PatchExternalLinksService->Execute(Payload);
 		});
 	GraphWriteServiceRegistry->RegisterHandler(
 		TEXT("replace_external_body"),

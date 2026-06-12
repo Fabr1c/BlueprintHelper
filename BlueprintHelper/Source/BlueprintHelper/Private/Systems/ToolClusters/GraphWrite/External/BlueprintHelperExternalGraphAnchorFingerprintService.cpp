@@ -3,6 +3,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "Misc/Crc.h"
+#include "Misc/SecureHash.h"
 
 namespace BlueprintHelperExternalGraphAnchorFingerprint
 {
@@ -66,6 +67,13 @@ namespace BlueprintHelperExternalGraphAnchorFingerprint
 	{
 		return FString::Printf(TEXT("%08x"), FCrc::StrCrc32(*StableText));
 	}
+
+	static FString HashStableTextSha1Short(const FString& StableText)
+	{
+		const FTCHARToUTF8 Utf8Text(*StableText);
+		const FSHAHash Hash = FSHA1::HashBuffer(Utf8Text.Get(), Utf8Text.Length());
+		return Hash.ToString().Left(10).ToLower();
+	}
 }
 
 FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildNodeFingerprint(const UEdGraphNode* Node) const
@@ -114,6 +122,28 @@ FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildPinFingerpri
 	return BlueprintHelperExternalGraphAnchorFingerprint::HashStableText(StableText);
 }
 
+FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildCompactNodeFingerprint(const UEdGraphNode* Node) const
+{
+	const FString ExpandedFingerprint = BuildNodeFingerprint(Node);
+	return ExpandedFingerprint.Len() <= 10 ? ExpandedFingerprint : ExpandedFingerprint.Left(10);
+}
+
+FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildCompactPinFingerprint(const UEdGraphPin* Pin) const
+{
+	const UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
+	if (!Pin || !Node)
+	{
+		return TEXT("");
+	}
+
+	const FString StableText = FString::Printf(
+		TEXT("%s|%s|%s"),
+		*BlueprintHelperExternalGraphAnchorFingerprint::NodeGuidString(Node),
+		*Pin->PinName.ToString(),
+		*BuildNodeFingerprint(Node));
+	return BlueprintHelperExternalGraphAnchorFingerprint::HashStableTextSha1Short(StableText);
+}
+
 FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildExecBoundaryFingerprint(const UEdGraphPin* SourcePin) const
 {
 	const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
@@ -150,4 +180,28 @@ FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildExecBoundary
 	}
 
 	return BlueprintHelperExternalGraphAnchorFingerprint::HashStableText(StableText);
+}
+
+FString FBlueprintHelperExternalGraphAnchorFingerprintService::BuildLinkFingerprint(
+	const UEdGraphPin* SourcePin,
+	const UEdGraphPin* TargetPin,
+	const FString& LinkKind) const
+{
+	const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
+	const UEdGraphNode* TargetNode = TargetPin ? TargetPin->GetOwningNode() : nullptr;
+	if (!SourcePin || !TargetPin || !SourceNode || !TargetNode)
+	{
+		return TEXT("");
+	}
+
+	const FString StableText = FString::Printf(
+		TEXT("%s|%s|%s|%s|%s|%s|%s"),
+		*LinkKind.ToLower(),
+		*BlueprintHelperExternalGraphAnchorFingerprint::NodeGuidString(SourceNode),
+		*SourcePin->PinName.ToString(),
+		*BuildNodeFingerprint(SourceNode),
+		*BlueprintHelperExternalGraphAnchorFingerprint::NodeGuidString(TargetNode),
+		*TargetPin->PinName.ToString(),
+		*BuildNodeFingerprint(TargetNode));
+	return BlueprintHelperExternalGraphAnchorFingerprint::HashStableTextSha1Short(StableText);
 }

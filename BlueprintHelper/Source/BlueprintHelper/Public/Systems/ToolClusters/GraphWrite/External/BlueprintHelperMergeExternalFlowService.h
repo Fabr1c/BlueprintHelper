@@ -38,6 +38,7 @@ public:
 		EBlueprintHelperInsertStrategy InsertStrategy = EBlueprintHelperInsertStrategy::AppendAfter;
 		FBlueprintHelperExternalGraphAnchor Anchor;
 		FBlueprintHelperLogicJsonAnchorSelector AnchorSelector;
+		FBlueprintHelperExternalCompactAnchor CompactLinkAnchor;
 		FString AnchorParseError;
 		FString InsertedBlockId;
 		FString FeatureName;
@@ -45,6 +46,7 @@ public:
 		TArray<FString> SequenceOrder;
 		bool bSequenceOrderHadInvalidEntry = false;
 		bool bHasAnchorSelector = false;
+		bool bHasCompactLinkAnchor = false;
 		bool bDryRun = false;
 	};
 
@@ -85,6 +87,7 @@ private:
 		const FMergeExternalFlowRequest& Request,
 		const FMergeExternalFlowContext& Context,
 		FBlueprintHelperExternalGraphAnchor& OutAnchor,
+		UEdGraphPin*& OutExpectedSuccessorPin,
 		FString& OutErrorCode,
 		FString& OutErrorMessage,
 		FString& OutErrorTarget,

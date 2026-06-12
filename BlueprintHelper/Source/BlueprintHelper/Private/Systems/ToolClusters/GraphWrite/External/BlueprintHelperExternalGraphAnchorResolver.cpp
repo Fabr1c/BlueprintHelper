@@ -123,6 +123,116 @@ namespace BlueprintHelperExternalGraphAnchorResolver
 		}
 		return nullptr;
 	}
+
+	static FString CompactNodeKey(const UEdGraphNode* Node)
+	{
+		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
+		return Guid.Len() <= 8 ? Guid : Guid.Left(8);
+	}
+
+	static FString CompactPinKey(const UEdGraphPin* Pin)
+	{
+		FString Cleaned;
+		const FString Raw = Pin ? Pin->PinName.ToString() : FString();
+		Cleaned.Reserve(Raw.Len());
+		for (const TCHAR Ch : Raw)
+		{
+			if (FChar::IsAlnum(Ch) || Ch == TCHAR('_'))
+			{
+				Cleaned.AppendChar(Ch);
+			}
+		}
+		if (Cleaned.Len() > 16)
+		{
+			Cleaned = Cleaned.Left(16);
+		}
+		return Cleaned.IsEmpty() ? FString(TEXT("pin")) : Cleaned;
+	}
+
+	static FString CompactLinkKindToString(EBlueprintHelperExternalCompactLinkKind Kind)
+	{
+		if (Kind == EBlueprintHelperExternalCompactLinkKind::Exec)
+		{
+			return TEXT("exec");
+		}
+		if (Kind == EBlueprintHelperExternalCompactLinkKind::Data)
+		{
+			return TEXT("data");
+		}
+		return TEXT("unknown");
+	}
+
+	static bool ResolveCompactNode(
+		UEdGraph* Graph,
+		const FString& NodeKey,
+		UEdGraphNode*& OutNode,
+		FString& OutError)
+	{
+		OutNode = nullptr;
+		if (!Graph || NodeKey.IsEmpty())
+		{
+			OutError = TEXT("external_anchor_ref_invalid");
+			return false;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node || !CompactNodeKey(Node).Equals(NodeKey, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			if (OutNode)
+			{
+				OutError = TEXT("external_anchor_ambiguous");
+				OutNode = nullptr;
+				return false;
+			}
+			OutNode = Node;
+		}
+
+		if (!OutNode)
+		{
+			OutError = TEXT("external_anchor_node_not_found");
+			return false;
+		}
+		return true;
+	}
+
+	static bool ResolveCompactPinOnNode(
+		UEdGraphNode* Node,
+		const FString& PinKey,
+		UEdGraphPin*& OutPin,
+		FString& OutError)
+	{
+		OutPin = nullptr;
+		if (!Node || PinKey.IsEmpty())
+		{
+			OutError = TEXT("external_anchor_ref_invalid");
+			return false;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || !CompactPinKey(Pin).Equals(PinKey, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			if (OutPin)
+			{
+				OutError = TEXT("external_anchor_ambiguous");
+				OutPin = nullptr;
+				return false;
+			}
+			OutPin = Pin;
+		}
+
+		if (!OutPin)
+		{
+			OutError = TEXT("external_anchor_pin_not_found");
+			return false;
+		}
+		return true;
+	}
 }
 
 bool FBlueprintHelperExternalGraphAnchorResolver::ResolveNode(
@@ -208,5 +318,154 @@ bool FBlueprintHelperExternalGraphAnchorResolver::ResolvePin(
 	}
 
 	OutPin = Pin;
+	return true;
+}
+
+bool FBlueprintHelperExternalGraphAnchorResolver::ResolveCompactPin(
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FBlueprintHelperExternalCompactAnchor& Anchor,
+	UEdGraphPin*& OutPin,
+	FString& OutError) const
+{
+	OutPin = nullptr;
+	if (Anchor.Type != EBlueprintHelperExternalCompactAnchorType::Pin)
+	{
+		OutError = TEXT("external_anchor_ref_unsupported");
+		return false;
+	}
+
+	UBlueprint* Blueprint = BlueprintHelperExternalGraphAnchorResolver::FindBlueprint(AssetPath);
+	UEdGraph* Graph = BlueprintHelperExternalGraphAnchorResolver::FindGraph(Blueprint, GraphName);
+	if (!Graph)
+	{
+		OutError = Blueprint ? TEXT("external_anchor_graph_not_found") : TEXT("external_anchor_blueprint_not_found");
+		return false;
+	}
+
+	UEdGraphNode* Node = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactNode(Graph, Anchor.NodeKey, Node, OutError))
+	{
+		return false;
+	}
+
+	UEdGraphPin* Pin = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactPinOnNode(Node, Anchor.PinKey, Pin, OutError))
+	{
+		return false;
+	}
+
+	const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+	if (!FingerprintService.BuildCompactPinFingerprint(Pin).Equals(Anchor.Fingerprint, ESearchCase::IgnoreCase))
+	{
+		OutError = TEXT("external_anchor_stale");
+		return false;
+	}
+
+	OutPin = Pin;
+	return true;
+}
+
+bool FBlueprintHelperExternalGraphAnchorResolver::ResolveCompactNode(
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FBlueprintHelperExternalCompactAnchor& Anchor,
+	UEdGraphNode*& OutNode,
+	FString& OutError) const
+{
+	OutNode = nullptr;
+	if (Anchor.Type != EBlueprintHelperExternalCompactAnchorType::Node)
+	{
+		OutError = TEXT("external_anchor_ref_unsupported");
+		return false;
+	}
+
+	UBlueprint* Blueprint = BlueprintHelperExternalGraphAnchorResolver::FindBlueprint(AssetPath);
+	UEdGraph* Graph = BlueprintHelperExternalGraphAnchorResolver::FindGraph(Blueprint, GraphName);
+	if (!Graph)
+	{
+		OutError = Blueprint ? TEXT("external_anchor_graph_not_found") : TEXT("external_anchor_blueprint_not_found");
+		return false;
+	}
+
+	UEdGraphNode* Node = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactNode(Graph, Anchor.NodeKey, Node, OutError))
+	{
+		return false;
+	}
+
+	const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+	if (!FingerprintService.BuildCompactNodeFingerprint(Node).Equals(Anchor.Fingerprint, ESearchCase::IgnoreCase))
+	{
+		OutError = TEXT("external_anchor_stale");
+		return false;
+	}
+
+	OutNode = Node;
+	return true;
+}
+
+bool FBlueprintHelperExternalGraphAnchorResolver::ResolveCompactLink(
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FBlueprintHelperExternalCompactAnchor& Anchor,
+	FBlueprintHelperExternalGraphLinkResolution& OutLink,
+	FString& OutError) const
+{
+	OutLink = FBlueprintHelperExternalGraphLinkResolution();
+	if (Anchor.Type != EBlueprintHelperExternalCompactAnchorType::Link)
+	{
+		OutError = TEXT("external_anchor_ref_unsupported");
+		return false;
+	}
+
+	UBlueprint* Blueprint = BlueprintHelperExternalGraphAnchorResolver::FindBlueprint(AssetPath);
+	UEdGraph* Graph = BlueprintHelperExternalGraphAnchorResolver::FindGraph(Blueprint, GraphName);
+	if (!Graph)
+	{
+		OutError = Blueprint ? TEXT("external_anchor_graph_not_found") : TEXT("external_anchor_blueprint_not_found");
+		return false;
+	}
+
+	UEdGraphNode* SourceNode = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactNode(Graph, Anchor.SourceNodeKey, SourceNode, OutError))
+	{
+		return false;
+	}
+	UEdGraphNode* TargetNode = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactNode(Graph, Anchor.TargetNodeKey, TargetNode, OutError))
+	{
+		return false;
+	}
+
+	UEdGraphPin* SourcePin = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactPinOnNode(SourceNode, Anchor.SourcePinKey, SourcePin, OutError))
+	{
+		return false;
+	}
+	UEdGraphPin* TargetPin = nullptr;
+	if (!BlueprintHelperExternalGraphAnchorResolver::ResolveCompactPinOnNode(TargetNode, Anchor.TargetPinKey, TargetPin, OutError))
+	{
+		return false;
+	}
+
+	if (!SourcePin->LinkedTo.Contains(TargetPin))
+	{
+		OutError = TEXT("external_link_not_found");
+		return false;
+	}
+
+	const FString LinkKind = BlueprintHelperExternalGraphAnchorResolver::CompactLinkKindToString(Anchor.LinkKind);
+	const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+	const FString CurrentFingerprint = FingerprintService.BuildLinkFingerprint(SourcePin, TargetPin, LinkKind);
+	if (!CurrentFingerprint.Equals(Anchor.Fingerprint, ESearchCase::IgnoreCase))
+	{
+		OutError = TEXT("external_anchor_stale");
+		return false;
+	}
+
+	OutLink.SourcePin = SourcePin;
+	OutLink.TargetPin = TargetPin;
+	OutLink.LinkKind = LinkKind;
 	return true;
 }

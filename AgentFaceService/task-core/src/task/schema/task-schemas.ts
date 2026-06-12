@@ -756,6 +756,63 @@ const ExternalGraphAnchorSchema = z.object({
   fingerprint: z.string().min(1),
 }).strict();
 
+const ExternalCompactAnchorSchema = z.object({
+  anchor_type: z.enum(['external_node', 'external_pin', 'external_link', 'external_body']),
+  anchor_ref: z.string().min(1),
+}).strict().superRefine((value, ctx) => {
+  const prefixByType: Record<string, string> = {
+    external_node: 'xnode:v1:',
+    external_pin: 'xpin:v1:',
+    external_link: 'xlink:v1:',
+    external_body: 'xbody:v1:',
+  };
+  const expectedPrefix = prefixByType[value.anchor_type];
+  if (!value.anchor_ref.startsWith(expectedPrefix)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor_ref'],
+      message: `${value.anchor_type} requires compact anchor_ref prefix ${expectedPrefix}.`,
+    });
+  }
+  if (/^(nodes|pins|links)\[\d+\]$/u.test(value.anchor_ref.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor_ref'],
+      message: 'Read-view refs such as links[n] are display-only and cannot be used for external graph writes.',
+    });
+  }
+});
+
+const ExternalCompactPinAnchorSchema = ExternalCompactAnchorSchema.superRefine((value, ctx) => {
+  if (value.anchor_type !== 'external_pin') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor_type'],
+      message: 'external link connect/replace endpoints require anchor_type="external_pin".',
+    });
+  }
+});
+
+const ExternalCompactNodeAnchorSchema = ExternalCompactAnchorSchema.superRefine((value, ctx) => {
+  if (value.anchor_type !== 'external_node') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor_type'],
+      message: 'external node patches require anchor_type="external_node".',
+    });
+  }
+});
+
+const ExternalCompactLinkAnchorSchema = ExternalCompactAnchorSchema.superRefine((value, ctx) => {
+  if (value.anchor_type !== 'external_link') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['anchor_type'],
+      message: 'external link disconnect/replace requires anchor_type="external_link".',
+    });
+  }
+});
+
 const ExternalExecBoundaryAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
   if (value.semantic_role !== 'exec_boundary') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'merge_external_flow requires semantic_role="exec_boundary".' });
@@ -830,12 +887,24 @@ const ExternalGraphWriteInsertedBodySchema = z.object({
 const GraphWriteExternalMergeSchema = z.object({
   kind: z.literal('insert_external_flow'),
   insert_strategy: z.enum(['append_after', 'insert_between', 'branch_fork']),
-  anchor: z.union([ExternalExecBoundaryAnchorSchema, LogicJsonAnchorSelectorSchema]),
+  anchor: z.union([ExternalExecBoundaryAnchorSchema, LogicJsonAnchorSelectorSchema, ExternalCompactLinkAnchorSchema]),
   inserted: z.object({
     body: ExternalGraphWriteInsertedBodySchema,
   }).passthrough(),
   sequence_order: z.array(z.enum(['inserted_logic', 'original_successor'])).optional(),
 }).passthrough().superRefine((value, ctx) => {
+  if (
+    value.anchor &&
+    'anchor_type' in value.anchor &&
+    value.anchor.anchor_type === 'external_link' &&
+    value.insert_strategy !== 'insert_between'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['insert_strategy'],
+      message: 'external_link anchors are only valid for merge_external_flow insert_strategy="insert_between".',
+    });
+  }
   if (value.insert_strategy === 'branch_fork') {
     if (!value.sequence_order || value.sequence_order.length === 0) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence_order'], message: 'branch_fork requires sequence_order.' });
@@ -855,19 +924,53 @@ const GraphWriteExternalMergeSchema = z.object({
 });
 
 const GraphWriteExternalPatchSchema = z.object({
-  kind: z.enum(['set_external_pin_default', 'set_external_node_comment']),
-  anchor: ExternalNodeAnchorSchema,
+  kind: z.enum(['set_external_pin_default', 'set_external_node_comment', 'set_external_node_property']),
+  anchor: z.union([ExternalNodeAnchorSchema, ExternalCompactNodeAnchorSchema]),
+  property_descriptor_id: z.enum(['k2.node.comment', 'k2.call.function_target', 'k2.field.member_reference']).optional(),
   value: z.unknown(),
   expected_old_state: z.record(z.unknown()),
 }).strict().superRefine((value, ctx) => {
-  if (value.kind === 'set_external_pin_default' && !value.anchor.pin_name) {
+  const isCompactAnchor = 'anchor_type' in value.anchor;
+  const hasPinName = !isCompactAnchor && 'pin_name' in value.anchor && Boolean(value.anchor.pin_name);
+  if (value.kind === 'set_external_pin_default' && !hasPinName) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['anchor', 'pin_name'],
       message: 'set_external_pin_default requires anchor.pin_name.',
     });
   }
+  if (value.kind === 'set_external_node_property' && !value.property_descriptor_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['property_descriptor_id'],
+      message: 'set_external_node_property requires property_descriptor_id.',
+    });
+  }
+  if (value.kind !== 'set_external_node_property' && value.property_descriptor_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['property_descriptor_id'],
+      message: 'property_descriptor_id is only valid for set_external_node_property.',
+    });
+  }
 });
+
+const GraphWriteExternalLinkPatchSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('connect_pins'),
+    source: ExternalCompactPinAnchorSchema,
+    target: ExternalCompactPinAnchorSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('disconnect_link'),
+    anchor: ExternalCompactLinkAnchorSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('replace_link'),
+    anchor: ExternalCompactLinkAnchorSchema,
+    replacement: ExternalCompactPinAnchorSchema,
+  }).strict(),
+]);
 
 const GraphWriteExternalReplaceBodySchema = z.object({
   scope: z.enum(['custom_event_body', 'event_body', 'function_body']),
@@ -878,7 +981,7 @@ const GraphWriteExternalReplaceBodySchema = z.object({
 }).strict();
 
 const ExternalMutationPolicySchema = z.object({
-  strategy: z.enum(['merge_external_flow', 'patch_external_graph', 'replace_external_body']),
+  strategy: z.enum(['merge_external_flow', 'patch_external_graph', 'patch_external_links', 'replace_external_body']),
   allowed_mutations: z.array(z.string().min(1)).min(1),
 }).passthrough();
 
@@ -890,7 +993,8 @@ function validateExactExternalMutationPolicy(input: {
   const { strategy, scopePolicy, ctx } = input;
   const requiredMutationsByStrategy: Record<string, string[]> = {
     merge_external_flow: ['exec_boundary_link'],
-    patch_external_graph: ['pin_default', 'node_comment'],
+    patch_external_graph: ['pin_default', 'node_comment', 'node_property'],
+    patch_external_links: ['link_connect', 'link_disconnect', 'link_replace'],
     replace_external_body: ['body_replace'],
   };
   const expectedMutations = requiredMutationsByStrategy[strategy];
@@ -950,6 +1054,7 @@ const GraphWriteBehaviorSchema = z.object({
   merges: z.array(GraphWriteMergeSchema).min(1).optional(),
   external_merges: z.array(GraphWriteExternalMergeSchema).min(1).optional(),
   external_patches: z.array(GraphWriteExternalPatchSchema).min(1).optional(),
+  external_link_patches: z.array(GraphWriteExternalLinkPatchSchema).min(1).optional(),
   external_replace: GraphWriteExternalReplaceBodySchema.optional(),
 }).passthrough().superRefine((value, ctx) => {
   const requiredFieldByStrategy = getGraphWriteRequiredFieldByStrategy();
@@ -962,7 +1067,7 @@ const GraphWriteBehaviorSchema = z.object({
       message: `${value.graph_strategy} requires behavior.${requiredField}.`,
     });
   }
-  (['entries', 'replace', 'patches', 'merges', 'external_merges', 'external_patches', 'external_replace'] as const)
+  (['entries', 'replace', 'patches', 'merges', 'external_merges', 'external_patches', 'external_link_patches', 'external_replace'] as const)
     .filter((field) => field !== requiredField && value[field] !== undefined)
     .forEach((field) => {
       ctx.addIssue({

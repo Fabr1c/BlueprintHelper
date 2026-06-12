@@ -14,6 +14,7 @@ enum class EBlueprintHelperGraphWriteMutationIntentKind : uint8
 	ConnectPins,
 	DisconnectPins,
 	ReplacePinConnection,
+	ReplaceSourcePinConnection,
 	Unknown
 };
 
@@ -31,6 +32,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphWriteMutationIntent
 	FString DefaultValue;
 	FBlueprintHelperGraphWritePinEndpoint Source;
 	FBlueprintHelperGraphWritePinEndpoint Target;
+	FBlueprintHelperGraphWritePinEndpoint ReplacementSource;
 	FBlueprintHelperGraphWritePinEndpoint ReplacementTarget;
 	UEdGraphNode* InsertedNode = nullptr;
 	UEdGraphPin* OriginalSuccessorPin = nullptr;

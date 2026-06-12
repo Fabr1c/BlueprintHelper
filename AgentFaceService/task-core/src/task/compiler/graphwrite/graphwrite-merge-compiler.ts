@@ -5,7 +5,7 @@ import {
   compileLogicBodyToSemanticLogicSpec,
   getRequiredLogicBody,
   getRequiredString,
-  normalizeExternalExecBoundaryAnchor,
+  normalizeExternalFlowAnchor,
   normalizeMergeAnchor,
   normalizeMergeInserted,
   normalizeMergeSequenceOrder,
@@ -111,7 +111,7 @@ export function compileExternalMergeGraphWriteOps(
     return omitUndefined({
       op: 'insert_external_flow',
       insert_strategy: insertStrategy,
-      anchor: normalizeExternalExecBoundaryAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), `${path}.anchor`),
+      anchor: normalizeExternalFlowAnchor(requiredRecord(merge, 'anchor', `${path}.anchor`), insertStrategy, `${path}.anchor`),
       inserted: {
         body: compileLogicBodyToSemanticLogicSpec(body, `external_merge_${index}`, options),
       },

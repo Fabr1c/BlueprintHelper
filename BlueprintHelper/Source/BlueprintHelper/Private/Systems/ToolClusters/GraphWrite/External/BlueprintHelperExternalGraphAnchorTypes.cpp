@@ -1,5 +1,109 @@
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
 
+struct FBlueprintHelperCompactAnchorParts
+{
+	FString Prefix;
+	FString Body;
+	FString Fingerprint;
+};
+
+static bool BlueprintHelperSplitCompactAnchorRef(
+	const FString& AnchorRef,
+	const FString& ExpectedPrefix,
+	FBlueprintHelperCompactAnchorParts& OutParts)
+{
+	if (!AnchorRef.StartsWith(ExpectedPrefix))
+	{
+		return false;
+	}
+
+	FString Left;
+	if (!AnchorRef.Split(TEXT("#"), &Left, &OutParts.Fingerprint, ESearchCase::CaseSensitive, ESearchDir::FromEnd) ||
+		OutParts.Fingerprint.IsEmpty())
+	{
+		return false;
+	}
+
+	OutParts.Prefix = ExpectedPrefix;
+	OutParts.Body = Left.RightChop(ExpectedPrefix.Len());
+	return !OutParts.Body.IsEmpty();
+}
+
+static EBlueprintHelperExternalCompactLinkKind BlueprintHelperCompactLinkKindFromPrefix(const FString& Value)
+{
+	if (Value.Equals(TEXT("e"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperExternalCompactLinkKind::Exec;
+	}
+	if (Value.Equals(TEXT("d"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperExternalCompactLinkKind::Data;
+	}
+	return EBlueprintHelperExternalCompactLinkKind::Unknown;
+}
+
+static bool BlueprintHelperParseCompactPinBody(
+	const FString& Body,
+	EBlueprintHelperExternalCompactLinkKind& OutKind,
+	FString& OutNodeKey,
+	FString& OutPinKey)
+{
+	FString KindPart;
+	FString EndpointPart;
+	if (!Body.Split(TEXT(":"), &KindPart, &EndpointPart) || EndpointPart.IsEmpty())
+	{
+		return false;
+	}
+
+	FString NodePart;
+	FString PinPart;
+	if (!EndpointPart.Split(TEXT("."), &NodePart, &PinPart) || NodePart.IsEmpty() || PinPart.IsEmpty())
+	{
+		return false;
+	}
+
+	OutKind = BlueprintHelperCompactLinkKindFromPrefix(KindPart);
+	OutNodeKey = NodePart;
+	OutPinKey = PinPart;
+	return OutKind != EBlueprintHelperExternalCompactLinkKind::Unknown;
+}
+
+static bool BlueprintHelperParseCompactLinkBody(
+	const FString& Body,
+	EBlueprintHelperExternalCompactLinkKind& OutKind,
+	FString& OutSourceNodeKey,
+	FString& OutSourcePinKey,
+	FString& OutTargetNodeKey,
+	FString& OutTargetPinKey)
+{
+	FString KindPart;
+	FString EndpointsPart;
+	if (!Body.Split(TEXT(":"), &KindPart, &EndpointsPart) || EndpointsPart.IsEmpty())
+	{
+		return false;
+	}
+
+	FString SourcePart;
+	FString TargetPart;
+	if (!EndpointsPart.Split(TEXT(">"), &SourcePart, &TargetPart) || SourcePart.IsEmpty() || TargetPart.IsEmpty())
+	{
+		return false;
+	}
+
+	if (!SourcePart.Split(TEXT("."), &OutSourceNodeKey, &OutSourcePinKey) ||
+		!TargetPart.Split(TEXT("."), &OutTargetNodeKey, &OutTargetPinKey) ||
+		OutSourceNodeKey.IsEmpty() ||
+		OutSourcePinKey.IsEmpty() ||
+		OutTargetNodeKey.IsEmpty() ||
+		OutTargetPinKey.IsEmpty())
+	{
+		return false;
+	}
+
+	OutKind = BlueprintHelperCompactLinkKindFromPrefix(KindPart);
+	return OutKind != EBlueprintHelperExternalCompactLinkKind::Unknown;
+}
+
 TSharedRef<FJsonObject> FBlueprintHelperExternalGraphAnchor::ToJson() const
 {
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
@@ -93,6 +197,77 @@ bool FBlueprintHelperExternalGraphAnchor::FromJson(
 	Json->TryGetStringField(TEXT("pin_direction"), OutAnchor.PinDirection);
 	Json->TryGetStringField(TEXT("fingerprint"), OutAnchor.Fingerprint);
 	return true;
+}
+
+bool FBlueprintHelperExternalCompactAnchor::FromJson(
+	const TSharedPtr<FJsonObject>& Json,
+	FBlueprintHelperExternalCompactAnchor& OutAnchor,
+	FString& OutError)
+{
+	if (!Json.IsValid())
+	{
+		OutError = TEXT("external_anchor_ref_invalid");
+		return false;
+	}
+
+	OutAnchor = FBlueprintHelperExternalCompactAnchor();
+	if (!Json->TryGetStringField(TEXT("anchor_type"), OutAnchor.AnchorType) ||
+		!Json->TryGetStringField(TEXT("anchor_ref"), OutAnchor.AnchorRef) ||
+		OutAnchor.AnchorType.IsEmpty() ||
+		OutAnchor.AnchorRef.IsEmpty())
+	{
+		OutError = TEXT("external_anchor_ref_invalid");
+		return false;
+	}
+
+	FBlueprintHelperCompactAnchorParts Parts;
+	if (OutAnchor.AnchorType.Equals(TEXT("external_pin"), ESearchCase::IgnoreCase))
+	{
+		if (!BlueprintHelperSplitCompactAnchorRef(OutAnchor.AnchorRef, TEXT("xpin:v1:"), Parts) ||
+			!BlueprintHelperParseCompactPinBody(Parts.Body, OutAnchor.LinkKind, OutAnchor.NodeKey, OutAnchor.PinKey))
+		{
+			OutError = TEXT("external_anchor_ref_invalid");
+			return false;
+		}
+		OutAnchor.Type = EBlueprintHelperExternalCompactAnchorType::Pin;
+		OutAnchor.Fingerprint = Parts.Fingerprint;
+		return true;
+	}
+
+	if (OutAnchor.AnchorType.Equals(TEXT("external_node"), ESearchCase::IgnoreCase))
+	{
+		if (!BlueprintHelperSplitCompactAnchorRef(OutAnchor.AnchorRef, TEXT("xnode:v1:"), Parts))
+		{
+			OutError = TEXT("external_anchor_ref_invalid");
+			return false;
+		}
+		OutAnchor.Type = EBlueprintHelperExternalCompactAnchorType::Node;
+		OutAnchor.NodeKey = Parts.Body;
+		OutAnchor.Fingerprint = Parts.Fingerprint;
+		return true;
+	}
+
+	if (OutAnchor.AnchorType.Equals(TEXT("external_link"), ESearchCase::IgnoreCase))
+	{
+		if (!BlueprintHelperSplitCompactAnchorRef(OutAnchor.AnchorRef, TEXT("xlink:v1:"), Parts) ||
+			!BlueprintHelperParseCompactLinkBody(
+				Parts.Body,
+				OutAnchor.LinkKind,
+				OutAnchor.SourceNodeKey,
+				OutAnchor.SourcePinKey,
+				OutAnchor.TargetNodeKey,
+				OutAnchor.TargetPinKey))
+		{
+			OutError = TEXT("external_anchor_ref_invalid");
+			return false;
+		}
+		OutAnchor.Type = EBlueprintHelperExternalCompactAnchorType::Link;
+		OutAnchor.Fingerprint = Parts.Fingerprint;
+		return true;
+	}
+
+	OutError = TEXT("external_anchor_ref_unsupported");
+	return false;
 }
 
 bool FBlueprintHelperLogicJsonAnchorSelector::FromJson(

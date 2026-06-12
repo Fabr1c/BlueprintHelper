@@ -298,6 +298,242 @@ FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::ReadStringField(
 	return Value;
 }
 
+TSharedPtr<FJsonObject> FBlueprintHelperGraphWriteReviewEvidenceBuilder::ReadObjectField(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FieldName)
+{
+	const TSharedPtr<FJsonObject>* Child = nullptr;
+	if (Object.IsValid() && Object->TryGetObjectField(FieldName, Child) && Child && Child->IsValid())
+	{
+		return *Child;
+	}
+	return nullptr;
+}
+
+FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::ReadAnchorRefField(
+	const TSharedPtr<FJsonObject>& Object,
+	const TCHAR* FieldName)
+{
+	const TSharedPtr<FJsonObject> Anchor = ReadObjectField(Object, FieldName);
+	return ReadStringField(Anchor, TEXT("anchor_ref"));
+}
+
+FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::MakeReviewKeySegment(const FString& Value)
+{
+	FString Segment = Value;
+	Segment.TrimStartAndEndInline();
+	if (Segment.IsEmpty())
+	{
+		return TEXT("unknown");
+	}
+
+	for (TCHAR& Character : Segment)
+	{
+		const bool bAllowed =
+			FChar::IsAlnum(Character) ||
+			Character == TEXT('_') ||
+			Character == TEXT('-') ||
+			Character == TEXT('.');
+		if (!bAllowed)
+		{
+			Character = TEXT('_');
+		}
+	}
+	return Segment;
+}
+
+FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::MakeExternalLinkPatchAnchorRef(
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	FString AnchorRef = ReadAnchorRefField(Payload, TEXT("link_anchor"));
+	if (!AnchorRef.IsEmpty())
+	{
+		return AnchorRef;
+	}
+
+	const FString SourceRef = ReadAnchorRefField(Payload, TEXT("source_anchor"));
+	const FString TargetRef = ReadAnchorRefField(Payload, TEXT("target_anchor"));
+	if (!SourceRef.IsEmpty() && !TargetRef.IsEmpty())
+	{
+		return SourceRef + TEXT(">") + TargetRef;
+	}
+	return FString();
+}
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalLinkPatchEvidence(
+	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& OperationKind,
+	const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	const FString PatchType = ReadStringField(Input.LoweredStep.Payload, TEXT("patch_type"));
+	const FString AnchorRef = MakeExternalLinkPatchAnchorRef(Input.LoweredStep.Payload);
+	if (PatchType.IsEmpty() || AnchorRef.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString SafeGraphName = MakeReviewKeySegment(GraphName);
+	const FString SafePatchType = MakeReviewKeySegment(PatchType);
+	const FString SafeAnchorRef = MakeReviewKeySegment(AnchorRef);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_link");
+	Target.TargetSubKind = PatchType;
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_link:%s:%s:%s"),
+		*SafeGraphName,
+		*SafePatchType,
+		*SafeAnchorRef);
+	Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
+	Target.LifecycleObjectKey = Target.TargetKey;
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_link|%s|%s"),
+		*SafeGraphName,
+		*SafePatchType);
+	Target.DisplayLabel = FString::Printf(TEXT("External link patch %s"), *PatchType);
+	Target.LatestEvidenceId = OutEvidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.PinPath = AnchorRef;
+	Target.PropertyPath = PatchType;
+	Target.AnchorJson = SerializePayloadForAnchor(Input.LoweredStep.Payload);
+	Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
+	Target.ExecutionOrder = Input.StepIndex;
+	Target.TaskStepIndex = Input.StepIndex;
+	Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
+	OutEvidence.AtomicTargets.Add(Target);
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =
+		ReadReviewDiagnostics(Input.StepResult, GraphName);
+	AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
+	return OutEvidence.AtomicTargets.Num() > 0;
+}
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalPropertyPatchEvidence(
+	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& OperationKind,
+	const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	const FString PatchType = ReadStringField(Input.LoweredStep.Payload, TEXT("patch_type"));
+	const TSharedPtr<FJsonObject> Anchor = ReadObjectField(Input.LoweredStep.Payload, TEXT("anchor"));
+	if (PatchType.IsEmpty() || !Anchor.IsValid())
+	{
+		return false;
+	}
+
+	FString NodeGuid;
+	FString PinName;
+	FString PropertyDescriptorId;
+	Anchor->TryGetStringField(TEXT("node_guid"), NodeGuid);
+	Anchor->TryGetStringField(TEXT("pin_name"), PinName);
+	Input.LoweredStep.Payload->TryGetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId);
+	if ((NodeGuid.IsEmpty() || PinName.IsEmpty()) && Input.StepResult.Data.IsValid())
+	{
+		const TSharedPtr<FJsonObject>* ExternalPatch = nullptr;
+		if (Input.StepResult.Data->TryGetObjectField(TEXT("external_patch"), ExternalPatch) &&
+			ExternalPatch &&
+			ExternalPatch->IsValid())
+		{
+			if (NodeGuid.IsEmpty())
+			{
+				(*ExternalPatch)->TryGetStringField(TEXT("node_guid"), NodeGuid);
+			}
+			if (PinName.IsEmpty())
+			{
+				(*ExternalPatch)->TryGetStringField(TEXT("pin_name"), PinName);
+			}
+		}
+	}
+	if (NodeGuid.IsEmpty())
+	{
+		return false;
+	}
+
+	FString FieldKind;
+	if (PatchType == TEXT("set_external_pin_default"))
+	{
+		FieldKind = TEXT("pin_default");
+	}
+	else if (PatchType == TEXT("set_external_node_property"))
+	{
+		FieldKind = PropertyDescriptorId.IsEmpty() ? TEXT("node_property") : PropertyDescriptorId;
+	}
+	else if (PatchType == TEXT("set_external_node_comment"))
+	{
+		FieldKind = TEXT("node_comment");
+	}
+	else
+	{
+		return false;
+	}
+	if (FieldKind == TEXT("pin_default") && PinName.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString SafeGraphName = MakeReviewKeySegment(GraphName);
+	const FString SafeNodeGuid = MakeReviewKeySegment(NodeGuid);
+	const FString SafeFieldKind = MakeReviewKeySegment(FieldKind);
+	const FString SafePinName = MakeReviewKeySegment(PinName);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_node");
+	Target.TargetSubKind = PatchType;
+	Target.TargetKey = FieldKind == TEXT("pin_default")
+		? FString::Printf(
+			TEXT("graph_external_node:%s:node:%s:field:%s:pin:%s"),
+			*SafeGraphName,
+			*SafeNodeGuid,
+			*SafeFieldKind,
+			*SafePinName)
+		: FString::Printf(
+			TEXT("graph_external_node:%s:node:%s:field:%s"),
+			*SafeGraphName,
+			*SafeNodeGuid,
+			*SafeFieldKind);
+	Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
+	Target.LifecycleObjectKey = Target.TargetKey;
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_node|%s|%s|%s"),
+		*SafeGraphName,
+		*SafeNodeGuid,
+		*SafeFieldKind);
+	Target.DisplayLabel = FieldKind == TEXT("pin_default")
+		? FString::Printf(TEXT("External pin default %s.%s"), *GraphName, *PinName)
+		: (PatchType == TEXT("set_external_node_property")
+			? FString::Printf(TEXT("External node property %s %s"), *GraphName, *FieldKind)
+			: FString::Printf(TEXT("External node comment %s"), *GraphName));
+	Target.LatestEvidenceId = OutEvidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.NodeGuid = NodeGuid;
+	Target.PinPath = PinName;
+	Target.PropertyPath = FieldKind;
+	Target.AnchorJson = SerializePayloadForAnchor(Input.LoweredStep.Payload);
+	Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
+	Target.ExecutionOrder = Input.StepIndex;
+	Target.TaskStepIndex = Input.StepIndex;
+	Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
+	OutEvidence.AtomicTargets.Add(Target);
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =
+		ReadReviewDiagnostics(Input.StepResult, GraphName);
+	AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
+	return OutEvidence.AtomicTargets.Num() > 0;
+}
+
 void FBlueprintHelperGraphWriteReviewEvidenceBuilder::NormalizeGraphWriteDiagnostic(
 	FBlueprintHelperDiagnosticItem& Item,
 	const FString& DefaultGraphName)
@@ -549,6 +785,27 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 	OutEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	OutEvidence.DisplayLabel = OperationKind;
 	OutEvidence.TaskStepIndex = Input.StepIndex;
+
+	if (OperationKind == TEXT("patch_external_links"))
+	{
+		return BuildExternalLinkPatchEvidence(
+			Input,
+			AssetPath,
+			GraphName,
+			OperationKind,
+			BoundaryModel,
+			OutEvidence);
+	}
+	if (OperationKind == TEXT("patch_external_graph"))
+	{
+		return BuildExternalPropertyPatchEvidence(
+			Input,
+			AssetPath,
+			GraphName,
+			OperationKind,
+			BoundaryModel,
+			OutEvidence);
+	}
 
 	const TArray<FString> BlockRefs = ReadGraphBlockRefs(Input.StepResult);
 	TArray<FString> TargetKeys;

@@ -54,6 +54,11 @@ FBlueprintGenerateResult FBlueprintHelperGraphWriteMutationCoordinator::ExecuteI
 			Result.RequestedConnectionCount++;
 			Result.CreatedConnectionCount += bOk && bChanged ? 1 : 0;
 			break;
+		case EBlueprintHelperGraphWriteMutationIntentKind::ReplaceSourcePinConnection:
+			bOk = UGraphWriteCoreUtils::ApplyReplaceLinkSource(TargetGraph, Intent.Source.Pin, Intent.Target.Pin, Intent.ReplacementSource.Pin, Error, bChanged);
+			Result.RequestedConnectionCount++;
+			Result.CreatedConnectionCount += bOk && bChanged ? 1 : 0;
+			break;
 		case EBlueprintHelperGraphWriteMutationIntentKind::AppendSemanticBody:
 		case EBlueprintHelperGraphWriteMutationIntentKind::AppendSemanticBodyAfterPin:
 			bOk = UGraphWriteCoreUtils::ApplyAppendSemanticBody(TargetGraph, Intent, Error, bChanged);

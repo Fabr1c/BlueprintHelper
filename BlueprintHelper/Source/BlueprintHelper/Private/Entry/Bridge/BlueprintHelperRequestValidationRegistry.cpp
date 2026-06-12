@@ -71,6 +71,19 @@ FBlueprintHelperRequestValidationRegistry::GetRepresentativeDescriptors()
 			},
 			{BlueprintHelperRequestValidationField(TEXT("dry_run"), EBlueprintHelperRequestFieldType::Bool)}),
 		BlueprintHelperRequestValidationDescriptor(
+			TEXT("patch_external_links"),
+			{
+				BlueprintHelperRequestValidationField(TEXT("target"), EBlueprintHelperRequestFieldType::Object),
+				BlueprintHelperRequestValidationField(TEXT("patch_type"), EBlueprintHelperRequestFieldType::String),
+			},
+			{
+				BlueprintHelperRequestValidationField(TEXT("source_anchor"), EBlueprintHelperRequestFieldType::Object),
+				BlueprintHelperRequestValidationField(TEXT("target_anchor"), EBlueprintHelperRequestFieldType::Object),
+				BlueprintHelperRequestValidationField(TEXT("link_anchor"), EBlueprintHelperRequestFieldType::Object),
+				BlueprintHelperRequestValidationField(TEXT("replacement_anchor"), EBlueprintHelperRequestFieldType::Object),
+				BlueprintHelperRequestValidationField(TEXT("dry_run"), EBlueprintHelperRequestFieldType::Bool),
+			}),
+		BlueprintHelperRequestValidationDescriptor(
 			TEXT("replace_external_body"),
 			{
 				BlueprintHelperRequestValidationField(TEXT("target"), EBlueprintHelperRequestFieldType::Object),

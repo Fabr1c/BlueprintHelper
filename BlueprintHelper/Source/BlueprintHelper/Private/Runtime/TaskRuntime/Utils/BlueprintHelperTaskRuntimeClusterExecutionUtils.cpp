@@ -277,7 +277,9 @@ static void AddTaskRuntimePatchExternalGraphReviewTargets(
 	FString PatchType;
 	FString NodeGuid;
 	FString PinName;
+	FString PropertyDescriptorId;
 	Payload->TryGetStringField(TEXT("patch_type"), PatchType);
+	Payload->TryGetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId);
 	Anchor->TryGetStringField(TEXT("node_guid"), NodeGuid);
 	Anchor->TryGetStringField(TEXT("pin_name"), PinName);
 	if (PatchType.IsEmpty() || NodeGuid.IsEmpty())
@@ -285,9 +287,19 @@ static void AddTaskRuntimePatchExternalGraphReviewTargets(
 		return;
 	}
 
-	const FString FieldKind = PatchType == TEXT("set_external_pin_default")
-		? TEXT("pin_default")
-		: TEXT("node_comment");
+	FString FieldKind;
+	if (PatchType == TEXT("set_external_pin_default"))
+	{
+		FieldKind = TEXT("pin_default");
+	}
+	else if (PatchType == TEXT("set_external_node_property"))
+	{
+		FieldKind = PropertyDescriptorId.IsEmpty() ? TEXT("node_property") : PropertyDescriptorId;
+	}
+	else
+	{
+		FieldKind = TEXT("node_comment");
+	}
 	if (FieldKind == TEXT("pin_default") && PinName.IsEmpty())
 	{
 		return;
@@ -323,7 +335,9 @@ static void AddTaskRuntimePatchExternalGraphReviewTargets(
 		*SafeFieldKind);
 	Target.DisplayLabel = FieldKind == TEXT("pin_default")
 		? FString::Printf(TEXT("External pin default %s.%s"), *GraphName, *PinName)
-		: FString::Printf(TEXT("External node comment %s"), *GraphName);
+		: (PatchType == TEXT("set_external_node_property")
+			? FString::Printf(TEXT("External node property %s %s"), *GraphName, *FieldKind)
+			: FString::Printf(TEXT("External node comment %s"), *GraphName));
 	Target.LatestEvidenceId = Evidence.EvidenceId;
 	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
 	Target.Ownership = TEXT("external_user_authored");
@@ -331,6 +345,80 @@ static void AddTaskRuntimePatchExternalGraphReviewTargets(
 	Target.PinPath = PinName;
 	Target.PropertyPath = FieldKind;
 	Target.AnchorJson = AnchorJson;
+	Target.ExecutionOrder = Evidence.TaskStepIndex;
+	Target.TaskStepIndex = Evidence.TaskStepIndex;
+	Target.AtomicIndex = Evidence.AtomicTargets.Num();
+	Evidence.AtomicTargets.Add(Target);
+}
+
+static void AddTaskRuntimePatchExternalLinksReviewTargets(
+	FBlueprintHelperWriteReviewEvidence& Evidence,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	if (!Payload.IsValid())
+	{
+		return;
+	}
+
+	const FString GraphName = ReadTaskRuntimeReviewGraphName(Payload);
+	FString PatchType;
+	Payload->TryGetStringField(TEXT("patch_type"), PatchType);
+	const TSharedPtr<FJsonObject> LinkAnchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("link_anchor"));
+	const TSharedPtr<FJsonObject> SourceAnchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("source_anchor"));
+	const TSharedPtr<FJsonObject> TargetAnchor = ReadTaskRuntimeReviewObjectField(Payload, TEXT("target_anchor"));
+	if (GraphName.IsEmpty() || PatchType.IsEmpty())
+	{
+		return;
+	}
+
+	FString AnchorRef;
+	if (LinkAnchor.IsValid())
+	{
+		LinkAnchor->TryGetStringField(TEXT("anchor_ref"), AnchorRef);
+	}
+	if (AnchorRef.IsEmpty() && SourceAnchor.IsValid() && TargetAnchor.IsValid())
+	{
+		FString SourceRef;
+		FString TargetRef;
+		SourceAnchor->TryGetStringField(TEXT("anchor_ref"), SourceRef);
+		TargetAnchor->TryGetStringField(TEXT("anchor_ref"), TargetRef);
+		if (!SourceRef.IsEmpty() && !TargetRef.IsEmpty())
+		{
+			AnchorRef = SourceRef + TEXT(">") + TargetRef;
+		}
+	}
+	if (AnchorRef.IsEmpty())
+	{
+		return;
+	}
+
+	const FString PayloadText = SerializeTaskRuntimeReviewPayload(Payload);
+	const FString SafeGraphName = MakeTaskRuntimeReviewRefSegment(GraphName);
+	const FString SafePatchType = MakeTaskRuntimeReviewRefSegment(PatchType);
+	const FString SafeAnchorRef = MakeTaskRuntimeReviewRefSegment(AnchorRef);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Evidence.AssetPath;
+	Target.Surface = EBlueprintHelperReviewSurface::Graph;
+	Target.GraphName = GraphName;
+	Target.TargetKind = TEXT("graph_external_link");
+	Target.TargetSubKind = PatchType;
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_link:%s:%s:%s"),
+		*SafeGraphName,
+		*SafePatchType,
+		*SafeAnchorRef);
+	Target.VisualGroupKey = FString::Printf(
+		TEXT("graph_external_link|%s|%s"),
+		*SafeGraphName,
+		*SafePatchType);
+	Target.DisplayLabel = FString::Printf(TEXT("External link patch %s"), *PatchType);
+	Target.LatestEvidenceId = Evidence.EvidenceId;
+	Target.SourceEvidenceIds.Add(Evidence.EvidenceId);
+	Target.Ownership = TEXT("external_user_authored");
+	Target.PinPath = AnchorRef;
+	Target.PropertyPath = PatchType;
+	Target.AnchorJson = PayloadText;
 	Target.ExecutionOrder = Evidence.TaskStepIndex;
 	Target.TaskStepIndex = Evidence.TaskStepIndex;
 	Target.AtomicIndex = Evidence.AtomicTargets.Num();
@@ -1090,6 +1178,11 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 	if (LoweredStep.AdapterOperation == TEXT("patch_external_graph"))
 	{
 		AddTaskRuntimePatchExternalGraphReviewTargets(OutEvidence, LoweredStep.Payload);
+		return OutEvidence.AtomicTargets.Num() > 0;
+	}
+	if (LoweredStep.AdapterOperation == TEXT("patch_external_links"))
+	{
+		AddTaskRuntimePatchExternalLinksReviewTargets(OutEvidence, LoweredStep.Payload);
 		return OutEvidence.AtomicTargets.Num() > 0;
 	}
 	if (LoweredStep.AdapterOperation == TEXT("replace_external_body"))

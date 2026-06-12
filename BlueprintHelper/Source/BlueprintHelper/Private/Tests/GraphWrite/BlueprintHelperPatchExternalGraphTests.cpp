@@ -1,4 +1,5 @@
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorFingerprintService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperPatchExternalGraphService.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Dom/JsonObject.h"
@@ -102,6 +103,29 @@ namespace BlueprintHelperPatchExternalGraphTests
 			OutError);
 	}
 
+	static FString CompactNodeKey(const UEdGraphNode* Node)
+	{
+		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
+		return Guid.Len() <= 8 ? Guid : Guid.Left(8);
+	}
+
+	static FString BuildCompactNodeRef(const UEdGraphNode* Node)
+	{
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xnode:v1:%s#%s"),
+			*CompactNodeKey(Node),
+			*FingerprintService.BuildCompactNodeFingerprint(Node));
+	}
+
+	static TSharedRef<FJsonObject> MakeCompactNodeAnchorJson(const UEdGraphNode* Node)
+	{
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("anchor_type"), TEXT("external_node"));
+		Anchor->SetStringField(TEXT("anchor_ref"), BuildCompactNodeRef(Node));
+		return Anchor;
+	}
+
 	static TSharedRef<FJsonObject> MakePatchPayload(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
@@ -109,7 +133,8 @@ namespace BlueprintHelperPatchExternalGraphTests
 		const FBlueprintHelperExternalGraphAnchor& Anchor,
 		const FString& Value,
 		const FString& ExpectedOldValue,
-		bool bDryRun)
+		bool bDryRun,
+		const FString& PropertyDescriptorId = FString())
 	{
 		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
 		Target->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : FString());
@@ -122,6 +147,41 @@ namespace BlueprintHelperPatchExternalGraphTests
 		Payload->SetObjectField(TEXT("target"), Target);
 		Payload->SetStringField(TEXT("patch_type"), PatchType);
 		Payload->SetObjectField(TEXT("anchor"), Anchor.ToJson());
+		if (!PropertyDescriptorId.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId);
+		}
+		Payload->SetStringField(TEXT("value"), Value);
+		Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		return Payload;
+	}
+
+	static TSharedRef<FJsonObject> MakeCompactPatchPayload(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		const FString& PatchType,
+		UEdGraphNode* Node,
+		const FString& Value,
+		const FString& ExpectedOldValue,
+		bool bDryRun,
+		const FString& PropertyDescriptorId = FString())
+	{
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), Blueprint ? Blueprint->GetPathName() : FString());
+		Target->SetStringField(TEXT("graph"), Graph ? Graph->GetName() : FString());
+
+		TSharedRef<FJsonObject> ExpectedOldState = MakeShared<FJsonObject>();
+		ExpectedOldState->SetStringField(TEXT("value"), ExpectedOldValue);
+
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetObjectField(TEXT("target"), Target);
+		Payload->SetStringField(TEXT("patch_type"), PatchType);
+		Payload->SetObjectField(TEXT("anchor"), MakeCompactNodeAnchorJson(Node));
+		if (!PropertyDescriptorId.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId);
+		}
 		Payload->SetStringField(TEXT("value"), Value);
 		Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
@@ -247,6 +307,119 @@ bool FBlueprintHelperExternalPatchNodeCommentExecuteTest::RunTest(const FString&
 
 	TestTrue(TEXT("execute ok"), Result.bOk);
 	TestEqual(TEXT("comment changed"), Node->NodeComment, FString(TEXT("after")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalPatchNodePropertyDescriptorExecuteTest,
+	"BlueprintHelper.GraphWrite.ExternalPatch.NodePropertyDescriptorExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalPatchNodePropertyDescriptorExecuteTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperPatchExternalGraphTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("NodePropertyDescriptorExecute"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CallFunction* Node = AddPrintStringNode(Graph);
+	if (!Blueprint || !Graph || !Node)
+	{
+		return false;
+	}
+
+	Node->NodeComment = TEXT("before");
+
+	FString Error;
+	FBlueprintHelperExternalGraphAnchor Anchor;
+	TestTrue(TEXT("node anchor builds"), BuildNodeAnchor(Blueprint, Graph, Node, Anchor, Error));
+
+	const FBlueprintHelperPatchExternalGraphService Service;
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakePatchPayload(
+		Blueprint,
+		Graph,
+		TEXT("set_external_node_property"),
+		Anchor,
+		TEXT("after descriptor"),
+		TEXT("before"),
+		false,
+		TEXT("k2.node.comment")));
+
+	TestTrue(TEXT("execute ok"), Result.bOk);
+	TestEqual(TEXT("descriptor-backed comment changed"), Node->NodeComment, FString(TEXT("after descriptor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalPatchNodePropertyDescriptorCompactAnchorExecuteTest,
+	"BlueprintHelper.GraphWrite.ExternalPatch.NodePropertyDescriptorCompactAnchorExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalPatchNodePropertyDescriptorCompactAnchorExecuteTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperPatchExternalGraphTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("NodePropertyDescriptorCompactAnchorExecute"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CallFunction* Node = AddPrintStringNode(Graph);
+	if (!Blueprint || !Graph || !Node)
+	{
+		return false;
+	}
+
+	Node->NodeComment = TEXT("before");
+
+	const FBlueprintHelperPatchExternalGraphService Service;
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeCompactPatchPayload(
+		Blueprint,
+		Graph,
+		TEXT("set_external_node_property"),
+		Node,
+		TEXT("after compact descriptor"),
+		TEXT("before"),
+		false,
+		TEXT("k2.node.comment")));
+
+	TestTrue(TEXT("execute ok"), Result.bOk);
+	TestEqual(TEXT("descriptor-backed comment changed"), Node->NodeComment, FString(TEXT("after compact descriptor")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalPatchRejectsReservedNodePropertyDescriptorTest,
+	"BlueprintHelper.GraphWrite.ExternalPatch.RejectsReservedNodePropertyDescriptor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalPatchRejectsReservedNodePropertyDescriptorTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperPatchExternalGraphTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("RejectsReservedNodePropertyDescriptor"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CallFunction* Node = AddPrintStringNode(Graph);
+	if (!Blueprint || !Graph || !Node)
+	{
+		return false;
+	}
+
+	FString Error;
+	FBlueprintHelperExternalGraphAnchor Anchor;
+	TestTrue(TEXT("node anchor builds"), BuildNodeAnchor(Blueprint, Graph, Node, Anchor, Error));
+
+	const FBlueprintHelperPatchExternalGraphService Service;
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakePatchPayload(
+		Blueprint,
+		Graph,
+		TEXT("set_external_node_property"),
+		Anchor,
+		TEXT("reserved"),
+		Node->NodeComment,
+		false,
+		TEXT("k2.call.function_target")));
+
+	TestFalse(TEXT("reserved descriptor rejected"), Result.bOk);
+	TestEqual(TEXT("reserved descriptor code"),
+		Result.Error.IsSet() ? Result.Error->Code : FString(),
+		FString(TEXT("external_property_descriptor_not_allowed")));
 	return true;
 }
 

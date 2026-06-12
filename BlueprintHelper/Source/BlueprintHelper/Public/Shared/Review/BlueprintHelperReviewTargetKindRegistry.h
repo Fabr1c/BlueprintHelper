@@ -11,6 +11,7 @@ enum class EBlueprintHelperReviewTargetHandlerKind : uint8
 	GraphNode,
 	GraphBlock,
 	GraphExternalBoundary,
+	GraphExternalLink,
 	GraphExternalNode,
 	GraphExternalBody,
 	BlueprintVariable,

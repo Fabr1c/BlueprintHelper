@@ -12,6 +12,7 @@ import {
   compileMergeGraphWriteOps,
 } from './graphwrite-merge-compiler.js';
 import {
+  compileExternalLinkPatchGraphWriteOps,
   compileExternalPatchGraphWriteOps,
   compilePatchGraphWriteOps,
 } from './graphwrite-patch-compiler.js';
@@ -45,6 +46,10 @@ export function createDefaultGraphWriteOperationCompilerRegistry(): GraphWriteOp
     {
       compilerId: 'patch_external_graph',
       compile: (behavior) => compileExternalPatchGraphWriteOps(behavior),
+    },
+    {
+      compilerId: 'patch_external_links',
+      compile: (behavior) => compileExternalLinkPatchGraphWriteOps(behavior),
     },
     {
       compilerId: 'replace_external_body',

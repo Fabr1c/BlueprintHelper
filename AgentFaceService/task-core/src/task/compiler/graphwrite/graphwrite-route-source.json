@@ -332,7 +332,6 @@
       "public_scope": "append_after",
       "taskplan_op": "insert_external_flow",
       "runtime_adapter_id": "k2.external_graph.insert_external_flow",
-      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_flow_template.json",
       "required_fields": [
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=merge_external_flow",
@@ -351,12 +350,45 @@
       "allowed_slot_ids": [
         "graph.body.*"
       ],
+      "compiler_id": "merge_external_flow",
+      "status": "hidden",
+      "adapter_sync": "reserved_hidden_from_agent",
+      "behavior_field": "external_merges",
+      "write_mode": "graph.merge"
+    },
+    {
+      "route_id": "graph.merge_external_flow.insert_between",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "merge_external_flow",
+      "public_scope": "insert_between",
+      "taskplan_op": "insert_external_flow",
+      "runtime_adapter_id": "k2.external_graph.insert_external_flow",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_insert_between_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=merge_external_flow",
+        "behavior.external_merges[].insert_strategy=insert_between",
+        "behavior.external_merges[].anchor.anchor_type=external_link",
+        "behavior.external_merges[].anchor.anchor_ref",
+        "behavior.external_merges[].inserted.body"
+      ],
+      "optional_fields": [
+        "behavior.external_merges[].sequence_order"
+      ],
+      "insert_paths": [
+        "behavior.external_merges[].inserted.body.statements[]"
+      ],
+      "purpose": "Insert executable statements between the two endpoints of a compact external exec link anchor.",
+      "when_to_use": "Use when read_context logic_json provides an external exec link compact anchor_ref.",
+      "allowed_slot_ids": [
+        "graph.body.*"
+      ],
       "quick_access": {
-        "template_id": "generic_ops.merge.external_append_after",
+        "template_id": "generic_ops.merge.external_insert_between",
         "family": "graph_write",
         "cluster_id": "generic_ops",
         "operation_id": "merge",
-        "quick_access_id": "external_append_after",
+        "quick_access_id": "external_insert_between",
         "arg_slots": [
           "body(statement[])"
         ]
@@ -938,22 +970,36 @@
       "task_type": "edit_blueprint_graph",
       "graph_strategy": "patch_external_graph",
       "public_scope": "node_comment",
-      "taskplan_op": "set_external_node_comment",
-      "runtime_adapter_id": "k2.external_graph.patch.node_comment",
+      "taskplan_op": "set_external_node_property",
+      "runtime_adapter_id": "k2.external_graph.patch.node_property",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_comment_template.json",
       "required_fields": [
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=patch_external_graph",
-        "behavior.external_patches[].kind=set_external_node_comment"
+        "behavior.external_patches[].kind=set_external_node_property",
+        "behavior.external_patches[].property_descriptor_id=k2.node.comment",
+        "behavior.external_patches[].anchor",
+        "behavior.external_patches[].value",
+        "behavior.external_patches[].expected_old_state"
       ],
       "optional_fields": [],
       "insert_paths": [
         "behavior.external_patches[]"
       ],
-      "purpose": "Internal external graph node comment patch route.",
+      "purpose": "Set an external user graph node comment through the descriptor-backed node property route.",
+      "when_to_use": "Use when read_context returns an external_node compact anchor_ref and the desired field is the node comment.",
       "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_graph.node_comment",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_property_patch",
+        "quick_access_id": "external_node_comment",
+        "arg_slots": []
+      },
       "compiler_id": "patch_external_graph",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_patches",
       "write_mode": "graph.patch"
     },
@@ -964,21 +1010,215 @@
       "public_scope": "pin_default",
       "taskplan_op": "set_external_pin_default",
       "runtime_adapter_id": "k2.external_graph.patch.pin_default",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_pin_default_template.json",
       "required_fields": [
         "task_type=edit_blueprint_graph",
         "behavior.graph_strategy=patch_external_graph",
-        "behavior.external_patches[].kind=set_external_pin_default"
+        "behavior.external_patches[].kind=set_external_pin_default",
+        "behavior.external_patches[].anchor",
+        "behavior.external_patches[].value",
+        "behavior.external_patches[].expected_old_state"
       ],
       "optional_fields": [],
       "insert_paths": [
         "behavior.external_patches[]"
       ],
-      "purpose": "Internal external graph pin default patch route.",
+      "purpose": "Set an external user graph pin default using expanded pin anchor evidence.",
+      "when_to_use": "Use when read_context or expert/debug evidence provides a complete external pin anchor with pin name and fingerprint.",
       "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_graph.pin_default",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_property_patch",
+        "quick_access_id": "external_pin_default",
+        "arg_slots": []
+      },
       "compiler_id": "patch_external_graph",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_patches",
+      "write_mode": "graph.patch"
+    },
+    {
+      "route_id": "graph.patch_external_graph.node_property",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "node_property",
+      "taskplan_op": "set_external_node_property",
+      "runtime_adapter_id": "k2.external_graph.patch.node_property",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_property_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_graph",
+        "behavior.external_patches[].kind=set_external_node_property",
+        "behavior.external_patches[].anchor",
+        "behavior.external_patches[].property_descriptor_id",
+        "behavior.external_patches[].value",
+        "behavior.external_patches[].expected_old_state"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_patches[]"
+      ],
+      "purpose": "Set a descriptor-backed property on an external user graph node through a compact node anchor.",
+      "when_to_use": "Use for whitelisted node properties such as k2.node.comment after read_context returns an external_node compact anchor_ref.",
+      "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_graph.node_property",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_property_patch",
+        "quick_access_id": "external_node_property",
+        "arg_slots": []
+      },
+      "compiler_id": "patch_external_graph",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
+      "behavior_field": "external_patches",
+      "write_mode": "graph.patch"
+    },
+    {
+      "route_id": "graph.patch_external_links.connect_pins",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "connect_pins",
+      "taskplan_op": "connect_external_pins",
+      "runtime_adapter_id": "k2.external_graph.patch_links.connect_pins",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_connect_pins_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_links",
+        "behavior.external_link_patches[].kind=connect_pins",
+        "behavior.external_link_patches[].source.anchor_ref",
+        "behavior.external_link_patches[].target.anchor_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_link_patches[]"
+      ],
+      "purpose": "Connect two compact external pin anchors in a user graph.",
+      "when_to_use": "Use only when both endpoints come from read_context external_pin compact anchor_refs.",
+      "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_links.connect_pins",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_link_patch",
+        "quick_access_id": "external_connect_pins",
+        "arg_slots": []
+      },
+      "compiler_id": "patch_external_links",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
+      "behavior_field": "external_link_patches",
+      "write_mode": "graph.patch"
+    },
+    {
+      "route_id": "graph.patch_external_links.disconnect_link",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "disconnect_link",
+      "taskplan_op": "disconnect_external_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.disconnect_link",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_disconnect_link_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_links",
+        "behavior.external_link_patches[].kind=disconnect_link",
+        "behavior.external_link_patches[].anchor.anchor_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_link_patches[]"
+      ],
+      "purpose": "Disconnect a compact external graph link anchor in a user graph.",
+      "when_to_use": "Use when read_context logic_json returns an external_link compact anchor_ref for the link to remove.",
+      "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_links.disconnect_link",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_link_patch",
+        "quick_access_id": "external_disconnect_link",
+        "arg_slots": []
+      },
+      "compiler_id": "patch_external_links",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
+      "behavior_field": "external_link_patches",
+      "write_mode": "graph.patch"
+    },
+    {
+      "route_id": "graph.patch_external_links.replace_link",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "replace_link",
+      "taskplan_op": "replace_external_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.replace_link",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_replace_link_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_links",
+        "behavior.external_link_patches[].kind=replace_link",
+        "behavior.external_link_patches[].anchor.anchor_ref",
+        "behavior.external_link_patches[].replacement.anchor_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_link_patches[]"
+      ],
+      "purpose": "Replace an existing compact external link with another compact external pin anchor.",
+      "when_to_use": "Use to redirect a user graph data or exec link using read_context external_link and external_pin compact anchor_refs.",
+      "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_links.replace_link",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_link_patch",
+        "quick_access_id": "external_replace_link",
+        "arg_slots": []
+      },
+      "compiler_id": "patch_external_links",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
+      "behavior_field": "external_link_patches",
+      "write_mode": "graph.patch"
+    },
+    {
+      "route_id": "graph.patch_external_links.insert_pure_resolver_between_data_link",
+      "task_type": "edit_blueprint_graph",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "insert_pure_resolver_between_data_link",
+      "taskplan_op": "replace_external_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.replace_link",
+      "template_path": "AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_insert_pure_resolver_between_data_link_template.json",
+      "required_fields": [
+        "task_type=edit_blueprint_graph",
+        "behavior.graph_strategy=patch_external_links",
+        "behavior.external_link_patches[].kind=replace_link",
+        "behavior.external_link_patches[].anchor.anchor_ref",
+        "behavior.external_link_patches[].replacement.anchor_ref"
+      ],
+      "optional_fields": [],
+      "insert_paths": [
+        "behavior.external_link_patches[]"
+      ],
+      "purpose": "Replace an existing external data link with a pure resolver output pin anchor.",
+      "when_to_use": "Use after a resolver node already exists and read_context returned the original data link anchor_ref plus the resolver output pin anchor_ref.",
+      "allowed_slot_ids": [],
+      "quick_access": {
+        "template_id": "patch.external_links.insert_pure_resolver_between_data_link",
+        "family": "graph_write",
+        "cluster_id": "patch",
+        "operation_id": "external_link_patch",
+        "quick_access_id": "insert_pure_resolver_between_data_link",
+        "arg_slots": []
+      },
+      "compiler_id": "patch_external_links",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter",
+      "behavior_field": "external_link_patches",
       "write_mode": "graph.patch"
     },
     {

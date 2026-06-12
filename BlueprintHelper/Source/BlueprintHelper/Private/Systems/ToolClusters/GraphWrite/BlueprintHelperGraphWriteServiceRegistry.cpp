@@ -15,6 +15,7 @@ namespace BlueprintHelperGraphWriteServiceRegistry
 			TEXT("merge_blueprint_graph"),
 			TEXT("merge_external_flow"),
 			TEXT("patch_external_graph"),
+			TEXT("patch_external_links"),
 			TEXT("replace_external_body"),
 		};
 		return Operations;

@@ -20,6 +20,12 @@ const OWNED_GRAPH_PATCH_KINDS = [
 
 type OwnedGraphPatchKind = (typeof OWNED_GRAPH_PATCH_KINDS)[number];
 
+const EXTERNAL_NODE_PROPERTY_DESCRIPTOR_IDS = [
+  'k2.node.comment',
+  'k2.call.function_target',
+  'k2.field.member_reference',
+] as const;
+
 export function compilePatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
   const patches = requiredNonEmptyArray(behavior, 'patches', 'behavior.patches');
   return patches.map((rawPatch, index) => {
@@ -266,6 +272,19 @@ function normalizeExpectedOldState(record: Record<string, unknown>): Record<stri
 }
 
 function normalizeExternalNodeAnchor(anchor: Record<string, unknown>, path: string, kind: string): Record<string, unknown> {
+  if (typeof anchor['anchor_type'] === 'string' || typeof anchor['anchor_ref'] === 'string') {
+    if (kind === 'set_external_pin_default') {
+      throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'set_external_pin_default requires a node external anchor with pin_name.', [
+        {
+          code: 'unsupported_external_anchor_type',
+          path,
+          message: 'Use a BlueprintHelper.ExternalGraphAnchor.v1 node anchor with pin_name for pin default patches.',
+        },
+      ]);
+    }
+    return normalizeCompactExternalAnchor(anchor, path, 'external_node');
+  }
+
   const out = normalizeExternalGraphAnchorBase(anchor, path);
   if (out['semantic_role'] !== 'node') {
     throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'patch_external_graph requires a node external anchor.', [
@@ -415,12 +434,16 @@ export function compileExternalPatchGraphWriteOps(behavior: Record<string, unkno
 
     const patch = rawPatch as Record<string, unknown>;
     const kind = getRequiredString(patch, 'kind', `${path}.kind`);
-    if (kind !== 'set_external_pin_default' && kind !== 'set_external_node_comment') {
+    if (
+      kind !== 'set_external_pin_default'
+      && kind !== 'set_external_node_comment'
+      && kind !== 'set_external_node_property'
+    ) {
       throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External GraphWrite patch kind is not supported.', [
         {
           code: 'invalid_literal',
           path: `${path}.kind`,
-          message: 'Use set_external_pin_default or set_external_node_comment.',
+          message: 'Use set_external_pin_default, set_external_node_comment, or set_external_node_property.',
         },
       ]);
     }
@@ -428,12 +451,144 @@ export function compileExternalPatchGraphWriteOps(behavior: Record<string, unkno
       throwMissingPatchValue(path, `${kind} requires value.`);
     }
     const expectedOldState = requiredRecord(patch, 'expected_old_state', `${path}.expected_old_state`);
+    const propertyDescriptorId = kind === 'set_external_node_property'
+      ? getRequiredString(patch, 'property_descriptor_id', `${path}.property_descriptor_id`)
+      : undefined;
+    if (propertyDescriptorId !== undefined) {
+      assertAllowedString(
+        propertyDescriptorId,
+        `${path}.property_descriptor_id`,
+        [...EXTERNAL_NODE_PROPERTY_DESCRIPTOR_IDS],
+        'Use a registered external node property descriptor id.',
+      );
+    }
+    if (kind !== 'set_external_node_property' && Object.hasOwn(patch, 'property_descriptor_id')) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'property_descriptor_id is only valid for set_external_node_property.', [
+        {
+          code: 'unsupported_field_value',
+          path: `${path}.property_descriptor_id`,
+          message: 'Remove property_descriptor_id or use set_external_node_property.',
+        },
+      ]);
+    }
 
     return {
       op: kind,
       anchor: normalizeExternalNodeAnchor(requiredRecord(patch, 'anchor', `${path}.anchor`), `${path}.anchor`, kind),
+      ...(propertyDescriptorId ? { property_descriptor_id: propertyDescriptorId } : {}),
       value: patchValueToString(literalValue(patch['value'])),
       expected_old_state: normalizeExpectedOldState(expectedOldState),
     } as GraphWriteCompiledOp;
   });
+}
+
+export function compileExternalLinkPatchGraphWriteOps(behavior: Record<string, unknown>): GraphWriteCompiledOp[] {
+  const patches = requiredNonEmptyArray(behavior, 'external_link_patches', 'behavior.external_link_patches');
+  return patches.map((rawPatch, index) => {
+    const path = `behavior.external_link_patches[${index}]`;
+    if (!isRecord(rawPatch)) {
+      throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External link patch must be an object.', [
+        {
+          code: 'invalid_external_link_patch',
+          path,
+          message: 'External link patch must be an object.',
+        },
+      ]);
+    }
+
+    const patch = rawPatch as Record<string, unknown>;
+    const kind = getRequiredString(patch, 'kind', `${path}.kind`);
+    if (kind === 'connect_pins') {
+      return {
+        op: 'connect_external_pins',
+        source_anchor: normalizeCompactExternalAnchor(
+          requiredRecord(patch, 'source', `${path}.source`),
+          `${path}.source`,
+          'external_pin',
+        ),
+        target_anchor: normalizeCompactExternalAnchor(
+          requiredRecord(patch, 'target', `${path}.target`),
+          `${path}.target`,
+          'external_pin',
+        ),
+      } as GraphWriteCompiledOp;
+    }
+    if (kind === 'disconnect_link') {
+      return {
+        op: 'disconnect_external_link',
+        link_anchor: normalizeCompactExternalAnchor(
+          requiredRecord(patch, 'anchor', `${path}.anchor`),
+          `${path}.anchor`,
+          'external_link',
+        ),
+      } as GraphWriteCompiledOp;
+    }
+    if (kind === 'replace_link') {
+      return {
+        op: 'replace_external_link',
+        link_anchor: normalizeCompactExternalAnchor(
+          requiredRecord(patch, 'anchor', `${path}.anchor`),
+          `${path}.anchor`,
+          'external_link',
+        ),
+        replacement_anchor: normalizeCompactExternalAnchor(
+          requiredRecord(patch, 'replacement', `${path}.replacement`),
+          `${path}.replacement`,
+          'external_pin',
+        ),
+      } as GraphWriteCompiledOp;
+    }
+
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'External link patch kind is not supported.', [
+      {
+        code: 'invalid_literal',
+        path: `${path}.kind`,
+        message: 'Use connect_pins, disconnect_link, or replace_link.',
+      },
+    ]);
+  });
+}
+
+function normalizeCompactExternalAnchor(
+  anchor: Record<string, unknown>,
+  path: string,
+  expectedAnchorType: 'external_pin' | 'external_link' | 'external_node' | 'external_body',
+): Record<string, unknown> {
+  const anchorType = getRequiredString(anchor, 'anchor_type', `${path}.anchor_type`);
+  if (anchorType !== expectedAnchorType) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'External GraphWrite compact anchor type is not supported here.', [
+      {
+        code: 'unsupported_external_anchor_type',
+        path: `${path}.anchor_type`,
+        message: `Use anchor_type="${expectedAnchorType}".`,
+      },
+    ]);
+  }
+  const anchorRef = getRequiredString(anchor, 'anchor_ref', `${path}.anchor_ref`);
+  if (isRawLogicJsonArrayRef(anchorRef)) {
+    throwUnsupportedGraphWriteAnchor(
+      `${path}.anchor_ref`,
+      `${path}.anchor_ref uses a read-view array index. Use compact anchor_ref from read_context instead.`,
+    );
+  }
+  const expectedPrefixByType: Record<string, string> = {
+    external_node: 'xnode:v1:',
+    external_pin: 'xpin:v1:',
+    external_link: 'xlink:v1:',
+    external_body: 'xbody:v1:',
+  };
+  const expectedPrefix = expectedPrefixByType[expectedAnchorType];
+  if (!anchorRef.startsWith(expectedPrefix)) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'External GraphWrite compact anchor_ref has the wrong prefix.', [
+      {
+        code: 'unsupported_external_anchor_ref',
+        path: `${path}.anchor_ref`,
+        message: `Use compact ${expectedAnchorType} anchor_ref emitted by read_context (${expectedPrefix}...).`,
+      },
+    ]);
+  }
+  return {
+    anchor_type: anchorType,
+    anchor_ref: anchorRef,
+  };
 }

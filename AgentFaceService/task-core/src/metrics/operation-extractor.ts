@@ -14,6 +14,7 @@ const CAPABILITY_BY_ADAPTER_OPERATION = new Map<string, string>([
   ['merge_blueprint_graph', GRAPH_WRITE_ADAPTER_CAPABILITY],
   ['merge_external_flow', GRAPH_WRITE_ADAPTER_CAPABILITY],
   ['patch_external_graph', GRAPH_WRITE_ADAPTER_CAPABILITY],
+  ['patch_external_links', GRAPH_WRITE_ADAPTER_CAPABILITY],
   ['replace_external_body', GRAPH_WRITE_ADAPTER_CAPABILITY],
 ]);
 
@@ -24,6 +25,7 @@ const GRAPH_STRATEGY_BY_ADAPTER_OPERATION = new Map<string, string>([
   ['merge_blueprint_graph', 'merge_owned_graph'],
   ['merge_external_flow', 'merge_external_flow'],
   ['patch_external_graph', 'patch_external_graph'],
+  ['patch_external_links', 'patch_external_links'],
   ['replace_external_body', 'replace_external_body'],
 ]);
 
@@ -212,12 +214,81 @@ function resolveAdapterRoute(
   }
 
   const candidates = getAllGraphWriteRoutes().filter((route) => route.graph_strategy === graphStrategy);
+  const requiredLiteralRoute = matchRouteByRequiredLiteralFields(candidates, args);
+  if (requiredLiteralRoute) {
+    return requiredLiteralRoute;
+  }
+
   const variantRoute = matchSingleRoute(candidates, variant);
   if (variantRoute) {
     return variantRoute;
   }
 
   return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function matchRouteByRequiredLiteralFields(
+  routes: readonly GraphWriteRouteDescriptor[],
+  args: Record<string, unknown> | undefined,
+): GraphWriteRouteDescriptor | undefined {
+  if (!args) {
+    return undefined;
+  }
+
+  const scored = routes
+    .map((route) => {
+      const score = countMatchingRequiredLiteralFields(route, args);
+      return score > 0 ? { route, score } : undefined;
+    })
+    .filter((entry): entry is { route: GraphWriteRouteDescriptor; score: number } => entry !== undefined)
+    .sort((left, right) => right.score - left.score);
+
+  const best = scored[0];
+  if (!best) {
+    return undefined;
+  }
+  if (scored[1]?.score === best.score) {
+    return undefined;
+  }
+  return best.route;
+}
+
+function countMatchingRequiredLiteralFields(
+  route: GraphWriteRouteDescriptor,
+  args: Record<string, unknown>,
+): number {
+  let score = 0;
+  for (const requiredField of route.required_fields) {
+    const literal = parseRequiredLiteralField(requiredField);
+    if (!literal) {
+      continue;
+    }
+
+    const actual = readString(args[literal.key]);
+    if (!actual) {
+      continue;
+    }
+    if (actual !== literal.value) {
+      return 0;
+    }
+    score += 1;
+  }
+  return score;
+}
+
+function parseRequiredLiteralField(requiredField: string): { key: string; value: string } | undefined {
+  const separatorIndex = requiredField.indexOf('=');
+  if (separatorIndex < 0) {
+    return undefined;
+  }
+
+  const fieldPath = requiredField.slice(0, separatorIndex);
+  const value = requiredField.slice(separatorIndex + 1);
+  const key = fieldPath.split('.').at(-1);
+  if (!key || value.length === 0) {
+    return undefined;
+  }
+  return { key, value };
 }
 
 function matchSingleRoute(

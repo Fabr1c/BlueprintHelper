@@ -199,6 +199,86 @@ test('TaskSpec template composer writes every active GraphWrite route quick-acce
   }
 });
 
+test('TaskSpec template index exposes external user graph patch and insert route templates', () => {
+  const patchOperations = listTaskSpecTemplateOperations({
+    family: 'graph_write',
+    cluster: 'patch',
+    writeMode: 'graph.patch',
+  });
+
+  assert.equal(patchOperations.items.some((item) => item.operation_id === 'external_link_patch'), true);
+  assert.equal(patchOperations.items.some((item) => item.operation_id === 'external_property_patch'), true);
+
+  const externalLinks = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: 'patch',
+    operation: 'external_link_patch',
+    writeMode: 'graph.patch',
+  });
+  assert.deepEqual(
+    externalLinks.items.map((item) => item.template_id).sort(),
+    [
+      'patch.external_links.connect_pins',
+      'patch.external_links.disconnect_link',
+      'patch.external_links.insert_pure_resolver_between_data_link',
+      'patch.external_links.replace_link',
+    ],
+  );
+
+  const externalProperties = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: 'patch',
+    operation: 'external_property_patch',
+    writeMode: 'graph.patch',
+  });
+  assert.deepEqual(
+    externalProperties.items.map((item) => item.template_id).sort(),
+    [
+      'patch.external_graph.node_comment',
+      'patch.external_graph.node_property',
+      'patch.external_graph.pin_default',
+    ],
+  );
+
+  const merge = listTaskSpecTemplateQuickAccess({
+    family: 'graph_write',
+    cluster: 'generic_ops',
+    operation: 'merge',
+    writeMode: 'graph.merge',
+  });
+  assert.equal(
+    merge.items.some((item) => item.template_id === 'generic_ops.merge.external_insert_between'),
+    true,
+  );
+});
+
+test('TaskSpec template composer writes external insert-between statements into existing route array entry', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'external-insert-between.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.merge',
+    templateIds: ['generic_ops.merge.external_insert_between(generic_ops.call.direct)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: {
+      external_merges: Array<{
+        insert_strategy: string;
+        anchor: Record<string, unknown>;
+        inserted: { body: { statements: Array<{ kind: string }> } };
+      }>;
+    };
+  } & Record<string, unknown>;
+  assert.equal(Object.hasOwn(taskSpec.behavior, 'external_merges[]'), false);
+  assert.equal(taskSpec.behavior.external_merges[0]?.insert_strategy, 'insert_between');
+  assert.equal(taskSpec.behavior.external_merges[0]?.anchor.anchor_type, 'external_link');
+  assert.deepEqual(taskSpec.behavior.external_merges[0]?.inserted.body.statements.map((statement) => statement.kind), ['call']);
+});
+
 test('TaskSpec template composer preserves no-arg GraphWrite patch route placeholders', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'patch-connect-pins.taskspec.json');
@@ -371,7 +451,7 @@ test('agent-facing write templates do not expose hidden execution policy fields'
 test('GraphWrite route templates use current BlueprintLogicSpec schema', () => {
   const mergeTemplatePath = path.join(
     PLUGIN_ROOT,
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_flow_template.json',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_insert_between_template.json',
   );
   const taskSpec = JSON.parse(fs.readFileSync(mergeTemplatePath, 'utf8')) as {
     behavior: {
@@ -624,9 +704,29 @@ function isAllowedRoutePolicyHit(hit: string): boolean {
     '/validation/should_save',
   ]);
   if (!hit.startsWith(allowedPrefix)) {
-    return false;
+    return isAllowedExternalRoutePolicyHit(hit);
   }
   return allowedPointers.has(hit.slice(allowedPrefix.length));
+}
+
+function isAllowedExternalRoutePolicyHit(hit: string): boolean {
+  const externalRoutePrefixes = [
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_insert_between_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_insert_pure_resolver_between_data_link_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_connect_pins_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_disconnect_link_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_replace_link_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_comment_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_property_template.json:',
+    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_pin_default_template.json:',
+  ];
+  const prefix = externalRoutePrefixes.find((candidate) => hit.startsWith(candidate));
+  if (!prefix) {
+    return false;
+  }
+  const pointer = hit.slice(prefix.length);
+  return pointer === '/scope_policy'
+    || pointer === '/scope_policy/allow_modify_user_nodes';
 }
 
 function normalizePath(filePath: string): string {

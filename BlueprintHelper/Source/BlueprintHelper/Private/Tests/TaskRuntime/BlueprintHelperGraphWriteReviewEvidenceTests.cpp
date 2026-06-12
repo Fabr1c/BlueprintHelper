@@ -319,6 +319,150 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuildUsesRuntimeBoundaryTest::RunTe
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceBuildsExternalLinkTargetTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.BuildsExternalLinkTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuildsExternalLinkTargetTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_ExternalLinkReviewEvidence"));
+	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+
+	TSharedRef<FJsonObject> LinkAnchor = MakeShared<FJsonObject>();
+	LinkAnchor->SetStringField(TEXT("anchor_type"), TEXT("external_link"));
+	LinkAnchor->SetStringField(TEXT("anchor_ref"), TEXT("xlink:v1:d:AAAA.ReturnValue>BBBB.InString#1234567890"));
+
+	TSharedRef<FJsonObject> ReplacementAnchor = MakeShared<FJsonObject>();
+	ReplacementAnchor->SetStringField(TEXT("anchor_type"), TEXT("external_pin"));
+	ReplacementAnchor->SetStringField(TEXT("anchor_ref"), TEXT("xpin:v1:d:CCCC.ReturnValue#0987654321"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	LoweredStep.Capability = TEXT("graph_write");
+	LoweredStep.AdapterOperation = TEXT("patch_external_links");
+	LoweredStep.RuntimeOperation = TEXT("graph_write");
+	LoweredStep.Payload = MakeShared<FJsonObject>();
+	LoweredStep.Payload->SetObjectField(TEXT("target"), Target);
+	LoweredStep.Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+	LoweredStep.Payload->SetObjectField(TEXT("link_anchor"), LinkAnchor);
+	LoweredStep.Payload->SetObjectField(TEXT("replacement_anchor"), ReplacementAnchor);
+
+	FBlueprintHelperToolResultBase StepResult;
+	StepResult.bOk = true;
+	StepResult.Status = EBlueprintHelperToolStatus::Applied;
+	StepResult.Data = MakeShared<FJsonObject>();
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		LoweredStep,
+		StepResult,
+		TEXT("archive_external_link"),
+		TEXT("task_external_link"),
+		7,
+		Evidence);
+
+	TestTrue(TEXT("external link patch evidence builds"), bBuilt);
+	TestEqual(TEXT("one link target is emitted"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& AtomicTarget = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind is graph_external_link"),
+		AtomicTarget.TargetKind,
+		FString(TEXT("graph_external_link")));
+	TestEqual(TEXT("target subkind is patch type"),
+		AtomicTarget.TargetSubKind,
+		FString(TEXT("replace_link")));
+	TestEqual(TEXT("compact link ref is the pin path"),
+		AtomicTarget.PinPath,
+		FString(TEXT("xlink:v1:d:AAAA.ReturnValue>BBBB.InString#1234567890")));
+	TestEqual(TEXT("external ownership is preserved"),
+		AtomicTarget.Ownership,
+		FString(TEXT("external_user_authored")));
+	TestTrue(TEXT("target key uses link target kind"),
+		AtomicTarget.TargetKey.StartsWith(TEXT("graph_external_link:EventGraph:replace_link:")));
+	TestTrue(TEXT("anchor json preserves replacement anchor"),
+		AtomicTarget.AnchorJson.Contains(TEXT("xpin:v1:d:CCCC.ReturnValue#0987654321")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceBuildsCompactExternalPropertyTargetTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.BuildsCompactExternalPropertyTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceBuildsCompactExternalPropertyTargetTest::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_ExternalPropertyReviewEvidence"));
+	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+
+	TSharedRef<FJsonObject> CompactNodeAnchor = MakeShared<FJsonObject>();
+	CompactNodeAnchor->SetStringField(TEXT("anchor_type"), TEXT("external_node"));
+	CompactNodeAnchor->SetStringField(TEXT("anchor_ref"), TEXT("xnode:v1:82473E61#73652de6"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	LoweredStep.Capability = TEXT("graph_write");
+	LoweredStep.AdapterOperation = TEXT("patch_external_graph");
+	LoweredStep.RuntimeOperation = TEXT("graph_write");
+	LoweredStep.Payload = MakeShared<FJsonObject>();
+	LoweredStep.Payload->SetObjectField(TEXT("target"), Target);
+	LoweredStep.Payload->SetStringField(TEXT("patch_type"), TEXT("set_external_node_property"));
+	LoweredStep.Payload->SetObjectField(TEXT("anchor"), CompactNodeAnchor);
+	LoweredStep.Payload->SetStringField(TEXT("property_descriptor_id"), TEXT("k2.node.comment"));
+
+	TSharedRef<FJsonObject> ExternalPatch = MakeShared<FJsonObject>();
+	ExternalPatch->SetStringField(TEXT("node_guid"), TEXT("82473E614AAADC16862950B6EC3492A2"));
+	ExternalPatch->SetStringField(TEXT("property_descriptor_id"), TEXT("k2.node.comment"));
+	ExternalPatch->SetStringField(TEXT("field_kind"), TEXT("node_comment"));
+	ExternalPatch->SetStringField(TEXT("before_value"), TEXT(""));
+	ExternalPatch->SetStringField(TEXT("after_value"), TEXT("updated"));
+
+	FBlueprintHelperToolResultBase StepResult;
+	StepResult.bOk = true;
+	StepResult.Status = EBlueprintHelperToolStatus::Applied;
+	StepResult.Data = MakeShared<FJsonObject>();
+	StepResult.Data->SetObjectField(TEXT("external_patch"), ExternalPatch);
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		LoweredStep,
+		StepResult,
+		TEXT("archive_external_property"),
+		TEXT("task_external_property"),
+		8,
+		Evidence);
+
+	TestTrue(TEXT("external property patch evidence builds"), bBuilt);
+	TestEqual(TEXT("one property target is emitted"), Evidence.AtomicTargets.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& AtomicTarget = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("target kind is graph_external_node"),
+		AtomicTarget.TargetKind,
+		FString(TEXT("graph_external_node")));
+	TestEqual(TEXT("target subkind is patch type"),
+		AtomicTarget.TargetSubKind,
+		FString(TEXT("set_external_node_property")));
+	TestEqual(TEXT("resolved node guid is carried from step result"),
+		AtomicTarget.NodeGuid,
+		FString(TEXT("82473E614AAADC16862950B6EC3492A2")));
+	TestEqual(TEXT("property descriptor is target property path"),
+		AtomicTarget.PropertyPath,
+		FString(TEXT("k2.node.comment")));
+	TestTrue(TEXT("target key uses resolved node guid"),
+		AtomicTarget.TargetKey.Contains(TEXT("82473E614AAADC16862950B6EC3492A2")));
+	TestTrue(TEXT("anchor json preserves compact node anchor"),
+		AtomicTarget.AnchorJson.Contains(TEXT("xnode:v1:82473E61#73652de6")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteReviewEvidenceConnectivityFailureCleanupContractTest,
 	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.ConnectivityFailureCleanupContract",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

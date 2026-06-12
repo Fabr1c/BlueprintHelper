@@ -74,6 +74,10 @@ public:
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,
 				FString& OutError);
+	static bool RestoreExternalLinkFromSnapshot(
+				const FBlueprintHelperReviewAtomicTarget& Target,
+				const TSharedPtr<FJsonObject>& Snapshot,
+				FString& OutError);
 	static bool RestoreExternalNodeFromSnapshot(
 				const FBlueprintHelperReviewAtomicTarget& Target,
 				const TSharedPtr<FJsonObject>& Snapshot,

@@ -57,9 +57,13 @@ Patch/Merge 已有 BlueprintHelper-owned block 时，先用读工具获取结构
 
 ## Non-BlueprintHelper-Owned Graph Boundary
 
-Non-BlueprintHelper-owned graph content is read-only in the normal GraphWrite flow. Normal Agents may use `blueprinthelper_read_context` or `blueprinthelper_read_reference_context` to inspect it, but must not build write anchors for it.
+GraphWrite writes must preserve the ownership mode selected by the current template. BlueprintHelper-owned graph edits use owned refs from grouped block readback. External user graph edits use compact anchors returned by `read_context` logic evidence, such as `external_link`, `external_pin`, `external_node`, and `external_body`.
 
-GraphWrite writes must preserve the current ownership policy selected by the template. If preview or compile returns an unsupported-scope diagnostic, stop and report that stable non-owned write anchors are not available yet. Do not switch to full-graph indexes, display labels, ad hoc JSONPath, or GUID-first selectors. GUID-first selectors remain expert/debug fallback only.
+Owned refs and external compact anchors are not interchangeable. Do not convert between them, do not use full-graph array indexes like `links[n]`, display labels, ad hoc JSONPath, or GUID-first selectors as normal write anchors. GUID-first selectors remain expert/debug fallback only.
+
+For external user graph edits, discover active templates through `bh tools templates`. Use `graph.patch` / `patch.external_links.*` for external link connect, disconnect, replace, and `insert_pure_resolver_between_data_link`. Use `graph.patch` / `patch.external_graph.*` for pin default and descriptor-backed node property patches. Use `graph.merge` / `generic_ops.merge.external_insert_between` for exec link `insert_between`.
+
+If preview or compile returns an unsupported-scope diagnostic, stop and report the missing capability. Do not switch to owned graph templates or lower-level Bridge payloads to bypass the ownership boundary.
 
 对已有 owned block 做分支插入时，Preview 是写入门禁。所需字段和值由当前模板负责说明；Preview blocked 时禁止 execute，也不要回退到底层工具。
 

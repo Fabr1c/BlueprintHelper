@@ -82,6 +82,7 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("merge_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("merge_external_flow"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("patch_external_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
+	{TEXT("patch_external_links"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("replace_external_body"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("project_graphwrite_spawner_evidence"), EBlueprintHelperBridgeRouteCluster::GraphWrite},
 	{TEXT("query_review_records"), EBlueprintHelperBridgeRouteCluster::Review},

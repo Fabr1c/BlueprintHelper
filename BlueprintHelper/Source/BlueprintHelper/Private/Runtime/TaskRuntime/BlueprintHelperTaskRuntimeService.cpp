@@ -481,6 +481,7 @@ public:
 			Operation == TEXT("merge_blueprint_graph") ||
 			Operation == TEXT("merge_external_flow") ||
 			Operation == TEXT("patch_external_graph") ||
+			Operation == TEXT("patch_external_links") ||
 			Operation == TEXT("replace_external_body");
 	}
 
@@ -616,12 +617,13 @@ public:
 		if (!(*PolicyObjectPtr)->TryGetStringField(TEXT("strategy"), PolicyStrategy) ||
 			(PolicyStrategy != TEXT("merge_external_flow") &&
 				PolicyStrategy != TEXT("patch_external_graph") &&
+				PolicyStrategy != TEXT("patch_external_links") &&
 				PolicyStrategy != TEXT("replace_external_body")))
 		{
 			OutError = MakeTaskRuntimeError(
 				TEXT("unsupported_scope_policy"),
 				EBlueprintHelperToolStage::ParseInput,
-				TEXT("external_graph_edit requires constraints.external_mutation_policy.strategy to be merge_external_flow, patch_external_graph, or replace_external_body."),
+				TEXT("external_graph_edit requires constraints.external_mutation_policy.strategy to be merge_external_flow, patch_external_graph, patch_external_links, or replace_external_body."),
 				BuildStepFieldPath(TEXT("constraints.external_mutation_policy.strategy")));
 			return false;
 		}
@@ -635,6 +637,13 @@ public:
 		{
 			ExpectedMutations.Add(TEXT("pin_default"));
 			ExpectedMutations.Add(TEXT("node_comment"));
+			ExpectedMutations.Add(TEXT("node_property"));
+		}
+		else if (PolicyStrategy == TEXT("patch_external_links"))
+		{
+			ExpectedMutations.Add(TEXT("link_connect"));
+			ExpectedMutations.Add(TEXT("link_disconnect"));
+			ExpectedMutations.Add(TEXT("link_replace"));
 		}
 		else if (PolicyStrategy == TEXT("replace_external_body"))
 		{
@@ -3599,9 +3608,83 @@ public:
 		Payload->SetField(TEXT("value"), Value);
 		Payload->SetObjectField(TEXT("expected_old_state"), ExpectedOldState);
 		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+		FString PropertyDescriptorId;
+		if (OpObject->TryGetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId) &&
+			!PropertyDescriptorId.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("property_descriptor_id"), PropertyDescriptorId);
+		}
 
 		OutPayload = Payload;
 		return true;
+	}
+
+	static bool TryBuildGraphWriteIrExternalLinkPatchPayload(
+		const TSharedPtr<FJsonObject>& TargetObject,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const TSharedPtr<FJsonObject>& OpObject,
+		const FString& OpName,
+		bool bDryRun,
+		TSharedPtr<FJsonObject>& OutPayload,
+		FBlueprintHelperToolError& OutError)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BridgeTarget = BuildGraphWriteIrTargetPayload(TargetObject, AssetPath, GraphName);
+		Payload->SetObjectField(TEXT("target"), BridgeTarget);
+		Payload->SetBoolField(TEXT("dry_run"), bDryRun);
+
+		if (OpName == TEXT("connect_external_pins"))
+		{
+			TSharedPtr<FJsonObject> SourceAnchor;
+			TSharedPtr<FJsonObject> TargetAnchor;
+			if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("source_anchor"), BuildOpFieldPath(0, TEXT("source_anchor")), SourceAnchor, OutError) ||
+				!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("target_anchor"), BuildOpFieldPath(0, TEXT("target_anchor")), TargetAnchor, OutError))
+			{
+				return false;
+			}
+			Payload->SetStringField(TEXT("patch_type"), TEXT("connect_pins"));
+			Payload->SetObjectField(TEXT("source_anchor"), SourceAnchor);
+			Payload->SetObjectField(TEXT("target_anchor"), TargetAnchor);
+			OutPayload = Payload;
+			return true;
+		}
+
+		if (OpName == TEXT("disconnect_external_link"))
+		{
+			TSharedPtr<FJsonObject> LinkAnchor;
+			if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("link_anchor"), BuildOpFieldPath(0, TEXT("link_anchor")), LinkAnchor, OutError))
+			{
+				return false;
+			}
+			Payload->SetStringField(TEXT("patch_type"), TEXT("disconnect_link"));
+			Payload->SetObjectField(TEXT("link_anchor"), LinkAnchor);
+			OutPayload = Payload;
+			return true;
+		}
+
+		if (OpName == TEXT("replace_external_link"))
+		{
+			TSharedPtr<FJsonObject> LinkAnchor;
+			TSharedPtr<FJsonObject> ReplacementAnchor;
+			if (!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("link_anchor"), BuildOpFieldPath(0, TEXT("link_anchor")), LinkAnchor, OutError) ||
+				!TryReadRequiredGraphWriteOpObject(OpObject, TEXT("replacement_anchor"), BuildOpFieldPath(0, TEXT("replacement_anchor")), ReplacementAnchor, OutError))
+			{
+				return false;
+			}
+			Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+			Payload->SetObjectField(TEXT("link_anchor"), LinkAnchor);
+			Payload->SetObjectField(TEXT("replacement_anchor"), ReplacementAnchor);
+			OutPayload = Payload;
+			return true;
+		}
+
+		OutError = MakeTaskRuntimeError(
+			TEXT("unsupported_graph_write_ir_op"),
+			EBlueprintHelperToolStage::ParseInput,
+			TEXT("patch_external_links supports connect_external_pins, disconnect_external_link, and replace_external_link."),
+			BuildOpFieldPath(0, TEXT("op")));
+		return false;
 	}
 
 	static bool TryBuildGraphWriteIrExternalReplaceBodyPayload(
@@ -3772,10 +3855,18 @@ public:
 				return TryBuildGraphWriteIrExternalMergePayload(TaskPlan, StepObject, TargetObject, AssetPath, GraphName, FirstOpObject, bDryRun, OutPayload, OutError);
 			}
 			if (OpName == TEXT("set_external_pin_default") ||
-				OpName == TEXT("set_external_node_comment"))
+				OpName == TEXT("set_external_node_comment") ||
+				OpName == TEXT("set_external_node_property"))
 			{
 				OutAdapterOperation = TEXT("patch_external_graph");
 				return TryBuildGraphWriteIrExternalPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);
+			}
+			if (OpName == TEXT("connect_external_pins") ||
+				OpName == TEXT("disconnect_external_link") ||
+				OpName == TEXT("replace_external_link"))
+			{
+				OutAdapterOperation = TEXT("patch_external_links");
+				return TryBuildGraphWriteIrExternalLinkPatchPayload(TargetObject, AssetPath, GraphName, FirstOpObject, OpName, bDryRun, OutPayload, OutError);
 			}
 			if (OpName == TEXT("replace_external_body"))
 			{
@@ -3786,7 +3877,7 @@ public:
 			OutError = MakeTaskRuntimeError(
 				TEXT("unsupported_graph_write_ir_op"),
 				EBlueprintHelperToolStage::ParseInput,
-				TEXT("external_graph_edit supports insert_external_flow, external field patches, and replace_external_body only."),
+				TEXT("external_graph_edit supports insert_external_flow, external field patches, external link patches, and replace_external_body only."),
 				BuildOpFieldPath(0, TEXT("op")));
 			return false;
 		}

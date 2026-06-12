@@ -1,4 +1,5 @@
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
+import { enrichLogicJsonCompactAnchors } from './read-context-compact-anchor.js';
 import { LOGIC_PROJECTION_OWNER } from './read-context-schemas.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
@@ -69,7 +70,7 @@ function buildLogicJsonPayload(payload: Record<string, unknown>): Record<string,
   };
   normalized['schema'] = 'LogicJson.v1';
   delete normalized['format'];
-  return normalized;
+  return enrichLogicJsonCompactAnchors(normalized);
 }
 
 function withProjectionMetadata(
@@ -108,10 +109,17 @@ function collectAnchorDebug(payload: Record<string, unknown>): Record<string, un
 function collectAnchors(payload: Record<string, unknown>): Record<string, unknown>[] {
   const anchors: Record<string, unknown>[] = [];
   const logic = isRecord(payload['logic']) ? payload['logic'] : payload;
-  pushRecordArray(anchors, logic['anchors']);
-  pushRecordArray(anchors, payload['anchors']);
-  if (Array.isArray(logic['nodes'])) {
-    for (const node of logic['nodes']) {
+  collectAnchorsFromContainer(anchors, logic);
+  if (logic !== payload) {
+    pushRecordArray(anchors, payload['anchors']);
+  }
+  return stableUniqueRecords(anchors);
+}
+
+function collectAnchorsFromContainer(anchors: Record<string, unknown>[], container: Record<string, unknown>): void {
+  pushRecordArray(anchors, container['anchors']);
+  if (Array.isArray(container['nodes'])) {
+    for (const node of container['nodes']) {
       if (!isRecord(node)) {
         continue;
       }
@@ -119,18 +127,31 @@ function collectAnchors(payload: Record<string, unknown>): Record<string, unknow
       pushRecord(anchors, node['externalAnchor']);
       pushRecordArray(anchors, node['external_anchors']);
       pushRecordArray(anchors, node['externalAnchors']);
-    }
-  }
-  if (Array.isArray(logic['links'])) {
-    for (const link of logic['links']) {
-      if (!isRecord(link)) {
-        continue;
+      if (Array.isArray(node['links'])) {
+        collectAnchorsFromLinks(anchors, node['links']);
       }
-      pushRecord(anchors, link['external_anchor']);
-      pushRecord(anchors, link['externalAnchor']);
     }
   }
-  return stableUniqueRecords(anchors);
+  if (Array.isArray(container['links'])) {
+    collectAnchorsFromLinks(anchors, container['links']);
+  }
+  if (Array.isArray(container['groups'])) {
+    for (const group of container['groups']) {
+      if (isRecord(group)) {
+        collectAnchorsFromContainer(anchors, group);
+      }
+    }
+  }
+}
+
+function collectAnchorsFromLinks(anchors: Record<string, unknown>[], links: unknown[]): void {
+  for (const link of links) {
+    if (!isRecord(link)) {
+      continue;
+    }
+    pushRecord(anchors, link['external_anchor']);
+    pushRecord(anchors, link['externalAnchor']);
+  }
 }
 
 function pushRecord(target: Record<string, unknown>[], value: unknown): void {

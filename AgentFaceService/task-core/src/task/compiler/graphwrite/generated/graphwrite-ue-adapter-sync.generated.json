@@ -65,6 +65,17 @@
       "behavior_field": "external_merges",
       "compiler_id": "merge_external_flow",
       "taskplan_op": "insert_external_flow",
+      "status": "hidden",
+      "adapter_sync": "reserved_hidden_from_agent"
+    },
+    {
+      "route_id": "graph.merge_external_flow.insert_between",
+      "runtime_adapter_id": "k2.external_graph.insert_external_flow",
+      "graph_strategy": "merge_external_flow",
+      "public_scope": "insert_between",
+      "behavior_field": "external_merges",
+      "compiler_id": "merge_external_flow",
+      "taskplan_op": "insert_external_flow",
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
@@ -103,14 +114,25 @@
     },
     {
       "route_id": "graph.patch_external_graph.node_comment",
-      "runtime_adapter_id": "k2.external_graph.patch.node_comment",
+      "runtime_adapter_id": "k2.external_graph.patch.node_property",
       "graph_strategy": "patch_external_graph",
       "public_scope": "node_comment",
       "behavior_field": "external_patches",
       "compiler_id": "patch_external_graph",
-      "taskplan_op": "set_external_node_comment",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent"
+      "taskplan_op": "set_external_node_property",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
+    },
+    {
+      "route_id": "graph.patch_external_graph.node_property",
+      "runtime_adapter_id": "k2.external_graph.patch.node_property",
+      "graph_strategy": "patch_external_graph",
+      "public_scope": "node_property",
+      "behavior_field": "external_patches",
+      "compiler_id": "patch_external_graph",
+      "taskplan_op": "set_external_node_property",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch_external_graph.pin_default",
@@ -120,8 +142,52 @@
       "behavior_field": "external_patches",
       "compiler_id": "patch_external_graph",
       "taskplan_op": "set_external_pin_default",
-      "status": "hidden",
-      "adapter_sync": "reserved_hidden_from_agent"
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
+    },
+    {
+      "route_id": "graph.patch_external_links.connect_pins",
+      "runtime_adapter_id": "k2.external_graph.patch_links.connect_pins",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "connect_pins",
+      "behavior_field": "external_link_patches",
+      "compiler_id": "patch_external_links",
+      "taskplan_op": "connect_external_pins",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
+    },
+    {
+      "route_id": "graph.patch_external_links.disconnect_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.disconnect_link",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "disconnect_link",
+      "behavior_field": "external_link_patches",
+      "compiler_id": "patch_external_links",
+      "taskplan_op": "disconnect_external_link",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
+    },
+    {
+      "route_id": "graph.patch_external_links.insert_pure_resolver_between_data_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.replace_link",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "insert_pure_resolver_between_data_link",
+      "behavior_field": "external_link_patches",
+      "compiler_id": "patch_external_links",
+      "taskplan_op": "replace_external_link",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
+    },
+    {
+      "route_id": "graph.patch_external_links.replace_link",
+      "runtime_adapter_id": "k2.external_graph.patch_links.replace_link",
+      "graph_strategy": "patch_external_links",
+      "public_scope": "replace_link",
+      "behavior_field": "external_link_patches",
+      "compiler_id": "patch_external_links",
+      "taskplan_op": "replace_external_link",
+      "status": "active",
+      "adapter_sync": "active_requires_registered_non_reserved_adapter"
     },
     {
       "route_id": "graph.patch.connect_pins",

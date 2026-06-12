@@ -345,6 +345,39 @@ bool UGraphWriteCoreUtils::ApplyReplaceLink(UEdGraph* Graph, UEdGraphPin* FromPi
 	return true;
 }
 
+bool UGraphWriteCoreUtils::ApplyReplaceLinkSource(UEdGraph* Graph, UEdGraphPin* OldFromPin, UEdGraphPin* ToPin, UEdGraphPin* NewFromPin, FString& OutError, bool& bOutChanged)
+{
+	bOutChanged = false;
+	if (!Graph || !OldFromPin || !ToPin || !NewFromPin)
+	{
+		OutError = TEXT("pin_not_found");
+		return false;
+	}
+	if (OldFromPin == NewFromPin)
+	{
+		return true;
+	}
+
+	bool bDisconnected = false;
+	if (!TryBreakLink(OldFromPin, ToPin, OutError, bDisconnected))
+	{
+		return false;
+	}
+
+	bool bConnected = false;
+	if (!TrySchemaConnect(Graph, NewFromPin, ToPin, OutError, bConnected))
+	{
+		FString RestoreError;
+		bool bRestoreChanged = false;
+		TrySchemaConnect(Graph, OldFromPin, ToPin, RestoreError, bRestoreChanged);
+		OutError = OutError.IsEmpty() ? TEXT("link_create_failed") : OutError;
+		return false;
+	}
+
+	bOutChanged = bDisconnected || bConnected;
+	return true;
+}
+
 bool UGraphWriteCoreUtils::ApplyAppendSemanticBody(UEdGraph* Graph, const FBlueprintHelperGraphWriteMutationIntent& Intent, FString& OutError, bool& bOutChanged)
 {
 	return TrySchemaConnect(Graph, Intent.Source.Pin, FindFirstExecPin(Intent.InsertedNode, EGPD_Input), OutError, bOutChanged);

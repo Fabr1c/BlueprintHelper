@@ -124,7 +124,18 @@ test('extractTaskPlanMetricOperations folds external graph-write adapter operati
           graph: 'EventGraph',
         },
         args: {
-          kind: 'set_external_node_comment',
+          kind: 'set_external_node_property',
+          property_descriptor_id: 'k2.node.comment',
+        },
+      },
+      {
+        operation: 'patch_external_links',
+        target: {
+          asset_path: '/Game/Blueprints/BP_StoneGate',
+          graph: 'EventGraph',
+        },
+        args: {
+          kind: 'replace_link',
         },
       },
       {
@@ -143,6 +154,7 @@ test('extractTaskPlanMetricOperations folds external graph-write adapter operati
   assert.deepEqual(operations, [
     { capability: 'graph_write', semantic_operation: 'graph.merge_external_flow.append_after' },
     { capability: 'graph_write', semantic_operation: 'graph.patch_external_graph.node_comment' },
+    { capability: 'graph_write', semantic_operation: 'graph.patch_external_links.replace_link' },
     { capability: 'graph_write', semantic_operation: 'graph.replace_external_body.body' },
   ]);
 });

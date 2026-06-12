@@ -292,6 +292,60 @@ public:
         return Root;
     }
 
+    static TSharedPtr<FJsonObject> MakeMixedUserAndBlueprintHelperBlockRawJsonObject()
+    {
+        static const FString BlockId = TEXT("BH_DoorFeature_InsertBetween");
+
+        TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+        Root->SetStringField(TEXT("version"), TEXT("2.2"));
+        Root->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.JsonToBlueprint"));
+
+        TArray<TSharedPtr<FJsonValue>> Nodes;
+        TSharedRef<FJsonObject> EntryNode =
+            MakeLogicTestEventNode(TEXT("entry"), TEXT("K2Node_CustomEvent"), TEXT("OpenDoor"), TEXT("OpenDoor"));
+        EntryNode->SetStringField(TEXT("node_guid"), TEXT("11111111111111111111111111111111"));
+        Nodes.Add(MakeShared<FJsonValueObject>(EntryNode));
+
+        TSharedRef<FJsonObject> InsertedNode = MakeShared<FJsonObject>();
+        InsertedNode->SetStringField(TEXT("id"), TEXT("inserted"));
+        InsertedNode->SetStringField(TEXT("node_guid"), TEXT("22222222222222222222222222222222"));
+        InsertedNode->SetStringField(TEXT("type"), TEXT("K2Node_CallFunction"));
+        InsertedNode->SetStringField(TEXT("name"), TEXT("PrintInserted"));
+        InsertedNode->SetStringField(TEXT("function_name"), TEXT("PrintString"));
+        AddBlueprintHelperOwnershipMetadata(InsertedNode, BlockId);
+        Nodes.Add(MakeShared<FJsonValueObject>(InsertedNode));
+
+        TSharedRef<FJsonObject> SuccessorNode = MakeShared<FJsonObject>();
+        SuccessorNode->SetStringField(TEXT("id"), TEXT("successor"));
+        SuccessorNode->SetStringField(TEXT("node_guid"), TEXT("33333333333333333333333333333333"));
+        SuccessorNode->SetStringField(TEXT("type"), TEXT("K2Node_CallFunction"));
+        SuccessorNode->SetStringField(TEXT("name"), TEXT("PrintOriginal"));
+        SuccessorNode->SetStringField(TEXT("function_name"), TEXT("PrintString"));
+        Nodes.Add(MakeShared<FJsonValueObject>(SuccessorNode));
+
+        TSharedRef<FJsonObject> EntryToInsertedLink = MakeShared<FJsonObject>();
+        EntryToInsertedLink->SetStringField(TEXT("from_id"), TEXT("entry"));
+        EntryToInsertedLink->SetStringField(TEXT("from_pin"), TEXT("then"));
+        EntryToInsertedLink->SetStringField(TEXT("to_id"), TEXT("inserted"));
+        EntryToInsertedLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
+        EntryToInsertedLink->SetStringField(TEXT("kind"), TEXT("exec"));
+
+        TSharedRef<FJsonObject> InsertedToSuccessorLink = MakeShared<FJsonObject>();
+        InsertedToSuccessorLink->SetStringField(TEXT("from_id"), TEXT("inserted"));
+        InsertedToSuccessorLink->SetStringField(TEXT("from_pin"), TEXT("then"));
+        InsertedToSuccessorLink->SetStringField(TEXT("to_id"), TEXT("successor"));
+        InsertedToSuccessorLink->SetStringField(TEXT("to_pin"), TEXT("execute"));
+        InsertedToSuccessorLink->SetStringField(TEXT("kind"), TEXT("exec"));
+
+        TArray<TSharedPtr<FJsonValue>> Links;
+        Links.Add(MakeShared<FJsonValueObject>(EntryToInsertedLink));
+        Links.Add(MakeShared<FJsonValueObject>(InsertedToSuccessorLink));
+
+        Root->SetArrayField(TEXT("nodes"), Nodes);
+        Root->SetArrayField(TEXT("links"), Links);
+        return Root;
+    }
+
     static FString MakeLogicServiceTestObjectName(const FString& Prefix)
     {
         return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
@@ -842,6 +896,85 @@ bool FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockExposesWriteAnchors::RunT
     TestEqual(TEXT("first owned link has endpoint link_ref"),
         LinkRef,
         FString(TEXT("11111111111111111111111111111111.then->22222222222222222222222222222222.execute")));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockPreservesCrossGroupExecLinks,
+    "BlueprintHelper.ObjectFirst.Logic.GroupedBlueprintHelperOwnedBlockPreservesCrossGroupExecLinks",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FObjectFirstLogic_GroupedBlueprintHelperOwnedBlockPreservesCrossGroupExecLinks::RunTest(const FString& Parameters)
+{
+    FBlueprintHelperLogicGroupBuilder Builder;
+    const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildGroups(
+        FBlueprintHelperObjectFirstLogicTestsLocalUtils::MakeMixedUserAndBlueprintHelperBlockRawJsonObject(),
+        TEXT("/Game/BP/BP_PhysicsDoor"),
+        TEXT("EG_DoorFeature"),
+        EBlueprintHelperLogicScope::TargetGraph);
+
+    TestEqual(TEXT("mixed graph is split into owned and user groups"), Payload.Groups.Num(), 2);
+    if (Payload.Groups.Num() != 2)
+    {
+        return false;
+    }
+
+    const FBlueprintHelperLogicGroup& OwnedGroup = Payload.Groups[0];
+    const FBlueprintHelperLogicGroup& UserGroup = Payload.Groups[1];
+    TestEqual(TEXT("first group is the owned block"),
+        OwnedGroup.GroupType,
+        EBlueprintHelperLogicGroupType::BlueprintHelperBlock);
+    TestEqual(TEXT("second group is the user event flow"),
+        UserGroup.GroupType,
+        EBlueprintHelperLogicGroupType::GlobalEventFlow);
+
+    TestEqual(TEXT("owned group has inserted node"), OwnedGroup.Nodes.Num(), 1);
+    TestEqual(TEXT("user group has entry and successor nodes"), UserGroup.Nodes.Num(), 2);
+    if (OwnedGroup.Nodes.Num() != 1 || UserGroup.Nodes.Num() != 2)
+    {
+        return false;
+    }
+
+    const FBlueprintHelperLogicNode& InsertedNode = OwnedGroup.Nodes[0];
+    const FBlueprintHelperLogicNode& EntryNode = UserGroup.Nodes[0];
+    const FBlueprintHelperLogicNode& SuccessorNode = UserGroup.Nodes[1];
+
+    TestEqual(TEXT("entry node uses stable node_ref"),
+        EntryNode.NodeRef,
+        FString(TEXT("11111111111111111111111111111111")));
+    TestEqual(TEXT("inserted node uses stable node_ref"),
+        InsertedNode.NodeRef,
+        FString(TEXT("22222222222222222222222222222222")));
+    TestEqual(TEXT("successor node uses stable node_ref"),
+        SuccessorNode.NodeRef,
+        FString(TEXT("33333333333333333333333333333333")));
+
+    TestEqual(TEXT("user entry keeps exec link into owned group"), EntryNode.Links.Num(), 1);
+    if (EntryNode.Links.Num() == 1)
+    {
+        const FBlueprintHelperLogicLink& EntryLink = EntryNode.Links[0];
+        TestEqual(TEXT("entry link type is exec"), EntryLink.Type, EBlueprintHelperLogicLinkType::Exec);
+        TestEqual(TEXT("entry link targets inserted owned node"),
+            EntryLink.ToNode,
+            FString(TEXT("22222222222222222222222222222222")));
+        TestEqual(TEXT("entry link target pin is execute"),
+            EntryLink.ToPin,
+            FString(TEXT("execute")));
+    }
+
+    TestEqual(TEXT("owned node keeps exec link back to user successor"), InsertedNode.Links.Num(), 1);
+    if (InsertedNode.Links.Num() == 1)
+    {
+        const FBlueprintHelperLogicLink& InsertedLink = InsertedNode.Links[0];
+        TestEqual(TEXT("inserted link type is exec"), InsertedLink.Type, EBlueprintHelperLogicLinkType::Exec);
+        TestEqual(TEXT("inserted link targets original user successor"),
+            InsertedLink.ToNode,
+            FString(TEXT("33333333333333333333333333333333")));
+        TestEqual(TEXT("inserted link target pin is execute"),
+            InsertedLink.ToPin,
+            FString(TEXT("execute")));
+    }
 
     return true;
 }

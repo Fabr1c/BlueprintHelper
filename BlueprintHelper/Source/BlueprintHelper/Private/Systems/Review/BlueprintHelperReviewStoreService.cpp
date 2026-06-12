@@ -25,8 +25,6 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentEvidence.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewUtils.h"
 
-namespace
-{
 	DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperReviewStore, Log, All);
 
 	FBlueprintHelperReviewStoreChangedMulticast& BlueprintHelperReviewStoreChangedDelegate()
@@ -64,7 +62,6 @@ namespace
 				*IndexError);
 		}
 	}
-}
 
 FString FBlueprintHelperReviewStoreService::NormalizeGraphBlockTargetId(
 	const FString& GraphName,

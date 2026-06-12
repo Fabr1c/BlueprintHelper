@@ -63,6 +63,22 @@ private:
 	static TSharedRef<FJsonObject> BuildNodePinSubsetSnapshot(
 		const UEdGraphNode* Node,
 		const FString& PinName);
+	static bool FillExternalLinkTargetSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedRef<FJsonObject>& Json);
+	static bool FillExternalLinkTargetSnapshotFromBaselineAssetSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& AssetSnapshot,
+		const TSharedRef<FJsonObject>& Json);
+	static TSharedPtr<FJsonObject> BuildBaselineNodePinSubsetSnapshot(
+		const TSharedPtr<FJsonObject>& NodeObject,
+		const FString& PinName);
+	static TSharedPtr<FJsonObject> FindBaselineNodeByCompactKey(
+		const TSharedPtr<FJsonObject>& GraphObject,
+		const FString& NodeKey);
+	static TSharedPtr<FJsonObject> FindBaselinePinObject(
+		const TSharedPtr<FJsonObject>& NodeObject,
+		const FString& PinName);
 	static TSharedRef<FJsonObject> BuildWidgetTreeSnapshot(UWidgetTree* WidgetTree);
 	static TSharedRef<FJsonObject> BuildTargetSnapshotHeader(
 		const FBlueprintHelperReviewAtomicTarget& Target,

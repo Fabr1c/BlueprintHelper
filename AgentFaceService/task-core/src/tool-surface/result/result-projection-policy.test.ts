@@ -187,7 +187,7 @@ test('projectToolResultForCli preserves connectivity blocker issue summary', () 
   }]);
 });
 
-test('projectToolResultForCli preserves ExternalGraphAnchor schema', () => {
+test('projectToolResultForCli omits expanded anchors but keeps compact anchor fields', () => {
   const projected = projectToolResultForCli({
     command_kind: 'read.context',
     format: 'json',
@@ -203,6 +203,10 @@ test('projectToolResultForCli preserves ExternalGraphAnchor schema', () => {
           schema: 'LogicJson.v1',
           logic: {
             nodes: [{
+              anchor_type: 'external_node',
+              kind: 'node',
+              label: 'Set FocusActor',
+              anchor_ref: 'xnode:v1:aaaaaaaa#anchorfp',
               external_anchor: {
                 schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
                 node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -221,8 +225,52 @@ test('projectToolResultForCli preserves ExternalGraphAnchor schema', () => {
   assert.equal(payload['schema'], 'LogicJson.v1');
   const logic = payload['logic'] as Record<string, unknown>;
   const nodes = logic['nodes'] as Record<string, unknown>[];
-  const anchor = nodes[0]?.['external_anchor'] as Record<string, unknown>;
-  assert.equal(anchor['schema'], 'BlueprintHelper.ExternalGraphAnchor.v1');
+  assert.equal(nodes[0]?.['external_anchor'], undefined);
+  assert.equal(nodes[0]?.['anchor_type'], 'external_node');
+  assert.equal(nodes[0]?.['anchor_ref'], 'xnode:v1:aaaaaaaa#anchorfp');
+});
+
+test('buildCliDebugArtifactSource preserves expanded anchors for expert artifact', () => {
+  const debugArtifact = buildCliDebugArtifactSource({
+    command_kind: 'read.context',
+    format: 'json',
+    expert: true,
+    tool_result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_context',
+      trace_id: 'trace_external_anchor_debug_projection',
+      status: 'completed',
+      modified: false,
+      data: {
+        payload: {
+          schema: 'LogicJson.v1',
+          logic: {
+            nodes: [{
+              external_anchor: {
+                schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+                node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                fingerprint: 'anchorfp',
+              },
+            }],
+          },
+        },
+      },
+      debug: {
+        anchors: [{
+          schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+          node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          fingerprint: 'anchorfp',
+        }],
+      },
+    } as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+
+  const debug = debugArtifact?.debug as Record<string, unknown>;
+  const anchors = debug['anchors'] as Record<string, unknown>[];
+  assert.equal(anchors[0]?.['schema'], 'BlueprintHelper.ExternalGraphAnchor.v1');
+  assert.equal(anchors[0]?.['node_guid'], 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
 });
 
 test('projectToolResultForCli applies policy omit_by_default recursively', () => {

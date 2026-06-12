@@ -34,7 +34,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -120,7 +120,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -165,7 +165,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -228,7 +228,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -302,7 +302,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -374,7 +374,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -447,7 +447,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -518,7 +518,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -656,7 +656,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -756,7 +756,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -810,7 +810,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -883,7 +883,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -976,7 +976,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -1031,7 +1031,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -1130,7 +1130,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"
@@ -1183,7 +1183,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "graph.append.event_delegate",
       "graph.append.generic_ops",
       "graph.append.generic_schedule",
-      "graph.merge_external_flow.append_after",
+      "graph.merge_external_flow.insert_between",
       "graph.replace.event_body",
       "graph.replace.function_body",
       "graph.replace.macro_body"

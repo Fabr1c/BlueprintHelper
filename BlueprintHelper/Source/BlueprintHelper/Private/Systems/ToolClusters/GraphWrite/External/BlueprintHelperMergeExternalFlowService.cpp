@@ -616,6 +616,8 @@ FBlueprintHelperMergeExternalFlowService::ParseRequest(const TSharedPtr<FJsonObj
 	{
 		FString AnchorSchema;
 		(*AnchorObject)->TryGetStringField(TEXT("schema"), AnchorSchema);
+		FString AnchorType;
+		(*AnchorObject)->TryGetStringField(TEXT("anchor_type"), AnchorType);
 		if (AnchorSchema == FBlueprintHelperLogicJsonAnchorSelector::SchemaString)
 		{
 			Request.bHasAnchorSelector = true;
@@ -623,6 +625,18 @@ FBlueprintHelperMergeExternalFlowService::ParseRequest(const TSharedPtr<FJsonObj
 				*AnchorObject,
 				Request.AnchorSelector,
 				Request.AnchorParseError);
+		}
+		else if (AnchorType.Equals(TEXT("external_link"), ESearchCase::IgnoreCase))
+		{
+			Request.bHasCompactLinkAnchor = true;
+			FBlueprintHelperExternalCompactAnchor::FromJson(
+				*AnchorObject,
+				Request.CompactLinkAnchor,
+				Request.AnchorParseError);
+		}
+		else if (!AnchorType.IsEmpty())
+		{
+			Request.AnchorParseError = TEXT("external_link_anchor_required");
 		}
 		else if (!FBlueprintHelperExternalGraphAnchor::FromJson(*AnchorObject, Request.Anchor, Request.AnchorParseError))
 		{
@@ -727,6 +741,7 @@ bool FBlueprintHelperMergeExternalFlowService::ResolveRequestAnchor(
 	const FMergeExternalFlowRequest& Request,
 	const FMergeExternalFlowContext& Context,
 	FBlueprintHelperExternalGraphAnchor& OutAnchor,
+	UEdGraphPin*& OutExpectedSuccessorPin,
 	FString& OutErrorCode,
 	FString& OutErrorMessage,
 	FString& OutErrorTarget,
@@ -735,15 +750,74 @@ bool FBlueprintHelperMergeExternalFlowService::ResolveRequestAnchor(
 {
 	bOutConflict = false;
 	OutAnchor = FBlueprintHelperExternalGraphAnchor();
+	OutExpectedSuccessorPin = nullptr;
 	if (!Request.AnchorParseError.IsEmpty())
 	{
 		OutErrorCode = Request.AnchorParseError;
 		OutErrorMessage = Request.bHasAnchorSelector
 			? TEXT("merge_external_flow requires a valid BlueprintHelper.LogicJsonAnchorSelector.v1 anchor selector.")
-			: TEXT("merge_external_flow requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor.");
+			: Request.bHasCompactLinkAnchor
+				? TEXT("merge_external_flow insert_between requires a valid external_link compact anchor.")
+				: TEXT("merge_external_flow requires a BlueprintHelper.ExternalGraphAnchor.v1 anchor.");
 		OutErrorTarget = TEXT("anchor");
 		OutErrorSource = TEXT("payload.anchor");
 		return false;
+	}
+
+	if (Request.bHasCompactLinkAnchor)
+	{
+		if (Request.InsertStrategy != EBlueprintHelperInsertStrategy::InsertBetween)
+		{
+			OutErrorCode = TEXT("external_link_anchor_requires_insert_between");
+			OutErrorMessage = TEXT("external_link compact anchors are only valid for merge_external_flow insert_between.");
+			OutErrorTarget = TEXT("insert_strategy");
+			OutErrorSource = TEXT("payload.insert_strategy");
+			return false;
+		}
+
+		FBlueprintHelperExternalGraphLinkResolution ResolvedLink;
+		FString ResolveError;
+		FBlueprintHelperExternalGraphAnchorResolver AnchorResolver;
+		if (!AnchorResolver.ResolveCompactLink(Request.AssetPath, Request.GraphName, Request.CompactLinkAnchor, ResolvedLink, ResolveError) ||
+			!ResolvedLink.SourcePin ||
+			!ResolvedLink.TargetPin)
+		{
+			bOutConflict = true;
+			OutErrorCode = ResolveError.IsEmpty() ? TEXT("external_link_not_found") : ResolveError;
+			OutErrorMessage = TEXT("external compact link anchor could not be resolved or fingerprint is stale.");
+			OutErrorTarget = TEXT("anchor.anchor_ref");
+			OutErrorSource = TEXT("payload.anchor.anchor_ref");
+			return false;
+		}
+
+		if (!ResolvedLink.LinkKind.Equals(TEXT("exec"), ESearchCase::IgnoreCase) ||
+			ResolvedLink.SourcePin->Direction != EGPD_Output ||
+			ResolvedLink.TargetPin->Direction != EGPD_Input ||
+			!UGraphWriteCoreUtils::IsExecPin(ResolvedLink.SourcePin) ||
+			!UGraphWriteCoreUtils::IsExecPin(ResolvedLink.TargetPin))
+		{
+			bOutConflict = true;
+			OutErrorCode = TEXT("external_link_anchor_not_exec");
+			OutErrorMessage = TEXT("merge_external_flow insert_between requires an exec external_link anchor.");
+			OutErrorTarget = TEXT("anchor.anchor_ref");
+			OutErrorSource = TEXT("payload.anchor.anchor_ref");
+			return false;
+		}
+
+		FString BuildError;
+		const FBlueprintHelperExternalGraphAnchorService AnchorService;
+		if (!AnchorService.BuildExecBoundaryAnchor(Request.AssetPath, Request.GraphName, ResolvedLink.SourcePin, OutAnchor, BuildError))
+		{
+			bOutConflict = true;
+			OutErrorCode = BuildError.IsEmpty() ? TEXT("external_anchor_pin_not_found") : BuildError;
+			OutErrorMessage = TEXT("external compact link source must resolve to an external exec output pin.");
+			OutErrorTarget = TEXT("anchor.anchor_ref");
+			OutErrorSource = TEXT("payload.anchor.anchor_ref");
+			return false;
+		}
+
+		OutExpectedSuccessorPin = ResolvedLink.TargetPin;
+		return true;
 	}
 
 	if (!Request.bHasAnchorSelector)
@@ -848,6 +922,7 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 	Context.Relation.InsertedBlockId = Request.InsertedBlockId;
 
 	FBlueprintHelperExternalGraphAnchor EffectiveAnchor;
+	UEdGraphPin* ExpectedLinkSuccessorPin = nullptr;
 	FString AnchorErrorCode;
 	FString AnchorErrorMessage;
 	FString AnchorErrorTarget;
@@ -857,6 +932,7 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 		Request,
 		Context,
 		EffectiveAnchor,
+		ExpectedLinkSuccessorPin,
 		AnchorErrorCode,
 		AnchorErrorMessage,
 		AnchorErrorTarget,
@@ -956,7 +1032,24 @@ bool FBlueprintHelperMergeExternalFlowService::Preflight(
 			Context.Successors.Add(LinkedPin);
 		}
 	}
-	Context.OriginalSuccessorPin = Context.Successors.Num() > 0 ? Context.Successors[0] : nullptr;
+	if (ExpectedLinkSuccessorPin)
+	{
+		if (!Context.Successors.Contains(ExpectedLinkSuccessorPin))
+		{
+			BlueprintHelperMergeExternalFlow::AddConflict(
+				OutResult,
+				TEXT("external_link_not_found"),
+				TEXT("external compact link anchor no longer matches an active successor link."),
+				TEXT("anchor.anchor_ref"),
+				TEXT("payload.anchor.anchor_ref"));
+			return false;
+		}
+		Context.OriginalSuccessorPin = ExpectedLinkSuccessorPin;
+	}
+	else
+	{
+		Context.OriginalSuccessorPin = Context.Successors.Num() > 0 ? Context.Successors[0] : nullptr;
+	}
 	Context.Relation.BeforeLinks = BlueprintHelperMergeExternalFlow::CaptureBoundaryLinks(Context.AnchorPin);
 
 	switch (Request.InsertStrategy)

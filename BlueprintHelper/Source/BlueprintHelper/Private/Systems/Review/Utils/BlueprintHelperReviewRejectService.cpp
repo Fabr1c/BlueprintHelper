@@ -54,8 +54,6 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "BlueprintHelperReviewUtils.h"
 
-namespace
-{
 	static void BlueprintHelperReviewCopyHashGuardDiagnostic(
 		FBlueprintHelperReviewActionResult& Result,
 		const FBlueprintHelperReviewActionResult& Diagnostic)
@@ -66,7 +64,6 @@ namespace
 		Result.HashGuardCurrentSnapshotJson = Diagnostic.HashGuardCurrentSnapshotJson;
 		Result.HashGuardRecordedAfterSnapshotJson = Diagnostic.HashGuardRecordedAfterSnapshotJson;
 	}
-}
 
 FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
 		const FBlueprintHelperReviewVisibleChange& Change,
@@ -147,8 +144,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewRejectService::RejectVi
 		return Result;
 	}
 
-namespace
-{
 	static bool BlueprintHelperReviewIsCascadeActionable(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		return Change.Status == EBlueprintHelperReviewChangeStatus::Pending
@@ -160,7 +155,6 @@ namespace
 	{
 		return Value == INDEX_NONE ? MIN_int32 : Value;
 	}
-}
 
 TArray<FBlueprintHelperReviewVisibleChange> FBlueprintHelperReviewRejectService::CollectLifecycleDescendantsDeepestFirst(
 		const FBlueprintHelperReviewVisibleChange& Root,

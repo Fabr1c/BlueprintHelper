@@ -380,38 +380,90 @@ function deletePath(root: Record<string, unknown>, pathExpression: string): void
   }
 }
 
+interface TemplatePathSegment {
+  key: string;
+  isArray: boolean;
+}
+
 function ensurePathParent(root: Record<string, unknown>, pathExpression: string): { record: Record<string, unknown>; key: string } {
-  const parts = pathExpression.split('.');
-  const key = parts.pop();
-  if (!key) {
+  const parts = parseTemplatePath(pathExpression);
+  const final = parts.pop();
+  if (!final) {
     throw new Error(`Invalid insert path: ${pathExpression}`);
   }
-  let cursor = root;
+  let cursor: Record<string, unknown> = root;
   for (const part of parts) {
-    const child = cursor[part];
-    if (!child || typeof child !== 'object' || Array.isArray(child)) {
-      cursor[part] = {};
-    }
-    cursor = cursor[part] as Record<string, unknown>;
+    cursor = ensureTemplatePathSegment(cursor, part);
   }
-  return { record: cursor, key };
+  return { record: cursor, key: final.key };
 }
 
 function resolvePathParent(root: Record<string, unknown>, pathExpression: string): { record: Record<string, unknown>; key: string } | undefined {
-  const parts = pathExpression.split('.');
-  const key = parts.pop();
-  if (!key) {
+  const parts = parseTemplatePath(pathExpression);
+  const final = parts.pop();
+  if (!final) {
     return undefined;
   }
   let cursor: Record<string, unknown> = root;
   for (const part of parts) {
-    const child = cursor[part];
-    if (!child || typeof child !== 'object' || Array.isArray(child)) {
+    const child = resolveTemplatePathSegment(cursor, part);
+    if (!child) {
       return undefined;
     }
-    cursor = child as Record<string, unknown>;
+    cursor = child;
   }
-  return { record: cursor, key };
+  return { record: cursor, key: final.key };
+}
+
+function parseTemplatePath(pathExpression: string): TemplatePathSegment[] {
+  return pathExpression
+    .split('.')
+    .filter((part) => part.length > 0)
+    .map((part) => part.endsWith('[]')
+      ? { key: part.slice(0, -2), isArray: true }
+      : { key: part, isArray: false });
+}
+
+function ensureTemplatePathSegment(
+  cursor: Record<string, unknown>,
+  segment: TemplatePathSegment,
+): Record<string, unknown> {
+  if (segment.isArray) {
+    const existing = cursor[segment.key];
+    if (!Array.isArray(existing)) {
+      cursor[segment.key] = [{}];
+      return (cursor[segment.key] as Record<string, unknown>[])[0] ?? {};
+    }
+    if (!existing[0] || typeof existing[0] !== 'object' || Array.isArray(existing[0])) {
+      existing[0] = {};
+    }
+    return existing[0] as Record<string, unknown>;
+  }
+
+  const child = cursor[segment.key];
+  if (!child || typeof child !== 'object' || Array.isArray(child)) {
+    cursor[segment.key] = {};
+  }
+  return cursor[segment.key] as Record<string, unknown>;
+}
+
+function resolveTemplatePathSegment(
+  cursor: Record<string, unknown>,
+  segment: TemplatePathSegment,
+): Record<string, unknown> | undefined {
+  const child = cursor[segment.key];
+  if (segment.isArray) {
+    if (!Array.isArray(child)) {
+      return undefined;
+    }
+    const first = child[0];
+    return first && typeof first === 'object' && !Array.isArray(first)
+      ? first as Record<string, unknown>
+      : undefined;
+  }
+  return child && typeof child === 'object' && !Array.isArray(child)
+    ? child as Record<string, unknown>
+    : undefined;
 }
 
 function isGraphWriteTemplateWriteMode(value: string): value is GraphWriteTemplateWriteMode {

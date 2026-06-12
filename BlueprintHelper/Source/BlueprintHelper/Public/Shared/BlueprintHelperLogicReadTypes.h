@@ -192,6 +192,7 @@ struct FBlueprintHelperLogicNode
 	TSharedPtr<FJsonObject> Inputs;
 	TSharedPtr<FJsonObject> InputDefaults;
 	TSharedPtr<FJsonObject> Outputs;
+	TArray<TSharedPtr<FJsonObject>> Pins;
 	TArray<FBlueprintHelperLogicLink> Links;
 	TSharedPtr<FJsonObject> ExternalAnchor;
 	TArray<TSharedPtr<FJsonObject>> ExternalAnchors;
@@ -206,6 +207,21 @@ struct FBlueprintHelperLogicNode
 		if (Inputs.IsValid()) { Json->SetObjectField(TEXT("inputs"), Inputs); }
 		if (InputDefaults.IsValid()) { Json->SetObjectField(TEXT("input_defaults"), InputDefaults); }
 		if (Outputs.IsValid()) { Json->SetObjectField(TEXT("outputs"), Outputs); }
+		if (Pins.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> PinValues;
+			for (const TSharedPtr<FJsonObject>& Pin : Pins)
+			{
+				if (Pin.IsValid())
+				{
+					PinValues.Add(MakeShared<FJsonValueObject>(Pin));
+				}
+			}
+			if (PinValues.Num() > 0)
+			{
+				Json->SetArrayField(TEXT("pins"), PinValues);
+			}
+		}
 		if (ExternalAnchor.IsValid()) { Json->SetObjectField(TEXT("external_anchor"), ExternalAnchor); }
 		if (ExternalAnchors.Num() > 0)
 		{

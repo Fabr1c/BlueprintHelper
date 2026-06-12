@@ -27,6 +27,7 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 	{
 		{ TEXT("graph_block"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_block"), EBlueprintHelperReviewTargetHandlerKind::GraphBlock },
 		{ TEXT("graph_external_boundary"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_boundary"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBoundary },
+		{ TEXT("graph_external_link"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_link"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalLink },
 		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_node"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode },
 		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_body"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_node"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
@@ -72,6 +73,7 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 	{
 		{ TEXT("graph_block"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_external_boundary"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("graph_external_link"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph },
@@ -248,6 +250,10 @@ bool FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(
 	{
 		return false;
 	}
+	if (TargetKindLower.Equals(TEXT("graph_external_link"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
 	if (TargetKindLower.Equals(TEXT("graph_external_node"), ESearchCase::IgnoreCase))
 	{
 		return false;
@@ -353,6 +359,7 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 	if (NormalizedTargetKind.Equals(TEXT("graph_node"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_block"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_boundary"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("graph_external_link"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_node"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase))
 	{

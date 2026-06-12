@@ -1,0 +1,38 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_graph",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "scope_policy": {
+    "graph_name": "__REQUIRED_GRAPH_NAME__",
+    "allow_modify_user_nodes": false,
+    "external_mutation_policy": {
+      "strategy": "patch_external_graph",
+      "allowed_mutations": [
+        "pin_default",
+        "node_comment",
+        "node_property"
+      ]
+    }
+  },
+  "behavior": {
+    "graph_strategy": "patch_external_graph",
+    "external_patches": [
+      {
+        "kind": "set_external_node_property",
+        "anchor": {
+          "anchor_type": "external_node",
+          "anchor_ref": "__REQUIRED_EXTERNAL_NODE_ANCHOR_REF__"
+        },
+        "property_descriptor_id": "__REQUIRED_PROPERTY_DESCRIPTOR_ID__",
+        "value": "__REQUIRED_VALUE__",
+        "expected_old_state": {
+          "value": "__REQUIRED_EXPECTED_OLD_VALUE__"
+        }
+      }
+    ]
+  }
+}

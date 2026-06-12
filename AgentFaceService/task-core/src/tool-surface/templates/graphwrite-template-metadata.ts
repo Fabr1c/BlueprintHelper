@@ -17,7 +17,7 @@ import type {
 const CANONICAL_ROUTE_BY_WRITE_MODE: Record<GraphWriteTemplateWriteMode, string> = {
   'graph.append': 'graph.append.custom_event',
   'graph.replace': 'graph.replace.event_body',
-  'graph.merge': 'graph.merge_external_flow.append_after',
+  'graph.merge': 'graph.merge_external_flow.insert_between',
   'graph.patch': 'graph.patch.connect_pins',
 };
 
@@ -25,7 +25,7 @@ const GRAPH_WRITE_MODE_DESCRIPTIONS: Readonly<Record<GraphWriteTemplateWriteMode
   'graph.append': 'Create new owned graph content, usually a custom event or owned entry body.',
   'graph.replace': 'Replace an existing event, function, macro, graph, or owned block body.',
   'graph.merge': 'Insert owned logic at an existing stable graph anchor.',
-  'graph.patch': 'Edit links, pin defaults, comments, or owned nodes inside BlueprintHelper-owned graph content.',
+  'graph.patch': 'Patch BlueprintHelper-owned refs or external user graph compact anchors for links and node fields.',
 };
 
 const GRAPH_WRITE_CLUSTER_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -33,7 +33,7 @@ const GRAPH_WRITE_CLUSTER_DESCRIPTIONS: Readonly<Record<string, string>> = {
   event_delegate: 'Component-bound event and delegate binding statements.',
   external_body: 'External event or function body replacement through adapter-backed body anchors.',
   generic_ops: 'General Blueprint statements and expressions such as call, set, let, branch, return, construct, and literal values.',
-  patch: 'Owned graph reference, link, pin default, and node comment patch templates.',
+  patch: 'Owned graph refs plus external compact-anchor link, pin default, and descriptor-backed node property patches.',
   schedule: 'Delay, timer, and scheduled execution statements.',
 };
 
@@ -51,6 +51,8 @@ const GRAPH_WRITE_OPERATION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   let: 'Create a reusable graph-local symbol from an expression.',
   merge: 'Insert owned graph logic at a supported merge point or external flow anchor.',
   patch: 'Patch owned graph refs, links, pin defaults, comments, or owned nodes.',
+  external_link_patch: 'Connect, disconnect, or replace user graph links through external compact anchors.',
+  external_property_patch: 'Patch external user graph pin defaults or descriptor-backed node properties.',
   replace_body: 'Replace an adapter-backed external graph body using read_context body boundary evidence.',
   set: 'Assign member variables or object/component properties.',
   timer: 'Run delay, timer, or other scheduled execution operations.',
@@ -249,12 +251,7 @@ function getBaseTemplatePathForWriteMode(writeMode: GraphWriteTemplateWriteMode)
   if (canonicalRoute?.template_path) {
     return canonicalRoute.template_path;
   }
-  const fallbackRoute = getGraphWriteRoutesForTemplateDiscovery()
-    .find((route) => route.write_mode === writeMode && route.template_path);
-  if (fallbackRoute?.template_path) {
-    return fallbackRoute.template_path;
-  }
-  throw new Error(`GraphWrite write mode has no template path: ${writeMode}`);
+  throw new Error(`GraphWrite canonical write mode route has no template path: ${writeMode}`);
 }
 
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string): T[] {

@@ -57,8 +57,6 @@
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "WidgetBlueprint.h"
 
-namespace
-{
 	static bool BlueprintHelperReviewVisibleChangeHasAssetFactoryTarget(const FBlueprintHelperReviewVisibleChange& Change)
 	{
 		return Change.AtomicTargets.ContainsByPredicate(
@@ -83,7 +81,6 @@ namespace
 			*Message);
 		return Result;
 	}
-}
 
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService() = default;
 

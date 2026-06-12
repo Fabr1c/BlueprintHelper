@@ -82,6 +82,8 @@ public:
 	/** 替换 Pin 连接 */
 	static bool ApplyReplaceLink(UEdGraph* Graph, UEdGraphPin* FromPin, UEdGraphPin* OldToPin, UEdGraphPin* NewToPin, FString& OutError, bool& bOutChanged);
 
+	static bool ApplyReplaceLinkSource(UEdGraph* Graph, UEdGraphPin* OldFromPin, UEdGraphPin* ToPin, UEdGraphPin* NewFromPin, FString& OutError, bool& bOutChanged);
+
 	/** Append 语义体 */
 	static bool ApplyAppendSemanticBody(UEdGraph* Graph, const FBlueprintHelperGraphWriteMutationIntent& Intent, FString& OutError, bool& bOutChanged);
 

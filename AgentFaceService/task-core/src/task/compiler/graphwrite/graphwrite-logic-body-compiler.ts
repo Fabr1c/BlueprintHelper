@@ -215,7 +215,7 @@ export function assertSupportedTaskSpec(taskSpec: TaskSpec) {
     validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['exec_boundary_link']);
   }
   if (strategy === 'patch_external_graph') {
-    validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['pin_default', 'node_comment']);
+    validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['pin_default', 'node_comment', 'node_property']);
   }
   if (strategy === 'replace_external_body') {
     if (taskSpec.execution_policy.dry_run_mode !== 'full') {
@@ -2483,6 +2483,65 @@ export function normalizeExternalExecBoundaryAnchor(anchor: Record<string, unkno
     pin_name: getRequiredString(out, 'pin_name', `${path}.pin_name`),
     pin_direction: pinDirection,
   };
+}
+
+function normalizeExternalCompactLinkAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {
+  const anchorType = getRequiredString(anchor, 'anchor_type', `${path}.anchor_type`);
+  if (anchorType !== 'external_link') {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'merge_external_flow insert_between requires an external_link compact anchor.', [
+      {
+        code: 'unsupported_external_anchor_type',
+        path: `${path}.anchor_type`,
+        message: 'Use anchor_type="external_link".',
+      },
+    ]);
+  }
+
+  const anchorRef = getRequiredString(anchor, 'anchor_ref', `${path}.anchor_ref`);
+  if (isRawLogicJsonArrayRef(anchorRef)) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'LogicJson read-view refs are display-only for external graph writes.', [
+      {
+        code: 'unsupported_logic_json_read_ref',
+        path: `${path}.anchor_ref`,
+        message: 'Use compact xlink:v1:e:... anchor_ref emitted by read_context instead of links[n].',
+      },
+    ]);
+  }
+  if (!anchorRef.startsWith('xlink:v1:e:')) {
+    throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'merge_external_flow insert_between requires an exec external_link compact anchor.', [
+      {
+        code: 'unsupported_external_anchor_ref',
+        path: `${path}.anchor_ref`,
+        message: 'Use compact exec link anchor_ref emitted by read_context (xlink:v1:e:...).',
+      },
+    ]);
+  }
+
+  return {
+    anchor_type: anchorType,
+    anchor_ref: anchorRef,
+  };
+}
+
+export function normalizeExternalFlowAnchor(
+  anchor: Record<string, unknown>,
+  insertStrategy: string,
+  path: string,
+): Record<string, unknown> {
+  if (typeof anchor['anchor_type'] === 'string' || typeof anchor['anchor_ref'] === 'string') {
+    if (insertStrategy !== 'insert_between') {
+      throw new TaskSpecCompileError('unsupported_external_graph_anchor', 'external_link compact anchors are only valid for insert_between.', [
+        {
+          code: 'unsupported_external_anchor_strategy',
+          path: `${path}.anchor_type`,
+          message: 'Use insert_strategy="insert_between" when anchoring to an existing external exec link.',
+        },
+      ]);
+    }
+    return normalizeExternalCompactLinkAnchor(anchor, path);
+  }
+
+  return normalizeExternalExecBoundaryAnchor(anchor, path);
 }
 
 export function normalizeExternalBodyEntryAnchor(anchor: Record<string, unknown>, path: string): Record<string, unknown> {

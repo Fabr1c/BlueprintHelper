@@ -37,6 +37,7 @@ class FBlueprintHelperMergeBlueprintGraphService;
 class FBlueprintHelperGraphWriteServiceRegistry;
 class FBlueprintHelperMergeExternalFlowService;
 class FBlueprintHelperPatchExternalGraphService;
+class FBlueprintHelperPatchExternalLinksService;
 class FBlueprintHelperExternalBodySnapshotService;
 class FBlueprintHelperExternalDependentsAnalysisService;
 class FBlueprintHelperReplaceExternalBodyService;
@@ -163,6 +164,7 @@ private:
 	TUniquePtr<FBlueprintHelperMergeBlueprintGraphService> MergeGraphService;
 	TUniquePtr<FBlueprintHelperMergeExternalFlowService> MergeExternalFlowService;
 	TUniquePtr<FBlueprintHelperPatchExternalGraphService> PatchExternalGraphService;
+	TUniquePtr<FBlueprintHelperPatchExternalLinksService> PatchExternalLinksService;
 	TUniquePtr<FBlueprintHelperExternalBodySnapshotService> ExternalBodySnapshotService;
 	TUniquePtr<FBlueprintHelperExternalDependentsAnalysisService> ExternalDependentsAnalysisService;
 	TUniquePtr<FBlueprintHelperReplaceExternalBodyService> ReplaceExternalBodyService;

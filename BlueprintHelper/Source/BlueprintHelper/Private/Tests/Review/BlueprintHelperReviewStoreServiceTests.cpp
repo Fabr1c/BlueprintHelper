@@ -1,6 +1,7 @@
 ﻿#if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
@@ -33,6 +34,7 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewSnapshotRestoreService.h"
 #include "Systems/Review/Utils/BlueprintHelperReviewStoreMergeUtils.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorFingerprintService.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Shared/GraphWrite/BlueprintHelperAppendGraphTypes.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
@@ -813,6 +815,81 @@ public:
 	{
 		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 		return FromPin && ToPin && Schema && Schema->TryCreateConnection(FromPin, ToPin);
+	}
+
+	static FString MakeReviewCompactNodeKey(const UEdGraphNode* Node)
+	{
+		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
+		return Guid.Len() <= 8 ? Guid : Guid.Left(8);
+	}
+
+	static FString MakeReviewCompactPinKey(const UEdGraphPin* Pin)
+	{
+		FString Cleaned;
+		const FString Raw = Pin ? Pin->PinName.ToString() : FString();
+		Cleaned.Reserve(Raw.Len());
+		for (const TCHAR Ch : Raw)
+		{
+			if (FChar::IsAlnum(Ch) || Ch == TCHAR('_'))
+			{
+				Cleaned.AppendChar(Ch);
+			}
+		}
+		if (Cleaned.Len() > 16)
+		{
+			Cleaned = Cleaned.Left(16);
+		}
+		return Cleaned.IsEmpty() ? FString(TEXT("pin")) : Cleaned;
+	}
+
+	static FString MakeReviewCompactKind(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			? TEXT("e")
+			: TEXT("d");
+	}
+
+	static FString MakeReviewCompactLinkKind(const UEdGraphPin* Pin)
+	{
+		return Pin && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+			? TEXT("exec")
+			: TEXT("data");
+	}
+
+	static FString MakeReviewCompactPinRef(const UEdGraphPin* Pin)
+	{
+		const UEdGraphNode* Node = Pin ? Pin->GetOwningNode() : nullptr;
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xpin:v1:%s:%s.%s#%s"),
+			*MakeReviewCompactKind(Pin),
+			*MakeReviewCompactNodeKey(Node),
+			*MakeReviewCompactPinKey(Pin),
+			*FingerprintService.BuildCompactPinFingerprint(Pin));
+	}
+
+	static FString MakeReviewCompactLinkRef(const UEdGraphPin* SourcePin, const UEdGraphPin* TargetPin)
+	{
+		const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
+		const UEdGraphNode* TargetNode = TargetPin ? TargetPin->GetOwningNode() : nullptr;
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		const FString LinkKind = MakeReviewCompactLinkKind(SourcePin);
+		return FString::Printf(
+			TEXT("xlink:v1:%s:%s.%s>%s.%s#%s"),
+			*MakeReviewCompactKind(SourcePin),
+			*MakeReviewCompactNodeKey(SourceNode),
+			*MakeReviewCompactPinKey(SourcePin),
+			*MakeReviewCompactNodeKey(TargetNode),
+			*MakeReviewCompactPinKey(TargetPin),
+			*FingerprintService.BuildLinkFingerprint(SourcePin, TargetPin, LinkKind));
+	}
+
+	static TSharedRef<FJsonObject> MakeReviewCompactAnchorObject(const FString& AnchorType, const FString& AnchorRef)
+	{
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("anchor_type"), AnchorType);
+		Anchor->SetStringField(TEXT("anchor_ref"), AnchorRef);
+		return Anchor;
 	}
 
 	static UEdGraphNode* FindReviewNodeByComment(UEdGraph* Graph, const FString& NodeComment)
@@ -1608,6 +1685,160 @@ bool FBlueprintHelperReviewExternalBoundarySnapshotRestoreFailsWhenBoundaryPinMi
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPatchExternalLinksRejectRestoresReplaceTest,
+	"BlueprintHelper.Review.Baseline.PatchExternalLinks.RejectRestoresReplace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPatchExternalLinksRejectRestoresReplaceTest::RunTest(const FString& Parameters)
+{
+	const FString AssetName = FString::Printf(
+		TEXT("BP_ExternalLinkPatchRestore_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8));
+	UPackage* Package = CreatePackage(*FString::Printf(TEXT("/Game/BlueprintHelperReview/%s"), *AssetName));
+	UBlueprint* Blueprint = Package
+		? FKismetEditorUtilities::CreateBlueprint(
+			AActor::StaticClass(),
+			Package,
+			*AssetName,
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperReviewStoreServiceTests"))
+		: nullptr;
+	if (Blueprint)
+	{
+		FAssetRegistryModule::AssetCreated(Blueprint);
+		Package->SetDirtyFlag(false);
+	}
+	TestNotNull(TEXT("test blueprint created"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0 || !Blueprint->UbergraphPages[0])
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	UK2Node_CustomEvent* EventNode = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewConversionEventNode(Graph, TEXT("ExternalLinkPatchEntry"));
+	UK2Node_CallFunction* OriginalCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UK2Node_CallFunction* ReplacementCall = FBlueprintHelperReviewStoreServiceTestsLocalUtils::AddReviewDestroyActorCallNode(Graph);
+	UEdGraphPin* SourcePin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(EventNode, EGPD_Output);
+	UEdGraphPin* OriginalTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(OriginalCall, EGPD_Input);
+	UEdGraphPin* ReplacementTargetPin = FBlueprintHelperReviewStoreServiceTestsLocalUtils::FindReviewExecPin(ReplacementCall, EGPD_Input);
+	TestTrue(TEXT("initial external link exists"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, OriginalTargetPin));
+	if (!EventNode || !SourcePin || !OriginalTargetPin || !ReplacementTargetPin)
+	{
+		return false;
+	}
+
+	const FString LinkRef = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewCompactLinkRef(SourcePin, OriginalTargetPin);
+	const FString ReplacementRef = FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewCompactPinRef(SourcePin);
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("patch_type"), TEXT("replace_link"));
+	Payload->SetObjectField(
+		TEXT("link_anchor"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewCompactAnchorObject(TEXT("external_link"), LinkRef));
+	Payload->SetObjectField(
+		TEXT("replacement_anchor"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewCompactAnchorObject(TEXT("external_pin"), ReplacementRef));
+
+	FString PayloadJson;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&PayloadJson);
+	FJsonSerializer::Serialize(Payload, Writer);
+
+	FBlueprintHelperReviewAtomicTarget Target;
+	Target.AssetPath = Blueprint->GetPackage()->GetName();
+	Target.GraphName = Graph->GetName();
+	Target.TargetKind = TEXT("graph_external_link");
+	Target.TargetSubKind = TEXT("replace_link");
+	Target.PropertyPath = TEXT("replace_link");
+	Target.TargetKey = FString::Printf(
+		TEXT("graph_external_link:%s:replace_link:%s"),
+		*Graph->GetName(),
+		*LinkRef);
+	Target.PinPath = LinkRef;
+	Target.AnchorJson = PayloadJson;
+
+	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
+	FString SnapshotJson;
+	FString SnapshotHash;
+	FString SnapshotError;
+	TestTrue(TEXT("external link target snapshot captured"),
+		SnapshotService.CaptureTargetSnapshot(Target, SnapshotJson, SnapshotHash, SnapshotError));
+	TestFalse(TEXT("external link snapshot hash emitted"), SnapshotHash.IsEmpty());
+	TestTrue(TEXT("external link snapshot carries node snapshots"), SnapshotJson.Contains(TEXT("\"nodes\"")));
+	TestTrue(TEXT("external link snapshot records source pin"), SnapshotJson.Contains(TEXT("\"source_pin_name\"")));
+
+	const FString ArchiveSessionId =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeUniqueReviewArchiveId(TEXT("archive_external_link_patch_restore"));
+	TArray<FString> Warnings;
+	const TArray<FString> SnapshotRefs =
+		SnapshotService.CaptureSemanticBaselineSnapshots(ArchiveSessionId, {Target.AssetPath}, &Warnings);
+	TestEqual(TEXT("one semantic baseline ref emitted"), SnapshotRefs.Num(), 1);
+	TestEqual(TEXT("semantic baseline capture has no warnings"), Warnings.Num(), 0);
+
+	SourcePin->BreakAllPinLinks(true);
+	TestTrue(TEXT("replacement link exists before restore"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, ReplacementTargetPin));
+	TestTrue(TEXT("replacement link connected"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+	TestFalse(TEXT("original link removed before restore"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
+
+	FString BaselineSnapshotJson;
+	FString BaselineSnapshotHash;
+	FString BaselineSnapshotError;
+	TestTrue(TEXT("external link baseline target snapshot loaded after graph mutation"),
+		SnapshotService.TryLoadBaselineTargetSnapshot(
+			ArchiveSessionId,
+			Target,
+			BaselineSnapshotJson,
+			BaselineSnapshotHash,
+			BaselineSnapshotError));
+	TestFalse(TEXT("external link baseline snapshot hash emitted"), BaselineSnapshotHash.IsEmpty());
+	TestTrue(TEXT("baseline-derived external link snapshot carries node snapshots"),
+		BaselineSnapshotJson.Contains(TEXT("\"nodes\"")));
+	TestTrue(TEXT("baseline-derived external link snapshot records source pin"),
+		BaselineSnapshotJson.Contains(TEXT("\"source_pin_name\"")));
+
+	TSharedPtr<FJsonObject> BaselineSnapshotObject;
+	FString BaselineParseError;
+	TestTrue(TEXT("external link baseline snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(
+			BaselineSnapshotJson,
+			BaselineSnapshotObject,
+			BaselineParseError));
+	if (!BaselineSnapshotObject.IsValid())
+	{
+		return false;
+	}
+	FString BaselineRestoreError;
+	TestTrue(TEXT("external link baseline snapshot restores"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalLinkFromSnapshot(
+			Target,
+			BaselineSnapshotObject,
+			BaselineRestoreError));
+	TestEqual(TEXT("baseline restore leaves one source link"), SourcePin->LinkedTo.Num(), 1);
+	TestTrue(TEXT("baseline restore original external link restored"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
+	TestFalse(TEXT("baseline restore replacement external link removed"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+
+	SourcePin->BreakAllPinLinks(true);
+	TestTrue(TEXT("replacement link exists before live snapshot restore"),
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::ConnectReviewExecPins(SourcePin, ReplacementTargetPin));
+	TestTrue(TEXT("replacement link reconnected"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+
+	TSharedPtr<FJsonObject> SnapshotObject;
+	FString ParseError;
+	TestTrue(TEXT("external link snapshot parses"),
+		FBlueprintHelperReviewSnapshotRestoreService::ParseReviewSnapshotJson(SnapshotJson, SnapshotObject, ParseError));
+
+	FString RestoreError;
+	TestTrue(TEXT("external link snapshot restores"),
+		FBlueprintHelperReviewSnapshotRestoreService::RestoreExternalLinkFromSnapshot(Target, SnapshotObject, RestoreError));
+	TestEqual(TEXT("source has one restored link"), SourcePin->LinkedTo.Num(), 1);
+	TestTrue(TEXT("original external link restored"), SourcePin->LinkedTo.Contains(OriginalTargetPin));
+	TestFalse(TEXT("replacement external link removed"), SourcePin->LinkedTo.Contains(ReplacementTargetPin));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewExternalNodeRejectRestoresSelectedFieldOnlyTest,
 	"BlueprintHelper.Review.ExternalNode.RejectRestoresSelectedFieldOnly",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1642,11 +1873,11 @@ bool FBlueprintHelperReviewExternalNodeRejectRestoresSelectedFieldOnlyTest::RunT
 	Target.GraphName = Graph->GetName();
 	Target.TargetKind = TEXT("graph_external_node");
 	Target.TargetKey = FString::Printf(
-		TEXT("graph_external_node:%s:node:%s:field:node_comment"),
+		TEXT("graph_external_node:%s:node:%s:field:k2.node.comment"),
 		*Graph->GetName(),
 		*EventNode->NodeGuid.ToString(EGuidFormats::Digits));
 	Target.NodeGuid = EventNode->NodeGuid.ToString(EGuidFormats::Digits);
-	Target.PropertyPath = TEXT("node_comment");
+	Target.PropertyPath = TEXT("k2.node.comment");
 
 	FBlueprintHelperReviewBaselineSnapshotService SnapshotService;
 	FString SnapshotJson;

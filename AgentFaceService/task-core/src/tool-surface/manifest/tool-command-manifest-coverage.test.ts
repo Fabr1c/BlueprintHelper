@@ -28,7 +28,7 @@ test('manifest mirror keeps GraphWrite routes visible for preview and execute ca
     const manifest = registry.require(toolId);
     assert.equal(manifest.route_refs.includes('graph.append.container_action'), true);
     assert.equal(manifest.route_refs.includes('graph.replace.function_body'), true);
-    assert.equal(manifest.route_refs.includes('graph.merge_external_flow.append_after'), true);
+    assert.equal(manifest.route_refs.includes('graph.merge_external_flow.insert_between'), true);
   }
 });
 

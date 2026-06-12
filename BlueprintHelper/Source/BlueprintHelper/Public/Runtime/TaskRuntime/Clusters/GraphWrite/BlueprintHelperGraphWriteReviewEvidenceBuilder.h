@@ -61,6 +61,28 @@ private:
 	static FString ReadStringField(
 		const TSharedPtr<FJsonObject>& Object,
 		const TCHAR* FieldName);
+	static TSharedPtr<FJsonObject> ReadObjectField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName);
+	static FString ReadAnchorRefField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName);
+	static FString MakeReviewKeySegment(const FString& Value);
+	static FString MakeExternalLinkPatchAnchorRef(const TSharedPtr<FJsonObject>& Payload);
+	static bool BuildExternalLinkPatchEvidence(
+		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OperationKind,
+		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
+	static bool BuildExternalPropertyPatchEvidence(
+		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OperationKind,
+		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 	static void NormalizeGraphWriteDiagnostic(
 		FBlueprintHelperDiagnosticItem& Item,
 		const FString& DefaultGraphName);
