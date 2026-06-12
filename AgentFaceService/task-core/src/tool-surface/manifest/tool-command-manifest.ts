@@ -17,6 +17,7 @@ export type ToolInputShapeId =
   | 'read_reference_context'
   | 'bridge_payload'
   | 'bridge_logic_json_payload'
+  | 'cli_options'
   | 'tool_payload';
 
 export type ToolResultProjectionPolicyId =

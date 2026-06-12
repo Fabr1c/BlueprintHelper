@@ -597,7 +597,7 @@ function parseArgs(argv: string[]): ParseResult {
     if (removedDirectCommand) {
       return {
         ok: false,
-        message: `${group} direct CLI command was removed. Use: ${removedDirectCommand.replacement_command}`,
+        message: `${group} direct CLI command was removed. ${removedDirectCommand.reason} Use: ${removedDirectCommand.replacement_command}`,
       };
     }
   }

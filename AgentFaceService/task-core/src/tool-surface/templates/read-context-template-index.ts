@@ -118,15 +118,15 @@ function describeTarget(domain: string, readCluster: string, targetKind: string)
     block: 'Read a BlueprintHelper-owned logic block using asset_path and block_id.',
     blueprint: 'Read the whole Blueprint-level target using asset_path.',
     custom_event: 'Read a named custom event graph using asset_path and target_name.',
-    data_asset: 'Read a DataAsset object using asset_path.',
+    data_asset: 'Read a DataAsset object using asset_path; property_json for this target reads the object payload and does not require target_name.',
     data_table: 'Read a DataTable using asset_path.',
     data_table_row: 'Read a named DataTable row using asset_path and target_name.',
     event: 'Read a named Blueprint event graph using asset_path and target_name.',
     event_dispatcher: 'Read Blueprint event dispatcher metadata using asset_path.',
     function: 'Read a named Blueprint function graph using asset_path and target_name.',
     graph: 'Read a named Blueprint graph using asset_path and target_name.',
-    property: 'Read a named object property using asset_path and target_name.',
-    widget: 'Read a named widget using asset_path and target_name.',
+    property: 'Read a named object property using asset_path and target_name; target_name is the ReadContext property locator/filter.',
+    widget: 'Read a named widget using asset_path and target_name; target_name is the ReadContext widget locator/filter used by widget property_json.',
     widget_tree: 'Read the Widget Blueprint tree using asset_path.',
   };
   return descriptions[targetKind] ?? `Read ${targetKind} target context for ${domain}.${readCluster}.`;

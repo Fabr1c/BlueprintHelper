@@ -48,7 +48,9 @@ export interface ToolCapabilityItem {
   source: 'capability_catalog';
 }
 
-export interface ToolCapabilityListItem extends ToolCapabilityItem {
+export interface ToolCapabilityListItem extends Omit<ToolCapabilityItem, 'tool_name' | 'cli_template_ids'> {
+  cli_command: string;
+  cli_template_ids: string[];
 	input_shape: ToolInputShapeId | 'multiple';
 	input_shapes: ToolInputShapeId[];
 	no_input: boolean;
@@ -74,9 +76,10 @@ export interface ToolCapabilityListResult {
   };
   items: ToolCapabilityListItem[];
   next: {
-    template_index_command:
+    template_index_command?:
       | 'bh tools templates families --workflow preview_execute --format json'
       | 'bh tools read-templates domains --format json';
+    command?: string;
   };
 }
 

@@ -62,6 +62,44 @@ test('CLI removed direct preview command reports grouped-command replacement', a
   assert.match(stderr.join(''), /bh task preview --file <task-spec\.json>/);
 });
 
+test('CLI removed lifecycle commands report global MCP replacement without contacting Bridge', async (t) => {
+  const workspace = await createTempDir(t, 'bph-cli-e2e-lifecycle-direct-removed-');
+  const cases = [
+    {
+      command: 'open_editor',
+      mcpTool: 'mcp__blueprint_helper__blueprint_open_editor',
+    },
+    {
+      command: 'close_editor',
+      mcpTool: 'mcp__blueprint_helper__blueprint_close_editor',
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    const commands: string[] = [];
+    const payloads: Array<Record<string, unknown>> = [];
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await withEnv({
+      BPH_METRICS_DIR: path.join(workspace, 'metrics'),
+    }, () => runCli({
+      argv: [entry.command, '--format', 'json'],
+      cwd: workspace,
+      bridge: createRecordingBridge(commands, payloads),
+      stdout: (text) => stdout.push(text),
+      stderr: (text) => stderr.push(text),
+    }));
+
+    assert.equal(exitCode, 64);
+    assert.deepEqual(commands, []);
+    assert.equal(stdout.join(''), '');
+    assert.match(stderr.join(''), new RegExp(`${entry.command} direct CLI command was removed`));
+    assert.match(stderr.join(''), /Editor lifecycle is not available through the BlueprintHelper CLI/);
+    assert.match(stderr.join(''), new RegExp(entry.mcpTool));
+  }
+});
+
 test('CLI task execute previews then sends execute_task_plan to mocked Bridge', async (t) => {
   const workspace = await createTempDir(t, 'bph-cli-e2e-execute-');
   await writeFile(path.join(workspace, 'task-spec.json'), JSON.stringify(graphWriteAppendTaskSpecFixture, null, 2));

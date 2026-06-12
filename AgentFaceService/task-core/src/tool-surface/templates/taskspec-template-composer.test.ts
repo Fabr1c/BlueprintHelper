@@ -117,7 +117,7 @@ test('TaskSpec template composer writes GraphWrite append TaskSpec without inser
   assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
 });
 
-test('TaskSpec template composer writes replace_external_body route with full dry-run policy', () => {
+test('TaskSpec template composer writes replace_external_body route without Agent-facing internal policy fields', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'replace-external-body.taskspec.json');
 
@@ -149,19 +149,14 @@ test('TaskSpec template composer writes replace_external_body route with full dr
         body: { statements: Array<{ kind: string }> };
       };
     };
-    execution_policy: { dry_run_mode: string };
-    scope_policy: {
-      allow_modify_user_nodes: boolean;
-      external_mutation_policy: { strategy: string };
-    };
-  };
+  } & Record<string, unknown>;
   assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1');
   assert.equal(taskSpec.behavior.graph_strategy, 'replace_external_body');
   assert.equal(taskSpec.behavior.external_replace.require_full_dry_run, true);
   assert.equal(taskSpec.behavior.external_replace.body.statements[0]?.kind, 'call');
-  assert.equal(taskSpec.execution_policy.dry_run_mode, 'full');
-  assert.equal(taskSpec.scope_policy.allow_modify_user_nodes, false);
-  assert.equal(taskSpec.scope_policy.external_mutation_policy.strategy, 'replace_external_body');
+  assert.equal(Object.hasOwn(taskSpec, 'scope_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'execution_policy'), false);
+  assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
 });
 
 test('TaskSpec template composer writes every active GraphWrite route quick-access root', () => {
@@ -446,7 +441,7 @@ test('agent-facing write templates do not expose hidden execution policy fields'
     collectForbiddenKeys(JSON.parse(fs.readFileSync(filePath, 'utf8')), forbiddenKeys, relativePath, '', hits);
   }
 
-  assert.deepEqual(hits.filter((hit) => !isAllowedRoutePolicyHit(hit)), []);
+  assert.deepEqual(hits, []);
 });
 
 test('GraphWrite route templates use current BlueprintLogicSpec schema', () => {
@@ -766,43 +761,6 @@ function collectForbiddenKeys(
     }
     collectForbiddenKeys(child, forbiddenKeys, filePath, childPointer, hits);
   }
-}
-
-function isAllowedRoutePolicyHit(hit: string): boolean {
-  const allowedPrefix = 'AgentFaceService/agent-guide/Templates/write/routes/graph_replace_external_body_template.json:';
-  const allowedPointers = new Set([
-    '/scope_policy',
-    '/scope_policy/allow_modify_user_nodes',
-    '/execution_policy',
-    '/execution_policy/dry_run_mode',
-    '/validation',
-    '/validation/should_compile',
-    '/validation/should_save',
-  ]);
-  if (!hit.startsWith(allowedPrefix)) {
-    return isAllowedExternalRoutePolicyHit(hit);
-  }
-  return allowedPointers.has(hit.slice(allowedPrefix.length));
-}
-
-function isAllowedExternalRoutePolicyHit(hit: string): boolean {
-  const externalRoutePrefixes = [
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_merge_external_insert_between_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_insert_pure_resolver_between_data_link_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_connect_pins_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_disconnect_link_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_links_replace_link_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_comment_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_node_property_template.json:',
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_patch_external_pin_default_template.json:',
-  ];
-  const prefix = externalRoutePrefixes.find((candidate) => hit.startsWith(candidate));
-  if (!prefix) {
-    return false;
-  }
-  const pointer = hit.slice(prefix.length);
-  return pointer === '/scope_policy'
-    || pointer === '/scope_policy/allow_modify_user_nodes';
 }
 
 function normalizePath(filePath: string): string {

@@ -74,6 +74,89 @@ test('bare execute adapter rejects preview_token without wrapper', () => {
   assert.equal((error as InputShapeAdapterError | undefined)?.code, 'preview_token_requires_task_spec_wrapper');
 });
 
+test('bare_taskspec adapter injects internal external graph policy for Agent-facing TaskSpec', () => {
+  const registry = createTaskSpecInputShapeAdapterRegistry();
+  const agentFacingTaskSpec = {
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'ExternalPatchPolicyNormalize',
+    target: { asset_path: '/Game/BP_ExternalPatchPolicyNormalize', target_type: 'blueprint' },
+    behavior: {
+      graph_strategy: 'patch_external_links',
+      external_link_patches: [{
+        kind: 'connect_pins',
+        source: { anchor_type: 'external_pin', anchor_ref: 'xpin:v1:d:source' },
+        target: { anchor_type: 'external_pin', anchor_ref: 'xpin:v1:d:target' },
+      }],
+    },
+  };
+
+  const adapted = registry.require('bare_taskspec').adapt(agentFacingTaskSpec) as {
+    task_spec: {
+      scope_policy: {
+        allow_modify_user_nodes: boolean;
+        external_mutation_policy: { strategy: string; allowed_mutations: string[] };
+      };
+    };
+  };
+
+  assert.equal(adapted.task_spec.scope_policy.allow_modify_user_nodes, false);
+  assert.deepEqual(adapted.task_spec.scope_policy.external_mutation_policy, {
+    strategy: 'patch_external_links',
+    allowed_mutations: ['link_connect', 'link_disconnect', 'link_replace'],
+  });
+});
+
+test('wrapped preview adapter injects replace_external_body internal dry-run and validation policy', () => {
+  const registry = createTaskSpecInputShapeAdapterRegistry();
+  const adapted = registry.require('wrapped_taskspec_preview').adapt({
+    task_spec: {
+      schema: 'BlueprintHelper.TaskSpec.v1',
+      task_type: 'edit_blueprint_graph',
+      feature_name: 'ExternalBodyPolicyNormalize',
+      target: { asset_path: '/Game/BP_ExternalBodyPolicyNormalize', target_type: 'blueprint' },
+      behavior: {
+        graph_strategy: 'replace_external_body',
+        external_replace: {
+          scope: 'event_body',
+          anchor: {
+            schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+            asset_path: '/Game/BP_ExternalBodyPolicyNormalize',
+            graph_name: 'EventGraph',
+            node_guid: '0123456789abcdef0123456789abcdef',
+            node_class: 'K2Node_CustomEvent',
+            semantic_role: 'body_entry',
+            fingerprint: 'body-entry-fingerprint',
+          },
+          expected_body_fingerprint: 'body-fingerprint',
+          require_full_dry_run: true,
+          body: {
+            schema: 'BlueprintLogicSpec.v2',
+            statements: [{
+              kind: 'call',
+              target: 'PrintString',
+              args: {
+                InString: { kind: 'literal', value_type: 'string', value: 'ok' },
+              },
+            }],
+          },
+        },
+      },
+    },
+  }) as {
+    task_spec: {
+      execution_policy: { dry_run_mode: string };
+      validation: { should_compile: boolean; should_save: boolean };
+      scope_policy: { graph_name: string; external_mutation_policy: { strategy: string } };
+    };
+  };
+
+  assert.equal(adapted.task_spec.scope_policy.graph_name, 'EventGraph');
+  assert.equal(adapted.task_spec.scope_policy.external_mutation_policy.strategy, 'replace_external_body');
+  assert.equal(adapted.task_spec.execution_policy.dry_run_mode, 'full');
+  assert.deepEqual(adapted.task_spec.validation, { should_compile: true, should_save: true });
+});
+
 test('adaptToolInput tries the next shape after a schema mismatch', () => {
   const registry = new InputShapeAdapterRegistry()
     .register({

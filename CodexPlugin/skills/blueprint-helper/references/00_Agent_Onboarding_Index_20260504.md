@@ -16,15 +16,15 @@ CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor
 blueprint_get_runtime_profile
 -> blueprinthelper_read_agent_guide
 -> blueprinthelper_find_assets when the Unreal asset_path is unknown
--> blueprinthelper_read_context or blueprinthelper_read_reference_context or blueprinthelper_read_function_chain_context
+-> bh context read / blueprinthelper_read_reference_context / blueprinthelper_read_function_chain_context as needed
 -> evidence_conflict means stop_and_report, not binary fallback
 -> build BlueprintHelper.TaskSpec.v1
--> blueprinthelper_preview_task
+-> bh task preview --file <task-spec.json>
 -> repair TaskSpec or stop_and_report
 -> blueprinthelper_source_control_status/checkout if source control requires checkout or close/save reports checkout_required
 -> blueprinthelper_request_write_session if write_permission is disabled and the user accepts the simple Editor approval dialog
--> blueprinthelper_execute_task
--> blueprinthelper_get_task_result
+-> bh task execute --file <task-spec.json> --preview-token <preview_token>
+-> bh task result --id <task_run_id>
 -> report summary
 ```
 
@@ -39,13 +39,13 @@ blueprinthelper_request_write_session
 blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
 blueprinthelper_find_assets
-blueprinthelper_read_context
-blueprinthelper_read_context_capabilities
+bh context read --file <read-spec.json> | --stdin
+bh tools read-templates domains/clusters/targets/views/quick-access/compose
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
-blueprinthelper_preview_task
-blueprinthelper_execute_task
-blueprinthelper_get_task_result
+bh task preview --file <task-spec.json>
+bh task execute --file <task-spec.json> --preview-token <preview_token>
+bh task result --id <task_run_id>
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
@@ -60,9 +60,9 @@ Source-control checkout is a separate pre-write gate. In P4/Perforce or other UE
 
 Ordinary Agents must not request, set, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`; raw session data is not part of the Agent contract.
 
-Read-only commands such as `bh blueprinthelper_find_assets`, `bh blueprinthelper_read_context`, `bh blueprinthelper_read_context_capabilities`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
+Read-only commands such as `bh blueprinthelper_find_assets`, `bh context read`, `bh tools read-templates ...`, `bh blueprinthelper_read_reference_context`, and `bh blueprinthelper_read_function_chain_context` do not require a write session. If these commands are unavailable, diagnose CLI installation, command registration, package build state, or Bridge connectivity instead of requesting write permission.
 
-When the Unreal `asset_path` is unknown, call `bh blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `bh blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+When the Unreal `asset_path` is unknown, call `bh blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, compose a ReadSpec and call `bh context read`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `bh task preview`.
 
 CLI output is optimized for Agent use. Use `--omit operation,status` when the default summary is useful but envelope fields are not needed. Use `--select` / `--fields` when only a small whitelist is needed, such as `task_run_id`, `summary.target_assets`, or `artifacts.full_result`. Use `--max-bytes` as a hard budget guard; the full payload remains available through the artifact path.
 
@@ -105,7 +105,7 @@ Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/ki
 - 证据冲突时只允许 `stop_and_report`；不要把 `.uasset`、`.umap` 或其它 UE 二进制资产文件当作 fallback 事实源。
 Additional asset-path routing rules:
 
-- Unknown Unreal `asset_path` -> `blueprinthelper_find_assets`; known Unreal `asset_path` -> `blueprinthelper_read_context`.
-- Write requests must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+- Unknown Unreal `asset_path` -> `blueprinthelper_find_assets`; known Unreal `asset_path` -> compose a ReadSpec and run `bh context read`.
+- Write requests must resolve one explicit Unreal `asset_path` before `bh task preview`.
 - Do not infer Unreal `asset_path` values from filesystem `.uasset` paths.
 - If `blueprinthelper_find_assets` returns multiple candidates, narrow the request or ask for confirmation before writes.

@@ -17,11 +17,11 @@ The intended default flow is:
 ```text
 bh blueprint_get_runtime_profile
 -> bh blueprinthelper_find_assets when the Unreal asset path is unknown
--> bh blueprinthelper_read_context for the resolved asset or scoped graph context
--> Agent produces BlueprintHelper.TaskSpec.v1
--> bh task preview
--> bh task execute
--> bh blueprinthelper_get_task_result when needed
+-> bh context read --file <read-spec.json> for the resolved asset or scoped graph context
+-> Agent produces bare BlueprintHelper.TaskSpec.v1
+-> bh task preview --file <task-spec.json>
+-> bh task execute --file <task-spec.json> --preview-token <preview_token>
+-> bh task result --id <task_run_id> when needed
 ```
 
 Existing tool clusters are not removed. They remain as UE Task Runtime capabilities, debug / expert tools, and automation test entry points. See [BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md](../BlueprintHelper/Develop/v0.4.1/ArchivedReference/RetiredPlanDocs_20260517/BlueprintHelper_Hybrid_TaskSpec_TaskPlan_Architecture_20260504.md).

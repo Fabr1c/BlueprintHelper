@@ -42,6 +42,19 @@ test('tool catalog points read and write capabilities to their own template inde
     blueprintRead.next.template_index_command,
     'bh tools read-templates domains --format json',
   );
+
+  const projectDomain = listToolDomains().items.find((item) => item.id === 'project');
+  assert.ok(projectDomain);
+  assert.equal(projectDomain.default_kinds.includes('read'), true);
+
+  const projectRead = listToolCapabilities({ domain: 'project', kind: 'read' });
+  const projectReadNext = projectRead.next as Record<string, unknown>;
+  assert.equal(projectReadNext['template_index_command'], undefined);
+  assert.equal(projectReadNext['command'], 'bh task result --id <task_run_id> --format summary');
+  const taskResult = projectRead.items.find((item) => item.id === 'project.read.task_result');
+  assert.ok(taskResult);
+  assert.equal(taskResult.cli_command, 'bh task result --id <task_run_id>');
+  assert.deepEqual(taskResult.input_shapes, ['cli_options']);
 });
 
 test('tool catalog filters by bridge and risk without old template dispatch', () => {
@@ -90,7 +103,7 @@ test('tool catalog exposes ReadContext capabilities matrix as local discovery', 
 
 	const capability = projectDiscover.items.find((item) => item.id === 'project.discover.read_context_capabilities');
 	assert.ok(capability);
-	assert.equal(capability.tool_name, 'blueprinthelper_read_context_capabilities');
+	assert.equal(capability.cli_command, 'bh blueprinthelper_read_context_capabilities');
 	assert.equal(capability.requires_bridge, false);
 	assert.equal(capability.risk, 'none');
 
@@ -107,7 +120,7 @@ test('tool catalog marks empty-object templates as no-input requests', () => {
 		domain: 'project',
 		kind: 'discover',
 	});
-	const agentGuide = projectDiscover.items.find((item) => item.tool_name === 'blueprinthelper_read_agent_guide');
+	const agentGuide = projectDiscover.items.find((item) => item.cli_command === 'bh blueprinthelper_read_agent_guide');
 	assert.ok(agentGuide);
 	assert.equal(agentGuide.input_shape, 'empty_object');
 	assert.equal(agentGuide.no_input, true);
@@ -118,7 +131,7 @@ test('tool catalog marks empty-object templates as no-input requests', () => {
 		domain: 'editor',
 		kind: 'read',
 	});
-	const runtimeProfile = editorRead.items.find((item) => item.tool_name === 'blueprint_get_runtime_profile');
+	const runtimeProfile = editorRead.items.find((item) => item.cli_command === 'bh blueprint_get_runtime_profile');
 	assert.ok(runtimeProfile);
 	assert.equal(runtimeProfile.input_shape, 'empty_object');
 	assert.equal(runtimeProfile.no_input, true);
@@ -132,7 +145,7 @@ test('expert review action exposes a developer-mode template file', () => {
     audience: 'expert',
     expert: true,
   });
-  const applyAction = reviewWrite.items.find((item) => item.tool_name === 'blueprinthelper_apply_review_action');
+  const applyAction = reviewWrite.items.find((item) => item.cli_command === 'bh blueprinthelper_apply_review_action');
   assert.ok(applyAction);
   assert.deepEqual(applyAction.cli_template_ids, ['blueprinthelper_apply_review_action']);
 
@@ -154,8 +167,8 @@ test('tool catalog does not expose editor lifecycle as CLI compat entries', () =
     audience: 'compat',
   });
 
-  assert.equal(editorWrite.items.some((item) => item.tool_name === 'blueprint_open_editor'), false);
-  assert.equal(editorWrite.items.some((item) => item.tool_name === 'blueprint_close_editor'), false);
+  assert.equal(editorWrite.items.some((item) => item.cli_command.includes('blueprint_open_editor')), false);
+  assert.equal(editorWrite.items.some((item) => item.cli_command.includes('blueprint_close_editor')), false);
   assert.equal(JSON.stringify(editorWrite.items).includes('lifecycle_mcp_only'), false);
 });
 
@@ -170,4 +183,43 @@ test('tool capability descriptors keep manifest facts without exposing old templ
     descriptor.recommended_invocations.includes('bh task execute --file <filled_taskspec.json> --preview-token <preview_token> --format summary'),
     true,
   );
+});
+
+test('tool catalog exposes grouped CLI commands and hides direct TaskSpec handler names', () => {
+  const blueprintRead = listToolCapabilities({ domain: 'blueprint', kind: 'read' });
+  const logicFlow = blueprintRead.items.find((item) => item.id === 'blueprint.read.context.logic_flow');
+  assert.ok(logicFlow);
+  assert.equal(logicFlow.cli_command, 'bh context read');
+
+  const blueprintPlan = listToolCapabilities({ domain: 'blueprint', kind: 'plan' });
+  const preview = blueprintPlan.items.find((item) => item.id === 'blueprint.plan.taskspec.preview');
+  assert.ok(preview);
+  assert.equal(preview.cli_command, 'bh task preview');
+  assert.deepEqual(preview.cli_template_ids, ['task_preview_bare_taskspec']);
+  assert.equal(preview.input_shape, 'bare_taskspec');
+
+  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write' });
+  const execute = blueprintWrite.items.find((item) => item.id === 'blueprint.write.taskspec.execute');
+  assert.ok(execute);
+  assert.equal(execute.cli_command, 'bh task execute');
+  assert.deepEqual(execute.cli_template_ids, ['task_execute_bare_taskspec']);
+  assert.equal(execute.input_shape, 'bare_taskspec');
+
+  const projectRead = listToolCapabilities({ domain: 'project', kind: 'read' });
+  const taskResult = projectRead.items.find((item) => item.id === 'project.read.task_result');
+  assert.ok(taskResult);
+  assert.equal(taskResult.cli_command, 'bh task result --id <task_run_id>');
+  assert.deepEqual(taskResult.cli_template_ids, []);
+  assert.deepEqual(taskResult.input_shapes, ['cli_options']);
+
+  const serialized = JSON.stringify([
+    ...blueprintRead.items,
+    ...blueprintPlan.items,
+    ...blueprintWrite.items,
+    ...projectRead.items,
+  ]);
+  assert.equal(serialized.includes('blueprinthelper_read_context'), false);
+  assert.equal(serialized.includes('blueprinthelper_preview_task'), false);
+  assert.equal(serialized.includes('blueprinthelper_execute_task'), false);
+  assert.equal(serialized.includes('blueprinthelper_get_task_result'), false);
 });

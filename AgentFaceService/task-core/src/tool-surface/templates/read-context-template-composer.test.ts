@@ -158,6 +158,35 @@ test('ReadContext template index exposes domain cluster target and view discover
   assert.equal(quickAccess.items[0]?.required_target_fields.includes('target_name'), true);
 });
 
+test('ReadContext property_json target_name semantics follow route target kind', () => {
+  const dataAssetTargets = listReadContextTemplateTargets({
+    domain: 'data_asset',
+    readCluster: 'schema',
+  });
+  const dataAsset = dataAssetTargets.items.find((item) => item.target_kind === 'data_asset');
+  assert.ok(dataAsset);
+  assert.equal(dataAsset.required_target_fields.includes('target_name'), false);
+  assert.match(dataAsset.description, /does not require target_name/);
+
+  const blueprintTargets = listReadContextTemplateTargets({
+    domain: 'blueprint',
+    readCluster: 'properties',
+  });
+  const property = blueprintTargets.items.find((item) => item.target_kind === 'property');
+  assert.ok(property);
+  assert.equal(property.required_target_fields.includes('target_name'), true);
+  assert.match(property.description, /property locator\/filter/);
+
+  const widgetTargets = listReadContextTemplateTargets({
+    domain: 'widget_blueprint',
+    readCluster: 'structure_tree',
+  });
+  const widget = widgetTargets.items.find((item) => item.target_kind === 'widget');
+  assert.ok(widget);
+  assert.equal(widget.required_target_fields.includes('target_name'), true);
+  assert.match(widget.description, /widget locator\/filter/);
+});
+
 test('ReadContext template composer writes widget tree tree_json ReadSpec from descriptor-backed route', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'widget-tree.readspec.json');
 

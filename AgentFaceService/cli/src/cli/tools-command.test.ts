@@ -68,7 +68,7 @@ test('runCli marks empty-object tool templates as no-input requests', async () =
 		'json',
 	]);
 	const agentGuide = projectDiscover.output.items.find((item: Record<string, unknown>) =>
-		item.tool_name === 'blueprinthelper_read_agent_guide');
+		item.cli_command === 'bh blueprinthelper_read_agent_guide');
 	assert.equal(agentGuide?.input_shape, 'empty_object');
 	assert.equal(agentGuide?.no_input, true);
 	assert.match(agentGuide?.input_note as string, /Use the empty-object template as-is/);
@@ -82,7 +82,7 @@ test('runCli marks empty-object tool templates as no-input requests', async () =
 		'json',
 	]);
 	const runtimeProfile = editorRead.output.items.find((item: Record<string, unknown>) =>
-		item.tool_name === 'blueprint_get_runtime_profile');
+		item.cli_command === 'bh blueprint_get_runtime_profile');
 	assert.equal(runtimeProfile?.input_shape, 'empty_object');
 	assert.equal(runtimeProfile?.no_input, true);
 	assert.match(runtimeProfile?.input_note as string, /No parameters/);

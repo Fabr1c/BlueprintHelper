@@ -23,18 +23,11 @@ export interface ToolInputShapeSummary {
 export function inferInputShapesFromTemplateIds(input: {
 	templateIds: readonly string[];
 	requiresBridge: boolean;
+	emptyTemplateInputShape?: ToolInputShapeId;
 }): ToolInputShapeId[] {
 	const shapes = new Set<ToolInputShapeId>();
 
 	for (const templateId of input.templateIds) {
-		if (templateId === 'blueprinthelper_preview_task_wrapper') {
-			shapes.add('wrapped_taskspec_preview');
-			continue;
-		}
-		if (templateId === 'blueprinthelper_execute_task_wrapper') {
-			shapes.add('wrapped_taskspec_execute');
-			continue;
-		}
 		if (
 			templateId === 'task_preview_bare_taskspec'
 			|| templateId === 'task_execute_bare_taskspec'
@@ -58,7 +51,7 @@ export function inferInputShapesFromTemplateIds(input: {
 	}
 
 	if (shapes.size === 0) {
-		shapes.add(input.requiresBridge ? 'bridge_payload' : 'tool_payload');
+		shapes.add(input.emptyTemplateInputShape ?? (input.requiresBridge ? 'bridge_payload' : 'tool_payload'));
 	}
 	return [...shapes];
 }
@@ -66,6 +59,7 @@ export function inferInputShapesFromTemplateIds(input: {
 export function summarizeToolInputShape(input: {
 	templateIds: readonly string[];
 	requiresBridge: boolean;
+	emptyTemplateInputShape?: ToolInputShapeId;
 }): ToolInputShapeSummary {
 	const inputShapes = inferInputShapesFromTemplateIds(input);
 	const noInput = inputShapes.length === 1 && inputShapes[0] === 'empty_object';

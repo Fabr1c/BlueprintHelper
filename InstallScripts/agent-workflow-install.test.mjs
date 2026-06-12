@@ -39,6 +39,12 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /npm global prefix/);
     assert.match(workflow, /pre-dispatch editor\/Bridge gate/);
     assert.match(workflow, /blueprint_get_runtime_profile/);
+    assert.match(workflow, /may open the target Editor once through `mcp__blueprint_helper__blueprint_open_editor`/);
+    assert.match(workflow, /Bridge unavailable/);
+    assert.match(workflow, /After writing, restoring, or otherwise modifying any file, artifact, or documentation file/);
+    assert.match(workflow, /previous reads of that path are stale/);
+    assert.match(workflow, /`bh context read --stdin` is supported for generated ReadSpec JSON/);
+    assert.match(workflow, /`property_json` `target_name` is a ReadContext route locator\/filter/);
     assert.match(workflow, /TaskSpec Template Composer/);
     assert.match(workflow, /fill the generated TaskSpec with concrete evidence and intent/);
     assert.match(workflow, /Do not guess fixed enum-like payload fields/);

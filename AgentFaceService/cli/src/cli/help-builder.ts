@@ -33,12 +33,7 @@ export function createHelpBuilder(
         ? getRemovedDirectCliToolCommand(normalizedTarget[0] ?? '')
         : undefined;
       if (removedDirectCommand) {
-        return formatEntry(removedDirectCommand.tool_name, {
-          summary: removedDirectCommand.reason,
-          usage: [removedDirectCommand.replacement_command],
-          input: ['Use the grouped command input shape shown above.'],
-          notes: ['The direct tool-name command is intentionally not an Agent-facing compatibility path.'],
-        });
+        return globalHelpText(registry);
       }
 
       const manifest = registry.get(key);
@@ -150,9 +145,9 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
       case 'bare_taskspec':
         return 'Input file root: bare BlueprintHelper.TaskSpec.v1. Grouped command input: bare BlueprintHelper.TaskSpec.v1 file. Do not wrap it in { "task_spec": ... }.';
       case 'wrapped_taskspec_preview':
-        return 'Direct tool input: { "task_spec": { "schema": "BlueprintHelper.TaskSpec.v1", ... } }.';
+        return 'Internal compatibility shape only. Agent-facing grouped commands use a bare BlueprintHelper.TaskSpec.v1 file.';
       case 'wrapped_taskspec_execute':
-        return 'Direct tool input: { "task_spec": { "schema": "BlueprintHelper.TaskSpec.v1", ... } }.';
+        return 'Internal compatibility shape only. Agent-facing grouped commands use a bare BlueprintHelper.TaskSpec.v1 file.';
       case 'readspec':
         return 'Root JSON: bare BlueprintHelper.ReadSpec.v1. Do not wrap the input in args.';
       case 'read_reference_context':
@@ -161,6 +156,8 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
         return 'Root JSON: Bridge tool payload object. Use a template path before calling the tool.';
       case 'bridge_logic_json_payload':
         return 'Root JSON: Bridge logic payload object; format defaults to logic_json.';
+      case 'cli_options':
+        return 'CLI options only: --id <task_run_id>. No JSON input file or template is used.';
       case 'tool_payload':
         return 'Root JSON: tool payload object. Use a template path before calling the tool.';
     }

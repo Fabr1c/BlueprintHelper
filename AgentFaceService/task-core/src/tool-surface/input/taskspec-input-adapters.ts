@@ -20,7 +20,7 @@ const bareTaskSpecAdapter: InputShapeAdapter<{ task_spec: unknown }> = {
         'preview_token',
       );
     }
-    return { task_spec: TaskSpecSchema.parse(input) };
+    return { task_spec: TaskSpecSchema.parse(normalizeAgentFacingTaskSpec(input)) };
   },
 };
 
@@ -28,7 +28,7 @@ const wrappedPreviewTaskSpecAdapter: InputShapeAdapter<{ task_spec: unknown }> =
   id: 'wrapped_taskspec_preview',
   inputSchema: PreviewTaskInputSchema,
   adapt(input) {
-    return PreviewTaskInputSchema.parse(input) as { task_spec: unknown };
+    return PreviewTaskInputSchema.parse(normalizeWrappedTaskSpecInput(input)) as { task_spec: unknown };
   },
 };
 
@@ -36,9 +36,124 @@ const wrappedExecuteTaskSpecAdapter: InputShapeAdapter<{ task_spec: unknown; pre
   id: 'wrapped_taskspec_execute',
   inputSchema: ExecuteTaskInputSchema,
   adapt(input) {
-    return ExecuteTaskInputSchema.parse(input) as { task_spec: unknown; preview_token?: string };
+    return ExecuteTaskInputSchema.parse(normalizeWrappedTaskSpecInput(input)) as { task_spec: unknown; preview_token?: string };
   },
 };
+
+const EXTERNAL_MUTATIONS_BY_GRAPH_STRATEGY: Record<string, string[]> = {
+  merge_external_flow: ['exec_boundary_link'],
+  patch_external_graph: ['pin_default', 'node_comment', 'node_property'],
+  patch_external_links: ['link_connect', 'link_disconnect', 'link_replace'],
+  replace_external_body: ['body_replace'],
+};
+
+function normalizeWrappedTaskSpecInput(input: unknown): unknown {
+  if (!isRecord(input) || !Object.hasOwn(input, 'task_spec')) {
+    return input;
+  }
+  return {
+    ...input,
+    task_spec: normalizeAgentFacingTaskSpec(input['task_spec']),
+  };
+}
+
+function normalizeAgentFacingTaskSpec(input: unknown): unknown {
+  if (!isRecord(input) || input['task_type'] !== 'edit_blueprint_graph') {
+    return input;
+  }
+  const behavior = asRecord(input['behavior']);
+  if (!behavior) {
+    return input;
+  }
+  const strategy = typeof behavior?.['graph_strategy'] === 'string'
+    ? behavior['graph_strategy']
+    : undefined;
+  if (!strategy) {
+    return input;
+  }
+
+  const output: Record<string, unknown> = { ...input };
+  const mutations = EXTERNAL_MUTATIONS_BY_GRAPH_STRATEGY[strategy];
+  if (mutations) {
+    output['scope_policy'] = normalizeExternalScopePolicy(input, strategy, mutations, behavior);
+  }
+  if (strategy === 'replace_external_body') {
+    output['execution_policy'] = normalizeReplaceExternalBodyExecutionPolicy(input['execution_policy']);
+    output['validation'] = normalizeReplaceExternalBodyValidation(input['validation']);
+  }
+  return output;
+}
+
+function normalizeExternalScopePolicy(
+  taskSpec: Record<string, unknown>,
+  strategy: string,
+  mutations: string[],
+  behavior: Record<string, unknown>,
+): Record<string, unknown> {
+  const current = asRecord(taskSpec['scope_policy']) ?? {};
+  const graphName = typeof current['graph_name'] === 'string' && current['graph_name'].trim().length > 0
+    ? current['graph_name']
+    : inferExternalGraphName(behavior);
+  return {
+    ...current,
+    ...(graphName ? { graph_name: graphName } : {}),
+    allow_modify_user_nodes: current['allow_modify_user_nodes'] ?? false,
+    external_mutation_policy: current['external_mutation_policy'] ?? {
+      strategy,
+      allowed_mutations: mutations,
+    },
+  };
+}
+
+function normalizeReplaceExternalBodyExecutionPolicy(value: unknown): Record<string, unknown> {
+  const current = asRecord(value) ?? {};
+  return {
+    dry_run_mode: 'full',
+    ...current,
+  };
+}
+
+function normalizeReplaceExternalBodyValidation(value: unknown): Record<string, unknown> {
+  const current = asRecord(value) ?? {};
+  return {
+    should_compile: current['should_compile'] ?? true,
+    should_save: current['should_save'] ?? true,
+    ...current,
+  };
+}
+
+function inferExternalGraphName(behavior: Record<string, unknown>): string | undefined {
+  const externalReplace = asRecord(behavior['external_replace']);
+  const externalReplaceGraph = graphNameFromAnchor(asRecord(externalReplace?.['anchor']));
+  if (externalReplaceGraph) return externalReplaceGraph;
+
+  for (const field of ['external_merges', 'external_patches', 'external_link_patches']) {
+    const items = Array.isArray(behavior[field]) ? behavior[field] : [];
+    for (const item of items) {
+      const anchor = asRecord(asRecord(item)?.['anchor']);
+      const graphName = graphNameFromAnchor(anchor);
+      if (graphName) return graphName;
+    }
+  }
+  return undefined;
+}
+
+function graphNameFromAnchor(anchor: Record<string, unknown> | undefined): string | undefined {
+  const value = typeof anchor?.['graph_name'] === 'string'
+    ? anchor['graph_name']
+    : typeof anchor?.['graph'] === 'string'
+      ? anchor['graph']
+      : undefined;
+  return value && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 export function createTaskSpecInputShapeAdapterRegistry(): InputShapeAdapterRegistry {
   return new InputShapeAdapterRegistry()

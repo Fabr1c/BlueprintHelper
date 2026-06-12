@@ -85,7 +85,7 @@ stop_conditions: []
 - `bh blueprinthelper_source_control_status`
 - `bh blueprinthelper_source_control_checkout`
 - `bh blueprinthelper_request_write_session`
-- `bh blueprinthelper_get_task_result`
+- `bh task result --id <task_run_id> --format json`
 - `bh tools templates families --workflow preview_execute --format json`
 - `bh tools templates write-modes --family <family> --format json`
 - `bh tools templates clusters --family <family> --format json`

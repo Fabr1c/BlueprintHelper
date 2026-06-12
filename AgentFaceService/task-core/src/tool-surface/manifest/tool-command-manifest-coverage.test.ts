@@ -17,8 +17,9 @@ test('manifest mirror covers all active domains and default visible capabilities
       const list = listToolCapabilities({ domain: domain.id, kind });
       for (const capability of list.items) {
         assert.ok(registry.has(capability.id), `${capability.id} is missing from manifest mirror`);
-        if (!getRemovedDirectCliToolCommand(capability.tool_name)) {
-          assert.ok(registry.has(capability.tool_name), `${capability.tool_name} does not resolve to a manifest`);
+        const manifest = registry.require(capability.id);
+        if (!getRemovedDirectCliToolCommand(manifest.tool_name)) {
+          assert.ok(registry.has(manifest.tool_name), `${manifest.tool_name} does not resolve to a manifest`);
         }
       }
     }
@@ -50,4 +51,15 @@ test('manifest mirror keeps removed direct tool names out of canonical duplicate
   assert.equal(registry.get('blueprinthelper_preview_task'), undefined);
   assert.equal(registry.get('blueprinthelper_execute_task'), undefined);
   assert.equal(registry.get('blueprinthelper_read_context'), undefined);
+});
+
+test('manifest mirror does not expose editor lifecycle compat commands', () => {
+  const registry = buildReadonlyToolCommandManifestRegistry();
+  const serialized = JSON.stringify(registry.list());
+
+  assert.equal(registry.get('blueprint_open_editor'), undefined);
+  assert.equal(registry.get('blueprint_close_editor'), undefined);
+  assert.equal(registry.get('open_editor'), undefined);
+  assert.equal(registry.get('close_editor'), undefined);
+  assert.equal(serialized.includes('lifecycle_mcp_only'), false);
 });

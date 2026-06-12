@@ -31,10 +31,10 @@ test('ToolCommandManifest exports the stable read-only schema id', () => {
     agent_role: 'task-worker',
     requires_bridge: false,
     requires_write_session: false,
-    input_shapes: ['wrapped_taskspec_preview', 'bare_taskspec'],
+    input_shapes: ['bare_taskspec'],
     handler_id: 'blueprinthelper_preview_task',
     result_policy_id: 'task_preview_default',
-    template_refs: ['blueprinthelper_preview_task_wrapper', 'task_preview_bare_taskspec'],
+    template_refs: ['task_preview_bare_taskspec'],
     route_refs: ['blueprint.create_feature', 'graph.append.container_action'],
     recommended_invocations: ['bh task preview --file <filled_taskspec.json> --format summary'],
     help_usage: ['bh task preview --file <filled_taskspec.json> --format summary'],
@@ -62,7 +62,6 @@ test('manifest mirror exposes every default capability returned by listToolCapab
     capability: 'blueprint.plan',
     semantic_operation: 'blueprint.plan.taskspec.preview',
   });
-  assert.equal(preview.input_shapes.includes('wrapped_taskspec_preview'), true);
   assert.equal(preview.input_shapes.includes('bare_taskspec'), true);
   assert.equal(registry.get('task preview')?.tool_id, preview.tool_id);
   assert.equal(registry.get('task execute')?.tool_id, 'blueprint.write.taskspec.execute');
@@ -74,7 +73,10 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   const removedMarkdownTool = ['blueprint_get', 'logic', 'md'].join('_');
   assert.equal(registry.get(removedMarkdownTool), undefined);
   assert.equal(registry.list().some((entry) => JSON.stringify(entry).includes(removedMarkdownFormat)), false);
-  assert.equal(registry.get('task result')?.tool_id, 'project.read.task_result');
+  const taskResult = registry.require('task result');
+  assert.equal(taskResult.tool_id, 'project.read.task_result');
+  assert.deepEqual(taskResult.input_shapes, ['cli_options']);
+  assert.deepEqual(taskResult.help_usage, ['bh task result --id <task_run_id> --format summary']);
 });
 
 test('manifest mirror keeps GraphWrite route ids descriptor-backed', () => {

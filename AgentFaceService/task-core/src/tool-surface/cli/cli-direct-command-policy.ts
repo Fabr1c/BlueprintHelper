@@ -24,9 +24,15 @@ export function listRemovedDirectCliToolCommands(): readonly RemovedDirectCliToo
 }
 
 function removed(toolName: string, replacementCommand: string): RemovedDirectCliToolCommand {
+  const isLifecycle = toolName === 'blueprint_open_editor'
+    || toolName === 'open_editor'
+    || toolName === 'blueprint_close_editor'
+    || toolName === 'close_editor';
   return {
     tool_name: toolName,
     replacement_command: replacementCommand,
-    reason: 'Direct tool-name CLI entry was removed from Agent-facing workflows; use the grouped command.',
+    reason: isLifecycle
+      ? 'Editor lifecycle is not available through the BlueprintHelper CLI; use the global MCP lifecycle tool.'
+      : 'Direct tool-name CLI entry was removed from Agent-facing workflows; use the grouped command.',
   };
 }

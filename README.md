@@ -34,7 +34,7 @@ BlueprintHelper 用于把 Agent 的高层编辑意图转换成 Unreal Editor 内
 
 ## 核心特色
 
-- CLI-first 普通资产入口：默认通过 `bh <tool_name>` 访问 TaskSpec、ReadSpec、诊断和结果查询能力，适合普通 shell-capable Agent 集成。
+- CLI-first 普通资产入口：普通 read/write 使用 grouped CLI 命令与 composer 工作流，适合普通 shell-capable Agent 集成。
 - TaskSpec-first 写入架构：Agent 只提交语义化 `BlueprintHelper.TaskSpec.v1`，底层 TaskPlan 由 task-core 和编译器生成。
 - 写入前预览：普通编辑流程先读取上下文，再 preview，最后 execute，减少盲写和误操作。
 - Template-first JSON 编写：AgentGuide 提供可复制模板，减少 CLI 字段形态和 shell 转义错误。
@@ -66,13 +66,13 @@ Agents must not use CLI lifecycle aliases (`bh open_editor`, `bh close_editor`, 
 普通写入流程：
 
 ```text
-blueprint_get_runtime_profile
--> blueprinthelper_read_task_context 或 blueprinthelper_read_context
--> author BlueprintHelper.TaskSpec.v1
--> blueprinthelper_preview_task
--> blueprinthelper_request_write_session when needed
--> blueprinthelper_execute_task
--> blueprinthelper_get_task_result when needed
+bh blueprint_get_runtime_profile
+-> bh context read --file <read-spec.json> 或 stdin
+-> author bare BlueprintHelper.TaskSpec.v1
+-> bh task preview --file <task-spec.json>
+-> bh blueprinthelper_request_write_session when needed
+-> bh task execute --file <task-spec.json> --preview-token <preview_token>
+-> bh task result --id <task_run_id> when needed
 ```
 
 ## 仓库结构
@@ -118,7 +118,7 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprint_get_runtime
 PowerShell 中复杂 JSON 不要用 inline `--json $json`，优先使用 `--file` 或管道到 `--stdin`：
 
 ```powershell
-$json | bh blueprinthelper_read_context --stdin --format full
+$json | bh context read --stdin --format full
 ```
 
 ## 更新 / Update

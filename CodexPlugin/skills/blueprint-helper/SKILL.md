@@ -38,7 +38,10 @@ When the user asks to configure BlueprintHelper safety/profile preferences for C
 Preferred CLI shape:
 
 ```powershell
-bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
+bh context read [--file read-spec.json | --stdin] [--select field[,field...]] [--format json|full]
+bh task preview --file task-spec.json [--select field[,field...]] [--format json|full]
+bh task execute --file task-spec.json --preview-token <preview_token> [--select field[,field...]] [--format json|full]
+bh task result --id <task_run_id> [--select field[,field...]] [--format json|full]
 ```
 
 On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by the root installer. If an older install resolves to blocked `bh.ps1`, rerun `install.cmd` or call `bh.cmd`.
@@ -48,15 +51,20 @@ PowerShell-safe JSON rule: use `--file` for reusable JSON and `--stdin` for gene
 If `bh` is not on PATH, use the built CLI entry:
 
 ```powershell
-node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js <tool_name> [args]
+node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js context read --file read-spec.json
+node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file task-spec.json
+node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file task-spec.json --preview-token <preview_token>
+node <BLUEPRINTHELPER_ROOT>\AgentFaceService\cli\build\cli\index.js task result --id <task_run_id>
 ```
 
 Use compact output for routine loops:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select status,summary
-bh task preview --file .\task_spec.json --select status,preview_id,summary,artifacts.full_result
+bh context read --file .\read_spec.json --select status,summary,artifacts.full_result
+bh task preview --file .\task_spec.json --select status,preview_token,summary,artifacts.full_result
 bh task execute --file .\task_spec.json --select status,task_run_id,summary,artifacts.full_result
+bh task result --id <task_run_id> --select status,summary,artifacts.full_result
 ```
 
 For complex JSON, use the CLI catalog first:
@@ -68,7 +76,7 @@ bh tools templates families --workflow preview_execute --format json
 bh tools read-templates domains --format json
 ```
 
-Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent, then call the CLI with `--file`. If you call the direct tool-name entries `blueprinthelper_preview_task` or `blueprinthelper_execute_task`, use the wrapper templates with root field `task_spec`; if you call grouped `task preview` or `task execute`, use a bare `BlueprintHelper.TaskSpec.v1` file.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads. Do not use legacy direct task/context commands or wrapped payload envelopes.
 
 Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
@@ -101,7 +109,7 @@ There is no independent tool detail step.
 Generated JSON example:
 
 ```powershell
-$json | bh blueprinthelper_read_context --stdin --format full
+$json | bh context read --stdin --format full
 ```
 
 ## Mandatory Codex Subagent Workflow
@@ -110,7 +118,7 @@ When the request involves BlueprintHelper, Unreal Engine Blueprint assets, UMG, 
 
 Do not expose this mandatory subagent workflow as a configure-time preference. Do not fall back to local Main Agent execution for BlueprintHelper editor-asset work. If Codex cannot dispatch subagents, stop and report `sideagent_unavailable`.
 
-The Main Agent may run only bounded preflight CLI commands before dispatch, such as `blueprint_get_runtime_profile` and diagnostics. It must not satisfy UE asset discovery or context reads locally with `blueprinthelper_find_assets`, `blueprinthelper_read_context`, `blueprinthelper_read_reference_context`, `blueprinthelper_read_function_chain_context`, or ad hoc shell/source reads. Delegate UE asset context reads to `blueprint-explorer`, source/schema/template context to `sourcecode-explorer`, and TaskSpec preview/execute work to `task-worker`.
+The Main Agent may run only bounded preflight CLI commands before dispatch, such as `blueprint_get_runtime_profile` and diagnostics. It must not satisfy UE asset discovery or context reads locally with asset-discovery commands, grouped context-read commands, reference-context reads, function-chain reads, or ad hoc shell/source reads. Delegate UE asset context reads to `blueprint-explorer`, source/schema/template context to `sourcecode-explorer`, and TaskSpec preview/execute work to `task-worker`.
 
 Configured subagents:
 
@@ -311,7 +319,7 @@ If the failure is an evidence mismatch between `read_context`, Editor screenshot
 
 ## Supported Agent-Facing CLI Commands
 
-Default Agent-facing commands:
+Default Agent-facing CLI surface:
 
 ```text
 blueprint_get_runtime_profile
@@ -319,22 +327,22 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_find_assets
-blueprinthelper_read_context
-blueprinthelper_read_context_capabilities
+context-read capability discovery command
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
 blueprint_compile_blueprint
 blueprint_save_asset
-blueprinthelper_preview_task
 blueprinthelper_request_write_session
-blueprinthelper_execute_task
-blueprinthelper_get_task_result
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
+bh context read --file <read-spec.json> | --stdin
+bh task preview --file <task-spec.json>
+bh task execute --file <task-spec.json> --preview-token <preview_token>
+bh task result --id <task_run_id>
 ```
 
 `blueprinthelper_apply_review_action` is plugin-development/internal and is not part of ordinary Codex Agent workflows.
@@ -350,15 +358,15 @@ CLI lifecycle aliases are not Agent execution paths. Do not call `bh open_editor
 
 Frozen legacy, expert, and low-level direct commands are not the normal Agent workflow. If a capability is missing from the supported CLI surface, stop and report the gap unless the request falls inside the explicit MCP lifecycle boundary above.
 
-When the Unreal `asset_path` is unknown, dispatch `blueprint-explorer` to call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, dispatch `blueprint-explorer` to call `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, the Main Agent must narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+When the Unreal `asset_path` is unknown, dispatch `blueprint-explorer` to call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, dispatch `blueprint-explorer` to run the grouped context-read command with a composed ReadSpec. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, the Main Agent must narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `bh task preview`.
 
 ## Read Strategy
 
-- Use `summary` before whole-graph reads when graph size is unknown.
+- Use lightweight sampled or scoped views before whole-graph reads when graph size is unknown.
 - If a graph has more than 80 nodes, use scoped reads, block reads, or structured anchors instead of full graph text.
 - Use `logic_json` when stable owned-block anchors or importability checks are needed.
 - Keep large payloads in artifacts; use `--select` or `--fields` for stdout.
-- If `read_context` disagrees with screenshots, visible Editor state, preview, execute, or readback, stop and report `evidence_conflict`; do not inspect `.uasset`, `.umap`, or other Unreal binary assets as fallback evidence.
+- If grouped context-read evidence disagrees with screenshots, visible Editor state, preview, execute, or readback, stop and report `evidence_conflict`; do not inspect `.uasset`, `.umap`, or other Unreal binary assets as fallback evidence.
 
 ## Reporting
 

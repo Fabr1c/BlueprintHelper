@@ -124,6 +124,16 @@ test('subcommand CLI positionals and template index commands come from group des
   );
 });
 
+test('CLI command descriptors do not expose editor lifecycle aliases', () => {
+  const descriptors = listCliCommandDescriptors();
+  const serialized = JSON.stringify(descriptors);
+
+  assert.equal(descriptors.some((entry) => entry.positionals.join(' ') === 'open_editor'), false);
+  assert.equal(descriptors.some((entry) => entry.positionals.join(' ') === 'close_editor'), false);
+  assert.equal(serialized.includes('blueprint_open_editor'), false);
+  assert.equal(serialized.includes('blueprint_close_editor'), false);
+});
+
 test('routes metrics commands with descriptor defaults and format guard', () => {
   const defaults = routeCliCommand({
     positionals: ['metrics', 'top-errors'],

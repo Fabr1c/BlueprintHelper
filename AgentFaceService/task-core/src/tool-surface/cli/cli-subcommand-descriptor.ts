@@ -43,7 +43,7 @@ type CliSubcommandDefinition = Omit<CliSubcommandDescriptor, 'group' | 'position
 const TASKSPEC_TEMPLATE_GROUP_DESCRIPTOR: CliSubcommandGroupDescriptor = {
   group: 'tools.templates',
   command_prefix: ['tools', 'templates'],
-  input_shapes: ['bare_taskspec', 'wrapped_taskspec_preview', 'wrapped_taskspec_execute'],
+  input_shapes: ['bare_taskspec'],
   capability_kinds: ['discover', 'plan', 'write', 'diagnose'],
   template_index_command: 'bh tools templates families --workflow preview_execute --format json',
 };

@@ -1,7 +1,9 @@
 import { buildReadonlyToolCommandManifestRegistry } from '../manifest/tool-command-manifest-builder.js';
+import type { ToolInputShapeId } from '../manifest/tool-command-manifest.js';
 import type { ToolCommandManifestRegistry } from '../manifest/tool-command-manifest-registry.js';
 import {
   adaptToolInput,
+  type InputShapeId,
   type InputShapeAdapterRegistry,
 } from './input-shape-adapter.js';
 import { registerReadSpecInputShapeAdapters } from './readspec-input-adapters.js';
@@ -27,9 +29,18 @@ export function normalizeToolInputForManifest(input: {
     return input.value;
   }
 
+  const adapterInputShapes = manifest.input_shapes.filter(isAdapterInputShape);
+  if (adapterInputShapes.length === 0) {
+    return input.value;
+  }
+
   return adaptToolInput(
     input.inputShapeAdapters ?? createDefaultInputShapeAdapterRegistry(),
-    manifest.input_shapes,
+    adapterInputShapes,
     input.value,
   );
+}
+
+function isAdapterInputShape(shape: ToolInputShapeId): shape is InputShapeId {
+  return shape !== 'cli_options';
 }

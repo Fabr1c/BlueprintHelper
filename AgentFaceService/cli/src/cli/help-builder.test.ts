@@ -7,14 +7,31 @@ import { fileURLToPath } from 'node:url';
 import { createHelpBuilder } from './help-builder.js';
 import { buildHelpText } from './help.js';
 
-test('HelpBuilder renders removed direct preview help as grouped-command migration', () => {
+test('HelpBuilder redirects removed direct preview help to global grouped help', () => {
   const builder = createHelpBuilder();
   const help = builder.build(['blueprinthelper_preview_task']);
 
-  assert.match(help, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
-  assert.match(help, /Direct tool-name CLI entry was removed/);
+  assert.match(help, /BlueprintHelper CLI/);
   assert.match(help, /bh task preview --file <task-spec\.json>/);
-  assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
+  assert.match(help, /bh context read/);
+  assert.doesNotMatch(help, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
+  assert.doesNotMatch(help, /blueprinthelper_preview_task/);
+  assert.doesNotMatch(help, /Direct tool-name CLI entry was removed/);
+});
+
+test('HelpBuilder redirects removed lifecycle help to global MCP guidance', () => {
+  const builder = createHelpBuilder();
+  const help = builder.build(['open_editor']);
+  const closeHelp = builder.build(['close_editor']);
+
+  assert.match(help, /BlueprintHelper CLI/);
+  assert.match(help, /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.doesNotMatch(help, /BlueprintHelper CLI help: open_editor/);
+  assert.doesNotMatch(help, /open_editor direct CLI command was removed/);
+  assert.match(closeHelp, /BlueprintHelper CLI/);
+  assert.match(closeHelp, /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.doesNotMatch(closeHelp, /BlueprintHelper CLI help: close_editor/);
+  assert.doesNotMatch(closeHelp, /close_editor direct CLI command was removed/);
 });
 
 test('HelpBuilder resolves grouped task preview alias through manifest', () => {
@@ -36,6 +53,17 @@ test('HelpBuilder renders grouped read_context help from ReadContext template na
   assert.match(help, /bh tools read-templates domains --format json/);
   assert.match(help, /bh tools read-templates compose --domain <domain>/);
 	assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
+});
+
+test('HelpBuilder renders task result as grouped id-only command', () => {
+  const builder = createHelpBuilder();
+  const help = builder.build(['task', 'result']);
+
+  assert.match(help, /BlueprintHelper CLI help: task result/);
+  assert.match(help, /bh task result --id <task_run_id> --format summary/);
+  assert.match(help, /CLI options only: --id <task_run_id>\./);
+  assert.doesNotMatch(help, /blueprinthelper_get_task_result --file/);
+  assert.doesNotMatch(help, /Use a template path before calling the tool/);
 });
 
 test('HelpBuilder renders read_context_capabilities help from manifest', () => {

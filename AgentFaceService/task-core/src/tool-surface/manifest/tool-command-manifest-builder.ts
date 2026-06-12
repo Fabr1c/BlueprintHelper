@@ -2,7 +2,7 @@ import {
   getToolCapabilityDescriptor,
   isToolCapabilityDomain,
   isToolCapabilityKind,
-  listToolCapabilities,
+  listToolCapabilityItems,
   listToolDomains,
 } from '../catalog/tool-capability-catalog.js';
 import type {
@@ -75,6 +75,7 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     input_shapes: inferInputShapesFromTemplateIds({
       templateIds: capability.cli_template_ids,
       requiresBridge: capability.requires_bridge,
+      emptyTemplateInputShape: emptyTemplateInputShapeForCapability(capability),
     }),
     handler_id: capability.tool_name,
     result_policy_id: descriptor.result_policy_id,
@@ -89,14 +90,18 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
   };
 }
 
+function emptyTemplateInputShapeForCapability(capability: ToolCapabilityItem): 'cli_options' | undefined {
+  return capability.id === 'project.read.task_result' ? 'cli_options' : undefined;
+}
+
 function listManifestCapabilitiesForDomainKind(
   domain: ToolCapabilityItem['domain'],
   kind: ToolCapabilityItem['kind'],
 ): ToolCapabilityItem[] {
   const capabilitiesById = new Map<string, ToolCapabilityItem>();
   for (const capability of [
-    ...listToolCapabilities({ domain, kind }).items,
-    ...listToolCapabilities({ domain, kind, audience: 'expert', expert: true }).items,
+    ...listToolCapabilityItems({ domain, kind }),
+    ...listToolCapabilityItems({ domain, kind, audience: 'expert', expert: true }),
   ]) {
     capabilitiesById.set(capability.id, capability);
   }
@@ -109,7 +114,7 @@ function listGroupedAliasCapabilities(): ToolCapabilityItem[] {
     if (!domain || !kind || !isToolCapabilityDomain(domain) || !isToolCapabilityKind(kind)) {
       throw new Error(`Grouped command alias uses an invalid BlueprintHelper tool id: ${toolId}`);
     }
-    const capability = listToolCapabilities({ domain, kind }).items.find((item) => item.id === toolId);
+    const capability = listToolCapabilityItems({ domain, kind }).find((item) => item.id === toolId);
     if (!capability) {
       throw new Error(`Grouped command alias is missing from the tool catalog: ${toolId}`);
     }

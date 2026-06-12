@@ -84,7 +84,7 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 
 ## 4. Start Unreal Editor
 
-Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project profile has `environment.ue_engine_dir`. Compatibility for `blueprint_open_editor` / `blueprint_close_editor` also uses the global MCP lifecycle tools, not CLI lifecycle aliases:
+Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project profile has `environment.ue_engine_dir`. `blueprint_open_editor` / `blueprint_close_editor` are not CLI lifecycle compatibility aliases; Agent-owned editor lifecycle uses the global MCP lifecycle tools:
 
 ```text
 mcp__blueprint_helper__blueprint_open_editor
@@ -105,7 +105,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle compatibility uses the global MCP lifecycle tools rather than CLI aliases, and CLI lifecycle invocation is blocked. Deprecated MCP ordinary tools are not fallback paths.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle commands are removed from the ordinary CLI surface, and accidental lifecycle CLI calls may return a removed-command hint that points to the global MCP lifecycle tool. Deprecated MCP ordinary tools are not fallback paths.
 
 Examples:
 
@@ -118,7 +118,9 @@ bh task execute --file <generated-task-spec.json> --select <fields>
 
 See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax and output rules.
 
-PowerShell can corrupt inline JSON strings before the CLI receives them. For anything beyond `{}`, prefer `--file` or pipe JSON to `--stdin`:
+PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Avoid inline `--json $json` for non-trivial payloads because PowerShell can strip quotes before Node receives the argument.
+
+Generated ReadSpec JSON can be piped through the grouped command:
 
 ```powershell
 $json | bh context read --stdin --format full
