@@ -45,7 +45,7 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 多个顶层 statement 用顶层逗号连接；括号内逗号属于当前 slot expression。PowerShell 中把整个 `--templates` 值用双引号包住。不要把 expression quick-access 直接作为 root，也不要手写完整 statement JSON 来绕过 composer。
 
-调用 `bh task preview --file` / `bh task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认裸 TaskSpec 输入形状。不要把 direct-tool wrapper 传给分组命令，也不要额外包 `args`。
+调用 `bh task preview --file` / `bh task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认输入文件根对象就是裸 `BlueprintHelper.TaskSpec.v1`。
 
 ## Direct Compile Validation
 

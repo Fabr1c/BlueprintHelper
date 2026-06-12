@@ -143,15 +143,15 @@ function formatInputShapes(inputShapes: ToolCommandManifest['input_shapes']): st
       case 'empty_object':
         return `Root JSON: {}. ${EMPTY_OBJECT_INPUT_NOTE}`;
       case 'bare_taskspec':
-        return 'Input file root: bare BlueprintHelper.TaskSpec.v1. Grouped command input: bare BlueprintHelper.TaskSpec.v1 file. Do not wrap it in { "task_spec": ... }.';
+        return 'Input file root: bare BlueprintHelper.TaskSpec.v1. Grouped command input: bare BlueprintHelper.TaskSpec.v1 file.';
       case 'wrapped_taskspec_preview':
         return 'Internal compatibility shape only. Agent-facing grouped commands use a bare BlueprintHelper.TaskSpec.v1 file.';
       case 'wrapped_taskspec_execute':
         return 'Internal compatibility shape only. Agent-facing grouped commands use a bare BlueprintHelper.TaskSpec.v1 file.';
       case 'readspec':
-        return 'Root JSON: bare BlueprintHelper.ReadSpec.v1. Do not wrap the input in args.';
+        return 'Root JSON: bare BlueprintHelper.ReadSpec.v1.';
       case 'read_reference_context':
-        return 'Root JSON: BlueprintHelper.ReferenceContextRequest.v1 with schema field. Do not wrap the input in args.';
+        return 'Root JSON: BlueprintHelper.ReferenceContextRequest.v1 with schema field.';
       case 'bridge_payload':
         return 'Root JSON: Bridge tool payload object. Use a template path before calling the tool.';
       case 'bridge_logic_json_payload':

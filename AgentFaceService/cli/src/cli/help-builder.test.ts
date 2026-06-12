@@ -41,6 +41,9 @@ test('HelpBuilder resolves grouped task preview alias through manifest', () => {
   assert.match(help, /BlueprintHelper CLI help: task preview/);
   assert.match(help, /bare BlueprintHelper\.TaskSpec\.v1/);
   assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
+  assert.doesNotMatch(help, /task_spec/);
+  assert.doesNotMatch(help, /args envelope/);
+  assert.doesNotMatch(help, /wrapper/i);
 });
 
 test('HelpBuilder renders grouped read_context help from ReadContext template navigation', () => {

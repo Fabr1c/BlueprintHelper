@@ -813,6 +813,20 @@ public:
 		return false;
 	}
 
+	static void CopyCompactExternalLinkFields(
+		const TSharedPtr<FJsonObject>& LinkObj,
+		FBlueprintHelperLogicLink& Link)
+	{
+		if (!LinkObj.IsValid())
+		{
+			return;
+		}
+		LinkObj->TryGetStringField(TEXT("anchor_type"), Link.AnchorType);
+		LinkObj->TryGetStringField(TEXT("anchor_ref"), Link.AnchorRef);
+		LinkObj->TryGetStringField(TEXT("kind"), Link.AnchorKind);
+		LinkObj->TryGetStringField(TEXT("label"), Link.AnchorLabel);
+	}
+
 	static void AttachGraphLevelLinksToNodes(
 		const TSharedPtr<FJsonObject>& GraphObj,
 		TArray<FBlueprintHelperLogicNode>& Nodes,
@@ -963,6 +977,7 @@ public:
 			Link.PinRef = FromPin;
 			Link.ToNode = *TargetNodeRef;
 			Link.ToPin = ToPin;
+			CopyCompactExternalLinkFields(*LinkObjPtr, Link);
 			const bool bSourceOwned = NodeOwnedById.FindRef(SourceId);
 			const bool bTargetOwned = NodeOwnedByRef.FindRef(*TargetNodeRef);
 			Link.Ownership = FBlueprintHelperGraphWriteClassificationUtils::ClassifyLinkOwnership(
@@ -1420,6 +1435,20 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
 	Node.Kind = IdentifyNodeKind(NodeObj);
 	Node.Name = ExtractNodeName(NodeObj);
 	Node.Owner = ExtractOwner(NodeObj);
+	Node.NodeComment = FBlueprintHelperLogicGroupBuilderLocalUtils::ReadFirstStringField(
+		NodeObj,
+		TEXT("node_comment"),
+		TEXT("comment_text"));
+	if (Node.NodeComment.IsEmpty())
+	{
+		const TSharedPtr<FJsonObject>* CommentObj = nullptr;
+		if (NodeObj->TryGetObjectField(TEXT("comment"), CommentObj)
+			&& CommentObj
+			&& CommentObj->IsValid())
+		{
+			(*CommentObj)->TryGetStringField(TEXT("text"), Node.NodeComment);
+		}
+	}
 	const TSharedPtr<FJsonObject>* ExternalAnchorObj = nullptr;
 	if (NodeObj->TryGetObjectField(TEXT("external_anchor"), ExternalAnchorObj)
 		&& ExternalAnchorObj
@@ -1516,6 +1545,7 @@ FBlueprintHelperLogicNode FBlueprintHelperLogicGroupBuilder::ConvertNode(
 				TEXT("to_pin"),
 				TEXT("target_pin"));
 			Link.Type = FBlueprintHelperLogicGroupBuilderLocalUtils::IdentifyGraphLinkType(*LinkObjPtr, Link.FromPin, Link.ToPin);
+			FBlueprintHelperLogicGroupBuilderLocalUtils::CopyCompactExternalLinkFields(*LinkObjPtr, Link);
 			FString ExplicitOwnership;
 			if ((*LinkObjPtr)->TryGetStringField(TEXT("ownership"), ExplicitOwnership) && !ExplicitOwnership.IsEmpty())
 			{

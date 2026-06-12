@@ -76,7 +76,7 @@ bh tools templates families --workflow preview_execute --format json
 bh tools read-templates domains --format json
 ```
 
-Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads. Do not use legacy direct task/context commands or wrapped payload envelopes.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
 
 Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
@@ -186,7 +186,7 @@ operation_mode: "create_new | modify_existing | inspect_only | validate_only"
 target_asset_path: "<UE asset path, or unknown>"
 target_graph_or_scope: "<graph/function/event/widget/table/object scope, or unknown>"
 safety_constraints:
-  allow_modify_user_nodes: false
+  ownership_boundary: "preserve user-owned nodes unless a selected external-user graph template explicitly allows the exact mutation"
   require_preview: true
   require_write_session_if_disabled: true
   write_session_scope: "running Editor/Bridge, usable by delegated sideAgents within approved scope and lifetime"

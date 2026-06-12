@@ -41,7 +41,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 - Default save policy: no automatic save.
 - Save only when the user requests it or when a validated workflow explicitly allows it.
-- Use TaskSpec `validation.should_compile` and `validation.should_save` to make compile/save intent explicit.
+- Use the current CLI template/help output to make compile/save intent explicit.
 - If validation fails, report the failing asset, stage, and diagnostic summary instead of retrying blindly.
 
 ### Blueprint, C++, And Repository Boundary

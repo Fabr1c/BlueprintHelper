@@ -179,6 +179,23 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		return nullptr;
 	}
 
+	static void ClearBlueprintHelperOwnershipMetadata(UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return;
+		}
+
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperOwned"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperBlockId"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperFeatureName"));
+			MetaData.RemoveValue(Node, TEXT("BlueprintHelperTool"));
+		}
+	}
+
 	static FString CompactNodeKey(const UEdGraphNode* Node)
 	{
 		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
@@ -224,6 +241,15 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		Json->SetStringField(TEXT("anchor_type"), AnchorType);
 		Json->SetStringField(TEXT("anchor_ref"), AnchorRef);
 		return Json;
+	}
+
+	static FString BuildCompactNodeRef(const UEdGraphNode* Node)
+	{
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xnode:v1:%s#%s"),
+			*CompactNodeKey(Node),
+			*FingerprintService.BuildCompactNodeFingerprint(Node));
 	}
 
 	static FString BuildCompactPinRef(const UEdGraphPin* Pin)
@@ -554,6 +580,10 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			OutError = TEXT("fixture prepare failed: node creation failed.");
 			return false;
 		}
+		ClearBlueprintHelperOwnershipMetadata(EventNode);
+		ClearBlueprintHelperOwnershipMetadata(PrintNode);
+		ClearBlueprintHelperOwnershipMetadata(BeforeValueNode);
+		ClearBlueprintHelperOwnershipMetadata(AfterValueNode);
 		EventNode->NodePosX = 0;
 		EventNode->NodePosY = 0;
 
@@ -628,6 +658,96 @@ namespace BlueprintHelperExternalGraphAnchorTests
 		for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
 		{
 			if (Node.ExternalAnchor.IsValid())
+			{
+				return &Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static const FBlueprintHelperLogicNode* FindLogicNodeWithExternalAnchorRef(
+		const FBlueprintHelperLogicJsonPayload& Payload,
+		const FString& AnchorRef)
+	{
+		auto MatchesAnchorRef = [&AnchorRef](const FBlueprintHelperLogicNode& Node)
+		{
+			FString CandidateRef;
+			if (Node.ExternalAnchor.IsValid()
+				&& Node.ExternalAnchor->TryGetStringField(TEXT("anchor_ref"), CandidateRef)
+				&& CandidateRef.Equals(AnchorRef, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+			for (const TSharedPtr<FJsonObject>& Anchor : Node.ExternalAnchors)
+			{
+				if (Anchor.IsValid()
+					&& Anchor->TryGetStringField(TEXT("anchor_ref"), CandidateRef)
+					&& CandidateRef.Equals(AnchorRef, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		for (const FBlueprintHelperLogicGroup& Group : Payload.Groups)
+		{
+			for (const FBlueprintHelperLogicNode& Node : Group.Nodes)
+			{
+				if (MatchesAnchorRef(Node))
+				{
+					return &Node;
+				}
+			}
+		}
+		for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
+		{
+			if (MatchesAnchorRef(Node))
+			{
+				return &Node;
+			}
+		}
+		return nullptr;
+	}
+
+	static const FBlueprintHelperLogicNode* FindLogicNodeWithExternalNodeGuid(
+		const FBlueprintHelperLogicJsonPayload& Payload,
+		const FString& NodeGuid)
+	{
+		auto MatchesNodeGuid = [&NodeGuid](const FBlueprintHelperLogicNode& Node)
+		{
+			FString CandidateGuid;
+			if (Node.ExternalAnchor.IsValid()
+				&& Node.ExternalAnchor->TryGetStringField(TEXT("node_guid"), CandidateGuid)
+				&& CandidateGuid.Equals(NodeGuid, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+			for (const TSharedPtr<FJsonObject>& Anchor : Node.ExternalAnchors)
+			{
+				if (Anchor.IsValid()
+					&& Anchor->TryGetStringField(TEXT("node_guid"), CandidateGuid)
+					&& CandidateGuid.Equals(NodeGuid, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		for (const FBlueprintHelperLogicGroup& Group : Payload.Groups)
+		{
+			for (const FBlueprintHelperLogicNode& Node : Group.Nodes)
+			{
+				if (MatchesNodeGuid(Node))
+				{
+					return &Node;
+				}
+			}
+		}
+		for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
+		{
+			if (MatchesNodeGuid(Node))
 			{
 				return &Node;
 			}
@@ -733,6 +853,97 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			}
 		}
 
+		return false;
+	}
+
+	static bool HasExportedCompactLink(
+		const TSharedPtr<FJsonObject>& Root,
+		const FString& LinkKind,
+		const FString& FromPin,
+		const FString& ToPin)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Links = nullptr;
+		if (!Root.IsValid() || !Root->TryGetArrayField(TEXT("links"), Links) || !Links)
+		{
+			return false;
+		}
+
+		for (const TSharedPtr<FJsonValue>& LinkValue : *Links)
+		{
+			const TSharedPtr<FJsonObject>* LinkObj = nullptr;
+			if (!LinkValue.IsValid()
+				|| !LinkValue->TryGetObject(LinkObj)
+				|| !LinkObj
+				|| !LinkObj->IsValid())
+			{
+				continue;
+			}
+
+			FString ActualKind;
+			FString ActualFromPin;
+			FString ActualToPin;
+			FString AnchorType;
+			FString AnchorRef;
+			if ((*LinkObj)->TryGetStringField(TEXT("kind"), ActualKind)
+				&& (*LinkObj)->TryGetStringField(TEXT("from_pin"), ActualFromPin)
+				&& (*LinkObj)->TryGetStringField(TEXT("to_pin"), ActualToPin)
+				&& (*LinkObj)->TryGetStringField(TEXT("anchor_type"), AnchorType)
+				&& (*LinkObj)->TryGetStringField(TEXT("anchor_ref"), AnchorRef)
+				&& ActualKind.Equals(LinkKind, ESearchCase::IgnoreCase)
+				&& ActualFromPin.Equals(FromPin, ESearchCase::IgnoreCase)
+				&& ActualToPin.Equals(ToPin, ESearchCase::IgnoreCase)
+				&& AnchorType.Equals(TEXT("external_link"), ESearchCase::IgnoreCase)
+				&& AnchorRef.StartsWith(LinkKind.Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+					? TEXT("xlink:v1:e:")
+					: TEXT("xlink:v1:d:")))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool LogicJsonHasCompactLink(
+		const FBlueprintHelperLogicJsonPayload& Payload,
+		const FString& LinkKind,
+		const FString& FromPin,
+		const FString& ToPin)
+	{
+		auto NodeHasLink = [&LinkKind, &FromPin, &ToPin](const FBlueprintHelperLogicNode& Node)
+		{
+			for (const FBlueprintHelperLogicLink& Link : Node.Links)
+			{
+				if (Link.AnchorType.Equals(TEXT("external_link"), ESearchCase::IgnoreCase)
+					&& Link.AnchorRef.StartsWith(LinkKind.Equals(TEXT("exec"), ESearchCase::IgnoreCase)
+						? TEXT("xlink:v1:e:")
+						: TEXT("xlink:v1:d:"))
+					&& Link.AnchorKind.Equals(LinkKind, ESearchCase::IgnoreCase)
+					&& Link.FromPin.Equals(FromPin, ESearchCase::IgnoreCase)
+					&& Link.ToPin.Equals(ToPin, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		for (const FBlueprintHelperLogicGroup& Group : Payload.Groups)
+		{
+			for (const FBlueprintHelperLogicNode& Node : Group.Nodes)
+			{
+				if (NodeHasLink(Node))
+				{
+					return true;
+				}
+			}
+		}
+		for (const FBlueprintHelperLogicNode& Node : Payload.Nodes)
+		{
+			if (NodeHasLink(Node))
+			{
+				return true;
+			}
+		}
 		return false;
 	}
 }
@@ -919,6 +1130,25 @@ bool FBlueprintHelperExternalGraphAnchorPrepareExternalLinkPatchFixtureTest::Run
 			TEXT("ReturnValue"),
 			TEXT("output"),
 			false));
+	TestTrue(
+		TEXT("fixture raw export exposes compact data external_link"),
+		HasExportedCompactLink(ExportedGraph, TEXT("data"), TEXT("ReturnValue"), TEXT("InString")));
+	TestTrue(
+		TEXT("fixture raw export exposes compact exec external_link"),
+		HasExportedCompactLink(ExportedGraph, TEXT("exec"), TEXT("then"), TEXT("execute")));
+
+	FBlueprintHelperLogicGroupBuilder Builder;
+	const FBlueprintHelperLogicJsonPayload Payload = Builder.BuildGroups(
+		ExportedGraph,
+		Blueprint->GetPathName(),
+		Graph->GetName(),
+		EBlueprintHelperLogicScope::TargetGraph);
+	TestTrue(
+		TEXT("fixture LogicJson preserves compact data external_link"),
+		LogicJsonHasCompactLink(Payload, TEXT("data"), TEXT("ReturnValue"), TEXT("InString")));
+	TestTrue(
+		TEXT("fixture LogicJson preserves compact exec external_link"),
+		LogicJsonHasCompactLink(Payload, TEXT("exec"), TEXT("then"), TEXT("execute")));
 	return true;
 }
 
@@ -1037,6 +1267,8 @@ bool FBlueprintHelperExternalGraphAnchorDoesNotWriteOwnershipMetadataTest::RunTe
 		return false;
 	}
 
+	EventNode->NodeComment = TEXT("Designer node note");
+
 	FString Error;
 	FBlueprintHelperExternalGraphAnchor Anchor;
 	TestTrue(TEXT("node anchor builds"), BuildNodeAnchor(Blueprint, Graph, EventNode, Anchor, Error));
@@ -1058,6 +1290,9 @@ bool FBlueprintHelperExternalGraphAnchorDoesNotWriteOwnershipMetadataTest::RunTe
 	}
 
 	TestTrue(TEXT("raw export has external_anchor"), (*ExportedNode)->HasField(TEXT("external_anchor")));
+	TestEqual(TEXT("raw export projects node_comment"),
+		(*ExportedNode)->GetStringField(TEXT("node_comment")),
+		FString(TEXT("Designer node note")));
 	TestFalse(TEXT("raw export has no ownership metadata"), (*ExportedNode)->HasField(TEXT("metadata")));
 
 	FBlueprintHelperLogicGroupBuilder Builder;
@@ -1072,8 +1307,9 @@ bool FBlueprintHelperExternalGraphAnchorDoesNotWriteOwnershipMetadataTest::RunTe
 		return false;
 	}
 
-	const FBlueprintHelperLogicNode* LogicNode = FindLogicNodeWithExternalAnchor(Payload);
-	TestNotNull(TEXT("logic node with external anchor"), LogicNode);
+	const FString EventNodeGuid = EventNode->NodeGuid.ToString(EGuidFormats::Digits);
+	const FBlueprintHelperLogicNode* LogicNode = FindLogicNodeWithExternalNodeGuid(Payload, EventNodeGuid);
+	TestNotNull(TEXT("logic node with event external anchor"), LogicNode);
 	if (!LogicNode)
 	{
 		return false;
@@ -1081,6 +1317,20 @@ bool FBlueprintHelperExternalGraphAnchorDoesNotWriteOwnershipMetadataTest::RunTe
 
 	const TSharedRef<FJsonObject> LogicNodeJson = LogicNode->ToJson();
 	TestTrue(TEXT("LogicJson preserves external_anchor"), LogicNodeJson->HasField(TEXT("external_anchor")));
+	const TSharedPtr<FJsonObject>* LogicNodeExternalAnchor = nullptr;
+	TestTrue(TEXT("LogicJson node external anchor is object"),
+		LogicNodeJson->TryGetObjectField(TEXT("external_anchor"), LogicNodeExternalAnchor) &&
+		LogicNodeExternalAnchor &&
+		LogicNodeExternalAnchor->IsValid());
+	if (LogicNodeExternalAnchor && LogicNodeExternalAnchor->IsValid())
+	{
+		TestEqual(TEXT("LogicJson external anchor matches event node"),
+			(*LogicNodeExternalAnchor)->GetStringField(TEXT("node_guid")),
+			EventNodeGuid);
+	}
+	TestEqual(TEXT("LogicJson projects node_comment"),
+		LogicNodeJson->GetStringField(TEXT("node_comment")),
+		FString(TEXT("Designer node note")));
 	TestFalse(TEXT("LogicJson does not synthesize block_id"), Payload.Groups[0].ToJson()->HasField(TEXT("block_id")));
 	return true;
 }

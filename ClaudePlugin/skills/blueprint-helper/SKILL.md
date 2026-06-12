@@ -33,9 +33,9 @@ Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_
 
 Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them as fallback.
 
-If `read_context`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, treat it as `evidence_conflict`: stop and report the conflict. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback fact source.
+If grouped context-read evidence, Editor screenshots/visible state, preview, execute, or readback evidence disagree, treat it as `evidence_conflict`: stop and report the conflict. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback fact source.
 
-When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to `blueprinthelper_read_context`. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `blueprinthelper_preview_task`.
+When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to the grouped context-read command with a composed ReadSpec. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `bh task preview`.
 
 When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
 
@@ -48,9 +48,9 @@ bh tools templates families --workflow preview_execute --format json
 bh tools read-templates domains --format json
 ```
 
-Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent, then call the CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Direct tool-name TaskSpec calls use wrapper templates with root field `task_spec`; grouped `task preview` / `task execute` calls use bare `BlueprintHelper.TaskSpec.v1` files.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
 
-Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
+Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, grouped context-read evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
 ## Tool Catalog Flow
 
@@ -85,7 +85,7 @@ On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by t
 1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
 2. Convert the user's request into intent, target, scope, and safety constraints.
 3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
-4. If BlueprintHelper access is required, run the pre-dispatch editor/Bridge gate locally: confirm CLI availability, run a lightweight runtime profile check, and start the target Editor through global MCP only when the profile/diagnostics show the Bridge or Editor is unavailable for this UE asset task. Read-only commands such as `bh blueprinthelper_find_assets` and `bh blueprinthelper_read_context` do not require a write session.
+4. If BlueprintHelper access is required, run the pre-dispatch editor/Bridge gate locally: confirm CLI availability, run a lightweight runtime profile check, and start the target Editor through global MCP only when the profile/diagnostics show the Bridge or Editor is unavailable for this UE asset task. Read-only commands such as `bh blueprinthelper_find_assets` and `bh context read` do not require a write session.
 5. Send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`. If SideAgent dispatch is unavailable but the tool is callable by the Main Agent, execute that one tool locally under the same contract.
 6. Review the translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
 
@@ -128,14 +128,14 @@ operation_mode: "create_new | modify_existing | inspect_only | validate_only"
 target_asset_path: "<UE asset path, or unknown>"
 target_graph: "<graph/function/event/widget scope, or unknown>"
 safety_constraints:
-  allow_modify_user_nodes: false
+  ownership_boundary: "preserve user-owned nodes unless a selected external-user graph template explicitly allows the exact mutation"
   require_preview: true
   require_write_session_if_disabled: true
   write_session_scope: "running Editor/Bridge, usable by delegated SideAgents within approved scope and lifetime"
 read_strategy:
   avoid_full_graph_text_when_graph_size_unknown: true
   large_graph_node_threshold: 80
-  large_graph_policy: "estimate size first, then read summary, logic_flow, bounded logic_json, or block-scoped slices"
+  large_graph_policy: "estimate size first, then read sampled/scoped views, logic_flow, bounded logic_json, or block-scoped slices"
 tool_call_intent:
   tool_name: "<single BlueprintHelper tool this SideAgent should execute>"
   missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
@@ -170,7 +170,7 @@ Tell the SideAgent its responsibility in the task package:
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
 - do not replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can repair CLI availability;
 - do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before any full graph read; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
+- estimate graph size before any full graph read; use sampled/scoped views, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
 - translate the returned tool results into a concise Chinese result for the Main Agent;
@@ -187,7 +187,7 @@ Stop before write delegation when:
 - the requested edit would modify user-owned nodes without explicit permission;
 - the request needs a capability not listed in the onboarding index;
 - the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, `checkout_required`, `compile_failed`, `save_failed`, or `tool_failed`;
-- `read_context`, Editor screenshot/visible state, preview, execute, or readback evidence disagrees; report `evidence_conflict` and do not inspect Unreal binary asset files as fallback evidence;
+- grouped context-read evidence, Editor screenshot/visible state, preview, execute, or readback evidence disagrees; report `evidence_conflict` and do not inspect Unreal binary asset files as fallback evidence;
 - the SideAgent result is not enough to judge whether the user's goal was satisfied.
 
 ## References

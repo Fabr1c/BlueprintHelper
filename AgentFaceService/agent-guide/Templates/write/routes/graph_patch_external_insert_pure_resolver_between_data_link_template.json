@@ -6,18 +6,6 @@
     "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
     "target_type": "blueprint"
   },
-  "scope_policy": {
-    "graph_name": "__REQUIRED_GRAPH_NAME__",
-    "allow_modify_user_nodes": false,
-    "external_mutation_policy": {
-      "strategy": "patch_external_links",
-      "allowed_mutations": [
-        "link_connect",
-        "link_disconnect",
-        "link_replace"
-      ]
-    }
-  },
   "behavior": {
     "graph_strategy": "patch_external_links",
     "external_link_patches": [

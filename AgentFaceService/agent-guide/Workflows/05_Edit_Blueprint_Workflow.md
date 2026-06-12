@@ -20,7 +20,7 @@ asset creation are allowed before preview.
 
 ```text
 profile
--> read_context or read_reference_context
+-> bh context read, plus reference context capability when needed
 -> select the matching CLI-discovered template file
 -> build TaskSpec
 -> preview_task

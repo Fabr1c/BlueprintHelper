@@ -52,6 +52,7 @@
 #include "Internationalization/Regex.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorService.h"
+#include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorFingerprintService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/Utils/BlueprintHelperGraphWriteClassificationUtils.h"
 #include "UObject/MetaData.h"
@@ -90,6 +91,111 @@ public:
 			&& Pin->Direction == EGPD_Input
 			&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
 			&& Pin->LinkedTo.Num() == 0;
+	}
+
+	static bool IsBlueprintHelperOwnedNode(const UEdGraphNode* Node)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		if (UPackage* Package = Node->GetOutermost())
+		{
+			FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+			return MetaData.GetValue(Node, TEXT("BlueprintHelperOwned")) == TEXT("true");
+		}
+		return false;
+	}
+
+	static FString CompactNodeKey(const UEdGraphNode* Node)
+	{
+		const FString Guid = Node ? Node->NodeGuid.ToString(EGuidFormats::Digits) : FString();
+		return Guid.Len() <= 8 ? Guid : Guid.Left(8);
+	}
+
+	static FString CompactPinKey(const UEdGraphPin* Pin)
+	{
+		FString Cleaned;
+		const FString Raw = Pin ? Pin->PinName.ToString() : FString();
+		Cleaned.Reserve(Raw.Len());
+		for (const TCHAR Ch : Raw)
+		{
+			if (FChar::IsAlnum(Ch) || Ch == TCHAR('_'))
+			{
+				Cleaned.AppendChar(Ch);
+			}
+		}
+		if (Cleaned.Len() > 16)
+		{
+			Cleaned = Cleaned.Left(16);
+		}
+		return Cleaned.IsEmpty() ? FString(TEXT("pin")) : Cleaned;
+	}
+
+	static FString LinkKindPrefix(const FString& LinkKind)
+	{
+		return LinkKind.Equals(TEXT("exec"), ESearchCase::IgnoreCase) ? TEXT("e") : TEXT("d");
+	}
+
+	static FString BuildCompactLinkRef(
+		const UEdGraphPin* SourcePin,
+		const UEdGraphPin* TargetPin,
+		const FString& LinkKind)
+	{
+		const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
+		const UEdGraphNode* TargetNode = TargetPin ? TargetPin->GetOwningNode() : nullptr;
+		if (!SourcePin || !TargetPin || !SourceNode || !TargetNode)
+		{
+			return FString();
+		}
+
+		const FBlueprintHelperExternalGraphAnchorFingerprintService FingerprintService;
+		return FString::Printf(
+			TEXT("xlink:v1:%s:%s.%s>%s.%s#%s"),
+			*LinkKindPrefix(LinkKind),
+			*CompactNodeKey(SourceNode),
+			*CompactPinKey(SourcePin),
+			*CompactNodeKey(TargetNode),
+			*CompactPinKey(TargetPin),
+			*FingerprintService.BuildLinkFingerprint(SourcePin, TargetPin, LinkKind));
+	}
+
+	static void AddCompactExternalLinkFields(
+		const TSharedRef<FJsonObject>& LinkObj,
+		const FString& SourceId,
+		const UEdGraphPin* SourcePin,
+		const FString& TargetId,
+		const UEdGraphPin* TargetPin,
+		const FString& LinkKind)
+	{
+		const UEdGraphNode* SourceNode = SourcePin ? SourcePin->GetOwningNode() : nullptr;
+		const UEdGraphNode* TargetNode = TargetPin ? TargetPin->GetOwningNode() : nullptr;
+		if (!SourceNode || !TargetNode)
+		{
+			return;
+		}
+		if (IsBlueprintHelperOwnedNode(SourceNode) && IsBlueprintHelperOwnedNode(TargetNode))
+		{
+			return;
+		}
+
+		const FString AnchorRef = BuildCompactLinkRef(SourcePin, TargetPin, LinkKind);
+		if (AnchorRef.IsEmpty())
+		{
+			return;
+		}
+
+		LinkObj->SetStringField(TEXT("anchor_type"), TEXT("external_link"));
+		LinkObj->SetStringField(TEXT("kind"), LinkKind);
+		LinkObj->SetStringField(
+			TEXT("label"),
+			FString::Printf(
+				TEXT("%s.%s -> %s.%s"),
+				*SourceId,
+				SourcePin ? *SourcePin->PinName.ToString() : TEXT("?"),
+				*TargetId,
+				TargetPin ? *TargetPin->PinName.ToString() : TEXT("?")));
+		LinkObj->SetStringField(TEXT("anchor_ref"), AnchorRef);
 	}
 
 	static bool TryGetPinDefaultExportValue(const UEdGraphPin* Pin, FString& OutValue, FString& OutSource)
@@ -975,6 +1081,10 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		NodeObj->SetStringField(TEXT("node_guid"), Node->NodeGuid.ToString(EGuidFormats::Digits));
 		NodeObj->SetNumberField(TEXT("x"), Node->NodePosX);
 		NodeObj->SetNumberField(TEXT("y"), Node->NodePosY);
+		if (!Node->NodeComment.IsEmpty())
+		{
+			NodeObj->SetStringField(TEXT("node_comment"), Node->NodeComment);
+		}
 		FBlueprintTextConverterLocalUtils::WriteExternalAnchorsForUserNode(
 			AssetPath,
 			GraphName,
@@ -1257,15 +1367,23 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 				LinkDeduplication.Add(LinkKey);
 
 				TSharedRef<FJsonObject> LinkObj = MakeShared<FJsonObject>();
+				const FString LinkKind = FBlueprintTextConverterLocalUtils::GetLinkKind(Pin, LinkedPin);
 				LinkObj->SetStringField(TEXT("from_id"), SourceId);
 				LinkObj->SetStringField(TEXT("from_pin"), Pin->PinName.ToString());
 				LinkObj->SetStringField(TEXT("to_id"), *TargetId);
 				LinkObj->SetStringField(TEXT("to_pin"), LinkedPin->PinName.ToString());
-				LinkObj->SetStringField(TEXT("kind"), FBlueprintTextConverterLocalUtils::GetLinkKind(Pin, LinkedPin));
+				LinkObj->SetStringField(TEXT("kind"), LinkKind);
 				LinkObj->SetStringField(TEXT("from_pin_type"), FBlueprintTextConverterLocalUtils::GetPinCategoryString(Pin));
 				LinkObj->SetStringField(TEXT("to_pin_type"), FBlueprintTextConverterLocalUtils::GetPinCategoryString(LinkedPin));
 				LinkObj->SetStringField(TEXT("from_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(Pin));
 				LinkObj->SetStringField(TEXT("to_direction"), FBlueprintTextConverterLocalUtils::GetPinDirectionString(LinkedPin));
+				FBlueprintTextConverterLocalUtils::AddCompactExternalLinkFields(
+					LinkObj,
+					SourceId,
+					Pin,
+					*TargetId,
+					LinkedPin,
+					LinkKind);
 				FBlueprintHelperExternalGraphAnchorService AnchorService;
 				FString AnchorError;
 				FBlueprintHelperExternalGraphAnchor BoundaryAnchor;

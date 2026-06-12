@@ -51,7 +51,7 @@ const rawJsonInputSchema = z.record(z.unknown())
   .describe('The BlueprintHelper RawJson object (nodes, links, version, schema) to import.');
 
 const LEGACY_TOOL_GUIDANCE =
-  'Normal Agents should prefer blueprinthelper_read_agent_guide, blueprinthelper_read_context, blueprinthelper_preview_task, and blueprinthelper_execute_task.';
+  'Deprecated ordinary MCP surface retained only behind the lifecycle-only registration gate; use the CLI grouped commands outside this internal fallback.';
 const FROZEN_TOOL_PREFIX =
   'FROZEN / Expert-only / Normal agents must not call directly.';
 
@@ -140,7 +140,6 @@ const readContextInputSchema = z.object({
     'blueprint_logic',
     'component_context',
     'variable_context',
-    'graph_context',
     'widget_context',
     'data_table_context',
     'object_property_context',
@@ -166,7 +165,7 @@ const readContextInputSchema = z.object({
     block_id: z.string().optional(),
   }),
   view: z.object({
-    format: z.enum(['logic_md', 'logic_json', 'summary', 'schema']).optional().default('logic_md'),
+    format: z.enum(['logic_md', 'logic_json', 'schema']).optional().default('logic_md'),
     max_items: z.number().int().positive().optional(),
     detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
   }).optional().default({ format: 'logic_md' }),
@@ -587,13 +586,6 @@ function prepareReadPayloadForView(
   format: string,
   maxItems?: number,
 ): { payload: Record<string, unknown>; truncated: boolean } {
-  if (format === 'summary') {
-    return {
-      payload: makeLogicSummaryPayload(payload, target),
-      truncated: false,
-    };
-  }
-
   if (format === 'logic_md' && isTargetEntryLogicRead(target)) {
     return {
       payload: makeLogicMdPayloadFromLogicJson(payload, target),
@@ -657,7 +649,7 @@ function makeBlueprintLogicSchemaPayload() {
     schema: 'BlueprintLogicReadSchema.v1',
     read_type: 'blueprint_logic',
     target_types: ['blueprint', 'graph', 'function', 'event', 'custom_event', 'block'],
-    formats: ['logic_md', 'logic_json', 'summary', 'schema'],
+    formats: ['logic_md', 'logic_json', 'schema'],
     target_name_semantics: {
       graph: 'Graph name',
       function: 'Function name',
@@ -747,9 +739,6 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     taskCompiler: config.taskCompiler,
     toolNames: new Set([
       'blueprinthelper_read_reference_context',
-      'blueprinthelper_preview_task',
-      'blueprinthelper_execute_task',
-      'blueprinthelper_get_task_result',
     ]),
   });
   unregisterFrozenToolRegistrations(server);
@@ -802,7 +791,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   server.registerTool(
     'blueprinthelper_read_context',
     {
-      description: 'Read UE asset context through BlueprintHelper.ReadSpec.v1. First slice supports blueprint_logic with logic_md, logic_json, summary, and schema formats.',
+      description: 'Read UE asset context through BlueprintHelper.ReadSpec.v1. First slice supports blueprint_logic with logic_md, logic_json, and schema formats. Deprecated MCP fallback surface.',
       inputSchema: readContextInputSchema,
     },
     async (input) => {
@@ -829,7 +818,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           });
         }
 
-        const bridgeFormat = format === 'logic_json' || format === 'summary' || (format === 'logic_md' && isTargetEntryLogicRead(input.target))
+        const bridgeFormat = format === 'logic_json' || (format === 'logic_md' && isTargetEntryLogicRead(input.target))
           ? 'logic_json'
           : 'logic_md';
         const command = bridgeFormat === 'logic_json'

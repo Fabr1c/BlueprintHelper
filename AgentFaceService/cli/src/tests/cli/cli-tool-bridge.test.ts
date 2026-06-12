@@ -76,7 +76,7 @@ test('tool help is specific for ReadContext without concrete template dispatch p
   assert.doesNotMatch(output, /Default tool names:/);
 });
 
-test('removed direct preview help reports grouped command replacement', async () => {
+test('removed direct preview help falls back to global grouped help', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['blueprinthelper_preview_task', '--help'],
@@ -89,10 +89,12 @@ test('removed direct preview help reports grouped command replacement', async ()
 
   const output = writes.join('');
   assert.equal(exitCode, 0);
-  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
-  assert.match(output, /Direct tool-name CLI entry was removed/);
+  assert.match(output, /BlueprintHelper CLI/);
   assert.match(output, /bh task preview --file <task-spec\.json>/);
-  assert.doesNotMatch(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.doesNotMatch(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
+  assert.doesNotMatch(output, /blueprinthelper_preview_task/);
+  assert.doesNotMatch(output, /Direct tool-name CLI entry was removed/);
   assert.doesNotMatch(output, /blueprinthelper_preview_task_wrapper_template\.json/);
   assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
@@ -307,7 +309,7 @@ test('grouped command help points TaskSpec preview to composer navigation', asyn
   assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
 
-test('lifecycle help directs Agents to global MCP instead of CLI aliases', async () => {
+test('lifecycle help falls back to global MCP guidance instead of CLI aliases', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['open_editor', '--help'],
@@ -320,9 +322,10 @@ test('lifecycle help directs Agents to global MCP instead of CLI aliases', async
 
   const output = writes.join('');
   assert.equal(exitCode, 0);
-  assert.match(output, /BlueprintHelper CLI help: open_editor/);
+  assert.match(output, /BlueprintHelper CLI/);
   assert.match(output, /mcp__blueprint_helper__blueprint_open_editor/);
-  assert.match(output, /direct tool-name command is intentionally not an Agent-facing compatibility path/i);
+  assert.doesNotMatch(output, /BlueprintHelper CLI help: open_editor/);
+  assert.doesNotMatch(output, /open_editor direct CLI command was removed/);
 });
 
 test('lifecycle CLI invocation is blocked and points Agents to MCP', async () => {

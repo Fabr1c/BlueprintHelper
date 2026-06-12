@@ -1323,6 +1323,36 @@ public:
 		return OwnershipService.WriteNodeOwnership(Blueprint, EventNode, BlockId, EventName, OutError);
 	}
 
+	static bool WriteCreatedOverrideEventOwnership(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		UK2Node_Event* EventNode,
+		const FString& EventName,
+		FString& OutError)
+	{
+		if (!Blueprint || !Graph || !EventNode || EventName.IsEmpty())
+		{
+			OutError = TEXT("override_event_ownership_target_invalid");
+			return false;
+		}
+
+		const FBlueprintHelperBlockIdService BlockIdService;
+		const FString BlockRef = BlockIdService.MakeBlockRef(Blueprint, Graph, EventName);
+		FString BlockId = BlockIdService.MakeFullBlockId(Graph->GetName(), BlockRef);
+		if (BlockId.IsEmpty())
+		{
+			BlockId = BlockRef;
+		}
+		if (BlockId.IsEmpty())
+		{
+			OutError = TEXT("override_event_ownership_block_id_empty");
+			return false;
+		}
+
+		const FBlueprintHelperOwnershipService OwnershipService;
+		return OwnershipService.WriteNodeOwnership(Blueprint, EventNode, BlockId, EventName, OutError);
+	}
+
 	static FName ResolveNativeOrOverrideEventName(const FString& InEventName)
 	{
 		const FString Lower = InEventName.ToLower();
@@ -3131,6 +3161,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 			TEXT("override_event_create_failed"),
 			EBlueprintHelperToolStage::Execute,
 			Error.IsEmpty() ? TEXT("Failed to create override/native event node.") : Error,
+			TEXT("event_name"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetOverrideEventTarget(Result, Request);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+	if (!FBlueprintHelperSignatureServiceLocalUtils::WriteCreatedOverrideEventOwnership(
+		Blueprint,
+		Graph,
+		EventNode,
+		ResolvedEventName.ToString(),
+		Error))
+	{
+		Mutation.Rollback();
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			TEXT("override_event_ownership_write_failed"),
+			EBlueprintHelperToolStage::Execute,
+			Error.IsEmpty() ? TEXT("Failed to write override event ownership metadata.") : Error,
 			TEXT("event_name"));
 		FBlueprintHelperSignatureServiceLocalUtils::SetOverrideEventTarget(Result, Request);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);

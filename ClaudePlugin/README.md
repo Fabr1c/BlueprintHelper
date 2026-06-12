@@ -140,10 +140,10 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first loop:
 1. Confirm Unreal Editor is running, or use the global MCP lifecycle tool after `<ProjectDir>/.blueprinthelper/project-profile.json` has `environment.ue_engine_dir`.
 2. Confirm the Bridge is reachable.
 3. Read runtime profile and TaskContextPack.
-4. Produce an explicit `BlueprintHelper.TaskSpec.v1` with `validation.should_compile` and `validation.should_save`.
+4. Produce an explicit `BlueprintHelper.TaskSpec.v1` from current CLI discovery and composer output.
 5. Run preview and stop on schema, semantic, policy, capability, or dry-run blockers.
 6. Execute only after preview passes.
-7. Let UE Task Runtime manage TaskPlan execution, `execution_policy.should_compile` / `execution_policy.should_save`, transaction grouping, rollback, and diagnostics.
+7. Let UE Task Runtime manage TaskPlan execution, internal compile/save policy, transaction grouping, rollback, and diagnostics.
 8. Report task-level results without repeated blind retries.
 
 Do not rely on the currently focused editor tab for destructive operations unless the user explicitly asks for active-context editing.

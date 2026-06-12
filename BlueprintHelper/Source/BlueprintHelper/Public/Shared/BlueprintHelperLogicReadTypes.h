@@ -168,6 +168,10 @@ struct FBlueprintHelperLogicLink
 	FString FromPin;
 	FString ToNode;
 	FString ToPin;
+	FString AnchorType;
+	FString AnchorRef;
+	FString AnchorKind;
+	FString AnchorLabel;
 	TSharedPtr<FJsonObject> ExternalAnchor;
 
 	TSharedRef<FJsonObject> ToJson() const
@@ -180,6 +184,10 @@ struct FBlueprintHelperLogicLink
 		Json->SetStringField(TEXT("from_pin"), FromPin);
 		Json->SetStringField(TEXT("to_node"), ToNode);
 		Json->SetStringField(TEXT("to_pin"), ToPin);
+		if (!AnchorType.IsEmpty()) { Json->SetStringField(TEXT("anchor_type"), AnchorType); }
+		if (!AnchorKind.IsEmpty()) { Json->SetStringField(TEXT("kind"), AnchorKind); }
+		if (!AnchorLabel.IsEmpty()) { Json->SetStringField(TEXT("label"), AnchorLabel); }
+		if (!AnchorRef.IsEmpty()) { Json->SetStringField(TEXT("anchor_ref"), AnchorRef); }
 		if (ExternalAnchor.IsValid()) { Json->SetObjectField(TEXT("external_anchor"), ExternalAnchor); }
 		return Json;
 	}
@@ -191,6 +199,7 @@ struct FBlueprintHelperLogicNode
 	EBlueprintHelperLogicNodeKind Kind = EBlueprintHelperLogicNodeKind::Unknown;
 	FString Name;
 	FString Owner;
+	FString NodeComment;
 	TSharedPtr<FJsonObject> Inputs;
 	TSharedPtr<FJsonObject> InputDefaults;
 	TSharedPtr<FJsonObject> Outputs;
@@ -206,6 +215,7 @@ struct FBlueprintHelperLogicNode
 		Json->SetStringField(TEXT("kind"), LogicNodeKindToString(Kind));
 		Json->SetStringField(TEXT("name"), Name);
 		if (!Owner.IsEmpty()) { Json->SetStringField(TEXT("owner"), Owner); }
+		if (!NodeComment.IsEmpty()) { Json->SetStringField(TEXT("node_comment"), NodeComment); }
 		if (Inputs.IsValid()) { Json->SetObjectField(TEXT("inputs"), Inputs); }
 		if (InputDefaults.IsValid()) { Json->SetObjectField(TEXT("input_defaults"), InputDefaults); }
 		if (Outputs.IsValid()) { Json->SetObjectField(TEXT("outputs"), Outputs); }

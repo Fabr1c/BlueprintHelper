@@ -27,7 +27,7 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
 
-Composer output is a temporary TaskSpec scaffold, not the final write input. Fill the generated TaskSpec with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent before preview; do not skip directly from template discovery to execute.
+Composer output is a temporary TaskSpec scaffold, not the final write input. Fill the generated TaskSpec with concrete grouped context-read evidence, selected anchors, target asset data, and the user's intent before preview; do not skip directly from template discovery to execute.
 
 For GraphWrite `merge_owned_graph` using `branch_fork + owned_block_call`, preview must verify:
 
@@ -47,13 +47,13 @@ Source-control checkout is separate from write authorization. In P4/Perforce or 
 
 ## Validation
 
-Use TaskSpec `validation.should_compile` and `validation.should_save`. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
+Use the compile/save intent selected by the current CLI template and help output. If validation fails, stop further writes and report the failing asset, stage, and diagnostic summary.
 
 ## Recovery
 
 If a write fails:
 
-- Prefer task result and journal data from `blueprinthelper_get_task_result`.
+- Prefer task result and journal data from `bh task result --id <task_run_id>`.
 - Report which steps ran and which were blocked.
 - Stay on the TaskSpec-first recovery path unless the user explicitly requests expert recovery.
 
@@ -61,7 +61,7 @@ If a write fails:
 
 After writing, do at least one relevant read-back:
 
-- Blueprint logic summary or structured anchors.
+- Blueprint logic flow/json or structured anchors.
 - Variable, component, class setting, Widget, object property, or DataTable target context.
 - Task result journal for status and validation.
 - For GraphWrite `branch_fork`, confirm the Sequence or equivalent distribution node is connected, the inserted call is reachable, the original successor remains reachable, and the affected flow has no orphaned nodes.

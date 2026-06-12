@@ -330,7 +330,7 @@ bool FBlueprintHelperOwnedDomainPolicyCentralizedContractTest::RunTest(const FSt
 	bool bClean = true;
 	bClean &= AssertSourceContainsTokens(
 		*this,
-		TEXT("Private/Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.cpp"),
+		TEXT("Private/Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperOwnedGraphMutationAdapter.cpp"),
 		{
 			TEXT("#include \"Systems/ToolClusters/GraphWrite/Policy/BlueprintHelperGraphWriteDomainPolicy.h\""),
 			TEXT("FBlueprintHelperGraphWriteDomainPolicy::ValidateOwnedRequest")

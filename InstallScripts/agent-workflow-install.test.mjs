@@ -46,6 +46,12 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /`bh context read --stdin` is supported for generated ReadSpec JSON/);
     assert.match(workflow, /`property_json` `target_name` is a ReadContext route locator\/filter/);
     assert.match(workflow, /TaskSpec Template Composer/);
+    assert.match(workflow, /choose the TaskSpec family, write mode, cluster, and operation/);
+    assert.match(workflow, /`bh tools templates families --workflow preview_execute --format json`/);
+    assert.match(workflow, /`quick-access\.items\[\]\.slot_type`/);
+    assert.match(workflow, /`quick-access\.items\[\]\.arg_slots`/);
+    assert.match(workflow, /compose with `bh tools templates compose`/);
+    assert.match(workflow, /Do not use old tool-id template dispatch or scan `AgentFaceService\/agent-guide\/Templates`/);
     assert.match(workflow, /fill the generated TaskSpec with concrete evidence and intent/);
     assert.match(workflow, /Do not guess fixed enum-like payload fields/);
     assert.match(workflow, /template `\*\.allowed_values`/);

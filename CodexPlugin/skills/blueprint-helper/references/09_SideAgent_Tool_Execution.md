@@ -29,18 +29,18 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 ## 执行规则
 
-1. 读取本文件和必要 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。构造 TaskSpec 写入 JSON 时，先走 CLI template composer 的 `families -> write-modes -> clusters -> operations -> quick-access -> compose` 导航，不扫描 `Templates/` 目录或旧语义索引。Composer 输出只是临时 TaskSpec scaffold，必须填入当前 `read_context` 证据、选中的 anchors、目标资产数据和用户意图后再 preview。
+1. 读取本文件和必要 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。构造 TaskSpec 写入 JSON 时，先走 CLI template composer 的 `families -> write-modes -> clusters -> operations -> quick-access -> compose` 导航，不扫描 `Templates/` 目录或旧语义索引。Composer 输出只是临时 TaskSpec scaffold，必须填入当前 grouped context-read 证据、选中的 anchors、目标资产数据和用户意图后再 preview。
 2. `quick-access` 返回 `slot_type` 和 `arg_slots`；`statement` 可作为 `compose --templates` 根，`expression` 只能嵌入 statement 输入位。`arg_slots` 顺序就是 `template_id(...)` 的位置顺序，需要跳过前置输入位时用 `0` 占位。
-2.0. 固定枚举/固定取值字段不得猜测或试错。只使用 CLI discovery、template `*.allowed_values`、read-template quick-access、`read_context` 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch` 提供的值；缺失时返回 `missing_capability` 或 `clarification_required`。
+2.0. 固定枚举/固定取值字段不得猜测或试错。只使用 CLI discovery、template `*.allowed_values`、read-template quick-access、grouped context-read 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch` 提供的值；缺失时返回 `missing_capability` 或 `clarification_required`。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。
-2.3. 如果 `read_context`、截图/Editor 画面、preview、execute 或 readback 结果互相不一致，返回 `evidence_conflict` 并停止。不得读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
-3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，直接使用 `blueprinthelper_read_context`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。
-4. 读取 Blueprint graph 前先判断规模。未知规模时先用 `view.format=summary` 或带 `max_items` 的 `logic_json` 估算节点数量；目标明确到 `function`、`event` 或 `custom_event` 时，优先用该 `target_type + target_name` 的 `logic_flow` 或 bounded `logic_json` 读取目标入口切片。
+2.3. 如果 grouped context-read、截图/Editor 画面、preview、execute 或 readback 结果互相不一致，返回 `evidence_conflict` 并停止。不得读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
+3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，compose ReadSpec 并调用 `bh context read`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。
+4. 读取 Blueprint graph 前先判断规模。未知规模时先用 scoped/sampled view、`logic_flow` 或带 `max_items` 的 `logic_json` 估算节点数量；目标明确到 `function`、`event` 或 `custom_event` 时，优先用该 `target_type + target_name` 的 `logic_flow` 或 bounded `logic_json` 读取目标入口切片。
 5. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
 6. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
 7. 工具参数必须使用 schema root object，不要额外包 `args`。
-8. 直接调用 `blueprinthelper_preview_task` / `blueprinthelper_execute_task` 工具名入口时，优先把 TaskSpec 包在 `task_spec` 字段下；调用 `task preview --file` / `task execute --file` 分组命令时，文件根必须是裸 `BlueprintHelper.TaskSpec.v1`。
+8. 调用 `bh task preview --file` / `bh task execute --file` 分组命令时，文件根必须是裸 `BlueprintHelper.TaskSpec.v1`。
 9. 如果 `write_permission` 被禁用，只在 preview 成功后请求 write session。
 10. write session 是运行中 Editor/Bridge 的短时许可，不是单个 Agent 的 secret。SideAgent 可以在许可 scope/lifetime 内继续执行，但不能请求、传递或回传 `auth_session`。
 11. SideAgent 只执行主 Agent 指定的单个工具调用或单个原子工具步骤，不自行扩展为连续调查。
@@ -49,7 +49,7 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 ### 工具调用约束
 
 1. SideAgent 不负责复用历史上下文；上下文聚合、是否需要下一次读取、是否已有足够证据，都由 MainAgent 判断。
-2. 对同一 `asset_path + target_type + target_name + view.format + detail` 的 `blueprinthelper_read_context`，同一 SideAgent 任务中最多调用一次。
+2. 对同一 `asset_path + target_type + target_name + view.format + detail` 的 grouped context-read 请求，同一 SideAgent 任务中最多调用一次。
 3. 不得同时把同名函数当作 `function` 和 `graph` 重复读取，除非工具返回表明 `target_type` 不匹配。
 4. 如果主 Agent 指定的工具调用缺少必要字段，返回 `clarification_required`，不要自行换用相邻工具或扩大读取范围。
 
@@ -61,18 +61,18 @@ blueprinthelper_diagnostics
 blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_find_assets
-blueprinthelper_read_context
-blueprinthelper_read_context_capabilities
+bh context read --file <read-spec.json> | --stdin
+bh tools read-templates domains/clusters/targets/views/quick-access/compose
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
 blueprint_compile_blueprint
 blueprint_save_asset
-blueprinthelper_preview_task
+bh task preview --file <task-spec.json>
 blueprinthelper_request_write_session
-blueprinthelper_execute_task
-blueprinthelper_get_task_result
+bh task execute --file <task-spec.json> --preview-token <preview_token>
+bh task result --id <task_run_id>
 blueprinthelper_get_debug_case
 blueprinthelper_list_debug_cases
 blueprinthelper_export_debug_bundle
@@ -89,7 +89,7 @@ blueprinthelper_query_review_records
 
 - `clarification_required`: 任务包缺少目标资产、目标图表或创建/修改策略
 - `tool_unavailable`: 指定的 BlueprintHelper CLI 命令在当前执行环境不可用
-- `evidence_conflict`: `read_context`、截图/Editor 画面、preview、execute 或 readback 结果冲突；禁止读取 UE 二进制资产文件作为 fallback
+- `evidence_conflict`: grouped context-read、截图/Editor 画面、preview、execute 或 readback 结果冲突；禁止读取 UE 二进制资产文件作为 fallback
 - `bridge_unavailable`: Bridge 不可达
 - `profile_blocked`: runtime_profile 不允许写入
 - `preview_blocked`: preview 返回阻断

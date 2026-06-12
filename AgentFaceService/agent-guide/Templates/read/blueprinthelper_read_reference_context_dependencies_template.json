@@ -4,6 +4,5 @@
   "target_type": "asset",
   "search_scope": "asset",
   "resolution_policy": "ue_only",
-  "detail": "summary",
   "max_results": 50
 }

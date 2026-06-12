@@ -1354,6 +1354,10 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	UK2Node_Event* EventNode = FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName);
 	TestNotNull(TEXT("override event node exists"), EventNode);
 	TestTrue(TEXT("override function flag set"), EventNode && EventNode->bOverrideFunction);
+	TestTrue(TEXT("override event writes BlueprintHelper ownership"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::NodeHasBlueprintHelperOwnership(
+			EventNode,
+			FBlueprintHelperSignatureServiceTestsLocalUtils::MakeCustomEventBlockId(Blueprint, Graph, EventName)));
 
 	const int32 NodeCountAfterFirst = Graph ? Graph->Nodes.Num() : 0;
 	const FBlueprintHelperToolResultBase SecondResult = SignatureService.EnsureOverrideEvent(Request);

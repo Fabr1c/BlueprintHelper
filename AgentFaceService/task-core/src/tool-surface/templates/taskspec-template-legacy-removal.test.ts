@@ -50,6 +50,65 @@ test('TaskSpec workflow docs require four-layer composer and grouped task comman
   }
 });
 
+test('Agent-facing docs do not expose internal policy fields or legacy task envelopes', () => {
+  const docs = [
+    'README.md',
+    'ClaudePlugin/README.md',
+    'CodexPlugin/agents/blueprint-explorer.toml',
+    'CodexPlugin/agents/task-worker.toml',
+    'CodexPlugin/skills/blueprint-helper/SKILL.md',
+    'ClaudePlugin/skills/blueprint-helper/SKILL.md',
+    'CodexPlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'ClaudePlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'CodexPlugin/skills/blueprint-helper/references/05_Edit_Blueprint_Workflow.md',
+    'ClaudePlugin/skills/blueprint-helper/references/05_Edit_Blueprint_Workflow.md',
+    'CodexPlugin/skills/blueprint-helper/references/06_UMG_Data_Workflows.md',
+    'ClaudePlugin/skills/blueprint-helper/references/06_UMG_Data_Workflows.md',
+    'CodexPlugin/skills/blueprint-helper/references/07_Safety_Validation_And_Recovery.md',
+    'ClaudePlugin/skills/blueprint-helper/references/07_Safety_Validation_And_Recovery.md',
+    'CodexPlugin/skills/blueprint-helper/references/08_User_Preferences.md',
+    'ClaudePlugin/skills/blueprint-helper/references/08_User_Preferences.md',
+    'CodexPlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'ClaudePlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md',
+  ];
+  const forbidden = [
+    /bh blueprinthelper_preview_task/,
+    /bh blueprinthelper_execute_task/,
+    /bh blueprinthelper_get_task_result/,
+    /bh blueprinthelper_read_context(?!_capabilities)/,
+    /validation\.should_compile/,
+    /validation\.should_save/,
+    /execution_policy\.should_compile/,
+    /execution_policy\.should_save/,
+    /scope_policy/,
+    /allow_modify_user_nodes/,
+    /direct-tool wrapper/i,
+    /`task_spec`\s+wrapper/i,
+    /task_spec wrapper/i,
+    /wrapper envelope/i,
+    /wrapped payload envelopes/i,
+    /extra\s+`args`\s+envelope/i,
+  ];
+
+  for (const relativePath of docs) {
+    const text = fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), 'utf8');
+    for (const pattern of forbidden) {
+      assert.doesNotMatch(text, pattern, `${relativePath} still exposes ${pattern}`);
+    }
+  }
+});
+
+test('MCP fallback source does not advertise retired Agent-facing TaskSpec or ReadContext surfaces', () => {
+  const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'AgentFaceService/mcp/src/mcp/tools/register-tools.ts'), 'utf8');
+  assert.doesNotMatch(text, /Normal Agents should prefer blueprinthelper_read_context/);
+  assert.doesNotMatch(text, /blueprinthelper_preview_task,\s*and blueprinthelper_execute_task/);
+  assert.doesNotMatch(text, /'graph_context'/);
+  assert.doesNotMatch(text, /format:\s*z\.enum\(\[[^\]]*'summary'/);
+  assert.doesNotMatch(text, /formats:\s*\[[^\]]*'summary'/);
+});
+
 test('Codex plugin registers all BlueprintHelper subagents', () => {
   const agents = [
     {

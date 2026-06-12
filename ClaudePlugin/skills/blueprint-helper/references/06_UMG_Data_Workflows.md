@@ -8,15 +8,15 @@ UMG、DataAsset、DataTable 和 UObject 属性写入都走 TaskSpec-first。不�
 
 ## Validation Policy
 
-- WidgetBlueprint / UMG writes may request `validation.should_compile=true`.
-- DataAsset instances, DataTable, UserDefinedStruct, InputAction, InputMappingContext, and plain UObject property writes must use `validation.should_compile=false`.
-- A Blueprint class used as a DataAsset type is created with `asset_type=blueprint_class`, usually `parent_class=PrimaryDataAsset`, and must use `validation.should_compile=true`.
+- WidgetBlueprint / UMG writes may request Blueprint compile validation through the current template/help output.
+- DataAsset instances, DataTable, UserDefinedStruct, InputAction, InputMappingContext, and plain UObject property writes must use read-back validation instead of Blueprint compile validation.
+- A Blueprint class used as a DataAsset type is created with `asset_type=blueprint_class`, usually `parent_class=PrimaryDataAsset`, and may request Blueprint compile validation through the current template/help output.
 - These data assets do not have a Blueprint compile step. Validate them by read-back: fields, row struct, rows, asset class, or property values.
 - Do not treat `no_op` reuse as failure when the existing fixture passes read-back.
 
 ## UMG
 
-1. 用 `blueprinthelper_read_context` 读取目标 Widget Blueprint 摘要。
+1. 用 `bh context read` 读取目标 Widget Blueprint 结构或属性上下文。
 2. 用 `edit_umg_widget` 描述控件创建、属性更新或删除。
 3. preview 通过后执行。
 4. 写后读取上下文确认树结构或关键属性。
@@ -41,7 +41,7 @@ TaskSpec behavior:
 
 1. 读取目标表上下文或 reference context，确认 row struct 和 RowName。
 2. 用 `edit_data_table` 描述 add、update 或 delete。
-3. 设置 `validation.should_compile=false`。
+3. Use read-back validation instead of Blueprint compile validation.
 4. preview 通过后执行。
 5. 写后读取目标行确认。
 
@@ -66,8 +66,8 @@ TaskSpec behavior:
 
 DataAsset instance creation requires a concrete `UDataAsset` subclass. Do not instantiate abstract base classes. When a smoke or workflow needs a project-owned DataAsset with editable fields, create the DataAsset Blueprint class first, then create the DA instance from that class.
 
-1. Create a Blueprint class asset with `asset_type=blueprint_class`, `parent_class=PrimaryDataAsset`, and `validation.should_compile=true`.
-2. Create the DataAsset instance with `asset_type=data_asset`, `data_asset_class` set to the Blueprint class asset path or generated class path, and `validation.should_compile=false`.
+1. Create a Blueprint class asset with `asset_type=blueprint_class`, `parent_class=PrimaryDataAsset`, and Blueprint compile validation selected by the current template/help output.
+2. Create the DataAsset instance with `asset_type=data_asset`, `data_asset_class` set to the Blueprint class asset path or generated class path, and read-back validation instead of Blueprint compile validation.
 3. Do not use `/Script/Engine.DataAsset` or `/Script/Engine.PrimaryDataAsset` as the DA instance class. They are base classes, and `PrimaryDataAsset` is abstract.
 4. Validate the DA instance by read-back: asset exists and its class is the generated class from the Blueprint class asset.
 
@@ -86,4 +86,4 @@ TaskSpec behavior for the DA instance:
 
 ## Object Properties
 
-用 `edit_object_properties` 描述属性路径和值。复杂结构体、枚举、软对象路径和类路径必须使用 UE 可导入文本格式。DataAsset 或普通 UObject 属性写入设置 `validation.should_compile=false`，并通过属性 read-back 验证。
+用 `edit_object_properties` 描述属性路径和值。复杂结构体、枚举、软对象路径和类路径必须使用 UE 可导入文本格式。DataAsset 或普通 UObject 属性写入使用 read-back 验证。
