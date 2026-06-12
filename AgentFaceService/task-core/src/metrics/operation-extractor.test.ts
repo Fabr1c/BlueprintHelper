@@ -184,17 +184,6 @@ test('extractReadToolOperation defaults blueprint_logic to logic_flow', () => {
   });
 });
 
-test('extractReadToolOperation defaults graph_context to logic_json', () => {
-  const operation = extractReadToolOperation({
-    read_type: 'graph_context',
-  });
-
-  assert.deepEqual(operation, {
-    capability: 'read_context',
-    semantic_operation: 'graph_context.logic_json',
-  });
-});
-
 test('extractReadToolOperation falls back to read.unknown when format is absent', () => {
   const operation = extractReadToolOperation({});
 

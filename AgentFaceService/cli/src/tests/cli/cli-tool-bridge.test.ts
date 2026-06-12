@@ -22,7 +22,7 @@ test('global help points Agents to CLI catalog and per-tool help', async () => {
 
   const output = writes.join('');
   assert.equal(exitCode, 0);
-  assert.match(output, /bh <tool_name> --help/);
+  assert.doesNotMatch(output, /bh <tool_name> --help/);
   assert.match(output, /bh tools domains --format json/);
   assert.match(output, /bh tools list <domain> <kind> --format json/);
   assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
@@ -56,7 +56,7 @@ test('help command accepts text format alias for shell smoke checks', async () =
 test('tool help is specific for ReadContext without concrete template dispatch paths', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
-    argv: ['blueprinthelper_read_context', '--help'],
+    argv: ['context', 'read', '--help'],
     cwd: process.cwd(),
     bridge: {} as never,
     runner: {} as never,
@@ -66,9 +66,9 @@ test('tool help is specific for ReadContext without concrete template dispatch p
 
   const output = writes.join('');
   assert.equal(exitCode, 0);
-  assert.match(output, /BlueprintHelper CLI help: blueprinthelper_read_context/);
+  assert.match(output, /BlueprintHelper CLI help: context read/);
   assert.match(output, /Root JSON: bare BlueprintHelper\.ReadSpec\.v1/);
-  assert.match(output, /bh blueprinthelper_read_context --file <read-spec\.json> --select status,artifacts\.full_result/);
+  assert.match(output, /bh context read --file <read-spec\.json> --select status,artifacts\.full_result/);
   assert.doesNotMatch(output, /read\/routes\/blueprint_logic_function_logic_flow_template\.json/);
   assert.doesNotMatch(output, /read\/routes\/blueprint_logic_graph_logic_json_template\.json/);
   assert.doesNotMatch(output, /Templates\/read\/read_context_/);
@@ -76,7 +76,7 @@ test('tool help is specific for ReadContext without concrete template dispatch p
   assert.doesNotMatch(output, /Default tool names:/);
 });
 
-test('tool help is specific for preview wrapper and bare TaskSpec templates', async () => {
+test('removed direct preview help reports grouped command replacement', async () => {
   const writes: string[] = [];
   const exitCode = await runCli({
     argv: ['blueprinthelper_preview_task', '--help'],
@@ -90,10 +90,9 @@ test('tool help is specific for preview wrapper and bare TaskSpec templates', as
   const output = writes.join('');
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
-  assert.match(output, /Direct tool input: \{ "task_spec"/);
-  assert.match(output, /Grouped command input: bare BlueprintHelper\.TaskSpec\.v1 file/);
-  assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /Direct tool-name CLI entry was removed/);
+  assert.match(output, /bh task preview --file <task-spec\.json>/);
+  assert.doesNotMatch(output, /bh tools templates compose --family <family>/);
   assert.doesNotMatch(output, /blueprinthelper_preview_task_wrapper_template\.json/);
   assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
@@ -321,27 +320,27 @@ test('lifecycle help directs Agents to global MCP instead of CLI aliases', async
 
   const output = writes.join('');
   assert.equal(exitCode, 0);
-  assert.match(output, /BlueprintHelper CLI help: blueprint_open_editor/);
+  assert.match(output, /BlueprintHelper CLI help: open_editor/);
   assert.match(output, /mcp__blueprint_helper__blueprint_open_editor/);
-  assert.match(output, /Do not use CLI lifecycle aliases as Agent compatibility paths/);
+  assert.match(output, /direct tool-name command is intentionally not an Agent-facing compatibility path/i);
 });
 
 test('lifecycle CLI invocation is blocked and points Agents to MCP', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const exitCode = await runCli({
     argv: ['open_editor', '--json', '{}'],
     cwd: process.cwd(),
     bridge: {} as never,
     runner: {} as never,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  const output = writes.join('');
-  assert.equal(exitCode, 2);
-  assert.match(output, /lifecycle_mcp_required/);
-  assert.match(output, /mcp__blueprint_helper__blueprint_open_editor/);
-  assert.match(output, /do not run bh open_editor/);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /open_editor direct CLI command was removed/);
+  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
 });
 
 test('direct blueprint_get_runtime_profile calls matching Bridge command', async () => {
@@ -531,6 +530,7 @@ test('delayed Bridge calls emit Agent wait hints to stderr without contaminating
 
 test('direct blueprint_close_editor is blocked even when expert flag is present', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const exitCode = await runCli({
     argv: ['blueprint_close_editor', '--json', '{ "save_all": false }', '--expert'],
     cwd: process.cwd(),
@@ -539,17 +539,18 @@ test('direct blueprint_close_editor is blocked even when expert flag is present'
     } as never,
     runner: {} as never,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(exitCode, 2);
-  assert.equal(output.error_code, 'lifecycle_mcp_required');
-  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /blueprint_close_editor direct CLI command was removed/);
+  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
 });
 
 test('short close_editor is blocked and does not call Bridge', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const exitCode = await runCli({
     argv: ['close_editor'],
     cwd: process.cwd(),
@@ -558,18 +559,19 @@ test('short close_editor is blocked and does not call Bridge', async () => {
     } as never,
     runner: {} as never,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(exitCode, 2);
-  assert.equal(output.error_code, 'lifecycle_mcp_required');
-  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /close_editor direct CLI command was removed/);
+  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
 });
 
 
 test('short open_editor is blocked and does not launch a process', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const exitCode = await runCli({
     argv: ['open_editor'],
     cwd: process.cwd(),
@@ -581,13 +583,13 @@ test('short open_editor is blocked and does not launch a process', async () => {
     runLocalProcess: async () => { throw new Error('must not launch process'); },
     sleep: async () => {},
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(exitCode, 2);
-  assert.equal(output.error_code, 'lifecycle_mcp_required');
-  assert.match(String(output.message), /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /open_editor direct CLI command was removed/);
+  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
 });
 test('frozen direct Bridge tools are not exposed through CLI tool invocation', async () => {
   const writes: string[] = [];

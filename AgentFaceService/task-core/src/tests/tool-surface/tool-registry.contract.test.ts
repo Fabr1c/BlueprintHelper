@@ -36,8 +36,6 @@ const expectedToolNames = [
   'blueprinthelper_request_write_session',
   'blueprinthelper_diagnostics',
   'blueprinthelper_diagnostics_runtime',
-  'blueprint_open_editor',
-  'blueprint_close_editor',
 ];
 
 const frozenToolNames = [
@@ -377,12 +375,10 @@ test('read_context registry output strips GUID fields from Bridge logic_json pay
   assert.equal(Object.hasOwn(logic, 'asset_path'), false);
 });
 
-test('read_context rejects removed markdown logic format before Bridge dispatch', async () => {
-  const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_read_context');
-  assert.ok(tool);
+test('read_context input schema rejects removed markdown logic format before handler dispatch', () => {
   const removedMarkdownFormat = ['logic', 'md'].join('_');
 
-  await assert.rejects(() => tool.execute({
+  assert.throws(() => ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'blueprint_logic',
     target: {
@@ -393,14 +389,6 @@ test('read_context rejects removed markdown logic format before Bridge dispatch'
     view: {
       format: removedMarkdownFormat,
     },
-  }, {
-    cwd: process.cwd(),
-    bridge: {
-      async sendCommand() {
-        throw new Error('removed markdown logic format must fail before Bridge dispatch');
-      },
-    } as never,
-    taskRunner: {} as TaskSpecRunner,
   }), /Invalid enum value/);
 });
 
@@ -888,7 +876,7 @@ test('read_context rejects removed and unsupported view formats', () => {
     view: {
       format: 'logic_flow',
     },
-  }), /graph_context only supports logic_json/);
+  }), /Invalid enum value/);
 });
 
 test('function chain context registry dispatch strips forbidden identity fields from Bridge payload', async () => {
@@ -1078,7 +1066,7 @@ test('execute task registry handler passes preview token to TaskSpecRunner', asy
   assert.deepEqual(receivedPreviewToken, previewToken);
 });
 
-test('execute task registry adapter rejects direct TaskSpec preview token', async () => {
+test('execute task registry adapter reports direct TaskSpec preview token as structured failure', async () => {
   const tool = getBlueprintHelperToolRegistry().find((candidate) => candidate.name === 'blueprinthelper_execute_task');
   assert.ok(tool);
   const previewToken = 'abcdef0123456789abcdef0123456789';
@@ -1090,38 +1078,35 @@ test('execute task registry adapter rejects direct TaskSpec preview token', asyn
     getTaskResult: async () => { throw new Error('not used'); },
   } as unknown as TaskSpecRunner;
 
-  await assert.rejects(
-    () => tool.execute({
-      schema: 'BlueprintHelper.TaskSpec.v1',
-      context_id: 'ctx_registry_execute_direct',
-      task_type: 'edit_blueprint_graph',
-      feature_name: 'RegistryExecuteDirect',
-      target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
-      scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
-      behavior: {
-        graph_strategy: 'append_new_owned_graph',
-        entries: [{
-          entry_type: 'custom_event',
-          name: 'RegistryExecuteDirect',
-          body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
-        }],
-      },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: { should_compile: true, should_save: false },
-      preview_token: previewToken,
-    }, {
-      cwd: process.cwd(),
-      bridge: {} as never,
-      taskRunner: runner,
-    }),
-    (error: unknown) => {
-      assert.equal((error as { code?: string }).code, 'preview_token_requires_task_spec_wrapper');
-      return true;
+  const result = await tool.execute({
+    schema: 'BlueprintHelper.TaskSpec.v1',
+    context_id: 'ctx_registry_execute_direct',
+    task_type: 'edit_blueprint_graph',
+    feature_name: 'RegistryExecuteDirect',
+    target: { asset_path: '/Game/BP_Player', target_type: 'blueprint' },
+    scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [{
+        entry_type: 'custom_event',
+        name: 'RegistryExecuteDirect',
+        body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
+      }],
     },
-  );
+    execution_policy: {
+      dry_run_mode: 'full',
+      on_missing_capability: 'stop_and_report',
+    },
+    validation: { should_compile: true, should_save: false },
+    preview_token: previewToken,
+  }, {
+    cwd: process.cwd(),
+    bridge: {} as never,
+    taskRunner: runner,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'preview_token_requires_task_spec_wrapper');
 });
 
 type ActiveReadContextRoute = ReturnType<typeof getActiveReadContextRouteDescriptors>[number];

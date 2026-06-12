@@ -35,14 +35,15 @@ test('CLI task preview normalizes bare TaskSpec and compiles before preview_task
   assert.ok((output.artifacts as Record<string, unknown>).full_result);
 });
 
-test('CLI blueprinthelper_preview_task normalizes wrapped TaskSpec and compiles before preview_task_plan', async (t) => {
-  const workspace = await createTempDir(t, 'bph-cli-e2e-preview-wrapped-');
+test('CLI removed direct preview command reports grouped-command replacement', async (t) => {
+  const workspace = await createTempDir(t, 'bph-cli-e2e-preview-direct-removed-');
   await writeFile(path.join(workspace, 'preview.json'), JSON.stringify({
     task_spec: graphWriteAppendTaskSpecFixture,
   }, null, 2));
   const commands: string[] = [];
   const payloads: Array<Record<string, unknown>> = [];
   const stdout: string[] = [];
+  const stderr: string[] = [];
 
   const exitCode = await withEnv({
     BPH_METRICS_DIR: path.join(workspace, 'metrics'),
@@ -51,17 +52,14 @@ test('CLI blueprinthelper_preview_task normalizes wrapped TaskSpec and compiles 
     cwd: workspace,
     bridge: createRecordingBridge(commands, payloads),
     stdout: (text) => stdout.push(text),
-    stderr: () => {},
+    stderr: (text) => stderr.push(text),
   }));
-  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
 
-  assert.equal(exitCode, 0);
-  assert.deepEqual(commands, ['preview_task_plan']);
-  assertTaskPlanPayload(payloads[0]);
-  assert.equal(output.ok, true);
-  assert.equal(output.operation, 'tool.invoke');
-  assert.equal(JSON.stringify(output).includes('bridge_result'), false);
-  assert.ok((output.artifacts as Record<string, unknown>).full_result);
+  assert.equal(exitCode, 64);
+  assert.deepEqual(commands, []);
+  assert.equal(stdout.join(''), '');
+  assert.match(stderr.join(''), /blueprinthelper_preview_task direct CLI command was removed/);
+  assert.match(stderr.join(''), /bh task preview --file <task-spec\.json>/);
 });
 
 test('CLI task execute previews then sends execute_task_plan to mocked Bridge', async (t) => {
@@ -131,6 +129,30 @@ test('CLI graph body adapter loop previews, executes, then reads context', async
   assert.match(serializedOutput, /LogicFlow\.v1/);
   assert.match(serializedOutput, /k2\.macro_body/);
   assert.match(serializedOutput, /Macro In/);
+});
+
+test('CLI context read supports stdin as the grouped ReadSpec entry', async (t) => {
+  const workspace = await createTempDir(t, 'bph-cli-e2e-context-read-stdin-');
+  const commands: string[] = [];
+  const payloads: Array<Record<string, unknown>> = [];
+  const stdout: string[] = [];
+
+  const exitRead = await withEnv({
+    BPH_METRICS_DIR: path.join(workspace, 'metrics'),
+  }, () => runCli({
+    argv: ['context', 'read', '--stdin', '--format', 'json'],
+    cwd: workspace,
+    bridge: createRecordingBridge(commands, payloads),
+    readStdin: () => JSON.stringify(graphWriteMacroBodyReadSpecFixture()),
+    stdout: (text) => stdout.push(text),
+    stderr: () => {},
+  }));
+
+  assert.equal(exitRead, 0);
+  assert.deepEqual(commands, ['read_blueprint_logic_json']);
+  assert.equal(payloads[0]?.['target_type'], 'graph');
+  assert.equal(payloads[0]?.['graph'], 'ClampScoreMacro');
+  assert.match(stdout.join(''), /LogicFlow\.v1/);
 });
 
 test('CLI tools templates composer output is descriptor-backed and does not contact Bridge', async (t) => {
@@ -214,7 +236,7 @@ test('CLI help output is manifest-backed and does not contact Bridge', async (t)
   const stdout: string[] = [];
 
   const exitCode = await runCli({
-    argv: ['blueprinthelper_preview_task', '--help'],
+    argv: ['task', 'preview', '--help'],
     cwd: workspace,
     bridge: createFailingBridge(),
     stdout: (text) => stdout.push(text),
@@ -224,7 +246,7 @@ test('CLI help output is manifest-backed and does not contact Bridge', async (t)
   assert.equal(exitCode, 0);
   const help = stdout.join('');
   assert.match(help, /blueprint\.plan\.taskspec\.preview/);
-  assert.match(help, /blueprinthelper_preview_task/);
+  assert.match(help, /task preview/);
   assert.match(help, /tools templates families --workflow preview_execute/);
   assert.doesNotMatch(help, new RegExp(['tools templates', '<tool_id>'].join(' ')));
   assert.doesNotMatch(help, /helpEntries/);

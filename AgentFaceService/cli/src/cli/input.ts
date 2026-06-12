@@ -49,7 +49,7 @@ function parseJsonInput(text: string, source: '--file' | '--json' | '--stdin'): 
       throw new Error(
         `Failed to parse --json input as JSON. PowerShell often strips quotes from inline JSON; `
         + `pipe JSON through --stdin or pass a params file with --file instead. `
-        + `Example: $json | bh <tool_name> --stdin --format full. Parser error: ${message}`,
+        + `Example for ReadContext: $json | bh context read --stdin --format full. Parser error: ${message}`,
       );
     }
     throw new Error(`Failed to parse ${source} input as JSON. Parser error: ${message}`);

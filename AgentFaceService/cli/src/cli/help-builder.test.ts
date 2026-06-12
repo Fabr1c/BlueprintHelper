@@ -7,19 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { createHelpBuilder } from './help-builder.js';
 import { buildHelpText } from './help.js';
 
-test('HelpBuilder renders preview help from manifest and TaskSpec composer navigation', () => {
+test('HelpBuilder renders removed direct preview help as grouped-command migration', () => {
   const builder = createHelpBuilder();
   const help = builder.build(['blueprinthelper_preview_task']);
 
   assert.match(help, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
-  assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
-  assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(help, /bh tools templates compose --family <family>/);
-  assert.match(help, /Placeholder style: replace __REQUIRED_NAME__; replace or delete __OPTIONAL_NAME__ fields\./);
-  assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
-  assert.doesNotMatch(help, /execution_policy/);
-  assert.doesNotMatch(help, /scope_policy/);
-  assert.doesNotMatch(help, /validation/);
+  assert.match(help, /Direct tool-name CLI entry was removed/);
+  assert.match(help, /bh task preview --file <task-spec\.json>/);
+  assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
 });
 
 test('HelpBuilder resolves grouped task preview alias through manifest', () => {
@@ -31,12 +26,13 @@ test('HelpBuilder resolves grouped task preview alias through manifest', () => {
   assert.match(help, /bh task preview --file <filled_taskspec\.json> --format summary/);
 });
 
-test('HelpBuilder renders read_context help from ReadContext template navigation', () => {
+test('HelpBuilder renders grouped read_context help from ReadContext template navigation', () => {
 	const builder = createHelpBuilder();
-	const help = builder.build(['blueprinthelper_read_context']);
+	const help = builder.build(['context', 'read']);
 
-  assert.match(help, /BlueprintHelper CLI help: blueprinthelper_read_context/);
+  assert.match(help, /BlueprintHelper CLI help: context read/);
   assert.match(help, /bh context read --file <read-spec\.json>/);
+  assert.match(help, /\$json \| bh context read --stdin --format full/);
   assert.match(help, /bh tools read-templates domains --format json/);
   assert.match(help, /bh tools read-templates compose --domain <domain>/);
 	assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
@@ -75,6 +71,10 @@ test('global help includes ReadContext template navigation', () => {
 
   assert.match(help, /bh tools read-templates domains --format json/);
   assert.match(help, /bh tools read-templates compose --domain <domain>/);
+  assert.match(help, /bh context read \(\--file <read-spec\.json> \| --json <json> \| --stdin\)/);
+  assert.doesNotMatch(help, /bh <tool_name>/);
+  assert.doesNotMatch(help, /Default tool names:/);
+  assert.doesNotMatch(help, /bh bridge call/);
 });
 
 test('cli help source does not hardcode route template paths for manifest-backed tools', () => {
@@ -86,8 +86,8 @@ test('cli help source does not hardcode route template paths for manifest-backed
 });
 
 test('buildHelpText keeps manifest-backed help compact', () => {
-  const previewHelp = buildHelpText(['blueprinthelper_preview_task']);
-  const readContextHelp = buildHelpText(['blueprinthelper_read_context']);
+  const previewHelp = buildHelpText(['task', 'preview']);
+  const readContextHelp = buildHelpText(['context', 'read']);
 
   assert.match(previewHelp, /bh tools templates families --workflow preview_execute --format json/);
   assert.match(previewHelp, /bh task preview --file <filled_taskspec\.json> --format summary/);

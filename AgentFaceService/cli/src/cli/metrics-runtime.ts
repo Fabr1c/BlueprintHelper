@@ -28,7 +28,7 @@ export interface CreateCliMetricsServiceOptions {
 
 export interface RecordCliToolCompletionOptions {
   metrics: MetricsService;
-  command: Pick<CliCommand, 'toolName'>;
+  command: Pick<CliCommand, 'toolName' | 'metricsLookupId'>;
   toolResult: ToolResultBase;
   durationMs: number;
   rawParams?: Record<string, unknown>;
@@ -37,14 +37,14 @@ export interface RecordCliToolCompletionOptions {
 
 export interface RecordCliToolThrownErrorOptions {
   metrics: MetricsService;
-  command: Pick<CliCommand, 'toolName'>;
+  command: Pick<CliCommand, 'toolName' | 'metricsLookupId'>;
   error: unknown;
   durationMs: number;
 }
 
 export interface RecordCliIoCompletedOptions {
   metrics: MetricsService;
-  command: Pick<CliCommand, 'metricsToolName' | 'toolName'>;
+  command: Pick<CliCommand, 'metricsToolName' | 'metricsLookupId' | 'toolName'>;
   inputIo?: MetricsIoSummary;
   outputIo?: MetricsIoSummary;
   operationInput?: unknown;
@@ -123,7 +123,10 @@ export async function recordCliToolCompletion(options: RecordCliToolCompletionOp
       status: options.toolResult.ok ? 'success' : 'failed',
       toolResult: options.toolResult,
       duration_ms: options.durationMs,
-      ...resolveCliToolOperation(toolName, options.parsedParams ?? options.rawParams),
+      ...resolveCliToolOperation(
+        resolveCliMetricsLookupId(options.command) ?? toolName,
+        options.parsedParams ?? options.rawParams,
+      ),
     });
   } catch {
     return;
@@ -168,7 +171,7 @@ export async function recordCliIoCompleted(options: RecordCliIoCompletedOptions)
         ...options.inputIo,
         ...options.outputIo,
       },
-      ...resolveCliToolOperation(toolName, options.operationInput),
+      ...resolveCliToolOperation(resolveCliMetricsLookupId(options.command) ?? toolName, options.operationInput),
     });
   } catch {
     return;
@@ -237,6 +240,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveCliIoToolName(command: Pick<CliCommand, 'metricsToolName' | 'toolName'>): string | undefined {
+  if (command.metricsToolName) {
+    return command.metricsToolName;
+  }
+  if (command.toolName) {
+    return command.toolName;
+  }
+  return undefined;
+}
+
+function resolveCliMetricsLookupId(command: Pick<CliCommand, 'metricsLookupId' | 'metricsToolName' | 'toolName'>): string | undefined {
+  if (command.metricsLookupId) {
+    return command.metricsLookupId;
+  }
   if (command.metricsToolName) {
     return command.metricsToolName;
   }

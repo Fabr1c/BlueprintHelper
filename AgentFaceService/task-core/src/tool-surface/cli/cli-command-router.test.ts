@@ -39,9 +39,32 @@ test('routes task preview through descriptor required-option mapping', () => {
   assert.equal(routed.command.statusPolicyId, 'task.preview_status');
   assert.equal(routed.command.runIdPolicyId, 'task.preview_run_id');
   assert.equal(routed.command.metricsToolName, 'blueprinthelper_preview_task');
+  assert.equal(routed.command.metricsLookupId, 'blueprint.plan.taskspec.preview');
   assert.equal(routed.command.inputIoKind, 'task_file');
   assert.equal(routed.command.file, 'task.json');
   assert.equal(routed.command.compileOnly, true);
+});
+
+test('routes grouped context read with one-of input source mapping', () => {
+  const missingInput = routeCliCommand({
+    positionals: ['context', 'read'],
+    options: {},
+    base,
+  });
+  assert.equal(missingInput.ok, false);
+  assert.equal(missingInput.message, 'Missing input for bh context read: choose --file, --json, or --stdin.');
+
+  const routed = routeCliCommand({
+    positionals: ['context', 'read'],
+    options: { stdin: true },
+    base,
+  });
+  assert.equal(routed.ok, true);
+  assert.equal(routed.command.kind, 'context.read');
+  assert.equal(routed.command.toolName, 'blueprinthelper_read_context');
+  assert.equal(routed.command.manifestLookupId, 'blueprint.read.context.logic_flow');
+  assert.equal(routed.command.metricsLookupId, 'blueprint.read.context.logic_flow');
+  assert.equal(routed.command.stdin, true);
 });
 
 test('routes tools list with descriptor positional captures and option defaults', () => {

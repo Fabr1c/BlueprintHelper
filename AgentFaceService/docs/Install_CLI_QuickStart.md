@@ -111,7 +111,7 @@ Examples:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select <fields>
-bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
+bh context read --file <read-spec.json> --select <fields>
 bh task preview --file <generated-task-spec.json> --select <fields>
 bh task execute --file <generated-task-spec.json> --select <fields>
 ```
@@ -121,7 +121,7 @@ See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax 
 PowerShell can corrupt inline JSON strings before the CLI receives them. For anything beyond `{}`, prefer `--file` or pipe JSON to `--stdin`:
 
 ```powershell
-$json | bh blueprinthelper_read_context --stdin --format full
+$json | bh context read --stdin --format full
 ```
 
 When a UE-bound command waits on the Bridge, the CLI emits keep-alive hints to `stderr` and keeps `stdout` reserved for the final JSON result. Agents should keep waiting on `waiting for UE Bridge response` hints unless the CLI exits.
@@ -153,13 +153,13 @@ Expected bridge facts are a completed status, reachable Bridge summary, and curr
 Read compact Blueprint asset context:
 
 ```powershell
-bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
+bh context read --file <read-spec.json> --select <fields>
 ```
 
-Read a graph as Markdown:
+Read graph logic as `logic_flow` or `logic_json` according to the ReadSpec view:
 
 ```powershell
-bh blueprinthelper_read_context --file <read-spec.json> --select <fields>
+bh context read --file <read-spec.json> --select <fields>
 ```
 
 Read the project-authored function/event chain from a known Blueprint entry:
@@ -192,7 +192,7 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 
 - Confirm the Bridge is reachable.
 - Run `bh blueprint_get_runtime_profile --json "{}" --select <fields>`.
-- Run `bh blueprinthelper_read_context --file <read-spec.json> --select <fields>`.
+- Run `bh context read --file <read-spec.json> --select <fields>`.
 - Produce the TaskSpec through `bh tools templates ... compose`, filling only the task-specific placeholders required by the generated file.
 - Do not submit TaskPlan directly; it is produced by the canonical AgentFace task-core TypeScript compiler.
 - Run `bh task preview --file <generated-task-spec.json> --select <fields>` and stop on blocked / failed preview.

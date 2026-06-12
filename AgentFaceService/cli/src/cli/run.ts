@@ -9,6 +9,7 @@ import {
 } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   getBlueprintHelperTool,
+  getRemovedDirectCliToolCommand,
   isCliBridgeCallAllowed,
   listCliCommandKindsByExecutorId,
   resolveCliCommandExecutorDescriptor,
@@ -245,6 +246,10 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
     id: 'bridge.call',
     kinds: commandKindsForExecutor('bridge.call'),
     execute: async ({ runtime, command, timing }) => {
+      if (command.expert !== true) {
+        runtime.stderr('bh bridge call is an expert/debug command. Re-run with --expert or use named tools and templates.\n');
+        return 64;
+      }
       const bridgeCommand = required(command.bridgeCommand);
       if (!isCliBridgeCallAllowed(bridgeCommand)) {
         runtime.stderr(`Bridge command is not allowed through CLI: ${bridgeCommand}\n`);
@@ -585,6 +590,16 @@ function parseArgs(argv: string[]): ParseResult {
   });
   if (routed.ok) {
     return { ok: true, command: routed.command as unknown as CliCommand };
+  }
+
+  if (positionals.length === 1) {
+    const removedDirectCommand = getRemovedDirectCliToolCommand(group);
+    if (removedDirectCommand) {
+      return {
+        ok: false,
+        message: `${group} direct CLI command was removed. Use: ${removedDirectCommand.replacement_command}`,
+      };
+    }
   }
 
   if (positionals.length === 1 && getBlueprintHelperTool(group)) {

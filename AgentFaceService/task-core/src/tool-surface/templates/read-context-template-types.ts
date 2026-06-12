@@ -25,7 +25,6 @@ export type ReadContextTemplateView =
 
 export type ReadContextRequestBuilderId =
   | 'blueprint_logic'
-  | 'graph_context'
   | 'asset_context'
   | 'component_context'
   | 'variable_context'

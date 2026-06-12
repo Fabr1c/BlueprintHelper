@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getRemovedDirectCliToolCommand,
   listToolCapabilities,
   listToolDomains,
 } from '../tool-registry.js';
@@ -16,7 +17,9 @@ test('manifest mirror covers all active domains and default visible capabilities
       const list = listToolCapabilities({ domain: domain.id, kind });
       for (const capability of list.items) {
         assert.ok(registry.has(capability.id), `${capability.id} is missing from manifest mirror`);
-        assert.ok(registry.has(capability.tool_name), `${capability.tool_name} does not resolve to a manifest`);
+        if (!getRemovedDirectCliToolCommand(capability.tool_name)) {
+          assert.ok(registry.has(capability.tool_name), `${capability.tool_name} does not resolve to a manifest`);
+        }
       }
     }
   }
@@ -41,10 +44,10 @@ test('manifest mirror covers grouped command aliases outside default domain kind
   assert.equal(registry.get('context read')?.tool_id, 'blueprint.read.context.logic_flow');
 });
 
-test('manifest mirror pins canonical duplicate tool-name lookups', () => {
+test('manifest mirror keeps removed direct tool names out of canonical duplicate lookup', () => {
   const registry = buildReadonlyToolCommandManifestRegistry();
 
-  assert.equal(registry.get('blueprinthelper_preview_task')?.tool_id, 'blueprint.plan.taskspec.preview');
-  assert.equal(registry.get('blueprinthelper_execute_task')?.tool_id, 'blueprint.write.taskspec.execute');
-  assert.equal(registry.get('blueprinthelper_read_context')?.tool_id, 'blueprint.read.context.logic_flow');
+  assert.equal(registry.get('blueprinthelper_preview_task'), undefined);
+  assert.equal(registry.get('blueprinthelper_execute_task'), undefined);
+  assert.equal(registry.get('blueprinthelper_read_context'), undefined);
 });

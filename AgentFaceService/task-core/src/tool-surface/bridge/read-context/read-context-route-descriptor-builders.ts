@@ -55,7 +55,6 @@ const LOGIC_SCOPE_BY_TYPE: Readonly<Record<string, string>> = {
 
 const REQUEST_BUILDERS: Readonly<Record<ReadContextRequestBuilderId, ReadContextRequestBuilder>> = {
   blueprint_logic: buildBlueprintLogicBridgeRequest,
-  graph_context: buildBlueprintLogicBridgeRequest,
   asset_context: buildAssetBridgeRequest,
   component_context: buildAssetBridgeRequest,
   variable_context: buildAssetBridgeRequest,

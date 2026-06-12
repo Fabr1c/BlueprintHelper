@@ -65,17 +65,16 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   assert.equal(preview.input_shapes.includes('wrapped_taskspec_preview'), true);
   assert.equal(preview.input_shapes.includes('bare_taskspec'), true);
   assert.equal(registry.get('task preview')?.tool_id, preview.tool_id);
-  assert.equal(registry.get('blueprinthelper_preview_task')?.tool_id, preview.tool_id);
   assert.equal(registry.get('task execute')?.tool_id, 'blueprint.write.taskspec.execute');
-  assert.equal(registry.get('blueprinthelper_execute_task')?.tool_id, 'blueprint.write.taskspec.execute');
   assert.equal(registry.get('context read')?.tool_id, 'blueprint.read.context.logic_flow');
-  assert.equal(registry.get('blueprinthelper_read_context')?.tool_id, 'blueprint.read.context.logic_flow');
+  assert.equal(registry.get('blueprinthelper_preview_task'), undefined);
+  assert.equal(registry.get('blueprinthelper_execute_task'), undefined);
+  assert.equal(registry.get('blueprinthelper_read_context'), undefined);
   const removedMarkdownFormat = ['logic', 'md'].join('_');
   const removedMarkdownTool = ['blueprint_get', 'logic', 'md'].join('_');
   assert.equal(registry.get(removedMarkdownTool), undefined);
   assert.equal(registry.list().some((entry) => JSON.stringify(entry).includes(removedMarkdownFormat)), false);
   assert.equal(registry.get('task result')?.tool_id, 'project.read.task_result');
-  assert.equal(registry.get('blueprinthelper_get_task_result')?.tool_id, 'project.read.task_result');
 });
 
 test('manifest mirror keeps GraphWrite route ids descriptor-backed', () => {

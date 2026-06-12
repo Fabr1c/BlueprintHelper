@@ -60,7 +60,9 @@ export interface CliCommand {
   statusPolicyId?: CliCommandStatusPolicyId;
   runIdPolicyId?: CliCommandRunIdPolicyId;
   outputDataPolicyId?: CliCommandOutputDataPolicyId;
+  manifestLookupId?: string;
   metricsToolName?: string;
+  metricsLookupId?: string;
   inputIoKind?: CliCommandInputIoKind;
   toolName?: string;
   file?: string;

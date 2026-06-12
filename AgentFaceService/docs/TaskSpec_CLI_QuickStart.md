@@ -21,38 +21,39 @@ Deprecated MCP ordinary tools are not an alternate transport or fallback path.
 - Start Unreal Editor with BlueprintHelper loaded and the Bridge reachable.
 - Prepare TaskSpec files through the TaskSpec Template Composer before preview or execute.
 
-## Direct Tool Name Invocation
+## CLI Invocation
 
-The primary CLI protocol supports stable BlueprintHelper direct command names:
+TaskSpec and ReadContext use grouped commands:
 
 ```powershell
-bh <tool_name> [--file params.json | --json "{...}" | --stdin] [--select field[,field...]] [--format summary|json|full]
+bh task preview --file <generated-task-spec.json> [--select field[,field...]] [--format summary|json|full]
+bh task execute --file <generated-task-spec.json> [--preview-token <32-hex>] [--select field[,field...]] [--format summary|json|full]
+bh task result --id <task_run_id> [--select field[,field...]]
+bh context read (--file <read-spec.json> | --json "{...}" | --stdin) [--select field[,field...]] [--format summary|json|full]
 ```
 
 PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Avoid inline `--json $json` for non-trivial payloads because PowerShell can strip quotes before Node receives the argument.
 
-Examples:
+Named non-task tools remain available for capability discovery, diagnostics, and compact helper reads:
 
 ```powershell
 bh blueprint_get_runtime_profile --json "{}" --select <fields>
 bh blueprinthelper_read_context_capabilities --json "{}" --select <fields>
 bh blueprinthelper_read_function_chain_context --file <function-chain-request.json> --select <fields>
-bh blueprinthelper_preview_task --file <wrapped-preview-request.json> --select <fields>
-bh blueprinthelper_execute_task --file <wrapped-execute-request.json> --select <fields>
 ```
 
 Generated JSON example:
 
 ```powershell
-$json | bh blueprinthelper_read_context --stdin --format full
+$json | bh context read --stdin --format full
 ```
 
-Use per-tool help before writing a new input file:
+Use command help before writing a new input file:
 
 ```powershell
-bh blueprinthelper_read_context --help
-bh blueprinthelper_preview_task --help
 bh task preview --help
+bh task execute --help
+bh context read --help
 ```
 
 Tool help and current CLI discovery describe the accepted input roots. Prefer composer-generated TaskSpec files or saved JSON request files with `--file` instead of building large JSON directly in the shell.
@@ -75,7 +76,7 @@ Use `quick-access.items[].slot_type` to choose roots: `statement` templates can 
 
 After compose, fill the generated TaskSpec with concrete asset paths, graph names, selectors, and values from ReadContext evidence. The composer output includes the next preview and execute command strings for the generated file.
 
-The direct CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
+The CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as Agent compatibility paths. CLI lifecycle invocation is blocked with a global MCP replacement hint; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
 ## Read Context Capabilities
 
@@ -97,15 +98,9 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task preview --file <
 
 Use `--format summary` for normal Agent loops so the shell returns compact text plus artifact paths instead of large escaped JSON blobs.
 
-The direct tool-name command uses the tool input shape returned by CLI discovery:
-
-```powershell
-node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js blueprinthelper_preview_task --file <wrapped-preview-request.json> --select <fields>
-```
-
 ## Execute
 
-Execute only after preview passes. This uses the same canonical TypeScript compiler handoff, Bridge task execution, and UE Task Runtime execution path as `blueprinthelper_execute_task`.
+Execute only after preview passes. This uses the same canonical TypeScript compiler handoff, Bridge task execution, and UE Task Runtime execution path.
 
 ```powershell
 node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <generated-task-spec.json> --format summary
@@ -119,9 +114,9 @@ Use `--expert` only when raw execution diagnostics are needed. In expert mode th
 
 ## Function Chain Reads
 
-Use `blueprinthelper_read_function_chain_context` after reading an entry graph when the next step is to inspect project-authored functions/events reached from that entry. It returns a compact index, not full graph bodies.
+Use `blueprinthelper_read_function_chain_context` after reading an entry graph with `bh context read` when the next step is to inspect project-authored functions/events reached from that entry. It returns a compact index, not full graph bodies.
 
-Use CLI discovery to locate the current FunctionChain input template. Do not pass GUID or owner fields. Engine and trusted plugin calls are summarized by count; follow returned refs with `blueprinthelper_read_context` when detailed logic is needed.
+Use CLI discovery to locate the current FunctionChain input template. Do not pass GUID or owner fields. Engine and trusted plugin calls are summarized by count; follow returned refs with `bh context read` when detailed logic is needed.
 
 ## Waiting Hints
 

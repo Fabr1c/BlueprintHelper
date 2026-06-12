@@ -55,7 +55,7 @@ When compile or save is an explicit tool step, discover the tool through `bh too
 
 If a write fails:
 
-- Prefer task result and journal data from `blueprinthelper_get_task_result`.
+- Prefer task result and journal data from `bh task result --id <task_run_id>`.
 - Report which steps ran and which were blocked.
 - Stay on the TaskSpec-first recovery path unless the user explicitly requests expert recovery.
 

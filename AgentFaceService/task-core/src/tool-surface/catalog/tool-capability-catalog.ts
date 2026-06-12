@@ -62,8 +62,6 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
   capability('editor.write.source_control.checkout', 'editor', 'write', 'blueprinthelper_source_control_checkout', 'Check out source-controlled assets or files before editing under Perforce/source control.', 'task-worker', 'medium', true, false, ['blueprinthelper_source_control_checkout']),
   capability('editor.write.asset.save', 'editor', 'write', 'blueprint_save_asset', 'Persist an explicit Unreal asset package after write-session and source-control checks.', 'task-worker', 'high', true, true, ['blueprint_save_asset']),
-  capability('editor.write.lifecycle.open_mcp_only', 'editor', 'write', 'blueprint_open_editor', 'Compatibility lifecycle name; Agents must use global MCP editor open instead of CLI.', 'main-agent', 'medium', false, false, [], { lifecycle_mcp_only: true }),
-  capability('editor.write.lifecycle.close_mcp_only', 'editor', 'write', 'blueprint_close_editor', 'Compatibility lifecycle name; Agents must use global MCP editor close instead of CLI.', 'main-agent', 'medium', false, false, [], { lifecycle_mcp_only: true }),
 	capability('editor.diagnose.static', 'editor', 'diagnose', 'blueprinthelper_diagnostics', 'Run static installation/configuration diagnostics.', 'main-agent', 'none', false, false, ['blueprinthelper_diagnostics']),
 	capability('editor.diagnose.runtime', 'editor', 'diagnose', 'blueprinthelper_diagnostics_runtime', 'Run runtime diagnostics through the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_diagnostics_runtime']),
 	capability('project.discover.agent_guide', 'project', 'discover', 'blueprinthelper_read_agent_guide', 'Read the AgentGuide onboarding entry.', 'main-agent', 'none', false, false, ['blueprinthelper_read_agent_guide']),
@@ -96,9 +94,8 @@ const TASK_PREVIEW_INVOCATION = ['bh task preview --file <filled_taskspec.json> 
 const TASK_EXECUTE_INVOCATION = ['bh task execute --file <filled_taskspec.json> --preview-token <preview_token> --format summary'] as const;
 const READ_CONTEXT_CAPABILITIES_INVOCATION = ['bh blueprinthelper_read_context_capabilities --json "{}" --format json'] as const;
 const READ_CONTEXT_HELP_USAGE = [
-  'bh blueprinthelper_read_context --file <read-spec.json> --select status,artifacts.full_result',
-  '$json | bh blueprinthelper_read_context --stdin --format full',
   'bh context read --file <read-spec.json> --select status,artifacts.full_result',
+  '$json | bh context read --stdin --format full',
 ] as const;
 
 interface ToolCapabilityDescriptorOptions {
@@ -108,10 +105,6 @@ interface ToolCapabilityDescriptorOptions {
   readonly recommended_invocations?: readonly string[];
   readonly help_usage?: readonly string[];
   readonly help_notes?: readonly string[];
-}
-
-interface ToolCapabilityOptions {
-  readonly lifecycle_mcp_only?: boolean;
 }
 
 export function listToolDomains(options: ListToolDomainsOptions = {}): ToolDomainListResult {
@@ -165,7 +158,6 @@ function toToolCapabilityListItem(capabilityItem: ToolCapabilityItem): ToolCapab
 		...summarizeToolInputShape({
 			templateIds: capabilityItem.cli_template_ids,
 			requiresBridge: capabilityItem.requires_bridge,
-			lifecycleMcpOnly: capabilityItem.lifecycle_mcp_only,
 		}),
 	};
 }
@@ -201,10 +193,9 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
   const blueprintLogicFlowRouteRefs = readContextRouteRefs((route) =>
     route.domain === 'blueprint' && route.read_cluster === 'logic' && route.view_template === 'logic_flow');
   const blueprintLogicJsonRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && (
-      (route.read_cluster === 'logic' && route.view_template === 'logic_json')
-      || route.read_cluster === 'graph_context'
-    ));
+    route.domain === 'blueprint'
+    && route.read_cluster === 'logic'
+    && route.view_template === 'logic_json');
   const blueprintAssetRouteRefs = readContextRouteRefs((route) =>
     route.domain === 'blueprint' && route.read_cluster === 'asset');
   const blueprintComponentRouteRefs = readContextRouteRefs((route) =>
@@ -422,7 +413,6 @@ function capability(
   requiresBridge: boolean,
   requiresWriteSession: boolean,
   cliTemplateIds: string[],
-  options: ToolCapabilityOptions = {},
 ): ToolCapabilityItem {
   const meta = toolMetaByName.get(toolName);
   return {
@@ -436,7 +426,6 @@ function capability(
     risk: meta?.risk ?? fallbackRisk,
     requires_bridge: requiresBridge,
     requires_write_session: requiresWriteSession,
-    ...(options.lifecycle_mcp_only === undefined ? {} : { lifecycle_mcp_only: options.lifecycle_mcp_only }),
     cli_template_ids: [...cliTemplateIds],
     source: 'capability_catalog',
   };

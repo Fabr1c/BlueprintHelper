@@ -42,6 +42,7 @@ export async function invokeCliTool(input: {
   sleep?: (ms: number) => Promise<void>;
 }): Promise<CliToolInvocationResult> {
   const toolName = input.command.toolName ?? '';
+  const manifestLookupId = input.command.manifestLookupId ?? toolName;
   const tool = getBlueprintHelperTool(toolName);
   if (!tool) {
     return {
@@ -66,7 +67,7 @@ export async function invokeCliTool(input: {
     };
   }
 
-  const manifest = TOOL_COMMAND_MANIFEST_REGISTRY.get(toolName);
+  const manifest = TOOL_COMMAND_MANIFEST_REGISTRY.get(manifestLookupId);
   const inputObject = input.command.params
     ? { value: input.command.params, io: undefined }
     : shouldUseEmptyObjectInput(input.command, manifest?.input_shapes ?? [])
@@ -81,7 +82,7 @@ export async function invokeCliTool(input: {
   const rawParams = inputObject.value;
   const params = applyDevelopFlag(manifest?.input_shapes ?? [], rawParams, input.command.develop === true);
   const normalizedParams = normalizeToolInputForManifest({
-    toolName,
+    toolName: manifestLookupId,
     value: params as Record<string, unknown>,
     manifestRegistry: TOOL_COMMAND_MANIFEST_REGISTRY,
     requireManifest: true,

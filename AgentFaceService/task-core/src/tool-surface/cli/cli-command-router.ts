@@ -34,6 +34,11 @@ export function routeCliCommand<TBase extends Record<string, unknown>>(
       return { ok: false, message: requiredOption.message };
     }
   }
+  for (const requiredOneOf of match.descriptor.required_one_of_options ?? []) {
+    if (!requiredOneOf.options.some((option) => hasOptionValue(input.options[option]))) {
+      return { ok: false, message: requiredOneOf.message };
+    }
+  }
 
   const command: Record<string, unknown> = {
     ...input.base,
@@ -43,7 +48,9 @@ export function routeCliCommand<TBase extends Record<string, unknown>>(
     statusPolicyId: match.descriptor.status_policy_id,
     runIdPolicyId: match.descriptor.run_id_policy_id,
     outputDataPolicyId: match.descriptor.output_data_policy_id,
+    manifestLookupId: match.descriptor.manifest_lookup_id,
     metricsToolName: match.descriptor.metrics_tool_name,
+    metricsLookupId: match.descriptor.metrics_lookup_id,
     inputIoKind: match.descriptor.input_io_kind,
     ...match.captures,
   };

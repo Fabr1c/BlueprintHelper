@@ -28,12 +28,9 @@ const GROUPED_COMMAND_ALIASES = new Map<string, string[]>([
 
 const CANONICAL_LOOKUP_ALIASES = new Map<string, string>([
   ['task preview', 'blueprint.plan.taskspec.preview'],
-  ['blueprinthelper_preview_task', 'blueprint.plan.taskspec.preview'],
   ['task execute', 'blueprint.write.taskspec.execute'],
-  ['blueprinthelper_execute_task', 'blueprint.write.taskspec.execute'],
   ['task result', 'project.read.task_result'],
   ['context read', 'blueprint.read.context.logic_flow'],
-  ['blueprinthelper_read_context', 'blueprint.read.context.logic_flow'],
 ]);
 
 export function buildReadonlyToolCommandManifests(): ToolCommandManifest[] {
@@ -43,12 +40,6 @@ export function buildReadonlyToolCommandManifests(): ToolCommandManifest[] {
   const coveredIds = new Set(manifests.map((manifest) => manifest.tool_id));
 
   for (const capability of listGroupedAliasCapabilities()) {
-    if (!coveredIds.has(capability.id)) {
-      manifests.push(buildManifestForCapability(capability));
-      coveredIds.add(capability.id);
-    }
-  }
-  for (const capability of listLifecycleMcpOnlyCapabilities()) {
     if (!coveredIds.has(capability.id)) {
       manifests.push(buildManifestForCapability(capability));
       coveredIds.add(capability.id);
@@ -81,7 +72,6 @@ function buildManifestForCapability(capability: ToolCapabilityItem): ToolCommand
     agent_role: capability.agent_role,
     requires_bridge: capability.requires_bridge,
     requires_write_session: capability.requires_write_session,
-    ...(capability.lifecycle_mcp_only === undefined ? {} : { lifecycle_mcp_only: capability.lifecycle_mcp_only }),
     input_shapes: inferInputShapesFromTemplateIds({
       templateIds: capability.cli_template_ids,
       requiresBridge: capability.requires_bridge,
@@ -111,14 +101,6 @@ function listManifestCapabilitiesForDomainKind(
     capabilitiesById.set(capability.id, capability);
   }
   return [...capabilitiesById.values()];
-}
-
-function listLifecycleMcpOnlyCapabilities(): ToolCapabilityItem[] {
-  return listToolCapabilities({
-    domain: 'editor',
-    kind: 'write',
-    audience: 'compat',
-  }).items.filter((capability) => capability.lifecycle_mcp_only === true);
 }
 
 function listGroupedAliasCapabilities(): ToolCapabilityItem[] {

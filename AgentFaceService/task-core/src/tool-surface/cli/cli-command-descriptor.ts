@@ -8,6 +8,11 @@ export interface CliCommandRequiredOption {
   readonly message: string;
 }
 
+export interface CliCommandRequiredOneOfOptions {
+  readonly options: readonly string[];
+  readonly message: string;
+}
+
 export interface CliCommandDescriptor {
   readonly id: string;
   readonly kind: string;
@@ -16,7 +21,9 @@ export interface CliCommandDescriptor {
   readonly status_policy_id?: CliCommandStatusPolicyId;
   readonly run_id_policy_id?: CliCommandRunIdPolicyId;
   readonly output_data_policy_id?: CliCommandOutputDataPolicyId;
+  readonly manifest_lookup_id?: string;
   readonly metrics_tool_name?: string;
+  readonly metrics_lookup_id?: string;
   readonly input_io_kind?: CliCommandInputIoKind;
   readonly positionals: readonly CliCommandDescriptorToken[];
   readonly defaults?: Record<string, unknown>;
@@ -24,6 +31,7 @@ export interface CliCommandDescriptor {
   readonly array_option_map?: Record<string, string>;
   readonly param_option_map?: Record<string, string>;
   readonly required_options?: readonly CliCommandRequiredOption[];
+  readonly required_one_of_options?: readonly CliCommandRequiredOneOfOptions[];
   readonly allowed_formats?: readonly string[];
 }
 
@@ -49,39 +57,6 @@ export type CliCommandInputIoKind =
   | 'task_file';
 
 const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
-  {
-    id: 'lifecycle.open.short',
-    kind: 'tool.invoke',
-    executor_id: 'tool.invoke',
-    result_policy_id: 'local.default',
-    status_policy_id: 'tool.result_status',
-    run_id_policy_id: 'tool.result_task_or_cli',
-    positionals: ['open_editor'],
-    defaults: { toolName: 'blueprint_open_editor', params: {} },
-  },
-  {
-    id: 'lifecycle.close.short',
-    kind: 'tool.invoke',
-    executor_id: 'tool.invoke',
-    result_policy_id: 'local.default',
-    status_policy_id: 'tool.result_status',
-    run_id_policy_id: 'tool.result_task_or_cli',
-    positionals: ['close_editor'],
-    defaults: { toolName: 'blueprint_close_editor', params: {} },
-  },
-  {
-    id: 'tool.task_result.direct',
-    kind: 'tool.invoke',
-    executor_id: 'tool.invoke',
-    result_policy_id: 'task.result.default',
-    status_policy_id: 'task.result_status',
-    run_id_policy_id: 'tool.result_task_or_cli',
-    positionals: ['blueprinthelper_get_task_result'],
-    defaults: { toolName: 'blueprinthelper_get_task_result' },
-    option_map: { taskRunId: 'id' },
-    param_option_map: { task_run_id: 'id' },
-    required_options: [{ option: 'id', message: 'Missing --id for bh blueprinthelper_get_task_result.' }],
-  },
   {
     id: 'tools.domains',
     kind: 'tools.domains',
@@ -111,6 +86,7 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     status_policy_id: 'task.preview_status',
     run_id_policy_id: 'task.preview_run_id',
     metrics_tool_name: 'blueprinthelper_preview_task',
+    metrics_lookup_id: 'blueprint.plan.taskspec.preview',
     input_io_kind: 'task_file',
     positionals: ['task', 'preview'],
     option_map: { file: 'file', compileOnly: 'compileOnly' },
@@ -124,6 +100,7 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     status_policy_id: 'task.execute_status',
     run_id_policy_id: 'tool.result_task_or_cli',
     metrics_tool_name: 'blueprinthelper_execute_task',
+    metrics_lookup_id: 'blueprint.write.taskspec.execute',
     input_io_kind: 'task_file',
     positionals: ['task', 'execute'],
     option_map: { file: 'file', previewToken: 'previewToken' },
@@ -137,6 +114,7 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     status_policy_id: 'task.result_status',
     run_id_policy_id: 'tool.result_task_or_cli',
     metrics_tool_name: 'blueprinthelper_get_task_result',
+    metrics_lookup_id: 'project.read.task_result',
     positionals: ['task', 'result'],
     option_map: { taskRunId: 'id' },
     required_options: [{ option: 'id', message: 'Missing --id for bh task result.' }],
@@ -170,8 +148,13 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     run_id_policy_id: 'tool.result_task_or_cli',
     positionals: ['context', 'read'],
     defaults: { toolName: 'blueprinthelper_read_context' },
-    option_map: { file: 'file' },
-    required_options: [{ option: 'file', message: 'Missing --file for bh context read.' }],
+    manifest_lookup_id: 'blueprint.read.context.logic_flow',
+    metrics_lookup_id: 'blueprint.read.context.logic_flow',
+    option_map: { file: 'file', json: 'json', stdin: 'stdin' },
+    required_one_of_options: [{
+      options: ['file', 'json', 'stdin'],
+      message: 'Missing input for bh context read: choose --file, --json, or --stdin.',
+    }],
   },
   {
     id: 'metrics.report',
@@ -282,6 +265,9 @@ export function listCliCommandDescriptors(): CliCommandDescriptor[] {
     ...descriptor,
     positionals: [...descriptor.positionals],
     required_options: descriptor.required_options ? [...descriptor.required_options] : undefined,
+    required_one_of_options: descriptor.required_one_of_options
+      ? descriptor.required_one_of_options.map((entry) => ({ ...entry, options: [...entry.options] }))
+      : undefined,
     allowed_formats: descriptor.allowed_formats ? [...descriptor.allowed_formats] : undefined,
   }));
 }

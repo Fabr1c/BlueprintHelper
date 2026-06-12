@@ -42,7 +42,6 @@ export interface ToolCapabilityItem {
   risk: ToolRisk;
   requires_bridge: boolean;
   requires_write_session: boolean;
-  lifecycle_mcp_only?: boolean;
   deprecated?: boolean;
   frozen?: boolean;
   cli_template_ids: string[];
@@ -50,8 +49,8 @@ export interface ToolCapabilityItem {
 }
 
 export interface ToolCapabilityListItem extends ToolCapabilityItem {
-	input_shape: ToolInputShapeId | 'multiple' | 'mcp_only';
-	input_shapes: Array<ToolInputShapeId | 'mcp_only'>;
+	input_shape: ToolInputShapeId | 'multiple';
+	input_shapes: ToolInputShapeId[];
 	no_input: boolean;
 	input_note?: string;
 }

@@ -100,9 +100,6 @@ export function extractReadToolOperation(input: unknown): MetricsOperationIdenti
 }
 
 function defaultReadContextFormat(readType: string): string | undefined {
-  if (readType === 'graph_context') {
-    return 'logic_json';
-  }
   if (readType === 'blueprint_logic') {
     return 'logic_flow';
   }

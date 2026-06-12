@@ -8,7 +8,7 @@ test('resolveResultProjectionPolicy uses manifest result_policy_id', () => {
   const registry = buildReadonlyToolCommandManifestRegistry();
   const policy = resolveResultProjectionPolicy({
     manifestRegistry: registry,
-    toolIdOrAlias: 'blueprinthelper_preview_task',
+    toolIdOrAlias: 'blueprint.plan.taskspec.preview',
   });
 
   assert.equal(policy.policy_id, 'task.preview.default');

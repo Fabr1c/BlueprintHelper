@@ -41,7 +41,6 @@ export interface ToolCommandManifest {
   agent_role: ToolCapabilityItem['agent_role'];
   requires_bridge: boolean;
   requires_write_session: boolean;
-  lifecycle_mcp_only?: boolean;
   input_shapes: ToolInputShapeId[];
   handler_id: string;
   result_policy_id: ToolResultProjectionPolicyId;

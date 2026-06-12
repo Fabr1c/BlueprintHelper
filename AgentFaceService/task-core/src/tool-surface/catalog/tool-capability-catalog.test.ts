@@ -147,21 +147,16 @@ test('expert review action exposes a developer-mode template file', () => {
   assert.equal(template.action, 'accept');
 });
 
-test('MCP-only lifecycle compat entries do not expose CLI template ids', () => {
+test('tool catalog does not expose editor lifecycle as CLI compat entries', () => {
   const editorWrite = listToolCapabilities({
     domain: 'editor',
     kind: 'write',
     audience: 'compat',
   });
-  const lifecycleItems = editorWrite.items.filter((item) => item.lifecycle_mcp_only === true);
 
-  assert.equal(lifecycleItems.length, 2);
-  for (const item of lifecycleItems) {
-    assert.deepEqual(item.cli_template_ids, []);
-    assert.equal(item.input_shape, 'mcp_only');
-    assert.equal(item.no_input, true);
-    assert.match(item.input_note ?? '', /global MCP/i);
-  }
+  assert.equal(editorWrite.items.some((item) => item.tool_name === 'blueprint_open_editor'), false);
+  assert.equal(editorWrite.items.some((item) => item.tool_name === 'blueprint_close_editor'), false);
+  assert.equal(JSON.stringify(editorWrite.items).includes('lifecycle_mcp_only'), false);
 });
 
 test('tool capability descriptors keep manifest facts without exposing old template selection schema', () => {

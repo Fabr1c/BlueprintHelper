@@ -10,6 +10,7 @@ import {
 } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { getGraphWriteSlotsForRoute } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
 import {
+  getRemovedDirectCliToolCommand,
   listToolCapabilities,
   listToolDomains,
 } from '../tool-registry.js';
@@ -24,13 +25,18 @@ test('every public tool resolves through ToolCommandManifest registry', () => {
   }
 
   for (const alias of [
+    'blueprinthelper_diagnostics',
+  ]) {
+    assert.ok(registry.require(alias), `${alias} must resolve through canonical manifest alias`);
+  }
+
+  for (const alias of [
     'blueprinthelper_preview_task',
     'blueprinthelper_execute_task',
     'blueprinthelper_get_task_result',
     'blueprinthelper_read_context',
-    'blueprinthelper_diagnostics',
   ]) {
-    assert.ok(registry.require(alias), `${alias} must resolve through canonical manifest alias`);
+    assert.ok(getRemovedDirectCliToolCommand(alias), `${alias} must be documented by removed direct command policy`);
   }
 });
 
@@ -100,9 +106,9 @@ test('metrics identities resolve for preview execute read diagnostics and GraphW
   const registry = buildReadonlyToolCommandManifestRegistry();
 
   for (const alias of [
-    'blueprinthelper_preview_task',
-    'blueprinthelper_execute_task',
-    'blueprinthelper_read_context',
+    'blueprint.plan.taskspec.preview',
+    'blueprint.write.taskspec.execute',
+    'blueprint.read.context.logic_flow',
     'blueprinthelper_diagnostics',
   ]) {
     const manifest = registry.require(alias);

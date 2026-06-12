@@ -3,6 +3,7 @@ import {
   EMPTY_OBJECT_INPUT_NOTE,
   formatManifestUsage,
   getBlueprintHelperTool,
+  getRemovedDirectCliToolCommand,
   globalCliCommandUsageLines,
   listCliSubcommandUsageLines,
   manifestSpecificNotes,
@@ -28,6 +29,18 @@ export function createHelpBuilder(
       }
 
       const key = normalizedTarget.join(' ');
+      const removedDirectCommand = normalizedTarget.length === 1
+        ? getRemovedDirectCliToolCommand(normalizedTarget[0] ?? '')
+        : undefined;
+      if (removedDirectCommand) {
+        return formatEntry(removedDirectCommand.tool_name, {
+          summary: removedDirectCommand.reason,
+          usage: [removedDirectCommand.replacement_command],
+          input: ['Use the grouped command input shape shown above.'],
+          notes: ['The direct tool-name command is intentionally not an Agent-facing compatibility path.'],
+        });
+      }
+
       const manifest = registry.get(key);
       if (manifest) {
         const manifests = resolveDisplayManifests(registry, key, manifest);
@@ -49,23 +62,15 @@ export function createHelpBuilder(
 }
 
 function globalHelpText(registry: ToolCommandManifestRegistry): string {
-  const defaultTools = uniqueBy(registry.list(), (manifest) => manifest.tool_name)
-    .filter((manifest) => manifest.audience !== 'expert')
-    .map((manifest) => manifest.tool_name)
-    .sort();
-
   return [
     'BlueprintHelper CLI',
     '',
     'Usage:',
-    '  bh <tool_name> [--file params.json | --json json | --stdin] [--format summary|json|full] [--fields path[,path...]] [--omit path[,path...]]',
-    '  bh <tool_name> --help',
     '  bh task preview --file <task-spec.json> [--develop] [--format summary|json|full]',
     '  bh task execute --file <task-spec.json> [--preview-token <32-hex>] [--develop] [--format summary|json|full]',
     '  bh task result --id <task_run_id>',
-    '  bh context read --file <read-spec.json>',
+    '  bh context read (--file <read-spec.json> | --json <json> | --stdin)',
     '  bh bridge ping',
-    '  bh bridge call --command <read_only_command>',
     '  bh tools domains --format json',
     '  bh tools list <domain> <kind> --format json',
     ...listCliSubcommandUsageLines().map((line) => `  ${line}`),
@@ -77,12 +82,6 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     `  Discover TaskSpec templates with: ${listCliSubcommandUsageLines('tools.templates')[0]}`,
     `  Discover ReadContext templates with: ${listCliSubcommandUsageLines('tools.read_templates')[0]}`,
     '  Compose a temporary TaskSpec or ReadSpec, then run bh task preview, bh task execute, or bh context read.',
-    '',
-    'Default tool names:',
-    ...defaultTools.map((toolName) => {
-      const tool = getBlueprintHelperTool(toolName);
-      return `  ${toolName}${tool ? ` - ${tool.description}` : ''}`;
-    }),
     '',
     'Editor lifecycle:',
     '  Use global MCP lifecycle tools for Agent-owned open/close:',
@@ -252,19 +251,6 @@ function defaultCommonOptions(): string[] {
     '  --artifact-dir <dir> (overrides BPH_CLI_ARTIFACT_DIR and cli.artifacts.default_output_dir)',
     '  --max-bytes <bytes>',
   ];
-}
-
-function uniqueBy<T>(items: T[], keyOf: (item: T) => string): T[] {
-  const seen = new Set<string>();
-  const result: T[] = [];
-  for (const item of items) {
-    const key = keyOf(item);
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(item);
-    }
-  }
-  return result;
 }
 
 function uniqueStrings<T extends string>(items: T[]): T[] {

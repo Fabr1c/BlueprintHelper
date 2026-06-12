@@ -51,30 +51,6 @@ const CLI_COMMAND_HELP_MANIFESTS: readonly CliCommandHelpManifest[] = [
   metricReportHelp('tool-usage', 'Build a metrics report focused on tool usage rows.'),
   metricReportHelp('task-health', 'Build a metrics report focused on task health rows.'),
   {
-    key: 'blueprint_open_editor',
-    aliases: ['open_editor'],
-    summary: 'Agent-owned Editor open is a global MCP lifecycle operation, not a normal CLI asset workflow.',
-    usage: ['mcp__blueprint_helper__blueprint_open_editor'],
-    input: ['Use the global MCP tool schema exposed by the host Agent environment.'],
-    notes: [
-      'Ordinary reads, writes, diagnostics, preview, execute, and result lookup stay on the CLI.',
-      'Do not use CLI lifecycle aliases as Agent compatibility paths.',
-      'CLI lifecycle invocation is blocked for Agents; report lifecycle_mcp_unavailable when the global MCP lifecycle tools are unavailable.',
-    ],
-  },
-  {
-    key: 'blueprint_close_editor',
-    aliases: ['close_editor'],
-    summary: 'Agent-owned Editor close is a global MCP lifecycle operation, not a normal CLI asset workflow.',
-    usage: ['mcp__blueprint_helper__blueprint_close_editor'],
-    input: ['Use the global MCP tool schema exposed by the host Agent environment.'],
-    notes: [
-      'Ordinary reads, writes, diagnostics, preview, execute, and result lookup stay on the CLI.',
-      'Do not use CLI lifecycle aliases as Agent compatibility paths.',
-      'CLI lifecycle invocation is blocked for Agents; report lifecycle_mcp_unavailable when the global MCP lifecycle tools are unavailable.',
-    ],
-  },
-  {
     key: 'bridge ping',
     summary: 'Ping the running Editor Bridge.',
     usage: ['bh bridge ping --select status,summary'],
@@ -83,10 +59,10 @@ const CLI_COMMAND_HELP_MANIFESTS: readonly CliCommandHelpManifest[] = [
   },
   {
     key: 'bridge call',
-    summary: 'Call a narrow allowlist of read-only Bridge commands.',
-    usage: ['bh bridge call --command <read_only_command> --select status,artifacts.full_result'],
+    summary: 'Expert/debug-only raw Bridge command tunnel for a narrow allowlist.',
+    usage: ['bh bridge call --command <read_only_command> --expert --select status,artifacts.full_result'],
     input: ['No JSON payload. Pass the Bridge command with --command.'],
-    notes: ['Ordinary Agent workflows should prefer named tools and templates over bridge call.'],
+    notes: ['Ordinary Agent workflows must use grouped commands, named tools, and templates instead of bridge call.'],
   },
 ];
 

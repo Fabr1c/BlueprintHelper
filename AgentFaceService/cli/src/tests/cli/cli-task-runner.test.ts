@@ -281,41 +281,13 @@ test('task execute can project stdout to selected fields only', async () => {
   assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
 });
 
-test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskSpec runner', async () => {
+test('removed direct preview command reports grouped replacement without dispatch', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const runner = {
     readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
-    previewTask: async () => ({
-      previewId: 'preview_direct_001',
-      previewToken: 'abcdef0123456789abcdef0123456789',
-      taskPlan: {
-        schema: 'BlueprintHelper.TaskPlan.v1',
-        task_name: 'Direct Preview',
-        task_type: 'edit_blueprint_graph',
-        context_id: 'ctx_direct',
-        target_assets: ['/Game/BP_Player'],
-        execution_policy: { dry_run_mode: 'full', should_compile: true, should_save: false, review_baseline_dirty_asset_policy: 'block' },
-        steps: [],
-      },
-      passed: true,
-      issues: [],
-      toolResult: {
-        ok: true,
-        schema: 'BlueprintHelper.ToolResult.v1',
-        operation: 'preview_task',
-        trace_id: 'trace_direct',
-        status: 'dry_run',
-        modified: false,
-        data: {
-          schema: 'BlueprintHelper.TaskPreview.v1',
-          preview_id: 'preview_direct_001',
-          passed: true,
-          blocked: false,
-          issues: [],
-        },
-      },
-    }),
+    previewTask: async () => { throw new Error('removed direct preview must not dispatch'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
@@ -325,18 +297,16 @@ test('direct CLI tool name dispatches blueprinthelper_preview_task through TaskS
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  assert.equal(exitCode, 0);
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(output.status, 'preview_passed');
-  assert.equal(output.preview_id, 'preview_direct_001');
-  assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
-  assert.equal('schema' in output, false);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /blueprinthelper_preview_task direct CLI command was removed/);
+  assert.match(errors.join(''), /bh task preview --file <task-spec\.json>/);
 });
 
-test('default direct task preview artifacts omit internal policy fields', async () => {
+test('default task preview artifacts omit internal policy fields', async () => {
   const writes: string[] = [];
   const artifactDir = makeTempDir();
   const taskPlan = {
@@ -397,7 +367,7 @@ test('default direct task preview artifacts omit internal policy fields', async 
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['blueprinthelper_preview_task', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -412,7 +382,7 @@ test('default direct task preview artifacts omit internal policy fields', async 
   assertNoDefaultReturnPolicyFields(readJsonFile(artifacts.task_plan));
 });
 
-test('expert direct task preview debug artifact keeps raw policy fields', async () => {
+test('expert task preview debug artifact keeps raw policy fields', async () => {
   const writes: string[] = [];
   const artifactDir = makeTempDir();
   const taskPlan = {
@@ -473,7 +443,7 @@ test('expert direct task preview debug artifact keeps raw policy fields', async 
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['blueprinthelper_preview_task', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
+    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -548,7 +518,7 @@ test('develop timing records read_context logic_flow stages and UE nested timing
   const writes: string[] = [];
   const calls: Array<{ command: string; payload: Record<string, unknown> }> = [];
   const exitCode = await runCli({
-    argv: ['blueprinthelper_read_context', '--json', JSON.stringify({
+    argv: ['context', 'read', '--json', JSON.stringify({
       schema: 'BlueprintHelper.ReadSpec.v1',
       read_type: 'blueprint_logic',
       target: {
@@ -629,7 +599,7 @@ test('develop timing records read_context logic_flow stages and UE nested timing
   const stageNames = (timing.stages as Array<Record<string, unknown>>).map((stage) => stage.name);
   for (const expected of [
     'cli.parse_args',
-    'cli.invoke_tool',
+    'cli.read_context',
     'read_context.parse_input',
     'read_context.resolve_bridge_request',
     'read_context.build_bridge_payload',
@@ -732,26 +702,13 @@ test('task result reads by id and prints compact summary', async () => {
   assert.equal(JSON.stringify(output).includes('step_1'), false);
 });
 
-test('direct get task result accepts id alias', async () => {
+test('removed direct get task result command reports grouped replacement', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
-    getTaskResult: async (taskRunId: string) => ({
-      ok: true,
-      schema: 'BlueprintHelper.ToolResult.v1',
-      operation: 'get_task_result',
-      trace_id: 'trace_result',
-      status: 'completed',
-      modified: false,
-      data: {
-        schema: 'BlueprintHelper.TaskRunJournal.v1',
-        task_run_id: taskRunId,
-        task_type: 'edit_blueprint_graph',
-        target_assets: ['/Game/BP_Player'],
-        steps: [],
-      },
-    }),
+    getTaskResult: async () => { throw new Error('removed direct task result must not dispatch'); },
     readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
@@ -761,19 +718,18 @@ test('direct get task result accepts id alias', async () => {
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  assert.equal(exitCode, 0);
-  assert.deepEqual(JSON.parse(writes.join('')), {
-    operation: 'tool.invoke',
-    status: 'result_found',
-    task_run_id: 'task_cli_002',
-  });
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /blueprinthelper_get_task_result direct CLI command was removed/);
+  assert.match(errors.join(''), /bh task result --id <task_run_id>/);
 });
 
-test('direct get task result rejects escaped JSON quotes', async () => {
+test('removed direct get task result rejects before parsing escaped JSON quotes', async () => {
   const writes: string[] = [];
+  const errors: string[] = [];
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
@@ -787,13 +743,12 @@ test('direct get task result rejects escaped JSON quotes', async () => {
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
-    stderr: () => {},
+    stderr: (line) => errors.push(line),
   });
 
-  assert.equal(exitCode, 1);
-  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal(output.status, 'cli_error');
-  assert.match(String(output.message), /Expected property name/);
+  assert.equal(exitCode, 64);
+  assert.equal(writes.join(''), '');
+  assert.match(errors.join(''), /blueprinthelper_get_task_result direct CLI command was removed/);
 });
 
 test('unknown commands exit 64', async () => {
@@ -825,7 +780,7 @@ test('bridge call allows read-only commands and rejects raw write commands', asy
   };
 
   const okExit = await runCli({
-    argv: ['bridge', 'call', '--command', 'get_runtime_profile'],
+    argv: ['bridge', 'call', '--command', 'get_runtime_profile', '--expert'],
     cwd: fixturesDir,
     bridge,
     stdout: (line) => writes.push(line),
@@ -837,7 +792,7 @@ test('bridge call allows read-only commands and rejects raw write commands', asy
 
   for (const command of ['execute_task_plan', 'preview_task_plan', 'import_agent_graph']) {
     const exitCode = await runCli({
-      argv: ['bridge', 'call', '--command', command],
+      argv: ['bridge', 'call', '--command', command, '--expert'],
       cwd: fixturesDir,
       bridge,
       stdout: () => {},

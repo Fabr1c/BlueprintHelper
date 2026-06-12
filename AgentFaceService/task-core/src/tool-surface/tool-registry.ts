@@ -46,6 +46,10 @@ export {
   listCliCommandDescriptors,
 } from './cli/cli-command-descriptor.js';
 export {
+  getRemovedDirectCliToolCommand,
+  listRemovedDirectCliToolCommands,
+} from './cli/cli-direct-command-policy.js';
+export {
   routeCliCommand,
 } from './cli/cli-command-router.js';
 export {
