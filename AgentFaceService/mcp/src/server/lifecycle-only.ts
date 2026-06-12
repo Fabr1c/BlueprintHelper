@@ -1,10 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BridgeClient, DEFAULT_BRIDGE_HOST, DEFAULT_BRIDGE_PORT } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { registerEditorLifecycleTools } from '../mcp/tools/editor-lifecycle-tools.js';
 
-const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? '127.0.0.1';
-const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? '54321', 10);
+const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? DEFAULT_BRIDGE_HOST;
+const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? String(DEFAULT_BRIDGE_PORT), 10);
 
 async function main() {
   console.error(`[BlueprintHelper Lifecycle MCP] Starting... Bridge target: ${BRIDGE_HOST}:${BRIDGE_PORT}`);

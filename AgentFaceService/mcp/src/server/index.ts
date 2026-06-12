@@ -1,22 +1,18 @@
 /**
- * BlueprintHelper MCP Server 閳?閸忋儱褰?
+ * BlueprintHelper MCP server.
  *
- * stdio 濡€崇础鏉╂劘顢戦敍宀勨偓姘崇箖 TCP 鏉╃偞甯?UE5 Bridge (127.0.0.1:54321)閵?
- * 鏉堟挸鍤弮銉ョ箶閻?console.error閿涘澃tdout 娣囨繄鏆€缂?JSON-RPC閿涘鈧?
+ * Stdio server forwarding MCP requests to the UE Bridge. The default target is
+ * 127.0.0.1:32147, with BRIDGE_HOST / BRIDGE_PORT available as overrides.
+ * Transport logs go to stderr; stdout stays reserved for JSON-RPC.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { BridgeClient } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BridgeClient, DEFAULT_BRIDGE_HOST, DEFAULT_BRIDGE_PORT } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { registerTools } from '../mcp/tools/register-tools.js';
 
-// 閳光偓閳光偓閳光偓 闁板秶鐤?閳光偓閳光偓閳光偓
-
-const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? '127.0.0.1';
-const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? '54321', 10);
-
-// 鐏炴洖绱戠敮姝岊潌閻ㄥ嫭膩閺夊灝褰夐柌蹇ョ礄婵?${workspaceFolder}閿涘绱濈涵顔荤箽鐠侯垰绶為崣顖滄暏
-// 閳光偓閳光偓閳光偓 閸氼垰濮?閳光偓閳光偓閳光偓
+const BRIDGE_HOST = process.env['BRIDGE_HOST'] ?? DEFAULT_BRIDGE_HOST;
+const BRIDGE_PORT = parseInt(process.env['BRIDGE_PORT'] ?? String(DEFAULT_BRIDGE_PORT), 10);
 
 async function main() {
   console.error(`[BlueprintHelper MCP] Starting... Bridge target: ${BRIDGE_HOST}:${BRIDGE_PORT}`);
@@ -28,17 +24,13 @@ async function main() {
     version: '0.6.0',
   });
 
-  // 濞夈劌鍞藉銉ュ徔娑撳氦绁┃?
   registerTools(server, bridge, { ueEngineDir: '' });
 
-  // stdio 娴肩姾绶?
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   console.error('[BlueprintHelper MCP] Server running (stdio mode)');
 }
-
-// 閳光偓閳光偓閳光偓 娴兼﹢娉ら柅鈧崙?閳光偓閳光偓閳光偓
 
 process.on('SIGINT', () => {
   console.error('[BlueprintHelper MCP] Received SIGINT, shutting down...');

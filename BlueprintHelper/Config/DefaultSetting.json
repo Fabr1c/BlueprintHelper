@@ -89,7 +89,7 @@
   },
   "runtime": {
     "bridge": {
-      "port": 54321,
+      "port": 32147,
       "max_pending_connections": 8,
       "accept_wait_ms": 250,
       "idle_timeout_seconds": 2.0,

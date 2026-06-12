@@ -66,7 +66,11 @@ bool FBlueprintHelperBridgeServer::Start()
 
 	if (!ListenerSocket)
 	{
-		UE_LOG(LogBlueprintHelperBridge, Error, TEXT("Failed to create listener socket on port %d."), Port);
+		UE_LOG(
+			LogBlueprintHelperBridge,
+			Error,
+			TEXT("Failed to create listener socket on 127.0.0.1:%d. On Windows, check excluded TCP ranges with: netsh interface ipv4 show excludedportrange protocol=tcp"),
+			Port);
 		return false;
 	}
 

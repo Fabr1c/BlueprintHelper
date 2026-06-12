@@ -75,8 +75,10 @@ Bridge connectivity environment variables:
 
 ```powershell
 $env:BRIDGE_HOST = "127.0.0.1"
-$env:BRIDGE_PORT = "54321"
+$env:BRIDGE_PORT = "32147"
 ```
+
+The default Bridge port is `32147`, below Windows' default dynamic TCP range. This avoids common Hyper-V / WSL / Docker excluded ranges that can make a port fail even when `netstat` shows no owning process. If a local machine still reserves that port, override both `runtime.bridge.port` and `BRIDGE_PORT` with the same free port.
 
 Project `.uproject` paths should not be stored globally. Agents discover the target `.uproject` from the current workspace; explicit `project_file` remains available for ambiguous workspaces.
 
@@ -96,7 +98,7 @@ Do not start or close Unreal Editor through CLI lifecycle aliases. `bh open_edit
 Bridge smoke check:
 
 ```powershell
-Test-NetConnection 127.0.0.1 -Port 54321
+Test-NetConnection 127.0.0.1 -Port 32147
 ```
 
 If the port is not open, wait for the editor to finish loading, confirm the plugin is enabled, and check the Unreal output log.

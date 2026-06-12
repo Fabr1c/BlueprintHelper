@@ -1605,8 +1605,16 @@ static FBlueprintHelperGraphTarget ParseTargetFromPayload(const TSharedPtr<FJson
 	FBlueprintHelperGraphTarget Target;
 	if (Payload.IsValid())
 	{
-		Payload->TryGetStringField(TEXT("target_blueprint"), Target.BlueprintPath);
-		Payload->TryGetStringField(TEXT("target_graph"), Target.GraphName);
+		if (!Payload->TryGetStringField(TEXT("target_blueprint"), Target.BlueprintPath) ||
+			Target.BlueprintPath.IsEmpty())
+		{
+			Payload->TryGetStringField(TEXT("asset_path"), Target.BlueprintPath);
+		}
+		if (!Payload->TryGetStringField(TEXT("target_graph"), Target.GraphName) ||
+			Target.GraphName.IsEmpty())
+		{
+			Payload->TryGetStringField(TEXT("graph_name"), Target.GraphName);
+		}
 	}
 	return Target;
 }

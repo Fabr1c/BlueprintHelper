@@ -28,7 +28,7 @@ public:
 		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 	FBlueprintHelperBridgeServer(
 		FBlueprintHelperBridgeRouter& InRouter,
-		int32 InPort = 54321,
+		int32 InPort = FBlueprintHelperBridgeRuntimeDefaults::BridgePort,
 		const FBlueprintHelperDebugEntryService* InDebugEntryService = nullptr);
 	virtual ~FBlueprintHelperBridgeServer() override;
 

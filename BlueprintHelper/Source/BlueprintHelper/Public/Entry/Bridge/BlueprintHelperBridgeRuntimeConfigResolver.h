@@ -4,9 +4,14 @@
 
 #include "CoreMinimal.h"
 
+struct FBlueprintHelperBridgeRuntimeDefaults
+{
+	static constexpr int32 BridgePort = 32147;
+};
+
 struct FBlueprintHelperBridgeRuntimeConfig
 {
-	int32 Port = 54321;
+	int32 Port = FBlueprintHelperBridgeRuntimeDefaults::BridgePort;
 	int32 MaxPendingConnections = 8;
 	int32 AcceptWaitMs = 250;
 	double IdleTimeoutSeconds = 2.0;
