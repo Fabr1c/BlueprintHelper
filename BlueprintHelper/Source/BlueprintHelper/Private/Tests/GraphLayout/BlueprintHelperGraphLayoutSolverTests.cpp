@@ -29,8 +29,9 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewMaterializer.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionCommitCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewInteractionModel.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewOverlayProjector.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
-#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSolverInput.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewTypes.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPureDataSubgraphPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSemanticScene.h"
@@ -103,6 +104,17 @@ static const FNodePlacement* FindPlacement(const FLayoutPlan& Plan, const FStrin
 		}
 	}
 	return nullptr;
+}
+
+static bool PlacementPositionsNearlyEqual(
+	const FNodePlacement* Left,
+	const FNodePlacement* Right,
+	const float Tolerance = 0.5f)
+{
+	return Left &&
+		Right &&
+		FMath::Abs(Left->TargetPosition.X - Right->TargetPosition.X) <= Tolerance &&
+		FMath::Abs(Left->TargetPosition.Y - Right->TargetPosition.Y) <= Tolerance;
 }
 
 static bool RectsOverlap(const FNodePlacement& A, const FVector2D& ASize, const FNodePlacement& B, const FVector2D& BSize)
@@ -598,6 +610,15 @@ static FLayoutPlan MakeMaterializerTestPlan()
 	AddPlacement(TEXT("CommentBlocker"), ENodeRole::Comment, FVector2D(200.0f, 0.0f), FVector2D(900.0f, 80.0f));
 	AddPlacement(TEXT("PrintNode"), ENodeRole::ExecNode, FVector2D(240.0f, 0.0f), FVector2D(1020.0f, 100.0f));
 	AddPlacement(TEXT("GenericData"), ENodeRole::VariableInput, FVector2D(280.0f, 0.0f), FVector2D(420.0f, 680.0f));
+	return Plan;
+}
+
+static FLayoutPlan BuildSolverPreviewPlanForTest(
+	const FGraphLayoutPreviewSample& Sample,
+	const FRuleSet& RuleSet)
+{
+	FLayoutPlan Plan = FSolver::Solve(FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample), RuleSet);
+	FGraphLayoutPreviewOverlayProjector::AppendOverlays(Sample, RuleSet, Plan);
 	return Plan;
 }
 
@@ -3383,7 +3404,7 @@ bool FBlueprintHelperGraphLayout_PreviewDrawsEntryAvoidanceRangeComments::RunTes
 	RuleSet.CollisionStepY = 80.0f;
 	RuleSet.MaxCollisionAttempts = 5;
 
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
 	const FNodePlacement* HorizontalPlacement = FindPlacement(Plan, TEXT("HorizontalAvoidanceRange"));
 	const FNodePlacement* VerticalPlacement = FindPlacement(Plan, TEXT("VerticalAvoidanceRange"));
@@ -3446,7 +3467,7 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerAppliesAvoidanceCommentColor
 	RuleSet.CollisionStepY = 70.0f;
 	RuleSet.MaxCollisionAttempts = 3;
 
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
 	TestTrue(TEXT("preview materializes"), Materializer.MaterializeForTest(Sample, Plan, Result));
@@ -3502,7 +3523,7 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesSemanticLabelComments
 		TEXT("linear sample builds"),
 		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
@@ -3523,6 +3544,136 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerCreatesSemanticLabelComments
 		return false;
 	}
 	TestTrue(TEXT("semantic label contains Chinese effect"), LabelComment->NodeComment.Contains(TEXT("作用:")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerSkipsOverlayWithoutPlacement,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerSkipsOverlayWithoutPlacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerSkipsOverlayWithoutPlacement::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FRuleSet RuleSet;
+	FLayoutPlan Plan = FSolver::Solve(FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample), RuleSet);
+	Plan.Placements.RemoveAll([](const FNodePlacement& Placement)
+	{
+		return Placement.NodeId == TEXT("EventStart");
+	});
+	FGraphLayoutPreviewOverlayProjector::AppendOverlays(Sample, RuleSet, Plan);
+	TestNull(TEXT("event label placement is absent without target placement"), FindPlacement(Plan, TEXT("SemanticLabel_EventStart")));
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("preview materializes"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestFalse(TEXT("missing-placement overlay is not materialized"), Result.NodeGuidsById.Contains(TEXT("SemanticLabel_EventStart")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerSkipsLinksToSkippedOverlays,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerSkipsLinksToSkippedOverlays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerSkipsLinksToSkippedOverlays::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FNodeSnapshot* EventSnapshot = Sample.Snapshot.Nodes.FindByPredicate([](const FNodeSnapshot& Node)
+	{
+		return Node.NodeId == TEXT("EventStart");
+	});
+	TestNotNull(TEXT("event snapshot exists"), EventSnapshot);
+	if (!EventSnapshot)
+	{
+		return false;
+	}
+
+	FPinSnapshot OverlayLinkPin;
+	OverlayLinkPin.PinId = TEXT("OverlayRef");
+	OverlayLinkPin.Name = TEXT("OverlayRef");
+	OverlayLinkPin.Direction = EPinDirection::Output;
+	OverlayLinkPin.bExec = false;
+	OverlayLinkPin.Category = TEXT("object");
+	OverlayLinkPin.LinkedNodeIds.Add(TEXT("SemanticLabel_EventStart"));
+	EventSnapshot->Pins.Add(OverlayLinkPin);
+
+	FGraphLayoutPreviewLinkSpec OverlayLink;
+	OverlayLink.FromNodeId = TEXT("EventStart");
+	OverlayLink.FromPinName = TEXT("OverlayRef");
+	OverlayLink.ToNodeId = TEXT("SemanticLabel_EventStart");
+	OverlayLink.ToPinName = TEXT("IgnoredInput");
+	OverlayLink.bExec = false;
+	Sample.Links.Add(OverlayLink);
+
+	FRuleSet RuleSet;
+	FLayoutPlan Plan = FSolver::Solve(FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample), RuleSet);
+	Plan.Placements.RemoveAll([](const FNodePlacement& Placement)
+	{
+		return Placement.NodeId == TEXT("EventStart");
+	});
+	FGraphLayoutPreviewOverlayProjector::AppendOverlays(Sample, RuleSet, Plan);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestTrue(TEXT("preview materializes despite skipped overlay link"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("no materializer error"), Result.Error.IsEmpty());
+	TestFalse(TEXT("skipped overlay remains unmaterialized"), Result.NodeGuidsById.Contains(TEXT("SemanticLabel_EventStart")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewMaterializerReportsMissingRealNodeBesideSkippedOverlay,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerReportsMissingRealNodeBesideSkippedOverlay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewMaterializerReportsMissingRealNodeBesideSkippedOverlay::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(
+		TEXT("linear sample builds"),
+		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FGraphLayoutPreviewLinkSpec BadLink;
+	BadLink.FromNodeId = TEXT("MissingRealNode");
+	BadLink.FromPinName = TEXT("Out");
+	BadLink.ToNodeId = TEXT("SemanticLabel_EventStart");
+	BadLink.ToPinName = TEXT("IgnoredInput");
+	BadLink.bExec = false;
+	Sample.Links.Add(BadLink);
+
+	FRuleSet RuleSet;
+	FLayoutPlan Plan = FSolver::Solve(FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample), RuleSet);
+	Plan.Placements.RemoveAll([](const FNodePlacement& Placement)
+	{
+		return Placement.NodeId == TEXT("EventStart");
+	});
+	FGraphLayoutPreviewOverlayProjector::AppendOverlays(Sample, RuleSet, Plan);
+
+	FGraphLayoutPreviewMaterializer Materializer;
+	FGraphLayoutPreviewMaterializerResult Result;
+	TestFalse(TEXT("missing real endpoint still fails"), Materializer.MaterializeForTest(Sample, Plan, Result));
+	TestTrue(TEXT("unknown real endpoint is reported"), Result.Error.Contains(TEXT("preview link references unknown node")));
 	return true;
 }
 
@@ -3568,11 +3719,11 @@ bool FBlueprintHelperGraphLayout_PreviewServiceBuildsPureDataResult::RunTest(con
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPlacesSemanticLabelsNearTargets,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPlacesSemanticLabelsNearTargets",
+	FBlueprintHelperGraphLayout_PreviewOverlayProjectorPlacesSemanticLabelsNearTargets,
+	"BlueprintHelper.GraphLayout.Preview.OverlayProjectorPlacesSemanticLabelsNearTargets",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPlacesSemanticLabelsNearTargets::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewOverlayProjectorPlacesSemanticLabelsNearTargets::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3584,7 +3735,7 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPlacesSemanticLabelsNea
 		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	const FNodePlacement* TargetPlacement = FindPlacement(Plan, TEXT("EventStart"));
 	const FNodePlacement* LabelPlacement = FindPlacement(Plan, TEXT("SemanticLabel_EventStart"));
 	TestNotNull(TEXT("target placement exists"), TargetPlacement);
@@ -3618,7 +3769,7 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerKeepsPureDataNodesExecFree::
 	TestTrue(TEXT("node input sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::NodeInputCluster, Sample, Error));
 
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
@@ -3645,11 +3796,11 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerKeepsPureDataNodesExecFree::
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirstExec,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensEntryToFirstExec",
+	FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensEntryToFirstExec,
+	"BlueprintHelper.GraphLayout.Preview.SolverBaselineStraightensEntryToFirstExec",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirstExec::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensEntryToFirstExec::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3691,11 +3842,11 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensEntryToFirst
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecChain,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensLinearExecChain",
+	FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensLinearExecChain,
+	"BlueprintHelper.GraphLayout.Preview.SolverBaselineStraightensLinearExecChain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecChain::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensLinearExecChain::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3705,7 +3856,7 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecCh
 	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	const TArray<TPair<FString, ENodeRole>> Chain = {
 		{TEXT("EventStart"), ENodeRole::EventEntry},
 		{TEXT("ResetState"), ENodeRole::ExecNode},
@@ -3742,11 +3893,11 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensLinearExecCh
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensDataSceneEntryToConsumer,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorStraightensDataSceneEntryToConsumer",
+	FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensDataSceneEntryToConsumer,
+	"BlueprintHelper.GraphLayout.Preview.SolverBaselineStraightensDataSceneEntryToConsumer",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensDataSceneEntryToConsumer::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewSolverBaselineStraightensDataSceneEntryToConsumer::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3771,7 +3922,7 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorStraightensDataSceneEnt
 			FGraphLayoutPreviewSampleFactory::BuildSample(Expectation.Scene, Sample, Error));
 
 		FRuleSet RuleSet;
-		const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+		const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 		const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
 		const FNodePlacement* ConsumerPlacement = FindPlacement(Plan, Expectation.ConsumerNodeId);
 		TestNotNull(FString::Printf(TEXT("%s event placement exists"), ToString(Expectation.Scene)), EventPlacement);
@@ -3810,7 +3961,7 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerConnectsOccupancyExistingGua
 	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
 
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
@@ -3846,11 +3997,11 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerConnectsOccupancyExistingGua
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySeparate,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorKeepsOccupancyEntrySeparate",
+	FBlueprintHelperGraphLayout_PreviewSolverBaselineKeepsOccupancyEntrySeparate,
+	"BlueprintHelper.GraphLayout.Preview.SolverBaselineKeepsOccupancyEntrySeparate",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySeparate::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewSolverBaselineKeepsOccupancyEntrySeparate::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3860,7 +4011,7 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySepa
 	TestTrue(TEXT("occupancy sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::Occupancy, Sample, Error));
 
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
 	const FNodePlacement* CandidatePlacement = FindPlacement(Plan, TEXT("CandidateExec"));
 	const FNodePlacement* FallbackPlacement = FindPlacement(Plan, TEXT("FallbackExec"));
@@ -3888,11 +4039,11 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyEntrySepa
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackClearOfBlocker,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorKeepsOccupancyFallbackClearOfBlocker",
+	FBlueprintHelperGraphLayout_PreviewSolverBaselineKeepsOccupancyFallbackClearOfBlocker,
+	"BlueprintHelper.GraphLayout.Preview.SolverBaselineKeepsOccupancyFallbackClearOfBlocker",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackClearOfBlocker::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewSolverBaselineKeepsOccupancyFallbackClearOfBlocker::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -3908,7 +4059,7 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackC
 	OccupancyScene.RoleCenters.Add(ENodeRole::Comment, FVector2D(730.0f, 130.0f));
 	RuleSet.EditorCanvasScenes.Add(ESemanticScene::Occupancy, OccupancyScene);
 
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 	const FNodePlacement* FallbackPlacement = FindPlacement(Plan, TEXT("FallbackExec"));
 	const FNodePlacement* CommentPlacement = FindPlacement(Plan, TEXT("CommentBlocker"));
 	TestNotNull(TEXT("fallback placement exists"), FallbackPlacement);
@@ -3927,23 +4078,17 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorKeepsOccupancyFallbackC
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors,
-	"BlueprintHelper.GraphLayout.Preview.ServiceUsesCurrentRuleSetSceneAnchors",
+	FBlueprintHelperGraphLayout_PreviewServiceMatchesSolverBaselineForLinearExecRules,
+	"BlueprintHelper.GraphLayout.Preview.ServiceMatchesSolverBaselineForLinearExecRules",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewServiceMatchesSolverBaselineForLinearExecRules::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
 
-	auto BuildResultForAnchors = [](const FVector2D& EventAnchor, const FVector2D& ExecAnchor)
+	auto BuildResultForRuleSet = [](const FRuleSet& RuleSet)
 	{
-		FRuleSet RuleSet;
-		FEditorCanvasSceneState LinearScene;
-		LinearScene.RoleCenters.Add(ENodeRole::EventEntry, EventAnchor);
-		LinearScene.RoleCenters.Add(ENodeRole::ExecNode, ExecAnchor);
-		RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
-
 		FGraphLayoutPreviewService Service;
 		FGraphLayoutPreviewRequest Request;
 		Request.Scene = ESemanticScene::LinearExecChain;
@@ -3954,68 +4099,321 @@ bool FBlueprintHelperGraphLayout_PreviewServiceUsesCurrentRuleSetSceneAnchors::R
 		return Result;
 	};
 
-	const FGraphLayoutPreviewBuildResult FirstResult = BuildResultForAnchors(FVector2D(120.0f, 140.0f), FVector2D(420.0f, 140.0f));
-	const FGraphLayoutPreviewBuildResult SecondResult = BuildResultForAnchors(FVector2D(300.0f, 260.0f), FVector2D(660.0f, 260.0f));
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	FRuleSet FirstRuleSet;
+	FirstRuleSet.ExecColumnSpacing = 360.0f;
+	FirstRuleSet.ExecRowSpacing = 180.0f;
+	FRuleSet SecondRuleSet = FirstRuleSet;
+	SecondRuleSet.ExecColumnSpacing = 640.0f;
+	SecondRuleSet.ExecRowSpacing = 260.0f;
+
+	const FLayoutPlan FirstExpectedPlan = BuildSolverPreviewPlanForTest(Sample, FirstRuleSet);
+	const FLayoutPlan SecondExpectedPlan = BuildSolverPreviewPlanForTest(Sample, SecondRuleSet);
+	const FGraphLayoutPreviewBuildResult FirstResult = BuildResultForRuleSet(FirstRuleSet);
+	const FGraphLayoutPreviewBuildResult SecondResult = BuildResultForRuleSet(SecondRuleSet);
 	TestTrue(TEXT("first result succeeds"), FirstResult.bSuccess);
 	TestTrue(TEXT("second result succeeds"), SecondResult.bSuccess);
 
+	const FNodePlacement* FirstExpectedEventPlacement = FindPlacement(FirstExpectedPlan, TEXT("EventStart"));
+	const FNodePlacement* FirstExpectedResetPlacement = FindPlacement(FirstExpectedPlan, TEXT("ResetState"));
+	const FNodePlacement* SecondExpectedEventPlacement = FindPlacement(SecondExpectedPlan, TEXT("EventStart"));
+	const FNodePlacement* SecondExpectedResetPlacement = FindPlacement(SecondExpectedPlan, TEXT("ResetState"));
 	const FNodePlacement* FirstEventPlacement = FindPlacement(FirstResult.LayoutPlan, TEXT("EventStart"));
 	const FNodePlacement* FirstResetPlacement = FindPlacement(FirstResult.LayoutPlan, TEXT("ResetState"));
 	const FNodePlacement* SecondEventPlacement = FindPlacement(SecondResult.LayoutPlan, TEXT("EventStart"));
 	const FNodePlacement* SecondResetPlacement = FindPlacement(SecondResult.LayoutPlan, TEXT("ResetState"));
+	TestNotNull(TEXT("first expected event placement exists"), FirstExpectedEventPlacement);
+	TestNotNull(TEXT("first expected reset placement exists"), FirstExpectedResetPlacement);
+	TestNotNull(TEXT("second expected event placement exists"), SecondExpectedEventPlacement);
+	TestNotNull(TEXT("second expected reset placement exists"), SecondExpectedResetPlacement);
 	TestNotNull(TEXT("first event placement exists"), FirstEventPlacement);
 	TestNotNull(TEXT("first reset placement exists"), FirstResetPlacement);
 	TestNotNull(TEXT("second event placement exists"), SecondEventPlacement);
 	TestNotNull(TEXT("second reset placement exists"), SecondResetPlacement);
-	if (!FirstEventPlacement || !FirstResetPlacement || !SecondEventPlacement || !SecondResetPlacement)
+	if (!FirstExpectedEventPlacement || !FirstExpectedResetPlacement || !SecondExpectedEventPlacement || !SecondExpectedResetPlacement ||
+		!FirstEventPlacement || !FirstResetPlacement || !SecondEventPlacement || !SecondResetPlacement)
 	{
 		return false;
 	}
 
-	TestEqual(TEXT("first event role center drives preview x"), FirstEventPlacement->TargetPosition.X + 202.0f, 120.0);
-	TestEqual(
-		TEXT("first event role center drives preview y"),
-		FirstEventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
-		140.0);
-	TestEqual(TEXT("first exec role center drives preview x"), FirstResetPlacement->TargetPosition.X + 16.0f, 420.0);
-	TestEqual(
-		TEXT("first exec role center drives preview y"),
-		FirstResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
-		140.0);
-	TestEqual(TEXT("second event role center drives preview x"), SecondEventPlacement->TargetPosition.X + 202.0f, 300.0);
-	TestEqual(
-		TEXT("second event role center drives preview y"),
-		SecondEventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
-		260.0);
-	TestEqual(TEXT("second exec role center drives preview x"), SecondResetPlacement->TargetPosition.X + 16.0f, 660.0);
-	TestEqual(
-		TEXT("second exec role center drives preview y"),
-		SecondResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
-		260.0);
-	TestTrue(TEXT("changing scene anchors changes preview event position"), !FirstEventPlacement->TargetPosition.Equals(SecondEventPlacement->TargetPosition));
-	TestTrue(TEXT("changing scene anchors changes preview exec position"), !FirstResetPlacement->TargetPosition.Equals(SecondResetPlacement->TargetPosition));
+	TestTrue(TEXT("first event matches solver baseline"), PlacementPositionsNearlyEqual(FirstExpectedEventPlacement, FirstEventPlacement));
+	TestTrue(TEXT("first reset matches solver baseline"), PlacementPositionsNearlyEqual(FirstExpectedResetPlacement, FirstResetPlacement));
+	TestTrue(TEXT("second event matches solver baseline"), PlacementPositionsNearlyEqual(SecondExpectedEventPlacement, SecondEventPlacement));
+	TestTrue(TEXT("second reset matches solver baseline"), PlacementPositionsNearlyEqual(SecondExpectedResetPlacement, SecondResetPlacement));
+	TestTrue(TEXT("changing solver spacing changes preview exec position"), !FirstResetPlacement->TargetPosition.Equals(SecondResetPlacement->TargetPosition));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPreservesRoleOverlap",
+	FBlueprintHelperGraphLayout_PreviewServiceUsesSolverBaselineForNodeInputCluster,
+	"BlueprintHelper.GraphLayout.Preview.ServiceUsesSolverBaselineForNodeInputCluster",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewServiceUsesSolverBaselineForNodeInputCluster::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
 
 	FRuleSet RuleSet;
-	FEditorCanvasSceneState LinearScene;
-	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(240.0f, 160.0f));
-	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(240.0f, 160.0f));
-	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
-	RuleSet.ExecColumnSpacing = 900.0f;
-	RuleSet.CollisionPaddingX = 400.0f;
-	RuleSet.CollisionPaddingY = 400.0f;
-	RuleSet.CollisionStepY = 400.0f;
+	RuleSet.DataClusterPaddingX = 280.0f;
+	RuleSet.DataClusterPaddingY = 96.0f;
+	RuleSet.InputPinRowSpacing = 64.0f;
+	RuleSet.bUseTargetPinOrderForVariableInputs = true;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("node input sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::NodeInputCluster, Sample, Error));
+
+	const FGraphSnapshot SolverSnapshot = FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample);
+	const FLayoutPlan ExpectedPlan = FSolver::Solve(SolverSnapshot, RuleSet);
+
+	FGraphLayoutPreviewService Service;
+	FGraphLayoutPreviewRequest Request;
+	Request.Scene = ESemanticScene::NodeInputCluster;
+	Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+	FGraphLayoutPreviewBuildResult PreviewResult;
+	TestTrue(TEXT("preview builds"), Service.BuildPreviewDataForTest(Request, PreviewResult));
+	TestTrue(TEXT("preview result succeeds"), PreviewResult.bSuccess);
+
+	const FString NodeIds[] = {
+		TEXT("Consumer"),
+		TEXT("ContextGet"),
+		TEXT("FlagGet"),
+		TEXT("IsValidGate"),
+		TEXT("ValueGet"),
+		TEXT("NormalizeValue"),
+		TEXT("ComposePayload")
+	};
+
+	for (const FString& NodeId : NodeIds)
+	{
+		const FNodePlacement* ExpectedPlacement = FindPlacement(ExpectedPlan, NodeId);
+		const FNodePlacement* ActualPlacement = FindPlacement(PreviewResult.LayoutPlan, NodeId);
+		TestNotNull(FString::Printf(TEXT("expected solver placement exists for %s"), *NodeId), ExpectedPlacement);
+		TestNotNull(FString::Printf(TEXT("preview placement exists for %s"), *NodeId), ActualPlacement);
+		TestTrue(
+			FString::Printf(TEXT("preview placement uses solver baseline for %s"), *NodeId),
+			PlacementPositionsNearlyEqual(ExpectedPlacement, ActualPlacement));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSolverInputExcludesOverlayNodes,
+	"BlueprintHelper.GraphLayout.Preview.SolverInputExcludesOverlayNodes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSolverInputExcludesOverlayNodes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	FString Error;
+	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
+
+	const FGraphSnapshot SolverSnapshot = FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample);
+	for (const FGraphLayoutPreviewNodeSpec& NodeSpec : Sample.Nodes)
+	{
+		if (!NodeSpec.bPreviewOverlay)
+		{
+			continue;
+		}
+
+		TestNull(
+			FString::Printf(TEXT("overlay node %s excluded from solver input"), *NodeSpec.NodeId),
+			SolverSnapshot.Nodes.FindByPredicate([&NodeSpec](const FNodeSnapshot& Node)
+			{
+				return Node.NodeId == NodeSpec.NodeId;
+			}));
+	}
+	TestNotNull(
+		TEXT("real event node remains in solver input"),
+		SolverSnapshot.Nodes.FindByPredicate([](const FNodeSnapshot& Node)
+		{
+			return Node.NodeId == TEXT("EventStart");
+		}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewSolverInputStripsLinksToFilteredOverlayNodes,
+	"BlueprintHelper.GraphLayout.Preview.SolverInputStripsLinksToFilteredOverlayNodes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewSolverInputStripsLinksToFilteredOverlayNodes::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelper::GraphLayout;
+
+	FGraphLayoutPreviewSample Sample;
+	Sample.Scene = ESemanticScene::LinearExecChain;
+	Sample.Snapshot.GraphName = TEXT("Preview_SolverInputLinkCleanup");
+
+	Sample.Snapshot.Nodes.Add(BlueprintHelperGraphLayoutSolverTests::MakeNode(
+		TEXT("Source"),
+		TEXT("K2Node_CustomEvent"),
+		TEXT("Source"),
+		FVector2D(32.0f, 48.0f),
+		FVector2D(220.0f, 88.0f),
+		false,
+		{
+			BlueprintHelperGraphLayoutSolverTests::MakePin(TEXT("Then"), EPinDirection::Output, true, {TEXT("RealTarget"), TEXT("HorizontalAvoidanceRange")}),
+			BlueprintHelperGraphLayoutSolverTests::MakePin(TEXT("Value"), EPinDirection::Output, false, {TEXT("RealDataTarget"), TEXT("HorizontalAvoidanceRange")})
+		}));
+	Sample.Snapshot.Nodes.Add(BlueprintHelperGraphLayoutSolverTests::MakeNode(
+		TEXT("RealTarget"),
+		TEXT("K2Node_CallFunction"),
+		TEXT("Real Target"),
+		FVector2D(280.0f, 48.0f),
+		FVector2D(240.0f, 96.0f),
+		false,
+		{
+			BlueprintHelperGraphLayoutSolverTests::MakePin(TEXT("ExecIn"), EPinDirection::Input, true, {TEXT("Source")})
+		}));
+	Sample.Snapshot.Nodes.Add(BlueprintHelperGraphLayoutSolverTests::MakeNode(
+		TEXT("RealDataTarget"),
+		TEXT("K2Node_VariableSet"),
+		TEXT("Real Data Target"),
+		FVector2D(280.0f, 180.0f),
+		FVector2D(220.0f, 88.0f),
+		true,
+		{
+			BlueprintHelperGraphLayoutSolverTests::MakePin(TEXT("Input"), EPinDirection::Input, false, {TEXT("Source")})
+		}));
+	Sample.Snapshot.Nodes.Add(BlueprintHelperGraphLayoutSolverTests::MakeNode(
+		TEXT("HorizontalAvoidanceRange"),
+		TEXT("EdGraphNode_Comment"),
+		TEXT("Horizontal Avoidance Range"),
+		FVector2D(120.0f, 300.0f),
+		FVector2D(420.0f, 120.0f),
+		true,
+		{}));
+
+	auto AddNodeSpec = [&Sample](const FString& NodeId, const bool bPreviewOverlay)
+	{
+		FGraphLayoutPreviewNodeSpec NodeSpec;
+		NodeSpec.NodeId = NodeId;
+		NodeSpec.Title = NodeId;
+		NodeSpec.bPreviewOverlay = bPreviewOverlay;
+		Sample.Nodes.Add(NodeSpec);
+	};
+
+	AddNodeSpec(TEXT("Source"), false);
+	AddNodeSpec(TEXT("RealTarget"), false);
+	AddNodeSpec(TEXT("RealDataTarget"), false);
+	AddNodeSpec(TEXT("HorizontalAvoidanceRange"), true);
+
+	const FGraphSnapshot SolverSnapshot = FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(Sample);
+	TestEqual(TEXT("graph name preserved"), SolverSnapshot.GraphName, Sample.Snapshot.GraphName);
+
+	const FNodeSnapshot* SourceNode = SolverSnapshot.Nodes.FindByPredicate([](const FNodeSnapshot& Node)
+	{
+		return Node.NodeId == TEXT("Source");
+	});
+	TestNotNull(TEXT("source node remains in solver snapshot"), SourceNode);
+	if (!SourceNode)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("source title preserved"), SourceNode->Title, TEXT("Source"));
+	TestEqual(TEXT("source position x preserved"), SourceNode->Position.X, 32.0);
+	TestEqual(TEXT("source position y preserved"), SourceNode->Position.Y, 48.0);
+	TestEqual(TEXT("source pin count preserved"), SourceNode->Pins.Num(), 2);
+	if (SourceNode->Pins.Num() != 2)
+	{
+		return false;
+	}
+
+	const FPinSnapshot& ExecPin = SourceNode->Pins[0];
+	TestTrue(TEXT("real exec link preserved"), ExecPin.LinkedNodeIds.Contains(TEXT("RealTarget")));
+	TestFalse(TEXT("overlay exec link removed"), ExecPin.LinkedNodeIds.Contains(TEXT("HorizontalAvoidanceRange")));
+	TestEqual(TEXT("exec pin link count cleaned"), ExecPin.LinkedNodeIds.Num(), 1);
+
+	const FPinSnapshot& DataPin = SourceNode->Pins[1];
+	TestTrue(TEXT("real data link preserved"), DataPin.LinkedNodeIds.Contains(TEXT("RealDataTarget")));
+	TestFalse(TEXT("overlay data link removed"), DataPin.LinkedNodeIds.Contains(TEXT("HorizontalAvoidanceRange")));
+	TestEqual(TEXT("data pin link count cleaned"), DataPin.LinkedNodeIds.Num(), 1);
+
+	TestNull(
+		TEXT("overlay node removed from solver snapshot"),
+		SolverSnapshot.Nodes.FindByPredicate([](const FNodeSnapshot& Node)
+		{
+			return Node.NodeId == TEXT("HorizontalAvoidanceRange");
+		}));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewServiceReflectsInputPinRowSpacing,
+	"BlueprintHelper.GraphLayout.Preview.ServiceReflectsInputPinRowSpacing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewServiceReflectsInputPinRowSpacing::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	auto BuildPreview = [](const float RowSpacing)
+	{
+		FRuleSet RuleSet;
+		RuleSet.InputPinRowSpacing = RowSpacing;
+		RuleSet.DataClusterPaddingX = 260.0f;
+		RuleSet.DataClusterPaddingY = 72.0f;
+		RuleSet.bUseTargetPinOrderForVariableInputs = true;
+
+		FGraphLayoutPreviewService Service;
+		FGraphLayoutPreviewRequest Request;
+		Request.Scene = ESemanticScene::NodeInputCluster;
+		Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
+
+		FGraphLayoutPreviewBuildResult Result;
+		Service.BuildPreviewDataForTest(Request, Result);
+		return Result;
+	};
+
+	const FGraphLayoutPreviewBuildResult TightResult = BuildPreview(32.0f);
+	const FGraphLayoutPreviewBuildResult LooseResult = BuildPreview(96.0f);
+	TestTrue(TEXT("tight result succeeds"), TightResult.bSuccess);
+	TestTrue(TEXT("loose result succeeds"), LooseResult.bSuccess);
+
+	const FNodePlacement* TightContext = FindPlacement(TightResult.LayoutPlan, TEXT("ContextGet"));
+	const FNodePlacement* TightFlag = FindPlacement(TightResult.LayoutPlan, TEXT("FlagGet"));
+	const FNodePlacement* LooseContext = FindPlacement(LooseResult.LayoutPlan, TEXT("ContextGet"));
+	const FNodePlacement* LooseFlag = FindPlacement(LooseResult.LayoutPlan, TEXT("FlagGet"));
+	TestNotNull(TEXT("tight context exists"), TightContext);
+	TestNotNull(TEXT("tight flag exists"), TightFlag);
+	TestNotNull(TEXT("loose context exists"), LooseContext);
+	TestNotNull(TEXT("loose flag exists"), LooseFlag);
+	if (!TightContext || !TightFlag || !LooseContext || !LooseFlag)
+	{
+		return false;
+	}
+
+	const float TightDistance = FMath::Abs(TightFlag->TargetPosition.Y - TightContext->TargetPosition.Y);
+	const float LooseDistance = FMath::Abs(LooseFlag->TargetPosition.Y - LooseContext->TargetPosition.Y);
+	TestTrue(TEXT("larger input pin row spacing changes preview data node vertical distance"), LooseDistance > TightDistance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLayout_PreviewOverlayFollowsSolverPlacement,
+	"BlueprintHelper.GraphLayout.Preview.OverlayFollowsSolverPlacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLayout_PreviewOverlayFollowsSolverPlacement::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperGraphLayoutSolverTests;
+	using namespace BlueprintHelper::GraphLayout;
+
+	FRuleSet RuleSet;
+	RuleSet.CollisionPaddingX = 150.0f;
+	RuleSet.CollisionPaddingY = 60.0f;
+	RuleSet.CollisionStepY = 90.0f;
+	RuleSet.MaxCollisionAttempts = 4;
 
 	FGraphLayoutPreviewService Service;
 	FGraphLayoutPreviewRequest Request;
@@ -4024,99 +4422,45 @@ bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesRoleOverlap::R
 
 	FGraphLayoutPreviewBuildResult Result;
 	TestTrue(TEXT("preview builds"), Service.BuildPreviewDataForTest(Request, Result));
-	TestTrue(TEXT("result success"), Result.bSuccess);
+	TestTrue(TEXT("preview result succeeds"), Result.bSuccess);
 
 	const FNodePlacement* EventPlacement = FindPlacement(Result.LayoutPlan, TEXT("EventStart"));
-	const FNodePlacement* ResetPlacement = FindPlacement(Result.LayoutPlan, TEXT("ResetState"));
+	const FNodePlacement* LabelPlacement = FindPlacement(Result.LayoutPlan, TEXT("SemanticLabel_EventStart"));
+	const FNodePlacement* HorizontalPlacement = FindPlacement(Result.LayoutPlan, TEXT("HorizontalAvoidanceRange"));
+	const FNodePlacement* VerticalPlacement = FindPlacement(Result.LayoutPlan, TEXT("VerticalAvoidanceRange"));
 	TestNotNull(TEXT("event placement exists"), EventPlacement);
-	TestNotNull(TEXT("reset placement exists"), ResetPlacement);
-	if (!EventPlacement || !ResetPlacement)
+	TestNotNull(TEXT("semantic label placement exists"), LabelPlacement);
+	TestNotNull(TEXT("horizontal range placement exists"), HorizontalPlacement);
+	TestNotNull(TEXT("vertical range placement exists"), VerticalPlacement);
+	if (!EventPlacement || !LabelPlacement || !HorizontalPlacement || !VerticalPlacement)
 	{
 		return false;
 	}
 
+	TestTrue(TEXT("label stays above event solver placement"), LabelPlacement->TargetPosition.Y < EventPlacement->TargetPosition.Y);
 	TestTrue(
-		TEXT("overlapped role anchors produce overlapping native node bounds"),
-		RectsOverlap(*EventPlacement, FVector2D(220.0f, 88.0f), *ResetPlacement, FVector2D(228.0f, 96.0f)));
-	TestTrue(
-		TEXT("overlap is not removed by solver occupancy"),
-		FMath::Abs(EventPlacement->TargetPosition.X - ResetPlacement->TargetPosition.X) < 260.0f &&
-		FMath::Abs(EventPlacement->TargetPosition.Y - ResetPlacement->TargetPosition.Y) < 140.0f);
-	TestEqual(TEXT("event semantic anchor x remains on dragged role center"), EventPlacement->TargetPosition.X + 202.0f, 240.0);
-	TestEqual(
-		TEXT("event semantic anchor y remains on dragged role center"),
-		EventPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::EventEntry),
-		160.0);
-	TestEqual(TEXT("exec semantic anchor x remains on dragged role center"), ResetPlacement->TargetPosition.X + 16.0f, 240.0);
-	TestEqual(
-		TEXT("exec semantic anchor y remains on dragged role center"),
-		ResetPlacement->TargetPosition.Y + ExpectedExecBaselineOffsetY(ENodeRole::ExecNode),
-		160.0);
+		TEXT("label tracks event solver placement horizontally"),
+		FMath::Abs(LabelPlacement->TargetPosition.X - EventPlacement->TargetPosition.X) <= 48.0f);
+
+	const FVector2D EntrySize = FindPreviewNodeSize(Result.Sample, TEXT("EventStart"));
+	const float ExpectedHorizontalWidth =
+		EntrySize.X + RuleSet.CollisionPaddingX * 2.0f +
+		RuleSet.MaxCollisionAttempts * FMath::Max(EntrySize.X, RuleSet.CollisionPaddingX);
+	const float ExpectedVerticalHeight =
+		EntrySize.Y + RuleSet.CollisionPaddingY * 2.0f +
+		RuleSet.MaxCollisionAttempts * RuleSet.CollisionStepY;
+
+	TestEqual(TEXT("horizontal range width follows ruleset"), static_cast<double>(HorizontalPlacement->TargetSize.X), static_cast<double>(ExpectedHorizontalWidth));
+	TestEqual(TEXT("vertical range height follows ruleset"), static_cast<double>(VerticalPlacement->TargetSize.Y), static_cast<double>(ExpectedVerticalHeight));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesOverlapAcrossScenes,
-	"BlueprintHelper.GraphLayout.Preview.SemanticProjectorPreservesOverlapAcrossScenes",
+	FBlueprintHelperGraphLayout_PreviewMaterializerUsesSolverBaselinePlacements,
+	"BlueprintHelper.GraphLayout.Preview.MaterializerUsesSolverBaselinePlacements",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperGraphLayout_PreviewSemanticProjectorPreservesOverlapAcrossScenes::RunTest(const FString& Parameters)
-{
-	using namespace BlueprintHelperGraphLayoutSolverTests;
-	using namespace BlueprintHelper::GraphLayout;
-
-	for (const FSemanticSceneDefinition& SceneDefinition : FSemanticSceneCatalog::GetAllScenes())
-	{
-		FRuleSet RuleSet;
-		FEditorCanvasSceneState SceneState;
-		for (const FSemanticSceneNodeDefinition& NodeDefinition : SceneDefinition.Nodes)
-		{
-			SceneState.RoleCenters.Add(NodeDefinition.Role, FVector2D(320.0f, 180.0f));
-		}
-		RuleSet.EditorCanvasScenes.Add(SceneDefinition.Scene, SceneState);
-
-		FGraphLayoutPreviewService Service;
-		FGraphLayoutPreviewRequest Request;
-		Request.Scene = SceneDefinition.Scene;
-		Request.RuleSetJson = FRuleSetJson::ExportString(RuleSet);
-
-		FGraphLayoutPreviewBuildResult Result;
-		TestTrue(FString::Printf(TEXT("preview builds for %s"), ToString(SceneDefinition.Scene)), Service.BuildPreviewDataForTest(Request, Result));
-		TestTrue(TEXT("result success"), Result.bSuccess);
-		TestTrue(TEXT("has placements"), Result.LayoutPlan.Placements.Num() > 0);
-
-		int32 OverlapPairCount = 0;
-		for (int32 LeftIndex = 0; LeftIndex < Result.LayoutPlan.Placements.Num(); ++LeftIndex)
-		{
-			for (int32 RightIndex = LeftIndex + 1; RightIndex < Result.LayoutPlan.Placements.Num(); ++RightIndex)
-			{
-				const FNodePlacement& Left = Result.LayoutPlan.Placements[LeftIndex];
-				const FNodePlacement& Right = Result.LayoutPlan.Placements[RightIndex];
-				if (Left.Reason == TEXT("preview_semantic_role_anchor") &&
-					Right.Reason == TEXT("preview_semantic_role_anchor") &&
-					RectsOverlap(
-						Left,
-						FindPreviewNodeSize(Result.Sample, Left.NodeId),
-						Right,
-						FindPreviewNodeSize(Result.Sample, Right.NodeId)))
-				{
-					++OverlapPairCount;
-				}
-			}
-		}
-		TestTrue(
-			FString::Printf(TEXT("anchored preview nodes overlap for %s"), ToString(SceneDefinition.Scene)),
-			OverlapPairCount > 0);
-	}
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap,
-	"BlueprintHelper.GraphLayout.Preview.MaterializerPreservesSemanticOverlap",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap::RunTest(const FString& Parameters)
+bool FBlueprintHelperGraphLayout_PreviewMaterializerUsesSolverBaselinePlacements::RunTest(const FString& Parameters)
 {
 	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
@@ -4124,15 +4468,11 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap::Ru
 	TestTrue(TEXT("preview materializer test runs on the game thread"), IsInGameThread());
 
 	FRuleSet RuleSet;
-	FEditorCanvasSceneState LinearScene;
-	LinearScene.RoleCenters.Add(ENodeRole::EventEntry, FVector2D(260.0f, 180.0f));
-	LinearScene.RoleCenters.Add(ENodeRole::ExecNode, FVector2D(260.0f, 180.0f));
-	RuleSet.EditorCanvasScenes.Add(ESemanticScene::LinearExecChain, LinearScene);
 
 	FGraphLayoutPreviewSample Sample;
 	FString Error;
 	TestTrue(TEXT("linear sample builds"), FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	const FNodePlacement* EventPlacement = FindPlacement(Plan, TEXT("EventStart"));
 	const FNodePlacement* ResetPlacement = FindPlacement(Plan, TEXT("ResetState"));
@@ -4153,18 +4493,11 @@ bool FBlueprintHelperGraphLayout_PreviewMaterializerPreservesSemanticOverlap::Ru
 	}
 
 	TestTrue(
-		TEXT("event materializer uses semantic plan position"),
+		TEXT("event materializer uses solver plan position"),
 		MaterializedNodeMatchesPlacement(Result, TEXT("EventStart"), EventPlacement->TargetPosition));
 	TestTrue(
-		TEXT("reset materializer uses semantic plan position"),
+		TEXT("reset materializer uses solver plan position"),
 		MaterializedNodeMatchesPlacement(Result, TEXT("ResetState"), ResetPlacement->TargetPosition));
-	TestTrue(
-		TEXT("materialized semantic placements still overlap"),
-		RectsOverlap(
-			*EventPlacement,
-			FindPreviewNodeSize(Sample, TEXT("EventStart")),
-			*ResetPlacement,
-			FindPreviewNodeSize(Sample, TEXT("ResetState"))));
 	return true;
 }
 
@@ -4368,7 +4701,7 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresAvoidanceRangeOve
 	RuleSet.CollisionPaddingY = 40.0f;
 	RuleSet.CollisionStepY = 80.0f;
 	RuleSet.MaxCollisionAttempts = 5;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
@@ -4420,6 +4753,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresSemanticLabelComments::RunTest(const FString& Parameters)
 {
+	using namespace BlueprintHelperGraphLayoutSolverTests;
 	using namespace BlueprintHelper::GraphLayout;
 
 	FGraphLayoutPreviewSample Sample;
@@ -4428,7 +4762,7 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelIgnoresSemanticLabelComm
 		TEXT("linear sample builds"),
 		FGraphLayoutPreviewSampleFactory::BuildSample(ESemanticScene::LinearExecChain, Sample, Error));
 	FRuleSet RuleSet;
-	const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+	const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 	FGraphLayoutPreviewMaterializer Materializer;
 	FGraphLayoutPreviewMaterializerResult Result;
@@ -4497,7 +4831,7 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelCommitsAvoidanceRangeOve
 		RuleSet.CollisionPaddingY = 40.0f;
 		RuleSet.CollisionStepY = 80.0f;
 		RuleSet.MaxCollisionAttempts = 5;
-		const FLayoutPlan Plan = FGraphLayoutPreviewSemanticProjector::Project(Sample, RuleSet);
+		const FLayoutPlan Plan = BuildSolverPreviewPlanForTest(Sample, RuleSet);
 
 		FGraphLayoutPreviewMaterializer Materializer;
 		FGraphLayoutPreviewMaterializerResult Result;

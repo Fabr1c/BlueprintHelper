@@ -47,6 +47,7 @@ private:
 	const FGraphLayoutPreviewNodeSpec* FindNodeSpec(const FString& NodeId) const;
 	const FNodeSnapshot* FindSnapshotNode(const FString& NodeId) const;
 	const FNodePlacement* FindPlacement(const FString& NodeId) const;
+	bool IsSkippedPreviewOverlay(const FString& NodeId) const;
 
 	UEdGraphNode* CreateNodeForSpec(const FGraphLayoutPreviewNodeSpec& NodeSpec);
 	UEdGraphPin* FindOrCreatePin(UEdGraphNode* Node, const FPinSnapshot& PinSnapshot);

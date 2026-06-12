@@ -1,9 +1,11 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewService.h"
 
 #include "Async/Async.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewOverlayProjector.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSampleFactory.h"
-#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSemanticProjector.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPreviewSolverInput.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 
 namespace BlueprintHelper::GraphLayout
 {
@@ -93,7 +95,9 @@ bool FGraphLayoutPreviewService::BuildPreviewData(
 		return false;
 	}
 
-	OutResult.LayoutPlan = FGraphLayoutPreviewSemanticProjector::Project(OutResult.Sample, RuleSet);
+	const FGraphSnapshot SolverSnapshot = FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(OutResult.Sample);
+	OutResult.LayoutPlan = FSolver::Solve(SolverSnapshot, RuleSet);
+	FGraphLayoutPreviewOverlayProjector::AppendOverlays(OutResult.Sample, RuleSet, OutResult.LayoutPlan);
 	if (OutResult.LayoutPlan.Issues.Num() > 0)
 	{
 		OutResult.bSuccess = false;

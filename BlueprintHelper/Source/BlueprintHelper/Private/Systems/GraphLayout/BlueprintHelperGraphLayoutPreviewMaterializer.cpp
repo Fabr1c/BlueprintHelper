@@ -246,6 +246,13 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 	}
 
 	const FGraphLayoutPreviewNodeSpec& NodeSpec = PendingSample.Nodes[NextNodeIndex];
+	const FNodePlacement* Placement = FindPlacement(NodeSpec.NodeId);
+	if (NodeSpec.bPreviewOverlay && !Placement)
+	{
+		++NextNodeIndex;
+		return true;
+	}
+
 	UEdGraphNode* Node = CreateNodeForSpec(NodeSpec);
 	if (!Node)
 	{
@@ -259,7 +266,6 @@ bool FGraphLayoutPreviewMaterializer::MaterializeNextNode()
 		return false;
 	}
 
-	const FNodePlacement* Placement = FindPlacement(NodeSpec.NodeId);
 	const FVector2D TargetPosition = Placement
 		? Placement->TargetPosition
 		: (SnapshotNode ? SnapshotNode->Position : FVector2D::ZeroVector);
@@ -365,6 +371,12 @@ const FNodePlacement* FGraphLayoutPreviewMaterializer::FindPlacement(const FStri
 		}
 	}
 	return nullptr;
+}
+
+bool FGraphLayoutPreviewMaterializer::IsSkippedPreviewOverlay(const FString& NodeId) const
+{
+	const FGraphLayoutPreviewNodeSpec* NodeSpec = FindNodeSpec(NodeId);
+	return NodeSpec && NodeSpec->bPreviewOverlay && !FindPlacement(NodeId);
 }
 
 UEdGraphNode* FGraphLayoutPreviewMaterializer::CreateNodeForSpec(const FGraphLayoutPreviewNodeSpec& NodeSpec)
@@ -480,6 +492,19 @@ bool FGraphLayoutPreviewMaterializer::ConnectLink(const FGraphLayoutPreviewLinkS
 	UEdGraphNode* const* ToNodePtr = MaterializedNodesById.Find(Link.ToNodeId);
 	if (!FromNodePtr || !*FromNodePtr || !ToNodePtr || !*ToNodePtr)
 	{
+		const bool bFromMissing = !FromNodePtr || !*FromNodePtr;
+		const bool bToMissing = !ToNodePtr || !*ToNodePtr;
+		const bool bFromMissingSkippedOverlay = bFromMissing && IsSkippedPreviewOverlay(Link.FromNodeId);
+		const bool bToMissingSkippedOverlay = bToMissing && IsSkippedPreviewOverlay(Link.ToNodeId);
+		const bool bOnlySkippedOverlayEndpointsAreMissing =
+			(!bFromMissing || bFromMissingSkippedOverlay) &&
+			(!bToMissing || bToMissingSkippedOverlay) &&
+			(bFromMissingSkippedOverlay || bToMissingSkippedOverlay);
+		if (bOnlySkippedOverlayEndpointsAreMissing)
+		{
+			return true;
+		}
+
 		FinishWithError(FString::Printf(
 			TEXT("preview link references unknown node: %s.%s -> %s.%s"),
 			*Link.FromNodeId,
