@@ -15,6 +15,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionDatabaseProjectionService.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperTypePromotionSpawnerEvidenceResolver.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperGenericAssetActionResolver.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 // === FunctionResolution ===
 #include "Systems/ToolClusters/GraphWrite/FunctionResolution/BlueprintHelperCallFunctionResolver.h"
@@ -1233,7 +1234,7 @@ UBlueprintNodeSpawner* UGraphWriteActionResolverUtils::CreateSwitchEnumSpawner(U
                 UK2Node_SwitchEnum* SwitchNode = Cast<UK2Node_SwitchEnum>(NewNode);
                 if (SwitchNode && EnumPtr.IsValid())
                 {
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_SWITCH_ENUM_SETTER
                     SwitchNode->SetEnum(EnumPtr.Get());
 #else
                     SwitchNode->Enum = EnumPtr.Get();

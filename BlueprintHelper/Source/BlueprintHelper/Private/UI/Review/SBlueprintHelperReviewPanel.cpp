@@ -2866,7 +2866,7 @@ bool SBlueprintHelperReviewPanel::ResolveDetailsRowGeometry(
 						Property->GetDisplayNameText().ToString(),
 						Candidates);
 					const TSharedRef<FPropertyPath> PropertyPath = FPropertyPath::Create(TWeakFieldPtr<FProperty>(Property));
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_DETAILS_VIEW_SCROLL_PROPERTY_BOOL
 					PropertyView->ScrollPropertyIntoView(*PropertyPath, true);
 #endif
 					PropertyView->HighlightProperty(*PropertyPath);

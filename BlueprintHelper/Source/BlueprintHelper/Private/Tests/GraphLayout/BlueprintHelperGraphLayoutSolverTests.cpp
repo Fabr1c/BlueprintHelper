@@ -21,6 +21,7 @@
 #include "K2Node_IfThenElse.h"
 #include "K2Node_Self.h"
 #include "InputCoreTypes.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutCoordinator.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutGroupAvoidancePolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
@@ -5216,10 +5217,10 @@ bool FBlueprintHelperGraphLayout_PreviewInteractionModelRejectsLinkRewireMutatio
 	TestTrue(TEXT("model initializes"), Model.Initialize(Result, Result.PreviewGraph.Get()));
 	Model.BeginInteraction(Result.PreviewGraph.Get());
 
-	Then0Pin->BreakLinkTo(BranchExecPin, false);
-	Then1Pin->BreakLinkTo(PrintExecPin, false);
-	Then0Pin->MakeLinkTo(PrintExecPin, false);
-	Then1Pin->MakeLinkTo(BranchExecPin, false);
+	FBlueprintHelperVersionCompat::BreakPinLinkTo(Then0Pin, BranchExecPin, false);
+	FBlueprintHelperVersionCompat::BreakPinLinkTo(Then1Pin, PrintExecPin, false);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(Then0Pin, PrintExecPin, false);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(Then1Pin, BranchExecPin, false);
 	TestFalse(TEXT("Then_0 no longer links to branch"), Then0Pin->LinkedTo.Contains(BranchExecPin));
 	TestFalse(TEXT("Then_1 no longer links to print"), Then1Pin->LinkedTo.Contains(PrintExecPin));
 	TestTrue(TEXT("Then_0 links to print"), Then0Pin->LinkedTo.Contains(PrintExecPin));

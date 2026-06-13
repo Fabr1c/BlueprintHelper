@@ -5,6 +5,7 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextScope.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentBuilderRegistry.h"
 
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Components/PrimitiveComponent.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
@@ -945,7 +946,7 @@ bool FBlueprintHelperEventDelegateComponentBoundFragmentBuildTest::RunTest(const
 	TestEqual(TEXT("ownership semantic kind"), Fragment.OwnershipTags.FindRef(TEXT("semantic_kind")), FString(TEXT("component_bound_event")));
 	if (EventNode)
 	{
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_COMPONENT_BOUND_EVENT_GETTER
 		TestEqual(TEXT("component property name"), EventNode->GetComponentPropertyName(), FName(TEXT("CollisionComponent")));
 #else
 		TestEqual(TEXT("component property name"), EventNode->ComponentPropertyName, FName(TEXT("CollisionComponent")));

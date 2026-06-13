@@ -2,6 +2,7 @@
 
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "SourceControlHelpers.h"
 #include "Misc/PackageName.h"
 #include "UObject/Package.h"
@@ -70,11 +71,37 @@ public:
 		State.bCanRevert = SourceState.bCanRevert;
 		State.bCheckedOutOther = SourceState.bIsCheckedOutOther;
 		State.CheckedOutOther = SourceState.CheckedOutOther;
+#if BLUEPRINTHELPER_UE_HAS_SOURCE_CONTROL_BRANCH_STATE
 		State.bCheckedOutInOtherBranch = SourceState.bIsCheckedOutInOtherBranch;
 		State.bModifiedInOtherBranch = SourceState.bIsModifiedInOtherBranch;
+#else
+		State.bCheckedOutInOtherBranch = false;
+		State.bModifiedInOtherBranch = false;
+#endif
 		State.DisplayName = SourceState.bIsValid ? TEXT("source_control_state") : TEXT("invalid_source_control_state");
 		FBlueprintHelperSourceControlService::ClassifyFileStateForAgent(State);
 		return State;
+	}
+
+	static TArray<FSourceControlState> QueryFileStates(TConstArrayView<FString> Inputs)
+	{
+#if BLUEPRINTHELPER_UE_HAS_SOURCE_CONTROL_BATCH_QUERY
+		TArray<FString> QueryInputs;
+		QueryInputs.Reserve(Inputs.Num());
+		for (const FString& Input : Inputs)
+		{
+			QueryInputs.Add(Input);
+		}
+		return USourceControlHelpers::QueryFileStates(QueryInputs, /*bSilent=*/ true);
+#else
+		TArray<FSourceControlState> States;
+		States.Reserve(Inputs.Num());
+		for (const FString& Input : Inputs)
+		{
+			States.Add(USourceControlHelpers::QueryFileState(Input, /*bSilent=*/ true));
+		}
+		return States;
+#endif
 	}
 
 	static void AddInputFileStates(
@@ -315,7 +342,7 @@ FBlueprintHelperSourceControlResult FBlueprintHelperSourceControlService::QueryS
 		return Result;
 	}
 
-	const TArray<FSourceControlState> SourceStates = USourceControlHelpers::QueryFileStates(NormalizedInputs, /*bSilent=*/ true);
+	const TArray<FSourceControlState> SourceStates = FBlueprintHelperSourceControlServiceLocalUtils::QueryFileStates(NormalizedInputs);
 	for (int32 Index = 0; Index < NormalizedInputs.Num(); ++Index)
 	{
 		if (SourceStates.IsValidIndex(Index))

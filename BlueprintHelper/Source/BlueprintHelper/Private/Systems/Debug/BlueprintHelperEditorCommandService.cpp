@@ -11,11 +11,11 @@
 #include "Misc/PackageName.h"
 #include "Misc/StringFormatArg.h"
 #include "PlayInEditorDataTypes.h"
-#include "Runtime/Launch/Resources/Version.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "UObject/UObjectIterator.h"
 
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7)
+#if BLUEPRINTHELPER_UE_HAS_STRING_OUTPUT_DEVICE
 #include "Misc/StringOutputDevice.h"
 #endif
 

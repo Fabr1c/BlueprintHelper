@@ -1,6 +1,6 @@
 {
   "name": "blueprint-helper-cli",
-  "version": "0.6.0",
+  "version": "0.6.3",
   "description": "BlueprintHelper CLI transport for Bridge and TaskSpec workflows",
   "type": "module",
   "main": "build/cli/index.js",

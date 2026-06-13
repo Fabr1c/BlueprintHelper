@@ -5,6 +5,7 @@
 #include "K2Node.h"
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_CreateDelegate.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 
 void UGraphWriteReadbackUtils::AddIfPresent(TMap<FString, FString>& Facts, const FString& Key, const FString& Value)
@@ -29,7 +30,7 @@ void UGraphWriteReadbackUtils::AddPrimaryNodeFacts(
 	Facts.Add(TEXT("node_guid"), PrimaryNode->NodeGuid.ToString(EGuidFormats::Digits));
 	if (const UK2Node_ComponentBoundEvent* ComponentEvent = Cast<UK2Node_ComponentBoundEvent>(PrimaryNode))
 	{
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_COMPONENT_BOUND_EVENT_GETTER
 		Facts.Add(TEXT("component_dynamic_binding_target"), ComponentEvent->GetComponentPropertyName().ToString());
 #else
 		Facts.Add(TEXT("component_dynamic_binding_target"), ComponentEvent->ComponentPropertyName.ToString());

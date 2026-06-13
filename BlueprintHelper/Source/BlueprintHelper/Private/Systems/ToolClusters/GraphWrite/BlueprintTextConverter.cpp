@@ -1175,7 +1175,7 @@ void FBlueprintToTextConverter::ExportGraphNodesAndLinks(
 		{
 			TSharedPtr<FJsonObject> CompEventObj = MakeShared<FJsonObject>();
 			CompEventObj->SetStringField(TEXT("delegate_property"), CompEvent->DelegatePropertyName.ToString());
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_COMPONENT_BOUND_EVENT_GETTER
 			CompEventObj->SetStringField(TEXT("component_property"), CompEvent->GetComponentPropertyName().ToString());
 #else
 			CompEventObj->SetStringField(TEXT("component_property"), CompEvent->ComponentPropertyName.ToString());

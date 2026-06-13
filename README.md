@@ -2,7 +2,7 @@
 
 BlueprintHelper 是一个面向 Unreal Engine 编辑器资产的辅助插件，核心目标是让 AI Agent 能够通过本地 CLI 和 Unreal Editor Bridge 安全地读取、预览和修改蓝图相关资产。
 
-当前版本：`v0.6.0`
+当前版本：`v0.6.3`
 
 ## 插件用途
 
@@ -123,7 +123,7 @@ $json | bh context read --stdin --format full
 
 ## 更新 / Update
 
-双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.6.0`。同版本补丁可以发布为 `v0.6.0-fix`、`v0.6.0-hotfix1` 这类带 `-` 后缀的 tag；包内 manifest 版本仍可保持 `0.6.0`，updater 会优先应用该补丁 release，并在 `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` 与插件根目录 `.blueprinthelper\update-state.json` 记录已应用 tag，避免重复提示同一个补丁。
+双击 `update.cmd` 可以检查 GitHub 最新 Release，并在发现远端版本更新时提示确认后更新。更新器以 GitHub Release tag 为准，例如 `v0.5.4`、`v0.6.3`。同版本补丁可以发布为 `v0.6.3-fix`、`v0.6.3-hotfix1` 这类带 `-` 后缀的 tag；包内 manifest 版本仍可保持 `0.6.3`，updater 会优先应用该补丁 release，并在 `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` 与插件根目录 `.blueprinthelper\update-state.json` 记录已应用 tag，避免重复提示同一个补丁。
 
 更新流程会先把当前插件目录临时备份到同级目录，例如 `BlueprintHelper.backup-v0.5.3-20260520-153000`，再下载 Release zip 并完整替换当前目录。更新或后续安装刷新失败时，会尝试从临时备份目录回滚当前插件目录。更新成功后，备份会移动到最近的 `Plugins` 祖先目录之外，例如 `<ProjectRoot>\BlueprintHelperBackups\...` 或 `<EngineRoot>\BlueprintHelperBackups\...`，避免 Unreal Editor 把备份目录当作第二个插件扫描；如果该归档位置不可写，会改用 `%LOCALAPPDATA%\BlueprintHelper\Backups\...`。
 
@@ -149,7 +149,7 @@ $json | bh context read --stdin --format full
 .\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
 ```
 
-Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.6.0`. Same-version patch releases can use tags such as `v0.6.0-fix` or `v0.6.0-hotfix1`; package manifests may remain at `0.6.0`, and the updater will prioritize applying that patch tag. Applied tags are recorded under `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` and the plugin-root `.blueprinthelper\update-state.json` fallback so the same patch release is not offered repeatedly.
+Double-click `update.cmd` to check the latest GitHub Release and update only after confirmation. The updater compares versions by GitHub Release tags such as `v0.5.4` and `v0.6.3`. Same-version patch releases can use tags such as `v0.6.3-fix` or `v0.6.3-hotfix1`; package manifests may remain at `0.6.3`, and the updater will prioritize applying that patch tag. Applied tags are recorded under `%LOCALAPPDATA%\BlueprintHelper\UpdateState\` and the plugin-root `.blueprinthelper\update-state.json` fallback so the same patch release is not offered repeatedly.
 
 Before replacing files, the updater temporarily backs up the current plugin directory next to it, for example `BlueprintHelper.backup-v0.5.3-20260520-153000`. It then downloads the Release zip and mirrors it into the current plugin directory. If the replacement or post-update refresh fails, it attempts to roll the plugin directory back from that temporary backup. After a successful update, the backup is moved outside the nearest `Plugins` ancestor, for example `<ProjectRoot>\BlueprintHelperBackups\...` or `<EngineRoot>\BlueprintHelperBackups\...`, so Unreal Editor does not scan it as a second plugin. If that archive location is not writable, the updater falls back to `%LOCALAPPDATA%\BlueprintHelper\Backups\...`.
 
@@ -175,7 +175,7 @@ BlueprintHelper 当前优先接收来自真实 Unreal Editor 项目使用过程�
 
 ## 版本同步
 
-`v0.6.0` 同步到以下层级：
+`v0.6.3` 同步到以下层级：
 
 - Unreal 插件：`BlueprintHelper/BlueprintHelper.uplugin`
 - CLI：`AgentFaceService/cli/package.json`

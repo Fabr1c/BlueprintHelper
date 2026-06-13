@@ -7,7 +7,7 @@
 #include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "Widgets/Text/SRichTextBlock.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Runtime/Launch/Resources/Version.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FString FBlueprintHelperReviewPanelGeometryUtils::NormalizeGeometrySearchText(FString Text)
 {
@@ -97,7 +97,7 @@ bool FBlueprintHelperReviewPanelGeometryUtils::TryReadWidgetText(
 	}
 	if (WidgetType == TEXT("SInlineEditableTextBlock"))
 	{
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
+#if BLUEPRINTHELPER_UE_HAS_INLINE_EDITABLE_TEXT_DIRECT_GETTEXT
 		OutText = static_cast<SInlineEditableTextBlock&>(Widget.Get()).GetText().ToString();
 		return true;
 #else

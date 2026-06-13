@@ -3,12 +3,7 @@
 #include "UI/Review/BlueprintHelperReviewStructurePresenter.h"
 
 #include "Kismet2/StructureEditorUtils.h"
-#include "Runtime/Launch/Resources/Version.h"
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
 #include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
-#else
-#include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
-#endif
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewPresenterWidgetUtils.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"

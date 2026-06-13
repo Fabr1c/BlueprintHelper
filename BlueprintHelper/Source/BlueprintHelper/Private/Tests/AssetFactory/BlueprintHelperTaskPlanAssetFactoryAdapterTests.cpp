@@ -37,13 +37,9 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeService.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
 #include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
-#include "Runtime/Launch/Resources/Version.h"
 #include "UObject/Interface.h"
 #include "UObject/SoftObjectPath.h"
 #include "WidgetBlueprint.h"
-#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6)
-#include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
-#endif
 
 class FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils
 {

@@ -347,7 +347,7 @@ FString FBlueprintHelperSettingStore::GetBuiltInDefaultSettingJson()
 {
 	return TEXT("{\n")
 		TEXT("  \"schema\": \"BlueprintHelper.Setting.v1\",\n")
-		TEXT("  \"version\": \"0.5.0\",\n")
+		TEXT("  \"version\": \"0.6.3\",\n")
 		TEXT("  \"active_profile\": \"default\",\n")
 		TEXT("  \"profiles\": { \"default\": { \"safety_profile\": \"standard\" } },\n")
 		TEXT("  \"safety\": { \"preview_required\": true, \"write_approval_required\": true, \"approval_bypass\": false },\n")
