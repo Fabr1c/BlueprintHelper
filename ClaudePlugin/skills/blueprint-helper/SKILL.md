@@ -201,4 +201,4 @@ Stop before write delegation when:
 - `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
 - `references/06_UMG_Data_Workflows.md` - UMG and data workflows
 - `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
-- `bh tools domains/list/templates` - CLI-owned tool and template selection
+- `bh tools domains --format json`, `bh tools list <domain> <kind> --format json`, `bh tools templates families --workflow preview_execute --format json`, and `bh tools templates compose ...` - CLI-owned catalog discovery and TaskSpec/ReadSpec composer selection

@@ -62,7 +62,12 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_find_assets
 bh context read --file <read-spec.json> | --stdin
-bh tools read-templates domains/clusters/targets/views/quick-access/compose
+bh tools read-templates domains --format json
+bh tools read-templates clusters --domain blueprint --format json
+bh tools read-templates targets --domain blueprint --read-cluster logic --format json
+bh tools read-templates views --domain blueprint --read-cluster logic --target-kind function --format json
+bh tools read-templates quick-access --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --format json
+bh tools read-templates compose --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status

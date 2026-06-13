@@ -13,19 +13,19 @@
 - 是否允许创建资产
 - 是否允许修改用户节点
 - 是否允许接入已有执行流
-- `validation.should_compile` 和 `validation.should_save`
+- compile/save intent selected by current CLI template/help
 
 ## Standard Flow
 
 ```text
 profile
--> read_context or read_reference_context
+-> bh context read, plus reference context capability when needed
 -> build TaskSpec
--> preview_task
+-> bh task preview
 -> repair or stop
 -> request_write_session if write_permission is disabled
--> execute_task
--> get_task_result when needed
+-> bh task execute
+-> bh task result when needed
 -> report summary
 ```
 

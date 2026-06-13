@@ -62,7 +62,12 @@ blueprinthelper_diagnostics_runtime
 blueprinthelper_read_agent_guide
 blueprinthelper_find_assets
 bh context read --file <read-spec.json> | --stdin
-bh tools read-templates domains/clusters/targets/views/quick-access/compose
+bh tools read-templates domains --format json
+bh tools read-templates clusters --domain blueprint --format json
+bh tools read-templates targets --domain blueprint --read-cluster logic --format json
+bh tools read-templates views --domain blueprint --read-cluster logic --target-kind function --format json
+bh tools read-templates quick-access --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --format json
+bh tools read-templates compose --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status
@@ -79,7 +84,7 @@ blueprinthelper_export_debug_bundle
 blueprinthelper_query_review_records
 ```
 
-`blueprint_open_editor` / `blueprint_close_editor` belong to the global MCP editor lifecycle boundary. Use them only when the Main Agent explicitly needs to start or close the target Editor. Compatibility also uses the global MCP lifecycle tools; do not route lifecycle through CLI helpers. CLI lifecycle invocation is blocked with `lifecycle_mcp_required`; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`. Ordinary reads, writes, and validation use named tools selected by the CLI catalog; TaskSpec/ReadSpec remain the main read/write chain, but they are not the only ordinary surface for compile/save.
+`blueprint_open_editor` / `blueprint_close_editor` belong to the global MCP editor lifecycle boundary. Use them only when the Main Agent explicitly needs to start or close the target Editor. Compatibility also uses the global MCP lifecycle tools; do not route lifecycle through CLI helpers. CLI lifecycle invocation is blocked as a removed command and points back to the global MCP lifecycle tool; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`. Ordinary reads, writes, and validation use named tools selected by the CLI catalog; TaskSpec/ReadSpec remain the main read/write chain, but they are not the only ordinary surface for compile/save.
 
 `blueprinthelper_apply_review_action` 只用于插件开发/内部验证，不属于普通 Agent 或 SideAgent 工具链。
 

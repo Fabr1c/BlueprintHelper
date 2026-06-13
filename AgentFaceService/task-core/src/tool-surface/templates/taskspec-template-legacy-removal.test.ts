@@ -100,6 +100,62 @@ test('Agent-facing docs do not expose internal policy fields or legacy task enve
   }
 });
 
+test('Agent-facing docs use explicit composer commands instead of slash-joined pseudo commands', () => {
+  const docs = [
+    'CodexPlugin/skills/blueprint-helper/references/00_Agent_Onboarding_Index_20260504.md',
+    'ClaudePlugin/skills/blueprint-helper/references/00_Agent_Onboarding_Index_20260504.md',
+    'CodexPlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'ClaudePlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'CodexPlugin/skills/blueprint-helper/SKILL.md',
+    'ClaudePlugin/skills/blueprint-helper/SKILL.md',
+  ];
+  const forbidden = [
+    /bh tools read-templates domains\/clusters\/targets\/views\/quick-access\/compose/,
+    /bh tools domains\/list\/templates/,
+    /bh tools templates quick-access\/compose/,
+  ];
+
+  for (const relativePath of docs) {
+    const text = fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), 'utf8');
+    for (const pattern of forbidden) {
+      assert.doesNotMatch(text, pattern, `${relativePath} still uses slash-joined composer shorthand`);
+    }
+  }
+});
+
+test('Agent-facing lifecycle guidance does not mention retired lifecycle_mcp_required code', () => {
+  const docs = [
+    'CodexPlugin/skills/blueprint-helper/references/00_Agent_Onboarding_Index_20260504.md',
+    'ClaudePlugin/skills/blueprint-helper/references/00_Agent_Onboarding_Index_20260504.md',
+    'CodexPlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'ClaudePlugin/skills/blueprint-helper/references/09_SideAgent_Tool_Execution.md',
+    'CodexPlugin/skills/blueprint-helper/SKILL.md',
+    'ClaudePlugin/skills/blueprint-helper/SKILL.md',
+    'AgentFaceService/docs/TaskSpec_CLI_QuickStart.md',
+    'AgentFaceService/docs/Install_CLI_QuickStart.md',
+  ];
+
+  for (const relativePath of docs) {
+    const text = fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), 'utf8');
+    assert.doesNotMatch(text, /lifecycle_mcp_required/, `${relativePath} still mentions lifecycle_mcp_required`);
+  }
+});
+
+test('Agent-facing write template tree does not keep orphaned bare preview or execute samples', () => {
+  const removedSamples = [
+    'AgentFaceService/agent-guide/Templates/write/task_preview_bare_taskspec_template.json',
+    'AgentFaceService/agent-guide/Templates/write/task_execute_bare_taskspec_template.json',
+  ];
+
+  for (const relativePath of removedSamples) {
+    assert.equal(
+      fs.existsSync(path.join(PLUGIN_ROOT, relativePath)),
+      false,
+      `${relativePath} should be removed; TaskSpec files are produced through bh tools templates compose`,
+    );
+  }
+});
+
 test('MCP fallback source does not advertise retired Agent-facing TaskSpec or ReadContext surfaces', () => {
   const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'AgentFaceService/mcp/src/mcp/tools/register-tools.ts'), 'utf8');
   assert.doesNotMatch(text, /Normal Agents should prefer blueprinthelper_read_context/);

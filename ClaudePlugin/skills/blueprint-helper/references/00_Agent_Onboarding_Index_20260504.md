@@ -40,7 +40,12 @@ blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
 blueprinthelper_find_assets
 bh context read --file <read-spec.json> | --stdin
-bh tools read-templates domains/clusters/targets/views/quick-access/compose
+bh tools read-templates domains --format json
+bh tools read-templates clusters --domain blueprint --format json
+bh tools read-templates targets --domain blueprint --read-cluster logic --format json
+bh tools read-templates views --domain blueprint --read-cluster logic --target-kind function --format json
+bh tools read-templates quick-access --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --format json
+bh tools read-templates compose --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 bh task preview --file <task-spec.json>
@@ -91,7 +96,7 @@ Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/ki
 5. `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`
 6. `AgentFaceService/docs/TaskSpec_CLI_QuickStart.md`
 7. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-8. Use `bh tools domains/list/templates` and `bh tools templates quick-access/compose` to build one concrete CLI input when a task requires TaskSpec or ReadSpec JSON.
+8. Use literal CLI discovery commands, not slash-joined shorthand: `bh tools domains --format json` and `bh tools list <domain> <kind> --format json` for catalog discovery; `bh tools templates families --workflow preview_execute --format json`, `bh tools templates quick-access --family graph_write --cluster generic_ops --operation let --write-mode graph.append --format json`, and `bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json` for TaskSpec template composition.
 9. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
 10. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
 11. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
