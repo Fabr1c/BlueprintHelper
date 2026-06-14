@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getNonGraphWriteTemplateFamily } from './non-graphwrite-template-metadata.js';
+import { readJsonFile } from '../../json/json-input.js';
 import { composeSlotExpressionTemplate } from './slot-expression-composer.js';
 import {
   listTaskSpecTemplateClusters,
@@ -360,7 +361,7 @@ function failed(
 }
 
 function readJson(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return readJsonFile(filePath);
 }
 
 function writeJson(filePath: string, value: unknown): void {

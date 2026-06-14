@@ -9,6 +9,7 @@ import {
   listReadContextTemplateTargets,
   listReadContextTemplateViews,
 } from './read-context-template-index.js';
+import { readJsonFile } from '../../json/json-input.js';
 import { getActiveReadContextRouteDescriptors } from './read-context-template-registry.js';
 import type {
   ComposeReadContextTemplateInput,
@@ -149,7 +150,7 @@ function failed(
 }
 
 function readJson(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return readJsonFile(filePath);
 }
 
 function writeJson(filePath: string, value: unknown): void {

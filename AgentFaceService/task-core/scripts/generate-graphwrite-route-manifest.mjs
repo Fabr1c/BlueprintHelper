@@ -60,7 +60,11 @@ if (checkOnly) {
 }
 
 function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return JSON.parse(stripJsonTextBom(fs.readFileSync(filePath, 'utf8')));
+}
+
+function stripJsonTextBom(text) {
+  return text.startsWith('\uFEFF') ? text.slice(1) : text;
 }
 
 function validateRoutes(routes) {

@@ -66,6 +66,7 @@ import {
 } from '@blueprinthelper/task-core/result/tool-result';
 import type { LocalProcessResult } from '@blueprinthelper/task-core/tool-surface/types';
 import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
+import { parseJsonText } from '@blueprinthelper/task-core/json/json-input';
 
 export interface CliRuntime {
   argv: string[];
@@ -849,7 +850,7 @@ function readPositiveEnvInt(name: string, fallback: number): number {
 function readTaskSpecInput(filePath: string): { value: unknown; io: MetricsIoSummary } {
   const text = fs.readFileSync(filePath, 'utf8');
   return {
-    value: JSON.parse(text),
+    value: parseJsonText(text),
     io: createInputIoSummary('task_file', text),
   };
 }

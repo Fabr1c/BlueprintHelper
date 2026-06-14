@@ -107,6 +107,37 @@ test('installProjectWorkflow preserves unknown project profile fields', async ()
   }
 });
 
+test('installProjectWorkflow preserves BOM-prefixed existing profile fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'bh-workflow-bom-profile-'));
+  try {
+    const profileDir = path.join(dir, '.blueprinthelper');
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, 'project-profile.json'),
+      `\uFEFF${JSON.stringify({
+        custom_root: 'keep',
+        environment: {
+          custom_environment: 'keep',
+        },
+      }, null, 2)}`,
+      'utf8',
+    );
+
+    await installProjectWorkflow({
+      projectDir: dir,
+      engineRoot: 'E:/UE_5.6',
+      ueVersion: '5.6',
+    });
+
+    const profile = JSON.parse(await readFile(path.join(profileDir, 'project-profile.json'), 'utf8'));
+    assert.equal(profile.custom_root, 'keep');
+    assert.equal(profile.environment.custom_environment, 'keep');
+    assert.equal(profile.environment.ue_engine_dir, 'E:/UE_5.6');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('removeProjectWorkflow removes managed files and marker sections only', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'bh-workflow-remove-'));
   try {

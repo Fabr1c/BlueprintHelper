@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseJsonText } from './json-input.mjs';
 
 export const PROJECT_PROFILE_RELATIVE_PATH = path.join('.blueprinthelper', 'project-profile.json');
 export const LEGACY_AGENT_PROFILE_RELATIVE_PATH = path.join('.blueprinthelper', 'agent-profile.json');
@@ -174,7 +175,7 @@ async function readJsonIfPresent(filePath) {
   if (!content.trim()) {
     return {};
   }
-  return JSON.parse(content);
+  return parseJsonText(content);
 }
 
 async function writeText(filePath, content) {

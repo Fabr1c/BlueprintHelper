@@ -41,6 +41,12 @@ test('install-prompts.mjs exposes project UBT compile selection', () => {
   assert.match(installPrompts, /if \(selectedOptions\.projectUbtCompile\) enabled\.push\('project-ubt-compile'\)/);
 });
 
+test('install-prompts.mjs uses shared install JSON helper for defaults', () => {
+  assert.match(installPrompts, /from '\.\/json-input\.mjs'/);
+  assert.match(installPrompts, /readJsonFile\(defaultsPath\)/);
+  assert.doesNotMatch(installPrompts, /\.replace\(\/\^\\uFEFF\/,\s*''\)/);
+});
+
 test('install quickstart documents default UBT compile and skip switch', () => {
   assert.match(installDocs, /-SkipProjectUbtCompile/);
   assert.match(installDocs, /-ProjectEditorTarget <TargetName>/);

@@ -34,6 +34,8 @@ bh context read (--file <read-spec.json> | --json "{...}" | --stdin) [--select f
 
 PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Avoid inline `--json $json` for non-trivial payloads because PowerShell can strip quotes before Node receives the argument.
 
+UTF-8 JSON files with a single leading BOM are accepted by current CLI readers, but UTF-8 without BOM remains preferred for portability and cleaner diffs.
+
 Named non-task tools remain available for capability discovery, diagnostics, and compact helper reads:
 
 ```powershell

@@ -87,3 +87,33 @@ test('resolveProjectEngineDir reports invalid JSON path for project-profile.json
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('resolveProjectEngineDir accepts BOM-prefixed project-profile.json', () => {
+  const dir = createProjectDir();
+  try {
+    writeFileSync(
+      path.join(dir, '.blueprinthelper', 'project-profile.json'),
+      `\uFEFF${JSON.stringify({ environment: { ue_engine_dir: 'E:/UE_5.6' } })}`,
+      'utf8',
+    );
+
+    assert.equal(resolveProjectEngineDir(path.join(dir, 'Demo.uproject'), {}), path.normalize('E:/UE_5.6'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveProjectEngineDir accepts BOM-prefixed legacy agent-profile.json', () => {
+  const dir = createProjectDir();
+  try {
+    writeFileSync(
+      path.join(dir, '.blueprinthelper', 'agent-profile.json'),
+      `\uFEFF${JSON.stringify({ environment: { ue_engine_dir: 'E:/UE_5.5' } })}`,
+      'utf8',
+    );
+
+    assert.equal(resolveProjectEngineDir(path.join(dir, 'Demo.uproject'), {}), path.normalize('E:/UE_5.5'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

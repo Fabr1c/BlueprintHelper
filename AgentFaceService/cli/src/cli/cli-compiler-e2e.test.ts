@@ -10,7 +10,7 @@ import { runCli } from './run.js';
 
 test('CLI task preview normalizes bare TaskSpec and compiles before preview_task_plan', async (t) => {
   const workspace = await createTempDir(t, 'bph-cli-e2e-preview-bare-');
-  await writeFile(path.join(workspace, 'task-spec.json'), JSON.stringify(graphWriteAppendTaskSpecFixture, null, 2));
+  await writeFile(path.join(workspace, 'task-spec.json'), `\uFEFF${JSON.stringify(graphWriteAppendTaskSpecFixture, null, 2)}`);
   const commands: string[] = [];
   const payloads: Array<Record<string, unknown>> = [];
   const stdout: string[] = [];
@@ -181,7 +181,7 @@ test('CLI context read supports stdin as the grouped ReadSpec entry', async (t) 
     argv: ['context', 'read', '--stdin', '--format', 'json'],
     cwd: workspace,
     bridge: createRecordingBridge(commands, payloads),
-    readStdin: () => JSON.stringify(graphWriteMacroBodyReadSpecFixture()),
+    readStdin: () => `\uFEFF${JSON.stringify(graphWriteMacroBodyReadSpecFixture())}`,
     stdout: (text) => stdout.push(text),
     stderr: () => {},
   }));

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { parseJsonText } from '../json/json-input.js';
 
 export interface ProjectEngineDirConfig {
   ueEngineDir?: string;
@@ -66,7 +67,7 @@ export function resolveProjectEngineDir(
   if (profilePath) {
     let profile: unknown;
     try {
-      profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+      profile = parseJsonText(fs.readFileSync(profilePath, 'utf8'));
     } catch (err) {
       throw new Error(
         JSON.stringify(

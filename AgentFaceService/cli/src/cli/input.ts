@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { MetricsIoSummary } from '@blueprinthelper/task-core/metrics/metrics-types';
+import { parseJsonText } from '@blueprinthelper/task-core/json/json-input';
 import { createInputIoSummary } from './io-stats.js';
 
 export interface CliInputOptions {
@@ -42,7 +43,7 @@ export async function readCliInputObjectWithStats(options: CliInputOptions): Pro
 
 function parseJsonInput(text: string, source: '--file' | '--json' | '--stdin'): unknown {
   try {
-    return JSON.parse(text);
+    return parseJsonText(text);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (source === '--json') {

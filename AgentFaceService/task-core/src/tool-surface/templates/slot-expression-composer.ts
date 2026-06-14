@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +5,7 @@ import {
   getAllGraphWriteSlotDescriptors,
   requireGraphWriteSlotById,
 } from '../../task/compiler/graphwrite/graphwrite-slot-registry.js';
+import { readJsonFile } from '../../json/json-input.js';
 import type { GraphWriteSlotDescriptor } from '../../task/compiler/graphwrite/graphwrite-slot-descriptor.js';
 import type { GraphWriteTemplateWriteMode } from './taskspec-template-types.js';
 import type {
@@ -255,7 +255,7 @@ function parseArrayIndex(part: string): number {
 }
 
 function readJson(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return readJsonFile(filePath);
 }
 
 function cloneJson(value: unknown): unknown {

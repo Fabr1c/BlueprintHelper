@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import process from 'node:process';
 import readline from 'node:readline';
+import { readJsonFile } from './json-input.mjs';
 
 const EXIT_CANCELLED = 20;
 const AGENT_NAMES = ['blueprint-explorer', 'sourcecode-explorer', 'task-worker'];
@@ -34,7 +35,7 @@ if (!defaultsPath || !outputPath) {
   process.exit(2);
 }
 
-const defaults = readJsonFile(defaultsPath);
+const defaults = await readJsonFile(defaultsPath);
 const options = createInstallOptions(defaults.options ?? {});
 const paths = {
   projectFile: normalizeString(defaults.paths?.projectFile),
@@ -869,10 +870,6 @@ function restoreTerminal() {
   if (supportsTerminalControl()) {
     process.stdout.write('\x1b[0m');
   }
-}
-
-function readJsonFile(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, ''));
 }
 
 function writeJsonFile(filePath, value) {

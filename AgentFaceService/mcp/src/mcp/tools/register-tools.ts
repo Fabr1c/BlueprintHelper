@@ -13,6 +13,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { BridgeClient, BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { parseJsonText } from '@blueprinthelper/task-core/json/json-input';
 import {
   McpResponseMode,
   buildBlueprintToolResult,
@@ -1015,7 +1016,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
             : undefined;
         if (profilePath) {
           try {
-            const agentProfile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+            const agentProfile = parseJsonText(fs.readFileSync(profilePath, 'utf8'));
             const environment = isRecord(agentProfile)
               ? getRecordField(agentProfile, 'environment')
               : undefined;
@@ -1127,8 +1128,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
         let mcpVersion = 'unknown';
         if (fs.existsSync(packageJsonPath)) {
           try {
-            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            mcpVersion = pkg.version ?? 'unknown';
+            const pkg = parseJsonText(fs.readFileSync(packageJsonPath, 'utf-8'));
+            mcpVersion = isRecord(pkg) && typeof pkg.version === 'string' ? pkg.version : 'unknown';
             report.info.push({ code: 'version.match' });
           } catch {
             report.warnings.push({ code: 'version.invalid' });

@@ -134,6 +134,8 @@ See [TaskSpec_CLI_QuickStart.md](TaskSpec_CLI_QuickStart.md) for command syntax 
 
 PowerShell-safe input rule: use `--file` for reusable JSON and `--stdin` for generated JSON. Avoid inline `--json $json` for non-trivial payloads because PowerShell can strip quotes before Node receives the argument.
 
+Current BlueprintHelper JSON readers tolerate one leading UTF-8 BOM on input. The installer still writes project profile JSON as UTF-8 without BOM.
+
 Generated ReadSpec JSON can be piped through the grouped command:
 
 ```powershell

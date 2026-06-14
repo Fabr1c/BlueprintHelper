@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readJsonFile } from '@blueprinthelper/task-core/json/json-input';
 
 export function resolveArtifactRoot(input: { cwd: string; cliDir?: string }): string {
   return input.cliDir
@@ -91,7 +92,7 @@ function mergeJsonFileIfExists(filePath: string, target: Record<string, unknown>
   }
 
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const parsed: unknown = readJsonFile(filePath);
     if (isRecord(parsed)) {
       deepMerge(target, parsed);
     }
