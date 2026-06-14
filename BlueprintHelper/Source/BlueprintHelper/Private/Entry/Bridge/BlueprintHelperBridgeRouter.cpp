@@ -1706,12 +1706,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSaveAsset(
 	if (!SaveResult.bSuccess)
 	{
 		FBlueprintHelperToolError Err;
-		Err.Code = TEXT("save_failed");
+		Err.Code = SaveResult.ErrorCode.IsEmpty() ? TEXT("save_failed") : SaveResult.ErrorCode;
 		Err.Stage = EBlueprintHelperToolStage::Execute;
 		Err.Message = SaveResult.ErrorMessage;
 		Err.bRetryable = true;
 		FBlueprintHelperToolResultBase Fail = FBlueprintHelperToolResultBuilder::Failure(TEXT("save_asset"), TraceId, Err);
 		Fail.CustomTargetJson = Tgt;
+		if (SaveResult.SourceControlJson.IsValid())
+		{
+			Fail.Data = MakeShared<FJsonObject>();
+			Fail.Data->SetObjectField(TEXT("source_control_gate"), SaveResult.SourceControlJson.ToSharedRef());
+		}
 		FBlueprintHelperDebugEntryEventInput DebugInput;
 		DebugInput.SourceLayer = TEXT("debug");
 		DebugInput.Source = TEXT("save_failure");

@@ -558,7 +558,7 @@ test('execute task promotes unique preview blocker code and keeps signature diff
   ]);
 });
 
-test('execute task blocks before write when source-control checkout is required', async () => {
+test('execute task auto-checks out before write when source-control checkout is required', async () => {
   const calls: string[] = [];
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
@@ -582,6 +582,12 @@ test('execute task blocks before write when source-control checkout is required'
           },
         } as BridgeResponse;
       }
+      if (command === 'source_control_checkout') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return executeBridgeResponse();
+      }
       throw new Error(`Unexpected command ${command}.`);
     },
   };
@@ -595,9 +601,8 @@ test('execute task blocks before write when source-control checkout is required'
 
   const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
 
-  assert.equal(result.ok, false);
-  assert.equal(result.error?.code, 'checkout_required');
-  assert.deepEqual(calls, ['preview_task_plan', 'source_control_status']);
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ['preview_task_plan', 'source_control_status', 'source_control_checkout', 'execute_task_plan']);
 });
 
 test('preview task records metrics with task identity and extracted operation', async () => {
@@ -755,7 +760,7 @@ test('execute task with preview token preserves context_stale refresh action', a
   assert.equal(errorRecord['agent_action'], 'refresh_context_and_preview');
 });
 
-test('execute task with preview token blocks before write when source-control checkout is required', async () => {
+test('execute task with preview token auto-checks out before write when source-control checkout is required', async () => {
   const calls: string[] = [];
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
@@ -776,6 +781,12 @@ test('execute task with preview token blocks before write when source-control ch
           },
         } as BridgeResponse;
       }
+      if (command === 'source_control_checkout') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return executeBridgeResponse();
+      }
       throw new Error(`Unexpected command ${command}.`);
     },
   };
@@ -793,9 +804,8 @@ test('execute task with preview token blocks before write when source-control ch
     { previewToken: '0123456789abcdef0123456789abcdef' },
   );
 
-  assert.equal(result.ok, false);
-  assert.equal(result.error?.code, 'checkout_required');
-  assert.deepEqual(calls, ['source_control_status']);
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ['source_control_status', 'source_control_checkout', 'execute_task_plan']);
 });
 
 test('execute task with preview token preserves context_stale from failed UE ToolResult', async () => {

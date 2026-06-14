@@ -18,6 +18,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperEditorCloseSafetyGateResult
 class BLUEPRINTHELPER_API FBlueprintHelperEditorCloseSafetyGate
 {
 public:
+	bool ShouldAttemptAutoCheckout(const FBlueprintHelperSourceControlResult& SourceControlResult) const;
+
 	FBlueprintHelperEditorCloseSafetyGateResult EvaluateDirtyPackageStatus(
 		const FBlueprintHelperSourceControlResult& SourceControlResult) const;
 };

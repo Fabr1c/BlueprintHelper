@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 
 struct FAssetData;
 
@@ -32,7 +33,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperAssetInfo
 struct BLUEPRINTHELPER_API FBlueprintHelperSaveResult
 {
 	bool bSuccess = false;
+	FString ErrorCode;
 	FString ErrorMessage;
+	TSharedPtr<FJsonObject> SourceControlJson;
 };
 
 /**

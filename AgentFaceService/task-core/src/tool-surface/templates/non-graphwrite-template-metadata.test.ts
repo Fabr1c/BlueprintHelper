@@ -8,8 +8,10 @@ import {
   listNonGraphWriteTemplateClusters,
   listNonGraphWriteTemplateOperations,
   listNonGraphWriteTemplateQuickAccess,
+  listNonGraphWriteValidationClassificationDescriptors,
   NON_GRAPHWRITE_TEMPLATE_FAMILIES,
 } from './non-graphwrite-template-metadata.js';
+import { NON_GRAPHWRITE_OPERATION_DESCRIPTORS } from './non-graphwrite-operation-metadata.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
@@ -107,6 +109,39 @@ test('dedicated non-GraphWrite families expose operation quick-access templates'
   })[0];
   assert.equal(appendMaterialBlock?.template_id, 'material_graph.material_graph.append_block');
   assert.deepEqual(appendMaterialBlock?.insert_paths, ['behavior.entries[]']);
+});
+
+test('non-GraphWrite operations declare preview execute validation classification', () => {
+  const allowedClassifications = new Set(['preview_decidable', 'runtime_only', 'shared_policy']);
+  for (const descriptor of NON_GRAPHWRITE_OPERATION_DESCRIPTORS) {
+    assert.equal(
+      allowedClassifications.has(descriptor.validation_classification),
+      true,
+      `${descriptor.template_id} validation classification`,
+    );
+  }
+
+  const validationDescriptors = listNonGraphWriteValidationClassificationDescriptors();
+  assert.equal(validationDescriptors.length, NON_GRAPHWRITE_OPERATION_DESCRIPTORS.length);
+  assert.deepEqual(
+    new Set(validationDescriptors.map((descriptor) => descriptor.template_id)),
+    new Set(NON_GRAPHWRITE_OPERATION_DESCRIPTORS.map((descriptor) => descriptor.template_id)),
+  );
+
+  const ensureFunction = listNonGraphWriteTemplateOperations({
+    family: 'blueprint_signature',
+    cluster: 'signature',
+    writeMode: 'signature.edit',
+  }).find((operation) => operation.operation_id === 'ensure_function');
+  assert.equal(ensureFunction?.validation_classification, 'shared_policy');
+
+  const ensureFunctionQuickAccess = listNonGraphWriteTemplateQuickAccess({
+    family: 'blueprint_signature',
+    cluster: 'signature',
+    operation: 'ensure_function',
+    writeMode: 'signature.edit',
+  })[0];
+  assert.equal(ensureFunctionQuickAccess?.validation_classification, 'shared_policy');
 });
 
 test('blueprint_variables exposes variable cluster operations and quick-access templates', () => {

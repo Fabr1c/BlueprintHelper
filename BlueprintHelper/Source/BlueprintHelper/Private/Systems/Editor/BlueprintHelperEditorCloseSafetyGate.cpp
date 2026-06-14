@@ -15,6 +15,24 @@ TSharedRef<FJsonObject> FBlueprintHelperEditorCloseSafetyGateResult::ToJson() co
 	return Json;
 }
 
+bool FBlueprintHelperEditorCloseSafetyGate::ShouldAttemptAutoCheckout(
+	const FBlueprintHelperSourceControlResult& SourceControlResult) const
+{
+	if (SourceControlResult.Status == TEXT("checkout_required"))
+	{
+		return true;
+	}
+
+	for (const FBlueprintHelperSourceControlFileState& File : SourceControlResult.Files)
+	{
+		if (File.Status == TEXT("checkout_required") && File.bCanCheckOut)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 FBlueprintHelperEditorCloseSafetyGateResult FBlueprintHelperEditorCloseSafetyGate::EvaluateDirtyPackageStatus(
 	const FBlueprintHelperSourceControlResult& SourceControlResult) const
 {

@@ -39,6 +39,7 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
   for (const descriptor of UMG_WIDGET_OPERATION_MANIFEST) {
     assert.equal(umgHeader.includes(`TEXT("${descriptor.bridge_command}")`), true, `UE UMG manifest contains ${descriptor.bridge_command}`);
     assert.equal(umgHeader.includes(`TEXT("${descriptor.kind}")`), true, `UE UMG manifest contains ${descriptor.kind}`);
+    assert.equal(descriptor.validation_classification, 'shared_policy', `${descriptor.kind} validation classification`);
   }
   const rootRemovalDescriptor = UMG_WIDGET_OPERATION_MANIFEST.find(
     (descriptor) => descriptor.kind === 'remove_root_widget',
@@ -92,13 +93,17 @@ test('UMG TaskSpec contract and template metadata are descriptor-backed', () => 
   }).items.map((entry) => entry.operation_id).sort();
   assert.deepEqual(operations, operationKinds);
 
-  const quickAccess = listTaskSpecTemplateQuickAccess({
+  const quickAccessItems = listTaskSpecTemplateQuickAccess({
     family: 'umg_widget',
     cluster: 'widget_tree',
     operation: '',
     writeMode: 'widget.edit',
-  }).items.map((entry) => entry.operation_id).sort();
+  }).items;
+  const quickAccess = quickAccessItems.map((entry) => entry.operation_id).sort();
   assert.deepEqual(quickAccess, operationKinds);
+  for (const entry of quickAccessItems) {
+    assert.equal(entry.validation_classification, 'shared_policy', `${entry.operation_id} quick-access validation classification`);
+  }
 });
 
 test('ReadContext active descriptors, generated manifest, capabilities and command route refs agree', () => {

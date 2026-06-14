@@ -200,7 +200,7 @@ export function createTaskSpecRunner(input: {
         const sourceControlGate = await runSourceControlWriteGate(
           bridge,
           targetAssetPathsFromTaskPlan(taskPlan),
-          { autoCheckout: false },
+          { autoCheckout: true },
         );
         if (!sourceControlGate.ok) {
           return await recordAndReturn(sourceControlGateFailure(sourceControlGate, 'task_plan.target_assets'), taskPlan);
@@ -807,7 +807,7 @@ function extractDevelopPreviewDiagnostics(
 ): Record<string, unknown> {
   const result = asRecord(resp.result);
   const data = asRecord(result?.['data']);
-  const runtimeOnlyValidation = collectGraphWriteRuntimeOnlyValidation(taskPlan);
+  const runtimeOnlyValidation = collectWriteRuntimeOnlyValidation(taskPlan);
   const diagnostics: Record<string, unknown> = {};
   if (runtimeOnlyValidation.length > 0) {
     diagnostics['runtime_only_validation'] = runtimeOnlyValidation;
@@ -832,7 +832,7 @@ function extractDevelopPreviewDiagnostics(
   return diagnostics;
 }
 
-function collectGraphWriteRuntimeOnlyValidation(taskPlan: TaskPlan | undefined): Array<Record<string, unknown>> {
+function collectWriteRuntimeOnlyValidation(taskPlan: TaskPlan | undefined): Array<Record<string, unknown>> {
   const seenRouteIds = new Set<string>();
   const runtimeOnlyRoutes: GraphWriteRouteDescriptor[] = [];
   for (const step of taskPlan?.steps ?? []) {
@@ -901,7 +901,7 @@ async function executeTaskWithPreviewToken(
   const sourceControlGate = await runSourceControlWriteGate(
     bridge,
     targetAssetPathsFromTaskSpec(taskSpec),
-    { autoCheckout: false },
+    { autoCheckout: true },
   );
   if (!sourceControlGate.ok) {
     return attachTaskTiming(sourceControlGateFailure(sourceControlGate, 'target.asset_path'), timing);

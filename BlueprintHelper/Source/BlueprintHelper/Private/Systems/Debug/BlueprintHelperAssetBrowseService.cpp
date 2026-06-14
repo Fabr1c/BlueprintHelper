@@ -6,9 +6,11 @@
 #include "Blueprint/BlueprintSupport.h"
 #include "Editor.h"
 #include "FileHelpers.h"
+#include "SourceControlHelpers.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/Package.h"
 #include "Systems/Debug/Utils/BlueprintHelperDebugUtils.h"
+#include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperAssetBrowse, Log, All);
 
@@ -108,6 +110,26 @@ FBlueprintHelperSaveResult FBlueprintHelperAssetBrowseService::SaveAsset(const F
 	{
 		Result.ErrorMessage = TEXT("无法获取 Package。");
 		return Result;
+	}
+
+	const FString PackageFilename = USourceControlHelpers::PackageFilename(Package);
+	if (!PackageFilename.IsEmpty())
+	{
+		const FBlueprintHelperSourceControlService SourceControlService;
+		const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.Checkout(
+			MakeArrayView(&PackageFilename, 1),
+			/*bUpdateStatus=*/ true);
+		Result.SourceControlJson = SourceControlResult.ToJson();
+		if (!SourceControlResult.bSuccess || SourceControlResult.BlocksAgentEdit())
+		{
+			Result.ErrorCode = !SourceControlResult.ErrorCode.IsEmpty()
+				? SourceControlResult.ErrorCode
+				: (!SourceControlResult.Status.IsEmpty() ? SourceControlResult.Status : TEXT("source_control_checkout_failed"));
+			Result.ErrorMessage = !SourceControlResult.AgentMessage.IsEmpty()
+				? SourceControlResult.AgentMessage
+				: TEXT("Source-control checkout failed before saving asset.");
+			return Result;
+		}
 	}
 
 	TArray<UPackage*> Packages;

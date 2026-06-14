@@ -15,13 +15,20 @@ FString FBlueprintHelperSignatureTestFixtures::MakeSignatureServiceTestObjectNam
 
 UBlueprint* FBlueprintHelperSignatureTestFixtures::MakeSignatureServiceActorBlueprint(const FString& Prefix)
 {
+	return MakeSignatureServiceBlueprint(Prefix, AActor::StaticClass());
+}
+
+UBlueprint* FBlueprintHelperSignatureTestFixtures::MakeSignatureServiceBlueprint(
+	const FString& Prefix,
+	UClass* ParentClass)
+{
 	UPackage* Package = CreatePackage(*FString::Printf(
 		TEXT("/Game/BlueprintHelperSignature/%s"),
 		*MakeSignatureServiceTestObjectName(Prefix)));
 	Package->SetDirtyFlag(false);
 
 	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
-		AActor::StaticClass(),
+		ParentClass ? ParentClass : AActor::StaticClass(),
 		Package,
 		*MakeSignatureServiceTestObjectName(TEXT("BP_SignatureService")),
 		BPTYPE_Normal,

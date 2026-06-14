@@ -1,5 +1,8 @@
 import type { NonGraphWriteTemplateFamilyMetadata } from './taskspec-template-types.js';
-import { NON_GRAPHWRITE_OPERATION_DESCRIPTORS } from './non-graphwrite-operation-metadata.js';
+import {
+  NON_GRAPHWRITE_OPERATION_DESCRIPTORS,
+  type NonGraphWriteOperationDescriptor,
+} from './non-graphwrite-operation-metadata.js';
 import { UMG_WIDGET_OPERATION_MANIFEST } from './generated/umg-widget-operation-manifest.generated.js';
 import type {
   TaskSpecTemplateClusterItem,
@@ -163,6 +166,8 @@ export function listNonGraphWriteTemplateOperations(input: {
       cluster_id: descriptor.cluster_id,
       operation_id: descriptor.operation_id,
       description: descriptor.description,
+      validation_classification: descriptor.validation_classification,
+      runtime_only_validation_notes: descriptor.runtime_only_validation_notes ? [...descriptor.runtime_only_validation_notes] : undefined,
     }));
   }
   if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
@@ -173,6 +178,8 @@ export function listNonGraphWriteTemplateOperations(input: {
     cluster_id: 'widget_tree',
     operation_id: descriptor.kind,
     description: describeUmgWidgetOperation(descriptor.kind),
+    validation_classification: descriptor.validation_classification,
+    runtime_only_validation_notes: runtimeOnlyValidationNotes(descriptor),
   }));
 }
 
@@ -206,6 +213,8 @@ export function listNonGraphWriteTemplateQuickAccess(input: {
       template_path: descriptor.template_path,
       insert_paths: [...descriptor.insert_paths],
       unsupported_write_modes: [],
+      validation_classification: descriptor.validation_classification,
+      runtime_only_validation_notes: descriptor.runtime_only_validation_notes ? [...descriptor.runtime_only_validation_notes] : undefined,
     }));
   }
   if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
@@ -226,7 +235,23 @@ export function listNonGraphWriteTemplateQuickAccess(input: {
       template_path: 'AgentFaceService/agent-guide/Templates/write/routes/umg_widget_edit_template.json',
       insert_paths: ['behavior.changes[]'],
       unsupported_write_modes: [],
+      validation_classification: descriptor.validation_classification,
+      runtime_only_validation_notes: runtimeOnlyValidationNotes(descriptor),
     }));
+}
+
+export function listNonGraphWriteValidationClassificationDescriptors(): readonly NonGraphWriteOperationDescriptor[] {
+  return NON_GRAPHWRITE_OPERATION_DESCRIPTORS;
+}
+
+function runtimeOnlyValidationNotes(
+  descriptor: object,
+): string[] | undefined {
+  if (!('runtime_only_validation_notes' in descriptor)) {
+    return undefined;
+  }
+  const notes = descriptor.runtime_only_validation_notes;
+  return Array.isArray(notes) ? notes.filter((note): note is string => typeof note === 'string') : undefined;
 }
 
 function describeNonGraphWriteCluster(clusterId: string): string {

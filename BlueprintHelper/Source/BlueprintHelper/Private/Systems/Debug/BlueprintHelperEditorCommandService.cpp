@@ -271,8 +271,12 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 		if (!DirtyPackageInputs.IsEmpty())
 		{
 			const FBlueprintHelperSourceControlService SourceControlService;
-			const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.QueryStatus(DirtyPackageInputs, /*bUpdateStatus=*/ true);
 			const FBlueprintHelperEditorCloseSafetyGate CloseSafetyGate;
+			FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.QueryStatus(DirtyPackageInputs, /*bUpdateStatus=*/ true);
+			if (CloseSafetyGate.ShouldAttemptAutoCheckout(SourceControlResult))
+			{
+				SourceControlResult = SourceControlService.Checkout(DirtyPackageInputs, /*bUpdateStatus=*/ true);
+			}
 			const FBlueprintHelperEditorCloseSafetyGateResult CloseSafetyGateResult = CloseSafetyGate.EvaluateDirtyPackageStatus(SourceControlResult);
 			if (!CloseSafetyGateResult.bCanProceed)
 			{

@@ -106,6 +106,8 @@ export function listGraphWriteTemplateOperations(input: {
         cluster_id: item.cluster_id,
         operation_id: item.operation_id,
         description: describeOperation(item.operation_id),
+        validation_classification: item.validation_classification,
+        runtime_only_validation_notes: item.runtime_only_validation_notes,
       })),
     (item) => item.operation_id,
   ).sort((a, b) => a.operation_id.localeCompare(b.operation_id));
@@ -160,6 +162,8 @@ function listGraphWriteRouteQuickAccessItems(
         template_path: route.template_path,
         insert_paths: [...route.insert_paths],
         unsupported_write_modes: [],
+        validation_classification: route.validation_classification ?? 'shared_policy',
+        runtime_only_validation_notes: route.runtime_only_validation_notes,
       };
     });
 }
@@ -191,6 +195,8 @@ function toQuickAccessItems(
     template_path: slot.template_path,
     insert_paths: slot.slot_type === 'expression' ? [...slot.insert_paths] : [entry.insertPath],
     unsupported_write_modes: [...(quickAccess.unsupported_write_modes ?? [])],
+    validation_classification: entry.route.validation_classification ?? 'shared_policy',
+    runtime_only_validation_notes: entry.route.runtime_only_validation_notes,
   })));
 }
 

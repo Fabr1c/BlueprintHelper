@@ -45,6 +45,38 @@ bool FBlueprintHelperEditorCloseSafetyGateBlocksCheckoutRequiredTest::RunTest(co
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEditorCloseSafetyGateAutoCheckoutRequiredTest,
+	"BlueprintHelper.Editor.CloseSafetyGate.AutoCheckoutRequired",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEditorCloseSafetyGateAutoCheckoutRequiredTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSourceControlResult SourceControl;
+	SourceControl.bSuccess = true;
+	SourceControl.Status = TEXT("editable");
+
+	FBlueprintHelperSourceControlFileState EditableFile;
+	EditableFile.Status = TEXT("editable");
+	EditableFile.bCanEdit = true;
+	SourceControl.Files.Add(EditableFile);
+
+	FBlueprintHelperSourceControlFileState CheckoutFile;
+	CheckoutFile.Status = TEXT("checkout_required");
+	CheckoutFile.bCanEdit = false;
+	CheckoutFile.bCanCheckOut = true;
+	SourceControl.Files.Add(CheckoutFile);
+
+	const FBlueprintHelperEditorCloseSafetyGate Gate;
+	TestTrue(TEXT("checkout-required files request auto checkout"), Gate.ShouldAttemptAutoCheckout(SourceControl));
+
+	CheckoutFile.Status = TEXT("checked_out_by_other");
+	CheckoutFile.bCanCheckOut = false;
+	SourceControl.Files[1] = CheckoutFile;
+	TestFalse(TEXT("checked-out-by-other files do not request auto checkout"), Gate.ShouldAttemptAutoCheckout(SourceControl));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperEditorCloseSafetyGateAllowsEditablePackagesTest,
 	"BlueprintHelper.Editor.CloseSafetyGate.AllowsEditablePackages",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

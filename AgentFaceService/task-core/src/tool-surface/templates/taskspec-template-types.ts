@@ -36,6 +36,11 @@ export type TaskSpecTemplateWriteMode =
   | GraphWriteTemplateWriteMode
   | NonGraphWriteTemplateWriteMode;
 
+export type WriteValidationClassification =
+  | 'preview_decidable'
+  | 'runtime_only'
+  | 'shared_policy';
+
 export interface TaskSpecTemplateDiagnostic {
   code: string;
   family?: string;
@@ -73,6 +78,8 @@ export interface TaskSpecTemplateOperationItem {
   cluster_id: string;
   operation_id: string;
   description: string;
+  validation_classification: WriteValidationClassification;
+  runtime_only_validation_notes?: string[];
 }
 
 export interface TaskSpecTemplateQuickAccessItem {
@@ -88,6 +95,8 @@ export interface TaskSpecTemplateQuickAccessItem {
   template_path: string;
   insert_paths: string[];
   unsupported_write_modes: TaskSpecTemplateWriteMode[];
+  validation_classification: WriteValidationClassification;
+  runtime_only_validation_notes?: string[];
 }
 
 export interface TaskSpecTemplateFamiliesResult {

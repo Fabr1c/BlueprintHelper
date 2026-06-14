@@ -261,6 +261,13 @@ public:
 			CandidateJson->SetStringField(TEXT("function_name"), Candidate.FunctionName.ToString());
 			CandidateJson->SetStringField(TEXT("display_name"), Candidate.DisplayName);
 			CandidateJson->SetStringField(TEXT("owner_class_path"), Candidate.OwnerClassPath);
+			CandidateJson->SetStringField(TEXT("candidate_source"), Candidate.CandidateSource);
+			TArray<TSharedPtr<FJsonValue>> AliasValues;
+			for (const FString& Alias : Candidate.MatchAliases)
+			{
+				AliasValues.Add(MakeShared<FJsonValueString>(Alias));
+			}
+			CandidateJson->SetArrayField(TEXT("match_aliases"), AliasValues);
 			CandidateJson->SetBoolField(TEXT("placeable_as_event"), Candidate.bPlaceableAsEvent);
 			CandidateValues.Add(MakeShared<FJsonValueObject>(CandidateJson));
 		}

@@ -1,3 +1,5 @@
+import type { WriteValidationClassification } from './taskspec-template-types.js';
+
 export type UmgWidgetOperationStatus = 'active';
 
 export type UmgWidgetTaskPlanStrategy =
@@ -22,6 +24,8 @@ export interface UmgWidgetOperationDescriptor {
   readonly review_target_subkind: string;
   readonly readback_view: 'tree_json' | 'property_json';
   readonly planned_preview_effect: UmgWidgetPlannedPreviewEffect;
+  readonly validation_classification: WriteValidationClassification;
+  readonly runtime_only_validation_notes?: readonly string[];
   readonly status: UmgWidgetOperationStatus;
 }
 
@@ -36,6 +40,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_tree_add',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -48,6 +53,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_property',
     readback_view: 'property_json',
     planned_preview_effect: 'widget_property',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -60,6 +66,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_tree_remove',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -72,6 +79,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_tree_move',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -84,6 +92,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'named_slot_content',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -96,6 +105,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'slot_property',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_property',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -108,6 +118,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_variable',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_metadata',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -120,6 +131,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_rename',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -135,6 +147,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'root_widget_removal',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -147,6 +160,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_blueprint_reparent',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_blueprint_class',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -159,6 +173,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_subtree_duplicate',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -171,6 +186,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_wrap',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
   {
@@ -183,6 +199,7 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     review_target_subkind: 'widget_class_replace',
     readback_view: 'tree_json',
     planned_preview_effect: 'widget_tree_structural',
+    validation_classification: 'shared_policy',
     status: 'active',
   },
 ] as const satisfies readonly UmgWidgetOperationDescriptor[];

@@ -1,6 +1,7 @@
 import type {
   NonGraphWriteFamily,
   NonGraphWriteTemplateWriteMode,
+  WriteValidationClassification,
 } from './taskspec-template-types.js';
 
 export interface NonGraphWriteOperationDescriptor {
@@ -14,6 +15,8 @@ export interface NonGraphWriteOperationDescriptor {
   readonly template_path: string;
   readonly insert_paths: readonly string[];
   readonly arg_slots: readonly string[];
+  readonly validation_classification: WriteValidationClassification;
+  readonly runtime_only_validation_notes?: readonly string[];
 }
 
 export const NON_GRAPHWRITE_OPERATION_DESCRIPTORS: readonly NonGraphWriteOperationDescriptor[] = [
@@ -66,5 +69,6 @@ function op(
     template_path: `AgentFaceService/agent-guide/Templates/write/slots/${sourceSlotId}_template.json`,
     insert_paths: [...insertPaths],
     arg_slots: [...argSlots],
+    validation_classification: 'shared_policy',
   };
 }

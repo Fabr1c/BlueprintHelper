@@ -104,6 +104,7 @@ function validateDescriptors(descriptors) {
       'review_target_subkind',
       'readback_view',
       'planned_preview_effect',
+      'validation_classification',
       'status',
     ]) {
       if (typeof descriptor[field] !== 'string' || descriptor[field].length === 0) {
@@ -129,6 +130,9 @@ function validateDescriptors(descriptors) {
     }
     if (!['widget_tree_structural', 'widget_property', 'widget_metadata', 'widget_blueprint_class'].includes(descriptor.planned_preview_effect)) {
       throw new Error(`UMG widget operation ${descriptor.kind} has invalid planned_preview_effect: ${descriptor.planned_preview_effect}`);
+    }
+    if (!['preview_decidable', 'runtime_only', 'shared_policy'].includes(descriptor.validation_classification)) {
+      throw new Error(`UMG widget operation ${descriptor.kind} has invalid validation_classification: ${descriptor.validation_classification}`);
     }
     for (const arrayField of ['required_fields', 'optional_fields']) {
       if (!Array.isArray(descriptor[arrayField]) || descriptor[arrayField].some((entry) => typeof entry !== 'string' || entry.length === 0)) {
