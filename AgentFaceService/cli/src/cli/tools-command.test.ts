@@ -261,6 +261,40 @@ test('runCli composes supported non-GraphWrite base TaskSpec without template id
   assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).task_type, 'edit_data_table');
 });
 
+test('CLI exposes blueprint_variables cluster and quick-access discovery', async () => {
+  const clusters = await runCliJson([
+    'tools',
+    'templates',
+    'clusters',
+    '--family',
+    'blueprint_variables',
+    '--format',
+    'json',
+  ]);
+  assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.cluster_id === 'variables'), true);
+
+  const quickAccess = await runCliJson([
+    'tools',
+    'templates',
+    'quick-access',
+    '--family',
+    'blueprint_variables',
+    '--cluster',
+    'variables',
+    '--operation',
+    'ensure_member_variable',
+    '--write-mode',
+    'variables.edit',
+    '--format',
+    'json',
+  ]);
+  assert.equal(
+    quickAccess.output.items.some((item: Record<string, unknown>) =>
+      item.template_id === 'blueprint_variables.variables.ensure_member_variable'),
+    true,
+  );
+});
+
 test('runCli exposes ReadContext template four-layer index and compose output', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-read-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));

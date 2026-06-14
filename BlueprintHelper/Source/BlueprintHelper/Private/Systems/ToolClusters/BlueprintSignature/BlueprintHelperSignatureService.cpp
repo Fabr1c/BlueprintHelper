@@ -13,6 +13,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
+#include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperOverrideEventResolver.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureReferenceContextUtils.h"
 #include "K2Node_CustomEvent.h"
@@ -230,6 +231,63 @@ public:
 			InnerResult && InnerResult->IsValid())
 		{
 			(*InnerResult)->SetStringField(FieldName, Value);
+		}
+	}
+
+	static void AttachRemoveSignatureGuidance(
+		const TSharedPtr<FJsonObject>& Data,
+		const FString& CurrentBlockingReason)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		TSharedRef<FJsonObject> Guidance = MakeShared<FJsonObject>();
+		Guidance->SetStringField(TEXT("required_reference_scope"), TEXT("function_or_signature"));
+		Guidance->SetStringField(TEXT("supported_execute_policy"), TEXT("execute_if_unreferenced"));
+		Guidance->SetStringField(TEXT("current_blocking_reason"), CurrentBlockingReason);
+		Guidance->SetStringField(TEXT("next_read_command"), TEXT("blueprinthelper_read_reference_context"));
+		Data->SetObjectField(TEXT("signature_remove_guidance"), Guidance);
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> MakeOverrideEventCandidateJsonArray(
+		const TArray<FBlueprintHelperOverrideEventCandidate>& Candidates)
+	{
+		TArray<TSharedPtr<FJsonValue>> CandidateValues;
+		for (const FBlueprintHelperOverrideEventCandidate& Candidate : Candidates)
+		{
+			TSharedRef<FJsonObject> CandidateJson = MakeShared<FJsonObject>();
+			CandidateJson->SetStringField(TEXT("function_name"), Candidate.FunctionName.ToString());
+			CandidateJson->SetStringField(TEXT("display_name"), Candidate.DisplayName);
+			CandidateJson->SetStringField(TEXT("owner_class_path"), Candidate.OwnerClassPath);
+			CandidateJson->SetBoolField(TEXT("placeable_as_event"), Candidate.bPlaceableAsEvent);
+			CandidateValues.Add(MakeShared<FJsonValueObject>(CandidateJson));
+		}
+		return CandidateValues;
+	}
+
+	static void AttachOverrideEventCandidates(
+		const TSharedPtr<FJsonObject>& Data,
+		const TArray<FBlueprintHelperOverrideEventCandidate>& Candidates)
+	{
+		if (!Data.IsValid())
+		{
+			return;
+		}
+
+		Data->SetArrayField(
+			TEXT("override_event_candidates"),
+			MakeOverrideEventCandidateJsonArray(Candidates));
+
+		const TSharedPtr<FJsonObject>* InnerResult = nullptr;
+		if (Data->TryGetObjectField(TEXT("override_event_result"), InnerResult) &&
+			InnerResult &&
+			InnerResult->IsValid())
+		{
+			(*InnerResult)->SetArrayField(
+				TEXT("candidates"),
+				MakeOverrideEventCandidateJsonArray(Candidates));
 		}
 	}
 
@@ -946,6 +1004,8 @@ public:
 		Difference->SetObjectField(TEXT("expected"), Expected ? PinTypeToJson(*Expected) : MakeShared<FJsonObject>());
 		Difference->SetObjectField(TEXT("actual"), Actual ? PinTypeToJson(*Actual) : MakeShared<FJsonObject>());
 		Difference->SetStringField(TEXT("reason"), Reason);
+		Difference->SetBoolField(TEXT("safe_migration_available"), false);
+		Difference->SetStringField(TEXT("recommended_policy"), TEXT("manual_signature_migration_required"));
 		Diff.Differences.Add(MakeShared<FJsonValueObject>(Difference));
 		Diff.bMatches = false;
 	}
@@ -1353,40 +1413,6 @@ public:
 		return OwnershipService.WriteNodeOwnership(Blueprint, EventNode, BlockId, EventName, OutError);
 	}
 
-	static FName ResolveNativeOrOverrideEventName(const FString& InEventName)
-	{
-		const FString Lower = InEventName.ToLower();
-		if (Lower == TEXT("beginplay") || Lower == TEXT("receivebeginplay"))
-		{
-			return FName(TEXT("ReceiveBeginPlay"));
-		}
-		if (Lower == TEXT("tick") || Lower == TEXT("receivetick"))
-		{
-			return FName(TEXT("ReceiveTick"));
-		}
-		if (Lower == TEXT("endplay") || Lower == TEXT("receiveendplay"))
-		{
-			return FName(TEXT("ReceiveEndPlay"));
-		}
-		if (Lower == TEXT("anydamage") || Lower == TEXT("receiveanydamage"))
-		{
-			return FName(TEXT("ReceiveAnyDamage"));
-		}
-		if (Lower == TEXT("actorbeginoverlap") || Lower == TEXT("receiveactorbeginoverlap"))
-		{
-			return FName(TEXT("ReceiveActorBeginOverlap"));
-		}
-		if (Lower == TEXT("actorendoverlap") || Lower == TEXT("receiveactorendoverlap"))
-		{
-			return FName(TEXT("ReceiveActorEndOverlap"));
-		}
-		if (Lower == TEXT("actorhit") || Lower == TEXT("receivehit") || Lower == TEXT("hit"))
-		{
-			return FName(TEXT("ReceiveHit"));
-		}
-		return FName(*InEventName);
-	}
-
 	static UFunction* ResolveNativeOrOverrideEventDeclarationFunction(UFunction* EventFunction)
 	{
 		while (EventFunction && EventFunction->GetSuperFunction())
@@ -1652,6 +1678,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureFunction(
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("function_result"), TEXT("signature_matches"), false);
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_path"), Request.InterfacePath);
 			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("interface_entry_kind"), Request.InterfaceEntryKind);
+			FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("function_result"), TEXT("signature_mismatch_policy"), Request.SignatureMismatchPolicy);
 			Result.Data->SetArrayField(TEXT("signature_differences"), Diff.Differences);
 			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 			return Result;
@@ -2293,6 +2320,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			TEXT("invalid_signature_payload"),
 			TEXT("remove_signature requires asset_path, signature_kind, and signature_name."),
 			TEXT("remove_signature"));
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("invalid_signature_payload"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2312,6 +2340,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			TEXT("remove_signature execute_policy must be blocked_preflight or execute_if_unreferenced."),
 			TEXT("execute_policy"));
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("invalid_signature_remove_policy"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2331,6 +2360,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			TEXT("remove_signature require_reference_context must be true in this slice."),
 			TEXT("require_reference_context"));
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), false);
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("invalid_signature_remove_policy"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2355,6 +2385,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			TEXT("signature_remove_unsupported_kind"),
 			TEXT("remove_signature supports function, interface_function, custom_event, interface_event, event_dispatcher, override_event, and native_event policies."),
 			TEXT("signature_kind"));
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("signature_remove_unsupported_kind"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2374,6 +2405,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			TEXT("target_blueprint_not_found"),
 			ListError,
 			TEXT("asset_path"));
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("target_blueprint_not_found"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2394,6 +2426,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 				TEXT("invalid_signature_payload"),
 				TEXT("remove_signature custom_event/interface_event requires graph_name."),
 				TEXT("graph_name"));
+			FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("invalid_signature_payload"));
 			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 			return Result;
 		}
@@ -2423,6 +2456,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 				ValidationCode,
 				ValidationMessage,
 				ValidationField);
+			FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, ValidationCode);
 			Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 			return Result;
 		}
@@ -2447,6 +2481,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
 		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextHint(Result.Data, Request);
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, ExecutePolicy);
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2474,6 +2509,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 			ReferenceContextError,
 			TEXT("reference_context"));
 		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextHint(Result.Data, Request);
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("signature_reference_context_failed"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -2497,6 +2533,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::RemoveSignature
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("remove_signature_result"), TEXT("execute_policy"), ExecutePolicy);
 		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("remove_signature_result"), TEXT("requires_reference_context"), Request.bRequireReferenceContext);
 		FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(Result.Data, Request, ReferenceContext);
+		FBlueprintHelperSignatureServiceLocalUtils::AttachRemoveSignatureGuidance(Result.Data, TEXT("signature_remove_blocked_by_references"));
 		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
 		return Result;
 	}
@@ -3032,7 +3069,35 @@ FBlueprintHelperToolResultBase FBlueprintHelperSignatureService::EnsureOverrideE
 		return Result;
 	}
 
-	const FName ResolvedEventName = FBlueprintHelperSignatureServiceLocalUtils::ResolveNativeOrOverrideEventName(Request.EventName);
+	FBlueprintHelperOverrideEventResolver EventResolver;
+	const FBlueprintHelperOverrideEventResolveResult ResolveResult = EventResolver.Resolve(Blueprint, Request.EventName);
+	if (!ResolveResult.bResolved)
+	{
+		FBlueprintHelperToolResultBase Result = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureFailure(
+			TEXT("ensure_override_event"),
+			ResolveResult.bAmbiguous ? TEXT("override_event_ambiguous") : TEXT("override_event_function_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			ResolveResult.Message,
+			TEXT("event_name"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetOverrideEventTarget(Result, Request);
+		Result.Data = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureBlockedData(
+			Request.bDryRun,
+			ResolveResult.bAmbiguous ? TEXT("override_event_ambiguous") : TEXT("override_event_function_not_found"),
+			ResolveResult.Message,
+			TEXT("event_name"),
+			TEXT("override_event_result"));
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("event_kind"), EventKind);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("execute_policy"), ExecutePolicy);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("graph_name"), GraphName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultString(Result.Data, TEXT("override_event_result"), TEXT("requested_event_name"), Request.EventName);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultBool(Result.Data, TEXT("override_event_result"), TEXT("ambiguous"), ResolveResult.bAmbiguous);
+		FBlueprintHelperSignatureServiceLocalUtils::SetSignatureResultNumber(Result.Data, TEXT("override_event_result"), TEXT("candidate_count"), ResolveResult.Candidates.Num());
+		FBlueprintHelperSignatureServiceLocalUtils::AttachOverrideEventCandidates(Result.Data, ResolveResult.Candidates);
+		Result.Validation = FBlueprintHelperSignatureServiceLocalUtils::MakeSignatureValidation(false, false);
+		return Result;
+	}
+
+	const FName ResolvedEventName = ResolveResult.ResolvedEventName;
 	UFunction* EventFunction = nullptr;
 	UClass* const SignatureClass = FBlueprintEditorUtils::GetOverrideFunctionClass(
 		Blueprint,

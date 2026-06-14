@@ -141,7 +141,7 @@ function makeObjectPropertiesTaskSpec(): TaskSpec {
   } as TaskSpec;
 }
 
-function makeReplaceFunctionBodyTaskSpec(): TaskSpec {
+function makeReplaceFunctionBodyTaskSpec(returnStatement?: Record<string, unknown>): TaskSpec {
   return {
     ...graphWriteReplaceTaskSpecFixture,
     behavior: {
@@ -154,11 +154,12 @@ function makeReplaceFunctionBodyTaskSpec(): TaskSpec {
         },
         body: {
           schema: 'BlueprintLogicSpec.v1',
-          statements: [{
+          statements: [returnStatement ?? {
             kind: 'control',
             control: 'return',
-            values: {
-              ReturnValue: { kind: 'literal', value_type: 'number', value: 1 },
+            outputs: {
+              bCompleted: { kind: 'get', target: 'bCompleted' },
+              bIsNewRecord: { kind: 'get', target: 'bIsNewRecord' },
             },
           }],
         },

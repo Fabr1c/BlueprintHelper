@@ -1609,11 +1609,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleApplyReviewAc
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprint(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
-	FBlueprintHelperGraphTarget Target;
-	if (Req.Payload.IsValid())
+	FString TargetBlueprintPath;
+	if (!Req.Payload.IsValid() || !Req.Payload->TryGetStringField(TEXT("target_blueprint"), TargetBlueprintPath) || TargetBlueprintPath.IsEmpty())
 	{
-		Req.Payload->TryGetStringField(TEXT("target_blueprint"), Target.BlueprintPath);
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("compile_blueprint requires target_blueprint."));
 	}
+
+	FBlueprintHelperGraphTarget Target;
+	Target.BlueprintPath = TargetBlueprintPath;
 
 	FBlueprintHelperCompileResult CompileResult = CompileService.Compile(Target);
 
@@ -2280,13 +2286,20 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
 		if (Result.Data.IsValid())
 		{
-			Resp.Result = MakeShared<FJsonObject>();
-			Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
-			if (!Result.Message.IsEmpty())
+			if (Result.Data->HasField(TEXT("source_control_gate")))
 			{
-				Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+				Resp.Result = Result.Data;
 			}
-			Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+			else
+			{
+				Resp.Result = MakeShared<FJsonObject>();
+				Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
+				if (!Result.Message.IsEmpty())
+				{
+					Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+				}
+				Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+			}
 		}
 		return Resp;
 	}

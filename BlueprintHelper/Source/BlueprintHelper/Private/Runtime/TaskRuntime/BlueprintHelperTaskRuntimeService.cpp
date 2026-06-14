@@ -6340,6 +6340,10 @@ public:
 			Request.AssetPath = AssetPath;
 			Request.FunctionName = FunctionName;
 			Request.NameCollisionPolicy = NameCollisionPolicy;
+			if (!SignatureMismatchPolicy.IsEmpty())
+			{
+				Request.SignatureMismatchPolicy = SignatureMismatchPolicy;
+			}
 			Request.bDryRun = bDryRun;
 			Request.bIsPure = bIsPure;
 			if (Payload.IsValid())

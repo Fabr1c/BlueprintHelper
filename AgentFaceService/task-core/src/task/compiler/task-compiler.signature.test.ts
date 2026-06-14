@@ -44,6 +44,19 @@ test('edit_blueprint_signature lowers typed function inputs and outputs', () => 
   assert.deepEqual(op.outputs, [{ name: 'FinalScore', pin_type: { category: 'int' } }]);
 });
 
+test('ensure_function preserves signature mismatch policy for UE structured differences', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSignatureSpec([{
+    kind: 'ensure_function',
+    function_name: 'ComputeScore',
+    inputs: [{ name: 'BaseScore', pin_type: { category: 'int' } }],
+    outputs: [{ name: 'FinalScore', pin_type: { category: 'int' } }],
+    signature_mismatch_policy: 'block',
+  }]) as never);
+
+  const op = (((plan.steps[0] as Record<string, unknown>).write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0];
+  assert.equal(op.signature_mismatch_policy, 'block');
+});
+
 test('edit_blueprint_signature rejects legacy string pin_type', () => {
   assert.throws(
     () => compileTaskSpecToTaskPlan(makeSignatureSpec([{
@@ -85,4 +98,17 @@ test('remove_signature defaults require_reference_context to true', () => {
 
   const op = (((plan.steps[0] as Record<string, unknown>).write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0];
   assert.equal(op.require_reference_context, true);
+});
+
+test('remove_signature lowers reference guidance policy fields', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSignatureSpec([{
+    kind: 'remove_signature',
+    signature_kind: 'function',
+    signature_name: 'ComputeScore',
+    execute_policy: 'execute_if_unreferenced',
+  }]) as never);
+
+  const op = (((plan.steps[0] as Record<string, unknown>).write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0];
+  assert.equal(op.require_reference_context, true);
+  assert.equal(op.execute_policy, 'execute_if_unreferenced');
 });

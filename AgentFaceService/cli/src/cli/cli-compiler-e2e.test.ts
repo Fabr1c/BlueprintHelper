@@ -119,9 +119,10 @@ test('CLI task execute previews then sends execute_task_plan to mocked Bridge', 
   const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(commands, ['preview_task_plan', 'execute_task_plan']);
+  assert.deepEqual(commands, ['preview_task_plan', 'source_control_status', 'execute_task_plan']);
   assertTaskPlanPayload(payloads[0]);
-  assertTaskPlanPayload(payloads[1]);
+  assertSourceControlStatusPayload(payloads[1]);
+  assertTaskPlanPayload(payloads[2]);
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'task.execute');
   assert.equal(JSON.stringify(output).includes('bridge_result'), false);
@@ -158,11 +159,12 @@ test('CLI graph body adapter loop previews, executes, then reads context', async
   }));
   assert.equal(exitRead, 0);
 
-  assert.deepEqual(commands, ['preview_task_plan', 'execute_task_plan', 'read_blueprint_logic_json']);
+  assert.deepEqual(commands, ['preview_task_plan', 'source_control_status', 'execute_task_plan', 'read_blueprint_logic_json']);
   assertGraphBodyReplacePayload(payloads[0], 'macro_body');
-  assertGraphBodyReplacePayload(payloads[1], 'macro_body');
-  assert.equal(payloads[2]?.['target_type'], 'graph');
-  assert.equal(payloads[2]?.['graph'], 'ClampScoreMacro');
+  assertSourceControlStatusPayload(payloads[1]);
+  assertGraphBodyReplacePayload(payloads[2], 'macro_body');
+  assert.equal(payloads[3]?.['target_type'], 'graph');
+  assert.equal(payloads[3]?.['graph'], 'ClampScoreMacro');
   const serializedOutput = stdout.join('');
   assert.match(serializedOutput, /LogicFlow\.v1/);
   assert.match(serializedOutput, /k2\.macro_body/);
@@ -301,6 +303,9 @@ function createRecordingBridge(
       if (command === 'preview_task_plan') {
         return previewResponse();
       }
+      if (command === 'source_control_status') {
+        return sourceControlEditableResponse();
+      }
       if (command === 'execute_task_plan') {
         return executeResponse();
       }
@@ -318,6 +323,12 @@ function createFailingBridge() {
       throw new Error(`Bridge should not be contacted for ${command}.`);
     },
   };
+}
+
+function assertSourceControlStatusPayload(payload: Record<string, unknown> | undefined): asserts payload is Record<string, unknown> {
+  assert.ok(payload);
+  assert.ok(Array.isArray(payload['asset_paths']));
+  assert.notEqual((payload['asset_paths'] as unknown[]).length, 0);
 }
 
 function previewResponse(): BridgeResponse {
@@ -340,6 +351,25 @@ function previewResponse(): BridgeResponse {
           conflicts: [],
           warnings: [],
         },
+      },
+    },
+  };
+}
+
+function sourceControlEditableResponse(): BridgeResponse {
+  return {
+    success: true,
+    request_id: 'p7_source_control_request',
+    result: {
+      source_control: {
+        status: 'editable',
+        files: [
+          {
+            asset_path: '/Game/Blueprints/BP_StoneGate',
+            status: 'editable',
+            editable: true,
+          },
+        ],
       },
     },
   };

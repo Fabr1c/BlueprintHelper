@@ -68,6 +68,10 @@ test('executeTask propagates modified state from Bridge execution result', async
         };
       }
 
+      if (command === 'source_control_status') {
+        return makeEditableSourceControlResponse('/Game/BP/BP_Door');
+      }
+
       if (command === 'execute_task_plan') {
         return {
           success: true,
@@ -249,6 +253,9 @@ test('executeTask with matching preview token reuses cached TaskPlan without a s
         if (command === 'preview_task_plan') {
           return makePreviewBridgeResponse();
         }
+        if (command === 'source_control_status') {
+          return makeEditableSourceControlResponse('/Game/BP/BP_Door');
+        }
         if (command === 'execute_task_plan') {
           executePayload = payload;
           return makeExecuteBridgeResponse('task_matching_preview_token');
@@ -259,12 +266,12 @@ test('executeTask with matching preview token reuses cached TaskPlan without a s
     taskCompiler: async () => makeCompilerResult(taskPlan),
   });
 
-  const taskSpec = {} as TaskSpec;
+  const taskSpec = makeGraphWriteTaskSpec();
   const preview = await runner.previewTask(taskSpec);
   const result = await runner.executeTask(taskSpec, undefined, { previewToken: preview.previewToken });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(calls, ['preview_task_plan', 'execute_task_plan']);
+  assert.deepEqual(calls, ['preview_task_plan', 'source_control_status', 'execute_task_plan']);
   assert.equal(executePayload?.preview_token, preview.previewToken);
   assert.equal(Object.hasOwn(executePayload ?? {}, 'task_plan'), false);
 });
@@ -329,6 +336,9 @@ test('executeTask develop timing records preview token validation without TaskSp
         if (command === 'preview_task_plan') {
           return makePreviewBridgeResponse();
         }
+        if (command === 'source_control_status') {
+          return makeEditableSourceControlResponse('/Game/BP/BP_Door');
+        }
         if (command === 'execute_task_plan') {
           return makeExecuteBridgeResponse('task_preview_token_timing');
         }
@@ -338,7 +348,7 @@ test('executeTask develop timing records preview token validation without TaskSp
     taskCompiler: async () => makeCompilerResult(taskPlan),
   });
 
-  const taskSpec = {} as TaskSpec;
+  const taskSpec = makeGraphWriteTaskSpec();
   const preview = await runner.previewTask(taskSpec);
   const timing = startTaskTiming(true, 'execute_task');
   const result = await runner.executeTask(taskSpec, timing, { previewToken: preview.previewToken });
@@ -346,7 +356,7 @@ test('executeTask develop timing records preview token validation without TaskSp
   const stageNames = (resultTiming.stages as Array<Record<string, unknown>>).map((stage) => stage.name);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(calls, ['preview_task_plan', 'execute_task_plan']);
+  assert.deepEqual(calls, ['preview_task_plan', 'source_control_status', 'execute_task_plan']);
   assert.equal(stageNames.includes('preview_token.validate'), true);
   assert.equal(stageNames.includes('taskspec_compile'), false);
 });
@@ -505,6 +515,19 @@ function makeExecuteBridgeResponse(taskRunId: string): BridgeResponse {
             },
           },
         ],
+      },
+    },
+  };
+}
+
+function makeEditableSourceControlResponse(assetPath: string): BridgeResponse {
+  return {
+    success: true,
+    request_id: 'source_control_status_editable',
+    result: {
+      source_control: {
+        status: 'editable',
+        files: [{ asset_path: assetPath, status: 'editable', editable: true }],
       },
     },
   };

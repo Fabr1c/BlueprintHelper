@@ -134,6 +134,7 @@ export function makeGraphWriteTaskPlanSteps(
     };
     return graphWriteOps.map((op, index) => ({
       step_id: `step_${String(index + 1).padStart(3, '0')}`,
+      ...graphWriteRouteIdFieldForOp(strategy, op),
       capability: 'graph_write',
       target: {
         asset_path: taskSpec.target.asset_path,
@@ -237,6 +238,50 @@ function targetGraphForGraphWriteOp(taskSpec: TaskSpec, op: GraphWriteCompiledOp
   }
 
   return taskSpec.scope_policy.graph_name;
+}
+
+function graphWriteRouteIdFieldForOp(strategy: string, op: GraphWriteCompiledOp): Record<string, string> {
+  const publicScope = graphWritePublicScopeForOp(strategy, op);
+  if (!publicScope) {
+    return {};
+  }
+
+  const route = getGraphWriteRouteByScope(strategy, publicScope);
+  return route ? { route_id: route.route_id } : {};
+}
+
+function graphWritePublicScopeForOp(strategy: string, op: GraphWriteCompiledOp): string | undefined {
+  if (strategy === 'merge_external_flow') {
+    return typeof op.insert_strategy === 'string' ? op.insert_strategy : undefined;
+  }
+  if (strategy === 'patch_external_graph') {
+    return typeof op.patch_scope === 'string' ? op.patch_scope : undefined;
+  }
+  if (strategy === 'patch_external_links') {
+    return externalLinkPatchPublicScopeForOp(op);
+  }
+  if (strategy === 'replace_external_body') {
+    return 'body';
+  }
+
+  return undefined;
+}
+
+function externalLinkPatchPublicScopeForOp(op: GraphWriteCompiledOp): string | undefined {
+  if (typeof op.patch_scope === 'string') {
+    return op.patch_scope;
+  }
+
+  switch (op.op) {
+    case 'connect_external_pins':
+      return 'connect_pins';
+    case 'disconnect_external_link':
+      return 'disconnect_link';
+    case 'replace_external_link':
+      return 'replace_link';
+    default:
+      return undefined;
+  }
 }
 
 function withSignatureEvidence(op: GraphWriteCompiledOp): GraphWriteCompiledOp {

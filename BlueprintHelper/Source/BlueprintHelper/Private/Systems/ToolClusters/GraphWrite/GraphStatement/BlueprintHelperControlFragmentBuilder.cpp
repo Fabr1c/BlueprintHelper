@@ -22,6 +22,10 @@ static UK2Node_FunctionResult* BlueprintHelperFindReusableFunctionResultNode(
 	{
 		return nullptr;
 	}
+	if (Statement.Args.Num() > 0)
+	{
+		return nullptr;
+	}
 
 	UK2Node_FunctionResult* FirstResultNode = nullptr;
 	UK2Node_FunctionResult* FirstResultNodeWithDataInput = nullptr;

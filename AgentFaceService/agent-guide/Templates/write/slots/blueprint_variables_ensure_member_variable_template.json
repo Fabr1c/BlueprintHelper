@@ -1,0 +1,9 @@
+{
+  "kind": "ensure_member_variable",
+  "name": "__REQUIRED_VARIABLE_NAME__",
+  "pin_type": {
+    "category": "__REQUIRED_PIN_CATEGORY__",
+    "subcategory": "__OPTIONAL_PIN_SUBCATEGORY__"
+  },
+  "default": "__OPTIONAL_DEFAULT_VALUE__"
+}

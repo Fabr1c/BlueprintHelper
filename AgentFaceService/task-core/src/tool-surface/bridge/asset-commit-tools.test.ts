@@ -40,7 +40,7 @@ function makeContext(): BlueprintHelperToolContext & {
   };
 }
 
-test('compile blueprint schema accepts explicit target and empty compatibility payload', () => {
+test('compile blueprint schema requires explicit target_blueprint', () => {
   const schema = bridgeToolSchemas['blueprint_compile_blueprint'];
   assert.ok(schema, 'blueprint_compile_blueprint schema must be registered');
 
@@ -49,7 +49,13 @@ test('compile blueprint schema accepts explicit target and empty compatibility p
   }), {
     target_blueprint: '/Game/BlueprintHelper/E2E/BP_SaveCompileSmoke.BP_SaveCompileSmoke',
   });
-  assert.deepEqual(schema.parse({}), {});
+  assert.throws(() => schema.parse({}), /target_blueprint/u);
+  assert.throws(() => schema.parse({
+    asset_path: '/Game/BlueprintHelper/E2E/BP_SaveCompileSmoke.BP_SaveCompileSmoke',
+  }), /target_blueprint|unrecognized/u);
+  assert.throws(() => schema.parse({
+    blueprint_path: '/Game/BlueprintHelper/E2E/BP_SaveCompileSmoke.BP_SaveCompileSmoke',
+  }), /target_blueprint|unrecognized/u);
 });
 
 test('compile and save asset tools are available through the shared Bridge tool source', () => {

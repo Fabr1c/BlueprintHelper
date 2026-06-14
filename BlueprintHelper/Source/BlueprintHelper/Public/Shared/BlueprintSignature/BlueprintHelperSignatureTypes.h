@@ -12,6 +12,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperEnsureFunctionSignatureRequest
 	FString InterfacePath;
 	FString InterfaceEntryKind = TEXT("function");
 	FString NameCollisionPolicy = TEXT("reuse_if_exists");
+	FString SignatureMismatchPolicy = TEXT("block");
 	TArray<TSharedPtr<FJsonValue>> Inputs;
 	TArray<TSharedPtr<FJsonValue>> Outputs;
 	bool bDryRun = false;

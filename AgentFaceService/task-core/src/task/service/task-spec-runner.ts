@@ -18,6 +18,8 @@ import {
   createTaskSpecCompiler,
   type TaskCompiler,
 } from '../compiler/task-compiler-service.js';
+import type { GraphWriteRouteDescriptor } from '../compiler/graphwrite/graphwrite-route-descriptor.js';
+import { getGraphWriteRouteById } from '../compiler/graphwrite/graphwrite-route-registry.js';
 import {
   TASK_PREVIEW_SCHEMA,
   type TaskIssue,
@@ -58,6 +60,8 @@ import {
   createTaskPlanHash,
   createTaskSpecHash,
 } from './task-plan-hash.js';
+import { classifyEditorBlockedError } from './editor-blocked-recovery.js';
+import { runSourceControlWriteGate } from './source-control-write-gate.js';
 
 export type { TaskPreviewToken } from '../schema/task-schemas.js';
 export type { TaskCompiler } from '../compiler/task-compiler-service.js';
@@ -193,6 +197,14 @@ export function createTaskSpecRunner(input: {
           ));
         }
         const taskPlan = preview.taskPlan;
+        const sourceControlGate = await runSourceControlWriteGate(
+          bridge,
+          targetAssetPathsFromTaskPlan(taskPlan),
+          { autoCheckout: false },
+        );
+        if (!sourceControlGate.ok) {
+          return await recordAndReturn(sourceControlGateFailure(sourceControlGate, 'task_plan.target_assets'), taskPlan);
+        }
 
         const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
           task_plan: taskPlan,
@@ -602,6 +614,17 @@ function buildTaskPlanToolTarget(
   };
 }
 
+function targetAssetPathsFromTaskPlan(taskPlan: TaskPlan): string[] {
+  return taskPlan.target_assets
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function targetAssetPathsFromTaskSpec(taskSpec: TaskSpec): string[] {
+  const assetPath = readTaskSpecAssetPath(taskSpec)?.trim();
+  return assetPath ? [assetPath] : [];
+}
+
 function inferToolTargetTypeFromTaskPlan(taskPlan: TaskPlan): TargetType | undefined {
   for (const step of taskPlan.steps) {
     const write = asRecord((step as Record<string, unknown>)['write']);
@@ -702,7 +725,7 @@ async function runPreviewTaskFromPlan(
       blocked: true,
       task_plan: summarizeTaskPlan(taskPlan),
       issues: failure.issues,
-      ...extractDevelopPreviewDiagnostics(previewResponse, timing),
+      ...extractDevelopPreviewDiagnostics(previewResponse, timing, taskPlan),
     };
 
     return {
@@ -744,7 +767,7 @@ async function runPreviewTaskFromPlan(
         task_plan: summarizeTaskPlan(taskPlan),
         issues,
         ...assistanceData,
-        ...extractDevelopPreviewDiagnostics(previewResponse, timing),
+        ...extractDevelopPreviewDiagnostics(previewResponse, timing, taskPlan),
       },
     }),
   };
@@ -780,20 +803,25 @@ function collectPreviewAssistanceData(issues: TaskIssue[]): Record<string, unkno
 function extractDevelopPreviewDiagnostics(
   resp: BridgeResponse,
   timing?: TaskTimingTrace,
+  taskPlan?: TaskPlan,
 ): Record<string, unknown> {
-  if (!hasTaskTiming(timing)) {
-    return {};
-  }
-
   const result = asRecord(resp.result);
   const data = asRecord(result?.['data']);
-  if (!result) {
-    return {};
+  const runtimeOnlyValidation = collectGraphWriteRuntimeOnlyValidation(taskPlan);
+  const diagnostics: Record<string, unknown> = {};
+  if (runtimeOnlyValidation.length > 0) {
+    diagnostics['runtime_only_validation'] = runtimeOnlyValidation;
   }
 
-  const diagnostics: Record<string, unknown> = {
-    ue_preview_result: result,
-  };
+  if (!hasTaskTiming(timing)) {
+    return diagnostics;
+  }
+
+  if (!result) {
+    return diagnostics;
+  }
+
+  diagnostics['ue_preview_result'] = result;
 
   for (const key of ['dry_run', 'call_function_resolution_cache', 'runtime_facts', 'cache_diagnostics', 'graph_write_execution_stats']) {
     if (data && Object.hasOwn(data, key)) {
@@ -802,6 +830,29 @@ function extractDevelopPreviewDiagnostics(
   }
 
   return diagnostics;
+}
+
+function collectGraphWriteRuntimeOnlyValidation(taskPlan: TaskPlan | undefined): Array<Record<string, unknown>> {
+  const seenRouteIds = new Set<string>();
+  const runtimeOnlyRoutes: GraphWriteRouteDescriptor[] = [];
+  for (const step of taskPlan?.steps ?? []) {
+    const stepRecord = asRecord(step);
+    const routeId = typeof stepRecord?.['route_id'] === 'string' ? stepRecord['route_id'] : undefined;
+    if (!routeId || seenRouteIds.has(routeId)) {
+      continue;
+    }
+    seenRouteIds.add(routeId);
+    const route = getGraphWriteRouteById(routeId);
+    if (route?.validation_classification === 'runtime_only') {
+      runtimeOnlyRoutes.push(route);
+    }
+  }
+
+  return runtimeOnlyRoutes.map((route) => ({
+    route_id: route.route_id,
+    validation_classification: route.validation_classification,
+    runtime_only_validation_notes: route.runtime_only_validation_notes ?? [],
+  }));
 }
 
 function extractDevelopExecuteDiagnostics(
@@ -846,6 +897,15 @@ async function executeTaskWithPreviewToken(
     }
     return createTaskSpecHash(taskSpec);
   });
+
+  const sourceControlGate = await runSourceControlWriteGate(
+    bridge,
+    targetAssetPathsFromTaskSpec(taskSpec),
+    { autoCheckout: false },
+  );
+  if (!sourceControlGate.ok) {
+    return attachTaskTiming(sourceControlGateFailure(sourceControlGate, 'target.asset_path'), timing);
+  }
 
   const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
     preview_token: previewToken,
@@ -957,6 +1017,25 @@ function referenceContextToolResult(response: BridgeResponse, assetPath: string)
 }
 
 function taskErrorFromUnknown(operation: string, err: unknown): ToolResultBase {
+  if (operation === 'execute_task') {
+    const editorBlocked = classifyEditorBlockedError(err);
+    if (editorBlocked.code !== 'task_internal_error') {
+      const failure = taskFailure(
+        operation,
+        editorBlocked.code,
+        editorBlocked.category,
+        editorBlocked.recommended_action,
+        [],
+        { stage: 'bridge' },
+      );
+      failure.data = {
+        ...(asRecord(failure.data) ?? {}),
+        editor_blocked_recovery: editorBlocked,
+      };
+      return failure;
+    }
+  }
+
   if (err instanceof DryRunModeNoneRequiresPreviewTokenError) {
     return taskFailure(
       operation,
@@ -1045,6 +1124,39 @@ function taskFailure(
   } as ToolResultError;
 
   return failureResult(operation, toolError);
+}
+
+function sourceControlGateFailure(
+  sourceControlGate: {
+    readonly code?: string;
+    readonly message: string;
+    readonly data?: Record<string, unknown>;
+  },
+  issuePath: string,
+): ToolResultBase {
+  const sourceControlGateError: Partial<ToolResultError> & { agent_action: string } = {
+    stage: 'preflight',
+    retryable: true,
+    agent_action: 'checkout_assets_and_retry',
+  };
+  const code = sourceControlGate.code ?? 'source_control_gate_failed';
+  const failure = taskFailure(
+    'execute_task',
+    code,
+    'source_control',
+    sourceControlGate.message,
+    [{
+      code,
+      path: issuePath,
+      message: sourceControlGate.message,
+    }],
+    sourceControlGateError,
+  );
+  failure.data = {
+    ...(asRecord(failure.data) ?? {}),
+    source_control_gate: sourceControlGate.data ?? {},
+  };
+  return failure;
 }
 
 function bridgeFailureFromResponse(

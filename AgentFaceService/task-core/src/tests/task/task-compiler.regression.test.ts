@@ -1327,7 +1327,7 @@ describe('TaskSpec GraphWrite Append compiler', () => {
                     },
                   ],
                   else: [
-                    { kind: 'control', control: 'return' },
+                    { kind: 'control', control: 'return', outputs: {} },
                   ],
                 },
               ],

@@ -80,6 +80,30 @@ function createRunnerForPreviewResponse(response: BridgeResponse) {
   });
 }
 
+function createRuntimeOnlyRoutePreviewRunner(response: BridgeResponse = previewBridgeResponse) {
+  const taskPlan: TaskPlan = {
+    ...graphWriteAppendExpectedTaskPlanFixture,
+    steps: graphWriteAppendExpectedTaskPlanFixture.steps.map((step) => (
+      step.step_id === 'step_002'
+        ? { ...step, route_id: 'graph.merge_external_flow.insert_between' }
+        : step
+    )),
+  };
+  const bridge: TaskRunnerBridge = {
+    async sendCommand() {
+      return response;
+    },
+  };
+
+  return createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan,
+      strategyId: 'canonical_ts',
+    }),
+  });
+}
+
 function createMissingEvidencePreviewStep() {
   return {
     step_id: 'step_003',
@@ -190,6 +214,23 @@ test('preview task includes cache diagnostics when develop timing is enabled', a
       },
     ],
   });
+});
+
+test('preview task surfaces runtime-only validation notes for merge external routes', async () => {
+  const runner = createRuntimeOnlyRoutePreviewRunner();
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+
+  assert.deepEqual(result.toolResult.data?.['runtime_only_validation'], [
+    {
+      route_id: 'graph.merge_external_flow.insert_between',
+      validation_classification: 'runtime_only',
+      runtime_only_validation_notes: [
+        'UE schema connection may reject links during execute.',
+        'insert_between requires exactly one successor and exactly one open inserted body exec output.',
+      ],
+    },
+  ]);
+  assert.equal(JSON.stringify(result.toolResult).includes('ue_preview_result'), false);
 });
 
 test('preview task reports TaskSpec compile failures as structured preview blockers', async () => {
@@ -517,6 +558,48 @@ test('execute task promotes unique preview blocker code and keeps signature diff
   ]);
 });
 
+test('execute task blocks before write when source-control checkout is required', async () => {
+  const calls: string[] = [];
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      calls.push(command);
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'source_control_status') {
+        return {
+          success: true,
+          request_id: 'source_control_status_checkout_required',
+          result: {
+            source_control: {
+              status: 'checkout_required',
+              files: [{
+                asset_path: graphWriteAppendExpectedTaskPlanFixture.target_assets[0],
+                status: 'checkout_required',
+                editable: false,
+              }],
+            },
+          },
+        } as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'checkout_required');
+  assert.deepEqual(calls, ['preview_task_plan', 'source_control_status']);
+});
+
 test('preview task records metrics with task identity and extracted operation', async () => {
   const events: MetricsEvent[] = [];
   const runner = createTaskSpecRunner({
@@ -592,6 +675,9 @@ test('execute task records pending_confirmation when success has no validation/r
       if (command === 'preview_task_plan') {
         return previewBridgeResponse;
       }
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteReplaceExpectedTaskPlanFixture.target_assets[0]);
+      }
       if (command === 'execute_task_plan') {
         return executeBridgeResponse();
       }
@@ -626,18 +712,23 @@ test('execute task records pending_confirmation when success has no validation/r
 test('execute task with preview token preserves context_stale refresh action', async () => {
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
-      assert.equal(command, 'execute_task_plan');
-      return {
-        success: false,
-        request_id: 'context_stale_request',
-        error: {
-          code: 'context_stale',
-          message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
-          field: 'preview_token.context_revision',
-          retryable: true,
-          agent_action: 'refresh_context_and_preview',
-        },
-      } as unknown as BridgeResponse;
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return {
+          success: false,
+          request_id: 'context_stale_request',
+          error: {
+            code: 'context_stale',
+            message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+            field: 'preview_token.context_revision',
+            retryable: true,
+            agent_action: 'refresh_context_and_preview',
+          },
+        } as unknown as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
     },
   };
 
@@ -664,34 +755,82 @@ test('execute task with preview token preserves context_stale refresh action', a
   assert.equal(errorRecord['agent_action'], 'refresh_context_and_preview');
 });
 
+test('execute task with preview token blocks before write when source-control checkout is required', async () => {
+  const calls: string[] = [];
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      calls.push(command);
+      if (command === 'source_control_status') {
+        return {
+          success: true,
+          request_id: 'source_control_status_preview_token_checkout_required',
+          result: {
+            source_control: {
+              status: 'checkout_required',
+              files: [{
+                asset_path: graphWriteAppendExpectedTaskPlanFixture.target_assets[0],
+                status: 'checkout_required',
+                editable: false,
+              }],
+            },
+          },
+        } as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(
+    graphWriteAppendTaskSpecFixture,
+    undefined,
+    { previewToken: '0123456789abcdef0123456789abcdef' },
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'checkout_required');
+  assert.deepEqual(calls, ['source_control_status']);
+});
+
 test('execute task with preview token preserves context_stale from failed UE ToolResult', async () => {
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
-      assert.equal(command, 'execute_task_plan');
-      return {
-        success: true,
-        request_id: 'context_stale_tool_result_request',
-        result: {
-          ok: false,
-          operation: 'execute_task_plan',
-          status: 'failed',
-          modified: false,
-          error: {
-            code: 'execution_failed',
-            message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
-            field: 'bridge.execute_task_plan',
-            retryable: false,
-            agent_action: 'refresh_context_and_preview',
-            issues: [
-              {
-                code: 'context_stale',
-                path: 'preview_token.context_revision',
-                message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
-              },
-            ],
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return {
+          success: true,
+          request_id: 'context_stale_tool_result_request',
+          result: {
+            ok: false,
+            operation: 'execute_task_plan',
+            status: 'failed',
+            modified: false,
+            error: {
+              code: 'execution_failed',
+              message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+              field: 'bridge.execute_task_plan',
+              retryable: false,
+              agent_action: 'refresh_context_and_preview',
+              issues: [
+                {
+                  code: 'context_stale',
+                  path: 'preview_token.context_revision',
+                  message: 'Target Blueprint or graph structure changed after preview; run preview_task again.',
+                },
+              ],
+            },
           },
-        },
-      } as unknown as BridgeResponse;
+        } as unknown as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
     },
   };
 
@@ -721,32 +860,37 @@ test('execute task with preview token preserves context_stale from failed UE Too
 test('execute task with preview token preserves signature differences from failed UE ToolResult data', async () => {
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
-      assert.equal(command, 'execute_task_plan');
-      return {
-        success: true,
-        request_id: 'signature_mismatch_execute_tool_result_request',
-        result: {
-          ok: false,
-          operation: 'ensure_function',
-          status: 'failed',
-          modified: false,
-          error: {
-            code: 'function_signature_mismatch',
-            message: 'Function signature mismatch: ComputeScore.',
-            field: 'inputs',
-            retryable: false,
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return {
+          success: true,
+          request_id: 'signature_mismatch_execute_tool_result_request',
+          result: {
+            ok: false,
+            operation: 'ensure_function',
+            status: 'failed',
+            modified: false,
+            error: {
+              code: 'function_signature_mismatch',
+              message: 'Function signature mismatch: ComputeScore.',
+              field: 'inputs',
+              retryable: false,
+            },
+            data: {
+              signature_differences: [
+                {
+                  path: 'inputs[0].pin_type.category',
+                  expected: 'float',
+                  actual: 'int',
+                },
+              ],
+            },
           },
-          data: {
-            signature_differences: [
-              {
-                path: 'inputs[0].pin_type.category',
-                expected: 'float',
-                actual: 'int',
-              },
-            ],
-          },
-        },
-      } as unknown as BridgeResponse;
+        } as unknown as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
     },
   };
 
@@ -778,11 +922,85 @@ test('execute task with preview token preserves signature differences from faile
   ]);
 });
 
+test('execute task classifies bridge request timeout as editor blocked recovery', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        throw new Error('Bridge request timed out after 600000ms');
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+  const data = result.data as Record<string, unknown> | undefined;
+  const recovery = data?.editor_blocked_recovery as Record<string, unknown> | undefined;
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'unknown_mutation_state');
+  assert.equal(errorRecord['category'], 'editor_command_blocked');
+  assert.equal(result.error?.stage, 'bridge');
+  assert.equal(recovery?.code, 'unknown_mutation_state');
+  assert.equal(recovery?.category, 'editor_command_blocked');
+});
+
+test('execute task classifies bridge connection timeout as transport recovery', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'source_control_status') {
+        throw new Error('Bridge connection timed out after 30000ms');
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(graphWriteAppendTaskSpecFixture);
+  const data = result.data as Record<string, unknown> | undefined;
+  const recovery = data?.editor_blocked_recovery as Record<string, unknown> | undefined;
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'transport_connect_timeout');
+  assert.equal(errorRecord['category'], 'bridge_unavailable');
+  assert.equal(result.error?.stage, 'bridge');
+  assert.equal(recovery?.code, 'transport_connect_timeout');
+  assert.equal(recovery?.category, 'bridge_unavailable');
+});
+
 test('metrics sink failures do not change preview or execute results', async () => {
   const bridge: TaskRunnerBridge = {
     async sendCommand(command) {
       if (command === 'preview_task_plan') {
         return previewBridgeResponse;
+      }
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
       }
       if (command === 'execute_task_plan') {
         return executeBridgeResponse();
@@ -852,6 +1070,9 @@ test('preview and execute ToolResult target uses TaskPlan target type for materi
       if (command === 'preview_task_plan') {
         return previewBridgeResponse;
       }
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse('/Game/Materials/M_TargetProjection');
+      }
       if (command === 'execute_task_plan') {
         return {
           success: true,
@@ -900,6 +1121,19 @@ test('preview and execute ToolResult target uses TaskPlan target type for materi
     asset_path: '/Game/Materials/M_TargetProjection',
   });
 });
+
+function editableSourceControlResponse(assetPath = '/Game/Blueprints/BP_StoneGate'): BridgeResponse {
+  return {
+    success: true,
+    request_id: 'source_control_status_editable',
+    result: {
+      source_control: {
+        status: 'editable',
+        files: [{ asset_path: assetPath, status: 'editable', editable: true }],
+      },
+    },
+  };
+}
 
 function executeBridgeResponse(): BridgeResponse {
   return {

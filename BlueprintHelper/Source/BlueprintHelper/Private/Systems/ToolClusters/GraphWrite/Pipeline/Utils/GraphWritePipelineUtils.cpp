@@ -1017,8 +1017,8 @@ FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatement(
 			GeneratedNodeCount,
 			CreatedConnectionCount);
 
-		Flow.Exits.Append(ThenFlow.Exits.Num() > 0 ? ThenFlow.Exits : ThenIncoming);
-		Flow.Exits.Append(ElseFlow.Exits.Num() > 0 ? ElseFlow.Exits : ElseIncoming);
+		Flow.Exits.Append(Statement->ThenStatements.Num() == 0 ? ThenIncoming : ThenFlow.Exits);
+		Flow.Exits.Append(Statement->ElseStatements.Num() == 0 ? ElseIncoming : ElseFlow.Exits);
 		return Flow;
 	}
 

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  listNonGraphWriteTemplateClusters,
   listNonGraphWriteTemplateOperations,
   listNonGraphWriteTemplateQuickAccess,
   NON_GRAPHWRITE_TEMPLATE_FAMILIES,
@@ -106,4 +107,25 @@ test('dedicated non-GraphWrite families expose operation quick-access templates'
   })[0];
   assert.equal(appendMaterialBlock?.template_id, 'material_graph.material_graph.append_block');
   assert.deepEqual(appendMaterialBlock?.insert_paths, ['behavior.entries[]']);
+});
+
+test('blueprint_variables exposes variable cluster operations and quick-access templates', () => {
+  const clusters = listNonGraphWriteTemplateClusters({ family: 'blueprint_variables' });
+  assert.deepEqual(clusters.map((cluster) => cluster.cluster_id), ['variables']);
+
+  const operations = listNonGraphWriteTemplateOperations({
+    family: 'blueprint_variables',
+    cluster: 'variables',
+    writeMode: 'variables.edit',
+  });
+  assert.ok(operations.some((operation) => operation.operation_id === 'ensure_member_variable'));
+  assert.ok(operations.some((operation) => operation.operation_id === 'configure_member_variable'));
+
+  const quickAccess = listNonGraphWriteTemplateQuickAccess({
+    family: 'blueprint_variables',
+    cluster: 'variables',
+    operation: 'ensure_member_variable',
+    writeMode: 'variables.edit',
+  });
+  assert.equal(quickAccess[0]?.template_id, 'blueprint_variables.variables.ensure_member_variable');
 });

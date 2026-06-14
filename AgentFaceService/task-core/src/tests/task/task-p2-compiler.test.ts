@@ -84,6 +84,7 @@ test('compiles interface function and interface event signatures into distinct b
       { name: 'bCanInteract', pin_type: { category: 'bool' } },
     ],
     name_collision_policy: 'reuse_if_exists',
+    signature_mismatch_policy: 'block',
   });
   assert.equal(eventStep.capability, 'blueprint_signature');
   assert.equal(eventStep.write.strategy, 'custom_event_signature');

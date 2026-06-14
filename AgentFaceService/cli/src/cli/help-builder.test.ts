@@ -88,6 +88,17 @@ test('HelpBuilder renders read_reference_context help as schema-rooted request',
   assert.doesNotMatch(help, /bare BlueprintHelper\.ReferenceContextRequest\.v1/);
 });
 
+test('HelpBuilder renders compile blueprint help with explicit target contract', () => {
+  const builder = createHelpBuilder();
+  const help = builder.build(['blueprint_compile_blueprint']);
+
+  assert.match(help, /BlueprintHelper CLI help: blueprint_compile_blueprint/);
+  assert.match(help, /blueprint_compile_blueprint_template\.json/);
+  assert.match(help, /target_blueprint/);
+  assert.doesNotMatch(help, /active\/focused/i);
+  assert.doesNotMatch(help, /active blueprint/i);
+});
+
 test('HelpBuilder explains empty-object templates for no-input tools', () => {
 	const builder = createHelpBuilder();
 	const agentGuideHelp = builder.build(['blueprinthelper_read_agent_guide']);

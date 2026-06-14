@@ -2002,12 +2002,16 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 	TMap<FString, FSignatureOperationHandler> OperationHandlers;
 	OperationHandlers.Add(
 		FBlueprintHelperSignatureTaskPlanAdapter::AdapterOperationEnsureFunction,
-		[&SignatureService, Payload, AssetPath, FunctionName, NameCollisionPolicy, bDryRun, bIsPure, InterfaceEntryKind, Inputs, Outputs]()
+		[&SignatureService, Payload, AssetPath, FunctionName, NameCollisionPolicy, SignatureMismatchPolicy, bDryRun, bIsPure, InterfaceEntryKind, Inputs, Outputs]()
 		{
 			FBlueprintHelperEnsureFunctionSignatureRequest Request;
 			Request.AssetPath = AssetPath;
 			Request.FunctionName = FunctionName;
 			Request.NameCollisionPolicy = NameCollisionPolicy;
+			if (!SignatureMismatchPolicy.IsEmpty())
+			{
+				Request.SignatureMismatchPolicy = SignatureMismatchPolicy;
+			}
 			Request.bDryRun = bDryRun;
 			Request.bIsPure = bIsPure;
 			if (Payload.IsValid())

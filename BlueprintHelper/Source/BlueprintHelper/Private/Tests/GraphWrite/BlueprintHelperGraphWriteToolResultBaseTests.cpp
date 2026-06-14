@@ -56,6 +56,9 @@
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperMergeBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperPatchBlueprintGraphService.h"
 #include "Systems/ToolClusters/GraphWrite/BlueprintHelperReplaceBlueprintGraphService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2FunctionBodyAdapter.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyRequest.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyTarget.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphWriteConnectivityContext.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphWriteSemanticPayload.h"
 #include "Systems/ToolClusters/GraphWrite/Pipeline/BlueprintGraphGenerationPipeline.h"
@@ -239,6 +242,24 @@ public:
 			}
 		}
 		return nullptr;
+	}
+
+	static TArray<UK2Node_FunctionResult*> FindGraphWriteFunctionResults(UEdGraph* FunctionGraph)
+	{
+		TArray<UK2Node_FunctionResult*> Results;
+		if (!FunctionGraph)
+		{
+			return Results;
+		}
+
+		for (UEdGraphNode* Node : FunctionGraph->Nodes)
+		{
+			if (UK2Node_FunctionResult* Result = Cast<UK2Node_FunctionResult>(Node))
+			{
+				Results.Add(Result);
+			}
+		}
+		return Results;
 	}
 
 	static bool AddGraphWriteFunctionOutputPin(
@@ -460,6 +481,41 @@ public:
 		Statement->SetStringField(TEXT("id"), TEXT("stmt_return_value"));
 		Statement->SetStringField(TEXT("kind"), TEXT("return"));
 		Statement->SetObjectField(TEXT("value"), Value);
+		return Statement;
+	}
+
+	static void AddNamedReturnOutput(
+		TSharedRef<FJsonObject>& OutputObject,
+		const FString& PinName,
+		const TSharedRef<FJsonObject>& Expression)
+	{
+		OutputObject->SetObjectField(PinName, Expression);
+	}
+
+	static TSharedRef<FJsonObject> MakeNamedReturnStatement(
+		const FString& StatementId,
+		const TSharedRef<FJsonObject>& Outputs)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), StatementId);
+		Statement->SetStringField(TEXT("kind"), TEXT("control"));
+		Statement->SetStringField(TEXT("control"), TEXT("return"));
+		Statement->SetObjectField(TEXT("outputs"), Outputs);
+		return Statement;
+	}
+
+	static TSharedRef<FJsonObject> MakeBranchStatement(
+		const FString& StatementId,
+		const TSharedRef<FJsonObject>& Condition,
+		const TArray<TSharedPtr<FJsonValue>>& ThenStatements,
+		const TArray<TSharedPtr<FJsonValue>>& ElseStatements)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("id"), StatementId);
+		Statement->SetStringField(TEXT("kind"), TEXT("branch"));
+		Statement->SetObjectField(TEXT("condition"), Condition);
+		Statement->SetArrayField(TEXT("then"), ThenStatements);
+		Statement->SetArrayField(TEXT("else"), ElseStatements);
 		return Statement;
 	}
 
@@ -864,6 +920,74 @@ public:
 		return BranchNode;
 	}
 
+	static TArray<UK2Node_IfThenElse*> FindGraphWriteBranchNodes(UEdGraph* Graph)
+	{
+		TArray<UK2Node_IfThenElse*> Branches;
+		if (!Graph)
+		{
+			return Branches;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (UK2Node_IfThenElse* Branch = Cast<UK2Node_IfThenElse>(Node))
+			{
+				Branches.Add(Branch);
+			}
+		}
+		return Branches;
+	}
+
+	static UK2Node_CallFunction* FindGraphWritePrintStringCallByMessage(
+		UEdGraph* Graph,
+		const FString& Message)
+	{
+		if (!Graph)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+			if (!CallNode || CallNode->GetFunctionName() != GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString))
+			{
+				continue;
+			}
+
+			UEdGraphPin* InStringPin = CallNode->FindPin(TEXT("InString"));
+			if (InStringPin && (InStringPin->DefaultValue == Message || InStringPin->DefaultTextValue.ToString() == Message))
+			{
+				return CallNode;
+			}
+		}
+		return nullptr;
+	}
+
+	static UK2Node_IfThenElse* FindGraphWriteBranchByConditionVariable(
+		UEdGraph* Graph,
+		const FName VariableName)
+	{
+		for (UK2Node_IfThenElse* Branch : FindGraphWriteBranchNodes(Graph))
+		{
+			UEdGraphPin* ConditionPin = Branch ? Branch->FindPin(TEXT("Condition")) : nullptr;
+			if (!ConditionPin)
+			{
+				continue;
+			}
+
+			for (UEdGraphPin* LinkedPin : ConditionPin->LinkedTo)
+			{
+				UK2Node_VariableGet* Getter = LinkedPin ? Cast<UK2Node_VariableGet>(LinkedPin->GetOwningNode()) : nullptr;
+				if (Getter && Getter->GetVarName() == VariableName)
+				{
+					return Branch;
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	static UK2Node_ExecutionSequence* AddGraphWriteSequenceNode(UEdGraph* Graph)
 	{
 		if (!Graph)
@@ -973,6 +1097,201 @@ public:
 			}
 		}
 		return nullptr;
+	}
+
+	static UEdGraphPin* FindDataInputPinByName(UEdGraphNode* Node, const FString& PinName)
+	{
+		if (!Node)
+		{
+			return nullptr;
+		}
+
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (Pin
+				&& Pin->Direction == EGPD_Input
+				&& Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec
+				&& Pin->PinName.ToString().Equals(PinName, ESearchCase::IgnoreCase))
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	static bool AnyFunctionResultInputHasDataLink(
+		UEdGraph* FunctionGraph,
+		const FString& PinName)
+	{
+		for (UK2Node_FunctionResult* ResultNode : FindGraphWriteFunctionResults(FunctionGraph))
+		{
+			UEdGraphPin* Pin = FindDataInputPinByName(ResultNode, PinName);
+			if (Pin && Pin->LinkedTo.Num() > 0)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool AnyFunctionResultInputHasDefaultValue(
+		UEdGraph* FunctionGraph,
+		const FString& PinName,
+		const FString& ExpectedDefaultValue)
+	{
+		for (UK2Node_FunctionResult* ResultNode : FindGraphWriteFunctionResults(FunctionGraph))
+		{
+			UEdGraphPin* Pin = FindDataInputPinByName(ResultNode, PinName);
+			if (Pin && Pin->DefaultValue.Equals(ExpectedDefaultValue, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	template <typename NodeType>
+	static bool BranchExecPinReachesNodeOfClass(
+		UK2Node_IfThenElse* BranchNode,
+		const FString& PinName)
+	{
+		UEdGraphPin* BranchPin = BranchNode ? BranchNode->FindPin(*PinName) : nullptr;
+		if (!BranchPin)
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> Visited;
+		TArray<UEdGraphNode*> Stack;
+		for (UEdGraphPin* LinkedPin : BranchPin->LinkedTo)
+		{
+			if (LinkedPin && LinkedPin->GetOwningNode())
+			{
+				Stack.Add(LinkedPin->GetOwningNode());
+			}
+		}
+
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Current = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
+			if (!Current || Visited.Contains(Current))
+			{
+				continue;
+			}
+			if (Current->IsA<NodeType>())
+			{
+				return true;
+			}
+
+			Visited.Add(Current);
+			for (UEdGraphPin* Pin : Current->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					if (LinkedPin && LinkedPin->GetOwningNode())
+					{
+						Stack.Add(LinkedPin->GetOwningNode());
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	static bool BranchExecPinReachesFunctionResult(
+		UK2Node_IfThenElse* BranchNode,
+		const FString& PinName)
+	{
+		return BranchExecPinReachesNodeOfClass<UK2Node_FunctionResult>(BranchNode, PinName);
+	}
+
+	static bool BranchExecPinReachesNode(
+		UK2Node_IfThenElse* BranchNode,
+		const FString& PinName,
+		UEdGraphNode* TargetNode)
+	{
+		UEdGraphPin* BranchPin = BranchNode ? BranchNode->FindPin(*PinName) : nullptr;
+		if (!BranchPin || !TargetNode)
+		{
+			return false;
+		}
+
+		TSet<UEdGraphNode*> Visited;
+		TArray<UEdGraphNode*> Stack;
+		for (UEdGraphPin* LinkedPin : BranchPin->LinkedTo)
+		{
+			if (LinkedPin && LinkedPin->GetOwningNode())
+			{
+				Stack.Add(LinkedPin->GetOwningNode());
+			}
+		}
+
+		while (Stack.Num() > 0)
+		{
+			UEdGraphNode* Current = FBlueprintHelperVersionCompat::PopNoShrink(Stack);
+			if (!Current || Visited.Contains(Current))
+			{
+				continue;
+			}
+			if (Current == TargetNode)
+			{
+				return true;
+			}
+
+			Visited.Add(Current);
+			for (UEdGraphPin* Pin : Current->Pins)
+			{
+				if (!Pin || Pin->Direction != EGPD_Output || Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+
+				for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+				{
+					if (LinkedPin && LinkedPin->GetOwningNode())
+					{
+						Stack.Add(LinkedPin->GetOwningNode());
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	static bool FunctionBodyReadbackProjectionKeepsReturnBoundaryVisible(
+		UBlueprint* Blueprint,
+		const FString& FunctionName)
+	{
+		if (!Blueprint)
+		{
+			return false;
+		}
+
+		FBlueprintHelperGraphBodyRequest Request;
+		Request.Blueprint = Blueprint;
+		Request.AssetPath = Blueprint->GetPathName();
+		Request.GraphName = FunctionName;
+		Request.ReplaceScope = TEXT("function_body");
+		Request.SelectorKind = TEXT("function");
+
+		FBlueprintHelperK2FunctionBodyAdapter Adapter;
+		FBlueprintHelperGraphBodyTarget Target;
+		FString Error;
+		if (!Adapter.ResolveTarget(Request, Target, Error))
+		{
+			return false;
+		}
+
+		const FBlueprintHelperGraphBodyBoundaryModel Boundary = Adapter.BuildBoundaryModel(Target, Request);
+		const FBlueprintHelperGraphBodyReadbackProjection Projection = Adapter.BuildReadbackProjection(Target, Boundary);
+		return Boundary.ExitNodeRefs.Num() > 0
+			&& Projection.ExitNodeRefs.Num() == Boundary.ExitNodeRefs.Num()
+			&& Projection.VisibleBoundaryNodeRefs.Num() >= Boundary.ExitNodeRefs.Num();
 	}
 
 	static bool ConnectFirstExecPins(UEdGraphNode* FromNode, UEdGraphNode* ToNode)
@@ -5096,6 +5415,392 @@ bool FBlueprintHelperGraphWriteReplaceFunctionBodyReconnectsEntryToReturnOnlyTes
 			*this,
 			FunctionGraph,
 			FName(*ParamName)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyBranchBothReturnsDataFlowTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyBranchBothReturnsDataFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyBranchBothReturnsDataFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyBranchBothReturnsDataFlow"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("BranchBothReturnStatus");
+	const FString ParamName = TEXT("bShouldCreate");
+	const FEdGraphPinType BoolPinType =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_Boolean);
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("function bool input is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			ParamName,
+			BoolPinType));
+	TestTrue(TEXT("bCompleted output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("bCompleted"),
+			BoolPinType));
+	TestTrue(TEXT("bIsNewRecord output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("bIsNewRecord"),
+			BoolPinType));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	TSharedRef<FJsonObject> ThenOutputs = MakeShared<FJsonObject>();
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(ThenOutputs, TEXT("bCompleted"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBoolLiteralExpression(true));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(
+		ThenOutputs,
+		TEXT("bIsNewRecord"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(ParamName, FunctionName, TEXT("category=bool")));
+	TSharedRef<FJsonObject> ElseOutputs = MakeShared<FJsonObject>();
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(ElseOutputs, TEXT("bCompleted"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBoolLiteralExpression(true));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(
+		ElseOutputs,
+		TEXT("bIsNewRecord"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(ParamName, FunctionName, TEXT("category=bool")));
+
+	TArray<TSharedPtr<FJsonValue>> ThenStatements;
+	ThenStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeNamedReturnStatement(TEXT("return_created"), ThenOutputs)));
+	TArray<TSharedPtr<FJsonValue>> ElseStatements;
+	ElseStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeNamedReturnStatement(TEXT("return_existing"), ElseOutputs)));
+	TArray<TSharedPtr<FJsonValue>> Statements;
+	Statements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchStatement(
+			TEXT("branch_create"),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(ParamName, FunctionName, TEXT("category=bool")),
+			ThenStatements,
+			ElseStatements)));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName);
+	Payload->SetObjectField(
+		TEXT("logic_spec"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteLogicSpec(FString(), Statements));
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(Payload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body with both branch paths returning"),
+		Result);
+	TestTrue(TEXT("replace function body with both branch paths returning succeeds"), Result.bOk);
+	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UK2Node_IfThenElse* BranchNode =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteBranchByConditionVariable(FunctionGraph, FName(*ParamName));
+	TestNotNull(TEXT("readback graph contains authored branch"), BranchNode);
+	TestTrue(TEXT("then path reaches FunctionResult"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesFunctionResult(BranchNode, TEXT("then")));
+	TestTrue(TEXT("else path reaches FunctionResult"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesFunctionResult(BranchNode, TEXT("else")));
+	TestTrue(TEXT("bCompleted named literal return pin has default true"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDefaultValue(FunctionGraph, TEXT("bCompleted"), TEXT("true")));
+	TestTrue(TEXT("bIsNewRecord named return pin has data link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDataLink(FunctionGraph, TEXT("bIsNewRecord")));
+	TestTrue(TEXT("function body readback projection keeps return boundary visible"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FunctionBodyReadbackProjectionKeepsReturnBoundaryVisible(Blueprint, FunctionName));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodySingleBranchReturnDataFlowTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodySingleBranchReturnDataFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodySingleBranchReturnDataFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodySingleBranchReturnDataFlow"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("SingleBranchReturnStatus");
+	const FString ParamName = TEXT("bShouldCreate");
+	const FEdGraphPinType BoolPinType =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_Boolean);
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("function bool input is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			ParamName,
+			BoolPinType));
+	TestTrue(TEXT("bCompleted output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("bCompleted"),
+			BoolPinType));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	TSharedRef<FJsonObject> ThenOutputs = MakeShared<FJsonObject>();
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(
+		ThenOutputs,
+		TEXT("bCompleted"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(ParamName, FunctionName, TEXT("category=bool")));
+	TArray<TSharedPtr<FJsonValue>> ThenStatements;
+	ThenStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeNamedReturnStatement(TEXT("return_completed"), ThenOutputs)));
+	TArray<TSharedPtr<FJsonValue>> ElseStatements;
+	ElseStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCallStatement(TEXT("PrintString"), TEXT("single branch else"))));
+
+	TArray<TSharedPtr<FJsonValue>> Statements;
+	Statements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchStatement(
+			TEXT("branch_single_return"),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(ParamName, FunctionName, TEXT("category=bool")),
+			ThenStatements,
+			ElseStatements)));
+	Statements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCallStatement(TEXT("PrintString"), TEXT("after single branch"))));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName);
+	Payload->SetObjectField(
+		TEXT("logic_spec"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteLogicSpec(FString(), Statements));
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(Payload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body with single branch return"),
+		Result);
+	TestTrue(TEXT("replace function body with single branch return succeeds"), Result.bOk);
+	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UK2Node_IfThenElse* BranchNode =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteBranchByConditionVariable(FunctionGraph, FName(*ParamName));
+	UK2Node_CallFunction* ElsePrint =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWritePrintStringCallByMessage(FunctionGraph, TEXT("single branch else"));
+	UK2Node_CallFunction* AfterBranchPrint =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWritePrintStringCallByMessage(FunctionGraph, TEXT("after single branch"));
+	TestNotNull(TEXT("readback graph contains authored branch"), BranchNode);
+	TestNotNull(TEXT("else statement remains reachable"), ElsePrint);
+	TestNotNull(TEXT("post-branch statement remains reachable"), AfterBranchPrint);
+	TestTrue(TEXT("then path reaches FunctionResult"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesFunctionResult(BranchNode, TEXT("then")));
+	TestFalse(TEXT("then return path does not fall through to post-branch statement"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesNode(BranchNode, TEXT("then"), AfterBranchPrint));
+	TestTrue(TEXT("else path reaches post-branch statement"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesNode(BranchNode, TEXT("else"), AfterBranchPrint));
+	TestTrue(TEXT("bCompleted named return pin has data link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDataLink(FunctionGraph, TEXT("bCompleted")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReplaceFunctionBodyNestedBranchReturnsDataFlowTest,
+	"BlueprintHelper.GraphWrite.Replace.FunctionBodyNestedBranchReturnsDataFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReplaceFunctionBodyNestedBranchReturnsDataFlowTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestBlueprint(TEXT("ReplaceFunctionBodyNestedBranchReturnsDataFlow"));
+	TestNotNull(TEXT("test blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FString FunctionName = TEXT("NestedBranchReturnStatus");
+	const FString OuterParamName = TEXT("bOuter");
+	const FString InnerParamName = TEXT("bInner");
+	const FEdGraphPinType BoolPinType =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteTestPinType(UEdGraphSchema_K2::PC_Boolean);
+	UEdGraph* FunctionGraph = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionGraph(Blueprint, FunctionName);
+	TestNotNull(TEXT("function graph is created"), FunctionGraph);
+	TestTrue(TEXT("outer bool input is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			OuterParamName,
+			BoolPinType));
+	TestTrue(TEXT("inner bool input is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionInputPin(
+			Blueprint,
+			FunctionGraph,
+			InnerParamName,
+			BoolPinType));
+	TestTrue(TEXT("bCompleted output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("bCompleted"),
+			BoolPinType));
+	TestTrue(TEXT("bIsNewRecord output pin is created"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWriteFunctionOutputPin(
+			Blueprint,
+			FunctionGraph,
+			TEXT("bIsNewRecord"),
+			BoolPinType));
+	UK2Node_FunctionEntry* EntryNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteFunctionEntry(FunctionGraph);
+	TestNotNull(TEXT("function entry is created"), EntryNode);
+	if (!FunctionGraph || !EntryNode)
+	{
+		return false;
+	}
+
+	UK2Node_CallFunction* OldPrintNode = FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddGraphWritePrintStringCall(FunctionGraph);
+	TestNotNull(TEXT("old PrintString body node is created"), OldPrintNode);
+	TestTrue(TEXT("old function body is linked before replace"),
+		OldPrintNode && FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::ConnectFirstExecPins(EntryNode, OldPrintNode));
+
+	TSharedRef<FJsonObject> InnerThenOutputs = MakeShared<FJsonObject>();
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(
+		InnerThenOutputs,
+		TEXT("bCompleted"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(InnerParamName, FunctionName, TEXT("category=bool")));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(
+		InnerThenOutputs,
+		TEXT("bIsNewRecord"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(InnerParamName, FunctionName, TEXT("category=bool")));
+	TArray<TSharedPtr<FJsonValue>> InnerThenStatements;
+	InnerThenStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeNamedReturnStatement(TEXT("return_inner_then"), InnerThenOutputs)));
+	TArray<TSharedPtr<FJsonValue>> InnerElseStatements;
+	InnerElseStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCallStatement(TEXT("PrintString"), TEXT("inner else path"))));
+
+	TArray<TSharedPtr<FJsonValue>> OuterThenStatements;
+	OuterThenStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchStatement(
+			TEXT("branch_inner"),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(InnerParamName, FunctionName, TEXT("category=bool")),
+			InnerThenStatements,
+			InnerElseStatements)));
+	OuterThenStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeCallStatement(TEXT("PrintString"), TEXT("post inner branch"))));
+
+	TSharedRef<FJsonObject> OuterElseOutputs = MakeShared<FJsonObject>();
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(OuterElseOutputs, TEXT("bCompleted"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBoolLiteralExpression(true));
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddNamedReturnOutput(OuterElseOutputs, TEXT("bIsNewRecord"), FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBoolLiteralExpression(false));
+	TArray<TSharedPtr<FJsonValue>> OuterElseStatements;
+	OuterElseStatements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeNamedReturnStatement(TEXT("return_outer_else"), OuterElseOutputs)));
+
+	TArray<TSharedPtr<FJsonValue>> Statements;
+	Statements.Add(MakeShared<FJsonValueObject>(
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeBranchStatement(
+			TEXT("branch_outer"),
+			FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeFunctionParamGetExpression(OuterParamName, FunctionName, TEXT("category=bool")),
+			OuterThenStatements,
+			OuterElseStatements)));
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperGraphSnapshotService SnapshotService;
+	FBlueprintHelperReplaceBlueprintGraphService ReplaceService(
+		Resolver,
+		BlockIdService,
+		OwnershipService,
+		SnapshotService);
+
+	TSharedRef<FJsonObject> Payload =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeReplaceFunctionBodyExecutePayload(
+			Blueprint->GetPathName(),
+			FunctionName);
+	Payload->SetObjectField(
+		TEXT("logic_spec"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::MakeGraphWriteLogicSpec(FString(), Statements));
+
+	const FBlueprintHelperToolResultBase Result = ReplaceService.Execute(Payload);
+	FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AddToolResultFailureDetail(
+		*this,
+		TEXT("replace function body with nested branch returns"),
+		Result);
+	TestTrue(TEXT("replace function body with nested branch returns succeeds"), Result.bOk);
+	TestEqual(TEXT("replace status is applied"), Result.Status, EBlueprintHelperToolStatus::Applied);
+
+	UK2Node_IfThenElse* OuterBranch =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteBranchByConditionVariable(FunctionGraph, FName(*OuterParamName));
+	UK2Node_IfThenElse* InnerBranch =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWriteBranchByConditionVariable(FunctionGraph, FName(*InnerParamName));
+	UK2Node_CallFunction* InnerElsePrint =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWritePrintStringCallByMessage(FunctionGraph, TEXT("inner else path"));
+	UK2Node_CallFunction* PostInnerPrint =
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FindGraphWritePrintStringCallByMessage(FunctionGraph, TEXT("post inner branch"));
+	TestNotNull(TEXT("outer branch exists"), OuterBranch);
+	TestNotNull(TEXT("inner branch exists"), InnerBranch);
+	TestNotNull(TEXT("inner else non-return statement exists"), InnerElsePrint);
+	TestNotNull(TEXT("post-inner statement exists"), PostInnerPrint);
+	TestTrue(TEXT("inner then return reaches FunctionResult"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesFunctionResult(InnerBranch, TEXT("then")));
+	TestFalse(TEXT("inner then return does not fall through to post-inner statement"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesNode(InnerBranch, TEXT("then"), PostInnerPrint));
+	TestTrue(TEXT("inner else path reaches post-inner statement"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesNode(InnerBranch, TEXT("else"), PostInnerPrint));
+	TestTrue(TEXT("outer else return reaches FunctionResult"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::BranchExecPinReachesFunctionResult(OuterBranch, TEXT("else")));
+	TestTrue(TEXT("bCompleted named return pin has data link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDataLink(FunctionGraph, TEXT("bCompleted")));
+	TestTrue(TEXT("bIsNewRecord named return pin has data link"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDataLink(FunctionGraph, TEXT("bIsNewRecord")));
+	TestTrue(TEXT("outer else bIsNewRecord named literal return pin has default false"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::AnyFunctionResultInputHasDefaultValue(FunctionGraph, TEXT("bIsNewRecord"), TEXT("false")));
+	TestTrue(TEXT("function body readback projection keeps return boundary visible"),
+		FBlueprintHelperGraphWriteToolResultBaseTestsLocalUtils::FunctionBodyReadbackProjectionKeepsReturnBoundaryVisible(Blueprint, FunctionName));
 	return true;
 }
 

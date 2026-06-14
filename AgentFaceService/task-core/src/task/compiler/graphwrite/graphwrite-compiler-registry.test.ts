@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { getAllGraphWriteSlotDescriptors } from './graphwrite-slot-registry.js';
-import { defaultExpressionCompilerRegistry } from './expression-compiler-registry.js';
+import { defaultExpressionCompilerRegistry, requireGraphWriteExpressionCompiler } from './expression-compiler-registry.js';
 import { defaultStatementCompilerRegistry } from './statement-compiler-registry.js';
 
 test('GraphWrite statement compiler registry covers statement slot compiler ids', () => {
@@ -111,4 +111,11 @@ test('GraphWrite expression compiler registry resolves current public expression
       item.kind,
     );
   }
+});
+
+test('unsupported self expression recommends get target self', () => {
+  assert.throws(
+    () => requireGraphWriteExpressionCompiler({ kind: 'self', path: 'logic[0].value' }),
+    /Use \{"kind":"get","target":"self"\}/u,
+  );
 });

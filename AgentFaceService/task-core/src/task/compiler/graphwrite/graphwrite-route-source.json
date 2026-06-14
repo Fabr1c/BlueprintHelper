@@ -41,7 +41,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "entries",
-      "write_mode": "graph.append"
+      "write_mode": "graph.append",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.append.custom_event",
@@ -82,7 +83,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "entries",
-      "write_mode": "graph.append"
+      "write_mode": "graph.append",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.append.event_delegate",
@@ -125,7 +127,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "entries",
-      "write_mode": "graph.append"
+      "write_mode": "graph.append",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.append.generic_ops",
@@ -166,7 +169,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "entries",
-      "write_mode": "graph.append"
+      "write_mode": "graph.append",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.append.generic_schedule",
@@ -208,7 +212,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "entries",
-      "write_mode": "graph.append"
+      "write_mode": "graph.append",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.merge.append_after",
@@ -246,7 +251,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "merges",
-      "write_mode": "graph.merge"
+      "write_mode": "graph.merge",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.merge.branch_fork",
@@ -285,7 +291,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "merges",
-      "write_mode": "graph.merge"
+      "write_mode": "graph.merge",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.merge.insert_between",
@@ -323,7 +330,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "merges",
-      "write_mode": "graph.merge"
+      "write_mode": "graph.merge",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.merge_external_flow.append_after",
@@ -397,7 +405,12 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_merges",
-      "write_mode": "graph.merge"
+      "write_mode": "graph.merge",
+      "validation_classification": "runtime_only",
+      "runtime_only_validation_notes": [
+        "UE schema connection may reject links during execute.",
+        "insert_between requires exactly one successor and exactly one open inserted body exec output."
+      ]
     },
     {
       "route_id": "graph.patch.connect_pins",
@@ -434,7 +447,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch.delete_owned_node",
@@ -471,7 +485,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch.disconnect_link",
@@ -507,7 +522,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch.node_comment",
@@ -544,7 +560,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch.pin_default",
@@ -581,7 +598,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch.replace_link",
@@ -618,7 +636,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.replace.event_body",
@@ -675,7 +694,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "replace",
-      "write_mode": "graph.replace"
+      "write_mode": "graph.replace",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.replace.function_body",
@@ -736,7 +756,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "replace",
-      "write_mode": "graph.replace"
+      "write_mode": "graph.replace",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.replace.custom_event_definition",
@@ -963,7 +984,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "replace",
-      "write_mode": "graph.replace"
+      "write_mode": "graph.replace",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_graph.node_comment",
@@ -1001,7 +1023,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_graph.pin_default",
@@ -1038,7 +1061,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_graph.node_property",
@@ -1076,7 +1100,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_links.connect_pins",
@@ -1112,7 +1137,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_link_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_links.disconnect_link",
@@ -1147,7 +1173,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_link_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_links.replace_link",
@@ -1183,7 +1210,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_link_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.patch_external_links.insert_pure_resolver_between_data_link",
@@ -1219,7 +1247,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_link_patches",
-      "write_mode": "graph.patch"
+      "write_mode": "graph.patch",
+      "validation_classification": "shared_policy"
     },
     {
       "route_id": "graph.replace_external_body.body",
@@ -1257,7 +1286,8 @@
       "status": "active",
       "adapter_sync": "active_requires_registered_non_reserved_adapter",
       "behavior_field": "external_replace",
-      "write_mode": "graph.replace"
+      "write_mode": "graph.replace",
+      "validation_classification": "shared_policy"
     }
   ]
 }

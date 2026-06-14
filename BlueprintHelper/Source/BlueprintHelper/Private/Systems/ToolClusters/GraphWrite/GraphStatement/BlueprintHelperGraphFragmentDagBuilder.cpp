@@ -64,10 +64,10 @@ bool FBlueprintHelperGraphFragmentDagBuilder::BuildFromSemanticIR(
 		if (!OutDag.EntryExitRefs.HasExit())
 		{
 			OutDag.AddDiagnostic(
-				TEXT("dag_exit_missing"),
+				TEXT("dag_exit_terminal"),
 				TEXT("$.statements"),
-				TEXT("Fragment DAG has no valid exit endpoint."),
-				EBlueprintHelperGraphFragmentDiagnosticSeverity::Error);
+				TEXT("Fragment DAG has no open exit endpoint because statement flow is terminal."),
+				EBlueprintHelperGraphFragmentDiagnosticSeverity::Warning);
 		}
 	}
 

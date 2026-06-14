@@ -1,8 +1,10 @@
 {
   "kind": "control",
   "control": "return",
-  "value": {
-    "kind": "get",
-    "target": "__REQUIRED_RETURN_SYMBOL_OR_VARIABLE__"
+  "outputs": {
+    "__REQUIRED_OUTPUT_PIN_NAME__": {
+      "kind": "get",
+      "target": "__REQUIRED_RETURN_SYMBOL_OR_VARIABLE__"
+    }
   }
 }

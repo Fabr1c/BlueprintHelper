@@ -1,0 +1,14 @@
+{
+  "kind": "configure_member_variable",
+  "name": "__REQUIRED_VARIABLE_NAME__",
+  "properties": [
+    {
+      "property_path": "metadata.DisplayName",
+      "value": "__OPTIONAL_DISPLAY_NAME__"
+    },
+    {
+      "property_path": "default_value",
+      "value": "__OPTIONAL_DEFAULT_VALUE__"
+    }
+  ]
+}

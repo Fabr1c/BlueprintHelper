@@ -35,9 +35,5 @@
         ]
       }
     ]
-  },
-  "validation": {
-    "should_compile": true,
-    "should_save": false
   }
 }

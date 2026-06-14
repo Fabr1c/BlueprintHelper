@@ -2364,8 +2364,31 @@ void UGraphWriteGraphStatementUtils::CollectReturnLiteralDefault(
     const FBlueprintHelperGraphStatementIR& Statement,
     TMap<FString, FString>& InOutDefaults)
 {
-    if (!ReturnNode
-        || !Statement.Value.IsValid()
+    if (!ReturnNode)
+    {
+        return;
+    }
+
+    for (UEdGraphPin* Pin : ReturnNode->Pins)
+    {
+        if (!Pin
+            || Pin->Direction != EGPD_Input
+            || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+        {
+            continue;
+        }
+
+        const TSharedPtr<FBlueprintHelperGraphExpressionIR>* OutputExpression = Statement.Args.Find(Pin->PinName.ToString());
+        if (OutputExpression
+            && (*OutputExpression).IsValid()
+            && (*OutputExpression)->Kind == EBlueprintHelperGraphExpressionKind::Literal
+            && !(*OutputExpression)->LiteralValue.IsEmpty())
+        {
+            InOutDefaults.Add(Pin->PinName.ToString(), (*OutputExpression)->LiteralValue);
+        }
+    }
+
+    if (!Statement.Value.IsValid()
         || Statement.Value->Kind != EBlueprintHelperGraphExpressionKind::Literal
         || Statement.Value->LiteralValue.IsEmpty())
     {

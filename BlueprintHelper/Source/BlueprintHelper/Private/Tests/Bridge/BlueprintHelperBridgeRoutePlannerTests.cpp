@@ -63,6 +63,7 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("focus_blueprint_editor_target"), EBlueprintHelperBridgeRouteCluster::Debug},
+		{TEXT("compile_blueprint"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("capture_editor_screenshot"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("capture_focused_graph_screenshot"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("read_function_chain_context"), EBlueprintHelperBridgeRouteCluster::SharedServices},
@@ -164,6 +165,64 @@ bool FBlueprintHelperRequestValidationRegistry_RepresentativeRulesMatchValidator
 			TEXT("read_blueprint_logic_json"),
 			LogicDescriptor));
 	TestTrue(TEXT("logic json descriptor requires asset_path"), BlueprintHelperBridgeTestHasRequiredField(LogicDescriptor, TEXT("asset_path")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperRequestValidator_CompileBlueprintRequiresExactTarget,
+	"BlueprintHelper.Bridge.RequestValidator.CompileBlueprintRequiresExactTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperRequestValidator_CompileBlueprintRequiresExactTarget::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeValidationError Error;
+
+	TSharedPtr<FJsonObject> MissingPayload = MakeShared<FJsonObject>();
+	TestFalse(
+		TEXT("compile_blueprint rejects missing target_blueprint"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("compile_blueprint"),
+			MissingPayload,
+			Error));
+	TestEqual(TEXT("missing target field"), Error.Field, FString(TEXT("payload.target_blueprint")));
+	TestEqual(TEXT("missing target actual type"), Error.ActualType, FString(TEXT("missing")));
+
+	TSharedPtr<FJsonObject> EmptyPayload = MakeShared<FJsonObject>();
+	EmptyPayload->SetStringField(TEXT("target_blueprint"), TEXT(""));
+	TestFalse(
+		TEXT("compile_blueprint rejects empty target_blueprint"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("compile_blueprint"),
+			EmptyPayload,
+			Error));
+	TestEqual(TEXT("empty target field"), Error.Field, FString(TEXT("payload.target_blueprint")));
+	TestEqual(TEXT("empty target expected type"), Error.ExpectedType, FString(TEXT("non-empty string")));
+	TestEqual(TEXT("empty target actual type"), Error.ActualType, FString(TEXT("empty string")));
+
+	TSharedPtr<FJsonObject> AliasPayload = MakeShared<FJsonObject>();
+	AliasPayload->SetStringField(TEXT("target_blueprint"), TEXT("/Game/BP_Test.BP_Test"));
+	AliasPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_Test.BP_Test"));
+	TestFalse(
+		TEXT("compile_blueprint rejects unexpected asset_path alias"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("compile_blueprint"),
+			AliasPayload,
+			Error));
+	TestEqual(TEXT("unexpected alias code"), Error.Code, FString(TEXT("unexpected_field")));
+	TestEqual(TEXT("unexpected alias field"), Error.Field, FString(TEXT("payload.asset_path")));
+	TestEqual(TEXT("unexpected alias expected type"), Error.ExpectedType, FString(TEXT("absent")));
+	TestEqual(TEXT("unexpected alias actual type"), Error.ActualType, FString(TEXT("present")));
+
+	TSharedPtr<FJsonObject> ValidPayload = MakeShared<FJsonObject>();
+	ValidPayload->SetStringField(TEXT("target_blueprint"), TEXT("/Game/BP_Test.BP_Test"));
+	TestTrue(
+		TEXT("compile_blueprint accepts explicit target_blueprint"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("compile_blueprint"),
+			ValidPayload,
+			Error));
+	TestTrue(TEXT("compile_blueprint remains write-classified"), FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("compile_blueprint")));
+
 	return true;
 }
 

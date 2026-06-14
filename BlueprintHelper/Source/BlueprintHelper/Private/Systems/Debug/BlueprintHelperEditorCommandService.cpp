@@ -12,6 +12,7 @@
 #include "Misc/StringFormatArg.h"
 #include "PlayInEditorDataTypes.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/Editor/BlueprintHelperEditorCloseSafetyGate.h"
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "UObject/UObjectIterator.h"
 
@@ -271,16 +272,18 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 		{
 			const FBlueprintHelperSourceControlService SourceControlService;
 			const FBlueprintHelperSourceControlResult SourceControlResult = SourceControlService.QueryStatus(DirtyPackageInputs, /*bUpdateStatus=*/ true);
-			SourceControlJson = SourceControlResult.ToJson();
-			if (SourceControlResult.BlocksAgentEdit())
+			const FBlueprintHelperEditorCloseSafetyGate CloseSafetyGate;
+			const FBlueprintHelperEditorCloseSafetyGateResult CloseSafetyGateResult = CloseSafetyGate.EvaluateDirtyPackageStatus(SourceControlResult);
+			if (!CloseSafetyGateResult.bCanProceed)
 			{
 				Result.ErrorMessage = SourceControlResult.AgentMessage.IsEmpty()
 					? TEXT("Source-control checkout is required before closing the editor with save_all=true.")
 					: SourceControlResult.AgentMessage;
-				Result.Message = SourceControlResult.RecommendedAction;
-				Result.Data = SourceControlJson;
+				Result.Message = CloseSafetyGateResult.Message;
+				Result.Data = CloseSafetyGateResult.ToJson();
 				return Result;
 			}
+			SourceControlJson = SourceControlResult.ToJson();
 		}
 
 		const bool bSaved = FEditorFileUtils::SaveDirtyPackages(

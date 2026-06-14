@@ -21,6 +21,7 @@
 #include "Systems/SharedServices/Utils/BlueprintHelperPinTypeSpecUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
+#include "Tests/BlueprintSignature/BlueprintHelperSignatureTestFixtures.h"
 #include "UObject/Package.h"
 
 class FBlueprintHelperSignatureServiceTestsLocalUtils
@@ -28,31 +29,12 @@ class FBlueprintHelperSignatureServiceTestsLocalUtils
 public:
 	static FString MakeSignatureServiceTestObjectName(const FString& Prefix)
 	{
-		return FString::Printf(TEXT("%s_%s"), *Prefix, *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		return FBlueprintHelperSignatureTestFixtures::MakeSignatureServiceTestObjectName(Prefix);
 	}
 
 	static UBlueprint* MakeSignatureServiceActorBlueprint(const FString& Prefix)
 	{
-		UPackage* Package = CreatePackage(*FString::Printf(
-			TEXT("/Game/BlueprintHelperSignature/%s"),
-			*MakeSignatureServiceTestObjectName(Prefix)));
-		Package->SetDirtyFlag(false);
-
-		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
-			AActor::StaticClass(),
-			Package,
-			*MakeSignatureServiceTestObjectName(TEXT("BP_SignatureService")),
-			BPTYPE_Normal,
-			UBlueprint::StaticClass(),
-			UBlueprintGeneratedClass::StaticClass(),
-			TEXT("BlueprintHelperSignatureServiceTests"));
-		if (Blueprint)
-		{
-			// Keep service unit tests isolated from unrelated dirty project Blueprints queued for skeleton compile.
-			Blueprint->Status = BS_BeingCreated;
-		}
-		Package->SetDirtyFlag(false);
-		return Blueprint;
+		return FBlueprintHelperSignatureTestFixtures::MakeSignatureServiceActorBlueprint(Prefix);
 	}
 
 	static void SuppressExternalSmokeAssetCompileErrors(FAutomationTestBase& Test)
@@ -718,7 +700,18 @@ bool FBlueprintHelperSignatureServiceEnsureFunctionExistingMismatchExecuteBlocke
 	TestTrue(TEXT("error is set"), Result.Error.IsSet());
 	TestEqual(TEXT("error code"), Result.Error.IsSet() ? Result.Error->Code : FString(), FString(TEXT("function_signature_mismatch")));
 	TestEqual(TEXT("function graph count unchanged"), Blueprint ? Blueprint->FunctionGraphs.Num() : 0, FunctionCountBeforeMismatch);
-	TestTrue(TEXT("data contains signature differences"), Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Array>(TEXT("signature_differences")));
+	const TArray<TSharedPtr<FJsonValue>>* Differences = nullptr;
+	TestTrue(TEXT("signature differences array exists"),
+		Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("signature_differences"), Differences));
+	TestTrue(TEXT("signature differences has at least one entry"), Differences && Differences->Num() > 0);
+
+	const TSharedPtr<FJsonObject> FirstDifference = Differences && Differences->Num() > 0
+		? (*Differences)[0]->AsObject()
+		: nullptr;
+	TestTrue(TEXT("difference has reason"), FirstDifference.IsValid() && FirstDifference->HasField(TEXT("reason")));
+	TestTrue(TEXT("difference has direction"), FirstDifference.IsValid() && FirstDifference->HasField(TEXT("direction")));
+	TestTrue(TEXT("difference has safe_migration_available"), FirstDifference.IsValid() && FirstDifference->HasField(TEXT("safe_migration_available")));
+	TestTrue(TEXT("difference has recommended_policy"), FirstDifference.IsValid() && FirstDifference->HasField(TEXT("recommended_policy")));
 	return true;
 }
 
@@ -977,10 +970,29 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 	TestFalse(TEXT("remove signature dry-run is blocked"), Result.bOk);
 	TestEqual(TEXT("remove signature reports failed status"), Result.Status, EBlueprintHelperToolStatus::Failed);
 	TestTrue(TEXT("remove signature uses signature data schema"), FBlueprintHelperSignatureServiceTestsLocalUtils::HasSignatureDataSchema(Result));
+	TestTrue(TEXT("remove blocked result includes guidance"),
+		Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Object>(TEXT("signature_remove_guidance")));
 	TestTrue(TEXT("remove signature has error"), Result.Error.IsSet());
 	if (Result.Error.IsSet())
 	{
 		TestEqual(TEXT("remove signature blocked policy code"), Result.Error->Code, FString(TEXT("signature_remove_blocked_by_policy")));
+	}
+
+	const TSharedPtr<FJsonObject>* GuidanceObject = nullptr;
+	if (Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("signature_remove_guidance"), GuidanceObject) && GuidanceObject && GuidanceObject->IsValid())
+	{
+		FString RequiredReferenceScope;
+		FString SupportedExecutePolicy;
+		FString CurrentBlockingReason;
+		FString NextReadCommand;
+		TestTrue(TEXT("guidance has required reference scope"), (*GuidanceObject)->TryGetStringField(TEXT("required_reference_scope"), RequiredReferenceScope));
+		TestEqual(TEXT("guidance reference scope"), RequiredReferenceScope, FString(TEXT("function_or_signature")));
+		TestTrue(TEXT("guidance has supported execute policy"), (*GuidanceObject)->TryGetStringField(TEXT("supported_execute_policy"), SupportedExecutePolicy));
+		TestEqual(TEXT("guidance supported execute policy"), SupportedExecutePolicy, FString(TEXT("execute_if_unreferenced")));
+		TestTrue(TEXT("guidance has current blocking reason"), (*GuidanceObject)->TryGetStringField(TEXT("current_blocking_reason"), CurrentBlockingReason));
+		TestEqual(TEXT("guidance current blocking reason"), CurrentBlockingReason, FString(TEXT("blocked_preflight")));
+		TestTrue(TEXT("guidance has next read command"), (*GuidanceObject)->TryGetStringField(TEXT("next_read_command"), NextReadCommand));
+		TestEqual(TEXT("guidance next read command"), NextReadCommand, FString(TEXT("blueprinthelper_read_reference_context")));
 	}
 
 	const TSharedPtr<FJsonObject>* DryRunObject = nullptr;
@@ -1014,6 +1026,47 @@ bool FBlueprintHelperSignatureServiceRemoveSignatureDryRunBlockedTest::RunTest(c
 		}
 	}
 	TestEqual(TEXT("remove signature dry-run does not mutate graph"), Graph ? Graph->Nodes.Num() : 0, NodeCountBefore);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveSignatureInvalidPolicyGuidanceTest,
+	"BlueprintHelper.Signature.Service.RemoveSignatureInvalidPolicyGuidance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveSignatureInvalidPolicyGuidanceTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveSignatureInvalidPolicy"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperRemoveSignatureRequest Request =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("function"), TEXT("BH_InvalidPolicyRemove"), true);
+	Request.ExecutePolicy = TEXT("delete_now");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.RemoveSignature(Request);
+
+	TestFalse(TEXT("invalid remove policy is blocked"), Result.bOk);
+	TestTrue(TEXT("invalid remove policy includes guidance"),
+		Result.Data.IsValid() && Result.Data->HasTypedField<EJson::Object>(TEXT("signature_remove_guidance")));
+
+	const TSharedPtr<FJsonObject>* GuidanceObject = nullptr;
+	if (Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("signature_remove_guidance"), GuidanceObject) && GuidanceObject && GuidanceObject->IsValid())
+	{
+		FString CurrentBlockingReason;
+		FString SupportedExecutePolicy;
+		TestTrue(TEXT("guidance has invalid policy reason"), (*GuidanceObject)->TryGetStringField(TEXT("current_blocking_reason"), CurrentBlockingReason));
+		TestEqual(TEXT("guidance reason is invalid policy"), CurrentBlockingReason, FString(TEXT("invalid_signature_remove_policy")));
+		TestTrue(TEXT("guidance has supported execute policy"), (*GuidanceObject)->TryGetStringField(TEXT("supported_execute_policy"), SupportedExecutePolicy));
+		TestEqual(TEXT("guidance supported execute policy"), SupportedExecutePolicy, FString(TEXT("execute_if_unreferenced")));
+	}
 	return true;
 }
 
@@ -1365,6 +1418,60 @@ bool FBlueprintHelperSignatureServiceEnsureOverrideEventCreateIfMissingExecuteTe
 	TestEqual(TEXT("second override event ensure is no-op"), SecondResult.Status, EBlueprintHelperToolStatus::NoOp);
 	TestFalse(TEXT("second override event ensure does not modify"), SecondResult.bModified);
 	TestEqual(TEXT("second override event ensure does not add node"), Graph ? Graph->Nodes.Num() : 0, NodeCountAfterFirst);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceEnsureOverrideEventNotFoundReportsCandidatesTest,
+	"BlueprintHelper.Signature.Service.EnsureOverrideEventNotFoundReportsCandidates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceEnsureOverrideEventNotFoundReportsCandidatesTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("OverrideEventMissing"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	FBlueprintHelperEnsureOverrideEventSignatureRequest Request =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, TEXT("DefinitelyMissingEvent"), false);
+	Request.GraphName = Blueprint->UbergraphPages[0]->GetName();
+	Request.ExecutePolicy = TEXT("create_if_missing");
+
+	const FBlueprintHelperToolResultBase Result = SignatureService.EnsureOverrideEvent(Request);
+
+	TestFalse(TEXT("missing override event is rejected"), Result.bOk);
+	TestTrue(TEXT("missing override event has error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("missing override event error code"), Result.Error->Code, FString(TEXT("override_event_function_not_found")));
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* RootCandidates = nullptr;
+	TestTrue(TEXT("root candidate list exists"),
+		Result.Data.IsValid() && Result.Data->TryGetArrayField(TEXT("override_event_candidates"), RootCandidates));
+	TestTrue(TEXT("root candidate list is populated"), RootCandidates && RootCandidates->Num() > 0);
+
+	const TSharedPtr<FJsonObject>* OverrideResult = nullptr;
+	TestTrue(TEXT("override result exists"),
+		Result.Data.IsValid() &&
+		Result.Data->TryGetObjectField(TEXT("override_event_result"), OverrideResult) &&
+		OverrideResult &&
+		OverrideResult->IsValid());
+	if (OverrideResult && OverrideResult->IsValid())
+	{
+		double CandidateCount = 0.0;
+		const TArray<TSharedPtr<FJsonValue>>* NestedCandidates = nullptr;
+		TestTrue(TEXT("candidate count is present"), (*OverrideResult)->TryGetNumberField(TEXT("candidate_count"), CandidateCount));
+		TestTrue(TEXT("nested candidate list exists"), (*OverrideResult)->TryGetArrayField(TEXT("candidates"), NestedCandidates));
+		TestTrue(TEXT("nested candidate list is populated"), NestedCandidates && NestedCandidates->Num() > 0);
+	}
 	return true;
 }
 

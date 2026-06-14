@@ -47,7 +47,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
-    "write_mode": "graph.append"
+    "write_mode": "graph.append",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.append.custom_event",
@@ -88,7 +89,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
-    "write_mode": "graph.append"
+    "write_mode": "graph.append",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.append.event_delegate",
@@ -131,7 +133,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
-    "write_mode": "graph.append"
+    "write_mode": "graph.append",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.append.generic_ops",
@@ -172,7 +175,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
-    "write_mode": "graph.append"
+    "write_mode": "graph.append",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.append.generic_schedule",
@@ -214,7 +218,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "entries",
-    "write_mode": "graph.append"
+    "write_mode": "graph.append",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.merge_external_flow.append_after",
@@ -288,7 +293,12 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_merges",
-    "write_mode": "graph.merge"
+    "write_mode": "graph.merge",
+    "validation_classification": "runtime_only",
+    "runtime_only_validation_notes": [
+      "UE schema connection may reject links during execute.",
+      "insert_between requires exactly one successor and exactly one open inserted body exec output."
+    ]
   },
   {
     "route_id": "graph.merge.append_after",
@@ -326,7 +336,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
-    "write_mode": "graph.merge"
+    "write_mode": "graph.merge",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.merge.branch_fork",
@@ -365,7 +376,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
-    "write_mode": "graph.merge"
+    "write_mode": "graph.merge",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.merge.insert_between",
@@ -403,7 +415,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "merges",
-    "write_mode": "graph.merge"
+    "write_mode": "graph.merge",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_graph.node_comment",
@@ -441,7 +454,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_graph.node_property",
@@ -479,7 +493,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_graph.pin_default",
@@ -516,7 +531,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_links.connect_pins",
@@ -552,7 +568,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_link_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_links.disconnect_link",
@@ -587,7 +604,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_link_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_links.insert_pure_resolver_between_data_link",
@@ -623,7 +641,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_link_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch_external_links.replace_link",
@@ -659,7 +678,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_link_patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.connect_pins",
@@ -696,7 +716,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.delete_owned_node",
@@ -733,7 +754,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.disconnect_link",
@@ -769,7 +791,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.node_comment",
@@ -806,7 +829,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.pin_default",
@@ -843,7 +867,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.patch.replace_link",
@@ -880,7 +905,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "patches",
-    "write_mode": "graph.patch"
+    "write_mode": "graph.patch",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.replace_external_body.body",
@@ -918,7 +944,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "external_replace",
-    "write_mode": "graph.replace"
+    "write_mode": "graph.replace",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.replace.block_implementation",
@@ -1106,7 +1133,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
-    "write_mode": "graph.replace"
+    "write_mode": "graph.replace",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.replace.function_body",
@@ -1167,7 +1195,8 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
-    "write_mode": "graph.replace"
+    "write_mode": "graph.replace",
+    "validation_classification": "shared_policy"
   },
   {
     "route_id": "graph.replace.graph",
@@ -1263,6 +1292,7 @@ export const GRAPHWRITE_ROUTE_MANIFEST = [
     "status": "active",
     "adapter_sync": "active_requires_registered_non_reserved_adapter",
     "behavior_field": "replace",
-    "write_mode": "graph.replace"
+    "write_mode": "graph.replace",
+    "validation_classification": "shared_policy"
   }
 ] as const satisfies readonly GraphWriteRouteDescriptor[];

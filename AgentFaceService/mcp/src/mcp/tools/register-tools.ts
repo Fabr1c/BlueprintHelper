@@ -1499,8 +1499,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     {
       description: legacyDebugExpertDescription('Export a blueprint graph to raw BlueprintHelper JSON that can be written back or replayed with blueprint_import_json_to_graph. Use blueprint_get_logic for read-only logic summaries.'),
       inputSchema: z.object({
-        target_blueprint: z.string().optional()
-          .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
+        target_blueprint: z.string().min(1)
+          .describe('Explicit Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Active/focused Blueprint fallback is not supported.'),
         target_graph: z.string().optional()
           .describe('Graph name to export. Omit to use the active graph.'),
         scope: z.enum(['graph', 'blueprint', 'selection']).optional().default('graph')
@@ -1512,8 +1512,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     },
     async ({ target_blueprint, target_graph, scope, response_mode }) => {
       try {
-        const payload: Record<string, unknown> = {};
-        if (target_blueprint) payload.target_blueprint = target_blueprint;
+        const payload: Record<string, unknown> = { target_blueprint };
         if (target_graph) payload.target_graph = target_graph;
         if (scope) payload.scope = scope;
         const resp = await bridge.sendCommand('export_to_json', payload);
@@ -1584,8 +1583,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     {
       description: legacyDebugExpertDescription('Read the current Blueprint logic as Markdown. This is for understanding and review only; it is not importable raw BlueprintHelper JSON.'),
       inputSchema: z.object({
-        target_blueprint: z.string().optional()
-          .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
+        target_blueprint: z.string().min(1)
+          .describe('Explicit Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Active/focused Blueprint fallback is not supported.'),
         target_graph: z.string().optional()
           .describe('Graph name to inspect. Omit to use the active graph.'),
         scope: z.enum(['graph', 'blueprint']).optional().default('graph')
@@ -1612,13 +1611,13 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     }) => {
       try {
         const payload: Record<string, unknown> = {
+          target_blueprint,
           format: 'logic_md',
           scope: scope ?? 'graph',
           detail: detail ?? 'normal',
           include_data_dependencies: include_data_dependencies ?? true,
           include_orphans: include_orphans ?? true,
         };
-        if (target_blueprint) payload.target_blueprint = target_blueprint;
         if (target_graph) payload.target_graph = target_graph;
 
         const resp = await bridge.sendCommand('export_logic', payload);
@@ -1647,8 +1646,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     {
       description: legacyDebugExpertDescription('Read the current Blueprint logic as structured logic JSON for analysis. This is not raw BlueprintHelper JSON and must not be passed directly to blueprint_import_json_to_graph.'),
       inputSchema: z.object({
-        target_blueprint: z.string().optional()
-          .describe('Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Omit to use the active blueprint.'),
+        target_blueprint: z.string().min(1)
+          .describe('Explicit Blueprint asset path, e.g. /Game/BP/BP_Test.BP_Test. Active/focused Blueprint fallback is not supported.'),
         target_graph: z.string().optional()
           .describe('Graph name to inspect. Omit to use the active graph.'),
         scope: z.enum(['graph', 'blueprint']).optional().default('graph')
@@ -1684,6 +1683,7 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     }) => {
       try {
         const payload: Record<string, unknown> = {
+          target_blueprint,
           format: 'logic_json',
           scope: scope ?? 'graph',
           detail: detail ?? 'normal',
@@ -1693,7 +1693,6 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
           include_positions: include_positions ?? false,
           include_raw_node_types: include_raw_node_types ?? false,
         };
-        if (target_blueprint) payload.target_blueprint = target_blueprint;
         if (target_graph) payload.target_graph = target_graph;
 
         const resp = await bridge.sendCommand('export_logic', payload);
@@ -1737,8 +1736,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
       description: legacyWriteExpertDescription('Import structured RawJson into a blueprint graph, creating nodes and connections. Rejects legacy string JSON and LogicJson/LogicMD read-only views.'),
       inputSchema: z.object({
         json: rawJsonInputSchema,
-        target_blueprint: z.string().optional()
-          .describe('Target blueprint asset path. Omit to use the active blueprint.'),
+        target_blueprint: z.string().min(1)
+          .describe('Explicit target Blueprint asset path. Active/focused Blueprint fallback is not supported.'),
         target_graph: z.string().optional()
           .describe('Target graph name. Omit to use the active graph.'),
         compile_after_import: z.boolean().optional().default(true)
@@ -1770,11 +1769,11 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
 
         const payload: Record<string, unknown> = {
           json,
+          target_blueprint,
           compile_after_import,
           strict: strict ?? true,
           allow_partial: allow_partial ?? false,
         };
-        if (target_blueprint) payload.target_blueprint = target_blueprint;
         if (target_graph) payload.target_graph = target_graph;
         const resp = await bridge.sendCommand('import_json', payload);
         return toToolResult(resp);
@@ -1824,14 +1823,13 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
     {
       description: legacyWriteExpertDescription('Trigger compilation of a blueprint asset and return diagnostics.'),
       inputSchema: z.object({
-        target_blueprint: z.string().optional()
-          .describe('Blueprint asset path to compile. Omit to use the active blueprint.'),
-      }),
+        target_blueprint: z.string().min(1)
+          .describe('Explicit Blueprint asset path to compile. Active/focused Blueprint fallback is not supported.'),
+      }).strict(),
     },
     async ({ target_blueprint }) => {
       try {
-        const payload: Record<string, unknown> = {};
-        if (target_blueprint) payload.target_blueprint = target_blueprint;
+        const payload: Record<string, unknown> = { target_blueprint };
         const resp = await bridge.sendCommand('compile_blueprint', payload);
         return toToolResult(resp);
       } catch (err) {
@@ -1906,8 +1904,8 @@ export function registerTools(server: McpServer, bridge: BridgeClient, config: E
   // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲锟?
 
   const targetSchemaFields = {
-    target_blueprint: z.string().optional()
-      .describe('Blueprint asset path. Omit to use the active blueprint.'),
+    target_blueprint: z.string().min(1)
+      .describe('Explicit Blueprint asset path. Active/focused Blueprint fallback is not supported.'),
     target_graph: z.string().optional()
       .describe('Graph name. Omit to use the active/default graph.'),
   };

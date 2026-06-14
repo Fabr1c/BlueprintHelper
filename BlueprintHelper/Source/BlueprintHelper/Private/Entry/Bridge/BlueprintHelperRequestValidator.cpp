@@ -27,6 +27,7 @@ public:
 		const TCHAR* FieldName;
 		EBlueprintHelperJsonExpectedType Type;
 		bool bRequired = false;
+		bool bNonEmptyString = false;
 	};
 
 	static FString ExpectedTypeToString(EBlueprintHelperJsonExpectedType Type)
@@ -117,6 +118,17 @@ public:
 				ExpectedTypeToString(Rule.Type), ActualJsonTypeToString(FoundValue));
 			return false;
 		}
+		if (Rule.bNonEmptyString)
+		{
+			FString StringValue;
+			FoundValue->TryGetString(StringValue);
+			if (StringValue.IsEmpty())
+			{
+				SetValidationError(OutError, TEXT("payload.") + FieldName,
+					TEXT("non-empty string"), TEXT("empty string"));
+				return false;
+			}
+		}
 		return true;
 	}
 
@@ -132,6 +144,45 @@ public:
 				return false;
 			}
 		}
+		return true;
+	}
+
+	static void SetUnexpectedFieldError(
+		FBlueprintHelperBridgeValidationError& OutError,
+		const FString& Field)
+	{
+		OutError.Code = TEXT("unexpected_field");
+		OutError.Field = TEXT("payload.") + Field;
+		OutError.ExpectedType = TEXT("absent");
+		OutError.ActualType = TEXT("present");
+		OutError.Message = FString::Printf(TEXT("%s is not accepted for this command."), *OutError.Field);
+	}
+
+	static bool ValidateExactRules(
+		const TSharedPtr<FJsonObject>& Payload,
+		TArrayView<const FBlueprintHelperFieldRule> Rules,
+		FBlueprintHelperBridgeValidationError& OutError)
+	{
+		if (!ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		TSet<FString> AllowedFields;
+		for (const FBlueprintHelperFieldRule& Rule : Rules)
+		{
+			AllowedFields.Add(FString(Rule.FieldName));
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Payload->Values)
+		{
+			if (!AllowedFields.Contains(Field.Key))
+			{
+				SetUnexpectedFieldError(OutError, Field.Key);
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -769,7 +820,10 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("compile_blueprint")))
 	{
-		return true;
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("target_blueprint"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true, true},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateExactRules(Payload, Rules, OutError);
 	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("open_asset")) || FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("save_asset"))
 		|| FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_asset_info")))

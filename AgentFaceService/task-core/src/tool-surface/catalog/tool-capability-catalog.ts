@@ -331,7 +331,11 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['blueprint.diagnose.compile', {
       stop_conditions: COMPILE_STOP_CONDITIONS,
-      help_notes: ['Requires an approved write-session gate when the running Editor Bridge enforces write-session policy.'],
+      help_usage: ['bh blueprint_compile_blueprint --file AgentFaceService/agent-guide/Templates/blueprint_compile_blueprint_template.json --select status,artifacts.full_result'],
+      help_notes: [
+        'Payload requires target_blueprint. Editor selection fallback is not supported.',
+        'Requires an approved write-session gate when the running Editor Bridge enforces write-session policy.',
+      ],
     }],
     ['umg.read.widget_tree', {
       route_refs: widgetTreeRouteRefs,

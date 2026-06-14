@@ -647,6 +647,31 @@ test('TaskSpec template composer writes UMG widget operation quick-access change
   assert.deepEqual(taskSpec.behavior.changes.map((change) => change.kind), ['create_widget']);
 });
 
+test('TaskSpec template composer writes Blueprint variable quick-access changes', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'blueprint-variable.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_variables',
+    writeMode: 'variables.edit',
+    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    schema: string;
+    task_type: string;
+    behavior: { changes: Array<{ kind: string; pin_type?: unknown }> };
+  };
+  assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1');
+  assert.equal(taskSpec.task_type, 'edit_blueprint_variables');
+  assert.equal(taskSpec.behavior.changes[0]?.kind, 'ensure_member_variable');
+  assert.equal(typeof taskSpec.behavior.changes[0]?.pin_type, 'object');
+});
+
 function writeModeForFamily(family: string): string {
   switch (family) {
     case 'blueprint_variables':

@@ -410,6 +410,24 @@ test('runCli task execute records taskspec execute metrics through the default r
             },
           };
         }
+        if (command === 'source_control_status') {
+          return {
+            success: true,
+            request_id: 'execute_metrics_source_control_request',
+            result: {
+              source_control: {
+                status: 'editable',
+                files: [
+                  {
+                    asset_path: '/Game/BP/BP_CliMetrics',
+                    status: 'editable',
+                    editable: true,
+                  },
+                ],
+              },
+            },
+          };
+        }
         assert.equal(command, 'execute_task_plan');
         return {
           success: true,
@@ -439,7 +457,7 @@ test('runCli task execute records taskspec execute metrics through the default r
 
   assert.equal(exitCode, 0);
   assert.deepEqual(stderr, []);
-  assert.deepEqual(bridgeCommands, ['preview_task_plan', 'execute_task_plan']);
+  assert.deepEqual(bridgeCommands, ['preview_task_plan', 'source_control_status', 'execute_task_plan']);
   assert.equal(output.ok, true);
   assert.equal(output.operation, 'task.execute');
   assert.equal(events.length, 2);

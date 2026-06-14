@@ -206,12 +206,16 @@ function resolveExpressionCompilerId(input: ResolveGraphWriteExpressionCompilerI
     case 'container_action':
       return 'expression.container_action';
     default:
-      throw new TaskSpecCompileError('unsupported_expression_kind', 'Unsupported GraphWrite expression kind.', [
+      throw new TaskSpecCompileError(
+        'unsupported_expression_kind',
+        'Unsupported GraphWrite expression kind. Use {"kind":"get","target":"self"} for self.',
+        [
         {
           code: 'unsupported_expression_kind',
           path: `${input.path}.kind`,
-          message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action.',
+          message: 'Use literal, field, get, get_property, call, op, construct, deconstruct, select, create, convert, schedule, or container_action. For self, use {"kind":"get","target":"self"}.',
         },
-      ]);
+        ],
+      );
   }
 }

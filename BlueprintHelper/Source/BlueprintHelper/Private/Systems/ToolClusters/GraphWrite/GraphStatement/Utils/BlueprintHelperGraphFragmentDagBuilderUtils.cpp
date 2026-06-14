@@ -1329,6 +1329,8 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	const FBlueprintHelperGraphFragmentEndpointRef JoinThen = MakeExecEndpoint(JoinFragmentId, TEXT("exec.in.then"), TEXT("then"), EBlueprintHelperGraphFragmentPortDirection::ExecInput);
 	const FBlueprintHelperGraphFragmentEndpointRef JoinElse = MakeExecEndpoint(JoinFragmentId, TEXT("exec.in.else"), TEXT("else"), EBlueprintHelperGraphFragmentPortDirection::ExecInput);
 	const FBlueprintHelperGraphFragmentEndpointRef JoinExit = MakeExecExit(JoinFragmentId);
+	bool bThenContributesJoin = false;
+	bool bElseContributesJoin = false;
 
 	SymbolScopes.AddDefaulted();
 	const FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow ThenFlow = BuildStatementArray(
@@ -1349,6 +1351,7 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	if (ThenFlow.Entries.Num() == 0)
 	{
 		AddExecEdge(State, BranchThen, JoinThen, Statement->Path + TEXT(".then"));
+		bThenContributesJoin = true;
 	}
 	else
 	{
@@ -1360,11 +1363,13 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 		{
 			AddExecEdge(State, Exit, JoinThen, Statement->Path + TEXT(".then.join"));
 		}
+		bThenContributesJoin = ThenFlow.Exits.Num() > 0;
 	}
 
 	if (ElseFlow.Entries.Num() == 0)
 	{
 		AddExecEdge(State, BranchElse, JoinElse, Statement->Path + TEXT(".else"));
+		bElseContributesJoin = true;
 	}
 	else
 	{
@@ -1376,9 +1381,13 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 		{
 			AddExecEdge(State, Exit, JoinElse, Statement->Path + TEXT(".else.join"));
 		}
+		bElseContributesJoin = ElseFlow.Exits.Num() > 0;
 	}
 
-	Flow.Exits.Add(JoinExit);
+	if (bThenContributesJoin || bElseContributesJoin)
+	{
+		Flow.Exits.Add(JoinExit);
+	}
 	return Flow;
 }
 FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBlueprintHelperGraphFragmentDagBuilderUtils::BuildStatement(
@@ -1417,7 +1426,12 @@ FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow FBluep
 	}
 
 	case EBlueprintHelperGraphStatementKind::Return:
-		return BuildSimpleStatement(Statement, TEXT("statement_return"), TEXT("return"), State, SymbolScopes);
+	{
+		FBlueprintHelperGraphFragmentDagBuilderUtils::FBlueprintHelperDagExecFlow Flow =
+			BuildSimpleStatement(Statement, TEXT("statement_return"), TEXT("return"), State, SymbolScopes);
+		Flow.Exits.Reset();
+		return Flow;
+	}
 
 	case EBlueprintHelperGraphStatementKind::Let:
 		return BuildLetStatement(Statement, State, SymbolScopes);

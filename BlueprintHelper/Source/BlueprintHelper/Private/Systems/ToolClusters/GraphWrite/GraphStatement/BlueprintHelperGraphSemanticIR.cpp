@@ -534,6 +534,11 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 		StatementObject->TryGetStringField(TEXT("control_operation"), Statement->ControlOperation);
 	}
 	Statement->ControlOperation = NormalizeFieldToken(Statement->ControlOperation);
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Control
+		&& Statement->ControlOperation.Equals(TEXT("return"), ESearchCase::IgnoreCase))
+	{
+		Statement->Kind = EBlueprintHelperGraphStatementKind::Return;
+	}
 	StatementObject->TryGetStringField(TEXT("create_operation"), Statement->CreateOperation);
 	Statement->CreateOperation = NormalizeFieldToken(Statement->CreateOperation);
 	StatementObject->TryGetStringField(TEXT("container_kind"), Statement->ContainerKind);
@@ -617,6 +622,10 @@ TSharedPtr<FBlueprintHelperGraphStatementIR> FBlueprintHelperGraphSemanticIRBuil
 	FBlueprintHelperGraphSemanticIRUtils::ReadOptionalStringArrayField(StatementObject, TEXT("category_priority"), Statement->CategoryPriority);
 	UGraphWriteGraphStatementUtils::ReadOptionalStringMapField(StatementObject, TEXT("context_evidence"), Statement->ContextEvidence);
 	ParseExpressionMap(StatementObject, TEXT("args"), Path + TEXT(".args"), Statement->Args, OutIR);
+	if (Statement->Kind == EBlueprintHelperGraphStatementKind::Return)
+	{
+		ParseExpressionMap(StatementObject, TEXT("outputs"), Path + TEXT(".outputs"), Statement->Args, OutIR);
+	}
 	if (Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction)
 	{
 		const TSharedPtr<FJsonValue> Target = FBlueprintHelperVersionCompat::FindJsonValue(StatementObject, TEXT("target"));

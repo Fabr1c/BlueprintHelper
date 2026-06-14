@@ -7,6 +7,10 @@ export type GraphWriteTemplateWriteMode =
   | 'graph.replace'
   | 'graph.merge'
   | 'graph.patch';
+export type GraphWriteRouteValidationClassification =
+  | 'preview_decidable'
+  | 'runtime_only'
+  | 'shared_policy';
 
 export interface GraphWriteSelectorDescriptor {
   expected_kind: string;
@@ -47,6 +51,8 @@ export interface GraphWriteRouteDescriptor {
   compiler_id: string;
   status: GraphWriteRouteStatus;
   adapter_sync: GraphWriteRouteAdapterSync;
+  validation_classification?: GraphWriteRouteValidationClassification;
+  runtime_only_validation_notes?: string[];
 }
 
 export interface GraphWriteRouteSyncEntry {

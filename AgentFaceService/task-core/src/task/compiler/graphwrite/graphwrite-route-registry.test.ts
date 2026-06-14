@@ -127,6 +127,39 @@ test('agent-visible GraphWrite routes exactly match active runtime-backed route 
   assert.deepEqual(visibleRouteIds, expectedRouteIds);
 });
 
+test('agent-visible GraphWrite routes classify preview and execute validation invariants', () => {
+  const visibleRoutes = getAgentVisibleGraphWriteRoutes();
+  const mergeExternalRoute = visibleRoutes.find((route) => route.route_id === 'graph.merge_external_flow.insert_between');
+
+  assert.ok(mergeExternalRoute, 'graph.merge_external_flow.insert_between is agent-visible');
+  assert.equal(mergeExternalRoute?.validation_classification, 'runtime_only');
+
+  for (const route of visibleRoutes) {
+    const classification = route.validation_classification;
+    assert.ok(
+      typeof classification === 'string',
+      `${route.route_id} must declare validation_classification`,
+    );
+    assert.ok(
+      ['preview_decidable', 'runtime_only', 'shared_policy'].includes(classification),
+      `${route.route_id} must declare a known validation_classification`,
+    );
+    if (classification === 'runtime_only') {
+      assert.ok(
+        Array.isArray(route.runtime_only_validation_notes) && route.runtime_only_validation_notes.length > 0,
+        `${route.route_id} runtime_only routes must declare validation notes`,
+      );
+      continue;
+    }
+
+    assert.equal(
+      route.runtime_only_validation_notes,
+      undefined,
+      `${route.route_id} non-runtime-only routes must not declare runtime-only notes`,
+    );
+  }
+});
+
 test('GraphWrite route descriptors declare explicit adapter sync semantics', () => {
   for (const route of getAllGraphWriteRoutes()) {
     const adapterSync = adapterSyncOfDescriptor(route);

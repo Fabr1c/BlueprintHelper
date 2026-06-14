@@ -1975,13 +1975,40 @@ function compileReturnStatementFlow(statementRecord: Record<string, unknown>, no
   const nodes: AgentImportNode[] = [node];
   const links: AgentImportLink[] = [];
   if (Object.hasOwn(statementRecord, 'value')) {
-    const valueFlow = dispatchGraphWriteValueExpression(statementRecord.value, `${nodeId}_value`, `${path}.value`, context);
+    throw new TaskSpecCompileError('return_value_shape_removed', `${path}.value is no longer supported.`, [
+      {
+        code: 'return_value_shape_removed',
+        path: `${path}.value`,
+        message: 'Use control=return with outputs keyed by return pin name.',
+      },
+    ]);
+  }
+  const outputs = isRecord(statementRecord.outputs) ? statementRecord.outputs : undefined;
+  if (!outputs) {
+    throw new TaskSpecCompileError('return_outputs_required', `${path}.outputs must be an object keyed by return pin name.`, [
+      {
+        code: 'return_outputs_required',
+        path: `${path}.outputs`,
+        message: 'Use outputs: { ReturnPinName: <expression> }.',
+      },
+    ]);
+  }
+  for (const [pinName, expression] of Object.entries(outputs)) {
+    const valueFlow = dispatchGraphWriteValueExpression(
+      expression,
+      `${nodeId}_${toIdSegment(pinName)}`,
+      `${path}.outputs.${pinName}`,
+      context,
+    );
     nodes.push(...valueFlow.nodes);
     links.push(...valueFlow.links);
     if (valueFlow.output) {
-      links.push({ kind: 'data', from: valueFlow.output, to: `${nodeId}.value` });
+      links.push({ kind: 'data', from: valueFlow.output, to: `${nodeId}.${pinName}` });
     } else {
-      node.value = valueExprToString(valueFlow.defaultValue);
+      (node as Record<string, unknown>).outputs = {
+        ...((node as Record<string, unknown>)['outputs'] as Record<string, unknown> | undefined),
+        [pinName]: valueExprToString(valueFlow.defaultValue),
+      };
     }
   }
   return {

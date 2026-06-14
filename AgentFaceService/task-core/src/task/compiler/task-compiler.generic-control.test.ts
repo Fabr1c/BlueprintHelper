@@ -128,6 +128,42 @@ test('standard macro control lowers macro evidence', () => {
   });
 });
 
+test('return control preserves named output map for Bridge lowering', () => {
+  const taskPlan = compileTaskSpecToTaskPlan(makeControlSpec({
+    kind: 'control',
+    control: 'return',
+    outputs: {
+      bCompleted: { kind: 'get', target: 'bCompleted' },
+      bIsNewRecord: { kind: 'get', target: 'bIsNewRecord' },
+    },
+  }) as never);
+  const bridgePayload = taskPlanToAppendBridgePayload(taskPlan, true) as unknown as Record<string, unknown>;
+  const logicSpec = bridgePayload.logic_spec as { statements?: Array<{ outputs?: Record<string, unknown> }> };
+  const returnOutputs = logicSpec.statements?.[0]?.outputs as Record<string, unknown> | undefined;
+
+  assert.deepEqual(returnOutputs, {
+    bCompleted: { kind: 'get', target: 'bCompleted' },
+    bIsNewRecord: { kind: 'get', target: 'bIsNewRecord' },
+  });
+});
+
+test('return control rejects removed single value shape', () => {
+  const taskPlan = compileTaskSpecToTaskPlan(makeControlSpec({
+    kind: 'control',
+    control: 'return',
+    value: { kind: 'literal', value_type: 'boolean', value: true },
+  }) as never);
+
+  assert.throws(
+    () => taskPlanToAppendBridgePayload(taskPlan, true),
+    (error: unknown) => {
+      assert.equal(error instanceof Error, true);
+      assert.equal((error as { code?: string }).code, 'return_value_shape_removed');
+      return true;
+    },
+  );
+});
+
 test('generic control rejects implicit linear continuation', () => {
   assert.throws(
     () => compileControlSequence([

@@ -17,6 +17,8 @@ export interface NonGraphWriteOperationDescriptor {
 }
 
 export const NON_GRAPHWRITE_OPERATION_DESCRIPTORS: readonly NonGraphWriteOperationDescriptor[] = [
+  op('blueprint_variables', 'variables.edit', 'variables', 'ensure_member_variable', 'Ensure a Blueprint member variable exists.', 'blueprint_variables_ensure_member_variable', ['behavior.changes[]'], ['name(*)', 'pin_type(*)']),
+  op('blueprint_variables', 'variables.edit', 'variables', 'configure_member_variable', 'Configure Blueprint member variable metadata, defaults, replication, or editability.', 'blueprint_variables_configure_member_variable', ['behavior.changes[]'], ['name(*)']),
   op('blueprint_components', 'components.edit', 'component_tree', 'ensure_component_present', 'Ensure a component exists in the Blueprint component tree.', 'blueprint_component_ensure_present', ['behavior.changes[]'], ['name(*)', 'class(*)']),
   op('blueprint_components', 'components.edit', 'component_tree', 'configure_component', 'Set properties on an existing Blueprint component.', 'blueprint_component_configure', ['behavior.changes[]'], ['name(*)', 'properties(*)']),
   op('blueprint_components', 'components.edit', 'component_tree', 'rename_component', 'Rename a Blueprint component.', 'blueprint_component_rename', ['behavior.changes[]'], ['name(*)', 'new_name(*)']),

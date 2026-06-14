@@ -106,6 +106,18 @@ function validateRoutes(routes) {
     if (route.status === 'active' && (typeof route.template_path !== 'string' || route.template_path.length === 0)) {
       throw new Error(`Active GraphWrite route ${route.route_id} requires template_path.`);
     }
+    if (route.status === 'active') {
+      if (!['preview_decidable', 'runtime_only', 'shared_policy'].includes(route.validation_classification)) {
+        throw new Error(`Active GraphWrite route ${route.route_id} must declare validation_classification.`);
+      }
+      if (route.validation_classification === 'runtime_only') {
+        if (!Array.isArray(route.runtime_only_validation_notes) || route.runtime_only_validation_notes.some((entry) => typeof entry !== 'string' || entry.length === 0)) {
+          throw new Error(`Runtime-only GraphWrite route ${route.route_id} must declare runtime_only_validation_notes.`);
+        }
+      } else if (route.runtime_only_validation_notes !== undefined) {
+        throw new Error(`Non-runtime-only GraphWrite route ${route.route_id} must not declare runtime_only_validation_notes.`);
+      }
+    }
     for (const arrayField of ['required_fields', 'optional_fields', 'insert_paths', 'allowed_slot_ids']) {
       if (!Array.isArray(route[arrayField]) || route[arrayField].some((entry) => typeof entry !== 'string')) {
         throw new Error(`GraphWrite route ${route.route_id} has invalid ${arrayField}.`);

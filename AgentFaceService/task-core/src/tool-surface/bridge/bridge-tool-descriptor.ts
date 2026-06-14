@@ -42,8 +42,8 @@ const SourceControlInputSchema = z.object({
 );
 
 const CompileBlueprintInputSchema = z.object({
-  target_blueprint: z.string().min(1).optional(),
-});
+  target_blueprint: z.string().min(1),
+}).strict();
 
 const SaveAssetInputSchema = z.object({
   asset_path: z.string().min(1),

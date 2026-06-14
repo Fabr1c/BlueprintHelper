@@ -305,6 +305,12 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 			Payload->SetBoolField(TEXT("is_pure"), bIsPure);
 		}
 
+		FString SignatureMismatchPolicy;
+		if (OpObject->TryGetStringField(TEXT("signature_mismatch_policy"), SignatureMismatchPolicy) && !SignatureMismatchPolicy.IsEmpty())
+		{
+			Payload->SetStringField(TEXT("signature_mismatch_policy"), SignatureMismatchPolicy);
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
 		if (OpObject->TryGetArrayField(TEXT("inputs"), Inputs) && Inputs)
 		{

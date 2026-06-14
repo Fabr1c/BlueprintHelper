@@ -73,6 +73,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
       outputs,
       is_pure: change['is_pure'],
       name_collision_policy: optionalString(change, 'name_collision_policy') ?? 'reuse_if_exists',
+      signature_mismatch_policy: optionalString(change, 'signature_mismatch_policy') ?? 'block',
     });
     return op;
   }
