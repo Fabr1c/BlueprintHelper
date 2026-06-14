@@ -209,3 +209,49 @@ test('Codex plugin registers all BlueprintHelper subagents', () => {
 function readText(filePath: string): string {
   return fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
 }
+
+test('TaskSpec workflow docs require compose-first scaffold edits and explicit fallback records', () => {
+  const docs = [
+    'AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md',
+    'CodexPlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'CodexPlugin/skills/blueprint-helper/references/07_Safety_Validation_And_Recovery.md',
+    'ClaudePlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'ClaudePlugin/skills/blueprint-helper/references/07_Safety_Validation_And_Recovery.md',
+  ];
+
+  for (const relativePath of docs) {
+    const text = fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), 'utf8');
+    assert.match(text, /TaskSpec structure must be composed before placeholder edits/u, relativePath);
+    assert.match(text, /Only replace `__REQUIRED_\*__` placeholders/u, relativePath);
+    assert.match(text, /Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails/u, relativePath);
+    assert.match(text, /ReadSpec JSON may remain handwritten when the stable ReadSpec schema is enough/u, relativePath);
+    assert.match(text, /source-control status and checkout payloads are direct editor tool payloads/u, relativePath);
+  }
+});
+
+test('TaskSpec workflow docs include high-frequency composer recipes', () => {
+  const docs = [
+    'AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'CodexPlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'ClaudePlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+  ];
+  const requiredTokens = [
+    'blueprint_variables.variables.ensure_member_variable',
+    'blueprint_variables.variables.configure_member_variable',
+    'external_body.replace_body.body',
+    'generic_ops.set_variable.default',
+    'generic_ops.branch.default',
+    'blueprint_signature.signature.remove_signature',
+    'blueprint_signature.signature.ensure_override_event',
+    'material_graph.material_graph.append_block',
+    'material_graph.material_graph.replace_block',
+  ];
+
+  for (const relativePath of docs) {
+    const text = readText(path.join(PLUGIN_ROOT, relativePath));
+    for (const token of requiredTokens) {
+      assert.match(text, new RegExp(token.replaceAll('.', '\\.'), 'u'), `${relativePath} missing ${token}`);
+    }
+  }
+});

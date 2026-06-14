@@ -27,7 +27,9 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
 
-Composer output is a temporary TaskSpec scaffold, not the final write input. Fill the generated TaskSpec with concrete grouped context-read evidence, selected anchors, target asset data, and the user's intent before preview; do not skip directly from template discovery to execute.
+Composer output is a temporary TaskSpec scaffold, not the final write input, but TaskSpec structure must be composed before placeholder edits. Only replace `__REQUIRED_*__` placeholders and fill concrete context-read evidence, selected anchors, target asset data, and the user's intent before preview. Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails or when the capability is unsupported by the template system; record the failed command, diagnostics, source shape, and validation outcome.
+
+ReadSpec JSON may remain handwritten when the stable ReadSpec schema is enough. Do not treat handwritten ReadSpec files as TaskSpec composer failures.
 
 For GraphWrite `merge_owned_graph` using `branch_fork + owned_block_call`, preview must verify:
 
@@ -44,6 +46,8 @@ Preview and write authorization are separate gates. After preview succeeds, if r
 ## Source Control Gate
 
 Source-control checkout is separate from write authorization. In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when target assets may be read-only or when close/save reports `checkout_required`. Stop and report on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`.
+
+source-control status and checkout payloads are direct editor tool payloads, not TaskSpec compose outputs; `{ "asset_paths": [...] }` payloads do not count as TaskSpec composer fallback.
 
 ## Validation
 

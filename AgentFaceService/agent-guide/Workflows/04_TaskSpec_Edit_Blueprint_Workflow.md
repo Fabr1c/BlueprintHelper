@@ -7,8 +7,8 @@
 ```text
 1. get_runtime_profile
 2. read_context / read_reference_context as needed
-3. use TaskSpec Template Composer to create a temporary TaskSpec
-4. fill the generated TaskSpec with concrete read_context evidence and intent
+3. use TaskSpec Template Composer to create the TaskSpec structure
+4. Only replace `__REQUIRED_*__` placeholders and fill concrete read_context evidence, target values, selected anchors, and user intent
 5. preview_task
 6. 如果 context_required/context_stale：重新 read_context / read_reference_context
 7. 如果 TaskSpec error：按 suggested_patch 修正
@@ -37,6 +37,10 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
 
+TaskSpec structure must be composed before placeholder edits. Only replace `__REQUIRED_*__` placeholders, fill evidence/target/selector/literal/user-intent values required by the scaffold, and keep the generated root object as `BlueprintHelper.TaskSpec.v1`. Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails or when the capability is not represented by the supported template system. When fallback is used, record the failed discovery/compose command, diagnostics, historical shape source, and preview/execute/readback result in Debug or the task report.
+
+ReadSpec JSON may remain handwritten when the stable ReadSpec schema is enough. Do not treat handwritten ReadSpec files as TaskSpec composer failures.
+
 ## GraphWrite Slot Expression
 
 `quick-access` 返回的 `slot_type` 和 `arg_slots` 是组合输入的导航信息。`slot_type="statement"` 的模板可以作为 `--templates` 顶层 root；`slot_type="expression"` 的模板只能填入某个 statement 或 expression 的输入位，不能单独 compose 成 statement。
@@ -46,6 +50,24 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 多个顶层 statement 用顶层逗号连接；括号内逗号属于当前 slot expression。PowerShell 中把整个 `--templates` 值用双引号包住。不要把 expression quick-access 直接作为 root，也不要手写完整 statement JSON 来绕过 composer。
 
 调用 `bh task preview --file` / `bh task execute --file` 分组命令前，必须通过当前 CLI help 和 composer 输出确认输入文件根对象就是裸 `BlueprintHelper.TaskSpec.v1`。
+
+## TaskSpec Composer Recipes
+
+Use these recipes to choose the composer path. The recipe selects the scaffold; the Agent still replaces `__REQUIRED_*__` placeholders with user intent and current readback evidence before preview.
+
+| Scenario | Discovery path | Compose template |
+|---|---|---|
+| Ensure member variable | `family=blueprint_variables`, `write-mode=variables.edit`, `cluster=variables`, `operation=ensure_member_variable` | `blueprint_variables.variables.ensure_member_variable` |
+| Configure member variable | `family=blueprint_variables`, `write-mode=variables.edit`, `cluster=variables`, `operation=configure_member_variable` | `blueprint_variables.variables.configure_member_variable` |
+| Replace external graph body | `family=graph_write`, `write-mode=graph.replace`, `cluster=external_body`, `operation=replace_body` | `external_body.replace_body.body(<statement>)` |
+| Set variable in graph body | `family=graph_write`, `write-mode=graph.append`, `cluster=generic_ops`, `operation=set_variable` | `generic_ops.set_variable.default(<expression>)` |
+| Branch in graph body | `family=graph_write`, `write-mode=graph.append`, `cluster=generic_ops`, `operation=branch` | `generic_ops.branch.default(<condition_expression>)` |
+| Remove signature | `family=blueprint_signature`, `write-mode=signature.edit`, `cluster=signature`, `operation=remove_signature` | `blueprint_signature.signature.remove_signature` |
+| Ensure override event | `family=blueprint_signature`, `write-mode=signature.edit`, `cluster=signature`, `operation=ensure_override_event` | `blueprint_signature.signature.ensure_override_event` |
+| Append Material graph block | `family=material_graph`, `write-mode=material.graph`, `cluster=material_graph`, `operation=append_block` | `material_graph.material_graph.append_block` |
+| Replace Material graph block | `family=material_graph`, `write-mode=material.graph`, `cluster=material_graph`, `operation=replace_block` | `material_graph.material_graph.replace_block` |
+
+For Material graph recipes, do not use K2 `graph_statement_*` or `graph_expression_*` template semantics. Material graph has its own `material_graph` family and Material-specific placeholders.
 
 ## Direct Compile Validation
 
@@ -70,6 +92,8 @@ If preview or compile returns an unsupported-scope diagnostic, stop and report t
 execute_task 仍可能因 UE 当前状态、资产变化或 Editor 写入失败而失败；失败结果必须带非空 error code/message/stage，报告时使用该错误和 task result/journal，不展开底层 Bridge payload。
 
 ## Source Control / P4 Checkout
+
+source-control status and checkout payloads are direct editor tool payloads, not TaskSpec compose outputs; `{ "asset_paths": [...] }` payloads do not count as TaskSpec composer fallback.
 
 写入已有 UE 资产前，如果项目启用了 P4/Perforce 或其他 UE SourceControl Provider，必须在 preview 通过后、execute 前确认目标资产可编辑。按运行时 CLI 发现到的 source-control status / checkout 能力执行；本文档不维护静态 catalog 说明。
 

@@ -42,6 +42,38 @@ export const NON_GRAPHWRITE_OPERATION_DESCRIPTORS: readonly NonGraphWriteOperati
   op('blueprint_signature', 'signature.edit', 'signature', 'ensure_event_dispatcher', 'Ensure an event dispatcher signature exists.', 'blueprint_signature_ensure_event_dispatcher', ['behavior.changes[]'], ['dispatcher_name(*)']),
   op('blueprint_signature', 'signature.edit', 'signature', 'ensure_override_event', 'Ensure an override event signature exists.', 'blueprint_signature_ensure_override_event', ['behavior.changes[]'], ['event_name(*)']),
   op('blueprint_signature', 'signature.edit', 'signature', 'remove_signature', 'Remove a signature with reference-context protection.', 'blueprint_signature_remove', ['behavior.changes[]'], ['signature_name(*)']),
+  baseOp(
+    'blueprint_create_feature',
+    'feature.create',
+    'feature',
+    'create_feature',
+    'Create a composite Blueprint feature scaffold.',
+    'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
+  ),
+  baseOp(
+    'data_table',
+    'table.rows',
+    'rows',
+    'edit_rows',
+    'Create a DataTable row edit scaffold.',
+    'AgentFaceService/agent-guide/Templates/write/routes/data_table_rows_edit_template.json',
+  ),
+  baseOp(
+    'object_properties',
+    'object.properties',
+    'properties',
+    'edit_properties',
+    'Create a UObject property edit scaffold.',
+    'AgentFaceService/agent-guide/Templates/write/routes/data_object_properties_edit_template.json',
+  ),
+  baseOp(
+    'asset_factory',
+    'asset.create',
+    'asset',
+    'create_asset',
+    'Create an asset factory scaffold.',
+    'AgentFaceService/agent-guide/Templates/write/routes/data_asset_create_template.json',
+  ),
   op('material_graph', 'material.graph', 'material_graph', 'append_block', 'Append a new owned Material expression block and connect it to a Material output.', 'material_graph_append_block', ['behavior.entries[]'], ['block_id(*)', 'node_key(*)']),
   op('material_graph', 'material.graph', 'material_graph', 'replace_block', 'Replace an owned Material expression block by block_id.', 'material_graph_replace_block', ['behavior.replace'], ['block_id(*)', 'node_key(*)']),
   op('material_graph', 'material.graph', 'material_graph', 'patch_block', 'Patch owned Material expressions, links, or deletes by block_id.', 'material_graph_patch_block', ['behavior.patches[]'], ['block_id(*)']),
@@ -69,6 +101,29 @@ function op(
     template_path: `AgentFaceService/agent-guide/Templates/write/slots/${sourceSlotId}_template.json`,
     insert_paths: [...insertPaths],
     arg_slots: [...argSlots],
+    validation_classification: 'shared_policy',
+  };
+}
+
+function baseOp(
+  family: NonGraphWriteFamily,
+  writeMode: NonGraphWriteTemplateWriteMode,
+  clusterId: string,
+  operationId: string,
+  description: string,
+  templatePath: string,
+): NonGraphWriteOperationDescriptor {
+  return {
+    family,
+    write_mode: writeMode,
+    cluster_id: clusterId,
+    operation_id: operationId,
+    description,
+    template_id: `${family}.${clusterId}.${operationId}`,
+    source_slot_id: `${family}_${operationId}`,
+    template_path: templatePath,
+    insert_paths: [],
+    arg_slots: [],
     validation_classification: 'shared_policy',
   };
 }

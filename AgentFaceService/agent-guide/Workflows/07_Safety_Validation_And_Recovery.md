@@ -27,7 +27,9 @@ bh tools templates compose --family graph_write --write-mode graph.append --temp
 
 Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
 
-Composer output is a temporary TaskSpec scaffold, not the final write input. Fill the generated TaskSpec with concrete `read_context` evidence, selected anchors, target asset data, and the user's intent before preview; do not skip directly from template discovery to execute.
+Composer output is a temporary TaskSpec scaffold, not the final write input, but TaskSpec structure must be composed before placeholder edits. Only replace `__REQUIRED_*__` placeholders and fill concrete context-read evidence, selected anchors, target asset data, and the user's intent before preview. Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails or when the capability is unsupported by the template system; record the failed command, diagnostics, source shape, and validation outcome.
+
+ReadSpec JSON may remain handwritten when the stable ReadSpec schema is enough. Do not treat handwritten ReadSpec files as TaskSpec composer failures.
 
 For GraphWrite branch insertion into an owned block, preview must verify:
 
@@ -42,6 +44,8 @@ If any of these checks block, execution is forbidden. A successful preview is st
 Preview and write authorization are separate gates. After preview succeeds, if runtime profile or execute preflight reports missing write permission, call `blueprinthelper_request_write_session`. The Editor approval UI is intentionally minimal: accept or reject. If the user rejects, stop and report the denied write session. Approval is scoped to the running Editor/Bridge for the approved scope and lifetime, so SideAgents can continue the tool chain without receiving raw session data. Do not fall back to `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or direct `auth_session` handling.
 
 ## Source Control Gate
+
+source-control status and checkout payloads are direct editor tool payloads, not TaskSpec compose outputs; `{ "asset_paths": [...] }` payloads do not count as TaskSpec composer fallback.
 
 Source-control checkout is separate from write authorization. In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when target assets may be read-only or when close/save reports `checkout_required`. Stop and report on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`.
 

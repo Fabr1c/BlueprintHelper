@@ -141,6 +141,13 @@ export interface ComposeTaskSpecTemplateInput {
   outputPath: string;
 }
 
+export interface TaskSpecTemplateRequiredPlaceholder {
+  path: string;
+  placeholder: string;
+  meaning?: string;
+  expected_source?: string;
+}
+
 export type TaskSpecTemplateCompositionResult =
   | {
     schema: 'BlueprintHelper.TaskSpecTemplateComposition.v1';
@@ -148,6 +155,7 @@ export type TaskSpecTemplateCompositionResult =
     family: string;
     write_mode: string;
     output_path: string;
+    required_placeholders: TaskSpecTemplateRequiredPlaceholder[];
     next: {
       preview_command: string;
       execute_command: string;

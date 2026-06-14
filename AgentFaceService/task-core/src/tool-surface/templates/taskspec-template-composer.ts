@@ -23,6 +23,7 @@ import type {
   TaskSpecTemplateCompositionResult,
   TaskSpecTemplateDiagnostic,
   TaskSpecTemplateQuickAccessItem,
+  TaskSpecTemplateRequiredPlaceholder,
 } from './taskspec-template-types.js';
 
 export {
@@ -100,7 +101,7 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
     target.push(...statements);
   }
   writeJson(input.outputPath, taskSpec);
-  return ok(input);
+  return ok(input, taskSpec);
 }
 
 function composeGraphWriteRouteTaskSpecTemplate(
@@ -144,7 +145,7 @@ function composeGraphWriteRouteTaskSpecTemplate(
     return failed(input, diagnostics);
   }
   writeJson(input.outputPath, taskSpec);
-  return ok(input);
+  return ok(input, taskSpec);
 }
 
 function applyRouteSpecificDefaults(taskSpec: Record<string, unknown>, routeId: string): void {
@@ -240,9 +241,9 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
   }
   if (input.templateIds.length > 0) {
     const taskSpec = readJson(pluginPath(family.base_template_path)) as Record<string, unknown>;
-    clearInsertTargets(taskSpec, family.insert_targets);
     const diagnostics: TaskSpecTemplateDiagnostic[] = [];
     const quickAccessCatalog = listNonGraphWriteQuickAccessCatalog(input.family, input.writeMode);
+    const items: TaskSpecTemplateQuickAccessItem[] = [];
     for (const templateId of input.templateIds) {
       const item = quickAccessCatalog.find((candidate) => candidate.template_id === templateId);
       if (!item) {
@@ -254,6 +255,12 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
         });
         continue;
       }
+      items.push(item);
+    }
+    if (items.some((item) => item.insert_paths.length > 0)) {
+      clearInsertTargets(taskSpec, family.insert_targets);
+    }
+    for (const item of items) {
       const fragment = readNonGraphWriteQuickAccessFragment(item);
       for (const insertPath of item.insert_paths) {
         insertTemplateFragment(taskSpec, insertPath, fragment);
@@ -263,11 +270,12 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       return failed(input, diagnostics);
     }
     writeJson(input.outputPath, taskSpec);
-    return ok(input);
+    return ok(input, taskSpec);
   }
 
-  writeJson(input.outputPath, readJson(pluginPath(family.base_template_path)));
-  return ok(input);
+  const taskSpec = readJson(pluginPath(family.base_template_path));
+  writeJson(input.outputPath, taskSpec);
+  return ok(input, taskSpec);
 }
 
 function listNonGraphWriteQuickAccessCatalog(
@@ -332,7 +340,7 @@ function getGraphWriteStatementTarget(taskSpec: Record<string, unknown>, writeMo
   return requireArray(behavior['patches'], 'behavior.patches');
 }
 
-function ok(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+function ok(input: ComposeTaskSpecTemplateInput, taskSpec: unknown): TaskSpecTemplateCompositionResult {
   const outputPath = normalizePath(path.resolve(input.outputPath));
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateComposition.v1',
@@ -340,11 +348,46 @@ function ok(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionRes
     family: input.family,
     write_mode: input.writeMode,
     output_path: outputPath,
+    required_placeholders: collectRequiredPlaceholders(taskSpec),
     next: {
       preview_command: `bh task preview --file ${outputPath} --format json`,
       execute_command: `bh task execute --file ${outputPath} --format json`,
     },
   };
+}
+
+const REQUIRED_PLACEHOLDER_PATTERN = /^__REQUIRED_[A-Z0-9_]+__$/u;
+
+function collectRequiredPlaceholders(value: unknown): TaskSpecTemplateRequiredPlaceholder[] {
+  const placeholders: TaskSpecTemplateRequiredPlaceholder[] = [];
+  visitRequiredPlaceholders(value, '', placeholders);
+  return placeholders;
+}
+
+function visitRequiredPlaceholders(
+  value: unknown,
+  pathExpression: string,
+  placeholders: TaskSpecTemplateRequiredPlaceholder[],
+): void {
+  if (typeof value === 'string') {
+    if (REQUIRED_PLACEHOLDER_PATTERN.test(value)) {
+      placeholders.push({ path: pathExpression, placeholder: value });
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      visitRequiredPlaceholders(item, `${pathExpression}[${index}]`, placeholders);
+    });
+    return;
+  }
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = pathExpression.length > 0 ? `${pathExpression}.${key}` : key;
+    visitRequiredPlaceholders(child, childPath, placeholders);
+  }
 }
 
 function failed(
@@ -405,7 +448,16 @@ function requireArray(value: unknown, label: string): unknown[] {
 function clearInsertTargets(root: Record<string, unknown>, insertTargets: readonly string[]): void {
   for (const insertTarget of insertTargets) {
     if (insertTarget.endsWith('[]')) {
-      getPathArray(root, insertTarget.slice(0, -2)).length = 0;
+      const parent = resolvePathParent(root, insertTarget.slice(0, -2));
+      if (!parent) {
+        continue;
+      }
+      const value = parent.record[parent.key];
+      if (Array.isArray(value)) {
+        value.length = 0;
+      } else {
+        delete parent.record[parent.key];
+      }
       continue;
     }
     deletePath(root, insertTarget);

@@ -126,6 +126,16 @@ test('ReadContext template index exposes domain cluster target and view discover
   assert.equal(domains.items.some((item) => item.domain === 'material'), true);
   assert.equal(domains.items.some((item) => item.domain === 'material_instance'), false);
 
+  const materialClusters = listReadContextTemplateClusters({ domain: 'material' });
+  const materialLogicCluster = materialClusters.items.find((item) => item.read_cluster === 'logic');
+  assert.match(materialLogicCluster?.description ?? '', /Material/i);
+  assert.doesNotMatch(materialLogicCluster?.description ?? '', /Blueprint/i);
+
+  const materialTargets = listReadContextTemplateTargets({ domain: 'material', readCluster: 'logic' });
+  const materialGraphTarget = materialTargets.items.find((item) => item.target_kind === 'graph');
+  assert.match(materialGraphTarget?.description ?? '', /Material graph/i);
+  assert.doesNotMatch(materialGraphTarget?.description ?? '', /Blueprint/i);
+
   const clusters = listReadContextTemplateClusters({ domain: 'blueprint' });
   assert.equal(clusters.items.some((item) => item.read_cluster === 'logic'), true);
   assert.match(

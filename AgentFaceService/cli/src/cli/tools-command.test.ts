@@ -181,6 +181,15 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   ]);
   assert.equal(composed.output.schema, 'BlueprintHelper.TaskSpecTemplateComposition.v1');
   assert.equal(composed.output.status, 'ok');
+  assert.deepEqual(
+    composed.output.required_placeholders.map((item: Record<string, unknown>) => item.placeholder),
+    [
+      '__REQUIRED_FEATURE_NAME__',
+      '__REQUIRED_BLUEPRINT_ASSET_PATH__',
+      '__REQUIRED_CUSTOM_EVENT_NAME__',
+      '__REQUIRED_FUNCTION_OR_ACTION_TARGET__',
+    ],
+  );
   assert.equal('inserted_slots' in composed.output, false);
   assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.entries[0].body.statements.length, 1);
 });

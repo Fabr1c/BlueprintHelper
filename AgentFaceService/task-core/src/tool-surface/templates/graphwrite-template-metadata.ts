@@ -73,22 +73,21 @@ export function listGraphWriteTemplateWriteModes(): TaskSpecTemplateWriteModeIte
 
 export function listGraphWriteTemplateClusters(): TaskSpecTemplateClusterItem[] {
   const quickAccessItems = listGraphWriteTemplateQuickAccessItems();
-  const byCluster = new Map<string, Set<GraphWriteTemplateWriteMode>>();
+  const allWriteModes = listGraphWriteTemplateWriteModes().map((item) => item.write_mode);
+  const byCluster = new Map<string, TaskSpecTemplateQuickAccessItem[]>();
   for (const item of quickAccessItems) {
-    const modes = byCluster.get(item.cluster_id) ?? new Set<GraphWriteTemplateWriteMode>();
-    for (const mode of item.unsupported_write_modes) {
-      if (isGraphWriteTemplateWriteMode(mode)) {
-        modes.add(mode);
-      }
-    }
-    byCluster.set(item.cluster_id, modes);
+    const items = byCluster.get(item.cluster_id) ?? [];
+    items.push(item);
+    byCluster.set(item.cluster_id, items);
   }
   return [...byCluster.entries()]
-    .map(([clusterId, unsupported]) => ({
+    .map(([clusterId, items]) => ({
       family: 'graph_write' as const,
       cluster_id: clusterId,
       description: GRAPH_WRITE_CLUSTER_DESCRIPTIONS[clusterId] ?? `GraphWrite ${clusterId} templates.`,
-      unsupported_write_modes: [...unsupported].sort(),
+      unsupported_write_modes: allWriteModes
+        .filter((writeMode) => !items.some((item) => supportsWriteMode(item, writeMode)))
+        .sort(),
     }))
     .sort((a, b) => a.cluster_id.localeCompare(b.cluster_id));
 }
@@ -122,10 +121,16 @@ export function listGraphWriteTemplateQuickAccess(input?: {
   operation?: string;
   writeMode?: string;
 }): TaskSpecTemplateQuickAccessItem[] {
-  return listGraphWriteTemplateQuickAccessItems()
+  const allItems = listGraphWriteTemplateQuickAccessItems();
+  const filteredItems = allItems
     .filter((item) => !input?.cluster || item.cluster_id === input.cluster)
     .filter((item) => !input?.operation || item.operation_id === input.operation)
-    .filter((item) => !input?.writeMode || item.write_mode === input.writeMode)
+    .filter((item) => !input?.writeMode || item.write_mode === input.writeMode);
+
+  return uniqueBy([
+    ...filteredItems,
+    ...listRouteChildQuickAccessItems(filteredItems, allItems, input),
+  ], (item) => `${item.template_id}:${item.write_mode}:${item.source_slot_id}:${item.cluster_id}:${item.operation_id}`)
     .sort((a, b) => a.template_id.localeCompare(b.template_id));
 }
 
@@ -232,6 +237,46 @@ function supportsWriteMode(item: TaskSpecTemplateQuickAccessItem, writeMode: str
   return item.write_mode === writeMode
     && !item.unsupported_write_modes.includes(writeMode as GraphWriteTemplateWriteMode)
     && item.insert_paths.length > 0;
+}
+
+function listRouteChildQuickAccessItems(
+  filteredItems: TaskSpecTemplateQuickAccessItem[],
+  allItems: TaskSpecTemplateQuickAccessItem[],
+  input: { operation?: string; writeMode?: string } | undefined,
+): TaskSpecTemplateQuickAccessItem[] {
+  if (!input?.operation || !input.writeMode) {
+    return [];
+  }
+
+  const children: TaskSpecTemplateQuickAccessItem[] = [];
+  for (const routeItem of filteredItems) {
+    if (routeItem.slot_type !== 'route' || !routeItem.arg_slots.some((slot) => slot.includes('statement[]'))) {
+      continue;
+    }
+    const route = getGraphWriteRouteById(routeItem.source_slot_id);
+    if (!route) {
+      continue;
+    }
+    for (const item of allItems) {
+      if (item.slot_type !== 'statement'
+        || !supportsWriteMode(item, input.writeMode)
+        || !isSlotAllowedForRoute(item.source_slot_id, route.allowed_slot_ids)) {
+        continue;
+      }
+      children.push({
+        ...item,
+        cluster_id: routeItem.cluster_id,
+        operation_id: routeItem.operation_id,
+        quick_access_id: `${routeItem.quick_access_id}.${item.quick_access_id}`,
+      });
+    }
+  }
+  return children;
+}
+
+function isSlotAllowedForRoute(slotId: string, allowedSlotIds: readonly string[]): boolean {
+  return allowedSlotIds.includes(slotId)
+    || (allowedSlotIds.includes('graph.body.*') && slotId.startsWith('graph.statement.'));
 }
 
 function isTemplateVisible(

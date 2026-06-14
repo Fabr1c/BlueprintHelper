@@ -226,6 +226,17 @@ test('CLI tools templates composer output is descriptor-backed and does not cont
   assert.equal(exitCode, 0);
   assert.equal(output.schema, 'BlueprintHelper.TaskSpecTemplateComposition.v1');
   assert.equal(output.status, 'ok');
+  assert.deepEqual(
+    (output.required_placeholders as Array<Record<string, unknown>>).map((item) => item.placeholder),
+    [
+      '__REQUIRED_FEATURE_NAME__',
+      '__REQUIRED_BLUEPRINT_ASSET_PATH__',
+      '__REQUIRED_CUSTOM_EVENT_NAME__',
+      '__REQUIRED_SYMBOL_NAME__',
+      '__REQUIRED_LITERAL_VALUE_TYPE__',
+      '__REQUIRED_VALUE__',
+    ],
+  );
   assert.equal('inserted_slots' in output, false);
   const taskSpec = JSON.parse(await readFile(outputPath, 'utf8')) as {
     behavior: { entries: Array<{ body: { statements: Array<{ value: { kind: string } }> } }> };

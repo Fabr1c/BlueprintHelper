@@ -101,6 +101,16 @@ function describeDomain(domain: string): string {
 }
 
 function describeCluster(domain: string, readCluster: string): string {
+  const domainSpecificDescriptions: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    material: {
+      logic: 'Read Material graph expressions, parameters, connections, outputs, and owned anchors.',
+    },
+  };
+  const domainDescription = domainSpecificDescriptions[domain]?.[readCluster];
+  if (domainDescription) {
+    return domainDescription;
+  }
+
   const descriptions: Readonly<Record<string, string>> = {
     asset: 'Read asset-level diagnostics and identity facts.',
     components: 'Read Blueprint component tree and component metadata facts.',
@@ -114,6 +124,16 @@ function describeCluster(domain: string, readCluster: string): string {
 }
 
 function describeTarget(domain: string, readCluster: string, targetKind: string): string {
+  const domainSpecificDescriptions: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    material: {
+      graph: 'Read a Material graph target using asset_path; Material assets do not require target_name for P0 graph reads.',
+    },
+  };
+  const domainDescription = domainSpecificDescriptions[domain]?.[targetKind];
+  if (domainDescription) {
+    return domainDescription;
+  }
+
   const descriptions: Readonly<Record<string, string>> = {
     asset: 'Read an asset-level target using asset_path.',
     block: 'Read a BlueprintHelper-owned logic block using asset_path and block_id.',

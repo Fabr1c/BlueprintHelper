@@ -320,6 +320,74 @@ test('TaskSpec template composer writes nested expression slots into GraphWrite 
   });
 });
 
+test('TaskSpec template composer reports required placeholders for GraphWrite scaffold', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'graph-placeholder-summary.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.let.default(generic_ops.expression.literal)'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.required_placeholders, [
+    { path: 'feature_name', placeholder: '__REQUIRED_FEATURE_NAME__' },
+    { path: 'target.asset_path', placeholder: '__REQUIRED_BLUEPRINT_ASSET_PATH__' },
+    { path: 'behavior.entries[0].name', placeholder: '__REQUIRED_CUSTOM_EVENT_NAME__' },
+    { path: 'behavior.entries[0].body.statements[0].name', placeholder: '__REQUIRED_SYMBOL_NAME__' },
+    { path: 'behavior.entries[0].body.statements[0].value.value_type', placeholder: '__REQUIRED_LITERAL_VALUE_TYPE__' },
+    { path: 'behavior.entries[0].body.statements[0].value.value', placeholder: '__REQUIRED_VALUE__' },
+  ]);
+});
+
+test('TaskSpec template composer reports required placeholders for non-GraphWrite scaffold', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'blueprint-variable-placeholder-summary.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_variables',
+    writeMode: 'variables.edit',
+    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.required_placeholders, [
+    { path: 'feature_name', placeholder: '__REQUIRED_FEATURE_NAME__' },
+    { path: 'target.asset_path', placeholder: '__REQUIRED_BLUEPRINT_ASSET_PATH__' },
+    { path: 'behavior.changes[0].name', placeholder: '__REQUIRED_VARIABLE_NAME__' },
+    { path: 'behavior.changes[0].pin_type.category', placeholder: '__REQUIRED_PIN_CATEGORY__' },
+  ]);
+});
+
+test('TaskSpec template composer ignores optional placeholders in required summary', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'blueprint-variable-optional-placeholder-summary.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'blueprint_variables',
+    writeMode: 'variables.edit',
+    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(
+    result.required_placeholders.some((item) => item.placeholder === '__OPTIONAL_PIN_SUBCATEGORY__'),
+    false,
+  );
+  assert.equal(
+    result.required_placeholders.some((item) => item.placeholder === '__OPTIONAL_DEFAULT_VALUE__'),
+    false,
+  );
+});
+
 test('TaskSpec template composer writes skipped dynamic args by descriptor position', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'call-arg.taskspec.json');
@@ -672,6 +740,89 @@ test('TaskSpec template composer writes Blueprint variable quick-access changes'
   assert.equal(typeof taskSpec.behavior.changes[0]?.pin_type, 'object');
 });
 
+test('TaskSpec template composer writes schema-valid MaterialGraph append scaffold', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'material-append.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'material_graph',
+    writeMode: 'material.graph',
+    templateIds: ['material_graph.material_graph.append_block'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, unknown>;
+  const parseResult = TaskSpecSchema.safeParse(taskSpec);
+  assert.equal(parseResult.success, true, parseResult.success ? undefined : parseResult.error.message);
+  assert.equal(Object.hasOwn(taskSpec['behavior'] as Record<string, unknown>, 'patches'), false);
+  assert.equal(Object.hasOwn(taskSpec['behavior'] as Record<string, unknown>, 'merges'), false);
+});
+
+test('supported TaskSpec template families have discoverable operations quick-access and composable scaffolds', () => {
+  const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' }).items;
+  assert.equal(families.length > 0, true);
+
+  for (const family of families) {
+    const writeModes = listTaskSpecTemplateWriteModes({ family: family.family }).items;
+    assert.equal(writeModes.length > 0, true, `${family.family} write modes`);
+
+    for (const writeMode of writeModes) {
+      const clusters = listTaskSpecTemplateClusters({ family: family.family }).items
+        .filter((cluster) => !cluster.unsupported_write_modes.includes(writeMode.write_mode));
+      assert.equal(clusters.length > 0, true, `${family.family}/${writeMode.write_mode} clusters`);
+
+      for (const cluster of clusters) {
+        const operations = listTaskSpecTemplateOperations({
+          family: family.family,
+          cluster: cluster.cluster_id,
+          writeMode: writeMode.write_mode,
+        }).items;
+        assert.equal(
+          operations.length > 0,
+          true,
+          `${family.family}/${writeMode.write_mode}/${cluster.cluster_id} operations`,
+        );
+
+        for (const operation of operations) {
+          const quickAccess = listTaskSpecTemplateQuickAccess({
+            family: family.family,
+            cluster: cluster.cluster_id,
+            operation: operation.operation_id,
+            writeMode: writeMode.write_mode,
+          }).items;
+          assert.equal(
+            quickAccess.length > 0,
+            true,
+            `${family.family}/${writeMode.write_mode}/${cluster.cluster_id}/${operation.operation_id} quick-access`,
+          );
+
+          for (const item of quickAccess) {
+            if (item.slot_type === 'expression') {
+              continue;
+            }
+            const outputPath = path.join(
+              fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+              `${item.template_id.replaceAll('.', '-')}.taskspec.json`,
+            );
+            const result = composeTaskSpecTemplate({
+              family: family.family,
+              writeMode: writeMode.write_mode,
+              templateIds: [templateExpressionForCoverage(item, quickAccess)],
+              outputPath,
+            });
+            assert.equal(result.status, 'ok', `${item.template_id}: ${JSON.stringify(result)}`);
+            const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { schema?: string };
+            assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1', item.template_id);
+          }
+        }
+      }
+    }
+  }
+});
+
 function writeModeForFamily(family: string): string {
   switch (family) {
     case 'blueprint_variables':
@@ -712,6 +863,21 @@ function statementTemplateIdForRoute(
     return explicitStatement.template_id;
   }
   return firstStatementTemplateId(quickAccess, route.write_mode);
+}
+
+function templateExpressionForCoverage(
+  item: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'][number],
+  quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'],
+): string {
+  if (item.slot_type !== 'route' || !item.arg_slots.some((slot) => slot.includes('statement[]'))) {
+    return item.template_id;
+  }
+  const statement = quickAccess.find((candidate) =>
+    candidate.slot_type === 'statement'
+    && candidate.write_mode === item.write_mode
+    && !candidate.unsupported_write_modes.includes(item.write_mode));
+  assert.notEqual(statement, undefined, `${item.template_id} route has statement child`);
+  return `${item.template_id}(${statement?.template_id ?? ''})`;
 }
 
 function assertRouteRequiredFields(taskSpec: unknown, requiredFields: readonly string[], routeId: string): void {
