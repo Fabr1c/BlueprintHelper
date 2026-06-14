@@ -278,6 +278,10 @@ FString FBlueprintHelperReviewReadableTextUtils::GetReviewListTargetText(
 		{
 			continue;
 		}
+		if (Surface == EBlueprintHelperReviewSurface::Material && !Target.TargetKey.IsEmpty())
+		{
+			return Target.TargetKey;
+		}
 		if (!Target.PropertyPath.IsEmpty())
 		{
 			return Target.PropertyPath;

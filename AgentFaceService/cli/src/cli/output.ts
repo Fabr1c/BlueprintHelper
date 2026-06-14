@@ -136,6 +136,7 @@ export function buildCliSummary(input: {
   const targetAssets = collectTargetAssets(input.toolResult, data, task, taskPlan);
   const taskType = readString(taskPlan?.task_type) ?? readString(data?.['task_type']) ?? readString(task?.['task_type']);
   const violations = collectConnectivityViolations(data, input.toolResult.error);
+  const connectivitySummary = collectConnectivitySummary(data);
   const policies = resolveCliOutputPolicies(input.command);
   const status = mapStatus(policies.statusPolicyId, input.toolResult, data);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
@@ -169,6 +170,7 @@ export function buildCliSummary(input: {
       warnings: countIssues(issues, 'warning'),
       errors: input.toolResult.ok ? countIssues(issues, 'error') : Math.max(1, countIssues(issues, 'error')),
       modified: input.toolResult.modified,
+      connectivity: connectivitySummary,
     }),
     artifacts: input.artifactRefs,
     error_code: input.toolResult.ok ? blockedIssueCode : input.toolResult.error?.code,
@@ -259,6 +261,25 @@ export function writeCliResult(
 
   runtime.stdout(text);
   return createWriteOutcome(false, artifactRefs, text);
+}
+
+function collectConnectivitySummary(
+  data: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const requested = readNumber(data?.['requested_connections']);
+  const verified = readNumber(data?.['verified_connections']);
+  const graphSync = readNumber(data?.['graph_sync_connections']);
+  const violations = readNumber(data?.['connectivity_violation_count']);
+  if (requested === undefined && verified === undefined && graphSync === undefined && violations === undefined) {
+    return undefined;
+  }
+
+  return omitUndefined({
+    requested,
+    verified,
+    graph_sync: graphSync,
+    violations,
+  });
 }
 
 function createWriteOutcome(
@@ -542,6 +563,10 @@ function toConciseViolation(value: Record<string, unknown>): Record<string, unkn
   return omitUndefined({
     code,
     node_id: readString(value['node_id']),
+    target_key: readString(value['target_key']),
+    graph_name: readString(value['graph_name']),
+    pin_name: readString(value['pin_name']),
+    field: readString(value['field']),
     path: readString(value['path']),
     message,
   });
@@ -556,7 +581,10 @@ function isConnectivityViolationCode(code: string | undefined): boolean {
     || code === 'invalid_expression_exec_node'
     || code === 'unregistered_generated_node'
     || code === 'unregistered_generated_link'
-    || code === 'external_boundary_not_connected';
+    || code === 'external_boundary_not_connected'
+    || code === 'material_unconsumed_expression'
+    || code === 'material_connectivity_violation'
+    || code === 'material_property_not_supported';
 }
 
 function asTaskPlanLike(value: unknown): Record<string, unknown> | undefined {

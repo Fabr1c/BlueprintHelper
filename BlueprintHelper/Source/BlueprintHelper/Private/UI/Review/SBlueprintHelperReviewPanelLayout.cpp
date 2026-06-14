@@ -410,6 +410,16 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 				this,
 				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
 	}
+	if (MainSurface == EBlueprintHelperReviewSurface::Material)
+	{
+		GraphPresenterState.Reset();
+		return FBlueprintHelperReviewMaterialPresenter::BuildContent(
+			ReviewAssetContext,
+			MaterialPresenterState,
+			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
+				this,
+				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
+	}
 
 	return BuildGraphEditorWidget();
 }

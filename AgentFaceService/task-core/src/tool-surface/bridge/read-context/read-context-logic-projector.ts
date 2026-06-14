@@ -3,11 +3,11 @@ import { enrichLogicJsonCompactAnchors } from './read-context-compact-anchor.js'
 import { LOGIC_PROJECTION_OWNER } from './read-context-schemas.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_json';
+export type ReadContextLogicFormat = 'logic_flow' | 'logic_json' | 'logic_md';
 
 export type LogicProjectionInput = {
   requestedFormat: ReadContextLogicFormat;
-  bridgePayloadSchema: 'LogicJson.v1' | 'LogicFlow.v1' | 'LogicSnapshot.v1';
+  bridgePayloadSchema: 'LogicJson.v1' | 'LogicFlow.v1' | 'LogicMd.v1' | 'LogicSnapshot.v1';
   bridgePayload: Record<string, unknown>;
   target: Record<string, unknown>;
   view?: Record<string, unknown>;
@@ -37,6 +37,14 @@ export function projectReadContextLogic(input: LogicProjectionInput): LogicProje
     };
   }
 
+  if (input.requestedFormat === 'logic_md') {
+    return {
+      format: 'logic_md',
+      payload: withProjectionMetadata(buildLogicMdPayload(source.payload), source.metadata),
+      debug: mergeDebug(source.metadata, undefined),
+    };
+  }
+
   const logicJson = buildLogicJsonPayload(source.payload);
   return {
     format: 'logic_json',
@@ -49,6 +57,111 @@ export function projectReadContextLogic(input: LogicProjectionInput): LogicProje
       ),
     ),
   };
+}
+
+function buildLogicMdPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const markdown = firstString(payload['markdown'], payload['logic_md'], payload['md'], payload['text']);
+  return {
+    schema: 'LogicMd.v1',
+    format: 'logic_md',
+    markdown: markdown ?? renderFallbackLogicMarkdown(payload),
+  };
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function renderFallbackLogicMarkdown(payload: Record<string, unknown>): string {
+  const lines = ['# Logic'];
+  const logic = isRecord(payload['logic']) ? payload['logic'] : payload;
+  const material = isRecord(payload['material']) ? payload['material'] : undefined;
+  const parameters = Array.isArray(material?.['parameters']) ? material['parameters'] : [];
+  const outputs = Array.isArray(material?.['outputs']) ? material['outputs'] : [];
+  const materialLinks = collectMaterialDataFlowLinks(logic);
+  const anchors = collectAnchors(payload);
+
+  lines.push('', '## Parameters');
+  if (parameters.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const parameter of parameters) {
+      if (isRecord(parameter)) {
+        lines.push(`- ${String(parameter['name'] ?? '<unnamed>')} (${String(parameter['type'] ?? 'unknown')})`);
+      }
+    }
+  }
+
+  lines.push('', '## Material Outputs');
+  if (outputs.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const output of outputs) {
+      if (isRecord(output)) {
+        lines.push(`- ${String(output['property'] ?? '<unknown>')}`);
+      }
+    }
+  }
+
+  lines.push('', '## Material Data Flow');
+  if (materialLinks.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const link of materialLinks) {
+      lines.push(`- ${formatMaterialLinkEndpoint(link, 'from')} -> ${formatMaterialLinkEndpoint(link, 'to')}`);
+    }
+  }
+
+  lines.push('', '## Owned Anchors');
+  if (anchors.length === 0) {
+    lines.push('- none');
+  } else {
+    for (const anchor of anchors) {
+      lines.push(`- ${formatAnchorSummary(anchor)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function collectMaterialDataFlowLinks(logic: Record<string, unknown>): Record<string, unknown>[] {
+  const links = Array.isArray(logic['links']) ? logic['links'] : [];
+  return links
+    .filter((link): link is Record<string, unknown> => isRecord(link))
+    .filter((link) => {
+      const kind = String(link['kind'] ?? link['type'] ?? '').toLowerCase();
+      return kind === 'material_expression_link' || kind === 'material_output_link';
+    });
+}
+
+function formatMaterialLinkEndpoint(link: Record<string, unknown>, side: 'from' | 'to'): string {
+  const node = firstString(
+    link[`${side}_node_key`],
+    link[`${side}_node_ref`],
+    side === 'from' ? link['source_node_key'] : link['target_node_key'],
+    side === 'from' ? link['source_node_ref'] : link['target_node_ref'],
+  ) ?? '<unknown>';
+  const pin = firstString(
+    link[`${side}_pin`],
+    side === 'from' ? link['source_pin'] : link['target_pin'],
+  );
+  return pin ? `${node}.${pin}` : node;
+}
+
+function formatAnchorSummary(anchor: Record<string, unknown>): string {
+  const target = isRecord(anchor['target']) ? anchor['target'] : anchor;
+  const parts = [
+    firstString(target['block_id'], anchor['block_id']),
+    firstString(target['node_key'], anchor['node_key']),
+    firstString(target['expression_guid'], anchor['expression_guid']),
+    firstString(target['ownership'], anchor['ownership']),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' | ') : JSON.stringify(anchor);
 }
 
 function resolveProjectionSource(input: LogicProjectionInput): ProjectionSource {

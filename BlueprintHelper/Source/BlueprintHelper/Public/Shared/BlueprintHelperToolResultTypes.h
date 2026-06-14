@@ -84,7 +84,9 @@ enum class EBlueprintHelperTargetType : uint8
 	MappingContext,
 	DataTable,
 	DataTableRow,
-	Widget
+	Widget,
+	Material,
+	MaterialGraph
 };
 
 /** TargetType → MCP snake_case string。 */
@@ -109,6 +111,8 @@ inline const TCHAR* TargetTypeToString(EBlueprintHelperTargetType Type)
 	case EBlueprintHelperTargetType::DataTable:      return TEXT("data_table");
 	case EBlueprintHelperTargetType::DataTableRow:   return TEXT("data_table_row");
 	case EBlueprintHelperTargetType::Widget:         return TEXT("widget");
+	case EBlueprintHelperTargetType::Material:       return TEXT("material");
+	case EBlueprintHelperTargetType::MaterialGraph:  return TEXT("material_graph");
 	default:                                         return TEXT("unknown");
 	}
 }
@@ -203,6 +207,7 @@ enum class EBlueprintHelperToolStage : uint8
 	RuntimeProfile,
 	ResolveTarget,
 	Preflight,
+	PostProcess,
 	DryRun,
 	Execute,
 	Validate,
@@ -222,6 +227,7 @@ inline const TCHAR* ToolStageToString(EBlueprintHelperToolStage Stage)
 	case EBlueprintHelperToolStage::RuntimeProfile: return TEXT("runtime_profile");
 	case EBlueprintHelperToolStage::ResolveTarget:  return TEXT("resolve_target");
 	case EBlueprintHelperToolStage::Preflight:      return TEXT("preflight");
+	case EBlueprintHelperToolStage::PostProcess:   return TEXT("post_process");
 	case EBlueprintHelperToolStage::DryRun:         return TEXT("dry_run");
 	case EBlueprintHelperToolStage::Execute:        return TEXT("execute");
 	case EBlueprintHelperToolStage::Validate:       return TEXT("validate");

@@ -1074,8 +1074,164 @@ const GraphWriteBehaviorSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: [field],
         message: `${field} does not belong to graph_strategy ${value.graph_strategy}.`,
+    });
+  });
+});
+
+const MATERIAL_GRAPH_STRATEGIES = [
+  'append_new_owned_graph',
+  'replace_owned_graph',
+  'patch_owned_graph',
+  'merge_owned_graph',
+] as const;
+
+export const MATERIAL_GRAPH_COMMON_SELECTORS = [
+  'constant',
+  'scalar_parameter',
+  'vector_parameter',
+  'texture_object_parameter',
+  'texture_sample',
+  'add',
+  'multiply',
+  'static_switch_parameter',
+] as const;
+
+const MaterialCommonSelectorSchema = z.enum(MATERIAL_GRAPH_COMMON_SELECTORS);
+
+const MaterialCandidateSelectorSchema = z.object({
+  candidate_id: z.string().min(1).optional(),
+  query: z.string().min(1).optional(),
+}).strict().superRefine((value, ctx) => {
+  const hasCandidateId = value.candidate_id !== undefined;
+  const hasQuery = value.query !== undefined;
+  if (hasCandidateId === hasQuery) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Material candidate selector requires exactly one of candidate_id or query.',
+    });
+  }
+});
+
+const MaterialExpressionSelectorSchema = z.union([
+  MaterialCommonSelectorSchema,
+  MaterialCandidateSelectorSchema,
+]);
+
+const MaterialGraphNodeSpecSchema = z.object({
+  node_key: z.string().min(1),
+  selector: MaterialExpressionSelectorSchema,
+  properties: z.record(z.unknown()).optional(),
+}).strict();
+
+const MaterialPinEndpointSchema = z.object({
+  node_key: z.string().min(1),
+  pin: z.string().min(1),
+}).strict();
+
+const MaterialGraphLinkSpecSchema = z.object({
+  from: MaterialPinEndpointSchema,
+  to: MaterialPinEndpointSchema,
+}).strict();
+
+const MaterialGraphDeleteSpecSchema = z.object({
+  node_key: z.string().min(1),
+}).strict();
+
+const MaterialGraphAppendEntrySchema = z.object({
+  block_id: z.string().min(1),
+  nodes: z.array(MaterialGraphNodeSpecSchema).min(1),
+  links: z.array(MaterialGraphLinkSpecSchema).optional().default([]),
+}).strict();
+
+const MaterialGraphReplaceSchema = z.object({
+  block_id: z.string().min(1),
+  nodes: z.array(MaterialGraphNodeSpecSchema).min(1),
+  links: z.array(MaterialGraphLinkSpecSchema).optional().default([]),
+}).strict();
+
+const MaterialGraphPatchSchema = z.object({
+  block_id: z.string().min(1),
+  nodes: z.array(MaterialGraphNodeSpecSchema).optional(),
+  links: z.array(MaterialGraphLinkSpecSchema).optional(),
+  deletes: z.array(MaterialGraphDeleteSpecSchema).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.nodes?.length && !value.links?.length && !value.deletes?.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Material graph patch requires at least one of nodes, links, or deletes.',
+    });
+  }
+});
+
+const MaterialGraphMergeSchema = z.object({
+  block_id: z.string().min(1),
+  nodes: z.array(MaterialGraphNodeSpecSchema).optional(),
+  links: z.array(MaterialGraphLinkSpecSchema).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.nodes?.length && !value.links?.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Material graph merge requires at least one of nodes or links.',
+    });
+  }
+});
+
+const MaterialGraphBehaviorSchema = z.object({
+  graph_strategy: z.enum(MATERIAL_GRAPH_STRATEGIES),
+  entries: z.array(MaterialGraphAppendEntrySchema).min(1).optional(),
+  replace: MaterialGraphReplaceSchema.optional(),
+  patches: z.array(MaterialGraphPatchSchema).min(1).optional(),
+  merges: z.array(MaterialGraphMergeSchema).min(1).optional(),
+}).strict().superRefine((value, ctx) => {
+  const requiredFieldByStrategy = {
+    append_new_owned_graph: 'entries',
+    replace_owned_graph: 'replace',
+    patch_owned_graph: 'patches',
+    merge_owned_graph: 'merges',
+  } as const;
+  const requiredField = requiredFieldByStrategy[value.graph_strategy];
+  if (value[requiredField] === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [requiredField],
+      message: `${value.graph_strategy} requires behavior.${requiredField}.`,
+    });
+  }
+  (['entries', 'replace', 'patches', 'merges'] as const)
+    .filter((field) => field !== requiredField && value[field] !== undefined)
+    .forEach((field) => {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${field} does not belong to graph_strategy ${value.graph_strategy}.`,
       });
     });
+});
+
+export const MaterialGraphTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+  task_type: z.literal('edit_material_graph'),
+  target: z.object({
+    asset_path: z.string().min(1),
+    target_type: z.enum(['asset', 'material', 'material_graph']).optional().default('material_graph'),
+  }).passthrough(),
+  behavior: MaterialGraphBehaviorSchema,
+}).passthrough().superRefine((value, ctx) => {
+  for (const forbiddenField of ['domain', 'position', 'comment', 'label']) {
+    if (Object.hasOwn(value, forbiddenField)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [forbiddenField],
+        message: `edit_material_graph does not accept top-level ${forbiddenField}.`,
+      });
+    }
+  }
+  if (Object.hasOwn(value.target, 'graph_path')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['target', 'graph_path'],
+      message: 'edit_material_graph targets the material asset graph implicitly; target.graph_path is not a P0 field.',
+    });
+  }
 });
 
 const GraphWriteAutoSearchPolicySchema = z.object({
@@ -1593,6 +1749,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = TaskSpecBas
 
 export const TaskSpecSchema: z.ZodTypeAny = z.union([
   CompositeBlueprintFeatureTaskSpecSchema,
+  MaterialGraphTaskSpecSchema,
   GraphWriteTaskSpecSchema,
   BlueprintVariableTaskSpecSchema,
   AssetFactoryTaskSpecSchema,
@@ -1926,6 +2083,7 @@ export type MergeTaskPlanStep = z.infer<typeof MergeTaskPlanStepSchema>;
 export type GraphWriteStructuredIrTaskPlanStep = z.infer<typeof GraphWriteStructuredIrTaskPlanStepSchema>;
 export type GraphWriteLoweringAdapterTaskPlanStep = z.infer<typeof GraphWriteLoweringAdapterTaskPlanStepSchema>;
 export type GraphWriteTaskPlanStep = z.infer<typeof GraphWriteTaskPlanStepSchema>;
+export type MaterialGraphTaskSpec = z.infer<typeof MaterialGraphTaskSpecSchema>;
 export type BlueprintVariableTaskPlanStep = z.infer<typeof BlueprintVariableTaskPlanStepSchema>;
 export type AssetFactoryTaskPlanStep = z.infer<typeof AssetFactoryTaskPlanStepSchema>;
 export type BlueprintComponentTaskPlanStep = z.infer<typeof BlueprintComponentTaskPlanStepSchema>;

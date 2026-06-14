@@ -314,8 +314,12 @@ function normalizeGraph(
   boundary: AdapterBoundaryProjection,
   name?: string,
 ): LogicFlowGraph {
+  const materialParameterNames = buildMaterialParameterNameByNodeRef(payload);
+  const isMaterialGraph = isMaterialLogicGraph(logic, payload);
   const rawNodes = Array.isArray(logic['nodes'])
-    ? logic['nodes'].map((node, index) => normalizeNode(node, index)).filter((node): node is LogicFlowNode => Boolean(node))
+    ? logic['nodes']
+      .map((node, index) => normalizeNode(node, index, isMaterialGraph, materialParameterNames))
+      .filter((node): node is LogicFlowNode => Boolean(node))
     : [];
   const rawLinks = collectLinks(logic);
   const remappedBoundary = remapAdapterBoundaryToRawNodeRefs(rawNodes, rawLinks, boundary);
@@ -326,12 +330,19 @@ function normalizeGraph(
   return { name, nodes, links, anchors, stats, boundary: remappedBoundary };
 }
 
-function normalizeNode(value: unknown, index: number): LogicFlowNode | undefined {
+function normalizeNode(
+  value: unknown,
+  index: number,
+  isMaterialGraph = false,
+  materialParameterNames = new Map<string, string>(),
+): LogicFlowNode | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const ref = readString(value, ['node_ref', 'ref', 'id']) ?? `nodes[${index}]`;
-  const name = readString(value, ['name', 'display_name', 'title', 'ref']) ?? ref;
+  const name = isMaterialGraph
+    ? resolveMaterialNodeName(value, ref, materialParameterNames)
+    : readString(value, ['name', 'display_name', 'title', 'ref']) ?? ref;
   return {
     ref,
     name,
@@ -373,8 +384,26 @@ function normalizeLink(value: unknown, fallbackFromNode = ''): LogicFlowLink | u
     return undefined;
   }
 
-  const fromNode = readString(value, ['from_node', 'source_node', 'source', 'fromNode']) ?? fallbackFromNode;
-  const toNode = readString(value, ['to_node', 'target_node', 'target', 'toNode']) ?? '';
+  const fromNode = readString(value, [
+    'from_node',
+    'from_node_ref',
+    'from_node_key',
+    'source_node',
+    'source_node_ref',
+    'source_node_key',
+    'source',
+    'fromNode',
+  ]) ?? fallbackFromNode;
+  const toNode = readString(value, [
+    'to_node',
+    'to_node_ref',
+    'to_node_key',
+    'target_node',
+    'target_node_ref',
+    'target_node_key',
+    'target',
+    'toNode',
+  ]) ?? '';
   if (!fromNode || !toNode) {
     return undefined;
   }
@@ -390,9 +419,65 @@ function normalizeLink(value: unknown, fallbackFromNode = ''): LogicFlowLink | u
 }
 
 function normalizeLinkType(value: string | undefined): LogicFlowLinkType {
-  if (value?.toLowerCase() === 'exec') return 'exec';
-  if (value?.toLowerCase() === 'data') return 'data';
+  const normalized = value?.toLowerCase();
+  if (normalized === 'exec') return 'exec';
+  if (
+    normalized === 'data' ||
+    normalized === 'material_expression_link' ||
+    normalized === 'material_output_link'
+  ) {
+    return 'data';
+  }
   return 'unknown';
+}
+
+function isMaterialLogicGraph(logic: Record<string, unknown>, payload: Record<string, unknown>): boolean {
+  const material = isRecord(payload['material']) ? payload['material'] : undefined;
+  return readString(logic, ['graph_kind']) === 'material_graph' ||
+    readString(material, ['domain']) === 'material';
+}
+
+function buildMaterialParameterNameByNodeRef(payload: Record<string, unknown>): Map<string, string> {
+  const material = isRecord(payload['material']) ? payload['material'] : undefined;
+  const parameters = Array.isArray(material?.['parameters']) ? material['parameters'] : [];
+  const names = new Map<string, string>();
+  for (const parameter of parameters) {
+    if (!isRecord(parameter)) {
+      continue;
+    }
+    const ref = readString(parameter, ['node_ref', 'node_key', 'ref']);
+    const name = readString(parameter, ['name', 'parameter_name']);
+    if (ref && name) {
+      names.set(ref, name);
+    }
+  }
+  return names;
+}
+
+function resolveMaterialNodeName(
+  node: Record<string, unknown>,
+  ref: string,
+  materialParameterNames: Map<string, string>,
+): string {
+  const parameterName = materialParameterNames.get(ref);
+  if (parameterName) {
+    return parameterName;
+  }
+  const description = readString(node, ['description', 'desc']);
+  if (description) {
+    return description;
+  }
+  const className = readString(node, ['class_name', 'class']);
+  if (className) {
+    return toMaterialClassShortName(className);
+  }
+  return readString(node, ['name', 'display_name', 'title', 'ref']) ?? ref;
+}
+
+function toMaterialClassShortName(className: string): string {
+  return className
+    .replace(/^U?MaterialExpression/, '')
+    .replace(/^MaterialExpression/, '') || className;
 }
 
 function findExecRoots(

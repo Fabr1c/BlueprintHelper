@@ -39,7 +39,9 @@ export type TargetType =
   | 'mapping_context'
   | 'data_table'
   | 'data_table_row'
-  | 'widget';
+  | 'widget'
+  | 'material'
+  | 'material_graph';
 
 export type RiskLevel =
   | 'none'
@@ -73,6 +75,7 @@ export type ToolStage =
   | 'runtime_profile'
   | 'resolve_target'
   | 'preflight'
+  | 'post_process'
   | 'dry_run'
   | 'execute'
   | 'validate'

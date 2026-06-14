@@ -319,6 +319,93 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuildUsesRuntimeBoundaryTest::RunTe
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphWriteReviewEvidenceMaterialGraphPreservesCompileWarningTest,
+	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.MaterialGraphPreservesCompileWarning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphWriteReviewEvidenceMaterialGraphPreservesCompileWarningTest::RunTest(const FString& Parameters)
+{
+	const FString GraphName = TEXT("MaterialGraph");
+	const FString NodeKey = TEXT("material_warning_node");
+	const FString ExpressionGuid = TEXT("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	const FString TargetKey = FString::Printf(TEXT("material_expression:%s"), *NodeKey);
+
+	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/M_GraphWriteReviewEvidence"));
+	Target->SetStringField(TEXT("graph"), GraphName);
+	Target->SetStringField(TEXT("target_type"), TEXT("material_graph"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	LoweredStep.Capability = TEXT("graph_write");
+	LoweredStep.AdapterOperation = TEXT("material_graph_edit");
+	LoweredStep.Payload = MakeShared<FJsonObject>();
+	LoweredStep.Payload->SetObjectField(TEXT("target"), Target);
+
+	TSharedRef<FJsonObject> CreatedExpression = MakeShared<FJsonObject>();
+	CreatedExpression->SetStringField(TEXT("node_key"), NodeKey);
+	CreatedExpression->SetStringField(TEXT("block_id"), TEXT("warning_block"));
+	CreatedExpression->SetStringField(TEXT("expression_guid"), ExpressionGuid);
+	CreatedExpression->SetStringField(TEXT("class_name"), TEXT("MaterialExpressionCustom"));
+	CreatedExpression->SetStringField(TEXT("selector"), TEXT("custom"));
+
+	TArray<TSharedPtr<FJsonValue>> CreatedExpressionRefs;
+	CreatedExpressionRefs.Add(MakeShared<FJsonValueObject>(CreatedExpression));
+
+	TSharedRef<FJsonObject> DiagnosticJson = MakeShared<FJsonObject>();
+	DiagnosticJson->SetStringField(TEXT("severity"), TEXT("warning"));
+	DiagnosticJson->SetStringField(TEXT("code"), TEXT("material_compile_warning"));
+	DiagnosticJson->SetStringField(TEXT("message"), TEXT("Material custom expression produced a warning."));
+	DiagnosticJson->SetStringField(TEXT("graph_name"), GraphName);
+	DiagnosticJson->SetStringField(TEXT("node_guid"), ExpressionGuid);
+	DiagnosticJson->SetStringField(TEXT("node_class"), TEXT("MaterialExpressionCustom"));
+	DiagnosticJson->SetStringField(TEXT("target_key"), TargetKey);
+
+	TArray<TSharedPtr<FJsonValue>> CompilerResults;
+	CompilerResults.Add(MakeShared<FJsonValueObject>(DiagnosticJson));
+
+	FBlueprintHelperToolResultBase StepResult;
+	StepResult.bOk = true;
+	StepResult.Status = EBlueprintHelperToolStatus::Applied;
+	StepResult.Data = MakeShared<FJsonObject>();
+	StepResult.Data->SetArrayField(TEXT("created_expression_refs"), CreatedExpressionRefs);
+	StepResult.Data->SetArrayField(TEXT("compiler_results"), CompilerResults);
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		LoweredStep,
+		StepResult,
+		TEXT("archive_material_warning"),
+		TEXT("task_material_warning"),
+		7,
+		Evidence);
+
+	TestTrue(TEXT("material graph evidence builds"), bBuilt);
+	TestEqual(TEXT("one material expression target is emitted"), Evidence.AtomicTargets.Num(), 1);
+	TestEqual(TEXT("evidence carries material warning diagnostics"), Evidence.Diagnostics.Num(), 1);
+	if (Evidence.AtomicTargets.Num() != 1)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAtomicTarget& AtomicTarget = Evidence.AtomicTargets[0];
+	TestEqual(TEXT("material target kind"), AtomicTarget.TargetKind, FString(TEXT("material_expression")));
+	TestEqual(TEXT("material target key"), AtomicTarget.TargetKey, TargetKey);
+	TestEqual(TEXT("material target carries warning diagnostic"), AtomicTarget.Diagnostics.Num(), 1);
+	if (AtomicTarget.Diagnostics.Num() == 0)
+	{
+		return false;
+	}
+
+	TestEqual(
+		TEXT("material warning diagnostic code"),
+		AtomicTarget.Diagnostics[0].Code,
+		FString(TEXT("material_compile_warning")));
+	TestEqual(TEXT("material warning diagnostic graph"), AtomicTarget.Diagnostics[0].GraphName, GraphName);
+	TestEqual(TEXT("material warning diagnostic target"), AtomicTarget.Diagnostics[0].TargetKey, TargetKey);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteReviewEvidenceBuildsExternalLinkTargetTest,
 	"BlueprintHelper.TaskRuntime.GraphWriteReviewEvidence.BuildsExternalLinkTarget",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

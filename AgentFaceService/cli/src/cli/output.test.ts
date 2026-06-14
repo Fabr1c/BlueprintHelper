@@ -90,6 +90,88 @@ test('CLI execute summary keeps preview connectivity blocker visible', () => {
   }]);
 });
 
+test('CLI summary exposes MaterialGraph connectivity violations with material anchors', () => {
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'summary',
+    resultPolicyId: 'task.preview.default',
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_cli_material_connectivity',
+    status: 'dry_run',
+    modified: false,
+    data: {
+      passed: false,
+      connectivity: {
+        violations: [{
+          code: 'material_unconsumed_expression',
+          severity: 'error',
+          message: "MaterialGraph generated expression 'bh_orphan' has no outgoing material data connection.",
+          graph_name: 'MaterialGraph',
+          target_key: 'bh_orphan',
+          pin_name: 'RGB',
+          field: 'entries[0].nodes[0]',
+          internal_debug_only: 'not propagated',
+        }],
+      },
+    },
+  };
+
+  const summary = buildCliSummary({
+    command,
+    toolResult,
+    artifactRefs: {},
+  });
+
+  assert.equal(summary.status, 'preview_blocked');
+  assert.deepEqual(summary.violations, [{
+    code: 'material_unconsumed_expression',
+    target_key: 'bh_orphan',
+    graph_name: 'MaterialGraph',
+    pin_name: 'RGB',
+    field: 'entries[0].nodes[0]',
+    message: "MaterialGraph generated expression 'bh_orphan' has no outgoing material data connection.",
+  }]);
+});
+
+test('CLI execute summary exposes MaterialGraph connectivity counters', () => {
+  const command: CliCommand = {
+    kind: 'task.execute',
+    format: 'summary',
+    resultPolicyId: 'task.execute.default',
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'execute_task',
+    trace_id: 'trace_cli_material_connectivity_counters',
+    status: 'completed',
+    modified: true,
+    data: {
+      requested_connections: 2,
+      verified_connections: 2,
+      graph_sync_connections: 2,
+      connectivity_violation_count: 0,
+    },
+  };
+
+  const summary = buildCliSummary({
+    command,
+    toolResult,
+    artifactRefs: {},
+  });
+
+  assert.deepEqual((summary.summary as Record<string, unknown>).connectivity, {
+    requested: 2,
+    verified: 2,
+    graph_sync: 2,
+    violations: 0,
+  });
+});
+
 test('CLI full output exposes preview-blocked issue code for selected fields', () => {
   const chunks: string[] = [];
   const command: CliCommand = {

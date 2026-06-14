@@ -1,0 +1,25 @@
+{
+  "block_id": "__REQUIRED_BLOCK_ID__",
+  "nodes": [
+    {
+      "node_key": "__REQUIRED_NODE_KEY__",
+      "selector": "scalar_parameter",
+      "properties": {
+        "ParameterName": "__REQUIRED_PARAMETER_NAME__",
+        "DefaultValue": 0.75
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "node_key": "__REQUIRED_NODE_KEY__",
+        "pin": "Value"
+      },
+      "to": {
+        "node_key": "$material_output",
+        "pin": "Roughness"
+      }
+    }
+  ]
+}

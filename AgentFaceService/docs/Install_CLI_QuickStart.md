@@ -57,9 +57,23 @@ Use the root installer for setup and rebuilds. Do not duplicate per-package Node
 ```cmd
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root> -RunDiagnostics
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root> -SkipProjectUbtCompile
+.\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root> -ProjectEditorTarget <TargetName>
 ```
 
 `install.cmd` opens the interactive installer when launched without arguments and passes arguments through to the underlying PowerShell installer when supplied. Prefer this entry in Agent-facing docs so users do not need to run `.ps1` directly.
+
+By default, install runs one project UBT compile after plugin registration and optional engine-plugin copy:
+
+```text
+Build.bat <ProjectName>Editor Win64 Development -Project=<Project.uproject> -WaitMutex -NoHotReloadFromIDE
+```
+
+中文：默认安装会在插件注册和可选的 Engine 插件复制之后，对目标项目执行一次 UBT 编译，用来验证 UE 侧插件可以被项目加载和编译。明确不需要编译时再传 `-SkipProjectUbtCompile`。
+
+English: the installer runs one UBT compile by default after plugin registration and optional engine-plugin copy. Pass `-SkipProjectUbtCompile` only when you intentionally want to skip this verification.
+
+If the project uses a custom Editor target name or has multiple `*Editor.Target.cs` files, pass `-ProjectEditorTarget <TargetName>`. Otherwise the installer auto-detects `<ProjectName>Editor.Target.cs`, a single available `*Editor.Target.cs`, or falls back to `<ProjectName>Editor`.
 
 The repository root keeps only `.cmd` user script entry points. The underlying PowerShell and Node implementation scripts live under `InstallScripts/`. Use `uninstall.cmd` to remove the global CLI link, plugin entries, installed subagents, and lifecycle MCP config.
 

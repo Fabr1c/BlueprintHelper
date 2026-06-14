@@ -140,7 +140,8 @@ enum class EBlueprintHelperReviewSurface : uint8
 	Details,
 	UMGWidgetTree,
 	DataTable,
-	DataAsset
+	DataAsset,
+	Material
 };
 
 inline const TCHAR* BlueprintHelperReviewSurfaceToString(EBlueprintHelperReviewSurface Surface)
@@ -159,7 +160,8 @@ inline const TCHAR* BlueprintHelperReviewSurfaceToString(EBlueprintHelperReviewS
 		{ EBlueprintHelperReviewSurface::Details, TEXT("details") },
 		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("umg_widget_tree") },
 		{ EBlueprintHelperReviewSurface::DataTable, TEXT("data_table") },
-		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("data_asset") }
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("data_asset") },
+		{ EBlueprintHelperReviewSurface::Material, TEXT("material") }
 	};
 	for (const FBlueprintHelperReviewSurfaceName& Entry : Names)
 	{
@@ -377,5 +379,6 @@ BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDetails(const FBluepri
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInUMGWidgetTree(const FBlueprintHelperReviewVisibleChange& Change);
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataTable(const FBlueprintHelperReviewVisibleChange& Change);
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperReviewVisibleChange& Change);
+BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInMaterial(const FBlueprintHelperReviewVisibleChange& Change);
 BLUEPRINTHELPER_API bool BlueprintHelperReviewShouldShowInMyBlueprint(const FBlueprintHelperReviewVisibleChange& Change);
 

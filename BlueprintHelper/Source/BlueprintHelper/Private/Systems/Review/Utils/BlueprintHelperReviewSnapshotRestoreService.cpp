@@ -18,12 +18,27 @@
 #include "Engine/DataTable.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Engine/Texture.h"
 #include "HAL/FileManager.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "MaterialEditingLibrary.h"
+#include "MaterialGraph/MaterialGraph.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpression.h"
+#include "Materials/MaterialExpressionAdd.h"
+#include "Materials/MaterialExpressionConstant.h"
+#include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionStaticSwitchParameter.h"
+#include "Materials/MaterialExpressionTextureBase.h"
+#include "Materials/MaterialExpressionTextureObjectParameter.h"
+#include "Materials/MaterialExpressionTextureSample.h"
+#include "Materials/MaterialExpressionTextureSampleParameter.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
 #include "Misc/DateTime.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/FileHelper.h"
@@ -46,6 +61,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalNodePropertyDescriptorRegistry.h"
+#include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialGraphOwnershipService.h"
 #include "Systems/ToolClusters/BlueprintComponent/BlueprintHelperComponentFacts.h"
 #include "Systems/ToolClusters/BlueprintVariables/BlueprintHelperVariableReplicationService.h"
 #include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureMutationUtils.h"
@@ -3007,6 +3023,621 @@ bool FBlueprintHelperReviewSnapshotRestoreService::RestoreSignatureFromSnapshot(
 		return true;
 	}
 
+static bool BlueprintHelperReviewResolveMaterialPropertyForSnapshot(
+		const FString& PinName,
+		EMaterialProperty& OutProperty)
+	{
+	if (PinName == TEXT("BaseColor"))
+	{
+		OutProperty = MP_BaseColor;
+		return true;
+	}
+	if (PinName == TEXT("Metallic"))
+	{
+		OutProperty = MP_Metallic;
+		return true;
+	}
+	if (PinName == TEXT("Specular"))
+	{
+		OutProperty = MP_Specular;
+		return true;
+	}
+	if (PinName == TEXT("Roughness"))
+	{
+		OutProperty = MP_Roughness;
+		return true;
+	}
+	if (PinName == TEXT("EmissiveColor"))
+	{
+		OutProperty = MP_EmissiveColor;
+		return true;
+	}
+	if (PinName == TEXT("Opacity"))
+	{
+		OutProperty = MP_Opacity;
+		return true;
+	}
+	if (PinName == TEXT("OpacityMask"))
+	{
+		OutProperty = MP_OpacityMask;
+		return true;
+	}
+	if (PinName == TEXT("Normal"))
+	{
+		OutProperty = MP_Normal;
+		return true;
+	}
+	if (PinName == TEXT("WorldPositionOffset"))
+	{
+		OutProperty = MP_WorldPositionOffset;
+		return true;
+	}
+	return false;
+}
+
+static FString BlueprintHelperReviewReadMaterialExpressionMetadata(
+		UMaterialExpression* Expression,
+		const TCHAR* Key)
+	{
+	if (!Expression || !Key)
+	{
+		return FString();
+	}
+	if (UPackage* Package = Expression->GetOutermost())
+	{
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		return MetaData.GetValue(Expression, Key);
+	}
+	return FString();
+}
+
+static void BlueprintHelperReviewWriteMaterialExpressionMetadata(
+		UMaterialExpression* Expression,
+		const TCHAR* Key,
+		const FString& Value)
+{
+	if (!Expression || !Key || Value.IsEmpty())
+	{
+		return;
+	}
+	if (UPackage* Package = Expression->GetOutermost())
+	{
+		FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(Package);
+		MetaData.SetValue(Expression, Key, *Value);
+	}
+}
+
+static UMaterialExpression* BlueprintHelperReviewFindMaterialExpression(
+		UMaterial* Material,
+		const FString& NodeKey,
+		const FString& ExpressionGuid)
+	{
+	if (!Material)
+	{
+		return nullptr;
+	}
+	for (UMaterialExpression* Expression : Material->GetExpressions())
+	{
+		if (!Expression)
+		{
+			continue;
+		}
+		const FString CurrentNodeKey = BlueprintHelperReviewReadMaterialExpressionMetadata(
+			Expression,
+			FBlueprintHelperMaterialGraphOwnershipService::NodeKeyMetadataKey());
+		if (!NodeKey.IsEmpty() && CurrentNodeKey == NodeKey)
+		{
+			return Expression;
+		}
+		if (!ExpressionGuid.IsEmpty() &&
+			Expression->MaterialExpressionGuid.ToString(EGuidFormats::DigitsWithHyphensLower) == ExpressionGuid)
+		{
+			return Expression;
+		}
+	}
+	return nullptr;
+}
+
+static UClass* BlueprintHelperReviewResolveMaterialExpressionClass(const FString& ClassName)
+{
+	const FString NormalizedClassName = ClassName.StartsWith(TEXT("U"))
+		? ClassName.RightChop(1)
+		: ClassName;
+	if (NormalizedClassName == TEXT("MaterialExpressionConstant"))
+	{
+		return UMaterialExpressionConstant::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionScalarParameter"))
+	{
+		return UMaterialExpressionScalarParameter::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionVectorParameter"))
+	{
+		return UMaterialExpressionVectorParameter::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionTextureObjectParameter"))
+	{
+		return UMaterialExpressionTextureObjectParameter::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionTextureSample"))
+	{
+		return UMaterialExpressionTextureSample::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionTextureSampleParameter"))
+	{
+		return UMaterialExpressionTextureSampleParameter::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionAdd"))
+	{
+		return UMaterialExpressionAdd::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionMultiply"))
+	{
+		return UMaterialExpressionMultiply::StaticClass();
+	}
+	if (NormalizedClassName == TEXT("MaterialExpressionStaticSwitchParameter"))
+	{
+		return UMaterialExpressionStaticSwitchParameter::StaticClass();
+	}
+	return nullptr;
+}
+
+static FExpressionInput* BlueprintHelperReviewFindMaterialExpressionInput(
+		UMaterialExpression* Expression,
+		const FString& InputName)
+	{
+	if (!Expression)
+	{
+		return nullptr;
+	}
+	for (int32 InputIndex = 0; InputIndex < Expression->CountInputs(); ++InputIndex)
+	{
+		if (Expression->GetInputName(InputIndex).ToString() == InputName)
+		{
+			return Expression->GetInput(InputIndex);
+		}
+	}
+	return nullptr;
+}
+
+static void BlueprintHelperReviewDisconnectMaterialInput(FExpressionInput* Input)
+{
+	if (!Input)
+	{
+		return;
+	}
+	Input->Expression = nullptr;
+	Input->OutputIndex = 0;
+}
+
+static bool BlueprintHelperReviewApplyMaterialExpressionProperties(
+		UMaterialExpression* Expression,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+{
+	if (!Expression || !Snapshot.IsValid())
+	{
+		OutError = TEXT("material_graph_restore_snapshot_invalid");
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* PropertiesPtr = nullptr;
+	if (!Snapshot->TryGetObjectField(TEXT("properties"), PropertiesPtr) ||
+		!PropertiesPtr || !PropertiesPtr->IsValid())
+	{
+		OutError = TEXT("material_graph_restore_properties_missing");
+		return false;
+	}
+
+	FString StringValue;
+	double NumberValue = 0.0;
+	bool BoolValue = false;
+	if (UMaterialExpressionConstant* Constant = Cast<UMaterialExpressionConstant>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("value"), NumberValue))
+		{
+			Constant->R = static_cast<float>(NumberValue);
+		}
+		return true;
+	}
+	if (UMaterialExpressionScalarParameter* Scalar = Cast<UMaterialExpressionScalarParameter>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("parameter_name"), StringValue))
+		{
+			Scalar->ParameterName = FName(*StringValue);
+		}
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("group"), StringValue))
+		{
+			Scalar->Group = FName(*StringValue);
+		}
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("default_value"), NumberValue))
+		{
+			Scalar->DefaultValue = static_cast<float>(NumberValue);
+		}
+		return true;
+	}
+	if (UMaterialExpressionVectorParameter* Vector = Cast<UMaterialExpressionVectorParameter>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("parameter_name"), StringValue))
+		{
+			Vector->ParameterName = FName(*StringValue);
+		}
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("group"), StringValue))
+		{
+			Vector->Group = FName(*StringValue);
+		}
+		const TSharedPtr<FJsonObject>* ValuePtr = nullptr;
+		if ((*PropertiesPtr)->TryGetObjectField(TEXT("default_value"), ValuePtr) &&
+			ValuePtr && ValuePtr->IsValid())
+		{
+			double R = Vector->DefaultValue.R;
+			double G = Vector->DefaultValue.G;
+			double B = Vector->DefaultValue.B;
+			double A = Vector->DefaultValue.A;
+			(*ValuePtr)->TryGetNumberField(TEXT("r"), R);
+			(*ValuePtr)->TryGetNumberField(TEXT("g"), G);
+			(*ValuePtr)->TryGetNumberField(TEXT("b"), B);
+			(*ValuePtr)->TryGetNumberField(TEXT("a"), A);
+			Vector->DefaultValue = FLinearColor(R, G, B, A);
+		}
+		return true;
+	}
+	if (UMaterialExpressionTextureBase* TextureBase = Cast<UMaterialExpressionTextureBase>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("texture"), StringValue))
+		{
+			TextureBase->Texture = StringValue.IsEmpty()
+				? nullptr
+				: Cast<UTexture>(StaticLoadObject(UTexture::StaticClass(), nullptr, *StringValue));
+		}
+		return true;
+	}
+	if (UMaterialExpressionAdd* Add = Cast<UMaterialExpressionAdd>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("const_a"), NumberValue))
+		{
+			Add->ConstA = static_cast<float>(NumberValue);
+		}
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("const_b"), NumberValue))
+		{
+			Add->ConstB = static_cast<float>(NumberValue);
+		}
+		return true;
+	}
+	if (UMaterialExpressionMultiply* Multiply = Cast<UMaterialExpressionMultiply>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("const_a"), NumberValue))
+		{
+			Multiply->ConstA = static_cast<float>(NumberValue);
+		}
+		if ((*PropertiesPtr)->TryGetNumberField(TEXT("const_b"), NumberValue))
+		{
+			Multiply->ConstB = static_cast<float>(NumberValue);
+		}
+		return true;
+	}
+	if (UMaterialExpressionStaticSwitchParameter* StaticSwitch = Cast<UMaterialExpressionStaticSwitchParameter>(Expression))
+	{
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("parameter_name"), StringValue))
+		{
+			StaticSwitch->ParameterName = FName(*StringValue);
+		}
+		if ((*PropertiesPtr)->TryGetStringField(TEXT("group"), StringValue))
+		{
+			StaticSwitch->Group = FName(*StringValue);
+		}
+		if ((*PropertiesPtr)->TryGetBoolField(TEXT("default_value"), BoolValue))
+		{
+			StaticSwitch->DefaultValue = BoolValue;
+		}
+		return true;
+	}
+
+	OutError = FString::Printf(
+		TEXT("material_graph_restore_unsupported_expression_class:%s"),
+		Expression->GetClass() ? *Expression->GetClass()->GetName() : TEXT("<unknown>"));
+	return false;
+}
+
+static bool BlueprintHelperReviewFinalizeMaterialRestore(UMaterial* Material)
+{
+	if (!Material)
+	{
+		return false;
+	}
+	UMaterialEditingLibrary::RecompileMaterial(Material);
+	if (Material->MaterialGraph)
+	{
+		Material->MaterialGraph->Material = Material;
+		Material->MaterialGraph->RebuildGraph();
+	}
+	Material->PostEditChange();
+	Material->MarkPackageDirty();
+	return true;
+}
+
+static bool BlueprintHelperReviewReconnectMaterialSnapshotLinks(
+		UMaterial* Material,
+		UMaterialExpression* RestoredExpression,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+{
+	if (!Material || !RestoredExpression || !Snapshot.IsValid())
+	{
+		OutError = TEXT("material_graph_restore_link_snapshot_invalid");
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* InputLinks = nullptr;
+	if (Snapshot->TryGetArrayField(TEXT("input_links"), InputLinks) && InputLinks)
+	{
+		for (const TSharedPtr<FJsonValue>& LinkValue : *InputLinks)
+		{
+			const TSharedPtr<FJsonObject> Link = LinkValue.IsValid() ? LinkValue->AsObject() : nullptr;
+			if (!Link.IsValid())
+			{
+				continue;
+			}
+			FString FromNodeKey;
+			FString FromGuid;
+			FString FromEnginePin;
+			FString ToPin;
+			Link->TryGetStringField(TEXT("from_node_key"), FromNodeKey);
+			Link->TryGetStringField(TEXT("from_expression_guid"), FromGuid);
+			Link->TryGetStringField(TEXT("from_engine_pin"), FromEnginePin);
+			Link->TryGetStringField(TEXT("to_pin"), ToPin);
+			UMaterialExpression* SourceExpression =
+				BlueprintHelperReviewFindMaterialExpression(Material, FromNodeKey, FromGuid);
+			if (!SourceExpression)
+			{
+				OutError = FString::Printf(TEXT("material_graph_restore_input_source_not_found:%s"), *FromNodeKey);
+				return false;
+			}
+			if (!UMaterialEditingLibrary::ConnectMaterialExpressions(SourceExpression, FromEnginePin, RestoredExpression, ToPin))
+			{
+				OutError = FString::Printf(TEXT("material_graph_restore_input_link_failed:%s.%s"), *FromNodeKey, *ToPin);
+				return false;
+			}
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* OutputLinks = nullptr;
+	if (Snapshot->TryGetArrayField(TEXT("output_links"), OutputLinks) && OutputLinks)
+	{
+		for (const TSharedPtr<FJsonValue>& LinkValue : *OutputLinks)
+		{
+			const TSharedPtr<FJsonObject> Link = LinkValue.IsValid() ? LinkValue->AsObject() : nullptr;
+			if (!Link.IsValid())
+			{
+				continue;
+			}
+			FString Kind;
+			FString FromEnginePin;
+			FString ToNodeKey;
+			FString ToGuid;
+			FString ToPin;
+			Link->TryGetStringField(TEXT("kind"), Kind);
+			Link->TryGetStringField(TEXT("from_engine_pin"), FromEnginePin);
+			Link->TryGetStringField(TEXT("to_node_key"), ToNodeKey);
+			Link->TryGetStringField(TEXT("to_expression_guid"), ToGuid);
+			Link->TryGetStringField(TEXT("to_pin"), ToPin);
+			if (Kind == TEXT("material_output_link"))
+			{
+				EMaterialProperty Property = MP_BaseColor;
+				if (!BlueprintHelperReviewResolveMaterialPropertyForSnapshot(ToPin, Property))
+				{
+					OutError = FString::Printf(TEXT("material_property_not_supported:%s"), *ToPin);
+					return false;
+				}
+				if (!UMaterialEditingLibrary::ConnectMaterialProperty(RestoredExpression, FromEnginePin, Property))
+				{
+					OutError = FString::Printf(TEXT("material_graph_restore_output_link_failed:%s"), *ToPin);
+					return false;
+				}
+				continue;
+			}
+
+			UMaterialExpression* TargetExpression =
+				BlueprintHelperReviewFindMaterialExpression(Material, ToNodeKey, ToGuid);
+			if (!TargetExpression)
+			{
+				OutError = FString::Printf(TEXT("material_graph_restore_output_target_not_found:%s"), *ToNodeKey);
+				return false;
+			}
+			if (!UMaterialEditingLibrary::ConnectMaterialExpressions(RestoredExpression, FromEnginePin, TargetExpression, ToPin))
+			{
+				OutError = FString::Printf(TEXT("material_graph_restore_output_link_failed:%s.%s"), *ToNodeKey, *ToPin);
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static bool BlueprintHelperReviewRecreateDeletedMaterialExpression(
+		UMaterial* Material,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+{
+	FString NodeKey;
+	FString BlockId;
+	FString ExpressionGuid;
+	FString ClassName;
+	Snapshot->TryGetStringField(TEXT("node_key"), NodeKey);
+	Snapshot->TryGetStringField(TEXT("block_id"), BlockId);
+	Snapshot->TryGetStringField(TEXT("expression_guid"), ExpressionGuid);
+	Snapshot->TryGetStringField(TEXT("class_name"), ClassName);
+	if (ClassName.IsEmpty())
+	{
+		OutError = TEXT("material_graph_restore_class_missing");
+		return false;
+	}
+
+	UClass* ExpressionClass = BlueprintHelperReviewResolveMaterialExpressionClass(ClassName);
+	if (!ExpressionClass)
+	{
+		OutError = FString::Printf(TEXT("material_graph_restore_unsupported_expression_class:%s"), *ClassName);
+		return false;
+	}
+
+	UMaterialExpression* ExistingExpression =
+		BlueprintHelperReviewFindMaterialExpression(Material, NodeKey, ExpressionGuid);
+	if (ExistingExpression)
+	{
+		return true;
+	}
+
+	UMaterialExpression* RestoredExpression = UMaterialEditingLibrary::CreateMaterialExpression(
+		Material,
+		TSubclassOf<UMaterialExpression>(ExpressionClass),
+		0,
+		0);
+	if (!RestoredExpression)
+	{
+		OutError = TEXT("material_graph_restore_create_expression_failed");
+		return false;
+	}
+
+	FGuid ParsedGuid;
+	if (FGuid::Parse(ExpressionGuid, ParsedGuid))
+	{
+		RestoredExpression->MaterialExpressionGuid = ParsedGuid;
+	}
+	BlueprintHelperReviewWriteMaterialExpressionMetadata(
+		RestoredExpression,
+		FBlueprintHelperMaterialGraphOwnershipService::BlockIdMetadataKey(),
+		BlockId);
+	BlueprintHelperReviewWriteMaterialExpressionMetadata(
+		RestoredExpression,
+		FBlueprintHelperMaterialGraphOwnershipService::NodeKeyMetadataKey(),
+		NodeKey);
+	BlueprintHelperReviewWriteMaterialExpressionMetadata(
+		RestoredExpression,
+		FBlueprintHelperMaterialGraphOwnershipService::OwnershipMetadataKey(),
+		FBlueprintHelperMaterialGraphOwnershipService::OwnedMetadataValue());
+
+	if (!BlueprintHelperReviewApplyMaterialExpressionProperties(RestoredExpression, Snapshot, OutError))
+	{
+		return false;
+	}
+	return BlueprintHelperReviewReconnectMaterialSnapshotLinks(Material, RestoredExpression, Snapshot, OutError);
+}
+
+static bool RestoreMaterialGraphFromSnapshot(
+		const FBlueprintHelperReviewAtomicTarget& Target,
+		const TSharedPtr<FJsonObject>& Snapshot,
+		FString& OutError)
+{
+	UMaterial* Material = Cast<UMaterial>(StaticLoadObject(UMaterial::StaticClass(), nullptr, *Target.AssetPath));
+	if (!Material)
+	{
+		OutError = FString::Printf(TEXT("material_not_found:%s"), *Target.AssetPath);
+		return false;
+	}
+
+	bool bSnapshotExists = false;
+	Snapshot->TryGetBoolField(TEXT("exists"), bSnapshotExists);
+	if (Target.TargetKind == TEXT("material_expression"))
+	{
+		FString NodeKey;
+		FString ExpressionGuid;
+		Snapshot->TryGetStringField(TEXT("node_key"), NodeKey);
+		Snapshot->TryGetStringField(TEXT("expression_guid"), ExpressionGuid);
+		UMaterialExpression* Expression =
+			BlueprintHelperReviewFindMaterialExpression(Material, NodeKey, ExpressionGuid);
+		if (Target.TargetSubKind.Equals(TEXT("deleted_expression"), ESearchCase::IgnoreCase))
+		{
+			if (!bSnapshotExists)
+			{
+				OutError = TEXT("material_graph_restore_deleted_snapshot_missing");
+				return false;
+			}
+			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Recreate Material Expression")));
+			Material->Modify();
+			if (!BlueprintHelperReviewRecreateDeletedMaterialExpression(Material, Snapshot, OutError))
+			{
+				return false;
+			}
+			return BlueprintHelperReviewFinalizeMaterialRestore(Material);
+		}
+		if (!Expression)
+		{
+			OutError = FString::Printf(TEXT("material_expression_not_found:%s"), *NodeKey);
+			return false;
+		}
+
+		if (!bSnapshotExists)
+		{
+			const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Material Expression")));
+			Material->Modify();
+			Expression->Modify();
+			UMaterialEditingLibrary::DeleteMaterialExpression(Material, Expression);
+			return BlueprintHelperReviewFinalizeMaterialRestore(Material);
+		}
+
+		if (!Target.TargetSubKind.Equals(TEXT("updated_properties"), ESearchCase::IgnoreCase))
+		{
+			OutError = FString::Printf(TEXT("material_graph_restore_unsupported_target_subkind:%s"), *Target.TargetSubKind);
+			return false;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Material Expression Properties")));
+		Material->Modify();
+		Expression->Modify();
+		if (!BlueprintHelperReviewApplyMaterialExpressionProperties(Expression, Snapshot, OutError))
+		{
+			return false;
+		}
+		return BlueprintHelperReviewFinalizeMaterialRestore(Material);
+	}
+
+	if (Target.TargetKind == TEXT("material_output_link") ||
+		Target.TargetKind == TEXT("material_expression_link"))
+	{
+		FString FromNodeKey;
+		FString FromGuid;
+		FString ToNodeKey;
+		FString ToPin;
+		Snapshot->TryGetStringField(TEXT("from_node_key"), FromNodeKey);
+		Snapshot->TryGetStringField(TEXT("from_expression_guid"), FromGuid);
+		Snapshot->TryGetStringField(TEXT("to_node_key"), ToNodeKey);
+		Snapshot->TryGetStringField(TEXT("to_pin"), ToPin);
+		if (ToPin.IsEmpty())
+		{
+			OutError = TEXT("material_graph_link_snapshot_missing_target_pin");
+			return false;
+		}
+
+		const FScopedTransaction Transaction(FText::FromString(TEXT("BlueprintHelper Review Restore Material Link")));
+		Material->Modify();
+		if (Target.TargetKind == TEXT("material_output_link"))
+		{
+			EMaterialProperty Property = MP_BaseColor;
+			if (!BlueprintHelperReviewResolveMaterialPropertyForSnapshot(ToPin, Property))
+			{
+				OutError = FString::Printf(TEXT("material_property_not_supported:%s"), *ToPin);
+				return false;
+			}
+			BlueprintHelperReviewDisconnectMaterialInput(Material->GetExpressionInputForProperty(Property));
+			return BlueprintHelperReviewFinalizeMaterialRestore(Material);
+		}
+
+		UMaterialExpression* ToExpression =
+			BlueprintHelperReviewFindMaterialExpression(Material, ToNodeKey, FString());
+		FExpressionInput* Input = BlueprintHelperReviewFindMaterialExpressionInput(ToExpression, ToPin);
+		if (!Input)
+		{
+			OutError = FString::Printf(TEXT("material_graph_expression_input_not_found:%s.%s"), *ToNodeKey, *ToPin);
+			return false;
+		}
+		BlueprintHelperReviewDisconnectMaterialInput(Input);
+		return BlueprintHelperReviewFinalizeMaterialRestore(Material);
+	}
+
+	OutError = FString::Printf(TEXT("material_graph_snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
+	return false;
+}
+
 bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		FString& OutError)
@@ -3051,6 +3682,7 @@ bool FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(
 			{ EBlueprintHelperReviewTargetHandlerKind::StructField, [&Target, &Snapshot, &OutError]() { return RestoreStructFieldFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::ObjectProperty, [&Target, &Snapshot, &OutError]() { return RestoreObjectPropertyFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::Signature, [&Target, &Snapshot, &OutError]() { return RestoreSignatureFromSnapshot(Target, Snapshot, OutError); } },
+			{ EBlueprintHelperReviewTargetHandlerKind::MaterialGraph, [&Target, &Snapshot, &OutError]() { return RestoreMaterialGraphFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidget, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } },
 			{ EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty, [&Target, &Snapshot, &OutError]() { return RestoreWidgetFromSnapshot(Target, Snapshot, OutError); } }
 		};

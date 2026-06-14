@@ -5,6 +5,7 @@ import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import type { MetricsEvent } from '../../metrics/metrics-types.js';
 import { TOOL_RESULT_SCHEMA } from '../../result/tool-result.js';
 import { TaskSpecCompileError, createCompiledTaskPlan } from '../compiler/task-compiler.js';
+import type { TaskPlan, TaskSpec } from '../schema/task-schemas.js';
 import {
   graphWriteAppendExpectedTaskPlanFixture,
   graphWriteAppendTaskSpecFixture,
@@ -392,6 +393,74 @@ test('preview task preserves dry run issues while deduplicating failed preview s
   assert.deepEqual(toolIssueCodes, codes);
 });
 
+test('preview task preserves candidate assistance data from failed preview steps', async () => {
+  const candidates = [
+    {
+      candidate_id: 'mat_expr_12345678',
+      display_name: 'Scalar Parameter',
+      class_name: 'MaterialExpressionScalarParameter',
+      category: 'Parameter',
+      reason: 'query_match',
+    },
+  ];
+  const candidatePreviewBridgeResponse: BridgeResponse = {
+    success: true,
+    request_id: 'preview_candidate_assistance_request',
+    result: {
+      ok: true,
+      schema: TOOL_RESULT_SCHEMA,
+      operation: 'preview_task_plan',
+      trace_id: 'trace_preview_candidate_assistance',
+      status: 'dry_run',
+      modified: false,
+      data: {
+        preview_token: '11223344556677889900aabbccddeeff',
+        dry_run: {
+          can_execute: true,
+          result: 'passed',
+          steps: [
+            {
+              step_id: 'material_candidate_step',
+              capability: 'graph_write',
+              result: {
+                ok: false,
+                status: 'failed',
+                error: {
+                  code: 'material_expression_candidate_confirmation_required',
+                  message: 'MaterialGraph query selector requires candidate_id confirmation before execute.',
+                  field: 'ops[2].selector',
+                },
+                data: {
+                  asset_path: '/Game/Materials/M_Candidate',
+                  query: 'scalar parameter',
+                  fingerprint: 'candidate_cache_fingerprint',
+                  schema_fingerprint: 'BlueprintHelper.MaterialExpressionCandidates.v1',
+                  class_catalog_fingerprint: 'class_catalog_fingerprint',
+                  class_catalog_revision: 'class_catalog_revision_001',
+                  expires_in_seconds: 600,
+                  candidates,
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  const runner = createRunnerForPreviewResponse(candidatePreviewBridgeResponse);
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const data = result.toolResult.data as Record<string, unknown>;
+  const issue = (data['issues'] as Record<string, unknown>[])[0];
+  const candidateSearch = data['candidate_search'] as Record<string, unknown>;
+
+  assert.equal(result.passed, false);
+  assert.equal(data['query'], 'scalar parameter');
+  assert.deepEqual(data['candidates'], candidates);
+  assert.deepEqual(issue['candidates'], candidates);
+  assert.equal(candidateSearch['class_catalog_revision'], 'class_catalog_revision_001');
+});
+
 test('preview task preserves signature differences from failed preview step issues', async () => {
   const runner = createRunnerForPreviewResponse(createSignatureMismatchPreviewBridgeResponse());
   const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
@@ -741,6 +810,95 @@ test('metrics sink failures do not change preview or execute results', async () 
   assert.equal(preview.toolResult.ok, true);
   assert.equal(execute.ok, true);
   assert.equal(execute.operation, 'execute_task');
+});
+
+test('preview and execute ToolResult target uses TaskPlan target type for material graphs', async () => {
+  const materialTaskSpec = {
+    schema_version: 'BlueprintHelper.TaskSpec.v1',
+    task_type: 'edit_material_graph',
+    target: {
+      asset_path: '/Game/Materials/M_TargetProjection',
+      target_type: 'material_graph',
+    },
+    behavior: {
+      graph_strategy: 'append_new_owned_graph',
+      entries: [],
+    },
+  } as unknown as TaskSpec;
+  const materialTaskPlan = {
+    ...graphWriteAppendExpectedTaskPlanFixture,
+    task_name: 'MaterialTargetProjection',
+    task_type: 'edit_material_graph',
+    target_assets: ['/Game/Materials/M_TargetProjection'],
+    steps: [
+      {
+        ...(graphWriteAppendExpectedTaskPlanFixture.steps[0] as Record<string, unknown>),
+        target: {
+          asset_path: '/Game/Materials/M_TargetProjection',
+          graph: 'MaterialGraph',
+          target_type: 'material_graph',
+        },
+        write: {
+          strategy: 'owned_graph_edit',
+          graph_domain: 'material_graph',
+          material_strategy: 'append_new_owned_graph',
+          ops: [],
+        },
+      },
+    ],
+  } as unknown as TaskPlan;
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'preview_task_plan') {
+        return previewBridgeResponse;
+      }
+      if (command === 'execute_task_plan') {
+        return {
+          success: true,
+          request_id: 'execute_material_target_projection',
+          result: {
+            ok: true,
+            schema: TOOL_RESULT_SCHEMA,
+            operation: 'execute_task_plan',
+            trace_id: 'trace_execute_material_target_projection',
+            status: 'completed',
+            modified: true,
+            data: {
+              task_run_id: 'run_material_target_projection',
+              target_assets: ['/Game/Materials/M_TargetProjection'],
+              steps: [
+                {
+                  step_id: 'step_001',
+                  operation: 'material_graph_edit',
+                  status: 'completed',
+                },
+              ],
+            },
+          },
+        } as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: materialTaskPlan,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const preview = await runner.previewTask(materialTaskSpec);
+  const execute = await runner.executeTask(materialTaskSpec);
+
+  assert.deepEqual(preview.toolResult.target, {
+    target_type: 'material_graph',
+    asset_path: '/Game/Materials/M_TargetProjection',
+  });
+  assert.deepEqual(execute.target, {
+    target_type: 'material_graph',
+    asset_path: '/Game/Materials/M_TargetProjection',
+  });
 });
 
 function executeBridgeResponse(): BridgeResponse {

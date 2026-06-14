@@ -40,6 +40,7 @@ const paths = {
   projectFile: normalizeString(defaults.paths?.projectFile),
   engineRoot: normalizeString(defaults.paths?.engineRoot),
   enginePluginDir: normalizeString(defaults.paths?.enginePluginDir),
+  projectEditorTarget: normalizeString(defaults.paths?.projectEditorTarget),
 };
 
 const profileDefaults = {
@@ -165,6 +166,7 @@ function createInstallOptions(input) {
     makeOption('claudePlugin', '安装 Claude Code 插件支持', bool(input.claudePlugin, false), '直接写入 Claude settings.json：本地 marketplace 和启用插件。选择此项会同步安装 Claude sideAgents。'),
     makeOption('claudeAgents', '安装 Claude sideAgent 定义', bool(input.claudeAgents, false), '只复制 Claude sideAgent 定义；如果选择 Claude 插件支持，此项会自动启用。'),
     makeOption('projectProfile', '写入项目 project-profile.json', bool(input.projectProfile, true), '创建或更新 .blueprinthelper/project-profile.json，并刷新 .blueprinthelper/AgentWorkFlow.md 与项目根 AGENTS.md / CLAUDE.md marker。'),
+    makeOption('projectUbtCompile', '运行一次项目 UBT 编译', bool(input.projectUbtCompile, true), '安装完成后使用 .uproject 和 UE root 运行 Build.bat <ProjectName>Editor Win64 Development，验证 UE 侧插件可被目标项目编译。'),
     makeOption('defaultPreferences', '创建默认用户偏好文件', bool(input.defaultPreferences, true), '只在缺失时创建 Claude/Codex BlueprintHelper 用户偏好文件，不覆盖已有偏好。'),
     makeOption('diagnostics', '安装后运行 diagnostics', bool(input.diagnostics, false), '安装完成后运行 BlueprintHelper 静态诊断，用于验证 CLI、profile、Bridge 和运行时配置。'),
     makeOption('ueEnginePlugin', '复制 UE 插件到 Engine', bool(input.ueEnginePlugin, false), '把 UE 侧 BlueprintHelper 插件复制到 Engine/Plugins/Marketplace。确认选单后会询问目标路径。'),
@@ -351,9 +353,10 @@ function optionFromLineInput(items, input) {
 
 async function collectPathDetails(items, targetPaths) {
   const projectProfile = optionSelected(items, 'projectProfile');
+  const projectUbtCompile = optionSelected(items, 'projectUbtCompile');
   const ueEnginePlugin = optionSelected(items, 'ueEnginePlugin');
 
-  if (!projectProfile && !ueEnginePlugin) {
+  if (!projectProfile && !projectUbtCompile && !ueEnginePlugin) {
     return;
   }
 
@@ -362,9 +365,13 @@ async function collectPathDetails(items, targetPaths) {
   writeLine('');
   restoreTerminalForPrompt();
 
-  if (projectProfile) {
+  if (projectProfile || projectUbtCompile) {
     targetPaths.projectFile = await promptText('Project .uproject path，留空自动检测', targetPaths.projectFile);
     targetPaths.engineRoot = await promptText('UE root，例如 E:\\UE_5.6 或 E:\\UE_5.6\\Engine', targetPaths.engineRoot);
+  }
+
+  if (projectUbtCompile) {
+    targetPaths.projectEditorTarget = await promptText('Project Editor target，留空自动检测', targetPaths.projectEditorTarget);
   }
 
   if (ueEnginePlugin) {
@@ -526,11 +533,12 @@ async function runConfirmation(selection) {
     writeLine('');
     writeLine(formatOptionSummary(selection.options));
     writeLine('');
-    if (selection.paths.projectFile || selection.paths.engineRoot || selection.paths.enginePluginDir) {
+    if (selection.paths.projectFile || selection.paths.engineRoot || selection.paths.enginePluginDir || selection.paths.projectEditorTarget) {
       writeLine('Paths:');
       writeLine(`  ProjectFile: ${selection.paths.projectFile || '(auto-detect)'}`);
       writeLine(`  EngineRoot: ${selection.paths.engineRoot || '(not set)'}`);
       writeLine(`  EnginePluginDir: ${selection.paths.enginePluginDir || '(derive or skip)'}`);
+      writeLine(`  ProjectEditorTarget: ${selection.paths.projectEditorTarget || '(auto-detect)'}`);
       writeLine('');
     }
     if (selection.profiles.codex) {
@@ -560,11 +568,12 @@ async function runConfirmationLineMode(selection) {
     writeLine('');
     writeLine(formatOptionSummary(selection.options));
     writeLine('');
-    if (selection.paths.projectFile || selection.paths.engineRoot || selection.paths.enginePluginDir) {
+    if (selection.paths.projectFile || selection.paths.engineRoot || selection.paths.enginePluginDir || selection.paths.projectEditorTarget) {
       writeLine('Paths:');
       writeLine(`  ProjectFile: ${selection.paths.projectFile || '(auto-detect)'}`);
       writeLine(`  EngineRoot: ${selection.paths.engineRoot || '(not set)'}`);
       writeLine(`  EnginePluginDir: ${selection.paths.enginePluginDir || '(derive or skip)'}`);
+      writeLine(`  ProjectEditorTarget: ${selection.paths.projectEditorTarget || '(auto-detect)'}`);
       writeLine('');
     }
     if (selection.profiles.codex) {
@@ -598,6 +607,7 @@ function buildSelection(items, selectedPaths, selectedProfiles) {
     claudePlugin: optionSelected(items, 'claudePlugin'),
     claudeAgents: optionSelected(items, 'claudePlugin') || optionSelected(items, 'claudeAgents'),
     projectProfile: optionSelected(items, 'projectProfile'),
+    projectUbtCompile: optionSelected(items, 'projectUbtCompile'),
     defaultPreferences: optionSelected(items, 'defaultPreferences'),
     diagnostics: optionSelected(items, 'diagnostics'),
     ueEnginePlugin: optionSelected(items, 'ueEnginePlugin'),
@@ -611,6 +621,7 @@ function buildSelection(items, selectedPaths, selectedProfiles) {
       projectFile: normalizeString(selectedPaths.projectFile),
       engineRoot: normalizeString(selectedPaths.engineRoot),
       enginePluginDir: normalizeString(selectedPaths.enginePluginDir),
+      projectEditorTarget: normalizeString(selectedPaths.projectEditorTarget),
     },
     profiles: {
       codex: outputOptions.codexAgents ? normalizeProfile(selectedProfiles.codex) : null,
@@ -657,6 +668,7 @@ function formatOptionSummary(selectedOptions) {
   if (selectedOptions.claudePlugin) enabled.push('claude-plugin');
   if (selectedOptions.claudeAgents && !selectedOptions.claudePlugin) enabled.push('claude-agents');
   if (selectedOptions.projectProfile) enabled.push('project-profile');
+  if (selectedOptions.projectUbtCompile) enabled.push('project-ubt-compile');
   if (selectedOptions.defaultPreferences) enabled.push('default-preferences');
   if (selectedOptions.diagnostics) enabled.push('diagnostics');
   if (selectedOptions.ueEnginePlugin) enabled.push('ue-engine-plugin');

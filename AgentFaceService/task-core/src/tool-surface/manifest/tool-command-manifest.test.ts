@@ -72,7 +72,12 @@ test('manifest mirror exposes every default capability returned by listToolCapab
   const removedMarkdownFormat = ['logic', 'md'].join('_');
   const removedMarkdownTool = ['blueprint_get', 'logic', 'md'].join('_');
   assert.equal(registry.get(removedMarkdownTool), undefined);
-  assert.equal(registry.list().some((entry) => JSON.stringify(entry).includes(removedMarkdownFormat)), false);
+  assert.equal(
+    registry.list()
+      .filter((entry) => entry.domain === 'blueprint')
+      .some((entry) => JSON.stringify(entry).includes(removedMarkdownFormat)),
+    false,
+  );
   const taskResult = registry.require('task result');
   assert.equal(taskResult.tool_id, 'project.read.task_result');
   assert.deepEqual(taskResult.input_shapes, ['cli_options']);

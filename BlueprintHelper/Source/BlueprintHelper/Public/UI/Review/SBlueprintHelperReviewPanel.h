@@ -301,5 +301,6 @@ private:
 	FBlueprintHelperReviewMyBlueprintPresenter::FState MyBlueprintPresenterState;
 	FBlueprintHelperReviewDataTablePresenterState DataTablePresenterState;
 	FBlueprintHelperReviewDataAssetPresenterState DataAssetPresenterState;
+	FBlueprintHelperReviewMaterialPresenterState MaterialPresenterState;
 	float FlashAlpha = 0.0f;
 };

@@ -22,6 +22,8 @@ const BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET: Readonly<Record<string, string>> = {
   block: 'AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_block_logic_json_template.json',
 };
 
+const MATERIAL_LOGIC_TEMPLATE = 'AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json';
+
 const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
   ...blueprintLogicRoutes('blueprint', ['logic_flow', 'logic_json']),
   ...blueprintLogicRoutes('function', ['logic_flow', 'logic_json']),
@@ -163,7 +165,7 @@ const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
     payload_projector_id: 'object_property',
     supported_asset_types: ['blueprint', 'object_property', 'property'],
   }),
-  reserved('read.material.logic.graph.logic_json', 'material', 'logic', 'graph', 'logic_json', 'Material ReadContext runtime adapter is not active yet.'),
+  ...materialLogicRoutes(['logic_json', 'logic_flow', 'logic_md']),
   reserved('read.material_instance.schema.asset.schema_json', 'material_instance', 'schema', 'asset', 'schema_json', 'MaterialInstance ReadContext runtime adapter is not active yet.'),
   reserved('read.animation_blueprint.logic.graph.logic_json', 'animation_blueprint', 'logic', 'graph', 'logic_json', 'Animation ReadContext runtime adapter is not active yet.'),
 ];
@@ -202,6 +204,33 @@ function outputSchemaForLogicFormat(format: 'logic_flow' | 'logic_json'): string
   const outputSchemas: Readonly<Record<typeof format, string>> = {
     logic_flow: 'LogicFlow.v1',
     logic_json: 'LogicJson.v1',
+  };
+  return outputSchemas[format];
+}
+
+function materialLogicRoutes(
+  formats: readonly ('logic_flow' | 'logic_json' | 'logic_md')[],
+): ReadContextRouteDescriptor[] {
+  return formats.map((format) => active(`read.material.logic.graph.${format}`, 'material', 'logic', 'graph', format, {
+    read_type: 'material_graph_context',
+    target_type: 'material_graph',
+    format,
+    base_template_path: MATERIAL_LOGIC_TEMPLATE,
+    bridge_command: format === 'logic_md' ? 'read_material_logic_md' : 'read_material_logic_json',
+    output_schema: outputSchemaForMaterialLogicFormat(format),
+    required_target_fields: ['asset_path'],
+    request_builder_id: 'material_logic',
+    payload_projector_id: 'logic',
+    supported_asset_types: ['asset', 'material', 'material_graph'],
+    supported_formats: [format],
+  }));
+}
+
+function outputSchemaForMaterialLogicFormat(format: 'logic_flow' | 'logic_json' | 'logic_md'): string {
+  const outputSchemas: Readonly<Record<typeof format, string>> = {
+    logic_flow: 'LogicJson.v1',
+    logic_json: 'LogicJson.v1',
+    logic_md: 'LogicMd.v1',
   };
   return outputSchemas[format];
 }

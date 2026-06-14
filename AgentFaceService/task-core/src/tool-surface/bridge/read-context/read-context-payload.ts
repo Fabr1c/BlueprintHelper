@@ -18,7 +18,7 @@ import {
 
 export type { ReadContextPostProcessResult } from './read-context-payload-projector-registry.js';
 
-const LOGIC_FORMATS = new Set<ReadContextLogicFormat>(['logic_flow', 'logic_json']);
+const LOGIC_FORMATS = new Set<ReadContextLogicFormat>(['logic_flow', 'logic_json', 'logic_md']);
 
 export function postProcessReadContextPayloadWithDebug(
   input: ReadContextInput,
@@ -162,10 +162,10 @@ function projectObjectPropertyPayload({
   };
 }
 
-type LogicProjectionSchema = 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicSnapshot.v1';
+type LogicProjectionSchema = 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1' | 'LogicSnapshot.v1';
 
 function asLogicProjectionSchema(payloadSchema: string): LogicProjectionSchema {
-  const logicSchemas = new Set<string>(['LogicFlow.v1', 'LogicJson.v1', 'LogicSnapshot.v1']);
+  const logicSchemas = new Set<string>(['LogicFlow.v1', 'LogicJson.v1', 'LogicMd.v1', 'LogicSnapshot.v1']);
   if (logicSchemas.has(payloadSchema)) {
     return payloadSchema as LogicProjectionSchema;
   }
@@ -182,6 +182,7 @@ function resolveRequestedLogicFormat(
   const schemaFormats: Readonly<Record<string, ReadContextLogicFormat>> = {
     'LogicFlow.v1': 'logic_flow',
     'LogicJson.v1': 'logic_json',
+    'LogicMd.v1': 'logic_md',
   };
   return schemaFormats[payloadSchema] ?? 'logic_flow';
 }

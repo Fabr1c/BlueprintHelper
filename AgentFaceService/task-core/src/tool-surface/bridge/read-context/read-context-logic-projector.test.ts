@@ -89,6 +89,41 @@ test('logic projector preserves task-core ownership metadata for raw UE payloads
   assert.equal(result.payload.projection_owner, 'task-core');
 });
 
+test('logic projector normalizes material logic markdown payloads', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_md',
+    bridgePayloadSchema: 'LogicMd.v1',
+    bridgePayload: {
+      schema: 'LogicMd.v1',
+      markdown: '# Material\n\n## Parameters\n- Roughness',
+    },
+    target: { asset_path: '/Game/Materials/M_Test' },
+  });
+
+  assert.equal(result.format, 'logic_md');
+  assert.equal(result.payload.schema, 'LogicMd.v1');
+  assert.equal(result.payload.format, 'logic_md');
+  assert.match(String(result.payload.markdown), /Roughness/);
+});
+
+test('logic projector can render fallback markdown from material facts', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_md',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      material: {
+        parameters: [{ name: 'BaseColor', type: 'Vector' }],
+        outputs: [{ property: 'BaseColor' }],
+      },
+    },
+    target: { asset_path: '/Game/Materials/M_Test' },
+  });
+
+  assert.equal(result.format, 'logic_md');
+  assert.match(String(result.payload.markdown), /BaseColor/);
+});
+
 test('logic_json projection adds compact anchor fields to external links with stable endpoints', () => {
   const result = projectReadContextLogic({
     requestedFormat: 'logic_json',

@@ -1,5 +1,6 @@
 import {
   CONTAINER_ACTION_OPERATION_IDS,
+  MATERIAL_GRAPH_COMMON_SELECTORS,
   TASK_PLAN_SCHEMA,
   TASK_RUN_JOURNAL_SCHEMA,
   TASK_SPEC_SCHEMA,
@@ -44,6 +45,7 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'edit_blueprint_class_settings',
     'edit_umg_widget',
     'edit_data_table',
+    'edit_material_graph',
   ],
   task_spec_required_paths: [
     'schema',
@@ -963,6 +965,50 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
       ],
     },
     lowering_policy: 'UE Task Runtime lowers structural GraphWrite IR ops to existing capability cluster commands.',
+  },
+  material_graph_taskspec_contract: {
+    ownership: 'agent_authored_material_graph_protocol',
+    task_type: 'edit_material_graph',
+    domain_derivation: 'task_type selects the MaterialGraph write domain; agents must not provide a separate domain field.',
+    target_contract: {
+      required_fields: ['target.asset_path'],
+      target_type_enum: ['asset', 'material', 'material_graph'],
+      forbidden_fields: ['target.graph_path'],
+      note: 'MaterialGraph targets the UMaterial asset graph implicitly.',
+    },
+    graph_strategies: [
+      'append_new_owned_graph',
+      'replace_owned_graph',
+      'patch_owned_graph',
+      'merge_owned_graph',
+    ],
+    strategy_fields: {
+      append_new_owned_graph: 'behavior.entries[]',
+      replace_owned_graph: 'behavior.replace',
+      patch_owned_graph: 'behavior.patches[]',
+      merge_owned_graph: 'behavior.merges[]',
+    },
+    common_selectors: MATERIAL_GRAPH_COMMON_SELECTORS,
+    candidate_selector_contract: {
+      preview_query_shape: '{ selector: { query: string } }',
+      execute_shape: '{ selector: { candidate_id: string } }',
+      rule: 'candidate selector requires exactly one of candidate_id or query',
+    },
+    material_output_contract: {
+      pseudo_node_key: '$material_output',
+      allowed_position: 'to.node_key only',
+      common_pins: ['BaseColor', 'Roughness', 'Specular', 'Metallic', 'EmissiveColor'],
+    },
+    forbidden_agent_shapes: [
+      'domain',
+      'position',
+      'comment',
+      'label',
+      'target.graph_path',
+      'hand-authored expression_guid as ordinary selector',
+    ],
+    layout_policy: 'position is intentionally not a P0 TaskSpec field; layout is owned by the layout subsystem/readback/editor presentation.',
+    readback_closure: 'After preview/execute, use material_graph_context logic_json to verify node_key/block_id links and material outputs.',
   },
   graph_write_lowering_adapter_contract: {
     ownership: 'runtime_owned_adapter_protocol',

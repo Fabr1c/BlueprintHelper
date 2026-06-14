@@ -854,6 +854,15 @@ TSharedRef<ITableRow> FBlueprintHelperReviewPresenterWidgetUtils::GenerateDataAs
 			Item->Label,
 			RowContent,
 			Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));
+		for (const FString& Alias : Item->SearchAliases)
+		{
+			RegisterRowSearchAliases(
+				AssetPath,
+				Surface,
+				Alias,
+				RowContent,
+				Item->DetailNode.IsValid() ? TEXT("native_details_row") : TEXT("native_structure_row"));
+		}
 	}
 
 	return RowWidget;

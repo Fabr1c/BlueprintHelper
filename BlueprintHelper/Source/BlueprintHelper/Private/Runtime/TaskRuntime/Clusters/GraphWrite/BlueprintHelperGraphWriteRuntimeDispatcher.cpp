@@ -2,6 +2,7 @@
 
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperExternalUserGraphMutationAdapter.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskPlanLoweringUtils.h"
+#include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperMaterialGraphMutationAdapter.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperOwnedGraphMutationAdapter.h"
 
 bool FBlueprintHelperGraphWriteRuntimeDispatcher::TryLower(
@@ -35,6 +36,13 @@ bool FBlueprintHelperGraphWriteRuntimeDispatcher::TryLower(
 			TEXT("GraphWrite Task Runtime supports owned_graph_edit and external_graph_edit."),
 			BlueprintHelperGraphWriteLowering::BuildStepFieldPath(TEXT("write.strategy")));
 		return false;
+	}
+
+	FString GraphDomain;
+	(*WriteObjectPtr)->TryGetStringField(TEXT("graph_domain"), GraphDomain);
+	if (GraphDomain == TEXT("material_graph"))
+	{
+		return FBlueprintHelperMaterialGraphMutationAdapter::TryLower(Request, OutResult, OutError);
 	}
 
 	if (Strategy == TEXT("owned_graph_edit"))

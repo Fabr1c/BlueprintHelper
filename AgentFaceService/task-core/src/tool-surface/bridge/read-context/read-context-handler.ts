@@ -79,7 +79,18 @@ export async function executeReadContext(
     }, buildReadContextTarget(input) as never);
   }
 
-  const readPayloadResult = buildReadPayloadWithTiming(input, request.route, request.payloadSchema, payloadResult.payload, context);
+  const readPayloadResult = buildReadPayloadWithTimingSafe(input, request.route, request.payloadSchema, payloadResult.payload, context);
+  if (!readPayloadResult.ok) {
+    return failureResult('read_context', {
+      code: input.read_type === 'material_graph_context'
+        ? 'material_logic_projection_failed'
+        : 'read_context_projection_failed',
+      stage: 'post_process',
+      message: readPayloadResult.message,
+      retryable: false,
+      rollback_result: 'not_needed',
+    }, buildReadContextTarget(input) as never);
+  }
   return measureTaskTiming(timing, 'read_context.result_wrap', () => buildReadContextResult(input, readPayloadResult));
 }
 
@@ -107,6 +118,26 @@ function buildReadPayloadWithTiming(
   ));
   addReadPayloadSizeMarker(timing, 'read_context.post_processed_payload_bytes', postProcessResult.payload);
   return postProcessResult;
+}
+
+function buildReadPayloadWithTimingSafe(
+  input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
+  payloadSchema: string,
+  payload: Record<string, unknown>,
+  context: BlueprintHelperToolContext,
+): { ok: true; payload: Record<string, unknown>; debug?: Record<string, unknown> } | { ok: false; message: string } {
+  try {
+    return {
+      ok: true,
+      ...buildReadPayloadWithTiming(input, route, payloadSchema, payload, context),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 function buildReadContextResult(

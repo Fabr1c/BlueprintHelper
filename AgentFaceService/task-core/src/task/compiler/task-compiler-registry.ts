@@ -11,6 +11,7 @@ const CANONICAL_TS_TASK_TYPES = new Set([
   'create_asset',
   'create_blueprint_feature',
   'edit_blueprint_graph',
+  'edit_material_graph',
   'edit_blueprint_variables',
   'edit_object_properties',
   'edit_blueprint_signature',

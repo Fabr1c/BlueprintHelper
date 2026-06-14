@@ -9,6 +9,7 @@
 #include "Engine/DataTable.h"
 #include "GameFramework/Actor.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Materials/Material.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphSnapshotService.h"
@@ -438,6 +439,14 @@ bool FBlueprintHelperAssetFactoryServiceNormalizesDataTableAndWidgetAliasesTest:
 	TestTrue(TEXT("widgetblueprint alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("widgetblueprint"), ParentClass, AssetType));
 	TestEqual(TEXT("widgetblueprint maps to WidgetBlueprint"), AssetType, EBlueprintHelperAssetType::WidgetBlueprint);
 
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("material alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("material"), ParentClass, AssetType));
+	TestEqual(TEXT("material maps to Material"), AssetType, EBlueprintHelperAssetType::Material);
+
+	AssetType = EBlueprintHelperAssetType::Unknown;
+	TestTrue(TEXT("mat alias normalizes"), FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(TEXT("mat"), ParentClass, AssetType));
+	TestEqual(TEXT("mat maps to Material"), AssetType, EBlueprintHelperAssetType::Material);
+
 	return true;
 }
 
@@ -643,6 +652,50 @@ bool FBlueprintHelperAssetFactoryServiceCreatesDataTableWithRowStructTest::RunTe
 	ObjectTools::DeleteSingleObject(RowStruct, false);
 
 	return CreatedTable != nullptr && TableData.Asset.bCreated;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperAssetFactoryServiceCreatesMaterialAssetTest,
+	"BlueprintHelper.AssetFactory.CreatesMaterialAsset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperAssetFactoryServiceCreatesMaterialAssetTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperSafety/M_Create_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	TestFalse(TEXT("test material does not exist before create"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
+
+	const FBlueprintHelperAssetFactoryService Service;
+	const FBlueprintHelperAssetFactoryData Data = Service.CreateAsset(
+		AssetPath,
+		EBlueprintHelperAssetType::Material,
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TEXT(""),
+		TArray<FBlueprintHelperAssetFactoryFieldSpec>(),
+		EBlueprintHelperAssetCollisionPolicy::FailIfExists,
+		false);
+
+	TestTrue(TEXT("material create reports created"), Data.Asset.bCreated);
+	TestTrue(TEXT("material asset is registered"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
+	TestEqual(TEXT("factory records material asset type"), Data.Factory.AssetType, EBlueprintHelperAssetType::Material);
+	TestEqual(TEXT("factory records material factory type"), Data.Factory.FactoryType, EBlueprintHelperFactoryType::Material);
+
+	UObject* CreatedAsset = StaticLoadObject(
+		UMaterial::StaticClass(),
+		nullptr,
+		*FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(AssetPath));
+	UMaterial* CreatedMaterial = Cast<UMaterial>(CreatedAsset);
+	TestNotNull(TEXT("created asset loads as UMaterial"), CreatedMaterial);
+	if (CreatedMaterial)
+	{
+		ObjectTools::DeleteSingleObject(CreatedMaterial, false);
+	}
+
+	return CreatedMaterial != nullptr && Data.Asset.bCreated;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

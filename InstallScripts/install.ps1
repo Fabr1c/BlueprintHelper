@@ -10,6 +10,7 @@ param(
   [switch]$InstallClaudeAgents,
   [switch]$InstallClaudePlugin,
   [switch]$InstallUePluginToEngine,
+  [switch]$SkipProjectUbtCompile,
   [switch]$RunDiagnostics,
   [switch]$Interactive,
   [string]$WriteNodeDefaults,
@@ -17,6 +18,7 @@ param(
   [string]$ProjectFile,
   [string]$EngineRoot,
   [string]$EnginePluginDir,
+  [string]$ProjectEditorTarget,
   [switch]$Force
 )
 
@@ -150,6 +152,24 @@ function Invoke-External {
       throw "$Description failed with exit code $LASTEXITCODE."
     }
   }
+}
+
+function Write-Utf8NoBomFile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [AllowNull()]
+    [string]$Value
+  )
+
+  $Directory = Split-Path -Parent $Path
+  if ($Directory) {
+    New-Item -ItemType Directory -Force -Path $Directory | Out-Null
+  }
+
+  $Text = if ($null -eq $Value) { '' } else { $Value }
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom)
 }
 
 function Invoke-ExternalWithEnvironment {
@@ -357,6 +377,7 @@ function New-NodeInstallDefaults {
       claudePlugin = [bool]$InstallClaudePlugin
       claudeAgents = [bool]($InstallClaudeAgents -or $InstallClaudePlugin)
       projectProfile = -not $SkipProjectProfile
+      projectUbtCompile = -not $SkipProjectUbtCompile
       defaultPreferences = -not $SkipDefaultPreferences
       diagnostics = [bool]$RunDiagnostics
       ueEnginePlugin = [bool]$InstallUePluginToEngine
@@ -366,6 +387,7 @@ function New-NodeInstallDefaults {
       projectFile = $ProjectFile
       engineRoot = $EngineRoot
       enginePluginDir = $EnginePluginDir
+      projectEditorTarget = $ProjectEditorTarget
     }
     profiles = [pscustomobject]@{
       codex = Get-DefaultCodexSubagentProfiles
@@ -456,6 +478,7 @@ function Apply-NodeInstallSelection {
   $script:InstallClaudePlugin = Get-SelectionBool -Object $Options -Name 'claudePlugin' -DefaultValue:([bool]$InstallClaudePlugin)
   $script:InstallClaudeAgents = Get-SelectionBool -Object $Options -Name 'claudeAgents' -DefaultValue:([bool]($InstallClaudeAgents -or $InstallClaudePlugin))
   $script:SkipProjectProfile = -not (Get-SelectionBool -Object $Options -Name 'projectProfile' -DefaultValue:(-not $SkipProjectProfile))
+  $script:SkipProjectUbtCompile = -not (Get-SelectionBool -Object $Options -Name 'projectUbtCompile' -DefaultValue:(-not $SkipProjectUbtCompile))
   $script:SkipDefaultPreferences = -not (Get-SelectionBool -Object $Options -Name 'defaultPreferences' -DefaultValue:(-not $SkipDefaultPreferences))
   $script:RunDiagnostics = Get-SelectionBool -Object $Options -Name 'diagnostics' -DefaultValue:([bool]$RunDiagnostics)
   $script:InstallUePluginToEngine = Get-SelectionBool -Object $Options -Name 'ueEnginePlugin' -DefaultValue:([bool]$InstallUePluginToEngine)
@@ -465,6 +488,7 @@ function Apply-NodeInstallSelection {
     $script:ProjectFile = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'projectFile'))
     $script:EngineRoot = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'engineRoot'))
     $script:EnginePluginDir = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'enginePluginDir'))
+    $script:ProjectEditorTarget = Normalize-InstallPathInput -PathText ([string](Get-JsonProperty -Object $Paths -Name 'projectEditorTarget'))
   }
 
   $script:CodexSubagentProfiles = $null
@@ -726,7 +750,8 @@ function Initialize-SubagentInstallProfiles {
 }
 
 function Read-InstallPathDetails {
-  if (-not $script:SkipProjectProfile) {
+  $NeedsProjectPaths = (-not $script:SkipProjectProfile) -or (-not $script:SkipProjectUbtCompile)
+  if ($NeedsProjectPaths) {
     $ProjectFileInput = Read-InstallText -Prompt '  Project .uproject path, blank to auto-detect' -DefaultValue $ProjectFile
     if ($ProjectFileInput) {
       $script:ProjectFile = Normalize-InstallPathInput -PathText $ProjectFileInput
@@ -735,6 +760,13 @@ function Read-InstallPathDetails {
     $EngineRootInput = Read-InstallText -Prompt '  UE root, for example E:\UE_5.6 or E:\UE_5.6\Engine' -DefaultValue $EngineRoot
     if ($EngineRootInput) {
       $script:EngineRoot = Normalize-InstallPathInput -PathText $EngineRootInput
+    }
+  }
+
+  if (-not $script:SkipProjectUbtCompile) {
+    $ProjectEditorTargetInput = Read-InstallText -Prompt '  Project Editor target, blank to auto-detect' -DefaultValue $ProjectEditorTarget
+    if ($ProjectEditorTargetInput) {
+      $script:ProjectEditorTarget = Normalize-InstallPathInput -PathText $ProjectEditorTargetInput
     }
   }
 
@@ -787,6 +819,7 @@ function Invoke-SequentialInstallWizard {
   }
 
   $script:SkipProjectProfile = -not (Read-InstallYesNo -Prompt 'Write or update project .blueprinthelper/project-profile.json' -DefaultYes:(-not $SkipProjectProfile))
+  $script:SkipProjectUbtCompile = -not (Read-InstallYesNo -Prompt 'Run one project UBT compile after install' -DefaultYes:(-not $SkipProjectUbtCompile))
   $script:SkipDefaultPreferences = -not (Read-InstallYesNo -Prompt 'Create default Claude/Codex user preference files when missing' -DefaultYes:(-not $SkipDefaultPreferences))
   $script:RunDiagnostics = Read-InstallYesNo -Prompt 'Run BlueprintHelper diagnostics after install' -DefaultYes:$RunDiagnostics
 
@@ -848,6 +881,7 @@ function New-InstallMenuOptions {
     (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Write the Claude local marketplace and enabled plugin entries directly into the user settings.json.'),
     (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
     (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/project-profile.json for the detected Unreal project. Project AgentWorkFlow and root AGENTS/CLAUDE markers are refreshed even when this is skipped. Path prompts appear after menu confirmation.'),
+    (New-InstallMenuOption -Key 'projectUbtCompile' -Label 'Run project UBT compile' -Selected:(-not $SkipProjectUbtCompile) -Tip 'After install, run Build.bat <ProjectName>Editor Win64 Development -Project=<Project.uproject> -WaitMutex -NoHotReloadFromIDE. This validates the installed UE-side plugin against the target project.'),
     (New-InstallMenuOption -Key 'defaultPreferences' -Label 'Create default user preference files' -Selected:(-not $SkipDefaultPreferences) -Tip 'Create missing Claude/Codex BlueprintHelper user preference files without overwriting existing preference files.'),
     (New-InstallMenuOption -Key 'diagnostics' -Label 'Run diagnostics after install' -Selected:$RunDiagnostics -Tip 'Run BlueprintHelper static diagnostics after installation. Useful for validating CLI, profile, Bridge, and runtime configuration.'),
     (New-InstallMenuOption -Key 'ueEnginePlugin' -Label 'Copy UE plugin to Engine' -Selected:$InstallUePluginToEngine -Tip 'Copy the UE-side BlueprintHelper plugin into an Engine Plugins/Marketplace folder. Path prompts appear after menu confirmation.'),
@@ -980,6 +1014,7 @@ function Apply-InstallMenuOptions {
   $script:InstallClaudePlugin = (Get-InstallMenuOption -Options $Options -Key 'claudePlugin').Selected
   $script:InstallClaudeAgents = (Get-InstallMenuOption -Options $Options -Key 'claudeAgents').Selected
   $script:SkipProjectProfile = -not (Get-InstallMenuOption -Options $Options -Key 'projectProfile').Selected
+  $script:SkipProjectUbtCompile = -not (Get-InstallMenuOption -Options $Options -Key 'projectUbtCompile').Selected
   $script:SkipDefaultPreferences = -not (Get-InstallMenuOption -Options $Options -Key 'defaultPreferences').Selected
   $script:RunDiagnostics = (Get-InstallMenuOption -Options $Options -Key 'diagnostics').Selected
   $script:InstallUePluginToEngine = (Get-InstallMenuOption -Options $Options -Key 'ueEnginePlugin').Selected
@@ -1495,6 +1530,126 @@ function Get-UeVersionFromEngineRoot {
   return ''
 }
 
+function Resolve-ProjectEditorTargetName {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ResolvedProjectFile,
+    [string]$RawProjectEditorTarget
+  )
+
+  $CleanProjectEditorTarget = Normalize-InstallPathInput -PathText $RawProjectEditorTarget
+  if ($CleanProjectEditorTarget) {
+    return $CleanProjectEditorTarget
+  }
+
+  $ProjectName = [System.IO.Path]::GetFileNameWithoutExtension($ResolvedProjectFile)
+  $ProjectDir = Split-Path -Parent $ResolvedProjectFile
+  $SourceDir = Join-Path $ProjectDir 'Source'
+  $PreferredTarget = Join-Path $SourceDir "$($ProjectName)Editor.Target.cs"
+  if (Test-Path -LiteralPath $PreferredTarget -PathType Leaf) {
+    return "$($ProjectName)Editor"
+  }
+
+  if (Test-Path -LiteralPath $SourceDir -PathType Container) {
+    $EditorTargets = @(Get-ChildItem -LiteralPath $SourceDir -Filter '*Editor.Target.cs' -File -ErrorAction SilentlyContinue)
+    if ($EditorTargets.Count -eq 1) {
+      return ($EditorTargets[0].BaseName -replace '\.Target$', '')
+    }
+    if ($EditorTargets.Count -gt 1) {
+      $Candidates = ($EditorTargets | ForEach-Object { $_.BaseName -replace '\.Target$', '' }) -join ', '
+      throw "Multiple project editor targets were found. Re-run with -ProjectEditorTarget <TargetName>. Candidates: $Candidates"
+    }
+  }
+
+  return "$($ProjectName)Editor"
+}
+
+function Invoke-ProjectUbtCompile {
+  param([Parameter(Mandatory = $true)][object]$ProjectProfileResult)
+
+  if ($SkipProjectUbtCompile) {
+    return [pscustomobject]@{
+      status = 'skipped'
+      target = $null
+      project_file = $null
+      engine_root = $null
+      command = $null
+    }
+  }
+
+  $ResolvedProjectFile = $null
+  if ($ProjectProfileResult -and $ProjectProfileResult.project_file) {
+    $ResolvedProjectFile = [string]$ProjectProfileResult.project_file
+  }
+  if (-not $ResolvedProjectFile) {
+    $ResolvedProjectFile = Resolve-ProjectFile
+  }
+  if (-not $ResolvedProjectFile) {
+    Write-Host '==> Project UBT compile: skipped (no unique .uproject found; pass -ProjectFile)'
+    return [pscustomobject]@{
+      status = 'skipped_project_missing'
+      target = $null
+      project_file = $null
+      engine_root = $null
+      command = $null
+    }
+  }
+
+  $ResolvedEngineRoot = $null
+  if ($ProjectProfileResult -and $ProjectProfileResult.engine_root) {
+    $ResolvedEngineRoot = [string]$ProjectProfileResult.engine_root
+  }
+  if (-not $ResolvedEngineRoot) {
+    $ResolvedEngineRoot = Resolve-UeRootForProfile -RawEngineRoot $EngineRoot
+  }
+  if (-not $ResolvedEngineRoot) {
+    $ProjectDir = Split-Path -Parent $ResolvedProjectFile
+    $ProfileDir = Join-Path $ProjectDir '.blueprinthelper'
+    $ResolvedEngineRoot = Get-ExistingProfileEngineRoot -ProfilePath (Join-Path $ProfileDir 'project-profile.json')
+    if (-not $ResolvedEngineRoot) {
+      $ResolvedEngineRoot = Get-ExistingProfileEngineRoot -ProfilePath (Join-Path $ProfileDir 'agent-profile.json')
+    }
+  }
+  if (-not $ResolvedEngineRoot) {
+    Write-Host '==> Project UBT compile: skipped (UE root missing; pass -EngineRoot)'
+    return [pscustomobject]@{
+      status = 'skipped_engine_missing'
+      target = $null
+      project_file = $ResolvedProjectFile
+      engine_root = $null
+      command = $null
+    }
+  }
+
+  $EngineDir = Resolve-UeEngineDirectory -RawEngineRoot $ResolvedEngineRoot
+  $BuildBat = Join-Path $EngineDir 'Build\BatchFiles\Build.bat'
+  Assert-File -Path $BuildBat -Name 'Unreal Build.bat'
+
+  $TargetName = Resolve-ProjectEditorTargetName -ResolvedProjectFile $ResolvedProjectFile -RawProjectEditorTarget $ProjectEditorTarget
+  $Arguments = @(
+    $TargetName,
+    'Win64',
+    'Development',
+    "-Project=$ResolvedProjectFile",
+    '-WaitMutex',
+    '-NoHotReloadFromIDE'
+  )
+  $CommandText = "$BuildBat $($Arguments -join ' ')"
+  try {
+    Invoke-External -Description "Project UBT compile: $TargetName" -FilePath $BuildBat -Arguments $Arguments
+  } catch {
+    throw "Project UBT compile failed. Command: $CommandText. $($_.Exception.Message)"
+  }
+
+  return [pscustomobject]@{
+    status = if ($WhatIfPreference) { 'whatif' } else { 'passed' }
+    target = $TargetName
+    project_file = $ResolvedProjectFile
+    engine_root = $ResolvedEngineRoot
+    command = $CommandText
+  }
+}
+
 function Ensure-ProjectAgentProfile {
   $ResolvedProjectFile = Resolve-ProjectFile
   if (-not $ResolvedProjectFile) {
@@ -1553,7 +1708,7 @@ function Ensure-ProjectAgentProfile {
 
   if ($script:ThisCmdlet.ShouldProcess($ProfilePath, 'Write BlueprintHelper project profile')) {
     New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
-    $Profile | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ProfilePath -Encoding utf8
+    Write-Utf8NoBomFile -Path $ProfilePath -Value ($Profile | ConvertTo-Json -Depth 20)
   }
   Invoke-ProjectAgentWorkflowInstaller -ProjectDir $ProjectDir
 
@@ -1808,6 +1963,13 @@ $ClaudePluginResult = [pscustomobject]@{
 }
 
 $ClaudeAgentsStatus = 'skipped'
+$ProjectUbtCompileResult = [pscustomobject]@{
+  status = 'skipped'
+  target = $null
+  project_file = $null
+  engine_root = $null
+  command = $null
+}
 
 if (-not $SkipProjectProfile) {
   $ProjectProfileResult = Ensure-ProjectAgentProfile
@@ -1840,6 +2002,8 @@ if ($InstallClaudeAgents -or $InstallClaudePlugin) {
 if ($InstallUePluginToEngine) {
   Install-UePluginToEngine
 }
+
+$ProjectUbtCompileResult = Invoke-ProjectUbtCompile -ProjectProfileResult $ProjectProfileResult
 
 Write-Host ''
 Write-Host 'BlueprintHelper install finished.'
@@ -1885,9 +2049,21 @@ Write-Host "Claude agents: $ClaudeAgentsStatus"
 if ($script:ClaudeSubagentProfiles) {
   Write-Host "Claude sideAgent profiles: $(Format-SubagentProfileSummary -Profiles $script:ClaudeSubagentProfiles)"
 }
-Write-Host "Project profile: $($ProjectProfileResult.status)"
+$ProjectSetupLabel = if ($ProjectProfileResult.path -and ([System.IO.Path]::GetFileName($ProjectProfileResult.path) -ieq 'AgentWorkFlow.md')) {
+  'Project workflow'
+} else {
+  'Project profile'
+}
+Write-Host "$($ProjectSetupLabel): $($ProjectProfileResult.status)"
 if ($ProjectProfileResult.path) {
-  Write-Host "Project profile path: $($ProjectProfileResult.path)"
+  Write-Host "$($ProjectSetupLabel) path: $($ProjectProfileResult.path)"
+}
+Write-Host "Project UBT compile: $($ProjectUbtCompileResult.status)"
+if ($ProjectUbtCompileResult.target) {
+  Write-Host "Project UBT target: $($ProjectUbtCompileResult.target)"
+}
+if ($ProjectUbtCompileResult.command) {
+  Write-Host "Project UBT command: $($ProjectUbtCompileResult.command)"
 }
 Write-Host "Diagnostics: $DiagnosticsStatus"
 Write-Host 'UE plugin: install per project, or use -InstallUePluginToEngine for an engine plugin copy.'

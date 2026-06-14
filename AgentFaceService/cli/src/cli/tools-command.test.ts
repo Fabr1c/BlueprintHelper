@@ -18,6 +18,7 @@ test('runCli returns active tool domains as catalog JSON without bridge access',
   assert.deepEqual(stderr, []);
   assert.equal(output.schema, 'BlueprintHelper.ToolDomainList.v1');
   assert.equal(output.items.some((item: Record<string, unknown>) => item.id === 'blueprint'), true);
+  assert.equal(output.items.some((item: Record<string, unknown>) => item.id === 'material'), true);
   assert.equal(output.items.some((item: Record<string, unknown>) => item.id === 'animation'), false);
   assert.deepEqual(output.reserved, []);
   assert.deepEqual(output.next, {
@@ -29,7 +30,7 @@ test('runCli returns reserved tool domains only when requested', async () => {
   const { output } = await runCliJson(['tools', 'domains', '--include-reserved', '--format', 'json']);
 
   assert.equal(output.reserved.some((item: Record<string, unknown>) => item.id === 'animation'), true);
-  assert.equal(output.reserved.some((item: Record<string, unknown>) => item.id === 'material'), true);
+  assert.equal(output.reserved.some((item: Record<string, unknown>) => item.id === 'material'), false);
 });
 
 test('runCli filters tool capability catalog and points read workflows to ReadContext template index', async () => {

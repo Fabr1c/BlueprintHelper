@@ -100,6 +100,12 @@ private:
 		const FString& OperationKind,
 		const FBlueprintHelperGraphBodyBoundaryModel& BoundaryModel,
 		FBlueprintHelperWriteReviewEvidence& OutEvidence);
+	static bool BuildMaterialGraphEvidence(
+		const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+		const FString& AssetPath,
+		const FString& GraphName,
+		const FString& OperationKind,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
 	static void NormalizeGraphWriteDiagnostic(
 		FBlueprintHelperDiagnosticItem& Item,
 		const FString& DefaultGraphName);

@@ -1,13 +1,14 @@
 import { z } from 'zod';
 
-export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_json'] as const;
+export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_json', 'logic_md'] as const;
 export type ReadContextLogicFormat = (typeof READ_CONTEXT_LOGIC_FORMATS)[number];
-export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_json', 'tree_json'] as const;
+export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_json', 'logic_md', 'tree_json'] as const;
 export type ReadContextViewFormat = (typeof READ_CONTEXT_VIEW_FORMATS)[number];
 
 export const LOGIC_PROJECTION_CALLBACK_CAPABILITIES = [
   'ue.raw_snapshot.logic_json',
   'ue.raw_snapshot.logic_flow',
+  'ue.raw_snapshot.logic_md',
 ] as const;
 export type LogicProjectionCallbackCapability =
   (typeof LOGIC_PROJECTION_CALLBACK_CAPABILITIES)[number];
@@ -25,6 +26,7 @@ export const ReadContextInputSchema = z.object({
     'data_table_context',
     'data_asset_context',
     'object_property_context',
+    'material_graph_context',
   ]),
   target: z.object({
     asset_path: z.string(),
@@ -46,6 +48,7 @@ export const ReadContextInputSchema = z.object({
       'object_property',
       'property',
       'block',
+      'material_graph',
     ]).optional().default('blueprint'),
     target_name: z.string().optional(),
     graph_name: z.string().optional(),
@@ -60,15 +63,30 @@ export const ReadContextInputSchema = z.object({
     context_id: z.string().optional(),
     task_run_id: z.string().optional(),
   }).optional(),
-}).superRefine((input, ctx) => {
+}).strict().superRefine((input, ctx) => {
   const format = input.view?.format;
   const isLogicRead = input.read_type === 'blueprint_logic';
+  const isMaterialLogicRead = input.read_type === 'material_graph_context';
   const isWidgetTreeRead = new Set(['widget_context']).has(input.read_type) && !input.target.target_name;
-  if (!isLogicRead && !isWidgetTreeRead && format) {
+  if (!isLogicRead && !isMaterialLogicRead && !isWidgetTreeRead && format) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
-      message: 'view.format is only supported for blueprint_logic or widget_context tree reads; omit it for this read_type.',
+      message: 'view.format is only supported for blueprint_logic, material_graph_context, or widget_context tree reads; omit it for this read_type.',
+    });
+  }
+  if (isLogicRead && format && !new Set(['logic_flow', 'logic_json']).has(format)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['view', 'format'],
+      message: 'blueprint_logic reads only support logic_json and logic_flow formats.',
+    });
+  }
+  if (isMaterialLogicRead && format && !new Set(['logic_flow', 'logic_json', 'logic_md']).has(format)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['view', 'format'],
+      message: 'material_graph_context reads only support logic_json, logic_flow, and logic_md formats.',
     });
   }
   if (isWidgetTreeRead && format && !new Set(['tree_json', 'logic_flow']).has(format)) {

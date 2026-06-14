@@ -389,7 +389,7 @@ test('read_context input schema rejects removed markdown logic format before han
     view: {
       format: removedMarkdownFormat,
     },
-  }), /Invalid enum value/);
+  }), /blueprint_logic reads only support logic_json and logic_flow formats/);
 });
 
 test('read_context logic_flow returns execflow from structured logic_json payload', async () => {
@@ -419,9 +419,9 @@ test('read_context logic_flow returns execflow from structured logic_json payloa
             schema: 'LogicJson.v1',
             logic: {
               graph: 'EventGraph',
-              entry: { node_ref: 'nodes[0]', name: '事件Secondary Thumbstick' },
+              entry: { node_ref: 'nodes[0]', name: '浜嬩欢Secondary Thumbstick' },
               nodes: [
-                { node_ref: 'nodes[0]', kind: 'event', name: '事件Secondary Thumbstick' },
+                { node_ref: 'nodes[0]', kind: 'event', name: '浜嬩欢Secondary Thumbstick' },
                 { node_ref: 'nodes[1]', kind: 'function_call', name: 'DoLook' },
               ],
               links: [
@@ -447,7 +447,7 @@ test('read_context logic_flow returns execflow from structured logic_json payloa
   const payload = (result.data as Record<string, unknown>)['payload'] as Record<string, unknown>;
   assert.equal(payload['schema'], 'LogicFlow.v1');
   assert.equal(payload['mode'], 'execflow');
-  assert.equal(payload['flow'], '事件Secondary Thumbstick(Axis_X,Axis_Y) -> DoLook[Yaw=&.Axis_X, Pitch=&.Axis_Y]');
+  assert.equal(payload['flow'], '浜嬩欢Secondary Thumbstick(Axis_X,Axis_Y) -> DoLook[Yaw=&.Axis_X, Pitch=&.Axis_Y]');
   assert.deepEqual(payload['stats'], {
     nodes: 2,
     exec_links: 1,
@@ -973,7 +973,6 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
         },
       };
     },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
@@ -1018,7 +1017,6 @@ test('execute task registry handler passes preview token to TaskSpecRunner', asy
   let receivedPreviewToken: unknown;
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     executeTask: async (_taskSpec: unknown, _timing: unknown, options?: { previewToken?: unknown }) => {
       receivedPreviewToken = options?.previewToken;
@@ -1072,7 +1070,6 @@ test('execute task registry adapter reports direct TaskSpec preview token as str
   const previewToken = 'abcdef0123456789abcdef0123456789';
   const runner = {
     previewTask: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('direct TaskSpec preview_token should be rejected before runner'); },
     getTaskResult: async () => { throw new Error('not used'); },

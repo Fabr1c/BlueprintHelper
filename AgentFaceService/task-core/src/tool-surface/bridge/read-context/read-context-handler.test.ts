@@ -8,6 +8,8 @@ import { getActiveReadContextRouteDescriptors } from '../../templates/read-conte
 import { buildReadContextCapabilitiesPayload } from './read-context-capabilities.js';
 import { executeReadContext } from './read-context-handler.js';
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
+import { projectReadContextLogic } from './read-context-logic-projector.js';
+import { buildReadContextBridgeRequest } from './read-context-route-builder.js';
 import {
   LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
   LOGIC_PROJECTION_OWNER,
@@ -44,19 +46,20 @@ const duplicateBoundaryAnchor = {
 test('read_context logic formats declare UE callback capabilities with task-core projection owner', () => {
   assert.deepEqual(
     READ_CONTEXT_LOGIC_FORMATS,
-    ['logic_flow', 'logic_json'],
+    ['logic_flow', 'logic_json', 'logic_md'],
   );
   assert.deepEqual(
     LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
     [
       'ue.raw_snapshot.logic_json',
       'ue.raw_snapshot.logic_flow',
+      'ue.raw_snapshot.logic_md',
     ],
   );
   assert.equal(LOGIC_PROJECTION_OWNER, 'task-core');
 });
 
-test('ReadContext rejects removed markdown logic view format', () => {
+test('ReadContext keeps markdown disabled for blueprint logic reads', () => {
   const removedMarkdownFormat = ['logic', 'md'].join('_');
   const result = ReadContextInputSchema.safeParse({
     schema: 'BlueprintHelper.ReadSpec.v1',
@@ -74,6 +77,327 @@ test('ReadContext rejects removed markdown logic view format', () => {
   assert.equal(result.success, false);
 });
 
+test('ReadContext material_graph_context schema accepts only the P0 logic read surface', () => {
+  for (const format of ['logic_json', 'logic_flow', 'logic_md'] as const) {
+    const result = ReadContextInputSchema.safeParse({
+      schema: 'BlueprintHelper.ReadSpec.v1',
+      read_type: 'material_graph_context',
+      target: {
+        asset_path: '/Game/Materials/M_Test',
+        target_type: 'material_graph',
+      },
+      view: {
+        format,
+      },
+    });
+    assert.equal(result.success, true, `${format} should be accepted`);
+  }
+
+  assert.equal(ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }).success, false);
+
+  assert.equal(ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    domain: 'material',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }).success, false);
+
+  assert.equal(ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'material_graph',
+    },
+  }).success, false);
+});
+
+test('ReadContext routes material_graph_context to material logic bridge commands', () => {
+  const logicJson = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  });
+  const logicJsonRequest = buildReadContextBridgeRequest(logicJson);
+  assert.equal(logicJsonRequest.ok, true);
+  if (logicJsonRequest.ok) {
+    assert.equal(logicJsonRequest.command, 'read_material_logic_json');
+    assert.equal(logicJsonRequest.payloadSchema, 'LogicJson.v1');
+    assert.equal(logicJsonRequest.payload['asset_path'], '/Game/Materials/M_Test');
+    assert.equal(logicJsonRequest.payload['target_type'], 'material_graph');
+    assert.deepEqual(logicJsonRequest.payload['view'], { format: 'logic_json' });
+  }
+
+  const logicFlow = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  });
+  const logicFlowRequest = buildReadContextBridgeRequest(logicFlow);
+  assert.equal(logicFlowRequest.ok, true);
+  if (logicFlowRequest.ok) {
+    assert.equal(logicFlowRequest.command, 'read_material_logic_json');
+    assert.equal(logicFlowRequest.payloadSchema, 'LogicJson.v1');
+  }
+
+  const logicMd = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'asset',
+    },
+    view: {
+      format: 'logic_md',
+    },
+  });
+  const logicMdRequest = buildReadContextBridgeRequest(logicMd);
+  assert.equal(logicMdRequest.ok, true);
+  if (logicMdRequest.ok) {
+    assert.equal(logicMdRequest.command, 'read_material_logic_md');
+    assert.equal(logicMdRequest.payloadSchema, 'LogicMd.v1');
+  }
+});
+
+test('ReadContext material logic_md fallback renders data flow and owned anchors', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_md',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      scope: 'material_graph',
+      logic: {
+        graph: 'MaterialGraph',
+        graph_kind: 'material_graph',
+        links: [
+          {
+            kind: 'material_expression_link',
+            from_node_key: 'roughness',
+            from_pin: 'Value',
+            to_node_key: 'multiply',
+            to_pin: 'A',
+          },
+          {
+            kind: 'material_output_link',
+            source_node_key: 'multiply',
+            source_pin: 'Result',
+            target_node_key: '$material_output',
+            target_pin: 'Roughness',
+          },
+        ],
+        anchors: [
+          {
+            block_id: 'surface',
+            node_key: 'roughness',
+            expression_guid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            ownership: 'owned',
+          },
+        ],
+      },
+      material: {
+        parameters: [],
+        outputs: [],
+      },
+    },
+    target: {},
+  });
+
+  const markdown = result.payload['markdown'];
+  assert.equal(result.format, 'logic_md');
+  assert.equal(typeof markdown, 'string');
+  assert.match(markdown as string, /## Material Data Flow/);
+  assert.match(markdown as string, /roughness\.Value -> multiply\.A/);
+  assert.match(markdown as string, /multiply\.Result -> \$material_output\.Roughness/);
+  assert.match(markdown as string, /## Owned Anchors/);
+  assert.match(markdown as string, /surface \| roughness \| aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee \| owned/);
+});
+
+test('ReadContext material logic_json consumes Bridge payload with runtime status and diagnostics', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'material_status_payload',
+    success: true,
+    result: {
+      schema: 'LogicJson.v1',
+      scope: 'material_graph',
+      status: 'completed',
+      diagnostics: [],
+      logic: {
+        graph: 'MaterialGraph',
+        graph_kind: 'material_graph',
+        nodes: [],
+        links: [],
+      },
+      material: {
+        parameters: [],
+        outputs: [],
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_material_logic_json');
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicJson.v1');
+  assert.equal(payload['status'], 'completed');
+  assert.deepEqual(payload['diagnostics'], []);
+});
+
+test('ReadContext material logic_json consumes ToolResult data wrapper payload', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'material_tool_result_payload',
+    success: true,
+    result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_material_logic_json',
+      status: 'completed',
+      data: {
+        schema: 'LogicJson.v1',
+        scope: 'material_graph',
+        status: 'completed',
+        diagnostics: [],
+        logic: {
+          graph: 'MaterialGraph',
+          graph_kind: 'material_graph',
+          nodes: [],
+          links: [],
+        },
+        material: {
+          parameters: [],
+          outputs: [],
+        },
+      },
+    },
+  };
+
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => bridgeResponse,
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'LogicJson.v1');
+  assert.equal(payload['status'], 'completed');
+  assert.deepEqual(payload['diagnostics'], []);
+});
+
+test('ReadContext material projection failures return structured material error', async () => {
+  const materialPayload: Record<string, unknown> = {
+    schema: 'LogicJson.v1',
+    scope: 'material_graph',
+    material: {
+      parameters: [],
+      outputs: [],
+    },
+  };
+  Object.defineProperty(materialPayload, 'logic', {
+    enumerable: true,
+    get() {
+      throw new Error('projection boom');
+    },
+  });
+
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'material_projection_failed_payload',
+    success: true,
+    result: materialPayload,
+  };
+
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => bridgeResponse,
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_graph_context',
+    target: {
+      asset_path: '/Game/Materials/M_Test',
+      target_type: 'material_graph',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'material_logic_projection_failed');
+  assert.equal(result.error?.stage, 'post_process');
+  assert.match(result.error?.message ?? '', /projection boom/);
+});
+
 test('read_context capabilities are derived from active ReadContext template registry routes', () => {
   const payload = buildReadContextCapabilitiesPayload();
   const activeRoutes = getActiveReadContextRouteDescriptors();
@@ -82,6 +406,7 @@ test('read_context capabilities are derived from active ReadContext template reg
   assert.equal(activeRoutes.every((route) => readTypeIds.includes(route.read_type)), true);
   assert.equal(readTypeIds.includes('widget_context'), true);
   assert.equal(readTypeIds.includes('data_table_context'), true);
+  assert.equal(readTypeIds.includes('material_graph_context'), true);
   assert.equal(readTypeIds.includes('material_context'), false);
 });
 

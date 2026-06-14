@@ -1368,6 +1368,61 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_material_logic_json")) ||
+		FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_material_logic_md")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("target_type"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("graph_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("scope"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("view"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::Object, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> TargetTypes = {
+			TEXT("asset"),
+			TEXT("material"),
+			TEXT("material_graph"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("target_type"), TargetTypes, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> Scopes = {
+			TEXT("material"),
+			TEXT("material_graph"),
+			TEXT("target_material_graph"),
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("scope"), Scopes, OutError))
+		{
+			return false;
+		}
+
+		const TCHAR* UnsupportedGuidFields[] = {
+			TEXT("target_guid"),
+			TEXT("expression_guid"),
+			TEXT("material_expression_guid"),
+		};
+		for (const TCHAR* FieldName : UnsupportedGuidFields)
+		{
+			if (Payload->HasField(FieldName))
+			{
+				FBlueprintHelperRequestValidatorLocalUtils::SetValidationError(
+					OutError,
+					FString::Printf(TEXT("payload.%s"), FieldName),
+					TEXT("unsupported_internal_anchor"),
+					TEXT("present"));
+				return false;
+			}
+		}
+		return true;
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_reference_context")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -1439,6 +1494,8 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 			TEXT("event_dispatcher"),
 			TEXT("block"),
 			TEXT("widget"),
+			TEXT("material"),
+			TEXT("material_graph"),
 			TEXT("data_table_row"),
 			TEXT("interface"),
 		};

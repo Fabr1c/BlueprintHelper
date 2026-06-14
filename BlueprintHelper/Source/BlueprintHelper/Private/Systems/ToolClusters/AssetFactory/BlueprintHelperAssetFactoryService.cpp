@@ -13,11 +13,13 @@
 #include "Factories/BlueprintFactory.h"
 #include "Factories/DataAssetFactory.h"
 #include "Factories/DataTableFactory.h"
+#include "Factories/MaterialFactoryNew.h"
 #include "Kismet2/StructureEditorUtils.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/Actor.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Materials/Material.h"
 #include "Misc/PackageName.h"
 #include "PackageTools.h"
 #include "UObject/SavePackage.h"
@@ -476,6 +478,9 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 	case EBlueprintHelperAssetType::WidgetBlueprint:
 		bCreated = CreateWidgetBlueprint(AssetPath, Data.Factory.ParentClass);
 		break;
+	case EBlueprintHelperAssetType::Material:
+		bCreated = CreateMaterial(AssetPath);
+		break;
 	default:
 		break;
 	}
@@ -563,6 +568,12 @@ bool FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(
 		}
 		return true;
 	}
+	if (Key == TEXT("material") || Key == TEXT("mat"))
+	{
+		OutAssetType = EBlueprintHelperAssetType::Material;
+		InOutParentClass.Empty();
+		return true;
+	}
 
 	OutAssetType = EBlueprintHelperAssetType::Unknown;
 	return false;
@@ -580,6 +591,7 @@ EBlueprintHelperFactoryType FBlueprintHelperAssetFactoryService::AssetTypeToFact
 	case EBlueprintHelperAssetType::DataAsset:            return EBlueprintHelperFactoryType::DataAsset;
 	case EBlueprintHelperAssetType::DataTable:            return EBlueprintHelperFactoryType::DataTable;
 	case EBlueprintHelperAssetType::WidgetBlueprint:      return EBlueprintHelperFactoryType::WidgetBlueprint;
+	case EBlueprintHelperAssetType::Material:             return EBlueprintHelperFactoryType::Material;
 	default:                                              return EBlueprintHelperFactoryType::Unknown;
 	}
 }
@@ -596,6 +608,7 @@ FString FBlueprintHelperAssetFactoryService::AssetTypeToAssetClass(EBlueprintHel
 	case EBlueprintHelperAssetType::DataAsset:            return TEXT("DataAsset");
 	case EBlueprintHelperAssetType::DataTable:            return TEXT("DataTable");
 	case EBlueprintHelperAssetType::WidgetBlueprint:      return TEXT("WidgetBlueprint");
+	case EBlueprintHelperAssetType::Material:             return TEXT("Material");
 	default:                                              return TEXT("Unknown");
 	}
 }
@@ -828,6 +841,33 @@ bool FBlueprintHelperAssetFactoryService::CreateWidgetBlueprint(const FString& A
 	UObject* NewAsset = Factory->FactoryCreateNew(
 		UWidgetBlueprint::StaticClass(), Package, *AssetName,
 		RF_Public | RF_Standalone, nullptr, GWarn);
+
+	if (NewAsset)
+	{
+		FAssetRegistryModule::AssetCreated(NewAsset);
+		Package->MarkPackageDirty();
+		return true;
+	}
+
+	return false;
+}
+
+bool FBlueprintHelperAssetFactoryService::CreateMaterial(const FString& AssetPath)
+{
+	const FString PackageName = FBlueprintHelperAssetFactoryServiceLocalUtils::BlueprintHelperAssetPackageName(AssetPath);
+	const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
+
+	UPackage* Package = CreatePackage(*PackageName);
+	if (!Package) return false;
+
+	UMaterialFactoryNew* Factory = NewObject<UMaterialFactoryNew>();
+	UObject* NewAsset = Factory->FactoryCreateNew(
+		UMaterial::StaticClass(),
+		Package,
+		*AssetName,
+		RF_Public | RF_Standalone,
+		nullptr,
+		GWarn);
 
 	if (NewAsset)
 	{

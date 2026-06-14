@@ -39,13 +39,20 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 		TestFalse(TEXT("status is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Status));
 
 		const FString RouteId(Route.RouteId);
+		const FString Domain(Route.Domain);
 		TestFalse(FString::Printf(TEXT("route id is unique: %s"), *RouteId), RouteIds.Contains(RouteId));
-		TestFalse(FString::Printf(TEXT("route id excludes removed markdown view: %s"), *RouteId),
-			RouteId.Contains(RemovedMarkdownView));
+		if (Domain == TEXT("blueprint"))
+		{
+			TestFalse(FString::Printf(TEXT("blueprint route id excludes removed markdown view: %s"), *RouteId),
+				RouteId.Contains(RemovedMarkdownView));
+		}
 		RouteIds.Add(RouteId);
 
-		TestFalse(TEXT("view template excludes removed markdown view"),
-			FString(Route.ViewTemplate).Equals(RemovedMarkdownView));
+		if (Domain == TEXT("blueprint"))
+		{
+			TestFalse(TEXT("blueprint view template excludes removed markdown view"),
+				FString(Route.ViewTemplate).Equals(RemovedMarkdownView));
+		}
 		TestFalse(TEXT("command excludes removed markdown bridge command"),
 			FString(Route.Command).Equals(RemovedMarkdownCommand));
 
@@ -63,6 +70,42 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 	}
 
 	TestTrue(TEXT("generated ReadContext route mirror exposes active routes"), ActiveRoutes > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReadContextMaterialRouteMirrorTest,
+	"BlueprintHelper.ReadContext.RouteManifest.MaterialRoutes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReadContextMaterialRouteMirrorTest::RunTest(const FString&)
+{
+	TMap<FString, FString> ExpectedCommands;
+	ExpectedCommands.Add(TEXT("read.material.logic.graph.logic_json"), TEXT("read_material_logic_json"));
+	ExpectedCommands.Add(TEXT("read.material.logic.graph.logic_flow"), TEXT("read_material_logic_json"));
+	ExpectedCommands.Add(TEXT("read.material.logic.graph.logic_md"), TEXT("read_material_logic_md"));
+
+	TSet<FString> SeenRoutes;
+	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Route : GBlueprintHelperReadContextRoutes)
+	{
+		const FString RouteId(Route.RouteId);
+		const FString* ExpectedCommand = ExpectedCommands.Find(RouteId);
+		if (!ExpectedCommand)
+		{
+			continue;
+		}
+
+		SeenRoutes.Add(RouteId);
+		TestEqual(FString::Printf(TEXT("material route is active: %s"), *RouteId), FString(Route.Status), FString(TEXT("active")));
+		TestEqual(FString::Printf(TEXT("material route command matches runtime: %s"), *RouteId), FString(Route.Command), *ExpectedCommand);
+		TestEqual(FString::Printf(TEXT("material route cluster matches runtime: %s"), *RouteId), FString(Route.Cluster), FString(TEXT("SharedServices")));
+		TestEqual(FString::Printf(TEXT("material route domain: %s"), *RouteId), FString(Route.Domain), FString(TEXT("material")));
+	}
+
+	for (const TPair<FString, FString>& Expected : ExpectedCommands)
+	{
+		TestTrue(FString::Printf(TEXT("material generated route exists: %s"), *Expected.Key), SeenRoutes.Contains(Expected.Key));
+	}
 	return true;
 }
 

@@ -6,6 +6,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
+#include "Materials/Material.h"
 #include "Misc/PackageName.h"
 #include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
 #include "UI/Review/Utils/BlueprintHelperReviewAssetContextUtils.h"
@@ -100,6 +101,12 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 	{
 		Context.Structure = Structure;
 		Context.AssetKind = EBlueprintHelperReviewAssetKind::Structure;
+		return Context;
+	}
+	if (UMaterial* Material = Cast<UMaterial>(Object))
+	{
+		Context.Material = Material;
+		Context.AssetKind = EBlueprintHelperReviewAssetKind::Material;
 		return Context;
 	}
 	if (Cast<UDataAsset>(Object))

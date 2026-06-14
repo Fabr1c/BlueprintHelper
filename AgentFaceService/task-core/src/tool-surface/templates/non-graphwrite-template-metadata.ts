@@ -98,6 +98,16 @@ export const NON_GRAPHWRITE_TEMPLATE_FAMILIES: readonly NonGraphWriteTemplateFam
     status: 'supported',
     write_mode: 'asset.create',
   },
+  {
+    family: 'material_graph',
+    task_type: 'edit_material_graph',
+    description: 'Edit Material graph expressions, owned blocks, and material output links through MaterialGraph TaskSpec routes.',
+    strategy_field: 'graph_strategy',
+    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_graph_edit_template.json',
+    insert_targets: ['behavior.entries[]', 'behavior.replace', 'behavior.patches[]', 'behavior.merges[]'],
+    status: 'supported',
+    write_mode: 'material.graph',
+  },
 ];
 
 export function getSupportedNonGraphWriteTemplateFamilies(): readonly NonGraphWriteTemplateFamilyMetadata[] {
@@ -224,6 +234,7 @@ function describeNonGraphWriteCluster(clusterId: string): string {
     component_tree: 'Blueprint component tree mutation operations.',
     class_settings: 'Blueprint class setting operations including interfaces, defaults, and reparenting.',
     signature: 'Blueprint function, event, macro, and dispatcher signature operations.',
+    material_graph: 'MaterialGraph expression block operations and material output link operations.',
   };
   return descriptions[clusterId] ?? `Non-GraphWrite ${clusterId} operations.`;
 }

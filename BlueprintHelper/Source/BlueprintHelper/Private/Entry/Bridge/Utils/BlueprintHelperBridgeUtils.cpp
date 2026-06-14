@@ -51,6 +51,8 @@ EBlueprintHelperTargetType UBlueprintHelperBridgeUtils::ParseBridgeTargetType(co
 	if (Type.Equals(TEXT("data_table"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::DataTable; }
 	if (Type.Equals(TEXT("data_table_row"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::DataTableRow; }
 	if (Type.Equals(TEXT("widget"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Widget; }
+	if (Type.Equals(TEXT("material"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Material; }
+	if (Type.Equals(TEXT("material_graph"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::MaterialGraph; }
 	return EBlueprintHelperTargetType::None;
 }
 
@@ -62,6 +64,9 @@ EBlueprintHelperTargetType UBlueprintHelperBridgeUtils::ParseLogicScopeTargetTyp
 	if (Scope.Equals(TEXT("target_event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Event; }
 	if (Scope.Equals(TEXT("target_custom_event"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::CustomEvent; }
 	if (Scope.Equals(TEXT("target_block"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Block; }
+	if (Scope.Equals(TEXT("material"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::Material; }
+	if (Scope.Equals(TEXT("material_graph"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::MaterialGraph; }
+	if (Scope.Equals(TEXT("target_material_graph"), ESearchCase::IgnoreCase)) { return EBlueprintHelperTargetType::MaterialGraph; }
 	return EBlueprintHelperTargetType::None;
 }
 

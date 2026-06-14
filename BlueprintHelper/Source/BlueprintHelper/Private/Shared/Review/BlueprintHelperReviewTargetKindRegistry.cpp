@@ -33,6 +33,9 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_node"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_pin"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_link"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
+		{ TEXT("material_expression"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_expression"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
+		{ TEXT("material_expression_link"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_expression_link"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
+		{ TEXT("material_output_link"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_output_link"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
 		{ TEXT("component"), EBlueprintHelperReviewSurface::Components, true, TEXT("component"), EBlueprintHelperReviewTargetHandlerKind::Component },
 		{ TEXT("blueprint_variable"), EBlueprintHelperReviewSurface::MyBlueprint, true, TEXT("variable"), EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable },
 		{ TEXT("variable_default"), EBlueprintHelperReviewSurface::MyBlueprint, true, TEXT("variable"), EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable },
@@ -79,6 +82,10 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("material_expression"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("material_output_link"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("material_expression_link"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("material"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("graph:"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("node:"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("pin:"), EBlueprintHelperReviewSurface::Graph },
@@ -308,7 +315,8 @@ EBlueprintHelperReviewSurface FBlueprintHelperReviewTargetKindRegistry::ResolveA
 		{ TEXT("dataasset"), EBlueprintHelperReviewSurface::DataAsset },
 		{ TEXT("blueprint_class"), EBlueprintHelperReviewSurface::DataAsset },
 		{ TEXT("blueprint_interface"), EBlueprintHelperReviewSurface::DataAsset },
-		{ TEXT("material"), EBlueprintHelperReviewSurface::DataAsset },
+		{ TEXT("material"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("mat"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("input_action"), EBlueprintHelperReviewSurface::DataAsset },
 		{ TEXT("input_mapping_context"), EBlueprintHelperReviewSurface::DataAsset }
 	};
@@ -373,6 +381,7 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 		EBlueprintHelperReviewTargetHandlerKind::DataTableRow,
 		EBlueprintHelperReviewTargetHandlerKind::StructField,
 		EBlueprintHelperReviewTargetHandlerKind::ObjectProperty,
+		EBlueprintHelperReviewTargetHandlerKind::MaterialGraph,
 		EBlueprintHelperReviewTargetHandlerKind::Signature,
 		EBlueprintHelperReviewTargetHandlerKind::UMGWidget,
 		EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty
@@ -455,6 +464,7 @@ int32 BlueprintHelperReviewCountDetailsTargets(const FBlueprintHelperReviewVisib
 		if (Target.Surface != EBlueprintHelperReviewSurface::DataAsset
 			&& Target.Surface != EBlueprintHelperReviewSurface::DataTable
 			&& Target.Surface != EBlueprintHelperReviewSurface::UMGWidgetTree
+			&& Target.Surface != EBlueprintHelperReviewSurface::Material
 			&& FBlueprintHelperReviewTargetKindRegistry::CanRouteToDetails(Target.TargetKind))
 		{
 			++Count;
@@ -510,6 +520,11 @@ bool BlueprintHelperReviewShouldShowInDataTable(const FBlueprintHelperReviewVisi
 bool BlueprintHelperReviewShouldShowInDataAsset(const FBlueprintHelperReviewVisibleChange& Change)
 {
 	return BlueprintHelperReviewShouldShowOnSurface(Change, EBlueprintHelperReviewSurface::DataAsset);
+}
+
+bool BlueprintHelperReviewShouldShowInMaterial(const FBlueprintHelperReviewVisibleChange& Change)
+{
+	return BlueprintHelperReviewShouldShowOnSurface(Change, EBlueprintHelperReviewSurface::Material);
 }
 
 bool BlueprintHelperReviewShouldShowInMyBlueprint(const FBlueprintHelperReviewVisibleChange& Change)

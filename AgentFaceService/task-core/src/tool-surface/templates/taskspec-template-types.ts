@@ -17,7 +17,8 @@ export type NonGraphWriteFamily =
   | 'umg_widget'
   | 'data_table'
   | 'object_properties'
-  | 'asset_factory';
+  | 'asset_factory'
+  | 'material_graph';
 
 export type NonGraphWriteTemplateWriteMode =
   | 'variables.edit'
@@ -28,7 +29,8 @@ export type NonGraphWriteTemplateWriteMode =
   | 'widget.edit'
   | 'table.rows'
   | 'object.properties'
-  | 'asset.create';
+  | 'asset.create'
+  | 'material.graph';
 
 export type TaskSpecTemplateWriteMode =
   | GraphWriteTemplateWriteMode

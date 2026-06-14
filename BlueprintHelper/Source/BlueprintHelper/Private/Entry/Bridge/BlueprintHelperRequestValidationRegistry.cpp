@@ -99,6 +99,26 @@ FBlueprintHelperRequestValidationRegistry::GetRepresentativeDescriptors()
 			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
 			{BlueprintHelperRequestValidationField(TEXT("graph"), EBlueprintHelperRequestFieldType::String)}),
 		BlueprintHelperRequestValidationDescriptor(
+			TEXT("read_material_logic_json"),
+			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
+			{
+				BlueprintHelperRequestValidationField(TEXT("target_type"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("target_name"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("graph_name"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("scope"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("view"), EBlueprintHelperRequestFieldType::Object),
+			}),
+		BlueprintHelperRequestValidationDescriptor(
+			TEXT("read_material_logic_md"),
+			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
+			{
+				BlueprintHelperRequestValidationField(TEXT("target_type"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("target_name"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("graph_name"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("scope"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("view"), EBlueprintHelperRequestFieldType::Object),
+			}),
+		BlueprintHelperRequestValidationDescriptor(
 			TEXT("apply_review_action"),
 			{
 				BlueprintHelperRequestValidationField(TEXT("review_record_id"), EBlueprintHelperRequestFieldType::String),

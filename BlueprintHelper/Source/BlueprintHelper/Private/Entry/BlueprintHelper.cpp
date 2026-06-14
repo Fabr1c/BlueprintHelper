@@ -48,6 +48,7 @@
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalBodySnapshotService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalDependentsAnalysisService.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperReplaceExternalBodyService.h"
+#include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialGraphFacade.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -186,6 +187,16 @@ void FBlueprintHelperModule::StartupModule()
 		[this](const TSharedRef<FJsonObject>& Payload)
 		{
 			return ReplaceExternalBodyService->Execute(Payload);
+		});
+	GraphWriteServiceRegistry->RegisterHandler(
+		TEXT("material_graph_edit"),
+		[](const TSharedRef<FJsonObject>& Payload)
+		{
+			FBlueprintHelperMaterialGraphFacade Facade;
+			FBlueprintHelperMaterialGraphExecutionInput Input;
+			Input.Payload = Payload;
+			Payload->TryGetBoolField(TEXT("dry_run"), Input.bDryRun);
+			return Facade.Execute(Input);
 		});
 	CompileAssetService = MakeUnique<FBlueprintHelperCompileAssetService>(*CompileService, DebugEntryService.Get());
 	VariableService = MakeUnique<FBlueprintHelperBlueprintVariableService>(*GraphResolver, *StructureService);

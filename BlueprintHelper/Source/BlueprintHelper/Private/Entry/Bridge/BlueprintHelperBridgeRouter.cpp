@@ -26,6 +26,8 @@
 #include "Shared/BlueprintHelperLogicReadTypes.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
+#include "Systems/ToolClusters/Material/BlueprintHelperMaterialLogicJsonExtractor.h"
+#include "Systems/ToolClusters/Material/BlueprintHelperMaterialLogicMdProjector.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
@@ -114,6 +116,8 @@ public:
 			TEXT("capture_focused_graph_screenshot"),
 			TEXT("read_function_chain_context"),
 			TEXT("read_blueprint_logic_json"),
+			TEXT("read_material_logic_json"),
+			TEXT("read_material_logic_md"),
 			TEXT("export_to_json"),
 			TEXT("export_logic"),
 			TEXT("get_asset_info"),
@@ -732,6 +736,97 @@ public:
 		return bValue;
 	}
 
+	static void SplitReadContextErrorCode(
+		const FString& Error,
+		const FString& FallbackCode,
+		FString& OutCode,
+		FString& OutDetail)
+	{
+		OutCode.Reset();
+		OutDetail.Reset();
+		if (Error.StartsWith(TEXT("material_asset_not_found:")))
+		{
+			OutCode = TEXT("material_asset_not_found");
+			OutDetail = Error.RightChop(FCString::Strlen(TEXT("material_asset_not_found:")));
+			return;
+		}
+		if (Error.StartsWith(TEXT("material_asset_type_mismatch:")))
+		{
+			OutCode = TEXT("material_asset_type_mismatch");
+			OutDetail = Error.RightChop(FCString::Strlen(TEXT("material_asset_type_mismatch:")));
+			return;
+		}
+		if (!Error.Split(TEXT(":"), &OutCode, &OutDetail))
+		{
+			OutCode = Error.IsEmpty() ? FallbackCode : Error;
+		}
+	}
+
+	static TSharedRef<FJsonObject> MakeReadContextDiagnostic(
+		const FString& Code,
+		const FString& Severity,
+		const FString& Message,
+		const FString& Detail = FString())
+	{
+		TSharedRef<FJsonObject> Diagnostic = MakeShared<FJsonObject>();
+		Diagnostic->SetStringField(TEXT("code"), Code);
+		Diagnostic->SetStringField(TEXT("severity"), Severity);
+		Diagnostic->SetStringField(TEXT("message"), Message);
+		if (!Detail.IsEmpty())
+		{
+			Diagnostic->SetStringField(TEXT("detail"), Detail);
+		}
+		return Diagnostic;
+	}
+
+	static TSharedRef<FJsonObject> MakeReadContextStatusPayload(
+		const FString& Schema,
+		const FString& Status,
+		const TArray<TSharedPtr<FJsonValue>>& Diagnostics)
+	{
+		TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+		Result->SetStringField(TEXT("schema"), Schema);
+		Result->SetStringField(TEXT("status"), Status);
+		Result->SetArrayField(TEXT("diagnostics"), Diagnostics);
+		return Result;
+	}
+
+	static TArray<TSharedPtr<FJsonValue>> MakeReadContextDiagnostics(
+		const TSharedRef<FJsonObject>& Diagnostic)
+	{
+		TArray<TSharedPtr<FJsonValue>> Diagnostics;
+		Diagnostics.Add(MakeShared<FJsonValueObject>(Diagnostic.ToSharedPtr()));
+		return Diagnostics;
+	}
+
+	static FBlueprintHelperBridgeResponse MakeReadContextErrorResponse(
+		const FString& RequestId,
+		EBlueprintHelperBridgeError ErrorType,
+		const FString& Message,
+		const FString& Code,
+		const FString& Detail = FString())
+	{
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(RequestId, ErrorType, Message);
+		Resp.Result = MakeReadContextStatusPayload(
+			TEXT("BlueprintHelper.ReadContextError.v1"),
+			TEXT("failed"),
+			MakeReadContextDiagnostics(MakeReadContextDiagnostic(Code, TEXT("error"), Message, Detail)));
+		return Resp;
+	}
+
+	static void AttachReadContextCompletedStatus(const TSharedPtr<FJsonObject>& ResultJson)
+	{
+		if (!ResultJson.IsValid())
+		{
+			return;
+		}
+		ResultJson->SetStringField(TEXT("status"), TEXT("completed"));
+		if (!ResultJson->HasField(TEXT("diagnostics")))
+		{
+			ResultJson->SetArrayField(TEXT("diagnostics"), TArray<TSharedPtr<FJsonValue>>());
+		}
+	}
+
 	static void ApplyGraphWriteValidationPolicy(
 		const FString& Command,
 		const TSharedPtr<FJsonObject>& Payload,
@@ -909,6 +1004,8 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("read_reference_context", SharedServices, HandleReadReferenceContext)
 	BLUEPRINTHELPER_ROUTE("read_function_chain_context", SharedServices, HandleReadFunctionChainContext)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_json", SharedServices, HandleReadBlueprintLogicJson)
+	BLUEPRINTHELPER_ROUTE("read_material_logic_json", SharedServices, HandleReadMaterialLogicJson)
+	BLUEPRINTHELPER_ROUTE("read_material_logic_md", SharedServices, HandleReadMaterialLogicMd)
 	BLUEPRINTHELPER_ROUTE("validate_json", SharedServices, HandleValidateJson)
 	BLUEPRINTHELPER_ROUTE("export_to_json", SharedServices, HandleExportToJson)
 	BLUEPRINTHELPER_ROUTE("export_logic", SharedServices, HandleExportLogic)
@@ -1231,6 +1328,98 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadBlueprint
 		TimingTrace,
 		TEXT("ue.route.response_wrap"),
 		ResponseStageStart);
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMaterialLogicJson(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FString AssetPath;
+	if (!Req.Payload.IsValid() || !Req.Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("read_material_logic_json requires payload.asset_path."),
+			TEXT("material_asset_path_required"));
+	}
+
+	TSharedPtr<FJsonObject> LogicJson;
+	FString Error;
+	FBlueprintHelperMaterialLogicJsonExtractor Extractor;
+	if (!Extractor.BuildLogicJson(AssetPath, LogicJson, Error))
+	{
+		const FString ErrorMessage = Error.IsEmpty() ? TEXT("read_material_logic_json failed.") : Error;
+		FString DiagnosticCode;
+		FString DiagnosticDetail;
+		FBlueprintHelperBridgeRouterLocalUtils::SplitReadContextErrorCode(
+			Error,
+			TEXT("material_graph_read_failed"),
+			DiagnosticCode,
+			DiagnosticDetail);
+		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			ErrorMessage,
+			DiagnosticCode,
+			DiagnosticDetail);
+	}
+
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = LogicJson.IsValid() ? LogicJson : MakeShared<FJsonObject>();
+	FBlueprintHelperBridgeRouterLocalUtils::AttachReadContextCompletedStatus(Resp.Result);
+	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
+	return Resp;
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMaterialLogicMd(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FString AssetPath;
+	if (!Req.Payload.IsValid() || !Req.Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
+	{
+		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("read_material_logic_md requires payload.asset_path."),
+			TEXT("material_asset_path_required"));
+	}
+
+	TSharedPtr<FJsonObject> LogicJson;
+	FString Error;
+	FBlueprintHelperMaterialLogicJsonExtractor Extractor;
+	if (!Extractor.BuildLogicJson(AssetPath, LogicJson, Error))
+	{
+		const FString ErrorMessage = Error.IsEmpty() ? TEXT("read_material_logic_md failed.") : Error;
+		FString DiagnosticCode;
+		FString DiagnosticDetail;
+		FBlueprintHelperBridgeRouterLocalUtils::SplitReadContextErrorCode(
+			Error,
+			TEXT("material_graph_read_failed"),
+			DiagnosticCode,
+			DiagnosticDetail);
+		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::ExecutionFailed,
+			ErrorMessage,
+			DiagnosticCode,
+			DiagnosticDetail);
+	}
+
+	FBlueprintHelperMaterialLogicMdProjector Projector;
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("schema"), TEXT("LogicMd.v1"));
+	Resp.Result->SetStringField(TEXT("format"), TEXT("logic_md"));
+	Resp.Result->SetStringField(TEXT("scope"), TEXT("material_graph"));
+	Resp.Result->SetStringField(TEXT("markdown"), Projector.BuildMarkdown(LogicJson));
+	const TArray<TSharedPtr<FJsonValue>>* Diagnostics = nullptr;
+	if (LogicJson.IsValid() && LogicJson->TryGetArrayField(TEXT("diagnostics"), Diagnostics) && Diagnostics)
+	{
+		Resp.Result->SetArrayField(TEXT("diagnostics"), *Diagnostics);
+	}
+	FBlueprintHelperBridgeRouterLocalUtils::AttachReadContextCompletedStatus(Resp.Result);
+	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
 	return Resp;
 }
 

@@ -860,6 +860,12 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceDiffFrames()
 			&FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange,
 			EBlueprintHelperReviewSurface::DataAsset);
 	}
+	if (MainSurface == EBlueprintHelperReviewSurface::Material)
+	{
+		return BuildPanelDiffFrames(
+			&FBlueprintHelperReviewMaterialPresenter::ShouldShowChange,
+			EBlueprintHelperReviewSurface::Material);
+	}
 	return SNullWidget::NullWidget;
 }
 
@@ -965,6 +971,11 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 		&& Predicate == &FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange)
 	{
 		return FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(Args);
+	}
+	if (Surface == EBlueprintHelperReviewSurface::Material
+		&& Predicate == &FBlueprintHelperReviewMaterialPresenter::ShouldShowChange)
+	{
+		return FBlueprintHelperReviewMaterialPresenter::BuildOverlay(Args);
 	}
 	return SNullWidget::NullWidget;
 }
@@ -2313,6 +2324,11 @@ void SBlueprintHelperReviewPanel::SyncReviewRowHighlightStates(const FString& Pr
 		EBlueprintHelperReviewSurface::DataAsset,
 		&FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange,
 		PreferredAssetPath);
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::Material,
+		&FBlueprintHelperReviewMaterialPresenter::ShouldShowChange,
+		PreferredAssetPath);
 }
 
 void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
@@ -2489,6 +2505,27 @@ void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 		return bHandled;
 	});
 	SurfaceViewCoordinator.RegisterSurface(DataAssetView);
+
+	TSharedRef<FBlueprintHelperReviewSurfaceView> MaterialView =
+		MakeShared<FBlueprintHelperReviewSurfaceView>(EBlueprintHelperReviewSurface::Material);
+	MaterialView->SetOverlayRefresh(MainWorkspaceOverlayRefresh);
+	MaterialView->SetRowsRefresh([this]()
+	{
+		bool bHandled = false;
+		BlueprintHelperReviewInvalidateDataAssetRows(MaterialPresenterState.Rows);
+		if (MaterialPresenterState.ListView.IsValid())
+		{
+			MaterialPresenterState.ListView->RequestListRefresh();
+			bHandled = true;
+		}
+		if (GraphEditorBox.IsValid())
+		{
+			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+			bHandled = true;
+		}
+		return bHandled;
+	});
+	SurfaceViewCoordinator.RegisterSurface(MaterialView);
 }
 
 void SBlueprintHelperReviewPanel::RefreshSurfaceOverlay(EBlueprintHelperReviewSurface Surface)
@@ -2723,6 +2760,9 @@ bool SBlueprintHelperReviewPanel::ResolveReviewRowGeometry(
 			MainWorkspaceDiffStackBox),
 		TPair<EBlueprintHelperReviewSurface, TSharedPtr<SWidget>>(
 			EBlueprintHelperReviewSurface::DataAsset,
+			MainWorkspaceDiffStackBox),
+		TPair<EBlueprintHelperReviewSurface, TSharedPtr<SWidget>>(
+			EBlueprintHelperReviewSurface::Material,
 			MainWorkspaceDiffStackBox)
 	};
 

@@ -48,6 +48,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewDataAssetRowItem
 	FString Label;
 	FString Value;
 	FString SearchText;
+	TArray<FString> SearchAliases;
 	FEdGraphPinType PinType;
 	int32 Depth = 0;
 	bool bIsSection = false;
@@ -61,4 +62,10 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewDataAssetPresenterState
 	TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>> Rows;
 	TSharedPtr<SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> ListView;
 	TSharedPtr<IPropertyRowGenerator> PropertyRowGenerator;
+};
+
+struct BLUEPRINTHELPER_API FBlueprintHelperReviewMaterialPresenterState
+{
+	TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>> Rows;
+	TSharedPtr<SListView<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>> ListView;
 };

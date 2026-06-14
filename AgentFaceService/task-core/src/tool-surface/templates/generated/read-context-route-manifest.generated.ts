@@ -559,22 +559,88 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "reason": "MaterialInstance ReadContext runtime adapter is not active yet."
   },
   {
+    "route_id": "read.material.logic.graph.logic_flow",
+    "domain": "material",
+    "read_cluster": "logic",
+    "target_kind": "graph",
+    "view_template": "logic_flow",
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "material_graph_context",
+    "target_type": "material_graph",
+    "format": "logic_flow",
+    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
+    "bridge_command": "read_material_logic_json",
+    "output_schema": "LogicJson.v1",
+    "required_target_fields": [
+      "asset_path"
+    ],
+    "request_builder_id": "material_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "asset",
+      "material",
+      "material_graph"
+    ],
+    "supported_formats": [
+      "logic_flow"
+    ]
+  },
+  {
     "route_id": "read.material.logic.graph.logic_json",
     "domain": "material",
     "read_cluster": "logic",
     "target_kind": "graph",
     "view_template": "logic_json",
-    "read_type": "asset_context",
-    "base_template_path": "",
-    "status": "reserved",
+    "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "output_schema": "Reserved.v1",
-    "required_target_fields": [],
-    "request_builder_id": "asset_context",
-    "payload_projector_id": "asset_context",
-    "supported_asset_types": [],
-    "supported_formats": [],
-    "reason": "Material ReadContext runtime adapter is not active yet."
+    "read_type": "material_graph_context",
+    "target_type": "material_graph",
+    "format": "logic_json",
+    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
+    "bridge_command": "read_material_logic_json",
+    "output_schema": "LogicJson.v1",
+    "required_target_fields": [
+      "asset_path"
+    ],
+    "request_builder_id": "material_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "asset",
+      "material",
+      "material_graph"
+    ],
+    "supported_formats": [
+      "logic_json"
+    ]
+  },
+  {
+    "route_id": "read.material.logic.graph.logic_md",
+    "domain": "material",
+    "read_cluster": "logic",
+    "target_kind": "graph",
+    "view_template": "logic_md",
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "material_graph_context",
+    "target_type": "material_graph",
+    "format": "logic_md",
+    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
+    "bridge_command": "read_material_logic_md",
+    "output_schema": "LogicMd.v1",
+    "required_target_fields": [
+      "asset_path"
+    ],
+    "request_builder_id": "material_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "asset",
+      "material",
+      "material_graph"
+    ],
+    "supported_formats": [
+      "logic_md"
+    ]
   },
   {
     "route_id": "read.widget_blueprint.structure_tree.widget_tree.logic_flow",

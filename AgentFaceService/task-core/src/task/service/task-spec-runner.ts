@@ -30,8 +30,10 @@ import {
   failureResult,
   sanitizeAgentFacingToolResult,
   successRead,
+  type TargetType,
   type ToolResultBase,
   type ToolResultError,
+  type ToolResultTarget,
 } from '../../result/tool-result.js';
 import {
   getTaskResult,
@@ -62,6 +64,25 @@ export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
 const TASK_ISSUE_DETAIL_KEYS = [
   'signature_differences',
+  'asset_path',
+  'query',
+  'fingerprint',
+  'schema_fingerprint',
+  'class_catalog_fingerprint',
+  'class_catalog_revision',
+  'expires_in_seconds',
+  'candidates',
+] as const;
+
+const TASK_PREVIEW_ASSISTANCE_DATA_KEYS = [
+  'asset_path',
+  'query',
+  'fingerprint',
+  'schema_fingerprint',
+  'class_catalog_fingerprint',
+  'class_catalog_revision',
+  'expires_in_seconds',
+  'candidates',
 ] as const;
 
 export type TaskSpecRunnerMetrics =
@@ -147,13 +168,21 @@ export function createTaskSpecRunner(input: {
 
         const preview = await runPreviewTaskForExecute(bridge, taskSpec, taskCompiler, timing);
         if (!preview.passed) {
-          return await recordAndReturn(taskFailure(
+          const failure = taskFailure(
             'execute_task',
             previewBlockedErrorCode(preview.issues),
             'preview_error',
             'Task preview was blocked; execute_task did not write assets.',
             preview.issues,
-          ), preview.taskPlan);
+          );
+          const assistanceData = collectPreviewAssistanceData(preview.issues);
+          if (Object.keys(assistanceData).length > 0) {
+            failure.data = {
+              ...(asRecord(failure.data) ?? {}),
+              ...assistanceData,
+            };
+          }
+          return await recordAndReturn(failure, preview.taskPlan);
         }
         if (!preview.taskPlan) {
           return await recordAndReturn(taskFailure(
@@ -206,7 +235,7 @@ export function createTaskSpecRunner(input: {
 
           const toolResult = successRead(
             'execute_task',
-            { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] },
+            buildTaskPlanToolTarget(taskPlan),
             {
               task_run_id: taskRunId,
               task: {
@@ -500,7 +529,7 @@ function compileFailurePreviewOutcome(
       retryable: true,
     },
   );
-  toolResult.target = { target_type: 'blueprint', ...(targetAsset ? { asset_path: targetAsset } : {}) };
+  toolResult.target = buildTaskSpecToolTarget(taskSpec, targetAsset);
   toolResult.data = {
     schema: TASK_PREVIEW_SCHEMA,
     preview_id: previewId,
@@ -527,6 +556,102 @@ function recordTaskCompileTiming(timing: TaskTimingTrace | undefined, compiled: 
       ? { output_bytes: compiled.diagnostics.compilerOutputBytes }
       : {}),
   });
+}
+
+function buildTaskSpecToolTarget(
+  taskSpec: TaskSpec,
+  fallbackAssetPath?: string,
+): ToolResultTarget {
+  const taskRecord = taskSpec as Record<string, unknown>;
+  const target = asRecord(taskRecord['target']);
+  const targetType =
+    normalizeToolTargetType(readString(target?.['target_type'])) ??
+    inferToolTargetTypeFromTaskType(readString(taskRecord['task_type'])) ??
+    'blueprint';
+  const assetPath = fallbackAssetPath ?? readTaskSpecAssetPath(taskSpec) ?? readString(target?.['asset_path']);
+  return {
+    target_type: targetType,
+    ...(assetPath ? { asset_path: assetPath } : {}),
+  };
+}
+
+function buildTaskPlanToolTarget(
+  taskPlan: TaskPlan,
+  fallbackTaskSpec?: TaskSpec,
+  fallbackAssetPath?: string,
+): ToolResultTarget {
+  const stepTarget = taskPlan.steps
+    .map((step) => asRecord((step as Record<string, unknown>)['target']))
+    .find((target) => target !== undefined);
+  const taskRecord = fallbackTaskSpec ? fallbackTaskSpec as Record<string, unknown> : undefined;
+  const targetType =
+    normalizeToolTargetType(readString(stepTarget?.['target_type'])) ??
+    normalizeToolTargetType(readString(asRecord(taskRecord?.['target'])?.['target_type'])) ??
+    inferToolTargetTypeFromTaskType(readString(taskRecord?.['task_type'])) ??
+    inferToolTargetTypeFromTaskPlan(taskPlan) ??
+    'blueprint';
+  const assetPath =
+    readString(stepTarget?.['asset_path']) ??
+    fallbackAssetPath ??
+    taskPlan.target_assets[0] ??
+    (fallbackTaskSpec ? readTaskSpecAssetPath(fallbackTaskSpec) : undefined);
+
+  return {
+    target_type: targetType,
+    ...(assetPath ? { asset_path: assetPath } : {}),
+  };
+}
+
+function inferToolTargetTypeFromTaskPlan(taskPlan: TaskPlan): TargetType | undefined {
+  for (const step of taskPlan.steps) {
+    const write = asRecord((step as Record<string, unknown>)['write']);
+    const graphDomain = readString(write?.['graph_domain']);
+    if (graphDomain === 'material_graph') {
+      return 'material_graph';
+    }
+  }
+  return undefined;
+}
+
+function inferToolTargetTypeFromTaskType(taskType: string | undefined): TargetType | undefined {
+  switch (taskType) {
+    case 'edit_material_graph':
+      return 'material_graph';
+    case 'edit_umg_widget_tree':
+      return 'widget';
+    case 'edit_data_table':
+      return 'data_table';
+    case 'edit_object_property':
+      return 'asset';
+    default:
+      return undefined;
+  }
+}
+
+function normalizeToolTargetType(value: string | undefined): TargetType | undefined {
+  switch (value) {
+    case 'asset':
+    case 'blueprint':
+    case 'graph':
+    case 'function':
+    case 'event':
+    case 'custom_event':
+    case 'block':
+    case 'node':
+    case 'pin':
+    case 'link':
+    case 'component':
+    case 'property':
+    case 'mapping_context':
+    case 'data_table':
+    case 'data_table_row':
+    case 'widget':
+    case 'material':
+    case 'material_graph':
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 async function runPreviewTaskFromPlan(
@@ -568,7 +693,7 @@ async function runPreviewTaskFromPlan(
       failure.error,
     );
     const previewToken = extractPreviewToken(previewResponse);
-    toolResult.target = { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] };
+    toolResult.target = buildTaskPlanToolTarget(taskPlan);
     toolResult.data = {
       schema: TASK_PREVIEW_SCHEMA,
       preview_id: previewId,
@@ -594,6 +719,7 @@ async function runPreviewTaskFromPlan(
   const passed = dryRun.canExecute;
   const issues = dryRun.issues;
   const previewToken = extractPreviewToken(previewResponse);
+  const assistanceData = collectPreviewAssistanceData(issues);
 
   return {
     previewId,
@@ -608,7 +734,7 @@ async function runPreviewTaskFromPlan(
       trace_id: `trace_${Date.now()}_${previewId}`,
       status: 'dry_run',
       modified: false,
-      target: { target_type: 'blueprint', asset_path: taskPlan.target_assets[0] },
+      target: buildTaskPlanToolTarget(taskPlan),
       data: {
         schema: TASK_PREVIEW_SCHEMA,
         preview_id: previewId,
@@ -617,10 +743,38 @@ async function runPreviewTaskFromPlan(
         blocked: !passed,
         task_plan: summarizeTaskPlan(taskPlan),
         issues,
+        ...assistanceData,
         ...extractDevelopPreviewDiagnostics(previewResponse, timing),
       },
     }),
   };
+}
+
+function collectPreviewAssistanceData(issues: TaskIssue[]): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const issue of issues) {
+    const issueRecord = issue as Record<string, unknown>;
+    for (const key of TASK_PREVIEW_ASSISTANCE_DATA_KEYS) {
+      if (data[key] === undefined && issueRecord[key] !== undefined) {
+        data[key] = issueRecord[key];
+      }
+    }
+  }
+
+  const candidateMetadata = removeUndefined({
+    asset_path: data['asset_path'],
+    query: data['query'],
+    fingerprint: data['fingerprint'],
+    schema_fingerprint: data['schema_fingerprint'],
+    class_catalog_fingerprint: data['class_catalog_fingerprint'],
+    class_catalog_revision: data['class_catalog_revision'],
+    expires_in_seconds: data['expires_in_seconds'],
+  });
+  if (Object.keys(candidateMetadata).length > 0) {
+    data['candidate_search'] = candidateMetadata;
+  }
+
+  return data;
 }
 
 function extractDevelopPreviewDiagnostics(
@@ -734,7 +888,7 @@ async function executeTaskWithPreviewToken(
 
     const toolResult = successRead(
       'execute_task',
-      { target_type: 'blueprint', asset_path: targetAsset },
+      buildTaskSpecToolTarget(taskSpec, targetAsset),
       {
         task_run_id: taskRunId,
         task: {

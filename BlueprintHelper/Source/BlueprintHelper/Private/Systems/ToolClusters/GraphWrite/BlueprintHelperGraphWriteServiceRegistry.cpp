@@ -17,6 +17,7 @@ namespace BlueprintHelperGraphWriteServiceRegistry
 			TEXT("patch_external_graph"),
 			TEXT("patch_external_links"),
 			TEXT("replace_external_body"),
+			TEXT("material_graph_edit"),
 		};
 		return Operations;
 	}

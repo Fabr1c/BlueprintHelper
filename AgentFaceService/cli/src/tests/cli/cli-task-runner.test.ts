@@ -65,7 +65,6 @@ test('task preview reads TaskSpec file and prints compact summary JSON', async (
     }),
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -138,7 +137,6 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
       };
     },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -212,7 +210,6 @@ test('task execute exposes raw bridge and trace data only through expert debug a
       },
     }),
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -261,7 +258,6 @@ test('task execute can project stdout to selected fields only', async () => {
       },
     }),
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -285,7 +281,6 @@ test('removed direct preview command reports grouped replacement without dispatc
   const writes: string[] = [];
   const errors: string[] = [];
   const runner = {
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     previewTask: async () => { throw new Error('removed direct preview must not dispatch'); },
     executeTask: async () => { throw new Error('not used'); },
@@ -333,7 +328,6 @@ test('default task preview artifacts omit internal policy fields', async () => {
     steps: [],
   };
   const runner = {
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     previewTask: async () => ({
       previewId: 'preview_policy_001',
@@ -409,7 +403,6 @@ test('expert task preview debug artifact keeps raw policy fields', async () => {
     steps: [],
   };
   const runner = {
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
     previewTask: async () => ({
       previewId: 'preview_expert_policy_001',
@@ -499,7 +492,6 @@ test('develop timing applies to direct CLI tool invocation', async () => {
       previewTask: async () => { throw new Error('not used'); },
       executeTask: async () => { throw new Error('not used'); },
       getTaskResult: async () => { throw new Error('not used'); },
-      readTaskContext: async () => { throw new Error('not used'); },
       readReferenceContext: async () => { throw new Error('not used'); },
     } as TaskSpecRunner,
     stdout: (line) => writes.push(line),
@@ -573,7 +565,6 @@ test('develop timing records read_context logic_flow stages and UE nested timing
       previewTask: async () => { throw new Error('not used'); },
       executeTask: async () => { throw new Error('not used'); },
       getTaskResult: async () => { throw new Error('not used'); },
-      readTaskContext: async () => { throw new Error('not used'); },
       readReferenceContext: async () => { throw new Error('not used'); },
     } as TaskSpecRunner,
     stdout: (line) => writes.push(line),
@@ -682,7 +673,6 @@ test('task result reads by id and prints compact summary', async () => {
         steps: [{ step_id: 'step_1' }],
       },
     }),
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -709,7 +699,6 @@ test('removed direct get task result command reports grouped replacement', async
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('removed direct task result must not dispatch'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -734,7 +723,6 @@ test('removed direct get task result rejects before parsing escaped JSON quotes'
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -850,7 +838,6 @@ test('context read uses ReadContext Bridge route', async () => {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -903,7 +890,6 @@ test('develop timing applies to context read command', async () => {
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -931,7 +917,6 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
     previewTask: async () => { throw new Error('not used'); },
     executeTask: async () => { throw new Error('not used'); },
     getTaskResult: async () => { throw new Error('not used'); },
-    readTaskContext: async () => { throw new Error('not used'); },
     readReferenceContext: async () => { throw new Error('not used'); },
   } as TaskSpecRunner;
 
@@ -949,8 +934,8 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
           logic: {
             graph: 'EventGraph',
             nodes: [
-              { kind: 'call_function', name: '打印字符串' },
-              { kind: 'branch', name: '分支' },
+              { kind: 'call_function', name: '\u6253\u5370\u5b57\u7b26\u4e32' },
+              { kind: 'branch', name: '\u5206\u652f' },
             ],
           },
           stats: { nodes: 2, exec_links: 0, data_links: 0, orphan_nodes: 0 },
@@ -967,7 +952,7 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
   const fullResult = String(artifacts.full_result);
   const rawUtf8 = fs.readFileSync(fullResult, 'utf8');
   assert.match(rawUtf8, /\\u6253\\u5370\\u5b57\\u7b26\\u4e32/);
-  assert.doesNotMatch(rawUtf8, /打印字符串/);
+  assert.equal(rawUtf8.includes(String.fromCharCode(0x95f9)), false);
   JSON.parse(rawUtf8);
   JSON.parse(fs.readFileSync(fullResult, 'latin1'));
 });

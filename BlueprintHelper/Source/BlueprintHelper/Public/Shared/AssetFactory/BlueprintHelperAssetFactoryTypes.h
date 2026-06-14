@@ -55,6 +55,7 @@ enum class EBlueprintHelperFactoryType : uint8
 	DataAsset,
 	DataTable,
 	WidgetBlueprint,
+	Material,
 	NativeFactory,
 	Unknown
 };
@@ -71,6 +72,7 @@ inline const TCHAR* FactoryTypeToString(EBlueprintHelperFactoryType Type)
 	case EBlueprintHelperFactoryType::DataAsset:                   return TEXT("data_asset");
 	case EBlueprintHelperFactoryType::DataTable:                   return TEXT("data_table");
 	case EBlueprintHelperFactoryType::WidgetBlueprint:             return TEXT("widget_blueprint");
+	case EBlueprintHelperFactoryType::Material:                    return TEXT("material");
 	case EBlueprintHelperFactoryType::NativeFactory:               return TEXT("native_factory");
 	case EBlueprintHelperFactoryType::Unknown:                     return TEXT("unknown");
 	default:                                                       return TEXT("unknown");

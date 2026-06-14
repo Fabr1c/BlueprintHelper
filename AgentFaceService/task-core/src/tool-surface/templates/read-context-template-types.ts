@@ -18,6 +18,7 @@ export type ReadContextTemplateRouteStatus =
 export type ReadContextTemplateView =
   | 'logic_flow'
   | 'logic_json'
+  | 'logic_md'
   | 'tree_json'
   | 'schema_json'
   | 'property_json'
@@ -25,6 +26,7 @@ export type ReadContextTemplateView =
 
 export type ReadContextRequestBuilderId =
   | 'blueprint_logic'
+  | 'material_logic'
   | 'asset_context'
   | 'component_context'
   | 'variable_context'

@@ -20,12 +20,12 @@ export type ReadContextBridgeRequest =
       message: string;
     };
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_json';
+export type ReadContextLogicFormat = 'logic_flow' | 'logic_json' | 'logic_md';
 
 export type ReadContextLogicBridgeRoute = {
   format: ReadContextLogicFormat;
-  command: 'read_blueprint_logic_json';
-  payloadSchema: 'LogicFlow.v1' | 'LogicJson.v1';
+  command: 'read_blueprint_logic_json' | 'read_material_logic_json' | 'read_material_logic_md';
+  payloadSchema: 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1';
 };
 
 export type ReadContextRequestBuilder = (
@@ -33,7 +33,7 @@ export type ReadContextRequestBuilder = (
   route: ReadContextRouteDescriptor,
 ) => ReadContextBridgeRequest;
 
-const LOGIC_FORMATS = new Set<ReadContextTemplateView>(['logic_flow', 'logic_json']);
+const LOGIC_FORMATS = new Set<ReadContextTemplateView>(['logic_flow', 'logic_json', 'logic_md']);
 
 const TARGET_PAYLOAD_KEY_BY_TYPE: Readonly<Record<string, string>> = {
   graph: 'graph',
@@ -55,6 +55,7 @@ const LOGIC_SCOPE_BY_TYPE: Readonly<Record<string, string>> = {
 
 const REQUEST_BUILDERS: Readonly<Record<ReadContextRequestBuilderId, ReadContextRequestBuilder>> = {
   blueprint_logic: buildBlueprintLogicBridgeRequest,
+  material_logic: buildMaterialLogicBridgeRequest,
   asset_context: buildAssetBridgeRequest,
   component_context: buildAssetBridgeRequest,
   variable_context: buildAssetBridgeRequest,
@@ -106,16 +107,21 @@ export function buildReadContextLogicBridgeRoute(format: ReadContextLogicFormat)
 
 export function resolveReadContextBridgeCommand(
   format: ReadContextLogicFormat,
-): 'read_blueprint_logic_json' {
+  domain: 'blueprint' | 'material' = 'blueprint',
+): 'read_blueprint_logic_json' | 'read_material_logic_json' | 'read_material_logic_md' {
+  if (domain === 'material') {
+    return format === 'logic_md' ? 'read_material_logic_md' : 'read_material_logic_json';
+  }
   return 'read_blueprint_logic_json';
 }
 
 export function resolveReadContextPayloadSchema(
   format: ReadContextLogicFormat,
-): 'LogicFlow.v1' | 'LogicJson.v1' {
-  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicJson.v1'>> = {
+): 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1' {
+  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1'>> = {
     logic_flow: 'LogicFlow.v1',
     logic_json: 'LogicJson.v1',
+    logic_md: 'LogicMd.v1',
   };
   return schemas[format];
 }
@@ -186,6 +192,33 @@ function buildBlueprintLogicBridgeRequest(
   return okRequest(route, command, buildBlueprintLogicReadPayload(input, route), route.output_schema);
 }
 
+function buildMaterialLogicBridgeRequest(
+  input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
+): ReadContextBridgeRequest {
+  const format = isLogicFormat(route.format) ? route.format : 'logic_json';
+  const command = route.bridge_command ?? resolveReadContextBridgeCommand(format, 'material');
+  return okRequest(route, command, buildMaterialLogicReadPayload(input, route), route.output_schema);
+}
+
+function buildMaterialLogicReadPayload(
+  input: ReadContextInput,
+  route = resolveReadContextRouteDescriptor(input),
+): Record<string, unknown> {
+  return {
+    asset_path: input.target.asset_path,
+    target_type: route?.target_type ?? 'material_graph',
+    ...(input.target.target_name ? { target_name: input.target.target_name } : {}),
+    ...(input.target.graph_name ? { graph_name: input.target.graph_name } : {}),
+    scope: 'material_graph',
+    view: {
+      format: route?.format ?? input.view?.format ?? 'logic_json',
+      ...(input.view?.detail ? { detail: input.view.detail } : {}),
+      ...(input.view?.max_items ? { max_items: input.view.max_items } : {}),
+    },
+  };
+}
+
 function buildAssetBridgeRequest(
   input: ReadContextInput,
   route: ReadContextRouteDescriptor,
@@ -244,7 +277,7 @@ function requiredBridgeCommand(route: ReadContextRouteDescriptor): string {
 }
 
 function routeMatchesTarget(route: ReadContextRouteDescriptor, input: ReadContextInput): boolean {
-  const targetType = input.target.target_type ?? 'blueprint';
+  const targetType = resolveEffectiveTargetType(input);
   if (!route.supported_asset_types.includes(targetType) && route.target_type !== targetType) {
     return false;
   }
@@ -258,6 +291,14 @@ function routeMatchesTarget(route: ReadContextRouteDescriptor, input: ReadContex
     return false;
   }
   return true;
+}
+
+function resolveEffectiveTargetType(input: ReadContextInput): string {
+  const targetType = input.target.target_type;
+  if (input.read_type === 'material_graph_context' && (!targetType || targetType === 'blueprint')) {
+    return 'material_graph';
+  }
+  return targetType ?? 'blueprint';
 }
 
 function routeMatchesFormat(route: ReadContextRouteDescriptor, input: ReadContextInput): boolean {

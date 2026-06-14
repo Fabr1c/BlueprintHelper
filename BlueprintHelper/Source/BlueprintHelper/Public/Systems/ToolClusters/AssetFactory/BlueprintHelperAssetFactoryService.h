@@ -92,4 +92,6 @@ private:
 	static bool CreateDataTable(const FString& AssetPath, const FString& RowStruct);
 
 	static bool CreateWidgetBlueprint(const FString& AssetPath, const FString& ParentClass);
+
+	static bool CreateMaterial(const FString& AssetPath);
 };

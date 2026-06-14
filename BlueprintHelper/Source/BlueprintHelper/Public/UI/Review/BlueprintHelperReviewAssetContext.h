@@ -7,6 +7,7 @@
 
 class UBlueprint;
 class UDataTable;
+class UMaterial;
 class UObject;
 class UUserDefinedStruct;
 
@@ -17,6 +18,7 @@ enum class EBlueprintHelperReviewAssetKind : uint8
 	WidgetBlueprint,
 	DataTable,
 	DataAsset,
+	Material,
 	Structure,
 	GenericObject
 };
@@ -35,6 +37,7 @@ inline const TCHAR* BlueprintHelperReviewAssetKindToString(EBlueprintHelperRevie
 		{ EBlueprintHelperReviewAssetKind::WidgetBlueprint, TEXT("widget_blueprint") },
 		{ EBlueprintHelperReviewAssetKind::DataTable, TEXT("data_table") },
 		{ EBlueprintHelperReviewAssetKind::DataAsset, TEXT("data_asset") },
+		{ EBlueprintHelperReviewAssetKind::Material, TEXT("material") },
 		{ EBlueprintHelperReviewAssetKind::Structure, TEXT("structure") },
 		{ EBlueprintHelperReviewAssetKind::GenericObject, TEXT("generic_object") }
 	};
@@ -58,6 +61,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewAssetContext
 	TWeakObjectPtr<UObject> AssetObject;
 	TWeakObjectPtr<UBlueprint> Blueprint;
 	TWeakObjectPtr<UDataTable> DataTable;
+	TWeakObjectPtr<UMaterial> Material;
 	TWeakObjectPtr<UUserDefinedStruct> Structure;
 	TWeakObjectPtr<UObject> DefaultObject;
 

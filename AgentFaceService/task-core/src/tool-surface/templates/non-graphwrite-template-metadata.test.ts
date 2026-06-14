@@ -23,6 +23,7 @@ test('non-GraphWrite metadata declares every TaskSpec family from design', () =>
       'blueprint_signature',
       'blueprint_variables',
       'data_table',
+      'material_graph',
       'object_properties',
       'umg_widget',
     ],
@@ -54,6 +55,11 @@ test('dedicated Blueprint component class settings and signature families are su
   assert.equal(
     byFamily.get('blueprint_signature')?.base_template_path,
     'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_signature_template.json',
+  );
+  assert.equal(byFamily.get('material_graph')?.status, 'supported');
+  assert.equal(
+    byFamily.get('material_graph')?.base_template_path,
+    'AgentFaceService/agent-guide/Templates/write/routes/material_graph_edit_template.json',
   );
 });
 
@@ -91,4 +97,13 @@ test('dedicated non-GraphWrite families expose operation quick-access templates'
   })[0];
   assert.equal(ensureFunction?.template_id, 'blueprint_signature.signature.ensure_function');
   assert.deepEqual(ensureFunction?.insert_paths, ['behavior.changes[]']);
+
+  const appendMaterialBlock = listNonGraphWriteTemplateQuickAccess({
+    family: 'material_graph',
+    cluster: 'material_graph',
+    operation: 'append_block',
+    writeMode: 'material.graph',
+  })[0];
+  assert.equal(appendMaterialBlock?.template_id, 'material_graph.material_graph.append_block');
+  assert.deepEqual(appendMaterialBlock?.insert_paths, ['behavior.entries[]']);
 });

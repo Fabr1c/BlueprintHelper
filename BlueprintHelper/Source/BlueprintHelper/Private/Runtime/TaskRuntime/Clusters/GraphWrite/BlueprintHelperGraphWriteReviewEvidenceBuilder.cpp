@@ -924,6 +924,193 @@ void FBlueprintHelperGraphWriteReviewEvidenceBuilder::AttachDiagnosticsToEvidenc
 	}
 }
 
+bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildMaterialGraphEvidence(
+	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
+	const FString& AssetPath,
+	const FString& GraphName,
+	const FString& OperationKind,
+	FBlueprintHelperWriteReviewEvidence& OutEvidence)
+{
+	if (!Input.StepResult.Data.IsValid())
+	{
+		return false;
+	}
+
+	OutEvidence.DisplayLabel = TEXT("MaterialGraph edit");
+	OutEvidence.BeforeSummary = TEXT("MaterialGraph before write");
+	OutEvidence.AfterSummary = TEXT("MaterialGraph after write");
+	const FString AnchorJson = SerializePayloadForAnchor(Input.LoweredStep.Payload);
+
+	struct FMaterialGraphReviewArray
+	{
+		const TCHAR* FieldName;
+		const TCHAR* TargetKind;
+		const TCHAR* TargetSubKind;
+		EBlueprintHelperReviewChangeKind ChangeKind;
+	};
+	const FMaterialGraphReviewArray Arrays[] =
+	{
+		{ TEXT("created_expression_refs"), TEXT("material_expression"), TEXT("created_expression"), EBlueprintHelperReviewChangeKind::Added },
+		{ TEXT("updated_property_refs"), TEXT("material_expression"), TEXT("updated_properties"), EBlueprintHelperReviewChangeKind::Modified },
+		{ TEXT("deleted_expression_refs"), TEXT("material_expression"), TEXT("deleted_expression"), EBlueprintHelperReviewChangeKind::Removed }
+	};
+
+	for (const FMaterialGraphReviewArray& Array : Arrays)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Input.StepResult.Data->TryGetArrayField(Array.FieldName, Values) || !Values)
+		{
+			continue;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+			if (!Object.IsValid())
+			{
+				continue;
+			}
+
+			const FString NodeKey = ReadStringField(Object, TEXT("node_key"));
+			const FString BlockId = ReadStringField(Object, TEXT("block_id"));
+			const FString ExpressionGuid = ReadStringField(Object, TEXT("expression_guid"));
+			const FString ClassName = ReadStringField(Object, TEXT("class_name"));
+			const FString Selector = ReadStringField(Object, TEXT("selector"));
+			const FString TargetKey = FString::Printf(TEXT("material_expression:%s"), *MakeReviewKeySegment(NodeKey));
+
+			FBlueprintHelperReviewAtomicTarget Target;
+			Target.AssetPath = AssetPath;
+			Target.Surface = EBlueprintHelperReviewSurface::Material;
+			Target.GraphName = GraphName;
+			Target.TargetKind = Array.TargetKind;
+			Target.TargetSubKind = Array.TargetSubKind;
+			Target.TargetKey = TargetKey;
+			Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
+			Target.LifecycleObjectKey = Target.TargetKey;
+			Target.VisualGroupKey = FString::Printf(TEXT("material_graph|%s|%s"), *GraphName, *MakeReviewKeySegment(BlockId));
+			Target.DisplayLabel = NodeKey.IsEmpty() ? FString(Array.TargetSubKind) : NodeKey;
+			Target.LatestEvidenceId = OutEvidence.EvidenceId;
+			Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+			Target.Ownership = TEXT("blueprinthelper_owned");
+			Target.NodeGuid = ExpressionGuid;
+			Target.PropertyPath = Selector.IsEmpty() ? ClassName : Selector;
+			Target.ComponentPath = BlockId;
+			Target.AnchorJson = AnchorJson;
+			const FString SnapshotJson = SerializeJsonObject(Object.ToSharedRef());
+			if (Array.ChangeKind == EBlueprintHelperReviewChangeKind::Removed)
+			{
+				Target.BeforeSnapshotJson = SnapshotJson;
+			}
+			else if (Array.ChangeKind == EBlueprintHelperReviewChangeKind::Added)
+			{
+				TSharedRef<FJsonObject> MissingBefore = MakeShared<FJsonObject>();
+				MissingBefore->SetBoolField(TEXT("exists"), false);
+				MissingBefore->SetStringField(TEXT("target_kind"), Array.TargetKind);
+				if (!NodeKey.IsEmpty())
+				{
+					MissingBefore->SetStringField(TEXT("node_key"), NodeKey);
+				}
+				if (!BlockId.IsEmpty())
+				{
+					MissingBefore->SetStringField(TEXT("block_id"), BlockId);
+				}
+				if (!ExpressionGuid.IsEmpty())
+				{
+					MissingBefore->SetStringField(TEXT("expression_guid"), ExpressionGuid);
+				}
+				Target.BeforeSnapshotJson = SerializeJsonObject(MissingBefore);
+				Target.AfterSnapshotJson = SnapshotJson;
+			}
+			else if (Array.ChangeKind == EBlueprintHelperReviewChangeKind::Modified)
+			{
+				const TSharedPtr<FJsonObject>* BeforeObject = nullptr;
+				const TSharedPtr<FJsonObject>* AfterObject = nullptr;
+				if (Object->TryGetObjectField(TEXT("before"), BeforeObject) && BeforeObject && BeforeObject->IsValid())
+				{
+					(*BeforeObject)->SetBoolField(TEXT("exists"), true);
+					(*BeforeObject)->SetStringField(TEXT("target_kind"), Array.TargetKind);
+					Target.BeforeSnapshotJson = SerializeJsonObject((*BeforeObject).ToSharedRef());
+				}
+				if (Object->TryGetObjectField(TEXT("after"), AfterObject) && AfterObject && AfterObject->IsValid())
+				{
+					(*AfterObject)->SetBoolField(TEXT("exists"), true);
+					(*AfterObject)->SetStringField(TEXT("target_kind"), Array.TargetKind);
+					Target.AfterSnapshotJson = SerializeJsonObject((*AfterObject).ToSharedRef());
+				}
+				if (Target.AfterSnapshotJson.IsEmpty())
+				{
+					Target.AfterSnapshotJson = SnapshotJson;
+				}
+			}
+			else
+			{
+				Target.AfterSnapshotJson = SnapshotJson;
+			}
+			Target.ExecutionOrder = Input.StepIndex;
+			Target.TaskStepIndex = Input.StepIndex;
+			Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
+			OutEvidence.AtomicTargets.Add(Target);
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Connections = nullptr;
+	if (Input.StepResult.Data->TryGetArrayField(TEXT("connections"), Connections) && Connections)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Connections)
+		{
+			const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+			if (!Object.IsValid())
+			{
+				continue;
+			}
+
+			const FString FromNodeKey = ReadStringField(Object, TEXT("from_node_key"));
+			const FString FromPin = ReadStringField(Object, TEXT("from_pin"));
+			const FString ToNodeKey = ReadStringField(Object, TEXT("to_node_key"));
+			const FString ToPin = ReadStringField(Object, TEXT("to_pin"));
+			FBlueprintHelperReviewAtomicTarget Target;
+			Target.AssetPath = AssetPath;
+			Target.Surface = EBlueprintHelperReviewSurface::Material;
+			Target.GraphName = GraphName;
+			Target.TargetKind = ToNodeKey == TEXT("$material_output") ? TEXT("material_output_link") : TEXT("material_expression_link");
+			Target.TargetSubKind = TEXT("connection");
+			Target.TargetKey = FString::Printf(
+				TEXT("material_link:%s:%s:%s:%s"),
+				*MakeReviewKeySegment(FromNodeKey),
+				*MakeReviewKeySegment(FromPin),
+				*MakeReviewKeySegment(ToNodeKey),
+				*MakeReviewKeySegment(ToPin));
+			Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
+			Target.LifecycleObjectKey = Target.TargetKey;
+			Target.VisualGroupKey = FString::Printf(TEXT("material_graph|%s|links"), *GraphName);
+			Target.DisplayLabel = FString::Printf(TEXT("%s.%s -> %s.%s"), *FromNodeKey, *FromPin, *ToNodeKey, *ToPin);
+			Target.LatestEvidenceId = OutEvidence.EvidenceId;
+			Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
+			Target.Ownership = TEXT("blueprinthelper_owned");
+			Target.PinPath = FString::Printf(TEXT("%s.%s>%s.%s"), *FromNodeKey, *FromPin, *ToNodeKey, *ToPin);
+			Target.PropertyPath = ToPin;
+			Target.AnchorJson = AnchorJson;
+			TSharedRef<FJsonObject> MissingBefore = MakeShared<FJsonObject>();
+			MissingBefore->SetBoolField(TEXT("exists"), false);
+			MissingBefore->SetStringField(TEXT("target_kind"), Target.TargetKind);
+			MissingBefore->SetStringField(TEXT("from_node_key"), FromNodeKey);
+			MissingBefore->SetStringField(TEXT("from_pin"), FromPin);
+			MissingBefore->SetStringField(TEXT("to_node_key"), ToNodeKey);
+			MissingBefore->SetStringField(TEXT("to_pin"), ToPin);
+			Target.BeforeSnapshotJson = SerializeJsonObject(MissingBefore);
+			Target.AfterSnapshotJson = SerializeJsonObject(Object.ToSharedRef());
+			Target.ExecutionOrder = Input.StepIndex;
+			Target.TaskStepIndex = Input.StepIndex;
+			Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
+			OutEvidence.AtomicTargets.Add(Target);
+		}
+	}
+
+	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics = ReadReviewDiagnostics(Input.StepResult, GraphName);
+	AttachDiagnosticsToEvidence(Diagnostics, OutEvidence);
+	return OutEvidence.AtomicTargets.Num() > 0;
+}
+
 FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildScopeIdentity(
 	const FString& AssetPath,
 	const FString& GraphName,
@@ -960,14 +1147,19 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 		GraphName = ReadGraphName(Input.LoweredStep.Payload);
 		BoundaryModel.GraphName = GraphName;
 	}
-	if (AssetPath.IsEmpty() || GraphName.IsEmpty())
-	{
-		return false;
-	}
 
 	const FString OperationKind = Input.LoweredStep.AdapterOperation.IsEmpty()
 		? Input.LoweredStep.RuntimeOperation
 		: Input.LoweredStep.AdapterOperation;
+	if (GraphName.IsEmpty() && OperationKind == TEXT("material_graph_edit"))
+	{
+		GraphName = TEXT("MaterialGraph");
+		BoundaryModel.GraphName = GraphName;
+	}
+	if (AssetPath.IsEmpty() || GraphName.IsEmpty())
+	{
+		return false;
+	}
 
 	OutEvidence = FBlueprintHelperWriteReviewEvidence();
 	OutEvidence.ArchiveSessionId = Input.ArchiveSessionId;
@@ -979,6 +1171,15 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::Build(
 	OutEvidence.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	OutEvidence.DisplayLabel = OperationKind;
 	OutEvidence.TaskStepIndex = Input.StepIndex;
+	if (OperationKind == TEXT("material_graph_edit"))
+	{
+		return BuildMaterialGraphEvidence(
+			Input,
+			AssetPath,
+			GraphName,
+			OperationKind,
+			OutEvidence);
+	}
 
 	EBlueprintHelperExternalGraphWriteAdapterOperationKind ExternalOperationKind =
 		EBlueprintHelperExternalGraphWriteAdapterOperationKind::Unknown;

@@ -73,6 +73,7 @@ EBlueprintHelperReviewSurface FBlueprintHelperReviewSurfacePresenterRouter::GetM
 	{
 		{ EBlueprintHelperReviewAssetKind::DataTable, EBlueprintHelperReviewSurface::DataTable },
 		{ EBlueprintHelperReviewAssetKind::DataAsset, EBlueprintHelperReviewSurface::DataAsset },
+		{ EBlueprintHelperReviewAssetKind::Material, EBlueprintHelperReviewSurface::Material },
 		{ EBlueprintHelperReviewAssetKind::Structure, EBlueprintHelperReviewSurface::DataAsset },
 		{ EBlueprintHelperReviewAssetKind::GenericObject, EBlueprintHelperReviewSurface::DataAsset },
 		{ EBlueprintHelperReviewAssetKind::Blueprint, EBlueprintHelperReviewSurface::Graph },
@@ -98,7 +99,8 @@ bool FBlueprintHelperReviewSurfacePresenterRouter::ShouldDetailsPanelOwnOverlay(
 bool FBlueprintHelperReviewSurfacePresenterRouter::ShouldMainWorkspaceOwnOverlay(EBlueprintHelperReviewSurface Surface)
 {
 	return Surface == EBlueprintHelperReviewSurface::DataTable
-		|| Surface == EBlueprintHelperReviewSurface::DataAsset;
+		|| Surface == EBlueprintHelperReviewSurface::DataAsset
+		|| Surface == EBlueprintHelperReviewSurface::Material;
 }
 
 const TCHAR* FBlueprintHelperReviewSurfacePresenterRouter::SurfaceDebugName(
@@ -118,7 +120,8 @@ const TCHAR* FBlueprintHelperReviewSurfacePresenterRouter::SurfaceDebugName(
 		{ EBlueprintHelperReviewSurface::Details, TEXT("Details") },
 		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("UMGWidgetTree") },
 		{ EBlueprintHelperReviewSurface::DataTable, TEXT("DataTable") },
-		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") }
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") },
+		{ EBlueprintHelperReviewSurface::Material, TEXT("Material") }
 	};
 
 	for (const FBlueprintHelperReviewSurfaceDebugName& Entry : SurfaceNames)

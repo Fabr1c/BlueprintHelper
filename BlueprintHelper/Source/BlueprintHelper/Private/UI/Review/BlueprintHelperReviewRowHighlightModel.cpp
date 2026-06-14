@@ -172,7 +172,8 @@ const TCHAR* FBlueprintHelperReviewRowHighlightModel::SurfaceDebugName(
 		{ EBlueprintHelperReviewSurface::Details, TEXT("Details") },
 		{ EBlueprintHelperReviewSurface::UMGWidgetTree, TEXT("UMGWidgetTree") },
 		{ EBlueprintHelperReviewSurface::DataTable, TEXT("DataTable") },
-		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") }
+		{ EBlueprintHelperReviewSurface::DataAsset, TEXT("DataAsset") },
+		{ EBlueprintHelperReviewSurface::Material, TEXT("Material") }
 	};
 
 	for (const FBlueprintHelperReviewSurfaceDebugName& Entry : SurfaceNames)
@@ -349,7 +350,8 @@ void FBlueprintHelperReviewRowHighlightModel::CollectRowHighlightKeys(
 			&& BlueprintHelperReviewTargetKindCanRouteToDetails(Target.TargetKind)
 			&& Target.Surface != EBlueprintHelperReviewSurface::DataAsset
 			&& Target.Surface != EBlueprintHelperReviewSurface::DataTable
-			&& Target.Surface != EBlueprintHelperReviewSurface::UMGWidgetTree;
+			&& Target.Surface != EBlueprintHelperReviewSurface::UMGWidgetTree
+			&& Target.Surface != EBlueprintHelperReviewSurface::Material;
 		if (!bTargetMatchesSurface && !bDetailsTargetMatches)
 		{
 			continue;
@@ -639,7 +641,8 @@ bool FBlueprintHelperReviewRowHighlightModel::IsRowHighlightSurface(EBlueprintHe
 		|| Surface == EBlueprintHelperReviewSurface::Details
 		|| Surface == EBlueprintHelperReviewSurface::UMGWidgetTree
 		|| Surface == EBlueprintHelperReviewSurface::DataTable
-		|| Surface == EBlueprintHelperReviewSurface::DataAsset;
+		|| Surface == EBlueprintHelperReviewSurface::DataAsset
+		|| Surface == EBlueprintHelperReviewSurface::Material;
 }
 
 void FBlueprintHelperReviewRowHighlightModel::InvalidateSurfaceState(

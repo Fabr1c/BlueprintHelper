@@ -37,6 +37,10 @@ export const NON_GRAPHWRITE_OPERATION_DESCRIPTORS: readonly NonGraphWriteOperati
   op('blueprint_signature', 'signature.edit', 'signature', 'ensure_event_dispatcher', 'Ensure an event dispatcher signature exists.', 'blueprint_signature_ensure_event_dispatcher', ['behavior.changes[]'], ['dispatcher_name(*)']),
   op('blueprint_signature', 'signature.edit', 'signature', 'ensure_override_event', 'Ensure an override event signature exists.', 'blueprint_signature_ensure_override_event', ['behavior.changes[]'], ['event_name(*)']),
   op('blueprint_signature', 'signature.edit', 'signature', 'remove_signature', 'Remove a signature with reference-context protection.', 'blueprint_signature_remove', ['behavior.changes[]'], ['signature_name(*)']),
+  op('material_graph', 'material.graph', 'material_graph', 'append_block', 'Append a new owned Material expression block and connect it to a Material output.', 'material_graph_append_block', ['behavior.entries[]'], ['block_id(*)', 'node_key(*)']),
+  op('material_graph', 'material.graph', 'material_graph', 'replace_block', 'Replace an owned Material expression block by block_id.', 'material_graph_replace_block', ['behavior.replace'], ['block_id(*)', 'node_key(*)']),
+  op('material_graph', 'material.graph', 'material_graph', 'patch_block', 'Patch owned Material expressions, links, or deletes by block_id.', 'material_graph_patch_block', ['behavior.patches[]'], ['block_id(*)']),
+  op('material_graph', 'material.graph', 'material_graph', 'merge_block', 'Merge additional Material expressions or links into an owned block.', 'material_graph_merge_block', ['behavior.merges[]'], ['block_id(*)']),
 ];
 
 function op(

@@ -10,6 +10,7 @@ export type TaskTypeCompilerId =
   | 'umg_widget'
   | 'data_table'
   | 'graphwrite'
+  | 'material_graph'
   | 'composite_feature';
 
 export interface TaskTypeCompileContext {

@@ -57,8 +57,10 @@ public class BlueprintHelper : ModuleRules
 				"Networking",
 				"AssetRegistry",
 				"SourceControl",
+				"RHI",
 				"EnhancedInput",
 				"InputBlueprintNodes",
+				"MaterialEditor",
 				"SubobjectEditor",
 				"KismetWidgets",
 				// ... add private dependencies that you statically link with here ...

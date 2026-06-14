@@ -69,10 +69,12 @@ remains available through the artifact path.
 3. `AgentFaceService/agent-guide/Reference/05_UE_Blueprint_Write_Architecture_Rules.md`
 4. `AgentFaceService/agent-guide/Reference/06_UE_Blueprint_Write_CodingStyle.md`
 5. `AgentFaceService/agent-guide/Reference/07_LogicFlow_Syntax_Rules.md`
-6. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
-7. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
-8. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
-9. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
+6. `AgentFaceService/agent-guide/Reference/08_Material_ReadContext_Contract.md`
+7. `AgentFaceService/agent-guide/Reference/09_MaterialGraph_Write_Contract.md`
+8. `AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md`
+9. `AgentFaceService/agent-guide/Workflows/05_Edit_Blueprint_Workflow.md`
+10. `AgentFaceService/agent-guide/Workflows/06_UMG_Data_Workflows.md`
+11. `AgentFaceService/agent-guide/Workflows/07_Safety_Validation_And_Recovery.md`
 
 ## Rules
 

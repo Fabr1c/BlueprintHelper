@@ -8,7 +8,14 @@ export function estimateJsonPayloadBytes(value: unknown): number {
   if (value === undefined) {
     return 0;
   }
-  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined
+      ? 0
+      : Buffer.byteLength(serialized, 'utf8');
+  } catch {
+    return 0;
+  }
 }
 
 export function buildPayloadSizeMetric(name: string, value: unknown): ReadContextPayloadSizeMetric {

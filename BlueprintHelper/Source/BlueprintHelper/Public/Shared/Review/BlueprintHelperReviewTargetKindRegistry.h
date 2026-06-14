@@ -22,6 +22,7 @@ enum class EBlueprintHelperReviewTargetHandlerKind : uint8
 	DataTableRow,
 	StructField,
 	ObjectProperty,
+	MaterialGraph,
 	AssetFactory
 };
 

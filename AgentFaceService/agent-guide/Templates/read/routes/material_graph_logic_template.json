@@ -1,0 +1,11 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "material_graph_context",
+  "target": {
+    "asset_path": "/Game/Materials/M_Test",
+    "target_type": "material_graph"
+  },
+  "view": {
+    "format": "logic_json"
+  }
+}

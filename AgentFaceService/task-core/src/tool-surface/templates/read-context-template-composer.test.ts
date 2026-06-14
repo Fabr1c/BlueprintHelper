@@ -21,7 +21,8 @@ test('ReadContext template registry exposes active routes and hides reserved dom
   const active = getActiveReadContextRouteDescriptors();
 
   assert.equal(active.some((route) => route.route_id === 'read.blueprint.logic.function.logic_flow'), true);
-  assert.equal(active.some((route) => route.domain === 'material'), false);
+  assert.equal(active.some((route) => route.domain === 'material'), true);
+  assert.equal(active.some((route) => route.domain === 'material_instance'), false);
 
   const functionFlow = getReadContextRouteDescriptor('read.blueprint.logic.function.logic_flow');
   assert.equal(functionFlow?.domain, 'blueprint');
@@ -42,6 +43,12 @@ test('ReadContext template registry exposes active routes and hides reserved dom
   assert.equal(widgetTree?.output_schema, 'WidgetTreeJson.v1');
   assert.equal(widgetTree?.request_builder_id, 'widget_tree');
   assert.equal(widgetTree?.payload_projector_id, 'widget_tree');
+
+  const materialLogic = getReadContextRouteDescriptor('read.material.logic.graph.logic_json');
+  assert.equal(materialLogic?.domain, 'material');
+  assert.equal(materialLogic?.read_type, 'material_graph_context');
+  assert.equal(materialLogic?.target_type, 'material_graph');
+  assert.equal(materialLogic?.status, 'active');
 });
 
 test('ReadContext active route descriptors own request and payload routing facts', () => {
@@ -116,7 +123,8 @@ test('ReadContext template index exposes domain cluster target and view discover
     domains.items.find((item) => item.domain === 'blueprint')?.description ?? '',
     /Blueprint/i,
   );
-  assert.equal(domains.items.some((item) => item.domain === 'material'), false);
+  assert.equal(domains.items.some((item) => item.domain === 'material'), true);
+  assert.equal(domains.items.some((item) => item.domain === 'material_instance'), false);
 
   const clusters = listReadContextTemplateClusters({ domain: 'blueprint' });
   assert.equal(clusters.items.some((item) => item.read_cluster === 'logic'), true);
@@ -268,13 +276,13 @@ test('ReadContext template composer exposes entry body logic_flow templates for 
 });
 
 test('ReadContext template composer reports diagnostics without writing unsupported reserved routes', () => {
-  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'material.readspec.json');
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'material-instance.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'material',
-    readCluster: 'logic',
-    targetKind: 'graph',
-    viewTemplate: 'logic_json',
+    domain: 'material_instance',
+    readCluster: 'schema',
+    targetKind: 'asset',
+    viewTemplate: 'schema_json',
     templateIds: [],
     outputPath,
   });
@@ -284,11 +292,14 @@ test('ReadContext template composer reports diagnostics without writing unsuppor
   assert.equal(result.diagnostics?.[0]?.code, 'unsupported_read_context_template');
 });
 
-test('ReadContext active route descriptors do not expose removed markdown logic format', () => {
+test('ReadContext active route descriptors keep blueprint markdown disabled and material markdown enabled', () => {
   const active = getActiveReadContextRouteDescriptors();
   const removedMarkdownFormat = ['logic', 'md'].join('_');
   const removedMarkdownCommand = ['read_blueprint', 'logic', 'md'].join('_');
-  assert.equal(active.some((route) => route.view_template === removedMarkdownFormat), false);
-  assert.equal(active.some((route) => route.route_id.includes(removedMarkdownFormat)), false);
-  assert.equal(active.some((route) => route.bridge_command === removedMarkdownCommand), false);
+  const blueprintRoutes = active.filter((route) => route.domain === 'blueprint');
+  assert.equal(blueprintRoutes.some((route) => route.view_template === removedMarkdownFormat), false);
+  assert.equal(blueprintRoutes.some((route) => route.route_id.includes(removedMarkdownFormat)), false);
+  assert.equal(blueprintRoutes.some((route) => route.bridge_command === removedMarkdownCommand), false);
+  assert.equal(active.some((route) => route.route_id === 'read.material.logic.graph.logic_md'), true);
+  assert.equal(active.some((route) => route.bridge_command === 'read_material_logic_md'), true);
 });
