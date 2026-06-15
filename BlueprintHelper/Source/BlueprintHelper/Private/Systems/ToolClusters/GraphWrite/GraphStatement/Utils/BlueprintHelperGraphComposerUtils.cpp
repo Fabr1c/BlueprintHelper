@@ -5,6 +5,7 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "K2Node.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphNodeLifecycle.h"
 
 UEdGraphPin* FBlueprintHelperGraphComposerUtils::FindPinRefInMap(
@@ -239,7 +240,7 @@ bool FBlueprintHelperGraphComposerUtils::TryForceCompatibleDataConnection(
 		return false;
 	}
 
-	FromPin->MakeLinkTo(ToPin);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(FromPin, ToPin, true);
 	if (UEdGraphNode* FromNode = FromPin->GetOwningNode())
 	{
 		FromNode->NodeConnectionListChanged();

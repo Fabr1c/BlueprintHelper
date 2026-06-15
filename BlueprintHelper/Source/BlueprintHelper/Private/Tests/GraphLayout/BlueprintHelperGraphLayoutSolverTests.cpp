@@ -799,7 +799,7 @@ bool FBlueprintHelperGraphLayout_CoordinatorFlushAppliesBeforeReturn::RunTest(co
 		FBlueprintHelperGraphLayoutCoordinator::Shutdown();
 		return false;
 	}
-	EntryThenPin->MakeLinkTo(ExecInputPin);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(EntryThenPin, ExecInputPin, true);
 
 	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Graph, {EntryNode, ExecNode});
 	const bool bFlushSucceeded = FBlueprintHelperGraphLayoutCoordinator::FlushPendingTaskLayouts();
@@ -843,7 +843,7 @@ bool FBlueprintHelperGraphLayout_OffThreadRecordThenFlushAppliesBeforeReturn::Ru
 		FBlueprintHelperGraphLayoutCoordinator::Shutdown();
 		return false;
 	}
-	EntryThenPin->MakeLinkTo(ExecInputPin);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(EntryThenPin, ExecInputPin, true);
 
 	TFuture<bool> WorkerResult = Async(EAsyncExecution::ThreadPool, [Graph, EntryNode, ExecNode]()
 	{

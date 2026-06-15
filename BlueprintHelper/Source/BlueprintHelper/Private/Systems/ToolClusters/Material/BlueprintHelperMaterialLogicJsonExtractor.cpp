@@ -14,6 +14,7 @@
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Misc/PackageName.h"
 #include "SceneTypes.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
@@ -255,7 +256,7 @@ void FBlueprintHelperMaterialLogicJsonExtractor::AddExpressionLinks(
 			continue;
 		}
 
-		const int32 InputCount = Expression->CountInputs();
+		const int32 InputCount = FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Expression);
 		for (int32 InputIndex = 0; InputIndex < InputCount; ++InputIndex)
 		{
 			const FExpressionInput* Input = Expression->GetInput(InputIndex);
@@ -549,7 +550,7 @@ FString FBlueprintHelperMaterialLogicJsonExtractor::ReadOwnershipMetadataValue(
 	if (UPackage* Package = Expression->GetPackage())
 	{
 #if WITH_METADATA
-		return Package->GetMetaData().GetValue(Expression, Key);
+		return FBlueprintHelperVersionCompat::GetPackageMetaData(Package).GetValue(Expression, Key);
 #else
 		return FString();
 #endif

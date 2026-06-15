@@ -7,6 +7,7 @@
 #include "K2Node_ExecutionSequence.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionNodeSpawnerAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperSingletonControlFlowEvidenceProvider.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextBuildService.h"
@@ -229,7 +230,7 @@ bool UGraphWriteCoreUtils::TryBreakLink(UEdGraphPin* FromPin, UEdGraphPin* ToPin
 	}
 	FromPin->Modify();
 	ToPin->Modify();
-	FromPin->BreakLinkTo(ToPin);
+	FBlueprintHelperVersionCompat::BreakPinLinkTo(FromPin, ToPin, true);
 	bOutChanged = true;
 	return true;
 }

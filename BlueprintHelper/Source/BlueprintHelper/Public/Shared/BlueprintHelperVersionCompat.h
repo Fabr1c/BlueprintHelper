@@ -2,6 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpression.h"
+#include "RHIFeatureLevel.h"
+#include "RHIShaderPlatform.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "UObject/Class.h"
 #include "UObject/MetaData.h"
@@ -45,6 +49,18 @@
 #else
 #define BLUEPRINTHELPER_UE_HAS_SOURCE_CONTROL_BATCH_QUERY 0
 #define BLUEPRINTHELPER_UE_HAS_SOURCE_CONTROL_BRANCH_STATE 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 5 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_EXPRESSION_COUNT_INPUTS 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_EXPRESSION_COUNT_INPUTS 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_SHADER_PLATFORM_MATERIAL_RESOURCE 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_SHADER_PLATFORM_MATERIAL_RESOURCE 0
 #endif
 
 #if BLUEPRINTHELPER_UE_HAS_FPACKAGE_METADATA
@@ -199,6 +215,32 @@ public:
 		FromPin->BreakLinkTo(ToPin, bAlwaysMarkDirty);
 #else
 		FromPin->BreakLinkTo(ToPin);
+#endif
+	}
+
+	static FORCEINLINE int32 CountMaterialExpressionInputs(const UMaterialExpression* Expression)
+	{
+		if (!Expression)
+		{
+			return 0;
+		}
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_EXPRESSION_COUNT_INPUTS
+		return Expression->CountInputs();
+#else
+		return const_cast<UMaterialExpression*>(Expression)->GetInputsView().Num();
+#endif
+	}
+
+	static FORCEINLINE FMaterialResource* GetMaterialResource(UMaterial* Material)
+	{
+		if (!Material)
+		{
+			return nullptr;
+		}
+#if BLUEPRINTHELPER_UE_HAS_SHADER_PLATFORM_MATERIAL_RESOURCE
+		return Material->GetMaterialResource(GMaxRHIShaderPlatform);
+#else
+		return Material->GetMaterialResource(GMaxRHIFeatureLevel);
 #endif
 	}
 };

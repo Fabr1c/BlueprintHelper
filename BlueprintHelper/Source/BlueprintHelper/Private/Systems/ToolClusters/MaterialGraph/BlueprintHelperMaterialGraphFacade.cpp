@@ -22,6 +22,7 @@
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Misc/PackageName.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialExpressionCandidateCacheService.h"
 #include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialExpressionSelectorResolver.h"
 #include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialGraphCompileService.h"
@@ -525,7 +526,7 @@ public:
 			return nullptr;
 		}
 
-		for (int32 InputIndex = 0; InputIndex < Expression->CountInputs(); ++InputIndex)
+		for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Expression); ++InputIndex)
 		{
 			if (Expression->GetInputName(InputIndex).ToString() == InputName)
 			{
@@ -734,19 +735,19 @@ public:
 		{
 			if (!BlockId.IsEmpty())
 			{
-				Package->GetMetaData().SetValue(
+				FBlueprintHelperVersionCompat::GetPackageMetaData(Package).SetValue(
 					Expression,
 					FBlueprintHelperMaterialGraphOwnershipService::BlockIdMetadataKey(),
 					*BlockId);
 			}
 			if (!NodeKey.IsEmpty())
 			{
-				Package->GetMetaData().SetValue(
+				FBlueprintHelperVersionCompat::GetPackageMetaData(Package).SetValue(
 					Expression,
 					FBlueprintHelperMaterialGraphOwnershipService::NodeKeyMetadataKey(),
 					*NodeKey);
 			}
-			Package->GetMetaData().SetValue(
+			FBlueprintHelperVersionCompat::GetPackageMetaData(Package).SetValue(
 				Expression,
 				FBlueprintHelperMaterialGraphOwnershipService::OwnershipMetadataKey(),
 				FBlueprintHelperMaterialGraphOwnershipService::OwnedMetadataValue());
@@ -765,7 +766,7 @@ public:
 #if WITH_METADATA
 		if (UPackage* Package = Expression->GetPackage())
 		{
-			return Package->GetMetaData().GetValue(Expression, Key);
+			return FBlueprintHelperVersionCompat::GetPackageMetaData(Package).GetValue(Expression, Key);
 		}
 #endif
 		return FString();
@@ -859,7 +860,7 @@ public:
 		TArray<TSharedPtr<FJsonValue>> OutputLinks;
 		if (Expression && State.Material)
 		{
-			for (int32 InputIndex = 0; InputIndex < Expression->CountInputs(); ++InputIndex)
+			for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Expression); ++InputIndex)
 			{
 				const FExpressionInput* Input = Expression->GetInput(InputIndex);
 				if (!Input || !Input->Expression)
@@ -920,7 +921,7 @@ public:
 				{
 					continue;
 				}
-				for (int32 InputIndex = 0; InputIndex < Candidate->CountInputs(); ++InputIndex)
+				for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Candidate); ++InputIndex)
 				{
 					const FExpressionInput* Input = Candidate->GetInput(InputIndex);
 					if (!Input || Input->Expression != Expression)

@@ -7,6 +7,7 @@
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CallDelegate.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperEventDelegateUseSiteEvidence.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphStatementBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/Readback/BlueprintHelperEventDelegateReadback.h"
@@ -54,7 +55,7 @@ bool FBlueprintHelperEventDelegateReadbackFactsTest::RunTest(const FString& Para
 	ArgPin->DefaultValue = TEXT("true");
 	UEdGraphNode* SourceNode = NewObject<UEdGraphNode>(GetTransientPackage());
 	UEdGraphPin* SourcePin = SourceNode->CreatePin(EGPD_Output, BoolPinType, FName(TEXT("bSource")));
-	ArgPin->MakeLinkTo(SourcePin);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(ArgPin, SourcePin, true);
 
 	FBlueprintHelperNodeFragment Fragment;
 	Fragment.FragmentId = TEXT("stmt_delegate_call");

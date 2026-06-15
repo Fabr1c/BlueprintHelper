@@ -14,6 +14,7 @@
 #include "Misc/PackageName.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -233,7 +234,7 @@ public:
 #if WITH_METADATA
 		if (UPackage* Package = Expression->GetPackage())
 		{
-			return Package->GetMetaData().GetValue(Expression, Key);
+			return FBlueprintHelperVersionCompat::GetPackageMetaData(Package).GetValue(Expression, Key);
 		}
 #endif
 		return FString();

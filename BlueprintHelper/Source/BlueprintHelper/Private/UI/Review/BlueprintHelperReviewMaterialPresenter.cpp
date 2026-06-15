@@ -6,6 +6,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpression.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialGraphOwnershipService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
 #include "UI/Review/BlueprintHelperReviewPresenterWidgetUtils.h"
@@ -44,7 +45,7 @@ public:
 #if WITH_METADATA
 		if (UPackage* Package = Expression->GetPackage())
 		{
-			return Package->GetMetaData().GetValue(Expression, Key);
+			return FBlueprintHelperVersionCompat::GetPackageMetaData(Package).GetValue(Expression, Key);
 		}
 #endif
 		return FString();
@@ -191,7 +192,7 @@ public:
 			}
 
 			const FString ToNodeKey = GetExpressionNodeKey(Expression);
-			for (int32 InputIndex = 0; InputIndex < Expression->CountInputs(); ++InputIndex)
+			for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Expression); ++InputIndex)
 			{
 				const FExpressionInput* Input = Expression->GetInput(InputIndex);
 				if (!Input || !Input->Expression)

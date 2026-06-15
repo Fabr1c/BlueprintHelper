@@ -10,6 +10,7 @@
 #include "GameFramework/Actor.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/AutomationTest.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/Context/BlueprintHelperActionContextRevisionService.h"
 
 class FBlueprintHelperActionContextRevisionServiceTestUtils
@@ -90,7 +91,7 @@ bool FBlueprintHelperActionContextGraphRevisionNodePinLinkTest::RunTest(const FS
 	UEdGraphNode* NodeB = FBlueprintHelperActionContextRevisionServiceTestUtils::AddNode(Graph, TEXT("NodeB"));
 	UEdGraphPin* OutPin = FBlueprintHelperActionContextRevisionServiceTestUtils::AddPin(NodeA, TEXT("Then"), EGPD_Output, UEdGraphSchema_K2::PC_Exec);
 	UEdGraphPin* InPin = FBlueprintHelperActionContextRevisionServiceTestUtils::AddPin(NodeB, TEXT("Execute"), EGPD_Input, UEdGraphSchema_K2::PC_Exec);
-	OutPin->MakeLinkTo(InPin);
+	FBlueprintHelperVersionCompat::MakePinLinkTo(OutPin, InPin, true);
 
 	const FBlueprintHelperActionContextRevisionToken After =
 		FBlueprintHelperActionContextRevisionService::BuildRevisionToken(Blueprint, Graph, TEXT("test"), TEXT("plan"));

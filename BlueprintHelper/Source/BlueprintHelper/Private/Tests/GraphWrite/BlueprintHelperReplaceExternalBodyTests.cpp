@@ -134,7 +134,7 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		{
 			return false;
 		}
-		FromPin->MakeLinkTo(ToPin);
+		FBlueprintHelperVersionCompat::MakePinLinkTo(FromPin, ToPin, true);
 		return FromPin->LinkedTo.Contains(ToPin) && ToPin->LinkedTo.Contains(FromPin);
 	}
 

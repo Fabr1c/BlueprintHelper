@@ -200,5 +200,5 @@ FString FBlueprintHelperRuntimeProfileService::GetPluginVersion()
 	{
 		return Plugin->GetDescriptor().VersionName;
 	}
-	return TEXT("0.6.3");
+	return TEXT("0.6.4");
 }

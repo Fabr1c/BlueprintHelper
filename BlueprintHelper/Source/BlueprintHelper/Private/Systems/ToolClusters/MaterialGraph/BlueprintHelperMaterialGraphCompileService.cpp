@@ -7,6 +7,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
 #include "RHIFeatureLevel.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 FString FBlueprintHelperMaterialGraphCompileService::BuildCompilePendingDiagnostic()
 {
@@ -24,7 +25,7 @@ TArray<FBlueprintHelperDiagnosticItem> FBlueprintHelperMaterialGraphCompileServi
 	}
 
 	TSet<FString> SeenDiagnostics;
-	if (FMaterialResource* MaterialResource = Material->GetMaterialResource(GMaxRHIFeatureLevel))
+	if (FMaterialResource* MaterialResource = FBlueprintHelperVersionCompat::GetMaterialResource(Material))
 	{
 		const TArray<FString>& CompileErrors = MaterialResource->GetCompileErrors();
 		const TArray<UMaterialExpression*>& ErrorExpressions = MaterialResource->GetErrorExpressions();

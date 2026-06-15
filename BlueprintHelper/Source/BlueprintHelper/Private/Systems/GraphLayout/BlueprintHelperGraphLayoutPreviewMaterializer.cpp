@@ -14,6 +14,7 @@
 #include "K2Node_Self.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/Guid.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 #include "HAL/PlatformTime.h"
 #include "UObject/UObjectGlobals.h"
 
@@ -577,7 +578,7 @@ bool FGraphLayoutPreviewMaterializer::ConnectLink(const FGraphLayoutPreviewLinkS
 
 	if (!FromPin->LinkedTo.Contains(ToPin))
 	{
-		FromPin->MakeLinkTo(ToPin);
+		FBlueprintHelperVersionCompat::MakePinLinkTo(FromPin, ToPin, true);
 	}
 	return FromPin->LinkedTo.Contains(ToPin);
 }

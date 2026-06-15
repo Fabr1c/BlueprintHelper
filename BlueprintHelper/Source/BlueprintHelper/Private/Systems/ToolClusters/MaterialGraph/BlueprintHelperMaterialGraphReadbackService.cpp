@@ -20,6 +20,7 @@
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialExpression.h"
+#include "Shared/BlueprintHelperVersionCompat.h"
 
 class FBlueprintHelperMaterialGraphReadbackServicePrivate
 {
@@ -216,7 +217,7 @@ public:
 			return nullptr;
 		}
 
-		for (int32 InputIndex = 0; InputIndex < Expression->CountInputs(); ++InputIndex)
+		for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(Expression); ++InputIndex)
 		{
 			if (Expression->GetInputName(InputIndex).ToString() == InputName)
 			{
@@ -536,7 +537,7 @@ public:
 			{
 				continue;
 			}
-			for (int32 InputIndex = 0; InputIndex < CandidateExpression->CountInputs(); ++InputIndex)
+			for (int32 InputIndex = 0; InputIndex < FBlueprintHelperVersionCompat::CountMaterialExpressionInputs(CandidateExpression); ++InputIndex)
 			{
 				FExpressionInput* Input = CandidateExpression->GetInput(InputIndex);
 				if (Input && Input->Expression == Expression &&
