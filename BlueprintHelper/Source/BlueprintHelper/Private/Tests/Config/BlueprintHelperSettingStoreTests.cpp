@@ -298,6 +298,20 @@ bool FBlueprintHelperSettingsGraphWriteLayoutRetiredTest::RunTest(const FString&
 		AutoSearchMaxTotalMs.IsValid() ? AutoSearchMaxTotalMs->AsNumber() : 0.0,
 		120.0);
 
+	TSharedPtr<FJsonValue> AgentTaskWorkerMaxAttempts;
+	TestTrue(
+		TEXT("effective settings expose agent task-worker max attempts"),
+		FBlueprintHelperSettingStore::TryGetEffectiveJsonValue(
+			TEXT("agent.task_worker.max_attempts"),
+			AgentTaskWorkerMaxAttempts,
+			Error));
+	TestTrue(TEXT("agent task-worker max attempts is numeric"),
+		AgentTaskWorkerMaxAttempts.IsValid() && AgentTaskWorkerMaxAttempts->Type == EJson::Number);
+	TestEqual(
+		TEXT("agent task-worker max attempts default"),
+		AgentTaskWorkerMaxAttempts.IsValid() ? AgentTaskWorkerMaxAttempts->AsNumber() : 0.0,
+		3.0);
+
 	const FBlueprintHelperGraphWriteToolClusterPolicy Policy =
 		FBlueprintHelperToolClusterConfigResolver::LoadGraphWritePolicy();
 	TestFalse(TEXT("GraphWrite policy dry_run default remains false"), Policy.bDryRun);
@@ -486,6 +500,7 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 		TEXT("debug.screenshot.default_capture_target"),
 		TEXT("debug.screenshot.filename_prefix"),
 		TEXT("debug.screenshot.graph_max_nodes_per_image"),
+		TEXT("agent.task_worker.max_attempts"),
 		TEXT("ui.layout_rule_editor.canvas_desired_size"),
 		TEXT("ui.review_panel.overlay_filter_current_asset_only")
 	};
@@ -583,6 +598,21 @@ bool FBlueprintHelperSettingsPresenterDeveloperRowsTest::RunTest(const FString& 
 			const FString RuntimeConsumedTestName = FString::Printf(TEXT("setting row is marked consumed: %s"), *ExpectedPath);
 			TestTrue(*RuntimeConsumedTestName, Row->bRuntimeConsumed);
 		}
+	}
+
+	const FBlueprintHelperSettingRowViewModel* TaskWorkerMaxAttemptsRow = Rows.FindByPredicate([](const FBlueprintHelperSettingRowViewModel& Candidate)
+	{
+		return Candidate.DotPath == TEXT("agent.task_worker.max_attempts");
+	});
+	TestTrue(TEXT("task-worker max attempts row exists"), TaskWorkerMaxAttemptsRow != nullptr);
+	if (TaskWorkerMaxAttemptsRow)
+	{
+		TestTrue(TEXT("task-worker max attempts row is user editable"), !TaskWorkerMaxAttemptsRow->bDeveloperOnly);
+		TestEqual(TEXT("task-worker max attempts row type"), TaskWorkerMaxAttemptsRow->ValueType, EBlueprintHelperSettingValueType::Integer);
+		TestTrue(TEXT("task-worker max attempts row has min"), TaskWorkerMaxAttemptsRow->bHasMinValue);
+		TestTrue(TEXT("task-worker max attempts row has max"), TaskWorkerMaxAttemptsRow->bHasMaxValue);
+		TestEqual(TEXT("task-worker max attempts row min"), TaskWorkerMaxAttemptsRow->MinValue, 1.0);
+		TestEqual(TEXT("task-worker max attempts row max"), TaskWorkerMaxAttemptsRow->MaxValue, 10.0);
 	}
 
 	return true;

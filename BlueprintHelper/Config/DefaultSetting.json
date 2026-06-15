@@ -12,6 +12,11 @@
     "write_approval_required": true,
     "approval_bypass": false
   },
+  "agent": {
+    "task_worker": {
+      "max_attempts": 3
+    }
+  },
   "cli": {
     "artifacts": {
       "default_output_dir": "Saved/BlueprintHelper/Cli"

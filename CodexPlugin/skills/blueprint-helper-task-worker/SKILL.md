@@ -42,7 +42,7 @@ prewrite_gates:
     approved_scope:
       - "<asset path>"
 retry_budget:
-  max_attempts: 3
+  max_attempts: "<optional override; default comes from agent.task_worker.max_attempts>"
 readback_required: true
 stop_conditions:
   - "preview_blocked"
@@ -55,6 +55,8 @@ return_format: "compact Chinese YAML with status, attempts, evidence, blockers, 
 ```
 
 TaskWorker must discover concrete family, write mode, cluster, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands inside `family_scope` and `allowed_operation_intent`. Use the current CLI discovery surface, including `bh tools templates families` and `bh tools templates compose`, when building TaskSpec files. Run grouped task commands with `bh task preview --file <task-spec.json>` and `bh task execute --file <task-spec.json>`. MainAgent does not supply exact catalog selections.
+
+TaskWorker retry budget comes from `agent.task_worker.max_attempts` in BlueprintHelper setting unless the package explicitly includes `retry_budget.max_attempts` for a narrower task-specific override.
 
 TaskWorker must not request write session or run source-control checkout/status gates. If execute fails with `write_session_missing`, `checkout_required`, `not_editable`, or equivalent stale gate errors, stop with `prewrite_gate_stale_or_insufficient`.
 

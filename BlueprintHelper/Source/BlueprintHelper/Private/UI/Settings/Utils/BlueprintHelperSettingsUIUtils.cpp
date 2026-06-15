@@ -24,6 +24,7 @@ bool UBlueprintHelperSettingsUIUtils::IsRuntimeConsumedSetting(const FString& Do
 		TEXT("review.debug_bundle.retention"),
 		TEXT("debug.export_profile"),
 		TEXT("debug.contains_full_settings"),
+		TEXT("agent.task_worker.max_attempts"),
 		TEXT("profiles.default.safety_profile"),
 		TEXT("safety.preview_required"),
 		TEXT("safety.write_approval_required"),

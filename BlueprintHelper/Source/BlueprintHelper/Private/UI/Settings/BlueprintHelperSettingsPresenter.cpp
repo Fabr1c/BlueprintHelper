@@ -57,6 +57,7 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 	const FText ReviewDebugCategory = LOCTEXT("SettingsCategoryReviewDebug", "Review 调试");
 	const FText DebugExportCategory = LOCTEXT("SettingsCategoryDebugExport", "调试导出");
 	const FText ToolOutputCategory = LOCTEXT("SettingsCategoryToolOutput", "工具输出");
+	const FText AgentWorkflowCategory = LOCTEXT("SettingsCategoryAgentWorkflow", "Agent Workflow");
 	const FText DeveloperDryRunCategory = LOCTEXT("SettingsCategoryDeveloperDryRun", "DryRun");
 	const FText DeveloperRuntimeCategory = LOCTEXT("SettingsCategoryDeveloperRuntime", "开发者 Runtime");
 	const FText DeveloperTaskRuntimeCategory = LOCTEXT("SettingsCategoryDeveloperTaskRuntime", "开发者 TaskRuntime");
@@ -225,6 +226,13 @@ void FBlueprintHelperSettingsPresenter::ReloadRows()
 		ToolOutputCategory,
 		LOCTEXT("CliArtifactDefaultOutputDirLabel", "CLI Artifact 默认目录"),
 		LOCTEXT("CliArtifactDefaultOutputDirHint", "控制 CLI 未传 --artifact-dir 且未设置 BPH_CLI_ARTIFACT_DIR 时写入 result.json 的默认目录；相对路径基于项目根目录。")));
+	Rows.Add(UBlueprintHelperSettingsUIUtils::MakeIntegerRow(
+		TEXT("agent.task_worker.max_attempts"),
+		AgentWorkflowCategory,
+		LOCTEXT("AgentTaskWorkerMaxAttemptsLabel", "TaskWorker max attempts"),
+		LOCTEXT("AgentTaskWorkerMaxAttemptsHint", "Controls the preview/execute retry budget used by BlueprintHelper task-worker and workflow hooks."),
+		1,
+		10));
 
 	if (UBlueprintHelperSettingsUIUtils::ShouldShowDeveloperSettings())
 	{

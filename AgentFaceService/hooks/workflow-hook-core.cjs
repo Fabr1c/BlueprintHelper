@@ -2,7 +2,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const LEDGER_SCHEMA = 'BlueprintHelper.HookLedger.v1';
-const MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_ATTEMPTS = 3;
+const MIN_MAX_ATTEMPTS = 1;
+const MAX_MAX_ATTEMPTS = 10;
 
 function classifyCommand(command) {
   const tokens = tokenize(command);
@@ -207,9 +209,10 @@ async function runPreToolUse(input) {
   }
 
   if (attemptsExceeded(ledger)) {
+    const maxAttempts = readMaxAttempts(ledger.retry_budget?.max_attempts);
     return block(
       'retry_budget_exceeded',
-      'BlueprintHelper retry budget exceeded after 3 attempts. Report a capability boundary instead of executing again.',
+      `BlueprintHelper retry budget exceeded after ${maxAttempts} attempts. Report a capability boundary instead of executing again.`,
     );
   }
 
@@ -441,6 +444,7 @@ function createLedger(input) {
     schema: LEDGER_SCHEMA,
     task_package_id: input.taskPackageId,
     project_dir: projectDir,
+    retry_budget: normalizeRetryBudget(input.packageData, projectDir),
     attempts: {
       preview: 0,
       execute: 0,
@@ -527,11 +531,47 @@ async function findLedgerByRunId(ledgerRoot, taskRunId) {
 
 function attemptsExceeded(ledger) {
   const attempts = ledger.attempts ?? {};
-  const maxAttempts = Number(ledger.retry_budget?.max_attempts) || MAX_ATTEMPTS;
+  const maxAttempts = readMaxAttempts(ledger.retry_budget?.max_attempts);
   return Math.max(
     Number(attempts.preview) || 0,
     Number(attempts.execute) || 0,
   ) >= maxAttempts;
+}
+
+function normalizeRetryBudget(packageData, projectDir) {
+  return {
+    max_attempts: readMaxAttempts(
+      packageData?.retry_budget?.max_attempts,
+      packageData?.retryBudget?.maxAttempts,
+      packageData?.package?.retry_budget?.max_attempts,
+      readTaskWorkerMaxAttemptsSetting(projectDir),
+    ),
+  };
+}
+
+function readTaskWorkerMaxAttemptsSetting(projectDir) {
+  if (!projectDir) {
+    return undefined;
+  }
+  const projectSetting = readJsonIfPresentSync(path.join(projectDir, '.blueprinthelper', 'setting.json'));
+  const userSetting = readJsonIfPresentSync(path.join(projectDir, 'Saved', 'BlueprintHelper', 'setting.user.json'));
+  return readFirstDefined(
+    readJsonPath(userSetting, ['agent', 'task_worker', 'max_attempts']),
+    readJsonPath(projectSetting, ['agent', 'task_worker', 'max_attempts']),
+  );
+}
+
+function readMaxAttempts(...values) {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      const normalized = Math.floor(parsed);
+      if (normalized >= MIN_MAX_ATTEMPTS && normalized <= MAX_MAX_ATTEMPTS) {
+        return normalized;
+      }
+    }
+  }
+  return DEFAULT_MAX_ATTEMPTS;
 }
 
 function parseToolResult(toolResult) {
@@ -588,6 +628,17 @@ async function readJsonIfPresent(filePath) {
       return undefined;
     }
     throw error;
+  }
+}
+
+function readJsonIfPresentSync(filePath) {
+  try {
+    return parseJson(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, ''));
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return undefined;
+    }
+    return undefined;
   }
 }
 
@@ -654,6 +705,26 @@ function readFirstString(...values) {
     }
   }
   return undefined;
+}
+
+function readFirstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readJsonPath(value, segments) {
+  let cursor = value;
+  for (const segment of segments) {
+    if (!isRecord(cursor)) {
+      return undefined;
+    }
+    cursor = cursor[segment];
+  }
+  return cursor;
 }
 
 function isRecord(value) {

@@ -94,6 +94,9 @@ test('TaskWorker skill removes MainAgent-provided source context and template di
       assert.doesNotMatch(taskWorkerText, /cluster_scope/);
       assert.doesNotMatch(taskWorkerText, /template_discovery/);
       assert.doesNotMatch(taskWorkerText, /allowed_cli/);
+      assert.match(taskWorkerText, /agent\.task_worker\.max_attempts/);
+      assert.doesNotMatch(taskWorkerText, /max_attempts:\s*3/);
+      assert.doesNotMatch(taskWorkerText, /max 3 attempts|Stop after 3 attempts/i);
     });
   }
 });

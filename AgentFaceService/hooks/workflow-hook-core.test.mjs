@@ -47,6 +47,12 @@ async function writeTaskSpec(projectDir, value = {}) {
   return taskSpecPath;
 }
 
+async function writeProjectSetting(projectDir, value) {
+  const settingPath = path.join(projectDir, '.blueprinthelper', 'setting.json');
+  await writeFile(settingPath, JSON.stringify(value, null, 2), 'utf8');
+  return settingPath;
+}
+
 test('classifyCommand recognizes BlueprintHelper task/read commands and ignores unrelated commands', () => {
   assert.deepEqual(classifyCommand('bh task preview --file task-spec.json'), {
     kind: 'preview',
@@ -221,6 +227,130 @@ test('PostToolUse records preview, blocks retry budget after 3 attempts, and rem
       taskPackageId: 'pkg-exec',
     });
     assert.equal(ledgerAfterResult.last_result.task_run_id, 'run-123');
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('PostToolUse applies task-worker max attempts from project setting to hook retry budget', async () => {
+  const projectDir = await makeProject();
+  try {
+    await writeProjectSetting(projectDir, {
+      agent: {
+        task_worker: {
+          max_attempts: 2,
+        },
+      },
+    });
+    const taskSpecPath = await writeTaskSpec(projectDir, { task_package_id: 'pkg-setting-budget' });
+
+    for (let index = 0; index < 2; index += 1) {
+      const result = await runWorkflowHook({
+        event: 'PostToolUse',
+        command: `bh task preview --file "${taskSpecPath}"`,
+        cwd: projectDir,
+        toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      });
+      assert.equal(result.action, 'allow');
+    }
+
+    const ledger = await readLedger({
+      ledgerRoot: path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger'),
+      taskPackageId: 'pkg-setting-budget',
+    });
+    assert.equal(ledger.retry_budget.max_attempts, 2);
+
+    assert.equal(
+      (
+        await runWorkflowHook({
+          event: 'PreToolUse',
+          command: `bh task execute --file "${taskSpecPath}" --preview-token tok`,
+          cwd: projectDir,
+        })
+      ).reason,
+      'retry_budget_exceeded',
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('PostToolUse resolves retry budget priority from package, user setting, project setting, then fallback', async () => {
+  const projectDir = await makeProject();
+  try {
+    await writeProjectSetting(projectDir, {
+      agent: {
+        task_worker: {
+          max_attempts: 2,
+        },
+      },
+    });
+    await mkdir(path.join(projectDir, 'Saved', 'BlueprintHelper'), { recursive: true });
+    await writeFile(
+      path.join(projectDir, 'Saved', 'BlueprintHelper', 'setting.user.json'),
+      JSON.stringify({ agent: { task_worker: { max_attempts: 4 } } }, null, 2),
+      'utf8',
+    );
+
+    const packageOverrideSpec = await writeTaskSpec(projectDir, {
+      task_package_id: 'pkg-package-budget',
+      retry_budget: { max_attempts: 5 },
+    });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${packageOverrideSpec}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+    });
+    assert.equal(
+      (
+        await readLedger({
+          ledgerRoot: path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger'),
+          taskPackageId: 'pkg-package-budget',
+        })
+      ).retry_budget.max_attempts,
+      5,
+    );
+
+    const userOverrideSpec = await writeTaskSpec(projectDir, { task_package_id: 'pkg-user-budget' });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${userOverrideSpec}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+    });
+    assert.equal(
+      (
+        await readLedger({
+          ledgerRoot: path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger'),
+          taskPackageId: 'pkg-user-budget',
+        })
+      ).retry_budget.max_attempts,
+      4,
+    );
+
+    await writeFile(
+      path.join(projectDir, 'Saved', 'BlueprintHelper', 'setting.user.json'),
+      JSON.stringify({ agent: { task_worker: { max_attempts: 0 } } }, null, 2),
+      'utf8',
+    );
+    await writeProjectSetting(projectDir, { agent: { task_worker: { max_attempts: 11 } } });
+    const fallbackSpec = await writeTaskSpec(projectDir, { task_package_id: 'pkg-fallback-budget' });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${fallbackSpec}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+    });
+    assert.equal(
+      (
+        await readLedger({
+          ledgerRoot: path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger'),
+          taskPackageId: 'pkg-fallback-budget',
+        })
+      ).retry_budget.max_attempts,
+      3,
+    );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
