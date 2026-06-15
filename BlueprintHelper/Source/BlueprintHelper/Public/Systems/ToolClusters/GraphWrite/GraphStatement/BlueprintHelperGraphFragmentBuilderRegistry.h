@@ -19,7 +19,7 @@ public:
 		FBlueprintHelperNodeFragment& OutFragment,
 		FString& OutError,
 		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr,
-		const TMap<FString, FBlueprintHelperCallFunctionPinType>* SemanticArgumentPinTypes = nullptr);
+		const FBlueprintHelperGraphSemanticPinBindings* SemanticPinBindings = nullptr);
 
 	static bool TryBuildExpression(
 		UEdGraph* TargetGraph,
@@ -29,4 +29,3 @@ public:
 		FString& OutError,
 		TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions = nullptr);
 };
-

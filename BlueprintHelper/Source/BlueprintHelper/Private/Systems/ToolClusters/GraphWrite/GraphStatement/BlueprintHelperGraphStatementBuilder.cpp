@@ -70,6 +70,12 @@ static FString MakeCallFunctionResolveQuery(const FBlueprintHelperGraphFragmentB
 	return StableId.IsEmpty() ? Request.Query : StableId;
 }
 
+static FString MakeExplicitTargetObjectName(const FBlueprintHelperGraphFragmentBuildRequest& Request)
+{
+	const FString ReceiverName = Request.TargetObjectName.TrimStartAndEnd();
+	return ReceiverName.IsEmpty() ? Request.Target.TrimStartAndEnd() : ReceiverName;
+}
+
 static FString MakeActionContextStatementId(
 	const FString& PreferredStatementId,
 	const EBlueprintHelperActionSemanticKind SemanticKind,
@@ -180,8 +186,18 @@ static void ApplyCallActionRequestOverrides(
 	InOutRequest.Semantic.CategoryPriority = BoundRequest.CategoryPriority;
 	InOutRequest.Semantic.ArgumentTypes = BoundRequest.ArgumentTypes;
 	InOutRequest.Semantic.ArgumentPinTypes = BoundRequest.ArgumentPinTypes;
+	InOutRequest.Semantic.ArgumentPinTypes.Append(BoundRequest.SemanticPinBindings.ArgumentPinTypes);
 	InOutRequest.Semantic.TargetObjectType = BoundRequest.TargetObjectType;
 	InOutRequest.Semantic.TargetObjectPinType = BoundRequest.TargetObjectPinType;
+	if (BoundRequest.SemanticPinBindings.HasTargetObjectPinType())
+	{
+		InOutRequest.Semantic.TargetObjectPinType = BoundRequest.SemanticPinBindings.TargetObjectPinType;
+		if (InOutRequest.Semantic.TargetObjectType.TrimStartAndEnd().IsEmpty()
+			&& !InOutRequest.Semantic.TargetObjectPinType.ObjectPath.TrimStartAndEnd().IsEmpty())
+		{
+			InOutRequest.Semantic.TargetObjectType = InOutRequest.Semantic.TargetObjectPinType.ObjectPath.TrimStartAndEnd();
+		}
+	}
 	InOutRequest.Semantic.ExpectedReturnType = BoundRequest.ExpectedReturnType;
 	InOutRequest.Semantic.ExpectedReturnPinType = BoundRequest.ExpectedReturnPinType;
 	InOutRequest.Semantic.ArgumentNames = ArgumentNames;
@@ -435,6 +451,19 @@ static void ApplyContainerActionRequestOverrides(
 	if (!BoundRequest.Target.TrimStartAndEnd().IsEmpty())
 	{
 		InOutRequest.Semantic.TargetPath = BoundRequest.Target.TrimStartAndEnd();
+	}
+	const FBlueprintHelperCallFunctionPinType TargetPinType = BoundRequest.SemanticPinBindings.HasTargetObjectPinType()
+		? BoundRequest.SemanticPinBindings.TargetObjectPinType
+		: BoundRequest.TargetObjectPinType;
+	if (TargetPinType.IsValid())
+	{
+		InOutRequest.Semantic.TargetObjectPinType = TargetPinType;
+		InOutRequest.Semantic.ArgumentPinTypes.FindOrAdd(TEXT("target"), TargetPinType);
+		if (InOutRequest.Semantic.TargetObjectType.TrimStartAndEnd().IsEmpty()
+			&& !TargetPinType.ObjectPath.TrimStartAndEnd().IsEmpty())
+		{
+			InOutRequest.Semantic.TargetObjectType = TargetPinType.ObjectPath.TrimStartAndEnd();
+		}
 	}
 
 	const FString ElementType = FirstNonEmptyContainerType(BoundRequest.ElementType, BoundRequest.PinType);
@@ -731,6 +760,11 @@ static void ApplyContainerActionResolvedPinTypes(
 static void ApplyContainerActionRoleBindingDefaults(
 	FBlueprintHelperGraphFragmentBuildRequest& InOutRequest)
 {
+	if (!InOutRequest.ArgumentPinTypes.Contains(TEXT("target"))
+		&& InOutRequest.SemanticPinBindings.HasTargetObjectPinType())
+	{
+		InOutRequest.ArgumentPinTypes.Add(TEXT("target"), InOutRequest.SemanticPinBindings.TargetObjectPinType);
+	}
 	const FBlueprintHelperContainerActionSpec* Spec =
 		FBlueprintHelperContainerActionVocabulary::Find(InOutRequest.ContainerKind, InOutRequest.ContainerOperation);
 	if (!Spec)
@@ -1421,7 +1455,7 @@ bool FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 	FBlueprintHelperGraphFragmentBuildRequest BoundRequest = Request;
 	ApplyCallPatternBindings(BoundRequest);
 
-	const FString ExplicitTargetObjectName = BoundRequest.Target.TrimStartAndEnd();
+	const FString ExplicitTargetObjectName = MakeExplicitTargetObjectName(BoundRequest);
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	TArray<FString> ArgumentNames;
@@ -1478,7 +1512,7 @@ bool FBlueprintHelperGraphStatementBuilder::ValidateCallFunctionFragment(
 	FBlueprintHelperGraphFragmentBuildRequest BoundRequest = Request;
 	ApplyCallPatternBindings(BoundRequest);
 
-	const FString ExplicitTargetObjectName = BoundRequest.Target.TrimStartAndEnd();
+	const FString ExplicitTargetObjectName = MakeExplicitTargetObjectName(BoundRequest);
 
 	FBlueprintHelperActionResolutionRequest ActionRequest;
 	TArray<FString> ArgumentNames;
@@ -2021,7 +2055,10 @@ bool FBlueprintHelperGraphStatementBuilder::BuildExpressionFragment(
 		Request.ExpectedReturnType = Expression.Type;
 		if (Expression.TargetObject.IsValid())
 		{
-			Request.Target = Expression.TargetObject->Target;
+			Request.TargetObjectName = !Expression.TargetObject->ResolvedTarget.Member.IsEmpty()
+				? Expression.TargetObject->ResolvedTarget.Member
+				: (!Expression.TargetObject->Target.IsEmpty() ? Expression.TargetObject->Target : Expression.TargetObject->Name);
+			Request.TargetObjectType = Expression.TargetObject->Type;
 		}
 		for (const TPair<FString, TSharedPtr<FBlueprintHelperGraphExpressionIR>>& ArgPair : Expression.Args)
 		{

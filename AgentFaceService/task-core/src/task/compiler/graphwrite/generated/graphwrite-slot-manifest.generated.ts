@@ -342,6 +342,15 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "input_slots": [
       {
         "index": 0,
+        "name": "target_object",
+        "path": "target_object",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "object"
+      },
+      {
+        "index": 1,
         "name": "args",
         "path": "args.__REQUIRED_ARG_0_NAME__",
         "accepts": [
@@ -350,7 +359,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 1,
+        "index": 2,
         "name": "args",
         "path": "args.__REQUIRED_ARG_1_NAME__",
         "accepts": [
@@ -359,7 +368,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 2,
+        "index": 3,
         "name": "args",
         "path": "args.__REQUIRED_ARG_2_NAME__",
         "accepts": [
@@ -415,6 +424,15 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "input_slots": [
       {
         "index": 0,
+        "name": "target_object",
+        "path": "target_object",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "object"
+      },
+      {
+        "index": 1,
         "name": "args",
         "path": "args.__REQUIRED_ARG_0_NAME__",
         "accepts": [
@@ -423,7 +441,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 1,
+        "index": 2,
         "name": "args",
         "path": "args.__REQUIRED_ARG_1_NAME__",
         "accepts": [
@@ -432,7 +450,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 2,
+        "index": 3,
         "name": "args",
         "path": "args.__REQUIRED_ARG_2_NAME__",
         "accepts": [
@@ -486,6 +504,15 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
     "input_slots": [
       {
         "index": 0,
+        "name": "target_object",
+        "path": "target_object",
+        "accepts": [
+          "expression"
+        ],
+        "type_hint": "object"
+      },
+      {
+        "index": 1,
         "name": "args",
         "path": "args.__REQUIRED_ARG_0_NAME__",
         "accepts": [
@@ -494,7 +521,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 1,
+        "index": 2,
         "name": "args",
         "path": "args.__REQUIRED_ARG_1_NAME__",
         "accepts": [
@@ -503,7 +530,7 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
         "type_hint": "*"
       },
       {
-        "index": 2,
+        "index": 3,
         "name": "args",
         "path": "args.__REQUIRED_ARG_2_NAME__",
         "accepts": [

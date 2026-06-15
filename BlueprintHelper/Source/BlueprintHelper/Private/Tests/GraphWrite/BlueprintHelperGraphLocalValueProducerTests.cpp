@@ -7,8 +7,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDag.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphFragmentDagBuilder.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
+#include "Systems/ToolClusters/GraphWrite/Pipeline/Utils/GraphWritePipelineUtils.h"
 
-namespace
+namespace BlueprintHelperGraphLocalValueProducerTestLocal
 {
 static bool BuildLogicSpecForGraphLocalValueProducer(
 	FAutomationTestBase& Test,
@@ -81,6 +82,10 @@ static FString VoidCallGraphLocalValueSpec()
 	})JSON");
 }
 }
+
+using BlueprintHelperGraphLocalValueProducerTestLocal::BuildLogicSpecForGraphLocalValueProducer;
+using BlueprintHelperGraphLocalValueProducerTestLocal::TimerHandleCallGraphLocalValueSpec;
+using BlueprintHelperGraphLocalValueProducerTestLocal::VoidCallGraphLocalValueSpec;
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphLocalValueProducerSemanticIRTest,
@@ -273,6 +278,43 @@ bool FBlueprintHelperGraphLocalValueProducerFieldAccessKeepsGetterFragmentTest::
 		});
 
 	TestTrue(TEXT("create_widget result feeds field_access getter self pin"), bWidgetFeedsGetterSelf);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphLocalValueProducerSemanticPinBindingsTest,
+	"BlueprintHelper.GraphWrite.GraphLocalValueProducer.SemanticPinBindings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphLocalValueProducerSemanticPinBindingsTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperGraphFragmentDag Dag;
+
+	FBlueprintHelperGraphFragmentDataEdge ReceiverEdge;
+	ReceiverEdge.From.FragmentId = TEXT("expr_stamina_bar");
+	ReceiverEdge.From.PinName = TEXT("value");
+	ReceiverEdge.From.PinType.Category = TEXT("/Script/UMG.ProgressBar");
+	ReceiverEdge.To.FragmentId = TEXT("stmt_set_percent");
+	ReceiverEdge.To.PinName = TEXT("target_object");
+	Dag.DataEdges.Add(ReceiverEdge);
+
+	FBlueprintHelperGraphFragmentDataEdge ArgumentEdge;
+	ArgumentEdge.From.FragmentId = TEXT("expr_percent");
+	ArgumentEdge.From.PinName = TEXT("value");
+	ArgumentEdge.From.PinType.Category = TEXT("float");
+	ArgumentEdge.To.FragmentId = TEXT("stmt_set_percent");
+	ArgumentEdge.To.PinName = TEXT("InPercent");
+	Dag.DataEdges.Add(ArgumentEdge);
+
+	const FBlueprintHelperGraphSemanticPinBindings Bindings =
+		UGraphWritePipelineUtils::CollectSemanticPinBindings(Dag, TArray<FBlueprintHelperNodeFragment>(), TEXT("stmt_set_percent"));
+
+	TestTrue(TEXT("receiver target_object pin type collected separately"), Bindings.HasTargetObjectPinType());
+	TestEqual(TEXT("receiver target_object pin category normalized"), Bindings.TargetObjectPinType.Category, FString(TEXT("object")));
+	TestEqual(TEXT("receiver target_object pin object path"), Bindings.TargetObjectPinType.ObjectPath, FString(TEXT("/Script/UMG.ProgressBar")));
+	TestFalse(TEXT("target_object is not a regular argument pin"), Bindings.ArgumentPinTypes.Contains(TEXT("target_object")));
+	TestTrue(TEXT("regular argument pin is preserved"), Bindings.ArgumentPinTypes.Contains(TEXT("InPercent")));
+	TestEqual(TEXT("regular argument pin category"), Bindings.ArgumentPinTypes.FindRef(TEXT("InPercent")).Category, FString(TEXT("float")));
 	return true;
 }
 

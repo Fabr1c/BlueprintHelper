@@ -2,5 +2,9 @@
   "kind": "call",
   "target": "__REQUIRED_CALLABLE_SEARCH_TEXT__",
   "resolution_policy": "auto_search",
+  "target_object": {
+    "kind": "get",
+    "target": "__OPTIONAL_RECEIVER_SYMBOL_OR_VARIABLE__"
+  },
   "args": {}
 }

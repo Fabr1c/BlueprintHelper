@@ -1,5 +1,9 @@
 {
   "kind": "call",
   "target": "__REQUIRED_FUNCTION_OR_ACTION_TARGET__",
+  "target_object": {
+    "kind": "get",
+    "target": "__OPTIONAL_RECEIVER_SYMBOL_OR_VARIABLE__"
+  },
   "args": {}
 }

@@ -32,7 +32,7 @@ test('composeSlotExpressionTemplate embeds let literal expression by descriptor 
 
 test('composeSlotExpressionTemplate writes dynamic call args by positional placeholders', () => {
   const result = composeSlotExpressionTemplate({
-    expression: 'generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)',
+    expression: 'generic_ops.call.direct(0,0,0,generic_ops.expression.get_symbol_or_variable)',
     writeMode: 'graph.append',
     quickAccessCatalog,
   });
@@ -44,6 +44,24 @@ test('composeSlotExpressionTemplate writes dynamic call args by positional place
     kind: 'get',
     target: '__REQUIRED_SYMBOL_OR_VARIABLE_NAME__',
   });
+});
+
+test('composeSlotExpressionTemplate writes call receiver by descriptor path', () => {
+  const result = composeSlotExpressionTemplate({
+    expression: 'generic_ops.call.direct(generic_ops.expression.get_symbol_or_variable)',
+    writeMode: 'graph.append',
+    quickAccessCatalog,
+  });
+
+  assert.equal(result.ok, true);
+  const value = result.ok
+    ? result.value as { target_object?: unknown; args: Record<string, unknown> }
+    : { args: {} };
+  assert.deepEqual(value.target_object, {
+    kind: 'get',
+    target: '__REQUIRED_SYMBOL_OR_VARIABLE_NAME__',
+  });
+  assert.deepEqual(Object.keys(value.args), []);
 });
 
 test('composeSlotExpressionTemplate embeds nested expression children', () => {

@@ -79,7 +79,7 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   assert.equal(directCall?.write_mode, 'graph.append');
   assert.equal(directCall?.source_slot_id, 'graph.statement.call.direct');
   assert.equal(directCall?.slot_type, 'statement');
-  assert.deepEqual(directCall?.arg_slots, ['args(*)', 'args(*)', 'args(*)']);
+  assert.deepEqual(directCall?.arg_slots, ['target_object(object)', 'args(*)', 'args(*)', 'args(*)']);
   assert.deepEqual(directCall?.insert_paths, ['behavior.entries[].body.statements[]']);
 });
 
@@ -395,7 +395,7 @@ test('TaskSpec template composer writes skipped dynamic args by descriptor posit
   const result = composeTaskSpecTemplate({
     family: 'graph_write',
     writeMode: 'graph.append',
-    templateIds: ['generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)'],
+    templateIds: ['generic_ops.call.direct(0,0,0,generic_ops.expression.get_symbol_or_variable)'],
     outputPath,
   });
 
@@ -434,7 +434,7 @@ test('TaskSpec template composer nests expression quick-access under call args',
   const result = composeTaskSpecTemplate({
     family: 'graph_write',
     writeMode: 'graph.append',
-    templateIds: ['generic_ops.call.direct(0,0,generic_ops.expression.get_symbol_or_variable)'],
+    templateIds: ['generic_ops.call.direct(0,0,0,generic_ops.expression.get_symbol_or_variable)'],
     outputPath,
   });
 

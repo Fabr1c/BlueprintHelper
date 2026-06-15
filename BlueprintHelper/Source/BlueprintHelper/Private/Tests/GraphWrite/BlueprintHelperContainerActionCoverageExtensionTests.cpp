@@ -21,7 +21,7 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/Package.h"
 
-namespace
+namespace BlueprintHelperContainerActionCoverageExtensionTestsLocal
 {
 static const TMap<FString, TArray<FString>>& ExpectedOperationsByKind()
 {
@@ -298,7 +298,19 @@ static bool RunFixture(
 	}
 	return true;
 }
-} // namespace
+} // namespace BlueprintHelperContainerActionCoverageExtensionTestsLocal
+
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::AddVariable;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::ExpectedOperationsByKind;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::FindEventGraph;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::HasParamNamed;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::MakeBlueprint;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::MakeBlueprintPinType;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::MakePinType;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::MakeTerminalType;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::Normalize;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::ResolveStableUFunctionPath;
+using BlueprintHelperContainerActionCoverageExtensionTestsLocal::RunFixture;
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphWriteContainerActionCoverageVocabularyExtensionTest,
@@ -431,6 +443,35 @@ bool FBlueprintHelperGraphWriteContainerActionCoverageFunctionOwnerTest::RunTest
 	{
 		TestTrue(TEXT("resolved via selected function"), Result.SelectedFunction.IsValid());
 		TestEqual(TEXT("resolved function matches stable path"), Result.SelectedFunction.Get(), ResolveStableUFunctionPath(Spec->StableUFunctionPath));
+	}
+
+	{
+		FBlueprintHelperActionResolutionRequest ReceiverPinRequest;
+		ReceiverPinRequest.ClusterKind = EBlueprintHelperSpawnerClusterKind::FunctionAction;
+		ReceiverPinRequest.StatementId = TEXT("array-clear-receiver-pin-type");
+		ReceiverPinRequest.Semantic.Kind = EBlueprintHelperActionSemanticKind::ContainerAction;
+		ReceiverPinRequest.Semantic.SemanticFamily = EBlueprintHelperActionSemanticFamily::Callable;
+		ReceiverPinRequest.Semantic.ContainerKind = TEXT("array");
+		ReceiverPinRequest.Semantic.ContainerOperation = TEXT("clear");
+		ReceiverPinRequest.Semantic.ArgumentNames = { TEXT("target") };
+		ReceiverPinRequest.Semantic.TargetObjectPinType = MakePinType(TEXT("int"), TEXT("array"));
+
+		const FBlueprintHelperActionResolutionResult ReceiverPinResult =
+			FBlueprintHelperContainerActionResolver::Resolve(ReceiverPinRequest);
+		TestNotEqual(
+			TEXT("receiver pin type counts as target container type evidence"),
+			ReceiverPinResult.ErrorCode,
+			FString(TEXT("container_action_type_evidence_missing")));
+		if (ReceiverPinResult.IsResolved())
+		{
+			const FBlueprintHelperContainerActionSpec* ClearSpec =
+				FBlueprintHelperContainerActionVocabulary::Find(TEXT("array"), TEXT("clear"));
+			TestNotNull(TEXT("array.clear spec"), ClearSpec);
+			if (ClearSpec)
+			{
+				TestEqual(TEXT("receiver pin resolved function matches stable path"), ReceiverPinResult.SelectedFunction.Get(), ResolveStableUFunctionPath(ClearSpec->StableUFunctionPath));
+			}
+		}
 	}
 
 	return true;

@@ -20,7 +20,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 
-namespace
+namespace BlueprintHelperGraphWriteActionContextUtilsLocal
 {
 static FString ReadFieldOwnerClassEvidence(const TMap<FString, FString>& Evidence)
 {
@@ -48,6 +48,9 @@ static void AddFieldOwnerClassCapabilityFact(
 	}
 }
 }
+
+using BlueprintHelperGraphWriteActionContextUtilsLocal::AddFieldOwnerClassCapabilityFact;
+using BlueprintHelperGraphWriteActionContextUtilsLocal::ReadFieldOwnerClassEvidence;
 
 // ============================================================================
 // From BlueprintHelperActionContextDemandCollector (original named namespace)
@@ -1479,6 +1482,42 @@ const FBlueprintHelperActionContextFieldSnapshot* UGraphWriteActionContextUtils:
 		});
 }
 
+static void ApplyFieldValueProjection(
+	FBlueprintHelperResolvedActionContext& Context,
+	const FBlueprintHelperActionContextDemand& Demand,
+	const FBlueprintHelperActionContextFieldSnapshot& Field)
+{
+	const FString FieldOperation = Demand.FieldOperation.TrimStartAndEnd();
+	if (!FieldOperation.IsEmpty() && !FieldOperation.Equals(TEXT("get"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	const FBlueprintHelperCallFunctionPinType FieldValuePinType =
+		UGraphWriteActionContextUtils::MakeFieldPinType(Field);
+	if (!FieldValuePinType.IsValid())
+	{
+		return;
+	}
+
+	Context.Semantic.ExpectedReturnPinType = FieldValuePinType;
+	if (!FieldValuePinType.ObjectPath.TrimStartAndEnd().IsEmpty())
+	{
+		Context.Semantic.ExpectedReturnType = FieldValuePinType.ObjectPath.TrimStartAndEnd();
+	}
+
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.value_pin_type"), FieldValuePinType.Category);
+	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.value_pin_object_path"), FieldValuePinType.ObjectPath);
+	if (!FieldValuePinType.Category.TrimStartAndEnd().IsEmpty())
+	{
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.value_pin_type")) = FieldValuePinType.Category.TrimStartAndEnd();
+	}
+	if (!FieldValuePinType.ObjectPath.TrimStartAndEnd().IsEmpty())
+	{
+		Context.Semantic.CapabilityFacts.FindOrAdd(TEXT("field.value_pin_object_path")) = FieldValuePinType.ObjectPath.TrimStartAndEnd();
+	}
+}
+
 void UGraphWriteActionContextUtils::ProjectFieldSnapshot(
 	FBlueprintHelperResolvedActionContext& Context,
 	const FBlueprintHelperActionContextDemand& Demand,
@@ -1500,6 +1539,7 @@ void UGraphWriteActionContextUtils::ProjectFieldSnapshot(
 	{
 		UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, FactPair.Key, FactPair.Value);
 	}
+	ApplyFieldValueProjection(Context, Demand, Field);
 	UGraphWriteActionContextUtils::AddEvidenceIfPresent(Context, TEXT("field.capability_id"), Demand.CapabilityId);
 }
 

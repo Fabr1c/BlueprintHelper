@@ -16,7 +16,7 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
 	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions,
-	const TMap<FString, FBlueprintHelperCallFunctionPinType>* SemanticArgumentPinTypes)
+	const FBlueprintHelperGraphSemanticPinBindings* SemanticPinBindings)
 {
 	const FString StatementId = UGraphWriteGraphStatementUtils::GetStatementId(Statement);
 	const FString StatementContextId = UGraphWriteGraphStatementUtils::GetStatementContextId(Statement);
@@ -29,9 +29,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.Query = !Statement.Target.IsEmpty() ? Statement.Target : Statement.Name;
 		Request.ResolvedStableId = Statement.ResolvedCallFunctionStableId;
 		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
-		if (SemanticArgumentPinTypes)
+		if (SemanticPinBindings)
 		{
-			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+			Request.SemanticPinBindings = *SemanticPinBindings;
 		}
 		return FBlueprintHelperGraphStatementBuilder::BuildCallFunctionFragment(
 			TargetGraph,
@@ -54,9 +54,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
 		Request.TypeName = Statement.ClassPath;
 		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
-		if (SemanticArgumentPinTypes)
+		if (SemanticPinBindings)
 		{
-			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+			Request.SemanticPinBindings = *SemanticPinBindings;
 		}
 		return FBlueprintHelperGraphStatementBuilder::BuildCreateFragment(
 			TargetGraph,
@@ -97,9 +97,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 		Request.Target = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.Target;
 		Request.TypeName = !Statement.ClassPath.IsEmpty() ? Statement.ClassPath : Statement.ResolvedTarget.Type;
 		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
-		if (SemanticArgumentPinTypes)
+		if (SemanticPinBindings)
 		{
-			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+			Request.SemanticPinBindings = *SemanticPinBindings;
 		}
 		return FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 			TargetGraph,
@@ -126,9 +126,9 @@ bool FBlueprintHelperGraphFragmentBuilderRegistry::TryBuildStatement(
 			? Statement.ValueType
 			: (!Statement.ElementType.IsEmpty() ? Statement.ElementType : Statement.ResolvedTarget.Type);
 		UGraphWriteGraphStatementUtils::FillLiteralArgsAsDefaultsAndTypes(Statement.Args, Request.DefaultValues, Request.ArgumentTypes);
-		if (SemanticArgumentPinTypes)
+		if (SemanticPinBindings)
 		{
-			Request.ArgumentPinTypes.Append(*SemanticArgumentPinTypes);
+			Request.SemanticPinBindings = *SemanticPinBindings;
 		}
 		return FBlueprintHelperGraphStatementBuilder::BuildActionProviderFragment(
 			TargetGraph,

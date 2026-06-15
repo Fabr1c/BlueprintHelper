@@ -321,16 +321,18 @@ bool UGraphWriteActionClusterUtils::HasRoleEvidence(const FBlueprintHelperAction
 bool UGraphWriteActionClusterUtils::HasContainerTargetTypeEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic)
 {
     const FString Kind = NormalizeRole(Semantic.ContainerKind);
-    if (Kind == TEXT("map"))
-    {
-        return (!Semantic.KeyType.IsEmpty() && !Semantic.ValueType.IsEmpty())
-            || (Semantic.ContainerKeyPinType.IsValid() && Semantic.ContainerValuePinType.IsValid())
-            || Semantic.ArgumentPinTypes.Contains(TEXT("target"));
-    }
+	if (Kind == TEXT("map"))
+	{
+		return (!Semantic.KeyType.IsEmpty() && !Semantic.ValueType.IsEmpty())
+			|| (Semantic.ContainerKeyPinType.IsValid() && Semantic.ContainerValuePinType.IsValid())
+			|| Semantic.TargetObjectPinType.IsValid()
+			|| Semantic.ArgumentPinTypes.Contains(TEXT("target"));
+	}
 
-    return !Semantic.ElementType.IsEmpty()
-        || Semantic.ContainerElementPinType.IsValid()
-        || Semantic.ArgumentPinTypes.Contains(TEXT("target"));
+	return !Semantic.ElementType.IsEmpty()
+		|| Semantic.ContainerElementPinType.IsValid()
+		|| Semantic.TargetObjectPinType.IsValid()
+		|| Semantic.ArgumentPinTypes.Contains(TEXT("target"));
 }
 
 bool UGraphWriteActionClusterUtils::HasTypedRoleEvidence(const FBlueprintHelperActionSemanticConstraints& Semantic, const FString& Role)
@@ -576,6 +578,7 @@ FBlueprintHelperActionResolutionResult UGraphWriteActionClusterUtils::ResolveInt
     FunctionRequest.Semantic.TargetPath.Reset();
     FunctionRequest.Semantic.TargetObjectType.Reset();
     FunctionRequest.Semantic.TargetObjectPinType = FBlueprintHelperCallFunctionPinType();
+    FunctionRequest.Semantic.ExpectedReturnPinType = FBlueprintHelperCallFunctionPinType();
     FunctionRequest.Semantic.DefaultValues.Add(TEXT("container.result_kind"), ResultKindToString(Spec->ResultKind));
     FunctionRequest.ContextEvidence.Add(TEXT("container_action_operation_id"), Spec->OperationId);
     FunctionRequest.ContextEvidence.Add(TEXT("container_action_kind"), Spec->ContainerKind);

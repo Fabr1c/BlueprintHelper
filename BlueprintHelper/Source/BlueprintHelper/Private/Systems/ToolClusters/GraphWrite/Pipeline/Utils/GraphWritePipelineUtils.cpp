@@ -122,6 +122,17 @@ static TMap<FString, FString> BuildGeneratedFragmentAliasMap(const TArray<FBluep
 	return AliasToFragmentId;
 }
 
+static void NormalizeObjectPathPinType(FBlueprintHelperCallFunctionPinType& InOutPinType)
+{
+	const FString Category = InOutPinType.Category.TrimStartAndEnd();
+	if (InOutPinType.ObjectPath.IsEmpty()
+		&& (Category.StartsWith(TEXT("/")) || Category.StartsWith(TEXT("Class'"))))
+	{
+		InOutPinType.Category = TEXT("object");
+		InOutPinType.ObjectPath = Category;
+	}
+}
+
 static const FBlueprintHelperGraphFragmentRef* FindDagFragment(
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const FString& FragmentId)
@@ -804,12 +815,12 @@ FBlueprintHelperCallFunctionPinType UGraphWritePipelineUtils::ResolveSemanticDat
 	return MakeCallFunctionPinTypeFromDagRef(DataEdge.From.PinType);
 }
 
-TMap<FString, FBlueprintHelperCallFunctionPinType> UGraphWritePipelineUtils::CollectSemanticArgumentPinTypes(
+FBlueprintHelperGraphSemanticPinBindings UGraphWritePipelineUtils::CollectSemanticPinBindings(
 	const FBlueprintHelperGraphFragmentDag& FragmentDag,
 	const TArray<FBlueprintHelperNodeFragment>& GeneratedFragments,
 	const FString& ConsumerFragmentId)
 {
-	TMap<FString, FBlueprintHelperCallFunctionPinType> Result;
+	FBlueprintHelperGraphSemanticPinBindings Result;
 	for (const FBlueprintHelperGraphFragmentDataEdge& DataEdge : FragmentDag.DataEdges)
 	{
 		if (!DataEdge.To.FragmentId.Equals(ConsumerFragmentId, ESearchCase::CaseSensitive))
@@ -822,15 +833,17 @@ TMap<FString, FBlueprintHelperCallFunctionPinType> UGraphWritePipelineUtils::Col
 		{
 			continue;
 		}
-		if (ArgumentName.Equals(TEXT("target_object"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
 
-		const FBlueprintHelperCallFunctionPinType PinType = ResolveSemanticDataEdgeSourcePinType(DataEdge, GeneratedFragments);
+		FBlueprintHelperCallFunctionPinType PinType = ResolveSemanticDataEdgeSourcePinType(DataEdge, GeneratedFragments);
+		BlueprintHelperGraphWritePipelineUtilsLocal::NormalizeObjectPathPinType(PinType);
 		if (PinType.IsValid())
 		{
-			Result.Add(ArgumentName, PinType);
+			if (ArgumentName.Equals(TEXT("target_object"), ESearchCase::IgnoreCase))
+			{
+				Result.TargetObjectPinType = PinType;
+				continue;
+			}
+			Result.ArgumentPinTypes.Add(ArgumentName, PinType);
 		}
 	}
 	return Result;
@@ -843,7 +856,7 @@ bool UGraphWritePipelineUtils::SpawnSemanticStatementFragment(
 	FBlueprintHelperNodeFragment& OutFragment,
 	FString& OutError,
 	TArray<FBlueprintHelperCandidateFunctionGroup>* OutCandidateFunctions,
-	const TMap<FString, FBlueprintHelperCallFunctionPinType>* SemanticArgumentPinTypes)
+	const FBlueprintHelperGraphSemanticPinBindings* SemanticPinBindings)
 {
 	if (!Statement.IsValid())
 	{
@@ -858,7 +871,7 @@ bool UGraphWritePipelineUtils::SpawnSemanticStatementFragment(
 		OutFragment,
 		OutError,
 		OutCandidateFunctions,
-		SemanticArgumentPinTypes);
+		SemanticPinBindings);
 }
 
 FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatementArray(
@@ -948,14 +961,14 @@ FSemanticStatementExecFlow UGraphWritePipelineUtils::BuildSemanticStatement(
 	FString Error;
 	TArray<FBlueprintHelperCandidateFunctionGroup> CandidateFunctions;
 	const FString StatementId = GetSemanticStatementId(*Statement);
-	const bool bConsumesSemanticArgumentPinTypes =
+	const bool bConsumesSemanticPinBindings =
 		Statement->Kind == EBlueprintHelperGraphStatementKind::Call
 		|| Statement->Kind == EBlueprintHelperGraphStatementKind::ContainerAction;
-	const TMap<FString, FBlueprintHelperCallFunctionPinType> SemanticArgumentPinTypes =
-		bConsumesSemanticArgumentPinTypes
-			? CollectSemanticArgumentPinTypes(FragmentDag, GeneratedFragments, StatementId)
-			: TMap<FString, FBlueprintHelperCallFunctionPinType>();
-	if (!SpawnSemanticStatementFragment(TargetGraph, ActionContextScope, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticArgumentPinTypes))
+	const FBlueprintHelperGraphSemanticPinBindings SemanticPinBindings =
+		bConsumesSemanticPinBindings
+			? CollectSemanticPinBindings(FragmentDag, GeneratedFragments, StatementId)
+			: FBlueprintHelperGraphSemanticPinBindings();
+	if (!SpawnSemanticStatementFragment(TargetGraph, ActionContextScope, Statement, StatementFragment, Error, &CandidateFunctions, &SemanticPinBindings))
 	{
 		AddSemanticUnresolved(
 			OutUnresolvedNodes,

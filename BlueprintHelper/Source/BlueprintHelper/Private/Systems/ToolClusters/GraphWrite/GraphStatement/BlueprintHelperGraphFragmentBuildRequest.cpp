@@ -42,7 +42,7 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	}
 	if (Statement.TargetObject.IsValid())
 	{
-		Request.Target = !Statement.TargetObject->ResolvedTarget.Member.IsEmpty()
+		Request.TargetObjectName = !Statement.TargetObject->ResolvedTarget.Member.IsEmpty()
 			? Statement.TargetObject->ResolvedTarget.Member
 			: (!Statement.TargetObject->Target.IsEmpty() ? Statement.TargetObject->Target : Statement.TargetObject->Name);
 		Request.TargetObjectType = Statement.TargetObject->Type;
@@ -88,7 +88,9 @@ FBlueprintHelperGraphFragmentBuildRequest FBlueprintHelperGraphFragmentBuildRequ
 	Request.ContextEvidence = Expression.ContextEvidence;
 	if (Expression.TargetObject.IsValid())
 	{
-		Request.Target = Expression.TargetObject->Target;
+		Request.TargetObjectName = !Expression.TargetObject->ResolvedTarget.Member.IsEmpty()
+			? Expression.TargetObject->ResolvedTarget.Member
+			: (!Expression.TargetObject->Target.IsEmpty() ? Expression.TargetObject->Target : Expression.TargetObject->Name);
 		Request.TargetObjectType = Expression.TargetObject->Type;
 	}
 	return Request;

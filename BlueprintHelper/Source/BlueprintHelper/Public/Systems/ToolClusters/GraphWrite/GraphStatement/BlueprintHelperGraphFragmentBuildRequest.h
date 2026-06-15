@@ -4,6 +4,17 @@
 #include "Systems/ToolClusters/GraphWrite/ActionResolution/BlueprintHelperActionResolutionCore.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/BlueprintHelperGraphSemanticIR.h"
 
+struct BLUEPRINTHELPER_API FBlueprintHelperGraphSemanticPinBindings
+{
+	TMap<FString, FBlueprintHelperCallFunctionPinType> ArgumentPinTypes;
+	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
+
+	bool HasTargetObjectPinType() const
+	{
+		return TargetObjectPinType.IsValid();
+	}
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 {
 	FString FragmentId;
@@ -43,9 +54,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphFragmentBuildRequest
 	FString SearchMode;
 	FString AmbiguityPolicy;
 	TArray<FString> CategoryPriority;
+	FString TargetObjectName;
 	FString TargetObjectType;
 	FBlueprintHelperCallFunctionPinType TargetObjectPinType;
 	FBlueprintHelperCallFunctionPinType ExpectedReturnPinType;
+	FBlueprintHelperGraphSemanticPinBindings SemanticPinBindings;
 	bool bIsExpression = false;
 
 	static FBlueprintHelperGraphFragmentBuildRequest FromStatement(const FBlueprintHelperGraphStatementIR& Statement);
