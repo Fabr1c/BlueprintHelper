@@ -74,6 +74,23 @@ test('tool catalog filters by bridge and risk without old template dispatch', ()
   assert.equal(reads.items.every((item) => item.risk === 'low'), true);
 });
 
+test('tool catalog does not expose removed markdown read format in any read capability', () => {
+  const removedMarkdownFormat = ['logic', 'md'].join('_');
+  for (const domain of ['blueprint', 'material'] as const) {
+    const reads = listToolCapabilities({
+      domain,
+      kind: 'read',
+      requiresBridge: true,
+      risks: ['low'],
+    });
+    assert.equal(reads.items.some((item) => item.id.includes(removedMarkdownFormat)), false);
+    assert.equal(JSON.stringify(reads.items).includes(removedMarkdownFormat), false);
+    assert.equal(JSON.stringify(reads.items).includes(['Logic', 'Md'].join('')), false);
+  }
+
+  assert.equal(getToolCapabilityDescriptor(`material.read.context.${removedMarkdownFormat}`), undefined);
+});
+
 test('tool catalog exposes UMG widget tree read capability through ReadContext route refs', () => {
 	const reads = listToolCapabilities({
 		domain: 'umg',

@@ -5,11 +5,9 @@ import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import { resolveProjectEngineDir } from '../../project-profile/agent-profile.js';
 import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.js';
-import type { TaskToolsConfig } from './task-tools.js';
 
 export interface EditorLifecycleConfig {
   ueEngineDir: string;
-  taskCompiler?: TaskToolsConfig['taskCompiler'];
 }
 
 function toToolResult(resp: BridgeResponse, isError = false) {

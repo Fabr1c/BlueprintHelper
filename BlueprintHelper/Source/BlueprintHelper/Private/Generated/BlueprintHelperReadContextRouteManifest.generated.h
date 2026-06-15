@@ -41,7 +41,6 @@ static const FBlueprintHelperGeneratedReadContextRouteDescriptor GBlueprintHelpe
 	{TEXT("read.material_instance.schema.asset.schema_json"), TEXT(""), TEXT("SharedServices"), TEXT("material_instance"), TEXT("schema"), TEXT("asset"), TEXT("schema_json"), TEXT("reserved")},
 	{TEXT("read.material.logic.graph.logic_flow"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("graph"), TEXT("logic_flow"), TEXT("active")},
 	{TEXT("read.material.logic.graph.logic_json"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("graph"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("read.material.logic.graph.logic_md"), TEXT("read_material_logic_md"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("graph"), TEXT("logic_md"), TEXT("active")},
 	{TEXT("read.widget_blueprint.structure_tree.widget_tree.logic_flow"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("structure_tree"), TEXT("widget_tree"), TEXT("logic_flow"), TEXT("active")},
 	{TEXT("read.widget_blueprint.structure_tree.widget_tree.tree_json"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("structure_tree"), TEXT("widget_tree"), TEXT("tree_json"), TEXT("active")},
 	{TEXT("read.widget_blueprint.structure_tree.widget.property_json"), TEXT("get_widget_properties"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("structure_tree"), TEXT("widget"), TEXT("property_json"), TEXT("active")}

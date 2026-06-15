@@ -165,7 +165,7 @@ test('GraphWrite explicit asset path resolution does not open BlueprintEditor UI
   assert.doesNotMatch(loadBlueprintByPath, /OpenEditorForAsset/u);
 });
 
-test('CLI and MCP production task paths depend on the task compiler service boundary', () => {
+test('CLI production task path depends on the compiler service and MCP keeps task fallback removed', () => {
   const productionFiles = [
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'cli', 'src'), ['.ts']),
     ...collectFiles(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp'), ['.ts']),
@@ -179,13 +179,13 @@ test('CLI and MCP production task paths depend on the task compiler service boun
     fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'cli', 'src', 'cli', 'run.ts'), 'utf8'),
     /createTaskSpecRunner/u,
   );
-  assert.match(
-    fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'task-tools.ts'), 'utf8'),
-    /createTaskSpecRunner/u,
+  assert.equal(
+    fs.existsSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'task-tools.ts')),
+    false,
   );
-  assert.match(
-    fs.readFileSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'shared-registry-adapter.ts'), 'utf8'),
-    /createTaskSpecRunner/u,
+  assert.equal(
+    fs.existsSync(path.resolve(AGENT_FACE_ROOT, 'mcp', 'src', 'mcp', 'tools', 'shared-registry-adapter.ts')),
+    false,
   );
 });
 

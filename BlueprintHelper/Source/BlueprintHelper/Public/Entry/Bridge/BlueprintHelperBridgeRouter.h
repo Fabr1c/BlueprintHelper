@@ -102,7 +102,6 @@ private:
 	FBlueprintHelperBridgeResponse HandleReadFunctionChainContext(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadBlueprintLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleReadMaterialLogicJson(const FBlueprintHelperBridgeRequest& Req) const;
-	FBlueprintHelperBridgeResponse HandleReadMaterialLogicMd(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleValidateJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExportToJson(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExportLogic(const FBlueprintHelperBridgeRequest& Req) const;

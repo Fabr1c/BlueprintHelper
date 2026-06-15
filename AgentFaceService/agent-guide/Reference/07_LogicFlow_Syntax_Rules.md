@@ -46,8 +46,8 @@ belong to command results and artifacts.
 
 ## Degradation Rules
 
-1. Use logic-md when a function, event, or custom event is readable but too large
-   or branched for compact logic-flow.
+1. Use logic-json when a function, event, or custom event is readable but too
+   large or branched for compact logic-flow.
 2. Use logic-json for full Blueprint reads, full graph reads, patch/merge
    anchors, block ids, node refs, pin refs, link refs, raw layout, GUIDs, or
    debug inspection.

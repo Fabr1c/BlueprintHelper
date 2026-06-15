@@ -1,14 +1,22 @@
 import { z } from 'zod';
 
-export const READ_CONTEXT_LOGIC_FORMATS = ['logic_flow', 'logic_json', 'logic_md'] as const;
+export const READ_CONTEXT_LOGIC_FORMATS = [
+  'logic_flow',
+  'logic_json',
+  'logic_json_delta_after_logic_flow',
+] as const;
 export type ReadContextLogicFormat = (typeof READ_CONTEXT_LOGIC_FORMATS)[number];
-export const READ_CONTEXT_VIEW_FORMATS = ['logic_flow', 'logic_json', 'logic_md', 'tree_json'] as const;
+export const READ_CONTEXT_VIEW_FORMATS = [
+  'logic_flow',
+  'logic_json',
+  'logic_json_delta_after_logic_flow',
+  'tree_json',
+] as const;
 export type ReadContextViewFormat = (typeof READ_CONTEXT_VIEW_FORMATS)[number];
 
 export const LOGIC_PROJECTION_CALLBACK_CAPABILITIES = [
   'ue.raw_snapshot.logic_json',
   'ue.raw_snapshot.logic_flow',
-  'ue.raw_snapshot.logic_md',
 ] as const;
 export type LogicProjectionCallbackCapability =
   (typeof LOGIC_PROJECTION_CALLBACK_CAPABILITIES)[number];
@@ -56,6 +64,7 @@ export const ReadContextInputSchema = z.object({
   }),
   view: z.object({
     format: z.enum(READ_CONTEXT_VIEW_FORMATS).optional(),
+    baseline_view: z.enum(['logic_flow']).optional(),
     max_items: z.number().int().positive().optional(),
     detail: z.enum(['brief', 'normal', 'full', 'debug']).optional(),
   }).optional().default({}),
@@ -75,18 +84,18 @@ export const ReadContextInputSchema = z.object({
       message: 'view.format is only supported for blueprint_logic, material_graph_context, or widget_context tree reads; omit it for this read_type.',
     });
   }
-  if (isLogicRead && format && !new Set(['logic_flow', 'logic_json']).has(format)) {
+  if (isLogicRead && format && !new Set(READ_CONTEXT_LOGIC_FORMATS).has(format as ReadContextLogicFormat)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
-      message: 'blueprint_logic reads only support logic_json and logic_flow formats.',
+      message: 'blueprint_logic reads only support logic_json, logic_flow, and logic_json_delta_after_logic_flow formats.',
     });
   }
-  if (isMaterialLogicRead && format && !new Set(['logic_flow', 'logic_json', 'logic_md']).has(format)) {
+  if (isMaterialLogicRead && format && !new Set(['logic_flow', 'logic_json']).has(format)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['view', 'format'],
-      message: 'material_graph_context reads only support logic_json, logic_flow, and logic_md formats.',
+      message: 'material_graph_context reads only support logic_json and logic_flow formats.',
     });
   }
   if (isWidgetTreeRead && format && !new Set(['tree_json', 'logic_flow']).has(format)) {

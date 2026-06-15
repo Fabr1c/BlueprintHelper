@@ -1,16 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   listReadContextTemplateClusters,
-  listReadContextTemplateDomains,
-  listReadContextTemplateQuickAccess,
-  listReadContextTemplateTargets,
-  listReadContextTemplateViews,
+  listReadContextTemplateFamilies,
+  listReadContextTemplates,
 } from './read-context-template-index.js';
-import { readJsonFile } from '../../json/json-input.js';
-import { getActiveReadContextRouteDescriptors } from './read-context-template-registry.js';
+import { getReadContextRouteDescriptor } from './read-context-template-registry.js';
 import type {
   ComposeReadContextTemplateInput,
   ReadContextRouteDescriptor,
@@ -20,98 +16,22 @@ import type {
 
 export {
   listReadContextTemplateClusters,
-  listReadContextTemplateDomains,
-  listReadContextTemplateQuickAccess,
-  listReadContextTemplateTargets,
-  listReadContextTemplateViews,
+  listReadContextTemplateFamilies,
+  listReadContextTemplates,
 };
 
 export function composeReadContextTemplate(input: ComposeReadContextTemplateInput): ReadContextTemplateCompositionResult {
-  if (input.templateIds.length > 1) {
-    return failed(input, input.templateIds.map((templateId) => ({
-      code: 'unsupported_template_set',
-      domain: input.domain,
-      read_cluster: input.readCluster,
-      target_kind: input.targetKind,
-      view_template: input.viewTemplate,
-      template_id: templateId,
-    })));
-  }
-
-  const route = findRoute(input);
-  if (!route) {
+  const route = getReadContextRouteDescriptor(input.templateId);
+  if (!route || route.status !== 'active') {
     return failed(input, [{
-      code: 'unsupported_read_context_template',
-      domain: input.domain,
-      read_cluster: input.readCluster,
-      target_kind: input.targetKind,
-      view_template: input.viewTemplate,
+      code: 'unknown_template_id',
+      template_id: input.templateId,
     }]);
   }
 
-  const requestedTemplateId = input.templateIds[0];
-  if (requestedTemplateId !== undefined && requestedTemplateId !== route.route_id) {
-    return failed(input, [{
-      code: 'unknown_quick_access_template',
-      domain: input.domain,
-      read_cluster: input.readCluster,
-      target_kind: input.targetKind,
-      view_template: input.viewTemplate,
-      template_id: requestedTemplateId,
-    }]);
-  }
-
-  const readSpec = composeReadSpec(route);
+  const readSpec = cloneJson(route.read_spec) as Record<string, unknown>;
   writeJson(input.outputPath, readSpec);
   return ok(input, route);
-}
-
-function findRoute(input: ComposeReadContextTemplateInput): ReadContextRouteDescriptor | undefined {
-  return getActiveReadContextRouteDescriptors().find((route) =>
-    route.domain === input.domain
-    && route.read_cluster === input.readCluster
-    && route.target_kind === input.targetKind
-    && route.view_template === input.viewTemplate);
-}
-
-function composeReadSpec(route: ReadContextRouteDescriptor): Record<string, unknown> {
-  const template = readJson(pluginPath(route.base_template_path)) as Record<string, unknown>;
-  const target: Record<string, unknown> = {
-    ...readRecord(template['target']),
-    asset_path: '__REQUIRED_ASSET_PATH__',
-  };
-  if (route.target_type) {
-    target['target_type'] = route.target_type;
-  }
-  if (!route.required_target_fields.includes('target_name')) {
-    delete target['target_name'];
-  }
-  if (!route.required_target_fields.includes('block_id')) {
-    delete target['block_id'];
-  }
-  if (route.required_target_fields.includes('target_name')) {
-    target['target_name'] = '__REQUIRED_TARGET_NAME__';
-  }
-  if (route.required_target_fields.includes('block_id')) {
-    target['block_id'] = '__REQUIRED_BLOCK_ID__';
-    delete target['target_name'];
-  }
-
-  const readSpec: Record<string, unknown> = {
-    schema: 'BlueprintHelper.ReadSpec.v1',
-    read_type: route.read_type,
-    target,
-  };
-  if (route.format) {
-    readSpec['view'] = {
-      format: toReadSpecFormat(route),
-    };
-  }
-  return readSpec;
-}
-
-function toReadSpecFormat(route: ReadContextRouteDescriptor): string {
-  return route.format ?? route.view_template;
 }
 
 function ok(
@@ -122,11 +42,9 @@ function ok(
   return {
     schema: 'BlueprintHelper.ReadContextTemplateComposition.v1',
     status: 'ok',
-    domain: input.domain,
-    read_cluster: input.readCluster,
-    target_kind: input.targetKind,
-    view_template: input.viewTemplate,
-    template_id: route.route_id,
+    template_id: route.template_id,
+    family: route.family,
+    cluster: route.cluster,
     output_path: outputPath,
     next: {
       read_command: `bh context read --file ${outputPath} --format json`,
@@ -141,16 +59,9 @@ function failed(
   return {
     schema: 'BlueprintHelper.ReadContextTemplateComposition.v1',
     status: 'failed',
-    domain: input.domain,
-    read_cluster: input.readCluster,
-    target_kind: input.targetKind,
-    view_template: input.viewTemplate,
+    template_id: input.templateId,
     diagnostics,
   };
-}
-
-function readJson(filePath: string): unknown {
-  return readJsonFile(filePath);
 }
 
 function writeJson(filePath: string, value: unknown): void {
@@ -158,18 +69,8 @@ function writeJson(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function pluginPath(relativePath: string): string {
-  return path.resolve(pluginRoot(), relativePath);
-}
-
-function pluginRoot(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
+function cloneJson(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value)) as unknown;
 }
 
 function normalizePath(filePath: string): string {

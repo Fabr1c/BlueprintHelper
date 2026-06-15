@@ -7,28 +7,24 @@ import test from 'node:test';
 import {
   composeReadContextTemplate,
   listReadContextTemplateClusters,
-  listReadContextTemplateDomains,
-  listReadContextTemplateQuickAccess,
-  listReadContextTemplateTargets,
-  listReadContextTemplateViews,
+  listReadContextTemplateFamilies,
+  listReadContextTemplates,
 } from './read-context-template-composer.js';
 import {
   getActiveReadContextRouteDescriptors,
   getReadContextRouteDescriptor,
 } from './read-context-template-registry.js';
 
-test('ReadContext template registry exposes active routes and hides reserved domains', () => {
+test('ReadContext template registry exposes active flat routes and hides reserved families', () => {
   const active = getActiveReadContextRouteDescriptors();
 
-  assert.equal(active.some((route) => route.route_id === 'read.blueprint.logic.function.logic_flow'), true);
-  assert.equal(active.some((route) => route.domain === 'material'), true);
-  assert.equal(active.some((route) => route.domain === 'material_instance'), false);
+  assert.equal(active.some((route) => route.template_id === 'blueprint.logic.function.flow'), true);
+  assert.equal(active.some((route) => route.family === 'material'), true);
+  assert.equal(active.some((route) => route.family === 'material_instance'), false);
 
-  const functionFlow = getReadContextRouteDescriptor('read.blueprint.logic.function.logic_flow');
-  assert.equal(functionFlow?.domain, 'blueprint');
-  assert.equal(functionFlow?.read_cluster, 'logic');
-  assert.equal(functionFlow?.target_kind, 'function');
-  assert.equal(functionFlow?.view_template, 'logic_flow');
+  const functionFlow = getReadContextRouteDescriptor('blueprint.logic.function.flow');
+  assert.equal(functionFlow?.family, 'blueprint');
+  assert.equal(functionFlow?.cluster, 'logic');
   assert.equal(functionFlow?.read_type, 'blueprint_logic');
   assert.equal(functionFlow?.target_type, 'function');
   assert.equal(functionFlow?.format, 'logic_flow');
@@ -38,14 +34,14 @@ test('ReadContext template registry exposes active routes and hides reserved dom
   assert.deepEqual(functionFlow?.supported_asset_types, ['blueprint', 'function']);
   assert.deepEqual(functionFlow?.supported_formats, ['logic_flow']);
 
-  const widgetTree = getReadContextRouteDescriptor('read.widget_blueprint.structure_tree.widget_tree.tree_json');
+  const widgetTree = getReadContextRouteDescriptor('widget.structure.tree_json');
   assert.equal(widgetTree?.format, 'tree_json');
   assert.equal(widgetTree?.output_schema, 'WidgetTreeJson.v1');
   assert.equal(widgetTree?.request_builder_id, 'widget_tree');
   assert.equal(widgetTree?.payload_projector_id, 'widget_tree');
 
-  const materialLogic = getReadContextRouteDescriptor('read.material.logic.graph.logic_json');
-  assert.equal(materialLogic?.domain, 'material');
+  const materialLogic = getReadContextRouteDescriptor('material.logic.graph.json');
+  assert.equal(materialLogic?.family, 'material');
   assert.equal(materialLogic?.read_type, 'material_graph_context');
   assert.equal(materialLogic?.target_type, 'material_graph');
   assert.equal(materialLogic?.status, 'active');
@@ -53,59 +49,87 @@ test('ReadContext template registry exposes active routes and hides reserved dom
 
 test('ReadContext active route descriptors own request and payload routing facts', () => {
   for (const route of getActiveReadContextRouteDescriptors()) {
-    assert.equal(Boolean(route.request_builder_id), true, `${route.route_id} has request builder id`);
-    assert.equal(Boolean(route.payload_projector_id), true, `${route.route_id} has payload projector id`);
-    assert.equal(route.supported_asset_types.length > 0, true, `${route.route_id} has supported asset types`);
-    assert.equal(route.supported_formats.length > 0, true, `${route.route_id} has supported formats`);
+    assert.equal(Boolean(route.request_builder_id), true, `${route.template_id} has request builder id`);
+    assert.equal(Boolean(route.payload_projector_id), true, `${route.template_id} has payload projector id`);
+    assert.equal(route.supported_asset_types.length > 0, true, `${route.template_id} has supported asset types`);
+    assert.equal(route.supported_formats.length > 0, true, `${route.template_id} has supported formats`);
+    assert.equal(route.allowed_tools.includes('bh tools read-templates compose'), true);
+    assert.equal(route.allowed_tools.includes('bh context read'), true);
   }
 });
 
 test('ReadContext active graph logic_json route keeps blueprint logic route only', () => {
   const routes = getActiveReadContextRouteDescriptors().filter((route) =>
-    route.domain === 'blueprint'
-    && route.read_cluster === 'logic'
-    && route.target_kind === 'graph'
-    && route.view_template === 'logic_json');
+    route.family === 'blueprint'
+    && route.cluster === 'logic'
+    && route.target_type === 'graph'
+    && route.format === 'logic_json');
 
-  assert.deepEqual(routes.map((route) => route.route_id), ['read.blueprint.logic.graph.logic_json']);
+  assert.deepEqual(routes.map((route) => route.template_id), ['blueprint.logic.graph.json']);
   assert.equal(routes[0]?.read_type, 'blueprint_logic');
   assert.equal(routes[0]?.request_builder_id, 'blueprint_logic');
 });
 
-test('ReadContext template composer writes graph logic_json using blueprint logic route', () => {
+test('ReadContext flat template index exposes families clusters and flattened templates', () => {
+  const families = listReadContextTemplateFamilies();
+  assert.equal(families.schema, 'BlueprintHelper.ReadContextTemplateFamilies.v1');
+  assert.equal(families.items.some((item) => item.family === 'blueprint'), true);
+  assert.equal(families.items.some((item) => item.family === 'material'), true);
+  assert.equal(families.items.some((item) => item.family === 'material_instance'), false);
+
+  const clusters = listReadContextTemplateClusters({ family: 'blueprint' });
+  assert.equal(clusters.schema, 'BlueprintHelper.ReadContextTemplateClusters.v1');
+  assert.deepEqual(
+    clusters.items.map((item) => item.cluster).sort(),
+    ['asset', 'logic', 'properties', 'schema', 'structure'],
+  );
+
+  const logicTemplates = listReadContextTemplates({ family: 'blueprint', cluster: 'logic' });
+  assert.equal(logicTemplates.schema, 'BlueprintHelper.ReadContextTemplates.v1');
+  assert.equal(logicTemplates.items.some((item) => item.template_id === 'blueprint.logic.function.flow'), true);
+  assert.equal(logicTemplates.items.some((item) => item.template_id === 'blueprint.logic.function.json'), true);
+  assert.equal(logicTemplates.items.some((item) => item.template_id === 'blueprint.logic.function.json_delta'), true);
+
+  const functionFlow = logicTemplates.items.find((item) => item.template_id === 'blueprint.logic.function.flow');
+  assert.ok(functionFlow);
+  assert.equal(functionFlow.read_spec.read_type, 'blueprint_logic');
+  assert.deepEqual(functionFlow.required_fields, ['target.asset_path', 'target.target_name']);
+  assert.deepEqual(functionFlow.optional_fields, ['view.detail', 'view.max_items']);
+  assert.equal(
+    functionFlow.context_evidence['view.format.allowed_values'],
+    'logic_flow | logic_json | logic_json_delta_after_logic_flow',
+  );
+  assert.equal(functionFlow.recommended_invocation, 'bh context read --file <read-spec.json> --format json');
+  assert.deepEqual(functionFlow.allowed_tools, ['bh tools read-templates compose', 'bh context read']);
+  assert.equal(functionFlow.stop_conditions.includes('read_context_screenshot_conflict'), true);
+});
+
+test('ReadContext flat composer writes graph logic_json using blueprint logic route', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'graph-logic-json.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'blueprint',
-    readCluster: 'logic',
-    targetKind: 'graph',
-    viewTemplate: 'logic_json',
-    templateIds: [],
+    templateId: 'blueprint.logic.graph.json',
     outputPath,
   });
 
   assert.equal(result.status, 'ok');
-  assert.equal(result.template_id, 'read.blueprint.logic.graph.logic_json');
+  assert.equal(result.template_id, 'blueprint.logic.graph.json');
   const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
   assert.equal(readSpec.read_type, 'blueprint_logic');
   assert.equal(readSpec.target.target_type, 'graph');
   assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
 });
 
-test('ReadContext template composer does not inherit graph target fields for blueprint logic routes', () => {
+test('ReadContext flat composer does not inherit graph target fields for blueprint logic routes', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'blueprint-logic-flow.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'blueprint',
-    readCluster: 'logic',
-    targetKind: 'blueprint',
-    viewTemplate: 'logic_flow',
-    templateIds: [],
+    templateId: 'blueprint.logic.blueprint.flow',
     outputPath,
   });
 
   assert.equal(result.status, 'ok');
-  assert.equal(result.template_id, 'read.blueprint.logic.blueprint.logic_flow');
+  assert.equal(result.template_id, 'blueprint.logic.blueprint.flow');
   const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
   assert.equal(readSpec.read_type, 'blueprint_logic');
   assert.deepEqual(readSpec.target, {
@@ -115,110 +139,16 @@ test('ReadContext template composer does not inherit graph target fields for blu
   assert.deepEqual(readSpec.view, { format: 'logic_flow' });
 });
 
-test('ReadContext template index exposes domain cluster target and view discovery', () => {
-  const domains = listReadContextTemplateDomains();
-  assert.equal(domains.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');
-  assert.equal(domains.items.some((item) => item.domain === 'blueprint'), true);
-  assert.match(
-    domains.items.find((item) => item.domain === 'blueprint')?.description ?? '',
-    /Blueprint/i,
-  );
-  assert.equal(domains.items.some((item) => item.domain === 'material'), true);
-  assert.equal(domains.items.some((item) => item.domain === 'material_instance'), false);
-
-  const materialClusters = listReadContextTemplateClusters({ domain: 'material' });
-  const materialLogicCluster = materialClusters.items.find((item) => item.read_cluster === 'logic');
-  assert.match(materialLogicCluster?.description ?? '', /Material/i);
-  assert.doesNotMatch(materialLogicCluster?.description ?? '', /Blueprint/i);
-
-  const materialTargets = listReadContextTemplateTargets({ domain: 'material', readCluster: 'logic' });
-  const materialGraphTarget = materialTargets.items.find((item) => item.target_kind === 'graph');
-  assert.match(materialGraphTarget?.description ?? '', /Material graph/i);
-  assert.doesNotMatch(materialGraphTarget?.description ?? '', /Blueprint/i);
-
-  const clusters = listReadContextTemplateClusters({ domain: 'blueprint' });
-  assert.equal(clusters.items.some((item) => item.read_cluster === 'logic'), true);
-  assert.match(
-    clusters.items.find((item) => item.read_cluster === 'logic')?.description ?? '',
-    /logic/i,
-  );
-
-  const targets = listReadContextTemplateTargets({ domain: 'blueprint', readCluster: 'logic' });
-  assert.equal(targets.items.some((item) => item.target_kind === 'function'), true);
-  assert.match(
-    targets.items.find((item) => item.target_kind === 'function')?.description ?? '',
-    /function/i,
-  );
-
-  const views = listReadContextTemplateViews({
-    domain: 'blueprint',
-    readCluster: 'logic',
-    targetKind: 'function',
-  });
-  assert.deepEqual(views.items.map((item) => item.view_template), ['logic_flow', 'logic_json']);
-  const removedMarkdownFormat = ['logic', 'md'].join('_');
-  assert.equal(
-    views.items.some((item) => item.view_template === removedMarkdownFormat),
-    false,
-  );
-  assert.match(
-    views.items.find((item) => item.view_template === 'logic_flow')?.description ?? '',
-    /flow/i,
-  );
-
-  const quickAccess = listReadContextTemplateQuickAccess({
-    domain: 'blueprint',
-    readCluster: 'logic',
-    targetKind: 'function',
-    viewTemplate: 'logic_flow',
-  });
-  assert.equal(quickAccess.items[0]?.template_id, 'read.blueprint.logic.function.logic_flow');
-  assert.equal(quickAccess.items[0]?.required_target_fields.includes('target_name'), true);
-});
-
-test('ReadContext property_json target_name semantics follow route target kind', () => {
-  const dataAssetTargets = listReadContextTemplateTargets({
-    domain: 'data_asset',
-    readCluster: 'schema',
-  });
-  const dataAsset = dataAssetTargets.items.find((item) => item.target_kind === 'data_asset');
-  assert.ok(dataAsset);
-  assert.equal(dataAsset.required_target_fields.includes('target_name'), false);
-  assert.match(dataAsset.description, /does not require target_name/);
-
-  const blueprintTargets = listReadContextTemplateTargets({
-    domain: 'blueprint',
-    readCluster: 'properties',
-  });
-  const property = blueprintTargets.items.find((item) => item.target_kind === 'property');
-  assert.ok(property);
-  assert.equal(property.required_target_fields.includes('target_name'), true);
-  assert.match(property.description, /property locator\/filter/);
-
-  const widgetTargets = listReadContextTemplateTargets({
-    domain: 'widget_blueprint',
-    readCluster: 'structure_tree',
-  });
-  const widget = widgetTargets.items.find((item) => item.target_kind === 'widget');
-  assert.ok(widget);
-  assert.equal(widget.required_target_fields.includes('target_name'), true);
-  assert.match(widget.description, /widget locator\/filter/);
-});
-
-test('ReadContext template composer writes widget tree tree_json ReadSpec from descriptor-backed route', () => {
+test('ReadContext flat composer writes widget tree tree_json ReadSpec from descriptor-backed route', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'widget-tree.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'widget_blueprint',
-    readCluster: 'structure_tree',
-    targetKind: 'widget_tree',
-    viewTemplate: 'tree_json',
-    templateIds: [],
+    templateId: 'widget.structure.tree_json',
     outputPath,
   });
 
   assert.equal(result.status, 'ok');
-  assert.equal(result.template_id, 'read.widget_blueprint.structure_tree.widget_tree.tree_json');
+  assert.equal(result.template_id, 'widget.structure.tree_json');
 
   const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, unknown>;
   assert.equal(readSpec.read_type, 'widget_context');
@@ -229,21 +159,17 @@ test('ReadContext template composer writes widget tree tree_json ReadSpec from d
   assert.deepEqual(readSpec.view, { format: 'tree_json' });
 });
 
-test('ReadContext template composer writes bare ReadSpec from descriptor-backed route', () => {
+test('ReadContext flat composer writes bare ReadSpec from descriptor-backed route', () => {
   const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'function-flow.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'blueprint',
-    readCluster: 'logic',
-    targetKind: 'function',
-    viewTemplate: 'logic_flow',
-    templateIds: [],
+    templateId: 'blueprint.logic.function.flow',
     outputPath,
   });
 
   assert.equal(result.schema, 'BlueprintHelper.ReadContextTemplateComposition.v1');
   assert.equal(result.status, 'ok');
-  assert.equal(result.template_id, 'read.blueprint.logic.function.logic_flow');
+  assert.equal(result.template_id, 'blueprint.logic.function.flow');
   assert.equal(result.next.read_command, `bh context read --file ${path.resolve(outputPath).replaceAll('\\', '/')} --format json`);
 
   const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, unknown>;
@@ -258,58 +184,72 @@ test('ReadContext template composer writes bare ReadSpec from descriptor-backed 
   assert.equal(Object.hasOwn(readSpec, 'task_spec'), false);
 });
 
-test('ReadContext template composer exposes entry body logic_flow templates for replace_external_body evidence', () => {
-  for (const targetKind of ['event', 'function', 'custom_event'] as const) {
+test('ReadContext flat composer exposes entry body logic_flow templates for replace_external_body evidence', () => {
+  for (const targetType of ['event', 'function', 'custom_event'] as const) {
     const outputPath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')),
-      `${targetKind}-body-flow.readspec.json`,
+      `${targetType}-body-flow.readspec.json`,
     );
 
     const result = composeReadContextTemplate({
-      domain: 'blueprint',
-      readCluster: 'logic',
-      targetKind,
-      viewTemplate: 'logic_flow',
-      templateIds: [],
+      templateId: `blueprint.logic.${targetType}.flow`,
       outputPath,
     });
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.template_id, `read.blueprint.logic.${targetKind}.logic_flow`);
+    assert.equal(result.template_id, `blueprint.logic.${targetType}.flow`);
 
     const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
     assert.equal(readSpec.read_type, 'blueprint_logic');
-    assert.equal(readSpec.target.target_type, targetKind);
+    assert.equal(readSpec.target.target_type, targetType);
     assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
     assert.deepEqual(readSpec.view, { format: 'logic_flow' });
   }
 });
 
-test('ReadContext template composer reports diagnostics without writing unsupported reserved routes', () => {
-  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'material-instance.readspec.json');
+test('ReadContext flat composer writes LogicJson delta ReadSpec with baseline view', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'function-delta.readspec.json');
 
   const result = composeReadContextTemplate({
-    domain: 'material_instance',
-    readCluster: 'schema',
-    targetKind: 'asset',
-    viewTemplate: 'schema_json',
-    templateIds: [],
+    templateId: 'blueprint.logic.function.json_delta',
     outputPath,
   });
 
-  assert.equal(result.status, 'failed');
-  assert.equal(fs.existsSync(outputPath), false);
-  assert.equal(result.diagnostics?.[0]?.code, 'unsupported_read_context_template');
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'blueprint.logic.function.json_delta');
+
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+  assert.equal(readSpec.schema, 'BlueprintHelper.ReadSpec.v1');
+  assert.equal(readSpec.view.format, 'logic_json_delta_after_logic_flow');
+  assert.equal(readSpec.view.baseline_view, 'logic_flow');
+  assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
 });
 
-test('ReadContext active route descriptors keep blueprint markdown disabled and material markdown enabled', () => {
+test('ReadContext flat composer reports unknown template id without writing output', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'missing.readspec.json');
+
+  const result = composeReadContextTemplate({
+    templateId: 'blueprint.logic.function.missing',
+    outputPath,
+  });
+
+  assert.equal(result.schema, 'BlueprintHelper.ReadContextTemplateComposition.v1');
+  assert.equal(result.status, 'failed');
+  assert.equal(fs.existsSync(outputPath), false);
+  assert.equal(result.diagnostics[0]?.code, 'unknown_template_id');
+  assert.equal(result.diagnostics[0]?.template_id, 'blueprint.logic.function.missing');
+});
+
+test('ReadContext active route descriptors keep removed markdown format globally disabled', () => {
   const active = getActiveReadContextRouteDescriptors();
   const removedMarkdownFormat = ['logic', 'md'].join('_');
-  const removedMarkdownCommand = ['read_blueprint', 'logic', 'md'].join('_');
-  const blueprintRoutes = active.filter((route) => route.domain === 'blueprint');
-  assert.equal(blueprintRoutes.some((route) => route.view_template === removedMarkdownFormat), false);
-  assert.equal(blueprintRoutes.some((route) => route.route_id.includes(removedMarkdownFormat)), false);
-  assert.equal(blueprintRoutes.some((route) => route.bridge_command === removedMarkdownCommand), false);
-  assert.equal(active.some((route) => route.route_id === 'read.material.logic.graph.logic_md'), true);
-  assert.equal(active.some((route) => route.bridge_command === 'read_material_logic_md'), true);
+  const removedMarkdownCommands = [
+    ['read_blueprint', 'logic', 'md'].join('_'),
+    ['read_material', 'logic', 'md'].join('_'),
+  ];
+  assert.equal(active.some((route) => route.format === removedMarkdownFormat), false);
+  assert.equal(active.some((route) => route.supported_formats.includes(removedMarkdownFormat)), false);
+  assert.equal(active.some((route) => route.template_id.includes(removedMarkdownFormat)), false);
+  assert.equal(active.some((route) => removedMarkdownCommands.includes(route.bridge_command ?? '')), false);
+  assert.equal(JSON.stringify(active).includes(['Logic', 'Md'].join('')), false);
 });

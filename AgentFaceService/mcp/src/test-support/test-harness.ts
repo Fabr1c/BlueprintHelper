@@ -2,7 +2,6 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { BridgeClient, BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
-import { registerResources } from '../mcp/resources/resources.js';
 import { registerTools, type EditorConfig } from '../mcp/tools/register-tools.js';
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<{
@@ -26,15 +25,6 @@ export interface RegisteredTool {
   };
   meta?: Record<string, unknown>;
   handler: ToolHandler;
-}
-
-export type ResourceHandler = (uri: URL) => Promise<{
-  contents: Array<{ uri: string; mimeType: string; text: string }>;
-}>;
-
-export interface RegisteredResource {
-  uriOrTemplate: unknown;
-  handler: ResourceHandler;
 }
 
 export function registerWithBridge(
@@ -67,26 +57,6 @@ export function registerWithBridge(
   const bridge = { sendCommand, ...bridgeExtras } as unknown as BridgeClient;
   registerTools(server, bridge, { ueEngineDir: '', ...config });
   return tools;
-}
-
-export function registerResourcesWithBridge(
-  sendCommand: (command: string, payload?: Record<string, unknown>) => Promise<BridgeResponse>,
-): Map<string, RegisteredResource> {
-  const resources = new Map<string, RegisteredResource>();
-  const server = {
-    registerResource(
-      name: string,
-      uriOrTemplate: unknown,
-      _config: Record<string, unknown>,
-      handler: ResourceHandler,
-    ) {
-      resources.set(name, { uriOrTemplate, handler });
-    },
-  } as unknown as McpServer;
-
-  const bridge = { sendCommand } as unknown as BridgeClient;
-  registerResources(server, bridge);
-  return resources;
 }
 
 export async function invokeTool(tool: RegisteredTool, args: Record<string, unknown>) {

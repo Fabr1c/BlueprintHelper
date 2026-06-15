@@ -27,7 +27,6 @@
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicJsonReadService.h"
 #include "Systems/ToolClusters/GraphWrite/Logic/BlueprintHelperLogicGroupBuilder.h"
 #include "Systems/ToolClusters/Material/BlueprintHelperMaterialLogicJsonExtractor.h"
-#include "Systems/ToolClusters/Material/BlueprintHelperMaterialLogicMdProjector.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 #include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
@@ -117,7 +116,6 @@ public:
 			TEXT("read_function_chain_context"),
 			TEXT("read_blueprint_logic_json"),
 			TEXT("read_material_logic_json"),
-			TEXT("read_material_logic_md"),
 			TEXT("export_to_json"),
 			TEXT("export_logic"),
 			TEXT("get_asset_info"),
@@ -1005,7 +1003,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("read_function_chain_context", SharedServices, HandleReadFunctionChainContext)
 	BLUEPRINTHELPER_ROUTE("read_blueprint_logic_json", SharedServices, HandleReadBlueprintLogicJson)
 	BLUEPRINTHELPER_ROUTE("read_material_logic_json", SharedServices, HandleReadMaterialLogicJson)
-	BLUEPRINTHELPER_ROUTE("read_material_logic_md", SharedServices, HandleReadMaterialLogicMd)
 	BLUEPRINTHELPER_ROUTE("validate_json", SharedServices, HandleValidateJson)
 	BLUEPRINTHELPER_ROUTE("export_to_json", SharedServices, HandleExportToJson)
 	BLUEPRINTHELPER_ROUTE("export_logic", SharedServices, HandleExportLogic)
@@ -1367,57 +1364,6 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMaterialL
 
 	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = LogicJson.IsValid() ? LogicJson : MakeShared<FJsonObject>();
-	FBlueprintHelperBridgeRouterLocalUtils::AttachReadContextCompletedStatus(Resp.Result);
-	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
-	return Resp;
-}
-
-FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleReadMaterialLogicMd(
-	const FBlueprintHelperBridgeRequest& Req) const
-{
-	FString AssetPath;
-	if (!Req.Payload.IsValid() || !Req.Payload->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
-	{
-		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::InvalidRequest,
-			TEXT("read_material_logic_md requires payload.asset_path."),
-			TEXT("material_asset_path_required"));
-	}
-
-	TSharedPtr<FJsonObject> LogicJson;
-	FString Error;
-	FBlueprintHelperMaterialLogicJsonExtractor Extractor;
-	if (!Extractor.BuildLogicJson(AssetPath, LogicJson, Error))
-	{
-		const FString ErrorMessage = Error.IsEmpty() ? TEXT("read_material_logic_md failed.") : Error;
-		FString DiagnosticCode;
-		FString DiagnosticDetail;
-		FBlueprintHelperBridgeRouterLocalUtils::SplitReadContextErrorCode(
-			Error,
-			TEXT("material_graph_read_failed"),
-			DiagnosticCode,
-			DiagnosticDetail);
-		return FBlueprintHelperBridgeRouterLocalUtils::MakeReadContextErrorResponse(
-			Req.RequestId,
-			EBlueprintHelperBridgeError::ExecutionFailed,
-			ErrorMessage,
-			DiagnosticCode,
-			DiagnosticDetail);
-	}
-
-	FBlueprintHelperMaterialLogicMdProjector Projector;
-	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
-	Resp.Result = MakeShared<FJsonObject>();
-	Resp.Result->SetStringField(TEXT("schema"), TEXT("LogicMd.v1"));
-	Resp.Result->SetStringField(TEXT("format"), TEXT("logic_md"));
-	Resp.Result->SetStringField(TEXT("scope"), TEXT("material_graph"));
-	Resp.Result->SetStringField(TEXT("markdown"), Projector.BuildMarkdown(LogicJson));
-	const TArray<TSharedPtr<FJsonValue>>* Diagnostics = nullptr;
-	if (LogicJson.IsValid() && LogicJson->TryGetArrayField(TEXT("diagnostics"), Diagnostics) && Diagnostics)
-	{
-		Resp.Result->SetArrayField(TEXT("diagnostics"), *Diagnostics);
-	}
 	FBlueprintHelperBridgeRouterLocalUtils::AttachReadContextCompletedStatus(Resp.Result);
 	FBlueprintHelperReadContextOutputLimiter::ApplyToBridgeResult(Req.Command, Resp.Result);
 	return Resp;

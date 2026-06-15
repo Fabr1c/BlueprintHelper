@@ -10,9 +10,8 @@ templates.
 2. Provide `target.asset_path`.
 3. `target.target_type` may be omitted or set to `material_graph` / `asset`.
 4. Do not provide `domain`, `graph_path`, material-specific strategy fields, or
-   a fourth Material-specific format.
-5. `material_graph_context` supports exactly `logic_json`, `logic_flow`, and
-   `logic_md`.
+   a third Material-specific format.
+5. `material_graph_context` supports exactly `logic_json` and `logic_flow`.
 
 ## Format Semantics
 
@@ -20,9 +19,7 @@ templates.
    and write alignment.
 2. `logic_flow` is an Agent-readable data-flow projection. It is not a write
    anchor source.
-3. `logic_md` is an Agent-readable Markdown projection. It is not a write anchor
-   source.
-4. Material parameter facts come from `UMaterialExpression` nodes in the graph.
+3. Material parameter facts come from `UMaterialExpression` nodes in the graph.
    They are not Material Instance override facts.
 
 ## Identity and Anchors
@@ -34,8 +31,8 @@ templates.
 3. `logic_json` may expose `expression_guid`, `block_id`, `node_key`,
    expression class, properties, links, and material output facts for
    read/write closure.
-4. `logic_flow` and `logic_md` may summarize those facts for readability, but
-   anchors in those projections are expert/debug evidence only.
+4. `logic_flow` may summarize those facts for readability, but anchors in that
+   projection are expert/debug evidence only.
 
 ## Read/Write Closure
 
@@ -43,5 +40,3 @@ templates.
    `material_graph_context + logic_json` to confirm generated expressions,
    parameters, connections, material outputs, and owned anchors.
 2. Use `logic_flow` to check the resulting Material data flow.
-3. Use `logic_md` when an Agent needs a compact text explanation of parameters,
-   data-flow links, material outputs, and owned anchors.

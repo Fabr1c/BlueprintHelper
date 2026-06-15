@@ -20,12 +20,15 @@ export type ReadContextBridgeRequest =
       message: string;
     };
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_json' | 'logic_md';
+export type ReadContextLogicFormat =
+  | 'logic_flow'
+  | 'logic_json'
+  | 'logic_json_delta_after_logic_flow';
 
 export type ReadContextLogicBridgeRoute = {
   format: ReadContextLogicFormat;
-  command: 'read_blueprint_logic_json' | 'read_material_logic_json' | 'read_material_logic_md';
-  payloadSchema: 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1';
+  command: 'read_blueprint_logic_json' | 'read_material_logic_json';
+  payloadSchema: 'LogicFlow.v1' | 'LogicJson.v1';
 };
 
 export type ReadContextRequestBuilder = (
@@ -33,7 +36,11 @@ export type ReadContextRequestBuilder = (
   route: ReadContextRouteDescriptor,
 ) => ReadContextBridgeRequest;
 
-const LOGIC_FORMATS = new Set<ReadContextTemplateView>(['logic_flow', 'logic_json', 'logic_md']);
+const LOGIC_FORMATS = new Set<ReadContextTemplateView>([
+  'logic_flow',
+  'logic_json',
+  'logic_json_delta_after_logic_flow',
+]);
 
 const TARGET_PAYLOAD_KEY_BY_TYPE: Readonly<Record<string, string>> = {
   graph: 'graph',
@@ -108,20 +115,20 @@ export function buildReadContextLogicBridgeRoute(format: ReadContextLogicFormat)
 export function resolveReadContextBridgeCommand(
   format: ReadContextLogicFormat,
   domain: 'blueprint' | 'material' = 'blueprint',
-): 'read_blueprint_logic_json' | 'read_material_logic_json' | 'read_material_logic_md' {
+): 'read_blueprint_logic_json' | 'read_material_logic_json' {
   if (domain === 'material') {
-    return format === 'logic_md' ? 'read_material_logic_md' : 'read_material_logic_json';
+    return 'read_material_logic_json';
   }
   return 'read_blueprint_logic_json';
 }
 
 export function resolveReadContextPayloadSchema(
   format: ReadContextLogicFormat,
-): 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1' {
-  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicMd.v1'>> = {
+): 'LogicFlow.v1' | 'LogicJson.v1' {
+  const schemas: Readonly<Record<ReadContextLogicFormat, 'LogicFlow.v1' | 'LogicJson.v1'>> = {
     logic_flow: 'LogicFlow.v1',
     logic_json: 'LogicJson.v1',
-    logic_md: 'LogicMd.v1',
+    logic_json_delta_after_logic_flow: 'LogicJson.v1',
   };
   return schemas[format];
 }
@@ -189,7 +196,7 @@ function buildBlueprintLogicBridgeRequest(
 ): ReadContextBridgeRequest {
   const format = isLogicFormat(route.format) ? route.format : 'logic_flow';
   const command = route.bridge_command ?? resolveReadContextBridgeCommand(format);
-  return okRequest(route, command, buildBlueprintLogicReadPayload(input, route), route.output_schema);
+  return okRequest(route, command, buildBlueprintLogicReadPayload(input, route), resolveReadContextPayloadSchema(format));
 }
 
 function buildMaterialLogicBridgeRequest(
@@ -198,7 +205,7 @@ function buildMaterialLogicBridgeRequest(
 ): ReadContextBridgeRequest {
   const format = isLogicFormat(route.format) ? route.format : 'logic_json';
   const command = route.bridge_command ?? resolveReadContextBridgeCommand(format, 'material');
-  return okRequest(route, command, buildMaterialLogicReadPayload(input, route), route.output_schema);
+  return okRequest(route, command, buildMaterialLogicReadPayload(input, route), resolveReadContextPayloadSchema(format));
 }
 
 function buildMaterialLogicReadPayload(
@@ -273,7 +280,7 @@ function requiredBridgeCommand(route: ReadContextRouteDescriptor): string {
   if (route.bridge_command) {
     return route.bridge_command;
   }
-  throw new Error(`ReadContext route ${route.route_id} is missing bridge_command.`);
+  throw new Error(`ReadContext route ${route.template_id} is missing bridge_command.`);
 }
 
 function routeMatchesTarget(route: ReadContextRouteDescriptor, input: ReadContextInput): boolean {
@@ -281,13 +288,13 @@ function routeMatchesTarget(route: ReadContextRouteDescriptor, input: ReadContex
   if (!route.supported_asset_types.includes(targetType) && route.target_type !== targetType) {
     return false;
   }
-  if (route.required_target_fields.includes('target_name') && !input.target.target_name) {
+  if (route.required_fields.includes('target.target_name') && !input.target.target_name) {
     return false;
   }
-  if (route.required_target_fields.includes('block_id') && !input.target.block_id) {
+  if (route.required_fields.includes('target.block_id') && !input.target.block_id) {
     return false;
   }
-  if (route.target_kind === 'widget_tree' && input.target.target_name) {
+  if (route.template_id.startsWith('widget.structure.') && input.target.target_name) {
     return false;
   }
   return true;

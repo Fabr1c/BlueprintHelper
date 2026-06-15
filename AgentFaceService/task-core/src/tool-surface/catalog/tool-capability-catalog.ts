@@ -59,7 +59,6 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('data.write.taskspec.execute', 'data', 'write', 'blueprinthelper_execute_task', 'Execute DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
   capability('material.read.context.logic_json', 'material', 'read', 'blueprinthelper_read_context', 'Read Material graph expressions, parameters, connections, outputs, and anchors as LogicJson.', 'blueprint-explorer', 'low', true, false, ['read_context_material_logic_json']),
   capability('material.read.context.logic_flow', 'material', 'read', 'blueprinthelper_read_context', 'Read compact Material graph data flow for Agent reasoning.', 'blueprint-explorer', 'low', true, false, ['read_context_material_logic_flow']),
-  capability('material.read.context.logic_md', 'material', 'read', 'blueprinthelper_read_context', 'Read a Markdown Material graph summary for Agent reasoning.', 'blueprint-explorer', 'low', true, false, ['read_context_material_logic_md']),
   capability('editor.read.runtime_profile', 'editor', 'read', 'blueprint_get_runtime_profile', 'Read BlueprintHelper runtime profile from the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprint_get_runtime_profile']),
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
@@ -278,8 +277,6 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     route.domain === 'material' && route.read_cluster === 'logic' && route.view_template === 'logic_json');
   const materialLogicFlowRouteRefs = readContextRouteRefs((route) =>
     route.domain === 'material' && route.read_cluster === 'logic' && route.view_template === 'logic_flow');
-  const materialLogicMdRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'material' && route.read_cluster === 'logic' && route.view_template === 'logic_md');
   return new Map<string, ToolCapabilityDescriptorOptions>([
     ['blueprint.discover.assets', {
       stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
@@ -388,11 +385,6 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['material.read.context.logic_flow', {
       route_refs: materialLogicFlowRouteRefs,
-      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
-      help_usage: READ_CONTEXT_HELP_USAGE,
-    }],
-    ['material.read.context.logic_md', {
-      route_refs: materialLogicMdRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],

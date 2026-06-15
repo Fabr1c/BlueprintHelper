@@ -1,6 +1,6 @@
 import type { ReadContextInput } from '../bridge/read-context/read-context-schemas.js';
 
-export type ReadContextTemplateDomain =
+export type ReadContextTemplateFamily =
   | 'blueprint'
   | 'widget_blueprint'
   | 'data_table'
@@ -18,7 +18,7 @@ export type ReadContextTemplateRouteStatus =
 export type ReadContextTemplateView =
   | 'logic_flow'
   | 'logic_json'
-  | 'logic_md'
+  | 'logic_json_delta_after_logic_flow'
   | 'tree_json'
   | 'schema_json'
   | 'property_json'
@@ -47,123 +47,84 @@ export type ReadContextPayloadProjectorId =
 
 export interface ReadContextTemplateDiagnostic {
   code: string;
-  domain?: string;
-  read_cluster?: string;
-  target_kind?: string;
-  view_template?: string;
   template_id?: string;
+  family?: string;
+  cluster?: string;
   path?: string;
   message?: string;
 }
 
-export interface ReadContextRouteDescriptor {
-  route_id: string;
-  domain: ReadContextTemplateDomain;
-  read_cluster: string;
-  target_kind: string;
-  view_template: ReadContextTemplateView;
-  read_type: ReadContextInput['read_type'] | string;
-  target_type?: NonNullable<ReadContextInput['target']['target_type']> | string;
-  format?: ReadContextTemplateView | string;
-  base_template_path: string;
+export interface ReadContextTemplateDescriptor {
+  template_id: string;
+  family: ReadContextTemplateFamily;
+  cluster: string;
+  description: string;
+  template_path: string;
+  read_spec: {
+    schema: 'BlueprintHelper.ReadSpec.v1';
+    read_type: ReadContextInput['read_type'] | string;
+    target: Record<string, unknown>;
+    view?: Record<string, unknown>;
+  };
+  required_fields: string[];
+  optional_fields: string[];
+  context_evidence: Record<string, string>;
+  output_schema: string;
+  recommended_invocation: 'bh context read --file <read-spec.json> --format json';
+  allowed_tools: readonly [
+    'bh tools read-templates compose',
+    'bh context read',
+  ];
+  stop_conditions: string[];
+}
+
+export interface ReadContextRouteDescriptor extends ReadContextTemplateDescriptor {
   status: ReadContextTemplateRouteStatus;
   payload_schema: 'BlueprintHelper.ReadSpec.v1';
+  read_type: ReadContextInput['read_type'] | string;
   bridge_command?: string;
-  output_schema: string;
-  required_target_fields: string[];
   request_builder_id: ReadContextRequestBuilderId;
   payload_projector_id: ReadContextPayloadProjectorId;
   supported_asset_types: readonly string[];
   supported_formats: readonly string[];
+  target_type?: NonNullable<ReadContextInput['target']['target_type']> | string;
+  format?: ReadContextTemplateView | string;
   reason?: string;
 }
 
-export interface ReadContextTemplateDomainItem {
-  domain: string;
+export interface ReadContextTemplateFamilyItem {
+  family: string;
   description: string;
   status: 'supported';
 }
 
 export interface ReadContextTemplateClusterItem {
-  domain: string;
-  read_cluster: string;
+  family: string;
+  cluster: string;
   description: string;
 }
 
-export interface ReadContextTemplateTargetItem {
-  domain: string;
-  read_cluster: string;
-  target_kind: string;
-  description: string;
-  required_target_fields: string[];
-}
-
-export interface ReadContextTemplateViewItem {
-  domain: string;
-  read_cluster: string;
-  target_kind: string;
-  view_template: string;
-  description: string;
-  output_schema: string;
-}
-
-export interface ReadContextTemplateQuickAccessItem {
-  template_id: string;
-  domain: string;
-  read_cluster: string;
-  target_kind: string;
-  view_template: string;
-  source_route_id: string;
-  read_type: string;
-  target_type?: string;
-  format?: string;
-  template_path: string;
-  required_target_fields: string[];
-  output_schema: string;
-}
-
-export interface ReadContextTemplateDomainsResult {
-  schema: 'BlueprintHelper.ReadContextTemplateDomains.v1';
+export interface ReadContextTemplateFamiliesResult {
+  schema: 'BlueprintHelper.ReadContextTemplateFamilies.v1';
   workflow: 'read_context';
-  items: ReadContextTemplateDomainItem[];
+  items: ReadContextTemplateFamilyItem[];
 }
 
 export interface ReadContextTemplateClustersResult {
   schema: 'BlueprintHelper.ReadContextTemplateClusters.v1';
-  domain: string;
+  family: string;
   items: ReadContextTemplateClusterItem[];
 }
 
-export interface ReadContextTemplateTargetsResult {
-  schema: 'BlueprintHelper.ReadContextTemplateTargets.v1';
-  domain: string;
-  read_cluster: string;
-  items: ReadContextTemplateTargetItem[];
-}
-
-export interface ReadContextTemplateViewsResult {
-  schema: 'BlueprintHelper.ReadContextTemplateViews.v1';
-  domain: string;
-  read_cluster: string;
-  target_kind: string;
-  items: ReadContextTemplateViewItem[];
-}
-
-export interface ReadContextTemplateQuickAccessResult {
-  schema: 'BlueprintHelper.ReadContextTemplateQuickAccess.v1';
-  domain: string;
-  read_cluster: string;
-  target_kind: string;
-  view_template: string;
-  items: ReadContextTemplateQuickAccessItem[];
+export interface ReadContextTemplatesResult {
+  schema: 'BlueprintHelper.ReadContextTemplates.v1';
+  family: string;
+  cluster: string;
+  items: ReadContextTemplateDescriptor[];
 }
 
 export interface ComposeReadContextTemplateInput {
-  domain: ReadContextTemplateDomain | string;
-  readCluster: string;
-  targetKind: string;
-  viewTemplate: ReadContextTemplateView | string;
-  templateIds: string[];
+  templateId: string;
   outputPath: string;
 }
 
@@ -171,11 +132,9 @@ export type ReadContextTemplateCompositionResult =
   | {
       schema: 'BlueprintHelper.ReadContextTemplateComposition.v1';
       status: 'ok';
-      domain: string;
-      read_cluster: string;
-      target_kind: string;
-      view_template: string;
       template_id: string;
+      family: string;
+      cluster: string;
       output_path: string;
       next: {
         read_command: string;
@@ -184,9 +143,6 @@ export type ReadContextTemplateCompositionResult =
   | {
       schema: 'BlueprintHelper.ReadContextTemplateComposition.v1';
       status: 'failed';
-      domain: string;
-      read_cluster: string;
-      target_kind: string;
-      view_template: string;
+      template_id: string;
       diagnostics: ReadContextTemplateDiagnostic[];
     };

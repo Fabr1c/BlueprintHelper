@@ -161,7 +161,7 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   const directCall = quickAccess.output.items.find((item: Record<string, unknown>) => item.template_id === 'generic_ops.call.direct');
   assert.equal(directCall?.write_mode, 'graph.append');
   assert.equal(directCall?.slot_type, 'statement');
-  assert.deepEqual(directCall?.arg_slots, ['args(*)', 'args(*)', 'args(*)']);
+  assert.deepEqual(directCall?.arg_slots, ['target_object(object)', 'args(*)', 'args(*)', 'args(*)']);
   assert.deepEqual(directCall?.insert_paths, ['behavior.entries[].body.statements[]']);
 
   const composed = await runCliJson([

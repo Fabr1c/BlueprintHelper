@@ -57,5 +57,4 @@ Candidate selector:
 
 After preview or execute, use `material_graph_context` with `logic_json` to
 confirm `node_key`, `block_id`, expression properties, links, and material
-outputs. Use `logic_flow` or `logic_md` only for compact human-readable
-summaries.
+outputs. Use `logic_flow` only for compact human-readable summaries.

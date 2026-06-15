@@ -389,7 +389,7 @@ test('read_context input schema rejects removed markdown logic format before han
     view: {
       format: removedMarkdownFormat,
     },
-  }), /blueprint_logic reads only support logic_json and logic_flow formats/);
+  }), /Invalid enum value/);
 });
 
 test('read_context logic_flow returns execflow from structured logic_json payload', async () => {
