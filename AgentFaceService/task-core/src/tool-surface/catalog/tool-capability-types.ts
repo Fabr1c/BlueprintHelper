@@ -78,7 +78,7 @@ export interface ToolCapabilityListResult {
   next: {
     template_index_command?:
       | 'bh tools templates families --workflow preview_execute --format json'
-      | 'bh tools read-templates domains --format json';
+      | 'bh tools read-templates families --format json';
     command?: string;
   };
 }

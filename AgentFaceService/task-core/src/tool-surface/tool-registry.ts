@@ -20,10 +20,8 @@ export {
 export {
   composeReadContextTemplate,
   listReadContextTemplateClusters,
-  listReadContextTemplateDomains,
-  listReadContextTemplateQuickAccess,
-  listReadContextTemplateTargets,
-  listReadContextTemplateViews,
+  listReadContextTemplateFamilies,
+  listReadContextTemplates,
 } from './templates/read-context-template-composer.js';
 export {
   buildReadonlyToolCommandManifestRegistry,
@@ -105,7 +103,7 @@ export type {
   ComposeReadContextTemplateInput,
   ReadContextTemplateCompositionResult,
   ReadContextTemplateDiagnostic,
-  ReadContextTemplateDomain,
+  ReadContextTemplateFamily,
 } from './templates/read-context-template-types.js';
 export type {
   ToolCommandManifestRegistry,

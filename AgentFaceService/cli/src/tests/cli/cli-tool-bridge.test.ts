@@ -27,7 +27,7 @@ test('global help points Agents to CLI catalog and per-tool help', async () => {
   assert.match(output, /bh tools list <domain> <kind> --format json/);
   assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
   assert.match(output, /bh tools templates compose --family <family>/);
-  assert.match(output, /bh tools read-templates domains --format json/);
+  assert.match(output, /bh tools read-templates families --format json/);
   assert.match(
     output,
     /Compose a temporary TaskSpec or ReadSpec, then run bh task preview, bh task execute, or bh context read/,

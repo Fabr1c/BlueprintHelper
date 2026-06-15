@@ -4,7 +4,7 @@ export type CliSubcommandGroup = 'tools.templates' | 'tools.read_templates';
 
 export type CliTemplateIndexCommand =
   | 'bh tools templates families --workflow preview_execute --format json'
-  | 'bh tools read-templates domains --format json';
+  | 'bh tools read-templates families --format json';
 
 type CliSubcommandCapabilityKind = 'discover' | 'read' | 'plan' | 'write' | 'diagnose';
 
@@ -53,7 +53,7 @@ const READ_CONTEXT_TEMPLATE_GROUP_DESCRIPTOR: CliSubcommandGroupDescriptor = {
   command_prefix: ['tools', 'read-templates'],
   input_shapes: ['readspec'],
   capability_kinds: ['read'],
-  template_index_command: 'bh tools read-templates domains --format json',
+  template_index_command: 'bh tools read-templates families --format json',
 };
 
 const CLI_SUBCOMMAND_GROUP_DESCRIPTORS: readonly CliSubcommandGroupDescriptor[] = [
@@ -104,51 +104,30 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
 
 const READ_CONTEXT_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
   {
-    subcommand: 'domains',
-    kind: 'tools.read_templates.domains',
-    usage: 'bh tools read-templates domains --format json',
+    subcommand: 'families',
+    kind: 'tools.read_templates.families',
+    usage: 'bh tools read-templates families --format json',
   },
   {
     subcommand: 'clusters',
     kind: 'tools.read_templates.clusters',
-    usage: 'bh tools read-templates clusters --domain <domain> --format json',
-    option_map: { domain: 'domain' },
+    usage: 'bh tools read-templates clusters --family <family> --format json',
+    option_map: { family: 'family' },
   },
   {
-    subcommand: 'targets',
-    kind: 'tools.read_templates.targets',
-    usage: 'bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json',
-    option_map: { domain: 'domain', readCluster: 'readCluster' },
-  },
-  {
-    subcommand: 'views',
-    kind: 'tools.read_templates.views',
-    usage: 'bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json',
-    option_map: { domain: 'domain', readCluster: 'readCluster', targetKind: 'targetKind' },
-  },
-  {
-    subcommand: 'quick-access',
-    kind: 'tools.read_templates.quick_access',
-    usage: 'bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json',
-    option_map: {
-      domain: 'domain',
-      readCluster: 'readCluster',
-      targetKind: 'targetKind',
-      viewTemplate: 'viewTemplate',
-    },
+    subcommand: 'list',
+    kind: 'tools.read_templates.list',
+    usage: 'bh tools read-templates list --family <family> --cluster <cluster> --format json',
+    option_map: { family: 'family', cluster: 'cluster' },
   },
   {
     subcommand: 'compose',
     kind: 'tools.read_templates.compose',
-    usage: 'bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json',
+    usage: 'bh tools read-templates compose --template <template_id> --out <read-spec.json> --format json',
     option_map: {
-      domain: 'domain',
-      readCluster: 'readCluster',
-      targetKind: 'targetKind',
-      viewTemplate: 'viewTemplate',
+      templateId: 'template',
       outputPath: 'out',
     },
-    array_option_map: { templateIds: 'templates' },
   },
 ];
 

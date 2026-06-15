@@ -40,7 +40,7 @@ test('tool catalog points read and write capabilities to their own template inde
   const blueprintRead = listToolCapabilities({ domain: 'blueprint', kind: 'read' });
   assert.equal(
     blueprintRead.next.template_index_command,
-    'bh tools read-templates domains --format json',
+    'bh tools read-templates families --format json',
   );
 
   const projectDomain = listToolDomains().items.find((item) => item.id === 'project');
@@ -106,8 +106,8 @@ test('tool catalog exposes UMG widget tree read capability through ReadContext r
   assert.ok(widgetTree);
   assert.equal(widgetTree.tool_name, 'blueprinthelper_read_context');
   assert.deepEqual(widgetTree.route_refs, [
-    'read.widget_blueprint.structure_tree.widget_tree.tree_json',
-    'read.widget_blueprint.structure_tree.widget_tree.logic_flow',
+    'widget.structure.tree_json',
+    'widget.structure.tree_flow',
   ]);
 	assert.equal(widgetTree.stop_conditions.includes('bridge_unavailable'), true);
 });

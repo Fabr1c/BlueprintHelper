@@ -69,7 +69,9 @@ test('template composers use shared JSON input helper for file reads', () => {
 
   for (const file of files) {
     const source = taskCoreSource(file);
-    assert.match(source, /readJsonFile|parseJsonText/u, file);
+    if (source.includes('readFileSync')) {
+      assert.match(source, /readJsonFile|parseJsonText/u, file);
+    }
     assert.doesNotMatch(source, /JSON\.parse\(fs\.readFileSync\([^)]*'utf8'[^)]*\)\)/u, file);
   }
 });

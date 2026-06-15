@@ -53,8 +53,8 @@ test('HelpBuilder renders grouped read_context help from ReadContext template na
   assert.match(help, /BlueprintHelper CLI help: context read/);
   assert.match(help, /bh context read --file <read-spec\.json>/);
   assert.match(help, /\$json \| bh context read --stdin --format full/);
-  assert.match(help, /bh tools read-templates domains --format json/);
-  assert.match(help, /bh tools read-templates compose --domain <domain>/);
+  assert.match(help, /bh tools read-templates families --format json/);
+  assert.match(help, /bh tools read-templates compose --template <template_id>/);
 	assert.doesNotMatch(help, /bh tools templates compose --family <family>/);
 });
 
@@ -109,10 +109,10 @@ test('HelpBuilder explains empty-object templates for no-input tools', () => {
 });
 
 test('global help includes ReadContext template navigation', () => {
-	const help = buildHelpText();
+  const help = buildHelpText();
 
-  assert.match(help, /bh tools read-templates domains --format json/);
-  assert.match(help, /bh tools read-templates compose --domain <domain>/);
+  assert.match(help, /bh tools read-templates families --format json/);
+  assert.match(help, /bh tools read-templates compose --template <template_id>/);
   assert.match(help, /bh context read \(\--file <read-spec\.json> \| --json <json> \| --stdin\)/);
   assert.doesNotMatch(help, /bh <tool_name>/);
   assert.doesNotMatch(help, /Default tool names:/);

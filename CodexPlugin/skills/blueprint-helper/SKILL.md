@@ -73,10 +73,10 @@ For complex JSON, use the CLI catalog first:
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
 bh tools templates families --workflow preview_execute --format json
-bh tools read-templates domains --format json
+bh tools read-templates families --format json
 ```
 
-Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the ReadSpec composer (`read-templates domains -> clusters -> targets -> views -> quick-access -> compose`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
+Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the flat ReadSpec composer (`read-templates families -> clusters -> list -> compose --template`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
 
 Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
@@ -90,7 +90,7 @@ Use the CLI catalog:
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
 bh tools templates families --workflow preview_execute --format json
-bh tools read-templates domains --format json
+bh tools read-templates families --format json
 ```
 
 Then use the TaskSpec composer or ReadSpec composer to select and compose the concrete JSON request.

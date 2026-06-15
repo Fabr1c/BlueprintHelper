@@ -25,29 +25,26 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 {
 	TestTrue(TEXT("generated ReadContext route manifest has rows"), GBlueprintHelperReadContextRouteCount > 0);
 
-	TSet<FString> RouteIds;
+	TSet<FString> TemplateIds;
 	int32 ActiveRoutes = 0;
 	const FString RemovedMarkdownView = FString(TEXT("logic")) + TEXT("_md");
 	const FString RemovedMarkdownCommand = FString(TEXT("read_blueprint_logic")) + TEXT("_md");
 	const FString RemovedMaterialMarkdownCommand = FString(TEXT("read_material_logic")) + TEXT("_md");
 	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Route : GBlueprintHelperReadContextRoutes)
 	{
-		TestFalse(TEXT("route id is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.RouteId));
-		TestFalse(TEXT("domain is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Domain));
+		TestFalse(TEXT("template id is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.TemplateId));
+		TestFalse(TEXT("family is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Family));
 		TestFalse(TEXT("read cluster is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.ReadCluster));
-		TestFalse(TEXT("target kind is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.TargetKind));
-		TestFalse(TEXT("view template is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.ViewTemplate));
 		TestFalse(TEXT("status is populated"), FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Status));
 
-		const FString RouteId(Route.RouteId);
-		const FString Domain(Route.Domain);
-		TestFalse(FString::Printf(TEXT("route id is unique: %s"), *RouteId), RouteIds.Contains(RouteId));
-		TestFalse(FString::Printf(TEXT("route id excludes removed markdown view: %s"), *RouteId),
-			RouteId.Contains(RemovedMarkdownView));
-		RouteIds.Add(RouteId);
+		const FString TemplateId(Route.TemplateId);
+		TestFalse(FString::Printf(TEXT("template id is unique: %s"), *TemplateId), TemplateIds.Contains(TemplateId));
+		TestFalse(FString::Printf(TEXT("template id excludes removed markdown view: %s"), *TemplateId),
+			TemplateId.Contains(RemovedMarkdownView));
+		TemplateIds.Add(TemplateId);
 
-		TestFalse(TEXT("view template excludes removed markdown view"),
-			FString(Route.ViewTemplate).Equals(RemovedMarkdownView));
+		TestFalse(TEXT("format excludes removed markdown view"),
+			FString(Route.Format).Equals(RemovedMarkdownView));
 		TestFalse(TEXT("supported command excludes material removed markdown bridge command"),
 			FString(Route.Command).Equals(RemovedMaterialMarkdownCommand));
 		TestFalse(TEXT("command excludes removed markdown bridge command"),
@@ -58,11 +55,17 @@ bool FBlueprintHelperReadContextGeneratedRouteMirrorTest::RunTest(const FString&
 		{
 			++ActiveRoutes;
 			TestFalse(
-				FString::Printf(TEXT("active route has command: %s"), *RouteId),
+				FString::Printf(TEXT("active route has command: %s"), *TemplateId),
 				FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Command));
 			TestFalse(
-				FString::Printf(TEXT("active route has cluster: %s"), *RouteId),
+				FString::Printf(TEXT("active route has cluster: %s"), *TemplateId),
 				FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Cluster));
+			TestFalse(
+				FString::Printf(TEXT("active route has target type: %s"), *TemplateId),
+				FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.TargetType));
+			TestFalse(
+				FString::Printf(TEXT("active route has format: %s"), *TemplateId),
+				FBlueprintHelperReadContextRouteManifestTestUtils::IsEmpty(Route.Format));
 		}
 	}
 
@@ -78,30 +81,30 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBlueprintHelperReadContextMaterialRouteMirrorTest::RunTest(const FString&)
 {
 	TMap<FString, FString> ExpectedCommands;
-	ExpectedCommands.Add(TEXT("read.material.logic.graph.logic_json"), TEXT("read_material_logic_json"));
-	ExpectedCommands.Add(TEXT("read.material.logic.graph.logic_flow"), TEXT("read_material_logic_json"));
+	ExpectedCommands.Add(TEXT("material.logic.graph.json"), TEXT("read_material_logic_json"));
+	ExpectedCommands.Add(TEXT("material.logic.graph.flow"), TEXT("read_material_logic_json"));
 
-	TSet<FString> SeenRoutes;
+	TSet<FString> SeenTemplates;
 	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Route : GBlueprintHelperReadContextRoutes)
 	{
-		const FString RouteId(Route.RouteId);
-		const FString* ExpectedCommand = ExpectedCommands.Find(RouteId);
+		const FString TemplateId(Route.TemplateId);
+		const FString* ExpectedCommand = ExpectedCommands.Find(TemplateId);
 		if (!ExpectedCommand)
 		{
 			continue;
 		}
 
-		SeenRoutes.Add(RouteId);
-		TestFalse(TEXT("material route excludes removed markdown view"), RouteId.Contains(FString(TEXT("logic")) + TEXT("_md")));
-		TestEqual(FString::Printf(TEXT("material route is active: %s"), *RouteId), FString(Route.Status), FString(TEXT("active")));
-		TestEqual(FString::Printf(TEXT("material route command matches runtime: %s"), *RouteId), FString(Route.Command), *ExpectedCommand);
-		TestEqual(FString::Printf(TEXT("material route cluster matches runtime: %s"), *RouteId), FString(Route.Cluster), FString(TEXT("SharedServices")));
-		TestEqual(FString::Printf(TEXT("material route domain: %s"), *RouteId), FString(Route.Domain), FString(TEXT("material")));
+		SeenTemplates.Add(TemplateId);
+		TestFalse(TEXT("material route excludes removed markdown view"), TemplateId.Contains(FString(TEXT("logic")) + TEXT("_md")));
+		TestEqual(FString::Printf(TEXT("material route is active: %s"), *TemplateId), FString(Route.Status), FString(TEXT("active")));
+		TestEqual(FString::Printf(TEXT("material route command matches runtime: %s"), *TemplateId), FString(Route.Command), *ExpectedCommand);
+		TestEqual(FString::Printf(TEXT("material route cluster matches runtime: %s"), *TemplateId), FString(Route.Cluster), FString(TEXT("SharedServices")));
+		TestEqual(FString::Printf(TEXT("material route family: %s"), *TemplateId), FString(Route.Family), FString(TEXT("material")));
 	}
 
 	for (const TPair<FString, FString>& Expected : ExpectedCommands)
 	{
-		TestTrue(FString::Printf(TEXT("material generated route exists: %s"), *Expected.Key), SeenRoutes.Contains(Expected.Key));
+		TestTrue(FString::Printf(TEXT("material generated route exists: %s"), *Expected.Key), SeenTemplates.Contains(Expected.Key));
 	}
 	return true;
 }

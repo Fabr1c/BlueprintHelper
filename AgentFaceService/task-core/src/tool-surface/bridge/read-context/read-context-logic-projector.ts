@@ -1,9 +1,13 @@
 import { buildLogicFlowPayload } from './read-context-logic-flow.js';
+import { buildLogicJsonDeltaAfterLogicFlowPayload } from './read-context-logic-json-delta.js';
 import { enrichLogicJsonCompactAnchors } from './read-context-compact-anchor.js';
 import { LOGIC_PROJECTION_OWNER } from './read-context-schemas.js';
 import { isRecord } from '../bridge-tool-result-utils.js';
 
-export type ReadContextLogicFormat = 'logic_flow' | 'logic_json';
+export type ReadContextLogicFormat =
+  | 'logic_flow'
+  | 'logic_json'
+  | 'logic_json_delta_after_logic_flow';
 
 export type LogicProjectionInput = {
   requestedFormat: ReadContextLogicFormat;
@@ -37,22 +41,38 @@ export function projectReadContextLogic(input: LogicProjectionInput): LogicProje
     };
   }
 
-  if (input.requestedFormat !== 'logic_json') {
-    throw new Error(`unsupported_logic_format: ${String(input.requestedFormat)}`);
+  if (input.requestedFormat === 'logic_json') {
+    const logicJson = buildLogicJsonPayload(source.payload);
+    return {
+      format: 'logic_json',
+      payload: withProjectionMetadata(logicJson.payload, source.metadata),
+      debug: mergeDebug(
+        source.metadata,
+        mergeDebugObjects(
+          collectAnchorDebug(source.payload),
+          logicJson.diagnostics ? { compact_anchor_diagnostics: logicJson.diagnostics } : undefined,
+        ),
+      ),
+    };
   }
 
-  const logicJson = buildLogicJsonPayload(source.payload);
-  return {
-    format: 'logic_json',
-    payload: withProjectionMetadata(logicJson.payload, source.metadata),
-    debug: mergeDebug(
-      source.metadata,
-      mergeDebugObjects(
-        collectAnchorDebug(source.payload),
-        logicJson.diagnostics ? { compact_anchor_diagnostics: logicJson.diagnostics } : undefined,
+  if (input.requestedFormat === 'logic_json_delta_after_logic_flow') {
+    const logicJson = buildLogicJsonPayload(source.payload);
+    const deltaPayload = buildLogicJsonDeltaAfterLogicFlowPayload(logicJson.payload);
+    return {
+      format: 'logic_json_delta_after_logic_flow',
+      payload: withProjectionMetadata(deltaPayload, source.metadata),
+      debug: mergeDebug(
+        source.metadata,
+        mergeDebugObjects(
+          collectAnchorDebug(source.payload),
+          logicJson.diagnostics ? { compact_anchor_diagnostics: logicJson.diagnostics } : undefined,
+        ),
       ),
-    ),
-  };
+    };
+  }
+
+  throw new Error(`unsupported_logic_format: ${String(input.requestedFormat)}`);
 }
 
 function resolveProjectionSource(input: LogicProjectionInput): ProjectionSource {

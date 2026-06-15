@@ -442,10 +442,7 @@ function parseArgs(argv: string[]): ParseResult {
     writeMode?: string;
     cluster?: string;
     operation?: string;
-    domain?: string;
-    readCluster?: string;
-    targetKind?: string;
-    viewTemplate?: string;
+    template?: string;
     templates?: string[];
     out?: string;
     compileOnly?: boolean;
@@ -504,14 +501,8 @@ function parseArgs(argv: string[]): ParseResult {
       options.cluster = readOptionValue(argv, ++index, arg);
     } else if (arg === '--operation') {
       options.operation = readOptionValue(argv, ++index, arg);
-    } else if (arg === '--domain') {
-      options.domain = readOptionValue(argv, ++index, arg);
-    } else if (arg === '--read-cluster') {
-      options.readCluster = readOptionValue(argv, ++index, arg);
-    } else if (arg === '--target-kind') {
-      options.targetKind = readOptionValue(argv, ++index, arg);
-    } else if (arg === '--view-template') {
-      options.viewTemplate = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--template') {
+      options.template = readOptionValue(argv, ++index, arg);
     } else if (arg === '--templates') {
       options.templates = splitTopLevelSlotExpressions(readOptionValue(argv, ++index, arg));
     } else if (arg === '--out') {
@@ -691,10 +682,7 @@ function parseHelpTarget(argv: string[]): string[] {
     '--write-mode',
     '--cluster',
     '--operation',
-    '--domain',
-    '--read-cluster',
-    '--target-kind',
-    '--view-template',
+    '--template',
     '--templates',
     '--out',
     '--select',

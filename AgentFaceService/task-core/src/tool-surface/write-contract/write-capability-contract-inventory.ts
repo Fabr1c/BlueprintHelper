@@ -317,13 +317,13 @@ function toPreviewExecuteClassification(
 }
 
 function readbackRefsForFamily(family: string): string[] {
-  if (family === 'umg_widget') return activeReadRoutes((route) => route.domain === 'widget_blueprint');
-  if (family === 'data_table') return activeReadRoutes((route) => route.domain === 'data_table');
+  if (family === 'umg_widget') return activeReadRoutes((route) => route.family === 'widget_blueprint');
+  if (family === 'data_table') return activeReadRoutes((route) => route.family === 'data_table');
   if (family === 'object_properties' || family === 'asset_factory') {
-    return activeReadRoutes((route) => route.domain === 'data_asset' || route.domain === 'blueprint');
+    return activeReadRoutes((route) => route.family === 'data_asset' || route.family === 'blueprint');
   }
-  if (family === 'material_graph') return activeReadRoutes((route) => route.domain === 'material');
-  if (family.startsWith('blueprint_')) return activeReadRoutes((route) => route.domain === 'blueprint');
+  if (family === 'material_graph') return activeReadRoutes((route) => route.family === 'material');
+  if (family.startsWith('blueprint_')) return activeReadRoutes((route) => route.family === 'blueprint');
   return [];
 }
 
@@ -337,10 +337,10 @@ function verificationFieldsForFamily(family: string): string[] {
 }
 
 function readbackRefsForDomain(domain: string): string[] {
-  if (domain === 'umg') return activeReadRoutes((route) => route.domain === 'widget_blueprint');
-  if (domain === 'data') return activeReadRoutes((route) => route.domain === 'data_asset' || route.domain === 'data_table');
-  if (domain === 'material') return activeReadRoutes((route) => route.domain === 'material');
-  if (domain === 'blueprint') return activeReadRoutes((route) => route.domain === 'blueprint');
+  if (domain === 'umg') return activeReadRoutes((route) => route.family === 'widget_blueprint');
+  if (domain === 'data') return activeReadRoutes((route) => route.family === 'data_asset' || route.family === 'data_table');
+  if (domain === 'material') return activeReadRoutes((route) => route.family === 'material');
+  if (domain === 'blueprint') return activeReadRoutes((route) => route.family === 'blueprint');
   return [];
 }
 
@@ -352,5 +352,5 @@ function verificationFieldsForDomain(domain: string): string[] {
 function activeReadRoutes(predicate: (route: ReturnType<typeof getActiveReadContextRouteDescriptors>[number]) => boolean): string[] {
   return getActiveReadContextRouteDescriptors()
     .filter(predicate)
-    .map((route) => route.route_id);
+    .map((route) => route.template_id);
 }

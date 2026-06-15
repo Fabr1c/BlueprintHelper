@@ -40,12 +40,10 @@ blueprinthelper_source_control_status
 blueprinthelper_source_control_checkout
 blueprinthelper_find_assets
 bh context read --file <read-spec.json> | --stdin
-bh tools read-templates domains --format json
-bh tools read-templates clusters --domain blueprint --format json
-bh tools read-templates targets --domain blueprint --read-cluster logic --format json
-bh tools read-templates views --domain blueprint --read-cluster logic --target-kind function --format json
-bh tools read-templates quick-access --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --format json
-bh tools read-templates compose --domain blueprint --read-cluster logic --target-kind function --view-template logic_flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
+bh tools read-templates families --format json
+bh tools read-templates clusters --family blueprint --format json
+bh tools read-templates list --family blueprint --cluster logic --format json
+bh tools read-templates compose --template blueprint.logic.function.flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 bh task preview --file <task-spec.json>
@@ -77,10 +75,10 @@ Agent-facing tool and template selection is CLI-owned:
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
 bh tools templates families --workflow preview_execute --format json
-bh tools read-templates domains --format json
+bh tools read-templates families --format json
 ```
 
-After choosing the capability, use the TaskSpec composer or ReadSpec composer navigation to select a concrete quick-access item and compose a temporary JSON file. Do not scan `Templates/` or old semantic indexes for tool selection. Prefer composer output, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
+After choosing the capability, use the TaskSpec composer or flat ReadSpec composer navigation to select a concrete `template_id` and compose a temporary JSON file. Do not scan `Templates/` or old semantic indexes for tool selection. Prefer composer output, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
 
 Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/kind/capability，再通过 TaskSpec composer 或 ReadSpec composer 选择 quick-access 并生成临时 JSON；不要扫描 `Templates/` 目录来选择工具。
 

@@ -55,7 +55,7 @@ test('runCli filters tool capability catalog and points read workflows to ReadCo
   assert.equal(output.items.every((item: Record<string, unknown>) => item.risk === 'low'), true);
   assert.equal(
     output.next.template_index_command,
-    'bh tools read-templates domains --format json',
+    'bh tools read-templates families --format json',
   );
 });
 
@@ -304,91 +304,52 @@ test('CLI exposes blueprint_variables cluster and quick-access discovery', async
   );
 });
 
-test('runCli exposes ReadContext template four-layer index and compose output', async (t) => {
+test('runCli exposes ReadContext flat template index and compose output', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-read-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
   const outputPath = path.join(outDir, 'function-flow.readspec.json');
 
-  const domains = await runCliJson(['tools', 'read-templates', 'domains', '--format', 'json']);
-  assert.equal(domains.output.schema, 'BlueprintHelper.ReadContextTemplateDomains.v1');
-  assert.equal(domains.output.items.some((item: Record<string, unknown>) => item.domain === 'blueprint'), true);
+  const families = await runCliJson(['tools', 'read-templates', 'families', '--format', 'json']);
+  assert.equal(families.output.schema, 'BlueprintHelper.ReadContextTemplateFamilies.v1');
+  assert.equal(families.output.items.some((item: Record<string, unknown>) => item.family === 'blueprint'), true);
   assert.match(
-    domains.output.items.find((item: Record<string, unknown>) => item.domain === 'blueprint')?.description as string,
+    families.output.items.find((item: Record<string, unknown>) => item.family === 'blueprint')?.description as string,
     /Blueprint/i,
   );
 
-  const clusters = await runCliJson(['tools', 'read-templates', 'clusters', '--domain', 'blueprint', '--format', 'json']);
-  assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.read_cluster === 'logic'), true);
+  const clusters = await runCliJson(['tools', 'read-templates', 'clusters', '--family', 'blueprint', '--format', 'json']);
+  assert.equal(clusters.output.schema, 'BlueprintHelper.ReadContextTemplateClusters.v1');
+  assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.cluster === 'logic'), true);
   assert.match(
-    clusters.output.items.find((item: Record<string, unknown>) => item.read_cluster === 'logic')?.description as string,
+    clusters.output.items.find((item: Record<string, unknown>) => item.cluster === 'logic')?.description as string,
     /logic/i,
   );
 
-  const targets = await runCliJson([
+  const templates = await runCliJson([
     'tools',
     'read-templates',
-    'targets',
-    '--domain',
+    'list',
+    '--family',
     'blueprint',
-    '--read-cluster',
+    '--cluster',
     'logic',
     '--format',
     'json',
   ]);
-  assert.equal(targets.output.items.some((item: Record<string, unknown>) => item.target_kind === 'function'), true);
+  assert.equal(templates.output.schema, 'BlueprintHelper.ReadContextTemplates.v1');
+  assert.equal(templates.output.items.some((item: Record<string, unknown>) => item.template_id === 'blueprint.logic.function.flow'), true);
+  assert.equal(templates.output.items.some((item: Record<string, unknown>) => item.template_id === 'blueprint.logic.function.json_delta'), true);
   assert.match(
-    targets.output.items.find((item: Record<string, unknown>) => item.target_kind === 'function')?.description as string,
+    templates.output.items.find((item: Record<string, unknown>) => item.template_id === 'blueprint.logic.function.flow')?.description as string,
     /function/i,
   );
-
-  const views = await runCliJson([
-    'tools',
-    'read-templates',
-    'views',
-    '--domain',
-    'blueprint',
-    '--read-cluster',
-    'logic',
-    '--target-kind',
-    'function',
-    '--format',
-    'json',
-  ]);
-  assert.deepEqual(views.output.items.map((item: Record<string, unknown>) => item.view_template), ['logic_flow', 'logic_json']);
-  assert.match(
-    views.output.items.find((item: Record<string, unknown>) => item.view_template === 'logic_flow')?.description as string,
-    /flow/i,
-  );
-
-  const quickAccess = await runCliJson([
-    'tools',
-    'read-templates',
-    'quick-access',
-    '--domain',
-    'blueprint',
-    '--read-cluster',
-    'logic',
-    '--target-kind',
-    'function',
-    '--view-template',
-    'logic_flow',
-    '--format',
-    'json',
-  ]);
-  assert.equal(quickAccess.output.items[0]?.template_id, 'read.blueprint.logic.function.logic_flow');
 
   const composed = await runCliJson([
     'tools',
     'read-templates',
     'compose',
-    '--domain',
-    'blueprint',
-    '--read-cluster',
-    'logic',
-    '--target-kind',
-    'function',
-    '--view-template',
-    'logic_flow',
+    '--template',
+    'blueprint.logic.function.flow',
     '--out',
     outputPath,
     '--format',
@@ -472,7 +433,7 @@ test('global help points template selection to TaskSpec composer index', () => {
   assert.match(help, /bh tools domains --format json/);
   assert.match(help, /bh tools list <domain> <kind> --format json/);
   assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(help, /bh tools read-templates domains --format json/);
+  assert.match(help, /bh tools read-templates families --format json/);
   assert.match(help, /bh tools templates compose --family <family>/);
   assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
 });

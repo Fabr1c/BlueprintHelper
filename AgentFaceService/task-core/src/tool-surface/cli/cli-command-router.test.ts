@@ -111,12 +111,12 @@ test('subcommand CLI positionals and template index commands come from group des
     assert.deepEqual(command.positionals, subcommand.positionals);
   }
 
-  const readGroup = resolveCliSubcommandGroupFromPositionals(['tools', 'read-templates', 'domains']);
+  const readGroup = resolveCliSubcommandGroupFromPositionals(['tools', 'read-templates', 'families']);
   assert.equal(readGroup?.group, 'tools.read_templates');
   assert.deepEqual(readGroup?.command_prefix, ['tools', 'read-templates']);
   assert.equal(
     templateIndexCommandForCapabilityKind('read'),
-    'bh tools read-templates domains --format json',
+    'bh tools read-templates families --format json',
   );
   assert.equal(
     templateIndexCommandForCapabilityKind('write'),

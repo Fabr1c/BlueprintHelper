@@ -62,7 +62,7 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
   );
   assert.match(readContextHeader, /GBlueprintHelperReadContextRoutes/);
   for (const descriptor of READ_CONTEXT_ROUTE_MANIFEST) {
-    assert.equal(readContextHeader.includes(`TEXT("${descriptor.route_id}")`), true, `UE ReadContext manifest contains ${descriptor.route_id}`);
+    assert.equal(readContextHeader.includes(`TEXT("${descriptor.template_id}")`), true, `UE ReadContext manifest contains ${descriptor.template_id}`);
   }
 });
 
@@ -107,10 +107,10 @@ test('UMG TaskSpec contract and template metadata are descriptor-backed', () => 
 });
 
 test('ReadContext active descriptors, generated manifest, capabilities and command route refs agree', () => {
-  const activeRouteIds = getActiveReadContextRouteDescriptors().map((route) => route.route_id).sort();
+  const activeRouteIds = getActiveReadContextRouteDescriptors().map((route) => route.template_id).sort();
   const generatedActiveRouteIds = READ_CONTEXT_ROUTE_MANIFEST
     .filter((route) => route.status === 'active')
-    .map((route) => route.route_id)
+    .map((route) => route.template_id)
     .sort();
   assert.deepEqual(generatedActiveRouteIds, activeRouteIds);
 

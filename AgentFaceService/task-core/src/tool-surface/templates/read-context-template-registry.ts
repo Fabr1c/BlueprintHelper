@@ -315,30 +315,39 @@ function active(
   description: string,
   data: ActiveRouteData,
 ): ReadContextRouteDescriptor {
+  const {
+    template_path: templatePath,
+    required_fields: requiredFields,
+    optional_fields: optionalFields,
+    context_evidence: contextEvidence,
+    stop_conditions: stopConditions,
+    supported_asset_types: supportedAssetTypes,
+    supported_formats: supportedFormats,
+    ...runtimeData
+  } = data;
   const readSpec = composeDescriptorReadSpec(data);
   return {
     template_id: templateId,
     family,
     cluster,
     description,
-    template_path: data.template_path,
+    template_path: templatePath,
     read_spec: readSpec,
-    required_fields: data.required_fields,
-    optional_fields: data.optional_fields ?? [],
-    context_evidence: data.context_evidence ?? defaultContextEvidence(data.format),
-    output_schema: data.output_schema,
+    required_fields: requiredFields,
+    optional_fields: optionalFields ?? [],
+    context_evidence: contextEvidence ?? defaultContextEvidence(data.format),
     recommended_invocation: 'bh context read --file <read-spec.json> --format json',
     allowed_tools: ['bh tools read-templates compose', 'bh context read'],
-    stop_conditions: data.stop_conditions ?? [
+    stop_conditions: stopConditions ?? [
       'missing_asset_path',
       'read_context_screenshot_conflict',
       'runtime_capability_missing',
     ],
     status: 'active',
     payload_schema: 'BlueprintHelper.ReadSpec.v1',
-    ...data,
-    supported_asset_types: data.supported_asset_types ?? uniqueStrings([family, data.target_type]),
-    supported_formats: data.supported_formats ?? uniqueStrings([data.format]),
+    ...runtimeData,
+    supported_asset_types: supportedAssetTypes ?? uniqueStrings([family, data.target_type]),
+    supported_formats: supportedFormats ?? uniqueStrings([data.format]),
   };
 }
 

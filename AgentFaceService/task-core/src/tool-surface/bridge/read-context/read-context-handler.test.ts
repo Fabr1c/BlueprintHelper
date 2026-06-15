@@ -45,7 +45,7 @@ const duplicateBoundaryAnchor = {
 test('read_context logic formats declare UE callback capabilities with task-core projection owner', () => {
   assert.deepEqual(
     READ_CONTEXT_LOGIC_FORMATS,
-    ['logic_flow', 'logic_json'],
+    ['logic_flow', 'logic_json', 'logic_json_delta_after_logic_flow'],
   );
   assert.deepEqual(
     LOGIC_PROJECTION_CALLBACK_CAPABILITIES,
@@ -73,6 +73,29 @@ test('ReadContext keeps markdown disabled for blueprint logic reads', () => {
   });
 
   assert.equal(result.success, false);
+});
+
+test('ReadContext accepts Blueprint logic_json_delta_after_logic_flow with LogicFlow baseline', () => {
+  const input = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/BP_Test',
+      target_type: 'function',
+      target_name: 'Run',
+    },
+    view: {
+      format: 'logic_json_delta_after_logic_flow',
+      baseline_view: 'logic_flow',
+    },
+  });
+
+  const request = buildReadContextBridgeRequest(input);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.command, 'read_blueprint_logic_json');
+    assert.equal(request.payloadSchema, 'LogicJson.v1');
+  }
 });
 
 test('ReadContext material_graph_context schema accepts only the P0 logic read surface', () => {

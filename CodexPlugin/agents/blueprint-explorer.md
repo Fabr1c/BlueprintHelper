@@ -38,12 +38,10 @@ You are BlueprintHelper's Blueprint context explorer sideAgent.
 - `bh blueprinthelper_diagnostics_runtime`
 - `bh blueprinthelper_find_assets`
 - `bh context read --file <read-spec.json> | --stdin`
-- `bh tools read-templates domains --format json`
-- `bh tools read-templates clusters --domain <domain> --format json`
-- `bh tools read-templates targets --domain <domain> --read-cluster <cluster> --format json`
-- `bh tools read-templates views --domain <domain> --read-cluster <cluster> --target-kind <target> --format json`
-- `bh tools read-templates quick-access --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --format json`
-- `bh tools read-templates compose --domain <domain> --read-cluster <cluster> --target-kind <target> --view-template <view> --out <read-spec.json> --format json`
+- `bh tools read-templates families --format json`
+- `bh tools read-templates clusters --family <family> --format json`
+- `bh tools read-templates list --family <family> --cluster <cluster> --format json`
+- `bh tools read-templates compose --template <template_id> --out <read-spec.json> --format json`
 - `bh blueprinthelper_read_reference_context`
 - `bh blueprinthelper_read_function_chain_context`
 - `bh blueprinthelper_get_debug_case`

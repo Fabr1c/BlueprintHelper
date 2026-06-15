@@ -40,6 +40,7 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.discover.assets', 'blueprint', 'discover', 'blueprinthelper_find_assets', 'Resolve unknown Unreal asset paths before reads or writes.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_find_assets']),
   capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow', 'read_context_event_logic_flow', 'read_context_custom_event_logic_flow']),
   capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json', 'read_context_block_logic_json']),
+  capability('blueprint.read.context.logic_json_delta', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read LogicJson delta after LogicFlow for write-location evidence without duplicate flow summary.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_json_delta']),
   capability('blueprint.read.context.asset', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint asset diagnostics context.', 'blueprint-explorer', 'low', true, false, ['read_context_asset']),
   capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, ['read_context_components']),
   capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, ['read_context_variables']),
@@ -252,31 +253,35 @@ function createDescriptorRegistry() {
 function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescriptorOptions> {
   const graphWriteRouteRefs = getGraphWriteRoutesForTemplateDiscovery().map((route) => route.route_id);
   const blueprintLogicFlowRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'logic' && route.view_template === 'logic_flow');
+    route.family === 'blueprint' && route.cluster === 'logic' && route.format === 'logic_flow');
   const blueprintLogicJsonRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint'
-    && route.read_cluster === 'logic'
-    && route.view_template === 'logic_json');
+    route.family === 'blueprint'
+    && route.cluster === 'logic'
+    && route.format === 'logic_json');
+  const blueprintLogicJsonDeltaRouteRefs = readContextRouteRefs((route) =>
+    route.family === 'blueprint'
+    && route.cluster === 'logic'
+    && route.format === 'logic_json_delta_after_logic_flow');
   const blueprintAssetRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'asset');
+    route.family === 'blueprint' && route.cluster === 'asset');
   const blueprintComponentRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'components');
+    route.template_id === 'blueprint.structure.components');
   const blueprintVariableRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'variables');
+    route.family === 'blueprint' && route.cluster === 'schema');
   const blueprintPropertyRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'blueprint' && route.read_cluster === 'properties');
+    route.family === 'blueprint' && route.cluster === 'properties');
   const widgetTreeRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'widget_blueprint' && route.target_kind === 'widget_tree');
+    route.family === 'widget_blueprint' && route.cluster === 'structure');
   const widgetPropertyRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'widget_blueprint' && route.target_kind === 'widget');
+    route.template_id === 'widget.properties.widget');
   const dataAssetRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'data_asset');
+    route.family === 'data_asset');
   const dataTableRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'data_table');
+    route.family === 'data_table');
   const materialLogicJsonRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'material' && route.read_cluster === 'logic' && route.view_template === 'logic_json');
+    route.family === 'material' && route.cluster === 'logic' && route.format === 'logic_json');
   const materialLogicFlowRouteRefs = readContextRouteRefs((route) =>
-    route.domain === 'material' && route.read_cluster === 'logic' && route.view_template === 'logic_flow');
+    route.family === 'material' && route.cluster === 'logic' && route.format === 'logic_flow');
   return new Map<string, ToolCapabilityDescriptorOptions>([
     ['blueprint.discover.assets', {
       stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
@@ -289,6 +294,11 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['blueprint.read.context.logic_json', {
       route_refs: blueprintLogicJsonRouteRefs,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['blueprint.read.context.logic_json_delta', {
+      route_refs: blueprintLogicJsonDeltaRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],
@@ -415,7 +425,7 @@ function readContextRouteRefs(
 ): string[] {
   return getActiveReadContextRouteDescriptors()
     .filter(predicate)
-    .map((route) => route.route_id);
+    .map((route) => route.template_id);
 }
 
 function toToolCapabilityDescriptor(

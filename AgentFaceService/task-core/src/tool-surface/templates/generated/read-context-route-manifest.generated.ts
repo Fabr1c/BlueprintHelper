@@ -8,17 +8,31 @@ export const READ_CONTEXT_ROUTE_MANIFEST_GENERATED_FROM = 'src/tool-surface/temp
 
 export const READ_CONTEXT_ROUTE_MANIFEST = [
   {
-    "route_id": "read.animation_blueprint.logic.graph.logic_json",
-    "domain": "animation_blueprint",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_json",
-    "read_type": "asset_context",
-    "base_template_path": "",
+    "template_id": "animation_blueprint.logic.graph.json",
+    "family": "animation_blueprint",
+    "cluster": "logic",
+    "description": "Animation ReadContext runtime adapter is not active yet.",
+    "template_path": "",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "asset_context",
+      "target": {}
+    },
+    "required_fields": [],
+    "optional_fields": [],
+    "context_evidence": {},
+    "output_schema": "Reserved.v1",
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "runtime_capability_missing"
+    ],
     "status": "reserved",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "output_schema": "Reserved.v1",
-    "required_target_fields": [],
+    "read_type": "asset_context",
     "request_builder_id": "asset_context",
     "payload_projector_id": "asset_context",
     "supported_asset_types": [],
@@ -26,23 +40,50 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "reason": "Animation ReadContext runtime adapter is not active yet."
   },
   {
-    "route_id": "read.blueprint.asset.asset.diagnostics_json",
-    "domain": "blueprint",
-    "read_cluster": "asset",
-    "target_kind": "asset",
-    "view_template": "diagnostics_json",
+    "template_id": "blueprint.asset.diagnostics",
+    "family": "blueprint",
+    "cluster": "asset",
+    "description": "Read Blueprint asset diagnostics.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "asset_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "asset"
+      },
+      "view": {
+        "format": "diagnostics_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "diagnostics_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "asset_context",
     "target_type": "asset",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
     "bridge_command": "get_asset_info",
     "output_schema": "AssetContext.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "asset_context",
     "payload_projector_id": "asset_context",
+    "format": "diagnostics_json",
     "supported_asset_types": [
       "asset",
       "blueprint"
@@ -52,49 +93,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.components.blueprint.tree_json",
-    "domain": "blueprint",
-    "read_cluster": "components",
-    "target_kind": "blueprint",
-    "view_template": "tree_json",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "component_context",
-    "target_type": "blueprint",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_components_template.json",
-    "bridge_command": "read_components",
-    "output_schema": "ComponentContext.v1",
-    "required_target_fields": [
-      "asset_path"
+    "template_id": "blueprint.logic.block.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read BlueprintHelper-owned block as LogicJson.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_block_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "block",
+        "block_id": "__REQUIRED_BLOCK_ID__"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.block_id"
     ],
-    "request_builder_id": "component_context",
-    "payload_projector_id": "component_tree",
-    "supported_asset_types": [
-      "blueprint",
-      "component"
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
     ],
-    "supported_formats": [
-      "tree_json"
-    ]
-  },
-  {
-    "route_id": "read.blueprint.logic.block.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "block",
-    "view_template": "logic_json",
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "block",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_block_logic_json_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "block_id"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -106,22 +151,51 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.blueprint.logic_flow",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "blueprint",
-    "view_template": "logic_flow",
+    "template_id": "blueprint.logic.blueprint.flow",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint blueprint as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "blueprint"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "blueprint",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicFlow.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -133,22 +207,51 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.blueprint.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "blueprint",
-    "view_template": "logic_json",
+    "template_id": "blueprint.logic.blueprint.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint blueprint as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "blueprint"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "blueprint",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -160,23 +263,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.custom_event.logic_flow",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "custom_event",
-    "view_template": "logic_flow",
+    "template_id": "blueprint.logic.custom_event.flow",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint custom_event as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "custom_event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "custom_event",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicFlow.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -188,23 +321,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.custom_event.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "custom_event",
-    "view_template": "logic_json",
+    "template_id": "blueprint.logic.custom_event.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint custom_event as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "custom_event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "custom_event",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -216,23 +379,114 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.event.logic_flow",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "event",
-    "view_template": "logic_flow",
+    "template_id": "blueprint.logic.custom_event.json_delta",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint custom_event LogicJson delta after LogicFlow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_custom_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "custom_event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json_delta_after_logic_flow",
+        "baseline_view": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.baseline_view.allowed_values": "logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "missing_target_name",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "blueprint_logic",
+    "target_type": "custom_event",
+    "format": "logic_json_delta_after_logic_flow",
+    "bridge_command": "read_blueprint_logic_json",
+    "output_schema": "LogicJsonDeltaAfterLogicFlow.v1",
+    "request_builder_id": "blueprint_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "blueprint",
+      "custom_event"
+    ],
+    "supported_formats": [
+      "logic_json_delta_after_logic_flow"
+    ]
+  },
+  {
+    "template_id": "blueprint.logic.event.flow",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint event as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "event",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicFlow.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -244,23 +498,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.event.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "event",
-    "view_template": "logic_json",
+    "template_id": "blueprint.logic.event.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint event as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "event",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -272,23 +556,114 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.function.logic_flow",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "function",
-    "view_template": "logic_flow",
+    "template_id": "blueprint.logic.event.json_delta",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint event LogicJson delta after LogicFlow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_event_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "event",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json_delta_after_logic_flow",
+        "baseline_view": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.baseline_view.allowed_values": "logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "missing_target_name",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "blueprint_logic",
+    "target_type": "event",
+    "format": "logic_json_delta_after_logic_flow",
+    "bridge_command": "read_blueprint_logic_json",
+    "output_schema": "LogicJsonDeltaAfterLogicFlow.v1",
+    "request_builder_id": "blueprint_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "blueprint",
+      "event"
+    ],
+    "supported_formats": [
+      "logic_json_delta_after_logic_flow"
+    ]
+  },
+  {
+    "template_id": "blueprint.logic.function.flow",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint function as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "function",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "function",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicFlow.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -300,23 +675,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.function.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "function",
-    "view_template": "logic_json",
+    "template_id": "blueprint.logic.function.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint function as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "function",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "function",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -328,23 +733,114 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.graph.logic_flow",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_flow",
+    "template_id": "blueprint.logic.function.json_delta",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint function LogicJson delta after LogicFlow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_function_logic_flow_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "function",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json_delta_after_logic_flow",
+        "baseline_view": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.baseline_view.allowed_values": "logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "missing_target_name",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "blueprint_logic",
+    "target_type": "function",
+    "format": "logic_json_delta_after_logic_flow",
+    "bridge_command": "read_blueprint_logic_json",
+    "output_schema": "LogicJsonDeltaAfterLogicFlow.v1",
+    "request_builder_id": "blueprint_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "blueprint",
+      "function"
+    ],
+    "supported_formats": [
+      "logic_json_delta_after_logic_flow"
+    ]
+  },
+  {
+    "template_id": "blueprint.logic.graph.flow",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint graph as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "graph",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "graph",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicFlow.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -356,23 +852,53 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.logic.graph.logic_json",
-    "domain": "blueprint",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_json",
+    "template_id": "blueprint.logic.graph.json",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint graph as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "graph",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "blueprint_logic",
     "target_type": "graph",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
     "bridge_command": "read_blueprint_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "blueprint_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -384,24 +910,113 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.properties.property.property_json",
-    "domain": "blueprint",
-    "read_cluster": "properties",
-    "target_kind": "property",
-    "view_template": "property_json",
+    "template_id": "blueprint.logic.graph.json_delta",
+    "family": "blueprint",
+    "cluster": "logic",
+    "description": "Read Blueprint graph LogicJson delta after LogicFlow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_logic_graph_logic_json_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_logic",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "graph",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "logic_json_delta_after_logic_flow",
+        "baseline_view": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.baseline_view.allowed_values": "logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "missing_target_name",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "blueprint_logic",
+    "target_type": "graph",
+    "format": "logic_json_delta_after_logic_flow",
+    "bridge_command": "read_blueprint_logic_json",
+    "output_schema": "LogicJsonDeltaAfterLogicFlow.v1",
+    "request_builder_id": "blueprint_logic",
+    "payload_projector_id": "logic",
+    "supported_asset_types": [
+      "blueprint",
+      "graph"
+    ],
+    "supported_formats": [
+      "logic_json_delta_after_logic_flow"
+    ]
+  },
+  {
+    "template_id": "blueprint.properties.object",
+    "family": "blueprint",
+    "cluster": "properties",
+    "description": "Read Blueprint object property.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "object_property_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "property",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "property_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "property_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "object_property_context",
     "target_type": "property",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
     "bridge_command": "get_object_properties",
     "output_schema": "ObjectPropertyContext.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "object_property",
     "payload_projector_id": "object_property",
+    "format": "property_json",
     "supported_asset_types": [
       "blueprint",
       "object_property",
@@ -412,49 +1027,50 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.blueprint.variables.blueprint.schema_json",
-    "domain": "blueprint",
-    "read_cluster": "variables",
-    "target_kind": "blueprint",
-    "view_template": "schema_json",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "variable_context",
-    "target_type": "member_variable",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_variables_template.json",
-    "bridge_command": "list_variables",
-    "output_schema": "VariableContext.v1",
-    "required_target_fields": [
-      "asset_path"
+    "template_id": "blueprint.schema.event_dispatchers",
+    "family": "blueprint",
+    "cluster": "schema",
+    "description": "Read Blueprint event dispatchers.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_variables_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "variable_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "event_dispatcher"
+      },
+      "view": {
+        "format": "schema_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
     ],
-    "request_builder_id": "variable_context",
-    "payload_projector_id": "variable_schema",
-    "supported_asset_types": [
-      "blueprint",
-      "member_variable"
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "schema_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
     ],
-    "supported_formats": [
-      "schema_json"
-    ]
-  },
-  {
-    "route_id": "read.blueprint.variables.event_dispatcher.schema_json",
-    "domain": "blueprint",
-    "read_cluster": "variables",
-    "target_kind": "event_dispatcher",
-    "view_template": "schema_json",
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "variable_context",
     "target_type": "event_dispatcher",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_variables_template.json",
     "bridge_command": "list_event_dispatchers",
     "output_schema": "EventDispatcherContext.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "variable_context",
     "payload_projector_id": "variable_schema",
+    "format": "schema_json",
     "supported_asset_types": [
       "blueprint",
       "event_dispatcher"
@@ -464,23 +1080,156 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.data_asset.schema.data_asset.property_json",
-    "domain": "data_asset",
-    "read_cluster": "schema",
-    "target_kind": "data_asset",
-    "view_template": "property_json",
+    "template_id": "blueprint.schema.variables",
+    "family": "blueprint",
+    "cluster": "schema",
+    "description": "Read Blueprint variables.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_variables_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "variable_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "member_variable"
+      },
+      "view": {
+        "format": "schema_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "schema_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "variable_context",
+    "target_type": "member_variable",
+    "bridge_command": "list_variables",
+    "output_schema": "VariableContext.v1",
+    "request_builder_id": "variable_context",
+    "payload_projector_id": "variable_schema",
+    "format": "schema_json",
+    "supported_asset_types": [
+      "blueprint",
+      "member_variable"
+    ],
+    "supported_formats": [
+      "schema_json"
+    ]
+  },
+  {
+    "template_id": "blueprint.structure.components",
+    "family": "blueprint",
+    "cluster": "structure",
+    "description": "Read Blueprint component tree.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_components_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "component_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "blueprint"
+      },
+      "view": {
+        "format": "tree_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "tree_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "component_context",
+    "target_type": "blueprint",
+    "bridge_command": "read_components",
+    "output_schema": "ComponentContext.v1",
+    "request_builder_id": "component_context",
+    "payload_projector_id": "component_tree",
+    "format": "tree_json",
+    "supported_asset_types": [
+      "blueprint",
+      "component"
+    ],
+    "supported_formats": [
+      "tree_json"
+    ]
+  },
+  {
+    "template_id": "data_asset.properties.object",
+    "family": "data_asset",
+    "cluster": "properties",
+    "description": "Read DataAsset object properties.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "data_asset_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "data_asset"
+      },
+      "view": {
+        "format": "property_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "property_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "data_asset_context",
     "target_type": "data_asset",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_asset_object_template.json",
     "bridge_command": "get_object_properties",
     "output_schema": "DataAssetContext.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "data_asset",
     "payload_projector_id": "object_property",
+    "format": "property_json",
     "supported_asset_types": [
       "data_asset"
     ],
@@ -489,24 +1238,52 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.data_table.schema.data_table_row.schema_json",
-    "domain": "data_table",
-    "read_cluster": "schema",
-    "target_kind": "data_table_row",
-    "view_template": "schema_json",
+    "template_id": "data_table.schema.row",
+    "family": "data_table",
+    "cluster": "schema",
+    "description": "Read DataTable row.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_table_row_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "data_table_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "data_table_row",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "schema_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "schema_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "data_table_context",
     "target_type": "data_table_row",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_table_row_template.json",
     "bridge_command": "get_datatable_rows",
     "output_schema": "DataTableContext.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
     "request_builder_id": "data_table",
     "payload_projector_id": "data_table_schema",
+    "format": "schema_json",
     "supported_asset_types": [
       "data_table",
       "data_table_row"
@@ -516,23 +1293,50 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.data_table.schema.data_table.schema_json",
-    "domain": "data_table",
-    "read_cluster": "schema",
-    "target_kind": "data_table",
-    "view_template": "schema_json",
+    "template_id": "data_table.schema.table",
+    "family": "data_table",
+    "cluster": "schema",
+    "description": "Read DataTable schema.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_table_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "data_table_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "data_table"
+      },
+      "view": {
+        "format": "schema_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "schema_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "data_table_context",
     "target_type": "data_table",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/data_table_template.json",
     "bridge_command": "get_datatable_rows",
     "output_schema": "DataTableContext.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "data_table",
     "payload_projector_id": "data_table_schema",
+    "format": "schema_json",
     "supported_asset_types": [
       "data_table"
     ],
@@ -541,17 +1345,31 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.material_instance.schema.asset.schema_json",
-    "domain": "material_instance",
-    "read_cluster": "schema",
-    "target_kind": "asset",
-    "view_template": "schema_json",
-    "read_type": "asset_context",
-    "base_template_path": "",
+    "template_id": "material_instance.schema.asset",
+    "family": "material_instance",
+    "cluster": "schema",
+    "description": "MaterialInstance ReadContext runtime adapter is not active yet.",
+    "template_path": "",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "asset_context",
+      "target": {}
+    },
+    "required_fields": [],
+    "optional_fields": [],
+    "context_evidence": {},
+    "output_schema": "Reserved.v1",
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "runtime_capability_missing"
+    ],
     "status": "reserved",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "output_schema": "Reserved.v1",
-    "required_target_fields": [],
+    "read_type": "asset_context",
     "request_builder_id": "asset_context",
     "payload_projector_id": "asset_context",
     "supported_asset_types": [],
@@ -559,22 +1377,51 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "reason": "MaterialInstance ReadContext runtime adapter is not active yet."
   },
   {
-    "route_id": "read.material.logic.graph.logic_flow",
-    "domain": "material",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_flow",
+    "template_id": "material.logic.graph.flow",
+    "family": "material",
+    "cluster": "logic",
+    "description": "Read Material graph as logic_flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "material_graph_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "material_graph"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "material_graph_context",
     "target_type": "material_graph",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
     "bridge_command": "read_material_logic_json",
-    "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
+    "output_schema": "LogicFlow.v1",
     "request_builder_id": "material_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -587,22 +1434,51 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.material.logic.graph.logic_json",
-    "domain": "material",
-    "read_cluster": "logic",
-    "target_kind": "graph",
-    "view_template": "logic_json",
+    "template_id": "material.logic.graph.json",
+    "family": "material",
+    "cluster": "logic",
+    "description": "Read Material graph as logic_json.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "material_graph_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "material_graph"
+      },
+      "view": {
+        "format": "logic_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [
+      "view.detail",
+      "view.max_items"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "material_graph_context",
     "target_type": "material_graph",
     "format": "logic_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json",
     "bridge_command": "read_material_logic_json",
     "output_schema": "LogicJson.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "material_logic",
     "payload_projector_id": "logic",
     "supported_asset_types": [
@@ -615,22 +1491,103 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.widget_blueprint.structure_tree.widget_tree.logic_flow",
-    "domain": "widget_blueprint",
-    "read_cluster": "structure_tree",
-    "target_kind": "widget_tree",
-    "view_template": "logic_flow",
+    "template_id": "widget.properties.widget",
+    "family": "widget_blueprint",
+    "cluster": "properties",
+    "description": "Read single widget properties.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_property_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "widget_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "widget",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      },
+      "view": {
+        "format": "property_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "property_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "read_type": "widget_context",
+    "target_type": "widget",
+    "bridge_command": "get_widget_properties",
+    "output_schema": "WidgetPropertyContext.v1",
+    "request_builder_id": "widget_property",
+    "payload_projector_id": "object_property",
+    "format": "property_json",
+    "supported_asset_types": [
+      "widget_blueprint",
+      "widget"
+    ],
+    "supported_formats": [
+      "property_json"
+    ]
+  },
+  {
+    "template_id": "widget.structure.tree_flow",
+    "family": "widget_blueprint",
+    "cluster": "structure",
+    "description": "Read WidgetTree compact flow.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_tree_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "widget_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "blueprint"
+      },
+      "view": {
+        "format": "logic_flow"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "widget_context",
     "target_type": "blueprint",
     "format": "logic_flow",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_tree_template.json",
     "bridge_command": "get_widget_tree",
     "output_schema": "WidgetTreeLogicFlow.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "widget_tree",
     "payload_projector_id": "widget_tree",
     "supported_asset_types": [
@@ -642,22 +1599,48 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
-    "route_id": "read.widget_blueprint.structure_tree.widget_tree.tree_json",
-    "domain": "widget_blueprint",
-    "read_cluster": "structure_tree",
-    "target_kind": "widget_tree",
-    "view_template": "tree_json",
+    "template_id": "widget.structure.tree_json",
+    "family": "widget_blueprint",
+    "cluster": "structure",
+    "description": "Read WidgetTree JSON.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_tree_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "widget_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "blueprint"
+      },
+      "view": {
+        "format": "tree_json"
+      }
+    },
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "view.format.allowed_values": "tree_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "read_context_screenshot_conflict",
+      "runtime_capability_missing"
+    ],
     "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
     "read_type": "widget_context",
     "target_type": "blueprint",
     "format": "tree_json",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_tree_template.json",
     "bridge_command": "get_widget_tree",
     "output_schema": "WidgetTreeJson.v1",
-    "required_target_fields": [
-      "asset_path"
-    ],
     "request_builder_id": "widget_tree",
     "payload_projector_id": "widget_tree",
     "supported_asset_types": [
@@ -666,33 +1649,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "supported_formats": [
       "tree_json"
-    ]
-  },
-  {
-    "route_id": "read.widget_blueprint.structure_tree.widget.property_json",
-    "domain": "widget_blueprint",
-    "read_cluster": "structure_tree",
-    "target_kind": "widget",
-    "view_template": "property_json",
-    "status": "active",
-    "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "widget_context",
-    "target_type": "widget",
-    "base_template_path": "AgentFaceService/agent-guide/Templates/read/routes/widget_property_template.json",
-    "bridge_command": "get_widget_properties",
-    "output_schema": "WidgetPropertyContext.v1",
-    "required_target_fields": [
-      "asset_path",
-      "target_name"
-    ],
-    "request_builder_id": "widget_property",
-    "payload_projector_id": "object_property",
-    "supported_asset_types": [
-      "widget_blueprint",
-      "widget"
-    ],
-    "supported_formats": [
-      "property_json"
     ]
   }
 ] as const satisfies readonly ReadContextRouteDescriptor[];

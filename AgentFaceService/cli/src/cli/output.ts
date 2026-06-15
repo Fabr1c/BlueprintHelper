@@ -41,11 +41,9 @@ export type CliCommandKind =
   | 'tools.templates.operations'
   | 'tools.templates.quick_access'
   | 'tools.templates.compose'
-  | 'tools.read_templates.domains'
+  | 'tools.read_templates.families'
   | 'tools.read_templates.clusters'
-  | 'tools.read_templates.targets'
-  | 'tools.read_templates.views'
-  | 'tools.read_templates.quick_access'
+  | 'tools.read_templates.list'
   | 'tools.read_templates.compose'
   | 'bridge.ping'
   | 'bridge.call'
@@ -84,11 +82,8 @@ export interface CliCommand {
   cluster?: string;
   operation?: string;
   templateIds?: string[];
+  templateId?: string;
   outputPath?: string;
-  domain?: string;
-  readCluster?: string;
-  targetKind?: string;
-  viewTemplate?: string;
   requiresBridge?: boolean;
   risks?: string[];
   bridgeCommand?: string;

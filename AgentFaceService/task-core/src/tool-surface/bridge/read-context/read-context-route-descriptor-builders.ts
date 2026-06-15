@@ -205,7 +205,7 @@ function buildMaterialLogicBridgeRequest(
 ): ReadContextBridgeRequest {
   const format = isLogicFormat(route.format) ? route.format : 'logic_json';
   const command = route.bridge_command ?? resolveReadContextBridgeCommand(format, 'material');
-  return okRequest(route, command, buildMaterialLogicReadPayload(input, route), resolveReadContextPayloadSchema(format));
+  return okRequest(route, command, buildMaterialLogicReadPayload(input, route), 'LogicJson.v1');
 }
 
 function buildMaterialLogicReadPayload(

@@ -110,7 +110,11 @@ test('Agent-facing docs use explicit composer commands instead of slash-joined p
     'ClaudePlugin/skills/blueprint-helper/SKILL.md',
   ];
   const forbidden = [
-    /bh tools read-templates domains\/clusters\/targets\/views\/quick-access\/compose/,
+    new RegExp(['bh tools read-templates', 'domains'].join(' ')),
+    new RegExp(['bh tools read-templates', 'targets'].join(' ')),
+    new RegExp(['bh tools read-templates', 'views'].join(' ')),
+    new RegExp(['bh tools read-templates', 'quick-access'].join(' ')),
+    new RegExp(['bh tools read-templates compose', '--domain'].join(' ')),
     /bh tools domains\/list\/templates/,
     /bh tools templates quick-access\/compose/,
   ];

@@ -18,7 +18,11 @@ import {
 
 export type { ReadContextPostProcessResult } from './read-context-payload-projector-registry.js';
 
-const LOGIC_FORMATS = new Set<ReadContextLogicFormat>(['logic_flow', 'logic_json']);
+const LOGIC_FORMATS = new Set<ReadContextLogicFormat>([
+  'logic_flow',
+  'logic_json',
+  'logic_json_delta_after_logic_flow',
+]);
 
 export function postProcessReadContextPayloadWithDebug(
   input: ReadContextInput,

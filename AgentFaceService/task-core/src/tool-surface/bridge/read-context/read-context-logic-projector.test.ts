@@ -203,6 +203,126 @@ test('logic_json projection adds compact anchor fields to external links with st
   assert.equal(links[1]?.anchor_ref, undefined);
 });
 
+test('logic projector builds LogicJson delta after LogicFlow without duplicate flow summary', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_json_delta_after_logic_flow',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      flow: 'Set FocusActor -> Branch',
+      adapter_boundary: {
+        runtime_adapter_id: 'k2.external_graph.replace_body',
+        body_kind: 'k2.function_body',
+      },
+      logic: {
+        graph: 'EventGraph',
+        flow: 'Set FocusActor -> Branch',
+        summary: 'Human readable duplicate flow summary.',
+        description: 'Human readable duplicate description.',
+        nodes: [
+          {
+            node_ref: 'nodes[0]',
+            name: 'Set FocusActor',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              node_class: '/Script/BlueprintGraph.K2Node_VariableSet',
+              semantic_role: 'node',
+              fingerprint: 'source_node_fp',
+            },
+          },
+          {
+            node_ref: 'nodes[1]',
+            name: 'Branch',
+            external_anchor: {
+              schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+              asset_path: '/Game/BP_Door',
+              graph_name: 'EventGraph',
+              node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              node_class: '/Script/BlueprintGraph.K2Node_IfThenElse',
+              semantic_role: 'node',
+              fingerprint: 'target_node_fp',
+            },
+          },
+        ],
+        links: [{
+          ownership: 'external_user',
+          kind: 'exec',
+          from_node: 'nodes[0]',
+          from_pin: 'then',
+          to_node: 'nodes[1]',
+          to_pin: 'execute',
+        }],
+      },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+    view: {
+      format: 'logic_json_delta_after_logic_flow',
+      baseline_view: 'logic_flow',
+    },
+  });
+
+  assert.equal(result.format, 'logic_json_delta_after_logic_flow');
+  assert.equal(result.payload.schema, 'LogicJsonDeltaAfterLogicFlow.v1');
+  assert.equal(JSON.stringify(result.payload).includes('BlueprintHelper.ExternalGraphAnchor.v1'), true);
+  assert.equal(JSON.stringify(result.payload).includes('Set FocusActor -> Branch'), false);
+  assert.equal(result.payload.baseline_view, 'logic_flow');
+  assert.deepEqual((result.payload.delta_policy as Record<string, unknown>)['removed_from_logic_flow'], [
+    'flow',
+    'summary',
+    'description',
+  ]);
+  const logic = result.payload.logic as Record<string, unknown>;
+  assert.equal((logic.nodes as unknown[]).length, 2);
+  assert.equal((logic.links as unknown[]).length, 1);
+});
+
+test('logic_json delta preserves grouped write-location evidence from Bridge payloads', () => {
+  const result = projectReadContextLogic({
+    requestedFormat: 'logic_json_delta_after_logic_flow',
+    bridgePayloadSchema: 'LogicJson.v1',
+    bridgePayload: {
+      schema: 'LogicJson.v1',
+      flow: 'Event -> Call',
+      logic: {
+        graph: 'EventGraph',
+        groups: [{
+          name: 'EventGraph',
+          flow: 'Event -> Call',
+          summary: 'Duplicate compact summary.',
+          nodes: [{
+            node_ref: 'nodes[0]',
+            name: 'Event BeginPlay',
+            links: [{
+              link_ref: 'links[0]',
+              type: 'exec',
+              ownership: 'external_user',
+              from_pin: 'then',
+              to_node: 'nodes[1]',
+              to_pin: 'execute',
+            }],
+          }],
+        }],
+      },
+      stats: { nodes: 1, exec_links: 1 },
+    },
+    target: { asset_path: '/Game/BP_Door', graph: 'EventGraph' },
+    view: {
+      format: 'logic_json_delta_after_logic_flow',
+      baseline_view: 'logic_flow',
+    },
+  });
+
+  const logic = result.payload.logic as Record<string, unknown>;
+  const groups = logic.groups as Array<Record<string, unknown>>;
+  assert.equal(groups.length, 1);
+  assert.equal((groups[0]?.nodes as unknown[]).length, 1);
+  assert.equal(JSON.stringify(result.payload).includes('Event -> Call'), false);
+  assert.equal(JSON.stringify(result.payload).includes('Duplicate compact summary.'), false);
+});
+
 test('logic_json projection requires ownership before adding external link compact anchor', () => {
   const result = projectReadContextLogic({
     requestedFormat: 'logic_json',
