@@ -16,12 +16,12 @@ Use repository-root `uninstall.cmd` to remove installed Codex plugin entries, Co
 
 Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, the three agents are shown in a table with separate model and reasoning fields; model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`, with reasoning `high` or `xhigh`.
 
-根安装脚本会直接写入用户 Codex 配置，将仓库根目录注册为本地 marketplace，并启用 `blueprint-helper@blueprint-helper-local`。
+根安装脚本会解析 `C:\Users\<username>` 下的真实 Windows 用户目录，直接写入用户 Codex 配置，将仓库根目录注册为本地 marketplace，并启用 `blueprint-helper@blueprint-helper-local`。
 
-The root installer writes the user Codex config directly, registers the repository root as a local marketplace, and enables `blueprint-helper@blueprint-helper-local`.
+The root installer resolves the real Windows user profile under `C:\Users\<username>`, writes the user Codex config directly, registers the repository root as a local marketplace, and enables `blueprint-helper@blueprint-helper-local`.
 
 ```text
-%USERPROFILE%\.codex\config.toml
+C:\Users\<username>\.codex\config.toml
 ```
 
 ## Contents

@@ -95,15 +95,90 @@ function Normalize-PathInput {
   return $CleanPath
 }
 
+function Get-WindowsUsersRoot {
+  $SystemDrive = $env:SystemDrive
+  if ([string]::IsNullOrWhiteSpace($SystemDrive)) {
+    $SystemDrive = 'C:'
+  }
+  return Join-Path $SystemDrive.TrimEnd('\') 'Users'
+}
+
+function Add-UserHomeCandidate {
+  param(
+    [System.Collections.ArrayList]$Candidates,
+    [AllowNull()]
+    [string]$PathText
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PathText)) {
+    return
+  }
+
+  [void]$Candidates.Add($PathText.Trim())
+}
+
+function Test-PathUnderDirectory {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$Directory
+  )
+
+  $ResolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+  $ResolvedDirectory = [System.IO.Path]::GetFullPath($Directory).TrimEnd('\') + '\'
+  return $ResolvedPath.StartsWith($ResolvedDirectory, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-BlueprintHelperUserHome {
+  $Candidates = New-Object System.Collections.ArrayList
+  Add-UserHomeCandidate -Candidates $Candidates -PathText $env:USERPROFILE
+  Add-UserHomeCandidate -Candidates $Candidates -PathText $env:HOME
+  Add-UserHomeCandidate -Candidates $Candidates -PathText ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile))
+
+  $UsersRoot = Get-WindowsUsersRoot
+  if (Test-Path -LiteralPath $UsersRoot -PathType Container) {
+    if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
+      Add-UserHomeCandidate -Candidates $Candidates -PathText (Join-Path $UsersRoot $env:USERNAME)
+    }
+  }
+
+  $Seen = @{}
+  foreach ($Candidate in $Candidates) {
+    if ([string]::IsNullOrWhiteSpace($Candidate)) {
+      continue
+    }
+
+    $Resolved = [System.IO.Path]::GetFullPath($Candidate)
+    $Key = $Resolved.ToLowerInvariant()
+    if ($Seen.ContainsKey($Key)) {
+      continue
+    }
+    $Seen[$Key] = $true
+
+    if (-not (Test-Path -LiteralPath $Resolved -PathType Container)) {
+      continue
+    }
+
+    if ((Test-Path -LiteralPath $UsersRoot -PathType Container) -and -not (Test-PathUnderDirectory -Path $Resolved -Directory $UsersRoot)) {
+      continue
+    }
+
+    if ((Test-Path -LiteralPath $UsersRoot -PathType Container) -and -not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
+      $Leaf = Split-Path -Leaf $Resolved
+      if ($Leaf -ine $env:USERNAME) {
+        continue
+      }
+    }
+
+    return $Resolved
+  }
+
+  throw "Unable to resolve Windows user home directory under $UsersRoot for BlueprintHelper Codex/Claude config."
+}
+
 function Get-UserHome {
-  $HomeDir = $env:USERPROFILE
-  if (-not $HomeDir) {
-    $HomeDir = $env:HOME
-  }
-  if (-not $HomeDir) {
-    throw 'Unable to resolve user home directory.'
-  }
-  return $HomeDir
+  return Resolve-BlueprintHelperUserHome
 }
 
 function Resolve-NpmCommandPath {

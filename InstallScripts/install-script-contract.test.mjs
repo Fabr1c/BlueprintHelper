@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import test from 'node:test';
+
+const require = createRequire(import.meta.url);
+const { resolveBlueprintHelperUserHome } = require('../CodexPlugin/scripts/user-home.cjs');
 
 const installScript = await readFile(new URL('./install.ps1', import.meta.url), 'utf8');
 const installPrompts = await readFile(new URL('./install-prompts.mjs', import.meta.url), 'utf8');
+const uninstallScript = await readFile(new URL('./uninstall.ps1', import.meta.url), 'utf8');
 const installDocs = await readFile(new URL('../AgentFaceService/docs/Install_CLI_QuickStart.md', import.meta.url), 'utf8');
+const codexGlobalMcpInstaller = await readFile(new URL('../CodexPlugin/scripts/install-global-mcp.cjs', import.meta.url), 'utf8');
+const codexAgentInstaller = await readFile(new URL('../CodexPlugin/scripts/install-codex-agents.cjs', import.meta.url), 'utf8');
+const claudeAgentInstaller = await readFile(new URL('../CodexPlugin/scripts/install-claude-agents.cjs', import.meta.url), 'utf8');
+const userHomeHelper = await readFile(new URL('../CodexPlugin/scripts/user-home.cjs', import.meta.url), 'utf8');
 
 test('install.ps1 writes project profile as UTF-8 without BOM', () => {
   assert.match(installScript, /function Write-Utf8NoBomFile\b/);
@@ -53,4 +63,71 @@ test('install quickstart documents default UBT compile and skip switch', () => {
   assert.match(installDocs, /Build\.bat <ProjectName>Editor Win64 Development -Project=<Project\.uproject> -WaitMutex -NoHotReloadFromIDE/);
   assert.match(installDocs, /installer runs one UBT compile by default/);
   assert.match(installDocs, /custom Editor target name or has multiple `\*Editor\.Target\.cs` files/);
+});
+
+test('install and uninstall resolve Codex and Claude config paths from the real Windows user profile', () => {
+  assert.match(installScript, /function Resolve-BlueprintHelperUserHome\b/);
+  assert.match(installScript, /function Get-WindowsUsersRoot\b/);
+  assert.match(installScript, /Join-Path\s+\$UsersRoot\s+\$env:USERNAME/);
+  assert.doesNotMatch(installScript, /Get-ChildItem\s+-LiteralPath\s+\$UsersRoot\s+-Directory/);
+  assert.doesNotMatch(installScript, /Join-Path\s+\$Child\.FullName\s+\$ProductDirectory/);
+  assert.match(installScript, /\$UserHome\s*=\s*Resolve-BlueprintHelperUserHome\b/);
+  assert.doesNotMatch(installScript, /\$UserHome\s*=\s*\$env:USERPROFILE/);
+
+  assert.match(uninstallScript, /function Resolve-BlueprintHelperUserHome\b/);
+  assert.match(uninstallScript, /function Get-WindowsUsersRoot\b/);
+  assert.match(uninstallScript, /Join-Path\s+\$UsersRoot\s+\$env:USERNAME/);
+  assert.doesNotMatch(uninstallScript, /Get-ChildItem\s+-LiteralPath\s+\$UsersRoot\s+-Directory/);
+  assert.match(uninstallScript, /Join-Path\s+\(Get-UserHome\)\s+'.codex\\config\.toml'/);
+  assert.match(uninstallScript, /Join-Path\s+\(Get-UserHome\)\s+'.claude\\settings\.json'/);
+  assert.doesNotMatch(uninstallScript, /\$HomeDir\s*=\s*\$env:USERPROFILE/);
+});
+
+test('node install helpers resolve user profile through shared Windows-aware helper', () => {
+  for (const source of [codexGlobalMcpInstaller, codexAgentInstaller, claudeAgentInstaller]) {
+    assert.match(source, /require\('\.\/user-home\.cjs'\)/);
+    assert.match(source, /resolveBlueprintHelperUserHome\(/);
+    assert.doesNotMatch(source, /process\.env\.USERPROFILE\s*\|\|\s*process\.env\.HOME/);
+  }
+});
+
+test('node user home helper ignores polluted profile env and uses the current C:\\Users username directory', () => {
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalHome = process.env.HOME;
+  const originalUsername = process.env.USERNAME;
+  const username = originalUsername || path.basename(originalUserProfile || '');
+  assert.ok(username, 'test requires a Windows username');
+
+  try {
+    process.env.USERPROFILE = process.cwd();
+    process.env.HOME = process.cwd();
+    process.env.USERNAME = username;
+
+    assert.equal(resolveBlueprintHelperUserHome(), path.join('C:\\Users', username));
+    assert.doesNotMatch(userHomeHelper, /fs\.readdirSync\(usersRoot\)/);
+  } finally {
+    process.env.USERPROFILE = originalUserProfile;
+    process.env.HOME = originalHome;
+    process.env.USERNAME = originalUsername;
+  }
+});
+
+test('node user home helper rejects another C:\\Users account from polluted profile env', () => {
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalHome = process.env.HOME;
+  const originalUsername = process.env.USERNAME;
+  const username = originalUsername || path.basename(originalUserProfile || '');
+  assert.ok(username, 'test requires a Windows username');
+
+  try {
+    process.env.USERPROFILE = path.join('C:\\Users', 'Public');
+    process.env.HOME = path.join('C:\\Users', 'Public');
+    process.env.USERNAME = username;
+
+    assert.equal(resolveBlueprintHelperUserHome(), path.join('C:\\Users', username));
+  } finally {
+    process.env.USERPROFILE = originalUserProfile;
+    process.env.HOME = originalHome;
+    process.env.USERNAME = originalUsername;
+  }
 });

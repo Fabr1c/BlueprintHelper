@@ -2,14 +2,17 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveBlueprintHelperUserHome } = require('./user-home.cjs');
 
-const home = process.env.USERPROFILE || process.env.HOME;
-const profile = parseProfileJson(process.env.BLUEPRINTHELPER_CLAUDE_AGENT_PROFILE_JSON);
-
-if (!home) {
+let home;
+try {
+  home = resolveBlueprintHelperUserHome();
+} catch (error) {
   console.error('[BlueprintHelper Claude Agents] Unable to resolve user home directory.');
+  console.error(error.message);
   process.exit(1);
 }
+const profile = parseProfileJson(process.env.BLUEPRINTHELPER_CLAUDE_AGENT_PROFILE_JSON);
 
 const pluginRoot = path.resolve(__dirname, '..');
 const sourceDir = path.join(pluginRoot, 'agents');

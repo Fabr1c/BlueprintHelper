@@ -79,9 +79,9 @@ Run the repository-root installer first:
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-需要 Claude 插件支持时追加 `-InstallClaudePlugin`。安装器会写入 `%USERPROFILE%\.claude\settings.json`，注册本地 `ClaudePlugin` marketplace，并启用 `blueprint-helper@blueprint-helper-dev`；同时也会复制 Claude subagent 定义到用户目录。
+需要 Claude 插件支持时追加 `-InstallClaudePlugin`。安装器会解析 `C:\Users\<username>` 下的真实 Windows 用户目录，写入 `C:\Users\<username>\.claude\settings.json`，注册本地 `ClaudePlugin` marketplace，并启用 `blueprint-helper@blueprint-helper-dev`；同时也会复制 Claude subagent 定义到用户目录。
 
-Add `-InstallClaudePlugin` when you want the installer to write `%USERPROFILE%\.claude\settings.json`, register the local `ClaudePlugin` marketplace, and enable `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
+Add `-InstallClaudePlugin` when you want the installer to resolve the real Windows user profile under `C:\Users\<username>`, write `C:\Users\<username>\.claude\settings.json`, register the local `ClaudePlugin` marketplace, and enable `blueprint-helper@blueprint-helper-dev`. This also copies the Claude subagent definitions into the user profile.
 
 Use repository-root `uninstall.cmd` to remove installed Claude plugin entries, Claude sideAgents, Codex companion entries, and CLI links without deleting the source checkout.
 

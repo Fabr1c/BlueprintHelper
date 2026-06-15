@@ -34,7 +34,7 @@ cd <PLUGIN_ROOT>
 .\install.cmd -ProjectFile <Project.uproject> -EngineRoot <UE root>
 ```
 
-The installer builds the Agent runtime, links `bh`, writes the Codex local marketplace and enabled plugin entries directly into `config.toml`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
+The installer builds the Agent runtime, links `bh`, resolves the real Windows user profile under `C:\Users\<username>`, writes the Codex local marketplace and enabled plugin entries directly into `.codex/config.toml`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
 
 交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
 

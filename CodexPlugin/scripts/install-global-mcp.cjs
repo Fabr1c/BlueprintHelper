@@ -2,11 +2,14 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveBlueprintHelperUserHome } = require('./user-home.cjs');
 
-const home = process.env.USERPROFILE || process.env.HOME;
-
-if (!home) {
+let home;
+try {
+  home = resolveBlueprintHelperUserHome();
+} catch (error) {
   console.error('[BlueprintHelper MCP] Unable to resolve user home directory.');
+  console.error(error.message);
   process.exit(1);
 }
 

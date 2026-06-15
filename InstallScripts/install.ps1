@@ -105,6 +105,88 @@ function Get-NpmCommand {
   return $script:NpmCommand
 }
 
+function Get-WindowsUsersRoot {
+  $SystemDrive = $env:SystemDrive
+  if ([string]::IsNullOrWhiteSpace($SystemDrive)) {
+    $SystemDrive = 'C:'
+  }
+  return Join-Path $SystemDrive.TrimEnd('\') 'Users'
+}
+
+function Add-UserHomeCandidate {
+  param(
+    [System.Collections.ArrayList]$Candidates,
+    [AllowNull()]
+    [string]$PathText
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PathText)) {
+    return
+  }
+
+  [void]$Candidates.Add($PathText.Trim())
+}
+
+function Test-PathUnderDirectory {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$Directory
+  )
+
+  $ResolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+  $ResolvedDirectory = [System.IO.Path]::GetFullPath($Directory).TrimEnd('\') + '\'
+  return $ResolvedPath.StartsWith($ResolvedDirectory, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-BlueprintHelperUserHome {
+  $Candidates = New-Object System.Collections.ArrayList
+  Add-UserHomeCandidate -Candidates $Candidates -PathText $env:USERPROFILE
+  Add-UserHomeCandidate -Candidates $Candidates -PathText $env:HOME
+  Add-UserHomeCandidate -Candidates $Candidates -PathText ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile))
+
+  $UsersRoot = Get-WindowsUsersRoot
+  if (Test-Path -LiteralPath $UsersRoot -PathType Container) {
+    if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
+      Add-UserHomeCandidate -Candidates $Candidates -PathText (Join-Path $UsersRoot $env:USERNAME)
+    }
+  }
+
+  $Seen = @{}
+  foreach ($Candidate in $Candidates) {
+    if ([string]::IsNullOrWhiteSpace($Candidate)) {
+      continue
+    }
+
+    $Resolved = [System.IO.Path]::GetFullPath($Candidate)
+    $Key = $Resolved.ToLowerInvariant()
+    if ($Seen.ContainsKey($Key)) {
+      continue
+    }
+    $Seen[$Key] = $true
+
+    if (-not (Test-Path -LiteralPath $Resolved -PathType Container)) {
+      continue
+    }
+
+    if ((Test-Path -LiteralPath $UsersRoot -PathType Container) -and -not (Test-PathUnderDirectory -Path $Resolved -Directory $UsersRoot)) {
+      continue
+    }
+
+    if ((Test-Path -LiteralPath $UsersRoot -PathType Container) -and -not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
+      $Leaf = Split-Path -Leaf $Resolved
+      if ($Leaf -ine $env:USERNAME) {
+        continue
+      }
+    }
+
+    return $Resolved
+  }
+
+  throw "Unable to resolve Windows user home directory under $UsersRoot for BlueprintHelper Codex/Claude config."
+}
+
 function Assert-Directory {
   param(
     [Parameter(Mandatory = $true)]
@@ -875,10 +957,10 @@ function New-InstallMenuOptions {
     (New-InstallMenuOption -Key 'build' -Label 'Build AgentFaceService packages' -Selected:(-not $SkipBuild) -Tip 'Install and build the shared task-core package, CLI package, and MCP compatibility package. Requires Node.js and npm on PATH.'),
     (New-InstallMenuOption -Key 'cliLink' -Label 'Link bh CLI globally' -Selected:(-not $SkipCliLink) -Tip 'Run npm link for the CLI package, then remove npm PowerShell .ps1 shims so bh resolves through the .cmd launcher and is not blocked by ExecutionPolicy.'),
     (New-InstallMenuOption -Key 'codexSupport' -Label 'Codex Desktop plugin support' -Selected:(-not ($SkipCodexMarketplace -and $SkipCodexAgents -and $SkipLifecycleMcp)) -Tip 'Enable Codex Desktop integration. Child items control local plugin config registration, subagents, and lifecycle MCP config.'),
-    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local plugin config' -Selected:(-not $SkipCodexMarketplace) -Tip 'Write the repository local marketplace and enabled plugin entries directly into the user Codex config.toml.' -Indent 1 -Parent 'codexSupport'),
+    (New-InstallMenuOption -Key 'codexMarketplace' -Label 'Register Codex local plugin config' -Selected:(-not $SkipCodexMarketplace) -Tip 'Write the repository local marketplace and enabled plugin entries into C:\Users\<username>\.codex\config.toml.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'codexAgents' -Label 'Install Codex subagents' -Selected:(-not $SkipCodexAgents) -Tip 'Install BlueprintHelper Codex subagent definitions into the user Codex agents directory.' -Indent 1 -Parent 'codexSupport'),
     (New-InstallMenuOption -Key 'lifecycleMcp' -Label 'Install lifecycle MCP config' -Selected:(-not $SkipLifecycleMcp) -Tip 'Install the global lifecycle-only MCP config used for opening and closing Unreal Editor from Codex.' -Indent 1 -Parent 'codexSupport'),
-    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Write the Claude local marketplace and enabled plugin entries directly into the user settings.json.'),
+    (New-InstallMenuOption -Key 'claudePlugin' -Label 'Claude Code plugin support' -Selected:$InstallClaudePlugin -Tip 'Write the Claude local marketplace and enabled plugin entries into C:\Users\<username>\.claude\settings.json.'),
     (New-InstallMenuOption -Key 'claudeAgents' -Label 'Install Claude sideAgent definitions' -Selected:($InstallClaudeAgents -or $InstallClaudePlugin) -Tip 'Install Claude sideAgent definitions. This can be selected with or without the Claude plugin support item.'),
     (New-InstallMenuOption -Key 'projectProfile' -Label 'Write project-profile.json' -Selected:(-not $SkipProjectProfile) -Tip 'Create or update .blueprinthelper/project-profile.json for the detected Unreal project. Project AgentWorkFlow and root AGENTS/CLAUDE markers are refreshed even when this is skipped. Path prompts appear after menu confirmation.'),
     (New-InstallMenuOption -Key 'projectUbtCompile' -Label 'Run project UBT compile' -Selected:(-not $SkipProjectUbtCompile) -Tip 'After install, run Build.bat <ProjectName>Editor Win64 Development -Project=<Project.uproject> -WaitMutex -NoHotReloadFromIDE. This validates the installed UE-side plugin against the target project.'),
@@ -1912,13 +1994,8 @@ if (-not $SkipCliLink) {
   Repair-BlueprintHelperCliShims
 }
 
-$UserHome = $env:USERPROFILE
-if (-not $UserHome) {
-  $UserHome = $env:HOME
-}
-if (-not $UserHome) {
-  throw 'Unable to resolve user home directory.'
-}
+$UserHome = Resolve-BlueprintHelperUserHome
+Write-Host "==> User config root: $UserHome"
 
 $CodexPluginResult = [pscustomobject]@{
   status = 'skipped'
