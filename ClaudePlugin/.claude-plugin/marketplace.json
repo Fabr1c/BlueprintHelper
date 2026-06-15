@@ -8,7 +8,7 @@
     {
       "name": "blueprint-helper",
       "description": "UE5 Blueprint Agent 编辑辅助系统",
-      "version": "0.6.4",
+      "version": "0.6.5",
       "source": "./",
       "author": {
         "name": "Fabric"

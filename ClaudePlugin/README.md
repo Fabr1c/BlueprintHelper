@@ -36,10 +36,10 @@ Current source metadata:
 
 | Component | Current value |
 |---|---|
-| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.6.4 |
-| CLI `AgentFaceService/cli/package.json` | 0.6.4 |
-| Shared task core `AgentFaceService/task-core/package.json` | 0.6.4 |
-| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.6.4 |
+| Unreal plugin `BlueprintHelper.uplugin` | `VersionName` 0.6.5 |
+| CLI `AgentFaceService/cli/package.json` | 0.6.5 |
+| Shared task core `AgentFaceService/task-core/package.json` | 0.6.5 |
+| Global MCP allowlist package `AgentFaceService/mcp/package.json` | 0.6.5 |
 | Documentation batch | 2026-05-17 implementation sync: CLI ordinary tools + MCP allowlist |
 | Intended UE version | UE 5.3 or newer |
 

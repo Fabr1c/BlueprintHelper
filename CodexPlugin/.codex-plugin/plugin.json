@@ -1,6 +1,6 @@
 {
   "name": "blueprint-helper",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Codex-facing BlueprintHelper workflow plugin with mandatory subagents, CLI TaskSpec workflows, and global lifecycle-only MCP.",
   "author": {
     "name": "Fabr1c",
