@@ -48,5 +48,7 @@ The exact template-discovery values vary by task. They must come from the Main A
 
 For write tasks, execute any Main-Agent-assigned source-control status or checkout command after preview and before `bh task execute --file`. If source control reports `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`, stop and return the agent-facing message and recommended action instead of attempting the write.
 
+If a GraphWrite direct callable/target TaskSpec is blocked during preview by `target_unverified`, `explicit_member_call_not_supported`, unresolved target, unresolved callable, unresolved action, `function_call_not_found`, `ambiguous_function_call`, or equivalent direct resolution/semantic failure, return `preview_blocked` with `next_recommended_action` set to rebuild via CLI-discovered `generic_ops.call.auto_search`; do not execute the direct TaskSpec. If the direct shape previews successfully but execute returns `modified=false` with `semantic_graph_write_failed` or equivalent semantic resolution failure, return `execute_failed` with the same recommended action. Do not repeat direct execute. If the Main Agent assigned recovery in the same package, compose the `auto_search` call shape, rerun preview, select the returned candidate via `action_selection.candidate_id`, rerun preview, then execute.
+
 Return only the sideAgent's compact YAML result to the Main Agent.
 

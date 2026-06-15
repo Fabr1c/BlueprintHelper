@@ -308,6 +308,8 @@ If `task-worker` returns a failure, the Main Agent must inspect:
 - preview vs execute phase;
 - whether the issue is missing context, capability missing, bridge/runtime failure, or malformed TaskSpec.
 
+If GraphWrite `generic_ops.call.direct` or another direct callable/target TaskSpec is blocked during preview by `target_unverified`, `explicit_member_call_not_supported`, unresolved target, unresolved callable, unresolved action, `function_call_not_found`, `ambiguous_function_call`, or an equivalent direct resolution/semantic diagnostic, do not execute that direct shape. If the user intent can still be represented as a callable action, the next TaskSpec attempt must use CLI-discovered `generic_ops.call.auto_search` with `resolution_policy: "auto_search"`. The same AutoSearch recovery is required when the direct shape passes preview but execute fails with `modified=false` and a semantic resolution error such as `semantic_graph_write_failed`. Rerun preview, select a returned candidate through `action_selection.candidate_id`, rerun preview, then execute. If modified state is true, unknown, or readback is ambiguous, stop and report before retrying.
+
 Then the Main Agent may either:
 
 - dispatch a corrected task package to `task-worker`;

@@ -263,6 +263,30 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		return LogicSpec;
 	}
 
+	static TSharedRef<FJsonObject> MakeSelfVisibilitySetLogicSpec()
+	{
+		TSharedRef<FJsonObject> Value = MakeShared<FJsonObject>();
+		Value->SetStringField(TEXT("kind"), TEXT("literal"));
+		Value->SetStringField(TEXT("value_type"), TEXT("string"));
+		Value->SetStringField(TEXT("value"), TEXT("Collapsed"));
+
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("field"));
+		Statement->SetStringField(TEXT("field_operation"), TEXT("set"));
+		Statement->SetStringField(TEXT("field_scope"), TEXT("property_path"));
+		Statement->SetStringField(TEXT("target"), TEXT("self"));
+		Statement->SetStringField(TEXT("property_path"), TEXT("Visibility"));
+		Statement->SetObjectField(TEXT("value"), Value);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
+	}
+
 	static bool BuildBodyEntryAnchor(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
@@ -615,6 +639,52 @@ bool FBlueprintHelperReplaceExternalBodyExecuteAcceptsVariableSetBodyTest::RunTe
 	TestEqual(TEXT("old body removed"), CountCallFunctionNodes(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor)), 0);
 	TestTrue(TEXT("entry exec links to replacement variable set"), FindExecPin(Fixture.EntryNode, EGPD_Output)->LinkedTo.Num() > 0);
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReplaceExternalBodyPreviewBlocksUnresolvedSelfPropertyTest,
+	"BlueprintHelper.GraphWrite.ExternalBodyReplace.PreviewBlocksUnresolvedSelfProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperReplaceExternalBodyPreviewBlocksUnresolvedSelfPropertyTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	FExternalBodyFixture Fixture = MakeExternalBodyFixture(TEXT("PreviewBlocksUnresolvedSelfProperty"));
+	if (!Fixture.Blueprint || !Fixture.Graph || !Fixture.EntryNode || !Fixture.BodyNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperExternalBodySnapshotService SnapshotService;
+	FBlueprintHelperExternalDependentsAnalysisService DependentsAnalysisService;
+	FBlueprintHelperReplaceExternalBodyService Service = MakeService(
+		BlockIdService,
+		OwnershipService,
+		SnapshotService,
+		DependentsAnalysisService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeReplacePayloadWithBody(
+		Fixture.Blueprint,
+		Fixture.Graph,
+		Fixture.Anchor,
+		Fixture.BodyFingerprint,
+		TEXT("custom_event_body"),
+		MakeSelfVisibilitySetLogicSpec(),
+		true));
+
+	TestFalse(TEXT("preview rejects target that execute semantic validation would reject"), Result.bOk);
+	TestTrue(TEXT("preview returns a semantic target diagnostic"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("preview error code"), Result.Error->Code, FString(TEXT("target_unverified")));
+		TestTrue(TEXT("preview error mentions unresolved target"),
+			Result.Error->Message.Contains(TEXT("self.Visibility")));
+	}
+	TestEqual(TEXT("dry-run leaves original body"), CountCallFunctionNodes(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor)), 1);
+	return Result.Error.IsSet();
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

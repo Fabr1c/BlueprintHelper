@@ -714,20 +714,6 @@ bool FBlueprintHelperReplaceExternalBodyService::Preflight(
 		return false;
 	}
 
-	FBlueprintHelperGraphSemanticIR SemanticIR;
-	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.Body, nullptr, SemanticIR);
-	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
-	{
-		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
-		{
-			BlueprintHelperReplaceExternalBody::AddError(OutResult, Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("payload.body"));
-		}
-	}
-	if (!OutResult.bPassed)
-	{
-		return false;
-	}
-
 	Context.Blueprint = BlueprintHelperReplaceExternalBody::FindBlueprint(Request.AssetPath);
 	Context.Graph = BlueprintHelperReplaceExternalBody::FindGraphByName(Context.Blueprint, Request.GraphName);
 	if (!Context.Blueprint || !Context.Graph)
@@ -738,6 +724,20 @@ bool FBlueprintHelperReplaceExternalBodyService::Preflight(
 			Context.Blueprint ? TEXT("Target graph was not found.") : TEXT("Target blueprint was not found."),
 			Context.Blueprint ? TEXT("target.graph") : TEXT("target.asset_path"),
 			Context.Blueprint ? TEXT("payload.target.graph") : TEXT("payload.target.asset_path"));
+		return false;
+	}
+
+	FBlueprintHelperGraphSemanticIR SemanticIR;
+	FBlueprintHelperGraphSemanticIRBuilder::BuildFromLogicSpec(Request.Body, Context.Blueprint, SemanticIR);
+	for (const FBlueprintHelperGraphSemanticDiagnostic& Diagnostic : SemanticIR.Diagnostics)
+	{
+		if (Diagnostic.Severity.Equals(TEXT("error"), ESearchCase::IgnoreCase))
+		{
+			BlueprintHelperReplaceExternalBody::AddError(OutResult, Diagnostic.Code, Diagnostic.Message, Diagnostic.Path, TEXT("payload.body"));
+		}
+	}
+	if (!OutResult.bPassed)
+	{
 		return false;
 	}
 

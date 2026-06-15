@@ -733,7 +733,8 @@ function Read-ClaudeSubagentProfiles {
     [pscustomobject]@{ Number = '2'; Value = 'sonnet'; Label = 'sonnet' }
   )
   $ReasoningChoices = @(
-    [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' }
+    [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' },
+    [pscustomobject]@{ Number = '2'; Value = 'xhigh'; Label = 'xhigh' }
   )
   $DefaultModels = @{
     'blueprint-explorer' = 'haiku'

@@ -107,6 +107,12 @@ AutoSearch is a Preview resolution strategy for GraphWrite calls, not a new stat
 
 When GraphWrite Preview returns an AutoSearch candidate-required diagnostic, do not execute. Read the returned candidates, apply the current template's selection field, rerun Preview, and execute only after Preview passes.
 
+If a `generic_ops.call.direct` or direct GraphWrite callable/target shape is blocked during Preview by `target_unverified`, `explicit_member_call_not_supported`, unresolved target, unresolved callable, unresolved action, `function_call_not_found`, `ambiguous_function_call`, or an equivalent direct resolution/semantic diagnostic, do not execute that direct shape and do not wait for Execute to discover the same failure. Rebuild the intent through CLI-discovered `generic_ops.call.auto_search`, rerun Preview, then select and execute through the candidate flow.
+
+If `generic_ops.call.direct` or another direct GraphWrite callable/target shape passes Preview but Execute fails with `modified=false` and a semantic resolution error (`semantic_graph_write_failed`, unresolved target, unresolved callable, unresolved action, or equivalent Bridge semantic validation failure), do not stop after the first direct attempt when the user intent can still be represented as a callable action. Rebuild the TaskSpec through CLI-discovered `generic_ops.call.auto_search` (`kind:"call"`, `resolution_policy:"auto_search"`), rerun Preview to obtain candidates, choose the candidate through the current template's `action_selection.candidate_id` field, rerun Preview, then Execute.
+
+This recovery is allowed even when the first direct Preview passed. A successful direct Preview is only a safety gate for that exact TaskSpec; it is not proof that direct semantic resolution will survive Execute. If Execute reports `modified=true`, omits modified state, or leaves readback evidence ambiguous, stop and report before any retry.
+
 Candidate ids are preview-scoped selection tokens. Treat them as opaque; do not persist them as UE node ids, capability ids, function stable ids, or raw ActionDatabase evidence. Public candidate data must not include raw spawner or stable-id internals.
 
 GraphWrite `branch_fork` 成功 execute 后必须读回。读回应确认：

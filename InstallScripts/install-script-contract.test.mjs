@@ -10,11 +10,13 @@ const { resolveBlueprintHelperUserHome } = require('../CodexPlugin/scripts/user-
 const installScript = await readFile(new URL('./install.ps1', import.meta.url), 'utf8');
 const installPrompts = await readFile(new URL('./install-prompts.mjs', import.meta.url), 'utf8');
 const uninstallScript = await readFile(new URL('./uninstall.ps1', import.meta.url), 'utf8');
+const rootInstallDocs = await readFile(new URL('../INSTALL.md', import.meta.url), 'utf8');
 const installDocs = await readFile(new URL('../AgentFaceService/docs/Install_CLI_QuickStart.md', import.meta.url), 'utf8');
 const codexGlobalMcpInstaller = await readFile(new URL('../CodexPlugin/scripts/install-global-mcp.cjs', import.meta.url), 'utf8');
 const codexAgentInstaller = await readFile(new URL('../CodexPlugin/scripts/install-codex-agents.cjs', import.meta.url), 'utf8');
 const claudeAgentInstaller = await readFile(new URL('../CodexPlugin/scripts/install-claude-agents.cjs', import.meta.url), 'utf8');
 const userHomeHelper = await readFile(new URL('../CodexPlugin/scripts/user-home.cjs', import.meta.url), 'utf8');
+const claudeTaskWorkerAgent = await readFile(new URL('../CodexPlugin/agents/task-worker.md', import.meta.url), 'utf8');
 
 test('install.ps1 writes project profile as UTF-8 without BOM', () => {
   assert.match(installScript, /function Write-Utf8NoBomFile\b/);
@@ -55,6 +57,25 @@ test('install-prompts.mjs uses shared install JSON helper for defaults', () => {
   assert.match(installPrompts, /from '\.\/json-input\.mjs'/);
   assert.match(installPrompts, /readJsonFile\(defaultsPath\)/);
   assert.doesNotMatch(installPrompts, /\.replace\(\/\^\\uFEFF\/,\s*''\)/);
+});
+
+test('install prompts expose selectable Claude sideAgent model and reasoning options', () => {
+  assert.match(installPrompts, /const CLAUDE_MODEL_OPTIONS = \[[\s\S]*value: 'haiku'[\s\S]*value: 'sonnet'[\s\S]*\]/);
+  assert.match(installPrompts, /const CLAUDE_REASONING_OPTIONS = \[[\s\S]*value: 'high'[\s\S]*value: 'xhigh'[\s\S]*\]/);
+  assert.match(installPrompts, /title: 'Claude sideAgent 模型配置'[\s\S]*modelOptions: CLAUDE_MODEL_OPTIONS[\s\S]*reasoningOptions: CLAUDE_REASONING_OPTIONS/);
+  assert.match(installPrompts, /title: 'Claude sideAgent profiles'[\s\S]*modelOptions: CLAUDE_MODEL_OPTIONS[\s\S]*reasoningOptions: CLAUDE_REASONING_OPTIONS/);
+  assert.match(installScript, /function Read-ClaudeSubagentProfiles[\s\S]*Value = 'haiku'[\s\S]*Value = 'sonnet'[\s\S]*Value = 'high'[\s\S]*Value = 'xhigh'/);
+});
+
+test('claude agent installer rewrites task-worker model and reasoning policy template', () => {
+  assert.match(claudeTaskWorkerAgent, /Always run as a sideAgent using the host task-worker model policy/);
+  assert.match(claudeAgentInstaller, /using the host task-worker model policy/);
+  assert.match(claudeAgentInstaller, /Always run as a sideAgent\[\^\\r\\n\]\*/);
+});
+
+test('root install docs describe Claude interactive model and reasoning choices', () => {
+  assert.match(rootInstallDocs, /模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`、`xhigh`/);
+  assert.match(rootInstallDocs, /Use no-argument `install\.cmd` or `\.\\install\.cmd -Interactive` when you need to choose model and reasoning/);
 });
 
 test('install quickstart documents default UBT compile and skip switch', () => {

@@ -98,7 +98,7 @@ function applyAgentProfile(content, agentProfile, agentName) {
     nextContent = replaceFrontmatterValue(nextContent, 'model', selectedModel);
     nextContent = replacePolicyBullet(
       nextContent,
-      /- Always run as a sideAgent on `[^`]+`\./,
+      /- Always run as a sideAgent(?: on `[^`]+`| using the host task-worker model policy)\./,
       `- Always run as a sideAgent on \`${selectedModel}\`.`
     );
   }
@@ -138,7 +138,7 @@ function replacePolicyBullet(content, pattern, replacement) {
 
 function replaceReasoningPolicyLine(content, replacement) {
   return content.replace(
-    /(## Model and reasoning policy\r?\n\r?\n- Always run as a sideAgent on `[^`]+`\.\r?\n)- .*(\r?\n- Save tokens in the returned summary, not in your analysis process\.)/,
+    /(## Model and reasoning policy\r?\n\r?\n- Always run as a sideAgent[^\r\n]*\r?\n)- [^\r\n]*(\r?\n- Save tokens in the returned summary, not in your analysis process\.)/,
     `$1${replacement}$2`
   );
 }

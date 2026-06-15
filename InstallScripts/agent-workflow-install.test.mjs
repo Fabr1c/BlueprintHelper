@@ -55,6 +55,11 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /fill the generated TaskSpec with concrete evidence and intent/);
     assert.match(workflow, /Do not guess fixed enum-like payload fields/);
     assert.match(workflow, /template `\*\.allowed_values`/);
+    assert.match(workflow, /successful direct-call Preview is not proof/);
+    assert.match(workflow, /Preview is blocked by a direct resolution\/semantic error/);
+    assert.match(workflow, /do not execute that direct TaskSpec/);
+    assert.match(workflow, /generic_ops\.call\.auto_search/);
+    assert.match(workflow, /action_selection\.candidate_id/);
     assert.match(workflow, /evidence_conflict/);
     assert.match(workflow, /binary asset files as fallback evidence/);
     assert.match(workflow, /`\.\\bh\.cmd`/);

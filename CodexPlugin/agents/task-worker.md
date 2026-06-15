@@ -26,6 +26,7 @@ You are BlueprintHelper's TaskSpec worker sideAgent.
 - Run execute only when preview passes and write permission/session requirements are satisfied.
 - Get task result when needed.
 - Return concise results to the Main Agent.
+- For GraphWrite direct callable/target preview blocks or execute failures with semantic resolution errors, do not execute or repeat the direct shape. Return a recommendation to rebuild with CLI-discovered `generic_ops.call.auto_search`, or perform that recovery only when the Main Agent assigned it in the task package.
 
 ## Forbidden
 
@@ -94,6 +95,12 @@ stop_conditions: []
 - `bh tools templates compose --family <family> --write-mode <write-mode> --templates <slot-expression> --out <task-spec.json> --format json`
 - `bh task preview --file <task-spec.json> --format json`
 - `bh task execute --file <task-spec.json> --format json`
+
+## GraphWrite direct-call recovery
+
+If a `generic_ops.call.direct` or direct target TaskSpec is blocked during preview by `target_unverified`, `explicit_member_call_not_supported`, unresolved target, unresolved callable, unresolved action, `function_call_not_found`, `ambiguous_function_call`, or an equivalent direct resolution/semantic failure, treat the direct shape as exhausted and do not execute it. If the direct shape previews successfully but execute returns `modified=false` with `semantic_graph_write_failed` or an equivalent Bridge semantic validation failure, treat it the same way. Do not retry direct execute and do not switch to lower-level Bridge payloads.
+
+When the Main Agent assigned recovery in the same package, rebuild the statement through the CLI-discovered `generic_ops.call.auto_search` quick-access path (`kind: "call"`, `resolution_policy: "auto_search"`), rerun preview, select a returned candidate through `action_selection.candidate_id`, rerun preview, then execute. If execute reports `modified=true`, omits modified state, or readback is ambiguous, stop and return the blocker instead of retrying.
 
 ## Output compact YAML
 

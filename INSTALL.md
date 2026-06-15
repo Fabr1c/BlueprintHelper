@@ -72,7 +72,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudePlugin
 ```
 
-该选项会验证本地 `ClaudePlugin` 包，直接写入 `%USERPROFILE%\.claude\settings.json`，在 `extraKnownMarketplaces` 中注册 `blueprint-helper-dev`，在 `enabledPlugins` 中启用 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。
+该选项会验证本地 `ClaudePlugin` 包，直接写入 `C:\Users\<username>\.claude\settings.json`，在 `extraKnownMarketplaces` 中注册 `blueprint-helper-dev`，在 `enabledPlugins` 中启用 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。
 
 如果只想复制 sideAgent 定义，不想验证 Claude 插件源，使用：
 
@@ -80,7 +80,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudeAgents
 ```
 
-交互式安装启用 Claude sideAgents 时，也会使用同一个 Node.js 内置终端交互。三个 sideAgent 的模型和思考等级分开选择：模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。
+交互式安装启用 Claude sideAgents 时，也会使用同一个 Node.js 内置终端交互。三个 sideAgent 的模型和思考等级分开选择：模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。如果需要选择模型和思考等级，请使用无参数 `install.cmd` 或 `.\install.cmd -Interactive`；带参数的非交互安装不会弹出选择表单。
 
 ### Unreal Engine 插件
 
@@ -203,7 +203,7 @@ Claude Code plugin support is optional:
 .\install.cmd -InstallClaudePlugin
 ```
 
-This validates the local `ClaudePlugin` package, writes `%USERPROFILE%\.claude\settings.json` directly, registers `blueprint-helper-dev` in `extraKnownMarketplaces`, enables `blueprint-helper@blueprint-helper-dev` in `enabledPlugins`, and installs the Claude sideAgent definitions.
+This validates the local `ClaudePlugin` package, writes `C:\Users\<username>\.claude\settings.json` directly, registers `blueprint-helper-dev` in `extraKnownMarketplaces`, enables `blueprint-helper@blueprint-helper-dev` in `enabledPlugins`, and installs the Claude sideAgent definitions.
 
 If you only want to copy the sideAgent definitions without validating the Claude plugin source, use:
 
@@ -211,7 +211,7 @@ If you only want to copy the sideAgent definitions without validating the Claude
 .\install.cmd -InstallClaudeAgents
 ```
 
-When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and the reasoning option is `high`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`.
+When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`. Use no-argument `install.cmd` or `.\install.cmd -Interactive` when you need to choose model and reasoning; parameterized non-interactive installs do not show the selection form.
 
 ### Unreal Engine Plugin
 

@@ -24,6 +24,7 @@ const CLAUDE_MODEL_OPTIONS = [
 ];
 const CLAUDE_REASONING_OPTIONS = [
   { value: 'high', tip: '推荐默认 extended thinking 等级。' },
+  { value: 'xhigh', tip: '更深 extended thinking，适合复杂读写派发或 TaskSpec 构造。' },
 ];
 
 const args = parseArgs(process.argv.slice(2));
