@@ -10,7 +10,9 @@ const { resolveBlueprintHelperUserHome } = require('../CodexPlugin/scripts/user-
 const installScript = await readFile(new URL('./install.ps1', import.meta.url), 'utf8');
 const installPrompts = await readFile(new URL('./install-prompts.mjs', import.meta.url), 'utf8');
 const uninstallScript = await readFile(new URL('./uninstall.ps1', import.meta.url), 'utf8');
+const updateScript = await readFile(new URL('./update.ps1', import.meta.url), 'utf8');
 const rootInstallDocs = await readFile(new URL('../INSTALL.md', import.meta.url), 'utf8');
+const failureCodesDocs = await readFile(new URL('../INSTALL_FAILURE_CODES.md', import.meta.url), 'utf8');
 const installDocs = await readFile(new URL('../AgentFaceService/docs/Install_CLI_QuickStart.md', import.meta.url), 'utf8');
 const codexGlobalMcpInstaller = await readFile(new URL('../CodexPlugin/scripts/install-global-mcp.cjs', import.meta.url), 'utf8');
 const codexAgentInstaller = await readFile(new URL('../CodexPlugin/scripts/install-codex-agents.cjs', import.meta.url), 'utf8');
@@ -57,6 +59,31 @@ test('install-prompts.mjs uses shared install JSON helper for defaults', () => {
   assert.match(installPrompts, /from '\.\/json-input\.mjs'/);
   assert.match(installPrompts, /readJsonFile\(defaultsPath\)/);
   assert.doesNotMatch(installPrompts, /\.replace\(\/\^\\uFEFF\/,\s*''\)/);
+});
+
+test('install uninstall and update expose stable failure diagnostics', () => {
+  assert.match(installScript, /BH-INSTALL-UNHANDLED/);
+  assert.match(installScript, /BH-INSTALL-EXTERNAL-COMMAND-FAILED/);
+  assert.match(installScript, /Failure code:/);
+  assert.match(installScript, /Failure stage:/);
+
+  assert.match(uninstallScript, /BH-UNINSTALL-UNHANDLED/);
+  assert.match(uninstallScript, /BH-UNINSTALL-EXTERNAL-COMMAND-FAILED/);
+  assert.match(uninstallScript, /Failure code:/);
+  assert.match(uninstallScript, /Failure stage:/);
+
+  assert.match(updateScript, /BH-UPD-UNHANDLED/);
+  assert.match(updateScript, /BH-UPD-POSTINSTALL-FAILED/);
+  assert.match(updateScript, /New-UpdateLogPath/);
+  assert.match(updateScript, /Post-update install refresh log:/);
+  assert.match(updateScript, /Failure log:/);
+});
+
+test('failure code documentation covers install uninstall and update diagnostics', () => {
+  assert.match(failureCodesDocs, /BH-INSTALL-EXTERNAL-COMMAND-FAILED/);
+  assert.match(failureCodesDocs, /BH-UNINSTALL-EXTERNAL-COMMAND-FAILED/);
+  assert.match(failureCodesDocs, /BH-UPD-POSTINSTALL-FAILED/);
+  assert.match(failureCodesDocs, /Post-update install refresh log/);
 });
 
 test('install prompts expose selectable Claude sideAgent model and reasoning options', () => {

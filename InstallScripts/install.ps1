@@ -23,14 +23,34 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ScriptRoot = $PSScriptRoot
+$Root = Split-Path -Parent $ScriptRoot
+$script:InstallFailureCode = 'BH-INSTALL-UNHANDLED'
+$script:InstallFailureStage = 'startup'
+
+function Set-InstallFailureContext {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Code,
+    [Parameter(Mandatory = $true)]
+    [string]$Stage
+  )
+
+  $script:InstallFailureCode = $Code
+  $script:InstallFailureStage = $Stage
+}
+
 trap {
   Write-Host ''
   Write-Host 'BlueprintHelper install failed.' -ForegroundColor Red
+  Write-Host "Failure code: $script:InstallFailureCode" -ForegroundColor Red
+  Write-Host "Failure stage: $script:InstallFailureStage" -ForegroundColor Red
   if ($_.Exception -and $_.Exception.Message) {
     Write-Host $_.Exception.Message -ForegroundColor Red
   } else {
     Write-Host $_ -ForegroundColor Red
   }
+  Write-Host "Failure docs: $(Join-Path $Root 'INSTALL_FAILURE_CODES.md')" -ForegroundColor Yellow
   exit 1
 }
 
@@ -42,8 +62,6 @@ $script:ClaudeSubagentProfiles = $null
 $script:SubagentProfilesInitialized = $false
 $script:NodeInstallWizardSucceeded = $false
 
-$ScriptRoot = $PSScriptRoot
-$Root = Split-Path -Parent $ScriptRoot
 $CodexPluginRoot = Join-Path $Root 'CodexPlugin'
 $ClaudePluginRoot = Join-Path $Root 'ClaudePlugin'
 $AgentFaceServiceRoot = Join-Path $Root 'AgentFaceService'
@@ -225,12 +243,15 @@ function Invoke-External {
 
   Write-Host "==> $Description"
   if ($script:ThisCmdlet.ShouldProcess($Description, "$FilePath $($Arguments -join ' ')")) {
+    Set-InstallFailureContext -Code 'BH-INSTALL-EXTERNAL-COMMAND-FAILED' -Stage $Description
     try {
       & $FilePath @Arguments
     } catch {
+      Set-InstallFailureContext -Code 'BH-INSTALL-EXTERNAL-COMMAND-FAILED' -Stage $Description
       throw "$Description failed to start. $($_.Exception.Message)"
     }
     if ($LASTEXITCODE -ne 0) {
+      Set-InstallFailureContext -Code 'BH-INSTALL-EXTERNAL-COMMAND-FAILED' -Stage $Description
       throw "$Description failed with exit code $LASTEXITCODE."
     }
   }

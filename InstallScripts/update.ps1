@@ -28,6 +28,40 @@ $CodexManifestPath = Join-Path $Root 'CodexPlugin\.codex-plugin\plugin.json'
 $UePluginDescriptorPath = Join-Path $Root 'BlueprintHelper\BlueprintHelper.uplugin'
 $script:UpdateProgressActivity = 'BlueprintHelper update'
 $script:UpdateProgressLastPercent = 0
+$script:UpdateFailureCode = 'BH-UPD-UNHANDLED'
+$script:UpdateFailureStage = 'startup'
+$script:UpdateFailureLogPath = $null
+
+function Set-UpdateFailureContext {
+  param(
+    [string]$Code = 'BH-UPD-UNHANDLED',
+    [Parameter(Mandatory = $true)]
+    [string]$Stage,
+    [AllowNull()]
+    [string]$LogPath = $null
+  )
+
+  $script:UpdateFailureCode = $Code
+  $script:UpdateFailureStage = $Stage
+  if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+    $script:UpdateFailureLogPath = $LogPath
+  }
+}
+
+function New-UpdateLogPath {
+  param([Parameter(Mandatory = $true)][string]$Name)
+
+  $LogRoot = [Environment]::GetFolderPath('LocalApplicationData')
+  if ([string]::IsNullOrWhiteSpace($LogRoot)) {
+    $LogRoot = [System.IO.Path]::GetTempPath()
+  }
+
+  $LogRoot = Join-Path $LogRoot 'BlueprintHelper\Logs'
+  New-Item -ItemType Directory -Path $LogRoot -Force | Out-Null
+  $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $SafeName = $Name -replace '[^A-Za-z0-9._-]', '-'
+  return Join-Path $LogRoot "$SafeName-$Timestamp.log"
+}
 
 function Write-Step {
   param([Parameter(Mandatory = $true)][string]$Message)
@@ -623,6 +657,7 @@ function Test-ClaudePluginShouldRefresh {
 function Invoke-PostInstallRefresh {
   $InstallScript = Resolve-InstallScriptPath -PackageRoot $Root
   if (-not $InstallScript -or -not (Test-Path -LiteralPath $InstallScript)) {
+    Set-UpdateFailureContext -Code 'BH-UPD-POSTINSTALL-FAILED' -Stage 'post_update_install_refresh'
     throw "Missing install script after update: $(Join-Path $Root 'InstallScripts\install.ps1')"
   }
 
@@ -659,10 +694,16 @@ function Invoke-PostInstallRefresh {
 
   Write-UpdateProgressBar -Percent 86 -Status 'Running post-update install refresh'
   Write-Step 'Running post-update install refresh'
+  $LogPath = New-UpdateLogPath -Name 'post-update-install-refresh'
+  Set-UpdateFailureContext -Code 'BH-UPD-POSTINSTALL-FAILED' -Stage 'post_update_install_refresh' -LogPath $LogPath
+  Write-Host "Post-update install refresh log: $LogPath"
   Write-Host "powershell -NoProfile -ExecutionPolicy Bypass -File `"$InstallScript`" $($Args -join ' ')"
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallScript @Args
-  if ($LASTEXITCODE -ne 0) {
-    throw "Post-update install refresh failed with exit code $LASTEXITCODE."
+  $Output = & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallScript @Args 2>&1
+  $ExitCode = $LASTEXITCODE
+  $Output | Tee-Object -FilePath $LogPath
+  if ($ExitCode -ne 0) {
+    Set-UpdateFailureContext -Code 'BH-UPD-POSTINSTALL-FAILED' -Stage 'post_update_install_refresh' -LogPath $LogPath
+    throw "Post-update install refresh failed with exit code $ExitCode. See log: $LogPath"
   }
 }
 
@@ -819,10 +860,16 @@ try {
   Stop-UpdateProgressBar -Status 'Update failed'
   Write-Host ''
   Write-Host 'BlueprintHelper update failed.' -ForegroundColor Red
+  Write-Host "Failure code: $script:UpdateFailureCode" -ForegroundColor Red
+  Write-Host "Failure stage: $script:UpdateFailureStage" -ForegroundColor Red
+  if (-not [string]::IsNullOrWhiteSpace($script:UpdateFailureLogPath)) {
+    Write-Host "Failure log: $script:UpdateFailureLogPath" -ForegroundColor Red
+  }
   if ($_.Exception -and $_.Exception.Message) {
     Write-Host $_.Exception.Message -ForegroundColor Red
   } else {
     Write-Host $_ -ForegroundColor Red
   }
+  Write-Host "Failure docs: $(Join-Path $Root 'INSTALL_FAILURE_CODES.md')" -ForegroundColor Yellow
   exit 1
 }

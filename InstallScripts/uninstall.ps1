@@ -16,20 +16,37 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ScriptRoot = $PSScriptRoot
+$Root = Split-Path -Parent $ScriptRoot
+$script:UninstallFailureCode = 'BH-UNINSTALL-UNHANDLED'
+$script:UninstallFailureStage = 'startup'
+
+function Set-UninstallFailureContext {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Code,
+    [Parameter(Mandatory = $true)]
+    [string]$Stage
+  )
+
+  $script:UninstallFailureCode = $Code
+  $script:UninstallFailureStage = $Stage
+}
 
 trap {
   Write-Host ''
   Write-Host 'BlueprintHelper uninstall failed.' -ForegroundColor Red
+  Write-Host "Failure code: $script:UninstallFailureCode" -ForegroundColor Red
+  Write-Host "Failure stage: $script:UninstallFailureStage" -ForegroundColor Red
   if ($_.Exception -and $_.Exception.Message) {
     Write-Host $_.Exception.Message -ForegroundColor Red
   } else {
     Write-Host $_ -ForegroundColor Red
   }
+  Write-Host "Failure docs: $(Join-Path $Root 'INSTALL_FAILURE_CODES.md')" -ForegroundColor Yellow
   exit 1
 }
 
-$ScriptRoot = $PSScriptRoot
-$Root = Split-Path -Parent $ScriptRoot
 $CodexPluginRoot = Join-Path $Root 'CodexPlugin'
 $ClaudePluginRoot = Join-Path $Root 'ClaudePlugin'
 
@@ -234,9 +251,11 @@ function Invoke-ExternalSoft {
     if ($LASTEXITCODE -eq 0) {
       return $true
     }
+    Set-UninstallFailureContext -Code 'BH-UNINSTALL-EXTERNAL-COMMAND-FAILED' -Stage $Description
     Write-Warning "$Description failed with exit code $LASTEXITCODE."
     return $false
   } catch {
+    Set-UninstallFailureContext -Code 'BH-UNINSTALL-EXTERNAL-COMMAND-FAILED' -Stage $Description
     Write-Warning "$Description failed to start. $($_.Exception.Message)"
     return $false
   }
