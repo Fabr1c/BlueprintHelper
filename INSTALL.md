@@ -195,6 +195,8 @@ blueprint-helper@blueprint-helper-local
 
 The same `config.toml` also receives the lifecycle MCP server and explicit approval sections for `blueprint_open_editor`, `blueprint_close_editor`, and `blueprint_developer_exec_console_command`.
 
+Codex plugin packaging also includes BlueprintHelper workflow command hooks. These hooks observe shell commands, write task ledgers under `<Project>/Saved/BlueprintHelper/HookLedger`, block invalid `bh task execute` calls, and remind agents to run readback after successful execute.
+
 ### Claude Code
 
 Claude Code plugin support is optional:
@@ -212,6 +214,8 @@ If you only want to copy the sideAgent definitions without validating the Claude
 ```
 
 When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`. Use no-argument `install.cmd` or `.\install.cmd -Interactive` when you need to choose model and reasoning; parameterized non-interactive installs do not show the selection form.
+
+Claude first-version workflow parity is guidance-based. The local Claude plugin manifest does not prove an equivalent bundled command hook schema, so Claude installs do not claim hook-enforced preview/execute/readback guards.
 
 ### Unreal Engine Plugin
 

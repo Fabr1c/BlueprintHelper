@@ -1,31 +1,48 @@
 ---
 name: blueprint-helper-blueprint-explorer
-description: Fork the blueprint-explorer sideAgent to collect compact BlueprintHelper UE editor-asset context. Use after Main Agent preflight when Blueprint, UMG, DataAsset, DataTable, graph, variable, component, or Bridge/runtime context is needed.
+description: Fork the blueprint-explorer sideAgent to collect compact BlueprintHelper UE editor-asset evidence from a BlueprintHelper.BlueprintExplorerPackage.v1 package.
 context: fork
 agent: blueprint-explorer
 ---
 
 # BlueprintHelper Blueprint Explorer Fork
 
-Invoke the `blueprint-explorer` sideAgent with the smallest possible task package.
+Invoke the `blueprint-explorer` sideAgent when the MainAgent needs UE editor-asset evidence for Blueprint, Material, Animation, UMG, DataAsset, DataTable, object, property, graph, variable, component, widget tree, row, pin, link, or adapter-boundary context.
 
-The Main Agent, not this sideAgent, owns user clarification, lifecycle MCP, safety/write boundary decisions, and final response.
+The MainAgent owns user clarification, lifecycle MCP, safety/write boundary decisions, and final response. BlueprintExplorer owns read discovery inside the package scope.
 
 Input must be compact YAML:
 
 ```yaml
-user_goal: "<what the user wants>"
-target_asset_path: "<UE asset path>"
-target_graph_or_scope: "<graph/function/event/widget/table/object scope>"
-operation_mode: "create_new | modify_existing | inspect_only | validate_only"
-requested_context: []
-read_strategy: "<find_assets | summary | logic_flow | logic_json_delta_after_logic_flow | bounded_logic_json | reference_context | function_chain_context>"
-allowed_tools: []
-stop_conditions: []
-reasoning: "maximum_available"
+schema: BlueprintHelper.BlueprintExplorerPackage.v1
+exploration_package_id: "<stable id>"
+user_goal: "<editor/gameplay intent>"
+target_hint:
+  asset_path: "<known asset path or empty>"
+  graph_or_scope: "<graph/function/event/widget/table/object scope or hint>"
+evidence_scope:
+  requested_facts:
+    - "asset_candidates"
+    - "graph_or_scope"
+    - "anchors"
+    - "nodes"
+    - "pins"
+    - "links"
+    - "variables"
+    - "components"
+    - "widget_tree"
+    - "table_rows"
+    - "adapter_boundary"
+  family_hint:
+    - "normal_blueprint | material_blueprint | animation_blueprint | umg_widget | data_table | data_asset | object"
+stop_conditions:
+  - "asset_ambiguous"
+  - "read_capability_missing"
+  - "evidence_conflict"
+  - "bridge_unavailable"
+return_format: "compact Chinese YAML with evidence summary, confidence, missing facts, conflicts, and suggested next exploration"
 ```
 
-Use `logic_json_delta_after_logic_flow` only after the same target's `logic_flow` has been read and the Main Agent needs GraphWrite anchors, pins, links, or boundary evidence. If delta lacks required write-location evidence or conflicts with the earlier `logic_flow`, return the blocker instead of switching to binary asset reads or plugin source inspection.
+BlueprintExplorer must discover the supported read surface itself: `bh context read`, ReadContext/ReadSpec shapes, read-template families, read-template lists, composed read specs, or other supported BlueprintHelper CLI read commands. Do not ask MainAgent for concrete read-template IDs.
 
-Return only the sideAgent's compact YAML result to the Main Agent.
-
+Return compact evidence summary as the primary response, not raw CLI output. Include only the evidence needed by MainAgent to decide target/scope/capability or whether to dispatch TaskWorker.

@@ -1,206 +1,62 @@
-﻿---
+---
 name: blueprint-helper
-description: Use when a user request requires accessing Unreal Engine Blueprint assets through BlueprintHelper, including reading, inspecting, creating, or modifying Blueprint-related UE editor assets.
+description: Use when a user request requires accessing Unreal Engine Blueprint assets through BlueprintHelper with lifecycle MCP, CLI-first reads/writes, evidence conflict handling, and focused sideAgent delegation.
 ---
 
 # BlueprintHelper Skill
 
 ## Main Agent Role
 
-You are the user-facing planning and decision agent for Blueprint work.
+You are the user-facing planning and decision agent for Blueprint work. Understand the user's gameplay or editor intent, identify the target asset and scope, protect existing assets, complete safety gates, dispatch focused workers, and report the outcome.
 
-Your job is to understand the user's gameplay or editor intent, identify the target Blueprint asset and scope, protect the user's existing assets, and decide what needs to be delegated. You own the conversation, clarification questions, final explanation, and user-facing tradeoffs.
-
-Prefer delegating BlueprintHelper CLI execution to a SideAgent. If the current Claude environment cannot dispatch a SideAgent but the Main Agent can run the required BlueprintHelper CLI command, execute the same single-command SideAgent contract locally and report that it used `main_agent_direct_fallback`.
-
-Return `tool_unavailable` only when the required BlueprintHelper CLI command is not installed or callable. Do not describe this as write permission failure.
-
-Use this Skill when the user asks to:
-
-- read, inspect, summarize, create, or modify a Blueprint;
-- edit Blueprint graphs, variables, components, class settings, interfaces, UMG, DataAssets, DataTables, or object properties through the UE Editor;
-- compile, save, open, diagnose, or validate UE editor assets as part of BlueprintHelper work.
+Use this skill for Blueprint graphs, variables, functions, macros, components, class settings, interfaces, UMG, DataAssets, DataTables, object properties, compile/save/open validation, Bridge/runtime checks, and editor-asset diagnostics.
 
 Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests, config, `AGENTS.md`, or memory files. Use normal repository tools for those.
 
-Do not inspect the BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or the UE `BlueprintHelper/` source) merely to learn how to use the plugin. That is redundant and forbidden for ordinary plugin usage. Use this skill, the AgentGuide, CLI reference, and templates instead. Read plugin source only when the user explicitly asks for BlueprintHelper plugin development, installation repair, or debugging.
+For ordinary plugin usage, do not inspect the BlueprintHelper plugin package or implementation source merely to learn how to use the plugin. Use this skill, installed guidance, generated `.blueprinthelper/AgentWorkFlow.md`, AgentGuide, CLI reference, and runtime CLI discovery instead.
 
-## Entry Rule
+Claude first-version workflow parity is guidance-based unless an installed Claude hook schema with equivalent bundled command hooks has been proven. Do not claim hook-enforced behavior parity before that validation exists.
 
-The supported Agent-facing entry for ordinary BlueprintHelper reads, writes, diagnostics, compile/save validation, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Use global BlueprintHelper MCP only for editor open/close lifecycle; do not route ordinary workflows through MCP.
+## Startup Rule
 
-Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through the CLI to start or close Unreal Editor. If the global MCP lifecycle tools are unavailable, stop and report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
+When the project marker points to BlueprintHelper workflow guidance, read and obey:
 
-Deprecated MCP ordinary read/write/debug/task tools are not fallback paths. Do not use them as fallback.
-
-If grouped context-read evidence, Editor screenshots/visible state, preview, execute, or readback evidence disagree, treat it as `evidence_conflict`: stop and report the conflict. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback fact source.
-
-When the Unreal `asset_path` is unknown, call `blueprinthelper_find_assets` first. When the Unreal `asset_path` is already known, go directly to the grouped context-read command with a composed ReadSpec. Do not infer Unreal `asset_path` values from filesystem `.uasset` paths. If multiple candidates are returned, narrow the request or ask for confirmation before any write flow. A write request must resolve one explicit Unreal `asset_path` before `bh task preview`.
-
-When a CLI command waits on UE Bridge work, it may emit `waiting for UE Bridge response` lines to `stderr`. Treat those lines as keep-alive progress and continue waiting unless the CLI exits; parse only `stdout` as the final JSON result.
-
-For complex JSON input, use the CLI catalog first:
-
-```powershell
-bh tools domains --format json
-bh tools list <domain> <kind> --format json
-bh tools templates families --workflow preview_execute --format json
-bh tools read-templates families --format json
+```text
+.blueprinthelper/AgentWorkFlow.md
 ```
 
-Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the flat ReadSpec composer (`read-templates families -> clusters -> list -> compose --template`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
+The generated workflow document is the MainAgent bootstrap. It defines editor lifecycle ownership, CLI-first ordinary asset work, evidence conflict policy, and when to delegate sideAgent work.
 
-ReadContext delta rule: when the same task has already read `logic_flow` for a Blueprint logic target and the next missing data is GraphWrite location evidence, anchors, pins, links, or boundary identity, prefer the same-target `*.json_delta` ReadSpec template, such as `blueprint.logic.function.json_delta`, instead of rereading full `logic_json`. The composed ReadSpec must keep `view.format=logic_json_delta_after_logic_flow` and `view.baseline_view=logic_flow`. If delta output lacks required write-location fields or conflicts with the earlier `logic_flow`, stop with `missing_capability` or `evidence_conflict`; do not read UE binary assets or plugin source as fallback.
+## MainAgent Boundary
 
-Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, grouped context-read evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
+The MainAgent owns:
 
-## Tool Catalog Flow
+- user intent, clarification questions, final response, and user-facing tradeoffs;
+- target asset, graph/function/event/widget/table/object scope confirmation;
+- create-vs-modify strategy and modification boundary;
+- lightweight CLI/runtime preflight before delegation;
+- global MCP editor lifecycle;
+- source-control gate and write-session gate before write execution delegation;
+- deciding when to delegate BlueprintExplorer, SourceExplorer, and TaskWorker responsibilities;
+- translating compact worker results into user-facing success, blocker, evidence conflict, or capability-boundary reports.
 
-Do not scan plugin source or template indexes to choose BlueprintHelper tools.
+The MainAgent must not choose concrete read templates, write templates, composer paths, candidate shortcut entries, or TaskSpec internals for ordinary user writes. Those choices belong to worker roles.
 
-Use the CLI catalog:
+## Lifecycle And Evidence
 
-```powershell
-bh tools domains --format json
-bh tools list <domain> <kind> --format json
-bh tools templates families --workflow preview_execute --format json
-bh tools read-templates families --format json
-```
+Editor lifecycle is MCP-only for Agents. Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI or shell fallbacks to start or close Unreal Editor. If global MCP lifecycle is unavailable, stop and report `lifecycle_mcp_unavailable`.
 
-Then use the TaskSpec composer or ReadSpec composer to select and compose the concrete JSON request.
+The supported entry for ordinary BlueprintHelper reads, writes, diagnostics, compile/save validation, debug summaries, write-session requests, and result queries is the BlueprintHelper CLI. Deprecated MCP ordinary read/write/debug/task tools are not fallback paths.
 
-The standard read path is:
+If grouped context-read evidence, Editor screenshots/visible state, preview, execute, or readback evidence disagree, report `evidence_conflict` and do not read `.uasset`, `.umap`, or other Unreal binary asset files as fallback evidence.
 
-1. Main Agent chooses `domain` and `kind`.
-2. Main Agent runs `bh tools list <domain> <kind> --format json`.
-3. Main Agent selects a capability and decides whether the next artifact is TaskSpec or ReadSpec.
-4. Main Agent runs the relevant composer navigation and `compose` command.
-5. Main Agent dispatches the required SideAgent with the selected capability, composed JSON path, allowed CLI command, and `stop_conditions`.
-6. The SideAgent fills placeholders in the composed JSON and calls only the assigned CLI tool or grouped command.
+## Dispatch Guide
 
-There is no independent tool detail step.
+- Delegate BlueprintExplorer work when UE editor-asset evidence is needed.
+- Delegate SourceExplorer work only when complementary source-side grounding is required.
+- Delegate TaskWorker work only after target asset, scope, operation intent, modification boundary, safety gates, and evidence sufficiency are clear.
+- Stop or ask the user before write delegation when the target asset, scope, create/modify strategy, or modification boundary is ambiguous.
 
-On Windows PowerShell, `bh` should resolve to the `.cmd` launcher installed by the root installer. If an older install resolves to blocked `bh.ps1`, rerun `install.cmd` or call `bh.cmd`.
+If the current Claude environment cannot dispatch a sideAgent but the required BlueprintHelper CLI is callable, perform the same responsibility split locally and report `main_agent_direct_fallback`. This fallback must preserve the same ownership boundaries and must not claim hook enforcement.
 
-## Main Agent Flow
-
-1. Read `references/08_User_Preferences.md` and `references/00_Agent_Onboarding_Index_20260504.md`.
-2. Convert the user's request into intent, target, scope, and safety constraints.
-3. If the target asset, target graph, or create-vs-modify strategy is unclear, ask the user before any tool delegation.
-4. If BlueprintHelper access is required, run the pre-dispatch editor/Bridge gate locally: confirm CLI availability, run a lightweight runtime profile check, and start the target Editor through global MCP only when the profile/diagnostics show the Bridge or Editor is unavailable for this UE asset task. Read-only commands such as `bh blueprinthelper_find_assets` and `bh context read` do not require a write session.
-5. Send a concise execution package to a SideAgent and tell it to read `references/09_SideAgent_Tool_Execution.md`. If SideAgent dispatch is unavailable but the tool is callable by the Main Agent, execute that one tool locally under the same contract.
-6. Review the translated result, then decide whether to continue, ask the user for confirmation, or report the outcome.
-
-The Main Agent owns context reuse. Keep a running summary of SideAgent returns, decide whether a follow-up can be answered from existing evidence, and only dispatch a new SideAgent when a specific missing tool result is needed.
-
-The SideAgent is an execution and translation worker, not the conversation owner. Do not pass the full conversation or full `SKILL.md`; pass only the execution package and the reference paths it must read.
-
-## Pre-dispatch Editor/Bridge Gate
-
-Run this gate after intent/target/scope assessment and before dispatching any BlueprintHelper SideAgent.
-
-1. Confirm BlueprintHelper CLI is available: `bh` or the built CLI entry.
-2. Run a lightweight runtime profile check:
-   `bh blueprint_get_runtime_profile --json "{}" --select status,summary`
-3. If the runtime profile confirms the intended Editor/Bridge is reachable, dispatch the required SideAgent.
-4. If the runtime profile or diagnostics show the Editor/Bridge is unavailable, stale, or not the intended project, the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` once for the target project, then rerun the runtime profile check.
-5. If the global MCP lifecycle tool is unavailable, stop and report `lifecycle_mcp_unavailable`; do not use CLI lifecycle aliases or shell-launched editor fallbacks.
-6. If the Editor was opened but Bridge remains unavailable, stop or delegate only a bounded diagnostics task with `Bridge unavailable` as the stop condition; do not ask a SideAgent to repair lifecycle.
-7. Never request, set, print, or forward `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session`.
-
-The gate is intentionally short. Use full diagnostics only when the runtime profile is unavailable, ambiguous, or reports a Bridge/runtime problem.
-
-## Main Agent Context Ledger
-
-Before dispatching a follow-up SideAgent:
-
-- check the accumulated SideAgent results for the same asset, target, view, and evidence;
-- answer directly if the existing translated result is enough;
-- if more data is needed, identify the exact missing field or validation result;
-- delegate one atomic BlueprintHelper tool call for that missing data, not a broad re-analysis of the same function or graph.
-
-## SideAgent Delegation Package
-
-When delegating, use semantic fields instead of dumping rules:
-
-```yaml
-user_goal: "<what the user wants in gameplay/editor terms>"
-main_agent_decision: "<why this requires BlueprintHelper tool access>"
-operation_mode: "create_new | modify_existing | inspect_only | validate_only"
-target_asset_path: "<UE asset path, or unknown>"
-target_graph: "<graph/function/event/widget scope, or unknown>"
-safety_constraints:
-  ownership_boundary: "preserve user-owned nodes unless a selected external-user graph template explicitly allows the exact mutation"
-  require_preview: true
-  require_write_session_if_disabled: true
-  write_session_scope: "running Editor/Bridge, usable by delegated SideAgents within approved scope and lifetime"
-read_strategy:
-  avoid_full_graph_text_when_graph_size_unknown: true
-  large_graph_node_threshold: 80
-  large_graph_policy: "estimate size first, then read sampled/scoped views, logic_flow, same-target logic_json_delta_after_logic_flow for write-location evidence, bounded logic_json, or block-scoped slices"
-tool_call_intent:
-  tool_name: "<single BlueprintHelper tool this SideAgent should execute>"
-  missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
-source_control_policy: "<checkout/status policy for target assets before execute>"
-references_to_read:
-  - "references/09_SideAgent_Tool_Execution.md"
-  - "<workflow reference if needed>"
-tool_id: "<selected tool_id from bh tools list>"
-returned_template_paths: []
-allowed_tools: []
-stop_conditions:
-  - "missing target asset or create/modify strategy"
-  - "Bridge unavailable"
-  - "runtime_profile blocks write"
-  - "evidence_conflict"
-  - "preview blocked"
-  - "write session rejected"
-  - "tool unavailable"
-return_format: "Chinese summary with tool names, key arguments, status, blockers, validation, and next step"
-```
-
-Example: if the user says "在蓝图实现一个可以开关的物理门" and does not name an asset, ask whether to modify an existing door Blueprint or create a new `BP_PhysicsDoor`. After that, delegate the actual BlueprintHelper tool work to a SideAgent.
-
-## SideAgent Responsibility
-
-Tell the SideAgent its responsibility in the task package:
-
-- construct valid BlueprintHelper tool parameters from the user's goal and target;
-- use the CLI TaskSpec composer or ReadSpec composer for CLI JSON input;
-- call only the assigned BlueprintHelper tool or the single atomic tool step explicitly requested by the Main Agent;
-- do not expand the task into a broader investigation, repeat adjacent reads, or decide whether prior SideAgent context is sufficient;
-- treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
-- do not replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can repair CLI availability;
-- do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before any full graph read; use sampled/scoped views, `logic_flow`, same-target `logic_json_delta_after_logic_flow` after `logic_flow` when write-location evidence is needed, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
-- run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
-- treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
-- translate the returned tool results into a concise Chinese result for the Main Agent;
-- stop and return a blocker instead of asking the user directly.
-- for write tasks, run any Main-Agent-assigned source-control status or checkout tool before execute; stop on `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable` and return the agent-facing message/recommended action.
-
-The Main Agent uses that translated result to answer the user or decide the next clarification.
-
-## Stop Conditions
-
-Stop before write delegation when:
-
-- the target asset or create strategy is unknown;
-- the requested edit would modify user-owned nodes without explicit permission;
-- the request needs a capability not listed in the onboarding index;
-- the SideAgent reports `clarification_required`, `tool_unavailable`, `bridge_unavailable`, `profile_blocked`, `preview_blocked`, `capability_missing`, `write_rejected`, `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, `checkout_required`, `compile_failed`, `save_failed`, or `tool_failed`;
-- grouped context-read evidence, Editor screenshot/visible state, preview, execute, or readback evidence disagrees; report `evidence_conflict` and do not inspect Unreal binary asset files as fallback evidence;
-- the SideAgent result is not enough to judge whether the user's goal was satisfied.
-
-## References
-
-- `references/08_User_Preferences.md` - user preferences, collaboration rules, Debug/Review conventions
-- `references/00_Agent_Onboarding_Index_20260504.md` - Agent-facing guide index
-- `references/09_SideAgent_Tool_Execution.md` - SideAgent tool execution and result translation contract
-- `references/01_Preflight_And_Boundary.md` - preflight and scope boundaries
-- `references/03_Runtime_Profile_And_Diagnostics.md` - runtime_profile and diagnostics
-- `references/04_TaskSpec_Edit_Blueprint_Workflow.md` - TaskSpec Blueprint edit workflow
-- `references/05_Edit_Blueprint_Workflow.md` - legacy Blueprint edit workflow
-- `references/06_UMG_Data_Workflows.md` - UMG and data workflows
-- `references/07_Safety_Validation_And_Recovery.md` - safety validation and recovery
-- `bh tools domains --format json`, `bh tools list <domain> <kind> --format json`, `bh tools templates families --workflow preview_execute --format json`, and `bh tools templates compose ...` - CLI-owned catalog discovery and TaskSpec/ReadSpec composer selection
+Report results in the user's language. Do not claim completion unless preview, execute, and readback evidence support it.

@@ -6,6 +6,8 @@ allowed-tools: Read, Write, AskUserQuestion
 
 # BlueprintHelper Configure
 
+Claude first-version workflow parity is guidance-based. The local Claude plugin manifest has no proven bundled command hook schema equivalent to Codex `hooks.json`, so this command must not claim hook-enforced preview/execute/readback guards.
+
 你正在更新 BlueprintHelper 用户偏好和 safety profile。这个命令负责已有配置的更新，也可以在偏好文件缺失时生成完整默认偏好文件。
 
 插件命令通过插件根目录 `commands/configure.md` 自动注册。用户可运行：

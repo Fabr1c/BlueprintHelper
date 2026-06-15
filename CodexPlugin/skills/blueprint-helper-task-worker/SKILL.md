@@ -1,54 +1,61 @@
 ---
 name: blueprint-helper-task-worker
-description: Fork the task-worker sideAgent to construct a template-first BlueprintHelper.TaskSpec.v1, run preview/execute through CLI, and return compact diagnostics.
+description: Fork the task-worker sideAgent to execute a BlueprintHelper.TaskWorkerPackage.v1 package through CLI preview/execute/readback.
 context: fork
 agent: task-worker
 ---
 
 # BlueprintHelper Task Worker Fork
 
-Invoke the `task-worker` sideAgent with one bounded task package.
+Invoke the `task-worker` sideAgent only after MainAgent has confirmed target asset, scope, operation intent, modification boundary, evidence sufficiency, source-control gate, and write-session gate.
 
-The Main Agent, not this sideAgent, owns user clarification, lifecycle MCP, safety/write boundary decisions, closed-loop decisions, and final response.
+The MainAgent owns user clarification, lifecycle MCP, safety/write boundary decisions, source-control gate, write-session gate, closed-loop user decisions, and final response. TaskWorker owns CLI catalog/composer discovery, TaskSpec/ReadSpec construction, preview, execute, readback, retry accounting, and capability-boundary output.
 
 Input must be compact YAML:
 
 ```yaml
-user_goal: "<what the user wants>"
-target_asset_path: "<UE asset path>"
-target_graph_or_scope: "<graph/function/event/widget/table/object scope>"
+schema: BlueprintHelper.TaskWorkerPackage.v1
+task_package_id: "<stable id>"
+user_goal: "<editor/gameplay intent>"
 operation_mode: "create_new | modify_existing | inspect_only | validate_only"
-required_operations: []
-blueprint_context_summary: "<from blueprint-explorer>"
-source_context_summary: "<from sourcecode-explorer or none>"
-safety_profile: "<runtime profile safety>"
-write_policy: "<write permission/session policy>"
-source_control_policy: "<checkout/status policy for target assets before execute>"
-template_discovery:
-  family: "graph_write"
-  write_mode: "graph.replace"
-  cluster: "external_body"
-  operation: "replace_body"
-  quick_access: "body"
-task_file_shape: "bare_taskspec_for_grouped_task_commands"
-allowed_cli:
-  - "bh tools templates families --workflow preview_execute --format json"
-  - "bh tools templates write-modes --family graph_write --format json"
-  - "bh tools templates clusters --family graph_write --format json"
-  - "bh tools templates operations --family graph_write --cluster external_body --write-mode graph.replace --format json"
-  - "bh tools templates quick-access --family graph_write --cluster external_body --operation replace_body --write-mode graph.replace --format json"
-  - "bh tools templates compose --family graph_write --write-mode graph.replace --templates external_body.replace_body.body --out <task-spec.json> --format json"
-  - "bh task preview --file <task-spec.json> --format json"
-  - "bh task execute --file <task-spec.json> --format json"
-stop_conditions: []
-reasoning: "maximum_available"
+target:
+  asset_path: "<explicit Unreal asset path>"
+  graph_or_scope: "<graph/function/event/widget/table/object scope>"
+capability_scope:
+  family_scope:
+    - "normal_blueprint | material_blueprint | animation_blueprint | umg_widget | data_table | data_asset | object"
+  allowed_operation_intent: "<natural language operation boundary>"
+modification_scope:
+  assets:
+    - "<asset path>"
+  user_owned_nodes_policy: "preserve | explicit_external_mutation_allowed"
+  expected_changed_surface: "<short description>"
+evidence:
+  blueprint_explorer_summary: "<compact UE asset evidence>"
+prewrite_gates:
+  source_control:
+    status: "passed | not_required"
+    checked_assets:
+      - "<asset path>"
+  write_session:
+    status: "approved | not_required"
+    approved_scope:
+      - "<asset path>"
+retry_budget:
+  max_attempts: 3
+readback_required: true
+stop_conditions:
+  - "preview_blocked"
+  - "execute_failed"
+  - "readback_mismatch"
+  - "evidence_conflict"
+  - "retry_budget_exceeded"
+  - "prewrite_gate_stale_or_insufficient"
+return_format: "compact Chinese YAML with status, attempts, evidence, blockers, and next step"
 ```
 
-The exact template-discovery values vary by task. They must come from the Main Agent package or from `bh tools templates families` / `write-modes` / `clusters` / `operations` / `quick-access`; do not scan template directories as the primary path.
+TaskWorker must discover concrete family, write mode, cluster, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands inside `family_scope` and `allowed_operation_intent`. Use the current CLI discovery surface, including `bh tools templates families` and `bh tools templates compose`, when building TaskSpec files. Run grouped task commands with `bh task preview --file <task-spec.json>` and `bh task execute --file <task-spec.json>`. MainAgent does not supply exact catalog selections.
 
-For write tasks, execute any Main-Agent-assigned source-control status or checkout command after preview and before `bh task execute --file`. If source control reports `checked_out_by_other`, `source_control_conflicted`, `source_control_unavailable`, `checkout_failed`, or `not_editable`, stop and return the agent-facing message and recommended action instead of attempting the write.
+TaskWorker must not request write session or run source-control checkout/status gates. If execute fails with `write_session_missing`, `checkout_required`, `not_editable`, or equivalent stale gate errors, stop with `prewrite_gate_stale_or_insufficient`.
 
-If a GraphWrite direct callable/target TaskSpec is blocked during preview by `target_unverified`, `explicit_member_call_not_supported`, unresolved target, unresolved callable, unresolved action, `function_call_not_found`, `ambiguous_function_call`, or equivalent direct resolution/semantic failure, return `preview_blocked` with `next_recommended_action` set to rebuild via CLI-discovered `generic_ops.call.auto_search`; do not execute the direct TaskSpec. If the direct shape previews successfully but execute returns `modified=false` with `semantic_graph_write_failed` or equivalent semantic resolution failure, return `execute_failed` with the same recommended action. Do not repeat direct execute. If the Main Agent assigned recovery in the same package, compose the `auto_search` call shape, rerun preview, select the returned candidate via `action_selection.candidate_id`, rerun preview, then execute.
-
-Return only the sideAgent's compact YAML result to the Main Agent.
-
+Success requires preview passed, execute completed, readback completed, readback matches the user intent, no evidence conflict, retry budget not exceeded, and approved scope respected. Return only the sideAgent's compact YAML result to MainAgent.

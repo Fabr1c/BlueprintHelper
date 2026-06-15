@@ -75,7 +75,7 @@ function buildProjectProfile({ engineRoot, ueVersion, existingProfile = {} }) {
 function buildAgentWorkflowMarkdown() {
   return `# BlueprintHelper Agent WorkFlow
 
-This file is the project-level BlueprintHelper workflow prompt source for Codex and Claude agents.
+This file is the project-level BlueprintHelper MainAgent bootstrap for Codex and Claude agents.
 
 If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflict\`. Do not read \`.uasset\`, \`.umap\`, or other Unreal binary asset files as fallback evidence.
 
@@ -91,38 +91,13 @@ If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflic
 ## Ordinary Asset Workflow
 
 - Use BlueprintHelper CLI for ordinary UE editor asset reads and writes.
-- On Windows PowerShell, resolve the globally linked \`bh.cmd\` launcher to an absolute path before invoking CLI commands. Prefer:
-
-~~~powershell
-$BhCmd = (Get-Command bh.cmd -CommandType Application -ErrorAction Stop).Source
-& $BhCmd blueprint_get_runtime_profile --json "{}" --select status,summary
-~~~
-
-- If command discovery is unavailable, resolve the npm global prefix and call the launcher by full path:
-
-~~~powershell
-$NpmPrefix = (& npm.cmd config get prefix).Trim()
-$BhCmd = Join-Path $NpmPrefix "bh.cmd"
-& $BhCmd <command> <args>
-~~~
-
-- Do not call a relative \`.\\bh.cmd\` unless the current directory is the npm global bin directory. Bare \`bh\` may resolve to a blocked \`bh.ps1\` on old installs; rerun \`install.cmd\` or use the absolute \`bh.cmd\` path.
-- After intent, target, and scope assessment, run a pre-dispatch editor/Bridge gate before assigning any SideAgent work.
-- The pre-dispatch gate is lightweight: run \`blueprint_get_runtime_profile\`; if the intended Editor/Bridge is unavailable, stale, or not the target project, the Main Agent may open the target Editor once through \`mcp__blueprint_helper__blueprint_open_editor\`, then rerun runtime profile.
-- If lifecycle MCP is unavailable, report \`lifecycle_mcp_unavailable\` instead of using CLI lifecycle aliases or shell-launched editor fallbacks.
-- If the Editor opens but Bridge remains unavailable, stop or assign only bounded diagnostics with \`Bridge unavailable\` as the stop condition; do not ask SideAgents to repair lifecycle.
-- \`bh context read --stdin\` is supported for generated ReadSpec JSON. Use \`--file\` for reusable ReadSpec files and \`--stdin\` when piping generated JSON through PowerShell-safe input.
-- \`property_json\` \`target_name\` is a ReadContext route locator/filter. It is required only for routes whose descriptor lists \`target_name\`, such as Blueprint object-property and Widget property reads; DataAsset object \`property_json\` does not require it.
-- After writing, restoring, or otherwise modifying any file, artifact, or documentation file, previous reads of that path are stale. Reread the latest file before auditing it, drawing conclusions from it, or making another edit based on its contents.
-- Use TaskSpec-first writes: gather \`read_context\` evidence, choose the TaskSpec family, write mode, cluster, and operation through CLI tool/template discovery, compose a temporary \`BlueprintHelper.TaskSpec.v1\` with TaskSpec Template Composer, fill the generated TaskSpec with concrete evidence and intent, preview, request write approval when required, execute, and read back results.
-- Select and compose TaskSpec templates through the current CLI discovery path: run \`bh tools templates families --workflow preview_execute --format json\`, then \`bh tools templates write-modes --family <family> --format json\`, \`bh tools templates clusters --family <family> --format json\`, \`bh tools templates operations --family <family> --cluster <cluster> --write-mode <write_mode> --format json\`, and \`bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <write_mode> --format json\`; use \`quick-access.items[].slot_type\` to choose top-level statement roots and keep expression templates nested, and use \`quick-access.items[].arg_slots\` as the \`template_id(...)\` argument order.
-- Then compose with \`bh tools templates compose\` using the selected template expression and write the result to \`<generated-task-spec.json>\`, for example \`bh tools templates compose --family <family> --write-mode <write_mode> --templates "<template_expression>" --out <generated-task-spec.json> --format json\`.
-- Do not use old tool-id template dispatch or scan \`AgentFaceService/agent-guide/Templates\` to choose TaskSpec files.
-- Do not skip from template discovery directly to execute. The generated TaskSpec is a scaffold that must be customized with current readback anchors, target asset data, and the user request before preview.
-- Do not guess fixed enum-like payload fields or try neighboring strings. Values such as \`target_type\`, \`view.format\`, \`write_mode\`, \`cluster\`, \`operation\`, \`kind\`, \`container_kind\`, \`container_operation\`, \`control_operation\`, \`create_operation\`, \`transform_operation\`, \`schedule_operation\`, and delegate binding kinds must come from CLI discovery, template \`*.allowed_values\`, read-template quick-access, \`read_context\` evidence, ActionDatabase/preview candidates, or a tool-returned \`suggested_patch\`; otherwise stop and report.
-- For GraphWrite callable intent, a successful direct-call Preview is not proof that Execute will resolve the same callable or property path. If a \`generic_ops.call.direct\` or direct target TaskSpec Preview is blocked by a direct resolution/semantic error such as \`target_unverified\`, \`explicit_member_call_not_supported\`, unresolved target, unresolved callable, unresolved action, \`function_call_not_found\`, or \`ambiguous_function_call\`, do not execute that direct TaskSpec. Rebuild through the CLI-discovered \`generic_ops.call.auto_search\` path (\`kind: "call"\`, \`resolution_policy: "auto_search"\`), rerun Preview, select a returned candidate with the current template's \`action_selection.candidate_id\` field, rerun Preview, and only then Execute. If the direct TaskSpec Preview passed but Execute returns \`modified=false\` with \`semantic_graph_write_failed\` or an equivalent semantic resolution error, perform the same AutoSearch rebuild instead of repeating direct execute. If Execute reports \`modified=true\` or modified state is unknown, stop, read back/report state, and do not retry blindly.
-- AutoSearch recovery is still TaskSpec-first and Preview-first. Never bypass Preview, never call lower-level Bridge payloads, and never reuse candidate ids across Preview runs; candidate ids are opaque Preview-scoped tokens.
-- Use ReadSpec/read-context flows for Blueprint, UMG, DataAsset, and DataTable discovery.
+- Run only bounded preflight CLI checks locally before dispatch, such as runtime profile or diagnostics.
+- If the runtime profile shows the intended Editor or Bridge is unavailable, stale, or not the target project, the Main Agent may open the target Editor once through \`mcp__blueprint_helper__blueprint_open_editor\`, then rerun runtime profile.
+- Dispatch \`blueprint-explorer\` when UE editor-asset evidence is needed.
+- Dispatch \`sourcecode-explorer\` only when source-side grounding is required.
+- Complete source-control and write-session gates before dispatching \`task-worker\`.
+- Dispatch \`task-worker\` only after target asset, scope, and evidence are sufficient.
+- The Main Agent must not select exact read templates, write templates, or composer paths for ordinary user writes.
 - If \`read_context\`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, stop and report \`evidence_conflict\`; do not inspect Unreal binary asset files as fallback.
 - Do not use deprecated MCP ordinary read/write/debug/task tools as fallback paths.
 

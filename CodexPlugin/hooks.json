@@ -9,6 +9,46 @@
             "command": "node ./scripts/global-mcp-lifecycle-notice.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash|Shell|PowerShell|functions.shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/workflow-hook.cjs --event PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Shell|PowerShell|functions.shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/workflow-hook.cjs --event PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/workflow-hook.cjs --event Stop"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/workflow-hook.cjs --event SubagentStop"
+          }
+        ]
       }
     ]
   }
