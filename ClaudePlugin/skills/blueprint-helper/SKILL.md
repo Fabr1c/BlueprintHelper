@@ -15,7 +15,7 @@ Do not use BlueprintHelper tools for C++, TypeScript, Python, JSON, docs, tests,
 
 For ordinary plugin usage, do not inspect the BlueprintHelper plugin package or implementation source merely to learn how to use the plugin. Use this skill, installed guidance, generated `.blueprinthelper/AgentWorkFlow.md`, AgentGuide, CLI reference, and runtime CLI discovery instead.
 
-Claude first-version workflow parity is guidance-based unless an installed Claude hook schema with equivalent bundled command hooks has been proven. Do not claim hook-enforced behavior parity before that validation exists.
+Claude plugin workflow parity includes hook-enforced preview/execute/readback guards when the installed Claude Code runtime supports plugin hooks. The plugin ships `hooks/hooks.json`, which invokes the shared BlueprintHelper workflow hook core through `${CLAUDE_PLUGIN_ROOT}/scripts/workflow-hook.cjs`. If hooks are unavailable in the current runtime or the plugin is not installed, report `hook_unavailable` before claiming hook-enforced behavior.
 
 ## Startup Rule
 
@@ -57,6 +57,6 @@ If grouped context-read evidence, Editor screenshots/visible state, preview, exe
 - Delegate TaskWorker work only after target asset, scope, operation intent, modification boundary, safety gates, and evidence sufficiency are clear.
 - Stop or ask the user before write delegation when the target asset, scope, create/modify strategy, or modification boundary is ambiguous.
 
-If the current Claude environment cannot dispatch a sideAgent but the required BlueprintHelper CLI is callable, perform the same responsibility split locally and report `main_agent_direct_fallback`. This fallback must preserve the same ownership boundaries and must not claim hook enforcement.
+If the current Claude environment cannot dispatch a sideAgent but the required BlueprintHelper CLI is callable, perform the same responsibility split locally and report `main_agent_direct_fallback`. This fallback must preserve the same ownership boundaries. Do not claim hook enforcement unless the Claude plugin hook manifest is installed and active.
 
 Report results in the user's language. Do not claim completion unless preview, execute, and readback evidence support it.

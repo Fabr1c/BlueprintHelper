@@ -72,7 +72,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudePlugin
 ```
 
-该选项会验证本地 `ClaudePlugin` 包，直接写入 `C:\Users\<username>\.claude\settings.json`，在 `extraKnownMarketplaces` 中注册 `blueprint-helper-dev`，在 `enabledPlugins` 中启用 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义。
+该选项会验证本地 `ClaudePlugin` 包，直接写入 `C:\Users\<username>\.claude\settings.json`，在 `extraKnownMarketplaces` 中注册 `blueprint-helper-dev`，在 `enabledPlugins` 中启用 `blueprint-helper@blueprint-helper-dev`，同时安装 Claude sideAgent 定义，并通过 `ClaudePlugin/hooks/hooks.json` 暴露 Claude Code workflow hooks。
 
 如果只想复制 sideAgent 定义，不想验证 Claude 插件源，使用：
 
@@ -205,7 +205,7 @@ Claude Code plugin support is optional:
 .\install.cmd -InstallClaudePlugin
 ```
 
-This validates the local `ClaudePlugin` package, writes `C:\Users\<username>\.claude\settings.json` directly, registers `blueprint-helper-dev` in `extraKnownMarketplaces`, enables `blueprint-helper@blueprint-helper-dev` in `enabledPlugins`, and installs the Claude sideAgent definitions.
+This validates the local `ClaudePlugin` package, writes `C:\Users\<username>\.claude\settings.json` directly, registers `blueprint-helper-dev` in `extraKnownMarketplaces`, enables `blueprint-helper@blueprint-helper-dev` in `enabledPlugins`, installs the Claude sideAgent definitions, and exposes Claude Code workflow hooks through `ClaudePlugin/hooks/hooks.json`.
 
 If you only want to copy the sideAgent definitions without validating the Claude plugin source, use:
 
@@ -215,7 +215,7 @@ If you only want to copy the sideAgent definitions without validating the Claude
 
 When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`. Use no-argument `install.cmd` or `.\install.cmd -Interactive` when you need to choose model and reasoning; parameterized non-interactive installs do not show the selection form.
 
-Claude first-version workflow parity is guidance-based. The local Claude plugin manifest does not prove an equivalent bundled command hook schema, so Claude installs do not claim hook-enforced preview/execute/readback guards.
+Claude workflow parity includes hook-enforced preview/execute/readback guards on Claude Code versions that support plugin hooks. The hook manifest uses `hooks/hooks.json`, `${CLAUDE_PLUGIN_ROOT}`, and the shared BlueprintHelper hook core.
 
 ### Unreal Engine Plugin
 

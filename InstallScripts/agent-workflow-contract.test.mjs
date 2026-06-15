@@ -153,3 +153,15 @@ test('Codex hook packaging references the shared workflow hook wrapper', async (
   assert.match(commands, /node \.\/scripts\/workflow-hook\.cjs --event Stop/);
   assert.match(commands, /node \.\/scripts\/workflow-hook\.cjs --event SubagentStop/);
 });
+
+test('Claude hook packaging references the shared workflow hook wrapper from plugin hooks', async () => {
+  const hooks = JSON.parse(await readRepoText('ClaudePlugin/hooks/hooks.json'));
+  const commands = JSON.stringify(hooks);
+
+  assert.match(commands, /"command":"node"/);
+  assert.match(commands, /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/workflow-hook\.cjs","--event","PreToolUse/);
+  assert.match(commands, /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/workflow-hook\.cjs","--event","PostToolUse/);
+  assert.match(commands, /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/workflow-hook\.cjs","--event","Stop/);
+  assert.match(commands, /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/workflow-hook\.cjs","--event","SubagentStop/);
+  assert.doesNotMatch(commands, /guidance-only/i);
+});

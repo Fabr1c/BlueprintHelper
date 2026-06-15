@@ -36,7 +36,7 @@ cd <PLUGIN_ROOT>
 
 The installer builds the Agent runtime, links `bh`, resolves the real Windows user profile under `C:\Users\<username>`, writes the Codex local marketplace and enabled plugin entries directly into `.codex/config.toml`, installs Codex subagents and the MCP allowlist entry, writes the project profile when project and UE root are known, creates `.blueprinthelper/AgentWorkFlow.md`, refreshes project-root `AGENTS.md` / `CLAUDE.md` markers, and creates default user preference files only when they are missing.
 
-Codex plugin installs include command hooks for BlueprintHelper workflow guardrails. Those hooks observe shell command payloads, store ledger state under `<Project>/Saved/BlueprintHelper/HookLedger`, block invalid `bh task execute` attempts, and remind agents to run readback after successful execute. Claude plugin first-version parity is guidance-based because no equivalent bundled Claude command hook schema is proven in this repository.
+Codex and Claude plugin installs include command hooks for BlueprintHelper workflow guardrails. Those hooks observe shell command payloads, store ledger state under `<Project>/Saved/BlueprintHelper/HookLedger`, block invalid `bh task execute` attempts, and remind agents to run readback after successful execute. Claude Code hook parity uses the plugin `hooks/hooks.json` surface and the shared BlueprintHelper hook core.
 
 交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。非交互安装自动使用推荐默认值，`task-worker` 默认更强模型。
 
