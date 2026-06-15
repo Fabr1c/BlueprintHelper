@@ -83,7 +83,27 @@ test('failure code documentation covers install uninstall and update diagnostics
   assert.match(failureCodesDocs, /BH-INSTALL-EXTERNAL-COMMAND-FAILED/);
   assert.match(failureCodesDocs, /BH-UNINSTALL-EXTERNAL-COMMAND-FAILED/);
   assert.match(failureCodesDocs, /BH-UPD-POSTINSTALL-FAILED/);
+  assert.match(failureCodesDocs, /BH-UPD-BOOTSTRAP-FAILED/);
+  assert.match(failureCodesDocs, /BH-UPD-RUNNER-FAILED/);
   assert.match(failureCodesDocs, /Post-update install refresh log/);
+});
+
+test('update.ps1 bootstraps to the updater from the downloaded package before replacement', () => {
+  assert.match(updateScript, /\[string\]\$RunnerPackageRoot/);
+  assert.match(updateScript, /\[string\]\$TargetRoot/);
+  assert.match(updateScript, /\[switch\]\$SkipBootstrap/);
+  assert.match(updateScript, /function Start-UpdateRunnerFromPackage\b/);
+  assert.match(updateScript, /function Invoke-BlueprintHelperUpdateRunner\b/);
+  assert.match(updateScript, /Copy-Item\s+-LiteralPath\s+\$SourceScript\s+-Destination\s+\$RunnerScript\s+-Force/);
+  assert.match(updateScript, /-RunnerPackageRoot/);
+  assert.match(updateScript, /-TargetRoot/);
+  assert.match(updateScript, /if \(\(-not \$SkipBootstrap\) -and \[string\]::IsNullOrWhiteSpace\(\$RunnerPackageRoot\)\)/);
+  assert.match(updateScript, /Start-UpdateRunnerFromPackage[\s\S]*return/);
+});
+
+test('update.ps1 cleans temporary update directories even when WhatIf is enabled', () => {
+  const cleanupCalls = updateScript.match(/Remove-Item\s+-LiteralPath\s+\$(?:RunnerRoot|PackageTempDir)\s+-Recurse\s+-Force\s+-WhatIf:\$false/g) ?? [];
+  assert.ok(cleanupCalls.length >= 3, 'expected runner root and package temp cleanup to bypass WhatIf');
 });
 
 test('install prompts expose selectable Claude sideAgent model and reasoning options', () => {

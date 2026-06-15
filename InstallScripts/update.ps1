@@ -11,6 +11,11 @@ param(
   [switch]$InstallUePluginToEngine,
   [string]$EngineRoot,
   [string]$EnginePluginDir,
+  [string]$RunnerPackageRoot,
+  [string]$RunnerReleaseInfoFile,
+  [string]$RunnerTempDir,
+  [string]$TargetRoot,
+  [switch]$SkipBootstrap,
   [switch]$Force
 )
 
@@ -23,7 +28,11 @@ try {
 }
 
 $ScriptRoot = $PSScriptRoot
-$Root = Split-Path -Parent $ScriptRoot
+if ([string]::IsNullOrWhiteSpace($TargetRoot)) {
+  $Root = Split-Path -Parent $ScriptRoot
+} else {
+  $Root = [System.IO.Path]::GetFullPath($TargetRoot)
+}
 $CodexManifestPath = Join-Path $Root 'CodexPlugin\.codex-plugin\plugin.json'
 $UePluginDescriptorPath = Join-Path $Root 'BlueprintHelper\BlueprintHelper.uplugin'
 $script:UpdateProgressActivity = 'BlueprintHelper update'
@@ -638,6 +647,129 @@ function Resolve-InstallScriptPath {
   return $null
 }
 
+function Resolve-UpdateScriptPath {
+  param([Parameter(Mandatory = $true)][string]$PackageRoot)
+
+  $Candidate = Join-Path $PackageRoot 'InstallScripts\update.ps1'
+  if (Test-Path -LiteralPath $Candidate -PathType Leaf) {
+    return $Candidate
+  }
+
+  return $null
+}
+
+function Get-RunnerReleaseInfo {
+  if ([string]::IsNullOrWhiteSpace($RunnerReleaseInfoFile)) {
+    Set-UpdateFailureContext -Code 'BH-UPD-RUNNER-FAILED' -Stage 'runner_release_info'
+    throw 'Update runner did not receive release metadata.'
+  }
+  if (-not (Test-Path -LiteralPath $RunnerReleaseInfoFile -PathType Leaf)) {
+    Set-UpdateFailureContext -Code 'BH-UPD-RUNNER-FAILED' -Stage 'runner_release_info'
+    throw "Update runner release metadata file is missing: $RunnerReleaseInfoFile"
+  }
+
+  $Info = Get-JsonFromFile -Path $RunnerReleaseInfoFile
+  if (-not $Info.tag -or -not $Info.version) {
+    Set-UpdateFailureContext -Code 'BH-UPD-RUNNER-FAILED' -Stage 'runner_release_info'
+    throw "Update runner release metadata is incomplete: $RunnerReleaseInfoFile"
+  }
+
+  return [pscustomobject]@{
+    tag = [string]$Info.tag
+    version = [string]$Info.version
+    name = if ($Info.name) { [string]$Info.name } else { '' }
+    url = if ($Info.url) { [string]$Info.url } else { '' }
+    zipball_url = if ($Info.zipball_url) { [string]$Info.zipball_url } else { '' }
+  }
+}
+
+function Start-UpdateRunnerFromPackage {
+  param(
+    [Parameter(Mandatory = $true)][string]$PackageRoot,
+    [Parameter(Mandatory = $true)][object]$ReleaseInfo,
+    [Parameter(Mandatory = $true)][string]$PackageTempDir
+  )
+
+  Set-UpdateFailureContext -Code 'BH-UPD-BOOTSTRAP-FAILED' -Stage 'bootstrap_update_runner'
+  $SourceScript = Resolve-UpdateScriptPath -PackageRoot $PackageRoot
+  if (-not $SourceScript) {
+    throw "Downloaded package does not include InstallScripts\\update.ps1: $PackageRoot"
+  }
+
+  $RunnerRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("BlueprintHelperUpdateRunner_" + [System.Guid]::NewGuid().ToString('N'))
+  $RunnerScript = Join-Path $RunnerRoot 'InstallScripts\update.ps1'
+  $ReleaseInfoPath = Join-Path $RunnerRoot 'release-info.json'
+
+  try {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $RunnerScript) | Out-Null
+    Copy-Item -LiteralPath $SourceScript -Destination $RunnerScript -Force
+    $ReleaseInfo | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReleaseInfoPath -Encoding UTF8
+
+    $Args = @(
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      $RunnerScript,
+      '-SkipBootstrap',
+      '-RunnerPackageRoot',
+      $PackageRoot,
+      '-RunnerReleaseInfoFile',
+      $ReleaseInfoPath,
+      '-RunnerTempDir',
+      $PackageTempDir,
+      '-TargetRoot',
+      $Root
+    )
+
+    if ($SkipPostInstall) {
+      $Args += '-SkipPostInstall'
+    }
+    if ($SkipBuild) {
+      $Args += '-SkipBuild'
+    }
+    if ($RunDiagnostics) {
+      $Args += '-RunDiagnostics'
+    }
+    if ($InstallClaudePlugin) {
+      $Args += '-InstallClaudePlugin'
+    }
+    if ($InstallClaudeAgents) {
+      $Args += '-InstallClaudeAgents'
+    }
+    if ($InstallUePluginToEngine) {
+      $Args += '-InstallUePluginToEngine'
+    }
+    if ($EngineRoot) {
+      $Args += @('-EngineRoot', $EngineRoot)
+    }
+    if ($EnginePluginDir) {
+      $Args += @('-EnginePluginDir', $EnginePluginDir)
+    }
+    if ($Force) {
+      $Args += '-Force'
+    }
+    if ($WhatIfPreference) {
+      $Args += '-WhatIf'
+    }
+
+    Write-UpdateProgressBar -Percent 54 -Status 'Starting downloaded update runner'
+    Write-Step 'Starting downloaded update runner'
+    Write-Host "Runner update script: $RunnerScript"
+    Write-Host "Runner target root:   $Root"
+    & powershell @Args
+    $ExitCode = $LASTEXITCODE
+    if ($ExitCode -ne 0) {
+      Set-UpdateFailureContext -Code 'BH-UPD-RUNNER-FAILED' -Stage 'downloaded_update_runner'
+      throw "Downloaded update runner failed with exit code $ExitCode."
+    }
+  } finally {
+    if (Test-Path -LiteralPath $RunnerRoot) {
+      Remove-Item -LiteralPath $RunnerRoot -Recurse -Force -WhatIf:$false
+    }
+  }
+}
+
 function Test-ClaudeAgentsInstalled {
   $HomeDir = $env:USERPROFILE
   if (-not $HomeDir) {
@@ -717,72 +849,22 @@ function Restore-Backup {
   Invoke-RobocopyMirror -Source $BackupDir -Destination $Root -Description 'Rolling back to backup'
 }
 
-function Invoke-BlueprintHelperUpdate {
-  Write-Host 'BlueprintHelper updater'
-  Write-Host "Source root: $Root"
+function Invoke-BlueprintHelperUpdateRunner {
+  param(
+    [Parameter(Mandatory = $true)][object]$ReleaseInfo,
+    [Parameter(Mandatory = $true)][string]$PackageRoot,
+    [AllowNull()][string]$PackageTempDir = $null
+  )
 
-  Write-UpdateProgressBar -Percent 3 -Status 'Reading local version'
   $CurrentVersion = Get-CurrentBlueprintHelperVersion
-  Write-UpdateProgressBar -Percent 8 -Status 'Checking latest GitHub release'
-  $ReleaseInfo = Get-LatestReleaseInfo
-  $UpdateState = Get-UpdateState
-  $UpdateDecision = Get-BlueprintHelperUpdateDecision -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo -UpdateState $UpdateState
-  Write-UpdateProgressBar -Percent 16 -Status 'Comparing versions'
-
-  Write-Host ''
-  Write-Host "Current version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
-  Write-Host "Latest version:  v$($ReleaseInfo.version)"
-  Write-Host "Release tag:     $($ReleaseInfo.tag)"
-  if ($UpdateState.applied_release_tag) {
-    Write-Host "Applied tag:     $($UpdateState.applied_release_tag)"
-  }
-  if ($ReleaseInfo.url) {
-    Write-Host "Release page:    $($ReleaseInfo.url)"
-  }
-  Write-Host "Update status:   $($UpdateDecision.status)"
-
-  if (-not $UpdateDecision.should_update) {
-    Write-Host ''
-    if ($UpdateDecision.status -eq 'local_newer') {
-      Write-Host "$($UpdateDecision.message) No update was applied." -ForegroundColor Yellow
-      Complete-UpdateProgressBar -Status 'No update applied'
-    } else {
-      Write-Host 'BlueprintHelper is already up to date.'
-      Write-Host $UpdateDecision.message
-      Complete-UpdateProgressBar -Status 'Already up to date'
-    }
-    return
-  }
-
-  if ($CheckOnly) {
-    Write-Host ''
-    Write-Host 'An update is available. Re-run without -CheckOnly to apply it.'
-    Write-Host $UpdateDecision.message
-    Complete-UpdateProgressBar -Status 'Update available'
-    exit 2
-  }
-
-  Write-UpdateProgressBar -Percent 20 -Status 'Waiting for update confirmation'
-  if (-not (Read-UpdateConfirmation -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo)) {
-    Write-Host ''
-    Write-Host 'Update cancelled.'
-    Complete-UpdateProgressBar -Status 'Update cancelled'
-    return
-  }
 
   $BackupDir = $null
-  $PackageTempDir = $null
   $ReplaceStarted = $false
   $DidReplace = $false
   $UpdateVerified = $false
   $ArchivedBackupDir = $null
 
   try {
-    $Package = Download-AndExpandRelease -ReleaseInfo $ReleaseInfo
-    $PackageTempDir = $Package.temp_dir
-    Write-UpdateProgressBar -Percent 50 -Status 'Validating downloaded package'
-    $PackageRoot = Find-ExtractedPackageRoot -ExtractDir $Package.extract_dir -ReleaseInfo $ReleaseInfo
-
     $BackupDir = Get-BackupDirectory -CurrentVersion $CurrentVersion
     Write-UpdateProgressBar -Percent 60 -Status 'Backing up current directory'
     Invoke-RobocopyMirror -Source $Root -Destination $BackupDir -Description 'Backing up current BlueprintHelper directory' | Out-Null
@@ -849,8 +931,95 @@ function Invoke-BlueprintHelperUpdate {
   } finally {
     if ($PackageTempDir -and (Test-Path -LiteralPath $PackageTempDir)) {
       Write-UpdateProgressBar -Percent $script:UpdateProgressLastPercent -Status 'Cleaning temporary update files'
-      Remove-Item -LiteralPath $PackageTempDir -Recurse -Force
+      Remove-Item -LiteralPath $PackageTempDir -Recurse -Force -WhatIf:$false
     }
+  }
+}
+
+function Invoke-BlueprintHelperUpdate {
+  Write-Host 'BlueprintHelper updater'
+  Write-Host "Source root: $Root"
+
+  if (-not [string]::IsNullOrWhiteSpace($RunnerPackageRoot)) {
+    Set-UpdateFailureContext -Code 'BH-UPD-RUNNER-FAILED' -Stage 'runner_package_validation'
+    if (-not (Test-Path -LiteralPath $RunnerPackageRoot -PathType Container)) {
+      throw "Update runner package root is missing: $RunnerPackageRoot"
+    }
+
+    $ReleaseInfo = Get-RunnerReleaseInfo
+    $ResolvedPackageRoot = (Resolve-Path -LiteralPath $RunnerPackageRoot).Path
+    Write-UpdateProgressBar -Percent 56 -Status 'Running downloaded update package'
+    return Invoke-BlueprintHelperUpdateRunner -ReleaseInfo $ReleaseInfo -PackageRoot $ResolvedPackageRoot -PackageTempDir $RunnerTempDir
+  }
+
+  Write-UpdateProgressBar -Percent 3 -Status 'Reading local version'
+  $CurrentVersion = Get-CurrentBlueprintHelperVersion
+  Write-UpdateProgressBar -Percent 8 -Status 'Checking latest GitHub release'
+  $ReleaseInfo = Get-LatestReleaseInfo
+  $UpdateState = Get-UpdateState
+  $UpdateDecision = Get-BlueprintHelperUpdateDecision -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo -UpdateState $UpdateState
+  Write-UpdateProgressBar -Percent 16 -Status 'Comparing versions'
+
+  Write-Host ''
+  Write-Host "Current version: v$(Get-NormalizedVersionText -Version $CurrentVersion)"
+  Write-Host "Latest version:  v$($ReleaseInfo.version)"
+  Write-Host "Release tag:     $($ReleaseInfo.tag)"
+  if ($UpdateState.applied_release_tag) {
+    Write-Host "Applied tag:     $($UpdateState.applied_release_tag)"
+  }
+  if ($ReleaseInfo.url) {
+    Write-Host "Release page:    $($ReleaseInfo.url)"
+  }
+  Write-Host "Update status:   $($UpdateDecision.status)"
+
+  if (-not $UpdateDecision.should_update) {
+    Write-Host ''
+    if ($UpdateDecision.status -eq 'local_newer') {
+      Write-Host "$($UpdateDecision.message) No update was applied." -ForegroundColor Yellow
+      Complete-UpdateProgressBar -Status 'No update applied'
+    } else {
+      Write-Host 'BlueprintHelper is already up to date.'
+      Write-Host $UpdateDecision.message
+      Complete-UpdateProgressBar -Status 'Already up to date'
+    }
+    return
+  }
+
+  if ($CheckOnly) {
+    Write-Host ''
+    Write-Host 'An update is available. Re-run without -CheckOnly to apply it.'
+    Write-Host $UpdateDecision.message
+    Complete-UpdateProgressBar -Status 'Update available'
+    exit 2
+  }
+
+  Write-UpdateProgressBar -Percent 20 -Status 'Waiting for update confirmation'
+  if (-not (Read-UpdateConfirmation -CurrentVersion $CurrentVersion -ReleaseInfo $ReleaseInfo)) {
+    Write-Host ''
+    Write-Host 'Update cancelled.'
+    Complete-UpdateProgressBar -Status 'Update cancelled'
+    return
+  }
+
+  $PackageTempDir = $null
+  try {
+    $Package = Download-AndExpandRelease -ReleaseInfo $ReleaseInfo
+    $PackageTempDir = $Package.temp_dir
+    Write-UpdateProgressBar -Percent 50 -Status 'Validating downloaded package'
+    $PackageRoot = Find-ExtractedPackageRoot -ExtractDir $Package.extract_dir -ReleaseInfo $ReleaseInfo
+
+    if ((-not $SkipBootstrap) -and [string]::IsNullOrWhiteSpace($RunnerPackageRoot)) {
+      Start-UpdateRunnerFromPackage -PackageRoot $PackageRoot -ReleaseInfo $ReleaseInfo -PackageTempDir $PackageTempDir
+      return
+    }
+
+    return Invoke-BlueprintHelperUpdateRunner -ReleaseInfo $ReleaseInfo -PackageRoot $PackageRoot -PackageTempDir $PackageTempDir
+  } catch {
+    if ($PackageTempDir -and (Test-Path -LiteralPath $PackageTempDir)) {
+      Write-UpdateProgressBar -Percent $script:UpdateProgressLastPercent -Status 'Cleaning temporary update files'
+      Remove-Item -LiteralPath $PackageTempDir -Recurse -Force -WhatIf:$false
+    }
+    throw
   }
 }
 
