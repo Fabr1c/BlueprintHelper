@@ -78,6 +78,8 @@ bh tools read-templates families --format json
 
 Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the flat ReadSpec composer (`read-templates families -> clusters -> list -> compose --template`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
 
+ReadContext delta rule: when the same task has already read `logic_flow` for a Blueprint logic target and the next missing data is GraphWrite location evidence, anchors, pins, links, or boundary identity, prefer the same-target `*.json_delta` ReadSpec template, such as `blueprint.logic.function.json_delta`, instead of rereading full `logic_json`. The composed ReadSpec must keep `view.format=logic_json_delta_after_logic_flow` and `view.baseline_view=logic_flow`. If delta output lacks required write-location fields or conflicts with the earlier `logic_flow`, stop with `missing_capability` or `evidence_conflict`; do not read UE binary assets or plugin source as fallback.
+
 Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, `read_context` evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
 ## Tool Catalog Flow
@@ -193,7 +195,7 @@ safety_constraints:
 read_strategy:
   avoid_full_graph_text_when_graph_size_unknown: true
   large_graph_node_threshold: 80
-  large_graph_policy: "estimate size first, then read summary, logic_flow, bounded logic_json, or block-scoped slices"
+  large_graph_policy: "estimate size first, then read summary, logic_flow, same-target logic_json_delta_after_logic_flow for write-location evidence, bounded logic_json, or block-scoped slices"
 tool_call_intent:
   tool_name: "<single BlueprintHelper CLI/tool step this sideAgent should execute>"
   missing_field_reason: "<why Main Agent cannot answer from accumulated sideAgent results>"
@@ -227,7 +229,7 @@ The sideAgent task package must make these responsibilities explicit:
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem;
 - never replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, local JSON parsing, plugin source inspection, or deprecated MCP ordinary tools;
 - never read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before any full graph read; use summary, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
+- estimate graph size before any full graph read; use summary, `logic_flow`, same-target `logic_json_delta_after_logic_flow` after `logic_flow` when write-location evidence is needed, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session request, execute, and result lookup only when the Main Agent assigned that step;
 - treat an approved write session as running Editor/Bridge permission, not a single-agent secret; never request, pass, print, or reveal `auth_session`;
 - return concise translated evidence to the Main Agent and stop instead of asking the user directly.

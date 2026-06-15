@@ -44,6 +44,7 @@ bh tools read-templates families --format json
 bh tools read-templates clusters --family blueprint --format json
 bh tools read-templates list --family blueprint --cluster logic --format json
 bh tools read-templates compose --template blueprint.logic.function.flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
+bh tools read-templates compose --template blueprint.logic.function.json_delta --out .tmp/readspec-template-composer/blueprint_function_logic_delta.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 bh task preview --file <task-spec.json>
@@ -79,6 +80,8 @@ bh tools read-templates families --format json
 ```
 
 After choosing the capability, use the TaskSpec composer or flat ReadSpec composer navigation to select a concrete `template_id` and compose a temporary JSON file. Do not scan `Templates/` or old semantic indexes for tool selection. Prefer composer output, editing placeholders, and calling the CLI with `--file` instead of authoring large JSON directly in shell command strings.
+
+When `logic_flow` has already been read for a Blueprint logic target and the next missing data is GraphWrite location evidence, anchors, pins, links, or boundary identity, choose the same-target `*.json_delta` ReadSpec template and run `bh context read` with `view.format=logic_json_delta_after_logic_flow`. If the delta output lacks required write-location fields, stop with `missing_capability`; if it conflicts with the earlier `logic_flow` or visible/readback evidence, stop with `evidence_conflict`. Do not use UE binary asset reads as fallback.
 
 Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/kind/capability，再通过 TaskSpec composer 或 ReadSpec composer 选择 quick-access 并生成临时 JSON；不要扫描 `Templates/` 目录来选择工具。
 

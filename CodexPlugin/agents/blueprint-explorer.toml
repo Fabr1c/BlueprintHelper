@@ -23,7 +23,10 @@ Allowed commands:
 - bh blueprinthelper_diagnostics_runtime
 - bh blueprinthelper_find_assets
 - bh context read
-- bh blueprinthelper_read_context_capabilities
+- bh tools read-templates families
+- bh tools read-templates clusters
+- bh tools read-templates list
+- bh tools read-templates compose
 - bh blueprinthelper_read_reference_context
 - bh blueprinthelper_read_function_chain_context
 - bh blueprinthelper_get_debug_case
@@ -31,8 +34,9 @@ Allowed commands:
 - bh blueprinthelper_export_debug_bundle only when explicitly requested by Main Agent
 
 Read policy:
-- First estimate scope with summary or bounded logic_json when graph size is unknown.
+- First estimate scope with summary, logic_flow, or bounded logic_json when graph size is unknown.
 - Avoid whole-graph reads when graph size is unknown; prefer summary, logic_flow, or bounded logic_json first.
+- After the same target's logic_flow has been read, use same-target logic_json_delta_after_logic_flow when the Main Agent asks for GraphWrite anchors, pins, links, or boundary evidence; do not reread full logic_json for those fields unless the Main Agent explicitly asks for the full view.
 - If graph size is above 80 nodes, return scoped read recommendations instead of dumping the whole graph.
 - Never rely on currently focused editor tab for destructive operations.
 

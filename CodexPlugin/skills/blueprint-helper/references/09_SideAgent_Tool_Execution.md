@@ -37,6 +37,8 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 2.3. 如果 grouped context-read、截图/Editor 画面、preview、execute 或 readback 结果互相不一致，返回 `evidence_conflict` 并停止。不得读取 `.uasset`、`.umap` 或其它 UE 二进制资产文件作为 fallback 事实源。
 3. 当 Unreal `asset_path` 未知时，先调用 `blueprinthelper_find_assets`；当 Unreal `asset_path` 已知时，compose ReadSpec 并调用 `bh context read`。不得从文件系统 `.uasset` 路径推断 Unreal `asset_path`。如果返回多个候选，回交 MainAgent 缩小范围或请求用户确认；任何写入 preview 前必须解析出一个明确 Unreal `asset_path`。
 4. 读取 Blueprint graph 前先判断规模。未知规模时先用 scoped/sampled view、`logic_flow` 或带 `max_items` 的 `logic_json` 估算节点数量；目标明确到 `function`、`event` 或 `custom_event` 时，优先用该 `target_type + target_name` 的 `logic_flow` 或 bounded `logic_json` 读取目标入口切片。
+4.1. 如果同一任务链路已经读取过目标 `logic_flow`，并且 MainAgent 指定缺失数据是 GraphWrite 定位证据、anchors、pins、links 或 boundary identity，优先使用相同 target 的 `*.json_delta` ReadSpec 模板，例如 `blueprint.logic.function.json_delta`、`blueprint.logic.event.json_delta`、`blueprint.logic.custom_event.json_delta` 或 `blueprint.logic.graph.json_delta`。不要为了这些定位字段重复读取完整 `logic_json`。
+4.2. `logic_json_delta_after_logic_flow` 只用于 `logic_flow` 之后的同 target 补充读取。compose 后必须保持 `view.format=logic_json_delta_after_logic_flow` 和 `view.baseline_view=logic_flow`。如果 delta 输出缺少写入所需定位字段，返回 `missing_capability`；如果 delta 与先前 `logic_flow`、截图、preview、execute 或 readback 冲突，返回 `evidence_conflict`。不得回退到 UE 二进制文件读取。
 5. 如果工具结果显示节点数量大于 80，或者结果被截断，改用 block、function、event、custom_event 或引用影响面分块读取；无法定位分块目标时返回 `clarification_required`。
 6. 使用 TaskSpec-first 工具链，不直接调用冻结或 legacy 底层入口。
 7. 工具参数必须使用 schema root object，不要额外包 `args`。
@@ -66,6 +68,7 @@ bh tools read-templates families --format json
 bh tools read-templates clusters --family blueprint --format json
 bh tools read-templates list --family blueprint --cluster logic --format json
 bh tools read-templates compose --template blueprint.logic.function.flow --out .tmp/readspec-template-composer/blueprint_function_logic_flow.readspec.json --format json
+bh tools read-templates compose --template blueprint.logic.function.json_delta --out .tmp/readspec-template-composer/blueprint_function_logic_delta.readspec.json --format json
 blueprinthelper_read_reference_context
 blueprinthelper_read_function_chain_context
 blueprinthelper_source_control_status

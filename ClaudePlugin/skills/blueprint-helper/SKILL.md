@@ -50,6 +50,8 @@ bh tools read-templates families --format json
 
 Then use the four-layer TaskSpec composer (`families -> write-modes -> clusters -> operations -> quick-access -> compose`) or the flat ReadSpec composer (`read-templates families -> clusters -> list -> compose --template`). Copy or compose a temporary TaskSpec/ReadSpec, fill it with concrete readback evidence, selected anchors, target asset data, and the user's intent, then call the grouped CLI with `--file`; for generated JSON, pipe it to `--stdin`. Do not pass non-trivial generated payloads as inline PowerShell `--json $json`, because PowerShell can strip quotes before Node receives the argument. Ordinary Agent flows use bare `BlueprintHelper.TaskSpec.v1` and ReadSpec payloads through grouped commands.
 
+ReadContext delta rule: when the same task has already read `logic_flow` for a Blueprint logic target and the next missing data is GraphWrite location evidence, anchors, pins, links, or boundary identity, prefer the same-target `*.json_delta` ReadSpec template, such as `blueprint.logic.function.json_delta`, instead of rereading full `logic_json`. The composed ReadSpec must keep `view.format=logic_json_delta_after_logic_flow` and `view.baseline_view=logic_flow`. If delta output lacks required write-location fields or conflicts with the earlier `logic_flow`, stop with `missing_capability` or `evidence_conflict`; do not read UE binary assets or plugin source as fallback.
+
 Do not guess fixed enum-like payload fields or try neighboring strings. Values such as `target_type`, `view.format`, `write_mode`, `cluster`, `operation`, `kind`, `container_kind`, `container_operation`, `control_operation`, `create_operation`, `transform_operation`, `schedule_operation`, and delegate binding kinds must come from CLI discovery, template `*.allowed_values`, read-template quick-access, grouped context-read evidence, ActionDatabase/preview candidates, or a tool-returned `suggested_patch`. If no source provides the value, stop with `missing_capability`, `clarification_required`, or `stop_and_report`.
 
 ## Tool Catalog Flow
@@ -135,7 +137,7 @@ safety_constraints:
 read_strategy:
   avoid_full_graph_text_when_graph_size_unknown: true
   large_graph_node_threshold: 80
-  large_graph_policy: "estimate size first, then read sampled/scoped views, logic_flow, bounded logic_json, or block-scoped slices"
+  large_graph_policy: "estimate size first, then read sampled/scoped views, logic_flow, same-target logic_json_delta_after_logic_flow for write-location evidence, bounded logic_json, or block-scoped slices"
 tool_call_intent:
   tool_name: "<single BlueprintHelper tool this SideAgent should execute>"
   missing_field_reason: "<why Main Agent cannot answer from accumulated SideAgent results>"
@@ -170,7 +172,7 @@ Tell the SideAgent its responsibility in the task package:
 - treat missing commands as `tool_unavailable`, a CLI installation or registration problem; do not request write session to fix read-command availability;
 - do not replace unavailable BlueprintHelper CLI commands with shell reads, `.vs\BlueprintCache`, Saved exports, or ad hoc local JSON parsing; return the blocker to the Main Agent so it can repair CLI availability;
 - do not read `.uasset`, `.umap`, or other Unreal binary asset files as a fallback when BlueprintHelper CLI/Bridge evidence conflicts; return `evidence_conflict` to the Main Agent with the conflicting tool/screenshot/readback evidence;
-- estimate graph size before any full graph read; use sampled/scoped views, `logic_flow`, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
+- estimate graph size before any full graph read; use sampled/scoped views, `logic_flow`, same-target `logic_json_delta_after_logic_flow` after `logic_flow` when write-location evidence is needed, bounded `logic_json`, function/event/custom-event slices, structured anchors, or block-scoped reads for larger graphs;
 - run preview, write-session, execute, and result lookup only when the Main Agent assigned that tool step;
 - treat an approved write session as a running Editor/Bridge permission, not a single-Agent secret; never request, pass, or reveal `auth_session`;
 - translate the returned tool results into a concise Chinese result for the Main Agent;
