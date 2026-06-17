@@ -16,6 +16,8 @@ try {
 const configPath = path.join(home, '.codex', 'config.toml');
 const mcpScriptPath = path.resolve(__dirname, 'start-lifecycle-mcp.cjs');
 const escapedMcpScriptPath = mcpScriptPath.replace(/\\/g, '\\\\');
+const blueprintHelperRoot = path.resolve(__dirname, '..', '..');
+const escapedBlueprintHelperRoot = blueprintHelperRoot.replace(/\\/g, '\\\\');
 
 const block = [
   '[mcp_servers."blueprint-helper"]',
@@ -24,6 +26,12 @@ const block = [
   `    "${escapedMcpScriptPath}",`,
   ']',
   'type = "stdio"',
+  '',
+  '[mcp_servers."blueprint-helper".env]',
+  `BLUEPRINTHELPER_ROOT = "${escapedBlueprintHelperRoot}"`,
+  '',
+  '[mcp_servers."blueprint-helper".tools.blueprint_lifecycle_mcp_status]',
+  'approval_mode = "approve"',
   '',
   '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
   'approval_mode = "approve"',
@@ -49,6 +57,8 @@ function replaceBlueprintHelperMcpBlock(text) {
   const ownedSections = new Set([
     '[mcp_servers."blueprint-helper"]',
     '[mcp_servers.blueprint-helper]',
+    '[mcp_servers."blueprint-helper".env]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_lifecycle_mcp_status]',
     '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
     '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
     '[mcp_servers."blueprint-helper".tools.blueprint_dismiss_editor_dialogs]',
@@ -95,9 +105,12 @@ console.log(JSON.stringify({
   config_path: configPath,
   mcp_server: 'blueprint-helper',
   surface: 'lifecycle_plus_developer',
-  agent_facing_tools: ['blueprint_open_editor', 'blueprint_close_editor', 'blueprint_dismiss_editor_dialogs', 'blueprint_close_editor_dialogs'],
+  agent_facing_tools: ['blueprint_lifecycle_mcp_status', 'blueprint_open_editor', 'blueprint_close_editor', 'blueprint_dismiss_editor_dialogs', 'blueprint_close_editor_dialogs'],
   developer_tools: ['blueprint_developer_exec_console_command'],
   approval_mode: 'approve',
   command: 'node',
   args: [mcpScriptPath],
+  env: {
+    BLUEPRINTHELPER_ROOT: blueprintHelperRoot,
+  },
 }, null, 2));

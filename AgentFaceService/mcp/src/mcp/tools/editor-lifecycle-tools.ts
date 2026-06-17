@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { BridgeClient, BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { resolveProjectEngineDir } from '../../project-profile/agent-profile.js';
 import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.js';
@@ -104,11 +105,65 @@ function developerOnlyDescription(description: string): string {
   return `Developer-only MCP tool. ${description} Ordinary agents must not call this tool; use BlueprintHelper CLI/TaskSpec workflows or editor lifecycle tools instead.`;
 }
 
+function nullableEnv(name: string): string | null {
+  const value = process.env[name];
+  return value && value.trim().length > 0 ? value : null;
+}
+
+function buildLifecycleMcpStatus(): Record<string, unknown> {
+  const resolvedEntry = nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_ENTRY');
+  const configuredRoot = nullableEnv('BLUEPRINTHELPER_ROOT');
+  const configuredEntry = nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY');
+
+  return {
+    success: true,
+    code: 'LIFECYCLE_MCP_STATUS',
+    lifecycle_status: 'running',
+    mcp_server: 'blueprint-helper',
+    version: '0.6.5',
+    resolved_entry: resolvedEntry,
+    resolved_entry_exists: resolvedEntry ? existsSync(resolvedEntry) : false,
+    resolved_source: nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_SOURCE'),
+    resolved_root: nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_ROOT'),
+    plugin_root: nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_PLUGIN_ROOT'),
+    configured_root: configuredRoot,
+    configured_entry: configuredEntry,
+    started_at: nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_STARTED_AT'),
+    process_cwd: process.cwd(),
+    node_version: process.version,
+    recommended_action: configuredRoot || configuredEntry
+      ? 'If this path is stale, rerun install-global-mcp from the desired BlueprintHelper root and restart Codex so the MCP server reloads.'
+      : 'Set BLUEPRINTHELPER_ROOT or BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY through the global MCP config, then restart Codex to avoid stale plugin-cache MCP code.',
+  };
+}
+
 export function registerEditorLifecycleTools(
   server: McpServer,
   bridge: BridgeClient,
   config: EditorLifecycleConfig,
 ): void {
+  server.registerTool(
+    'blueprint_lifecycle_mcp_status',
+    {
+      description: editorLifecycleDescription(
+        'Return the running lifecycle MCP entry path, source, configured root, and reload guidance for diagnosing stale plugin-cache MCP code.',
+      ),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        'blueprinthelper/audience': 'lifecycle',
+        'blueprinthelper/ordinaryAgentCallable': true,
+        'blueprinthelper/bridgeCommand': 'none',
+      },
+      inputSchema: z.object({}),
+    },
+    async () => lifecycleJsonResult(buildLifecycleMcpStatus(), false),
+  );
+
   server.registerTool(
     'blueprint_developer_exec_console_command',
     {

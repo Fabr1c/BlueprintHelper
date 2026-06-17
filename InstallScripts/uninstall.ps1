@@ -576,6 +576,8 @@ function Remove-CodexLifecycleMcpConfig {
   $Headers = @(
     '[mcp_servers."blueprint-helper"]',
     '[mcp_servers.blueprint-helper]',
+    '[mcp_servers."blueprint-helper".env]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_lifecycle_mcp_status]',
     '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
     '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
     '[mcp_servers."blueprint-helper".tools.blueprint_dismiss_editor_dialogs]',

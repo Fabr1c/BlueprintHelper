@@ -10,6 +10,10 @@ function candidate(entry) {
   return entry ? path.resolve(entry) : undefined;
 }
 
+function runtimeCandidate(source, file, root) {
+  return file ? { source, file, root } : undefined;
+}
+
 function codexWorkspaceRoots() {
   const home = process.env.USERPROFILE || process.env.HOME;
   if (!home) {
@@ -32,26 +36,46 @@ function codexWorkspaceRoots() {
 const lifecycleEntryRelative = path.join('AgentFaceService', 'mcp', 'build', 'server', 'lifecycle-only.js');
 
 const candidates = [
-  candidate(process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY),
+  runtimeCandidate(
+    'env:BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY',
+    candidate(process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY),
+    undefined,
+  ),
   process.env.BLUEPRINTHELPER_ROOT
-    ? path.resolve(process.env.BLUEPRINTHELPER_ROOT, lifecycleEntryRelative)
+    ? runtimeCandidate(
+      'env:BLUEPRINTHELPER_ROOT',
+      path.resolve(process.env.BLUEPRINTHELPER_ROOT, lifecycleEntryRelative),
+      path.resolve(process.env.BLUEPRINTHELPER_ROOT),
+    )
     : undefined,
-  path.resolve(pluginRoot, '..', lifecycleEntryRelative),
-  path.resolve(pluginRoot, '..', '..', lifecycleEntryRelative),
-  path.resolve(process.cwd(), lifecycleEntryRelative),
-  path.resolve(process.cwd(), '..', lifecycleEntryRelative),
-  ...codexWorkspaceRoots().map((root) => path.resolve(root, lifecycleEntryRelative)),
+  runtimeCandidate('plugin_adjacent', path.resolve(pluginRoot, '..', lifecycleEntryRelative), path.resolve(pluginRoot, '..')),
+  runtimeCandidate('plugin_parent', path.resolve(pluginRoot, '..', '..', lifecycleEntryRelative), path.resolve(pluginRoot, '..', '..')),
+  runtimeCandidate('cwd', path.resolve(process.cwd(), lifecycleEntryRelative), process.cwd()),
+  runtimeCandidate('cwd_parent', path.resolve(process.cwd(), '..', lifecycleEntryRelative), path.resolve(process.cwd(), '..')),
+  ...codexWorkspaceRoots().map((root) => runtimeCandidate(
+    'codex_workspace_root',
+    path.resolve(root, lifecycleEntryRelative),
+    path.resolve(root),
+  )),
 ].filter(Boolean);
 
-const entry = candidates.find((file) => fs.existsSync(file));
+const resolved = candidates.find((item) => fs.existsSync(item.file));
 
-if (!entry) {
+if (!resolved) {
   console.error('[BlueprintHelper Lifecycle MCP] Unable to locate AgentFaceService/mcp/build/server/lifecycle-only.js.');
   console.error('[BlueprintHelper Lifecycle MCP] Build AgentFaceService/mcp or set BLUEPRINTHELPER_ROOT / BLUEPRINTHELPER_LIFECYCLE_MCP_ENTRY.');
   process.exit(1);
 }
 
-import(pathToFileURL(entry).href).catch((error) => {
+process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_ENTRY = resolved.file;
+process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_SOURCE = resolved.source;
+process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_ROOT = resolved.root || '';
+process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_PLUGIN_ROOT = pluginRoot;
+process.env.BLUEPRINTHELPER_LIFECYCLE_MCP_STARTED_AT = new Date().toISOString();
+
+console.error(`[BlueprintHelper Lifecycle MCP] Loading entry: ${resolved.file} (source=${resolved.source})`);
+
+import(pathToFileURL(resolved.file).href).catch((error) => {
   console.error('[BlueprintHelper Lifecycle MCP] Failed to start:', error);
   process.exit(1);
 });
