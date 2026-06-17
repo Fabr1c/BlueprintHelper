@@ -11,7 +11,10 @@ import {
   listTaskSpecTemplateOperations,
   listTaskSpecTemplateQuickAccess,
 } from './taskspec-template-index.js';
-import { getActiveReadContextRouteDescriptors } from './read-context-template-registry.js';
+import {
+  getActiveReadContextRouteDescriptors,
+  getAllReadContextRouteDescriptors,
+} from './read-context-template-registry.js';
 import { listActiveUmgWidgetOperationDescriptors } from './umg-widget-operation-descriptors.js';
 import { buildReadContextCapabilitiesPayload } from '../bridge/read-context/read-context-capabilities.js';
 import { buildReadonlyToolCommandManifests } from '../manifest/tool-command-manifest-builder.js';
@@ -26,9 +29,7 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
   );
   assert.deepEqual(
     stableRows(READ_CONTEXT_ROUTE_MANIFEST),
-    stableRows(getActiveReadContextRouteDescriptors().concat(
-      READ_CONTEXT_ROUTE_MANIFEST.filter((route) => route.status === 'reserved'),
-    )),
+    stableRows(getAllReadContextRouteDescriptors()),
   );
 
   const umgHeader = readFileSync(
@@ -123,6 +124,11 @@ test('ReadContext active descriptors, generated manifest, capabilities and comma
   const commandRouteRefs = new Set(
     buildReadonlyToolCommandManifests().flatMap((manifest) => manifest.route_refs),
   );
+  const allReadContextRouteIds = new Set<string>(READ_CONTEXT_ROUTE_MANIFEST.map((route) => route.template_id));
+  const commandReadContextRouteRefs = [...commandRouteRefs]
+    .filter((routeId) => allReadContextRouteIds.has(routeId))
+    .sort();
+  assert.deepEqual(commandReadContextRouteRefs, activeRouteIds);
   for (const routeId of activeRouteIds) {
     assert.equal(commandRouteRefs.has(routeId), true, `ToolCommandManifest route_refs include ${routeId}`);
   }

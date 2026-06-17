@@ -558,6 +558,77 @@ test('execute task promotes unique preview blocker code and keeps signature diff
   ]);
 });
 
+test('preview task preserves review baseline dirty recovery fields from result error', async () => {
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      assert.equal(command, 'preview_task_plan');
+      return {
+        success: false,
+        request_id: 'preview_dirty_baseline_request',
+        error_code: 'execution_failed',
+        message: 'Review baseline requires saved target assets.',
+        error: {
+          code: 'execution_failed',
+          message: 'Review baseline requires saved target assets.',
+        },
+        result: {
+          ok: false,
+          schema: TOOL_RESULT_SCHEMA,
+          operation: 'preview_task_plan',
+          trace_id: 'trace_preview_dirty_baseline',
+          status: 'failed',
+          modified: false,
+          data: {
+            preview_id: 'preview_dirty_baseline',
+            preview_token: '00112233445566778899aabbccddeeff',
+            passed: false,
+            blocked: true,
+            issues: [{
+              code: 'review_baseline_dirty_target_assets',
+              path: 'task_plan.execution_policy.review_baseline_dirty_asset_policy',
+              message: 'Review baseline requires saved target assets.',
+            }],
+          },
+          error: {
+            code: 'review_baseline_dirty_target_assets',
+            category: 'runtime_state_error',
+            stage: 'preflight',
+            message: 'Review baseline requires saved target assets.',
+            retryable: false,
+            rollback_result: 'not_needed',
+            field: 'task_plan.execution_policy.review_baseline_dirty_asset_policy',
+            dirty_state: 'dirty_after_failed_execute',
+            dirty_assets: ['/Game/BP_Dirty'],
+            safe_next_action: 'reject_or_close_without_save_agent_owned_changes_then_retry',
+            allowed_recovery_actions: ['review.reject', 'editor.close_without_save_when_agent_owned'],
+            risky_recovery_actions: ['user_save_then_retry'],
+            evidence_refs: ['task_run:task_failed:partial_failure'],
+          },
+        },
+      } as unknown as BridgeResponse;
+    },
+  };
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.previewTask(graphWriteAppendTaskSpecFixture);
+  const errorRecord = result.toolResult.error as unknown as Record<string, unknown>;
+
+  assert.equal(result.toolResult.ok, false);
+  assert.equal(result.toolResult.error?.code, 'review_baseline_dirty_target_assets');
+  assert.equal(errorRecord['dirty_state'], 'dirty_after_failed_execute');
+  assert.deepEqual(errorRecord['dirty_assets'], ['/Game/BP_Dirty']);
+  assert.equal(errorRecord['safe_next_action'], 'reject_or_close_without_save_agent_owned_changes_then_retry');
+  assert.deepEqual(errorRecord['allowed_recovery_actions'], ['review.reject', 'editor.close_without_save_when_agent_owned']);
+  assert.deepEqual(errorRecord['risky_recovery_actions'], ['user_save_then_retry']);
+  assert.deepEqual(errorRecord['evidence_refs'], ['task_run:task_failed:partial_failure']);
+});
+
 test('execute task auto-checks out before write when source-control checkout is required', async () => {
   const calls: string[] = [];
   const bridge: TaskRunnerBridge = {

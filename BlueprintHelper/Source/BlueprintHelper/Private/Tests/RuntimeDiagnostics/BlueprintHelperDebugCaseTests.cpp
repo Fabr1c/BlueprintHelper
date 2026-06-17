@@ -13,6 +13,8 @@
 #include "Shared/Debug/BlueprintHelperDebugTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/Debug/BlueprintHelperCompileAssetService.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseArtifactExporter.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseProjectionRegistry.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -103,6 +105,33 @@ static void CleanupDebugBundleDirectory(const FString& BundleId)
 		*(FBlueprintHelperDebugCaseStoreService::GetBundleDirectory(BundleId)),
 		false,
 		true);
+}
+
+static bool ExportDebugBundleSummary(
+	const FBlueprintHelperDebugCaseStoreService& Store,
+	const FString& DebugCaseId,
+	const FBlueprintHelperReviewStoreService* ReviewStore,
+	FBlueprintHelperDebugBundleManifest& OutManifest,
+	FString* OutError)
+{
+	FBlueprintHelperDebugCase DebugCase;
+	if (!Store.LoadCase(DebugCaseId, DebugCase, OutError))
+	{
+		return false;
+	}
+
+	FBlueprintHelperDebugCaseProjectionContext ProjectionContext;
+	ProjectionContext.ReviewStore = ReviewStore;
+	FBlueprintHelperDebugCaseProjectionResult ProjectionResult;
+	const FBlueprintHelperDebugCaseProjectionRegistry Registry =
+		FBlueprintHelperDebugCaseProjectionRegistry::BuildDefault();
+	if (!Registry.BuildProjection(DebugCase, ProjectionContext, ProjectionResult, OutError))
+	{
+		return false;
+	}
+
+	const FBlueprintHelperDebugCaseArtifactExporter Exporter;
+	return Exporter.ExportBundle(DebugCase, ProjectionResult, OutManifest, OutError);
 }
 
 };
@@ -467,7 +496,12 @@ bool FBlueprintHelperDebugBundleExportsReviewSummaryArtifactTest::RunTest(const 
 	TestTrue(TEXT("debug case with review link saves"), Store.SaveCase(DebugCase, &Error));
 
 	FBlueprintHelperDebugBundleManifest Manifest;
-	const bool bExported = Store.ExportDebugBundleSummary(DebugCaseId, &ReviewStore, Manifest, &Error);
+	const bool bExported = FBlueprintHelperDebugCaseTestsLocalUtils::ExportDebugBundleSummary(
+		Store,
+		DebugCaseId,
+		&ReviewStore,
+		Manifest,
+		&Error);
 	TestTrue(TEXT("summary bundle exports review summary artifact"), bExported);
 	if (!bExported)
 	{
@@ -635,7 +669,13 @@ bool FBlueprintHelperDebugRedactionAndBundleSummaryExportTest::RunTest(const FSt
 	TestTrue(TEXT("case saves before export"), Store.SaveCase(DebugCase, &Error));
 
 	FBlueprintHelperDebugBundleManifest Manifest;
-	TestTrue(TEXT("summary bundle exports"), Store.ExportDebugBundleSummary(DebugCaseId, Manifest, &Error));
+	TestTrue(TEXT("summary bundle exports"),
+		FBlueprintHelperDebugCaseTestsLocalUtils::ExportDebugBundleSummary(
+			Store,
+			DebugCaseId,
+			nullptr,
+			Manifest,
+			&Error));
 	TestFalse(TEXT("bundle id is set"), Manifest.BundleId.IsEmpty());
 	TestTrue(TEXT("bundle summary ref is relative"), FPaths::IsRelative(Manifest.SummaryRef));
 	TestEqual(TEXT("bundle summary is markdown"), Manifest.SummaryRef, FString(TEXT("summary.md")));

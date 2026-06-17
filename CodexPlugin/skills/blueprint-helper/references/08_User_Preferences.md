@@ -33,8 +33,8 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 - Do not fall back to frozen or legacy low-level BlueprintHelper tools unless the user explicitly requests expert recovery.
 - If `write_permission` is disabled, request a write session after preview and before execute; a user rejection is a stop-and-report condition.
 - Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes; approved write permission is held by the running Editor/Bridge and can be used by scoped BlueprintHelper operations within the approved session.
-- Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
-- Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI to start or close Unreal Editor. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
+- Editor lifecycle commands must use the global MCP server tools `mcp__blueprint_helper__blueprint_open_editor`, `mcp__blueprint_helper__blueprint_close_editor`, `mcp__blueprint_helper__blueprint_dismiss_editor_dialogs`, and `mcp__blueprint_helper__blueprint_close_editor_dialogs`; do not validate lifecycle through plugin-local MCP or one-shot shell MCP clients.
+- Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, `blueprint_close_editor`, `blueprint_dismiss_editor_dialogs`, or `blueprint_close_editor_dialogs` through CLI to start, close, or dismiss modal dialogs in Unreal Editor. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable` instead of using a CLI fallback.
 - `AutoRepair` safety profile in `setting.json` bypasses the write request popup and defaults write permission to enabled while keeping preview, Journal, and Review evidence.
 
 ### Save And Validation
@@ -46,7 +46,7 @@ Agents should read this file before BlueprintHelper planning, status review, imp
 
 ### Blueprint, C++, And Repository Boundary
 
-- Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
+- Use BlueprintHelper CLI commands for ordinary UE editor asset reads and writes only: Blueprint graphs, UMG, DataAssets, DataTables, compile/save, diagnostics, and related asset operations. Use global MCP only for editor lifecycle open/close/modal-dismiss. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, and memory files.
 - Do not inspect BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or UE `BlueprintHelper/`) for ordinary plugin usage. Use installed skill instructions, AgentGuide, CLI reference, and templates instead. Plugin source reads are allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
 - Default C++ edit permission: disabled unless the user explicitly asks for code edits.

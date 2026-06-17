@@ -1,5 +1,6 @@
 import type { ToolAudience, ToolRisk } from '../types.js';
 import type { ToolInputShapeId } from '../manifest/tool-command-manifest.js';
+import type { RuntimeCapabilityState } from '../capabilities/capability-descriptor.schema.js';
 
 export type ToolCapabilityDomain =
   | 'blueprint'
@@ -95,4 +96,5 @@ export interface ListToolCapabilitiesOptions {
   expert?: boolean;
   requiresBridge?: boolean;
   risks?: ToolRisk[];
+  runtime?: RuntimeCapabilityState;
 }

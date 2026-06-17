@@ -8,6 +8,7 @@ import { compositeBlueprintFeatureTaskCompiler } from './composite-blueprint-fea
 import { dataTableTaskCompiler } from './data-table-task-compiler.js';
 import { graphWriteTaskTypeCompiler } from '../graphwrite/graphwrite-task-type-compiler.js';
 import { materialGraphTaskCompiler } from './material-graph-task-compiler.js';
+import { materialInstanceTaskCompiler } from './material-instance-task-compiler.js';
 import { objectPropertiesTaskCompiler } from './object-properties-task-compiler.js';
 import { umgWidgetTaskCompiler } from './umg-widget-task-compiler.js';
 
@@ -22,6 +23,7 @@ export function createDefaultTaskTypeCompilerRegistry(): TaskTypeCompilerRegistr
     .register(umgWidgetTaskCompiler)
     .register(dataTableTaskCompiler)
     .register(materialGraphTaskCompiler)
+    .register(materialInstanceTaskCompiler)
     .register(graphWriteTaskTypeCompiler)
     .register(compositeBlueprintFeatureTaskCompiler);
 }

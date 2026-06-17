@@ -5,8 +5,6 @@
 #include "CoreMinimal.h"
 #include "Shared/Debug/BlueprintHelperDebugTypes.h"
 
-class FBlueprintHelperReviewStoreService;
-
 class BLUEPRINTHELPER_API FBlueprintHelperDebugCaseStoreService
 {
 public:
@@ -19,15 +17,6 @@ public:
 		FString* OutError = nullptr) const;
 	bool QueryCaseSummary(const FString& DebugCaseId, FBlueprintHelperDebugCaseSummary& OutSummary, FString* OutError = nullptr) const;
 	bool QueryCaseSummaries(TArray<FBlueprintHelperDebugCaseSummary>& OutSummaries, FString* OutError = nullptr) const;
-	bool ExportDebugBundleSummary(
-		const FString& DebugCaseId,
-		FBlueprintHelperDebugBundleManifest& OutManifest,
-		FString* OutError = nullptr) const;
-	bool ExportDebugBundleSummary(
-		const FString& DebugCaseId,
-		const FBlueprintHelperReviewStoreService* ReviewStore,
-		FBlueprintHelperDebugBundleManifest& OutManifest,
-		FString* OutError = nullptr) const;
 	bool CleanupResolvedLowSeverityCases(TArray<FString>& OutArchivedCaseIds, FString* OutError = nullptr) const;
 
 	static FString GetDebugRootDir();
@@ -41,38 +30,6 @@ private:
 	static bool IsPathInsideDirectory(const FString& Path, const FString& Directory);
 	static bool IsPathInsideDebugRoot(const FString& Path);
 	static FBlueprintHelperDebugCaseSummary BuildSummary(const FBlueprintHelperDebugCase& DebugCase);
-	static void BuildSkippedArtifacts(const FBlueprintHelperDebugCase& DebugCase, FBlueprintHelperDebugBundleManifest& Manifest);
-	static FString BuildMarkdownSummary(
-		const FBlueprintHelperDebugCaseSummary& Summary,
-		const FBlueprintHelperDebugBundleManifest& Manifest);
-	static bool EnsureBundleArtifactDirectories(const FString& BundleDir, FString* OutError);
-	static bool WriteJsonArtifact(
-		const FString& BundleDir,
-		const FString& ArtifactRef,
-		const TSharedRef<FJsonObject>& Json,
-		FString* OutError);
-	static bool ExportDebugCaseSummaryArtifact(
-		const FString& BundleDir,
-		const FBlueprintHelperDebugCaseSummary& Summary,
-		FBlueprintHelperDebugBundleManifest& Manifest,
-		FString* OutError);
-	static bool ExportEvidenceSummaryArtifacts(
-		const FBlueprintHelperDebugCase& DebugCase,
-		const FString& BundleDir,
-		FBlueprintHelperDebugBundleManifest& Manifest,
-		FString* OutError);
-	static bool ExportFragmentSummaryArtifact(
-		const FBlueprintHelperDebugCase& DebugCase,
-		const FString& BundleDir,
-		FBlueprintHelperDebugBundleManifest& Manifest,
-		FString* OutError);
-	static FString MakeSafeArtifactFileName(const FString& RawId);
-	static bool ExportReviewSummaryArtifacts(
-		const FBlueprintHelperDebugCase& DebugCase,
-		const FString& BundleDir,
-		const FBlueprintHelperReviewStoreService* ReviewStore,
-		FBlueprintHelperDebugBundleManifest& Manifest,
-		FString* OutError);
 	static bool IsCleanupProtectedCase(const FBlueprintHelperDebugCase& DebugCase);
 	static void SetError(FString* OutError, const FString& Error);
 };

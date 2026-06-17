@@ -9,6 +9,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionStaticBoolParameter.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
@@ -827,6 +828,127 @@ bool FBlueprintHelperMaterialGraphRejectsInvalidPlannedInputPinAutomationTest::R
 	}
 	TestTrue(TEXT("invalid planned input pin returns material_pin_not_found"), bFoundPinDiagnostic);
 	return bFoundPinDiagnostic;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMaterialGraphRejectsIncompatiblePlannedPinTypeAutomationTest,
+	"BlueprintHelper.MaterialGraph.RejectsIncompatiblePlannedPinType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMaterialGraphRejectsIncompatiblePlannedPinTypeAutomationTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperMaterialGraphExecutionState State;
+	State.GeneratedExpressionNodeKeys.Add(TEXT("bool_source"));
+	State.GeneratedExpressionNodeKeys.Add(TEXT("float_consumer"));
+	State.ExpressionClassNameByNodeKey.Add(
+		TEXT("bool_source"),
+		UMaterialExpressionStaticBoolParameter::StaticClass()->GetName());
+	State.ExpressionClassNameByNodeKey.Add(
+		TEXT("float_consumer"),
+		UMaterialExpressionAdd::StaticClass()->GetName());
+
+	FBlueprintHelperMaterialGraphPlannedConnection IncompatibleConnection;
+	IncompatibleConnection.FromNodeKey = TEXT("bool_source");
+	IncompatibleConnection.FromPin = TEXT("Value");
+	IncompatibleConnection.ToNodeKey = TEXT("float_consumer");
+	IncompatibleConnection.ToPin = TEXT("A");
+	IncompatibleConnection.FieldPath = TEXT("ops[0]");
+	State.PlannedConnections.Add(IncompatibleConnection);
+
+	FBlueprintHelperMaterialGraphPlannedConnection OutputConnection;
+	OutputConnection.FromNodeKey = TEXT("float_consumer");
+	OutputConnection.FromPin = TEXT("Value");
+	OutputConnection.ToNodeKey = TEXT("$material_output");
+	OutputConnection.ToPin = TEXT("Roughness");
+	OutputConnection.bMaterialOutput = true;
+	OutputConnection.FieldPath = TEXT("ops[1]");
+	State.PlannedConnections.Add(OutputConnection);
+
+	FBlueprintHelperMaterialGraphReadbackService::ValidatePlannedExpressionConsumption(State);
+
+	TestTrue(
+		TEXT("incompatible planned pin type creates connectivity diagnostics"),
+		State.ConnectivityDiagnostics.Num() > 0);
+
+	bool bFoundTypeDiagnostic = false;
+	for (const FBlueprintHelperDiagnosticItem& Diagnostic : State.ConnectivityDiagnostics)
+	{
+		if (Diagnostic.Code == TEXT("material_pin_type_incompatible") &&
+			Diagnostic.Message.Contains(TEXT("StaticBool")) &&
+			Diagnostic.Message.Contains(TEXT("Float")))
+		{
+			bFoundTypeDiagnostic = true;
+			break;
+		}
+	}
+
+	TestTrue(TEXT("incompatible planned pin type diagnostic is reported"), bFoundTypeDiagnostic);
+	return bFoundTypeDiagnostic;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperMaterialGraphReportsExecuteReadbackGraphSyncViolationAutomationTest,
+	"BlueprintHelper.MaterialGraph.ReportsExecuteReadbackGraphSyncViolation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperMaterialGraphReportsExecuteReadbackGraphSyncViolationAutomationTest::RunTest(const FString& Parameters)
+{
+	UMaterial* Material = FBlueprintHelperMaterialGraphAutomationTestUtils::MakeMaterialFixture(TEXT("M_BH_GraphSyncViolation"));
+	TestNotNull(TEXT("Material fixture is created"), Material);
+	if (!Material)
+	{
+		return false;
+	}
+
+	UMaterialExpressionScalarParameter* SourceExpression = NewObject<UMaterialExpressionScalarParameter>(
+		Material,
+		UMaterialExpressionScalarParameter::StaticClass(),
+		NAME_None,
+		RF_Transactional);
+	UMaterialExpressionAdd* TargetExpression = NewObject<UMaterialExpressionAdd>(
+		Material,
+		UMaterialExpressionAdd::StaticClass(),
+		NAME_None,
+		RF_Transactional);
+	TestNotNull(TEXT("source expression is created"), SourceExpression);
+	TestNotNull(TEXT("target expression is created"), TargetExpression);
+	if (!SourceExpression || !TargetExpression)
+	{
+		Material->GetOutermost()->SetDirtyFlag(false);
+		return false;
+	}
+
+	TargetExpression->A.Connect(0, SourceExpression);
+
+	FBlueprintHelperMaterialGraphExecutionState State;
+	State.Material = Material;
+	State.ExpressionsByNodeKey.Add(TEXT("sync_source"), SourceExpression);
+	State.ExpressionsByNodeKey.Add(TEXT("sync_target"), TargetExpression);
+
+	FBlueprintHelperMaterialGraphPlannedConnection Connection;
+	Connection.FromNodeKey = TEXT("sync_source");
+	Connection.FromPin = TEXT("Value");
+	Connection.ToNodeKey = TEXT("sync_target");
+	Connection.ToPin = TEXT("A");
+	Connection.FieldPath = TEXT("ops[0]");
+	State.PlannedConnections.Add(Connection);
+
+	FBlueprintHelperMaterialGraphReadbackService::ValidateExecutedConnections(State);
+
+	TestEqual(TEXT("data connection is verified before graph sync check"), State.VerifiedConnectionCount, 1);
+	bool bFoundSyncViolation = false;
+	for (const FBlueprintHelperDiagnosticItem& Diagnostic : State.ConnectivityDiagnostics)
+	{
+		if (Diagnostic.Code == TEXT("material_graph_sync_violation"))
+		{
+			bFoundSyncViolation = true;
+			break;
+		}
+	}
+
+	TestTrue(TEXT("execute readback reports graph sync violation"), bFoundSyncViolation);
+	Material->GetOutermost()->SetDirtyFlag(false);
+	return bFoundSyncViolation;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

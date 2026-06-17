@@ -365,13 +365,26 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 	const FString GraphName = SourceGraph ? SourceGraph->GetName() : (Args.SelectedChange.IsValid() ? Args.SelectedChange->GraphName : FString());
 	const UEdGraph* BoundsGraph = SourceGraph ? SourceGraph : PreviewGraphToEdit;
 	FBlueprintHelperReviewGraphBoundsUtils::SetDefaultBoundsPadding(Args.ReviewPanelSettings.SurfaceGeometryPadding);
-	if (!Args.ChangeItems)
+	if (!Args.ChangeItems || !Args.SurfaceDiffModels)
 	{
 		return;
 	}
 
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
+	auto FindChangeById = [&Args](const FString& ReviewEventId) -> TSharedPtr<FBlueprintHelperReviewVisibleChange>
 	{
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Candidate : *Args.ChangeItems)
+		{
+			if (Candidate.IsValid() && Candidate->ChangeId == ReviewEventId)
+			{
+				return Candidate;
+			}
+		}
+		return TSharedPtr<FBlueprintHelperReviewVisibleChange>();
+	};
+
+	for (const FBlueprintHelperReviewSurfaceDiffProjectionModel& DiffModel : *Args.SurfaceDiffModels)
+	{
+		const TSharedPtr<FBlueprintHelperReviewVisibleChange> Item = FindChangeById(DiffModel.ReviewEventId);
 		if (!Item.IsValid())
 		{
 			continue;
@@ -383,24 +396,13 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 			continue;
 		}
 
-		const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
-			FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
-				*Item,
-				EBlueprintHelperReviewSurface::Graph);
 		if (Args.AddDebugMessage)
 		{
-			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
-				? Args.AssetContext->AssetKind
-				: EBlueprintHelperReviewAssetKind::Unknown;
-			Args.AddDebugMessage(FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
-				*Item,
-				EBlueprintHelperReviewSurface::Graph,
-				RouteDecision,
-				BlueprintHelperReviewAssetKindToString(AssetKind)));
-		}
-		if (!RouteDecision.bShouldShow)
-		{
-			continue;
+			Args.AddDebugMessage(FString::Printf(
+				TEXT("GraphDiff projected change=%s target=\"%s\" surface=%s"),
+				*DiffModel.ReviewEventId,
+				*DiffModel.TargetKey,
+				*DiffModel.SurfaceKind));
 		}
 
 		FVector2D Position = FVector2D::ZeroVector;
@@ -438,28 +440,36 @@ void FBlueprintHelperReviewGraphPresenter::AddGraphDiffBlocks(
 		DiffNode->NodeHeight = FMath::CeilToInt(Size.Y);
 		DiffNode->Configure(
 			Item->ChangeId,
-			Item->DisplayLabel,
-			Args.GetChangeColor ? Args.GetChangeColor(Item->ChangeKind).GetSpecifiedColor() : FLinearColor::Transparent,
+			DiffModel.DisplayLabel,
+			DiffModel.DiffColor,
 			IsSameChange(Item, Args.SelectedChange),
-			[Item, OnReviewActionIntent = Args.OnReviewActionIntent](const FString& ChangeId)
+			[
+				Item,
+				ChangeBindingTargetKey = DiffModel.TargetKey,
+				OnReviewActionIntent = Args.OnReviewActionIntent
+			](const FString& ChangeId)
 			{
 				return OnReviewActionIntent && Item.IsValid() && !ChangeId.IsEmpty()
 					? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Accept(
 						FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
 							*Item,
 							EBlueprintHelperReviewSurface::Graph,
-							Item->LocationKey),
+							ChangeBindingTargetKey),
 						TEXT("graph_diff_block")))
 					: FReply::Handled();
 			},
-			[Item, OnReviewActionIntent = Args.OnReviewActionIntent](const FString& ChangeId)
+			[
+				Item,
+				ChangeBindingTargetKey = DiffModel.TargetKey,
+				OnReviewActionIntent = Args.OnReviewActionIntent
+			](const FString& ChangeId)
 			{
 				return OnReviewActionIntent && Item.IsValid() && !ChangeId.IsEmpty()
 					? OnReviewActionIntent(FBlueprintHelperReviewActionIntent::Reject(
 						FBlueprintHelperReviewPanelStateService::MakeChangeBinding(
 							*Item,
 							EBlueprintHelperReviewSurface::Graph,
-							Item->LocationKey),
+							ChangeBindingTargetKey),
 						TEXT("graph_diff_block")))
 					: FReply::Handled();
 			});

@@ -9,6 +9,7 @@
 #include "Styling/SlateColor.h"
 #include "Templates/Function.h"
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceDiffModel.h"
 
 class SCanvas;
 struct FBlueprintHelperReviewPanelSurfacePresenterArgs;
@@ -32,12 +33,6 @@ public:
 	static bool IsRowHighlightSurface(EBlueprintHelperReviewSurface Surface);
 
 	static FLinearColor GetRowHighlightFillColor(const FLinearColor& ChangeColor);
-
-	static TMap<FString, FBlueprintHelperReviewRowHighlight> BuildTargetKeyToHighlight(
-		const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
-		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange,
-		EBlueprintHelperReviewSurface Surface,
-		const FString& CurrentAssetPath);
 
 	static TSharedRef<SWidget> BuildRowHighlightOverlay(
 		const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
@@ -85,6 +80,7 @@ private:
 	{
 		TSharedPtr<FBlueprintHelperReviewVisibleChange> Change;
 		FBlueprintHelperReviewRowBinding Binding;
+		FBlueprintHelperReviewSurfaceDiffProjectionModel DiffModel;
 	};
 
 	struct FRowHighlightSurfaceState
@@ -126,6 +122,9 @@ private:
 	static void AddStateAssetPath(const FString& AssetPath, TArray<FString>& OutAssetPaths);
 	static FString ExtractReadableTail(FString Text);
 	static void AddRowHighlightKey(const FString& Key, TArray<FString>& OutKeys);
+	static void CollectProjectionModelKeys(
+		const FBlueprintHelperReviewSurfaceDiffProjectionModel& DiffModel,
+		TArray<FString>& OutKeys);
 	static FString GetReviewListTargetText(
 		const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item,
 		EBlueprintHelperReviewSurface Surface);

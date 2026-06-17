@@ -981,6 +981,47 @@ bool FBlueprintHelperTaskRuntimeAssetFactoryAcceptsActorAliasPreviewTest::RunTes
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeAssetFactoryRejectsInvalidBlueprintParentPreviewTest,
+	"BlueprintHelper.TaskRuntime.AssetFactory.RejectsInvalidBlueprintParentPreview",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskRuntimeAssetFactoryRejectsInvalidBlueprintParentPreviewTest::RunTest(const FString& Parameters)
+{
+	FString BlueprintParentError;
+	TestTrue(
+		TEXT("PrimaryDataAsset remains a valid Blueprint parent"),
+		FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(TEXT("/Script/Engine.PrimaryDataAsset"), BlueprintParentError));
+	BlueprintParentError.Reset();
+	TestFalse(
+		TEXT("DataAsset is rejected before Blueprint factory execution"),
+		FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(TEXT("/Script/Engine.DataAsset"), BlueprintParentError));
+
+	const FString AssetPath = FString::Printf(
+		TEXT("/Game/BlueprintHelperSafety/BP_InvalidParentDryRun_%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::FAssetFactoryTaskRuntimeTestServices Services;
+	TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetObjectField(TEXT("task_plan"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::MakeAssetFactoryCreateAssetTaskPlan(
+		AssetPath,
+		TEXT("blueprint_class"),
+		TEXT("/Script/Engine.DataAsset")));
+
+	const FBlueprintHelperToolResultBase Result = Services.TaskRuntimeService.PreviewTaskPlan(Payload);
+	TestFalse(TEXT("invalid Blueprint parent preview fails before UE factory execution"), Result.bOk);
+	TestTrue(TEXT("invalid Blueprint parent returns structured error"), Result.Error.IsSet());
+	if (Result.Error.IsSet())
+	{
+		TestEqual(TEXT("invalid Blueprint parent error code"), Result.Error->Code, FString(TEXT("invalid_blueprint_parent_class")));
+		TestEqual(TEXT("invalid Blueprint parent error stage"), Result.Error->Stage, EBlueprintHelperToolStage::Preflight);
+	}
+	TestFalse(TEXT("invalid Blueprint parent dry-run does not create an asset"),
+		FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath));
+
+	return !Result.bOk && Result.Error.IsSet() && !FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(AssetPath);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperTaskRuntimeAssetFactoryPartialFailureBlocksDependentStepTest,
 	"BlueprintHelper.TaskRuntime.AssetFactory.PartialFailureBlocksDependentStep",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1126,6 +1167,28 @@ bool FBlueprintHelperTaskRuntimeAssetFactoryPartialFailureBlocksDependentStepTes
 	TestFalse(TEXT("abstract DataAsset failure did not create an asset"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(FailedDataAssetPath));
 	TestFalse(TEXT("blocked dependent asset was not created"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(BlockedInputActionPath));
 	TestTrue(TEXT("independent asset was created"), FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestAssetExists(IndependentInputActionPath));
+
+	const FBlueprintHelperToolResultBase DirtyPreviewResult = Services.TaskRuntimeService.PreviewTaskPlan(Payload);
+	TestFalse(TEXT("partial failure dirty target blocks the next preview"), DirtyPreviewResult.bOk);
+	TestTrue(TEXT("dirty preview has error"), DirtyPreviewResult.Error.IsSet());
+	if (DirtyPreviewResult.Error.IsSet())
+	{
+		TestEqual(
+			TEXT("dirty preview error code"),
+			DirtyPreviewResult.Error->Code,
+			FString(TEXT("review_baseline_dirty_target_assets")));
+		TestEqual(
+			TEXT("dirty preview state is failed execute"),
+			DirtyPreviewResult.Error->DirtyState,
+			FString(TEXT("dirty_after_failed_execute")));
+		TestTrue(
+			TEXT("dirty preview includes failed run evidence"),
+			DirtyPreviewResult.Error->EvidenceRefs.Contains(
+				FString::Printf(TEXT("task_run:%s:partial_failure"), *TaskRunId)));
+		TestTrue(
+			TEXT("dirty preview includes dirty independent asset"),
+			DirtyPreviewResult.Error->DirtyAssets.Contains(IndependentInputActionPath));
+	}
 
 	UObject* IndependentAsset = StaticLoadObject(UObject::StaticClass(), nullptr, *FBlueprintHelperTaskPlanAssetFactoryAdapterTestsLocalUtils::AssetFactoryTestObjectPath(IndependentInputActionPath));
 	if (IndependentAsset)

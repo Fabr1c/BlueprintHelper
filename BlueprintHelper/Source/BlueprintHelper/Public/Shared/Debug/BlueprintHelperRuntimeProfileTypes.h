@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Runtime/Capabilities/BlueprintHelperCapabilityDescriptorTypes.h"
 
 // ─── Bridge 状态枚举 ───
 
@@ -403,6 +404,8 @@ struct FBlueprintHelperRuntimeProfileData
 	/** 不可用能力列表。 */
 	FBlueprintHelperToolCapabilitiesState ToolCapabilities;
 
+	FBlueprintHelperCapabilityDescriptorRuntimeState CapabilityRuntimeState;
+
 	/** 序列化到 JSON（即 data.* 的内容）。 */
 	FString GetRuntimeStatus() const
 	{
@@ -426,6 +429,21 @@ struct FBlueprintHelperRuntimeProfileData
 		TSharedRef<FJsonObject> Profile = MakeShared<FJsonObject>();
 		const FString Status = GetRuntimeStatus();
 		Profile->SetStringField(TEXT("status"), Status);
+
+		TArray<FString> RegisteredRuntimeAdapterIds = CapabilityRuntimeState.RegisteredRuntimeAdapterIds.Array();
+		RegisteredRuntimeAdapterIds.Sort();
+		TArray<TSharedPtr<FJsonValue>> RegisteredRuntimeAdapterIdJson;
+		for (const FString& RuntimeAdapterId : RegisteredRuntimeAdapterIds)
+		{
+			RegisteredRuntimeAdapterIdJson.Add(MakeShared<FJsonValueString>(RuntimeAdapterId));
+		}
+
+		TSharedRef<FJsonObject> CapabilityRuntimeStateJson = MakeShared<FJsonObject>();
+		CapabilityRuntimeStateJson->SetArrayField(TEXT("registered_runtime_adapter_ids"), RegisteredRuntimeAdapterIdJson);
+		CapabilityRuntimeStateJson->SetBoolField(TEXT("allow_write_capabilities"), CapabilityRuntimeState.bAllowWriteCapabilities);
+		CapabilityRuntimeStateJson->SetBoolField(TEXT("allow_high_risk_capabilities"), CapabilityRuntimeState.bAllowHighRiskCapabilities);
+		Profile->SetObjectField(TEXT("capability_runtime_state"), CapabilityRuntimeStateJson);
+		Profile->SetArrayField(TEXT("registered_runtime_adapter_ids"), RegisteredRuntimeAdapterIdJson);
 
 		if (Status == TEXT("ok"))
 		{

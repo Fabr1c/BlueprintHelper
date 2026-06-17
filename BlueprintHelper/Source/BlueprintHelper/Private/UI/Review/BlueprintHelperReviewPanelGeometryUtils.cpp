@@ -2,6 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewPanelGeometryUtils.h"
 
+#include "UI/Review/BlueprintHelperReviewGeometrySearchService.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Text/SInlineEditableTextBlock.h"
@@ -11,73 +12,28 @@
 
 FString FBlueprintHelperReviewPanelGeometryUtils::NormalizeGeometrySearchText(FString Text)
 {
-	Text.ToLowerInline();
-	for (int32 Index = Text.Len() - 1; Index >= 0; --Index)
-	{
-		if (!FChar::IsAlnum(Text[Index]))
-		{
-			Text.RemoveAt(Index);
-		}
-	}
-	return Text;
+	return FBlueprintHelperReviewGeometrySearchService::NormalizeSearchText(MoveTemp(Text));
 }
 
 void FBlueprintHelperReviewPanelGeometryUtils::AddUniqueSearchCandidate(
 	TArray<FString>& OutCandidates,
 	FString Candidate)
 {
-	Candidate.TrimStartAndEndInline();
-	if (!Candidate.IsEmpty())
-	{
-		OutCandidates.AddUnique(Candidate);
-	}
+	FBlueprintHelperReviewGeometrySearchService::AddUniqueSearchCandidate(OutCandidates, MoveTemp(Candidate));
 }
 
 void FBlueprintHelperReviewPanelGeometryUtils::AddSearchCandidatesFromText(
 	const FString& RawText,
 	TArray<FString>& OutCandidates)
 {
-	FString Text = RawText;
-	Text.TrimStartAndEndInline();
-	if (Text.IsEmpty())
-	{
-		return;
-	}
-
-	AddUniqueSearchCandidate(OutCandidates, Text);
-
-	int32 DelimiterIndex = INDEX_NONE;
-	if (Text.FindLastChar(TEXT(':'), DelimiterIndex)
-		|| Text.FindLastChar(TEXT('/'), DelimiterIndex)
-		|| Text.FindLastChar(TEXT('.'), DelimiterIndex))
-	{
-		AddUniqueSearchCandidate(OutCandidates, Text.Mid(DelimiterIndex + 1));
-	}
+	FBlueprintHelperReviewGeometrySearchService::AddDisplaySearchCandidatesFromText(RawText, OutCandidates);
 }
 
 bool FBlueprintHelperReviewPanelGeometryUtils::SearchTextMatches(
 	const FString& RowText,
 	const FString& TargetText)
 {
-	const FString NormalizedRow = NormalizeGeometrySearchText(RowText);
-	if (NormalizedRow.Len() < 2)
-	{
-		return false;
-	}
-
-	TArray<FString> Candidates;
-	AddSearchCandidatesFromText(TargetText, Candidates);
-	for (const FString& Candidate : Candidates)
-	{
-		const FString NormalizedCandidate = NormalizeGeometrySearchText(Candidate);
-		if (NormalizedCandidate.Len() >= 2
-			&& (NormalizedRow.Contains(NormalizedCandidate)
-				|| NormalizedCandidate.Contains(NormalizedRow)))
-		{
-			return true;
-		}
-	}
-	return false;
+	return FBlueprintHelperReviewGeometrySearchService::DisplaySearchTextMatches(RowText, TargetText);
 }
 
 bool FBlueprintHelperReviewPanelGeometryUtils::TryReadWidgetText(

@@ -11,6 +11,7 @@
 #include "Templates/Function.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceDiffModel.h"
 #include "UObject/StrongObjectPtr.h"
 
 class SGraphEditor;
@@ -47,6 +48,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewGraphPresenterArgs
 {
 	const FBlueprintHelperReviewAssetContext* AssetContext = nullptr;
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>* ChangeItems = nullptr;
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>* SurfaceDiffModels = nullptr;
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> SelectedChange;
 	FString RequestedGraphName;
 	bool bAllowGraphNavigationWithoutGraphReview = false;
@@ -99,6 +101,7 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewPanelSurfacePresenterArgs
 {
 	const FBlueprintHelperReviewAssetContext* AssetContext = nullptr;
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>* ChangeItems = nullptr;
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>* SurfaceDiffModels = nullptr;
 	TSharedPtr<FBlueprintHelperReviewVisibleChange> SelectedChange;
 	TFunction<void(const FString&)> AddDebugMessage;
 	TFunction<FReply(const FBlueprintHelperReviewActionIntent&)> OnReviewActionIntent;

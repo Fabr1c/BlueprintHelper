@@ -5,12 +5,15 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  createDescriptorFixtureRuntimeCapabilityState,
   getToolCapabilityDescriptor,
   listToolCapabilities,
   listToolDomains,
 } from '../tool-registry.js';
+import { getReadContextRouteDescriptor } from '../templates/read-context-template-registry.js';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
+const RUNTIME_FIXTURE = createDescriptorFixtureRuntimeCapabilityState();
 
 test('tool catalog lists active domains and points TaskSpec write discovery to family index', () => {
   const domains = listToolDomains();
@@ -18,7 +21,7 @@ test('tool catalog lists active domains and points TaskSpec write discovery to f
   assert.equal(domains.items.some((item) => item.id === 'blueprint'), true);
   assert.equal(domains.reserved.length, 0);
 
-  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write' });
+  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write', runtime: RUNTIME_FIXTURE });
   assert.equal(blueprintWrite.schema, 'BlueprintHelper.ToolCapabilityList.v1');
   assert.equal(
     blueprintWrite.next.template_index_command,
@@ -31,7 +34,7 @@ test('tool catalog lists active domains and points TaskSpec write discovery to f
 });
 
 test('tool catalog points read and write capabilities to their own template indexes', () => {
-  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write' });
+  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write', runtime: RUNTIME_FIXTURE });
   assert.equal(
     blueprintWrite.next.template_index_command,
     'bh tools templates families --workflow preview_execute --format json',
@@ -110,6 +113,34 @@ test('tool catalog exposes UMG widget tree read capability through ReadContext r
     'widget.structure.tree_flow',
   ]);
 	assert.equal(widgetTree.stop_conditions.includes('bridge_unavailable'), true);
+});
+
+test('tool catalog exposes only composeable flat ReadContext template ids', () => {
+  for (const domain of ['blueprint', 'umg', 'data', 'material'] as const) {
+    const reads = listToolCapabilities({
+      domain,
+      kind: 'read',
+      requiresBridge: true,
+      risks: ['low'],
+    });
+
+    for (const item of reads.items.filter((entry) => entry.cli_command === 'bh context read')) {
+      const descriptor = getToolCapabilityDescriptor(item.id);
+      assert.ok(descriptor, `${item.id} has capability descriptor`);
+      assert.deepEqual(
+        [...item.cli_template_ids].sort(),
+        [...descriptor.route_refs].sort(),
+        `${item.id} cli_template_ids should mirror ReadContext route_refs`,
+      );
+      assert.deepEqual(item.input_shapes, ['readspec'], `${item.id} should still accept ReadSpec input`);
+      for (const templateId of item.cli_template_ids) {
+        assert.ok(
+          getReadContextRouteDescriptor(templateId),
+          `${item.id} exposes unknown ReadContext template id ${templateId}`,
+        );
+      }
+    }
+  }
 });
 
 test('tool catalog exposes ReadContext capabilities matrix as local discovery', () => {
@@ -208,14 +239,14 @@ test('tool catalog exposes grouped CLI commands and hides direct TaskSpec handle
   assert.ok(logicFlow);
   assert.equal(logicFlow.cli_command, 'bh context read');
 
-  const blueprintPlan = listToolCapabilities({ domain: 'blueprint', kind: 'plan' });
+  const blueprintPlan = listToolCapabilities({ domain: 'blueprint', kind: 'plan', runtime: RUNTIME_FIXTURE });
   const preview = blueprintPlan.items.find((item) => item.id === 'blueprint.plan.taskspec.preview');
   assert.ok(preview);
   assert.equal(preview.cli_command, 'bh task preview');
   assert.deepEqual(preview.cli_template_ids, ['task_preview_bare_taskspec']);
   assert.equal(preview.input_shape, 'bare_taskspec');
 
-  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write' });
+  const blueprintWrite = listToolCapabilities({ domain: 'blueprint', kind: 'write', runtime: RUNTIME_FIXTURE });
   const execute = blueprintWrite.items.find((item) => item.id === 'blueprint.write.taskspec.execute');
   assert.ok(execute);
   assert.equal(execute.cli_command, 'bh task execute');
@@ -239,4 +270,74 @@ test('tool catalog exposes grouped CLI commands and hides direct TaskSpec handle
   assert.equal(serialized.includes('blueprinthelper_preview_task'), false);
   assert.equal(serialized.includes('blueprinthelper_execute_task'), false);
   assert.equal(serialized.includes('blueprinthelper_get_task_result'), false);
+});
+
+test('tool catalog gates descriptor-driven material write discovery by runtime adapters', () => {
+  const hidden = listToolCapabilities({
+    domain: 'material',
+    kind: 'write',
+    runtime: {
+      registered_runtime_adapter_ids: [],
+      allow_write_capabilities: true,
+      allow_high_risk_capabilities: true,
+    },
+  });
+  assert.equal(hidden.items.some((item) => item.id === 'material.write.taskspec.execute'), false);
+
+  const visible = listToolCapabilities({
+    domain: 'material',
+    kind: 'write',
+    runtime: {
+      registered_runtime_adapter_ids: ['material_graph_runtime_adapter'],
+      allow_write_capabilities: true,
+      allow_high_risk_capabilities: true,
+    },
+  });
+  assert.equal(visible.items.some((item) => item.id === 'material.write.taskspec.execute'), true);
+  assert.equal(JSON.stringify(visible.items).includes('material_instance'), false);
+});
+
+test('tool catalog derives task runtime capability truth from active non-reserved descriptors', () => {
+  const dataWrite = listToolCapabilities({
+    domain: 'data',
+    kind: 'write',
+    runtime: {
+      registered_runtime_adapter_ids: [
+        'data_table_runtime_adapter',
+        'struct_runtime_adapter',
+      ],
+      allow_write_capabilities: true,
+      allow_high_risk_capabilities: true,
+    },
+  });
+  assert.equal(dataWrite.items.some((item) => item.id === 'data.write.taskspec.execute'), true);
+  assert.equal(JSON.stringify(dataWrite.items).includes('struct.fields.edit'), false);
+
+  const materialWrite = listToolCapabilities({
+    domain: 'material',
+    kind: 'write',
+    runtime: {
+      registered_runtime_adapter_ids: [
+        'material_graph_runtime_adapter',
+        'material_instance_runtime_adapter',
+      ],
+      allow_write_capabilities: true,
+      allow_high_risk_capabilities: true,
+    },
+  });
+  assert.equal(materialWrite.items.some((item) => item.id === 'material.write.taskspec.execute'), true);
+  assert.equal(JSON.stringify(materialWrite.items).includes('material_instance.edit'), false);
+});
+
+test('tool catalog hides write capabilities when descriptor safety disallows writes', () => {
+  const hidden = listToolCapabilities({
+    domain: 'blueprint',
+    kind: 'write',
+    runtime: {
+      registered_runtime_adapter_ids: ['graphwrite_runtime_adapter'],
+      allow_write_capabilities: false,
+      allow_high_risk_capabilities: true,
+    },
+  });
+  assert.equal(hidden.items.some((item) => item.id === 'blueprint.write.taskspec.execute'), false);
 });

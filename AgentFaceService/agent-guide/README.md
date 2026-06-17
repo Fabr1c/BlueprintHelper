@@ -16,6 +16,6 @@ Recommended entry:
 - This guide does not duplicate template content or directory-scanning
   instructions.
 - Ordinary UE editor-asset reads and writes use CLI TaskSpec-first workflows.
-- Editor open/close is owned by the global MCP lifecycle tools.
+- Editor open/close/modal-dismiss/close-dialog is owned by the global MCP lifecycle tools.
 - Repository files use normal repository tools.
 - Deprecated MCP ordinary tools are not fallback paths.

@@ -362,8 +362,19 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewArchiveSessi
 		{
 			Baseline->SetStringField(TEXT("snapshot_trust"), ArchiveSession.BaselineSnapshotTrust);
 		}
+		if (!ArchiveSession.DirtyState.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("dirty_state"), ArchiveSession.DirtyState);
+		}
+		if (!ArchiveSession.SafeNextAction.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("safe_next_action"), ArchiveSession.SafeNextAction);
+		}
 		Baseline->SetArrayField(TEXT("dirty_target_assets"), MakeReviewJsonStringArray(ArchiveSession.DirtyTargetAssets));
 		Baseline->SetArrayField(TEXT("warnings"), MakeReviewJsonStringArray(ArchiveSession.BaselineWarnings));
+		Baseline->SetArrayField(TEXT("allowed_recovery_actions"), MakeReviewJsonStringArray(ArchiveSession.AllowedRecoveryActions));
+		Baseline->SetArrayField(TEXT("risky_recovery_actions"), MakeReviewJsonStringArray(ArchiveSession.RiskyRecoveryActions));
+		Baseline->SetArrayField(TEXT("dirty_evidence_refs"), MakeReviewJsonStringArray(ArchiveSession.DirtyEvidenceRefs));
 		Baseline->SetArrayField(TEXT("disk_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSnapshotRefs));
 		Baseline->SetArrayField(TEXT("semantic_snapshot_refs"), MakeReviewJsonStringArray(ArchiveSession.BaselineSemanticSnapshotRefs));
 		Json->SetObjectField(TEXT("baseline"), Baseline);
@@ -403,8 +414,13 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewArchiveSessionFromJson(
 		{
 			(*BaselineJson)->TryGetStringField(TEXT("dirty_asset_policy"), OutArchiveSession.BaselineDirtyAssetPolicy);
 			(*BaselineJson)->TryGetStringField(TEXT("snapshot_trust"), OutArchiveSession.BaselineSnapshotTrust);
+			(*BaselineJson)->TryGetStringField(TEXT("dirty_state"), OutArchiveSession.DirtyState);
+			(*BaselineJson)->TryGetStringField(TEXT("safe_next_action"), OutArchiveSession.SafeNextAction);
 			ReadReviewStringArray(*BaselineJson, TEXT("dirty_target_assets"), OutArchiveSession.DirtyTargetAssets);
 			ReadReviewStringArray(*BaselineJson, TEXT("warnings"), OutArchiveSession.BaselineWarnings);
+			ReadReviewStringArray(*BaselineJson, TEXT("allowed_recovery_actions"), OutArchiveSession.AllowedRecoveryActions);
+			ReadReviewStringArray(*BaselineJson, TEXT("risky_recovery_actions"), OutArchiveSession.RiskyRecoveryActions);
+			ReadReviewStringArray(*BaselineJson, TEXT("dirty_evidence_refs"), OutArchiveSession.DirtyEvidenceRefs);
 		}
 		return !OutArchiveSession.ArchiveSessionId.IsEmpty();
 	}

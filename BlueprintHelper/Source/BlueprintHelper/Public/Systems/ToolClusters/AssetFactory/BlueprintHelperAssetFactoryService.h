@@ -58,6 +58,10 @@ public:
 		FString& InOutParentClass,
 		EBlueprintHelperAssetType& OutAssetType);
 
+	static bool TryValidateBlueprintParentClass(
+		const FString& ParentClass,
+		FString& OutErrorMessage);
+
 private:
 	/** 解析 asset_type 。factory_type。*/
 	static EBlueprintHelperFactoryType AssetTypeToFactoryType(EBlueprintHelperAssetType Type);

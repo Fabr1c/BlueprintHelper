@@ -6,6 +6,12 @@ import { summarizeToolInputShape } from '../manifest/tool-input-shape-metadata.j
 import type { ToolResultProjectionPolicyId } from '../manifest/tool-command-manifest.js';
 import { templateIndexCommandForCapabilityKind } from '../cli/cli-subcommand-descriptor.js';
 import {
+  listCapabilityDescriptors,
+  listAgentVisibleCapabilities,
+} from '../capabilities/capability-descriptor-registry.js';
+import { createRuntimeCapabilityState } from '../capabilities/capability-runtime-state.js';
+import type { RuntimeCapabilityState } from '../capabilities/capability-descriptor.schema.js';
+import {
   createToolCapabilityDescriptorRegistry,
   type ToolCapabilityDescriptor,
 } from './tool-capability-descriptor-registry.js';
@@ -33,33 +39,35 @@ const DOMAINS: readonly ToolDomainCatalogItem[] = [
   domain('debug', 'Debug', 'active', ['diagnose'], 'Summary-only DebugCase and DebugBundle manifest workflows.', true),
   domain('review', 'Review', 'active', ['diagnose', 'write'], 'ReviewRecord query workflows; write actions require expert access.', true),
   domain('animation', 'Animation', 'reserved', [], 'Reserved for future Animation Blueprint tool catalog entries.', false, 'No Agent-facing tool catalog entry yet.'),
-  domain('material', 'Material', 'active', ['read'], 'Material graph expression, parameter, connection, output, and anchor workflows.', true),
+  domain('material', 'Material', 'active', ['read', 'plan', 'write'], 'Material graph expression, parameter, connection, output, and anchor workflows.', true),
 ];
 
 const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('blueprint.discover.assets', 'blueprint', 'discover', 'blueprinthelper_find_assets', 'Resolve unknown Unreal asset paths before reads or writes.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_find_assets']),
-  capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known function, event, or custom event.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_flow', 'read_context_event_logic_flow', 'read_context_custom_event_logic_flow']),
-  capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known graph or block.', 'blueprint-explorer', 'low', true, false, ['read_context_graph_logic_json', 'read_context_block_logic_json']),
-  capability('blueprint.read.context.logic_json_delta', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read LogicJson delta after LogicFlow for write-location evidence without duplicate flow summary.', 'blueprint-explorer', 'low', true, false, ['read_context_function_logic_json_delta']),
-  capability('blueprint.read.context.asset', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint asset diagnostics context.', 'blueprint-explorer', 'low', true, false, ['read_context_asset']),
-  capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, ['read_context_components']),
-  capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, ['read_context_variables']),
-  capability('blueprint.read.context.properties', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint object property context.', 'blueprint-explorer', 'low', true, false, ['read_context_properties']),
+  capability('blueprint.read.context.logic_flow', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read compact execution/data flow for a known Blueprint, graph, function, event, or custom event.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.logic_json', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read stable LogicJson anchors for a known Blueprint, graph, function, event, custom event, or block.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.logic_json_delta', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read LogicJson delta after LogicFlow for known function, event, custom event, or graph write-location evidence.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.asset', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint asset diagnostics context.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.components', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint component facts and property metadata.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.variables', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint variable metadata and defaults.', 'blueprint-explorer', 'low', true, false, []),
+  capability('blueprint.read.context.properties', 'blueprint', 'read', 'blueprinthelper_read_context', 'Read Blueprint object property context.', 'blueprint-explorer', 'low', true, false, []),
   capability('blueprint.read.reference.dependencies', 'blueprint', 'read', 'blueprinthelper_read_reference_context', 'Read dependency ReferenceContextPack before risky edits.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_reference_context_dependencies']),
   capability('blueprint.read.function_chain', 'blueprint', 'read', 'blueprinthelper_read_function_chain_context', 'Trace project-authored function/event/custom-event calls.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_read_function_chain_context']),
   capability('blueprint.plan.taskspec.preview', 'blueprint', 'plan', 'blueprinthelper_preview_task', 'Validate and preview a BlueprintHelper.TaskSpec.v1 before execute.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
   capability('blueprint.write.taskspec.execute', 'blueprint', 'write', 'blueprinthelper_execute_task', 'Execute a BlueprintHelper.TaskSpec.v1 after preview and write permission.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
   capability('blueprint.diagnose.compile', 'blueprint', 'diagnose', 'blueprint_compile_blueprint', 'Compile an explicit Blueprint asset through the running Editor Bridge for validation.', 'task-worker', 'medium', true, true, ['blueprint_compile_blueprint']),
-  capability('umg.read.widget_tree', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint tree context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_tree']),
-  capability('umg.read.widget_property', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint property context.', 'blueprint-explorer', 'low', true, false, ['read_context_widget_property']),
+  capability('umg.read.widget_tree', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint tree context.', 'blueprint-explorer', 'low', true, false, []),
+  capability('umg.read.widget_property', 'umg', 'read', 'blueprinthelper_read_context', 'Read Widget Blueprint property context.', 'blueprint-explorer', 'low', true, false, []),
   capability('umg.plan.taskspec.preview', 'umg', 'plan', 'blueprinthelper_preview_task', 'Preview UMG TaskSpec changes.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
   capability('umg.write.taskspec.execute', 'umg', 'write', 'blueprinthelper_execute_task', 'Execute UMG TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
-  capability('data.read.data_asset', 'data', 'read', 'blueprinthelper_read_context', 'Read DataAsset object property context.', 'blueprint-explorer', 'low', true, false, ['read_context_data_asset']),
-  capability('data.read.data_table', 'data', 'read', 'blueprinthelper_read_context', 'Read DataTable or DataTable row context.', 'blueprint-explorer', 'low', true, false, ['read_context_data_table', 'read_context_data_table_row']),
+  capability('data.read.data_asset', 'data', 'read', 'blueprinthelper_read_context', 'Read DataAsset object property context.', 'blueprint-explorer', 'low', true, false, []),
+  capability('data.read.data_table', 'data', 'read', 'blueprinthelper_read_context', 'Read DataTable or DataTable row context.', 'blueprint-explorer', 'low', true, false, []),
   capability('data.plan.taskspec.preview', 'data', 'plan', 'blueprinthelper_preview_task', 'Preview DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
   capability('data.write.taskspec.execute', 'data', 'write', 'blueprinthelper_execute_task', 'Execute DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
-  capability('material.read.context.logic_json', 'material', 'read', 'blueprinthelper_read_context', 'Read Material graph expressions, parameters, connections, outputs, and anchors as LogicJson.', 'blueprint-explorer', 'low', true, false, ['read_context_material_logic_json']),
-  capability('material.read.context.logic_flow', 'material', 'read', 'blueprinthelper_read_context', 'Read compact Material graph data flow for Agent reasoning.', 'blueprint-explorer', 'low', true, false, ['read_context_material_logic_flow']),
+  capability('material.read.context.logic_json', 'material', 'read', 'blueprinthelper_read_context', 'Read Material graph expressions, parameters, connections, outputs, and anchors as LogicJson.', 'blueprint-explorer', 'low', true, false, []),
+  capability('material.read.context.logic_flow', 'material', 'read', 'blueprinthelper_read_context', 'Read compact Material graph data flow for Agent reasoning.', 'blueprint-explorer', 'low', true, false, []),
+  capability('material.plan.taskspec.preview', 'material', 'plan', 'blueprinthelper_preview_task', 'Preview MaterialGraph TaskSpec changes.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
+  capability('material.write.taskspec.execute', 'material', 'write', 'blueprinthelper_execute_task', 'Execute MaterialGraph TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
   capability('editor.read.runtime_profile', 'editor', 'read', 'blueprint_get_runtime_profile', 'Read BlueprintHelper runtime profile from the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprint_get_runtime_profile']),
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
@@ -100,6 +108,32 @@ const READ_CONTEXT_HELP_USAGE = [
   'bh context read --file <read-spec.json> --select status,artifacts.full_result',
   '$json | bh context read --stdin --format full',
 ] as const;
+
+const BLUEPRINT_TASK_RUNTIME_FAMILIES = [
+  'graphwrite',
+  'asset_factory',
+  'blueprint_variables',
+  'blueprint_signature',
+  'blueprint_component',
+  'class_settings',
+  'object_property',
+] as const;
+const UMG_TASK_RUNTIME_FAMILIES = ['umg_widget_tree'] as const;
+const DATA_TASK_RUNTIME_FAMILIES = ['object_property', 'data_table', 'struct'] as const;
+const MATERIAL_TASK_RUNTIME_FAMILIES = ['material_graph'] as const;
+const DEBUG_CASE_EXPORT_FAMILIES = ['debug_case'] as const;
+
+const REQUIRED_DESCRIPTOR_IDS_BY_CAPABILITY_ID = new Map<string, readonly string[]>([
+  ['blueprint.plan.taskspec.preview', activeRuntimeDescriptorIdsForFamilies(BLUEPRINT_TASK_RUNTIME_FAMILIES)],
+  ['blueprint.write.taskspec.execute', activeRuntimeDescriptorIdsForFamilies(BLUEPRINT_TASK_RUNTIME_FAMILIES)],
+  ['umg.plan.taskspec.preview', activeRuntimeDescriptorIdsForFamilies(UMG_TASK_RUNTIME_FAMILIES)],
+  ['umg.write.taskspec.execute', activeRuntimeDescriptorIdsForFamilies(UMG_TASK_RUNTIME_FAMILIES)],
+  ['data.plan.taskspec.preview', activeRuntimeDescriptorIdsForFamilies(DATA_TASK_RUNTIME_FAMILIES)],
+  ['data.write.taskspec.execute', activeRuntimeDescriptorIdsForFamilies(DATA_TASK_RUNTIME_FAMILIES)],
+  ['material.plan.taskspec.preview', activeRuntimeDescriptorIdsForFamilies(MATERIAL_TASK_RUNTIME_FAMILIES)],
+  ['material.write.taskspec.execute', activeRuntimeDescriptorIdsForFamilies(MATERIAL_TASK_RUNTIME_FAMILIES)],
+  ['debug.diagnose.bundle', activeRuntimeDescriptorIdsForFamilies(DEBUG_CASE_EXPORT_FAMILIES)],
+]);
 
 interface ToolCapabilityDescriptorOptions {
   readonly result_policy_id?: ToolResultProjectionPolicyId;
@@ -142,12 +176,19 @@ export function listToolCapabilities(options: ListToolCapabilitiesOptions): Tool
 export function listToolCapabilityItems(options: ListToolCapabilitiesOptions): ToolCapabilityItem[] {
   const audience = options.audience ?? 'default';
   const risks = new Set(options.risks ?? []);
+  const runtime = options.runtime ?? defaultRuntimeCapabilityState();
+  const descriptorOptions = buildDescriptorOptionsByCapabilityId();
+  const visibleDescriptorIds = new Set(
+    listAgentVisibleCapabilities(runtime).map((descriptor) => descriptor.id),
+  );
   return CAPABILITIES.filter((capabilityItem) => {
     if (capabilityItem.domain !== options.domain || capabilityItem.kind !== options.kind) return false;
     if (!isAudienceVisible(capabilityItem, audience, options.expert === true)) return false;
     if (options.requiresBridge !== undefined && capabilityItem.requires_bridge !== options.requiresBridge) return false;
+    if (!isDescriptorVisibleForCapability(capabilityItem.id, visibleDescriptorIds)) return false;
     return risks.size === 0 || risks.has(capabilityItem.risk);
-  });
+  }).map((capabilityItem) =>
+    withResolvedTemplateIds(capabilityItem, descriptorOptions.get(capabilityItem.id)));
 }
 
 function resolveTemplateIndexCommand(kind: ToolCapabilityKind): ToolCapabilityListResult['next']['template_index_command'] {
@@ -171,7 +212,7 @@ function resolveCapabilityListNext(
 }
 
 function toToolCapabilityListItem(capabilityItem: ToolCapabilityItem): ToolCapabilityListItem {
-  const cliTemplateIds = agentFacingTemplateIds(capabilityItem);
+  const cliTemplateIds = [...capabilityItem.cli_template_ids];
 	return {
 		id: capabilityItem.id,
 		domain: capabilityItem.domain,
@@ -202,12 +243,27 @@ function agentFacingCliCommand(capabilityItem: ToolCapabilityItem): string {
   if (capabilityItem.id === 'umg.write.taskspec.execute') return 'bh task execute';
   if (capabilityItem.id === 'data.plan.taskspec.preview') return 'bh task preview';
   if (capabilityItem.id === 'data.write.taskspec.execute') return 'bh task execute';
+  if (capabilityItem.id === 'material.plan.taskspec.preview') return 'bh task preview';
+  if (capabilityItem.id === 'material.write.taskspec.execute') return 'bh task execute';
   if (capabilityItem.id === 'project.read.task_result') return 'bh task result --id <task_run_id>';
   if (capabilityItem.tool_name === 'blueprinthelper_read_context') return 'bh context read';
   return `bh ${capabilityItem.tool_name}`;
 }
 
-function agentFacingTemplateIds(capabilityItem: ToolCapabilityItem): string[] {
+function withResolvedTemplateIds(
+  capabilityItem: ToolCapabilityItem,
+  options?: ToolCapabilityDescriptorOptions,
+): ToolCapabilityItem {
+  return {
+    ...capabilityItem,
+    cli_template_ids: resolveCapabilityTemplateIds(capabilityItem, options),
+  };
+}
+
+function resolveCapabilityTemplateIds(
+  capabilityItem: ToolCapabilityItem,
+  options?: ToolCapabilityDescriptorOptions,
+): string[] {
   if (capabilityItem.kind === 'plan' && capabilityItem.tool_name === 'blueprinthelper_preview_task') {
     return ['task_preview_bare_taskspec'];
   }
@@ -216,6 +272,9 @@ function agentFacingTemplateIds(capabilityItem: ToolCapabilityItem): string[] {
   }
   if (capabilityItem.id === 'project.read.task_result') {
     return [];
+  }
+  if (capabilityItem.tool_name === 'blueprinthelper_read_context' && options?.route_refs?.length) {
+    return [...options.route_refs];
   }
   return [...capabilityItem.cli_template_ids];
 }
@@ -388,6 +447,18 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],
+    ['material.plan.taskspec.preview', {
+      result_policy_id: 'task_preview_default',
+      route_refs: ['material.graph'],
+      stop_conditions: PREVIEW_STOP_CONDITIONS,
+      recommended_invocations: TASK_PREVIEW_INVOCATION,
+    }],
+    ['material.write.taskspec.execute', {
+      result_policy_id: 'task_execute_default',
+      route_refs: ['material.graph'],
+      stop_conditions: EXECUTE_STOP_CONDITIONS,
+      recommended_invocations: TASK_EXECUTE_INVOCATION,
+    }],
     ['material.read.context.logic_json', {
       route_refs: materialLogicJsonRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
@@ -447,6 +518,31 @@ function toToolCapabilityDescriptor(
     },
     source: 'capability_descriptor_registry',
   };
+}
+
+function defaultRuntimeCapabilityState(): RuntimeCapabilityState {
+  return createRuntimeCapabilityState();
+}
+
+function activeRuntimeDescriptorIdsForFamilies(families: readonly string[]): readonly string[] {
+  const familySet = new Set(families);
+  return listCapabilityDescriptors()
+    .filter((descriptor) =>
+      familySet.has(descriptor.family) &&
+      descriptor.runtime.status === 'active' &&
+      !descriptor.safety.reserved_only)
+    .map((descriptor) => descriptor.id);
+}
+
+function isDescriptorVisibleForCapability(
+  capabilityId: string,
+  visibleDescriptorIds: ReadonlySet<string>,
+): boolean {
+  const requiredDescriptorIds = REQUIRED_DESCRIPTOR_IDS_BY_CAPABILITY_ID.get(capabilityId);
+  if (!requiredDescriptorIds || requiredDescriptorIds.length === 0) {
+    return true;
+  }
+  return requiredDescriptorIds.some((descriptorId) => visibleDescriptorIds.has(descriptorId));
 }
 
 function defaultResultPolicyId(capabilityItem: ToolCapabilityItem): ToolResultProjectionPolicyId {

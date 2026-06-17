@@ -105,11 +105,13 @@ Either start Unreal Editor normally with the project, or use the global MCP life
 ```text
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
+mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
+mcp__blueprint_helper__blueprint_close_editor_dialogs
 ```
 
 Do not use plugin-local MCP or deprecated MCP ordinary tools as proof of Agent lifecycle or asset-workflow behavior. The normal Agent-owned lifecycle path is the global MCP allowlist server.
 
-Do not start or close Unreal Editor through CLI lifecycle aliases. `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, and `blueprint_close_editor` are not Agent lifecycle execution paths; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
+Do not start, close, or dismiss Unreal Editor modal dialogs through CLI lifecycle aliases. `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, `blueprint_close_editor`, `blueprint_dismiss_editor_dialogs`, and `blueprint_close_editor_dialogs` are not Agent lifecycle execution paths; if lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
 Bridge smoke check:
 
@@ -121,7 +123,7 @@ If the port is not open, wait for the editor to finish loading, confirm the plug
 
 ## 5. Run The CLI
 
-The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows; lifecycle commands are removed from the ordinary CLI surface, and accidental lifecycle CLI calls may return a removed-command hint that points to the global MCP lifecycle tool. Deprecated MCP ordinary tools are not fallback paths.
+The CLI is the supported Agent entry for ordinary TaskSpec writes, reads, diagnostics, debug summaries, write-session requests, and result queries. MCP is restricted to editor open/close/modal-dismiss lifecycle in ordinary Agent workflows; lifecycle commands are removed from the ordinary CLI surface, and accidental lifecycle CLI calls may return a removed-command hint that points to the global MCP lifecycle tool. Deprecated MCP ordinary tools are not fallback paths.
 
 Examples:
 

@@ -64,6 +64,52 @@ test('projectToolResultForCli json keeps agent-facing data and artifact refs onl
   assert.equal((projected.tool_result.data as Record<string, unknown>)['passed'], false);
 });
 
+test('projectToolResultForCli ordinary output omits CLI wrapper and debug-only bridge payloads recursively', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'task.preview',
+    format: 'full',
+    tool_result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'projection_wrapper_contract',
+      trace_id: 'trace_projection_wrapper_contract',
+      status: 'completed',
+      modified: false,
+      data: {
+        schema: 'BlueprintHelper.CliResult.v1',
+        toolResult: {
+          schema: 'BlueprintHelper.ToolResult.v1',
+          trace_id: 'trace_nested_projection_wrapper_contract',
+          bridge_result: {
+            schema: 'BlueprintHelper.ToolResult.v1',
+          },
+          debug: {
+            bridge_result: {
+              schema: 'BlueprintHelper.ToolResult.v1',
+            },
+          },
+        },
+        visible: true,
+      },
+      debug: {
+        bridge_result: {
+          schema: 'BlueprintHelper.ToolResult.v1',
+        },
+      },
+    } as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+  const serialized = JSON.stringify(projected);
+
+  assert.equal(serialized.includes('BlueprintHelper.CliResult.v1'), false);
+  assert.equal(serialized.includes('BlueprintHelper.ToolResult.v1'), false);
+  assert.equal(serialized.includes('trace_projection_wrapper_contract'), false);
+  assert.equal(serialized.includes('trace_nested_projection_wrapper_contract'), false);
+  assert.equal(serialized.includes('bridge_result'), false);
+  assert.equal(serialized.includes('debug'), false);
+  assert.equal((projected.tool_result.data as Record<string, unknown>)['visible'], true);
+});
+
 test('projectToolResultForCli full omits policy-only execution fields by default', () => {
   const taskPlan = {
     execution_policy: { dry_run_mode: 'full', should_compile: true },
@@ -156,6 +202,13 @@ test('metrics markdown output data is compacted by result projection policy help
 });
 
 test('projectToolResultForCli expert produces debug artifact source with bridge_result', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'task.execute',
+    format: 'full',
+    expert: true,
+    tool_result: makePreviewBlockedResult(),
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
   const debugArtifact = buildCliDebugArtifactSource({
     command_kind: 'task.execute',
     format: 'full',
@@ -163,8 +216,85 @@ test('projectToolResultForCli expert produces debug artifact source with bridge_
     tool_result: makePreviewBlockedResult(),
     policy: GENERIC_RESULT_PROJECTION_POLICY,
   });
+  const serializedStdout = JSON.stringify(projected);
+  const artifactToolResult = debugArtifact?.tool_result as Record<string, unknown>;
 
+  assert.equal(serializedStdout.includes('bridge_result'), false);
+  assert.equal(serializedStdout.includes('BlueprintHelper.ToolResult.v1'), false);
+  assert.equal(debugArtifact?.schema, 'BlueprintHelper.CliDebugResult.v1');
+  assert.equal(artifactToolResult?.schema, 'BlueprintHelper.ToolResult.v1');
+  assert.equal(artifactToolResult?.trace_id, 'trace_projection');
+  assert.equal(artifactToolResult?.operation, 'preview_task');
   assert.equal((debugArtifact?.bridge_result as Record<string, unknown>)?.schema, 'BlueprintHelper.ToolResult.v1');
+});
+
+test('projectToolResultForCli keeps actionable error fields for agents', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'task.execute',
+    format: 'json',
+    tool_result: {
+      ok: false,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'projection_error_contract',
+      trace_id: 'trace_projection_error_contract',
+      status: 'failed',
+      modified: false,
+      error: {
+        code: 'target_blueprint_not_found',
+        stage: 'resolve_target',
+        message: 'Target Blueprint was not found.',
+        retryable: false,
+        rollback_result: 'not_needed',
+        safe_next_action: 'Run ReadContext asset discovery and retry with an existing asset path.',
+      },
+    } as unknown as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+  const error = projected.tool_result.error as Record<string, unknown>;
+
+  assert.equal(error['code'], 'target_blueprint_not_found');
+  assert.equal(error['stage'], 'resolve_target');
+  assert.equal(error['message'], 'Target Blueprint was not found.');
+  assert.equal(error['safe_next_action'], 'Run ReadContext asset discovery and retry with an existing asset path.');
+  assert.equal(JSON.stringify(projected).includes('trace_projection_error_contract'), false);
+});
+
+test('projectToolResultForCli keeps review baseline dirty compact error fields', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'task.preview',
+    format: 'json',
+    tool_result: {
+      ok: false,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'projection_dirty_baseline_contract',
+      trace_id: 'trace_projection_dirty_baseline_contract',
+      status: 'failed',
+      modified: false,
+      error: {
+        code: 'review_baseline_dirty_target_assets',
+        category: 'runtime_state_error',
+        stage: 'preflight',
+        message: 'Review baseline requires clean target assets before archive.',
+        retryable: false,
+        rollback_result: 'not_needed',
+        dirty_state: 'unknown_dirty_origin',
+        dirty_assets: ['/Game/BP_Dirty'],
+        safe_next_action: 'ask_user_to_inspect_dirty_assets_before_retry',
+        allowed_recovery_actions: ['user_resolve_then_retry'],
+        evidence_refs: ['review://evidence/compact'],
+      },
+    } as unknown as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+  const error = projected.tool_result.error as Record<string, unknown>;
+
+  assert.equal(error['code'], 'review_baseline_dirty_target_assets');
+  assert.equal(error['category'], 'runtime_state_error');
+  assert.equal(error['dirty_state'], 'unknown_dirty_origin');
+  assert.deepEqual(error['dirty_assets'], ['/Game/BP_Dirty']);
+  assert.equal(error['safe_next_action'], 'ask_user_to_inspect_dirty_assets_before_retry');
+  assert.deepEqual(error['allowed_recovery_actions'], ['user_resolve_then_retry']);
+  assert.deepEqual(error['evidence_refs'], ['review://evidence/compact']);
 });
 
 test('projectToolResultForCli preserves connectivity blocker issue summary', () => {

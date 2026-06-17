@@ -7,6 +7,9 @@
 struct BLUEPRINTHELPER_API FBlueprintHelperBridgeCommandDescriptor
 {
 	FString Command;
+	TArray<FString> CapabilityDescriptorIds;
+	TArray<FString> RuntimeAdapterIds;
+	TArray<FString> RoutingHandlerIds;
 	EBlueprintHelperBridgeRouteCluster RouteCluster = EBlueprintHelperBridgeRouteCluster::Unknown;
 	bool bRequiresGameThread = true;
 	bool bAllowsGraphWriteValidationPolicy = false;

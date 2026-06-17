@@ -2,6 +2,13 @@
 
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 
+bool FBlueprintHelperReviewStatusUtils::IsOpenReviewStatus(EBlueprintHelperReviewChangeStatus Status)
+{
+	return Status == EBlueprintHelperReviewChangeStatus::Pending
+		|| Status == EBlueprintHelperReviewChangeStatus::NeedsAction
+		|| Status == EBlueprintHelperReviewChangeStatus::RejectFailed;
+}
+
 bool FBlueprintHelperReviewStatusUtils::ReviewTargetMatches(
 	const FBlueprintHelperReviewAtomicTarget& Target,
 	const TArray<FString>& TargetKeys)

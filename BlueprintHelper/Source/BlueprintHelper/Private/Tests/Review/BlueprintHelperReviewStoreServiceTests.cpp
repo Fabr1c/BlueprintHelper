@@ -46,6 +46,7 @@
 #include "UI/Review/BlueprintHelperReviewPanelCommandService.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -149,6 +150,56 @@ public:
 		Target.AssetPath = AssetPath;
 		Change.AtomicTargets.Add(Target);
 		return Change;
+	}
+
+	static FString GetProjectionSurfaceKind(EBlueprintHelperReviewSurface Surface)
+	{
+		switch (Surface)
+		{
+		case EBlueprintHelperReviewSurface::Graph:
+			return TEXT("graph");
+		case EBlueprintHelperReviewSurface::Components:
+			return TEXT("components");
+		case EBlueprintHelperReviewSurface::MyBlueprint:
+			return TEXT("my_blueprint");
+		case EBlueprintHelperReviewSurface::Details:
+			return TEXT("details");
+		case EBlueprintHelperReviewSurface::UMGWidgetTree:
+			return TEXT("umg_widget_tree");
+		case EBlueprintHelperReviewSurface::DataTable:
+			return TEXT("data_table");
+		case EBlueprintHelperReviewSurface::DataAsset:
+			return TEXT("data_asset");
+		case EBlueprintHelperReviewSurface::Material:
+			return TEXT("material");
+		default:
+			return FString();
+		}
+	}
+
+	static TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> BuildSurfaceDiffModels(
+		const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& Items,
+		EBlueprintHelperReviewAssetKind AssetKind,
+		EBlueprintHelperReviewSurface Surface)
+	{
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> Models;
+		const FString AssetKindName = BlueprintHelperReviewAssetKindToString(AssetKind);
+		const FString SurfaceKindName = GetProjectionSurfaceKind(Surface);
+		if (SurfaceKindName.IsEmpty())
+		{
+			return Models;
+		}
+
+		const TSharedRef<FBlueprintHelperReviewSurfaceProjectionRegistry> Registry =
+			FBlueprintHelperReviewSurfaceProjectionRegistry::CreateDefault();
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : Items)
+		{
+			if (Item.IsValid())
+			{
+				Models.Append(Registry->ProjectVisibleChange(*Item, AssetKindName, SurfaceKindName));
+			}
+		}
+		return Models;
 	}
 
 	static FString MakeUniqueReviewArchiveId(const FString& Prefix)
@@ -2001,8 +2052,9 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	Change.AtomicTargets.Add(Target);
 
 	FBlueprintHelperReviewRejectOptions Options;
+	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewActionResult DirectResult =
-		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, &Options);
+		ActionService.RejectVisibleChange(Change, Options);
 	TestFalse(TEXT("legacy graph record without recoverable snapshot still needs action"), DirectResult.bSucceeded);
 	TestEqual(TEXT("legacy graph record without recoverable snapshot enters needs action"),
 		DirectResult.NewStatus,
@@ -2010,9 +2062,8 @@ bool FBlueprintHelperReviewRejectGraphTargetUsesSemanticHashGuardTest::RunTest(c
 	TestEqual(TEXT("semantic hash drift is diagnostic, not the blocking reason"),
 		DirectResult.Message,
 		FString(TEXT("missing_recoverable_snapshot")));
-	TestEqual(TEXT("semantic guard still records target key"),
-		DirectResult.HashGuardTargetKey,
-		Target.TargetKey);
+	TestTrue(TEXT("registry path does not synthesize legacy hash guard without current hash"),
+		DirectResult.HashGuardTargetKey.IsEmpty());
 	return true;
 }
 
@@ -2375,8 +2426,10 @@ bool FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest::RunTest(cons
 	Change.LatestEvidenceId = TEXT("tx_reject_semantic_mismatch");
 	Change.AtomicTargets.Add(Target);
 
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewRejectOptions Options;
 	const FBlueprintHelperReviewActionResult Result =
-		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
+		ActionService.RejectVisibleChange(Change, Options);
 	TestFalse(TEXT("missing recoverable snapshot blocks reject"), Result.bSucceeded);
 	TestEqual(TEXT("missing recoverable snapshot enters needs action"),
 		Result.NewStatus,
@@ -2384,9 +2437,8 @@ bool FBlueprintHelperReviewRejectBlocksWhenSemanticHashChangedTest::RunTest(cons
 	TestEqual(TEXT("semantic hash drift is diagnostic, not the blocking reason"),
 		Result.Message,
 		FString(TEXT("missing_recoverable_snapshot")));
-	TestEqual(TEXT("semantic guard still records target key"),
-		Result.HashGuardTargetKey,
-		Target.TargetKey);
+	TestTrue(TEXT("registry path does not synthesize legacy hash guard without current hash"),
+		Result.HashGuardTargetKey.IsEmpty());
 	return true;
 }
 
@@ -2517,8 +2569,10 @@ bool FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest::RunTest(const FSt
 	Change.LatestEvidenceId = TEXT("tx_legacy_hash");
 	Change.AtomicTargets.Add(Target);
 
+	FBlueprintHelperReviewActionService ActionService;
+	FBlueprintHelperReviewRejectOptions Options;
 	const FBlueprintHelperReviewActionResult Result =
-		FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(Change, nullptr);
+		ActionService.RejectVisibleChange(Change, Options);
 	TestFalse(TEXT("legacy hash record without recoverable snapshot is not auto-compatible"), Result.bSucceeded);
 	TestEqual(TEXT("legacy hash record enters needs action"),
 		Result.NewStatus,
@@ -2526,9 +2580,8 @@ bool FBlueprintHelperReviewOldLegacyHashRecordNeedsActionTest::RunTest(const FSt
 	TestEqual(TEXT("legacy hash drift is diagnostic, not the blocking reason"),
 		Result.Message,
 		FString(TEXT("missing_recoverable_snapshot")));
-	TestEqual(TEXT("legacy hash diagnostic records target key"),
-		Result.HashGuardTargetKey,
-		Target.TargetKey);
+	TestTrue(TEXT("registry path does not synthesize legacy hash guard without current hash"),
+		Result.HashGuardTargetKey.IsEmpty());
 	return true;
 }
 
@@ -2865,9 +2918,15 @@ bool FBlueprintHelperReviewPresenterOverlayBuildsDeterministicReviewListTest::Ru
 		TArray<FString> DebugMessages;
 		FBlueprintHelperReviewAssetContext Context;
 		Context.AssetKind = OverlayCase.AssetKind;
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+				Items,
+				Context.AssetKind,
+				OverlayCase.Surface);
 		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 		Args.AssetContext = &Context;
 		Args.ChangeItems = &Items;
+		Args.SurfaceDiffModels = &SurfaceDiffModels;
 		Args.SelectedChange = Items[0];
 		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 		{
@@ -3009,9 +3068,15 @@ bool FBlueprintHelperReviewPresenterOverlayHidesBuiltInPanelFallbackWithoutSlate
 		TArray<FString> DebugMessages;
 		FBlueprintHelperReviewAssetContext Context;
 		Context.AssetKind = OverlayCase.AssetKind;
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+				Items,
+				Context.AssetKind,
+				OverlayCase.Surface);
 		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 		Args.AssetContext = &Context;
 		Args.ChangeItems = &Items;
+		Args.SurfaceDiffModels = &SurfaceDiffModels;
 		Args.SelectedChange = Items[0];
 		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 		{
@@ -3147,9 +3212,15 @@ bool FBlueprintHelperReviewNonGraphPanelsDoNotUseAnchorOverlayTest::RunTest(cons
 		TArray<FString> DebugMessages;
 		FBlueprintHelperReviewAssetContext Context;
 		Context.AssetKind = OverlayCase.AssetKind;
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+				Items,
+				Context.AssetKind,
+				OverlayCase.Surface);
 		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 		Args.AssetContext = &Context;
 		Args.ChangeItems = &Items;
+		Args.SurfaceDiffModels = &SurfaceDiffModels;
 		Args.SelectedChange = Items[0];
 		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 		{
@@ -3231,9 +3302,15 @@ bool FBlueprintHelperReviewMissingRowLogsRowHighlightPendingTest::RunTest(const 
 	TArray<FString> DebugMessages;
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 	{
@@ -3299,9 +3376,15 @@ bool FBlueprintHelperReviewDebugDedupesRepeatedGeometryPendingMessagesTest::RunT
 	TArray<FString> DebugMessages;
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 	{
@@ -3367,9 +3450,15 @@ bool FBlueprintHelperReviewRowHighlightSkipsUnchangedStateBroadcastTest::RunTest
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -3474,9 +3563,15 @@ bool FBlueprintHelperReviewPresenterOverlayUsesStableSlateRowGeometryTest::RunTe
 		TArray<FString> DebugMessages;
 		FBlueprintHelperReviewAssetContext Context;
 		Context.AssetKind = OverlayCase.AssetKind;
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+			FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+				Items,
+				Context.AssetKind,
+				OverlayCase.Surface);
 		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 		Args.AssetContext = &Context;
 		Args.ChangeItems = &Items;
+		Args.SurfaceDiffModels = &SurfaceDiffModels;
 		Args.SelectedChange = Items[0];
 		Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 		{
@@ -3634,9 +3729,15 @@ bool FBlueprintHelperReviewSelectedRowShowsAcceptRejectActionsTest::RunTest(cons
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = TEXT("/Game/BlueprintHelper/Smoke/ReviewAsset");
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -3700,11 +3801,18 @@ bool FBlueprintHelperReviewRowActionsRemainSelectedChangeOnlyTest::RunTest(const
 	Context.AssetPath = AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
 
-	auto BuildForSelected = [&Context, &Items](const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange)
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
+
+	auto BuildForSelected = [&Context, &Items, &SurfaceDiffModels](const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange)
 	{
 		FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 		Args.AssetContext = &Context;
 		Args.ChangeItems = &Items;
+		Args.SurfaceDiffModels = &SurfaceDiffModels;
 		Args.SelectedChange = SelectedChange;
 		Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 		{
@@ -3763,9 +3871,15 @@ bool FBlueprintHelperReviewEmptySearchTextDoesNotMatchAnyReviewTargetTest::RunTe
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = Change.AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -3810,9 +3924,15 @@ bool FBlueprintHelperReviewSectionRowsNeverHighlightFromEmptySearchTextTest::Run
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -3871,9 +3991,15 @@ bool FBlueprintHelperReviewAssetRootSelectionHighlightsSameAssetRowsTest::RunTes
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::MyBlueprint);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -3937,9 +4063,15 @@ bool FBlueprintHelperReviewWidgetTreeAssetRootSelectionHighlightsWidgetRowsTest:
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = AssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::WidgetBlueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::UMGWidgetTree);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -4412,9 +4544,15 @@ bool FBlueprintHelperReviewComponentsRowHighlightUsesAssetContextScopeTest::RunT
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetPath = ContextAssetPath;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::Components);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.GetChangeColor = [](EBlueprintHelperReviewChangeKind)
 	{
@@ -4475,9 +4613,15 @@ bool FBlueprintHelperReviewPresenterOverlayShowsOnlyReadySlateRowGeometryTest::R
 	TArray<FString> DebugMessages;
 	FBlueprintHelperReviewAssetContext Context;
 	Context.AssetKind = EBlueprintHelperReviewAssetKind::Blueprint;
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::BuildSurfaceDiffModels(
+			Items,
+			Context.AssetKind,
+			EBlueprintHelperReviewSurface::Components);
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	Args.AssetContext = &Context;
 	Args.ChangeItems = &Items;
+	Args.SurfaceDiffModels = &SurfaceDiffModels;
 	Args.SelectedChange = Items[0];
 	Args.AddDebugMessage = [&DebugMessages](const FString& Message)
 	{
@@ -7641,11 +7785,11 @@ bool FBlueprintHelperReviewAssetRootRejectUsesLifecycleCascadeTest::RunTest(cons
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest,
-	"BlueprintHelper.Review.Action.RejectLifecycleRootFailureKeepsChildren",
+	FBlueprintHelperReviewRejectLifecycleRootHashDriftStillCascadesTest,
+	"BlueprintHelper.Review.Action.RejectLifecycleRootHashDriftStillCascades",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(const FString& Parameters)
+bool FBlueprintHelperReviewRejectLifecycleRootHashDriftStillCascadesTest::RunTest(const FString& Parameters)
 {
 	FBlueprintHelperReviewStoreService Store;
 	const FString ArchiveSessionId =
@@ -7724,26 +7868,26 @@ bool FBlueprintHelperReviewRejectLifecycleRootFailureKeepsChildrenTest::RunTest(
 	FBlueprintHelperReviewActionService ActionService;
 	const FBlueprintHelperReviewCascadeActionResult Result =
 		ActionService.RejectLifecycleRootVisibleChange(*Root, PendingChanges, Options);
-	TestFalse(TEXT("root reject failure reports non-success"), Result.RootResult.bSucceeded);
-	TestFalse(TEXT("failed root reject removes no children"), Result.bChildrenRemoved);
-	TestEqual(TEXT("no child ids are returned after root failure"), Result.RemovedChildChangeIds.Num(), 0);
+	TestTrue(TEXT("hash drift does not block lifecycle root reject"), Result.RootResult.bSucceeded);
+	TestTrue(TEXT("successful root reject removes children"), Result.bChildrenRemoved);
+	TestEqual(TEXT("one child id is returned after successful root reject"), Result.RemovedChildChangeIds.Num(), 1);
 
 	FBlueprintHelperReviewRecord Loaded;
 	FString LoadError;
-	TestTrue(TEXT("failed cascade record reloads"),
+	TestFalse(TEXT("successful cascade deletes source record"),
 		Store.LoadReviewRecordById(Records[0].ReviewRecordId, Loaded, LoadError));
 	const FBlueprintHelperReviewVisibleChange* LoadedChild = Loaded.VisibleChanges.FindByPredicate(
 		[&ChildChangeId](const FBlueprintHelperReviewVisibleChange& Change)
 		{
 			return Change.ChangeId == ChildChangeId;
 		});
-	TestNotNull(TEXT("loaded child exists after root failure"), LoadedChild);
+	TestNull(TEXT("loaded child is removed after successful root cascade"), LoadedChild);
 	if (LoadedChild)
 	{
-		TestEqual(TEXT("child remains pending after root failure"),
+		TestEqual(TEXT("child remains pending only when cascade fails"),
 			LoadedChild->Status,
 			EBlueprintHelperReviewChangeStatus::Pending);
-		TestTrue(TEXT("child has no cascade reason after root failure"),
+		TestTrue(TEXT("child has no cascade reason only when cascade fails"),
 			LoadedChild->NeedsActionReason.IsEmpty());
 	}
 
@@ -7939,7 +8083,7 @@ bool FBlueprintHelperReviewRejectNeedsActionCreatesDebugCaseTest::RunTest(const 
 			FString(TEXT("review_reject_failed")));
 	}
 	TestTrue(TEXT("debug case message carries reject reason"),
-		DebugCase.Error.Message.Contains(TEXT("snapshot_restore_unsupported_target_kind")));
+		DebugCase.Error.Message.Contains(TEXT("restore_adapter_unavailable:unsupported_review_target")));
 	TestFalse(TEXT("debug case message does not treat hash drift as blocking"),
 		DebugCase.Error.Message.Contains(TEXT("current_state_changed")));
 	IFileManager::Get().Delete(*FBlueprintHelperDebugCaseStoreService::GetCasePath(Loaded.DebugCaseIds[0]), false, true);

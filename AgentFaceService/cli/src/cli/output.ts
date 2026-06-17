@@ -17,7 +17,9 @@ import {
   type CliCommandOutputDataPolicyId,
   type CliCommandRunIdPolicyId,
   type CliCommandStatusPolicyId,
+  type DescriptorDrivenRoutePlan,
   type ResultProjectionPolicy,
+  type RuntimeCapabilityState,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
 import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
@@ -61,6 +63,10 @@ export interface CliCommand {
   manifestLookupId?: string;
   metricsToolName?: string;
   metricsLookupId?: string;
+  capabilityDescriptorIds?: string[];
+  descriptorRoutePlans?: DescriptorDrivenRoutePlan[];
+  runtimeCapabilityState?: RuntimeCapabilityState;
+  runtimeAdapterIds?: string[];
   inputIoKind?: CliCommandInputIoKind;
   toolName?: string;
   file?: string;
@@ -136,6 +142,7 @@ export function buildCliSummary(input: {
   const status = mapStatus(policies.statusPolicyId, input.toolResult, data);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
   const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
+  const errorRecord = asRecord(input.toolResult.error);
   const previewId = policies.runIdPolicyId === 'task.preview_run_id'
     ? readString(extra['previewId'])
       ?? readString(data?.['preview_id'])
@@ -170,6 +177,16 @@ export function buildCliSummary(input: {
     artifacts: input.artifactRefs,
     error_code: input.toolResult.ok ? blockedIssueCode : input.toolResult.error?.code,
     message: input.toolResult.ok ? blockedIssueMessage : input.toolResult.error?.message,
+    category: readString(errorRecord?.['category']),
+    stage: readString(errorRecord?.['stage']),
+    dirty_state: readString(errorRecord?.['dirty_state']),
+    dirty_assets: arrayOfStrings(errorRecord?.['dirty_assets']).length > 0
+      ? arrayOfStrings(errorRecord?.['dirty_assets'])
+      : undefined,
+    safe_next_action: readString(errorRecord?.['safe_next_action']),
+    allowed_recovery_actions: arrayOfStrings(errorRecord?.['allowed_recovery_actions']).length > 0
+      ? arrayOfStrings(errorRecord?.['allowed_recovery_actions'])
+      : undefined,
     violations: violations.length > 0 ? violations : undefined,
   });
 }

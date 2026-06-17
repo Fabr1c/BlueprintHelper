@@ -40,6 +40,14 @@ test('routes task preview through descriptor required-option mapping', () => {
   assert.equal(routed.command.runIdPolicyId, 'task.preview_run_id');
   assert.equal(routed.command.metricsToolName, 'blueprinthelper_preview_task');
   assert.equal(routed.command.metricsLookupId, 'blueprint.plan.taskspec.preview');
+  const capabilityDescriptorIds = routed.command.capabilityDescriptorIds;
+  assert.ok(Array.isArray(capabilityDescriptorIds));
+  assert.equal(capabilityDescriptorIds.includes('graphwrite.execute'), true);
+  assert.equal(capabilityDescriptorIds.includes('asset_factory.create'), true);
+  assert.equal(capabilityDescriptorIds.includes('data_table.rows.edit'), true);
+  assert.equal(capabilityDescriptorIds.includes('material_graph.edit'), true);
+  assert.equal(capabilityDescriptorIds.includes('struct.fields.edit'), false);
+  assert.equal(capabilityDescriptorIds.includes('material_instance.edit'), false);
   assert.equal(routed.command.inputIoKind, 'task_file');
   assert.equal(routed.command.file, 'task.json');
   assert.equal(routed.command.compileOnly, true);

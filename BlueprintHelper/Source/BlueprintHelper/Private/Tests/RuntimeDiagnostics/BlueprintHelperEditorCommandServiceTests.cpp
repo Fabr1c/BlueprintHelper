@@ -35,6 +35,28 @@ bool FBlueprintHelperEditorCommandServiceDiscardDirtyPackagesTest::RunTest(const
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperEditorCommandServiceDismissDialogsNoModalTest,
+	"BlueprintHelper.EditorCommand.DismissEditorDialogs.NoModalReturnsStructuredStatus",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperEditorCommandServiceDismissDialogsNoModalTest::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperEditorCommandService EditorCommandService;
+	const FBlueprintHelperCommandResult Result = EditorCommandService.DismissEditorDialogs();
+
+	TestTrue(TEXT("dismiss command succeeds when no modal is active"), Result.bSuccess);
+	TestTrue(TEXT("dismiss result includes modal dialog data"), Result.Data.IsValid());
+	if (Result.Data.IsValid())
+	{
+		TestFalse(TEXT("no active modal was present"), Result.Data->GetBoolField(TEXT("had_active_modal")));
+		TestFalse(TEXT("no modal remains active"), Result.Data->GetBoolField(TEXT("has_remaining_modal")));
+		TestEqual(TEXT("no modal windows were dismissed"), static_cast<int32>(Result.Data->GetNumberField(TEXT("dismissed_modal_windows"))), 0);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperSourceControlCheckedOutOtherHintTest,
 	"BlueprintHelper.SourceControl.Classify.CheckedOutOtherReturnsAgentHint",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -3,12 +3,20 @@
   "name": "__REQUIRED_VARIABLE_NAME__",
   "properties": [
     {
-      "property_path": "metadata.DisplayName",
-      "value": "__OPTIONAL_DISPLAY_NAME__"
+      "property_path": "category",
+      "value": "__OPTIONAL_CATEGORY__"
     },
     {
-      "property_path": "default_value",
-      "value": "__OPTIONAL_DEFAULT_VALUE__"
+      "property_path": "tooltip",
+      "value": "__OPTIONAL_TOOLTIP__"
+    },
+    {
+      "property_path": "instance_editable",
+      "value": "__OPTIONAL_BOOL__"
+    },
+    {
+      "property_path": "expose_on_spawn",
+      "value": "__OPTIONAL_BOOL__"
     }
   ]
 }

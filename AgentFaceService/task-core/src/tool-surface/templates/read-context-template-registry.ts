@@ -335,7 +335,7 @@ function active(
     read_spec: readSpec,
     required_fields: requiredFields,
     optional_fields: optionalFields ?? [],
-    context_evidence: contextEvidence ?? defaultContextEvidence(data.format),
+    context_evidence: contextEvidence ?? defaultContextEvidence(data),
     recommended_invocation: 'bh context read --file <read-spec.json> --format json',
     allowed_tools: ['bh tools read-templates compose', 'bh context read'],
     stop_conditions: stopConditions ?? [
@@ -413,7 +413,7 @@ function composeDescriptorReadSpec(data: ActiveRouteData): ReadContextRouteDescr
     read_type: data.read_type,
     target,
   };
-  if (data.format) {
+  if (shouldEmitReadSpecView(data)) {
     readSpec.view = {
       format: data.format,
     };
@@ -424,14 +424,38 @@ function composeDescriptorReadSpec(data: ActiveRouteData): ReadContextRouteDescr
   return readSpec;
 }
 
-function defaultContextEvidence(format: unknown): Record<string, string> {
+function shouldEmitReadSpecView(data: Pick<ActiveRouteData, 'read_type' | 'target_type' | 'format'>): boolean {
+  const format = data.format;
+  if (format === undefined) {
+    return false;
+  }
+  if (data.read_type === 'blueprint_logic') {
+    return format === 'logic_flow'
+      || format === 'logic_json'
+      || format === 'logic_json_delta_after_logic_flow';
+  }
+  if (data.read_type === 'material_graph_context') {
+    return format === 'logic_flow' || format === 'logic_json';
+  }
+  if (data.read_type === 'widget_context' && data.target_type === 'blueprint') {
+    return format === 'tree_json' || format === 'logic_flow';
+  }
+  return false;
+}
+
+function defaultContextEvidence(data: Pick<ActiveRouteData, 'read_type' | 'target_type' | 'format'>): Record<string, string> {
   const evidence: Record<string, string> = {
     'target.target_type.allowed_values': 'blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph',
   };
+  const format = data.format;
   if (typeof format === 'string') {
-    evidence['view.format.allowed_values'] = format === 'logic_flow' || format === 'logic_json' || format === 'logic_json_delta_after_logic_flow'
-      ? 'logic_flow | logic_json | logic_json_delta_after_logic_flow'
-      : format;
+    if (shouldEmitReadSpecView(data)) {
+      evidence['view.format.allowed_values'] = format === 'logic_flow' || format === 'logic_json' || format === 'logic_json_delta_after_logic_flow'
+        ? 'logic_flow | logic_json | logic_json_delta_after_logic_flow'
+        : format;
+    } else {
+      evidence['output.format'] = format;
+    }
   }
   evidence['view.detail.allowed_values'] = 'brief | normal | full | debug';
   return evidence;

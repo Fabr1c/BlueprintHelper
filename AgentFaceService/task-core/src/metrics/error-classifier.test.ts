@@ -216,6 +216,24 @@ test('classifyMetricsError infers runtime state errors from top-level status', (
   });
 });
 
+test('classifyMetricsError maps review baseline dirty to runtime state error', () => {
+  const result = classifyMetricsError({
+    ok: false,
+    error: {
+      code: 'review_baseline_dirty_target_assets',
+      category: 'runtime_state_error',
+      stage: 'baseline_preflight',
+      dirty_state: 'dirty_with_open_review',
+      safe_next_action: 'review.reject_or_accept_pending_changes_then_retry',
+    },
+  });
+
+  assert.deepEqual(result, {
+    category: 'runtime_state_error',
+    code: 'review_baseline_dirty_target_assets',
+  });
+});
+
 test('classifyMetricsError infers capability boundary errors from top-level issue_code', () => {
   const result = classifyMetricsError({
     issue_code: 'unsupported_scope_policy',

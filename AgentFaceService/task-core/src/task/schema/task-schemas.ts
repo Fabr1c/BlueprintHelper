@@ -8,6 +8,7 @@ import {
   getGraphWriteRequiredFieldByStrategy,
 } from '../compiler/graphwrite/graphwrite-route-registry.js';
 import { UMG_WIDGET_OPERATION_MANIFEST } from '../../tool-surface/templates/generated/umg-widget-operation-manifest.generated.js';
+import { MaterialInstanceBehaviorSchema } from './material-instance-task-schema.js';
 
 export { GRAPHWRITE_CAPABILITY_CONTRACT } from './graphwrite-capability-contract.js';
 export {
@@ -1234,6 +1235,15 @@ export const MaterialGraphTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.exte
   }
 });
 
+export const MaterialInstanceTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+  task_type: z.literal('edit_material_instance'),
+  target: z.object({
+    asset_path: z.string().min(1),
+    target_type: z.enum(['asset', 'material_instance']).optional().default('material_instance'),
+  }).passthrough(),
+  behavior: MaterialInstanceBehaviorSchema,
+}).passthrough();
+
 const GraphWriteAutoSearchPolicySchema = z.object({
   mode: z.enum(['off', 'on_preview_resolution_failure']).optional().default('off'),
   max_candidates_per_statement: z.number().int().min(1).max(10).optional().default(3),
@@ -1750,6 +1760,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = TaskSpecBas
 export const TaskSpecSchema: z.ZodTypeAny = z.union([
   CompositeBlueprintFeatureTaskSpecSchema,
   MaterialGraphTaskSpecSchema,
+  MaterialInstanceTaskSpecSchema,
   GraphWriteTaskSpecSchema,
   BlueprintVariableTaskSpecSchema,
   AssetFactoryTaskSpecSchema,
@@ -2001,6 +2012,11 @@ export const ObjectPropertyTaskPlanStepSchema = structuredCapabilityStepSchema(
   ['property_edit'],
 );
 
+export const MaterialInstanceTaskPlanStepSchema = structuredCapabilityStepSchema(
+  'material_instance',
+  ['material_instance_edit'],
+);
+
 export const TaskPlanStepSchema = z.union([
   GraphWriteTaskPlanStepSchema,
   BlueprintVariableTaskPlanStepSchema,
@@ -2011,6 +2027,7 @@ export const TaskPlanStepSchema = z.union([
   UMGWidgetTaskPlanStepSchema,
   DataTableTaskPlanStepSchema,
   ObjectPropertyTaskPlanStepSchema,
+  MaterialInstanceTaskPlanStepSchema,
 ]);
 
 export const TaskPlanSchema = z.object({
@@ -2084,6 +2101,7 @@ export type GraphWriteStructuredIrTaskPlanStep = z.infer<typeof GraphWriteStruct
 export type GraphWriteLoweringAdapterTaskPlanStep = z.infer<typeof GraphWriteLoweringAdapterTaskPlanStepSchema>;
 export type GraphWriteTaskPlanStep = z.infer<typeof GraphWriteTaskPlanStepSchema>;
 export type MaterialGraphTaskSpec = z.infer<typeof MaterialGraphTaskSpecSchema>;
+export type MaterialInstanceTaskSpec = z.infer<typeof MaterialInstanceTaskSpecSchema>;
 export type BlueprintVariableTaskPlanStep = z.infer<typeof BlueprintVariableTaskPlanStepSchema>;
 export type AssetFactoryTaskPlanStep = z.infer<typeof AssetFactoryTaskPlanStepSchema>;
 export type BlueprintComponentTaskPlanStep = z.infer<typeof BlueprintComponentTaskPlanStepSchema>;
@@ -2092,6 +2110,7 @@ export type BlueprintSignatureTaskPlanStep = z.infer<typeof BlueprintSignatureTa
 export type UMGWidgetTaskPlanStep = z.infer<typeof UMGWidgetTaskPlanStepSchema>;
 export type DataTableTaskPlanStep = z.infer<typeof DataTableTaskPlanStepSchema>;
 export type ObjectPropertyTaskPlanStep = z.infer<typeof ObjectPropertyTaskPlanStepSchema>;
+export type MaterialInstanceTaskPlanStep = z.infer<typeof MaterialInstanceTaskPlanStepSchema>;
 export type BlueprintSignatureTaskSpec = z.infer<typeof BlueprintSignatureTaskSpecSchema>;
 export type TaskPlanStep = z.infer<typeof TaskPlanStepSchema>;
 export type TaskPlan = z.infer<typeof TaskPlanSchema>;

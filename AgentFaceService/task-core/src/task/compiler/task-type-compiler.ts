@@ -11,6 +11,7 @@ export type TaskTypeCompilerId =
   | 'data_table'
   | 'graphwrite'
   | 'material_graph'
+  | 'material_instance'
   | 'composite_feature';
 
 export interface TaskTypeCompileContext {

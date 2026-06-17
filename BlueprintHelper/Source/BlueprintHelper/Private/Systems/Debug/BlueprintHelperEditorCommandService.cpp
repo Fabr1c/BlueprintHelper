@@ -3,7 +3,7 @@
 #include "Systems/Debug/BlueprintHelperEditorCommandService.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "Containers/Ticker.h"
+#include "Dom/JsonValue.h"
 #include "Editor.h"
 #include "Engine/Blueprint.h"
 #include "FileHelpers.h"
@@ -13,12 +13,36 @@
 #include "PlayInEditorDataTypes.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/Editor/BlueprintHelperEditorCloseSafetyGate.h"
+#include "Systems/Debug/BlueprintHelperEditorCloseModalCoordinator.h"
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "UObject/UObjectIterator.h"
 
 #if BLUEPRINTHELPER_UE_HAS_STRING_OUTPUT_DEVICE
 #include "Misc/StringOutputDevice.h"
 #endif
+
+static TSharedRef<FJsonObject> BlueprintHelperBuildModalDismissJson(
+	const FString& RequestId,
+	const FBlueprintHelperEditorModalDismissResult& ModalDismissResult)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	Json->SetStringField(TEXT("request_id"), RequestId);
+	Json->SetBoolField(TEXT("had_active_modal"), ModalDismissResult.bHadActiveModal);
+	Json->SetNumberField(TEXT("dismissed_modal_windows"), ModalDismissResult.DismissedCount);
+	Json->SetBoolField(TEXT("has_remaining_modal"), ModalDismissResult.bHasRemainingModal);
+	if (ModalDismissResult.bHasRemainingModal)
+	{
+		Json->SetStringField(TEXT("remaining_modal_title"), ModalDismissResult.RemainingModalTitle);
+	}
+
+	TArray<TSharedPtr<FJsonValue>> TitleValues;
+	for (const FString& Title : ModalDismissResult.DismissedModalTitles)
+	{
+		TitleValues.Add(MakeShared<FJsonValueString>(Title));
+	}
+	Json->SetArrayField(TEXT("dismissed_modal_titles"), TitleValues);
+	return Json;
+}
 
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::Undo() const
 {
@@ -252,6 +276,29 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::ExecConsoleC
 	return Result;
 }
 
+FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::DismissEditorDialogs() const
+{
+	FBlueprintHelperCommandResult Result;
+
+	const FString DismissRequestId = TEXT("dismiss_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FBlueprintHelperEditorModalDismissResult ModalDismissResult =
+		FBlueprintHelperEditorCloseModalCoordinator::Get().DismissActiveModalWindowsFromGameThread(DismissRequestId);
+
+	Result.Data = BlueprintHelperBuildModalDismissJson(DismissRequestId, ModalDismissResult);
+	if (ModalDismissResult.bHasRemainingModal)
+	{
+		Result.ErrorMessage = TEXT("An editor modal dialog is still active after dismiss was requested.");
+		Result.Message = TEXT("Close the remaining modal dialog manually, then retry the lifecycle command.");
+		return Result;
+	}
+
+	Result.bSuccess = true;
+	Result.Message = ModalDismissResult.DismissedCount > 0
+		? FString::Printf(TEXT("Dismissed %d editor modal dialog(s)."), ModalDismissResult.DismissedCount)
+		: TEXT("No editor modal dialog was active.");
+	return Result;
+}
+
 FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(bool bSaveAll) const
 {
 	FBlueprintHelperCommandResult Result;
@@ -311,28 +358,42 @@ FBlueprintHelperCommandResult FBlueprintHelperEditorCommandService::CloseEditor(
 	// their normal CanCloseManager teardown before the engine exit request.
 	// QUIT_EDITOR goes straight to UUnrealEdEngine::CloseEditor and can bypass
 	// enough tab teardown to trip BlueprintEditor PreviewScene assertions.
-	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([bSaveAll](float)
+	if (!bSaveAll)
 	{
-		if (!bSaveAll)
+		const int32 DiscardedPackageCount = FBlueprintHelperEditorCommandService::DiscardAllDirtyPackagesForClose();
+		if (DiscardedPackageCount > 0)
 		{
-			const int32 DiscardedPackageCount = FBlueprintHelperEditorCommandService::DiscardAllDirtyPackagesForClose();
-			if (DiscardedPackageCount > 0)
-			{
-				UE_LOG(LogTemp, Display, TEXT("[BlueprintHelper] CloseEditor: discarded %d dirty package(s) before no-save shutdown."), DiscardedPackageCount);
-			}
+			UE_LOG(LogTemp, Display, TEXT("[BlueprintHelper] CloseEditor: discarded %d dirty package(s) before no-save shutdown."), DiscardedPackageCount);
 		}
+	}
 
-		if (GEngine)
+	const FString CloseRequestId = TEXT("close_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FBlueprintHelperEditorModalDismissResult ModalDismissResult =
+		FBlueprintHelperEditorCloseModalCoordinator::Get().DismissActiveModalWindowsFromGameThread(CloseRequestId);
+	if (ModalDismissResult.DismissedCount > 0 || ModalDismissResult.bHadActiveModal || ModalDismissResult.bHasRemainingModal)
+	{
+		if (!Result.Data.IsValid())
 		{
-			GEngine->DeferredCommands.AddUnique(TEXT("CLOSE_SLATE_MAINFRAME"));
+			Result.Data = MakeShared<FJsonObject>();
 		}
-		return false;
-	}), 0.75f);
+		Result.Data->SetObjectField(TEXT("modal_dialogs"), BlueprintHelperBuildModalDismissJson(CloseRequestId, ModalDismissResult));
+	}
+	if (ModalDismissResult.bHasRemainingModal)
+	{
+		Result.ErrorMessage = TEXT("Editor shutdown was not requested because a modal dialog is still active.");
+		Result.Message = TEXT("Call blueprint_dismiss_editor_dialogs while Bridge is responsive, call blueprint_close_editor_dialogs if the modal blocks Bridge, or close the modal dialog manually, then retry blueprint_close_editor.");
+		return Result;
+	}
+
+	if (GEngine)
+	{
+		GEngine->DeferredCommands.AddUnique(TEXT("CLOSE_SLATE_MAINFRAME"));
+	}
 
 	Result.bSuccess = true;
 	Result.Message = bSaveAll
-		? TEXT("Saved dirty packages and scheduled delayed editor shutdown.")
-		: TEXT("Scheduled delayed editor shutdown and will discard dirty packages without saving.");
+		? TEXT("Saved dirty packages and requested editor shutdown.")
+		: TEXT("Requested editor shutdown and discarded dirty packages without saving.");
 	return Result;
 }
 

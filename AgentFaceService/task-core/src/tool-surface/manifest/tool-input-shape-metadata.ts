@@ -1,4 +1,5 @@
 import type { ToolInputShapeId } from './tool-command-manifest.js';
+import { getReadContextRouteDescriptor } from '../templates/read-context-template-registry.js';
 
 export const EMPTY_OBJECT_INPUT_NOTE = 'No parameters. Use the empty-object template as-is. Template content: {}.';
 
@@ -39,7 +40,7 @@ export function inferInputShapesFromTemplateIds(input: {
 			shapes.add('empty_object');
 			continue;
 		}
-		if (templateId.startsWith('read_context_')) {
+		if (templateId.startsWith('read_context_') || getReadContextRouteDescriptor(templateId)?.status === 'active') {
 			shapes.add('readspec');
 			continue;
 		}

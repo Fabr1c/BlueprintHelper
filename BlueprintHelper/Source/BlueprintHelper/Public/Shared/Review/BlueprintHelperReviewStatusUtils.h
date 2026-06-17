@@ -8,6 +8,8 @@
 class BLUEPRINTHELPER_API FBlueprintHelperReviewStatusUtils
 {
 public:
+	static bool IsOpenReviewStatus(EBlueprintHelperReviewChangeStatus Status);
+
 	static bool ReviewTargetMatches(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		const TArray<FString>& TargetKeys);

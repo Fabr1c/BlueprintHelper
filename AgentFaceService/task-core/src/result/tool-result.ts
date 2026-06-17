@@ -166,6 +166,13 @@ export interface ToolResultError {
   message: string;
   retryable: boolean;
   rollback_result: RollbackResult;
+  category?: string;
+  safe_next_action?: string;
+  dirty_state?: string;
+  dirty_assets?: string[];
+  allowed_recovery_actions?: string[];
+  risky_recovery_actions?: string[];
+  evidence_refs?: string[];
   field?: string;
   expected?: string;
   actual?: string;

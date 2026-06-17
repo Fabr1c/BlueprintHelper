@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__blueprint_helper__blueprint_open_editor|mcp__blueprint_helper__blueprint_close_editor|mcp__blueprint_helper__blueprint_developer_exec_console_command",
+        "matcher": "mcp__blueprint_helper__blueprint_open_editor|mcp__blueprint_helper__blueprint_close_editor|mcp__blueprint_helper__blueprint_dismiss_editor_dialogs|mcp__blueprint_helper__blueprint_close_editor_dialogs|mcp__blueprint_helper__blueprint_developer_exec_console_command",
         "hooks": [
           {
             "type": "command",

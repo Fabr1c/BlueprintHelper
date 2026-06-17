@@ -6,6 +6,8 @@
 #include "Misc/DateTime.h"
 #include "Styling/AppStyle.h"
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
+#include "UI/Review/BlueprintHelperReviewDebugFocusTraversalCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewDebugPresenter.h"
 #include "UI/Review/BlueprintHelperReviewDebugText.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -148,9 +150,10 @@ FReply SBlueprintHelperReviewPanel::OnLoadDebugBundle()
 		DebugBundlePathTextBox->SetText(FText::FromString(DebugBundlePath));
 	}
 
-	FString BundleText;
 	FString Error;
-	if (!FBlueprintHelperReviewDebugBundleService::LoadBundleText(DebugBundlePath, BundleText, &Error))
+	FBlueprintHelperReviewDebugPresenter DebugPresenter;
+	FBlueprintHelperReviewDebugTimelineModel TimelineModel;
+	if (!DebugPresenter.LoadBundle(DebugBundlePath, TimelineModel, Error))
 	{
 		AddDebugMessage(FString::Printf(TEXT("DebugBundle load failed: %s"), *Error));
 		return FReply::Handled();
@@ -162,8 +165,22 @@ FReply SBlueprintHelperReviewPanel::OnLoadDebugBundle()
 		BundleSummary = FString::Printf(TEXT("DebugBundle summary failed: %s"), *Error);
 	}
 
+	TArray<FString> TimelineLines;
+	for (const FBlueprintHelperReviewDebugEventModel& Event : TimelineModel.Events)
+	{
+		TimelineLines.Add(FString::Printf(
+			TEXT("[%s] %s review=%s asset=%s target=%s result=%s %s"),
+			*Event.Timestamp,
+			*Event.EventType,
+			*Event.ReviewEventId,
+			*Event.AssetPath,
+			*Event.TargetKey,
+			*Event.Result,
+			*Event.Message));
+	}
+
 	DebugMessages.Insert(BundleSummary, 0);
-	DebugMessages.Insert(BundleText, 0);
+	DebugMessages.Insert(FBlueprintHelperReviewDebugText::BuildCopyableText(TimelineLines), 0);
 	if (DebugMessageTextBox.IsValid())
 	{
 		DebugMessageTextBox->SetText(GetDebugMessagesText());
@@ -175,133 +192,88 @@ FReply SBlueprintHelperReviewPanel::OnLoadDebugBundle()
 FReply SBlueprintHelperReviewPanel::OnCaptureFocusDebugBundle()
 {
 	EnsureDebugBundleSession();
-	if (bDebugFocusTraversalActive)
-	{
-		AddDebugMessage(TEXT("Debug focus traversal is already running."));
-		return FReply::Handled();
-	}
-
-	DebugFocusTraversalItems.Reset();
-	const FString CurrentAssetPath = ReviewAssetContext.AssetPath;
-	for (const FReviewChangeItem& Item : ChangeItems)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		if (ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
-			&& !CurrentAssetPath.IsEmpty()
-			&& Item->AssetPath != CurrentAssetPath)
-		{
-			continue;
-		}
-		DebugFocusTraversalItems.Add(Item);
-	}
-	if (DebugFocusTraversalItems.Num() == 0)
-	{
-		for (const FReviewChangeItem& Item : ChangeItems)
-		{
-			if (Item.IsValid())
-			{
-				DebugFocusTraversalItems.Add(Item);
-			}
-		}
-	}
-	if (DebugFocusTraversalItems.Num() == 0)
-	{
-		AddDebugMessage(TEXT("Debug focus traversal skipped: no final change rows available."));
-		return FReply::Handled();
-	}
-
-	DebugFocusTraversalIndex = 0;
-	bDebugFocusTraversalAwaitingGeometry = false;
-	bDebugFocusTraversalActive = true;
-	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
-		DebugBundleSessionId,
-		TEXT("start"),
-		0,
-		DebugFocusTraversalItems.Num(),
-		TSharedPtr<FBlueprintHelperReviewVisibleChange>(),
-		CurrentAssetPath));
-	AddDebugMessage(FString::Printf(
-		TEXT("Debug focus traversal started: %d rows."),
-		DebugFocusTraversalItems.Num()));
+	ApplyDebugFocusTraversalStep(DebugFocusTraversalCoordinator.Start(
+		ChangeItems,
+		ReviewAssetContext.AssetPath,
+		ReviewPanelSettings.bOverlayFilterCurrentAssetOnly));
 	AdvanceDebugFocusTraversal();
 	return FReply::Handled();
 }
 
 void SBlueprintHelperReviewPanel::AdvanceDebugFocusTraversal()
 {
-	if (!bDebugFocusTraversalActive)
-	{
-		return;
-	}
-
-	if (!DebugFocusTraversalItems.IsValidIndex(DebugFocusTraversalIndex))
-	{
-		bDebugFocusTraversalActive = false;
-		bDebugFocusTraversalAwaitingGeometry = false;
-		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
-			DebugBundleSessionId,
-			TEXT("complete"),
-			DebugFocusTraversalItems.Num(),
-			DebugFocusTraversalItems.Num(),
-			TSharedPtr<FBlueprintHelperReviewVisibleChange>(),
-			ReviewAssetContext.AssetPath));
-		AddDebugMessage(FString::Printf(
-			TEXT("Debug focus traversal completed: %d rows."),
-			DebugFocusTraversalItems.Num()));
-		return;
-	}
-
-	const FReviewChangeItem Item = DebugFocusTraversalItems[DebugFocusTraversalIndex];
-	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
-		DebugBundleSessionId,
-		TEXT("focus"),
-		DebugFocusTraversalIndex + 1,
-		DebugFocusTraversalItems.Num(),
-		Item,
-		ReviewAssetContext.AssetPath));
-	OnChangeSelectionChanged(Item, ESelectInfo::Direct);
-	bDebugFocusTraversalAwaitingGeometry = true;
+	ApplyDebugFocusTraversalStep(DebugFocusTraversalCoordinator.Advance());
 	ProcessDebugFocusTraversalGeometryEvent();
 }
 
 void SBlueprintHelperReviewPanel::ProcessDebugFocusTraversalGeometryEvent()
 {
-	if (!bDebugFocusTraversalActive || !bDebugFocusTraversalAwaitingGeometry)
+	const FBlueprintHelperReviewDebugFocusTraversalStep Step =
+		DebugFocusTraversalCoordinator.ProcessGeometryEvent(
+			[this](FReviewChangeItem Item, FString& OutReason)
+			{
+				return IsDebugFocusTraversalChangeReady(Item, OutReason);
+			});
+	ApplyDebugFocusTraversalStep(Step);
+	if (Step.Kind == EBlueprintHelperReviewDebugFocusTraversalStepKind::FocusReady)
 	{
-		return;
+		AdvanceDebugFocusTraversal();
 	}
+}
 
-	const FReviewChangeItem Item = DebugFocusTraversalItems.IsValidIndex(DebugFocusTraversalIndex)
-		? DebugFocusTraversalItems[DebugFocusTraversalIndex]
-		: FReviewChangeItem();
-	FString GeometryReason;
-	if (IsDebugFocusTraversalChangeReady(Item, GeometryReason))
+void SBlueprintHelperReviewPanel::ApplyDebugFocusTraversalStep(
+	const FBlueprintHelperReviewDebugFocusTraversalStep& Step)
+{
+	switch (Step.Kind)
 	{
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::AlreadyRunning:
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::SkippedNoRows:
+		AddDebugMessage(Step.Message);
+		break;
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::Started:
 		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
 			DebugBundleSessionId,
-			TEXT("focus_ready"),
-			DebugFocusTraversalIndex + 1,
-			DebugFocusTraversalItems.Num(),
-			Item,
+			Step.EventStage,
+			Step.EventIndex,
+			Step.Total,
+			TSharedPtr<FBlueprintHelperReviewVisibleChange>(),
+			ReviewAssetContext.AssetPath));
+		AddDebugMessage(Step.Message);
+		break;
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::Focus:
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
+			DebugBundleSessionId,
+			Step.EventStage,
+			Step.EventIndex,
+			Step.Total,
+			Step.Item,
+			ReviewAssetContext.AssetPath));
+		OnChangeSelectionChanged(Step.Item, ESelectInfo::Direct);
+		break;
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::Complete:
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
+			DebugBundleSessionId,
+			Step.EventStage,
+			Step.EventIndex,
+			Step.Total,
+			TSharedPtr<FBlueprintHelperReviewVisibleChange>(),
+			ReviewAssetContext.AssetPath));
+		AddDebugMessage(Step.Message);
+		break;
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::FocusReady:
+	case EBlueprintHelperReviewDebugFocusTraversalStepKind::WaitGeometry:
+		AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
+			DebugBundleSessionId,
+			Step.EventStage,
+			Step.EventIndex,
+			Step.Total,
+			Step.Item,
 			ReviewAssetContext.AssetPath,
-			GeometryReason));
-		bDebugFocusTraversalAwaitingGeometry = false;
-		++DebugFocusTraversalIndex;
-		AdvanceDebugFocusTraversal();
-		return;
+			Step.Reason));
+		break;
+	default:
+		break;
 	}
-
-	AppendDebugBundleEvent(FBlueprintHelperReviewDebugBundleService::BuildFocusEvent(
-		DebugBundleSessionId,
-		TEXT("wait_geometry_event"),
-		DebugFocusTraversalIndex + 1,
-		DebugFocusTraversalItems.Num(),
-		Item,
-		ReviewAssetContext.AssetPath,
-		GeometryReason));
 }
 
 bool SBlueprintHelperReviewPanel::IsDebugFocusTraversalChangeReady(FReviewChangeItem Item, FString& OutReason)

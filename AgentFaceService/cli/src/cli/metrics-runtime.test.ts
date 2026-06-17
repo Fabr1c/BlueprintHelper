@@ -4,8 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { createCliMetricsService, resolveCliMetricsRoot } from './metrics-runtime.js';
 import { runCli } from './run.js';
+
+const ACTIVE_RUNTIME_ARGS = [
+  '--runtime-adapters',
+  createDescriptorFixtureRuntimeCapabilityState().registered_runtime_adapter_ids.join(','),
+] as const;
 
 test('createCliMetricsService returns disabled no-op without creating metrics root', async (t) => {
   const workspace = await createTempDir(t, 'blueprinthelper-cli-metrics-disabled-');
@@ -315,7 +321,7 @@ test('runCli task preview records taskspec preview metrics through the default r
   const exitCode = await withEnv({
     BPH_METRICS_DIR: metricsRoot,
   }, () => runCli({
-    argv: ['task', 'preview', '--file', 'task-spec.json', '--format', 'json'],
+    argv: ['task', 'preview', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--format', 'json'],
     cwd: workspace,
     bridge: {
       async sendCommand(command) {
@@ -381,7 +387,7 @@ test('runCli task execute records taskspec execute metrics through the default r
   const exitCode = await withEnv({
     BPH_METRICS_DIR: metricsRoot,
   }, () => runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--format', 'json'],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--format', 'json'],
     cwd: workspace,
     bridge: {
       async sendCommand(command) {

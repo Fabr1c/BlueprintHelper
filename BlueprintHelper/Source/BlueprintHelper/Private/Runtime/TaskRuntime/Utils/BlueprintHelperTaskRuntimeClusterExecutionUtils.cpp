@@ -1099,6 +1099,20 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeClusterExecutionUtils:
 			TEXT("task_plan.steps[0].write.ops[0].row_struct"));
 	}
 
+	if (AssetType == EBlueprintHelperAssetType::BlueprintClass)
+	{
+		FString BlueprintParentError;
+		if (!FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(ParentClass, BlueprintParentError))
+		{
+			return MakeFailure(
+				TEXT("create_asset"),
+				TEXT("invalid_blueprint_parent_class"),
+				EBlueprintHelperToolStage::Preflight,
+				BlueprintParentError,
+				TEXT("task_plan.steps[0].write.ops[0].parent_class"));
+		}
+	}
+
 	const EBlueprintHelperAssetCollisionPolicy Collision = ParseAssetFactoryCollision(CollisionText);
 	const FBlueprintHelperAssetFactoryData FactoryData = Service.CreateAsset(
 		AssetPath,

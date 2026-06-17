@@ -1,6 +1,7 @@
 ﻿// BlueprintHelper Bridge Layer 。命令路由实现
 
 #include "Entry/Bridge/BlueprintHelperBridgeRouter.h"
+#include "Entry/Bridge/BlueprintHelperBridgeCommandRegistry.h"
 #include "Entry/Bridge/BlueprintHelperBridgeProtocol.h"
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeUtils.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
@@ -858,6 +859,15 @@ public:
 		ValidationObject->SetBoolField(TEXT("should_save"), bShouldSave);
 	}
 
+	static bool IsCapabilityDescriptorAvailableForCommand(
+		const FString& Command,
+		const FString& CapabilityDescriptorId)
+	{
+		FBlueprintHelperBridgeCommandDescriptor Descriptor;
+		return FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(Command, Descriptor)
+			&& Descriptor.CapabilityDescriptorIds.Contains(CapabilityDescriptorId);
+	}
+
 };
 
 FBlueprintHelperBridgeRouter::FBlueprintHelperBridgeRouter(
@@ -1059,6 +1069,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("exec_console_command", EditorCommand, HandleExecConsoleCommand)
 	BLUEPRINTHELPER_ROUTE("source_control_status", EditorCommand, HandleSourceControlStatus)
 	BLUEPRINTHELPER_ROUTE("source_control_checkout", EditorCommand, HandleSourceControlCheckout)
+	BLUEPRINTHELPER_ROUTE("dismiss_editor_dialogs", EditorCommand, HandleDismissEditorDialogs)
 	BLUEPRINTHELPER_ROUTE("close_editor", EditorCommand, HandleCloseEditor)
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::AssetFactory &&
@@ -1193,6 +1204,15 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleListDebugCase
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleExportDebugBundle(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
+	if (!FBlueprintHelperBridgeRouterLocalUtils::IsCapabilityDescriptorAvailableForCommand(
+		Req.Command,
+		TEXT("debug_case.export_summary")))
+	{
+		return FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId,
+			EBlueprintHelperBridgeError::InvalidRequest,
+			TEXT("debug_case.export_summary capability is unavailable for export_debug_bundle."));
+	}
 	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, DebugEntryService.ExportDebugBundleSummaryResult(Req.Payload));
 }
 
@@ -2217,6 +2237,57 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleSourceControl
 	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, ToolResult);
 }
 
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleDismissEditorDialogs(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FBlueprintHelperCommandResult Result = EditorCommandService.DismissEditorDialogs();
+	FString LifecycleStatus = TEXT("no_modal_dialogs");
+	if (Result.Data.IsValid())
+	{
+		bool bHasRemainingModal = false;
+		if (Result.Data->TryGetBoolField(TEXT("has_remaining_modal"), bHasRemainingModal) && bHasRemainingModal)
+		{
+			LifecycleStatus = TEXT("modal_dialogs_remaining");
+		}
+		else
+		{
+			double DismissedModalWindows = 0.0;
+			if (Result.Data->TryGetNumberField(TEXT("dismissed_modal_windows"), DismissedModalWindows) && DismissedModalWindows > 0.0)
+			{
+				LifecycleStatus = TEXT("modal_dialogs_dismissed");
+			}
+		}
+	}
+
+	if (!Result.bSuccess)
+	{
+		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
+			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		Resp.Result = MakeShared<FJsonObject>();
+		Resp.Result->SetStringField(TEXT("lifecycle_status"), LifecycleStatus);
+		Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
+		if (!Result.Message.IsEmpty())
+		{
+			Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+		}
+		if (Result.Data.IsValid())
+		{
+			Resp.Result->SetObjectField(TEXT("modal_dialogs"), Result.Data);
+		}
+		return Resp;
+	}
+
+	FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
+	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetStringField(TEXT("lifecycle_status"), LifecycleStatus);
+	Resp.Result->SetStringField(TEXT("message"), Result.Message);
+	if (Result.Data.IsValid())
+	{
+		Resp.Result->SetObjectField(TEXT("modal_dialogs"), Result.Data);
+	}
+	return Resp;
+}
+
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	const FBlueprintHelperBridgeRequest& Req) const
 {
@@ -2235,21 +2306,34 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 	{
 		FBlueprintHelperBridgeResponse Resp = FBlueprintHelperBridgeResponse::Error(
 			Req.RequestId, EBlueprintHelperBridgeError::ExecutionFailed, Result.ErrorMessage);
+		Resp.Result = MakeShared<FJsonObject>();
+		Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
+		if (!Result.Message.IsEmpty())
+		{
+			Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+		}
+		Resp.Result->SetBoolField(TEXT("close_requested"), false);
+		Resp.Result->SetStringField(TEXT("lifecycle_status"), TEXT("close_failed"));
 		if (Result.Data.IsValid())
 		{
 			if (Result.Data->HasField(TEXT("source_control_gate")))
 			{
 				Resp.Result = Result.Data;
+				Resp.Result->SetBoolField(TEXT("close_requested"), false);
+				Resp.Result->SetStringField(TEXT("lifecycle_status"), TEXT("close_blocked_by_source_control"));
 			}
 			else
 			{
-				Resp.Result = MakeShared<FJsonObject>();
-				Resp.Result->SetStringField(TEXT("message"), Result.ErrorMessage);
-				if (!Result.Message.IsEmpty())
+				const TSharedPtr<FJsonObject>* ModalDialogsObject = nullptr;
+				if (Result.Data->TryGetObjectField(TEXT("modal_dialogs"), ModalDialogsObject))
 				{
-					Resp.Result->SetStringField(TEXT("recommended_action"), Result.Message);
+					Resp.Result->SetObjectField(TEXT("modal_dialogs"), *ModalDialogsObject);
+					Resp.Result->SetStringField(TEXT("lifecycle_status"), TEXT("close_blocked_by_modal_dialog"));
 				}
-				Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+				else
+				{
+					Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+				}
 			}
 		}
 		return Resp;
@@ -2257,10 +2341,20 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCloseEditor(
 
 	auto Resp = FBlueprintHelperBridgeResponse::Success(Req.RequestId);
 	Resp.Result = MakeShared<FJsonObject>();
+	Resp.Result->SetBoolField(TEXT("close_requested"), true);
+	Resp.Result->SetStringField(TEXT("lifecycle_status"), TEXT("close_requested"));
 	Resp.Result->SetStringField(TEXT("message"), Result.Message);
 	if (Result.Data.IsValid())
 	{
-		Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+		const TSharedPtr<FJsonObject>* ModalDialogsObject = nullptr;
+		if (Result.Data->TryGetObjectField(TEXT("modal_dialogs"), ModalDialogsObject))
+		{
+			Resp.Result->SetObjectField(TEXT("modal_dialogs"), *ModalDialogsObject);
+		}
+		else
+		{
+			Resp.Result->SetObjectField(TEXT("source_control"), Result.Data);
+		}
 	}
 	return Resp;
 }

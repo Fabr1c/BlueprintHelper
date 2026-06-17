@@ -153,7 +153,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       agent_semantic_paths: [
         'behavior.variable_strategy',
         'behavior.changes[].kind',
-        'behavior.changes[].properties[].property_path=replication for configure_member_variable',
+        'behavior.changes[].properties[].property_path for configure_member_variable',
         'behavior.changes[].properties[].value.mode for property_path=replication',
         'behavior.changes[].properties[].value.condition for property_path=replication',
         'behavior.defaults[].name',
@@ -192,9 +192,15 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       ],
       runtime_lowering_adapters: ['add_blueprint_member_variables', 'blueprint_variable_batch'],
       adapter_dry_run_supported: false,
-      max_task_plan_steps: 1,
+      max_task_plan_steps: 2,
       member_variable_property_contract: {
-        configure_member_variable_only: ['replication'],
+        configure_member_variable_only: [
+          'category',
+          'tooltip',
+          'instance_editable',
+          'expose_on_spawn',
+          'replication',
+        ],
         replication: {
           property_path: 'replication',
           value_shape: [
@@ -294,7 +300,7 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     assert.deepEqual(secondSlice.agent_semantic_paths, [
       'behavior.variable_strategy',
       'behavior.changes[].kind',
-      'behavior.changes[].properties[].property_path=replication for configure_member_variable',
+      'behavior.changes[].properties[].property_path for configure_member_variable',
       'behavior.changes[].properties[].value.mode for property_path=replication',
       'behavior.changes[].properties[].value.condition for property_path=replication',
       'behavior.defaults[].name',

@@ -5,6 +5,10 @@ import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import { resolveProjectEngineDir } from '../../project-profile/agent-profile.js';
 import { resolveExplicitProjectFile } from '../../project-profile/editor-paths.js';
+import {
+  dismissUnrealEditorModalDialogsByOsWindow,
+  type EditorModalDialogDismissFallbackResult,
+} from './editor-modal-dialogs.js';
 
 export interface EditorLifecycleConfig {
   ueEngineDir: string;
@@ -25,8 +29,75 @@ function toErrorResult(err: unknown) {
   };
 }
 
+function bridgeErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function lifecycleJsonResult(payload: Record<string, unknown>, isError: boolean) {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
+    isError,
+  };
+}
+
 function editorLifecycleDescription(description: string): string {
   return `Editor lifecycle only. ${description} Ordinary BlueprintHelper reads and writes must use the CLI surface, not MCP.`;
+}
+
+function buildModalDialogFallbackPayload(
+  fallback: EditorModalDialogDismissFallbackResult,
+  options: {
+    code: string;
+    bridgeError?: string;
+    noModalIsSuccess: boolean;
+  },
+): Record<string, unknown> {
+  const dismissedCount = fallback.dismissed_modal_windows;
+  const hasFailure = fallback.error !== undefined || fallback.has_remaining_modal;
+  const noModalFound = dismissedCount === 0 && !fallback.has_remaining_modal && !fallback.error;
+  const success = options.noModalIsSuccess
+    ? !hasFailure
+    : !hasFailure && dismissedCount > 0;
+  const lifecycleStatus = fallback.error
+    ? 'modal_dismiss_failed'
+    : fallback.has_remaining_modal
+      ? 'modal_dialogs_remaining'
+      : dismissedCount > 0
+        ? 'modal_dialogs_dismissed'
+        : 'no_modal_dialog_found';
+
+  return {
+    success,
+    code: options.code,
+    lifecycle_status: lifecycleStatus,
+    bridge_status: options.bridgeError ? 'unavailable' : 'not_used',
+    ...(options.bridgeError ? { bridge_error: options.bridgeError } : {}),
+    modal_dialogs: fallback,
+    recommended_action: fallback.has_remaining_modal
+      ? 'Call blueprint_close_editor_dialogs to close remaining Unreal Editor modal dialogs, or close the remaining modal dialog manually, then retry the lifecycle command.'
+      : dismissedCount > 0
+        ? 'Retry blueprint_close_editor after the modal dialog was dismissed.'
+        : noModalFound
+          ? 'No Unreal Editor modal dialog was found.'
+          : 'Inspect modal_dialogs.error and retry after the OS-window fallback is available.',
+  };
+}
+
+function shouldBlockCloseForRemainingModal(fallback: EditorModalDialogDismissFallbackResult): boolean {
+  return fallback.has_remaining_modal;
+}
+
+function attachModalDialogPreflight(
+  resp: BridgeResponse,
+  preflight: EditorModalDialogDismissFallbackResult,
+): BridgeResponse {
+  return {
+    ...resp,
+    result: {
+      ...(resp.result ?? {}),
+      modal_dialogs_preflight: preflight,
+    },
+  };
 }
 
 function developerOnlyDescription(description: string): string {
@@ -75,10 +146,78 @@ export function registerEditorLifecycleTools(
   );
 
   server.registerTool(
+    'blueprint_dismiss_editor_dialogs',
+    {
+      description: editorLifecycleDescription(
+        'Dismiss active Unreal Editor modal dialogs that can block lifecycle commands, then return the remaining modal-dialog state.',
+      ),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        'blueprinthelper/audience': 'lifecycle',
+        'blueprinthelper/ordinaryAgentCallable': true,
+        'blueprinthelper/bridgeCommand': 'dismiss_editor_dialogs',
+      },
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        const resp = await bridge.sendCommand('dismiss_editor_dialogs', {});
+        return toToolResult(resp);
+      } catch (err) {
+        const fallback = await dismissUnrealEditorModalDialogsByOsWindow();
+        const bridgeError = bridgeErrorMessage(err);
+        const payload = buildModalDialogFallbackPayload(fallback, {
+          code: 'EDITOR_MODAL_DISMISS_BRIDGE_UNAVAILABLE',
+          bridgeError,
+          noModalIsSuccess: true,
+        });
+        return lifecycleJsonResult(
+          payload,
+          payload.success !== true,
+        );
+      }
+    },
+  );
+
+  server.registerTool(
+    'blueprint_close_editor_dialogs',
+    {
+      description: editorLifecycleDescription(
+        'Close visible Unreal Editor modal dialogs through an OS-window fallback without requiring the BlueprintHelper Bridge. Use this when close_editor is blocked by a modal popup.',
+      ),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        'blueprinthelper/audience': 'lifecycle',
+        'blueprinthelper/ordinaryAgentCallable': true,
+        'blueprinthelper/bridgeCommand': 'os_window_close_editor_dialogs',
+      },
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const fallback = await dismissUnrealEditorModalDialogsByOsWindow();
+      const payload = buildModalDialogFallbackPayload(fallback, {
+        code: 'EDITOR_MODAL_DIALOG_OS_CLOSE',
+        noModalIsSuccess: true,
+      });
+      return lifecycleJsonResult(payload, payload.success !== true);
+    },
+  );
+
+  server.registerTool(
     'blueprint_close_editor',
     {
       description: editorLifecycleDescription(
-        'Save dirty assets when requested and close the running Unreal Editor through the BlueprintHelper Bridge.',
+        'Save dirty assets when requested and close the running Unreal Editor through the BlueprintHelper Bridge. If modal dialogs block shutdown, the response includes lifecycle_status and modal_dialogs details; call blueprint_dismiss_editor_dialogs when Bridge is responsive, or blueprint_close_editor_dialogs when the modal blocks Bridge, then retry close.',
       ),
       inputSchema: z.object({
         save_all: z
@@ -88,13 +227,44 @@ export function registerEditorLifecycleTools(
       }),
     },
     async ({ save_all }) => {
+      const preflight = await dismissUnrealEditorModalDialogsByOsWindow();
+      if (shouldBlockCloseForRemainingModal(preflight)) {
+        return lifecycleJsonResult(
+          {
+            success: false,
+            code: 'EDITOR_CLOSE_BLOCKED_BY_MODAL_DIALOG',
+            lifecycle_status: 'close_blocked_by_modal_dialog',
+            bridge_status: 'not_used',
+            close_requested: false,
+            modal_dialogs_preflight: preflight,
+            recommended_action: 'Call blueprint_close_editor_dialogs to close remaining Unreal Editor modal dialogs, or close the remaining modal dialog manually, then retry blueprint_close_editor.',
+          },
+          true,
+        );
+      }
+
       try {
         const payload: Record<string, unknown> = {};
         if (save_all !== undefined) payload.save_all = save_all;
         const resp = await bridge.sendCommand('close_editor', payload);
-        return toToolResult(resp);
+        return toToolResult(attachModalDialogPreflight(resp, preflight));
       } catch (err) {
-        return toErrorResult(err);
+        const fallback = await dismissUnrealEditorModalDialogsByOsWindow();
+        const bridgeError = bridgeErrorMessage(err);
+        const payload = buildModalDialogFallbackPayload(fallback, {
+          code: 'EDITOR_CLOSE_BRIDGE_UNAVAILABLE',
+          bridgeError,
+          noModalIsSuccess: false,
+        });
+        return lifecycleJsonResult(
+          {
+            ...payload,
+            success: false,
+            close_requested: false,
+            modal_dialogs_preflight: preflight,
+          },
+          true,
+        );
       }
     },
   );

@@ -266,6 +266,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
         insertTemplateFragment(taskSpec, insertPath, fragment);
       }
     }
+    syncNonGraphWriteStrategyFromItems(taskSpec, family.family, items);
     if (diagnostics.length > 0) {
       return failed(input, diagnostics);
     }
@@ -315,6 +316,58 @@ function readNonGraphWriteQuickAccessFragment(item: TaskSpecTemplateQuickAccessI
     return fragment;
   }
   return readJson(pluginPath(item.template_path));
+}
+
+function syncNonGraphWriteStrategyFromItems(
+  taskSpec: Record<string, unknown>,
+  family: string,
+  items: readonly TaskSpecTemplateQuickAccessItem[],
+): void {
+  if (family !== 'material_graph' || items.length === 0) {
+    return;
+  }
+  const graphStrategy = materialGraphStrategyForInsertPaths(items.flatMap((item) => item.insert_paths));
+  if (!graphStrategy) {
+    return;
+  }
+  const behavior = requireRecord(taskSpec['behavior'], 'behavior');
+  behavior['graph_strategy'] = graphStrategy;
+  pruneMaterialGraphBehaviorForStrategy(behavior, graphStrategy);
+}
+
+function materialGraphStrategyForInsertPaths(insertPaths: readonly string[]): string | undefined {
+  if (insertPaths.some((insertPath) => insertPath === 'behavior.entries[]')) {
+    return 'append_new_owned_graph';
+  }
+  if (insertPaths.some((insertPath) => insertPath === 'behavior.replace')) {
+    return 'replace_owned_graph';
+  }
+  if (insertPaths.some((insertPath) => insertPath === 'behavior.patches[]')) {
+    return 'patch_owned_graph';
+  }
+  if (insertPaths.some((insertPath) => insertPath === 'behavior.merges[]')) {
+    return 'merge_owned_graph';
+  }
+  return undefined;
+}
+
+function pruneMaterialGraphBehaviorForStrategy(behavior: Record<string, unknown>, graphStrategy: string): void {
+  const strategyKeys = ['entries', 'replace', 'patches', 'merges'];
+  const activeKeyByStrategy: Record<string, string> = {
+    append_new_owned_graph: 'entries',
+    replace_owned_graph: 'replace',
+    patch_owned_graph: 'patches',
+    merge_owned_graph: 'merges',
+  };
+  const activeKey = activeKeyByStrategy[graphStrategy];
+  if (!activeKey) {
+    return;
+  }
+  for (const key of strategyKeys) {
+    if (key !== activeKey) {
+      delete behavior[key];
+    }
+  }
 }
 
 function getGraphWriteStatementTarget(taskSpec: Record<string, unknown>, writeMode: GraphWriteTemplateWriteMode): unknown[] {

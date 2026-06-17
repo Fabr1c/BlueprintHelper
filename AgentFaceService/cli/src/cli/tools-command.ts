@@ -1,6 +1,7 @@
 import {
   composeReadContextTemplate,
   composeTaskSpecTemplate,
+  createRuntimeCapabilityState,
   isToolCapabilityDomain,
   isToolCapabilityKind,
   listReadContextTemplateClusters,
@@ -15,6 +16,7 @@ import {
   listToolCapabilities,
   listToolDomains,
   type CliCommandExecutorDescriptor,
+  type RuntimeCapabilityState,
   type ToolAudience,
   type ToolRisk,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
@@ -58,6 +60,7 @@ const TOOLS_COMMAND_EXECUTORS: readonly ToolsCommandExecutor[] = [
         expert: command.expert,
         requiresBridge: command.requiresBridge,
         risks: command.risks?.map(parseToolRisk),
+        runtime: runtimeStateFromCommand(command),
       }) as unknown as Record<string, unknown>;
     },
   },
@@ -171,6 +174,18 @@ export function parseToolRisk(value: string): ToolRisk {
     return value;
   }
   throw new Error(`Unsupported BlueprintHelper tools risk: ${value}`);
+}
+
+function runtimeStateFromCommand(command: CliCommand): RuntimeCapabilityState | undefined {
+  if (command.runtimeCapabilityState) {
+    return createRuntimeCapabilityState(command.runtimeCapabilityState);
+  }
+  if (!command.runtimeAdapterIds) {
+    return undefined;
+  }
+  return createRuntimeCapabilityState({
+    registered_runtime_adapter_ids: command.runtimeAdapterIds,
+  });
 }
 
 function required(value: string | undefined, message: string): string {

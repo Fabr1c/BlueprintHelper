@@ -14,6 +14,7 @@ import {
   getActiveReadContextRouteDescriptors,
   getReadContextRouteDescriptor,
 } from './read-context-template-registry.js';
+import { ReadContextInputSchema } from '../bridge/read-context/read-context-schemas.js';
 
 test('ReadContext template registry exposes active flat routes and hides reserved families', () => {
   const active = getActiveReadContextRouteDescriptors();
@@ -55,6 +56,17 @@ test('ReadContext active route descriptors own request and payload routing facts
     assert.equal(route.supported_formats.length > 0, true, `${route.template_id} has supported formats`);
     assert.equal(route.allowed_tools.includes('bh tools read-templates compose'), true);
     assert.equal(route.allowed_tools.includes('bh context read'), true);
+  }
+});
+
+test('ReadContext active route descriptors emit schema-valid ReadSpec inputs', () => {
+  for (const route of getActiveReadContextRouteDescriptors()) {
+    const result = ReadContextInputSchema.safeParse(route.read_spec);
+    assert.equal(
+      result.success,
+      true,
+      `${route.template_id} emits invalid ReadSpec: ${JSON.stringify(result.success ? [] : result.error.issues)}`,
+    );
   }
 });
 
@@ -223,6 +235,29 @@ test('ReadContext flat composer writes LogicJson delta ReadSpec with baseline vi
   assert.equal(readSpec.view.format, 'logic_json_delta_after_logic_flow');
   assert.equal(readSpec.view.baseline_view, 'logic_flow');
   assert.equal(readSpec.target.target_name, '__REQUIRED_TARGET_NAME__');
+});
+
+test('ReadContext flat composer writes every active read template as schema-valid ReadSpec', () => {
+  for (const route of getActiveReadContextRouteDescriptors()) {
+    const outputPath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')),
+      `${route.template_id.replaceAll('.', '-')}.readspec.json`,
+    );
+
+    const result = composeReadContextTemplate({
+      templateId: route.template_id,
+      outputPath,
+    });
+
+    assert.equal(result.status, 'ok', `${route.template_id}: ${JSON.stringify(result)}`);
+    const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, unknown>;
+    const parseResult = ReadContextInputSchema.safeParse(readSpec);
+    assert.equal(
+      parseResult.success,
+      true,
+      parseResult.success ? undefined : `${route.template_id}: ${parseResult.error.message}`,
+    );
+  }
 });
 
 test('ReadContext flat composer reports unknown template id without writing output', () => {

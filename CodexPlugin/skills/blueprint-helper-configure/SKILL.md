@@ -169,7 +169,7 @@ Update the active preference sections with these facts:
 
 - Do not write subagent workflow or subagent model-map preferences here; the main `blueprint-helper` skill owns the mandatory Codex subagent workflow.
 - Editor lifecycle commands must use global MCP allowlist tools. Do not enable CLI lifecycle fallback; if lifecycle MCP is unavailable, Agents must report `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
-- Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor` and `mcp__blueprint_helper__blueprint_close_editor`.
+- Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor`, `mcp__blueprint_helper__blueprint_close_editor`, `mcp__blueprint_helper__blueprint_dismiss_editor_dialogs`, and `mcp__blueprint_helper__blueprint_close_editor_dialogs`.
 - Ordinary reads/writes must use the CLI.
 - Ordinary plugin usage must not read BlueprintHelper plugin package or implementation source; use installed skill instructions, AgentGuide, CLI reference, and templates. Plugin source reads are allowed only for explicit plugin development, installation repair, or debugging.
 - Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled when set in `setting.json`.

@@ -3,6 +3,8 @@
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "Systems/Review/BlueprintHelperReviewTargetIdentity.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 
 FBlueprintHelperReviewSurfaceRouteDecision FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(
 	const FBlueprintHelperReviewVisibleChange& Change,
@@ -11,9 +13,20 @@ FBlueprintHelperReviewSurfaceRouteDecision FBlueprintHelperReviewSurfacePresente
 	FBlueprintHelperReviewSurfaceRouteDecision Decision;
 	Decision.bHasExplicitTargets = BlueprintHelperReviewHasExplicitTargets(Change);
 	Decision.ExplicitTargetCount = Change.AtomicTargets.Num();
-	Decision.MatchingTargetCount = Surface == EBlueprintHelperReviewSurface::Details
-		? BlueprintHelperReviewCountDetailsTargets(Change)
-		: BlueprintHelperReviewCountSurfaceTargets(Change, Surface);
+	Decision.MatchingTargetCount = 0;
+	const TSharedRef<FBlueprintHelperReviewSurfaceProjectionRegistry> ProjectionRegistry =
+		FBlueprintHelperReviewSurfaceProjectionRegistry::CreateDefault();
+	for (const FBlueprintHelperReviewAtomicTarget& Target : Change.AtomicTargets)
+	{
+		FBlueprintHelperReviewTargetIdentity Identity =
+			FBlueprintHelperReviewTargetIdentity::FromAtomicTarget(Change, Target);
+		Identity.AssetKind.Reset();
+		Identity.SurfaceKind = BlueprintHelperReviewSurfaceToString(Surface);
+		if (ProjectionRegistry->FindProjectionAdapter(Identity).bAvailable)
+		{
+			++Decision.MatchingTargetCount;
+		}
+	}
 
 	if (Decision.bHasExplicitTargets)
 	{

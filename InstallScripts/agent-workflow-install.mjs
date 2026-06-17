@@ -97,6 +97,7 @@ If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflic
 - Dispatch \`sourcecode-explorer\` only when source-side grounding is required.
 - Complete source-control and write-session gates before dispatching \`task-worker\`.
 - Dispatch \`task-worker\` only after target asset, scope, and evidence are sufficient.
+- If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after completion, an explicit report that it can be closed, or an errored/shutdown status. If the progress check also times out, report \`sideagent_timeout_unconfirmed\` to the user and ask whether to keep waiting or close it.
 - The Main Agent must not select exact read templates, write templates, or composer paths for ordinary user writes.
 - If \`read_context\`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, stop and report \`evidence_conflict\`; do not inspect Unreal binary asset files as fallback.
 - Do not use deprecated MCP ordinary read/write/debug/task tools as fallback paths.

@@ -29,6 +29,7 @@
 #include "Systems/Debug/BlueprintHelperDiagnosticsService.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Systems/Debug/BlueprintHelperEditorCloseModalCoordinator.h"
 #include "Systems/Debug/BlueprintHelperEditorFocusService.h"
 #include "Systems/Debug/BlueprintHelperScreenshotCaptureService.h"
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
@@ -86,6 +87,7 @@ void FBlueprintHelperModule::StartupModule()
 {
 	UE_LOG(LogBlueprintHelperEditor, Log, TEXT("BlueprintHelper StartupModule begin."));
 	FBlueprintHelperGraphLayoutCoordinator::Startup();
+	FBlueprintHelperEditorCloseModalCoordinator::Get().Startup();
 
 
 	// ─── Service Layer 初始。───
@@ -229,6 +231,7 @@ void FBlueprintHelperModule::StartupModule()
 
 void FBlueprintHelperModule::ShutdownModule()
 {
+	FBlueprintHelperEditorCloseModalCoordinator::Get().Shutdown();
 	SBlueprintHelperMainWindow::ShutdownCleanupTasks();
 	SBlueprintHelperReviewPanel::ShutdownAsyncTasks();
 	SBlueprintHelperMetricsPanel::ShutdownAsyncTasks();

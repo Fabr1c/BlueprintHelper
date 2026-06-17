@@ -15,6 +15,8 @@
 #include "Factories/DataTableFactory.h"
 #include "Factories/MaterialFactoryNew.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/Actor.h"
@@ -146,6 +148,32 @@ public:
 		}
 
 		return ResolvedClass;
+	}
+
+	static bool IsUsableBlueprintBaseClass(const UClass* Class)
+	{
+		if (!Class)
+		{
+			return false;
+		}
+
+		if (Class == UObject::StaticClass() ||
+			Class == USceneComponent::StaticClass() ||
+			Class == UActorComponent::StaticClass() ||
+			Cast<UBlueprintGeneratedClass>(Class) != nullptr)
+		{
+			return true;
+		}
+
+		for (const UClass* Cursor = Class; Cursor && Cursor != UObject::StaticClass(); Cursor = Cursor->GetSuperClass())
+		{
+			if (Cursor->HasMetaData(FBlueprintMetadata::MD_IsBlueprintBase))
+			{
+				return Cursor->GetBoolMetaData(FBlueprintMetadata::MD_IsBlueprintBase);
+			}
+		}
+
+		return false;
 	}
 
 	static UScriptStruct* ResolveAssetFactoryRowStruct(const FString& RowStructText)
@@ -414,6 +442,16 @@ FBlueprintHelperAssetFactoryData FBlueprintHelperAssetFactoryService::CreateAsse
 	Data.Asset.AssetClass = AssetTypeToAssetClass(AssetType);
 	Data.Collision.Policy = CollisionPolicy;
 
+	if (AssetType == EBlueprintHelperAssetType::BlueprintClass)
+	{
+		FString BlueprintParentError;
+		if (!TryValidateBlueprintParentClass(Data.Factory.ParentClass, BlueprintParentError))
+		{
+			Data.Asset.bCreated = false;
+			return Data;
+		}
+	}
+
 	// ─── 冲突检。───
 	const bool bExists = AssetExists(AssetPath);
 	Data.Asset.bAlreadyExisted = bExists;
@@ -511,6 +549,43 @@ bool FBlueprintHelperAssetFactoryService::ShouldCompile(EBlueprintHelperAssetTyp
 bool FBlueprintHelperAssetFactoryService::ShouldSave(EBlueprintHelperAssetType AssetType)
 {
 	return true; // 所有资产类型创建后都应该保存
+}
+
+bool FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(
+	const FString& ParentClass,
+	FString& OutErrorMessage)
+{
+	const FString EffectiveParentClass = ParentClass.TrimStartAndEnd().IsEmpty()
+		? FString(TEXT("Actor"))
+		: ParentClass.TrimStartAndEnd();
+	UClass* ParentUClass = FBlueprintHelperAssetFactoryServiceLocalUtils::ResolveAssetFactoryClass(
+		EffectiveParentClass,
+		AActor::StaticClass(),
+		UObject::StaticClass());
+	if (!ParentUClass)
+	{
+		OutErrorMessage = FString::Printf(
+			TEXT("Blueprint parent class could not be resolved: %s"),
+			*EffectiveParentClass);
+		return false;
+	}
+	if (!FKismetEditorUtilities::CanCreateBlueprintOfClass(ParentUClass))
+	{
+		OutErrorMessage = FString::Printf(
+			TEXT("Blueprint parent class cannot be used to create Blueprint assets: %s"),
+			*ParentUClass->GetPathName());
+		return false;
+	}
+	if (!FBlueprintHelperAssetFactoryServiceLocalUtils::IsUsableBlueprintBaseClass(ParentUClass))
+	{
+		OutErrorMessage = FString::Printf(
+			TEXT("Blueprint parent class is not marked Blueprintable for Blueprint asset creation: %s"),
+			*ParentUClass->GetPathName());
+		return false;
+	}
+
+	OutErrorMessage.Reset();
+	return true;
 }
 
 bool FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(
@@ -633,6 +708,12 @@ FString FBlueprintHelperAssetFactoryService::GetExistingAssetClass(const FString
 
 bool FBlueprintHelperAssetFactoryService::CreateBlueprintClass(const FString& AssetPath, const FString& ParentClass)
 {
+	FString BlueprintParentError;
+	if (!TryValidateBlueprintParentClass(ParentClass, BlueprintParentError))
+	{
+		return false;
+	}
+
 	// 找到父类 UClass
 	UClass* ParentUClass = AActor::StaticClass(); // 默认 Actor
 	if (!ParentClass.IsEmpty())

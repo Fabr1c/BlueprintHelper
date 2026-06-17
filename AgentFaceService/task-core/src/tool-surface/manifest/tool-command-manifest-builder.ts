@@ -5,6 +5,7 @@ import {
   listToolCapabilityItems,
   listToolDomains,
 } from '../catalog/tool-capability-catalog.js';
+import { createDescriptorFixtureRuntimeCapabilityState } from '../capabilities/capability-runtime-state.js';
 import type {
   ToolCapabilityItem,
 } from '../catalog/tool-capability-types.js';
@@ -32,6 +33,8 @@ const CANONICAL_LOOKUP_ALIASES = new Map<string, string>([
   ['task result', 'project.read.task_result'],
   ['context read', 'blueprint.read.context.logic_flow'],
 ]);
+
+const MANIFEST_RUNTIME_FIXTURE = createDescriptorFixtureRuntimeCapabilityState();
 
 export function buildReadonlyToolCommandManifests(): ToolCommandManifest[] {
   const manifests = listToolDomains().items.flatMap((domain) =>
@@ -100,8 +103,8 @@ function listManifestCapabilitiesForDomainKind(
 ): ToolCapabilityItem[] {
   const capabilitiesById = new Map<string, ToolCapabilityItem>();
   for (const capability of [
-    ...listToolCapabilityItems({ domain, kind }),
-    ...listToolCapabilityItems({ domain, kind, audience: 'expert', expert: true }),
+    ...listToolCapabilityItems({ domain, kind, runtime: MANIFEST_RUNTIME_FIXTURE }),
+    ...listToolCapabilityItems({ domain, kind, audience: 'expert', expert: true, runtime: MANIFEST_RUNTIME_FIXTURE }),
   ]) {
     capabilitiesById.set(capability.id, capability);
   }
@@ -114,7 +117,7 @@ function listGroupedAliasCapabilities(): ToolCapabilityItem[] {
     if (!domain || !kind || !isToolCapabilityDomain(domain) || !isToolCapabilityKind(kind)) {
       throw new Error(`Grouped command alias uses an invalid BlueprintHelper tool id: ${toolId}`);
     }
-    const capability = listToolCapabilityItems({ domain, kind }).find((item) => item.id === toolId);
+    const capability = listToolCapabilityItems({ domain, kind, runtime: MANIFEST_RUNTIME_FIXTURE }).find((item) => item.id === toolId);
     if (!capability) {
       throw new Error(`Grouped command alias is missing from the tool catalog: ${toolId}`);
     }

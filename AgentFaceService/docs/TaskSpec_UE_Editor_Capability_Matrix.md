@@ -20,7 +20,7 @@ In scope:
 Out of scope:
 
 - Direct Bridge command authoring.
-- Editor lifecycle open/close, which belongs to the global MCP lifecycle tools.
+- Editor lifecycle open/close/modal-dismiss/close-dialog, which belongs to the global MCP lifecycle tools.
 - Read, diagnostics, runtime profile, Review query, and DebugBundle workflows.
 - Agent-authored TaskPlan or raw runtime adapter payloads.
 

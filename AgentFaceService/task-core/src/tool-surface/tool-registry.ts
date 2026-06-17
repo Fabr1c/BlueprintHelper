@@ -7,6 +7,20 @@ export {
   listToolDomains,
 } from './catalog/tool-capability-catalog.js';
 export {
+  createCapabilityDescriptorRegistry,
+  getCapabilityDescriptor,
+  listAgentVisibleCapabilities,
+  listCapabilityDescriptors,
+} from './capabilities/capability-descriptor-registry.js';
+export {
+  createDescriptorFixtureRuntimeCapabilityState,
+  createRuntimeCapabilityState,
+} from './capabilities/capability-runtime-state.js';
+export type {
+  CapabilityDescriptor,
+  RuntimeCapabilityState,
+} from './capabilities/capability-descriptor.schema.js';
+export {
   composeTaskSpecTemplate,
   listTaskSpecTemplateClusters,
   listTaskSpecTemplateFamilies,
@@ -50,6 +64,9 @@ export {
 export {
   routeCliCommand,
 } from './cli/cli-command-router.js';
+export {
+  buildDescriptorDrivenRoute,
+} from './routing/descriptor-driven-route-builder.js';
 export {
   listCliCommandKindsByExecutorId,
   resolveCliCommandExecutorDescriptor,
@@ -134,6 +151,14 @@ export type {
   RouteCliCommandInput,
   RouteCliCommandResult,
 } from './cli/cli-command-router.js';
+export type {
+  DescriptorDrivenRouteBuildResult,
+  DescriptorDrivenRouteBuilderInput,
+  DescriptorDrivenRouteDescriptorRefs,
+  DescriptorDrivenRouteMode,
+  DescriptorDrivenRoutePlan,
+  DescriptorDrivenRouteUnavailableReason,
+} from './routing/descriptor-driven-route-builder.js';
 export type {
   CliCommandExecutorDescriptor,
 } from './cli/cli-command-executor-registry.js';

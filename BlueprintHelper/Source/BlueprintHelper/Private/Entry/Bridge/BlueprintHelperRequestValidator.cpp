@@ -1125,6 +1125,19 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 
 	// ─── Blueprint Component 命令校验 ───
 
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("dismiss_editor_dialogs")))
+	{
+		if (Payload.IsValid() && Payload->Values.Num() > 0)
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Payload->Values)
+			{
+				FBlueprintHelperRequestValidatorLocalUtils::SetUnexpectedFieldError(OutError, Field.Key);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_components")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {

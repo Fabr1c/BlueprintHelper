@@ -1121,6 +1121,20 @@ function taskFailure(
     ...(errorDetails.field ? { field: errorDetails.field } : {}),
     ...(errorDetails.expected ? { expected: errorDetails.expected } : {}),
     ...(errorDetails.actual ? { actual: errorDetails.actual } : {}),
+    ...(errorDetails.dirty_state ? { dirty_state: errorDetails.dirty_state } : {}),
+    ...(errorDetails.dirty_assets && errorDetails.dirty_assets.length > 0
+      ? { dirty_assets: errorDetails.dirty_assets }
+      : {}),
+    ...(errorDetails.safe_next_action ? { safe_next_action: errorDetails.safe_next_action } : {}),
+    ...(errorDetails.allowed_recovery_actions && errorDetails.allowed_recovery_actions.length > 0
+      ? { allowed_recovery_actions: errorDetails.allowed_recovery_actions }
+      : {}),
+    ...(errorDetails.risky_recovery_actions && errorDetails.risky_recovery_actions.length > 0
+      ? { risky_recovery_actions: errorDetails.risky_recovery_actions }
+      : {}),
+    ...(errorDetails.evidence_refs && errorDetails.evidence_refs.length > 0
+      ? { evidence_refs: errorDetails.evidence_refs }
+      : {}),
   } as ToolResultError;
 
   return failureResult(operation, toolError);
@@ -1175,7 +1189,9 @@ function bridgeFailureFromResponse(
   const responseError = asRecord(topLevelResponse['error']);
   const resultError = asRecord(result?.['error']);
   const data = asRecord(result?.['data']);
-  const errorRecord = responseError ?? resultError;
+  const errorRecord = responseError || resultError
+    ? { ...(resultError ?? {}), ...(responseError ?? {}) }
+    : undefined;
   const rawCode = readString(errorRecord?.['code']) ?? response.error_code ?? fallbackCode;
   const agentAction = readString(errorRecord?.['agent_action']) ?? readString(data?.['agent_action']);
   const explicitIssues = collectErrorRecordIssues(errorRecord);
@@ -1229,6 +1245,20 @@ function bridgeFailureFromResponse(
       ...(field ? { field } : {}),
       ...(readString(errorRecord?.['expected']) ? { expected: readString(errorRecord?.['expected']) } : {}),
       ...(readString(errorRecord?.['actual']) ? { actual: readString(errorRecord?.['actual']) } : {}),
+      ...(readString(errorRecord?.['dirty_state']) ? { dirty_state: readString(errorRecord?.['dirty_state']) } : {}),
+      ...(arrayOfStrings(errorRecord?.['dirty_assets']).length > 0
+        ? { dirty_assets: arrayOfStrings(errorRecord?.['dirty_assets']) }
+        : {}),
+      ...(readString(errorRecord?.['safe_next_action']) ? { safe_next_action: readString(errorRecord?.['safe_next_action']) } : {}),
+      ...(arrayOfStrings(errorRecord?.['allowed_recovery_actions']).length > 0
+        ? { allowed_recovery_actions: arrayOfStrings(errorRecord?.['allowed_recovery_actions']) }
+        : {}),
+      ...(arrayOfStrings(errorRecord?.['risky_recovery_actions']).length > 0
+        ? { risky_recovery_actions: arrayOfStrings(errorRecord?.['risky_recovery_actions']) }
+        : {}),
+      ...(arrayOfStrings(errorRecord?.['evidence_refs']).length > 0
+        ? { evidence_refs: arrayOfStrings(errorRecord?.['evidence_refs']) }
+        : {}),
     },
   };
 }

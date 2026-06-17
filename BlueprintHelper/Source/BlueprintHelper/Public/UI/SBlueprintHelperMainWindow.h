@@ -43,6 +43,11 @@ public:
 	static void FlushCleanupTasks();
 	static void ShutdownCleanupTasks();
 
+#if WITH_DEV_AUTOMATION_TESTS
+	void ShowReviewPageForTesting();
+	TSharedPtr<SBlueprintHelperReviewPanel> GetReviewPanelForTesting() const;
+#endif
+
 private:
 	FReply ShowToolsPage();
 	FReply ShowReviewPage();

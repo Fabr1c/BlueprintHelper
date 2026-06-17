@@ -1,0 +1,24 @@
+// BlueprintHelper TaskRuntime - MaterialInstance static cluster.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeTypes.h"
+
+struct FBlueprintHelperWriteReviewEvidence;
+
+class BLUEPRINTHELPER_API FBlueprintHelperMaterialInstanceTaskRuntimeCluster
+{
+public:
+	static bool CanExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep);
+
+	static bool BuildReviewEvidence(
+		const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep,
+		const FBlueprintHelperToolResultBase& StepResult,
+		const FString& ArchiveSessionId,
+		const FString& TaskRunId,
+		int32 StepIndex,
+		FBlueprintHelperWriteReviewEvidence& OutEvidence);
+
+	FBlueprintHelperToolResultBase ExecuteStep(const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep) const;
+};

@@ -6,6 +6,7 @@
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 
 class FBlueprintHelperDebugEntryService;
+class FBlueprintHelperReviewAdapterRegistry;
 
 struct FBlueprintHelperReviewActionResult
 {
@@ -95,6 +96,10 @@ public:
 		const FBlueprintHelperReviewRejectOptions& Options) const;
 
 private:
+	FBlueprintHelperReviewActionResult RejectResolvedVisibleChange(
+		const FBlueprintHelperReviewVisibleChange& Change,
+		const FBlueprintHelperReviewRejectOptions& Options) const;
+
 	void RecordRejectDebugCaseBestEffort(
 		FBlueprintHelperReviewRecord& Record,
 		const TArray<FString>& TargetKeys,
@@ -103,4 +108,5 @@ private:
 		const FString& RejectMessage) const;
 
 	const FBlueprintHelperDebugEntryService* DebugEntryService = nullptr;
+	TSharedPtr<FBlueprintHelperReviewAdapterRegistry> AdapterRegistry;
 };

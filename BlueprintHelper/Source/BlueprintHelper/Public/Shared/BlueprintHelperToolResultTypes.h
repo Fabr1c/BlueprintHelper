@@ -523,6 +523,13 @@ struct FBlueprintHelperToolError
 
 	/** 简短错误说明。 */
 	FString Message;
+	FString Category;
+	FString SafeNextAction;
+	FString DirtyState;
+	TArray<FString> DirtyAssets;
+	TArray<FString> AllowedRecoveryActions;
+	TArray<FString> RiskyRecoveryActions;
+	TArray<FString> EvidenceRefs;
 
 	/** 是否可重试。 */
 	bool bRetryable = false;
@@ -539,6 +546,54 @@ struct FBlueprintHelperToolError
 	/** 实际值摘要（可选）。 */
 	FString Actual;
 
+	FBlueprintHelperToolError() = default;
+
+	FBlueprintHelperToolError(
+		const FString& InCode,
+		EBlueprintHelperToolStage InStage,
+		const FString& InMessage,
+		const bool bInRetryable)
+		: Code(InCode)
+		, Stage(InStage)
+		, Message(InMessage)
+		, bRetryable(bInRetryable)
+	{
+	}
+
+	FBlueprintHelperToolError(
+		const FString& InCode,
+		EBlueprintHelperToolStage InStage,
+		const FString& InMessage,
+		const bool bInRetryable,
+		const EBlueprintHelperRollbackResult InRollbackResult)
+		: Code(InCode)
+		, Stage(InStage)
+		, Message(InMessage)
+		, bRetryable(bInRetryable)
+		, RollbackResult(InRollbackResult)
+	{
+	}
+
+	FBlueprintHelperToolError(
+		const FString& InCode,
+		EBlueprintHelperToolStage InStage,
+		const FString& InMessage,
+		const bool bInRetryable,
+		const EBlueprintHelperRollbackResult InRollbackResult,
+		const FString& InField,
+		const FString& InExpected,
+		const FString& InActual)
+		: Code(InCode)
+		, Stage(InStage)
+		, Message(InMessage)
+		, bRetryable(bInRetryable)
+		, RollbackResult(InRollbackResult)
+		, Field(InField)
+		, Expected(InExpected)
+		, Actual(InActual)
+	{
+	}
+
 	/** 序列化到 JSON。 */
 	TSharedRef<FJsonObject> ToJson() const
 	{
@@ -546,6 +601,45 @@ struct FBlueprintHelperToolError
 		if (!Code.IsEmpty()) Json->SetStringField(TEXT("code"), Code);
 		Json->SetStringField(TEXT("stage"), ToolStageToString(Stage));
 		if (!Message.IsEmpty()) Json->SetStringField(TEXT("message"), Message);
+		if (!Category.IsEmpty()) Json->SetStringField(TEXT("category"), Category);
+		if (!SafeNextAction.IsEmpty()) Json->SetStringField(TEXT("safe_next_action"), SafeNextAction);
+		if (!DirtyState.IsEmpty()) Json->SetStringField(TEXT("dirty_state"), DirtyState);
+		if (DirtyAssets.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const FString& Value : DirtyAssets)
+			{
+				Values.Add(MakeShared<FJsonValueString>(Value));
+			}
+			Json->SetArrayField(TEXT("dirty_assets"), Values);
+		}
+		if (AllowedRecoveryActions.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const FString& Value : AllowedRecoveryActions)
+			{
+				Values.Add(MakeShared<FJsonValueString>(Value));
+			}
+			Json->SetArrayField(TEXT("allowed_recovery_actions"), Values);
+		}
+		if (RiskyRecoveryActions.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const FString& Value : RiskyRecoveryActions)
+			{
+				Values.Add(MakeShared<FJsonValueString>(Value));
+			}
+			Json->SetArrayField(TEXT("risky_recovery_actions"), Values);
+		}
+		if (EvidenceRefs.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const FString& Value : EvidenceRefs)
+			{
+				Values.Add(MakeShared<FJsonValueString>(Value));
+			}
+			Json->SetArrayField(TEXT("evidence_refs"), Values);
+		}
 		Json->SetBoolField(TEXT("retryable"), bRetryable);
 		Json->SetStringField(TEXT("rollback_result"), RollbackResultToString(RollbackResult));
 		if (!Field.IsEmpty()) Json->SetStringField(TEXT("field"), Field);

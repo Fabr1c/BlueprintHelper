@@ -9,12 +9,14 @@
 #include "MaterialGraph/MaterialGraphNode.h"
 #include "MaterialGraph/MaterialGraphNode_Root.h"
 #include "MaterialGraph/MaterialGraphSchema.h"
+#include "MaterialShared.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionMultiply.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionStaticSwitchParameter.h"
+#include "Materials/MaterialExpressionStaticBoolParameter.h"
 #include "Materials/MaterialExpressionTextureObjectParameter.h"
 #include "Materials/MaterialExpressionTextureSample.h"
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
@@ -135,6 +137,179 @@ public:
 			}
 		}
 		return INDEX_NONE;
+	}
+
+	static FString DescribeMaterialValueType(uint32 Type)
+	{
+		if (Type == 0)
+		{
+			return TEXT("<none>");
+		}
+
+		TArray<FString> TypeNames;
+		if (Type & MCT_Float1)
+		{
+			TypeNames.Add(TEXT("Float1"));
+		}
+		if (Type & MCT_Float2)
+		{
+			TypeNames.Add(TEXT("Float2"));
+		}
+		if (Type & MCT_Float3)
+		{
+			TypeNames.Add(TEXT("Float3"));
+		}
+		if (Type & MCT_Float4)
+		{
+			TypeNames.Add(TEXT("Float4"));
+		}
+		if (Type & MCT_Texture2D)
+		{
+			TypeNames.Add(TEXT("Texture2D"));
+		}
+		if (Type & MCT_TextureCube)
+		{
+			TypeNames.Add(TEXT("TextureCube"));
+		}
+		if (Type & MCT_Texture2DArray)
+		{
+			TypeNames.Add(TEXT("Texture2DArray"));
+		}
+		if (Type & MCT_TextureCubeArray)
+		{
+			TypeNames.Add(TEXT("TextureCubeArray"));
+		}
+		if (Type & MCT_VolumeTexture)
+		{
+			TypeNames.Add(TEXT("VolumeTexture"));
+		}
+		if (Type & MCT_StaticBool)
+		{
+			TypeNames.Add(TEXT("StaticBool"));
+		}
+		if (Type & MCT_MaterialAttributes)
+		{
+			TypeNames.Add(TEXT("MaterialAttributes"));
+		}
+		if (Type & MCT_TextureExternal)
+		{
+			TypeNames.Add(TEXT("TextureExternal"));
+		}
+		if (Type & MCT_TextureVirtual)
+		{
+			TypeNames.Add(TEXT("TextureVirtual"));
+		}
+		if (Type & MCT_SparseVolumeTexture)
+		{
+			TypeNames.Add(TEXT("SparseVolumeTexture"));
+		}
+		if (Type & MCT_VTPageTableResult)
+		{
+			TypeNames.Add(TEXT("VTPageTableResult"));
+		}
+		if (Type & MCT_ShadingModel)
+		{
+			TypeNames.Add(TEXT("ShadingModel"));
+		}
+		if (Type & MCT_Substrate)
+		{
+			TypeNames.Add(TEXT("Substrate"));
+		}
+		if (Type & MCT_LWCScalar)
+		{
+			TypeNames.Add(TEXT("LWCScalar"));
+		}
+		if (Type & MCT_LWCVector2)
+		{
+			TypeNames.Add(TEXT("LWCVector2"));
+		}
+		if (Type & MCT_LWCVector3)
+		{
+			TypeNames.Add(TEXT("LWCVector3"));
+		}
+		if (Type & MCT_LWCVector4)
+		{
+			TypeNames.Add(TEXT("LWCVector4"));
+		}
+		if (Type & MCT_Execution)
+		{
+			TypeNames.Add(TEXT("Execution"));
+		}
+		if (Type & MCT_VoidStatement)
+		{
+			TypeNames.Add(TEXT("VoidStatement"));
+		}
+		if (Type & MCT_Bool)
+		{
+			TypeNames.Add(TEXT("Bool"));
+		}
+		if (Type & MCT_UInt1)
+		{
+			TypeNames.Add(TEXT("UInt1"));
+		}
+		if (Type & MCT_UInt2)
+		{
+			TypeNames.Add(TEXT("UInt2"));
+		}
+		if (Type & MCT_UInt3)
+		{
+			TypeNames.Add(TEXT("UInt3"));
+		}
+		if (Type & MCT_UInt4)
+		{
+			TypeNames.Add(TEXT("UInt4"));
+		}
+		if (Type & MCT_TextureCollection)
+		{
+			TypeNames.Add(TEXT("TextureCollection"));
+		}
+		if (Type & MCT_TextureMeshPaint)
+		{
+			TypeNames.Add(TEXT("TextureMeshPaint"));
+		}
+		if (Type & MCT_TextureMaterialCache)
+		{
+			TypeNames.Add(TEXT("TextureMaterialCache"));
+		}
+		if (Type & MCT_Unknown)
+		{
+			TypeNames.Add(TEXT("Unknown"));
+		}
+
+		return TypeNames.Num() > 0 ? FString::Join(TypeNames, TEXT("|")) : FString::Printf(TEXT("0x%08x"), Type);
+	}
+
+	static bool ValidatePlannedConnectionPinTypes(
+		UMaterialExpression* FromExpression,
+		int32 OutputIndex,
+		UMaterialExpression* ToExpression,
+		int32 InputIndex,
+		const FBlueprintHelperMaterialGraphPlannedConnection& Connection,
+		FString& OutCode,
+		FString& OutMessage)
+	{
+		if (!FromExpression || !ToExpression || OutputIndex == INDEX_NONE || InputIndex == INDEX_NONE)
+		{
+			return true;
+		}
+
+		const uint32 OutputType = static_cast<uint32>(FromExpression->GetOutputValueType(OutputIndex));
+		const uint32 InputType = static_cast<uint32>(ToExpression->GetInputValueType(InputIndex));
+		if (CanConnectMaterialValueTypes(InputType, OutputType))
+		{
+			return true;
+		}
+
+		OutCode = TEXT("material_pin_type_incompatible");
+		OutMessage = FString::Printf(
+			TEXT("MaterialGraph planned connection %s.%s -> %s.%s is not pin-type compatible: output type %s cannot connect to input type %s."),
+			*Connection.FromNodeKey,
+			*Connection.FromPin,
+			*Connection.ToNodeKey,
+			*Connection.ToPin,
+			*DescribeMaterialValueType(OutputType),
+			*DescribeMaterialValueType(InputType));
+		return false;
 	}
 
 	static bool AreEnginePinsEquivalent(
@@ -384,6 +559,10 @@ public:
 		{
 			return UMaterialExpressionStaticSwitchParameter::StaticClass();
 		}
+		if (NormalizedClassName == TEXT("MaterialExpressionStaticBoolParameter"))
+		{
+			return UMaterialExpressionStaticBoolParameter::StaticClass();
+		}
 		return nullptr;
 	}
 
@@ -434,6 +613,17 @@ public:
 			OutMessage = PinErrorMessage;
 			return false;
 		}
+		const int32 OutputIndex = ResolveExpressionOutputIndex(FromExpression, EngineFromPin);
+		if (OutputIndex == INDEX_NONE)
+		{
+			OutCode = TEXT("material_pin_not_found");
+			OutMessage = FString::Printf(
+				TEXT("Material expression output pin '%s.%s' resolved to engine pin '%s', but no output index was found."),
+				*Connection.FromNodeKey,
+				*Connection.FromPin,
+				*EngineFromPin);
+			return false;
+		}
 
 		if (Connection.bMaterialOutput)
 		{
@@ -456,6 +646,17 @@ public:
 				TEXT("Material expression input pin '%s.%s' was not found."),
 				*Connection.ToNodeKey,
 				*Connection.ToPin);
+			return false;
+		}
+		if (!ValidatePlannedConnectionPinTypes(
+			FromExpression,
+			OutputIndex,
+			ToExpression,
+			InputIndex,
+			Connection,
+			OutCode,
+			OutMessage))
+		{
 			return false;
 		}
 		return true;

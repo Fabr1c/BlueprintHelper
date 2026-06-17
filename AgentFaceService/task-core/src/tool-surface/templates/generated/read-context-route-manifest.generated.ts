@@ -51,9 +51,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "asset"
-      },
-      "view": {
-        "format": "diagnostics_json"
       }
     },
     "required_fields": [
@@ -62,7 +59,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "diagnostics_json",
+      "output.format": "diagnostics_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -983,9 +980,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "property",
         "target_name": "__REQUIRED_TARGET_NAME__"
-      },
-      "view": {
-        "format": "property_json"
       }
     },
     "required_fields": [
@@ -995,7 +989,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "property_json",
+      "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1038,9 +1032,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "event_dispatcher"
-      },
-      "view": {
-        "format": "schema_json"
       }
     },
     "required_fields": [
@@ -1049,7 +1040,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "schema_json",
+      "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1091,9 +1082,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "member_variable"
-      },
-      "view": {
-        "format": "schema_json"
       }
     },
     "required_fields": [
@@ -1102,7 +1090,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "schema_json",
+      "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1144,9 +1132,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "blueprint"
-      },
-      "view": {
-        "format": "tree_json"
       }
     },
     "required_fields": [
@@ -1155,7 +1140,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "tree_json",
+      "output.format": "tree_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1197,9 +1182,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "data_asset"
-      },
-      "view": {
-        "format": "property_json"
       }
     },
     "required_fields": [
@@ -1208,7 +1190,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "property_json",
+      "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1250,9 +1232,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "data_table_row",
         "target_name": "__REQUIRED_TARGET_NAME__"
-      },
-      "view": {
-        "format": "schema_json"
       }
     },
     "required_fields": [
@@ -1262,7 +1241,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "schema_json",
+      "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1304,9 +1283,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "target": {
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "data_table"
-      },
-      "view": {
-        "format": "schema_json"
       }
     },
     "required_fields": [
@@ -1315,7 +1291,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "schema_json",
+      "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
@@ -1503,9 +1479,6 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
         "asset_path": "__REQUIRED_ASSET_PATH__",
         "target_type": "widget",
         "target_name": "__REQUIRED_TARGET_NAME__"
-      },
-      "view": {
-        "format": "property_json"
       }
     },
     "required_fields": [
@@ -1515,7 +1488,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "optional_fields": [],
     "context_evidence": {
       "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
-      "view.format.allowed_values": "property_json",
+      "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",

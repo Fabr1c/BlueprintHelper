@@ -82,6 +82,8 @@ function globalHelpText(registry: ToolCommandManifestRegistry): string {
     '  Use global MCP lifecycle tools for Agent-owned open/close:',
     '    mcp__blueprint_helper__blueprint_open_editor',
     '    mcp__blueprint_helper__blueprint_close_editor',
+    '    mcp__blueprint_helper__blueprint_dismiss_editor_dialogs',
+    '    mcp__blueprint_helper__blueprint_close_editor_dialogs',
     '  Do not use CLI lifecycle aliases as Agent compatibility paths.',
     '  If lifecycle MCP is unavailable, report lifecycle_mcp_unavailable instead of starting or closing the editor through CLI.',
     '',

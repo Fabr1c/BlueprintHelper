@@ -6,6 +6,7 @@
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeTransportTimingUtils.h"
 #include "Entry/Bridge/Utils/BlueprintHelperBridgeUtils.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Systems/Debug/BlueprintHelperEditorCloseModalCoordinator.h"
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
 #include "HAL/PlatformTime.h"
@@ -194,6 +195,13 @@ void FBlueprintHelperBridgeServer::HandleClient(FSocket* ClientSocket)
 		const FBlueprintHelperBridgeRoutePlan RoutePlan = Req.IsSet()
 			? FBlueprintHelperBridgeRoutePlanner::BuildPlan(Req.GetValue().Command)
 			: FBlueprintHelperBridgeRoutePlan();
+		if (Req.IsSet() &&
+			(Req.GetValue().Command == TEXT("close_editor") ||
+			 Req.GetValue().Command == TEXT("dismiss_editor_dialogs")))
+		{
+			FBlueprintHelperEditorCloseModalCoordinator::Get().NotifyCloseEditorRequestFromAnyThread(
+				Req.GetValue().RequestId);
+		}
 		FBlueprintHelperBridgeTransportTimingUtils::FTimingTrace TransportTiming =
 			FBlueprintHelperBridgeTransportTimingUtils::StartTrace(Req, ReceiveStageStart);
 		FBlueprintHelperBridgeTransportTimingUtils::AddStage(

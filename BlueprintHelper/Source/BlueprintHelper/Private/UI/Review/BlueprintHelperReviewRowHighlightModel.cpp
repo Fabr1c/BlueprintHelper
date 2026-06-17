@@ -2,6 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewGeometrySearchService.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 
@@ -82,77 +83,21 @@ void FBlueprintHelperReviewRowHighlightModel::BroadcastStateChanged(
 
 FString FBlueprintHelperReviewRowHighlightModel::NormalizeGeometrySearchText(FString Text)
 {
-	Text.ToLowerInline();
-	for (int32 Index = Text.Len() - 1; Index >= 0; --Index)
-	{
-		const TCHAR Character = Text[Index];
-		if (!FChar::IsAlnum(Character))
-		{
-			Text.RemoveAt(Index);
-		}
-	}
-	return Text;
+	return FBlueprintHelperReviewGeometrySearchService::NormalizeSearchText(MoveTemp(Text));
 }
 
 void FBlueprintHelperReviewRowHighlightModel::AddGeometrySearchTerms(
 	const FString& RawText,
 	TArray<FString>& OutTerms)
 {
-	OutTerms.AddUnique(NormalizeGeometrySearchText(RawText));
-	FString CurrentPart;
-	for (int32 Index = 0; Index < RawText.Len(); ++Index)
-	{
-		const TCHAR Character = RawText[Index];
-		if (FChar::IsAlnum(Character))
-		{
-			CurrentPart.AppendChar(Character);
-			continue;
-		}
-
-		const FString Term = NormalizeGeometrySearchText(CurrentPart);
-		if (Term.Len() >= 2)
-		{
-			OutTerms.AddUnique(Term);
-		}
-		CurrentPart.Reset();
-	}
-
-	const FString TailTerm = NormalizeGeometrySearchText(CurrentPart);
-	if (TailTerm.Len() >= 2)
-	{
-		OutTerms.AddUnique(TailTerm);
-	}
+	FBlueprintHelperReviewGeometrySearchService::AddGeometrySearchTerms(RawText, OutTerms);
 }
 
 bool FBlueprintHelperReviewRowHighlightModel::GeometrySearchTextMatches(
 	const FString& RowSearchText,
 	const FString& TargetText)
 {
-	const FString NormalizedRow = NormalizeGeometrySearchText(RowSearchText);
-	if (NormalizedRow.IsEmpty())
-	{
-		return false;
-	}
-
-	TArray<FString> TargetTerms;
-	AddGeometrySearchTerms(TargetText, TargetTerms);
-	if (TargetTerms.Num() == 0)
-	{
-		return false;
-	}
-
-	for (const FString& TargetTerm : TargetTerms)
-	{
-		if (TargetTerm.Len() < 2)
-		{
-			continue;
-		}
-		if (NormalizedRow.Contains(TargetTerm) || TargetTerm.Contains(NormalizedRow))
-		{
-			return true;
-		}
-	}
-	return false;
+	return FBlueprintHelperReviewGeometrySearchService::GeometrySearchTextMatches(RowSearchText, TargetText);
 }
 
 const TCHAR* FBlueprintHelperReviewRowHighlightModel::SurfaceDebugName(
@@ -212,6 +157,10 @@ bool FBlueprintHelperReviewRowHighlightModel::AreEntriesEquivalent(
 		&& Left.TargetKey == Right.TargetKey
 		&& Left.ChangeKind == Right.ChangeKind
 		&& Left.bSelected == Right.bSelected
+		&& Left.DiffModel.TargetKind == Right.DiffModel.TargetKind
+		&& Left.DiffModel.TargetKey == Right.DiffModel.TargetKey
+		&& Left.DiffModel.DisplayLabel == Right.DiffModel.DisplayLabel
+		&& Left.DiffModel.DiffColor == Right.DiffModel.DiffColor
 		&& AreBindingsEquivalent(Left.Binding, Right.Binding);
 }
 
@@ -300,6 +249,18 @@ void FBlueprintHelperReviewRowHighlightModel::AddRowHighlightKey(
 			OutKeys.AddUnique(Tail);
 		}
 	}
+}
+
+void FBlueprintHelperReviewRowHighlightModel::CollectProjectionModelKeys(
+	const FBlueprintHelperReviewSurfaceDiffProjectionModel& DiffModel,
+	TArray<FString>& OutKeys)
+{
+	for (const FString& MatchKey : DiffModel.MatchKeys)
+	{
+		AddRowHighlightKey(MatchKey, OutKeys);
+	}
+	AddRowHighlightKey(DiffModel.TargetKey, OutKeys);
+	AddRowHighlightKey(DiffModel.DisplayLabel, OutKeys);
 }
 
 FString FBlueprintHelperReviewRowHighlightModel::GetReviewListTargetText(
@@ -491,6 +452,11 @@ FSlateColor FBlueprintHelperReviewRowHighlightModel::ResolveRowHighlightColor(
 	const FSlateColor SourceColor = State && State->GetChangeColor
 		? State->GetChangeColor(Entry.ChangeKind)
 		: FSlateColor(FLinearColor::Yellow);
+	if (Entry.DiffModel.DiffColor.A > 0.0f)
+	{
+		return FSlateColor(FBlueprintHelperReviewRowHighlightModel::GetRowHighlightFillColor(
+			Entry.DiffModel.DiffColor));
+	}
 	return FSlateColor(FBlueprintHelperReviewRowHighlightModel::GetRowHighlightFillColor(
 		SourceColor.GetSpecifiedColor()));
 }
@@ -694,44 +660,6 @@ FLinearColor FBlueprintHelperReviewRowHighlightModel::GetRowHighlightFillColor(c
 	return FillColor;
 }
 
-TMap<FString, FBlueprintHelperReviewRowHighlight> FBlueprintHelperReviewRowHighlightModel::BuildTargetKeyToHighlight(
-	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
-	const TSharedPtr<FBlueprintHelperReviewVisibleChange>& SelectedChange,
-	EBlueprintHelperReviewSurface Surface,
-	const FString& CurrentAssetPath)
-{
-	TMap<FString, FBlueprintHelperReviewRowHighlight> TargetKeyToHighlight;
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : ChangeItems)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		if (!CurrentAssetPath.IsEmpty() && Item->AssetPath != CurrentAssetPath)
-		{
-			continue;
-		}
-		if (!FBlueprintHelperReviewSurfacePresenterRouter::ShouldShowChangeOnSurface(*Item, Surface))
-		{
-			continue;
-		}
-
-		TArray<FString> Keys;
-		CollectRowHighlightKeys(*Item, Surface, Keys);
-		for (const FString& Key : Keys)
-		{
-			FBlueprintHelperReviewRowHighlight Highlight;
-			Highlight.ChangeId = Item->ChangeId;
-			Highlight.TargetKey = Key;
-			Highlight.ChangeKind = Item->ChangeKind;
-			Highlight.bSelected = IsSameChange(Item, SelectedChange);
-			TargetKeyToHighlight.Add(Key, Highlight);
-		}
-	}
-
-	return TargetKeyToHighlight;
-}
-
 void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 	const FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
 	EBlueprintHelperReviewSurface Surface,
@@ -739,7 +667,7 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 	const FString& PreferredAssetPath,
 	bool bEmitGeometryDiagnostics)
 {
-	if (!IsRowHighlightSurface(Surface) || !Args.ChangeItems)
+	if (!IsRowHighlightSurface(Surface) || !Args.ChangeItems || !Args.SurfaceDiffModels)
 	{
 		return;
 	}
@@ -752,6 +680,18 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 	AddStateAssetPath(SelectedAssetPath, AssetPaths);
 
 	TSet<FString> DesiredStateKeys;
+	const auto FindChangeById = [&Args](const FString& ReviewEventId)
+	{
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Candidate : *Args.ChangeItems)
+		{
+			if (Candidate.IsValid() && Candidate->ChangeId == ReviewEventId)
+			{
+				return Candidate;
+			}
+		}
+		return TSharedPtr<FBlueprintHelperReviewVisibleChange>();
+	};
+
 	for (const FString& AssetPath : AssetPaths)
 	{
 		const FString StateKey = BuildRowHighlightStateKey(AssetPath, Surface);
@@ -765,61 +705,65 @@ void FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
 
 		TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> HighlightedItems;
 		TMap<FString, FString> PrimaryTargetByChangeId;
-		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
+		for (const FBlueprintHelperReviewSurfaceDiffProjectionModel& DiffModel : *Args.SurfaceDiffModels)
 		{
+			TSharedPtr<FBlueprintHelperReviewVisibleChange> Item = FindChangeById(DiffModel.ReviewEventId);
 			const bool bUsesContextAssetScope = !ContextAssetPath.IsEmpty() && AssetPath == ContextAssetPath;
 			if (!Item.IsValid() || (!bUsesContextAssetScope && Item->AssetPath != AssetPath))
 			{
 				continue;
 			}
 
-			const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
-				FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(*Item, Surface);
-			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
-				? Args.AssetContext->AssetKind
-				: EBlueprintHelperReviewAssetKind::Unknown;
 			if (bEmitGeometryDiagnostics && Args.AddDebugMessage)
 			{
 				EmitDedupedRowHighlightDebug(
 					Args.AddDebugMessage,
-					FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
-						*Item,
-						Surface,
-						RouteDecision,
-						BlueprintHelperReviewAssetKindToString(AssetKind)),
+					FString::Printf(
+						TEXT("ReviewRoute change=%s surface=%s result=shown reason=surface_diff_model target=\"%s\""),
+						*Item->ChangeId,
+						SurfaceDebugName(Surface),
+						*DiffModel.TargetKey),
 					Surface,
 					Item->ChangeId,
-					RouteDecision.bShouldShow ? TEXT("shown") : TEXT("hidden"),
-					RouteDecision.Reason);
+					TEXT("shown"),
+					TEXT("surface_diff_model"));
 			}
-			if (!RouteDecision.bShouldShow || !Predicate(*Item))
+			if (Predicate && !Predicate(*Item))
 			{
 				continue;
 			}
 
 			TArray<FString> Keys;
-			CollectRowHighlightKeys(*Item, Surface, Keys);
+			CollectProjectionModelKeys(DiffModel, Keys);
 			if (Keys.Num() == 0)
 			{
 				continue;
 			}
 
-			FString PrimaryTarget = GetReviewListTargetText(Item, Surface);
+			FString PrimaryTarget = DiffModel.TargetKey;
+			if (PrimaryTarget.IsEmpty())
+			{
+				PrimaryTarget = DiffModel.DisplayLabel;
+			}
 			if (PrimaryTarget.IsEmpty())
 			{
 				PrimaryTarget = Keys[0];
 			}
-			PrimaryTargetByChangeId.Add(Item->ChangeId, PrimaryTarget);
+			if (!PrimaryTargetByChangeId.Contains(Item->ChangeId))
+			{
+				PrimaryTargetByChangeId.Add(Item->ChangeId, PrimaryTarget);
+			}
 
 			for (const FString& Key : Keys)
 			{
 				FRowHighlightEntry Entry;
 				Entry.ChangeId = Item->ChangeId;
 				Entry.TargetKey = Key;
-				Entry.ChangeKind = Item->ChangeKind;
+				Entry.ChangeKind = DiffModel.ChangeKind;
 				Entry.bSelected = IsSameChange(Item, Args.SelectedChange);
 				Entry.Change = Item;
 				Entry.Binding = FBlueprintHelperReviewPanelStateService::MakeChangeBinding(*Item, Surface, Key);
+				Entry.DiffModel = DiffModel;
 				State.TargetKeyToHighlight.Add(Key, Entry);
 			}
 			HighlightedItems.Add(Item);
@@ -953,3 +897,4 @@ EVisibility FBlueprintHelperReviewRowHighlightModel::GetRowActionsVisibility(
 }
 
 
+#include "UI/Review/BlueprintHelperReviewGeometrySearchService.h"

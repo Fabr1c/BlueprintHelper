@@ -74,6 +74,7 @@ const ERROR_RULE_GROUPS: readonly ErrorRuleGroup[] = [
       'compile_failed',
       'save_failed',
       'readback_failed',
+      'review_baseline_dirty_target_assets',
     ],
   },
 ] as const;

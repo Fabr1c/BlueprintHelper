@@ -1,6 +1,7 @@
 // BlueprintHelper Review action service implementation.
 
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
+#include "Systems/Review/BlueprintHelperReviewAdapterRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -82,11 +83,15 @@
 		return Result;
 	}
 
-FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService() = default;
+FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService()
+	: AdapterRegistry(FBlueprintHelperReviewAdapterRegistry::CreateDefault())
+{
+}
 
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService(
 	const FBlueprintHelperDebugEntryService* InDebugEntryService)
 	: DebugEntryService(InDebugEntryService)
+	, AdapterRegistry(FBlueprintHelperReviewAdapterRegistry::CreateDefault())
 {
 }
 
@@ -195,11 +200,15 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			return LastResult;
 		}
 
-		return FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
-			Change,
-			&Options);
 	}
 
+	return RejectResolvedVisibleChange(Change, Options);
+}
+
+FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectResolvedVisibleChange(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	const FBlueprintHelperReviewRejectOptions& Options) const
+{
 	FBlueprintHelperReviewActionResult Result;
 	Result.TargetEvidenceId = Change.LatestEvidenceId;
 	Result.RollbackMode = TEXT("archive_baseline");
@@ -238,21 +247,30 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectVi
 			Result.HashGuardCurrentHash = *CurrentHash;
 			Result.HashGuardRecordedAfterSnapshotJson = Target.AfterSnapshotJson;
 		}
-		if (FBlueprintHelperReviewSnapshotRestoreService::ShouldUseSnapshotRestore(Target))
+		FBlueprintHelperReviewVisibleChange TargetChange = Change;
+		TargetChange.AtomicTargets.Reset();
+		TargetChange.AtomicTargets.Add(Target);
+		const FBlueprintHelperReviewRestoreAdapterLookup RestoreLookup =
+			AdapterRegistry.IsValid()
+				? AdapterRegistry->FindRestoreAdapter(Target.TargetKind)
+				: FBlueprintHelperReviewRestoreAdapterLookup();
+		if (RestoreLookup.bAvailable && RestoreLookup.Adapter.IsValid())
 		{
-			FString SnapshotRestoreError;
-			if (!FBlueprintHelperReviewSnapshotRestoreService::ExecuteSnapshotRestore(Target, SnapshotRestoreError))
+			const FBlueprintHelperReviewRestoreResult RestoreResult =
+				RestoreLookup.Adapter->RestoreBeforeSnapshot(TargetChange);
+			if (!RestoreResult.bSucceeded)
 			{
-				Result.NewStatus = SnapshotRestoreError.Contains(TEXT("_recreate_required"))
-					? EBlueprintHelperReviewChangeStatus::NeedsAction
-					: EBlueprintHelperReviewChangeStatus::RejectFailed;
-				Result.Message = SnapshotRestoreError;
+				Result.NewStatus = RestoreResult.NewStatus;
+				Result.RollbackMode = RestoreResult.RollbackMode;
+				Result.Message = RestoreResult.Message;
 				return Result;
 			}
 			continue;
 		}
 		Result.NewStatus = EBlueprintHelperReviewChangeStatus::NeedsAction;
-		Result.Message = FString::Printf(TEXT("snapshot_restore_unsupported_target_kind:%s"), *Target.TargetKind);
+		Result.Message = RestoreLookup.Message.IsEmpty()
+			? FString::Printf(TEXT("restore_adapter_unavailable:%s"), *Target.TargetKind)
+			: RestoreLookup.Message;
 		return Result;
 	}
 
@@ -533,7 +551,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	bool bMatchedAny = false;
 	bool bAllRejected = true;
 	bool bAllTargetStatusesRejected = true;
-	const bool bUseInjectedOptions = FBlueprintHelperReviewActionRecordUtils::HasInjectedRejectOptions(Options);
 	FString SourceEvidenceId;
 	FString LastMessage;
 	EBlueprintHelperReviewChangeStatus LastStatus = EBlueprintHelperReviewChangeStatus::Rejected;
@@ -574,11 +591,7 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 				TargetScope.AddText(TEXT("target_kind"), TargetForReject.TargetKind);
 				TargetScope.AddText(TEXT("target_key"), TargetForReject.TargetKey);
 				TargetScope.AddBytes(TEXT("before_snapshot"), TargetForReject.BeforeSnapshotJson.Len());
-				TargetResult = bUseInjectedOptions
-					? RejectVisibleChange(TargetChange, Options)
-					: FBlueprintHelperReviewRejectService::RejectVisibleChangeWithDefaultDispatcher(
-						TargetChange,
-						&Options);
+				TargetResult = RejectResolvedVisibleChange(TargetChange, Options);
 				TargetScope.AddText(TEXT("status"), BlueprintHelperReviewChangeStatusToString(TargetResult.NewStatus));
 				TargetScope.AddText(TEXT("message"), TargetResult.Message);
 			}

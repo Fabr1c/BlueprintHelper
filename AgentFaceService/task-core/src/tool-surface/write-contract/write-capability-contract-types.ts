@@ -7,12 +7,17 @@ export type WriteCapabilityAuditStatus = typeof WRITE_CAPABILITY_AUDIT_STATUSES[
 export const WRITE_CAPABILITY_AUDIT_DIMENSIONS = [
   'discovery',
   'schema',
+  'template_shape',
+  'compiler_acceptance',
   'runtime_adapter',
+  'runtime_visibility',
   'preview_execute',
   'write_gate',
   'editor_lifecycle',
+  'help_index_parity',
   'readback',
   'review_debug',
+  'result_projection',
   'tests',
 ] as const;
 export type WriteCapabilityAuditDimension = typeof WRITE_CAPABILITY_AUDIT_DIMENSIONS[number];

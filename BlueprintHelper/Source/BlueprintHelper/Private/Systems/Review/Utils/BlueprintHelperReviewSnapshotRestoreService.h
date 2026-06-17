@@ -95,7 +95,4 @@ public:
 				FString& OutError);
 	static bool ShouldUseSnapshotRestore(const FBlueprintHelperReviewAtomicTarget& Target);
 	static FString MakeObjectPathFromAssetPath(FString AssetPath);
-	static FBlueprintHelperReviewActionResult RejectAssetFactoryTargetWithDefaultDispatcher(
-				const FBlueprintHelperReviewVisibleChange& Change,
-				const FBlueprintHelperReviewAtomicTarget& Target);
 };

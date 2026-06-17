@@ -13,6 +13,10 @@ const REMOVED_DIRECT_CLI_TOOL_COMMANDS: readonly RemovedDirectCliToolCommand[] =
   removed('open_editor', 'mcp__blueprint_helper__blueprint_open_editor'),
   removed('blueprint_close_editor', 'mcp__blueprint_helper__blueprint_close_editor'),
   removed('close_editor', 'mcp__blueprint_helper__blueprint_close_editor'),
+  removed('blueprint_dismiss_editor_dialogs', 'mcp__blueprint_helper__blueprint_dismiss_editor_dialogs'),
+  removed('dismiss_editor_dialogs', 'mcp__blueprint_helper__blueprint_dismiss_editor_dialogs'),
+  removed('blueprint_close_editor_dialogs', 'mcp__blueprint_helper__blueprint_close_editor_dialogs'),
+  removed('close_editor_dialogs', 'mcp__blueprint_helper__blueprint_close_editor_dialogs'),
 ];
 
 export function getRemovedDirectCliToolCommand(toolName: string): RemovedDirectCliToolCommand | undefined {
@@ -27,7 +31,11 @@ function removed(toolName: string, replacementCommand: string): RemovedDirectCli
   const isLifecycle = toolName === 'blueprint_open_editor'
     || toolName === 'open_editor'
     || toolName === 'blueprint_close_editor'
-    || toolName === 'close_editor';
+    || toolName === 'close_editor'
+    || toolName === 'blueprint_dismiss_editor_dialogs'
+    || toolName === 'dismiss_editor_dialogs'
+    || toolName === 'blueprint_close_editor_dialogs'
+    || toolName === 'close_editor_dialogs';
   return {
     tool_name: toolName,
     replacement_command: replacementCommand,

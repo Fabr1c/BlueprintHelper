@@ -170,9 +170,14 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildLogEvent(
 {
 	TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
 	Event->SetStringField(TEXT("event_type"), TEXT("debug_log"));
+	Event->SetStringField(TEXT("event_id"), FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	Event->SetStringField(TEXT("session_id"), SessionId);
 	Event->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
+	if (SelectedChange.IsValid())
+	{
+		Event->SetStringField(TEXT("review_event_id"), SelectedChange->ChangeId);
+	}
 	Event->SetStringField(TEXT("message"), FBlueprintHelperReviewDebugBundleUtils::SanitizeText(Message));
 	Event->SetObjectField(TEXT("selected_change"), BuildChangeSummary(SelectedChange));
 	return Event;
@@ -189,10 +194,15 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewDebugBundleService::BuildFocusEven
 {
 	TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
 	Event->SetStringField(TEXT("event_type"), TEXT("focus_traversal"));
+	Event->SetStringField(TEXT("event_id"), FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	Event->SetStringField(TEXT("session_id"), SessionId);
 	Event->SetStringField(TEXT("created_at"), FDateTime::UtcNow().ToIso8601());
 	Event->SetStringField(TEXT("phase"), Phase);
 	Event->SetStringField(TEXT("asset_path"), AssetPath);
+	if (Change.IsValid())
+	{
+		Event->SetStringField(TEXT("review_event_id"), Change->ChangeId);
+	}
 	Event->SetNumberField(TEXT("index"), Index);
 	Event->SetNumberField(TEXT("count"), Count);
 		Event->SetStringField(TEXT("reason"), FBlueprintHelperReviewDebugBundleUtils::SanitizeText(Reason));

@@ -1,6 +1,7 @@
 // BlueprintHelper Review slate row geometry registry.
 
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
+#include "UI/Review/BlueprintHelperReviewGeometrySearchService.h"
 #include "Widgets/SWidget.h"
 
 void FBlueprintHelperReviewSlateRowGeometryRegistry::RegisterRow(
@@ -136,75 +137,19 @@ FBlueprintHelperReviewSlateRowGeometryRegistry::GetRowsChangedDelegate()
 
 FString FBlueprintHelperReviewSlateRowGeometryRegistry::NormalizeGeometrySearchText(FString Text)
 {
-	Text.ToLowerInline();
-	for (int32 Index = Text.Len() - 1; Index >= 0; --Index)
-	{
-		const TCHAR Character = Text[Index];
-		if (!FChar::IsAlnum(Character))
-		{
-			Text.RemoveAt(Index);
-		}
-	}
-	return Text;
+	return FBlueprintHelperReviewGeometrySearchService::NormalizeSearchText(MoveTemp(Text));
 }
 
 void FBlueprintHelperReviewSlateRowGeometryRegistry::AddGeometrySearchTerms(
 	const FString& RawText,
 	TArray<FString>& OutTerms)
 {
-	OutTerms.AddUnique(NormalizeGeometrySearchText(RawText));
-	FString CurrentPart;
-	for (int32 Index = 0; Index < RawText.Len(); ++Index)
-	{
-		const TCHAR Character = RawText[Index];
-		if (FChar::IsAlnum(Character))
-		{
-			CurrentPart.AppendChar(Character);
-			continue;
-		}
-
-		const FString Term = NormalizeGeometrySearchText(CurrentPart);
-		if (Term.Len() >= 2)
-		{
-			OutTerms.AddUnique(Term);
-		}
-		CurrentPart.Reset();
-	}
-
-	const FString TailTerm = NormalizeGeometrySearchText(CurrentPart);
-	if (TailTerm.Len() >= 2)
-	{
-		OutTerms.AddUnique(TailTerm);
-	}
+	FBlueprintHelperReviewGeometrySearchService::AddGeometrySearchTerms(RawText, OutTerms);
 }
 
 bool FBlueprintHelperReviewSlateRowGeometryRegistry::GeometrySearchTextMatches(
 	const FString& RowSearchText,
 	const FString& TargetText)
 {
-	const FString NormalizedRow = NormalizeGeometrySearchText(RowSearchText);
-	if (NormalizedRow.IsEmpty())
-	{
-		return false;
-	}
-
-	TArray<FString> TargetTerms;
-	AddGeometrySearchTerms(TargetText, TargetTerms);
-	if (TargetTerms.Num() == 0)
-	{
-		return false;
-	}
-
-	for (const FString& TargetTerm : TargetTerms)
-	{
-		if (TargetTerm.Len() < 2)
-		{
-			continue;
-		}
-		if (NormalizedRow.Contains(TargetTerm) || TargetTerm.Contains(NormalizedRow))
-		{
-			return true;
-		}
-	}
-	return false;
+	return FBlueprintHelperReviewGeometrySearchService::GeometrySearchTextMatches(RowSearchText, TargetText);
 }

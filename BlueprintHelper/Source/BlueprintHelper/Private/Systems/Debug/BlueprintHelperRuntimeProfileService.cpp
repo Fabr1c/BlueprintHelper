@@ -1,6 +1,7 @@
 // BlueprintHelper Service Layer 。Runtime Profile 服务实现
 
 #include "Systems/Debug/BlueprintHelperRuntimeProfileService.h"
+#include "Runtime/Capabilities/BlueprintHelperRuntimeCapabilityStateBuilder.h"
 #include "Shared/Debug/BlueprintHelperRuntimeProfileTypes.h"
 #include "Shared/BlueprintHelperToolResultTypes.h"
 #include "Systems/Authorization/BlueprintHelperWriteAuthorizationService.h"
@@ -26,6 +27,10 @@ FBlueprintHelperRuntimeProfileData FBlueprintHelperRuntimeProfileService::GetRun
 	Data.ActiveProfile = BuildActiveProfileState();
 	Data.ToolCapabilities.Mode = EBlueprintHelperToolCapabilitiesMode::UnavailableOnly;
 	Data.ToolCapabilities.Unavailable = BuildUnavailableCapabilities();
+	Data.CapabilityRuntimeState =
+		FBlueprintHelperRuntimeCapabilityStateBuilder::BuildRegisteredRuntimeState();
+	Data.CapabilityRuntimeState.bAllowWriteCapabilities = Data.WritePermission.bEnabled;
+	Data.CapabilityRuntimeState.bAllowHighRiskCapabilities = Data.RiskCommand.bEnabled;
 	return Data;
 }
 

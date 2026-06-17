@@ -51,6 +51,7 @@ export function routeCliCommand<TBase extends Record<string, unknown>>(
     manifestLookupId: match.descriptor.manifest_lookup_id,
     metricsToolName: match.descriptor.metrics_tool_name,
     metricsLookupId: match.descriptor.metrics_lookup_id,
+    capabilityDescriptorIds: match.descriptor.capability_descriptor_ids,
     inputIoKind: match.descriptor.input_io_kind,
     ...match.captures,
   };

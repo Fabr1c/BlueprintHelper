@@ -6,6 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 import { createHelpBuilder } from './help-builder.js';
 import { buildHelpText } from './help.js';
+import { runCli } from './run.js';
+import {
+  buildReadonlyToolCommandManifestRegistry,
+  listReadContextTemplateClusters,
+  listReadContextTemplateFamilies,
+  listReadContextTemplates,
+  templateNavigationUsageLinesForInputShapes,
+} from '@blueprinthelper/task-core/tool-surface/tool-registry';
 
 test('HelpBuilder redirects removed direct preview help to global grouped help', () => {
   const builder = createHelpBuilder();
@@ -30,6 +38,7 @@ test('HelpBuilder redirects removed lifecycle help to global MCP guidance', () =
   assert.doesNotMatch(help, /open_editor direct CLI command was removed/);
   assert.match(closeHelp, /BlueprintHelper CLI/);
   assert.match(closeHelp, /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.match(closeHelp, /mcp__blueprint_helper__blueprint_close_editor_dialogs/);
   assert.doesNotMatch(closeHelp, /BlueprintHelper CLI help: close_editor/);
   assert.doesNotMatch(closeHelp, /close_editor direct CLI command was removed/);
 });
@@ -114,9 +123,69 @@ test('global help includes ReadContext template navigation', () => {
   assert.match(help, /bh tools read-templates families --format json/);
   assert.match(help, /bh tools read-templates compose --template <template_id>/);
   assert.match(help, /bh context read \(\--file <read-spec\.json> \| --json <json> \| --stdin\)/);
+  assert.match(help, /Use global MCP lifecycle tools/);
+  assert.match(help, /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.match(help, /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.match(help, /mcp__blueprint_helper__blueprint_dismiss_editor_dialogs/);
+  assert.match(help, /mcp__blueprint_helper__blueprint_close_editor_dialogs/);
   assert.doesNotMatch(help, /bh <tool_name>/);
   assert.doesNotMatch(help, /Default tool names:/);
   assert.doesNotMatch(help, /bh bridge call/);
+  assert.doesNotMatch(help, /bh open_editor/);
+  assert.doesNotMatch(help, /bh close_editor/);
+});
+
+test('manifest-backed help template navigation mirrors input shape policy', () => {
+  const registry = buildReadonlyToolCommandManifestRegistry();
+  const builder = createHelpBuilder(registry);
+
+  for (const target of [
+    'task preview',
+    'task execute',
+    'context read',
+  ]) {
+    const manifest = registry.require(target);
+    const help = builder.build(target.split(' '));
+    const navigationLines = templateNavigationUsageLinesForInputShapes(manifest.input_shapes);
+    assert.equal(navigationLines.length > 0, true, `${target} must have template navigation lines`);
+    for (const line of navigationLines) {
+      assert.match(help, new RegExp(escapeRegExp(line)), `${target} help must include descriptor-derived navigation: ${line}`);
+    }
+  }
+});
+
+test('runCli --help mirrors manifest help and template refs for every manifest-backed tool', async () => {
+  const registry = buildReadonlyToolCommandManifestRegistry();
+  const builder = createHelpBuilder(registry);
+  const readTemplateIds = await listCliReadContextTemplateIds();
+
+  for (const manifest of registry.list()) {
+    const directHelp = await runCliHelp([manifest.tool_id, '--help']);
+    assert.equal(directHelp, builder.build([manifest.tool_id]));
+
+    const navigationLines = templateNavigationUsageLinesForInputShapes(manifest.input_shapes);
+    for (const line of navigationLines) {
+      assert.match(
+        directHelp,
+        new RegExp(escapeRegExp(line)),
+        `${manifest.tool_id} help must include descriptor-derived template navigation: ${line}`,
+      );
+    }
+
+    if (manifest.input_shapes.includes('readspec')) {
+      for (const templateId of manifest.template_refs) {
+        assert.equal(
+          readTemplateIds.has(templateId),
+          true,
+          `${manifest.tool_id} read template ref must be listed by bh tools read-templates: ${templateId}`,
+        );
+      }
+    }
+
+    if (manifest.input_shapes.includes('bare_taskspec')) {
+      assert.match(directHelp, /bh tools templates families --workflow preview_execute --format json/);
+    }
+  }
 });
 
 test('cli help source does not hardcode route template paths for manifest-backed tools', () => {
@@ -142,4 +211,45 @@ test('buildHelpText keeps manifest-backed help compact', () => {
 
 function sourcePath(fileName: string): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'cli', fileName);
+}
+
+async function runCliHelp(argv: string[]): Promise<string> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv,
+    cwd: workspaceRoot(),
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(stderr, []);
+  return stdout.join('').trimEnd();
+}
+
+function workspaceRoot(): string {
+  return path.join('D:', 'UEProjects', 'Template', 'Plugins', 'BlueprintHelper');
+}
+
+async function listCliReadContextTemplateIds(): Promise<ReadonlySet<string>> {
+  const ids = new Set<string>();
+  const families = listReadContextTemplateFamilies();
+  for (const family of families.items) {
+    const clusters = listReadContextTemplateClusters({ family: family.family });
+    for (const cluster of clusters.items) {
+      const templates = listReadContextTemplates({
+        family: family.family,
+        cluster: cluster.cluster,
+      });
+      for (const template of templates.items) {
+        ids.add(template.template_id);
+      }
+    }
+  }
+  return ids;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -32,6 +32,12 @@ test('resolveResultProjectionPolicy does not infer policy from CLI command kind'
   assert.equal(policy.policy_id, 'tool.generic.default');
 });
 
+test('resolveResultProjectionPolicy does not use aliases without a manifest registry', () => {
+  const policy = resolveResultProjectionPolicy({ toolIdOrAlias: 'task execute' });
+
+  assert.equal(policy.policy_id, 'tool.generic.default');
+});
+
 test('CLI command descriptors use explicit built-in result policies', () => {
   assert.equal(getBuiltinResultProjectionPolicy('task.execute.default').policy_id, 'task.execute.default');
 });
@@ -43,5 +49,25 @@ test('all public task tool manifests declare result_policy_id', () => {
     if (manifest.tool_name.startsWith('blueprinthelper_')) {
       assert.equal(typeof manifest.result_policy_id, 'string', `${manifest.tool_id} must declare result_policy_id`);
     }
+  }
+});
+
+test('all manifest result policies resolve through the projection registry', () => {
+  const registry = buildReadonlyToolCommandManifestRegistry();
+
+  for (const manifest of registry.list()) {
+    assert.equal(typeof manifest.result_policy_id, 'string', `${manifest.tool_id} must declare result_policy_id`);
+    const policyByManifest = resolveResultProjectionPolicy({
+      manifestRegistry: registry,
+      toolIdOrAlias: manifest.tool_id,
+    });
+    const policyByExplicitResultPolicyId = resolveResultProjectionPolicy({
+      resultPolicyId: manifest.result_policy_id,
+    });
+    assert.equal(
+      policyByManifest.policy_id,
+      policyByExplicitResultPolicyId.policy_id,
+      `${manifest.tool_id} must resolve by manifest.result_policy_id instead of command kind inference`,
+    );
   }
 });

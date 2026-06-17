@@ -9,9 +9,18 @@
 #include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
 #include "UI/Review/BlueprintHelperReviewPagedChangeModel.h"
 #include "UI/Review/BlueprintHelperReviewPendingLoadCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewPendingLoadApplicationService.h"
+#include "UI/Review/BlueprintHelperReviewActionNotificationPresenter.h"
+#include "UI/Review/BlueprintHelperReviewDebugFocusTraversalCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewDetailsGeometryResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelData.h"
 #include "UI/Review/BlueprintHelperReviewPanelSettings.h"
-#include "UI/Review/BlueprintHelperReviewRejectTimingModel.h"
+#include "UI/Review/BlueprintHelperReviewRejectMutationApplicationService.h"
+#include "UI/Review/BlueprintHelperReviewRejectWorkflowCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewRowHighlightSyncService.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceDiffFramePresenter.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceGeometryCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceHostCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SCompoundWidget.h"
@@ -23,10 +32,11 @@ class FBlueprintHelperReviewPanelPresenter;
 class FJsonObject;
 class SEditableTextBox;
 class SKismetInspector;
-class SNotificationItem;
 class SBox;
 class SMultiLineEditableTextBox;
 class UEdGraph;
+struct FBlueprintHelperReviewRejectTimingSample;
+struct FBlueprintHelperReviewRejectMutationPresentation;
 
 class SBlueprintHelperReviewPanel : public SCompoundWidget
 {
@@ -65,25 +75,17 @@ public:
 
 	static TArray<FReviewTreeSnapshotEntry> BuildReviewTreeSnapshotForTesting(
 		const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges);
+	int32 GetVisibleChangeCountForTesting() const;
+	bool SelectChangeForTesting(const FString& ChangeId);
+	bool CaptureFocusDebugBundleForTesting(FString& OutBundlePath, FString& OutDebugMessages);
+	bool LoadDebugBundleForTesting(const FString& InBundlePath, FString& OutDebugMessages);
+	void RefreshVisibleChangesForTesting(const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges);
+	TArray<FString> GetSurfaceDiffModelIdsForTesting(EBlueprintHelperReviewSurface Surface) const;
+	int32 GetSurfaceDiffModelCountForTesting(EBlueprintHelperReviewSurface Surface) const;
 #endif
 
 private:
 	using FReviewChangeItem = TSharedPtr<FBlueprintHelperReviewVisibleChange>;
-	enum class EReviewActionNotificationState : uint8
-	{
-		Pending,
-		Success,
-		Fail
-	};
-
-	struct FReviewActionBatchNotificationState
-	{
-		FString NotificationKey;
-		int32 TotalCount = 0;
-		int32 FinishedCount = 0;
-		int32 SuccessCount = 0;
-		int32 FailedCount = 0;
-	};
 
 	struct FReviewTreeItem
 	{
@@ -113,6 +115,7 @@ private:
 	FReply OnCaptureFocusDebugBundle();
 	void AdvanceDebugFocusTraversal();
 	void ProcessDebugFocusTraversalGeometryEvent();
+	void ApplyDebugFocusTraversalStep(const FBlueprintHelperReviewDebugFocusTraversalStep& Step);
 	bool IsDebugFocusTraversalChangeReady(FReviewChangeItem Item, FString& OutReason);
 	void EnsureDebugBundleSession();
 	void AppendDebugBundleEvent(const TSharedRef<FJsonObject>& Event);
@@ -134,8 +137,12 @@ private:
 	TSharedRef<SWidget> BuildMainWorkspaceDiffFrames();
 	TSharedRef<SWidget> BuildScopedDiffStack(bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&));
 	TSharedRef<SWidget> BuildPanelDiffFrames(
-		bool (*Predicate)(const FBlueprintHelperReviewVisibleChange&),
-		EBlueprintHelperReviewSurface Surface);
+		const FBlueprintHelperReviewSurfaceDiffFrameRoute& Route);
+	TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> BuildSurfaceDiffModelsForSurface(
+		const FBlueprintHelperReviewSurfaceDiffFrameRoute& Route) const;
+	void ConfigurePanelSurfacePresenterArgs(
+		FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
+		const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>& SurfaceDiffModels);
 	TSharedRef<SWidget> BuildDetailsPanelDiffFrames();
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);
@@ -165,7 +172,6 @@ private:
 	FReviewTreeItemPtr FindTreeItemForChange(FReviewChangeItem Item) const;
 	FReviewChangeItem FindChangeItemById(const FString& ChangeId) const;
 	TArray<FBlueprintHelperReviewVisibleChange> BuildPendingChangeSnapshot() const;
-	static FString BuildVisibleChangeRefreshSignature(const TArray<FBlueprintHelperReviewVisibleChange>& Changes);
 	void SelectNextChangeAfterRemoval(const FString& PreferredAssetPath, int32 RemovedIndex);
 	FReply OnReviewActionIntent(const FBlueprintHelperReviewActionIntent& Intent);
 	EBlueprintHelperReviewChangeStatus GetEffectiveChangeStatus(FReviewChangeItem Item) const;
@@ -180,7 +186,7 @@ private:
 	void ShowReviewActionNotification(
 		const FString& NotificationKey,
 		const FString& StatusText,
-		EReviewActionNotificationState State,
+		EBlueprintHelperReviewActionNotificationState State,
 		bool bExpire,
 		bool bUseThrobber);
 	static FString BuildReviewActionNotificationLabel(FReviewChangeItem Item);
@@ -197,9 +203,20 @@ private:
 		const FString& Detail,
 		bool bCompleteMatches);
 	void StartNextRejectPrepare();
+	TSharedRef<FBlueprintHelperReviewRejectWorkflowCoordinator> EnsureRejectWorkflowCoordinator();
+	TOptional<FBlueprintHelperReviewVisibleChange> ResolveRejectWorkflowChangeSnapshot(const FString& ChangeId) const;
+	void HandleRejectWorkflowMissingChange(const FString& ChangeId);
+	void HandleRejectWorkflowPrepareStarted(
+		const FString& ChangeId,
+		const FBlueprintHelperReviewVisibleChange& ChangeSnapshot);
+	void HandleRejectWorkflowPrepareFinished(
+		const FString& ChangeId,
+		const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void HandlePreparedRejectReady(const FString& ChangeId, const FBlueprintHelperReviewRejectOptions& PreparedOptions);
 	void ExecutePreparedRejectMutation(const FString& ChangeId);
-	void FinishAsyncReject(const FString& ChangeId);
+	FBlueprintHelperReviewRejectMutationApplicationCallbacks BuildRejectMutationApplicationCallbacks(
+		const FString& ChangeId,
+		FReviewChangeItem Item);
 
 	FText GetSelectedTitle() const;
 	FText GetSelectedBefore() const;
@@ -209,7 +226,6 @@ private:
 	FSlateColor GetSelectedDiffColor() const;
 	FSlateColor GetChangeColor(EBlueprintHelperReviewChangeKind Kind) const;
 
-	EActiveTimerReturnType TickFlash(double InCurrentTime, float InDeltaTime);
 	void StartFlash();
 	void RequestPendingReviewLoad(
 		const FString& Reason,
@@ -273,22 +289,17 @@ private:
 	TSharedPtr<SEditableTextBox> DebugBundlePathTextBox;
 	FString DebugBundleSessionId;
 	FString DebugBundlePath;
-	TArray<FString> PendingRejectChangeIds;
-	TMap<FString, FBlueprintHelperReviewRejectOptions> PreparedRejectOptionsByChangeId;
-	FBlueprintHelperReviewRejectTimingModel RejectTimingModel;
-	TMap<FString, TWeakPtr<SNotificationItem>> ReviewActionNotifications;
-	TMap<FString, FString> RejectBatchKeyByChangeId;
-	TMap<FString, FReviewActionBatchNotificationState> RejectBatchNotifications;
-	FString ActiveRejectChangeId;
-	bool bAsyncRejectPrepareActive = false;
-	TArray<FReviewChangeItem> DebugFocusTraversalItems;
-	int32 DebugFocusTraversalIndex = 0;
-	bool bDebugFocusTraversalAwaitingGeometry = false;
-	bool bDebugFocusTraversalActive = false;
+	TSharedPtr<FBlueprintHelperReviewRejectWorkflowCoordinator> RejectWorkflowCoordinator;
+	FBlueprintHelperReviewActionNotificationPresenter ReviewActionNotificationPresenter;
+	FBlueprintHelperReviewDebugFocusTraversalCoordinator DebugFocusTraversalCoordinator;
+	FBlueprintHelperReviewDetailsGeometryResolver DetailsGeometryResolver;
 	FString RequestedGraphNavigationChangeId;
 	FString RequestedGraphNavigationGraphName;
 	bool bAllowGraphNavigationWithoutGraphReview = false;
 	FBlueprintHelperReviewAssetContext ReviewAssetContext;
+	FBlueprintHelperReviewRowHighlightSyncService RowHighlightSyncService;
+	FBlueprintHelperReviewSurfaceGeometryCoordinator SurfaceGeometryCoordinator;
+	FBlueprintHelperReviewSurfaceHostCoordinator SurfaceHostCoordinator;
 	FBlueprintHelperReviewSurfaceViewCoordinator SurfaceViewCoordinator;
 	FBlueprintHelperReviewPanelSettings ReviewPanelSettings;
 	int32 PendingPageSize = 100;

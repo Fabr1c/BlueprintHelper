@@ -59,6 +59,7 @@ static const TPair<const TCHAR*, EBlueprintHelperBridgeRouteCluster> GBlueprintH
 	{TEXT("exec_console_command"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
 	{TEXT("source_control_status"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
 	{TEXT("source_control_checkout"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
+	{TEXT("dismiss_editor_dialogs"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
 	{TEXT("close_editor"), EBlueprintHelperBridgeRouteCluster::EditorCommand},
 	{TEXT("create_asset"), EBlueprintHelperBridgeRouteCluster::AssetFactory},
 	{TEXT("read_components"), EBlueprintHelperBridgeRouteCluster::Component},

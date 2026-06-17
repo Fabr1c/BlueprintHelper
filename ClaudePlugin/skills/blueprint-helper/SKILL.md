@@ -56,6 +56,7 @@ If grouped context-read evidence, Editor screenshots/visible state, preview, exe
 - Delegate SourceExplorer work only when complementary source-side grounding is required.
 - Delegate TaskWorker work only after target asset, scope, operation intent, modification boundary, safety gates, and evidence sufficiency are clear.
 - Stop or ask the user before write delegation when the target asset, scope, create/modify strategy, or modification boundary is ambiguous.
+- If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after the sideAgent completes, explicitly reports it can be closed, or reaches an errored/shutdown status. If the progress check also times out, report `sideagent_timeout_unconfirmed` to the user and ask whether to keep waiting or close it.
 
 If the current Claude environment cannot dispatch a sideAgent but the required BlueprintHelper CLI is callable, perform the same responsibility split locally and report `main_agent_direct_fallback`. This fallback must preserve the same ownership boundaries. Do not claim hook enforcement unless the Claude plugin hook manifest is installed and active.
 

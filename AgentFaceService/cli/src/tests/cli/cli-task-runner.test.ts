@@ -6,8 +6,13 @@ import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
+import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 
 const fixturesDir = path.resolve(import.meta.dirname, '..', '..', '..', 'src', 'tests', 'fixtures');
+const ACTIVE_RUNTIME_ARGS = [
+  '--runtime-adapters',
+  createDescriptorFixtureRuntimeCapabilityState().registered_runtime_adapter_ids.join(','),
+] as const;
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'bph-cli-test-'));
@@ -69,7 +74,7 @@ test('task preview reads TaskSpec file and prints compact summary JSON', async (
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    argv: ['task', 'preview', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--artifact-dir', artifactDir],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -141,7 +146,7 @@ test('task execute calls the TaskSpec runner and returns executed summary', asyn
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--artifact-dir', artifactDir],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -214,7 +219,7 @@ test('task execute exposes raw bridge and trace data only through expert debug a
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--artifact-dir', artifactDir, '--expert'],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -262,7 +267,7 @@ test('task execute can project stdout to selected fields only', async () => {
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--fields', 'status,task_run_id,artifacts.full_result'],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--fields', 'status,task_run_id,artifacts.full_result'],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -361,7 +366,7 @@ test('default task preview artifacts omit internal policy fields', async () => {
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir],
+    argv: ['task', 'preview', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--artifact-dir', artifactDir],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),
@@ -436,7 +441,7 @@ test('expert task preview debug artifact keeps raw policy fields', async () => {
   } as TaskSpecRunner;
 
   const exitCode = await runCli({
-    argv: ['task', 'preview', '--file', 'task-spec.json', '--artifact-dir', artifactDir, '--expert'],
+    argv: ['task', 'preview', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--artifact-dir', artifactDir, '--expert'],
     cwd: fixturesDir,
     runner,
     stdout: (line) => writes.push(line),

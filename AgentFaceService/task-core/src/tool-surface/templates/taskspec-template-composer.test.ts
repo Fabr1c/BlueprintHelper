@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { compileTaskSpecToTaskPlan } from '../../task/compiler/task-compiler.js';
 import { getAgentVisibleGraphWriteRoutes } from '../../task/compiler/graphwrite/graphwrite-route-registry.js';
 import { TaskSpecSchema } from '../../task/schema/task-schemas.js';
+import { createTaskSpecInputShapeAdapterRegistry } from '../input/taskspec-input-adapters.js';
 import {
   composeTaskSpecTemplate,
   listTaskSpecTemplateClusters,
@@ -816,6 +817,8 @@ test('supported TaskSpec template families have discoverable operations quick-ac
             assert.equal(result.status, 'ok', `${item.template_id}: ${JSON.stringify(result)}`);
             const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { schema?: string };
             assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1', item.template_id);
+            assertComposedTaskSpecDoesNotExposeRemovedFields(taskSpec, item.template_id);
+            assertAgentFacingTaskSpecPassesInternalSchema(taskSpec, item.template_id);
           }
         }
       }
@@ -956,4 +959,124 @@ function collectForbiddenKeys(
 
 function normalizePath(filePath: string): string {
   return filePath.replaceAll('\\', '/');
+}
+
+function assertComposedTaskSpecDoesNotExposeRemovedFields(taskSpec: unknown, label: string): void {
+  const hits: string[] = [];
+  collectRemovedComposedFields(taskSpec, label, '', hits);
+  assert.deepEqual(hits, [], label);
+}
+
+function assertAgentFacingTaskSpecPassesInternalSchema(taskSpec: unknown, label: string): void {
+  const coverageTaskSpec = fillTaskSpecCoveragePlaceholders(taskSpec);
+  let adapted: unknown;
+  try {
+    adapted = createTaskSpecInputShapeAdapterRegistry().require('bare_taskspec').adapt(coverageTaskSpec);
+  } catch (error) {
+    assert.fail(`${label}: ${(error as Error).message}`);
+  }
+  const parseResult = TaskSpecSchema.safeParse((adapted as { task_spec?: unknown }).task_spec);
+  assert.equal(
+    parseResult.success,
+    true,
+    parseResult.success ? undefined : `${label}: ${parseResult.error.message}`,
+  );
+}
+
+function fillTaskSpecCoveragePlaceholders(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => fillTaskSpecCoveragePlaceholders(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    if (key === 'property_descriptor_id' && typeof child === 'string' && child.startsWith('__REQUIRED_')) {
+      output[key] = 'k2.node.comment';
+      continue;
+    }
+    if (key === 'pin_direction' && typeof child === 'string' && child.startsWith('__REQUIRED_')) {
+      output[key] = record['semantic_role'] === 'exec_boundary' ? 'output' : 'input';
+      continue;
+    }
+    if (key === 'category' && typeof child === 'string' && child.includes('PIN_CATEGORY__')) {
+      output[key] = 'bool';
+      continue;
+    }
+    if (key.endsWith('_mapping') && typeof child === 'string' && child.startsWith('__')) {
+      output[key] = {};
+      continue;
+    }
+    if (key === 'replacement_policy' && typeof child === 'string' && child.startsWith('__')) {
+      output[key] = 'replace_with_empty_root';
+      continue;
+    }
+    if (key === 'is_variable' && typeof child === 'string' && child.startsWith('__')) {
+      output[key] = true;
+      continue;
+    }
+    if (key === 'anchor_ref' && typeof child === 'string' && child.startsWith('__REQUIRED_')) {
+      output[key] = schemaCoverageAnchorRef(record);
+      continue;
+    }
+    output[key] = fillTaskSpecCoveragePlaceholders(child);
+  }
+  return output;
+}
+
+function schemaCoverageAnchorRef(anchor: Record<string, unknown>): string {
+  const anchorType = typeof anchor['anchor_type'] === 'string' ? anchor['anchor_type'] : '';
+  const current = typeof anchor['anchor_ref'] === 'string' ? anchor['anchor_ref'] : '';
+  switch (anchorType) {
+    case 'external_link':
+      return current.includes('EXEC') ? 'xlink:v1:e:coverage-link' : 'xlink:v1:d:coverage-link';
+    case 'external_pin':
+      return 'xpin:v1:d:coverage-pin';
+    case 'external_node':
+      return 'xnode:v1:coverage-node#coverage-fingerprint';
+    case 'external_body':
+      return 'xbody:v1:coverage-body#coverage-fingerprint';
+    default:
+      return current;
+  }
+}
+
+function collectRemovedComposedFields(
+  value: unknown,
+  label: string,
+  pointer: string,
+  hits: string[],
+): void {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectRemovedComposedFields(item, label, `${pointer}/${index}`, hits));
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record['property_path'] === 'default_value') {
+    hits.push(`${label}:${pointer}/property_path=default_value`);
+  }
+  if (Object.hasOwn(record, 'execution_policy')) {
+    hits.push(`${label}:${pointer}/execution_policy`);
+  }
+  if (Object.hasOwn(record, 'validation')) {
+    hits.push(`${label}:${pointer}/validation`);
+  }
+  if (Object.hasOwn(record, 'dry_run_mode')) {
+    hits.push(`${label}:${pointer}/dry_run_mode`);
+  }
+  if (Object.hasOwn(record, 'should_compile')) {
+    hits.push(`${label}:${pointer}/should_compile`);
+  }
+  if (Object.hasOwn(record, 'should_save')) {
+    hits.push(`${label}:${pointer}/should_save`);
+  }
+  for (const [key, child] of Object.entries(record)) {
+    collectRemovedComposedFields(child, label, `${pointer}/${key}`, hits);
+  }
 }

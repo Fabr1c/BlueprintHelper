@@ -83,6 +83,41 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBridgeCommandRegistry_GeneratedCapabilitiesRegisterBridgeCommands,
+	"BlueprintHelper.Bridge.CommandRegistry.GeneratedCapabilitiesRegisterBridgeCommands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperBridgeCommandRegistry_GeneratedCapabilitiesRegisterBridgeCommands::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeCommandDescriptor ExecuteDescriptor;
+	TestTrue(TEXT("execute_task_plan is descriptor-backed"),
+		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(TEXT("execute_task_plan"), ExecuteDescriptor));
+	TestTrue(TEXT("execute_task_plan contains GraphWrite capability"),
+		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("graphwrite.execute")));
+	TestTrue(TEXT("execute_task_plan contains MaterialGraph capability"),
+		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("material_graph.edit")));
+	TestFalse(TEXT("execute_task_plan hides MaterialInstance P4 capability"),
+		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("material_instance.edit")));
+	TestFalse(TEXT("execute_task_plan hides Struct capability without registered UE runtime adapter"),
+		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("struct.fields.edit")));
+	TestTrue(TEXT("execute_task_plan records task runtime handler"),
+		ExecuteDescriptor.RoutingHandlerIds.Contains(TEXT("task_runtime")));
+	TestTrue(TEXT("execute_task_plan records graphwrite runtime adapter"),
+		ExecuteDescriptor.RuntimeAdapterIds.Contains(TEXT("graphwrite_runtime_adapter")));
+	TestFalse(TEXT("execute_task_plan does not synthesize struct runtime adapter from active descriptor"),
+		ExecuteDescriptor.RuntimeAdapterIds.Contains(TEXT("struct_runtime_adapter")));
+
+	FBlueprintHelperBridgeCommandDescriptor DebugDescriptor;
+	TestTrue(TEXT("export_debug_bundle is descriptor-backed"),
+		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(TEXT("export_debug_bundle"), DebugDescriptor));
+	TestTrue(TEXT("export_debug_bundle contains debug case export capability"),
+		DebugDescriptor.CapabilityDescriptorIds.Contains(TEXT("debug_case.export_summary")));
+	TestTrue(TEXT("export_debug_bundle records debug case export handler"),
+		DebugDescriptor.RoutingHandlerIds.Contains(TEXT("debug_case_export")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperBridgeRoutePlanner_UnknownCommandStaysUnknown,
 	"BlueprintHelper.Router.Cluster.UnknownCommandStaysUnknown",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

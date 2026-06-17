@@ -45,7 +45,11 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeCommitService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeContextRevisionManifest.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeDryRunPolicy.h"
+#include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyClassifier.h"
+#include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyDebugEvidenceProjection.h"
+#include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyEvidenceProvider.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRunJournalStoreService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
@@ -206,6 +210,7 @@ public:
 		TArray<FString> SavedBeforeArchiveAssets;
 		TArray<FString> Warnings;
 		TArray<FBlueprintHelperTaskRuntimePostOperationRecord> PreArchiveSaveOperations;
+		FBlueprintHelperReviewBaselineDirtyDecision DirtyDecision;
 	};
 
 	struct FBlueprintHelperReviewTargetSnapshotCacheValue
@@ -2605,10 +2610,24 @@ public:
 		return DirtyAssets;
 	}
 
+	static void ApplyReviewBaselineDirtyDecisionToError(
+		const FBlueprintHelperReviewBaselineDirtyDecision& Decision,
+		FBlueprintHelperToolError& Error)
+	{
+		Error.Category = Decision.Category;
+		Error.SafeNextAction = Decision.SafeNextAction;
+		Error.DirtyState = ToString(Decision.State);
+		Error.DirtyAssets = Decision.DirtyAssets;
+		Error.AllowedRecoveryActions = Decision.AllowedRecoveryActions;
+		Error.RiskyRecoveryActions = Decision.RiskyRecoveryActions;
+		Error.EvidenceRefs = Decision.EvidenceRefs;
+	}
+
 	static bool EvaluateReviewBaselinePolicy(
 		const TSharedPtr<FJsonObject>& TaskPlan,
 		bool bDryRun,
 		const FBlueprintHelperAssetBrowseService& AssetBrowseService,
+		const TMap<FString, TSharedPtr<FJsonObject>>& TaskRunJournals,
 		FBlueprintHelperReviewBaselinePolicyEvaluation& OutEvaluation,
 		FBlueprintHelperToolError& OutError)
 	{
@@ -2624,6 +2643,12 @@ public:
 
 		const TArray<FString> TargetAssets = ReadTargetAssets(TaskPlan);
 		OutEvaluation.DirtyTargetAssets = FindDirtyTargetAssets(TargetAssets);
+		const FBlueprintHelperReviewBaselineDirtyClassifyRequest DirtyRequest =
+			FBlueprintHelperReviewBaselineDirtyEvidenceProvider().BuildClassifyRequest(
+				TargetAssets,
+				OutEvaluation.DirtyTargetAssets,
+				TaskRunJournals);
+		OutEvaluation.DirtyDecision = FBlueprintHelperReviewBaselineDirtyClassifier().Classify(DirtyRequest);
 		if (OutEvaluation.DirtyTargetAssets.Num() == 0)
 		{
 			OutEvaluation.SnapshotTrust = TEXT("fresh_disk_copy");
@@ -2638,6 +2663,7 @@ public:
 				TEXT("Review baseline requires saved target assets or review_baseline_dirty_asset_policy=save_before_archive."),
 				TEXT("task_plan.execution_policy.review_baseline_dirty_asset_policy"));
 			OutError.Actual = FString::Join(OutEvaluation.DirtyTargetAssets, TEXT(","));
+			ApplyReviewBaselineDirtyDecisionToError(OutEvaluation.DirtyDecision, OutError);
 			return false;
 		}
 
@@ -2667,6 +2693,7 @@ public:
 					OutError.Code = TEXT("review_baseline_save_before_archive_failed");
 					OutError.Stage = EBlueprintHelperToolStage::Preflight;
 					OutError.Field = TEXT("task_plan.execution_policy.review_baseline_dirty_asset_policy");
+					ApplyReviewBaselineDirtyDecisionToError(OutEvaluation.DirtyDecision, OutError);
 					return false;
 				}
 				OutEvaluation.SavedBeforeArchiveAssets.Add(DirtyAsset);
@@ -2680,6 +2707,7 @@ public:
 					TEXT("One or more target assets remained dirty after save_before_archive."),
 					TEXT("task_plan.execution_policy.review_baseline_dirty_asset_policy"));
 				OutError.Actual = FString::Join(RemainingDirtyTargetAssets, TEXT(","));
+				ApplyReviewBaselineDirtyDecisionToError(OutEvaluation.DirtyDecision, OutError);
 				return false;
 			}
 			OutEvaluation.DirtyTargetAssets = OriginallyDirtyTargetAssets;
@@ -2918,8 +2946,16 @@ public:
 		TSharedPtr<FJsonObject> Baseline = MakeShared<FJsonObject>();
 		Baseline->SetStringField(TEXT("dirty_asset_policy"), BaselinePolicy.PolicyString);
 		Baseline->SetStringField(TEXT("snapshot_trust"), BaselinePolicy.SnapshotTrust);
+		Baseline->SetStringField(TEXT("dirty_state"), ToString(BaselinePolicy.DirtyDecision.State));
+		if (!BaselinePolicy.DirtyDecision.SafeNextAction.IsEmpty())
+		{
+			Baseline->SetStringField(TEXT("safe_next_action"), BaselinePolicy.DirtyDecision.SafeNextAction);
+		}
 		Baseline->SetArrayField(TEXT("dirty_target_assets"), MakeStringArray(BaselinePolicy.DirtyTargetAssets));
 		Baseline->SetArrayField(TEXT("saved_before_archive_assets"), MakeStringArray(BaselinePolicy.SavedBeforeArchiveAssets));
+		Baseline->SetArrayField(TEXT("allowed_recovery_actions"), MakeStringArray(BaselinePolicy.DirtyDecision.AllowedRecoveryActions));
+		Baseline->SetArrayField(TEXT("risky_recovery_actions"), MakeStringArray(BaselinePolicy.DirtyDecision.RiskyRecoveryActions));
+		Baseline->SetArrayField(TEXT("dirty_evidence_refs"), MakeStringArray(BaselinePolicy.DirtyDecision.EvidenceRefs));
 		Baseline->SetArrayField(TEXT("warnings"), MakeStringArray(BaselinePolicy.Warnings));
 
 		TArray<TSharedPtr<FJsonValue>> PreArchiveSaveOperations;
@@ -5523,6 +5559,20 @@ public:
 				TEXT("task_plan.steps[0].write.ops[0].row_struct"));
 		}
 
+		if (AssetType == EBlueprintHelperAssetType::BlueprintClass)
+		{
+			FString BlueprintParentError;
+			if (!FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(ParentClass, BlueprintParentError))
+			{
+				return MakeFailure(
+					TEXT("create_asset"),
+					TEXT("invalid_blueprint_parent_class"),
+					EBlueprintHelperToolStage::Preflight,
+					BlueprintParentError,
+					TEXT("task_plan.steps[0].write.ops[0].parent_class"));
+			}
+		}
+
 		const EBlueprintHelperAssetCollisionPolicy Collision = ParseAssetFactoryCollision(CollisionText);
 		const FBlueprintHelperAssetFactoryData FactoryData = Service.CreateAsset(
 			AssetPath,
@@ -6758,12 +6808,22 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::GetTaskRunJou
 	const TSharedPtr<FJsonObject>* FoundJournal = TaskRunJournals.Find(TaskRunId);
 	if (!FoundJournal || !FoundJournal->IsValid())
 	{
-		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
-			TEXT("get_task_run_journal"),
-			TEXT("task_run_journal_not_found"),
-			EBlueprintHelperToolStage::ResolveTarget,
-			FString::Printf(TEXT("TaskRunJournal not found: %s"), *TaskRunId),
-			TEXT("task_run_id"));
+		TSharedPtr<FJsonObject> LoadedJournal;
+		FString LoadError;
+		if (!FBlueprintHelperTaskRunJournalStoreService().LoadTaskRunJournal(
+			TaskRunId,
+			LoadedJournal,
+			LoadError))
+		{
+			return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+				TEXT("get_task_run_journal"),
+				TEXT("task_run_journal_not_found"),
+				EBlueprintHelperToolStage::ResolveTarget,
+				FString::Printf(TEXT("TaskRunJournal not found: %s. %s"), *TaskRunId, *LoadError),
+				TEXT("task_run_id"));
+		}
+		TaskRunJournals.Add(TaskRunId, LoadedJournal);
+		FoundJournal = TaskRunJournals.Find(TaskRunId);
 	}
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
@@ -7192,6 +7252,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		*TaskPlanPtr,
 		bDryRun,
 		AssetBrowseService,
+		TaskRunJournals,
 		BaselinePolicy,
 		BaselinePolicyError))
 	{
@@ -7218,6 +7279,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		ArchiveSession.BaselineSnapshotTrust = BaselinePolicy.SnapshotTrust;
 		ArchiveSession.DirtyTargetAssets = BaselinePolicy.DirtyTargetAssets;
 		ArchiveSession.BaselineWarnings = BaselinePolicy.Warnings;
+		ArchiveSession.DirtyState = ToString(BaselinePolicy.DirtyDecision.State);
+		ArchiveSession.SafeNextAction = BaselinePolicy.DirtyDecision.SafeNextAction;
+		ArchiveSession.AllowedRecoveryActions = BaselinePolicy.DirtyDecision.AllowedRecoveryActions;
+		ArchiveSession.RiskyRecoveryActions = BaselinePolicy.DirtyDecision.RiskyRecoveryActions;
+		ArchiveSession.DirtyEvidenceRefs = BaselinePolicy.DirtyDecision.EvidenceRefs;
 		ArchiveSession.BaselineSnapshotRefs = FBlueprintHelperTaskRuntimeServiceLocalUtils::CaptureReviewBaselineSnapshots(
 			ArchiveSessionId,
 			ArchiveSession.AllowedTargetAssets);
@@ -7486,6 +7552,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			DebugInput.AssetPaths = FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
 			DebugInput.Error.Code = Error.Code;
 			DebugInput.Error.Message = Error.Message;
+			DebugInput.EvidenceLinks = FBlueprintHelperReviewBaselineDirtyDebugEvidenceProjection::MakeEvidenceLinksFromRefs(
+				Error.EvidenceRefs);
 			DebugInput.RecommendedNext = TEXT("get_debug_case");
 			PostIoBatch.SetDebugEvent(DebugInput, !RuntimeResult.bOk);
 		}

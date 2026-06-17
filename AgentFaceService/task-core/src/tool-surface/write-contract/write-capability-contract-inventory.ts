@@ -5,6 +5,7 @@ import {
   listToolCapabilities,
   listToolDomains,
 } from '../catalog/tool-capability-catalog.js';
+import { createDescriptorFixtureRuntimeCapabilityState } from '../capabilities/capability-runtime-state.js';
 import type { ToolCapabilityDomain, ToolCapabilityListItem } from '../catalog/tool-capability-types.js';
 import { getBridgeToolDescriptor } from '../bridge/bridge-tool-descriptor.js';
 import { getActiveReadContextRouteDescriptors } from '../templates/read-context-template-registry.js';
@@ -21,6 +22,7 @@ import type {
 } from './write-capability-contract-types.js';
 
 const CONTRACT_SCHEMA = 'BlueprintHelper.WriteCapabilityContractAudit.v1' as const;
+const INVENTORY_RUNTIME_FIXTURE = createDescriptorFixtureRuntimeCapabilityState();
 
 export function buildWriteCapabilityContractInventory(): readonly WriteCapabilityContract[] {
   const contracts = new Map<string, WriteCapabilityContract>();
@@ -40,9 +42,15 @@ function buildCatalogWriteContracts(): WriteCapabilityContract[] {
     .filter((domain): domain is ToolCapabilityDomain => domain !== 'animation');
   const contracts: WriteCapabilityContract[] = [];
   for (const domain of domains) {
-    const defaultItems = listToolCapabilities({ domain, kind: 'write' }).items;
+    const defaultItems = listToolCapabilities({ domain, kind: 'write', runtime: INVENTORY_RUNTIME_FIXTURE }).items;
     const expertItems = domain === 'review'
-      ? listToolCapabilities({ domain, kind: 'write', audience: 'expert', expert: true }).items
+      ? listToolCapabilities({
+        domain,
+        kind: 'write',
+        audience: 'expert',
+        expert: true,
+        runtime: INVENTORY_RUNTIME_FIXTURE,
+      }).items
       : [];
     for (const item of uniqueItemsById([...defaultItems, ...expertItems])) {
       contracts.push(catalogItemToContract(item));
@@ -83,11 +91,11 @@ function catalogItemToContract(item: ToolCapabilityListItem): WriteCapabilityCon
       schema_refs: bridgeDescriptor?.schema ? [`bridge:${toolName}:zod_schema`] : taskSpecSchemaRefsForTool(toolName),
       template_refs: [...item.cli_template_ids],
       help_refs: [...(descriptor?.help_usage ?? [])],
-      validator_refs: [],
+      validator_refs: validatorRefsForCatalogItem(item, toolName, routeRefs, bridgeDescriptor !== undefined),
     },
     previewExecute: {
       classification: routeRefs.length > 0 ? 'unknown' : 'preview_decidable',
-      evidence: routeRefs.map((route) => `route_ref:${route}`),
+      evidence: previewExecuteEvidenceForCatalogItem(item, routeRefs),
       runtime_only_notes: [],
     },
     gates: {
@@ -139,7 +147,11 @@ function graphWriteRouteToContract(route: GraphWriteRouteDescriptor): WriteCapab
       schema_refs: ['BlueprintHelper.TaskSpec.v1'],
       template_refs: route.template_path ? [route.template_path] : [],
       help_refs: route.quick_access ? [`quick_access:${route.quick_access.template_id}`] : [],
-      validator_refs: [],
+      validator_refs: [
+        `graphwrite_route:${route.route_id}`,
+        `compiler:${route.compiler_id}`,
+        `adapter_sync:${route.adapter_sync}`,
+      ],
     },
     previewExecute: {
       classification: toPreviewExecuteClassification(route.validation_classification),
@@ -199,7 +211,10 @@ function nonGraphWriteOperationToContract(
       schema_refs: ['BlueprintHelper.TaskSpec.v1'],
       template_refs: [descriptor.template_path],
       help_refs: [`quick_access:${descriptor.template_id}`],
-      validator_refs: [],
+      validator_refs: [
+        `non_graphwrite_operation:${descriptor.template_id}`,
+        `validation:${descriptor.validation_classification}`,
+      ],
     },
     previewExecute: {
       classification: descriptor.validation_classification,
@@ -297,6 +312,32 @@ function cloneInputEvidence(
 
 function uniqueItemsById(items: readonly ToolCapabilityListItem[]): ToolCapabilityListItem[] {
   return [...new Map(items.map((item) => [item.id, item])).values()];
+}
+
+function validatorRefsForCatalogItem(
+  item: ToolCapabilityListItem,
+  toolName: string,
+  routeRefs: readonly string[],
+  hasBridgeDescriptor: boolean,
+): string[] {
+  const refs = [`capability_descriptor:${item.id}`];
+  if (toolName.length > 0) {
+    refs.push(`tool_manifest:${toolName}`);
+  }
+  if (hasBridgeDescriptor) {
+    refs.push(`bridge_tool_descriptor:${toolName}`);
+  }
+  refs.push(...routeRefs.map((route) => `route_ref:${route}`));
+  return refs;
+}
+
+function previewExecuteEvidenceForCatalogItem(
+  item: ToolCapabilityListItem,
+  routeRefs: readonly string[],
+): string[] {
+  const refs = [`capability_descriptor:${item.id}`];
+  refs.push(...routeRefs.map((route) => `route_ref:${route}`));
+  return refs;
 }
 
 function taskSpecSchemaRefsForTool(toolName: string): string[] {

@@ -38,6 +38,8 @@ test('generated AgentWorkFlow stays a MainAgent bootstrap with lifecycle, CLI-fi
   assert.match(workflow, /sourcecode-explorer[\s\S]{0,160}source-side grounding/i);
   assert.match(workflow, /source-control[\s\S]{0,80}write-session[\s\S]{0,160}task-worker/i);
   assert.match(workflow, /task-worker[\s\S]{0,160}target asset[\s\S]{0,160}evidence/i);
+  assert.match(workflow, /sideAgent wait[\s\S]{0,240}progress check[\s\S]{0,240}close/i);
+  assert.match(workflow, /sideagent_timeout_unconfirmed/);
 });
 
 test('generated AgentWorkFlow removes legacy composer, quick-access, hook-ledger, and plugin-dev rule details', async () => {
@@ -78,6 +80,20 @@ test('MainAgent skills stop selecting exact template or composer chains for ordi
       assert.doesNotMatch(skillText, /prewrite_gates|retry_budget|readback_required/);
       assert.doesNotMatch(skillText, /TaskSpec\/ReadSpec|ReadSpec construction|CLI catalog\/composer discovery/i);
       assert.doesNotMatch(skillText, /BlueprintHelper_CurrentPluginArchitecture_Rules_20260606_CN\.md/);
+    });
+  }
+});
+
+test('MainAgent skills require progress confirmation before closing timed-out sideAgents', async (t) => {
+  for (const filePath of [
+    'CodexPlugin/skills/blueprint-helper/SKILL.md',
+    'ClaudePlugin/skills/blueprint-helper/SKILL.md',
+  ]) {
+    await t.test(filePath, async () => {
+      const skillText = await readRepoText(filePath);
+      assert.match(skillText, /sideAgent wait[\s\S]{0,260}progress check/i);
+      assert.match(skillText, /close[\s\S]{0,220}explicitly reports it can be closed/i);
+      assert.match(skillText, /sideagent_timeout_unconfirmed/);
     });
   }
 });

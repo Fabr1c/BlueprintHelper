@@ -1,6 +1,7 @@
 // BlueprintHelper Review panel v2 state service implementation.
 
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
+#include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 
 FBlueprintHelperReviewPanelState FBlueprintHelperReviewPanelStateService::BuildPanelState(
 	const TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>>& ChangeItems,
@@ -17,10 +18,19 @@ FBlueprintHelperReviewPanelState FBlueprintHelperReviewPanelStateService::BuildP
 		{
 			continue;
 		}
+		if (!FBlueprintHelperReviewStatusUtils::IsOpenReviewStatus(Item->Status))
+		{
+			continue;
+		}
 
 		State.PendingChanges.Add(*Item);
 		for (const FBlueprintHelperReviewAtomicTarget& Target : Item->AtomicTargets)
 		{
+			if (!FBlueprintHelperReviewStatusUtils::IsOpenReviewStatus(Target.Status))
+			{
+				continue;
+			}
+
 			const EBlueprintHelperReviewSurface Surface = Target.Surface;
 			if (Surface == EBlueprintHelperReviewSurface::Unknown)
 			{

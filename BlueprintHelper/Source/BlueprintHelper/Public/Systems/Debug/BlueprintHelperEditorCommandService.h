@@ -63,6 +63,9 @@ public:
 	 */
 	FBlueprintHelperCommandResult ExecConsoleCommand(const FString& Command) const;
 
+	/** Dismiss active editor modal dialogs that can block lifecycle commands. */
+	FBlueprintHelperCommandResult DismissEditorDialogs() const;
+
 	/**
 	 * 保存所有脏资源并请求关闭编辑器。
 	 * 退出在下一帧生效，调用方可以在退出前收到成功响应。

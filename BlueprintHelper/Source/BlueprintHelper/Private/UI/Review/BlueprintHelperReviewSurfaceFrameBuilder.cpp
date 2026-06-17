@@ -47,18 +47,20 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 	{
 		return SNullWidget::NullWidget;
 	}
+	if (!Args.SurfaceDiffModels)
+	{
+		return SNullWidget::NullWidget;
+	}
 
 	struct FReviewPanelVisibleFrame
 	{
 		TSharedPtr<FBlueprintHelperReviewVisibleChange> Item;
 		FString TargetText;
+		FBlueprintHelperReviewSurfaceDiffProjectionModel DiffModel;
 		FBlueprintHelperReviewSurfaceGeometryAnchor GeometryAnchor;
 		bool bHasStableGeometry = false;
 	};
 
-	const FString CurrentAssetPath = Args.SelectedChange.IsValid()
-		? Args.SelectedChange->AssetPath
-		: FString();
 	TArray<FReviewPanelVisibleFrame> VisibleFrames;
 	BlueprintHelperReviewSetSurfaceFrameGeometryPadding(Args.ReviewPanelSettings.SurfaceGeometryPadding);
 	BlueprintHelperReviewSetSurfaceFrameWidgetStyle(
@@ -68,41 +70,43 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		Args.ReviewPanelSettings.SurfaceOverlayFillAlpha,
 		Args.ReviewPanelSettings.SurfaceOverlaySelectedFillAlpha);
 
-	for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Item : *Args.ChangeItems)
+	const auto FindChangeById = [&Args](const FString& ReviewEventId)
 	{
+		for (const TSharedPtr<FBlueprintHelperReviewVisibleChange>& Candidate : *Args.ChangeItems)
+		{
+			if (Candidate.IsValid() && Candidate->ChangeId == ReviewEventId)
+			{
+				return Candidate;
+			}
+		}
+		return TSharedPtr<FBlueprintHelperReviewVisibleChange>();
+	};
+
+	for (const FBlueprintHelperReviewSurfaceDiffProjectionModel& DiffModel : *Args.SurfaceDiffModels)
+	{
+		TSharedPtr<FBlueprintHelperReviewVisibleChange> Item = FindChangeById(DiffModel.ReviewEventId);
 		if (!Item.IsValid())
 		{
 			continue;
 		}
-		if (Args.ReviewPanelSettings.bOverlayFilterCurrentAssetOnly
-			&& !CurrentAssetPath.IsEmpty()
-			&& Item->AssetPath != CurrentAssetPath)
+		if (Predicate && !Predicate(*Item))
 		{
 			continue;
 		}
 
-		const FBlueprintHelperReviewSurfaceRouteDecision RouteDecision =
-			FBlueprintHelperReviewSurfacePresenterRouter::RouteChangeToSurface(*Item, Surface);
-		if (Args.AddDebugMessage)
+		FString TargetText = DiffModel.TargetKey;
+		if (TargetText.IsEmpty())
 		{
-			const EBlueprintHelperReviewAssetKind AssetKind = Args.AssetContext
-				? Args.AssetContext->AssetKind
-				: EBlueprintHelperReviewAssetKind::Unknown;
-			Args.AddDebugMessage(FBlueprintHelperReviewSurfacePresenterRouter::BuildRouteDebugSummary(
-				*Item,
-				Surface,
-				RouteDecision,
-				BlueprintHelperReviewAssetKindToString(AssetKind)));
+			TargetText = DiffModel.DisplayLabel;
 		}
-		if (!RouteDecision.bShouldShow || !Predicate(*Item))
+		if (TargetText.IsEmpty())
 		{
-			continue;
+			TargetText = FBlueprintHelperReviewReadableTextUtils::GetReviewListTargetText(Item, Surface);
 		}
-
-		const FString TargetText = FBlueprintHelperReviewReadableTextUtils::GetReviewListTargetText(Item, Surface);
 		FReviewPanelVisibleFrame Frame;
 		Frame.Item = Item;
 		Frame.TargetText = TargetText;
+		Frame.DiffModel = DiffModel;
 		Frame.bHasStableGeometry = FBlueprintHelperReviewSurfaceFrameGeometryUtils::TryResolveSlateRowGeometry(
 			Item,
 			Surface,
@@ -182,9 +186,11 @@ TSharedRef<SWidget> FBlueprintHelperReviewSurfaceFrameBuilder::BuildReviewListOv
 		}
 		const FSlateColor FrameColor = bSelected && Frame.Item.IsValid() && Args.GetSelectedDiffColor
 			? Args.GetSelectedDiffColor()
-			: (Frame.Item.IsValid() && Args.GetChangeColor
-				? Args.GetChangeColor(Frame.Item->ChangeKind)
-				: FSlateColor(FLinearColor::Transparent));
+			: (Frame.DiffModel.DiffColor.A > 0.0f
+				? FSlateColor(Frame.DiffModel.DiffColor)
+				: (Frame.Item.IsValid() && Args.GetChangeColor
+					? Args.GetChangeColor(Frame.Item->ChangeKind)
+					: FSlateColor(FLinearColor::Transparent)));
 
 		GeometryCanvas->AddSlot()
 		.Position(Frame.GeometryAnchor.Position)

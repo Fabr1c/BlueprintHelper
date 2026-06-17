@@ -6,7 +6,13 @@ import test from 'node:test';
 
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
 import { graphWriteAppendTaskSpecFixture } from '@blueprinthelper/task-core/task/fixtures/task-protocol.fixtures';
+import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { runCli } from './run.js';
+
+const ACTIVE_RUNTIME_ARGS = [
+  '--runtime-adapters',
+  createDescriptorFixtureRuntimeCapabilityState().registered_runtime_adapter_ids.join(','),
+] as const;
 
 test('CLI task preview normalizes bare TaskSpec and compiles before preview_task_plan', async (t) => {
   const workspace = await createTempDir(t, 'bph-cli-e2e-preview-bare-');
@@ -18,7 +24,7 @@ test('CLI task preview normalizes bare TaskSpec and compiles before preview_task
   const exitCode = await withEnv({
     BPH_METRICS_DIR: path.join(workspace, 'metrics'),
   }, () => runCli({
-    argv: ['task', 'preview', '--file', 'task-spec.json', '--format', 'json'],
+    argv: ['task', 'preview', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--format', 'json'],
     cwd: workspace,
     bridge: createRecordingBridge(commands, payloads),
     stdout: (text) => stdout.push(text),
@@ -73,6 +79,14 @@ test('CLI removed lifecycle commands report global MCP replacement without conta
       command: 'close_editor',
       mcpTool: 'mcp__blueprint_helper__blueprint_close_editor',
     },
+    {
+      command: 'dismiss_editor_dialogs',
+      mcpTool: 'mcp__blueprint_helper__blueprint_dismiss_editor_dialogs',
+    },
+    {
+      command: 'close_editor_dialogs',
+      mcpTool: 'mcp__blueprint_helper__blueprint_close_editor_dialogs',
+    },
   ] as const;
 
   for (const entry of cases) {
@@ -110,7 +124,7 @@ test('CLI task execute previews then sends execute_task_plan to mocked Bridge', 
   const exitCode = await withEnv({
     BPH_METRICS_DIR: path.join(workspace, 'metrics'),
   }, () => runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--format', 'json'],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--format', 'json'],
     cwd: workspace,
     bridge: createRecordingBridge(commands, payloads),
     stdout: (text) => stdout.push(text),
@@ -140,7 +154,7 @@ test('CLI graph body adapter loop previews, executes, then reads context', async
   const exitExecute = await withEnv({
     BPH_METRICS_DIR: path.join(workspace, 'metrics'),
   }, () => runCli({
-    argv: ['task', 'execute', '--file', 'task-spec.json', '--format', 'json'],
+    argv: ['task', 'execute', '--file', 'task-spec.json', ...ACTIVE_RUNTIME_ARGS, '--format', 'json'],
     cwd: workspace,
     bridge: createRecordingBridge(commands, payloads),
     stdout: (text) => stdout.push(text),

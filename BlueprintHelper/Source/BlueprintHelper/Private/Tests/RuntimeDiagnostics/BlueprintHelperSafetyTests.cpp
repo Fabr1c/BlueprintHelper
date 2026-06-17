@@ -432,6 +432,25 @@ bool FBlueprintHelperRuntimeProfileGraphWriteMergeAvailableTest::RunTest(const F
 	}
 
 	TestFalse(TEXT("runtime profile no longer reports graph_write.merge as not_implemented"), bReportsMergeNotImplemented);
+	TestTrue(TEXT("runtime profile exposes descriptor runtime state"),
+		Profile.CapabilityRuntimeState.RegisteredRuntimeAdapterIds.Contains(TEXT("graphwrite_runtime_adapter")));
+	const TSharedRef<FJsonObject> ProfileJson = Profile.ToJson();
+	const TSharedPtr<FJsonObject>* RuntimeProfileJson = nullptr;
+	TestTrue(TEXT("runtime profile json contains runtime_profile object"),
+		ProfileJson->TryGetObjectField(TEXT("runtime_profile"), RuntimeProfileJson) && RuntimeProfileJson && RuntimeProfileJson->IsValid());
+	if (RuntimeProfileJson && RuntimeProfileJson->IsValid())
+	{
+		const TSharedPtr<FJsonObject>* CapabilityRuntimeStateJson = nullptr;
+		TestTrue(TEXT("runtime profile json contains capability_runtime_state"),
+			(*RuntimeProfileJson)->TryGetObjectField(TEXT("capability_runtime_state"), CapabilityRuntimeStateJson) &&
+			CapabilityRuntimeStateJson &&
+			CapabilityRuntimeStateJson->IsValid());
+		const TArray<TSharedPtr<FJsonValue>>* RegisteredAdapterJson = nullptr;
+		TestTrue(TEXT("runtime profile json contains registered_runtime_adapter_ids"),
+			(*RuntimeProfileJson)->TryGetArrayField(TEXT("registered_runtime_adapter_ids"), RegisteredAdapterJson) &&
+			RegisteredAdapterJson &&
+			RegisteredAdapterJson->Num() > 0);
+	}
 	return true;
 }
 

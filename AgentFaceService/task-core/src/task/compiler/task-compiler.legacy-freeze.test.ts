@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,6 +89,13 @@ test('gap-closure guard reports remaining legacy compiler bodies', async (t) => 
       'graphWriteOperationCompilerRegistry',
     ].sort(),
   );
+});
+
+test('agent-facing contract drift guards do not add legacy compiler facade branches', () => {
+  const source = readFileSync(path.join(taskCoreRoot(), 'src', 'task', 'compiler', 'task-compiler.ts'), 'utf8');
+  assert.doesNotMatch(source, /template[_-]?compose/i);
+  assert.doesNotMatch(source, /agent[_-]?facing/i);
+  assert.doesNotMatch(source, /contract[_-]?drift/i);
 });
 
 function freezeScriptPath(): string {

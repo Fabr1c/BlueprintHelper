@@ -70,6 +70,15 @@ function assertSupportedBlueprintVariablesTaskSpec(taskSpec: Extract<TaskSpec, {
 
 type BlueprintVariableCompiledOp = Record<string, unknown> & { op: string };
 
+const MEMBER_VARIABLE_DEFAULT_PROPERTY_PATHS = new Set(['default', 'default_value']);
+const MEMBER_VARIABLE_CONFIGURE_PROPERTY_PATHS = new Set([
+  'category',
+  'tooltip',
+  'instance_editable',
+  'expose_on_spawn',
+  'replication',
+]);
+
 function compileBlueprintVariableOps(behavior: Record<string, unknown>): BlueprintVariableCompiledOp[] {
   const strategy = getRequiredString(behavior, 'variable_strategy', 'behavior.variable_strategy');
   if (strategy === 'member_variables') {
@@ -202,6 +211,8 @@ function compileMemberVariableChange(rawEntry: unknown, path: string): Blueprint
       ]);
     }
     const out = { ...entry };
+    delete out['default'];
+    delete out['default_value'];
     if (!isRecord(out['pin_type'])) {
       if (isRecord(out['variable_type'])) {
         out['pin_type'] = out['variable_type'];
@@ -272,7 +283,36 @@ function normalizeMemberVariablePropertySetting(rawSetting: unknown, path: strin
   }
 
   const propertyPath = rawSetting['property_path'];
-  if (propertyPath !== 'replication') {
+  if (typeof propertyPath !== 'string') {
+    return rawSetting;
+  }
+
+  const normalizedPropertyPath = propertyPath.trim().toLowerCase();
+  if (MEMBER_VARIABLE_DEFAULT_PROPERTY_PATHS.has(normalizedPropertyPath)) {
+    throw new TaskSpecCompileError(
+      'taskspec_semantic_invalid',
+      'Member variable defaults must use member_defaults or ensure_member_variable.default/default_value.',
+      [
+        {
+          code: 'member_variable_default_requires_member_defaults',
+          path: `${path}.property_path`,
+          message: 'Do not set defaults through configure_member_variable.properties; use behavior.defaults[].value or top-level default/default_value on ensure_member_variable.',
+        },
+      ],
+    );
+  }
+
+  if (!MEMBER_VARIABLE_CONFIGURE_PROPERTY_PATHS.has(normalizedPropertyPath)) {
+    throw new TaskSpecCompileError('taskspec_semantic_invalid', 'Unsupported member variable property.', [
+      {
+        code: 'unsupported_member_variable_property',
+        path: `${path}.property_path`,
+        message: 'Use category, tooltip, instance_editable, expose_on_spawn, or replication.',
+      },
+    ]);
+  }
+
+  if (normalizedPropertyPath !== 'replication') {
     return rawSetting;
   }
 
@@ -383,7 +423,9 @@ function throwReplicationCompileError(code: string, path: string, message: strin
 }
 
 function compileMemberDefaultFromVariableEntry(rawEntry: unknown, path: string): BlueprintVariableCompiledOp | undefined {
-  if (!isRecord(rawEntry) || !Object.hasOwn(rawEntry, 'default')) {
+  const hasDefault = isRecord(rawEntry) && Object.hasOwn(rawEntry, 'default');
+  const hasDefaultValue = isRecord(rawEntry) && Object.hasOwn(rawEntry, 'default_value');
+  if (!isRecord(rawEntry) || (!hasDefault && !hasDefaultValue)) {
     return undefined;
   }
   const kind = rawEntry['kind'];
@@ -397,7 +439,7 @@ function compileMemberDefaultFromVariableEntry(rawEntry: unknown, path: string):
   return {
     op: 'set_member_default',
     name: getRequiredString(rawEntry, 'name', `${path}.name`),
-    value: literalValue(rawEntry['default']),
+    value: literalValue(hasDefault ? rawEntry['default'] : rawEntry['default_value']),
   };
 }
 

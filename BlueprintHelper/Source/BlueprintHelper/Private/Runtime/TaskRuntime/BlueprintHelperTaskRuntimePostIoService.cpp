@@ -2,6 +2,7 @@
 
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
 
+#include "Runtime/TaskRuntime/BlueprintHelperTaskRunJournalStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
@@ -84,6 +85,18 @@ FBlueprintHelperTaskRuntimePostIoFlushResult FBlueprintHelperTaskRuntimePostIoSe
 			? FBlueprintHelperTaskRuntimeTimingUtils::StartStage(*TimingTrace)
 			: 0.0;
 		TaskRunJournals.Add(Batch.TaskRunId, Batch.TaskRunJournal);
+		FString JournalStoreError;
+		if (!FBlueprintHelperTaskRunJournalStoreService().SaveTaskRunJournal(
+			Batch.TaskRunId,
+			Batch.TaskRunJournal,
+			JournalStoreError))
+		{
+			AddDiagnostic(
+				Result,
+				TEXT("task_run_journal_write_failed"),
+				JournalStoreError,
+				TEXT("task_run_journal"));
+		}
 		if (TimingTrace)
 		{
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(

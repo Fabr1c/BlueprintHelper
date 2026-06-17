@@ -6,113 +6,110 @@
 #include "Systems/Review/Utils/BlueprintHelperReviewActionTargetUtils.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
 
-namespace
+static void BlueprintHelperReviewAddUniqueNonEmpty(TArray<FString>& Values, const FString& Value)
 {
-	static void BlueprintHelperReviewAddUniqueNonEmpty(TArray<FString>& Values, const FString& Value)
+	if (!Value.IsEmpty())
 	{
-		if (!Value.IsEmpty())
-		{
-			Values.AddUnique(Value);
-		}
+		Values.AddUnique(Value);
 	}
+}
 
-	static TMap<FString, TArray<FString>> BlueprintHelperReviewGroupTargetKeysByRecord(
-		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+static TMap<FString, TArray<FString>> BlueprintHelperReviewGroupTargetKeysByRecord(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+{
+	TMap<FString, TArray<FString>> TargetKeysByRecordId;
+	const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
+		FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
+	for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
 	{
-		TMap<FString, TArray<FString>> TargetKeysByRecordId;
-		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
-			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
-		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
+		if (Match.ReviewRecordId.IsEmpty())
 		{
-			if (Match.ReviewRecordId.IsEmpty())
+			continue;
+		}
+		TArray<FString>& TargetKeys = TargetKeysByRecordId.FindOrAdd(Match.ReviewRecordId);
+		for (const FString& TargetKey : Match.TargetKeys)
+		{
+			if (!TargetKey.IsEmpty())
 			{
-				continue;
-			}
-			TArray<FString>& TargetKeys = TargetKeysByRecordId.FindOrAdd(Match.ReviewRecordId);
-			for (const FString& TargetKey : Match.TargetKeys)
-			{
-				if (!TargetKey.IsEmpty())
-				{
-					TargetKeys.AddUnique(TargetKey);
-				}
+				TargetKeys.AddUnique(TargetKey);
 			}
 		}
-		return TargetKeysByRecordId;
 	}
+	return TargetKeysByRecordId;
+}
 
-	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromMatches(
-		const FBlueprintHelperReviewVisibleChange& Change,
-		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch>& Matches)
+static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromMatches(
+	const FBlueprintHelperReviewVisibleChange& Change,
+	const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch>& Matches)
+{
+	TArray<FString> ReviewRecordIds;
+	for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
 	{
-		TArray<FString> ReviewRecordIds;
-		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
-		{
-			BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
-		}
-		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
-			ReviewRecordIds,
-			{ Change.ChangeId },
-			{ Change.AssetPath });
+		BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
 	}
+	return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+		ReviewRecordIds,
+		{ Change.ChangeId },
+		{ Change.AssetPath });
+}
 
-	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromChanges(
-		const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeChangedEventFromChanges(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes)
+{
+	const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
+		FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
+	TArray<FString> ReviewRecordIds;
+	TArray<FString> ChangeIds;
+	TArray<FString> AssetPaths;
+	for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
 	{
-		const TArray<FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch> Matches =
-			FBlueprintHelperReviewActionTargetUtils::ResolvePersistedReviewTargetMatchesBatch(Changes);
-		TArray<FString> ReviewRecordIds;
-		TArray<FString> ChangeIds;
-		TArray<FString> AssetPaths;
-		for (const FBlueprintHelperReviewActionTargetUtils::FPersistedReviewTargetMatch& Match : Matches)
-		{
-			BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
-		}
-		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
-		{
-			BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
-			BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
-		}
-		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
-			ReviewRecordIds,
-			ChangeIds,
-			AssetPaths);
+		BlueprintHelperReviewAddUniqueNonEmpty(ReviewRecordIds, Match.ReviewRecordId);
 	}
-
-	static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeBatchChangedEvent(
-		const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
-		const FBlueprintHelperReviewBatchActionResult& BatchResult)
+	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
 	{
-		TArray<FString> ChangeIds;
-		TArray<FString> AssetPaths;
-		for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
-		{
-			BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
-			BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
-		}
-		return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
-			BatchResult.ChangedReviewRecordIds,
-			ChangeIds,
-			AssetPaths);
+		BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
+		BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
 	}
+	return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+		ReviewRecordIds,
+		ChangeIds,
+		AssetPaths);
+}
 
-	static TArray<FBlueprintHelperReviewVisibleChange> BlueprintHelperReviewQueryPendingVisibleChangesForAsset(
-		const FBlueprintHelperReviewStoreService& Store,
-		const FString& AssetPath)
+static FBlueprintHelperReviewStoreChangedEvent BlueprintHelperReviewMakeBatchChangedEvent(
+	const TArray<FBlueprintHelperReviewVisibleChange>& Changes,
+	const FBlueprintHelperReviewBatchActionResult& BatchResult)
+{
+	TArray<FString> ChangeIds;
+	TArray<FString> AssetPaths;
+	for (const FBlueprintHelperReviewVisibleChange& Change : Changes)
 	{
-		FBlueprintHelperReviewPendingIndexQuery Query;
-		Query.AssetPathFilter = AssetPath;
-		Query.bPendingOnly = true;
-		Query.bSkipMissingAssetRecords = AssetPath.IsEmpty();
-
-		TArray<FBlueprintHelperReviewVisibleChange> Changes;
-		const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries =
-			Store.QueryPendingVisibleChangeSummaries(Query);
-		for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
-		{
-			Changes.Add(Summary.Change);
-		}
-		return Changes;
+		BlueprintHelperReviewAddUniqueNonEmpty(ChangeIds, Change.ChangeId);
+		BlueprintHelperReviewAddUniqueNonEmpty(AssetPaths, Change.AssetPath);
 	}
+	return FBlueprintHelperReviewStoreChangedEvent::RecordsChanged(
+		BatchResult.ChangedReviewRecordIds,
+		ChangeIds,
+		AssetPaths);
+}
+
+static TArray<FBlueprintHelperReviewVisibleChange> BlueprintHelperReviewQueryPendingVisibleChangesForAsset(
+	const FBlueprintHelperReviewStoreService& Store,
+	const FString& AssetPath)
+{
+	FBlueprintHelperReviewPendingIndexQuery Query;
+	Query.AssetPathFilter = AssetPath;
+	Query.bPendingOnly = true;
+	Query.bSkipMissingAssetRecords = AssetPath.IsEmpty();
+
+	TArray<FBlueprintHelperReviewVisibleChange> Changes;
+	const TArray<FBlueprintHelperReviewPendingVisibleChangeSummary> Summaries =
+		Store.QueryPendingVisibleChangeSummaries(Query);
+	for (const FBlueprintHelperReviewPendingVisibleChangeSummary& Summary : Summaries)
+	{
+		Changes.Add(Summary.Change);
+	}
+	return Changes;
 }
 
 FBlueprintHelperReviewPanelCommandService::FBlueprintHelperReviewPanelCommandService(

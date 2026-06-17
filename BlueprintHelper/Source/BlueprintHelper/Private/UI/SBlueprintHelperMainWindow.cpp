@@ -241,6 +241,18 @@ FReply SBlueprintHelperMainWindow::ShowReviewPage()
 	return FReply::Handled();
 }
 
+#if WITH_DEV_AUTOMATION_TESTS
+void SBlueprintHelperMainWindow::ShowReviewPageForTesting()
+{
+	ShowPage(1);
+}
+
+TSharedPtr<SBlueprintHelperReviewPanel> SBlueprintHelperMainWindow::GetReviewPanelForTesting() const
+{
+	return ReviewPanelWidget.Pin();
+}
+#endif
+
 FReply SBlueprintHelperMainWindow::ShowLayoutPage()
 {
 	ShowPage(2);

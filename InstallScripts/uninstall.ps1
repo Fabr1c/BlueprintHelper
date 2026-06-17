@@ -578,6 +578,8 @@ function Remove-CodexLifecycleMcpConfig {
     '[mcp_servers.blueprint-helper]',
     '[mcp_servers."blueprint-helper".tools.blueprint_open_editor]',
     '[mcp_servers."blueprint-helper".tools.blueprint_close_editor]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_dismiss_editor_dialogs]',
+    '[mcp_servers."blueprint-helper".tools.blueprint_close_editor_dialogs]',
     '[mcp_servers."blueprint-helper".tools.blueprint_developer_exec_console_command]'
   )
 

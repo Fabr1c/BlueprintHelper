@@ -8,6 +8,7 @@
 #include "UI/Review/BlueprintHelperReviewPanelSettingsResolver.h"
 #include "UI/Review/BlueprintHelperReviewPanelStyle.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
+#include "UI/Review/BlueprintHelperReviewPendingLoadApplicationService.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "Styling/AppStyle.h"
@@ -63,7 +64,8 @@ void SBlueprintHelperReviewPanel::Construct(const FArguments& InArgs)
 		InitialPage.bHasMore = false;
 		PagedChangeModel.ApplyPendingLoadResult(InitialPage);
 	}
-	LastVisibleChangeRefreshSignature = BuildVisibleChangeRefreshSignature(InitialChanges);
+	LastVisibleChangeRefreshSignature =
+		FBlueprintHelperReviewPendingLoadApplicationService::BuildVisibleChangeRefreshSignature(InitialChanges);
 	if (ReviewPanelPresenter.IsValid())
 	{
 		PendingReviewChangedHandle = ReviewPanelPresenter->AddPendingReviewChangedEventHandler(
@@ -303,8 +305,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMyBlueprintPanel()
 					SAssignNew(MyBlueprintDiffStackBox, SBox)
 					[
 						BuildPanelDiffFrames(
-							&FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange,
-							EBlueprintHelperReviewSurface::MyBlueprint)
+							FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveMyBlueprintRoute())
 					]
 				]
 			]
@@ -389,7 +390,8 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanel()
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 {
 	const EBlueprintHelperReviewSurface MainSurface =
-		FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(ReviewAssetContext.AssetKind);
+		FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveMainWorkspaceRoute(
+			ReviewAssetContext.AssetKind).Surface;
 	if (MainSurface == EBlueprintHelperReviewSurface::DataTable)
 	{
 		GraphPresenterState.Reset();
@@ -427,8 +429,13 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
 {
 	FBlueprintHelperReviewGraphPresenterArgs Args;
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> GraphSurfaceDiffModels =
+		BuildSurfaceDiffModelsForSurface(
+			FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveSurfaceRoute(
+				EBlueprintHelperReviewSurface::Graph));
 	Args.AssetContext = &ReviewAssetContext;
 	Args.ChangeItems = &ChangeItems;
+	Args.SurfaceDiffModels = &GraphSurfaceDiffModels;
 	Args.SelectedChange = SelectedChange;
 	const bool bSelectedMatchesGraphNavigation =
 		SelectedChange.IsValid()

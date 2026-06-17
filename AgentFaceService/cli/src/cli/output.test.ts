@@ -261,6 +261,49 @@ test('CLI preview summary exposes static preflight issue from error payload', ()
   }]);
 });
 
+test('CLI summary exposes review baseline dirty recovery guidance', () => {
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'summary',
+    resultPolicyId: 'task.preview.default',
+  };
+  const toolResult = {
+    ok: false,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_cli_dirty_baseline',
+    status: 'failed',
+    modified: false,
+    error: {
+      code: 'review_baseline_dirty_target_assets',
+      category: 'runtime_state_error',
+      stage: 'preflight',
+      message: 'Review baseline requires clean target assets before archive.',
+      retryable: false,
+      rollback_result: 'not_needed',
+      dirty_state: 'dirty_with_open_review',
+      dirty_assets: ['/Game/BP_Dirty'],
+      safe_next_action: 'review.reject_or_accept_pending_changes_then_retry',
+      allowed_recovery_actions: ['review.reject', 'review.accept'],
+    },
+  } as ToolResultBase;
+
+  const summary = buildCliSummary({
+    command,
+    toolResult,
+    artifactRefs: {},
+  });
+
+  assert.equal(summary.status, 'preview_blocked');
+  assert.equal(summary.error_code, 'review_baseline_dirty_target_assets');
+  assert.equal(summary.category, 'runtime_state_error');
+  assert.equal(summary.stage, 'preflight');
+  assert.equal(summary.dirty_state, 'dirty_with_open_review');
+  assert.deepEqual(summary.dirty_assets, ['/Game/BP_Dirty']);
+  assert.equal(summary.safe_next_action, 'review.reject_or_accept_pending_changes_then_retry');
+  assert.deepEqual(summary.allowed_recovery_actions, ['review.reject', 'review.accept']);
+});
+
 test('CLI error output omits wrapper schema by default', () => {
   const output = buildCliError({
     operation: 'output',

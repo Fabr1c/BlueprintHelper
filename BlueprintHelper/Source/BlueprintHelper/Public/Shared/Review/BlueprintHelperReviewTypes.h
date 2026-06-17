@@ -307,6 +307,11 @@ struct FBlueprintHelperReviewArchiveSession
 	TArray<FString> BaselineWarnings;
 	FString BaselineDirtyAssetPolicy;
 	FString BaselineSnapshotTrust;
+	FString DirtyState;
+	FString SafeNextAction;
+	TArray<FString> AllowedRecoveryActions;
+	TArray<FString> RiskyRecoveryActions;
+	TArray<FString> DirtyEvidenceRefs;
 	FString CreatedAt;
 };
 

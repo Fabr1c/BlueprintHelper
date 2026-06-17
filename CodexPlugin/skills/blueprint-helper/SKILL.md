@@ -45,9 +45,11 @@ Call editor lifecycle only through global MCP tools:
 ```text
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
+mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
+mcp__blueprint_helper__blueprint_close_editor_dialogs
 ```
 
-Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, or `blueprint_close_editor` through CLI or shell fallbacks to start or close Unreal Editor. If global MCP lifecycle is unavailable, stop and report `lifecycle_mcp_unavailable`.
+Do not run `bh open_editor`, `bh close_editor`, `blueprint_open_editor`, `blueprint_close_editor`, `blueprint_dismiss_editor_dialogs`, or `blueprint_close_editor_dialogs` through CLI or shell fallbacks to start, close, or dismiss modal dialogs in Unreal Editor. If global MCP lifecycle is unavailable, stop and report `lifecycle_mcp_unavailable`.
 
 The supported entry for ordinary BlueprintHelper reads, writes, diagnostics, compile/save validation, write-session requests, and result queries is the BlueprintHelper CLI. Deprecated MCP ordinary read/write/debug/task tools are forbidden for Agent workflows. Do not use them as fallback.
 
@@ -59,5 +61,6 @@ If read evidence, Editor screenshots/visible state, preview, execute, or readbac
 - Dispatch `sourcecode-explorer` only when complementary source-side grounding is required.
 - Dispatch `task-worker` only after target asset, scope, operation intent, modification boundary, safety gates, and evidence sufficiency are clear.
 - Stop or ask the user before write delegation when the target asset, scope, create/modify strategy, or modification boundary is ambiguous.
+- If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after the sideAgent completes, explicitly reports it can be closed, or reaches an errored/shutdown status. If the progress check also times out, report `sideagent_timeout_unconfirmed` to the user and ask whether to keep waiting or close it.
 
 Report results in the user's language. Do not claim completion unless preview, execute, and readback evidence support it.

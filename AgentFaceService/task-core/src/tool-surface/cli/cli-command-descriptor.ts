@@ -1,4 +1,5 @@
 import { listCliSubcommandDescriptors } from './cli-subcommand-descriptor.js';
+import { listCapabilityDescriptors } from '../capabilities/capability-descriptor-registry.js';
 import type { BuiltinResultProjectionPolicyId } from '../result/result-projection-registry.js';
 
 export type CliCommandDescriptorToken = string;
@@ -17,6 +18,7 @@ export interface CliCommandDescriptor {
   readonly id: string;
   readonly kind: string;
   readonly executor_id: string;
+  readonly capability_descriptor_ids?: readonly string[];
   readonly result_policy_id?: BuiltinResultProjectionPolicyId;
   readonly status_policy_id?: CliCommandStatusPolicyId;
   readonly run_id_policy_id?: CliCommandRunIdPolicyId;
@@ -56,6 +58,14 @@ export type CliCommandInputIoKind =
   | 'file'
   | 'task_file';
 
+const TASK_RUNTIME_CAPABILITY_DESCRIPTOR_IDS = listCapabilityDescriptors()
+  .filter((descriptor) =>
+    descriptor.routing.cli_command === 'task execute' &&
+    descriptor.routing.handler_id === 'task_runtime' &&
+    descriptor.runtime.status === 'active' &&
+    !descriptor.safety.reserved_only)
+  .map((descriptor) => descriptor.id);
+
 const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
   {
     id: 'tools.domains',
@@ -71,12 +81,13 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     executor_id: 'tools.registry',
     positionals: ['tools', 'list', ':toolDomain', ':toolCatalogKind'],
     defaults: { audience: 'default' },
-    option_map: {
-      audience: 'audience',
-      requiresBridge: 'requiresBridge',
-      risks: 'risks',
-      expert: 'expert',
-    },
+      option_map: {
+        audience: 'audience',
+        requiresBridge: 'requiresBridge',
+        risks: 'risks',
+        expert: 'expert',
+        runtimeAdapterIds: 'runtimeAdapterIds',
+      },
   },
   {
     id: 'task.preview',
@@ -87,9 +98,10 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     run_id_policy_id: 'task.preview_run_id',
     metrics_tool_name: 'blueprinthelper_preview_task',
     metrics_lookup_id: 'blueprint.plan.taskspec.preview',
+    capability_descriptor_ids: TASK_RUNTIME_CAPABILITY_DESCRIPTOR_IDS,
     input_io_kind: 'task_file',
     positionals: ['task', 'preview'],
-    option_map: { file: 'file', compileOnly: 'compileOnly' },
+    option_map: { file: 'file', compileOnly: 'compileOnly', runtimeAdapterIds: 'runtimeAdapterIds' },
     required_options: [{ option: 'file', message: 'Missing --file for bh task preview.' }],
   },
   {
@@ -101,9 +113,10 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     run_id_policy_id: 'tool.result_task_or_cli',
     metrics_tool_name: 'blueprinthelper_execute_task',
     metrics_lookup_id: 'blueprint.write.taskspec.execute',
+    capability_descriptor_ids: TASK_RUNTIME_CAPABILITY_DESCRIPTOR_IDS,
     input_io_kind: 'task_file',
     positionals: ['task', 'execute'],
-    option_map: { file: 'file', previewToken: 'previewToken' },
+    option_map: { file: 'file', previewToken: 'previewToken', runtimeAdapterIds: 'runtimeAdapterIds' },
     required_options: [{ option: 'file', message: 'Missing --file for bh task execute.' }],
   },
   {

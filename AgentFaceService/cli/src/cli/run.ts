@@ -9,6 +9,9 @@ import {
 } from '@blueprinthelper/task-core/bridge/bridge-client';
 import {
   getBlueprintHelperTool,
+  buildDescriptorDrivenRoute,
+  createRuntimeCapabilityState,
+  getCapabilityDescriptor,
   getRemovedDirectCliToolCommand,
   isCliBridgeCallAllowed,
   listCliCommandKindsByExecutorId,
@@ -16,6 +19,9 @@ import {
   routeCliCommand,
   splitTopLevelSlotExpressions,
   type CliCommandExecutorDescriptor,
+  type DescriptorDrivenRouteMode,
+  type DescriptorDrivenRoutePlan,
+  type RuntimeCapabilityState,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   createTaskSpecRunner,
@@ -135,8 +141,11 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
   {
     id: 'tools.registry',
     kinds: commandKindsForExecutor('tools.registry'),
-    execute: async ({ runtime, command }) => {
-      const output = shapeCliOutput(runToolsCommand(command), command.fields, command.omitFields);
+    execute: async ({ runtime, command, timing }) => {
+      const hydratedCommand = await hydrateRuntimeCapabilityStateForCommand(runtime, command, timing, {
+        allowBridgeUnavailable: true,
+      });
+      const output = shapeCliOutput(runToolsCommand(hydratedCommand), hydratedCommand.fields, hydratedCommand.omitFields);
       runtime.stdout(`${JSON.stringify(output)}\n`);
       return 0;
     },
@@ -161,6 +170,13 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
         path.resolve(runtime.cwd, required(command.file)),
       ));
       const taskSpec = TaskSpecSchema.parse(taskSpecInput.value);
+      const routeCommand = await prepareDescriptorDrivenCommand(runtime, command, 'preview', timing);
+      if (!routeCommand.ok) {
+        const outcome = writeTimedCliResult(runtime, command, routeCommand.toolResult, timing);
+        await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+        return 2;
+      }
+      const routedCommand = routeCommand.command;
       if (command.compileOnly === true) {
         const compiler = createTaskSpecCompiler();
         const compiled = await measureTaskTimingAsync(timing, 'taskspec_compile_only', () => compiler(taskSpec, {
@@ -176,23 +192,23 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
           passed: true,
           issues: [],
         });
-        const outcome = writeTimedCliResult(runtime, command, toolResult, timing, {
+        const outcome = writeTimedCliResult(runtime, routedCommand, toolResult, timing, {
           taskPlan,
           passed: true,
           issues: [],
         });
-        await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+        await recordCliIo(runtime, routedCommand, outcome, taskSpecInput.io, taskSpec);
         return outcome.outputTooLarge ? 3 : 0;
       }
       const preview = await getRunner(runtime).previewTask(taskSpec, timing);
-      const outcome = writeTimedCliResult(runtime, command, preview.toolResult, timing, {
+      const outcome = writeTimedCliResult(runtime, routedCommand, preview.toolResult, timing, {
         previewId: preview.previewId,
         previewToken: preview.previewToken,
         taskPlan: preview.taskPlan,
         passed: preview.passed,
         issues: preview.issues,
       });
-      await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+      await recordCliIo(runtime, routedCommand, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : preview.passed ? 0 : 2;
     },
   },
@@ -204,9 +220,16 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
         path.resolve(runtime.cwd, required(command.file)),
       ));
       const taskSpec = TaskSpecSchema.parse(taskSpecInput.value);
-      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, { previewToken: command.previewToken });
-      const outcome = writeTimedCliResult(runtime, command, toolResult, timing);
-      await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+      const routeCommand = await prepareDescriptorDrivenCommand(runtime, command, 'execute', timing);
+      if (!routeCommand.ok) {
+        const outcome = writeTimedCliResult(runtime, command, routeCommand.toolResult, timing);
+        await recordCliIo(runtime, command, outcome, taskSpecInput.io, taskSpec);
+        return 2;
+      }
+      const routedCommand = routeCommand.command;
+      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, { previewToken: routedCommand.previewToken });
+      const outcome = writeTimedCliResult(runtime, routedCommand, toolResult, timing);
+      await recordCliIo(runtime, routedCommand, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
     },
   },
@@ -335,6 +358,194 @@ function writeTimedCliResult(
   return writeCliResult(runtime, command, timedResult, extra);
 }
 
+async function prepareDescriptorDrivenCommand(
+  runtime: CliRuntime,
+  command: CliCommand,
+  mode: DescriptorDrivenRouteMode,
+  timing: TaskTimingTrace | undefined,
+): Promise<{ ok: true; command: CliCommand } | { ok: false; toolResult: ToolResultBase }> {
+  const descriptorIds = command.capabilityDescriptorIds ?? [];
+  if (descriptorIds.length === 0) {
+    return { ok: true, command };
+  }
+
+  const runtimeCommand = await hydrateRuntimeCapabilityStateForCommand(runtime, command, timing, {
+    allowBridgeUnavailable: false,
+  });
+  const runtimeState = defaultCapabilityRuntimeState(runtimeCommand);
+  const routePlans: DescriptorDrivenRoutePlan[] = [];
+  for (const descriptorId of descriptorIds) {
+    const descriptor = getCapabilityDescriptor(descriptorId);
+    if (!descriptor) {
+      return {
+        ok: false,
+        toolResult: cliCapabilityUnavailableResult(command.kind, {
+          code: 'capability_descriptor_not_found',
+          message: `BlueprintHelper capability descriptor not found: ${descriptorId}.`,
+        }),
+      };
+    }
+
+    const route = buildDescriptorDrivenRoute({
+      descriptor,
+      runtime: runtimeState,
+      mode,
+      command: { ...runtimeCommand },
+    });
+    if (!route.ok) {
+      return {
+        ok: false,
+        toolResult: cliCapabilityUnavailableResult(command.kind, {
+          code: route.error_code,
+          message: route.message,
+          field: route.capability_id,
+          expected: route.runtime_adapter_id,
+          actual: route.reason,
+        }),
+      };
+    }
+    routePlans.push(route.plan);
+  }
+
+  return {
+    ok: true,
+    command: {
+      ...runtimeCommand,
+      descriptorRoutePlans: routePlans,
+    },
+  };
+}
+
+function defaultCapabilityRuntimeState(command: CliCommand): RuntimeCapabilityState {
+  if (command.runtimeCapabilityState) {
+    return createRuntimeCapabilityState(command.runtimeCapabilityState);
+  }
+  return createRuntimeCapabilityState({
+    registered_runtime_adapter_ids: command.runtimeAdapterIds ?? [],
+  });
+}
+
+async function hydrateRuntimeCapabilityStateForCommand(
+  runtime: CliRuntime,
+  command: CliCommand,
+  timing: TaskTimingTrace | undefined,
+  options: { allowBridgeUnavailable: boolean },
+): Promise<CliCommand> {
+  if (!commandNeedsRuntimeCapabilityState(command)) {
+    return command;
+  }
+  if (command.runtimeCapabilityState) {
+    return command;
+  }
+  if (command.runtimeAdapterIds) {
+    return {
+      ...command,
+      runtimeCapabilityState: createRuntimeCapabilityState({
+        registered_runtime_adapter_ids: command.runtimeAdapterIds,
+      }),
+    };
+  }
+
+  try {
+    const runtimeCapabilityState = await fetchRuntimeCapabilityState(runtime, timing);
+    return {
+      ...command,
+      runtimeCapabilityState,
+      runtimeAdapterIds: runtimeCapabilityState.registered_runtime_adapter_ids,
+    };
+  } catch (err) {
+    if (options.allowBridgeUnavailable && isBridgeUnavailable(err)) {
+      const runtimeCapabilityState = createRuntimeCapabilityState();
+      return {
+        ...command,
+        runtimeCapabilityState,
+        runtimeAdapterIds: runtimeCapabilityState.registered_runtime_adapter_ids,
+      };
+    }
+    throw err;
+  }
+}
+
+function commandNeedsRuntimeCapabilityState(command: CliCommand): boolean {
+  if ((command.capabilityDescriptorIds ?? []).length > 0) {
+    return true;
+  }
+  return command.kind === 'tools.list' && command.toolCatalogKind === 'write';
+}
+
+async function fetchRuntimeCapabilityState(
+  runtime: CliRuntime,
+  timing: TaskTimingTrace | undefined,
+): Promise<RuntimeCapabilityState> {
+  const response = await measureTaskTimingAsync(timing, 'cli.runtime_profile_capability_state', () =>
+    getBridge(runtime).sendCommand('get_runtime_profile', {}));
+  if (!response.success) {
+    throw new Error(response.message ?? 'BlueprintHelper runtime profile request failed.');
+  }
+  return runtimeCapabilityStateFromProfilePayload(normalizeBridgeData(response));
+}
+
+function runtimeCapabilityStateFromProfilePayload(payload: Record<string, unknown>): RuntimeCapabilityState {
+  const data = readRecord(payload['data']) ?? payload;
+  const profile = readRecord(data['runtime_profile']);
+  const state = readRecord(profile?.['capability_runtime_state']);
+  return createRuntimeCapabilityState({
+    registered_runtime_adapter_ids:
+      readStringArray(state?.['registered_runtime_adapter_ids']) ??
+      readStringArray(profile?.['registered_runtime_adapter_ids']) ??
+      [],
+    allow_write_capabilities:
+      readBoolean(state?.['allow_write_capabilities']) ??
+      readBoolean(profile?.['allow_write_capabilities']) ??
+      true,
+    allow_high_risk_capabilities:
+      readBoolean(state?.['allow_high_risk_capabilities']) ??
+      readBoolean(profile?.['allow_high_risk_capabilities']) ??
+      true,
+  });
+}
+
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter((entry): entry is string => typeof entry === 'string');
+  return strings.length === value.length ? strings : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function cliCapabilityUnavailableResult(
+  operation: string,
+  input: {
+    code: string;
+    message: string;
+    field?: string;
+    expected?: string;
+    actual?: string;
+  },
+): ToolResultBase {
+  return failureResult(operation, {
+    code: input.code,
+    stage: 'preflight',
+    message: input.message,
+    retryable: false,
+    rollback_result: 'not_needed',
+    field: input.field,
+    expected: input.expected,
+    actual: input.actual,
+  });
+}
+
 function attachCliTiming(
   toolResult: ToolResultBase,
   timing: TaskTimingTrace | undefined,
@@ -437,6 +648,7 @@ function parseArgs(argv: string[]): ParseResult {
     audience?: 'default' | 'compat' | 'expert';
     requiresBridge?: boolean;
     risks?: string[];
+    runtimeAdapterIds?: string[];
     workflow?: string;
     family?: string;
     writeMode?: string;
@@ -491,6 +703,11 @@ function parseArgs(argv: string[]): ParseResult {
         }
       }
       options.risks = risks;
+    } else if (arg === '--runtime-adapters') {
+      options.runtimeAdapterIds = readOptionValue(argv, ++index, arg)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
     } else if (arg === '--workflow') {
       options.workflow = readOptionValue(argv, ++index, arg);
     } else if (arg === '--family') {
@@ -677,6 +894,7 @@ function parseHelpTarget(argv: string[]): string[] {
     '--audience',
     '--requires-bridge',
     '--risk',
+    '--runtime-adapters',
     '--workflow',
     '--family',
     '--write-mode',

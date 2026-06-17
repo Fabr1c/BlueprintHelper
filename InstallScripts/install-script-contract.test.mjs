@@ -159,6 +159,22 @@ test('node install helpers resolve user profile through shared Windows-aware hel
   }
 });
 
+test('uninstall removes all global MCP lifecycle tool allowlist sections', () => {
+  for (const tool of [
+    'blueprint_open_editor',
+    'blueprint_close_editor',
+    'blueprint_dismiss_editor_dialogs',
+    'blueprint_close_editor_dialogs',
+    'blueprint_developer_exec_console_command',
+  ]) {
+    assert.match(
+      uninstallScript,
+      new RegExp(`\\[mcp_servers\\."blueprint-helper"\\.tools\\.${tool}\\]`),
+      `uninstall.ps1 must remove ${tool}`,
+    );
+  }
+});
+
 test('node user home helper ignores polluted profile env and uses the current C:\\Users username directory', () => {
   const originalUserProfile = process.env.USERPROFILE;
   const originalHome = process.env.HOME;

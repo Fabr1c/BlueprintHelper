@@ -1,6 +1,8 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/AssetFactory/BlueprintHelperAssetFactoryTaskPlanAdapter.h"
 
 #include "Dom/JsonValue.h"
+#include "Shared/AssetFactory/BlueprintHelperAssetFactoryTypes.h"
+#include "Systems/ToolClusters/AssetFactory/BlueprintHelperAssetFactoryService.h"
 
 class FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils
 {
@@ -279,6 +281,32 @@ bool FBlueprintHelperAssetFactoryTaskPlanAdapter::TryBuildPayloadFromTaskPlanSte
 	if (!FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryTryCopyOptionalArrayField(OpObject, TEXT("fields"), FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("fields")), Payload, OutError))
 	{
 		return false;
+	}
+
+	FString ParentClass;
+	Payload->TryGetStringField(TEXT("parent_class"), ParentClass);
+	EBlueprintHelperAssetType NormalizedAssetType = EBlueprintHelperAssetType::Unknown;
+	if (!FBlueprintHelperAssetFactoryService::TryNormalizeAssetTypeAndParent(AssetType, ParentClass, NormalizedAssetType))
+	{
+		OutError = MakeError(
+			TEXT("unsupported_asset_type"),
+			FString::Printf(TEXT("Unsupported asset_type: %s"), *AssetType),
+			FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("asset_type")));
+		return false;
+	}
+	if (NormalizedAssetType == EBlueprintHelperAssetType::BlueprintClass)
+	{
+		FString BlueprintParentError;
+		if (!FBlueprintHelperAssetFactoryService::TryValidateBlueprintParentClass(ParentClass, BlueprintParentError))
+		{
+			OutError = MakeError(
+				TEXT("invalid_blueprint_parent_class"),
+				BlueprintParentError,
+				FBlueprintHelperAssetFactoryTaskPlanAdapterLocalUtils::AssetFactoryBuildOpFieldPath(TEXT("parent_class")));
+			OutError.Stage = EBlueprintHelperToolStage::Preflight;
+			return false;
+		}
+		Payload->SetStringField(TEXT("parent_class"), ParentClass);
 	}
 
 	OutPayload = Payload;

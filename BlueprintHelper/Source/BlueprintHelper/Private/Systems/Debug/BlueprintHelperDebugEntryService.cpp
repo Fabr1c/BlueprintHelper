@@ -1,9 +1,111 @@
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 
 #include "Dom/JsonObject.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseArtifactExporter.h"
+#include "Systems/Debug/BlueprintHelperDebugCaseProjectionRegistry.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/Utils/BlueprintHelperDebugUtils.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
+
+static FString BlueprintHelperDebugCaseArtifactRoleToString(EBlueprintHelperDebugCaseArtifactRole Role)
+{
+	switch (Role)
+	{
+	case EBlueprintHelperDebugCaseArtifactRole::SummaryMarkdown:
+		return TEXT("summary_markdown");
+	case EBlueprintHelperDebugCaseArtifactRole::ReviewSummary:
+		return TEXT("review_summary");
+	case EBlueprintHelperDebugCaseArtifactRole::FragmentDag:
+		return TEXT("fragment_dag");
+	case EBlueprintHelperDebugCaseArtifactRole::FragmentEvidence:
+		return TEXT("fragment_evidence");
+	case EBlueprintHelperDebugCaseArtifactRole::FragmentSummary:
+		return TEXT("fragment_summary");
+	case EBlueprintHelperDebugCaseArtifactRole::Generic:
+	default:
+		return TEXT("generic");
+	}
+}
+
+static TSharedRef<FJsonObject> BlueprintHelperDebugCaseArtifactModelToJson(
+	const FBlueprintHelperDebugCaseArtifactModel& Artifact)
+{
+	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+	if (!Artifact.ArtifactId.IsEmpty())
+	{
+		Json->SetStringField(TEXT("artifact_id"), Artifact.ArtifactId);
+	}
+	if (!Artifact.RelativePath.IsEmpty())
+	{
+		Json->SetStringField(TEXT("relative_path"), Artifact.RelativePath);
+	}
+	if (!Artifact.Schema.IsEmpty())
+	{
+		Json->SetStringField(TEXT("schema"), Artifact.Schema);
+	}
+	if (!Artifact.DisplayName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("display_name"), Artifact.DisplayName);
+	}
+	Json->SetStringField(TEXT("role"), BlueprintHelperDebugCaseArtifactRoleToString(Artifact.Role));
+	Json->SetBoolField(TEXT("has_json"), Artifact.Json.IsValid());
+	Json->SetBoolField(TEXT("has_markdown"), !Artifact.Markdown.IsEmpty());
+	return Json;
+}
+
+static void BlueprintHelperDebugCaseSetProjectionFields(
+	const FBlueprintHelperDebugCaseProjectionResult& ProjectionResult,
+	const TSharedRef<FJsonObject>& Data)
+{
+	TArray<TSharedPtr<FJsonValue>> ArtifactValues;
+	for (const FBlueprintHelperDebugCaseArtifactModel& Artifact : ProjectionResult.Artifacts)
+	{
+		ArtifactValues.Add(MakeShared<FJsonValueObject>(BlueprintHelperDebugCaseArtifactModelToJson(Artifact)));
+	}
+	Data->SetArrayField(TEXT("artifact_models"), ArtifactValues);
+
+	if (ProjectionResult.SkippedArtifacts.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> SkippedValues;
+		for (const FBlueprintHelperDebugSkippedArtifact& Skipped : ProjectionResult.SkippedArtifacts)
+		{
+			SkippedValues.Add(MakeShared<FJsonValueObject>(Skipped.ToJson()));
+		}
+		Data->SetArrayField(TEXT("skipped_artifacts"), SkippedValues);
+	}
+
+	if (ProjectionResult.FragmentArtifacts.IsValid())
+	{
+		Data->SetObjectField(TEXT("fragment_artifacts"), ProjectionResult.FragmentArtifacts.ToJson());
+	}
+}
+
+static TSharedPtr<FJsonObject> BlueprintHelperDebugCaseFindArtifactJson(
+	const FBlueprintHelperDebugCaseProjectionResult& ProjectionResult,
+	const FString& ArtifactId)
+{
+	for (const FBlueprintHelperDebugCaseArtifactModel& Artifact : ProjectionResult.Artifacts)
+	{
+		if (Artifact.ArtifactId == ArtifactId && Artifact.Json.IsValid())
+		{
+			return Artifact.Json;
+		}
+	}
+	return nullptr;
+}
+
+static bool BlueprintHelperDebugCaseBuildProjection(
+	const FBlueprintHelperDebugCase& DebugCase,
+	const FBlueprintHelperReviewStoreService* ReviewStore,
+	FBlueprintHelperDebugCaseProjectionResult& OutProjectionResult,
+	FString* OutError)
+{
+	FBlueprintHelperDebugCaseProjectionContext ProjectionContext;
+	ProjectionContext.ReviewStore = ReviewStore;
+	const FBlueprintHelperDebugCaseProjectionRegistry ProjectionRegistry =
+		FBlueprintHelperDebugCaseProjectionRegistry::BuildDefault();
+	return ProjectionRegistry.BuildProjection(DebugCase, ProjectionContext, OutProjectionResult, OutError);
+}
 
 FBlueprintHelperDebugEntryService::FBlueprintHelperDebugEntryService(
 	const FBlueprintHelperDebugCaseStoreService& InStore,
@@ -138,14 +240,30 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::GetDebugCaseSu
 			Error);
 	}
 
-	FBlueprintHelperDebugCaseSummary Summary;
-	FString QueryError;
-	if (!Store.QueryCaseSummary(DebugCaseId, Summary, &QueryError))
+	FBlueprintHelperDebugCase DebugCase;
+	FString LoadError;
+	if (!Store.LoadCase(DebugCaseId, DebugCase, &LoadError))
 	{
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("debug_case_not_found");
 		Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
-		Error.Message = QueryError.IsEmpty() ? TEXT("debug case not found.") : QueryError;
+		Error.Message = LoadError.IsEmpty() ? TEXT("debug case not found.") : LoadError;
+		Error.Field = TEXT("debug_case_id");
+		Error.Actual = DebugCaseId;
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("get_debug_case"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+	}
+
+	FBlueprintHelperDebugCaseProjectionResult ProjectionResult;
+	FString ProjectionError;
+	if (!BlueprintHelperDebugCaseBuildProjection(DebugCase, ReviewStore, ProjectionResult, &ProjectionError))
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = TEXT("debug_case_projection_failed");
+		Error.Stage = EBlueprintHelperToolStage::Execute;
+		Error.Message = ProjectionError.IsEmpty() ? TEXT("debug case projection failed.") : ProjectionError;
 		Error.Field = TEXT("debug_case_id");
 		Error.Actual = DebugCaseId;
 		return FBlueprintHelperToolResultBuilder::Failure(
@@ -158,7 +276,14 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::GetDebugCaseSu
 		TEXT("get_debug_case"),
 		FBlueprintHelperToolResultBuilder::GenerateTraceId());
 	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetObjectField(TEXT("debug_case"), Summary.ToJson());
+	Data->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.DebugCaseProjection.v1"));
+	if (TSharedPtr<FJsonObject> SummaryJson = BlueprintHelperDebugCaseFindArtifactJson(
+		ProjectionResult,
+		TEXT("debug_case_summary")))
+	{
+		Data->SetObjectField(TEXT("debug_case"), SummaryJson.ToSharedRef());
+	}
+	BlueprintHelperDebugCaseSetProjectionFields(ProjectionResult, Data);
 	Result.Data = Data;
 	return Result;
 }
@@ -201,7 +326,41 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::GetDebugCaseLi
 	TArray<TSharedPtr<FJsonValue>> CaseValues;
 	for (int32 Index = 0; Index < Summaries.Num() && Index < Limit; ++Index)
 	{
-		CaseValues.Add(MakeShared<FJsonValueObject>(Summaries[Index].ToJson()));
+		TSharedRef<FJsonObject> CaseJson = Summaries[Index].ToJson();
+		FBlueprintHelperDebugCase DebugCase;
+		FString LoadError;
+		if (!Store.LoadCase(Summaries[Index].DebugCaseId, DebugCase, &LoadError))
+		{
+			FBlueprintHelperToolError Error;
+			Error.Code = TEXT("debug_case_list_projection_failed");
+			Error.Stage = EBlueprintHelperToolStage::Execute;
+			Error.Message = LoadError.IsEmpty() ? TEXT("debug case list projection failed.") : LoadError;
+			Error.Field = TEXT("debug_case_id");
+			Error.Actual = Summaries[Index].DebugCaseId;
+			return FBlueprintHelperToolResultBuilder::Failure(
+				TEXT("debug_case_list"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				Error);
+		}
+
+		FBlueprintHelperDebugCaseProjectionResult ProjectionResult;
+		FString ProjectionError;
+		if (!BlueprintHelperDebugCaseBuildProjection(DebugCase, ReviewStore, ProjectionResult, &ProjectionError))
+		{
+			FBlueprintHelperToolError Error;
+			Error.Code = TEXT("debug_case_list_projection_failed");
+			Error.Stage = EBlueprintHelperToolStage::Execute;
+			Error.Message = ProjectionError.IsEmpty() ? TEXT("debug case list projection failed.") : ProjectionError;
+			Error.Field = TEXT("debug_case_id");
+			Error.Actual = Summaries[Index].DebugCaseId;
+			return FBlueprintHelperToolResultBuilder::Failure(
+				TEXT("debug_case_list"),
+				FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+				Error);
+		}
+
+		BlueprintHelperDebugCaseSetProjectionFields(ProjectionResult, CaseJson);
+		CaseValues.Add(MakeShared<FJsonValueObject>(CaseJson));
 	}
 	Data->SetArrayField(TEXT("debug_cases"), CaseValues);
 	Result.Data = Data;
@@ -224,9 +383,42 @@ FBlueprintHelperToolResultBase FBlueprintHelperDebugEntryService::ExportDebugBun
 			Error);
 	}
 
+	FBlueprintHelperDebugCase DebugCase;
+	FString LoadError;
+	if (!Store.LoadCase(DebugCaseId, DebugCase, &LoadError))
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = TEXT("debug_case_not_found");
+		Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
+		Error.Message = LoadError.IsEmpty() ? TEXT("debug case not found.") : LoadError;
+		Error.Field = TEXT("debug_case_id");
+		Error.Actual = DebugCaseId;
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("debug_bundle_summary_export"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+	}
+
+	FBlueprintHelperDebugCaseProjectionResult ProjectionResult;
+	FString ProjectionError;
+	if (!BlueprintHelperDebugCaseBuildProjection(DebugCase, ReviewStore, ProjectionResult, &ProjectionError))
+	{
+		FBlueprintHelperToolError Error;
+		Error.Code = TEXT("debug_bundle_projection_failed");
+		Error.Stage = EBlueprintHelperToolStage::Execute;
+		Error.Message = ProjectionError.IsEmpty() ? TEXT("debug bundle projection failed.") : ProjectionError;
+		Error.Field = TEXT("debug_case_id");
+		Error.Actual = DebugCaseId;
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("debug_bundle_summary_export"),
+			FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+			Error);
+	}
+
 	FBlueprintHelperDebugBundleManifest Manifest;
 	FString ExportError;
-	if (!Store.ExportDebugBundleSummary(DebugCaseId, ReviewStore, Manifest, &ExportError))
+	const FBlueprintHelperDebugCaseArtifactExporter ArtifactExporter;
+	if (!ArtifactExporter.ExportBundle(DebugCase, ProjectionResult, Manifest, &ExportError))
 	{
 		FBlueprintHelperToolError Error;
 		Error.Code = TEXT("debug_bundle_export_failed");

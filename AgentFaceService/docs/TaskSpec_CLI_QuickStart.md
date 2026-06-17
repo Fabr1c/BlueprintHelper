@@ -10,7 +10,7 @@ TaskSpec compiler ownership: AgentFace task-core TypeScript compiler is the cano
 
 Use the CLI when an Agent can run shell commands and should avoid large escaped JSON output. The CLI is the current Agent-facing surface for ordinary TaskSpec writes in shell-capable environments. It keeps Agent stdout compact, supports selected-field output, and still preserves TaskSpec-first writes, TypeScript compilation, Bridge preview, and UE Task Runtime execution.
 
-TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to editor open/close lifecycle in ordinary Agent workflows. `blueprint_open_editor` / `blueprint_close_editor` are not CLI lifecycle compatibility aliases; Agent-owned editor lifecycle uses the global MCP lifecycle tools.
+TaskSpec, ReadSpec, diagnostics, debug summaries, write-session requests, and result queries use the CLI in the current Agent workflow. MCP is restricted to editor open/close/modal-dismiss/close-dialog lifecycle in ordinary Agent workflows. `blueprint_open_editor` / `blueprint_close_editor` / `blueprint_dismiss_editor_dialogs` / `blueprint_close_editor_dialogs` are not CLI lifecycle compatibility aliases; Agent-owned editor lifecycle uses the global MCP lifecycle tools.
 
 Deprecated MCP ordinary tools are not an alternate transport or fallback path.
 
@@ -78,7 +78,7 @@ Use `quick-access.items[].slot_type` to choose roots: `statement` templates can 
 
 After compose, fill the generated TaskSpec with concrete asset paths, graph names, selectors, and values from ReadContext evidence. The composer output includes the next preview and execute command strings for the generated file.
 
-The CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor`, as ordinary CLI entry points. Lifecycle commands are removed from the ordinary CLI surface; accidental calls may return a removed-command hint that points to the global MCP lifecycle tool. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
+The CLI registry is the current non-frozen Agent-facing TaskSpec/read/debug summary surface. Frozen legacy/expert tools are not re-exposed through CLI, even if `--expert` is passed. Use the global MCP allowlist when an Agent owns editor lifecycle. Do not call `bh open_editor` / `bh close_editor`, or direct CLI `blueprint_open_editor` / `blueprint_close_editor` / `blueprint_dismiss_editor_dialogs` / `blueprint_close_editor_dialogs`, as ordinary CLI entry points. Lifecycle commands are removed from the ordinary CLI surface; accidental calls may return a removed-command hint that points to the global MCP lifecycle tool. If lifecycle MCP is unavailable, report `lifecycle_mcp_unavailable`.
 
 ## Read Context Capabilities
 
@@ -150,6 +150,6 @@ node <PLUGIN_ROOT>\AgentFaceService\cli\build\cli\index.js task execute --file <
 - Preview before execute.
 - The CLI is the Agent-facing transport layer; it does not replace the canonical AgentFace task-core TypeScript compiler or UE Task Runtime.
 - The CLI is not a raw Bridge write surface for ordinary asset writes.
-- Use global MCP allowlist for Agent-owned Editor open/close; `blueprint_open_editor` / `blueprint_close_editor` are removed from the ordinary CLI lifecycle surface.
+- Use global MCP allowlist for Agent-owned Editor open/close/modal-dismiss/close-dialog; `blueprint_open_editor` / `blueprint_close_editor` / `blueprint_dismiss_editor_dialogs` / `blueprint_close_editor_dialogs` are removed from the ordinary CLI lifecycle surface.
 - Deprecated MCP ordinary tools are not fallback paths for ordinary Agent workflows.
 - For ordinary Agent input shapes, use per-command help and current CLI discovery.

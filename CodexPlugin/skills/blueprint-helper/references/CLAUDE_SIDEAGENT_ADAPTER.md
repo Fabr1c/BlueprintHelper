@@ -48,6 +48,8 @@ Only the Main Agent may call:
 ```text
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
+mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
+mcp__blueprint_helper__blueprint_close_editor_dialogs
 ```
 
 SideAgents must not call MCP tools.
