@@ -87,10 +87,31 @@ return_format: "compact Chinese YAML with status, attempts, evidence, blockers, 
 ## Execution Policy
 
 - Discover concrete family, write mode, cluster, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands, including `bh tools templates families` and `bh tools templates compose`.
+- Use the write index in order before reporting `capability_missing`:
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family <family> --format json
+bh tools templates clusters --family <family> --format json
+bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json
+bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json
+```
+
+- Use the read index for required readback before reporting readback capability missing:
+
+```powershell
+bh tools read-templates families --format json
+bh tools read-templates clusters --family <family> --format json
+bh tools read-templates list --family <family> --cluster <cluster> --format json
+```
+
 - Use grouped CLI commands with `--file` for TaskSpec and ReadSpec payloads.
 - Run grouped task commands as `bh task preview --file <task-spec.json>` and `bh task execute --file <task-spec.json>`.
 - Preview is required before execute.
 - Execute success must be followed by readback.
+- Treat `output.format` in the read-template index as the returned evidence shape, not as `view.format`. `view.format` must come from the leaf ReadSpec/template fields and current CLI schema.
+- Classify blockers precisely: `bridge_unavailable` means the Bridge request path is unavailable, `route_missing` means no active indexed route/template exists, wrong input or invalid enum means the payload is malformed, and `graph_body_target_unresolved` means the graph/function/event target could not be resolved from readback evidence.
+- For graph body replacement, `function_body` is a body kind, not ownership proof. Use BlueprintHelper-owned `function_body`/`replace_owned_graph` only when template/readback evidence proves an owned route; user-authored event/function bodies must use `external_body` with `adapter_boundary.body_entry` and `body_fingerprint`.
 - Stop after the configured retry budget and return `retry_budget_exceeded` as a capability-boundary report. The default budget comes from `agent.task_worker.max_attempts`; an explicit package `retry_budget.max_attempts` is a task-specific override.
 - Stop on `preview_blocked`, `execute_failed`, `readback_mismatch`, `evidence_conflict`, `prewrite_gate_stale_or_insufficient`, or any approved-scope violation.
 

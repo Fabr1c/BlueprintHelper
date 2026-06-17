@@ -81,9 +81,13 @@ Patch/Merge 已有 BlueprintHelper-owned block 时，先用 `bh context read` �
 
 ## Non-BlueprintHelper-Owned Graph Boundary
 
-Non-BlueprintHelper-owned graph content is read-only in the normal GraphWrite flow. Normal Agents may use `bh context read` or `blueprinthelper_read_reference_context` to inspect it, but must not build write anchors for it.
+GraphWrite writes must preserve the ownership mode selected by the current template. BlueprintHelper-owned graph edits use owned refs from grouped block readback. External user graph edits use compact anchors returned by `read_context` logic evidence, such as `external_link`, `external_pin`, `external_node`, and `external_body`.
 
-GraphWrite TaskSpecs must preserve the ownership boundary selected by the current template. If preview or compile reports an unsupported ownership scope, stop and report that stable non-owned write anchors are not available yet. Do not switch to full-graph `nodes[index]`, display labels, ad hoc JSONPath, or GUID-first selectors. GUID-first selectors remain expert/debug fallback only.
+`function_body` with `replace_owned_graph` is only the BlueprintHelper-owned function body route. For user-authored event/function bodies, use the `external_body` route selected from the template index and current readback evidence; it requires `adapter_boundary.body_entry` and `body_fingerprint`, and `function_body` by itself is not ownership proof.
+
+Owned refs and external compact anchors are not interchangeable. Do not convert between them, do not use full-graph `nodes[index]`, display labels, ad hoc JSONPath, or GUID-first selectors. GUID-first selectors remain expert/debug fallback only.
+
+If preview or compile reports an unsupported ownership scope, stop and report the missing capability. Do not switch to owned graph templates or lower-level Bridge payloads to bypass the ownership boundary.
 
 `merge_owned_graph` 使用 `branch_fork + owned_block_call` 时，Preview 是写入门禁。TaskSpec 必须显式给出 `sequence_order`，且只使用 `original_successor` / `inserted_logic`；`inserted.block_id` 必须在 Preview 阶段解析为已有的 BlueprintHelper-owned CustomEvent block。Preview blocked 时禁止 execute，也不要回退到底层工具。
 

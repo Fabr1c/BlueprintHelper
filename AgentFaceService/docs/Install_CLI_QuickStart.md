@@ -103,6 +103,7 @@ Project `.uproject` paths should not be stored globally. Agents discover the tar
 Either start Unreal Editor normally with the project, or use the global MCP lifecycle tools after the project profile has `environment.ue_engine_dir`. `blueprint_open_editor` / `blueprint_close_editor` are not CLI lifecycle compatibility aliases; Agent-owned editor lifecycle uses the global MCP lifecycle tools:
 
 ```text
+mcp__blueprint_helper__blueprint_lifecycle_mcp_status
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
 mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
@@ -222,3 +223,4 @@ For ordinary Agent editor-asset mutations, use the TaskSpec-first flow:
 - Let UE Task Runtime handle TaskPlan execution, compile/save policy, transaction grouping, rollback, and diagnostics.
 
 Low-level legacy/internal/debug/expert commands are not part of the supported Agent entry. Use current CLI discovery for supported ordinary Agent flows.
+

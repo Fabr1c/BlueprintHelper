@@ -45,4 +45,16 @@ return_format: "compact Chinese YAML with evidence summary, confidence, missing 
 
 BlueprintExplorer must discover the supported read surface itself: `bh context read`, ReadContext/ReadSpec shapes, read-template families, read-template lists, composed read specs, or other supported BlueprintHelper CLI read commands. Do not ask MainAgent for concrete read-template IDs.
 
+Before reporting `read_capability_missing`, BlueprintExplorer must prove indexed ReadContext discovery was checked in scope:
+
+```powershell
+bh tools read-templates families --format json
+bh tools read-templates clusters --family <family> --format json
+bh tools read-templates list --family <family> --cluster <cluster> --format json
+```
+
+Treat `output.format` in the template index as the returned evidence shape, not as `view.format`. `view.format` must come from the leaf ReadSpec/template fields and current CLI schema. Classify failures precisely: `bridge_unavailable` means the Bridge request path is unavailable, `route_missing` means no active indexed route/template exists, wrong input or invalid enum means the ReadSpec is malformed, and `graph_body_target_unresolved` means the graph/function/event target could not be resolved from evidence.
+
+For graph body evidence, `function_body` is a body kind, not ownership proof. User-authored event/function bodies require external-body evidence from `logic_flow`, especially `adapter_boundary.body_entry` and `body_fingerprint`; BlueprintHelper-owned replacement evidence is a separate route decision.
+
 Return compact evidence summary as the primary response, not raw CLI output. Include only the evidence needed by MainAgent to decide target/scope/capability or whether to dispatch TaskWorker.

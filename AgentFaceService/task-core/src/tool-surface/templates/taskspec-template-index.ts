@@ -27,6 +27,7 @@ export function listTaskSpecTemplateFamilies(input: {
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateFamilies.v1',
     workflow: 'preview_execute',
+    guidance: 'Pick a write family first, then run bh tools templates write-modes --family <family> --format json. Do not hand-scan template files or report capability_missing before completing indexed discovery.',
     items: [
       {
         family: 'graph_write',
@@ -51,6 +52,7 @@ export function listTaskSpecTemplateWriteModes(input: {
     return {
       schema: 'BlueprintHelper.TaskSpecTemplateWriteModes.v1',
       family: input.family,
+      guidance: 'Pick a write_mode for the selected family, then run bh tools templates clusters --family <family> --format json. write_mode selects mutation policy; it is not a template id.',
       items: listGraphWriteTemplateWriteModes(),
     };
   }
@@ -59,6 +61,7 @@ export function listTaskSpecTemplateWriteModes(input: {
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateWriteModes.v1',
     family: input.family,
+    guidance: 'Pick a write_mode for the selected family, then run bh tools templates clusters --family <family> --format json. write_mode selects mutation policy; it is not a template id.',
     items: supported?.write_mode
       ? [{
         family: supported.family,
@@ -76,6 +79,7 @@ export function listTaskSpecTemplateClusters(input: {
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateClusters.v1',
     family: input.family,
+    guidance: 'Pick a cluster for the selected family, then run bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json. A cluster is a navigation group, not an executable TaskSpec.',
     items: input.family === 'graph_write'
       ? listGraphWriteTemplateClusters()
       : listNonGraphWriteTemplateClusters(input),
@@ -92,6 +96,7 @@ export function listTaskSpecTemplateOperations(input: {
     family: input.family,
     cluster_id: input.cluster,
     write_mode: input.writeMode,
+    guidance: 'Pick an operation, then run bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json. quick-access leaf entries provide compose template ids and slot arguments.',
     items: input.family === 'graph_write'
       ? listGraphWriteTemplateOperations(input)
       : listNonGraphWriteTemplateOperations(input),

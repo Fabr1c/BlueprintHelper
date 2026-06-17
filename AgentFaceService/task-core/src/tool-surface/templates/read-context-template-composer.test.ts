@@ -273,6 +273,8 @@ test('ReadContext flat composer reports unknown template id without writing outp
   assert.equal(fs.existsSync(outputPath), false);
   assert.equal(result.diagnostics[0]?.code, 'unknown_template_id');
   assert.equal(result.diagnostics[0]?.template_id, 'blueprint.logic.function.missing');
+  assert.match(result.diagnostics[0]?.message ?? '', /bh tools read-templates families --format json/);
+  assert.match(result.diagnostics[0]?.message ?? '', /bh tools read-templates list --family <family> --cluster <cluster> --format json/);
 });
 
 test('ReadContext active route descriptors keep removed markdown format globally disabled', () => {

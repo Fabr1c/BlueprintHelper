@@ -56,6 +56,28 @@ return_format: "compact Chinese YAML with status, attempts, evidence, blockers, 
 
 TaskWorker must discover concrete family, write mode, cluster, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands inside `family_scope` and `allowed_operation_intent`. Use the current CLI discovery surface, including `bh tools templates families` and `bh tools templates compose`, when building TaskSpec files. Run grouped task commands with `bh task preview --file <task-spec.json>` and `bh task execute --file <task-spec.json>`. MainAgent does not supply exact catalog selections.
 
+Use the write index in order before reporting `capability_missing`:
+
+```powershell
+bh tools templates families --workflow preview_execute --format json
+bh tools templates write-modes --family <family> --format json
+bh tools templates clusters --family <family> --format json
+bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json
+bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json
+```
+
+Use the read index for required readback before reporting readback capability missing:
+
+```powershell
+bh tools read-templates families --format json
+bh tools read-templates clusters --family <family> --format json
+bh tools read-templates list --family <family> --cluster <cluster> --format json
+```
+
+Treat `output.format` in the read-template index as the returned evidence shape, not as `view.format`. `view.format` must come from the leaf ReadSpec/template fields and current CLI schema. Classify blockers precisely: `bridge_unavailable` means the Bridge request path is unavailable, `route_missing` means no active indexed route/template exists, wrong input or invalid enum means the payload is malformed, and `graph_body_target_unresolved` means the graph/function/event target could not be resolved from readback evidence.
+
+For graph body replacement, `function_body` is a body kind, not ownership proof. Use BlueprintHelper-owned `function_body`/`replace_owned_graph` only when template/readback evidence proves an owned route; user-authored event/function bodies must use `external_body` with `adapter_boundary.body_entry` and `body_fingerprint`.
+
 TaskWorker retry budget comes from `agent.task_worker.max_attempts` in BlueprintHelper setting unless the package explicitly includes `retry_budget.max_attempts` for a narrower task-specific override.
 
 TaskWorker must not request write session or run source-control checkout/status gates. If execute fails with `write_session_missing`, `checkout_required`, `not_editable`, or equivalent stale gate errors, stop with `prewrite_gate_stale_or_insufficient`.

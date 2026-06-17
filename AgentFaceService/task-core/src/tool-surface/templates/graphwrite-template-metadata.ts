@@ -104,7 +104,7 @@ export function listGraphWriteTemplateOperations(input: {
         family: 'graph_write' as const,
         cluster_id: item.cluster_id,
         operation_id: item.operation_id,
-        description: describeOperation(item.operation_id),
+        description: describeOperation(item.operation_id, item.cluster_id),
         validation_classification: item.validation_classification,
         runtime_only_validation_notes: item.runtime_only_validation_notes,
       })),
@@ -112,7 +112,13 @@ export function listGraphWriteTemplateOperations(input: {
   ).sort((a, b) => a.operation_id.localeCompare(b.operation_id));
 }
 
-function describeOperation(operationId: string): string {
+function describeOperation(operationId: string, clusterId: string): string {
+  if (operationId === 'replace_body' && clusterId === 'generic_ops') {
+    return 'Replace a BlueprintHelper-owned event, function, macro, graph, or block body; use external_body for non-owned user graph bodies.';
+  }
+  if (operationId === 'replace_body' && clusterId === 'external_body') {
+    return 'Replace a non-BlueprintHelper-owned event or function body using read_context adapter_boundary.body_entry and body_fingerprint evidence.';
+  }
   return GRAPH_WRITE_OPERATION_DESCRIPTIONS[operationId] ?? `GraphWrite ${operationId} operation templates.`;
 }
 

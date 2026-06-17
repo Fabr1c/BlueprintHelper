@@ -81,6 +81,8 @@ Patch/Merge 已有 BlueprintHelper-owned block 时，先用读工具获取结构
 
 GraphWrite writes must preserve the ownership mode selected by the current template. BlueprintHelper-owned graph edits use owned refs from grouped block readback. External user graph edits use compact anchors returned by `read_context` logic evidence, such as `external_link`, `external_pin`, `external_node`, and `external_body`.
 
+`function_body` with `replace_owned_graph` is only the BlueprintHelper-owned function body route. For user-authored event/function bodies, use the `external_body` route selected from the template index and current readback evidence; it requires `adapter_boundary.body_entry` and `body_fingerprint`, and `function_body` by itself is not ownership proof.
+
 Owned refs and external compact anchors are not interchangeable. Do not convert between them, do not use full-graph array indexes like `links[n]`, display labels, ad hoc JSONPath, or GUID-first selectors as normal write anchors. GUID-first selectors remain expert/debug fallback only.
 
 For external user graph edits, discover active templates through `bh tools templates`. Use `graph.patch` / `patch.external_links.*` for external link connect, disconnect, replace, and `insert_pure_resolver_between_data_link`. Use `graph.patch` / `patch.external_graph.*` for pin default and descriptor-backed node property patches. Use `graph.merge` / `generic_ops.merge.external_insert_between` for exec link `insert_between`.

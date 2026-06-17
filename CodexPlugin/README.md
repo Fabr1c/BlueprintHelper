@@ -37,6 +37,7 @@ C:\Users\<username>\.codex\config.toml
 The active Agent-facing transport for ordinary TaskSpec reads and writes is the BlueprintHelper CLI. The global MCP endpoint is an allowlist for editor lifecycle only in ordinary Agent workflows:
 
 ```text
+mcp__blueprint_helper__blueprint_lifecycle_mcp_status
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
 mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
@@ -97,3 +98,4 @@ The root installer removes npm-generated PowerShell `.ps1` shims when `.cmd` lau
 Plugin-local MCP is not the normal Codex entry. Do not register or call ordinary BlueprintHelper read/write tools through MCP. Use MCP only for editor open/close/modal-dismiss lifecycle in ordinary Agent workflows; use CLI for ordinary reads, diagnostics, TaskSpec preview, write-session requests, execute, and result lookup. Do not use CLI lifecycle aliases for editor startup/shutdown or modal dismissal. Deprecated MCP ordinary tools are not fallback paths.
 
 For editor-asset writes, keep the workflow TaskSpec-first. Use CLI template discovery and the TaskSpec Template Composer to generate JSON inputs; do not scan `AgentFaceService/agent-guide/Templates/` directly for tool selection.
+

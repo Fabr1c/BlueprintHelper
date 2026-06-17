@@ -1,4 +1,4 @@
----
+﻿---
 name: blueprint-helper
 description: Use for BlueprintHelper UE editor-asset workflows: lifecycle MCP, CLI-first reads/writes, evidence conflict handling, and dispatching BlueprintHelper sideAgents.
 ---
@@ -43,6 +43,7 @@ The MainAgent must not choose concrete read templates, write templates, composer
 Call editor lifecycle only through global MCP tools:
 
 ```text
+mcp__blueprint_helper__blueprint_lifecycle_mcp_status
 mcp__blueprint_helper__blueprint_open_editor
 mcp__blueprint_helper__blueprint_close_editor
 mcp__blueprint_helper__blueprint_dismiss_editor_dialogs
@@ -64,3 +65,4 @@ If read evidence, Editor screenshots/visible state, preview, execute, or readbac
 - If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after the sideAgent completes, explicitly reports it can be closed, or reaches an errored/shutdown status. If the progress check also times out, report `sideagent_timeout_unconfirmed` to the user and ask whether to keep waiting or close it.
 
 Report results in the user's language. Do not claim completion unless preview, execute, and readback evidence support it.
+

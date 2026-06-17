@@ -26,6 +26,7 @@ export function composeReadContextTemplate(input: ComposeReadContextTemplateInpu
     return failed(input, [{
       code: 'unknown_template_id',
       template_id: input.templateId,
+      message: READ_TEMPLATE_INDEX_GUIDANCE,
     }]);
   }
 
@@ -76,3 +77,10 @@ function cloneJson(value: unknown): unknown {
 function normalizePath(filePath: string): string {
   return filePath.replaceAll('\\', '/');
 }
+
+const READ_TEMPLATE_INDEX_GUIDANCE = [
+  'Unknown read template id. Re-run indexed discovery before reporting read_capability_missing:',
+  'bh tools read-templates families --format json',
+  'bh tools read-templates clusters --family <family> --format json',
+  'bh tools read-templates list --family <family> --cluster <cluster> --format json',
+].join(' ');

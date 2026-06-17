@@ -382,6 +382,7 @@ test('runCli exposes ReadContext flat template index and compose output', async 
 
   const families = await runCliJson(['tools', 'read-templates', 'families', '--format', 'json']);
   assert.equal(families.output.schema, 'BlueprintHelper.ReadContextTemplateFamilies.v1');
+  assertTemplateGuidance(families.output, /Pick a read family/i, 'read families');
   assert.equal(families.output.items.some((item: Record<string, unknown>) => item.family === 'blueprint'), true);
   assert.match(
     families.output.items.find((item: Record<string, unknown>) => item.family === 'blueprint')?.description as string,
@@ -390,6 +391,7 @@ test('runCli exposes ReadContext flat template index and compose output', async 
 
   const clusters = await runCliJson(['tools', 'read-templates', 'clusters', '--family', 'blueprint', '--format', 'json']);
   assert.equal(clusters.output.schema, 'BlueprintHelper.ReadContextTemplateClusters.v1');
+  assertTemplateGuidance(clusters.output, /Pick a read cluster/i, 'read clusters');
   assert.equal(clusters.output.items.some((item: Record<string, unknown>) => item.cluster === 'logic'), true);
   assert.match(
     clusters.output.items.find((item: Record<string, unknown>) => item.cluster === 'logic')?.description as string,
@@ -408,6 +410,7 @@ test('runCli exposes ReadContext flat template index and compose output', async 
     'json',
   ]);
   assert.equal(templates.output.schema, 'BlueprintHelper.ReadContextTemplates.v1');
+  assertNoTopLevelGuidance(templates.output, 'read template list');
   assert.equal(templates.output.items.some((item: Record<string, unknown>) => item.template_id === 'blueprint.logic.function.flow'), true);
   assert.equal(templates.output.items.some((item: Record<string, unknown>) => item.template_id === 'blueprint.logic.function.json_delta'), true);
   assert.match(
@@ -436,6 +439,7 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
   const expectedFamilies = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' });
   assert.deepEqual(jsonRows(families.output.items), jsonRows(expectedFamilies.items));
   assertNonEmptyDescriptions(families.output.items, 'family');
+  assertTemplateGuidance(families.output, /Pick a write family/i, 'template families');
 
   for (const family of expectedFamilies.items) {
     const writeModes = await runCliJson([
@@ -450,6 +454,7 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
     const expectedWriteModes = listTaskSpecTemplateWriteModes({ family: family.family });
     assert.deepEqual(jsonRows(writeModes.output.items), jsonRows(expectedWriteModes.items));
     assertNonEmptyDescriptions(writeModes.output.items, `write modes for ${family.family}`);
+    assertTemplateGuidance(writeModes.output, /Pick a write_mode/i, `write modes for ${family.family}`);
 
     const clusters = await runCliJson([
       'tools',
@@ -463,6 +468,7 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
     const expectedClusters = listTaskSpecTemplateClusters({ family: family.family });
     assert.deepEqual(jsonRows(clusters.output.items), jsonRows(expectedClusters.items));
     assertNonEmptyDescriptions(clusters.output.items, `clusters for ${family.family}`);
+    assertTemplateGuidance(clusters.output, /Pick a cluster/i, `clusters for ${family.family}`);
 
     for (const writeMode of expectedWriteModes.items) {
       for (const cluster of expectedClusters.items) {
@@ -486,6 +492,7 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
         });
         assert.deepEqual(jsonRows(operations.output.items), jsonRows(expectedOperations.items));
         assertNonEmptyDescriptions(operations.output.items, `operations for ${family.family}/${cluster.cluster_id}/${writeMode.write_mode}`);
+        assertTemplateGuidance(operations.output, /Pick an operation/i, `operations for ${family.family}/${cluster.cluster_id}/${writeMode.write_mode}`);
 
         for (const operation of expectedOperations.items) {
           const quickAccess = await runCliJson([
@@ -510,6 +517,7 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
             writeMode: writeMode.write_mode,
           });
           assert.deepEqual(jsonRows(quickAccess.output.items), jsonRows(expectedQuickAccess.items));
+          assertNoTopLevelGuidance(quickAccess.output, `quick-access for ${family.family}/${cluster.cluster_id}/${operation.operation_id}`);
         }
       }
     }
@@ -523,6 +531,7 @@ test('CLI ReadContext template index mirrors descriptor-backed template index', 
   const expectedFamilies = listReadContextTemplateFamilies();
   assert.deepEqual(jsonRows(families.output.items), jsonRows(expectedFamilies.items));
   assertNonEmptyDescriptions(families.output.items, 'read families');
+  assertTemplateGuidance(families.output, /Pick a read family/i, 'read families');
 
   for (const family of expectedFamilies.items) {
     const clusters = await runCliJson([
@@ -537,6 +546,7 @@ test('CLI ReadContext template index mirrors descriptor-backed template index', 
     const expectedClusters = listReadContextTemplateClusters({ family: family.family });
     assert.deepEqual(jsonRows(clusters.output.items), jsonRows(expectedClusters.items));
     assertNonEmptyDescriptions(clusters.output.items, `read clusters for ${family.family}`);
+    assertTemplateGuidance(clusters.output, /Pick a read cluster/i, `read clusters for ${family.family}`);
 
     for (const cluster of expectedClusters.items) {
       const templates = await runCliJson([
@@ -556,6 +566,7 @@ test('CLI ReadContext template index mirrors descriptor-backed template index', 
       });
       assert.deepEqual(jsonRows(templates.output.items), jsonRows(expectedTemplates.items));
       assertNonEmptyDescriptions(templates.output.items, `read templates for ${family.family}/${cluster.cluster}`);
+      assertNoTopLevelGuidance(templates.output, `read templates for ${family.family}/${cluster.cluster}`);
     }
   }
 
@@ -876,6 +887,15 @@ function assertNonEmptyDescriptions(rows: unknown[], label: string): void {
     assert.equal(typeof (row as Record<string, unknown>).description, 'string', `${label} row must declare description`);
     assert.equal(((row as Record<string, string>).description ?? '').trim().length > 0, true, `${label} row description must be non-empty`);
   }
+}
+
+function assertTemplateGuidance(output: Record<string, unknown>, pattern: RegExp, label: string): void {
+  assert.equal(typeof output.guidance, 'string', `${label} output must declare navigation guidance`);
+  assert.match(output.guidance as string, pattern, `${label} output guidance should explain the next index hop`);
+}
+
+function assertNoTopLevelGuidance(output: Record<string, unknown>, label: string): void {
+  assert.equal(Object.hasOwn(output, 'guidance'), false, `${label} is a leaf output and should not declare top-level guidance`);
 }
 
 function assertNoLifecycleTemplateIds(text: string): void {

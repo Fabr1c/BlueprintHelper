@@ -102,18 +102,21 @@ export interface TaskSpecTemplateQuickAccessItem {
 export interface TaskSpecTemplateFamiliesResult {
   schema: 'BlueprintHelper.TaskSpecTemplateFamilies.v1';
   workflow: 'preview_execute';
+  guidance: string;
   items: TaskSpecTemplateFamilyItem[];
 }
 
 export interface TaskSpecTemplateWriteModesResult {
   schema: 'BlueprintHelper.TaskSpecTemplateWriteModes.v1';
   family: string;
+  guidance: string;
   items: TaskSpecTemplateWriteModeItem[];
 }
 
 export interface TaskSpecTemplateClustersResult {
   schema: 'BlueprintHelper.TaskSpecTemplateClusters.v1';
   family: string;
+  guidance: string;
   items: TaskSpecTemplateClusterItem[];
 }
 
@@ -122,6 +125,7 @@ export interface TaskSpecTemplateOperationsResult {
   family: string;
   cluster_id: string;
   write_mode: string;
+  guidance: string;
   items: TaskSpecTemplateOperationItem[];
 }
 

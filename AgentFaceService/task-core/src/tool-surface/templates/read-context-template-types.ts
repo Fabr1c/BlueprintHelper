@@ -107,12 +107,14 @@ export interface ReadContextTemplateClusterItem {
 export interface ReadContextTemplateFamiliesResult {
   schema: 'BlueprintHelper.ReadContextTemplateFamilies.v1';
   workflow: 'read_context';
+  guidance: string;
   items: ReadContextTemplateFamilyItem[];
 }
 
 export interface ReadContextTemplateClustersResult {
   schema: 'BlueprintHelper.ReadContextTemplateClusters.v1';
   family: string;
+  guidance: string;
   items: ReadContextTemplateClusterItem[];
 }
 

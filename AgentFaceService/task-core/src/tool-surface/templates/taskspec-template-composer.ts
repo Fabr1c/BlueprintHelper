@@ -51,7 +51,7 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
       code: 'unsupported_write_mode',
       family: input.family,
       write_mode: writeMode,
-      message: `Unsupported GraphWrite template write mode: ${writeMode}`,
+      message: taskSpecTemplateIndexGuidance(`Unsupported GraphWrite template write mode: ${writeMode}`),
     }]);
   }
 
@@ -222,6 +222,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       code: 'unsupported_family',
       family: input.family,
       write_mode: input.writeMode,
+      message: taskSpecTemplateIndexGuidance(`Unsupported TaskSpec template family: ${input.family}`),
     }]);
   }
   if (family.status !== 'supported' || !family.write_mode) {
@@ -229,7 +230,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       code: 'family_not_composable',
       family: input.family,
       write_mode: input.writeMode,
-      message: family.blocked_until?.join('; '),
+      message: taskSpecTemplateIndexGuidance(family.blocked_until?.join('; ') ?? `TaskSpec template family is not composable: ${input.family}`),
     }]);
   }
   if (family.write_mode !== input.writeMode) {
@@ -237,6 +238,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       code: 'unsupported_write_mode',
       family: input.family,
       write_mode: input.writeMode,
+      message: taskSpecTemplateIndexGuidance(`Unsupported write mode ${input.writeMode} for family ${input.family}`),
     }]);
   }
   if (input.templateIds.length > 0) {
@@ -252,6 +254,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
           family: input.family,
           write_mode: input.writeMode,
           template_id: templateId,
+          message: taskSpecTemplateIndexGuidance(`Unknown quick-access template id: ${templateId}`),
         });
         continue;
       }
@@ -642,4 +645,16 @@ function isGraphWriteTemplateWriteMode(value: string): value is GraphWriteTempla
 
 function normalizePath(filePath: string): string {
   return filePath.replaceAll('\\', '/');
+}
+
+function taskSpecTemplateIndexGuidance(message: string): string {
+  return [
+    message,
+    'Re-run indexed discovery before reporting capability_missing:',
+    'bh tools templates families --workflow preview_execute --format json',
+    'bh tools templates write-modes --family <family> --format json',
+    'bh tools templates clusters --family <family> --format json',
+    'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
+    'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
+  ].join(' ');
 }

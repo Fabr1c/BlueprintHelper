@@ -11,6 +11,7 @@ export function listReadContextTemplateFamilies(): ReadContextTemplateFamiliesRe
   return {
     schema: 'BlueprintHelper.ReadContextTemplateFamilies.v1',
     workflow: 'read_context',
+    guidance: 'Pick a read family first, then run bh tools read-templates clusters --family <family> --format json. Do not report read_capability_missing until this index path has been checked.',
     items: uniqueSorted(
       getActiveReadContextRouteDescriptors(),
       (route) => route.family,
@@ -28,6 +29,7 @@ export function listReadContextTemplateClusters(input: {
   return {
     schema: 'BlueprintHelper.ReadContextTemplateClusters.v1',
     family: input.family,
+    guidance: 'Pick a read cluster next, then run bh tools read-templates list --family <family> --cluster <cluster> --format json. Leaf templates declare read_type, target fields, view.format, and output.format separately.',
     items: uniqueSorted(
       matchingRoutes({ family: input.family }),
       (route) => route.cluster,

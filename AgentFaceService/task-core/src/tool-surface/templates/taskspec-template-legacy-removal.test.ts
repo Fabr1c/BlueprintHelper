@@ -259,3 +259,51 @@ test('TaskSpec workflow docs include high-frequency composer recipes', () => {
     }
   }
 });
+
+test('SideAgent guidance requires template indexes before capability-missing reports', () => {
+  const docs = [
+    'CodexPlugin/agents/blueprint-explorer.md',
+    'CodexPlugin/skills/blueprint-helper-blueprint-explorer/SKILL.md',
+    'CodexPlugin/agents/task-worker.md',
+    'CodexPlugin/skills/blueprint-helper-task-worker/SKILL.md',
+  ];
+  const requiredTokens = [
+    'bh tools read-templates families --format json',
+    'bh tools read-templates clusters --family <family> --format json',
+    'bh tools read-templates list --family <family> --cluster <cluster> --format json',
+    'output.format',
+    'view.format',
+    'bridge_unavailable',
+    'route_missing',
+    'graph_body_target_unresolved',
+    'adapter_boundary.body_entry',
+    'body_fingerprint',
+  ];
+
+  for (const relativePath of docs) {
+    const text = readText(path.join(PLUGIN_ROOT, relativePath));
+    for (const token of requiredTokens) {
+      assert.match(text, new RegExp(escapeRegExp(token), 'u'), `${relativePath} missing ${token}`);
+    }
+    assert.match(text, /read_capability_missing|capability_missing/u, `${relativePath} must report capability-missing only after indexed discovery`);
+  }
+});
+
+test('GraphWrite workflow docs distinguish owned function bodies from external body replacement', () => {
+  const docs = [
+    'AgentFaceService/agent-guide/Workflows/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'CodexPlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+    'ClaudePlugin/skills/blueprint-helper/references/04_TaskSpec_Edit_Blueprint_Workflow.md',
+  ];
+
+  for (const relativePath of docs) {
+    const text = readText(path.join(PLUGIN_ROOT, relativePath));
+    assert.match(text, /function_body.*replace_owned_graph.*BlueprintHelper-owned|BlueprintHelper-owned.*replace_owned_graph.*function_body/us, relativePath);
+    assert.match(text, /external_body.*adapter_boundary\.body_entry.*body_fingerprint|adapter_boundary\.body_entry.*body_fingerprint.*external_body/us, relativePath);
+    assert.doesNotMatch(text, /Non-BlueprintHelper-owned graph content is read-only in the normal GraphWrite flow/u, relativePath);
+  }
+});
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

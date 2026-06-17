@@ -548,6 +548,41 @@ test('TaskSpec template composer reports diagnostics and does not write unsuppor
   assert.equal(result.diagnostics?.[0]?.code, 'slot_not_supported_for_write_mode');
 });
 
+test('TaskSpec template composer failure diagnostics point agents back to template indexes', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+
+  const unsupportedWriteMode = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.unknown',
+    templateIds: ['generic_ops.call.direct'],
+    outputPath: path.join(outDir, 'unsupported-write-mode.taskspec.json'),
+  });
+  assert.equal(unsupportedWriteMode.status, 'failed');
+  assert.equal(unsupportedWriteMode.diagnostics[0]?.code, 'unsupported_write_mode');
+  assert.match(unsupportedWriteMode.diagnostics[0]?.message ?? '', /bh tools templates families --workflow preview_execute --format json/);
+  assert.match(unsupportedWriteMode.diagnostics[0]?.message ?? '', /bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json/);
+
+  const unsupportedFamily = composeTaskSpecTemplate({
+    family: 'missing_family',
+    writeMode: 'missing.edit',
+    templateIds: [],
+    outputPath: path.join(outDir, 'unsupported-family.taskspec.json'),
+  });
+  assert.equal(unsupportedFamily.status, 'failed');
+  assert.equal(unsupportedFamily.diagnostics[0]?.code, 'unsupported_family');
+  assert.match(unsupportedFamily.diagnostics[0]?.message ?? '', /bh tools templates families --workflow preview_execute --format json/);
+
+  const unknownQuickAccess = composeTaskSpecTemplate({
+    family: 'blueprint_components',
+    writeMode: 'components.edit',
+    templateIds: ['blueprint_components.component_tree.missing'],
+    outputPath: path.join(outDir, 'unknown-quick-access.taskspec.json'),
+  });
+  assert.equal(unknownQuickAccess.status, 'failed');
+  assert.equal(unknownQuickAccess.diagnostics[0]?.code, 'unknown_quick_access_template');
+  assert.match(unknownQuickAccess.diagnostics[0]?.message ?? '', /bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json/);
+});
+
 test('TaskSpec template composer writes component quick-access changes', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'components.taskspec.json');

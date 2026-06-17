@@ -70,9 +70,20 @@ return_format: "compact Chinese YAML with evidence summary, confidence, missing 
 
 ## Read Policy
 
+- Before reporting `read_capability_missing`, prove indexed ReadContext discovery was checked in scope:
+
+```powershell
+bh tools read-templates families --format json
+bh tools read-templates clusters --family <family> --format json
+bh tools read-templates list --family <family> --cluster <cluster> --format json
+```
+
 - Start with the smallest read that can answer the requested facts.
 - When graph size is unknown, estimate scope with sampled/scoped views, `logic_flow`, or bounded `logic_json`.
 - Use same-target `logic_json_delta_after_logic_flow` only after `logic_flow` when anchors, pins, links, or boundary evidence are needed.
+- Treat `output.format` in the template index as the returned evidence shape, not as `view.format`. `view.format` must come from the leaf ReadSpec/template fields and current CLI schema.
+- Classify failures precisely: `bridge_unavailable` means the Bridge request path is unavailable, `route_missing` means no active indexed route/template exists, wrong input or invalid enum means the ReadSpec is malformed, and `graph_body_target_unresolved` means the graph/function/event target could not be resolved from evidence.
+- For graph body evidence, `function_body` is a body kind, not ownership proof. User-authored event/function bodies require external-body evidence from `logic_flow`, especially `adapter_boundary.body_entry` and `body_fingerprint`; BlueprintHelper-owned replacement evidence is a separate route decision.
 - If requested facts are missing or conflict, return `missing_facts` or `conflicts`; do not switch to binary asset reads or plugin source inspection.
 
 ## Output Compact YAML

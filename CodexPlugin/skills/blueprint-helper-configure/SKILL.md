@@ -1,4 +1,4 @@
----
+﻿---
 name: blueprint-helper-configure
 description: Use for BlueprintHelper Codex setup/configuration, plan-mode configuration questions, .blueprinthelper/project-profile.json, .blueprinthelper/AgentWorkFlow.md, UserPreferences, missing capability policy, save policy, and editor lifecycle policy. Safety profiles are configured through .blueprinthelper/setting.json, not project-profile.
 ---
@@ -169,7 +169,7 @@ Update the active preference sections with these facts:
 
 - Do not write subagent workflow or subagent model-map preferences here; the main `blueprint-helper` skill owns the mandatory Codex subagent workflow.
 - Editor lifecycle commands must use global MCP allowlist tools. Do not enable CLI lifecycle fallback; if lifecycle MCP is unavailable, Agents must report `lifecycle_mcp_unavailable`. Deprecated MCP ordinary tools are not ordinary Agent entry points or fallback paths.
-- Only the Main Agent may call `mcp__blueprint_helper__blueprint_open_editor`, `mcp__blueprint_helper__blueprint_close_editor`, `mcp__blueprint_helper__blueprint_dismiss_editor_dialogs`, and `mcp__blueprint_helper__blueprint_close_editor_dialogs`.
+- Only the Main Agent may call `mcp__blueprint_helper__blueprint_lifecycle_mcp_status`, `mcp__blueprint_helper__blueprint_open_editor`, `mcp__blueprint_helper__blueprint_close_editor`, `mcp__blueprint_helper__blueprint_dismiss_editor_dialogs`, and `mcp__blueprint_helper__blueprint_close_editor_dialogs`.
 - Ordinary reads/writes must use the CLI.
 - Ordinary plugin usage must not read BlueprintHelper plugin package or implementation source; use installed skill instructions, AgentGuide, CLI reference, and templates. Plugin source reads are allowed only for explicit plugin development, installation repair, or debugging.
 - Fourth safety profile `AutoRepair` skips the write approval popup and defaults write permission to enabled when set in `setting.json`.
@@ -181,14 +181,15 @@ Update the active preference sections with these facts:
 Report in the user's required task format:
 
 ```text
-新增内容：
+鏂板鍐呭锛?
 1. ...
-修复内容：
+淇鍐呭锛?
 1. ...
-变更需求：
+鍙樻洿闇€姹傦細
 1. ...
-快速修复：
+蹇€熶慨澶嶏細
 1. ...
-阻塞内容：
+闃诲鍐呭锛?
 1. ...
 ```
+
