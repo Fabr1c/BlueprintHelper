@@ -121,14 +121,6 @@ function makeMaterialGraphTaskSpec(behavior: Record<string, unknown>): TaskSpec 
       asset_path: '/Game/Materials/M_Test',
     },
     behavior,
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   } as TaskSpec;
 }
 

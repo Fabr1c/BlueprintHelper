@@ -14,8 +14,6 @@ const taskSpec = {
   feature_name: 'P3_Registry',
   context_id: 'ctx-p3-registry',
   target: { asset_path: '/Game/BP_P3_Registry', target_type: 'blueprint' },
-  execution_policy: { dry_run_mode: 'quick' },
-  validation: { should_compile: false, should_save: false },
   behavior: {
     variable_strategy: 'member_variables',
     changes: [{

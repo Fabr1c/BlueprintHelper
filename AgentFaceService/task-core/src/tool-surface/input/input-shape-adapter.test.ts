@@ -17,8 +17,6 @@ const bareTaskSpec = {
   feature_name: 'P2_InputAdapter_Bare',
   context_id: 'ctx-p2-input-adapter',
   target: { asset_path: '/Game/BP_P2_InputAdapter', target_type: 'blueprint' },
-  execution_policy: { dry_run_mode: 'quick' },
-  validation: { should_compile: false, should_save: false },
   behavior: {
     variable_strategy: 'member_variables',
     changes: [{
@@ -107,7 +105,7 @@ test('bare_taskspec adapter injects internal external graph policy for Agent-fac
   });
 });
 
-test('wrapped preview adapter injects replace_external_body internal dry-run and validation policy', () => {
+test('wrapped preview adapter injects replace_external_body scope policy without exposing runtime policy fields', () => {
   const registry = createTaskSpecInputShapeAdapterRegistry();
   const adapted = registry.require('wrapped_taskspec_preview').adapt({
     task_spec: {
@@ -145,16 +143,14 @@ test('wrapped preview adapter injects replace_external_body internal dry-run and
     },
   }) as {
     task_spec: {
-      execution_policy: { dry_run_mode: string };
-      validation: { should_compile: boolean; should_save: boolean };
       scope_policy: { graph_name: string; external_mutation_policy: { strategy: string } };
     };
   };
 
   assert.equal(adapted.task_spec.scope_policy.graph_name, 'EventGraph');
   assert.equal(adapted.task_spec.scope_policy.external_mutation_policy.strategy, 'replace_external_body');
-  assert.equal(adapted.task_spec.execution_policy.dry_run_mode, 'full');
-  assert.deepEqual(adapted.task_spec.validation, { should_compile: true, should_save: true });
+  assert.equal(Object.hasOwn(adapted.task_spec, 'execution_policy'), false);
+  assert.equal(Object.hasOwn(adapted.task_spec, 'validation'), false);
 });
 
 test('adaptToolInput tries the next shape after a schema mismatch', () => {

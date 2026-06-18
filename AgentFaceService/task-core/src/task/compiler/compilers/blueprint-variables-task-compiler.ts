@@ -8,6 +8,7 @@ import {
   getRequiredString,
   isRecord,
   literalValue,
+  makeTaskPlanExecutionPolicy,
   omitUndefined,
   requiredNonEmptyArray,
   type TaskPlanStep,
@@ -37,12 +38,7 @@ function compileBlueprintVariablesTaskSpecToTaskPlan(taskSpec: Extract<TaskSpec,
     task_type: taskSpec.task_type,
     context_id: taskSpec.context_id,
     target_assets: [taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
-      should_compile: taskSpec.validation.should_compile,
-      should_save: taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
+    execution_policy: makeTaskPlanExecutionPolicy(),
     steps: compileBlueprintVariableSteps(taskSpec.target.asset_path, behavior, strategy),
   };
 }

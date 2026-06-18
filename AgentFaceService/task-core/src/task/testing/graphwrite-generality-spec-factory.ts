@@ -41,15 +41,6 @@ export function makeGraphWriteGeneralitySetupSpecs(input: { assetPath: string })
           collision_policy: 'fail_if_exists',
         },
       },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-        review_baseline_dirty_asset_policy: 'save_before_archive',
-      },
-      validation: {
-        should_compile: true,
-        should_save: true,
-      },
     },
     {
       schema: 'BlueprintHelper.TaskSpec.v1',
@@ -88,15 +79,6 @@ export function makeGraphWriteGeneralitySetupSpecs(input: { assetPath: string })
         { name: 'GWGenStringIntMap', pin_type: { category: 'string', container_type: 'map', value_type: { category: 'int' } }, category: 'GraphWriteGenerality' },
         { name: 'GWGenRandomStream', pin_type: { category: 'struct', object_path: '/Script/CoreUObject.RandomStream' }, category: 'GraphWriteGenerality' },
       ],
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-        review_baseline_dirty_asset_policy: 'save_before_archive',
-      },
-      validation: {
-        should_compile: true,
-        should_save: true,
-      },
     },
   ];
 }
@@ -137,15 +119,6 @@ export function makeGraphWriteGeneralityBundles(input: { assetPath: string; grap
         behavior: {
           graph_strategy: 'append_new_owned_graph',
           entries: makeEntriesForOperation(operation, variants, candidates, assetPath),
-        },
-        execution_policy: {
-          dry_run_mode: 'full',
-          on_missing_capability: 'stop_and_report',
-          review_baseline_dirty_asset_policy: 'save_before_archive',
-        },
-        validation: {
-          should_compile: false,
-          should_save: true,
         },
       },
     };

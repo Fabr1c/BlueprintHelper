@@ -987,10 +987,10 @@ class PreviewTokenValidationError extends Error {
 
 class DryRunModeNoneRequiresPreviewTokenError extends Error {
   readonly code = 'dry_run_mode_none_requires_preview_token';
-  readonly field = 'execution_policy.dry_run_mode';
+  readonly field = 'task_plan.execution_policy.dry_run_mode';
 
   constructor() {
-    super('TaskSpec execution_policy.dry_run_mode=none requires a valid preview_token from a prior preview_task call.');
+    super('Internal task execution policy requires a valid preview_token from a prior preview_task call.');
   }
 }
 
@@ -1045,7 +1045,7 @@ function taskErrorFromUnknown(operation: string, err: unknown): ToolResultBase {
       [{
         code: err.code,
         path: err.field,
-        message: 'Run preview_task first and pass its preview_token to execute_task, or use dry_run_mode quick/full.',
+        message: 'Run preview_task first and pass its preview_token to execute_task.',
       }],
       {
         stage: 'preflight',

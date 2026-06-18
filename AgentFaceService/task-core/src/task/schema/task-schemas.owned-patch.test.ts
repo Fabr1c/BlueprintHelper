@@ -18,10 +18,6 @@ function makePatchOwnedGraphSpec(patch: Record<string, unknown>): Record<string,
       graph_strategy: 'patch_owned_graph',
       patches: [patch],
     },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   };
 }
 

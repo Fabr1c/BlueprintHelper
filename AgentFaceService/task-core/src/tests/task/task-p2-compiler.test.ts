@@ -15,8 +15,6 @@ function baseTaskSpec(taskType: string, behavior: Record<string, unknown>) {
       asset_path: '/Game/BlueprintHelper/Smoke/BP_TaskSpecSmoke',
       target_type: 'blueprint',
     },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: true },
     behavior,
   };
 }
@@ -175,8 +173,6 @@ test('compiles custom_event_definition into signature then graph body steps', ()
       graph_name: 'EventGraph',
       allow_modify_user_nodes: false,
     },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: true },
     behavior: {
       graph_strategy: 'replace_owned_graph',
       replace: {
@@ -241,8 +237,6 @@ test('compiles append_new_owned_graph custom event into signature dependency bef
       graph_name: 'EG_CustomEventBoundary',
       allow_modify_user_nodes: false,
     },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: true },
     behavior: {
       graph_strategy: 'append_new_owned_graph',
       entries: [{
@@ -286,8 +280,6 @@ test('rejects append_new_owned_graph entry types outside GraphWrite custom event
       graph_name: 'EG_CustomEventBoundary',
       allow_modify_user_nodes: false,
     },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: true },
     behavior: {
       graph_strategy: 'append_new_owned_graph',
       entries: [{

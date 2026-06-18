@@ -17,12 +17,6 @@ function baseSpec(): Record<string, unknown> {
         properties: [],
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-      review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: { should_compile: true, should_save: false },
   };
 }
 

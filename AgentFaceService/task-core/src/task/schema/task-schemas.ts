@@ -400,18 +400,6 @@ export const BlueprintLogicSpecSchema = z.object({
   statements: z.array(BlueprintLogicStatementSchema),
 }).passthrough();
 
-const TaskValidationPolicySchema = z.object({
-  should_compile: z.boolean().optional().default(false),
-  should_save: z.boolean().optional().default(false),
-}).passthrough().optional().default({ should_compile: false, should_save: false }).superRefine((value, ctx) => {
-  if ('compile' in value || 'save' in value) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Use validation.should_compile / validation.should_save; validation.compile / validation.save are not TaskSpec fields.',
-    });
-  }
-});
-
 const TaskSpecBaseSchema = z.object({
   schema: z.literal(TASK_SPEC_SCHEMA),
   context_id: z.string().optional(),
@@ -421,12 +409,27 @@ const TaskSpecBaseSchema = z.object({
     asset_path: z.string().min(1),
     target_type: z.string().optional().default('blueprint'),
   }).passthrough(),
-  execution_policy: z.object({
-    dry_run_mode: z.enum(['none', 'quick', 'full']).optional().default('full'),
-    on_missing_capability: z.string().optional(),
-  }).passthrough().optional().default({ dry_run_mode: 'full' }),
-  validation: TaskValidationPolicySchema,
 }).passthrough();
+
+function rejectAgentFacingTaskSpecPolicyFields(value: unknown, ctx: z.RefinementCtx): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+  for (const field of ['execution_policy', 'validation'] as const) {
+    if (!Object.hasOwn(value, field)) continue;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [field],
+      message: `${field} is an internal runtime policy namespace and is not accepted in Agent-facing TaskSpec.`,
+    });
+  }
+}
+
+function agentFacingTaskSpecSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+  return schema.superRefine((value, ctx) => {
+    rejectAgentFacingTaskSpecPolicyFields(value, ctx);
+  });
+}
 
 const GraphWriteAppendEntrySchema = z.object({
   entry_type: z.string(),
@@ -1209,7 +1212,7 @@ const MaterialGraphBehaviorSchema = z.object({
     });
 });
 
-export const MaterialGraphTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+export const MaterialGraphTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_material_graph'),
   target: z.object({
     asset_path: z.string().min(1),
@@ -1233,16 +1236,16 @@ export const MaterialGraphTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.exte
       message: 'edit_material_graph targets the material asset graph implicitly; target.graph_path is not a P0 field.',
     });
   }
-});
+}));
 
-export const MaterialInstanceTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+export const MaterialInstanceTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_material_instance'),
   target: z.object({
     asset_path: z.string().min(1),
     target_type: z.enum(['asset', 'material_instance']).optional().default('material_instance'),
   }).passthrough(),
   behavior: MaterialInstanceBehaviorSchema,
-}).passthrough();
+}).passthrough());
 
 const GraphWriteAutoSearchPolicySchema = z.object({
   mode: z.enum(['off', 'on_preview_resolution_failure']).optional().default('off'),
@@ -1256,7 +1259,7 @@ const GraphWritePolicySchema = z.object({
   auto_search: GraphWriteAutoSearchPolicySchema.optional(),
 }).passthrough().optional().default({});
 
-export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+export const GraphWriteTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_graph'),
   scope_policy: z.object({
     graph_name: z.string().min(1).optional().default('EventGraph'),
@@ -1271,7 +1274,7 @@ export const GraphWriteTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend(
     scopePolicy: value.scope_policy,
     ctx,
   });
-});
+}));
 
 export const BLUEPRINT_VARIABLE_REPLICATION_MODES = ['none', 'replicated', 'rep_notify'] as const;
 
@@ -1327,7 +1330,7 @@ const BlueprintVariablePropertySettingSchema = z.object({
   }
 });
 
-export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const BlueprintVariableTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_variables'),
   behavior: z.object({
     variable_strategy: z.string(),
@@ -1355,9 +1358,9 @@ export const BlueprintVariableTaskSpecSchema = TaskSpecBaseSchema.extend({
       value: z.unknown(),
     }).passthrough()).optional(),
   }).passthrough(),
-}).passthrough();
+}).passthrough());
 
-export const AssetFactoryTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const AssetFactoryTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('create_asset'),
   behavior: z.object({
     asset_strategy: z.literal('ensure_asset'),
@@ -1392,7 +1395,7 @@ export const AssetFactoryTaskSpecSchema = TaskSpecBaseSchema.extend({
       message: 'asset_type=data_asset requires behavior.asset.data_asset_class. Use a concrete UDataAsset subclass; in a new project, create a PrimaryDataAsset Blueprint class first and pass its asset path or generated class path.',
     });
   }
-});
+}));
 
 const COMPONENT_NAME_COLLISION_POLICY_VALUES = ['reuse_if_exists', 'fail_if_exists', 'block_if_class_mismatch'] as const;
 const COMPONENT_ON_NAME_CONFLICT_VALUES = [
@@ -1486,15 +1489,15 @@ const BlueprintComponentChangeSchema = z.object({
   });
 });
 
-export const BlueprintComponentTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const BlueprintComponentTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_components'),
   behavior: z.object({
     component_strategy: z.literal('component_tree'),
     changes: z.array(BlueprintComponentChangeSchema).min(1),
   }).passthrough(),
-}).passthrough();
+}).passthrough());
 
-export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const BlueprintClassSettingsTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_class_settings'),
   behavior: z.object({
     class_settings_strategy: z.literal('class_settings'),
@@ -1515,7 +1518,7 @@ export const BlueprintClassSettingsTaskSpecSchema = TaskSpecBaseSchema.extend({
       });
     }
   }),
-}).passthrough();
+}).passthrough());
 
 const UMG_WIDGET_CHANGE_KIND_VALUES = UMG_WIDGET_OPERATION_MANIFEST
   .map((descriptor) => descriptor.kind) as [string, ...string[]];
@@ -1572,15 +1575,15 @@ const UMGWidgetChangeSchema = z.object({
   }
 });
 
-export const UMGWidgetTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const UMGWidgetTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_umg_widget'),
   behavior: z.object({
     widget_strategy: z.literal('widget_blueprint_edit'),
     changes: z.array(UMGWidgetChangeSchema).min(1),
   }).passthrough(),
-}).passthrough();
+}).passthrough());
 
-export const DataTableTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const DataTableTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_data_table'),
   behavior: z.object({
     row_strategy: z.literal('row_edit'),
@@ -1590,9 +1593,9 @@ export const DataTableTaskSpecSchema = TaskSpecBaseSchema.extend({
       fields: z.record(z.unknown()).optional(),
     }).passthrough()).min(1),
   }).passthrough(),
-}).passthrough();
+}).passthrough());
 
-export const ObjectPropertyTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const ObjectPropertyTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_object_properties'),
   behavior: z.object({
     property_strategy: z.literal('property_edit'),
@@ -1602,7 +1605,7 @@ export const ObjectPropertyTaskSpecSchema = TaskSpecBaseSchema.extend({
       value: z.unknown(),
     }).passthrough()).min(1),
   }).passthrough(),
-}).passthrough();
+}).passthrough());
 
 const BlueprintSignatureChangeSchema = z.object({
   kind: z.enum([
@@ -1641,7 +1644,7 @@ const BlueprintSignatureChangeSchema = z.object({
   require_reference_context: z.literal(true).optional(),
 }).passthrough();
 
-export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
+export const BlueprintSignatureTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_signature'),
   behavior: z.object({
     signature_strategy: z.literal('signature_edit'),
@@ -1688,9 +1691,9 @@ export const BlueprintSignatureTaskSpecSchema = TaskSpecBaseSchema.extend({
       }
     }
   });
-});
+}));
 
-export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = TaskSpecBaseSchema.extend({
+export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('create_blueprint_feature'),
   scope_policy: z.object({
     graph_name: z.string().min(1).optional(),
@@ -1755,7 +1758,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = TaskSpecBas
       message: 'create_blueprint_feature requires at least one of components, variables, class_settings, or behavior.',
     });
   }
-});
+}));
 
 export const TaskSpecSchema: z.ZodTypeAny = z.union([
   CompositeBlueprintFeatureTaskSpecSchema,

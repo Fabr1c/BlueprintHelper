@@ -1,9 +1,14 @@
 import type { TaskPlan, TaskSpec } from '../schema/task-schemas.js';
 import { TASK_PLAN_SCHEMA } from '../schema/task-schemas.js';
+import {
+  makeTaskPlanExecutionPolicy,
+  type TaskPlanExecutionPolicyOverrides,
+} from './compiler-helpers.js';
 
 export interface BuildTaskPlanInput {
   readonly taskSpec: TaskSpec;
   readonly steps: TaskPlan['steps'];
+  readonly executionPolicy?: TaskPlanExecutionPolicyOverrides;
 }
 
 export function buildTaskPlan(input: BuildTaskPlanInput): TaskPlan {
@@ -13,12 +18,7 @@ export function buildTaskPlan(input: BuildTaskPlanInput): TaskPlan {
     task_type: input.taskSpec.task_type,
     context_id: input.taskSpec.context_id,
     target_assets: [input.taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: input.taskSpec.execution_policy.dry_run_mode,
-      should_compile: input.taskSpec.validation.should_compile,
-      should_save: input.taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: input.taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
+    execution_policy: makeTaskPlanExecutionPolicy(input.executionPolicy),
     steps: renumberTaskPlanSteps(input.steps),
   };
 }

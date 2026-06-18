@@ -21,6 +21,7 @@
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_VariableGet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -75,6 +76,30 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		EventNode->PostPlacedNewNode();
 		EventNode->AllocateDefaultPins();
 		return EventNode;
+	}
+
+	static bool AddCustomEventStringInputPin(
+		UBlueprint* Blueprint,
+		UK2Node_CustomEvent* EventNode,
+		const FString& PinName)
+	{
+		if (!Blueprint || !EventNode || PinName.IsEmpty())
+		{
+			return false;
+		}
+
+		FEdGraphPinType PinType;
+		PinType.PinCategory = UEdGraphSchema_K2::PC_String;
+
+		TSharedPtr<FUserPinInfo> NewPin = MakeShared<FUserPinInfo>();
+		NewPin->PinName = FName(*PinName);
+		NewPin->PinType = PinType;
+		NewPin->DesiredPinDirection = EGPD_Output;
+		EventNode->UserDefinedPins.Add(NewPin);
+		EventNode->ReconstructNode();
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		FKismetEditorUtilities::CompileBlueprint(Blueprint);
+		return true;
 	}
 
 	static UK2Node_CallFunction* AddCallFunctionNode(UEdGraph* Graph, UFunction* Function)
@@ -243,6 +268,51 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		Expression->SetStringField(TEXT("kind"), TEXT("get"));
 		Expression->SetStringField(TEXT("target"), VariableName);
 		return Expression;
+	}
+
+	static TSharedRef<FJsonObject> MakeFunctionParamGetExpression(
+		const FString& ParamName,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Expression = MakeShared<FJsonObject>();
+		Expression->SetStringField(TEXT("kind"), TEXT("field"));
+		Expression->SetStringField(TEXT("capability_id"), TEXT("field.function_param_get"));
+		Expression->SetStringField(TEXT("field_operation"), TEXT("get"));
+		Expression->SetStringField(TEXT("field_scope"), TEXT("variable"));
+		Expression->SetStringField(TEXT("target"), ParamName);
+		Expression->SetStringField(TEXT("function_name"), FunctionName);
+
+		TSharedRef<FJsonObject> PinType = MakeShared<FJsonObject>();
+		PinType->SetStringField(TEXT("category"), TEXT("string"));
+		Expression->SetObjectField(TEXT("pin_type"), PinType);
+
+		TSharedRef<FJsonObject> CapabilityFacts = MakeShared<FJsonObject>();
+		CapabilityFacts->SetStringField(TEXT("field.member_name"), ParamName);
+		CapabilityFacts->SetStringField(TEXT("field.function_name"), FunctionName);
+		CapabilityFacts->SetStringField(TEXT("field.local_scope"), FunctionName);
+		Expression->SetObjectField(TEXT("capability_facts"), CapabilityFacts);
+		return Expression;
+	}
+
+	static TSharedRef<FJsonObject> MakePrintStringFromFunctionParamLogicSpec(
+		const FString& ParamName,
+		const FString& FunctionName)
+	{
+		TSharedRef<FJsonObject> Statement = MakeShared<FJsonObject>();
+		Statement->SetStringField(TEXT("kind"), TEXT("call"));
+		Statement->SetStringField(TEXT("target"), TEXT("PrintString"));
+
+		TSharedRef<FJsonObject> Args = MakeShared<FJsonObject>();
+		Args->SetObjectField(TEXT("InString"), MakeFunctionParamGetExpression(ParamName, FunctionName));
+		Statement->SetObjectField(TEXT("args"), Args);
+
+		TArray<TSharedPtr<FJsonValue>> Statements;
+		Statements.Add(MakeShared<FJsonValueObject>(Statement));
+
+		TSharedRef<FJsonObject> LogicSpec = MakeShared<FJsonObject>();
+		LogicSpec->SetStringField(TEXT("schema"), TEXT("BlueprintLogicSpec.v2"));
+		LogicSpec->SetArrayField(TEXT("statements"), Statements);
+		return LogicSpec;
 	}
 
 	static TSharedRef<FJsonObject> MakeVariableSetLogicSpec(const FString& TargetVariable, const FString& SourceVariable)
@@ -818,6 +888,68 @@ bool FBlueprintHelperReplaceExternalBodyRejectsUnsupportedDependentsTest::RunTes
 	TestEqual(TEXT("dependent error code"),
 		Result.Error.IsSet() ? Result.Error->Code : FString(),
 		FString(TEXT("unsupported_external_dependents")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReplaceExternalBodyCustomEventParamGetTest,
+	"BlueprintHelper.GraphWrite.ExternalBodyReplace.CustomEventParamGet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperReplaceExternalBodyCustomEventParamGetTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	const FString EventName = TEXT("ExternalParamEntry");
+	const FString ParamName = TEXT("EntryMessage");
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("CustomEventParamGet"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EntryNode = AddCustomEventNode(Graph, EventName);
+	TestTrue(TEXT("custom event parameter is added"),
+		AddCustomEventStringInputPin(Blueprint, EntryNode, ParamName));
+	UK2Node_CallFunction* BodyNode = AddDestroyActorCallNode(Graph);
+	if (!Blueprint || !Graph || !EntryNode || !BodyNode)
+	{
+		return false;
+	}
+	TestTrue(TEXT("body is reachable from entry"), ConnectExec(EntryNode, BodyNode));
+
+	FBlueprintHelperExternalGraphAnchor Anchor;
+	FString Error;
+	TestTrue(TEXT("body entry anchor builds"), BuildBodyEntryAnchor(Blueprint, Graph, EntryNode, Anchor, Error));
+	const FString BodyFingerprint = CaptureBodyFingerprint(Graph, EntryNode);
+
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperExternalBodySnapshotService SnapshotService;
+	FBlueprintHelperExternalDependentsAnalysisService DependentsAnalysisService;
+	FBlueprintHelperReplaceExternalBodyService Service = MakeService(
+		BlockIdService,
+		OwnershipService,
+		SnapshotService,
+		DependentsAnalysisService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeReplacePayloadWithBody(
+		Blueprint,
+		Graph,
+		Anchor,
+		BodyFingerprint,
+		TEXT("custom_event_body"),
+		MakePrintStringFromFunctionParamLogicSpec(ParamName, EventName),
+		false));
+
+	TestTrue(TEXT("external body replace consumes custom event input parameter"), Result.bOk);
+	if (!Result.bOk)
+	{
+		AddError(Result.Error.IsSet() ? Result.Error->Message : FString(TEXT("replace failed without error")));
+		return false;
+	}
+
+	UK2Node_CallFunction* PrintNode = FindCallFunctionNode(Graph, GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString));
+	TestNotNull(TEXT("replacement PrintString node exists"), PrintNode);
+	UEdGraphPin* InStringPin = FindPinByName(PrintNode, TEXT("InString"));
+	TestTrue(TEXT("PrintString consumes custom event parameter"), InStringPin && InStringPin->LinkedTo.Num() > 0);
+	TestEqual(TEXT("original DestroyActor body was replaced"), CountCallFunctionNodes(Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor)), 0);
 	return true;
 }
 

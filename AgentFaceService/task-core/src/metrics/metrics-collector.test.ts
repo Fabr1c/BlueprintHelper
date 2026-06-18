@@ -28,10 +28,6 @@ test('recordTaskPreviewCompleted emits sanitized task summary without raw payloa
         },
       },
       private_notes: 'SECRET_TASKSPEC_FIELD',
-      validation: {
-        should_compile: true,
-        should_save: false,
-      },
     } as never,
     passed: false,
     toolResult: {
@@ -283,10 +279,6 @@ function createSecretTaskSpec(): never {
       },
     },
     private_notes: 'SECRET_TASKSPEC_FIELD',
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
   } as never;
 }
 

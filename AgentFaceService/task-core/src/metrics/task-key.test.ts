@@ -15,10 +15,6 @@ test('createMetricsTaskKey uses task type, feature name, target type, and target
         graph: 'EventGraph',
       },
     },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
   } as never);
 
   assert.equal(key.task_type, 'create_blueprint_feature');
@@ -53,10 +49,6 @@ test('createMetricsTaskKey falls back to target asset_class when asset_path is a
       target_type: 'asset',
       asset_class: '/Script/Engine.DataAsset',
     },
-    validation: {
-      should_compile: false,
-      should_save: true,
-    },
   } as never);
   const second = createMetricsTaskKey({
     schema: 'BlueprintHelper.TaskSpec.v1',
@@ -64,10 +56,6 @@ test('createMetricsTaskKey falls back to target asset_class when asset_path is a
     target: {
       asset_class: '/Script/Engine.DataAsset',
       target_type: 'asset',
-    },
-    validation: {
-      should_compile: false,
-      should_save: true,
     },
   } as never);
 

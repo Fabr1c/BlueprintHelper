@@ -218,16 +218,6 @@ export function assertSupportedTaskSpec(taskSpec: TaskSpec) {
     validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['pin_default', 'node_comment', 'node_property']);
   }
   if (strategy === 'replace_external_body') {
-    if (taskSpec.execution_policy.dry_run_mode !== 'full') {
-      throw new TaskSpecCompileError('unsupported_execution_policy', 'replace_external_body requires execution_policy.dry_run_mode="full".', [
-        {
-          code: 'replace_external_body_requires_full_dry_run',
-          path: 'execution_policy.dry_run_mode',
-          message: 'Set dry_run_mode="full" for replace_external_body.',
-          suggested_patch: { op: 'replace', path: '/execution_policy/dry_run_mode', value: 'full' },
-        },
-      ]);
-    }
     validateExternalGraphWriteScopePolicy(taskSpec, strategy, ['body_replace']);
   }
 }

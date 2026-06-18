@@ -123,10 +123,6 @@ function createTaskSpec(): never {
       target_type: 'blueprint',
       asset_path: '/Game/Blueprints/BP_StoneGate',
     },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
   } as never;
 }
 

@@ -28,13 +28,6 @@ function makeSpec(statements: Record<string, unknown>[]) {
         },
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   };
 }
 

@@ -28,7 +28,6 @@ function makeReplaceExternalBodySpec(overrides: {
   scopePolicy?: Record<string, unknown>;
   externalReplace?: Record<string, unknown>;
   behavior?: Record<string, unknown>;
-  executionPolicy?: Record<string, unknown>;
 } = {}) {
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',
@@ -60,15 +59,6 @@ function makeReplaceExternalBodySpec(overrides: {
       },
       ...overrides.behavior,
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-      ...overrides.executionPolicy,
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   };
 }
 
@@ -82,9 +72,19 @@ function compileReplaceExternalStep(overrides?: Parameters<typeof makeReplaceExt
 }
 
 test('replace_external_body lowers to external graph edit with exact mutation policy', () => {
-  const step = compileReplaceExternalStep();
+  const taskPlan = compileTaskSpecToTaskPlan(makeReplaceExternalBodySpec() as never);
+  const step = taskPlan.steps.find((candidate) => (
+    (candidate as Record<string, unknown>).capability === 'graph_write'
+  )) as Record<string, unknown> | undefined;
+  assert.ok(step);
   const write = step.write as { strategy: string; ops: Array<Record<string, unknown>> };
 
+  assert.deepEqual(taskPlan.execution_policy, {
+    dry_run_mode: 'full',
+    should_compile: true,
+    should_save: true,
+    review_baseline_dirty_asset_policy: 'block',
+  });
   assert.equal(write.strategy, 'external_graph_edit');
   assert.equal(write.ops.length, 1);
   assert.equal(write.ops[0]?.op, 'replace_external_body');
@@ -117,7 +117,7 @@ test('replace_external_body accepts explicit event and function body scopes', ()
   );
 });
 
-test('replace_external_body rejects broad policy, whole graph scope, missing fingerprint, and non-full dry-run', () => {
+test('replace_external_body rejects broad policy, whole graph scope, missing fingerprint, and disabled full dry-run requirement', () => {
   assert.throws(
     () => compileTaskSpecToTaskPlan(makeReplaceExternalBodySpec({
       scopePolicy: {
@@ -154,14 +154,6 @@ test('replace_external_body rejects broad policy, whole graph scope, missing fin
     /require_full_dry_run/,
   );
 
-  assert.throws(
-    () => compileTaskSpecToTaskPlan(makeReplaceExternalBodySpec({
-      executionPolicy: {
-        dry_run_mode: 'quick',
-      },
-    }) as never),
-    /dry_run_mode/,
-  );
 });
 
 test('replace_external_body rejects display-name selector and owned replace mixed into external strategy', () => {

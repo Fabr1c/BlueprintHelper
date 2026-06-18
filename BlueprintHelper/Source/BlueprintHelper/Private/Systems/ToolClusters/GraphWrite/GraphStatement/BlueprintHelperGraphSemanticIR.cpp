@@ -7,6 +7,8 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -213,15 +215,18 @@ FBlueprintHelperGraphSemanticContext FBlueprintHelperGraphSemanticContext::FromB
 	for (const UEdGraphNode* Node : Graph->Nodes)
 	{
 		const UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node);
-		if (!FunctionEntry)
+		const UK2Node_Event* EventEntry = FunctionEntry ? nullptr : Cast<UK2Node_Event>(Node);
+		if (!FunctionEntry && !EventEntry)
 		{
 			continue;
 		}
 
-		for (const UEdGraphPin* Pin : FunctionEntry->Pins)
+		const TArray<UEdGraphPin*>& EntryPins = FunctionEntry ? FunctionEntry->Pins : EventEntry->Pins;
+		for (const UEdGraphPin* Pin : EntryPins)
 		{
 			if (!Pin
-				|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+				|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+				|| Pin->Direction != EGPD_Output)
 			{
 				continue;
 			}

@@ -4,6 +4,20 @@ import { TASK_PLAN_SCHEMA } from '../schema/task-schemas.js';
 import { TaskSpecCompileError } from './task-compiler-errors.js';
 
 export type TaskPlanStep = TaskPlan['steps'][number];
+export type TaskPlanExecutionPolicy = TaskPlan['execution_policy'];
+export type TaskPlanExecutionPolicyOverrides = Partial<TaskPlanExecutionPolicy>;
+
+export function makeTaskPlanExecutionPolicy(
+  overrides: TaskPlanExecutionPolicyOverrides = {},
+): TaskPlanExecutionPolicy {
+  return {
+    dry_run_mode: 'full',
+    should_compile: false,
+    should_save: false,
+    review_baseline_dirty_asset_policy: 'block',
+    ...overrides,
+  };
+}
 
 export function makeCompositeCapabilityStep(
   index: number,
@@ -26,28 +40,28 @@ export function makeSingleCapabilityTaskPlan(
   strategy: string,
   ops: Record<string, unknown>[],
   constraints?: Record<string, unknown>,
+  executionPolicy?: TaskPlanExecutionPolicyOverrides,
 ): TaskPlan {
   return makeTaskPlanWithSteps(taskSpec, [
     {
       ...makeCompositeCapabilityStep(1, capability, taskSpec.target.asset_path, strategy, ops),
       ...(constraints ? { constraints } : {}),
     } as TaskPlanStep,
-  ]);
+  ], executionPolicy);
 }
 
-export function makeTaskPlanWithSteps(taskSpec: TaskSpec, steps: TaskPlanStep[]): TaskPlan {
+export function makeTaskPlanWithSteps(
+  taskSpec: TaskSpec,
+  steps: TaskPlanStep[],
+  executionPolicy?: TaskPlanExecutionPolicyOverrides,
+): TaskPlan {
   return {
     schema: TASK_PLAN_SCHEMA,
     task_name: taskSpec.feature_name,
     task_type: taskSpec.task_type,
     context_id: taskSpec.context_id,
     target_assets: [taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
-      should_compile: taskSpec.validation.should_compile,
-      should_save: taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
+    execution_policy: makeTaskPlanExecutionPolicy(executionPolicy),
     steps: renumberSteps(steps),
   };
 }

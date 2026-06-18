@@ -53,14 +53,6 @@ function makeTaskSpec(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
     ...overrides,
   };
 }
@@ -90,14 +82,6 @@ function makeVariableTaskSpec(overrides: Record<string, unknown> = {}) {
           },
         },
       ],
-    },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: true,
-      should_save: false,
     },
     ...overrides,
   };
@@ -200,14 +184,6 @@ function makeCompositePhysicsDoorTaskSpec(overrides: Record<string, unknown> = {
         },
       ],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
     ...overrides,
   };
 }
@@ -238,7 +214,7 @@ describe('TaskSpec schema validation', () => {
     assert.equal(parsed.scope_policy.allow_modify_user_nodes, false);
   });
 
-  it('rejects legacy validation compile/save fields', () => {
+  it('rejects Agent-authored runtime validation namespace', () => {
     const spec = makeTaskSpec({
       validation: {
         compile: true,
@@ -246,7 +222,7 @@ describe('TaskSpec schema validation', () => {
       },
     });
 
-    assert.throws(() => TaskSpecSchema.parse(spec), /should_compile/);
+    assert.throws(() => TaskSpecSchema.parse(spec), /internal runtime policy namespace/);
   });
 
   it('rejects Agent-authored intent on TaskSpec input', () => {
@@ -1730,14 +1706,6 @@ describe('Blueprint class settings compiler', () => {
           new_parent_class: '/Script/Engine.Pawn',
         },
       },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: {
-        should_compile: true,
-        should_save: false,
-      },
     }));
 
     assert.equal(taskPlan.task_type, 'edit_blueprint_class_settings');
@@ -1766,7 +1734,7 @@ describe('TaskSpec Blueprint Variables compiler', () => {
 
     assert.deepEqual(plan.execution_policy, {
       dry_run_mode: 'full',
-      should_compile: true,
+      should_compile: false,
       should_save: false,
       review_baseline_dirty_asset_policy: 'block',
     });

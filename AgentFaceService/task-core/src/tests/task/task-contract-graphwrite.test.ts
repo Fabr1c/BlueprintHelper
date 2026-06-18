@@ -428,11 +428,11 @@ describe('GraphWrite TaskPlan contract metadata', () => {
     });
   });
 
-  it('keeps compile/save out of validation policy fields', () => {
+  it('keeps runtime validation policy out of Agent-authored TaskSpec fields', () => {
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.validation_policy, {
-      task_spec_fields: ['should_compile', 'should_save'],
+      task_spec_fields: [],
       task_plan_fields: ['should_compile', 'should_save'],
-      forbidden_fields: ['compile', 'save'],
+      forbidden_fields: ['execution_policy', 'validation', 'compile', 'save'],
     });
   });
 });

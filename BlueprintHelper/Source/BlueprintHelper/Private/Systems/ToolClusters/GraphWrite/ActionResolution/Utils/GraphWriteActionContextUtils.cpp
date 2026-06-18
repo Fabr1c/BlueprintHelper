@@ -7,8 +7,11 @@
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphSchema.h"
+#include "EdGraphSchema_K2.h"
 #include "Components/ActorComponent.h"
 #include "Engine/Blueprint.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/Class.h"
@@ -1812,6 +1815,72 @@ void UGraphWriteActionContextUtils::CaptureFunctionInputParameters(UBlueprint* B
 			Field.FieldPath = Function->GetPathName() + TEXT(".") + Field.Name;
 			UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.is_function_parameter"), TEXT("true"));
 			Snapshot.Fields.Add(MoveTemp(Field));
+		}
+	}
+}
+
+void UGraphWriteActionContextUtils::CaptureGraphEntryInputParameters(UBlueprint* Blueprint, FBlueprintHelperActionContextSnapshot& Snapshot)
+{
+	if (!Blueprint)
+	{
+		return;
+	}
+
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (!Graph)
+		{
+			continue;
+		}
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node);
+			if (!EventNode)
+			{
+				continue;
+			}
+
+			const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(EventNode);
+			const FString ScopeName = CustomEvent
+				? CustomEvent->CustomFunctionName.ToString()
+				: EventNode->EventReference.GetMemberName().ToString();
+			if (ScopeName.IsEmpty())
+			{
+				continue;
+			}
+
+			for (UEdGraphPin* Pin : EventNode->Pins)
+			{
+				if (!Pin
+					|| Pin->Direction != EGPD_Output
+					|| Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+				{
+					continue;
+				}
+
+				FBlueprintHelperActionContextFieldSnapshot Field;
+				Field.Name = Pin->PinName.ToString();
+				Field.Kind = TEXT("function_param");
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.member_name"), Field.Name);
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.function_name"), ScopeName);
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.local_scope"), ScopeName);
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.graph_name"), Graph->GetName());
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.param_flags"), TEXT("FUNC_Parm"));
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.is_function_parameter"), TEXT("true"));
+				UGraphWriteActionContextUtils::AddCapabilityFact(Field, TEXT("field.param_source"), TEXT("graph_entry_pin"));
+				Field.PinCategory = Pin->PinType.PinCategory.ToString();
+				Field.PinSubCategory = Pin->PinType.PinSubCategory.ToString();
+				Field.PinSubCategoryObjectPath = Pin->PinType.PinSubCategoryObject.Get()
+					? Pin->PinType.PinSubCategoryObject->GetPathName()
+					: FString();
+				Field.PinContainerType = UGraphWriteActionContextUtils::ContainerTypeToString(Pin->PinType.ContainerType);
+				Field.OwnerClassPath = Blueprint->SkeletonGeneratedClass
+					? Blueprint->SkeletonGeneratedClass->GetPathName()
+					: FString();
+				Field.FieldPath = FString::Printf(TEXT("%s.%s"), *ScopeName, *Field.Name);
+				Snapshot.Fields.Add(MoveTemp(Field));
+			}
 		}
 	}
 }

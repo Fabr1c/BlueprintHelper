@@ -17,14 +17,6 @@ function makeSpec(changes: Record<string, unknown>[]) {
       widget_strategy: 'widget_blueprint_edit',
       changes,
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
   };
 }
 

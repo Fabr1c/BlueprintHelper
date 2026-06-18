@@ -30,6 +30,13 @@ export const graphWriteTaskTypeCompiler: TaskTypeCompiler<Extract<TaskSpec, { ta
       steps: makeGraphWriteTaskPlanSteps(taskSpec, compileGraphWriteOps(behavior, {
         defaultFieldOwnerClass: defaultFieldOwnerClassForBlueprintAsset(taskSpec.target.asset_path),
       })),
+      executionPolicy: graphWriteExecutionPolicyOverrides(behavior),
     });
   },
 };
+
+function graphWriteExecutionPolicyOverrides(behavior: Record<string, unknown>) {
+  return behavior['graph_strategy'] === 'replace_external_body'
+    ? { should_compile: true, should_save: true }
+    : undefined;
+}

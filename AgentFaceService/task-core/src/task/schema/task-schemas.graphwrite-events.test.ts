@@ -32,14 +32,6 @@ function makeGraphWriteSpec(entryOverrides: Record<string, unknown> = {}): Recor
         ...entryOverrides,
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   };
 }
 

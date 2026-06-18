@@ -14,8 +14,6 @@ const bareTaskSpec = {
   feature_name: 'P2_Handler_Registry',
   context_id: 'ctx-p2-handler-registry',
   target: { asset_path: '/Game/BP_P2_Handler_Registry', target_type: 'blueprint' },
-  execution_policy: { dry_run_mode: 'quick' },
-  validation: { should_compile: false, should_save: false },
   behavior: {
     variable_strategy: 'member_variables',
     changes: [{

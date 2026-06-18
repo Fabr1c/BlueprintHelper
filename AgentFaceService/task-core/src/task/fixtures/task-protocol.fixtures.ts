@@ -63,14 +63,6 @@ export const graphWriteAppendTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const graphWriteAppendExpectedTaskPlanFixture = {
@@ -81,7 +73,7 @@ export const graphWriteAppendExpectedTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -225,14 +217,6 @@ export const graphWriteReplaceTaskSpecFixture = {
       },
     },
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const graphWriteReplaceExpectedTaskPlanFixture = {
@@ -243,7 +227,7 @@ export const graphWriteReplaceExpectedTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -338,14 +322,6 @@ export const graphWritePatchTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const graphWritePatchExpectedTaskPlanFixture = {
@@ -356,7 +332,7 @@ export const graphWritePatchExpectedTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -432,14 +408,6 @@ export const graphWriteMergeTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const graphWriteMergeExpectedTaskPlanFixture = {
@@ -450,7 +418,7 @@ export const graphWriteMergeExpectedTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -498,7 +466,7 @@ export const graphWriteAppendLoweringAdapterTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -575,7 +543,7 @@ export const graphWriteReplaceTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -622,7 +590,7 @@ export const graphWritePatchTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -662,7 +630,7 @@ export const graphWriteMergeTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -704,7 +672,7 @@ export const graphWriteStructuredIrTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_StoneGate'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -840,14 +808,6 @@ export const blueprintVariableMemberChangesTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const blueprintVariableMemberChangesTaskPlanFixture = {
@@ -858,7 +818,7 @@ export const blueprintVariableMemberChangesTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -925,14 +885,6 @@ export const blueprintVariableMemberDefaultsTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const blueprintVariableMemberDefaultsTaskPlanFixture = {
@@ -943,7 +895,7 @@ export const blueprintVariableMemberDefaultsTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1006,14 +958,6 @@ export const blueprintVariableMemberReplicationTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const blueprintVariableMemberReplicationTaskPlanFixture = {
@@ -1024,7 +968,7 @@ export const blueprintVariableMemberReplicationTaskPlanFixture = {
   target_assets: ['/Game/BH/P0C/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1107,14 +1051,6 @@ export const blueprintVariableLocalChangesTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const blueprintVariableLocalChangesTaskPlanFixture = {
@@ -1125,7 +1061,7 @@ export const blueprintVariableLocalChangesTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1204,14 +1140,6 @@ export const createAssetTaskSpecFixture = {
       collision_policy: 'reuse_if_exists',
     },
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const createAssetTaskPlanFixture = {
@@ -1222,7 +1150,7 @@ export const createAssetTaskPlanFixture = {
   target_assets: ['/Game/Input/IA_Interact'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1281,14 +1209,6 @@ export const componentTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const componentTaskPlanFixture = {
@@ -1299,7 +1219,7 @@ export const componentTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1430,14 +1350,6 @@ export const componentExpansionTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const componentExpansionExpectedTaskPlanFixture = {
@@ -1448,7 +1360,7 @@ export const componentExpansionExpectedTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_ComponentExpansion'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1631,14 +1543,6 @@ export const classSettingsTaskSpecFixture = {
       new_parent_class: '/Script/Engine.Pawn',
     },
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const classSettingsTaskPlanFixture = {
@@ -1649,7 +1553,7 @@ export const classSettingsTaskPlanFixture = {
   target_assets: ['/Game/Blueprints/BP_Door'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1766,14 +1670,6 @@ export const signatureTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: false,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const signatureTaskPlanFixture = {
@@ -1861,14 +1757,6 @@ export const widgetTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const widgetTaskPlanFixture = {
@@ -1879,7 +1767,7 @@ export const widgetTaskPlanFixture = {
   target_assets: ['/Game/UI/WBP_MainMenu'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },
@@ -1973,14 +1861,6 @@ export const dataTableTaskSpecFixture = {
       },
     ],
   },
-  execution_policy: {
-    dry_run_mode: 'full',
-    on_missing_capability: 'stop_and_report',
-  },
-  validation: {
-    should_compile: true,
-    should_save: false,
-  },
 } satisfies TaskSpec;
 
 export const dataTableTaskPlanFixture = {
@@ -1991,7 +1871,7 @@ export const dataTableTaskPlanFixture = {
   target_assets: ['/Game/Data/DT_Weapons'],
   execution_policy: {
     dry_run_mode: 'full',
-    should_compile: true,
+    should_compile: false,
     should_save: false,
     review_baseline_dirty_asset_policy: 'block',
   },

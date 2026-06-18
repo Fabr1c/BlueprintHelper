@@ -10,8 +10,6 @@ const bareTaskSpec = {
   feature_name: 'P2_CLI_To_Compiler',
   context_id: 'ctx-p2-cli-compiler',
   target: { asset_path: '/Game/BP_P2_CLI_To_Compiler', target_type: 'blueprint' },
-  execution_policy: { dry_run_mode: 'quick' },
-  validation: { should_compile: false, should_save: false },
   behavior: {
     variable_strategy: 'member_variables',
     changes: [{

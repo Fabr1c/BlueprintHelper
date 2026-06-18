@@ -28,12 +28,6 @@ function baseSpec(): Record<string, unknown> {
         properties: [],
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-      review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: { should_compile: true, should_save: false },
   };
 }
 
@@ -68,12 +62,6 @@ test('edit_blueprint_variables accepts member variable replication property', ()
         }],
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-      review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: { should_compile: true, should_save: false },
   });
 
   assert.equal(parsed.task_type, 'edit_blueprint_variables');

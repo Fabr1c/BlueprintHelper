@@ -2,6 +2,7 @@ import type { TaskPlan, TaskSpec } from '../../schema/task-schemas.js';
 import { TASK_PLAN_SCHEMA } from '../../schema/task-schemas.js';
 import {
   getRequiredString,
+  makeTaskPlanExecutionPolicy,
   omitUndefined,
   optionalString,
 } from '../compiler-helpers.js';
@@ -39,12 +40,7 @@ function compileAssetFactoryTaskSpecToTaskPlan(
     task_type: taskSpec.task_type,
     context_id: taskSpec.context_id,
     target_assets: [taskSpec.target.asset_path],
-    execution_policy: {
-      dry_run_mode: taskSpec.execution_policy.dry_run_mode,
-      should_compile: taskSpec.validation.should_compile,
-      should_save: taskSpec.validation.should_save,
-      review_baseline_dirty_asset_policy: taskSpec.execution_policy.review_baseline_dirty_asset_policy ?? 'block',
-    },
+    execution_policy: makeTaskPlanExecutionPolicy(),
     steps: [{
       step_id: 'step_001',
       capability: 'asset_factory',

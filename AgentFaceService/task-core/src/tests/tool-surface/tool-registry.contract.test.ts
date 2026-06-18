@@ -994,11 +994,6 @@ test('preview task registry handler calls TaskSpecRunner.previewTask', async () 
           body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
         }],
       },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: { should_compile: true, should_save: false },
     },
   }, {
     cwd: process.cwd(),
@@ -1048,11 +1043,6 @@ test('execute task registry handler passes preview token to TaskSpecRunner', asy
           body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
         }],
       },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: { should_compile: true, should_save: false },
     },
     preview_token: previewToken,
   }, {
@@ -1090,11 +1080,6 @@ test('execute task registry adapter reports direct TaskSpec preview token as str
         body: { schema: 'BlueprintLogicSpec.v1', statements: [] },
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: { should_compile: true, should_save: false },
     preview_token: previewToken,
   }, {
     cwd: process.cwd(),

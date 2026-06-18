@@ -10,8 +10,6 @@ function makeGraphSpec(overrides: Record<string, unknown> = {}): Record<string, 
     feature_name: 'AutoSearchPolicySpec',
     target: { asset_path: '/Game/BP_A.BP_A' },
     scope_policy: { graph_name: 'EventGraph', allow_modify_user_nodes: false },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: false },
     behavior: {
       graph_strategy: 'replace_owned_graph',
       replace: {

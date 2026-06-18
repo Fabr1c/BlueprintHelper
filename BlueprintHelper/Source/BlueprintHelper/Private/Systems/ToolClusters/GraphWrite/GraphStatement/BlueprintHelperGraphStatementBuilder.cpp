@@ -37,6 +37,7 @@
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphTokenWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphEvidenceWrappers.h"
 #include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/BlueprintHelperGraphFragmentWrappers.h"
+#include "Systems/ToolClusters/GraphWrite/GraphStatement/Utils/GraphWriteGraphStatementUtils.h"
 #include "UObject/SoftObjectPath.h"
 
 static void ApplyCallPatternBindings(FBlueprintHelperGraphFragmentBuildRequest& Request)
@@ -1946,21 +1947,30 @@ bool FBlueprintHelperGraphStatementBuilder::BuildFieldCapabilityFragment(
 		ApplyFieldCapabilityActionRequestOverrides(Request, ActionRequest);
 		ActionRequest.ContextEvidence.Append(Request.ContextEvidence);
 
-		FBlueprintHelperActionFragmentSpawnCoordinatorRequest CoordinatorRequest;
-		CoordinatorRequest.TargetGraph = TargetGraph;
-		CoordinatorRequest.BuildRequest = &Request;
-		CoordinatorRequest.ActionRequest = ActionRequest;
-		CoordinatorRequest.SemanticKind = EBlueprintHelperActionSemanticKind::Field;
-		CoordinatorRequest.PinProfile = EBlueprintHelperActionFragmentPinProfile::ActionProvider;
-		CoordinatorRequest.CandidateGroupTarget = Request.Query;
-		CoordinatorRequest.FailurePrefix = FString::Printf(TEXT("field capability resolve failed: %s"), *Spec->Id);
-		CoordinatorRequest.bAppendSemanticKindOwnershipTag = true;
+		const FBlueprintHelperActionResolutionResult ActionResult =
+			FBlueprintGraphWriteFacade::ResolveActionForGraph(ActionRequest);
+		if (!ActionResult.IsResolved())
+		{
+			OutError = ActionResult.Message.IsEmpty()
+				? FString::Printf(TEXT("field capability resolve failed: %s: %s"), *Spec->Id, *Request.Query)
+				: ActionResult.Message;
+			return false;
+		}
 
-		bBuilt = FBlueprintHelperActionFragmentSpawnCoordinator::BuildResolvedActionFragment(
-			CoordinatorRequest,
-			OutFragment,
-			OutError,
-			nullptr);
+		const bool bVariableSetFamily =
+			ExpectedNodeFamily == TEXT("variable_set")
+			|| ExpectedNodeFamily == TEXT("component_variable_set")
+			|| ExpectedNodeFamily == TEXT("variable_set_target");
+		bBuilt = bVariableSetFamily
+			? FBlueprintHelperFieldFragmentBuilder::BuildVariableSetFragment(TargetGraph, Request, ActionResult, OutFragment, OutError)
+			: FBlueprintHelperFieldFragmentBuilder::BuildVariableGetFragment(TargetGraph, Request, ActionResult, OutFragment, OutError);
+		if (bBuilt)
+		{
+			OutFragment.OwnershipTags.Add(
+				TEXT("semantic_kind"),
+				FBlueprintHelperActionResolutionCore::SemanticKindToString(EBlueprintHelperActionSemanticKind::Field));
+			UGraphWriteGraphStatementUtils::AppendResolvedActionCandidateFacts(ActionResult, OutFragment);
+		}
 	}
 	else
 	{

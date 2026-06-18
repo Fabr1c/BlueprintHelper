@@ -64,8 +64,6 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     'behavior.external_patches[] for patch_external_graph',
     'behavior.external_link_patches[] for patch_external_links',
     'behavior.external_replace for replace_external_body',
-    'validation.should_compile',
-    'validation.should_save',
   ],
   task_plan_required_paths: [
     'schema',
@@ -1467,9 +1465,9 @@ export const TASK_PROTOCOL_CONTRACT_V1 = {
     ],
   },
   validation_policy: {
-    task_spec_fields: ['should_compile', 'should_save'],
+    task_spec_fields: [],
     task_plan_fields: ['should_compile', 'should_save'],
-    forbidden_fields: ['compile', 'save'],
+    forbidden_fields: ['execution_policy', 'validation', 'compile', 'save'],
   },
   bridge_commands: {
     preview: 'preview_task_plan',

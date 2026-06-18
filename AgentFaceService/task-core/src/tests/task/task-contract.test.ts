@@ -60,8 +60,6 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       'behavior.external_patches[] for patch_external_graph',
       'behavior.external_link_patches[] for patch_external_links',
       'behavior.external_replace for replace_external_body',
-      'validation.should_compile',
-      'validation.should_save',
     ]);
 
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.task_plan_required_paths, [
@@ -493,15 +491,15 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
     ]);
   });
 
-  it('uses should_compile and should_save as the only validation policy fields', () => {
+  it('keeps runtime validation policy out of Agent-authored TaskSpec fields', () => {
     assert.deepEqual(TASK_PROTOCOL_CONTRACT_V1.validation_policy, {
-      task_spec_fields: ['should_compile', 'should_save'],
+      task_spec_fields: [],
       task_plan_fields: ['should_compile', 'should_save'],
-      forbidden_fields: ['compile', 'save'],
+      forbidden_fields: ['execution_policy', 'validation', 'compile', 'save'],
     });
 
     assertNoForbiddenKeys(graphWriteAppendTaskSpecFixture, TASK_PROTOCOL_CONTRACT_V1.validation_policy.forbidden_fields);
-    assertNoForbiddenKeys(graphWriteAppendExpectedTaskPlanFixture, TASK_PROTOCOL_CONTRACT_V1.validation_policy.forbidden_fields);
+    assertNoForbiddenKeys(graphWriteAppendExpectedTaskPlanFixture, ['compile', 'save']);
   });
 
   it('matches the canonical GraphWrite Append fixtures', () => {
@@ -515,7 +513,8 @@ describe('TaskSpec/TaskPlan protocol contract', () => {
       true,
     );
     assert.equal(getPath(graphWriteAppendTaskSpecFixture, 'behavior.entries.0.entry_type'), 'custom_event');
-    assert.deepEqual(Object.keys(getRecordPath(graphWriteAppendTaskSpecFixture, 'validation')), ['should_compile', 'should_save']);
+    assert.equal(Object.hasOwn(graphWriteAppendTaskSpecFixture, 'validation'), false);
+    assert.equal(Object.hasOwn(graphWriteAppendTaskSpecFixture, 'execution_policy'), false);
 
     assert.equal(getPath(graphWriteAppendExpectedTaskPlanFixture, 'schema'), TASK_PLAN_SCHEMA);
     assert.equal(getPath(graphWriteAppendExpectedTaskPlanFixture, 'steps.0.capability'), 'blueprint_signature');

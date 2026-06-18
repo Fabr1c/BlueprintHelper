@@ -77,10 +77,6 @@ function normalizeAgentFacingTaskSpec(input: unknown): unknown {
   if (mutations) {
     output['scope_policy'] = normalizeExternalScopePolicy(input, strategy, mutations, behavior);
   }
-  if (strategy === 'replace_external_body') {
-    output['execution_policy'] = normalizeReplaceExternalBodyExecutionPolicy(input['execution_policy']);
-    output['validation'] = normalizeReplaceExternalBodyValidation(input['validation']);
-  }
   return output;
 }
 
@@ -102,23 +98,6 @@ function normalizeExternalScopePolicy(
       strategy,
       allowed_mutations: mutations,
     },
-  };
-}
-
-function normalizeReplaceExternalBodyExecutionPolicy(value: unknown): Record<string, unknown> {
-  const current = asRecord(value) ?? {};
-  return {
-    dry_run_mode: 'full',
-    ...current,
-  };
-}
-
-function normalizeReplaceExternalBodyValidation(value: unknown): Record<string, unknown> {
-  const current = asRecord(value) ?? {};
-  return {
-    should_compile: current['should_compile'] ?? true,
-    should_save: current['should_save'] ?? true,
-    ...current,
   };
 }
 

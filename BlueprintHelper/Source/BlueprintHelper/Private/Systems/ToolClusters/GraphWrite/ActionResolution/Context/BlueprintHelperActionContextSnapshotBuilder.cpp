@@ -118,4 +118,5 @@ void FBlueprintHelperActionContextSnapshotBuilder::CaptureFields(
 	UGraphWriteActionContextUtils::CaptureClassFields(Blueprint->GeneratedClass, Snapshot);
 	UGraphWriteActionContextUtils::CaptureFunctionLocalVariables(Blueprint, Snapshot);
 	UGraphWriteActionContextUtils::CaptureFunctionInputParameters(Blueprint, Snapshot);
+	UGraphWriteActionContextUtils::CaptureGraphEntryInputParameters(Blueprint, Snapshot);
 }

@@ -16,14 +16,6 @@ function baseSpec(taskType: string, behavior: Record<string, unknown>, overrides
       target_type: 'blueprint',
     },
     behavior,
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-    },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
     ...overrides,
   };
 }
@@ -84,10 +76,6 @@ describe('P1 TaskSpec schema validation', () => {
         target: {
           asset_path: '/Game/BlueprintHelper/Smoke/DA_BHSmokeData',
           target_type: 'asset',
-        },
-        validation: {
-          should_compile: false,
-          should_save: true,
         },
       }),
       baseSpec('create_asset', {
@@ -177,10 +165,6 @@ describe('P1 TaskSpec schema validation', () => {
         asset_path: '/Game/BlueprintHelper/Smoke/DA_BHSmokeData',
         target_type: 'asset',
       },
-      validation: {
-        should_compile: false,
-        should_save: true,
-      },
     }));
 
     assert.equal(result.success, false);
@@ -263,14 +247,6 @@ describe('P1 TaskSpec schema validation', () => {
           },
         ],
       },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: {
-        should_compile: true,
-        should_save: false,
-      },
     };
 
     assert.doesNotThrow(() => TaskSpecSchema.parse(spec));
@@ -327,14 +303,6 @@ describe('P1 TaskSpec schema validation', () => {
       },
       class_settings: {
         parent_class: '/Script/Engine.Pawn',
-      },
-      execution_policy: {
-        dry_run_mode: 'full',
-        on_missing_capability: 'stop_and_report',
-      },
-      validation: {
-        should_compile: true,
-        should_save: false,
       },
     }), /reparent\.new_parent_class/);
   });

@@ -272,6 +272,8 @@ public:
 
 	static void CaptureFunctionInputParameters(UBlueprint* Blueprint, FBlueprintHelperActionContextSnapshot& Snapshot);
 
+	static void CaptureGraphEntryInputParameters(UBlueprint* Blueprint, FBlueprintHelperActionContextSnapshot& Snapshot);
+
 	// ========== From BlueprintHelperGraphWriteProjectedEvidenceQueryService (anonymous namespace) ==========
 
 	static FBlueprintHelperToolResultBase MakeFailure(

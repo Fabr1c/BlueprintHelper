@@ -42,12 +42,12 @@ describe('Task protocol fixtures', () => {
     }
   });
 
-  it('uses should_compile and should_save instead of legacy compile and save fields', () => {
+  it('keeps runtime policy namespaces out of canonical TaskSpec fixtures', () => {
     const taskSpec = graphWriteAppendTaskSpecFixture as Record<string, unknown>;
     const taskPlan = graphWriteAppendExpectedTaskPlanFixture as Record<string, unknown>;
 
-    assertNoLegacyCompileSaveFields('TaskSpec.validation', getRecord(taskSpec, 'validation'));
-    assertNoLegacyCompileSaveFields('TaskSpec.execution_policy', getRecord(taskSpec, 'execution_policy'));
+    assert.equal(Object.hasOwn(taskSpec, 'validation'), false, 'TaskSpec.validation');
+    assert.equal(Object.hasOwn(taskSpec, 'execution_policy'), false, 'TaskSpec.execution_policy');
     assertNoLegacyCompileSaveFields('TaskPlan.execution_policy', getRecord(taskPlan, 'execution_policy'));
   });
 

@@ -321,14 +321,9 @@ test('default task preview artifacts omit internal policy fields', async () => {
     },
     execution_policy: {
       dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
       should_compile: false,
       should_save: false,
       review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
     },
     steps: [],
   };
@@ -353,10 +348,6 @@ test('default task preview artifacts omit internal policy fields', async () => {
           passed: true,
           blocked: false,
           task_plan: taskPlan,
-          validation: {
-            should_compile: false,
-            should_save: false,
-          },
           issues: [],
         },
       },
@@ -396,14 +387,9 @@ test('expert task preview debug artifact keeps raw policy fields', async () => {
     },
     execution_policy: {
       dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
       should_compile: false,
       should_save: false,
       review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
     },
     steps: [],
   };
@@ -428,10 +414,6 @@ test('expert task preview debug artifact keeps raw policy fields', async () => {
           passed: true,
           blocked: false,
           task_plan: taskPlan,
-          validation: {
-            should_compile: false,
-            should_save: false,
-          },
           issues: [],
         },
       },

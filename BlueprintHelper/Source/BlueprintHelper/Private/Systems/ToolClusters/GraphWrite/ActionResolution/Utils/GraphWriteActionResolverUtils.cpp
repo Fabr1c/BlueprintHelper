@@ -569,7 +569,14 @@ bool UGraphWriteActionResolverUtils::ResolveFunctionScope(
         OutScopeName = Request.TargetGraph->GetName();
     }
 
-    if (!Request.TargetGraph || !FBlueprintEditorUtils::DoesSupportLocalVariables(Request.TargetGraph))
+    const bool bRequiresLocalVariableScope =
+        Spec.RootKind == EBlueprintHelperFieldCapabilityRootKind::Local;
+    const bool bAllowsGraphEntryParamScope =
+        Spec.RootKind == EBlueprintHelperFieldCapabilityRootKind::FunctionParam;
+
+    if (!Request.TargetGraph ||
+        (bRequiresLocalVariableScope && !FBlueprintEditorUtils::DoesSupportLocalVariables(Request.TargetGraph)) ||
+        (!bAllowsGraphEntryParamScope && !FBlueprintEditorUtils::DoesSupportLocalVariables(Request.TargetGraph)))
     {
         OutResult.Status = EBlueprintHelperActionResolutionStatus::NotFound;
         OutResult.ErrorCode = TEXT("missing_or_mismatched_function_scope");
@@ -577,7 +584,12 @@ bool UGraphWriteActionResolverUtils::ResolveFunctionScope(
         return false;
     }
 
-    if (!OutScopeName.IsEmpty() && !Request.TargetGraph->GetName().Equals(OutScopeName, ESearchCase::IgnoreCase))
+    const bool bEventGraphParamScope =
+        bAllowsGraphEntryParamScope &&
+        !FBlueprintEditorUtils::DoesSupportLocalVariables(Request.TargetGraph);
+    if (!OutScopeName.IsEmpty()
+        && !Request.TargetGraph->GetName().Equals(OutScopeName, ESearchCase::IgnoreCase)
+        && !bEventGraphParamScope)
     {
         OutResult.Status = EBlueprintHelperActionResolutionStatus::NotFound;
         OutResult.ErrorCode = TEXT("missing_or_mismatched_function_scope");
@@ -642,6 +654,45 @@ UFunction* UGraphWriteActionResolverUtils::FindFunctionForGraph(UBlueprint* Blue
         }
     }
     return Blueprint->ParentClass ? FindUField<UFunction>(Blueprint->ParentClass, FunctionGraph->GetFName()) : nullptr;
+}
+
+UFunction* UGraphWriteActionResolverUtils::FindFunctionForScope(
+    UBlueprint* Blueprint,
+    UEdGraph* TargetGraph,
+    const FString& ScopeName)
+{
+    if (!Blueprint)
+    {
+        return nullptr;
+    }
+
+    const FName ScopeFName(*ScopeName.TrimStartAndEnd());
+    if (!ScopeFName.IsNone())
+    {
+        if (Blueprint->SkeletonGeneratedClass)
+        {
+            if (UFunction* Function = FindUField<UFunction>(Blueprint->SkeletonGeneratedClass, ScopeFName))
+            {
+                return Function;
+            }
+        }
+        if (Blueprint->GeneratedClass)
+        {
+            if (UFunction* Function = FindUField<UFunction>(Blueprint->GeneratedClass, ScopeFName))
+            {
+                return Function;
+            }
+        }
+        if (Blueprint->ParentClass)
+        {
+            if (UFunction* Function = FindUField<UFunction>(Blueprint->ParentClass, ScopeFName))
+            {
+                return Function;
+            }
+        }
+    }
+
+    return FindFunctionForGraph(Blueprint, TargetGraph);
 }
 
 bool UGraphWriteActionResolverUtils::IsDisallowedFunctionParam(const FProperty* Param, const FString& ParamFlags)

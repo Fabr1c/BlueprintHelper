@@ -448,13 +448,6 @@ function makeGraphWriteTaskSpec(): TaskSpec {
         },
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-    },
-    validation: {
-      should_compile: true,
-      should_save: false,
-    },
   } as TaskSpec;
 }
 

@@ -13,12 +13,6 @@ function baseSpec(): Record<string, unknown> {
       variable_strategy: 'member_variables',
       changes: [],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-      on_missing_capability: 'stop_and_report',
-      review_baseline_dirty_asset_policy: 'block',
-    },
-    validation: { should_compile: true, should_save: false },
   };
 }
 

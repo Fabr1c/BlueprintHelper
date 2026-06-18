@@ -284,7 +284,10 @@ FBlueprintHelperActionResolutionResult FBlueprintHelperFieldVariableActionResolv
 		{
 			const FString ParamFlags = EffectiveRequest.Semantic.CapabilityFacts.FindRef(TEXT("field.param_flags"));
 			FString ParamErrorCode;
-			UFunction* Function = UGraphWriteActionResolverUtils::FindFunctionForGraph(EffectiveRequest.Blueprint, EffectiveRequest.TargetGraph);
+			UFunction* Function = UGraphWriteActionResolverUtils::FindFunctionForScope(
+				EffectiveRequest.Blueprint,
+				EffectiveRequest.TargetGraph,
+				FunctionScopeName);
 			MutableProperty = UGraphWriteActionResolverUtils::FindFunctionInputParameter(Function, FieldName, ParamFlags, ParamErrorCode);
 			Property = MutableProperty;
 			bResolvedFunctionParam = true;

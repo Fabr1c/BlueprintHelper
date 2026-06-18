@@ -13,8 +13,6 @@ function makeCompositeSpec(overrides: Partial<Record<string, unknown>> = {}): Ex
     feature_name: 'CompositeFeatureCompilerTest',
     context_id: 'ctx_composite_feature_compiler_test',
     target: { asset_path: '/Game/BP_CompositeFeatureCompilerTest', target_type: 'blueprint' },
-    execution_policy: { dry_run_mode: 'full' },
-    validation: { should_compile: false, should_save: false },
     components: [{
       name: 'StatusRoot',
       class: '/Script/Engine.SceneComponent',

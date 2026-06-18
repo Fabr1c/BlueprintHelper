@@ -10,8 +10,6 @@ const variableSpec = {
   feature_name: 'P3_Facade_Variables',
   context_id: 'ctx-p3-facade-variables',
   target: { asset_path: '/Game/BP_P3_Facade', target_type: 'blueprint' },
-  execution_policy: { dry_run_mode: 'quick' },
-  validation: { should_compile: false, should_save: false },
   behavior: {
     variable_strategy: 'member_variables',
     changes: [{

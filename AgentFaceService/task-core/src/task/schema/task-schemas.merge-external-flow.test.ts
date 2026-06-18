@@ -66,10 +66,6 @@ function makeMergeExternalFlowSpec(overrides: {
       }],
       ...overrides.behavior,
     },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   };
 }
 

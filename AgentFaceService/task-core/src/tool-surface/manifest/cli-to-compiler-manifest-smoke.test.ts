@@ -41,13 +41,6 @@ test('preview manifest route compiles minimal append container_action TaskSpec l
         },
       }],
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   } as never);
 
   assert.equal(taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
@@ -98,13 +91,6 @@ test('execute manifest route compiles minimal replace function body TaskSpec loc
         },
       },
     },
-    execution_policy: {
-      dry_run_mode: 'full',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   } as never);
 
   assert.equal(taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');
@@ -131,13 +117,6 @@ test('preview manifest route compiles minimal create_blueprint_feature TaskSpec 
       type: 'int',
       default: 1,
     }],
-    execution_policy: {
-      dry_run_mode: 'full',
-    },
-    validation: {
-      should_compile: false,
-      should_save: false,
-    },
   } as never);
 
   assert.equal(taskPlan.schema, 'BlueprintHelper.TaskPlan.v1');

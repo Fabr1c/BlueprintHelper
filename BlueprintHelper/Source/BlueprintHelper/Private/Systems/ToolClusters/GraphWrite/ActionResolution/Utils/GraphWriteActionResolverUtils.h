@@ -144,6 +144,7 @@ public:
         const FBlueprintHelperActionResolutionRequest& Request,
         const FBPVariableDescription& LocalVariable);
     static UFunction* FindFunctionForGraph(UBlueprint* Blueprint, UEdGraph* FunctionGraph);
+    static UFunction* FindFunctionForScope(UBlueprint* Blueprint, UEdGraph* TargetGraph, const FString& ScopeName);
     static bool IsDisallowedFunctionParam(const FProperty* Param, const FString& ParamFlags);
     static FProperty* FindFunctionInputParameter(
         UFunction* Function,
