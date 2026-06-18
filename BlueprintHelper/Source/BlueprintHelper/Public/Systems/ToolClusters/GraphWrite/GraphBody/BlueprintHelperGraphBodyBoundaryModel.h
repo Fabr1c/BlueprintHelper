@@ -48,6 +48,10 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyBoundaryModel
 	TArray<FString> ReachableBodyFlowNodeRefs;
 	TArray<FString> ExternalAnchorRefs;
 	TArray<FString> SemanticSourceRefs;
+	TArray<FString> SemanticOutputRefs;
+	TArray<FString> EntryBoundaryRefs;
+	TArray<FString> ExitBoundaryRefs;
+	TArray<FString> ReturnDataPinRefs;
 	TArray<FString> ConnectivityExceptionCodes;
 	EBlueprintHelperGraphBodyPureDataPolicy PureDataConsumptionPolicy =
 		EBlueprintHelperGraphBodyPureDataPolicy::RequireReachableExecConsumer;

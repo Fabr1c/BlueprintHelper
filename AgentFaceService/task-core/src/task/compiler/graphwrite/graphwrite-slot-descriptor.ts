@@ -32,6 +32,7 @@ export interface GraphWriteSlotDescriptor {
   supported_routes: string[];
   validation_hints: string[];
   keywords: string[];
+  tags?: string[];
   quick_access: GraphWriteQuickAccessDescriptor;
   aliases?: string[];
   when_to_use: string;

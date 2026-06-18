@@ -4,6 +4,7 @@
 
 class UEdGraph;
 class UEdGraphNode;
+class UEdGraphPin;
 class UK2Node_Tunnel;
 struct FBlueprintHelperGraphBodyBoundaryModel;
 
@@ -12,6 +13,11 @@ class FBlueprintHelperK2GraphBodyAdapterUtils
 public:
 	static UEdGraph* FindGraphByName(const TArray<UEdGraph*>& Graphs, const FString& GraphName);
 	static FString NodeRef(const UEdGraphNode* Node);
+	static FString PinRef(const UEdGraphPin* Pin);
+	static void AppendGraphLinkRefs(
+		const UEdGraph* Graph,
+		TArray<FString>& OutExecLinkRefs,
+		TArray<FString>& OutDataLinkRefs);
 	static bool IsFunctionEntry(const UEdGraphNode* Node);
 	static bool IsFunctionResult(const UEdGraphNode* Node);
 	static bool IsFunctionEntryNodeClass(const UClass* NodeClass);
@@ -32,4 +38,9 @@ public:
 		const UEdGraphNode* Node,
 		const FString& NodeRef,
 		TArray<FString>& OutSemanticSourceRefs);
+	static void AppendPinSemanticOutputs(
+		const UEdGraphNode* Node,
+		const FString& NodeRef,
+		TArray<FString>& OutSemanticOutputRefs,
+		TArray<FString>& OutReturnDataPinRefs);
 };

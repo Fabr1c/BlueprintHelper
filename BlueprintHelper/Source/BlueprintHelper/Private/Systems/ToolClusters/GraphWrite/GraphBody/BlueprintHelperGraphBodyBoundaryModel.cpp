@@ -132,6 +132,10 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyBoundaryModelUtils::ToJsonObjec
 	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("reachable_body_flow_node_refs"), Model.ReachableBodyFlowNodeRefs);
 	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("external_anchor_refs"), Model.ExternalAnchorRefs);
 	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("semantic_source_refs"), Model.SemanticSourceRefs);
+	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("semantic_output_refs"), Model.SemanticOutputRefs);
+	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("entry_boundary_refs"), Model.EntryBoundaryRefs);
+	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("exit_boundary_refs"), Model.ExitBoundaryRefs);
+	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("return_data_pin_refs"), Model.ReturnDataPinRefs);
 	BlueprintHelperGraphBodyBoundaryModelSetStringArrayField(Json, TEXT("connectivity_exception_codes"), Model.ConnectivityExceptionCodes);
 	return Json;
 }

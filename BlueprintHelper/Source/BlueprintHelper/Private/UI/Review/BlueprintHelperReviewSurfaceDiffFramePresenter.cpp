@@ -2,14 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewSurfaceDiffFramePresenter.h"
 
-#include "UI/Review/BlueprintHelperReviewAssetPresenters.h"
-#include "UI/Review/BlueprintHelperReviewBlueprintComponentsPresenter.h"
-#include "UI/Review/BlueprintHelperReviewDataAssetPresenter.h"
-#include "UI/Review/BlueprintHelperReviewDataTablePresenter.h"
-#include "UI/Review/BlueprintHelperReviewGraphPresenter.h"
-#include "UI/Review/BlueprintHelperReviewMaterialPresenter.h"
-#include "UI/Review/BlueprintHelperReviewMyBlueprintPresenter.h"
-#include "UI/Review/BlueprintHelperReviewObjectDetailsPresenter.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenterRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 
 FBlueprintHelperReviewSurfaceDiffFrameRoute
@@ -56,36 +49,13 @@ FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveSurfaceRoute(
 	EBlueprintHelperReviewSurface Surface,
 	bool bShouldBuildOverlay)
 {
+	const TSharedRef<FBlueprintHelperReviewSurfacePresenterRegistry> Registry =
+		FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault();
 	FBlueprintHelperReviewSurfaceDiffFrameRoute Route;
 	Route.Surface = Surface;
-	Route.ShouldShowChange = ResolvePredicate(Surface);
-	Route.bShouldBuildOverlay = bShouldBuildOverlay && Route.ShouldShowChange != nullptr;
+	Route.ShouldShowChange = Registry->FindPredicate(Surface);
+	Route.bShouldBuildOverlay = bShouldBuildOverlay
+		&& Route.ShouldShowChange != nullptr
+		&& Registry->CanBuildOverlay(Surface);
 	return Route;
-}
-
-FBlueprintHelperReviewSurfaceChangePredicate
-FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolvePredicate(
-	EBlueprintHelperReviewSurface Surface)
-{
-	switch (Surface)
-	{
-	case EBlueprintHelperReviewSurface::Graph:
-		return &FBlueprintHelperReviewGraphPresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::Components:
-		return &FBlueprintHelperReviewBlueprintComponentsPresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::UMGWidgetTree:
-		return &FBlueprintHelperReviewUMGWidgetTreePresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::MyBlueprint:
-		return &FBlueprintHelperReviewMyBlueprintPresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::Details:
-		return &FBlueprintHelperReviewObjectDetailsPresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::DataTable:
-		return &FBlueprintHelperReviewDataTablePresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::DataAsset:
-		return &FBlueprintHelperReviewDataAssetPresenter::ShouldShowChange;
-	case EBlueprintHelperReviewSurface::Material:
-		return &FBlueprintHelperReviewMaterialPresenter::ShouldShowChange;
-	default:
-		return nullptr;
-	}
 }

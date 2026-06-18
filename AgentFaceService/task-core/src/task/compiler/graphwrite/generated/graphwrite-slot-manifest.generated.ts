@@ -89,6 +89,10 @@ export const GRAPHWRITE_SLOT_MANIFEST = [
       "function_param",
       "parameter"
     ],
+    "tags": [
+      "function_parameter",
+      "function_param"
+    ],
     "when_to_use": "Use inside function_body to consume an existing function input parameter.",
     "when_not_to_use": "Do not use for member variables or graph-local result_symbol values.",
     "status": "active",

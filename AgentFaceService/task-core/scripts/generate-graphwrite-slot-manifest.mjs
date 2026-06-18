@@ -69,6 +69,7 @@ function normalizeSlot(slot) {
     supported_routes: cloneArray(slot.supported_routes),
     validation_hints: cloneArray(slot.validation_hints),
     keywords: cloneArray(slot.keywords),
+    tags: slot.tags === undefined ? undefined : cloneArray(slot.tags),
   };
 }
 
@@ -102,6 +103,11 @@ function validateSlots(slots, visibleRouteIds) {
       if (!Array.isArray(slot[arrayField]) || slot[arrayField].some((entry) => typeof entry !== 'string' || entry.length === 0)) {
         throw new Error(`GraphWrite slot ${slot.slot_id} has invalid ${arrayField}.`);
       }
+    }
+    if (slot.tags !== undefined &&
+      (!Array.isArray(slot.tags) || slot.tags.some((entry) => typeof entry !== 'string' || entry.length === 0)))
+    {
+      throw new Error(`GraphWrite slot ${slot.slot_id} has invalid tags.`);
     }
     if (slot.status === 'active') {
       if (slot.supported_routes.length === 0) {

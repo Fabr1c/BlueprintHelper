@@ -10,6 +10,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphConnectivityPolicy
 	bool bAllowExternalAnchorBoundary = false;
 	bool bAllowExitBoundaryReachability = false;
 	bool bAllowOwnedBlockDisconnectedPreview = false;
+	bool bRequireFunctionEntryReachability = false;
+	bool bRequireFunctionResultReachability = false;
+	bool bRequireReturnDataflowConsumption = false;
+	TArray<FString> ReturnDataPinRefs;
+	TArray<FString> FunctionParamSourceRefs;
 	TArray<FString> ViolationCodes;
 };
 

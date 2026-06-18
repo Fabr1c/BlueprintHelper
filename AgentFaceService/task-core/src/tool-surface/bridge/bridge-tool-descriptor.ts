@@ -61,12 +61,9 @@ export interface BridgeToolDescriptor {
   readonly bridge_command?: string;
   readonly schema?: z.ZodTypeAny;
   readonly handler_id: BridgeToolHandlerId;
-  readonly allow_cli_bridge_call?: boolean;
-}
-
-export interface CliBridgeCallCommandDescriptor {
-  readonly bridge_command: string;
-  readonly allow_cli_bridge_call: true;
+  readonly cli_bridge_call_policy?: 'forbidden' | 'expert_only' | 'agent_visible';
+  readonly risk?: 'low' | 'medium' | 'high';
+  readonly source?: 'descriptor' | 'read_context_route' | 'debug_case' | 'lifecycle_compat';
 }
 
 export const BRIDGE_TOOL_DESCRIPTORS: readonly BridgeToolDescriptor[] = [
@@ -74,18 +71,18 @@ export const BRIDGE_TOOL_DESCRIPTORS: readonly BridgeToolDescriptor[] = [
   { tool_name: 'blueprinthelper_read_context_capabilities', schema: ReadContextCapabilitiesInputSchema, handler_id: 'read_context_capabilities' },
   { tool_name: 'blueprinthelper_request_write_session', bridge_command: 'request_write_session', handler_id: 'write_session' },
   { tool_name: 'blueprinthelper_capture_screenshot', schema: CaptureScreenshotInputSchema, handler_id: 'capture_screenshot' },
-  { tool_name: 'blueprinthelper_get_debug_case', bridge_command: 'get_debug_case', schema: DebugCaseInputSchema, handler_id: 'generic_bridge', allow_cli_bridge_call: true },
-  { tool_name: 'blueprinthelper_list_debug_cases', bridge_command: 'list_debug_cases', schema: DebugCaseListInputSchema, handler_id: 'generic_bridge', allow_cli_bridge_call: true },
-  { tool_name: 'blueprinthelper_export_debug_bundle', bridge_command: 'export_debug_bundle', schema: DebugCaseInputSchema, handler_id: 'generic_bridge', allow_cli_bridge_call: true },
+  { tool_name: 'blueprinthelper_get_debug_case', bridge_command: 'get_debug_case', schema: DebugCaseInputSchema, handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'debug_case' },
+  { tool_name: 'blueprinthelper_list_debug_cases', bridge_command: 'list_debug_cases', schema: DebugCaseListInputSchema, handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'debug_case' },
+  { tool_name: 'blueprinthelper_export_debug_bundle', bridge_command: 'export_debug_bundle', schema: DebugCaseInputSchema, handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'debug_case' },
   { tool_name: 'blueprinthelper_query_review_records', bridge_command: 'query_review_records', schema: ReviewRecordQueryInputSchema, handler_id: 'generic_bridge' },
   { tool_name: 'blueprinthelper_apply_review_action', bridge_command: 'apply_review_action', schema: ReviewActionInputSchema, handler_id: 'generic_bridge' },
   { tool_name: 'blueprinthelper_read_function_chain_context', bridge_command: 'read_function_chain_context', schema: ReadFunctionChainContextInputSchema, handler_id: 'generic_bridge' },
   { tool_name: 'blueprinthelper_find_assets', bridge_command: 'find_assets', schema: FindAssetsInputSchema, handler_id: 'generic_bridge' },
   { tool_name: 'blueprinthelper_source_control_status', bridge_command: 'source_control_status', schema: SourceControlInputSchema, handler_id: 'generic_bridge' },
   { tool_name: 'blueprinthelper_source_control_checkout', bridge_command: 'source_control_checkout', schema: SourceControlInputSchema, handler_id: 'generic_bridge' },
-  { tool_name: 'blueprint_get_runtime_profile', bridge_command: 'get_runtime_profile', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
-  { tool_name: 'blueprinthelper_diagnostics_runtime', bridge_command: 'diagnostics_runtime', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
-  { tool_name: 'blueprint_get_editor_context', bridge_command: 'get_editor_context', handler_id: 'generic_bridge', allow_cli_bridge_call: true },
+  { tool_name: 'blueprint_get_runtime_profile', bridge_command: 'get_runtime_profile', handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'descriptor' },
+  { tool_name: 'blueprinthelper_diagnostics_runtime', bridge_command: 'diagnostics_runtime', handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'descriptor' },
+  { tool_name: 'blueprint_get_editor_context', bridge_command: 'get_editor_context', handler_id: 'generic_bridge', cli_bridge_call_policy: 'expert_only', risk: 'low', source: 'descriptor' },
   { tool_name: 'blueprint_create_asset', bridge_command: 'create_asset', handler_id: 'generic_bridge' },
   { tool_name: 'blueprint_read_components', bridge_command: 'read_components', handler_id: 'generic_bridge' },
   { tool_name: 'blueprint_add_component', bridge_command: 'add_component', handler_id: 'generic_bridge' },
@@ -131,18 +128,6 @@ export const BRIDGE_TOOL_DESCRIPTORS: readonly BridgeToolDescriptor[] = [
   { tool_name: 'blueprint_exec_console_command', bridge_command: 'exec_console_command', handler_id: 'generic_bridge' },
 ];
 
-export const CLI_BRIDGE_CALL_COMMAND_DESCRIPTORS: readonly CliBridgeCallCommandDescriptor[] = [
-  { bridge_command: 'read_reference_context', allow_cli_bridge_call: true },
-  { bridge_command: 'get_task_run_journal', allow_cli_bridge_call: true },
-];
-
 export function getBridgeToolDescriptor(toolName: string): BridgeToolDescriptor | undefined {
   return BRIDGE_TOOL_DESCRIPTORS.find((descriptor) => descriptor.tool_name === toolName);
-}
-
-export function isCliBridgeCallAllowed(bridgeCommand: string): boolean {
-  return BRIDGE_TOOL_DESCRIPTORS.some((descriptor) =>
-    descriptor.bridge_command === bridgeCommand && descriptor.allow_cli_bridge_call === true)
-    || CLI_BRIDGE_CALL_COMMAND_DESCRIPTORS.some((descriptor) =>
-      descriptor.bridge_command === bridgeCommand && descriptor.allow_cli_bridge_call === true);
 }

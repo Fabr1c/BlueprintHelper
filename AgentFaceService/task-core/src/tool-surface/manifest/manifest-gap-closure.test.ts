@@ -280,6 +280,7 @@ test('Bridge dispatcher uses registered handlers instead of tool-name if-chain',
   assert.equal(registrySource.includes("registerBridgeToolHandler('blueprinthelper_"), false);
   assert.equal(registrySource.includes('getBridgeToolDescriptor'), true);
   assert.equal(descriptorSource.includes('BRIDGE_TOOL_DESCRIPTORS'), true);
+  assert.equal(descriptorSource.includes('allow_cli_bridge_call'), false);
   assert.equal(commandMapSource.includes('BRIDGE_TOOL_DESCRIPTORS'), true);
   assert.equal(commandMapSource.includes('blueprinthelper_get_debug_case:'), false);
   assert.equal(schemasSource.includes('BRIDGE_TOOL_DESCRIPTORS'), true);

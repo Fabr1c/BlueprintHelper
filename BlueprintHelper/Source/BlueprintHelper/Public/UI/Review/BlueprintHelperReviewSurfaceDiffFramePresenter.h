@@ -5,9 +5,7 @@
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
-
-typedef bool (*FBlueprintHelperReviewSurfaceChangePredicate)(
-	const FBlueprintHelperReviewVisibleChange& Change);
+#include "UI/Review/BlueprintHelperReviewSurfacePresenterRegistry.h"
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewSurfaceDiffFrameRoute
 {
@@ -32,6 +30,4 @@ private:
 	static FBlueprintHelperReviewSurfaceDiffFrameRoute ResolveSurfaceRoute(
 		EBlueprintHelperReviewSurface Surface,
 		bool bShouldBuildOverlay);
-	static FBlueprintHelperReviewSurfaceChangePredicate ResolvePredicate(
-		EBlueprintHelperReviewSurface Surface);
 };

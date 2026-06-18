@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { bridgeCommandByToolName } from './bridge-tool-command-map.js';
-import { isCliBridgeCallAllowed } from './bridge-tool-descriptor.js';
+import { getCliBridgeCallPolicy, isCliBridgeCallAllowed } from './bridge-call-policy.js';
 import { listToolCapabilities } from '../catalog/tool-capability-catalog.js';
 
 test('Bridge command map only owns tool-to-command routing', () => {
@@ -15,6 +15,9 @@ test('Bridge command map only owns tool-to-command routing', () => {
 });
 
 test('raw Bridge call allowlist is expert-only and not ordinary capability truth', () => {
+  assert.equal(getCliBridgeCallPolicy('get_editor_context').policy, 'expert_only');
+  assert.equal(getCliBridgeCallPolicy('read_reference_context').policy, 'expert_only');
+  assert.equal(getCliBridgeCallPolicy('create_asset').policy, 'forbidden');
   assert.equal(isCliBridgeCallAllowed('get_editor_context'), true);
   assert.equal(isCliBridgeCallAllowed('read_reference_context'), true);
   assert.equal(isCliBridgeCallAllowed('create_asset'), false);

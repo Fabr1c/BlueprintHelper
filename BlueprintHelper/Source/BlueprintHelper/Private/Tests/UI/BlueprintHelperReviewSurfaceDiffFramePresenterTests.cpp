@@ -56,6 +56,7 @@ bool FBlueprintHelperReviewSurfaceDiffFramePresenter_ResolvesMainWorkspaceRoute:
 			EBlueprintHelperReviewAssetKind::Material);
 
 	TestFalse(TEXT("blueprint graph surface is not main workspace overlay-owned"), BlueprintRoute.bShouldBuildOverlay);
+	TestTrue(TEXT("blueprint graph route still has a predicate"), BlueprintRoute.ShouldShowChange != nullptr);
 	TestEqual(
 		TEXT("data table uses data table surface"),
 		static_cast<int32>(DataTableRoute.Surface),

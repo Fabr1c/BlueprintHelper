@@ -27,6 +27,7 @@
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSlateRowGeometryRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenterRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/Native/Components/SBlueprintHelperReviewComponentsPanel.h"
 #include "UI/Review/Utils/BlueprintHelperReviewPanelAsyncUtils.h"
@@ -935,35 +936,9 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
 	ConfigurePanelSurfacePresenterArgs(Args, SurfaceDiffModels);
 
-	if (Route.Surface == EBlueprintHelperReviewSurface::Components)
-	{
-		return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::MyBlueprint)
-	{
-		return FBlueprintHelperReviewMyBlueprintPresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::Details)
-	{
-		return FBlueprintHelperReviewObjectDetailsPresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::UMGWidgetTree)
-	{
-		return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::DataTable)
-	{
-		return FBlueprintHelperReviewDataTablePresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::DataAsset)
-	{
-		return FBlueprintHelperReviewDataAssetPresenter::BuildOverlay(Args);
-	}
-	if (Route.Surface == EBlueprintHelperReviewSurface::Material)
-	{
-		return FBlueprintHelperReviewMaterialPresenter::BuildOverlay(Args);
-	}
-	return SNullWidget::NullWidget;
+	const TSharedRef<FBlueprintHelperReviewSurfacePresenterRegistry> Registry =
+		FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault();
+	return Registry->BuildOverlayOrNull(Route.Surface, Args);
 }
 
 TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SBlueprintHelperReviewPanel::BuildSurfaceDiffModelsForSurface(

@@ -91,14 +91,20 @@ FBlueprintHelperGraphBodyBoundaryModel FBlueprintHelperK2FunctionBodyAdapter::Bu
 		if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(Node))
 		{
 			Boundary.EntryNodeRefs.AddUnique(Ref);
+			Boundary.EntryBoundaryRefs.AddUnique(Ref);
 			Boundary.ProtectedNodeRefs.AddUnique(Ref);
 			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
 		}
 		else if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(Node))
 		{
 			Boundary.ExitNodeRefs.AddUnique(Ref);
+			Boundary.ExitBoundaryRefs.AddUnique(Ref);
 			Boundary.ProtectedNodeRefs.AddUnique(Ref);
-			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(Node, Ref, Boundary.SemanticSourceRefs);
+			FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticOutputs(
+				Node,
+				Ref,
+				Boundary.SemanticOutputRefs,
+				Boundary.ReturnDataPinRefs);
 		}
 		else
 		{
@@ -138,10 +144,15 @@ FBlueprintHelperGraphBodyReconnectPlan FBlueprintHelperK2FunctionBodyAdapter::Bu
 	const FBlueprintHelperGraphBodyBoundaryModel& Boundary) const
 {
 	FBlueprintHelperGraphBodyReconnectPlan Plan;
-	Plan.EntryBoundaryRefs = Boundary.EntryNodeRefs;
-	Plan.ExitBoundaryRefs = Boundary.ExitNodeRefs;
+	Plan.EntryBoundaryRefs = Boundary.EntryBoundaryRefs.Num() > 0 ? Boundary.EntryBoundaryRefs : Boundary.EntryNodeRefs;
+	Plan.ExitBoundaryRefs = Boundary.ExitBoundaryRefs.Num() > 0 ? Boundary.ExitBoundaryRefs : Boundary.ExitNodeRefs;
+	Plan.ReturnDataPinRefs = Boundary.ReturnDataPinRefs;
 	Plan.bReconnectEntryToFirstImportedExec = true;
-	Plan.bReconnectImportedExecToExitBoundary = Boundary.ExitNodeRefs.Num() > 0;
+	Plan.bReconnectImportedExecToExitBoundary = Plan.ExitBoundaryRefs.Num() > 0;
+	for (const FString& ReturnPinRef : Boundary.ReturnDataPinRefs)
+	{
+		Plan.ReturnOutputToResultPinRefs.Add(ReturnPinRef, ReturnPinRef);
+	}
 	return Plan;
 }
 
@@ -153,11 +164,21 @@ FBlueprintHelperGraphConnectivityPolicy FBlueprintHelperK2FunctionBodyAdapter::B
 }
 
 FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperK2FunctionBodyAdapter::BuildReadbackProjection(
-	const FBlueprintHelperGraphBodyTarget&,
+	const FBlueprintHelperGraphBodyTarget& Target,
 	const FBlueprintHelperGraphBodyBoundaryModel& Boundary) const
 {
 	FBlueprintHelperGraphBodyReadbackProjection Projection;
 	Projection.ProjectionId = FBlueprintHelperGraphBodyBoundaryModelUtils::MakeBodyIdentity(Boundary);
+	Projection.FunctionName = Boundary.GraphName;
+	Projection.EntryBoundaryRefs = Boundary.EntryBoundaryRefs.Num() > 0 ? Boundary.EntryBoundaryRefs : Boundary.EntryNodeRefs;
+	Projection.ResultBoundaryRefs = Boundary.ExitBoundaryRefs.Num() > 0 ? Boundary.ExitBoundaryRefs : Boundary.ExitNodeRefs;
+	Projection.FunctionInputPinRefs = Boundary.SemanticSourceRefs;
+	Projection.FunctionOutputPinRefs = Boundary.SemanticOutputRefs;
+	Projection.GeneratedNodeRefs = Boundary.GeneratedNodeRefs.Num() > 0 ? Boundary.GeneratedNodeRefs : Boundary.ImportedBodyNodeRefs;
+	FBlueprintHelperK2GraphBodyAdapterUtils::AppendGraphLinkRefs(
+		Target.Graph,
+		Projection.ExecLinkRefs,
+		Projection.DataLinkRefs);
 	if (Boundary.EntryNodeRefs.Num() > 0)
 	{
 		Projection.EntryNodeRef = Boundary.EntryNodeRefs[0];
@@ -166,9 +187,9 @@ FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperK2FunctionBodyAdapte
 			Boundary.EntryNodeRefs[0],
 			Boundary.GraphName.IsEmpty() ? FString(TEXT("Function")) : Boundary.GraphName);
 	}
-	Projection.ExitNodeRefs = Boundary.ExitNodeRefs;
-	Projection.VisibleBoundaryNodeRefs = Boundary.ExitNodeRefs;
-	for (const FString& ExitRef : Boundary.ExitNodeRefs)
+	Projection.ExitNodeRefs = Projection.ResultBoundaryRefs;
+	Projection.VisibleBoundaryNodeRefs = Projection.ResultBoundaryRefs;
+	for (const FString& ExitRef : Projection.ResultBoundaryRefs)
 	{
 		Projection.BoundaryDisplayNames.Add(ExitRef, TEXT("Return"));
 	}

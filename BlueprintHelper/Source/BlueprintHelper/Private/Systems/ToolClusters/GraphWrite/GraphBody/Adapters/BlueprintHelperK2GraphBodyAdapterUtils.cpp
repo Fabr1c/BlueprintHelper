@@ -67,6 +67,62 @@ FString FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(const UEdGraphNode* Nod
 	return Node->GetName();
 }
 
+FString FBlueprintHelperK2GraphBodyAdapterUtils::PinRef(const UEdGraphPin* Pin)
+{
+	if (!Pin)
+	{
+		return TEXT("Pin");
+	}
+	return FString::Printf(
+		TEXT("%s.%s"),
+		*NodeRef(Pin->GetOwningNode()),
+		*Pin->PinName.ToString());
+}
+
+void FBlueprintHelperK2GraphBodyAdapterUtils::AppendGraphLinkRefs(
+	const UEdGraph* Graph,
+	TArray<FString>& OutExecLinkRefs,
+	TArray<FString>& OutDataLinkRefs)
+{
+	if (!Graph)
+	{
+		return;
+	}
+
+	for (const UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!Node)
+		{
+			continue;
+		}
+		for (const UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin || Pin->Direction != EGPD_Output)
+			{
+				continue;
+			}
+			const FString SourceRef = PinRef(Pin);
+			for (const UEdGraphPin* LinkedPin : Pin->LinkedTo)
+			{
+				if (!LinkedPin)
+				{
+					continue;
+				}
+				const FString LinkRef = FString::Printf(TEXT("%s->%s"), *SourceRef, *PinRef(LinkedPin));
+				if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec
+					|| LinkedPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+				{
+					OutExecLinkRefs.AddUnique(LinkRef);
+				}
+				else
+				{
+					OutDataLinkRefs.AddUnique(LinkRef);
+				}
+			}
+		}
+	}
+}
+
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(const UEdGraphNode* Node)
 {
 	return Node && Node->IsA<UK2Node_FunctionEntry>();
@@ -250,5 +306,48 @@ void FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticSources(
 		{
 			OutSemanticSourceRefs.AddUnique(TEXT("FunctionResult.Execute"));
 		}
+	}
+}
+
+void FBlueprintHelperK2GraphBodyAdapterUtils::AppendPinSemanticOutputs(
+	const UEdGraphNode* Node,
+	const FString& NodeRef,
+	TArray<FString>& OutSemanticOutputRefs,
+	TArray<FString>& OutReturnDataPinRefs)
+{
+	if (!Node)
+	{
+		return;
+	}
+
+	bool bAddedExecOutput = false;
+	for (const UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin || Pin->Direction != EGPD_Input)
+		{
+			continue;
+		}
+
+		const FString PinName = Pin->PinName.ToString();
+		if (PinName.IsEmpty())
+		{
+			continue;
+		}
+
+		const FString PinRef = FString::Printf(TEXT("%s.%s"), *NodeRef, *PinName);
+		OutSemanticOutputRefs.AddUnique(PinRef);
+		if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+		{
+			bAddedExecOutput = true;
+		}
+		else
+		{
+			OutReturnDataPinRefs.AddUnique(PinRef);
+		}
+	}
+
+	if (!bAddedExecOutput && NodeRef == TEXT("FunctionResult"))
+	{
+		OutSemanticOutputRefs.AddUnique(TEXT("FunctionResult.Execute"));
 	}
 }

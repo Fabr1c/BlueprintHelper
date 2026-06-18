@@ -159,12 +159,37 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBo
 	Json->SetStringField(TEXT("runtime_adapter_id"), Boundary.RuntimeAdapterId);
 	Json->SetStringField(TEXT("body_kind"), FBlueprintHelperGraphBodyBoundaryModelUtils::BodyKindToString(Boundary.BodyKind));
 	Json->SetStringField(TEXT("graph_name"), Boundary.GraphName);
+	if (!Projection.FunctionName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("function_name"), Projection.FunctionName);
+	}
 	Json->SetArrayField(
 		TEXT("entry_boundaries"),
 		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.EntryNodeRefs, Projection));
 	Json->SetArrayField(
 		TEXT("exit_boundaries"),
 		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::BoundaryRefsToJson(Boundary.ExitNodeRefs, Projection));
+	Json->SetArrayField(
+		TEXT("entry_boundary_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.EntryBoundaryRefs));
+	Json->SetArrayField(
+		TEXT("result_boundary_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.ResultBoundaryRefs));
+	Json->SetArrayField(
+		TEXT("function_input_pin_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.FunctionInputPinRefs));
+	Json->SetArrayField(
+		TEXT("function_output_pin_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.FunctionOutputPinRefs));
+	Json->SetArrayField(
+		TEXT("generated_node_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.GeneratedNodeRefs));
+	Json->SetArrayField(
+		TEXT("exec_link_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.ExecLinkRefs));
+	Json->SetArrayField(
+		TEXT("data_link_refs"),
+		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.DataLinkRefs));
 	Json->SetArrayField(
 		TEXT("folded_boundary_node_refs"),
 		FBlueprintHelperGraphBodyReadbackServiceLocalUtils::StringsToJson(Projection.FoldedBoundaryNodeRefs));

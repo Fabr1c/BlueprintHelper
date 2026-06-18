@@ -301,6 +301,28 @@ public:
 		}
 		return true;
 	}
+
+	static bool ReturnDataflowReconnectPlanCoversPolicy(
+		const FBlueprintHelperGraphBodyReplacePlan& ReplacePlan)
+	{
+		if (!ReplacePlan.ConnectivityPolicy.bRequireReturnDataflowConsumption)
+		{
+			return true;
+		}
+
+		for (const FString& ReturnDataPinRef : ReplacePlan.ConnectivityPolicy.ReturnDataPinRefs)
+		{
+			if (ReturnDataPinRef.IsEmpty())
+			{
+				continue;
+			}
+			if (!ReplacePlan.ReconnectPlan.ReturnOutputToResultPinRefs.Contains(ReturnDataPinRef))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 };
 
 bool FBlueprintHelperGraphBodyReplaceCoordinator::BuildPlan(
@@ -333,6 +355,10 @@ bool FBlueprintHelperGraphBodyReplaceCoordinator::CanAcceptAdapterPlanConnectivi
 	}
 	if (ReplacePlan.ReconnectPlan.bReconnectImportedExecToExitBoundary &&
 		!ReplacePlan.ConnectivityPolicy.bAllowExitBoundaryReachability)
+	{
+		return false;
+	}
+	if (!FBlueprintHelperGraphBodyReplaceCoordinatorLocalUtils::ReturnDataflowReconnectPlanCoversPolicy(ReplacePlan))
 	{
 		return false;
 	}

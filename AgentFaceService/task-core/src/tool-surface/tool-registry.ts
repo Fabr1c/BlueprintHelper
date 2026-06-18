@@ -98,7 +98,7 @@ export {
 } from './result/result-projection-registry.js';
 export {
   isCliBridgeCallAllowed,
-} from './bridge/bridge-tool-descriptor.js';
+} from './bridge/bridge-call-policy.js';
 export type {
   BuiltinResultProjectionPolicyId,
 } from './result/result-projection-registry.js';
