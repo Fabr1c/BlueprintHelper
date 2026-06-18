@@ -286,7 +286,14 @@ bool FBlueprintHelperReviewMaterialPresenter::ShouldShowChange(
 	return FBlueprintHelperReviewPresenterWidgetUtils::ShouldShowIndependentSurfaceChange(
 		Change,
 		EBlueprintHelperReviewSurface::Material,
-		{TEXT("material_expression"), TEXT("material_expression_link"), TEXT("material_output_link"), TEXT("asset_factory")});
+		{
+			TEXT("material_expression"),
+			TEXT("material_expression_link"),
+			TEXT("material_output_link"),
+			TEXT("material_instance"),
+			TEXT("material_instance_parameter"),
+			TEXT("asset_factory")
+		});
 }
 
 TSharedRef<SWidget> FBlueprintHelperReviewMaterialPresenter::BuildContent(

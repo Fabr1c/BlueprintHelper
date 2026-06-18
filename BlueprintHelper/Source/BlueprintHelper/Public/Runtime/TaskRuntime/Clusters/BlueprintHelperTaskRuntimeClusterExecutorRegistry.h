@@ -15,7 +15,8 @@ public:
 		const FBlueprintHelperSignatureTaskRuntimeCluster& SignatureCluster,
 		const FBlueprintHelperUMGWidgetTaskRuntimeCluster& UMGWidgetCluster,
 		const FBlueprintHelperDataTableTaskRuntimeCluster& DataTableCluster,
-		const FBlueprintHelperObjectPropertyTaskRuntimeCluster& ObjectPropertyCluster);
+		const FBlueprintHelperObjectPropertyTaskRuntimeCluster& ObjectPropertyCluster,
+		const FBlueprintHelperMaterialInstanceTaskRuntimeCluster& MaterialInstanceCluster);
 
 	const FBlueprintHelperTaskRuntimeClusterExecutor* FindByCluster(
 		EBlueprintHelperTaskRuntimeCluster Cluster) const;

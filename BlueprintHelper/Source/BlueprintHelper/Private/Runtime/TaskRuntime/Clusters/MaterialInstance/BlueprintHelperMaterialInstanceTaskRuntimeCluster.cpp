@@ -2,8 +2,8 @@
 
 #include "Runtime/TaskRuntime/Clusters/MaterialInstance/BlueprintHelperMaterialInstanceTaskRuntimeCluster.h"
 
+#include "Runtime/TaskRuntime/Clusters/MaterialInstance/BlueprintHelperMaterialInstanceReviewEvidenceBuilder.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/MaterialInstance/BlueprintHelperMaterialInstanceTaskPlanAdapter.h"
-#include "Runtime/TaskRuntime/Utils/BlueprintHelperTaskRuntimeClusterExecutionUtils.h"
 #include "Systems/ToolClusters/MaterialInstance/BlueprintHelperMaterialInstanceMutationAdapter.h"
 
 bool FBlueprintHelperMaterialInstanceTaskRuntimeCluster::CanExecuteStep(
@@ -20,8 +20,9 @@ bool FBlueprintHelperMaterialInstanceTaskRuntimeCluster::BuildReviewEvidence(
 	int32 StepIndex,
 	FBlueprintHelperWriteReviewEvidence& OutEvidence)
 {
-	return StepResult.bOk && FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReviewEvidence(
+	return FBlueprintHelperMaterialInstanceReviewEvidenceBuilder::BuildEvidence(
 		LoweredStep,
+		StepResult,
 		ArchiveSessionId,
 		TaskRunId,
 		StepIndex,

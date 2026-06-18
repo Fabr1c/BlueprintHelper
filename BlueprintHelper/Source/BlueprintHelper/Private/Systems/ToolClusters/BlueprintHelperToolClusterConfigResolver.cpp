@@ -105,6 +105,7 @@ bool FBlueprintHelperReadContextOutputLimiter::IsReadContextCommand(const FStrin
 		TEXT("read_function_chain_context"),
 		TEXT("read_blueprint_logic_json"),
 		TEXT("read_material_logic_json"),
+		TEXT("read_material_instance_context"),
 		TEXT("export_to_json"),
 		TEXT("export_logic"),
 		TEXT("get_asset_info"),

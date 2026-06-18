@@ -11,6 +11,7 @@ test('agent-facing contract matrix excludes hidden and reserved write capabiliti
   assert.ok(matrix.every((unit) => unit.visibility === 'active' || unit.visibility === 'developer_only'));
   assert.equal(ids.has('struct.fields.edit'), false);
   assert.equal(ids.has('material_instance.edit'), false);
+  assert.equal(ids.has('material.write.taskspec.execute'), true);
 });
 
 test('agent-facing contract matrix keeps GraphWrite active routes tied to runtime adapters', () => {

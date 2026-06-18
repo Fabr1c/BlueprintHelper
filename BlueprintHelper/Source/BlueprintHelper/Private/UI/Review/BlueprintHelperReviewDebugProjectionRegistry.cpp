@@ -95,7 +95,14 @@ void FBlueprintHelperReviewDebugProjectionRegistry::RegisterBuiltInAdapters()
 		TEXT("material_graph.connectivity_validation"),
 		TEXT("material_graph.evidence.created"),
 		TEXT("material_graph.restore.result"),
-		TEXT("material_graph.surface.projected")
+		TEXT("material_graph.surface.projected"),
+		TEXT("material_instance.preview"),
+		TEXT("material_instance.mutation_plan"),
+		TEXT("material_instance.mutation_result"),
+		TEXT("material_instance.readback"),
+		TEXT("material_instance.evidence.created"),
+		TEXT("material_instance.restore.result"),
+		TEXT("material_instance.surface.projected")
 	};
 	for (const TCHAR* EventType : EventTypes)
 	{

@@ -40,10 +40,16 @@ bool FBlueprintHelperCapabilityDescriptorRegistryTest::RunTest(const FString& Pa
 		FBlueprintHelperGeneratedCapabilityRegistry::FindById(TEXT("material_instance.edit"));
 	TestTrue(TEXT("MaterialInstance descriptor exists"),
 		MaterialInstance != nullptr);
-	TestFalse(TEXT("MaterialInstance is hidden until P4 through generic visibility"),
+	TestTrue(TEXT("MaterialInstance is visible after P4 through generic visibility"),
 		MaterialInstance != nullptr &&
 		FBlueprintHelperGeneratedCapabilityRegistry::IsDescriptorAgentVisible(*MaterialInstance, RuntimeState));
-	TestFalse(TEXT("MaterialInstance runtime adapter is not registered before P4"),
+	TestTrue(TEXT("MaterialInstance descriptor is active after Task 5 closure"),
+		MaterialInstance != nullptr &&
+		FString(MaterialInstance->RuntimeStatus).Equals(TEXT("active"), ESearchCase::IgnoreCase));
+	TestFalse(TEXT("MaterialInstance descriptor is no longer reserved-only after Task 5 closure"),
+		MaterialInstance != nullptr &&
+		MaterialInstance->bReservedOnly);
+	TestTrue(TEXT("MaterialInstance runtime adapter is registered independently of descriptor visibility"),
 		RuntimeState.RegisteredRuntimeAdapterIds.Contains(TEXT("material_instance_runtime_adapter")));
 
 	const FBlueprintHelperGeneratedCapabilityDescriptor* StructFields =

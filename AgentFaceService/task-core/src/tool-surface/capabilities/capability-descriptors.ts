@@ -231,7 +231,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     asset_kinds: ['material_instance_constant'],
     routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
     preview: TASK_PREVIEW,
-    runtime: { adapter_id: 'material_instance_runtime_adapter', status: 'blocked_until_p4' },
+    runtime: { adapter_id: 'material_instance_runtime_adapter', status: 'active' },
     review: {
       evidence_adapter: 'material_instance_review_evidence',
       restore_adapter: 'material_instance_restore',
@@ -240,6 +240,6 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     debug: { projection_adapter: 'material_instance_debug_projection' },
     read_context: { projection_adapter: 'material_instance_projection', route_refs: [] },
     ui: { presenter_adapter: 'material_instance_presenter', surface: 'material_instance' },
-    safety: { risk: 'high', reserved_only: true, write_approval_required: true },
+    safety: { risk: 'high', reserved_only: false, write_approval_required: true },
   }),
 ] as const;

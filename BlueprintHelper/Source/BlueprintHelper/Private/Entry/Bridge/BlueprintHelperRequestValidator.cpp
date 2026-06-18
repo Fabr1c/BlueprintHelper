@@ -1489,6 +1489,26 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		}
 		return true;
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_material_instance_context")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("parameter_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("detail"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+
+		const TSet<FString> Details = {
+			TEXT("brief"),
+			TEXT("normal"),
+			TEXT("full"),
+			TEXT("debug"),
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateOptionalStringEnum(Payload, TEXT("detail"), Details, OutError);
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_reference_context")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {

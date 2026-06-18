@@ -5,6 +5,7 @@
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
+#include "Runtime/TaskRuntime/Clusters/MaterialInstance/BlueprintHelperMaterialInstanceTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
@@ -101,6 +102,7 @@ bool FBlueprintHelperTaskRuntimeClusterHub_ResolvesLoweredSteps::RunTest(const F
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("umg_widget"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::UMGWidget},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("data_table"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::DataTable},
 		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("object_property"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::ObjectProperty},
+		{FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("material_instance"), TEXT("")), EBlueprintHelperTaskRuntimeCluster::MaterialInstance},
 	};
 
 	for (const TPair<FBlueprintHelperTaskRuntimeLoweredStep, EBlueprintHelperTaskRuntimeCluster>& Case : Cases)
@@ -131,6 +133,7 @@ bool FBlueprintHelperTaskRuntimeClusterHub_RegisteredClustersCoverImplementedClu
 		EBlueprintHelperTaskRuntimeCluster::UMGWidget,
 		EBlueprintHelperTaskRuntimeCluster::DataTable,
 		EBlueprintHelperTaskRuntimeCluster::ObjectProperty,
+		EBlueprintHelperTaskRuntimeCluster::MaterialInstance,
 	};
 
 	TestEqual(TEXT("registered cluster count"), RegisteredClusters.Num(), static_cast<int32>(UE_ARRAY_COUNT(ExpectedClusters)));
@@ -252,6 +255,13 @@ bool FBlueprintHelperFinalBatchTaskRuntimeClusters_RecognizeOnlyOwnedSteps::RunT
 	TestFalse(
 		TEXT("ObjectProperty cluster rejects graph write capability"),
 		FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("graph_write"), TEXT(""))));
+
+	TestTrue(
+		TEXT("MaterialInstance cluster recognizes material_instance capability"),
+		FBlueprintHelperMaterialInstanceTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("material_instance"), TEXT(""))));
+	TestFalse(
+		TEXT("MaterialInstance cluster rejects object property capability"),
+		FBlueprintHelperMaterialInstanceTaskRuntimeCluster::CanExecuteStep(FBlueprintHelperTaskRuntimeClusterHubTestsLocalUtils::MakeLoweredStep(TEXT("object_property"), TEXT(""))));
 	return true;
 }
 

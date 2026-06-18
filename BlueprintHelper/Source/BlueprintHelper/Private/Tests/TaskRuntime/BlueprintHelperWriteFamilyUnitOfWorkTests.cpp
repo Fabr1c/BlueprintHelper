@@ -6,6 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Runtime/TaskRuntime/WriteContracts/BlueprintHelperWriteFamilyDescriptor.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperMaterialInstanceFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/BlueprintHelperWriteFamilyAdapterRegistry.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/BlueprintHelperWriteUnitOfWork.h"
 
@@ -51,9 +52,13 @@ bool FBlueprintHelperWriteFamilyAdapterSpecializationGuardTest::RunTest(const FS
 	TestTrue(
 		TEXT("umg family adapter is registered"),
 		RegistrySource.Contains(TEXT("FBlueprintHelperUMGWidgetFamilyAdapter")));
+	TestTrue(
+		TEXT("material instance family adapter is registered"),
+		RegistrySource.Contains(TEXT("FBlueprintHelperMaterialInstanceFamilyAdapter")));
 
 	FString GraphWriteAdapterSource;
 	FString UMGWidgetAdapterSource;
+	FString MaterialInstanceAdapterSource;
 	TestTrue(
 		TEXT("graphwrite family adapter file exists"),
 		LoadBlueprintHelperWriteFamilyUnitOfWorkTestSource(
@@ -67,11 +72,56 @@ bool FBlueprintHelperWriteFamilyAdapterSpecializationGuardTest::RunTest(const FS
 			TEXT("Source/BlueprintHelper/Private/Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperUMGWidgetFamilyAdapter.h"),
 			UMGWidgetAdapterSource));
 	TestTrue(
+		TEXT("material instance family adapter file exists"),
+		LoadBlueprintHelperWriteFamilyUnitOfWorkTestSource(
+			*this,
+			TEXT("Source/BlueprintHelper/Private/Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperMaterialInstanceFamilyAdapter.h"),
+			MaterialInstanceAdapterSource));
+	TestTrue(
 		TEXT("graphwrite family adapter class exists"),
 		GraphWriteAdapterSource.Contains(TEXT("FBlueprintHelperGraphWriteFamilyAdapter")));
 	TestTrue(
 		TEXT("umg family adapter class exists"),
 		UMGWidgetAdapterSource.Contains(TEXT("FBlueprintHelperUMGWidgetFamilyAdapter")));
+	TestTrue(
+		TEXT("material instance family adapter class exists"),
+		MaterialInstanceAdapterSource.Contains(TEXT("FBlueprintHelperMaterialInstanceFamilyAdapter")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperWriteFamilyAdapterRegistryResolvesMaterialInstanceTest,
+	"BlueprintHelper.TaskRuntime.WriteFamily.AdapterRegistry.ResolvesMaterialInstance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperWriteFamilyAdapterRegistryResolvesMaterialInstanceTest::RunTest(const FString&)
+{
+	TSharedPtr<IBlueprintHelperWriteFamilyAdapter> Adapter;
+	TestTrue(
+		TEXT("material_instance adapter resolves by write family"),
+		FBlueprintHelperWriteFamilyAdapterRegistry::TryFindByWriteFamily(TEXT("material_instance"), Adapter));
+	TestTrue(TEXT("material_instance adapter is valid"), Adapter.IsValid());
+	if (!Adapter.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(
+		TEXT("material_instance adapter reports write family"),
+		Adapter->GetWriteFamily(),
+		FString(TEXT("material_instance")));
+	TestEqual(
+		TEXT("material_instance adapter reports runtime adapter"),
+		Adapter->GetRuntimeAdapterId(),
+		FString(TEXT("material_instance")));
+
+	TSharedPtr<IBlueprintHelperWriteFamilyAdapter> RuntimeAdapter;
+	TestTrue(
+		TEXT("material_instance adapter resolves by runtime adapter"),
+		FBlueprintHelperWriteFamilyAdapterRegistry::TryFindByRuntimeAdapterId(TEXT("material_instance"), RuntimeAdapter));
+	TestTrue(TEXT("runtime adapter lookup returns same adapter family"),
+		RuntimeAdapter.IsValid() &&
+		RuntimeAdapter->GetWriteFamily().Equals(TEXT("material_instance"), ESearchCase::IgnoreCase));
 	return true;
 }
 

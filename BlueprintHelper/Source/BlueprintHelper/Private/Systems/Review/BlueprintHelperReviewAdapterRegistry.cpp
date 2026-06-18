@@ -2,6 +2,8 @@
 
 #include "Systems/Review/BlueprintHelperReviewAdapterRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewAssetFactoryRestoreAdapter.h"
+#include "Systems/Review/BlueprintHelperReviewMaterialInstanceEvidenceAdapter.h"
+#include "Systems/Review/BlueprintHelperReviewMaterialInstanceRestoreAdapter.h"
 #include "Systems/Review/BlueprintHelperReviewSnapshotRestoreAdapter.h"
 
 TSharedRef<FBlueprintHelperReviewAdapterRegistry> FBlueprintHelperReviewAdapterRegistry::CreateDefault()
@@ -98,6 +100,10 @@ FBlueprintHelperReviewRestoreAdapterLookup FBlueprintHelperReviewAdapterRegistry
 void FBlueprintHelperReviewAdapterRegistry::RegisterBuiltInAdapters()
 {
 	TArray<FBlueprintHelperReviewAdapterRegistryDiagnostic> Diagnostics;
+	RegisterEvidenceAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceEvidenceAdapter>(TEXT("material_instance")), Diagnostics);
+	RegisterEvidenceAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceEvidenceAdapter>(TEXT("material_instance_parameter")), Diagnostics);
+	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceRestoreAdapter>(TEXT("material_instance")), Diagnostics);
+	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceRestoreAdapter>(TEXT("material_instance_parameter")), Diagnostics);
 	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewAssetFactoryRestoreAdapter>(), Diagnostics);
 	for (const FString& TargetKind : FBlueprintHelperReviewSnapshotRestoreAdapter::GetSupportedTargetKinds())
 	{

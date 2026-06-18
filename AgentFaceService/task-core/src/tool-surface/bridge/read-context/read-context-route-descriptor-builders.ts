@@ -71,6 +71,7 @@ const REQUEST_BUILDERS: Readonly<Record<ReadContextRequestBuilderId, ReadContext
   data_table: buildDataTableBridgeRequest,
   data_asset: buildAssetBridgeRequest,
   object_property: buildAssetBridgeRequest,
+  material_instance_context: buildMaterialInstanceBridgeRequest,
 };
 
 export function getReadContextRequestBuilder(id: ReadContextRequestBuilderId): ReadContextRequestBuilder {
@@ -261,6 +262,22 @@ function buildDataTableBridgeRequest(
   return okRequest(route, requiredBridgeCommand(route), payload, route.output_schema);
 }
 
+function buildMaterialInstanceBridgeRequest(
+  input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
+): ReadContextBridgeRequest {
+  const payload: Record<string, unknown> = {
+    asset_path: input.target.asset_path,
+  };
+  if (input.target.target_name) {
+    payload['parameter_name'] = input.target.target_name;
+  }
+  if (input.view?.detail) {
+    payload['detail'] = input.view.detail;
+  }
+  return okRequest(route, requiredBridgeCommand(route), payload, route.output_schema);
+}
+
 function okRequest(
   route: ReadContextRouteDescriptor,
   command: string,
@@ -304,6 +321,9 @@ function resolveEffectiveTargetType(input: ReadContextInput): string {
   const targetType = input.target.target_type;
   if (input.read_type === 'material_graph_context' && (!targetType || targetType === 'blueprint')) {
     return 'material_graph';
+  }
+  if (input.read_type === 'material_instance_context' && (!targetType || targetType === 'blueprint')) {
+    return 'material_instance';
   }
   return targetType ?? 'blueprint';
 }

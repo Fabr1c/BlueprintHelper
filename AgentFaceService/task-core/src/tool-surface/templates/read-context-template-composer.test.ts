@@ -16,12 +16,12 @@ import {
 } from './read-context-template-registry.js';
 import { ReadContextInputSchema } from '../bridge/read-context/read-context-schemas.js';
 
-test('ReadContext template registry exposes active flat routes and hides reserved families', () => {
+test('ReadContext template registry exposes active flat routes and supported families', () => {
   const active = getActiveReadContextRouteDescriptors();
 
   assert.equal(active.some((route) => route.template_id === 'blueprint.logic.function.flow'), true);
   assert.equal(active.some((route) => route.family === 'material'), true);
-  assert.equal(active.some((route) => route.family === 'material_instance'), false);
+  assert.equal(active.some((route) => route.family === 'material_instance'), true);
 
   const functionFlow = getReadContextRouteDescriptor('blueprint.logic.function.flow');
   assert.equal(functionFlow?.family, 'blueprint');
@@ -46,6 +46,16 @@ test('ReadContext template registry exposes active flat routes and hides reserve
   assert.equal(materialLogic?.read_type, 'material_graph_context');
   assert.equal(materialLogic?.target_type, 'material_graph');
   assert.equal(materialLogic?.status, 'active');
+
+  const materialInstance = getReadContextRouteDescriptor('material_instance.schema.asset');
+  assert.equal(materialInstance?.family, 'material_instance');
+  assert.equal(materialInstance?.cluster, 'schema');
+  assert.equal(materialInstance?.read_type, 'material_instance_context');
+  assert.equal(materialInstance?.target_type, 'material_instance');
+  assert.equal(materialInstance?.format, 'schema_json');
+  assert.equal(materialInstance?.status, 'active');
+  assert.equal(materialInstance?.request_builder_id, 'material_instance_context');
+  assert.equal(materialInstance?.payload_projector_id, 'material_instance');
 });
 
 test('ReadContext active route descriptors own request and payload routing facts', () => {
@@ -87,7 +97,7 @@ test('ReadContext flat template index exposes families clusters and flattened te
   assert.equal(families.schema, 'BlueprintHelper.ReadContextTemplateFamilies.v1');
   assert.equal(families.items.some((item) => item.family === 'blueprint'), true);
   assert.equal(families.items.some((item) => item.family === 'material'), true);
-  assert.equal(families.items.some((item) => item.family === 'material_instance'), false);
+  assert.equal(families.items.some((item) => item.family === 'material_instance'), true);
 
   const clusters = listReadContextTemplateClusters({ family: 'blueprint' });
   assert.equal(clusters.schema, 'BlueprintHelper.ReadContextTemplateClusters.v1');
@@ -114,6 +124,27 @@ test('ReadContext flat template index exposes families clusters and flattened te
   assert.equal(functionFlow.recommended_invocation, 'bh context read --file <read-spec.json> --format json');
   assert.deepEqual(functionFlow.allowed_tools, ['bh tools read-templates compose', 'bh context read']);
   assert.equal(functionFlow.stop_conditions.includes('read_context_screenshot_conflict'), true);
+});
+
+test('ReadContext flat composer writes MaterialInstance schema ReadSpec without view format', () => {
+  const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')), 'material-instance.readspec.json');
+
+  const result = composeReadContextTemplate({
+    templateId: 'material_instance.schema.asset',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'material_instance.schema.asset');
+
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+  assert.equal(readSpec.schema, 'BlueprintHelper.ReadSpec.v1');
+  assert.equal(readSpec.read_type, 'material_instance_context');
+  assert.deepEqual(readSpec.target, {
+    asset_path: '__REQUIRED_ASSET_PATH__',
+    target_type: 'material_instance',
+  });
+  assert.equal(Object.hasOwn(readSpec, 'view'), false);
 });
 
 test('ReadContext flat composer writes graph logic_json using blueprint logic route', () => {

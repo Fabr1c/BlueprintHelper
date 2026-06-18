@@ -7,6 +7,7 @@
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
+#include "Runtime/TaskRuntime/Clusters/MaterialInstance/BlueprintHelperMaterialInstanceTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
@@ -25,7 +26,8 @@ public:
 			{EBlueprintHelperTaskRuntimeCluster::Signature, TEXT("Signature"), TEXT("blueprint_signature"), &FBlueprintHelperSignatureTaskRuntimeCluster::CanExecuteStep},
 			{EBlueprintHelperTaskRuntimeCluster::UMGWidget, TEXT("UMGWidget"), TEXT("umg_widget"), &FBlueprintHelperUMGWidgetTaskRuntimeCluster::CanExecuteStep},
 			{EBlueprintHelperTaskRuntimeCluster::DataTable, TEXT("DataTable"), TEXT("data_table"), &FBlueprintHelperDataTableTaskRuntimeCluster::CanExecuteStep},
-			{EBlueprintHelperTaskRuntimeCluster::ObjectProperty, TEXT("ObjectProperty"), TEXT("object_property"), &FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep}
+			{EBlueprintHelperTaskRuntimeCluster::ObjectProperty, TEXT("ObjectProperty"), TEXT("object_property"), &FBlueprintHelperObjectPropertyTaskRuntimeCluster::CanExecuteStep},
+			{EBlueprintHelperTaskRuntimeCluster::MaterialInstance, TEXT("MaterialInstance"), TEXT("material_instance"), &FBlueprintHelperMaterialInstanceTaskRuntimeCluster::CanExecuteStep}
 		};
 		return Descriptors;
 	}

@@ -7,6 +7,7 @@
 #include "Runtime/TaskRuntime/Clusters/Component/BlueprintHelperComponentTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/DataTable/BlueprintHelperDataTableTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperGraphWriteTaskRuntimeCluster.h"
+#include "Runtime/TaskRuntime/Clusters/MaterialInstance/BlueprintHelperMaterialInstanceTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/ObjectProperty/BlueprintHelperObjectPropertyTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/Signature/BlueprintHelperSignatureTaskRuntimeCluster.h"
 #include "Runtime/TaskRuntime/Clusters/UMGWidget/BlueprintHelperUMGWidgetTaskRuntimeCluster.h"
@@ -39,7 +40,8 @@ public:
 			{EBlueprintHelperTaskRuntimeCluster::Signature, &FBlueprintHelperSignatureTaskRuntimeCluster::BuildReviewEvidence},
 			{EBlueprintHelperTaskRuntimeCluster::UMGWidget, &FBlueprintHelperUMGWidgetTaskRuntimeCluster::BuildReviewEvidence},
 			{EBlueprintHelperTaskRuntimeCluster::DataTable, &FBlueprintHelperDataTableTaskRuntimeCluster::BuildReviewEvidence},
-			{EBlueprintHelperTaskRuntimeCluster::ObjectProperty, &FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence}
+			{EBlueprintHelperTaskRuntimeCluster::ObjectProperty, &FBlueprintHelperObjectPropertyTaskRuntimeCluster::BuildReviewEvidence},
+			{EBlueprintHelperTaskRuntimeCluster::MaterialInstance, &FBlueprintHelperMaterialInstanceTaskRuntimeCluster::BuildReviewEvidence}
 		};
 		return Entries;
 	}

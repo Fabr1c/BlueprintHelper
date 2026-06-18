@@ -34,7 +34,8 @@ export type ReadContextRequestBuilderId =
   | 'widget_property'
   | 'data_table'
   | 'data_asset'
-  | 'object_property';
+  | 'object_property'
+  | 'material_instance_context';
 
 export type ReadContextPayloadProjectorId =
   | 'logic'
@@ -43,7 +44,8 @@ export type ReadContextPayloadProjectorId =
   | 'component_tree'
   | 'variable_schema'
   | 'data_table_schema'
-  | 'object_property';
+  | 'object_property'
+  | 'material_instance';
 
 export interface ReadContextTemplateDiagnostic {
   code: string;

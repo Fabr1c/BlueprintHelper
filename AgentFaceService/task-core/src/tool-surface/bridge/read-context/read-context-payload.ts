@@ -60,6 +60,7 @@ export function resolveReadContextPostProcessStage(
     variable_schema: 'read_context.variable_project_payload',
     data_table_schema: 'read_context.data_table_project_payload',
     object_property: 'read_context.object_property_project_payload',
+    material_instance: 'read_context.material_instance_project_payload',
   };
   if (input?.view?.detail === 'brief') {
     return 'read_context.compact_payload';
@@ -166,6 +167,19 @@ function projectObjectPropertyPayload({
   };
 }
 
+function projectMaterialInstancePayload({
+  input,
+  payloadSchema,
+  payload,
+}: ReadContextPayloadProjectorInput): ReadContextPostProcessResult {
+  const normalized = normalizePayload(payloadSchema, payload);
+  return {
+    payload: input.target.target_name
+      ? filterMaterialInstanceParameterPayload(normalized, input.target.target_name)
+      : normalized,
+  };
+}
+
 type LogicProjectionSchema = 'LogicFlow.v1' | 'LogicJson.v1' | 'LogicSnapshot.v1';
 
 function asLogicProjectionSchema(payloadSchema: string): LogicProjectionSchema {
@@ -247,6 +261,49 @@ function filterNamedArrayPayload(
   };
 }
 
+function filterMaterialInstanceParameterPayload(
+  payload: Record<string, unknown>,
+  targetName: string,
+): Record<string, unknown> {
+  const parameterArrayKeys = [
+    'scalar_parameters',
+    'vector_parameters',
+    'texture_parameters',
+    'static_switch_parameters',
+    'parameters',
+  ];
+  let sawParameterArray = false;
+  let parameterCount = 0;
+  const filteredPayload = { ...payload };
+
+  for (const key of parameterArrayKeys) {
+    const value = payload[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    sawParameterArray = true;
+    const filtered = value.filter((item) => {
+      if (!isRecord(item)) {
+        return false;
+      }
+      return ['parameter_name', 'name'].some((nameKey) => {
+        const candidate = item[nameKey];
+        return typeof candidate === 'string' && candidate.toLowerCase() === targetName.toLowerCase();
+      });
+    });
+    filteredPayload[key] = filtered;
+    parameterCount += filtered.length;
+  }
+
+  if (sawParameterArray) {
+    filteredPayload['parameter_filter'] = targetName;
+    filteredPayload['parameter_count'] = parameterCount;
+    filteredPayload['count'] = parameterCount;
+  }
+  return filteredPayload;
+}
+
 registerReadContextPayloadProjector('logic', projectLogicPayload);
 registerReadContextPayloadProjector('asset_context', projectAssetPayload);
 registerReadContextPayloadProjector('widget_tree', projectWidgetTreePayload);
@@ -254,3 +311,4 @@ registerReadContextPayloadProjector('component_tree', projectComponentPayload);
 registerReadContextPayloadProjector('variable_schema', projectVariablePayload);
 registerReadContextPayloadProjector('data_table_schema', projectDataTablePayload);
 registerReadContextPayloadProjector('object_property', projectObjectPropertyPayload);
+registerReadContextPayloadProjector('material_instance', projectMaterialInstancePayload);

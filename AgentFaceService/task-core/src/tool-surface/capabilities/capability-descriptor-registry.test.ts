@@ -68,7 +68,7 @@ test('agent visible capabilities hide reserved or unavailable runtime adapters',
   assert.equal(visible.some((descriptor) => descriptor.id === 'asset_factory.create'), false);
 });
 
-test('MaterialInstance descriptor stays hidden while P4 runtime is blocked', () => {
+test('MaterialInstance descriptor is visible only after its P4 runtime adapter is registered', () => {
   const hidden = listAgentVisibleCapabilities({
     registered_runtime_adapter_ids: [
       'graphwrite_runtime_adapter',
@@ -90,9 +90,9 @@ test('MaterialInstance descriptor stays hidden while P4 runtime is blocked', () 
   });
 
   assert.equal(hidden.some((descriptor) => descriptor.id === 'material_instance.edit'), false);
-  assert.equal(visible.some((descriptor) => descriptor.id === 'material_instance.edit'), false);
-  assert.equal(getCapabilityDescriptor('material_instance.edit')?.runtime.status, 'blocked_until_p4');
-  assert.equal(getCapabilityDescriptor('material_instance.edit')?.safety.reserved_only, true);
+  assert.equal(visible.some((descriptor) => descriptor.id === 'material_instance.edit'), true);
+  assert.equal(getCapabilityDescriptor('material_instance.edit')?.runtime.status, 'active');
+  assert.equal(getCapabilityDescriptor('material_instance.edit')?.safety.reserved_only, false);
 });
 
 test('Struct fields descriptor stays hidden until a real runtime adapter is implemented', () => {

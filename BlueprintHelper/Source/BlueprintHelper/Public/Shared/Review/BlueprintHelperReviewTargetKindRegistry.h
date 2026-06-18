@@ -23,6 +23,7 @@ enum class EBlueprintHelperReviewTargetHandlerKind : uint8
 	StructField,
 	ObjectProperty,
 	MaterialGraph,
+	MaterialInstance,
 	AssetFactory
 };
 

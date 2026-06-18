@@ -35,6 +35,7 @@ const BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET: Readonly<Record<string, string>> = {
 };
 
 const MATERIAL_LOGIC_TEMPLATE = 'AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json';
+const MATERIAL_INSTANCE_SCHEMA_TEMPLATE = 'AgentFaceService/agent-guide/Templates/read/routes/material_instance_schema_template.json';
 
 const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
   ...blueprintLogicRoutes('blueprint', ['logic_flow', 'logic_json']),
@@ -204,7 +205,31 @@ const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
     format: 'property_json',
   }),
   ...materialLogicRoutes(['logic_json', 'logic_flow']),
-  reserved('material_instance.schema.asset', 'material_instance', 'schema', 'MaterialInstance ReadContext runtime adapter is not active yet.'),
+  active('material_instance.schema.asset', 'material_instance', 'schema', 'Read MaterialInstance parent, parameter override, and effective value context.', {
+    read_type: 'material_instance_context',
+    target_type: 'material_instance',
+    format: 'schema_json',
+    template_path: MATERIAL_INSTANCE_SCHEMA_TEMPLATE,
+    bridge_command: 'read_material_instance_context',
+    output_schema: 'MaterialInstanceContext.v1',
+    required_fields: ['target.asset_path'],
+    optional_fields: ['target.target_name', 'view.detail'],
+    request_builder_id: 'material_instance_context',
+    payload_projector_id: 'material_instance',
+    supported_asset_types: ['asset', 'material_instance'],
+    supported_formats: ['schema_json'],
+    context_evidence: {
+      'target.target_type.allowed_values': 'material_instance',
+      'target.target_name': 'Optional parameter name filter.',
+      'output.format': 'schema_json',
+      'view.detail.allowed_values': 'brief | normal | full | debug',
+    },
+    stop_conditions: [
+      'missing_asset_path',
+      'runtime_capability_missing',
+      'read_context_screenshot_conflict',
+    ],
+  }),
   reserved('animation_blueprint.logic.graph.json', 'animation_blueprint', 'logic', 'Animation ReadContext runtime adapter is not active yet.'),
 ];
 
@@ -445,7 +470,7 @@ function shouldEmitReadSpecView(data: Pick<ActiveRouteData, 'read_type' | 'targe
 
 function defaultContextEvidence(data: Pick<ActiveRouteData, 'read_type' | 'target_type' | 'format'>): Record<string, string> {
   const evidence: Record<string, string> = {
-    'target.target_type.allowed_values': 'blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph',
+    'target.target_type.allowed_values': 'blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance',
   };
   const format = data.format;
   if (typeof format === 'string') {

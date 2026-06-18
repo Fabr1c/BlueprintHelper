@@ -96,7 +96,14 @@ static TArray<FBlueprintHelperWriteFamilyDescriptor> BlueprintHelperWriteFamilyB
 				TEXT("widget_strategy"),
 				TEXT("UMGWidget"),
 				TEXT("umg.write.umg_widget"),
-				TEXT("widget_tree"))
+				TEXT("widget_tree")),
+			BlueprintHelperWriteFamilyMakeActiveDescriptor(
+				TEXT("material_instance"),
+				TEXT("material_instance"),
+				TEXT("material_instance_edit"),
+				TEXT("MaterialInstance"),
+				TEXT("material.write.material_instance"),
+				TEXT("material_instance"))
 		};
 }
 

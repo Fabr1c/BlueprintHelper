@@ -3,6 +3,7 @@
 #include "Containers/Set.h"
 #include "Dom/JsonObject.h"
 #include "Misc/AutomationTest.h"
+#include "Systems/ToolClusters/BlueprintHelperToolClusterConfigResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -83,6 +84,7 @@ bool FBlueprintHelperReadContextMaterialRouteMirrorTest::RunTest(const FString&)
 	TMap<FString, FString> ExpectedCommands;
 	ExpectedCommands.Add(TEXT("material.logic.graph.json"), TEXT("read_material_logic_json"));
 	ExpectedCommands.Add(TEXT("material.logic.graph.flow"), TEXT("read_material_logic_json"));
+	ExpectedCommands.Add(TEXT("material_instance.schema.asset"), TEXT("read_material_instance_context"));
 
 	TSet<FString> SeenTemplates;
 	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Route : GBlueprintHelperReadContextRoutes)
@@ -99,13 +101,34 @@ bool FBlueprintHelperReadContextMaterialRouteMirrorTest::RunTest(const FString&)
 		TestEqual(FString::Printf(TEXT("material route is active: %s"), *TemplateId), FString(Route.Status), FString(TEXT("active")));
 		TestEqual(FString::Printf(TEXT("material route command matches runtime: %s"), *TemplateId), FString(Route.Command), *ExpectedCommand);
 		TestEqual(FString::Printf(TEXT("material route cluster matches runtime: %s"), *TemplateId), FString(Route.Cluster), FString(TEXT("SharedServices")));
-		TestEqual(FString::Printf(TEXT("material route family: %s"), *TemplateId), FString(Route.Family), FString(TEXT("material")));
+		TestTrue(
+			FString::Printf(TEXT("material route family: %s"), *TemplateId),
+			FString(Route.Family) == TEXT("material") || FString(Route.Family) == TEXT("material_instance"));
 	}
 
 	for (const TPair<FString, FString>& Expected : ExpectedCommands)
 	{
 		TestTrue(FString::Printf(TEXT("material generated route exists: %s"), *Expected.Key), SeenTemplates.Contains(Expected.Key));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReadContextMaterialInstanceLimiterCommandTest,
+	"BlueprintHelper.ReadContext.RouteManifest.MaterialInstanceLimiterCommand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReadContextMaterialInstanceLimiterCommandTest::RunTest(const FString&)
+{
+	TestTrue(
+		TEXT("MaterialInstance ReadContext command uses shared output limiter"),
+		FBlueprintHelperReadContextOutputLimiter::IsReadContextCommand(TEXT("read_material_instance_context")));
+	TestTrue(
+		TEXT("MaterialGraph ReadContext command still uses shared output limiter"),
+		FBlueprintHelperReadContextOutputLimiter::IsReadContextCommand(TEXT("read_material_logic_json")));
+	TestFalse(
+		TEXT("MaterialInstance write command is not a ReadContext limiter command"),
+		FBlueprintHelperReadContextOutputLimiter::IsReadContextCommand(TEXT("edit_material_instance")));
 	return true;
 }
 

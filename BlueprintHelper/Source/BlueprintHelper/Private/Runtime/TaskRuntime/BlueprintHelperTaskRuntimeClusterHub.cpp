@@ -121,7 +121,8 @@ FBlueprintHelperTaskRuntimeClusterHub::FBlueprintHelperTaskRuntimeClusterHub(
 		SignatureCluster,
 		UMGWidgetCluster,
 		DataTableCluster,
-		ObjectPropertyCluster);
+		ObjectPropertyCluster,
+		MaterialInstanceCluster);
 }
 
 FBlueprintHelperTaskRuntimeClusterHub::~FBlueprintHelperTaskRuntimeClusterHub() = default;

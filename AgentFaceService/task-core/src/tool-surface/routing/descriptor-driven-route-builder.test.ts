@@ -89,11 +89,11 @@ test('descriptor-driven route builder returns structured unavailable for missing
   assert.equal(route.runtime_adapter_id, 'material_graph_runtime_adapter');
 });
 
-test('descriptor-driven route builder keeps MaterialInstance blocked until P4 is unlocked', () => {
+test('descriptor-driven route builder creates MaterialInstance route after P4 runtime unlock', () => {
   const descriptor = getCapabilityDescriptor('material_instance.edit');
   assert.ok(descriptor);
 
-  const unavailable = buildDescriptorDrivenRoute({
+  const route = buildDescriptorDrivenRoute({
     descriptor,
     runtime: {
       ...ACTIVE_RUNTIME,
@@ -106,12 +106,15 @@ test('descriptor-driven route builder keeps MaterialInstance blocked until P4 is
     command: { file: 'material_instance_taskspec.json' },
   });
 
-  assert.equal(unavailable.ok, false);
-  if (unavailable.ok) {
-    throw new Error('Expected material_instance.edit to stay blocked until P4.');
+  assert.equal(route.ok, true);
+  if (!route.ok) {
+    throw new Error('Expected material_instance.edit to be routable after P4 unlock.');
   }
-  assert.equal(unavailable.reason, 'capability_reserved');
-  assert.equal(unavailable.runtime_status, 'blocked_until_p4');
+  assert.equal(route.plan.capability_id, 'material_instance.edit');
+  assert.equal(route.plan.handler_id, 'task_runtime');
+  assert.equal(route.plan.bridge_command, 'execute_task_plan');
+  assert.equal(route.plan.payload['file'], 'material_instance_taskspec.json');
+  assert.equal(route.plan.descriptor_refs.review_evidence_adapter, 'material_instance_review_evidence');
 });
 
 test('descriptor-driven route builder respects write and high-risk runtime policies', () => {

@@ -34,6 +34,7 @@
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintComponent/BlueprintHelperComponentTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataAssetObjectProperty/BlueprintHelperObjectPropertyTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/DataTable/BlueprintHelperDataTableTaskPlanAdapter.h"
+#include "Runtime/TaskRuntime/TaskPlanAdapters/MaterialInstance/BlueprintHelperMaterialInstanceTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/BlueprintSignature/BlueprintHelperSignatureTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/TaskPlanAdapters/UMGWidget/BlueprintHelperWidgetTaskPlanAdapter.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeClusterHub.h"
@@ -6711,6 +6712,16 @@ bool FBlueprintHelperTaskRuntimeService::TryLowerTaskPlanStep(
 	if (Capability == FBlueprintHelperObjectPropertyTaskPlanAdapter::CapabilityObjectProperty)
 	{
 		return FBlueprintHelperObjectPropertyTaskPlanAdapter::TryLowerTaskPlanStep(
+			TaskPlan,
+			StepObject,
+			bDryRun,
+			OutLoweredStep,
+			OutError);
+	}
+
+	if (Capability == FBlueprintHelperMaterialInstanceTaskPlanAdapter::CapabilityMaterialInstance)
+	{
+		return FBlueprintHelperMaterialInstanceTaskPlanAdapter::TryLowerTaskPlanStep(
 			TaskPlan,
 			StepObject,
 			bDryRun,

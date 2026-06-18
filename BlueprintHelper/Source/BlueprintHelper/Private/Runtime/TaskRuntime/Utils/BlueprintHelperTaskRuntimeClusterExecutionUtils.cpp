@@ -818,7 +818,8 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 		: LoweredStep.AdapterOperation;
 	OutEvidence.DisplayLabel = OutEvidence.OperationKind;
 	OutEvidence.ChangeKind = DeriveTaskRuntimeReviewChangeKind(OutEvidence.OperationKind);
-	OutEvidence.TaskStepIndex = StepIndex;using FEvidencePredicate = TFunction<bool()>;
+	OutEvidence.TaskStepIndex = StepIndex;
+	using FEvidencePredicate = TFunction<bool()>;
 	using FEvidenceBuilder = TFunction<void()>;
 	using FEvidenceRoute = TTuple<FEvidencePredicate, FEvidenceBuilder>;
 

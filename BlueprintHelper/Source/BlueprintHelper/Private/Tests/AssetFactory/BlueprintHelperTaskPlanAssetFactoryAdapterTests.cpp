@@ -1178,9 +1178,15 @@ bool FBlueprintHelperTaskRuntimeAssetFactoryPartialFailureBlocksDependentStepTes
 			DirtyPreviewResult.Error->Code,
 			FString(TEXT("review_baseline_dirty_target_assets")));
 		TestEqual(
-			TEXT("dirty preview state is failed execute"),
+			TEXT("dirty preview state prefers open review"),
 			DirtyPreviewResult.Error->DirtyState,
-			FString(TEXT("dirty_after_failed_execute")));
+			FString(TEXT("dirty_with_open_review")));
+		TestTrue(
+			TEXT("dirty preview allows review accept"),
+			DirtyPreviewResult.Error->AllowedRecoveryActions.Contains(TEXT("review.accept")));
+		TestTrue(
+			TEXT("dirty preview allows review reject"),
+			DirtyPreviewResult.Error->AllowedRecoveryActions.Contains(TEXT("review.reject")));
 		TestTrue(
 			TEXT("dirty preview includes failed run evidence"),
 			DirtyPreviewResult.Error->EvidenceRefs.Contains(

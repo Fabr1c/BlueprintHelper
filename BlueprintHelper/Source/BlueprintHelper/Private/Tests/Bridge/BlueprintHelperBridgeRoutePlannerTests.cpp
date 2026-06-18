@@ -96,7 +96,7 @@ bool FBlueprintHelperBridgeCommandRegistry_GeneratedCapabilitiesRegisterBridgeCo
 		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("graphwrite.execute")));
 	TestTrue(TEXT("execute_task_plan contains MaterialGraph capability"),
 		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("material_graph.edit")));
-	TestFalse(TEXT("execute_task_plan hides MaterialInstance P4 capability"),
+	TestTrue(TEXT("execute_task_plan contains active MaterialInstance capability"),
 		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("material_instance.edit")));
 	TestFalse(TEXT("execute_task_plan hides Struct capability without registered UE runtime adapter"),
 		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("struct.fields.edit")));
@@ -200,6 +200,47 @@ bool FBlueprintHelperRequestValidationRegistry_RepresentativeRulesMatchValidator
 			TEXT("read_blueprint_logic_json"),
 			LogicDescriptor));
 	TestTrue(TEXT("logic json descriptor requires asset_path"), BlueprintHelperBridgeTestHasRequiredField(LogicDescriptor, TEXT("asset_path")));
+
+	FBlueprintHelperRequestValidationDescriptor MaterialInstanceDescriptor;
+	TestTrue(
+		TEXT("material instance context descriptor exists"),
+		FBlueprintHelperRequestValidationRegistry::TryFindDescriptor(
+			TEXT("read_material_instance_context"),
+			MaterialInstanceDescriptor));
+	TestTrue(
+		TEXT("material instance context descriptor requires asset_path"),
+		BlueprintHelperBridgeTestHasRequiredField(MaterialInstanceDescriptor, TEXT("asset_path")));
+
+	TSharedPtr<FJsonObject> MaterialInstanceMissingPayload = MakeShared<FJsonObject>();
+	TestFalse(
+		TEXT("material instance context validator rejects missing asset_path"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("read_material_instance_context"),
+			MaterialInstanceMissingPayload,
+			Error));
+	TestEqual(TEXT("missing material instance asset_path field"), Error.Field, FString(TEXT("payload.asset_path")));
+
+	TSharedPtr<FJsonObject> MaterialInstanceInvalidDetailPayload = MakeShared<FJsonObject>();
+	MaterialInstanceInvalidDetailPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/MI_Test"));
+	MaterialInstanceInvalidDetailPayload->SetStringField(TEXT("detail"), TEXT("expanded"));
+	TestFalse(
+		TEXT("material instance context validator rejects invalid detail"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("read_material_instance_context"),
+			MaterialInstanceInvalidDetailPayload,
+			Error));
+	TestEqual(TEXT("invalid material instance detail field"), Error.Field, FString(TEXT("payload.detail")));
+
+	TSharedPtr<FJsonObject> MaterialInstanceValidPayload = MakeShared<FJsonObject>();
+	MaterialInstanceValidPayload->SetStringField(TEXT("asset_path"), TEXT("/Game/MI_Test"));
+	MaterialInstanceValidPayload->SetStringField(TEXT("parameter_name"), TEXT("BaseColor"));
+	MaterialInstanceValidPayload->SetStringField(TEXT("detail"), TEXT("debug"));
+	TestTrue(
+		TEXT("material instance context validator accepts asset_path parameter_name and detail"),
+		FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
+			TEXT("read_material_instance_context"),
+			MaterialInstanceValidPayload,
+			Error));
 	return true;
 }
 

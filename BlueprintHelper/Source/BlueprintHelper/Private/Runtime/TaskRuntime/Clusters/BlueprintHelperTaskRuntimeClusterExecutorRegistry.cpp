@@ -12,7 +12,8 @@ FBlueprintHelperTaskRuntimeClusterExecutorRegistry::CreateDefault(
 	const FBlueprintHelperSignatureTaskRuntimeCluster& SignatureCluster,
 	const FBlueprintHelperUMGWidgetTaskRuntimeCluster& UMGWidgetCluster,
 	const FBlueprintHelperDataTableTaskRuntimeCluster& DataTableCluster,
-	const FBlueprintHelperObjectPropertyTaskRuntimeCluster& ObjectPropertyCluster)
+	const FBlueprintHelperObjectPropertyTaskRuntimeCluster& ObjectPropertyCluster,
+	const FBlueprintHelperMaterialInstanceTaskRuntimeCluster& MaterialInstanceCluster)
 {
 	TUniquePtr<FBlueprintHelperTaskRuntimeClusterExecutorRegistry> Registry =
 		MakeUnique<FBlueprintHelperTaskRuntimeClusterExecutorRegistry>();
@@ -69,6 +70,12 @@ FBlueprintHelperTaskRuntimeClusterExecutorRegistry::CreateDefault(
 		[&ObjectPropertyCluster](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
 		{
 			return ObjectPropertyCluster.ExecuteStep(LoweredStep);
+		});
+	Registry->Register(
+		EBlueprintHelperTaskRuntimeCluster::MaterialInstance,
+		[&MaterialInstanceCluster](const FBlueprintHelperTaskRuntimeLoweredStep& LoweredStep)
+		{
+			return MaterialInstanceCluster.ExecuteStep(LoweredStep);
 		});
 	return Registry;
 }

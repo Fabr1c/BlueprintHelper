@@ -109,6 +109,13 @@ FBlueprintHelperRequestValidationRegistry::GetRepresentativeDescriptors()
 				BlueprintHelperRequestValidationField(TEXT("view"), EBlueprintHelperRequestFieldType::Object),
 			}),
 		BlueprintHelperRequestValidationDescriptor(
+			TEXT("read_material_instance_context"),
+			{BlueprintHelperRequestValidationField(TEXT("asset_path"), EBlueprintHelperRequestFieldType::String)},
+			{
+				BlueprintHelperRequestValidationField(TEXT("parameter_name"), EBlueprintHelperRequestFieldType::String),
+				BlueprintHelperRequestValidationField(TEXT("detail"), EBlueprintHelperRequestFieldType::String),
+			}),
+		BlueprintHelperRequestValidationDescriptor(
 			TEXT("apply_review_action"),
 			{
 				BlueprintHelperRequestValidationField(TEXT("review_record_id"), EBlueprintHelperRequestFieldType::String),

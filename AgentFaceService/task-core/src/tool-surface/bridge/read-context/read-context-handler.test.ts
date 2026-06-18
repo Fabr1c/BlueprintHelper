@@ -164,6 +164,35 @@ test('ReadContext material_graph_context schema accepts only the P0 logic read s
   }).success, false);
 });
 
+test('ReadContext material_instance_context schema accepts asset and optional parameter target', () => {
+  const result = ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_instance_context',
+    target: {
+      asset_path: '/Game/Materials/MI_Test',
+      target_type: 'material_instance',
+      target_name: 'Roughness',
+    },
+    view: {
+      detail: 'full',
+    },
+  });
+
+  assert.equal(result.success, true);
+
+  assert.equal(ReadContextInputSchema.safeParse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_instance_context',
+    target: {
+      asset_path: '/Game/Materials/MI_Test',
+      target_type: 'material_instance',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }).success, false);
+});
+
 test('ReadContext routes material_graph_context to material logic bridge commands', () => {
   const logicJson = ReadContextInputSchema.parse({
     schema: 'BlueprintHelper.ReadSpec.v1',
@@ -201,6 +230,31 @@ test('ReadContext routes material_graph_context to material logic bridge command
   if (logicFlowRequest.ok) {
     assert.equal(logicFlowRequest.command, 'read_material_logic_json');
     assert.equal(logicFlowRequest.payloadSchema, 'LogicJson.v1');
+  }
+});
+
+test('ReadContext routes material_instance_context to MaterialInstance bridge command and payload', () => {
+  const input = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_instance_context',
+    target: {
+      asset_path: '/Game/Materials/MI_Test',
+      target_name: 'Roughness',
+    },
+    view: {
+      detail: 'debug',
+    },
+  });
+
+  const request = buildReadContextBridgeRequest(input);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.command, 'read_material_instance_context');
+    assert.equal(request.payloadSchema, 'MaterialInstanceContext.v1');
+    assert.equal(request.payload['asset_path'], '/Game/Materials/MI_Test');
+    assert.equal(request.payload['parameter_name'], 'Roughness');
+    assert.equal(request.payload['detail'], 'debug');
+    assert.equal(request.route.template_id, 'material_instance.schema.asset');
   }
 });
 
@@ -313,6 +367,79 @@ test('ReadContext material logic_json consumes ToolResult data wrapper payload',
   assert.deepEqual(payload['diagnostics'], []);
 });
 
+test('ReadContext material_instance_context consumes ToolResult payload and filters requested parameter', async () => {
+  const bridgeResponse: BridgeResponse = {
+    request_id: 'material_instance_context_payload',
+    success: true,
+    result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_material_instance_context',
+      status: 'completed',
+      data: {
+        schema: 'MaterialInstanceContext.v1',
+        asset_path: '/Game/Materials/MI_Test',
+        parent_material: '/Game/Materials/M_Base',
+        scalar_parameters: [
+          {
+            parameter_name: 'Roughness',
+            has_override: true,
+            override_value: 0.42,
+            effective_value: 0.42,
+            source: 'override',
+          },
+          {
+            parameter_name: 'Metallic',
+            has_override: false,
+            effective_value: 0,
+            source: 'parent',
+          },
+        ],
+        vector_parameters: [
+          {
+            parameter_name: 'Tint',
+            has_override: false,
+            effective_value: [1, 1, 1, 1],
+            source: 'parent',
+          },
+        ],
+      },
+    },
+  };
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'material_instance_context',
+    target: {
+      asset_path: '/Game/Materials/MI_Test',
+      target_type: 'material_instance',
+      target_name: 'Roughness',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_material_instance_context');
+  assert.equal(bridgeCalls[0]?.payload?.['parameter_name'], 'Roughness');
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'MaterialInstanceContext.v1');
+  assert.equal(payload['parameter_filter'], 'Roughness');
+  assert.equal(payload['parameter_count'], 1);
+  assert.deepEqual((payload['scalar_parameters'] as unknown[]).map((entry) => (entry as Record<string, unknown>)['parameter_name']), ['Roughness']);
+  assert.deepEqual(payload['vector_parameters'], []);
+});
+
 test('ReadContext material projection failures return structured material error', async () => {
   const materialPayload: Record<string, unknown> = {
     schema: 'LogicJson.v1',
@@ -370,6 +497,7 @@ test('read_context capabilities are derived from active ReadContext template reg
   assert.equal(readTypeIds.includes('widget_context'), true);
   assert.equal(readTypeIds.includes('data_table_context'), true);
   assert.equal(readTypeIds.includes('material_graph_context'), true);
+  assert.equal(readTypeIds.includes('material_instance_context'), true);
   assert.equal(readTypeIds.includes('material_context'), false);
 });
 

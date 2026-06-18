@@ -35,6 +35,7 @@ export const ReadContextInputSchema = z.object({
     'data_asset_context',
     'object_property_context',
     'material_graph_context',
+    'material_instance_context',
   ]),
   target: z.object({
     asset_path: z.string(),
@@ -57,6 +58,7 @@ export const ReadContextInputSchema = z.object({
       'property',
       'block',
       'material_graph',
+      'material_instance',
     ]).optional().default('blueprint'),
     target_name: z.string().optional(),
     graph_name: z.string().optional(),

@@ -92,9 +92,15 @@ public:
 
 	static UMaterialInstanceConstant* ResolveInstanceForOp(
 		const FString& AssetPath,
+		UMaterialInstanceConstant* PreviewInstance,
 		FString& OutErrorCode,
 		FString& OutErrorMessage)
 	{
+		if (PreviewInstance)
+		{
+			return PreviewInstance;
+		}
+
 		const FBlueprintHelperMaterialInstanceAssetResolveResult AssetResult =
 			FBlueprintHelperMaterialInstanceResolver::ResolveAsset(AssetPath);
 		if (!AssetResult.bSuccess)
@@ -281,6 +287,7 @@ public:
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
+		UMaterialInstanceConstant*& OutPreviewInstance,
 		TSharedRef<FJsonObject>& OutOpJson,
 		bool& bOutModified,
 		FString& OutErrorCode,
@@ -296,7 +303,12 @@ public:
 		}
 
 		const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *PackagePath, *AssetName, *AssetName);
-		if (FindObject<UObject>(nullptr, *ObjectPath) || LoadObject<UObject>(nullptr, *ObjectPath))
+		const FString PackageName = FString::Printf(TEXT("%s/%s"), *PackagePath, *AssetName);
+		FString ExistingPackageFilename;
+		const bool bPackageExistsOnDisk =
+			FPackageName::DoesPackageExist(PackageName, &ExistingPackageFilename);
+		if (FindObject<UObject>(nullptr, *ObjectPath) ||
+			(bPackageExistsOnDisk && LoadObject<UObject>(nullptr, *ObjectPath)))
 		{
 			OutErrorCode = TEXT("material_instance_asset_already_exists");
 			OutErrorMessage = FString::Printf(TEXT("MaterialInstance asset already exists: %s"), *AssetPath);
@@ -321,7 +333,26 @@ public:
 
 		if (bDryRun)
 		{
+			UPackage* TransientPackage = GetTransientPackage();
+			UMaterialInstanceConstant* PreviewInstance = NewObject<UMaterialInstanceConstant>(
+				TransientPackage,
+				UMaterialInstanceConstant::StaticClass(),
+				NAME_None,
+				RF_Transient);
+			if (!PreviewInstance)
+			{
+				OutErrorCode = TEXT("material_instance_preview_create_failed");
+				OutErrorMessage = TEXT("Failed to create transient MaterialInstance preview object.");
+				return false;
+			}
+			if (Parent)
+			{
+				PreviewInstance->SetParentEditorOnly(Parent);
+				UMaterialEditingLibrary::UpdateMaterialInstance(PreviewInstance);
+			}
+			OutPreviewInstance = PreviewInstance;
 			OutOpJson->SetStringField(TEXT("status"), TEXT("preview"));
+			OutOpJson->SetStringField(TEXT("object_path"), ObjectPath);
 			return true;
 		}
 
@@ -362,12 +393,13 @@ public:
 	static bool TryResolveInstanceAndParameter(
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
+		UMaterialInstanceConstant* PreviewInstance,
 		UMaterialInstanceConstant*& OutInstance,
 		FBlueprintHelperMaterialInstanceParameterResolveResult& OutParameter,
 		FString& OutErrorCode,
 		FString& OutErrorMessage)
 	{
-		OutInstance = ResolveInstanceForOp(AssetPath, OutErrorCode, OutErrorMessage);
+		OutInstance = ResolveInstanceForOp(AssetPath, PreviewInstance, OutErrorCode, OutErrorMessage);
 		if (!OutInstance)
 		{
 			return false;
@@ -397,6 +429,7 @@ public:
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
+		UMaterialInstanceConstant* PreviewInstance,
 		TSharedRef<FJsonObject>& OutOpJson,
 		bool& bOutModified,
 		FString& OutErrorCode,
@@ -420,7 +453,11 @@ public:
 
 		FString ResolveErrorCode;
 		FString ResolveErrorMessage;
-		UMaterialInstanceConstant* Instance = ResolveInstanceForOp(AssetPath, ResolveErrorCode, ResolveErrorMessage);
+		UMaterialInstanceConstant* Instance = ResolveInstanceForOp(
+			AssetPath,
+			PreviewInstance,
+			ResolveErrorCode,
+			ResolveErrorMessage);
 		if (!Instance)
 		{
 			OutErrorCode = ResolveErrorCode;
@@ -429,18 +466,25 @@ public:
 		}
 
 		OutOpJson->SetStringField(TEXT("parent_material"), ParentPath);
-		if (bDryRun)
+		const bool bPreviewMutation = bDryRun && PreviewInstance && Instance == PreviewInstance;
+		if (bDryRun && !bPreviewMutation)
 		{
 			OutOpJson->SetStringField(TEXT("status"), TEXT("preview"));
 			return true;
 		}
 
-		Instance->Modify();
+		if (!bDryRun)
+		{
+			Instance->Modify();
+		}
 		Instance->SetParentEditorOnly(Parent);
 		UMaterialEditingLibrary::UpdateMaterialInstance(Instance);
-		Instance->MarkPackageDirty();
-		bOutModified = true;
-		OutOpJson->SetStringField(TEXT("status"), TEXT("applied"));
+		if (!bDryRun)
+		{
+			Instance->MarkPackageDirty();
+			bOutModified = true;
+		}
+		OutOpJson->SetStringField(TEXT("status"), bDryRun ? TEXT("preview") : TEXT("applied"));
 		return true;
 	}
 
@@ -449,6 +493,7 @@ public:
 		const FString& Op,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
+		UMaterialInstanceConstant* PreviewInstance,
 		TSharedRef<FJsonObject>& OutOpJson,
 		bool& bOutModified,
 		FString& OutErrorCode,
@@ -456,19 +501,30 @@ public:
 	{
 		UMaterialInstanceConstant* Instance = nullptr;
 		FBlueprintHelperMaterialInstanceParameterResolveResult Parameter;
-		if (!TryResolveInstanceAndParameter(AssetPath, OpObject, Instance, Parameter, OutErrorCode, OutErrorMessage))
+		if (!TryResolveInstanceAndParameter(
+			AssetPath,
+			OpObject,
+			PreviewInstance,
+			Instance,
+			Parameter,
+			OutErrorCode,
+			OutErrorMessage))
 		{
 			return false;
 		}
 
 		OutOpJson->SetObjectField(TEXT("before"), MakeParameterValueJson(Parameter.Parameter));
-		if (bDryRun)
+		const bool bPreviewMutation = bDryRun && PreviewInstance && Instance == PreviewInstance;
+		if (bDryRun && !bPreviewMutation)
 		{
 			OutOpJson->SetStringField(TEXT("status"), TEXT("preview"));
 			return true;
 		}
 
-		Instance->Modify();
+		if (!bDryRun)
+		{
+			Instance->Modify();
+		}
 		if (Op == TEXT("set_scalar_override"))
 		{
 			double Value = 0.0;
@@ -542,8 +598,11 @@ public:
 		}
 
 		UMaterialEditingLibrary::UpdateMaterialInstance(Instance);
-		Instance->MarkPackageDirty();
-		bOutModified = true;
+		if (!bDryRun)
+		{
+			Instance->MarkPackageDirty();
+			bOutModified = true;
+		}
 		const FBlueprintHelperMaterialInstanceParameterResolveResult After =
 			FBlueprintHelperMaterialInstanceResolver::ResolveParameter(
 				Instance,
@@ -553,7 +612,7 @@ public:
 		{
 			OutOpJson->SetObjectField(TEXT("after"), MakeParameterValueJson(After.Parameter));
 		}
-		OutOpJson->SetStringField(TEXT("status"), TEXT("applied"));
+		OutOpJson->SetStringField(TEXT("status"), bDryRun ? TEXT("preview") : TEXT("applied"));
 		return true;
 	}
 
@@ -561,6 +620,7 @@ public:
 		const FString& AssetPath,
 		const TSharedPtr<FJsonObject>& OpObject,
 		bool bDryRun,
+		UMaterialInstanceConstant* PreviewInstance,
 		TSharedRef<FJsonObject>& OutOpJson,
 		bool& bOutModified,
 		FString& OutErrorCode,
@@ -568,19 +628,30 @@ public:
 	{
 		UMaterialInstanceConstant* Instance = nullptr;
 		FBlueprintHelperMaterialInstanceParameterResolveResult Parameter;
-		if (!TryResolveInstanceAndParameter(AssetPath, OpObject, Instance, Parameter, OutErrorCode, OutErrorMessage))
+		if (!TryResolveInstanceAndParameter(
+			AssetPath,
+			OpObject,
+			PreviewInstance,
+			Instance,
+			Parameter,
+			OutErrorCode,
+			OutErrorMessage))
 		{
 			return false;
 		}
 
 		OutOpJson->SetObjectField(TEXT("before"), MakeParameterValueJson(Parameter.Parameter));
-		if (bDryRun)
+		const bool bPreviewMutation = bDryRun && PreviewInstance && Instance == PreviewInstance;
+		if (bDryRun && !bPreviewMutation)
 		{
 			OutOpJson->SetStringField(TEXT("status"), TEXT("preview"));
 			return true;
 		}
 
-		Instance->Modify();
+		if (!bDryRun)
+		{
+			Instance->Modify();
+		}
 		const bool bRemoved = ClearSingleOverride(Instance, Parameter.Parameter);
 		const FBlueprintHelperMaterialInstanceParameterResolveResult After =
 			FBlueprintHelperMaterialInstanceResolver::ResolveParameter(
@@ -592,8 +663,11 @@ public:
 			OutOpJson->SetObjectField(TEXT("after"), MakeParameterValueJson(After.Parameter));
 		}
 		OutOpJson->SetBoolField(TEXT("override_removed"), bRemoved);
-		OutOpJson->SetStringField(TEXT("status"), TEXT("applied"));
-		bOutModified = bOutModified || bRemoved;
+		OutOpJson->SetStringField(TEXT("status"), bDryRun ? TEXT("preview") : TEXT("applied"));
+		if (!bDryRun)
+		{
+			bOutModified = bOutModified || bRemoved;
+		}
 		return true;
 	}
 
@@ -601,13 +675,18 @@ public:
 		const FString& AssetPath,
 		const FString& Op,
 		const TSharedPtr<FJsonObject>& OpObject,
+		UMaterialInstanceConstant* PreviewInstance,
 		TSharedRef<FJsonObject>& OutOpJson,
 		FString& OutErrorCode,
 		FString& OutErrorMessage)
 	{
 		FString ResolveErrorCode;
 		FString ResolveErrorMessage;
-		UMaterialInstanceConstant* Instance = ResolveInstanceForOp(AssetPath, ResolveErrorCode, ResolveErrorMessage);
+		UMaterialInstanceConstant* Instance = ResolveInstanceForOp(
+			AssetPath,
+			PreviewInstance,
+			ResolveErrorCode,
+			ResolveErrorMessage);
 		if (!Instance)
 		{
 			OutErrorCode = ResolveErrorCode;
@@ -722,6 +801,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 	}
 
 	bool bModified = false;
+	UMaterialInstanceConstant* PreviewInstance = nullptr;
 	TArray<TSharedPtr<FJsonValue>> OperationResults;
 	for (int32 Index = 0; Index < OpsArray->Num(); ++Index)
 	{
@@ -749,6 +829,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 				AssetPath,
 				OpObject,
 				bDryRun,
+				PreviewInstance,
 				OpJson,
 				bModified,
 				ErrorCode,
@@ -760,6 +841,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 				AssetPath,
 				OpObject,
 				bDryRun,
+				PreviewInstance,
 				OpJson,
 				bModified,
 				ErrorCode,
@@ -775,6 +857,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 				Op,
 				OpObject,
 				bDryRun,
+				PreviewInstance,
 				OpJson,
 				bModified,
 				ErrorCode,
@@ -786,6 +869,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 				AssetPath,
 				OpObject,
 				bDryRun,
+				PreviewInstance,
 				OpJson,
 				bModified,
 				ErrorCode,
@@ -797,6 +881,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperMaterialInstanceMutationAdapter::
 				AssetPath,
 				Op,
 				OpObject,
+				PreviewInstance,
 				OpJson,
 				ErrorCode,
 				ErrorMessage);

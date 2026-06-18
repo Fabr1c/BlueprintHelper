@@ -111,6 +111,21 @@ test('runCli gates material write discovery by runtime adapter fixture', async (
     JSON.stringify(visible.output).includes('material_instance.edit'),
     false,
   );
+
+  const materialInstanceVisible = await runCliJson([
+    'tools',
+    'list',
+    'material',
+    'write',
+    '--runtime-adapters',
+    'material_instance_runtime_adapter',
+    '--format',
+    'json',
+  ]);
+  assert.equal(
+    materialInstanceVisible.output.items.some((item: Record<string, unknown>) => item.id === 'material.write.taskspec.execute'),
+    true,
+  );
 });
 
 test('runCli hydrates material write discovery from runtime profile', async () => {

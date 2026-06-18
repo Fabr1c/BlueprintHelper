@@ -47,7 +47,7 @@ test('routes task preview through descriptor required-option mapping', () => {
   assert.equal(capabilityDescriptorIds.includes('data_table.rows.edit'), true);
   assert.equal(capabilityDescriptorIds.includes('material_graph.edit'), true);
   assert.equal(capabilityDescriptorIds.includes('struct.fields.edit'), false);
-  assert.equal(capabilityDescriptorIds.includes('material_instance.edit'), false);
+  assert.equal(capabilityDescriptorIds.includes('material_instance.edit'), true);
   assert.equal(routed.command.inputIoKind, 'task_file');
   assert.equal(routed.command.file, 'task.json');
   assert.equal(routed.command.compileOnly, true);

@@ -89,6 +89,7 @@ function describeFamily(family: string): string {
     data_table: 'Read DataTable schema and row context.',
     data_asset: 'Read DataAsset object property context.',
     material: 'Read Material graph expressions, parameters, connections, outputs, and owned anchors.',
+    material_instance: 'Read MaterialInstance parent, parameter override, and effective value context.',
   };
   return descriptions[family] ?? `ReadContext templates for ${family} assets.`;
 }
@@ -97,6 +98,9 @@ function describeCluster(family: string, cluster: string): string {
   const familySpecificDescriptions: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     material: {
       logic: 'Read Material graph expressions, parameters, connections, outputs, and owned anchors.',
+    },
+    material_instance: {
+      schema: 'Read MaterialInstance parent material, override state, override value, effective value, and value source.',
     },
   };
   const familyDescription = familySpecificDescriptions[family]?.[cluster];

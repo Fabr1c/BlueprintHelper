@@ -14,7 +14,7 @@ static const FBlueprintHelperGeneratedCapabilityDescriptor GBlueprintHelperGener
 	{ TEXT("debug_case.export_summary"), TEXT("debug_case"), TEXT("export_summary"), TEXT("blueprinthelper_export_debug_bundle"), TEXT("export_debug_bundle"), TEXT("debug_case_export"), TEXT("debug_case_export_runtime_adapter"), TEXT("active"), TEXT("low"), false, false },
 	{ TEXT("graphwrite.execute"), TEXT("graphwrite"), TEXT("execute"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("graphwrite_runtime_adapter"), TEXT("active"), TEXT("high"), false, true },
 	{ TEXT("material_graph.edit"), TEXT("material_graph"), TEXT("edit"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("material_graph_runtime_adapter"), TEXT("active"), TEXT("high"), false, true },
-	{ TEXT("material_instance.edit"), TEXT("material_instance"), TEXT("edit"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("material_instance_runtime_adapter"), TEXT("blocked_until_p4"), TEXT("high"), true, true },
+	{ TEXT("material_instance.edit"), TEXT("material_instance"), TEXT("edit"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("material_instance_runtime_adapter"), TEXT("active"), TEXT("high"), false, true },
 	{ TEXT("struct.fields.edit"), TEXT("struct"), TEXT("edit"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("struct_runtime_adapter"), TEXT("planned"), TEXT("high"), true, true },
 	{ TEXT("umg_widget_tree.edit"), TEXT("umg_widget_tree"), TEXT("edit"), TEXT("task execute"), TEXT("execute_task_plan"), TEXT("task_runtime"), TEXT("umg_widget_runtime_adapter"), TEXT("active"), TEXT("high"), false, true },
 };

@@ -58,7 +58,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "diagnostics_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -116,7 +116,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -172,7 +172,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -228,7 +228,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -286,7 +286,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -344,7 +344,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -463,7 +463,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -521,7 +521,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -640,7 +640,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -698,7 +698,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -817,7 +817,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -875,7 +875,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -988,7 +988,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1039,7 +1039,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1089,7 +1089,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1139,7 +1139,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "tree_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1189,7 +1189,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1240,7 +1240,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1290,7 +1290,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "schema_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1324,33 +1324,55 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     "template_id": "material_instance.schema.asset",
     "family": "material_instance",
     "cluster": "schema",
-    "description": "MaterialInstance ReadContext runtime adapter is not active yet.",
-    "template_path": "",
+    "description": "Read MaterialInstance parent, parameter override, and effective value context.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/material_instance_schema_template.json",
     "read_spec": {
       "schema": "BlueprintHelper.ReadSpec.v1",
-      "read_type": "asset_context",
-      "target": {}
+      "read_type": "material_instance_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "material_instance"
+      }
     },
-    "required_fields": [],
-    "optional_fields": [],
-    "context_evidence": {},
-    "output_schema": "Reserved.v1",
+    "required_fields": [
+      "target.asset_path"
+    ],
+    "optional_fields": [
+      "target.target_name",
+      "view.detail"
+    ],
+    "context_evidence": {
+      "target.target_type.allowed_values": "material_instance",
+      "target.target_name": "Optional parameter name filter.",
+      "output.format": "schema_json",
+      "view.detail.allowed_values": "brief | normal | full | debug"
+    },
     "recommended_invocation": "bh context read --file <read-spec.json> --format json",
     "allowed_tools": [
       "bh tools read-templates compose",
       "bh context read"
     ],
     "stop_conditions": [
-      "runtime_capability_missing"
+      "missing_asset_path",
+      "runtime_capability_missing",
+      "read_context_screenshot_conflict"
     ],
-    "status": "reserved",
+    "status": "active",
     "payload_schema": "BlueprintHelper.ReadSpec.v1",
-    "read_type": "asset_context",
-    "request_builder_id": "asset_context",
-    "payload_projector_id": "asset_context",
-    "supported_asset_types": [],
-    "supported_formats": [],
-    "reason": "MaterialInstance ReadContext runtime adapter is not active yet."
+    "read_type": "material_instance_context",
+    "target_type": "material_instance",
+    "format": "schema_json",
+    "bridge_command": "read_material_instance_context",
+    "output_schema": "MaterialInstanceContext.v1",
+    "request_builder_id": "material_instance_context",
+    "payload_projector_id": "material_instance",
+    "supported_asset_types": [
+      "asset",
+      "material_instance"
+    ],
+    "supported_formats": [
+      "schema_json"
+    ]
   },
   {
     "template_id": "material.logic.graph.flow",
@@ -1377,7 +1399,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1434,7 +1456,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
       "view.max_items"
     ],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1487,7 +1509,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "output.format": "property_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1540,7 +1562,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "logic_flow | logic_json | logic_json_delta_after_logic_flow",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },
@@ -1593,7 +1615,7 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ],
     "optional_fields": [],
     "context_evidence": {
-      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph",
+      "target.target_type.allowed_values": "blueprint | function | event | custom_event | graph | block | widget | data_table | data_table_row | data_asset | property | material_graph | material_instance",
       "view.format.allowed_values": "tree_json",
       "view.detail.allowed_values": "brief | normal | full | debug"
     },

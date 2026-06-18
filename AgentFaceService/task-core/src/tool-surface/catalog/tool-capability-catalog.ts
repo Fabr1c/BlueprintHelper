@@ -66,8 +66,9 @@ const CAPABILITIES: readonly ToolCapabilityItem[] = [
   capability('data.write.taskspec.execute', 'data', 'write', 'blueprinthelper_execute_task', 'Execute DataAsset, DataTable, or object-property TaskSpec changes.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
   capability('material.read.context.logic_json', 'material', 'read', 'blueprinthelper_read_context', 'Read Material graph expressions, parameters, connections, outputs, and anchors as LogicJson.', 'blueprint-explorer', 'low', true, false, []),
   capability('material.read.context.logic_flow', 'material', 'read', 'blueprinthelper_read_context', 'Read compact Material graph data flow for Agent reasoning.', 'blueprint-explorer', 'low', true, false, []),
-  capability('material.plan.taskspec.preview', 'material', 'plan', 'blueprinthelper_preview_task', 'Preview MaterialGraph TaskSpec changes.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
-  capability('material.write.taskspec.execute', 'material', 'write', 'blueprinthelper_execute_task', 'Execute MaterialGraph TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
+  capability('material.read.context.material_instance', 'material', 'read', 'blueprinthelper_read_context', 'Read MaterialInstance parent, override state, override value, effective value, and value source.', 'blueprint-explorer', 'low', true, false, []),
+  capability('material.plan.taskspec.preview', 'material', 'plan', 'blueprinthelper_preview_task', 'Preview MaterialGraph or MaterialInstance TaskSpec changes.', 'task-worker', 'low', false, false, ['task_preview_bare_taskspec']),
+  capability('material.write.taskspec.execute', 'material', 'write', 'blueprinthelper_execute_task', 'Execute MaterialGraph or MaterialInstance TaskSpec changes after preview.', 'task-worker', 'high', false, true, ['task_execute_bare_taskspec']),
   capability('editor.read.runtime_profile', 'editor', 'read', 'blueprint_get_runtime_profile', 'Read BlueprintHelper runtime profile from the running Editor Bridge.', 'blueprint-explorer', 'low', true, false, ['blueprint_get_runtime_profile']),
   capability('editor.read.screenshot', 'editor', 'read', 'blueprinthelper_capture_screenshot', 'Capture screenshot evidence for an asset, graph, block, or node.', 'blueprint-explorer', 'low', true, false, ['blueprinthelper_capture_screenshot']),
   capability('editor.read.source_control.status', 'editor', 'read', 'blueprinthelper_source_control_status', 'Read source-control checkout and lock state for assets or files before a write.', 'task-worker', 'low', true, false, ['blueprinthelper_source_control_status']),
@@ -120,7 +121,7 @@ const BLUEPRINT_TASK_RUNTIME_FAMILIES = [
 ] as const;
 const UMG_TASK_RUNTIME_FAMILIES = ['umg_widget_tree'] as const;
 const DATA_TASK_RUNTIME_FAMILIES = ['object_property', 'data_table', 'struct'] as const;
-const MATERIAL_TASK_RUNTIME_FAMILIES = ['material_graph'] as const;
+const MATERIAL_TASK_RUNTIME_FAMILIES = ['material_graph', 'material_instance'] as const;
 const DEBUG_CASE_EXPORT_FAMILIES = ['debug_case'] as const;
 
 const REQUIRED_DESCRIPTOR_IDS_BY_CAPABILITY_ID = new Map<string, readonly string[]>([
@@ -341,6 +342,8 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     route.family === 'material' && route.cluster === 'logic' && route.format === 'logic_json');
   const materialLogicFlowRouteRefs = readContextRouteRefs((route) =>
     route.family === 'material' && route.cluster === 'logic' && route.format === 'logic_flow');
+  const materialInstanceRouteRefs = readContextRouteRefs((route) =>
+    route.family === 'material_instance');
   return new Map<string, ToolCapabilityDescriptorOptions>([
     ['blueprint.discover.assets', {
       stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
@@ -466,6 +469,11 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['material.read.context.logic_flow', {
       route_refs: materialLogicFlowRouteRefs,
+      stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
+      help_usage: READ_CONTEXT_HELP_USAGE,
+    }],
+    ['material.read.context.material_instance', {
+      route_refs: materialInstanceRouteRefs,
       stop_conditions: READ_CONTEXT_STOP_CONDITIONS,
       help_usage: READ_CONTEXT_HELP_USAGE,
     }],

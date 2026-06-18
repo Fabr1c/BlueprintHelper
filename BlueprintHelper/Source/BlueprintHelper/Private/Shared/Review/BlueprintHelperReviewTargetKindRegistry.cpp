@@ -36,6 +36,8 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 		{ TEXT("material_expression"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_expression"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
 		{ TEXT("material_expression_link"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_expression_link"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
 		{ TEXT("material_output_link"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_output_link"), EBlueprintHelperReviewTargetHandlerKind::MaterialGraph },
+		{ TEXT("material_instance"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_instance"), EBlueprintHelperReviewTargetHandlerKind::MaterialInstance },
+		{ TEXT("material_instance_parameter"), EBlueprintHelperReviewSurface::Material, false, TEXT("material_parameter"), EBlueprintHelperReviewTargetHandlerKind::MaterialInstance },
 		{ TEXT("component"), EBlueprintHelperReviewSurface::Components, true, TEXT("component"), EBlueprintHelperReviewTargetHandlerKind::Component },
 		{ TEXT("blueprint_variable"), EBlueprintHelperReviewSurface::MyBlueprint, true, TEXT("variable"), EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable },
 		{ TEXT("variable_default"), EBlueprintHelperReviewSurface::MyBlueprint, true, TEXT("variable"), EBlueprintHelperReviewTargetHandlerKind::BlueprintVariable },
@@ -85,6 +87,8 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 		{ TEXT("material_expression"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("material_output_link"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("material_expression_link"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("material_instance"), EBlueprintHelperReviewSurface::Material },
+		{ TEXT("material_instance_parameter"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("material"), EBlueprintHelperReviewSurface::Material },
 		{ TEXT("graph:"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("node:"), EBlueprintHelperReviewSurface::Graph },
@@ -382,9 +386,11 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 		EBlueprintHelperReviewTargetHandlerKind::StructField,
 		EBlueprintHelperReviewTargetHandlerKind::ObjectProperty,
 		EBlueprintHelperReviewTargetHandlerKind::MaterialGraph,
+		EBlueprintHelperReviewTargetHandlerKind::MaterialInstance,
 		EBlueprintHelperReviewTargetHandlerKind::Signature,
 		EBlueprintHelperReviewTargetHandlerKind::UMGWidget,
-		EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty
+		EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty,
+		EBlueprintHelperReviewTargetHandlerKind::AssetFactory
 	};
 
 	const EBlueprintHelperReviewTargetHandlerKind HandlerKind = GetHandlerKind(TargetKind);

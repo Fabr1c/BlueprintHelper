@@ -14,6 +14,13 @@ struct FBlueprintHelperReviewSurfaceDiffProjectionModel
 	FString TargetKey;
 	TArray<FString> MatchKeys;
 	FString DisplayLabel;
+	FString ParameterName;
+	FString ParameterType;
+	FString BeforeValue;
+	FString AfterValue;
+	FString EffectiveValue;
+	FString Source;
+	FString OverrideState;
 	FLinearColor DiffColor = FLinearColor::Transparent;
 	EBlueprintHelperReviewChangeKind ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	bool bCanAccept = false;

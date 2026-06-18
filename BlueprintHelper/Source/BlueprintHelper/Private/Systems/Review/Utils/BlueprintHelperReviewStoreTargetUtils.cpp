@@ -279,15 +279,17 @@ bool FBlueprintHelperReviewStoreTargetUtils::IsAssetLifecycleRootTarget(
 		const FBlueprintHelperReviewAtomicTarget& Target,
 		EBlueprintHelperReviewChangeKind ChangeKind)
 	{
+		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
+			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
+		if (HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory)
+		{
+			return true;
+		}
 		if (ChangeKind != EBlueprintHelperReviewChangeKind::Added)
 		{
 			return false;
 		}
-
-		const EBlueprintHelperReviewTargetHandlerKind HandlerKind =
-			FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(Target.TargetKind);
-		return HandlerKind == EBlueprintHelperReviewTargetHandlerKind::AssetFactory
-			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component
+		return HandlerKind == EBlueprintHelperReviewTargetHandlerKind::Component
 			|| HandlerKind == EBlueprintHelperReviewTargetHandlerKind::UMGWidget;
 	}
 

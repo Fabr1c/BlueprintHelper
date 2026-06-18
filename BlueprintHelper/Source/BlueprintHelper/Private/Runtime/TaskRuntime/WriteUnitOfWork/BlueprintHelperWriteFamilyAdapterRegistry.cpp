@@ -6,6 +6,7 @@
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperClassSettingsFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperDataTableFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperGraphWriteFamilyAdapter.h"
+#include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperMaterialInstanceFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperObjectPropertyFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperSignatureFamilyAdapter.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/Adapters/BlueprintHelperUMGWidgetFamilyAdapter.h"
@@ -24,7 +25,8 @@ public:
 			MakeShared<FBlueprintHelperBlueprintComponentFamilyAdapter>(),
 			MakeShared<FBlueprintHelperObjectPropertyFamilyAdapter>(),
 			MakeShared<FBlueprintHelperDataTableFamilyAdapter>(),
-			MakeShared<FBlueprintHelperUMGWidgetFamilyAdapter>()
+			MakeShared<FBlueprintHelperUMGWidgetFamilyAdapter>(),
+			MakeShared<FBlueprintHelperMaterialInstanceFamilyAdapter>()
 		};
 		return Adapters;
 	}

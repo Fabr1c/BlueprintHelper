@@ -42,7 +42,7 @@ static const FBlueprintHelperGeneratedReadContextRouteDescriptor GBlueprintHelpe
 	{TEXT("data_asset.properties.object"), TEXT("get_object_properties"), TEXT("ObjectProperty"), TEXT("data_asset"), TEXT("properties"), TEXT("data_asset"), TEXT("property_json"), TEXT("active")},
 	{TEXT("data_table.schema.row"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("data_table"), TEXT("schema"), TEXT("data_table_row"), TEXT("schema_json"), TEXT("active")},
 	{TEXT("data_table.schema.table"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("data_table"), TEXT("schema"), TEXT("data_table"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("material_instance.schema.asset"), TEXT(""), TEXT("SharedServices"), TEXT("material_instance"), TEXT("schema"), TEXT(""), TEXT(""), TEXT("reserved")},
+	{TEXT("material_instance.schema.asset"), TEXT("read_material_instance_context"), TEXT("SharedServices"), TEXT("material_instance"), TEXT("schema"), TEXT("material_instance"), TEXT("schema_json"), TEXT("active")},
 	{TEXT("material.logic.graph.flow"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_flow"), TEXT("active")},
 	{TEXT("material.logic.graph.json"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_json"), TEXT("active")},
 	{TEXT("widget.properties.widget"), TEXT("get_widget_properties"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("properties"), TEXT("widget"), TEXT("property_json"), TEXT("active")},

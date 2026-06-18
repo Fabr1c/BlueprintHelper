@@ -2,6 +2,7 @@
 
 #include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/BlueprintHelperReviewGenericSurfaceProjectionAdapter.h"
+#include "UI/Review/BlueprintHelperMaterialInstanceSurfaceProjectionAdapter.h"
 
 TSharedRef<FBlueprintHelperReviewSurfaceProjectionRegistry> FBlueprintHelperReviewSurfaceProjectionRegistry::CreateDefault()
 {
@@ -123,6 +124,7 @@ void FBlueprintHelperReviewSurfaceProjectionRegistry::RegisterBuiltInAdapters()
 		{ TEXT("data_asset"), TEXT("asset_factory") },
 		{ TEXT("umg_widget_tree"), TEXT("asset_factory") },
 		{ TEXT("material"), TEXT("asset_factory") },
+		{ TEXT("material"), TEXT("material_instance") },
 		{ TEXT("material"), TEXT("material_expression") },
 		{ TEXT("material"), TEXT("material_expression_link") },
 		{ TEXT("material"), TEXT("material_output_link") }
@@ -137,6 +139,12 @@ void FBlueprintHelperReviewSurfaceProjectionRegistry::RegisterBuiltInAdapters()
 				BuiltIn.Value),
 			Diagnostics);
 	}
+	RegisterProjectionAdapter(
+		MakeShared<FBlueprintHelperMaterialInstanceSurfaceProjectionAdapter>(
+			FString(),
+			TEXT("material"),
+			TEXT("material_instance_parameter")),
+		Diagnostics);
 }
 
 FString FBlueprintHelperReviewSurfaceProjectionRegistry::MakeProjectionKey(
