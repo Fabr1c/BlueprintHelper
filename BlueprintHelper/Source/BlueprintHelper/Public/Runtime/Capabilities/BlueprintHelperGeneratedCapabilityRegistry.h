@@ -14,6 +14,11 @@ struct FBlueprintHelperGeneratedCapabilityDescriptor
 	const TCHAR* RoutingCliCommand = TEXT("");
 	const TCHAR* RoutingBridgeCommand = TEXT("");
 	const TCHAR* RoutingHandlerId = TEXT("");
+	const TCHAR* RoutingRouteCluster = TEXT("");
+	const TCHAR* RoutingSourceId = TEXT("");
+	const TCHAR* RoutingPolicyId = TEXT("");
+	bool bRoutingAgentVisible = false;
+	bool bRoutingRequiresGameThread = true;
 	const TCHAR* RuntimeAdapterId = TEXT("");
 	const TCHAR* RuntimeStatus = TEXT("");
 	const TCHAR* SafetyRisk = TEXT("");

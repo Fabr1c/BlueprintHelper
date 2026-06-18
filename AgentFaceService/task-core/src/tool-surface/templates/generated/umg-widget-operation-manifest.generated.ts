@@ -27,7 +27,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "delete_widget",
@@ -44,7 +49,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "duplicate_widget_subtree",
@@ -65,7 +75,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "move_widget",
@@ -87,7 +102,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "remove_root_widget",
@@ -115,7 +135,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "rename_widget",
@@ -134,7 +159,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "reparent_widget_blueprint",
@@ -152,7 +182,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_blueprint_class",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "replace_widget_class",
@@ -173,7 +208,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "set_named_slot_content",
@@ -196,7 +236,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "set_slot_property",
@@ -216,7 +261,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_property",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "set_widget_as_variable",
@@ -235,7 +285,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_metadata",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "update_widget_property",
@@ -255,7 +310,12 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "property_json",
     "planned_preview_effect": "widget_property",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   },
   {
     "kind": "wrap_widget",
@@ -274,6 +334,11 @@ export const UMG_WIDGET_OPERATION_MANIFEST = [
     "readback_view": "tree_json",
     "planned_preview_effect": "widget_tree_structural",
     "validation_classification": "shared_policy",
-    "status": "active"
+    "status": "active",
+    "route_cluster": "UMGWidget",
+    "route_source_id": "generated.umg_manifest",
+    "route_policy_id": "generated.operation_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true
   }
 ] as const satisfies readonly UmgWidgetOperationDescriptor[];

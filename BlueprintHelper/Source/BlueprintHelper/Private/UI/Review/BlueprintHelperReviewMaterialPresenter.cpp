@@ -6,9 +6,11 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpression.h"
+#include "Materials/MaterialInstanceConstant.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/MaterialGraph/BlueprintHelperMaterialGraphOwnershipService.h"
 #include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewMaterialInstancePresenterModel.h"
 #include "UI/Review/BlueprintHelperReviewPresenterWidgetUtils.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "Widgets/Layout/SBorder.h"
@@ -135,6 +137,33 @@ public:
 		AddAlias(Row, TEXT("material"));
 		AddAlias(Row, AssetName);
 		AddAlias(Row, Context.AssetPath);
+		State.Rows.Add(Row);
+	}
+
+	static void AddMaterialInstanceSummaryRow(
+		const FBlueprintHelperReviewAssetContext& Context,
+		FBlueprintHelperReviewMaterialPresenterState& State,
+		const UMaterialInstanceConstant* MaterialInstance)
+	{
+		const FString AssetName = FBlueprintHelperReviewPresenterWidgetUtils::GetAssetShortName(Context.AssetPath);
+		const FString ParentPath =
+			MaterialInstance && MaterialInstance->Parent
+				? MaterialInstance->Parent->GetPathName()
+				: FString(TEXT("<none>"));
+		TSharedRef<FBlueprintHelperReviewDataAssetRowItem> Row = MakeRow(
+			FString::Printf(TEXT("Material Instance: %s"), *AssetName),
+			FString::Printf(TEXT("parent=%s"), *ParentPath),
+			FString::Printf(
+				TEXT("asset_factory:material_instance material_instance %s %s %s"),
+				*AssetName,
+				*Context.AssetPath,
+				*ParentPath),
+			0,
+			true);
+		AddAlias(Row, TEXT("material_instance"));
+		AddAlias(Row, AssetName);
+		AddAlias(Row, Context.AssetPath);
+		AddAlias(Row, ParentPath);
 		State.Rows.Add(Row);
 	}
 
@@ -305,6 +334,15 @@ TSharedRef<SWidget> FBlueprintHelperReviewMaterialPresenter::BuildContent(
 	State.ListView.Reset();
 
 	UMaterial* Material = Context.Material.Get();
+	UMaterialInstanceConstant* MaterialInstance = Context.MaterialInstance.Get();
+	if (MaterialInstance)
+	{
+		FBlueprintHelperReviewMaterialPresenterPrivate::AddMaterialInstanceSummaryRow(
+			Context,
+			State,
+			MaterialInstance);
+		FBlueprintHelperReviewMaterialInstancePresenterModel::AppendRows(MaterialInstance, State.Rows);
+	}
 	if (Material)
 	{
 		FBlueprintHelperReviewMaterialPresenterPrivate::AddMaterialSummaryRow(Context, State, Material);

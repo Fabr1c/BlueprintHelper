@@ -10,6 +10,10 @@ struct FBlueprintHelperGeneratedReadContextRouteDescriptor
 	const TCHAR* TemplateId;
 	const TCHAR* Command;
 	const TCHAR* Cluster;
+	const TCHAR* RouteSourceId;
+	const TCHAR* RoutePolicyId;
+	bool bRouteAgentVisible;
+	bool bRouteRequiresGameThread;
 	const TCHAR* Family;
 	const TCHAR* ReadCluster;
 	const TCHAR* TargetType;
@@ -18,36 +22,36 @@ struct FBlueprintHelperGeneratedReadContextRouteDescriptor
 };
 
 static const FBlueprintHelperGeneratedReadContextRouteDescriptor GBlueprintHelperReadContextRoutes[] = {
-	{TEXT("animation_blueprint.logic.graph.json"), TEXT(""), TEXT("SharedServices"), TEXT("animation_blueprint"), TEXT("logic"), TEXT(""), TEXT(""), TEXT("reserved")},
-	{TEXT("blueprint.asset.diagnostics"), TEXT("get_asset_info"), TEXT("AssetBrowser"), TEXT("blueprint"), TEXT("asset"), TEXT("asset"), TEXT("diagnostics_json"), TEXT("active")},
-	{TEXT("blueprint.logic.block.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("block"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.blueprint.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("blueprint"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.blueprint.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("blueprint"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.custom_event.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.custom_event.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.custom_event.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.event.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.event.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.event.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.function.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.function.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.function.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.graph.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("blueprint.logic.graph.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("blueprint.logic.graph.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
-	{TEXT("blueprint.properties.object"), TEXT("get_object_properties"), TEXT("ObjectProperty"), TEXT("blueprint"), TEXT("properties"), TEXT("property"), TEXT("property_json"), TEXT("active")},
-	{TEXT("blueprint.schema.event_dispatchers"), TEXT("list_event_dispatchers"), TEXT("BlueprintStructure"), TEXT("blueprint"), TEXT("schema"), TEXT("event_dispatcher"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("blueprint.schema.variables"), TEXT("list_variables"), TEXT("BlueprintStructure"), TEXT("blueprint"), TEXT("schema"), TEXT("member_variable"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("blueprint.structure.components"), TEXT("read_components"), TEXT("Component"), TEXT("blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("tree_json"), TEXT("active")},
-	{TEXT("data_asset.properties.object"), TEXT("get_object_properties"), TEXT("ObjectProperty"), TEXT("data_asset"), TEXT("properties"), TEXT("data_asset"), TEXT("property_json"), TEXT("active")},
-	{TEXT("data_table.schema.row"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("data_table"), TEXT("schema"), TEXT("data_table_row"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("data_table.schema.table"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("data_table"), TEXT("schema"), TEXT("data_table"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("material_instance.schema.asset"), TEXT("read_material_instance_context"), TEXT("SharedServices"), TEXT("material_instance"), TEXT("schema"), TEXT("material_instance"), TEXT("schema_json"), TEXT("active")},
-	{TEXT("material.logic.graph.flow"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("material.logic.graph.json"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_json"), TEXT("active")},
-	{TEXT("widget.properties.widget"), TEXT("get_widget_properties"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("properties"), TEXT("widget"), TEXT("property_json"), TEXT("active")},
-	{TEXT("widget.structure.tree_flow"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("logic_flow"), TEXT("active")},
-	{TEXT("widget.structure.tree_json"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("widget_blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("tree_json"), TEXT("active")}
+	{TEXT("animation_blueprint.logic.graph.json"), TEXT(""), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("animation_blueprint"), TEXT("logic"), TEXT(""), TEXT(""), TEXT("reserved")},
+	{TEXT("blueprint.asset.diagnostics"), TEXT("get_asset_info"), TEXT("AssetBrowser"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("asset"), TEXT("asset"), TEXT("diagnostics_json"), TEXT("active")},
+	{TEXT("blueprint.logic.block.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("block"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.blueprint.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("blueprint"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.blueprint.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("blueprint"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.custom_event.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.custom_event.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.custom_event.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("custom_event"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.event.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.event.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.event.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("event"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.function.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.function.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.function.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("function"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.graph.flow"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("blueprint.logic.graph.json"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("blueprint.logic.graph.json_delta"), TEXT("read_blueprint_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("logic"), TEXT("graph"), TEXT("logic_json_delta_after_logic_flow"), TEXT("active")},
+	{TEXT("blueprint.properties.object"), TEXT("get_object_properties"), TEXT("ObjectProperty"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("properties"), TEXT("property"), TEXT("property_json"), TEXT("active")},
+	{TEXT("blueprint.schema.event_dispatchers"), TEXT("list_event_dispatchers"), TEXT("BlueprintStructure"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("schema"), TEXT("event_dispatcher"), TEXT("schema_json"), TEXT("active")},
+	{TEXT("blueprint.schema.variables"), TEXT("list_variables"), TEXT("BlueprintStructure"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("schema"), TEXT("member_variable"), TEXT("schema_json"), TEXT("active")},
+	{TEXT("blueprint.structure.components"), TEXT("read_components"), TEXT("Component"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("tree_json"), TEXT("active")},
+	{TEXT("data_asset.properties.object"), TEXT("get_object_properties"), TEXT("ObjectProperty"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("data_asset"), TEXT("properties"), TEXT("data_asset"), TEXT("property_json"), TEXT("active")},
+	{TEXT("data_table.schema.row"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("data_table"), TEXT("schema"), TEXT("data_table_row"), TEXT("schema_json"), TEXT("active")},
+	{TEXT("data_table.schema.table"), TEXT("get_datatable_rows"), TEXT("DataTable"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("data_table"), TEXT("schema"), TEXT("data_table"), TEXT("schema_json"), TEXT("active")},
+	{TEXT("material_instance.schema.asset"), TEXT("read_material_instance_context"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("material_instance"), TEXT("schema"), TEXT("material_instance"), TEXT("schema_json"), TEXT("active")},
+	{TEXT("material.logic.graph.flow"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("material.logic.graph.json"), TEXT("read_material_logic_json"), TEXT("SharedServices"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("material"), TEXT("logic"), TEXT("material_graph"), TEXT("logic_json"), TEXT("active")},
+	{TEXT("widget.properties.widget"), TEXT("get_widget_properties"), TEXT("UMGWidget"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("widget_blueprint"), TEXT("properties"), TEXT("widget"), TEXT("property_json"), TEXT("active")},
+	{TEXT("widget.structure.tree_flow"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("widget_blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("logic_flow"), TEXT("active")},
+	{TEXT("widget.structure.tree_json"), TEXT("get_widget_tree"), TEXT("UMGWidget"), TEXT("generated.read_context_manifest"), TEXT("generated.route_manifest"), false, true, TEXT("widget_blueprint"), TEXT("structure"), TEXT("blueprint"), TEXT("tree_json"), TEXT("active")}
 };
 
 static constexpr int32 GBlueprintHelperReadContextRouteCount = UE_ARRAY_COUNT(GBlueprintHelperReadContextRoutes);

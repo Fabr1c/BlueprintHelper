@@ -1,6 +1,5 @@
 #include "Runtime/Capabilities/BlueprintHelperRuntimeCapabilityStateBuilder.h"
 
-#include "Entry/Bridge/BlueprintHelperBridgeRoutePlanner.h"
 #include "Runtime/Capabilities/BlueprintHelperGeneratedCapabilityRegistry.h"
 #include "Runtime/TaskRuntime/Clusters/BlueprintHelperTaskRuntimeClusterFamilyRegistry.h"
 #include "Runtime/TaskRuntime/WriteUnitOfWork/BlueprintHelperWriteFamilyAdapterRegistry.h"
@@ -63,15 +62,8 @@ static bool BlueprintHelperRuntimeStateHasRegisteredTaskRuntimeAdapter(
 static bool BlueprintHelperRuntimeStateHasRegisteredDebugCaseExportAdapter(
 	const FBlueprintHelperGeneratedCapabilityDescriptor& Descriptor)
 {
-	if (FString(Descriptor.RoutingBridgeCommand).IsEmpty())
-	{
-		return false;
-	}
-
-	const FBlueprintHelperBridgeRoutePlan RoutePlan =
-		FBlueprintHelperBridgeRoutePlanner::BuildPlan(FString(Descriptor.RoutingBridgeCommand));
-	return RoutePlan.bKnownCommand &&
-		RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::Debug;
+	return FString(Descriptor.RoutingHandlerId) == TEXT("debug_case_export") &&
+		FString(Descriptor.RoutingBridgeCommand) == TEXT("export_debug_bundle");
 }
 
 static bool BlueprintHelperRuntimeStateHasRegisteredRuntimeAdapter(

@@ -1,9 +1,20 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "MaterialEditingLibrary.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
+#include "Materials/MaterialInstanceConstant.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/PackageName.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/SBlueprintHelperMainWindow.h"
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
+#include "UI/Review/BlueprintHelperReviewAssetContext.h"
+#include "UI/Review/BlueprintHelperReviewMaterialPresenter.h"
+#include "UI/Review/BlueprintHelperReviewMaterialInstancePresenterModel.h"
+#include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceRouter.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
@@ -13,6 +24,104 @@ struct FBlueprintHelperReviewPanelSurfaceHarnessCase
 	EBlueprintHelperReviewSurface Surface = EBlueprintHelperReviewSurface::Unknown;
 	FString TargetKind;
 	FString TargetKeyPrefix;
+};
+
+class FBlueprintHelperReviewPanelMaterialInstanceHarnessLocalUtils
+{
+public:
+	static UMaterial* MakeReviewMaterialWithParameters(
+		const FString& Prefix,
+		const FName ScalarParameterName,
+		float ScalarDefaultValue,
+		const FName VectorParameterName,
+		const FLinearColor& VectorDefaultValue)
+	{
+		UPackage* Package = CreatePackage(*MakeUniquePackageName(Prefix));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UMaterial* Material = NewObject<UMaterial>(
+			Package,
+			UMaterial::StaticClass(),
+			*FPackageName::GetLongPackageAssetName(Package->GetName()),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Material)
+		{
+			return nullptr;
+		}
+
+		UMaterialExpressionScalarParameter* Scalar = Cast<UMaterialExpressionScalarParameter>(
+			UMaterialEditingLibrary::CreateMaterialExpression(
+				Material,
+				UMaterialExpressionScalarParameter::StaticClass()));
+		UMaterialExpressionVectorParameter* Vector = Cast<UMaterialExpressionVectorParameter>(
+			UMaterialEditingLibrary::CreateMaterialExpression(
+				Material,
+				UMaterialExpressionVectorParameter::StaticClass()));
+		if (!Scalar || !Vector)
+		{
+			return nullptr;
+		}
+
+		Scalar->ParameterName = ScalarParameterName;
+		Scalar->DefaultValue = ScalarDefaultValue;
+		Vector->ParameterName = VectorParameterName;
+		Vector->DefaultValue = VectorDefaultValue;
+		Material->UpdateCachedExpressionData();
+		Material->PostEditChange();
+		Package->SetDirtyFlag(false);
+		return Material;
+	}
+
+	static UMaterialInstanceConstant* MakeReviewMaterialInstance(
+		const FString& Prefix,
+		UMaterial* ParentMaterial,
+		const FName ScalarParameterName,
+		float ScalarOverrideValue,
+		const FName VectorParameterName,
+		const FLinearColor& VectorOverrideValue)
+	{
+		UPackage* Package = CreatePackage(*MakeUniquePackageName(Prefix));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UMaterialInstanceConstant* Instance = NewObject<UMaterialInstanceConstant>(
+			Package,
+			UMaterialInstanceConstant::StaticClass(),
+			*FPackageName::GetLongPackageAssetName(Package->GetName()),
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Instance)
+		{
+			return nullptr;
+		}
+
+		if (ParentMaterial)
+		{
+			Instance->SetParentEditorOnly(ParentMaterial);
+		}
+		Instance->SetScalarParameterValueEditorOnly(
+			FMaterialParameterInfo(ScalarParameterName),
+			ScalarOverrideValue);
+		Instance->SetVectorParameterValueEditorOnly(
+			FMaterialParameterInfo(VectorParameterName),
+			VectorOverrideValue);
+		UMaterialEditingLibrary::UpdateMaterialInstance(Instance);
+		Package->SetDirtyFlag(false);
+		return Instance;
+	}
+
+private:
+	static FString MakeUniquePackageName(const FString& Prefix)
+	{
+		return FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	}
 };
 
 static FBlueprintHelperReviewVisibleChange BlueprintHelperReviewPanelMakeSurfaceHarnessChange(
@@ -64,6 +173,7 @@ static FString BlueprintHelperReviewPanelMakeMaterialInstanceParameterSnapshot(
 }
 
 static FBlueprintHelperReviewVisibleChange BlueprintHelperReviewPanelMakeMaterialInstanceHarnessChange(
+	const FString& AssetPath,
 	const FString& ChangeId,
 	const FString& ParameterName,
 	const FString& ParameterType,
@@ -71,12 +181,17 @@ static FBlueprintHelperReviewVisibleChange BlueprintHelperReviewPanelMakeMateria
 	const FString& AfterValue,
 	EBlueprintHelperReviewChangeStatus Status)
 {
-	const FString AssetPath = TEXT("/Game/BlueprintHelperTests/ReviewPanelMaterialInstance/MI_PanelHarness");
 	FBlueprintHelperReviewVisibleChange Change;
 	Change.ChangeId = ChangeId;
 	Change.AssetPath = AssetPath;
-	Change.DisplayLabel = FString::Printf(TEXT("%s (%s)"), *ParameterName, *ParameterType);
-	Change.LocationKey = FString::Printf(TEXT("material_instance_parameter:%s"), *ParameterName);
+	Change.DisplayLabel =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterDisplayLabel(
+			ParameterName,
+			ParameterType);
+	Change.LocationKey =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			ParameterName,
+			ParameterType);
 	Change.LatestEvidenceId = FString::Printf(TEXT("material_instance_panel_evidence_%s"), *ParameterName);
 	Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
 	Change.Status = Status;
@@ -86,7 +201,10 @@ static FBlueprintHelperReviewVisibleChange BlueprintHelperReviewPanelMakeMateria
 	Target.Surface = EBlueprintHelperReviewSurface::Material;
 	Target.TargetKind = TEXT("material_instance_parameter");
 	Target.TargetSubKind = ParameterType;
-	Target.TargetKey = FString::Printf(TEXT("material_instance_parameter:%s:%s"), *ParameterType, *ParameterName);
+	Target.TargetKey =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			ParameterName,
+			ParameterType);
 	Target.VisualGroupKey = Target.TargetKey;
 	Target.DisplayLabel = Change.DisplayLabel;
 	Target.PropertyPath = ParameterName;
@@ -280,6 +398,78 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperReviewPanelMaterialInstanceE2EHarnessTest::RunTest(const FString& Parameters)
 {
+	static const FName ScalarParameterName(TEXT("PanelScalar"));
+	static const FName VectorParameterName(TEXT("PanelVector"));
+
+	UMaterial* ParentMaterial =
+		FBlueprintHelperReviewPanelMaterialInstanceHarnessLocalUtils::MakeReviewMaterialWithParameters(
+			TEXT("ReviewPanelMaterialInstanceParent"),
+			ScalarParameterName,
+			0.0f,
+			VectorParameterName,
+			FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
+	TestNotNull(TEXT("MaterialInstance panel parent material fixture exists"), ParentMaterial);
+
+	UMaterialInstanceConstant* MaterialInstance =
+		FBlueprintHelperReviewPanelMaterialInstanceHarnessLocalUtils::MakeReviewMaterialInstance(
+			TEXT("ReviewPanelMaterialInstance"),
+			ParentMaterial,
+			ScalarParameterName,
+			0.47f,
+			VectorParameterName,
+			FLinearColor(0.2f, 0.45f, 0.8f, 1.0f));
+	TestNotNull(TEXT("MaterialInstance panel fixture exists"), MaterialInstance);
+	if (!ParentMaterial || !MaterialInstance)
+	{
+		return false;
+	}
+
+	const FString MaterialInstanceObjectPath = MaterialInstance->GetPathName();
+	const FBlueprintHelperReviewAssetContext MaterialInstanceContext =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(MaterialInstanceObjectPath);
+	TestTrue(TEXT("Panel harness loads real MaterialInstance asset context"), MaterialInstanceContext.IsValid());
+	TestEqual(
+		TEXT("Panel harness context kind is MaterialInstance"),
+		static_cast<int32>(MaterialInstanceContext.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::MaterialInstance));
+	TestTrue(
+		TEXT("Panel harness context stores concrete MaterialInstance"),
+		MaterialInstanceContext.MaterialInstance.Get() == MaterialInstance);
+	TestEqual(
+		TEXT("Panel harness MaterialInstance routes main workspace to Material"),
+		static_cast<int32>(FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(
+			MaterialInstanceContext.AssetKind)),
+		static_cast<int32>(EBlueprintHelperReviewSurface::Material));
+
+	FBlueprintHelperReviewMaterialPresenterState MaterialPresenterState;
+	FBlueprintHelperReviewMaterialPresenter::BuildContent(MaterialInstanceContext, MaterialPresenterState);
+	const FString ExpectedScalarTargetKey =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			ScalarParameterName.ToString(),
+			TEXT("scalar"));
+	const FString ExpectedVectorTargetKey =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			VectorParameterName.ToString(),
+			TEXT("vector"));
+	const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>* ScalarPresenterRow =
+		MaterialPresenterState.Rows.FindByPredicate(
+			[&ExpectedScalarTargetKey](const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Row)
+			{
+				return Row.IsValid() && Row->SearchText == ExpectedScalarTargetKey;
+			});
+	const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>* VectorPresenterRow =
+		MaterialPresenterState.Rows.FindByPredicate(
+			[&ExpectedVectorTargetKey](const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Row)
+			{
+				return Row.IsValid() && Row->SearchText == ExpectedVectorTargetKey;
+			});
+	TestTrue(TEXT("Real MaterialInstance presenter builds scalar parameter row"), ScalarPresenterRow != nullptr);
+	TestTrue(TEXT("Real MaterialInstance presenter builds vector parameter row"), VectorPresenterRow != nullptr);
+	if (!ScalarPresenterRow || !ScalarPresenterRow->IsValid() || !VectorPresenterRow || !VectorPresenterRow->IsValid())
+	{
+		return false;
+	}
+
 	TSharedRef<SBlueprintHelperMainWindow> MainWindow = SNew(SBlueprintHelperMainWindow);
 	MainWindow->ShowReviewPageForTesting();
 
@@ -292,20 +482,38 @@ bool FBlueprintHelperReviewPanelMaterialInstanceE2EHarnessTest::RunTest(const FS
 
 	FBlueprintHelperReviewVisibleChange AcceptedOverride =
 		BlueprintHelperReviewPanelMakeMaterialInstanceHarnessChange(
+			MaterialInstanceObjectPath,
 			TEXT("material_instance_panel_accept_scalar"),
-			TEXT("PanelScalar"),
+			ScalarParameterName.ToString(),
 			TEXT("scalar"),
 			TEXT("0.0"),
 			TEXT("0.47"),
 			EBlueprintHelperReviewChangeStatus::Pending);
 	FBlueprintHelperReviewVisibleChange RejectedOverride =
 		BlueprintHelperReviewPanelMakeMaterialInstanceHarnessChange(
+			MaterialInstanceObjectPath,
 			TEXT("material_instance_panel_reject_vector"),
-			TEXT("PanelVector"),
+			VectorParameterName.ToString(),
 			TEXT("vector"),
 			TEXT("(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"),
 			TEXT("(R=0.200000,G=0.450000,B=0.800000,A=1.000000)"),
 			EBlueprintHelperReviewChangeStatus::Pending);
+	TestEqual(
+		TEXT("MaterialInstance scalar change uses real MI object path"),
+		AcceptedOverride.AssetPath,
+		MaterialInstanceObjectPath);
+	TestEqual(
+		TEXT("MaterialInstance vector change uses real MI object path"),
+		RejectedOverride.AssetPath,
+		MaterialInstanceObjectPath);
+	TestEqual(
+		TEXT("MaterialInstance scalar projection target uses real MI object path"),
+		AcceptedOverride.AtomicTargets[0].AssetPath,
+		MaterialInstanceObjectPath);
+	TestEqual(
+		TEXT("MaterialInstance vector projection target uses real MI object path"),
+		RejectedOverride.AtomicTargets[0].AssetPath,
+		MaterialInstanceObjectPath);
 
 	TArray<FBlueprintHelperReviewVisibleChange> Changes;
 	Changes.Add(AcceptedOverride);
@@ -313,14 +521,52 @@ bool FBlueprintHelperReviewPanelMaterialInstanceE2EHarnessTest::RunTest(const FS
 
 	const TSharedRef<FBlueprintHelperReviewSurfaceProjectionRegistry> ProjectionRegistry =
 		FBlueprintHelperReviewSurfaceProjectionRegistry::CreateDefault();
+	const FString MaterialInstanceAssetKindName =
+		BlueprintHelperReviewAssetKindToString(MaterialInstanceContext.AssetKind);
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> AcceptedProjectionModels =
+		ProjectionRegistry->ProjectVisibleChange(
+			AcceptedOverride,
+			MaterialInstanceAssetKindName,
+			TEXT("material"));
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> RejectedProjectionModels =
+		ProjectionRegistry->ProjectVisibleChange(
+			RejectedOverride,
+			MaterialInstanceAssetKindName,
+			TEXT("material"));
 	TestEqual(
 		TEXT("MaterialInstance scalar projects through surface projection registry"),
-		ProjectionRegistry->ProjectVisibleChange(AcceptedOverride, TEXT("unknown"), TEXT("material")).Num(),
+		AcceptedProjectionModels.Num(),
 		1);
 	TestEqual(
 		TEXT("MaterialInstance vector projects through surface projection registry"),
-		ProjectionRegistry->ProjectVisibleChange(RejectedOverride, TEXT("unknown"), TEXT("material")).Num(),
+		RejectedProjectionModels.Num(),
 		1);
+	if (AcceptedProjectionModels.Num() == 1)
+	{
+		TestEqual(
+			TEXT("MaterialInstance scalar projection target key matches presenter row key"),
+			AcceptedProjectionModels[0].TargetKey,
+			(*ScalarPresenterRow)->SearchText);
+		TestTrue(
+			TEXT("MaterialInstance scalar projection carries presenter row target key"),
+			AcceptedProjectionModels[0].MatchKeys.Contains((*ScalarPresenterRow)->SearchText));
+		TestTrue(
+			TEXT("MaterialInstance scalar projection carries canonical display label"),
+			AcceptedProjectionModels[0].MatchKeys.Contains(
+				FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterDisplayLabel(
+					ScalarParameterName.ToString(),
+					TEXT("scalar"))));
+	}
+	if (RejectedProjectionModels.Num() == 1)
+	{
+		TestEqual(
+			TEXT("MaterialInstance vector projection target key matches presenter row key"),
+			RejectedProjectionModels[0].TargetKey,
+			(*VectorPresenterRow)->SearchText);
+		TestTrue(
+			TEXT("MaterialInstance vector projection carries presenter row target key"),
+			RejectedProjectionModels[0].MatchKeys.Contains((*VectorPresenterRow)->SearchText));
+	}
 
 	ReviewPanel->RefreshVisibleChangesForTesting(Changes);
 
@@ -346,8 +592,39 @@ bool FBlueprintHelperReviewPanelMaterialInstanceE2EHarnessTest::RunTest(const FS
 		TEXT("Embedded ReviewPanel captures MaterialInstance DebugBundle"),
 		ReviewPanel->CaptureFocusDebugBundleForTesting(BundlePath, CaptureDebugText));
 	TestTrue(
+		TEXT("Embedded ReviewPanel loads real MaterialInstance context"),
+		CaptureDebugText.Contains(FString::Printf(
+			TEXT("ReviewAssetContext asset=\"%s\""),
+			*MaterialInstanceContext.AssetPath))
+		&& CaptureDebugText.Contains(TEXT("kind=material_instance")));
+	TestTrue(
 		TEXT("MaterialInstance DebugBundle file exists"),
 		IFileManager::Get().FileExists(*BundlePath));
+
+	FBlueprintHelperReviewRowBinding ScalarBinding;
+	TestTrue(
+		TEXT("Panel overlay binding resolves scalar presenter row target key"),
+		FBlueprintHelperReviewRowHighlightModel::TryGetRowActionBinding(
+			MaterialInstanceContext.AssetPath,
+			EBlueprintHelperReviewSurface::Material,
+			(*ScalarPresenterRow)->SearchText,
+			ScalarBinding));
+	TestEqual(
+		TEXT("Panel overlay scalar binding target key matches presenter row key"),
+		ScalarBinding.TargetKey,
+		(*ScalarPresenterRow)->SearchText);
+	FBlueprintHelperReviewRowBinding VectorBinding;
+	TestTrue(
+		TEXT("Panel overlay binding resolves vector presenter row target key"),
+		FBlueprintHelperReviewRowHighlightModel::TryGetRowActionBinding(
+			MaterialInstanceContext.AssetPath,
+			EBlueprintHelperReviewSurface::Material,
+			(*VectorPresenterRow)->SearchText,
+			VectorBinding));
+	TestEqual(
+		TEXT("Panel overlay vector binding target key matches presenter row key"),
+		VectorBinding.TargetKey,
+		(*VectorPresenterRow)->SearchText);
 
 	Changes[0].Status = EBlueprintHelperReviewChangeStatus::Accepted;
 	Changes[0].AtomicTargets[0].Status = EBlueprintHelperReviewChangeStatus::Accepted;

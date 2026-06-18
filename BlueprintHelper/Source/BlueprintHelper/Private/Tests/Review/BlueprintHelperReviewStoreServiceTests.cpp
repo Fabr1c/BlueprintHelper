@@ -22,6 +22,10 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "MaterialEditingLibrary.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialInstanceConstant.h"
 #include "HAL/FileManager.h"
 #include "ObjectTools.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
@@ -43,9 +47,11 @@
 #include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewGraphBounds.h"
 #include "UI/Review/BlueprintHelperReviewGraphResolver.h"
+#include "UI/Review/BlueprintHelperReviewMaterialInstancePresenterModel.h"
 #include "UI/Review/BlueprintHelperReviewPanelCommandService.h"
 #include "UI/Review/BlueprintHelperReviewPanelPresenter.h"
 #include "UI/Review/BlueprintHelperReviewPanelStateService.h"
+#include "UI/Review/BlueprintHelperReviewRowHighlightModel.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/BlueprintHelperReviewSurfacePresenter.h"
 #include "Widgets/SNullWidget.h"
@@ -462,6 +468,139 @@ public:
 			RF_Public | RF_Standalone | RF_Transactional);
 		Package->SetDirtyFlag(false);
 		return DataAsset;
+	}
+
+	static UMaterial* MakeReviewMaterialWithScalarParameter(
+		const FString& Prefix,
+		const FName ParameterName,
+		float DefaultValue)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		const FString AssetName = Package->GetName().RightChop(
+			Package->GetName().Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);
+		UMaterial* Material = NewObject<UMaterial>(
+			Package,
+			UMaterial::StaticClass(),
+			*AssetName,
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Material)
+		{
+			return nullptr;
+		}
+
+		UMaterialExpressionScalarParameter* Scalar = Cast<UMaterialExpressionScalarParameter>(
+			UMaterialEditingLibrary::CreateMaterialExpression(
+				Material,
+				UMaterialExpressionScalarParameter::StaticClass()));
+		if (!Scalar)
+		{
+			return nullptr;
+		}
+
+		Scalar->ParameterName = ParameterName;
+		Scalar->DefaultValue = DefaultValue;
+		Material->UpdateCachedExpressionData();
+		Material->PostEditChange();
+		Package->SetDirtyFlag(false);
+		return Material;
+	}
+
+	static UMaterialInstanceConstant* MakeReviewMaterialInstance(
+		const FString& Prefix,
+		UMaterial* ParentMaterial,
+		const FName ParameterName,
+		float OverrideValue)
+	{
+		UPackage* Package = CreatePackage(*FString::Printf(
+			TEXT("/Game/BlueprintHelperReview/%s_%s"),
+			*Prefix,
+			*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		const FString AssetName = Package->GetName().RightChop(
+			Package->GetName().Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);
+		UMaterialInstanceConstant* Instance = NewObject<UMaterialInstanceConstant>(
+			Package,
+			UMaterialInstanceConstant::StaticClass(),
+			*AssetName,
+			RF_Public | RF_Standalone | RF_Transactional);
+		if (!Instance)
+		{
+			return nullptr;
+		}
+
+		if (ParentMaterial)
+		{
+			Instance->SetParentEditorOnly(ParentMaterial);
+		}
+		Instance->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), OverrideValue);
+		UMaterialEditingLibrary::UpdateMaterialInstance(Instance);
+		Package->SetDirtyFlag(false);
+		return Instance;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeReviewMaterialInstanceParameterChange(
+		const FString& AssetPath,
+		const FString& ChangeId,
+		const FString& ParameterName,
+		const FString& ParameterType,
+		const FString& BeforeValue,
+		const FString& AfterValue)
+	{
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.ChangeId = ChangeId;
+		Change.AssetPath = AssetPath;
+		Change.DisplayLabel =
+			FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterDisplayLabel(
+				ParameterName,
+				ParameterType);
+		Change.LocationKey = FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			ParameterName,
+			ParameterType);
+		Change.LatestEvidenceId = ChangeId;
+		Change.SourceEvidenceIds.Add(ChangeId);
+		Change.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+		Change.Status = EBlueprintHelperReviewChangeStatus::Pending;
+
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.AssetPath = AssetPath;
+		Target.Surface = EBlueprintHelperReviewSurface::Material;
+		Target.TargetKind = TEXT("material_instance_parameter");
+		Target.TargetSubKind = ParameterType;
+		Target.TargetKey = FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			ParameterName,
+			ParameterType);
+		Target.VisualGroupKey = Target.TargetKey;
+		Target.DisplayLabel = Change.DisplayLabel;
+		Target.PropertyPath = ParameterName;
+		Target.LatestEvidenceId = Change.LatestEvidenceId;
+		Target.Status = EBlueprintHelperReviewChangeStatus::Pending;
+		Target.BeforeSnapshotJson = FString::Printf(
+			TEXT("{\"target_kind\":\"material_instance_parameter\",\"asset_path\":\"%s\",\"parameter_name\":\"%s\",\"parameter_type\":\"%s\",\"has_override\":false,\"source\":\"inherited\",\"effective_value\":\"%s\",\"override_value\":\"<unset>\",\"override_state\":\"inherited\"}"),
+			*AssetPath,
+			*ParameterName,
+			*ParameterType,
+			*BeforeValue);
+		Target.AfterSnapshotJson = FString::Printf(
+			TEXT("{\"target_kind\":\"material_instance_parameter\",\"asset_path\":\"%s\",\"parameter_name\":\"%s\",\"parameter_type\":\"%s\",\"has_override\":true,\"source\":\"override\",\"effective_value\":\"%s\",\"override_value\":\"%s\",\"override_state\":\"override\"}"),
+			*AssetPath,
+			*ParameterName,
+			*ParameterType,
+			*AfterValue,
+			*AfterValue);
+		Change.AtomicTargets.Add(Target);
+		return Change;
 	}
 
 	static UUserDefinedStruct* MakeReviewUserDefinedStruct(const FString& Prefix)
@@ -8643,6 +8782,209 @@ bool FBlueprintHelperReviewAssetContextLoadsDataAssetTest::RunTest(const FString
 		static_cast<int32>(EBlueprintHelperReviewAssetKind::DataAsset));
 	TestTrue(TEXT("DataAsset context object matches fixture"),
 		Context.AssetObject.Get() == DataAsset);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewAssetContextLoadsMaterialInstanceTest,
+	"BlueprintHelper.Review.UI.AssetContextLoadsMaterialInstance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewAssetContextLoadsMaterialInstanceTest::RunTest(const FString& Parameters)
+{
+	static const FName ScalarParameterName(TEXT("BH_ReviewScalar"));
+	UMaterial* ParentMaterial =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewMaterialWithScalarParameter(
+			TEXT("ReviewAssetContextMaterialParent"),
+			ScalarParameterName,
+			1.25f);
+	TestNotNull(TEXT("parent material fixture exists"), ParentMaterial);
+
+	UMaterialInstanceConstant* MaterialInstance =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewMaterialInstance(
+			TEXT("ReviewAssetContextMaterialInstance"),
+			ParentMaterial,
+			ScalarParameterName,
+			2.5f);
+	TestNotNull(TEXT("material instance fixture exists"), MaterialInstance);
+	if (!ParentMaterial || !MaterialInstance)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(MaterialInstance->GetPathName());
+	TestTrue(TEXT("MaterialInstance context is valid"), Context.IsValid());
+	TestEqual(TEXT("MaterialInstance context kind"),
+		static_cast<int32>(Context.AssetKind),
+		static_cast<int32>(EBlueprintHelperReviewAssetKind::MaterialInstance));
+	TestTrue(TEXT("MaterialInstance context object matches fixture"),
+		Context.AssetObject.Get() == MaterialInstance);
+	TestTrue(TEXT("MaterialInstance context stores concrete instance"),
+		Context.MaterialInstance.Get() == MaterialInstance);
+	TestTrue(TEXT("MaterialInstance context stores material interface"),
+		Context.MaterialInterface.Get() == MaterialInstance);
+	TestNull(TEXT("MaterialInstance context does not reuse UMaterial pointer"), Context.Material.Get());
+
+	TestEqual(TEXT("MaterialInstance main workspace routes to Material surface"),
+		static_cast<int32>(FBlueprintHelperReviewSurfacePresenterRouter::GetMainWorkspaceSurfaceForAssetKind(
+			Context.AssetKind)),
+		static_cast<int32>(EBlueprintHelperReviewSurface::Material));
+
+	FBlueprintHelperReviewMaterialPresenterState State;
+	TSharedRef<SWidget> Widget = FBlueprintHelperReviewMaterialPresenter::BuildContent(Context, State);
+	TestTrue(TEXT("Material presenter content is constructed for MI"), Widget != SNullWidget::NullWidget);
+	TestTrue(TEXT("Material presenter builds readonly MI rows"), State.Rows.Num() > 0);
+
+	const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>* ParameterRow = State.Rows.FindByPredicate(
+		[](const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Row)
+		{
+			return Row.IsValid()
+				&& Row->Label.Contains(TEXT("BH_ReviewScalar"))
+				&& Row->Value.Contains(TEXT("source"))
+				&& Row->Value.Contains(TEXT("override_state"))
+				&& Row->Value.Contains(TEXT("effective_value"));
+		});
+	TestTrue(TEXT("Material presenter includes MI parameter semantics row"), ParameterRow != nullptr);
+	if (ParameterRow && ParameterRow->IsValid())
+	{
+		TestTrue(TEXT("parameter row exposes override source"),
+			(*ParameterRow)->Value.Contains(TEXT("source=override")));
+		TestTrue(TEXT("parameter row exposes override state"),
+			(*ParameterRow)->Value.Contains(TEXT("override_state=override")));
+		TestTrue(TEXT("parameter row exposes effective value"),
+			(*ParameterRow)->Value.Contains(TEXT("effective_value=2.5")));
+		TestTrue(TEXT("parameter row exposes scalar type"),
+			(*ParameterRow)->Value.Contains(TEXT("type=scalar")));
+
+		const FString ExpectedTargetKey =
+			FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+				TEXT("BH_ReviewScalar"),
+				TEXT("scalar"));
+		const FString ExpectedDisplayLabel =
+			FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterDisplayLabel(
+				TEXT("BH_ReviewScalar"),
+				TEXT("scalar"));
+		TestEqual(TEXT("parameter row search text uses canonical target key"),
+			(*ParameterRow)->SearchText,
+			ExpectedTargetKey);
+		TestTrue(TEXT("parameter row aliases carry canonical target key"),
+			(*ParameterRow)->SearchAliases.Contains(ExpectedTargetKey));
+		TestTrue(TEXT("parameter row aliases carry property path"),
+			(*ParameterRow)->SearchAliases.Contains(TEXT("BH_ReviewScalar")));
+		TestTrue(TEXT("parameter row aliases carry display label"),
+			(*ParameterRow)->SearchAliases.Contains(ExpectedDisplayLabel));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewMaterialInstanceOverlayMatchesPresenterRowsTest,
+	"BlueprintHelper.Review.UI.MaterialInstanceOverlayMatchesPresenterRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewMaterialInstanceOverlayMatchesPresenterRowsTest::RunTest(const FString& Parameters)
+{
+	static const FName ScalarParameterName(TEXT("BH_OverlayScalar"));
+	UMaterial* ParentMaterial =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewMaterialWithScalarParameter(
+			TEXT("ReviewOverlayMaterialParent"),
+			ScalarParameterName,
+			1.0f);
+	TestNotNull(TEXT("overlay parent material fixture exists"), ParentMaterial);
+
+	UMaterialInstanceConstant* MaterialInstance =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewMaterialInstance(
+			TEXT("ReviewOverlayMaterialInstance"),
+			ParentMaterial,
+			ScalarParameterName,
+			3.5f);
+	TestNotNull(TEXT("overlay material instance fixture exists"), MaterialInstance);
+	if (!ParentMaterial || !MaterialInstance)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperReviewAssetContext Context =
+		FBlueprintHelperReviewAssetContext::LoadForAssetPath(MaterialInstance->GetPathName());
+	FBlueprintHelperReviewMaterialPresenterState State;
+	FBlueprintHelperReviewMaterialPresenter::BuildContent(Context, State);
+
+	const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>* ParameterRow = State.Rows.FindByPredicate(
+		[](const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Row)
+		{
+			return Row.IsValid() && Row->Label == TEXT("BH_OverlayScalar");
+		});
+	TestTrue(TEXT("presenter builds overlay scalar row"), ParameterRow != nullptr);
+	if (!ParameterRow || !ParameterRow->IsValid())
+	{
+		return false;
+	}
+
+	const FString ExpectedTargetKey =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+			TEXT("BH_OverlayScalar"),
+			TEXT("scalar"));
+	const FString ExpectedDisplayLabel =
+		FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterDisplayLabel(
+			TEXT("BH_OverlayScalar"),
+			TEXT("scalar"));
+
+	FBlueprintHelperReviewVisibleChange Change =
+		FBlueprintHelperReviewStoreServiceTestsLocalUtils::MakeReviewMaterialInstanceParameterChange(
+			MaterialInstance->GetPathName(),
+			TEXT("tx_mi_overlay_scalar"),
+			TEXT("BH_OverlayScalar"),
+			TEXT("scalar"),
+			TEXT("1.0"),
+			TEXT("3.5"));
+
+	const TSharedRef<FBlueprintHelperReviewSurfaceProjectionRegistry> ProjectionRegistry =
+		FBlueprintHelperReviewSurfaceProjectionRegistry::CreateDefault();
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> DiffModels =
+		ProjectionRegistry->ProjectVisibleChange(Change, TEXT("material_instance"), TEXT("material"));
+	TestEqual(TEXT("projection yields one MI diff model"), DiffModels.Num(), 1);
+	if (DiffModels.Num() != 1)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("projection carries canonical target key"),
+		DiffModels[0].MatchKeys.Contains(ExpectedTargetKey));
+	TestTrue(TEXT("projection carries property path"),
+		DiffModels[0].MatchKeys.Contains(TEXT("BH_OverlayScalar")));
+	TestTrue(TEXT("projection carries display label"),
+		DiffModels[0].MatchKeys.Contains(ExpectedDisplayLabel));
+
+	TArray<TSharedPtr<FBlueprintHelperReviewVisibleChange>> ChangeItems;
+	ChangeItems.Add(MakeShared<FBlueprintHelperReviewVisibleChange>(Change));
+	FBlueprintHelperReviewPanelSurfacePresenterArgs Args;
+	Args.AssetContext = &Context;
+	Args.ChangeItems = &ChangeItems;
+	Args.SurfaceDiffModels = &DiffModels;
+	Args.SelectedChange = ChangeItems[0];
+
+	FBlueprintHelperReviewRowHighlightModel::RebuildSurfaceState(
+		Args,
+		EBlueprintHelperReviewSurface::Material,
+		&FBlueprintHelperReviewMaterialPresenter::ShouldShowChange,
+		Context.AssetPath,
+		false);
+
+	FBlueprintHelperReviewRowBinding Binding;
+	TestTrue(TEXT("canonical row search text resolves MI row binding"),
+		FBlueprintHelperReviewRowHighlightModel::TryGetRowActionBinding(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::Material,
+			(*ParameterRow)->SearchText,
+			Binding));
+	TestEqual(TEXT("resolved binding keeps MI target key"), Binding.TargetKey, ExpectedTargetKey);
+	TestTrue(TEXT("display label alias resolves MI row binding"),
+		FBlueprintHelperReviewRowHighlightModel::TryGetRowActionBinding(
+			Context.AssetPath,
+			EBlueprintHelperReviewSurface::Material,
+			ExpectedDisplayLabel,
+			Binding));
 	return true;
 }
 

@@ -52,19 +52,65 @@ test('TaskPlan adapters keep a one-header one-cpp implementation contract', () =
   assert.deepEqual(missingImplementations, []);
 });
 
-test('Bridge route planner declares every command once in the route registry table', () => {
+test('Bridge route planner derives routes from generated manifests and the system registry', () => {
+  const commandRegistry = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Entry', 'Bridge', 'BlueprintHelperBridgeCommandRegistry.cpp'),
+    'utf8',
+  );
+  const routePlanner = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Entry', 'Bridge', 'BlueprintHelperBridgeRoutePlanner.cpp'),
+    'utf8',
+  );
   const routePlannerUtils = fs.readFileSync(
     path.resolve(UE_SOURCE_ROOT, 'Private', 'Entry', 'Bridge', 'Utils', 'BlueprintHelperBridgeRoutePlannerUtils.cpp'),
     'utf8',
   );
-  const routeTable = routePlannerUtils.match(
-    /GBlueprintHelperBridgeRouteCommandClusters\[\]\s*=\s*\{([\s\S]*?)\};/u,
+  const generatedCapabilityHeader = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Public', 'Runtime', 'Capabilities', 'BlueprintHelperGeneratedCapabilityRegistry.h'),
+    'utf8',
+  );
+  const generatedUmgHeader = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Generated', 'BlueprintHelperUMGWidgetOperationManifest.generated.h'),
+    'utf8',
+  );
+  const generatedReadContextHeader = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Generated', 'BlueprintHelperReadContextRouteManifest.generated.h'),
+    'utf8',
+  );
+  const systemRegistry = fs.readFileSync(
+    path.resolve(UE_SOURCE_ROOT, 'Private', 'Entry', 'Bridge', 'BlueprintHelperBridgeSystemCommandRegistry.cpp'),
+    'utf8',
+  );
+  const systemTable = systemRegistry.match(
+    /GBlueprintHelperBridgeSystemCommandDescriptors\[\]\s*=\s*\{([\s\S]*?)\};/u,
   )?.[1] ?? '';
-  const commandNames = [...routeTable.matchAll(/TEXT\("([^"]+)"\)/gu)].map((match) => match[1]);
+  const commandNames = [...systemTable.matchAll(/\{\s*TEXT\("([^"]+)"\)/gu)].map((match) => match[1]);
   const duplicates = commandNames.filter((command, index) => commandNames.indexOf(command) !== index);
 
-  assert.ok(commandNames.length > 0, 'route planner command table should be discoverable');
+  assert.ok(commandNames.length > 0, 'system command registry should be discoverable');
   assert.deepEqual([...new Set(duplicates)].sort(), []);
+  assert.doesNotMatch(commandRegistry, /FBlueprintHelperBridgeRoutePlanner::BuildPlan\(Command\)/u);
+  assert.doesNotMatch(commandRegistry, /const\s+FString\s+Commands\[\]/u);
+  assert.doesNotMatch(commandRegistry, /ResolveCapabilityHandlerCluster/u);
+  assert.doesNotMatch(commandRegistry, /HandlerId\s*==\s*TEXT\(/u);
+  assert.doesNotMatch(routePlannerUtils, /GBlueprintHelperBridgeRouteCommandClusters/u);
+  assert.doesNotMatch(routePlanner, /TEXT\("generated\./u);
+  assert.match(generatedCapabilityHeader, /RoutingSourceId/u);
+  assert.match(generatedCapabilityHeader, /RoutingPolicyId/u);
+  assert.match(generatedCapabilityHeader, /bRoutingAgentVisible/u);
+  assert.match(generatedUmgHeader, /RouteSourceId/u);
+  assert.match(generatedUmgHeader, /RoutePolicyId/u);
+  assert.match(generatedUmgHeader, /bRouteAgentVisible/u);
+  assert.match(generatedReadContextHeader, /RouteSourceId/u);
+  assert.match(generatedReadContextHeader, /RoutePolicyId/u);
+  assert.match(generatedReadContextHeader, /bRouteAgentVisible/u);
+  assert.match(routePlanner, /class FBlueprintHelperBridgeRoutePlannerPrivate/u);
+  assert.match(routePlanner, /FBlueprintHelperBridgeRoutePlannerPrivate::ResolveGeneratedCapabilityRoute/u);
+  assert.doesNotMatch(routePlanner, /^static\s+bool\s+BlueprintHelperResolveGeneratedCapabilityRoute/mu);
+  assert.match(routePlanner, /FindGeneratedUMGRouteForCommand/u);
+  assert.match(routePlanner, /FindGeneratedReadContextRouteForCommand/u);
+  assert.match(routePlanner, /FBlueprintHelperBridgeSystemCommandRegistry::TryFindDescriptor/u);
+  assert.doesNotMatch(routePlanner, /BuildRegisteredRuntimeState/u);
 });
 
 test('Bridge server accepts clients through socket readiness wait instead of fixed polling', () => {

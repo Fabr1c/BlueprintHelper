@@ -7,6 +7,8 @@
 #include "Engine/DataAsset.h"
 #include "Engine/DataTable.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
 #include "Shared/BlueprintHelperUserDefinedStructVersionCompat.h"
 #include "UI/Review/Utils/BlueprintHelperReviewAssetContextUtils.h"
@@ -103,8 +105,16 @@ FBlueprintHelperReviewAssetContext FBlueprintHelperReviewAssetContext::LoadForAs
 		Context.AssetKind = EBlueprintHelperReviewAssetKind::Structure;
 		return Context;
 	}
+	if (UMaterialInstanceConstant* MaterialInstance = Cast<UMaterialInstanceConstant>(Object))
+	{
+		Context.MaterialInterface = MaterialInstance;
+		Context.MaterialInstance = MaterialInstance;
+		Context.AssetKind = EBlueprintHelperReviewAssetKind::MaterialInstance;
+		return Context;
+	}
 	if (UMaterial* Material = Cast<UMaterial>(Object))
 	{
+		Context.MaterialInterface = Material;
 		Context.Material = Material;
 		Context.AssetKind = EBlueprintHelperReviewAssetKind::Material;
 		return Context;

@@ -25,11 +25,40 @@ export interface UmgWidgetOperationDescriptor {
   readonly readback_view: 'tree_json' | 'property_json';
   readonly planned_preview_effect: UmgWidgetPlannedPreviewEffect;
   readonly validation_classification: WriteValidationClassification;
+  readonly route_cluster: 'UMGWidget';
+  readonly route_source_id: 'generated.umg_manifest';
+  readonly route_policy_id: 'generated.operation_manifest';
+  readonly route_agent_visible: false;
+  readonly route_requires_game_thread: true;
   readonly runtime_only_validation_notes?: readonly string[];
   readonly status: UmgWidgetOperationStatus;
 }
 
-export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
+type UmgWidgetOperationDescriptorInput = Omit<
+  UmgWidgetOperationDescriptor,
+  | 'route_cluster'
+  | 'route_source_id'
+  | 'route_policy_id'
+  | 'route_agent_visible'
+  | 'route_requires_game_thread'
+>;
+
+const UMG_WIDGET_ROUTE_METADATA = {
+  route_cluster: 'UMGWidget',
+  route_source_id: 'generated.umg_manifest',
+  route_policy_id: 'generated.operation_manifest',
+  route_agent_visible: false,
+  route_requires_game_thread: true,
+} as const satisfies Pick<
+  UmgWidgetOperationDescriptor,
+  | 'route_cluster'
+  | 'route_source_id'
+  | 'route_policy_id'
+  | 'route_agent_visible'
+  | 'route_requires_game_thread'
+>;
+
+const UMG_WIDGET_OPERATION_DESCRIPTOR_INPUTS = [
   {
     kind: 'create_widget',
     taskplan_op: 'add_widget',
@@ -202,7 +231,13 @@ export const UMG_WIDGET_OPERATION_DESCRIPTORS = [
     validation_classification: 'shared_policy',
     status: 'active',
   },
-] as const satisfies readonly UmgWidgetOperationDescriptor[];
+] as const satisfies readonly UmgWidgetOperationDescriptorInput[];
+
+export const UMG_WIDGET_OPERATION_DESCRIPTORS =
+  UMG_WIDGET_OPERATION_DESCRIPTOR_INPUTS.map((descriptor) => ({
+    ...descriptor,
+    ...UMG_WIDGET_ROUTE_METADATA,
+  })) satisfies readonly UmgWidgetOperationDescriptor[];
 
 export function getUmgWidgetOperationDescriptor(kind: string): UmgWidgetOperationDescriptor | undefined {
   return UMG_WIDGET_OPERATION_DESCRIPTORS.find((descriptor) => descriptor.kind === kind);

@@ -7,6 +7,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Shared/Review/BlueprintHelperReviewStatusUtils.h"
 #include "Systems/ToolClusters/MaterialInstance/BlueprintHelperMaterialInstanceParameterJsonUtils.h"
+#include "UI/Review/BlueprintHelperReviewMaterialInstancePresenterModel.h"
 
 FBlueprintHelperMaterialInstanceSurfaceProjectionAdapter::FBlueprintHelperMaterialInstanceSurfaceProjectionAdapter(
 	const FString& InAssetKind,
@@ -78,7 +79,6 @@ FBlueprintHelperReviewSurfaceProjectionResult FBlueprintHelperMaterialInstanceSu
 		Model.AssetPath = Identity.AssetPath;
 		Model.SurfaceKind = SurfaceKind;
 		Model.TargetKind = Target.TargetKind;
-		Model.TargetKey = Target.TargetKey.IsEmpty() ? Target.PropertyPath : Target.TargetKey;
 		Model.DisplayLabel = Target.DisplayLabel.IsEmpty() ? Change.DisplayLabel : Target.DisplayLabel;
 		Model.DiffColor = BlueprintHelperReviewSurfaceDiffColor(Change.ChangeKind);
 		Model.ChangeKind = Change.ChangeKind;
@@ -120,6 +120,18 @@ FBlueprintHelperReviewSurfaceProjectionResult FBlueprintHelperMaterialInstanceSu
 			After->TryGetStringField(TEXT("source"), Model.Source);
 			After->TryGetStringField(TEXT("override_state"), Model.OverrideState);
 		}
+		const FString CanonicalTargetKey =
+			FBlueprintHelperReviewMaterialInstancePresenterModel::MakeParameterTargetKey(
+				Model.ParameterName,
+				Model.ParameterType);
+		Model.TargetKey = Target.TargetKey.IsEmpty() ? CanonicalTargetKey : Target.TargetKey;
+		FBlueprintHelperReviewMaterialInstancePresenterModel::AppendStableMatchKeys(
+			Model.ParameterName,
+			Model.ParameterType,
+			Model.MatchKeys,
+			Model.TargetKey,
+			Target.PropertyPath,
+			Model.DisplayLabel);
 		Result.DiffModels.Add(Model);
 	}
 

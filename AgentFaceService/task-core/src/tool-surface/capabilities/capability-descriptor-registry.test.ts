@@ -139,6 +139,11 @@ test('generated UE capability registry mirrors TS descriptor gate fields', () =>
     assert.equal(generated.routingCliCommand, descriptor.routing.cli_command, descriptor.id);
     assert.equal(generated.routingBridgeCommand, descriptor.routing.bridge_command ?? '', descriptor.id);
     assert.equal(generated.routingHandlerId, descriptor.routing.handler_id, descriptor.id);
+    assert.equal(generated.routingRouteCluster, descriptor.routing.route_cluster, descriptor.id);
+    assert.equal(generated.routingSourceId, descriptor.routing.source_id, descriptor.id);
+    assert.equal(generated.routingPolicyId, descriptor.routing.policy_id, descriptor.id);
+    assert.equal(generated.routingAgentVisible, descriptor.routing.agent_visible, descriptor.id);
+    assert.equal(generated.routingRequiresGameThread, descriptor.routing.requires_game_thread, descriptor.id);
     assert.equal(generated.runtimeAdapterId, descriptor.runtime.adapter_id, descriptor.id);
     assert.equal(generated.runtimeStatus, descriptor.runtime.status, descriptor.id);
     assert.equal(generated.safetyRisk, descriptor.safety.risk, descriptor.id);
@@ -153,6 +158,11 @@ interface GeneratedCapabilityRegistryRow {
   readonly routingCliCommand: string;
   readonly routingBridgeCommand: string;
   readonly routingHandlerId: string;
+  readonly routingRouteCluster: string;
+  readonly routingSourceId: string;
+  readonly routingPolicyId: string;
+  readonly routingAgentVisible: boolean;
+  readonly routingRequiresGameThread: boolean;
   readonly runtimeAdapterId: string;
   readonly runtimeStatus: string;
   readonly safetyRisk: string;
@@ -162,7 +172,7 @@ interface GeneratedCapabilityRegistryRow {
 
 function parseGeneratedRegistrySource(source: string): ReadonlyMap<string, GeneratedCapabilityRegistryRow> {
   const rows = new Map<string, GeneratedCapabilityRegistryRow>();
-  const rowPattern = /\{\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*(true|false),\s*(true|false)\s*\},/gu;
+  const rowPattern = /\{\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*(true|false),\s*(true|false),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*TEXT\("([^"]*)"\),\s*(true|false),\s*(true|false)\s*\},/gu;
   for (const match of source.matchAll(rowPattern)) {
     const [
       ,
@@ -172,6 +182,11 @@ function parseGeneratedRegistrySource(source: string): ReadonlyMap<string, Gener
       routingCliCommand,
       routingBridgeCommand,
       routingHandlerId,
+      routingRouteCluster,
+      routingSourceId,
+      routingPolicyId,
+      routingAgentVisible,
+      routingRequiresGameThread,
       runtimeAdapterId,
       runtimeStatus,
       safetyRisk,
@@ -184,6 +199,11 @@ function parseGeneratedRegistrySource(source: string): ReadonlyMap<string, Gener
       routingCliCommand,
       routingBridgeCommand,
       routingHandlerId,
+      routingRouteCluster,
+      routingSourceId,
+      routingPolicyId,
+      routingAgentVisible: routingAgentVisible === 'true',
+      routingRequiresGameThread: routingRequiresGameThread === 'true',
       runtimeAdapterId,
       runtimeStatus,
       safetyRisk,

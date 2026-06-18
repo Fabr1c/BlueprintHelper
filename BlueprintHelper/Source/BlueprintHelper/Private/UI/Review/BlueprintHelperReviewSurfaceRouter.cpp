@@ -87,6 +87,7 @@ EBlueprintHelperReviewSurface FBlueprintHelperReviewSurfacePresenterRouter::GetM
 		{ EBlueprintHelperReviewAssetKind::DataTable, EBlueprintHelperReviewSurface::DataTable },
 		{ EBlueprintHelperReviewAssetKind::DataAsset, EBlueprintHelperReviewSurface::DataAsset },
 		{ EBlueprintHelperReviewAssetKind::Material, EBlueprintHelperReviewSurface::Material },
+		{ EBlueprintHelperReviewAssetKind::MaterialInstance, EBlueprintHelperReviewSurface::Material },
 		{ EBlueprintHelperReviewAssetKind::Structure, EBlueprintHelperReviewSurface::DataAsset },
 		{ EBlueprintHelperReviewAssetKind::GenericObject, EBlueprintHelperReviewSurface::DataAsset },
 		{ EBlueprintHelperReviewAssetKind::Blueprint, EBlueprintHelperReviewSurface::Graph },

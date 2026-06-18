@@ -85,6 +85,11 @@ export interface ReadContextRouteDescriptor extends ReadContextTemplateDescripto
   payload_schema: 'BlueprintHelper.ReadSpec.v1';
   read_type: ReadContextInput['read_type'] | string;
   bridge_command?: string;
+  route_cluster: string;
+  route_source_id: 'generated.read_context_manifest';
+  route_policy_id: 'generated.route_manifest';
+  route_agent_visible: false;
+  route_requires_game_thread: true;
   request_builder_id: ReadContextRequestBuilderId;
   payload_projector_id: ReadContextPayloadProjectorId;
   supported_asset_types: readonly string[];

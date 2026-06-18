@@ -11,6 +11,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperBridgeCommandDescriptor
 	TArray<FString> RuntimeAdapterIds;
 	TArray<FString> RoutingHandlerIds;
 	EBlueprintHelperBridgeRouteCluster RouteCluster = EBlueprintHelperBridgeRouteCluster::Unknown;
+	FString SourceId;
+	FString PolicyId;
+	bool bAgentVisible = false;
 	bool bRequiresGameThread = true;
 	bool bAllowsGraphWriteValidationPolicy = false;
 	TFunction<FBlueprintHelperBridgeResponse(const FBlueprintHelperBridgeRequest&)> Handler;

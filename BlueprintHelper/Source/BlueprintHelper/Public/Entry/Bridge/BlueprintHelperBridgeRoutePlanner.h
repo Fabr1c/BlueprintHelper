@@ -30,9 +30,12 @@ enum class EBlueprintHelperBridgeRouteCluster : uint8
 struct BLUEPRINTHELPER_API FBlueprintHelperBridgeRoutePlan
 {
 	FString Command;
+	FString SourceId;
+	FString PolicyId;
 	EBlueprintHelperBridgeRouteCluster Cluster = EBlueprintHelperBridgeRouteCluster::Unknown;
 	bool bKnownCommand = false;
 	bool bRequiresGameThread = false;
+	bool bAgentVisible = false;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperBridgeRoutePlanner

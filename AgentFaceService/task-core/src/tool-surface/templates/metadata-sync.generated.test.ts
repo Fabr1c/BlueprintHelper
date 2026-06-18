@@ -40,6 +40,13 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
   for (const descriptor of UMG_WIDGET_OPERATION_MANIFEST) {
     assert.equal(umgHeader.includes(`TEXT("${descriptor.bridge_command}")`), true, `UE UMG manifest contains ${descriptor.bridge_command}`);
     assert.equal(umgHeader.includes(`TEXT("${descriptor.kind}")`), true, `UE UMG manifest contains ${descriptor.kind}`);
+    assert.equal(descriptor.route_cluster, 'UMGWidget', `${descriptor.kind} route cluster`);
+    assert.equal(descriptor.route_source_id, 'generated.umg_manifest', `${descriptor.kind} route source`);
+    assert.equal(descriptor.route_policy_id, 'generated.operation_manifest', `${descriptor.kind} route policy`);
+    assert.equal(descriptor.route_agent_visible, false, `${descriptor.kind} agent visibility`);
+    assert.equal(descriptor.route_requires_game_thread, true, `${descriptor.kind} game thread routing`);
+    assert.equal(umgHeader.includes(`TEXT("${descriptor.route_source_id}")`), true, `UE UMG manifest contains ${descriptor.kind} route source`);
+    assert.equal(umgHeader.includes(`TEXT("${descriptor.route_policy_id}")`), true, `UE UMG manifest contains ${descriptor.kind} route policy`);
     assert.equal(descriptor.validation_classification, 'shared_policy', `${descriptor.kind} validation classification`);
   }
   const rootRemovalDescriptor = UMG_WIDGET_OPERATION_MANIFEST.find(
@@ -64,6 +71,12 @@ test('generated UMG and ReadContext route manifests mirror source descriptors', 
   assert.match(readContextHeader, /GBlueprintHelperReadContextRoutes/);
   for (const descriptor of READ_CONTEXT_ROUTE_MANIFEST) {
     assert.equal(readContextHeader.includes(`TEXT("${descriptor.template_id}")`), true, `UE ReadContext manifest contains ${descriptor.template_id}`);
+    assert.equal(descriptor.route_source_id, 'generated.read_context_manifest', `${descriptor.template_id} route source`);
+    assert.equal(descriptor.route_policy_id, 'generated.route_manifest', `${descriptor.template_id} route policy`);
+    assert.equal(descriptor.route_agent_visible, false, `${descriptor.template_id} agent visibility`);
+    assert.equal(descriptor.route_requires_game_thread, true, `${descriptor.template_id} game thread routing`);
+    assert.equal(readContextHeader.includes(`TEXT("${descriptor.route_source_id}")`), true, `UE ReadContext manifest contains ${descriptor.template_id} route source`);
+    assert.equal(readContextHeader.includes(`TEXT("${descriptor.route_policy_id}")`), true, `UE ReadContext manifest contains ${descriptor.template_id} route policy`);
   }
 });
 

@@ -10,6 +10,11 @@ export const CapabilityDescriptorSchema = z.object({
     cli_command: z.string().min(1),
     bridge_command: z.string().min(1).optional(),
     handler_id: z.string().min(1),
+    route_cluster: z.string().min(1),
+    source_id: z.string().min(1),
+    policy_id: z.string().min(1),
+    agent_visible: z.boolean(),
+    requires_game_thread: z.boolean(),
   }),
   preview: z.object({
     supported: z.boolean(),
@@ -51,4 +56,3 @@ export const RuntimeCapabilityStateSchema = z.object({
 
 export type CapabilityDescriptor = z.infer<typeof CapabilityDescriptorSchema>;
 export type RuntimeCapabilityState = z.infer<typeof RuntimeCapabilityStateSchema>;
-

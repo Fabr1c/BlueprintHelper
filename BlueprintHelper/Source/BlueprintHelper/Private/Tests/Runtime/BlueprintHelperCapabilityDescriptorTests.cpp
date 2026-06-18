@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Entry/Bridge/BlueprintHelperBridgeCommandRegistry.h"
 #include "Misc/AutomationTest.h"
 #include "Runtime/Capabilities/BlueprintHelperRuntimeCapabilityStateBuilder.h"
 #include "Runtime/Capabilities/BlueprintHelperCapabilityDescriptorTypes.h"
@@ -66,6 +67,12 @@ bool FBlueprintHelperCapabilityDescriptorRegistryTest::RunTest(const FString& Pa
 		FBlueprintHelperGeneratedCapabilityRegistry::IsDescriptorAgentVisible(*StructFields, RuntimeState));
 	TestFalse(TEXT("Struct runtime adapter is not synthesized from active descriptor status"),
 		RuntimeState.RegisteredRuntimeAdapterIds.Contains(TEXT("struct_runtime_adapter")));
+
+	FBlueprintHelperBridgeCommandDescriptor SystemCommandDescriptor;
+	TestFalse(TEXT("system get_editor_context does not become capability descriptor"),
+		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(
+			TEXT("get_editor_context"),
+			SystemCommandDescriptor));
 	return true;
 }
 

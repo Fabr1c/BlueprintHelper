@@ -17,6 +17,11 @@ type ActiveRouteData = Omit<
   | 'payload_schema'
   | 'supported_asset_types'
   | 'supported_formats'
+  | 'route_cluster'
+  | 'route_source_id'
+  | 'route_policy_id'
+  | 'route_agent_visible'
+  | 'route_requires_game_thread'
 > & {
   template_path: string;
   required_fields: string[];
@@ -36,6 +41,32 @@ const BLUEPRINT_LOGIC_TEMPLATE_BY_TARGET: Readonly<Record<string, string>> = {
 
 const MATERIAL_LOGIC_TEMPLATE = 'AgentFaceService/agent-guide/Templates/read/routes/material_graph_logic_template.json';
 const MATERIAL_INSTANCE_SCHEMA_TEMPLATE = 'AgentFaceService/agent-guide/Templates/read/routes/material_instance_schema_template.json';
+const READ_CONTEXT_ROUTE_METADATA = {
+  route_source_id: 'generated.read_context_manifest',
+  route_policy_id: 'generated.route_manifest',
+  route_agent_visible: false,
+  route_requires_game_thread: true,
+} as const satisfies Pick<
+  ReadContextRouteDescriptor,
+  | 'route_source_id'
+  | 'route_policy_id'
+  | 'route_agent_visible'
+  | 'route_requires_game_thread'
+>;
+
+const READ_CONTEXT_ROUTE_CLUSTER_BY_BRIDGE_COMMAND: Readonly<Record<string, string>> = {
+  get_widget_tree: 'UMGWidget',
+  get_widget_properties: 'UMGWidget',
+  get_datatable_rows: 'DataTable',
+  get_object_properties: 'ObjectProperty',
+  get_asset_info: 'AssetBrowser',
+  read_components: 'Component',
+  list_variables: 'BlueprintStructure',
+  list_event_dispatchers: 'BlueprintStructure',
+  read_blueprint_logic_json: 'SharedServices',
+  read_material_logic_json: 'SharedServices',
+  read_material_instance_context: 'SharedServices',
+};
 
 const READ_CONTEXT_ROUTE_DESCRIPTORS: readonly ReadContextRouteDescriptor[] = [
   ...blueprintLogicRoutes('blueprint', ['logic_flow', 'logic_json']),
@@ -370,6 +401,8 @@ function active(
     ],
     status: 'active',
     payload_schema: 'BlueprintHelper.ReadSpec.v1',
+    route_cluster: resolveReadContextRouteCluster(data.bridge_command),
+    ...READ_CONTEXT_ROUTE_METADATA,
     ...runtimeData,
     supported_asset_types: supportedAssetTypes ?? uniqueStrings([family, data.target_type]),
     supported_formats: supportedFormats ?? uniqueStrings([data.format]),
@@ -410,12 +443,21 @@ function reserved(
     status: 'reserved',
     payload_schema: 'BlueprintHelper.ReadSpec.v1',
     read_type: 'asset_context',
+    route_cluster: 'SharedServices',
+    ...READ_CONTEXT_ROUTE_METADATA,
     request_builder_id: 'asset_context',
     payload_projector_id: 'asset_context',
     supported_asset_types: [],
     supported_formats: [],
     reason,
   };
+}
+
+function resolveReadContextRouteCluster(bridgeCommand: string | undefined): string {
+  if (bridgeCommand === undefined || bridgeCommand.length === 0) {
+    return 'SharedServices';
+  }
+  return READ_CONTEXT_ROUTE_CLUSTER_BY_BRIDGE_COMMAND[bridgeCommand] ?? 'SharedServices';
 }
 
 function composeDescriptorReadSpec(data: ActiveRouteData): ReadContextRouteDescriptor['read_spec'] {

@@ -10,8 +10,11 @@
 #include "Entry/Bridge/Routes/BlueprintHelperScreenshotBridgeRoutes.h"
 #include "Entry/Bridge/Routes/BlueprintHelperUMGWidgetBridgeRoutes.h"
 #include "Entry/Bridge/BlueprintHelperBridgeCommandRegistry.h"
+#include "Entry/Bridge/BlueprintHelperBridgeSystemCommandRegistry.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidator.h"
 #include "Entry/Bridge/BlueprintHelperRequestValidationRegistry.h"
+#include "Generated/BlueprintHelperReadContextRouteManifest.generated.h"
+#include "Generated/BlueprintHelperUMGWidgetOperationManifest.generated.h"
 
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
@@ -19,8 +22,12 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
+#include "Interfaces/IPluginManager.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Runtime/Capabilities/BlueprintHelperGeneratedCapabilityRegistry.h"
 #include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
@@ -37,6 +44,60 @@ static bool BlueprintHelperBridgeTestHasRequiredField(
 		{
 			return Rule.FieldName == FieldName;
 		});
+}
+
+static bool BlueprintHelperBridgeTestLoadPluginSource(
+	const FString& PluginRelativePath,
+	FString& OutSource)
+{
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("BlueprintHelper"));
+	if (Plugin.IsValid())
+	{
+		const FString PluginSourcePath = FPaths::Combine(Plugin->GetBaseDir(), PluginRelativePath);
+		if (FFileHelper::LoadFileToString(OutSource, *PluginSourcePath))
+		{
+			return true;
+		}
+	}
+
+	const FString SourcePath =
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("BlueprintHelper"), PluginRelativePath);
+	if (FFileHelper::LoadFileToString(OutSource, *SourcePath))
+	{
+		return true;
+	}
+
+	const FString NestedSourcePath =
+		FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("BlueprintHelper"), TEXT("BlueprintHelper"), PluginRelativePath);
+	return FFileHelper::LoadFileToString(OutSource, *NestedSourcePath);
+}
+
+static const FBlueprintHelperGeneratedCommandDescriptor* BlueprintHelperBridgeTestFindGeneratedUmgCommand(
+	const FString& Command)
+{
+	for (const FBlueprintHelperGeneratedCommandDescriptor& Descriptor : GBlueprintHelperUMGWidgetOperationCommands)
+	{
+		if (Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+		{
+			return &Descriptor;
+		}
+	}
+	return nullptr;
+}
+
+static const FBlueprintHelperGeneratedReadContextRouteDescriptor* BlueprintHelperBridgeTestFindGeneratedReadContextRoute(
+	const FString& Command)
+{
+	for (const FBlueprintHelperGeneratedReadContextRouteDescriptor& Descriptor : GBlueprintHelperReadContextRoutes)
+	{
+		if (FString(Descriptor.Status).Equals(TEXT("active"), ESearchCase::IgnoreCase) &&
+			!FString(Descriptor.Command).IsEmpty() &&
+			Command.Equals(Descriptor.Command, ESearchCase::IgnoreCase))
+		{
+			return &Descriptor;
+		}
+	}
+	return nullptr;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -59,6 +120,7 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("get_widget_tree"), EBlueprintHelperBridgeRouteCluster::UMGWidget},
 		{TEXT("get_datatable_rows"), EBlueprintHelperBridgeRouteCluster::DataTable},
 		{TEXT("get_object_properties"), EBlueprintHelperBridgeRouteCluster::ObjectProperty},
+		{TEXT("get_editor_context"), EBlueprintHelperBridgeRouteCluster::Core},
 		{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
@@ -79,6 +141,83 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		TestEqual(FString::Printf(TEXT("%s command is preserved"), *Case.Key), Plan.Command, Case.Key);
 	}
 
+	const FBlueprintHelperBridgeRoutePlan ExecutePlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("execute_task_plan"));
+	const FBlueprintHelperGeneratedCapabilityDescriptor* ExecuteCapabilityDescriptor =
+		FBlueprintHelperGeneratedCapabilityRegistry::FindById(TEXT("graphwrite.execute"));
+	TestNotNull(TEXT("execute_task_plan generated capability descriptor exists"), ExecuteCapabilityDescriptor);
+	if (ExecuteCapabilityDescriptor)
+	{
+		TestEqual(TEXT("execute_task_plan source is generated capability descriptor-owned"),
+			ExecutePlan.SourceId,
+			FString(ExecuteCapabilityDescriptor->RoutingSourceId));
+		TestEqual(TEXT("execute_task_plan policy is generated capability descriptor-owned"),
+			ExecutePlan.PolicyId,
+			FString(ExecuteCapabilityDescriptor->RoutingPolicyId));
+		TestEqual(TEXT("execute_task_plan agent visibility is generated capability descriptor-owned"),
+			ExecutePlan.bAgentVisible,
+			ExecuteCapabilityDescriptor->bRoutingAgentVisible);
+	}
+	TestEqual(TEXT("execute_task_plan source is generated capability"),
+		ExecutePlan.SourceId,
+		FString(TEXT("generated.capability")));
+	TestEqual(TEXT("execute_task_plan policy is generated capability descriptor"),
+		ExecutePlan.PolicyId,
+		FString(TEXT("generated.capability_descriptor")));
+	TestTrue(TEXT("execute_task_plan route is ordinary-agent visible"), ExecutePlan.bAgentVisible);
+
+	const FBlueprintHelperBridgeRoutePlan EditorContextPlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("get_editor_context"));
+	TestEqual(TEXT("get_editor_context source is system core"),
+		EditorContextPlan.SourceId,
+		FString(TEXT("system.core")));
+	TestEqual(TEXT("get_editor_context policy is system core internal"),
+		EditorContextPlan.PolicyId,
+		FString(TEXT("system.core.internal")));
+	TestFalse(TEXT("get_editor_context route is not ordinary-agent visible"), EditorContextPlan.bAgentVisible);
+
+	const FBlueprintHelperBridgeRoutePlan ReadMaterialInstancePlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("read_material_instance_context"));
+	const FBlueprintHelperGeneratedReadContextRouteDescriptor* ReadMaterialInstanceRoute =
+		BlueprintHelperBridgeTestFindGeneratedReadContextRoute(TEXT("read_material_instance_context"));
+	TestNotNull(TEXT("read_material_instance_context generated ReadContext route exists"), ReadMaterialInstanceRoute);
+	if (ReadMaterialInstanceRoute)
+	{
+		TestEqual(TEXT("read_material_instance_context source is descriptor-owned"),
+			ReadMaterialInstancePlan.SourceId,
+			FString(ReadMaterialInstanceRoute->RouteSourceId));
+		TestEqual(TEXT("read_material_instance_context policy is descriptor-owned"),
+			ReadMaterialInstancePlan.PolicyId,
+			FString(ReadMaterialInstanceRoute->RoutePolicyId));
+		TestEqual(TEXT("read_material_instance_context agent visibility is descriptor-owned"),
+			ReadMaterialInstancePlan.bAgentVisible,
+			ReadMaterialInstanceRoute->bRouteAgentVisible);
+	}
+	TestEqual(TEXT("read_material_instance_context source is generated read-context manifest"),
+		ReadMaterialInstancePlan.SourceId,
+		FString(TEXT("generated.read_context_manifest")));
+
+	const FBlueprintHelperBridgeRoutePlan AddWidgetPlan =
+		FBlueprintHelperBridgeRoutePlanner::BuildPlan(TEXT("add_widget"));
+	const FBlueprintHelperGeneratedCommandDescriptor* AddWidgetDescriptor =
+		BlueprintHelperBridgeTestFindGeneratedUmgCommand(TEXT("add_widget"));
+	TestNotNull(TEXT("add_widget generated UMG command descriptor exists"), AddWidgetDescriptor);
+	if (AddWidgetDescriptor)
+	{
+		TestEqual(TEXT("add_widget source is descriptor-owned"),
+			AddWidgetPlan.SourceId,
+			FString(AddWidgetDescriptor->RouteSourceId));
+		TestEqual(TEXT("add_widget policy is descriptor-owned"),
+			AddWidgetPlan.PolicyId,
+			FString(AddWidgetDescriptor->RoutePolicyId));
+		TestEqual(TEXT("add_widget agent visibility is descriptor-owned"),
+			AddWidgetPlan.bAgentVisible,
+			AddWidgetDescriptor->bRouteAgentVisible);
+	}
+	TestEqual(TEXT("add_widget source is generated UMG manifest"),
+		AddWidgetPlan.SourceId,
+		FString(TEXT("generated.umg_manifest")));
+
 	return true;
 }
 
@@ -92,6 +231,21 @@ bool FBlueprintHelperBridgeCommandRegistry_GeneratedCapabilitiesRegisterBridgeCo
 	FBlueprintHelperBridgeCommandDescriptor ExecuteDescriptor;
 	TestTrue(TEXT("execute_task_plan is descriptor-backed"),
 		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(TEXT("execute_task_plan"), ExecuteDescriptor));
+	const FBlueprintHelperGeneratedCapabilityDescriptor* ExecuteCapabilityDescriptor =
+		FBlueprintHelperGeneratedCapabilityRegistry::FindById(TEXT("graphwrite.execute"));
+	TestNotNull(TEXT("execute_task_plan generated capability descriptor exists"), ExecuteCapabilityDescriptor);
+	if (ExecuteCapabilityDescriptor)
+	{
+		TestEqual(TEXT("execute_task_plan command descriptor source mirrors generated capability descriptor"),
+			ExecuteDescriptor.SourceId,
+			FString(ExecuteCapabilityDescriptor->RoutingSourceId));
+		TestEqual(TEXT("execute_task_plan command descriptor policy mirrors generated capability descriptor"),
+			ExecuteDescriptor.PolicyId,
+			FString(ExecuteCapabilityDescriptor->RoutingPolicyId));
+		TestEqual(TEXT("execute_task_plan command descriptor visibility mirrors generated capability descriptor"),
+			ExecuteDescriptor.bAgentVisible,
+			ExecuteCapabilityDescriptor->bRoutingAgentVisible);
+	}
 	TestTrue(TEXT("execute_task_plan contains GraphWrite capability"),
 		ExecuteDescriptor.CapabilityDescriptorIds.Contains(TEXT("graphwrite.execute")));
 	TestTrue(TEXT("execute_task_plan contains MaterialGraph capability"),
@@ -114,6 +268,133 @@ bool FBlueprintHelperBridgeCommandRegistry_GeneratedCapabilitiesRegisterBridgeCo
 		DebugDescriptor.CapabilityDescriptorIds.Contains(TEXT("debug_case.export_summary")));
 	TestTrue(TEXT("export_debug_bundle records debug case export handler"),
 		DebugDescriptor.RoutingHandlerIds.Contains(TEXT("debug_case_export")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBridgeCommandRegistry_DoesNotFallbackToSystemRoutes,
+	"BlueprintHelper.Bridge.CommandRegistry.DoesNotFallbackToSystemRoutes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperBridgeCommandRegistry_DoesNotFallbackToSystemRoutes::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeCommandDescriptor Descriptor;
+	TestFalse(
+		TEXT("get_editor_context is a system command, not a capability descriptor"),
+		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(TEXT("get_editor_context"), Descriptor));
+	TestFalse(
+		TEXT("append_blueprint_graph is not synthesized as capability descriptor through route planner fallback"),
+		FBlueprintHelperBridgeCommandRegistry::TryFindDescriptor(TEXT("append_blueprint_graph"), Descriptor));
+
+	const TArray<FBlueprintHelperBridgeCommandDescriptor> RepresentativeDescriptors =
+		FBlueprintHelperBridgeCommandRegistry::GetRepresentativeDescriptors();
+	const TSet<FString> SystemOnlyCommands = {
+		TEXT("preview_task_plan"),
+		TEXT("get_editor_context"),
+		TEXT("append_blueprint_graph"),
+	};
+	for (const FBlueprintHelperBridgeCommandDescriptor& RepresentativeDescriptor : RepresentativeDescriptors)
+	{
+		TestFalse(
+			FString::Printf(
+				TEXT("%s is not exposed as a representative capability descriptor"),
+				*RepresentativeDescriptor.Command),
+			SystemOnlyCommands.Contains(RepresentativeDescriptor.Command));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBridgeSystemCommandRegistry_SystemRoutesStayNonAgentVisible,
+	"BlueprintHelper.Bridge.CommandRegistry.SystemRoutesStayNonAgentVisible",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperBridgeSystemCommandRegistry_SystemRoutesStayNonAgentVisible::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperBridgeSystemCommandDescriptor EditorContextDescriptor;
+	TestTrue(
+		TEXT("get_editor_context is tracked by the system registry"),
+		FBlueprintHelperBridgeSystemCommandRegistry::TryFindDescriptor(
+			TEXT("get_editor_context"),
+			EditorContextDescriptor));
+	TestEqual(
+		TEXT("get_editor_context keeps Core cluster"),
+		static_cast<int32>(EditorContextDescriptor.Cluster),
+		static_cast<int32>(EBlueprintHelperBridgeRouteCluster::Core));
+	TestEqual(
+		TEXT("get_editor_context source is system core"),
+		static_cast<int32>(EditorContextDescriptor.Source),
+		static_cast<int32>(EBlueprintHelperBridgeCommandSource::SystemCore));
+	TestFalse(TEXT("get_editor_context is not ordinary-agent visible"), EditorContextDescriptor.bAgentVisible);
+
+	FBlueprintHelperBridgeSystemCommandDescriptor AppendGraphDescriptor;
+	TestTrue(
+		TEXT("append_blueprint_graph is tracked as an internal direct route"),
+		FBlueprintHelperBridgeSystemCommandRegistry::TryFindDescriptor(
+			TEXT("append_blueprint_graph"),
+			AppendGraphDescriptor));
+	TestEqual(
+		TEXT("append_blueprint_graph keeps GraphWrite cluster"),
+		static_cast<int32>(AppendGraphDescriptor.Cluster),
+		static_cast<int32>(EBlueprintHelperBridgeRouteCluster::GraphWrite));
+	TestEqual(
+		TEXT("append_blueprint_graph source is internal direct route, not generated capability"),
+		static_cast<int32>(AppendGraphDescriptor.Source),
+		static_cast<int32>(EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute));
+	TestFalse(TEXT("append_blueprint_graph is not ordinary-agent visible"), AppendGraphDescriptor.bAgentVisible);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperBridgeCommandRegistry_SourceResidualGuard,
+	"BlueprintHelper.Bridge.CommandRegistry.SourceResidualGuard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperBridgeCommandRegistry_SourceResidualGuard::RunTest(const FString& Parameters)
+{
+	FString CommandRegistrySource;
+	TestTrue(
+		TEXT("CommandRegistry source loads"),
+		BlueprintHelperBridgeTestLoadPluginSource(
+			TEXT("Source/BlueprintHelper/Private/Entry/Bridge/BlueprintHelperBridgeCommandRegistry.cpp"),
+			CommandRegistrySource));
+	FString RoutePlannerUtilsSource;
+	TestTrue(
+		TEXT("RoutePlannerUtils source loads"),
+		BlueprintHelperBridgeTestLoadPluginSource(
+			TEXT("Source/BlueprintHelper/Private/Entry/Bridge/Utils/BlueprintHelperBridgeRoutePlannerUtils.cpp"),
+			RoutePlannerUtilsSource));
+	FString RoutePlannerSource;
+	TestTrue(
+		TEXT("RoutePlanner source loads"),
+		BlueprintHelperBridgeTestLoadPluginSource(
+			TEXT("Source/BlueprintHelper/Private/Entry/Bridge/BlueprintHelperBridgeRoutePlanner.cpp"),
+			RoutePlannerSource));
+
+	TestFalse(
+		TEXT("BridgeCommandRegistry no longer calls RoutePlanner fallback"),
+		CommandRegistrySource.Contains(TEXT("FBlueprintHelperBridgeRoutePlanner::BuildPlan(Command)")));
+	TestFalse(
+		TEXT("BridgeCommandRegistry no longer hand-lists representative commands"),
+		CommandRegistrySource.Contains(TEXT("const FString Commands[]")));
+	TestFalse(
+		TEXT("BridgeCommandRegistry no longer derives route facts from handler-id branches"),
+		CommandRegistrySource.Contains(TEXT("ResolveCapabilityHandlerCluster")));
+	TestFalse(
+		TEXT("BridgeCommandRegistry no longer branches on RoutingHandlerId as route metadata source"),
+		CommandRegistrySource.Contains(TEXT("HandlerId == TEXT(")));
+	TestFalse(
+		TEXT("RoutePlannerUtils no longer owns static command cluster table"),
+		RoutePlannerUtilsSource.Contains(TEXT("GBlueprintHelperBridgeRouteCommandClusters")));
+	TestFalse(
+		TEXT("RoutePlanner no longer owns static command cluster table"),
+		RoutePlannerSource.Contains(TEXT("GBlueprintHelperBridgeRouteCommandClusters")));
+	TestFalse(
+		TEXT("RoutePlanner consumes generated metadata instead of owning generated route literals"),
+		RoutePlannerSource.Contains(TEXT("TEXT(\"generated.")));
+	TestFalse(
+		TEXT("RoutePlanner no longer rebuilds runtime capability state on the hot route path"),
+		RoutePlannerSource.Contains(TEXT("BuildRegisteredRuntimeState")));
 	return true;
 }
 

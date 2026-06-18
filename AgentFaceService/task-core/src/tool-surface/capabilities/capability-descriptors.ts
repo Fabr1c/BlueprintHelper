@@ -11,13 +11,39 @@ const TASK_PREVIEW = { supported: true, required_for_execute: true } as const;
 const READ_PREVIEW = { supported: false, required_for_execute: false } as const;
 const DEBUG_PREVIEW = { supported: false, required_for_execute: false } as const;
 
+function taskRuntimeRouting(): CapabilityDescriptor['routing'] {
+  return {
+    cli_command: 'task execute',
+    bridge_command: 'execute_task_plan',
+    handler_id: 'task_runtime',
+    route_cluster: 'TaskRuntime',
+    source_id: 'generated.capability',
+    policy_id: 'generated.capability_descriptor',
+    agent_visible: true,
+    requires_game_thread: true,
+  };
+}
+
+function debugCaseExportRouting(): CapabilityDescriptor['routing'] {
+  return {
+    cli_command: 'blueprinthelper_export_debug_bundle',
+    bridge_command: 'export_debug_bundle',
+    handler_id: 'debug_case_export',
+    route_cluster: 'Debug',
+    source_id: 'generated.capability',
+    policy_id: 'generated.capability_descriptor',
+    agent_visible: true,
+    requires_game_thread: true,
+  };
+}
+
 export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
   descriptor({
     id: 'graphwrite.execute',
     family: 'graphwrite',
     operation: 'execute',
     asset_kinds: ['blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'graphwrite_runtime_adapter', status: 'active' },
     review: {
@@ -35,7 +61,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'asset_factory',
     operation: 'create',
     asset_kinds: ['blueprint', 'widget_blueprint', 'data_asset', 'data_table', 'structure', 'material'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'asset_factory_runtime_adapter', status: 'active' },
     review: {
@@ -53,7 +79,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'blueprint_variables',
     operation: 'edit',
     asset_kinds: ['blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'blueprint_variables_runtime_adapter', status: 'active' },
     review: {
@@ -71,7 +97,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'blueprint_signature',
     operation: 'edit',
     asset_kinds: ['blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'blueprint_signature_runtime_adapter', status: 'active' },
     review: {
@@ -89,7 +115,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'blueprint_component',
     operation: 'edit',
     asset_kinds: ['blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'blueprint_component_runtime_adapter', status: 'active' },
     review: {
@@ -107,7 +133,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'class_settings',
     operation: 'edit',
     asset_kinds: ['blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'class_settings_runtime_adapter', status: 'active' },
     review: {
@@ -125,7 +151,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'umg_widget_tree',
     operation: 'edit',
     asset_kinds: ['widget_blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'umg_widget_runtime_adapter', status: 'active' },
     review: {
@@ -143,7 +169,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'object_property',
     operation: 'edit',
     asset_kinds: ['data_asset', 'blueprint'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'object_property_runtime_adapter', status: 'active' },
     review: {
@@ -161,7 +187,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'data_table',
     operation: 'edit',
     asset_kinds: ['data_table'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'data_table_runtime_adapter', status: 'active' },
     review: {
@@ -179,7 +205,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'struct',
     operation: 'edit',
     asset_kinds: ['structure'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'struct_runtime_adapter', status: 'planned' },
     review: {
@@ -197,7 +223,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'material_graph',
     operation: 'edit',
     asset_kinds: ['material'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'material_graph_runtime_adapter', status: 'active' },
     review: {
@@ -215,7 +241,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'debug_case',
     operation: 'export_summary',
     asset_kinds: ['debug_case'],
-    routing: { cli_command: 'blueprinthelper_export_debug_bundle', bridge_command: 'export_debug_bundle', handler_id: 'debug_case_export' },
+    routing: debugCaseExportRouting(),
     preview: DEBUG_PREVIEW,
     runtime: { adapter_id: 'debug_case_export_runtime_adapter', status: 'active' },
     review: {},
@@ -229,7 +255,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     family: 'material_instance',
     operation: 'edit',
     asset_kinds: ['material_instance_constant'],
-    routing: { cli_command: 'task execute', bridge_command: 'execute_task_plan', handler_id: 'task_runtime' },
+    routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'material_instance_runtime_adapter', status: 'active' },
     review: {
