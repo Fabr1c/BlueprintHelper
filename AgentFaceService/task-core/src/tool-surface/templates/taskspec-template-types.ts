@@ -18,7 +18,8 @@ export type NonGraphWriteFamily =
   | 'data_table'
   | 'object_properties'
   | 'asset_factory'
-  | 'material_graph';
+  | 'material_graph'
+  | 'material_instance';
 
 export type NonGraphWriteTemplateWriteMode =
   | 'variables.edit'
@@ -30,7 +31,8 @@ export type NonGraphWriteTemplateWriteMode =
   | 'table.rows'
   | 'object.properties'
   | 'asset.create'
-  | 'material.graph';
+  | 'material.graph'
+  | 'material.instance';
 
 export type TaskSpecTemplateWriteMode =
   | GraphWriteTemplateWriteMode

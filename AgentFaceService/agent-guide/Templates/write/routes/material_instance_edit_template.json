@@ -1,0 +1,13 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_material_instance",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_MATERIAL_INSTANCE_ASSET_PATH__",
+    "target_type": "material_instance"
+  },
+  "behavior": {
+    "material_instance_strategy": "material_instance_edit",
+    "operations": []
+  }
+}

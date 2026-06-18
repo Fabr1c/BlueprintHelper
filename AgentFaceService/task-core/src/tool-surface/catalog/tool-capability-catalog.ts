@@ -344,6 +344,7 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     route.family === 'material' && route.cluster === 'logic' && route.format === 'logic_flow');
   const materialInstanceRouteRefs = readContextRouteRefs((route) =>
     route.family === 'material_instance');
+  const materialTaskRouteRefs = ['material.graph', 'material.instance'] as const;
   return new Map<string, ToolCapabilityDescriptorOptions>([
     ['blueprint.discover.assets', {
       stop_conditions: FIND_ASSETS_STOP_CONDITIONS,
@@ -452,13 +453,13 @@ function buildDescriptorOptionsByCapabilityId(): Map<string, ToolCapabilityDescr
     }],
     ['material.plan.taskspec.preview', {
       result_policy_id: 'task_preview_default',
-      route_refs: ['material.graph'],
+      route_refs: materialTaskRouteRefs,
       stop_conditions: PREVIEW_STOP_CONDITIONS,
       recommended_invocations: TASK_PREVIEW_INVOCATION,
     }],
     ['material.write.taskspec.execute', {
       result_policy_id: 'task_execute_default',
-      route_refs: ['material.graph'],
+      route_refs: materialTaskRouteRefs,
       stop_conditions: EXECUTE_STOP_CONDITIONS,
       recommended_invocations: TASK_EXECUTE_INVOCATION,
     }],

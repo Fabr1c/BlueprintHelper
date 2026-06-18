@@ -3,22 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceContentPresenterTypes.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
 
 struct BLUEPRINTHELPER_API FBlueprintHelperReviewSurfaceHostCoordinatorDelegates
 {
-	TFunction<bool()> StructureOverlayRefresh;
-	TFunction<bool()> MyBlueprintOverlayRefresh;
-	TFunction<bool()> DetailsOverlayRefresh;
-	TFunction<bool()> MainWorkspaceOverlayRefresh;
-
-	TFunction<bool()> ComponentsRowsRefresh;
-	TFunction<bool()> WidgetTreeRowsRefresh;
-	TFunction<bool()> MyBlueprintRowsRefresh;
-	TFunction<bool()> DetailsRowsRefresh;
-	TFunction<bool()> DataTableRowsRefresh;
-	TFunction<bool()> DataAssetRowsRefresh;
-	TFunction<bool()> MaterialRowsRefresh;
+	TArray<FBlueprintHelperReviewSurfaceHostBinding> HostBindings;
+	TMap<EBlueprintHelperReviewSurfaceHostSlot, TFunction<bool()>> OverlayRefreshHandlers;
+	TMap<EBlueprintHelperReviewSurface, TFunction<bool()>> RowRefreshHandlers;
 };
 
 class BLUEPRINTHELPER_API FBlueprintHelperReviewSurfaceHostCoordinator

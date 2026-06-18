@@ -1,0 +1,5 @@
+{
+  "op": "set_scalar_override",
+  "parameter_name": "__REQUIRED_PARAMETER_NAME__",
+  "value": 0.5
+}

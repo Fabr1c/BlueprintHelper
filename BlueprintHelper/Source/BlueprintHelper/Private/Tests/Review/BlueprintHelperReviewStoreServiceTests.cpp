@@ -8437,6 +8437,111 @@ bool FBlueprintHelperReviewTreeNestsChangesUnderLifecycleRootTest::RunTest(const
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewTreeNestsChangesUnderParentChangeIdTest,
+	"BlueprintHelper.Review.UI.TreeNestsChangesUnderParentChangeId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewTreeNestsChangesUnderParentChangeIdTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BP_DoorTreeObjectRoot");
+
+	FBlueprintHelperReviewVisibleChange ObjectRoot;
+	ObjectRoot.ChangeId = TEXT("tx_object_root");
+	ObjectRoot.AssetPath = AssetPath;
+	ObjectRoot.LatestEvidenceId = TEXT("tx_object_root");
+	ObjectRoot.ChangeKind = EBlueprintHelperReviewChangeKind::Added;
+	ObjectRoot.DisplayLabel = TEXT("Door component root");
+	ObjectRoot.bIsAssetLifecycleRoot = false;
+	ObjectRoot.bIsObjectLifecycleRoot = true;
+
+	FBlueprintHelperReviewVisibleChange Child;
+	Child.ChangeId = TEXT("tx_object_child");
+	Child.AssetPath = AssetPath;
+	Child.LatestEvidenceId = TEXT("tx_object_child");
+	Child.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Child.DisplayLabel = TEXT("Door component property");
+	Child.ParentChangeId = ObjectRoot.ChangeId;
+	Child.bIsAssetLifecycleRoot = false;
+
+	FBlueprintHelperReviewVisibleChange DirectChild;
+	DirectChild.ChangeId = TEXT("tx_object_direct");
+	DirectChild.AssetPath = AssetPath;
+	DirectChild.LatestEvidenceId = TEXT("tx_object_direct");
+	DirectChild.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	DirectChild.DisplayLabel = TEXT("Unparented object change");
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(ObjectRoot);
+	InitialChanges.Add(Child);
+	InitialChanges.Add(DirectChild);
+
+	const TArray<SBlueprintHelperReviewPanel::FReviewTreeSnapshotEntry> Snapshot =
+		SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(InitialChanges);
+	TestEqual(TEXT("asset header plus object root, nested child, direct child"),
+		Snapshot.Num(),
+		4);
+	if (Snapshot.Num() != 4)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("first entry is asset header"), Snapshot[0].bIsAssetHeader);
+	TestEqual(TEXT("object root depth"), Snapshot[1].Depth, 1);
+	TestEqual(TEXT("object root id"), Snapshot[1].ChangeId, ObjectRoot.ChangeId);
+	TestEqual(TEXT("child nests under object root"), Snapshot[2].Depth, 2);
+	TestEqual(TEXT("nested child id"), Snapshot[2].ChangeId, Child.ChangeId);
+	TestEqual(TEXT("nested child parent id"), Snapshot[2].ParentChangeId, ObjectRoot.ChangeId);
+	TestEqual(TEXT("unparented child stays directly under asset"), Snapshot[3].Depth, 1);
+	TestEqual(TEXT("direct child id"), Snapshot[3].ChangeId, DirectChild.ChangeId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewTreeFallsBackForParentChangeIdCyclesTest,
+	"BlueprintHelper.Review.UI.TreeFallsBackForParentChangeIdCycles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewTreeFallsBackForParentChangeIdCyclesTest::RunTest(const FString& Parameters)
+{
+	const FString AssetPath = TEXT("/Game/BP_DoorTreeCycle");
+
+	FBlueprintHelperReviewVisibleChange First;
+	First.ChangeId = TEXT("tx_cycle_first");
+	First.AssetPath = AssetPath;
+	First.LatestEvidenceId = TEXT("tx_cycle_first");
+	First.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	First.DisplayLabel = TEXT("Cycle first");
+	First.ParentChangeId = TEXT("tx_cycle_second");
+
+	FBlueprintHelperReviewVisibleChange Second;
+	Second.ChangeId = TEXT("tx_cycle_second");
+	Second.AssetPath = AssetPath;
+	Second.LatestEvidenceId = TEXT("tx_cycle_second");
+	Second.ChangeKind = EBlueprintHelperReviewChangeKind::Modified;
+	Second.DisplayLabel = TEXT("Cycle second");
+	Second.ParentChangeId = First.ChangeId;
+
+	TArray<FBlueprintHelperReviewVisibleChange> InitialChanges;
+	InitialChanges.Add(First);
+	InitialChanges.Add(Second);
+
+	const TArray<SBlueprintHelperReviewPanel::FReviewTreeSnapshotEntry> Snapshot =
+		SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(InitialChanges);
+	TestEqual(TEXT("asset header plus two cycle fallback children"),
+		Snapshot.Num(),
+		3);
+	if (Snapshot.Num() != 3)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("first entry is asset header"), Snapshot[0].bIsAssetHeader);
+	TestEqual(TEXT("cycle first falls back to asset root"), Snapshot[1].Depth, 1);
+	TestEqual(TEXT("cycle second falls back to asset root"), Snapshot[2].Depth, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperReviewAssetContextLoadsBlueprintFromPackagePathTest,
 	"BlueprintHelper.Review.UI.AssetContextLoadsBlueprintFromPackagePath",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

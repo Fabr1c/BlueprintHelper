@@ -389,76 +389,10 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanel()
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildMainWorkspaceWidget()
 {
-	const EBlueprintHelperReviewSurface MainSurface =
+	return BuildSurfaceContentWidget(
 		FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveMainWorkspaceRoute(
-			ReviewAssetContext.AssetKind).Surface;
-	if (MainSurface == EBlueprintHelperReviewSurface::DataTable)
-	{
-		GraphPresenterState.Reset();
-		return FBlueprintHelperReviewDataTablePresenter::BuildContent(
-			ReviewAssetContext,
-			DataTablePresenterState,
-			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
-				this,
-				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
-	}
-	if (MainSurface == EBlueprintHelperReviewSurface::DataAsset)
-	{
-		GraphPresenterState.Reset();
-		return FBlueprintHelperReviewDataAssetPresenter::BuildContent(
-			ReviewAssetContext,
-			DataAssetPresenterState,
-			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
-				this,
-				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
-	}
-	if (MainSurface == EBlueprintHelperReviewSurface::Material)
-	{
-		GraphPresenterState.Reset();
-		return FBlueprintHelperReviewMaterialPresenter::BuildContent(
-			ReviewAssetContext,
-			MaterialPresenterState,
-			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
-				this,
-				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
-	}
-
-	return BuildGraphEditorWidget();
-}
-
-TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildGraphEditorWidget()
-{
-	FBlueprintHelperReviewGraphPresenterArgs Args;
-	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> GraphSurfaceDiffModels =
-		BuildSurfaceDiffModelsForSurface(
-			FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveSurfaceRoute(
-				EBlueprintHelperReviewSurface::Graph));
-	Args.AssetContext = &ReviewAssetContext;
-	Args.ChangeItems = &ChangeItems;
-	Args.SurfaceDiffModels = &GraphSurfaceDiffModels;
-	Args.SelectedChange = SelectedChange;
-	const bool bSelectedMatchesGraphNavigation =
-		SelectedChange.IsValid()
-		&& !RequestedGraphNavigationChangeId.IsEmpty()
-		&& SelectedChange->ChangeId == RequestedGraphNavigationChangeId;
-	Args.RequestedGraphName = bSelectedMatchesGraphNavigation ? RequestedGraphNavigationGraphName : FString();
-	Args.bAllowGraphNavigationWithoutGraphReview =
-		bSelectedMatchesGraphNavigation && bAllowGraphNavigationWithoutGraphReview;
-	Args.AddDebugMessage = [this](const FString& Message)
-	{
-		AddDebugMessage(Message);
-	};
-	Args.OnReviewActionIntent = [this](const FBlueprintHelperReviewActionIntent& Intent)
-	{
-		return OnReviewActionIntent(Intent);
-	};
-	Args.GetChangeColor = [this](EBlueprintHelperReviewChangeKind Kind)
-	{
-		return GetChangeColor(Kind);
-	};
-	Args.ReviewPanelSettings = ReviewPanelSettings;
-
-	return FBlueprintHelperReviewGraphPresenter::BuildContent(Args, GraphPresenterState);
+			ReviewAssetContext.AssetKind),
+		EBlueprintHelperReviewSurfaceContentHost::MainWorkspace);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildActionButtonBar()

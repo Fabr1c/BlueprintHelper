@@ -16,6 +16,18 @@ bool FBlueprintHelperReviewSurfaceGeometryCoordinator::ResolveRowGeometry(
 	{
 		OverlayWidget = Context.ResolveOverlayWidget(Surface);
 	}
+	if (!OverlayWidget.IsValid() && Context.ResolveHostWidget)
+	{
+		const FBlueprintHelperReviewSurfaceHostBinding* HostBinding = Context.HostBindings.FindByPredicate(
+			[Surface](const FBlueprintHelperReviewSurfaceHostBinding& Candidate)
+			{
+				return Candidate.Surface == Surface;
+			});
+		if (HostBinding != nullptr && HostBinding->bSupportsOverlayRefresh)
+		{
+			OverlayWidget = Context.ResolveHostWidget(HostBinding->HostSlot);
+		}
+	}
 	if (!OverlayWidget.IsValid())
 	{
 		OutAnchor.Reason = TEXT("unsupported_surface_geometry");

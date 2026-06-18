@@ -54,68 +54,6 @@
 #include "EdGraph/EdGraph.h"
 #include "K2Node_CustomEvent.h"
 
-static void BlueprintHelperReviewInvalidateRowWidget(const TWeakPtr<SWidget>& RowWidget)
-{
-	if (TSharedPtr<SWidget> Widget = RowWidget.Pin())
-	{
-		Widget->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-	}
-}
-
-static void BlueprintHelperReviewInvalidateComponentRows(
-	const TArray<TSharedPtr<FBlueprintHelperReviewComponentRowItem>>& Items)
-{
-	for (const TSharedPtr<FBlueprintHelperReviewComponentRowItem>& Item : Items)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
-		BlueprintHelperReviewInvalidateComponentRows(Item->Children);
-	}
-}
-
-static void BlueprintHelperReviewInvalidateMyBlueprintRows(
-	const TArray<TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>>& Items)
-{
-	for (const TSharedPtr<FBlueprintHelperReviewMyBlueprintPresenter::FRowItem>& Item : Items)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
-		BlueprintHelperReviewInvalidateMyBlueprintRows(Item->Children);
-	}
-}
-
-static void BlueprintHelperReviewInvalidateWidgetTreeRows(
-	const TArray<TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>>& Items)
-{
-	for (const TSharedPtr<FBlueprintHelperReviewWidgetTreeRowItem>& Item : Items)
-	{
-		if (!Item.IsValid())
-		{
-			continue;
-		}
-		BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
-		BlueprintHelperReviewInvalidateWidgetTreeRows(Item->Children);
-	}
-}
-
-static void BlueprintHelperReviewInvalidateDataAssetRows(
-	const TArray<TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>>& Items)
-{
-	for (const TSharedPtr<FBlueprintHelperReviewDataAssetRowItem>& Item : Items)
-	{
-		if (Item.IsValid())
-		{
-			BlueprintHelperReviewInvalidateRowWidget(Item->RowWidget);
-		}
-	}
-}
-
 static FString BlueprintHelperReviewExtractPrefixedName(const FString& Value, const FString& Prefix)
 {
 	if (Value.StartsWith(Prefix, ESearchCase::IgnoreCase))
@@ -462,8 +400,13 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 {
 	OutRootItems.Reset();
 	TMap<FString, FReviewTreeItemPtr> AssetRootsByPath;
-	TMap<FString, FReviewTreeItemPtr> LifecycleRootItemsByAssetAndChangeId;
+	TMap<FString, FReviewTreeItemPtr> ItemsByAssetAndChangeId;
+	TMap<FString, FString> ParentKeyByChangeKey;
 	TArray<FReviewTreeItemPtr> LeafItems;
+	const auto MakeChangeKey = [](const FString& AssetKey, const FString& ChangeId)
+	{
+		return FString::Printf(TEXT("%s|%s"), *AssetKey, *ChangeId);
+	};
 	for (const FReviewChangeItem& Item : SourceItems)
 	{
 		if (!Item.IsValid())
@@ -488,13 +431,54 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		Leaf->AssetPath = AssetKey;
 		Leaf->Change = Item;
 		LeafItems.Add(Leaf);
-		if (Item->bIsAssetLifecycleRoot && !Item->ChangeId.IsEmpty())
+		if (!Item->ChangeId.IsEmpty())
 		{
-			LifecycleRootItemsByAssetAndChangeId.Add(
-				FString::Printf(TEXT("%s|%s"), *AssetKey, *Item->ChangeId),
-				Leaf);
+			ItemsByAssetAndChangeId.Add(MakeChangeKey(AssetKey, Item->ChangeId), Leaf);
 		}
 	}
+
+	for (const FReviewTreeItemPtr& Leaf : LeafItems)
+	{
+		if (!Leaf.IsValid() || !Leaf->Change.IsValid())
+		{
+			continue;
+		}
+
+		const FBlueprintHelperReviewVisibleChange& Change = *Leaf->Change;
+		if (Change.ChangeId.IsEmpty() || Change.ParentChangeId.IsEmpty())
+		{
+			continue;
+		}
+
+		const FString ChangeKey = MakeChangeKey(Leaf->AssetPath, Change.ChangeId);
+		const FString ParentKey = MakeChangeKey(Leaf->AssetPath, Change.ParentChangeId);
+		if (ChangeKey == ParentKey || !ItemsByAssetAndChangeId.Contains(ParentKey))
+		{
+			continue;
+		}
+		ParentKeyByChangeKey.Add(ChangeKey, ParentKey);
+	}
+
+	const auto HasParentCycle = [&ParentKeyByChangeKey](const FString& ChangeKey, const FString& ParentKey)
+	{
+		TSet<FString> VisitedKeys;
+		FString Cursor = ParentKey;
+		while (!Cursor.IsEmpty())
+		{
+			if (Cursor == ChangeKey || VisitedKeys.Contains(Cursor))
+			{
+				return true;
+			}
+			VisitedKeys.Add(Cursor);
+			const FString* NextParent = ParentKeyByChangeKey.Find(Cursor);
+			if (!NextParent)
+			{
+				return false;
+			}
+			Cursor = *NextParent;
+		}
+		return false;
+	};
 
 	for (const FReviewTreeItemPtr& Leaf : LeafItems)
 	{
@@ -511,17 +495,21 @@ void SBlueprintHelperReviewPanel::BuildChangeTreeItemsFromChangeItems(
 		}
 
 		const FBlueprintHelperReviewVisibleChange& Change = *Leaf->Change;
-		if (!Change.ParentChangeId.IsEmpty())
+		if (!Change.ChangeId.IsEmpty())
 		{
-			FReviewTreeItemPtr* ParentRoot = nullptr;
-			ParentRoot = LifecycleRootItemsByAssetAndChangeId.Find(
-				FString::Printf(TEXT("%s|%s"), *AssetKey, *Change.ParentChangeId));
-			if (ParentRoot)
+			const FString ChangeKey = MakeChangeKey(AssetKey, Change.ChangeId);
+			if (const FString* ParentKey = ParentKeyByChangeKey.Find(ChangeKey))
 			{
-				if (ParentRoot->IsValid())
+				if (!HasParentCycle(ChangeKey, *ParentKey))
 				{
-					(*ParentRoot)->Children.Add(Leaf);
-					continue;
+					if (FReviewTreeItemPtr* ParentItem = ItemsByAssetAndChangeId.Find(*ParentKey))
+					{
+						if (ParentItem->IsValid())
+						{
+							(*ParentItem)->Children.Add(Leaf);
+							continue;
+						}
+					}
 				}
 			}
 		}
@@ -636,6 +624,7 @@ SBlueprintHelperReviewPanel::BuildReviewTreeSnapshotForTesting(
 		Entry.AssetPath = Item->AssetPath;
 		Entry.Depth = Depth;
 		Entry.ChangeId = Item->Change.IsValid() ? Item->Change->ChangeId : FString();
+		Entry.ParentChangeId = Item->Change.IsValid() ? Item->Change->ParentChangeId : FString();
 		Snapshot.Add(Entry);
 
 		for (int32 ChildIndex = Item->Children.Num() - 1; ChildIndex >= 0; --ChildIndex)
@@ -819,25 +808,10 @@ FReply SBlueprintHelperReviewPanel::OnReviewActionIntent(const FBlueprintHelperR
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyComponentsWidget()
 {
-	const FBlueprintHelperReviewSurfaceDiffFrameRoute StructureRoute =
+	return BuildSurfaceContentWidget(
 		FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveStructurePanelRoute(
-			ReviewAssetContext.AssetKind);
-	if (StructureRoute.Surface == EBlueprintHelperReviewSurface::UMGWidgetTree)
-	{
-		return FBlueprintHelperReviewUMGWidgetTreePresenter::BuildContent(
-			ReviewAssetContext,
-			WidgetTreePresenterState,
-			FBlueprintHelperReviewGeometryInvalidated::CreateSP(
-				this,
-				&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
-	}
-
-	return FBlueprintHelperReviewBlueprintComponentsPresenter::BuildContent(
-		ReviewAssetContext,
-		ComponentsPresenterState,
-		FBlueprintHelperReviewGeometryInvalidated::CreateSP(
-			this,
-			&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated));
+			ReviewAssetContext.AssetKind),
+		EBlueprintHelperReviewSurfaceContentHost::StructurePanel);
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildReadonlyMyBlueprintWidget()
@@ -941,6 +915,20 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildPanelDiffFrames(
 	return Registry->BuildOverlayOrNull(Route.Surface, Args);
 }
 
+TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildSurfaceContentWidget(
+	const FBlueprintHelperReviewSurfaceDiffFrameRoute& Route,
+	EBlueprintHelperReviewSurfaceContentHost Host)
+{
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SurfaceDiffModels =
+		BuildSurfaceDiffModelsForSurface(Route);
+	FBlueprintHelperReviewPanelSurfaceContentArgs Args;
+	ConfigurePanelSurfaceContentArgs(Args, Host, SurfaceDiffModels);
+
+	const TSharedRef<FBlueprintHelperReviewSurfacePresenterRegistry> Registry =
+		FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault();
+	return Registry->BuildContentOrError(Route.Surface, Args);
+}
+
 TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel> SBlueprintHelperReviewPanel::BuildSurfaceDiffModelsForSurface(
 	const FBlueprintHelperReviewSurfaceDiffFrameRoute& Route) const
 {
@@ -1012,6 +1000,44 @@ void SBlueprintHelperReviewPanel::ConfigurePanelSurfacePresenterArgs(
 		this,
 		&SBlueprintHelperReviewPanel::OnSurfaceGeometryInvalidated);
 	Args.ReviewPanelSettings = ReviewPanelSettings;
+}
+
+void SBlueprintHelperReviewPanel::ConfigurePanelSurfaceContentArgs(
+	FBlueprintHelperReviewPanelSurfaceContentArgs& Args,
+	EBlueprintHelperReviewSurfaceContentHost Host,
+	const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>& SurfaceDiffModels)
+{
+	ConfigurePanelSurfacePresenterArgs(Args, SurfaceDiffModels);
+	Args.Host = Host;
+	Args.GraphState = &GraphPresenterState;
+	Args.ComponentsState = &ComponentsPresenterState;
+	Args.WidgetTreeState = &WidgetTreePresenterState;
+	Args.MyBlueprintState = &MyBlueprintPresenterState;
+	Args.DataTableState = &DataTablePresenterState;
+	Args.DataAssetState = &DataAssetPresenterState;
+	Args.MaterialState = &MaterialPresenterState;
+	Args.RequestedGraphNavigationChangeId = RequestedGraphNavigationChangeId;
+	Args.RequestedGraphNavigationGraphName = RequestedGraphNavigationGraphName;
+	Args.bAllowGraphNavigationWithoutGraphReview = bAllowGraphNavigationWithoutGraphReview;
+}
+
+TMap<EBlueprintHelperReviewSurfaceHostSlot, TWeakPtr<SWidget>> SBlueprintHelperReviewPanel::BuildSurfaceHostWidgetMap(
+	bool bUseOverlayHosts) const
+{
+	TMap<EBlueprintHelperReviewSurfaceHostSlot, TWeakPtr<SWidget>> HostWidgets;
+	HostWidgets.Add(
+		EBlueprintHelperReviewSurfaceHostSlot::Structure,
+		bUseOverlayHosts ? ComponentsDiffStackBox : ComponentsContentBox);
+	HostWidgets.Add(
+		EBlueprintHelperReviewSurfaceHostSlot::MyBlueprint,
+		bUseOverlayHosts ? MyBlueprintDiffStackBox : MyBlueprintContentBox);
+	HostWidgets.Add(
+		EBlueprintHelperReviewSurfaceHostSlot::Details,
+		bUseOverlayHosts ? DetailsDiffStackBox : DetailsContentBox);
+	HostWidgets.Add(
+		EBlueprintHelperReviewSurfaceHostSlot::MainWorkspace,
+		bUseOverlayHosts ? MainWorkspaceDiffStackBox : GraphEditorBox);
+	return HostWidgets;
 }
 
 TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildDetailsPanelDiffFrames()
@@ -2170,8 +2196,12 @@ void SBlueprintHelperReviewPanel::SyncReviewRowHighlightStates(const FString& Pr
 
 void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 {
+	const TSharedRef<FBlueprintHelperReviewSurfacePresenterRegistry> Registry =
+		FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault();
+
 	FBlueprintHelperReviewSurfaceHostCoordinatorDelegates Delegates;
-	Delegates.StructureOverlayRefresh = [this]()
+	Delegates.HostBindings = Registry->ListHostBindings();
+	Delegates.OverlayRefreshHandlers.Add(EBlueprintHelperReviewSurfaceHostSlot::Structure, [this]()
 	{
 		if (!ComponentsDiffStackBox.IsValid())
 		{
@@ -2179,8 +2209,8 @@ void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 		}
 		ComponentsDiffStackBox->SetContent(BuildStructurePanelDiffFrames());
 		return true;
-	};
-	Delegates.MyBlueprintOverlayRefresh = [this]()
+	});
+	Delegates.OverlayRefreshHandlers.Add(EBlueprintHelperReviewSurfaceHostSlot::MyBlueprint, [this]()
 	{
 		if (!MyBlueprintDiffStackBox.IsValid())
 		{
@@ -2189,8 +2219,8 @@ void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 		MyBlueprintDiffStackBox->SetContent(BuildPanelDiffFrames(
 			FBlueprintHelperReviewSurfaceDiffFramePresenter::ResolveMyBlueprintRoute()));
 		return true;
-	};
-	Delegates.DetailsOverlayRefresh = [this]()
+	});
+	Delegates.OverlayRefreshHandlers.Add(EBlueprintHelperReviewSurfaceHostSlot::Details, [this]()
 	{
 		if (!DetailsDiffStackBox.IsValid())
 		{
@@ -2198,8 +2228,8 @@ void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 		}
 		DetailsDiffStackBox->SetContent(BuildDetailsPanelDiffFrames());
 		return true;
-	};
-	Delegates.MainWorkspaceOverlayRefresh = [this]()
+	});
+	Delegates.OverlayRefreshHandlers.Add(EBlueprintHelperReviewSurfaceHostSlot::MainWorkspace, [this]()
 	{
 		if (!MainWorkspaceDiffStackBox.IsValid())
 		{
@@ -2207,125 +2237,28 @@ void SBlueprintHelperReviewPanel::ConfigureSurfaceViewCoordinator()
 		}
 		MainWorkspaceDiffStackBox->SetContent(BuildMainWorkspaceDiffFrames());
 		return true;
-	};
-	Delegates.ComponentsRowsRefresh = [this]()
+	});
+
+	FBlueprintHelperReviewSurfaceRowsRefreshArgs RowsRefreshArgs;
+	ConfigurePanelSurfaceContentArgs(
+		RowsRefreshArgs,
+		EBlueprintHelperReviewSurfaceContentHost::Unknown,
+		TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>());
+	RowsRefreshArgs.HostWidgets = BuildSurfaceHostWidgetMap(false);
+	RowsRefreshArgs.RefreshDetailsRows = [this]()
 	{
-		bool bHandled = false;
-		if (ComponentsPresenterState.ComponentsPanel.IsValid())
+		if (!KismetInspector.IsValid())
 		{
-			ComponentsPresenterState.ComponentsPanel->RequestRowsRefresh();
-			bHandled = true;
+			return false;
 		}
-		if (ComponentsContentBox.IsValid())
+		if (TSharedPtr<IDetailsView> PropertyView = KismetInspector->GetPropertyView())
 		{
-			ComponentsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
+			PropertyView->ForceRefresh();
+			return true;
 		}
-		return bHandled;
+		return false;
 	};
-	Delegates.WidgetTreeRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		BlueprintHelperReviewInvalidateWidgetTreeRows(WidgetTreePresenterState.RootItems);
-		if (WidgetTreePresenterState.TreeView.IsValid())
-		{
-			WidgetTreePresenterState.TreeView->RequestTreeRefresh();
-			bHandled = true;
-		}
-		if (ComponentsContentBox.IsValid())
-		{
-			ComponentsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
-	Delegates.MyBlueprintRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		BlueprintHelperReviewInvalidateMyBlueprintRows(MyBlueprintPresenterState.RootItems);
-		if (MyBlueprintPresenterState.TreeView.IsValid())
-		{
-			MyBlueprintPresenterState.TreeView->RequestTreeRefresh();
-			bHandled = true;
-		}
-		if (MyBlueprintContentBox.IsValid())
-		{
-			MyBlueprintContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
-	Delegates.DetailsRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		if (KismetInspector.IsValid())
-		{
-			if (TSharedPtr<IDetailsView> PropertyView = KismetInspector->GetPropertyView())
-			{
-				PropertyView->ForceRefresh();
-				bHandled = true;
-			}
-		}
-		if (DetailsContentBox.IsValid())
-		{
-			DetailsContentBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
-	Delegates.DataTableRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		BlueprintHelperReviewInvalidateDataAssetRows(DataTablePresenterState.SelectedRowFields);
-		if (DataTablePresenterState.ListView.IsValid())
-		{
-			DataTablePresenterState.ListView->RequestListRefresh();
-			bHandled = true;
-		}
-		if (DataTablePresenterState.SelectedRowFieldListView.IsValid())
-		{
-			DataTablePresenterState.SelectedRowFieldListView->RequestListRefresh();
-			bHandled = true;
-		}
-		if (GraphEditorBox.IsValid())
-		{
-			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
-	Delegates.DataAssetRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		BlueprintHelperReviewInvalidateDataAssetRows(DataAssetPresenterState.Rows);
-		if (DataAssetPresenterState.ListView.IsValid())
-		{
-			DataAssetPresenterState.ListView->RequestListRefresh();
-			bHandled = true;
-		}
-		if (GraphEditorBox.IsValid())
-		{
-			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
-	Delegates.MaterialRowsRefresh = [this]()
-	{
-		bool bHandled = false;
-		BlueprintHelperReviewInvalidateDataAssetRows(MaterialPresenterState.Rows);
-		if (MaterialPresenterState.ListView.IsValid())
-		{
-			MaterialPresenterState.ListView->RequestListRefresh();
-			bHandled = true;
-		}
-		if (GraphEditorBox.IsValid())
-		{
-			GraphEditorBox->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
-			bHandled = true;
-		}
-		return bHandled;
-	};
+	Delegates.RowRefreshHandlers = Registry->BuildRowsRefreshHandlers(RowsRefreshArgs);
 
 	SurfaceHostCoordinator.Configure(SurfaceViewCoordinator, MoveTemp(Delegates));
 }
@@ -2550,28 +2483,13 @@ bool SBlueprintHelperReviewPanel::ResolveReviewRowGeometry(
 {
 	FBlueprintHelperReviewSurfaceGeometryResolutionContext Context;
 	Context.ReviewAssetPath = ReviewAssetContext.AssetPath;
-	Context.ResolveOverlayWidget = [this](EBlueprintHelperReviewSurface RoutedSurface) -> TSharedPtr<SWidget>
+	Context.HostBindings = FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault()->ListHostBindings();
+	const TMap<EBlueprintHelperReviewSurfaceHostSlot, TWeakPtr<SWidget>> HostWidgets =
+		BuildSurfaceHostWidgetMap(true);
+	Context.ResolveHostWidget = [HostWidgets](EBlueprintHelperReviewSurfaceHostSlot HostSlot) -> TSharedPtr<SWidget>
 	{
-		if (RoutedSurface == EBlueprintHelperReviewSurface::Components
-			|| RoutedSurface == EBlueprintHelperReviewSurface::UMGWidgetTree)
-		{
-			return ComponentsDiffStackBox;
-		}
-		if (RoutedSurface == EBlueprintHelperReviewSurface::MyBlueprint)
-		{
-			return MyBlueprintDiffStackBox;
-		}
-		if (RoutedSurface == EBlueprintHelperReviewSurface::Details)
-		{
-			return DetailsDiffStackBox;
-		}
-		if (RoutedSurface == EBlueprintHelperReviewSurface::DataTable
-			|| RoutedSurface == EBlueprintHelperReviewSurface::DataAsset
-			|| RoutedSurface == EBlueprintHelperReviewSurface::Material)
-		{
-			return MainWorkspaceDiffStackBox;
-		}
-		return TSharedPtr<SWidget>();
+		const TWeakPtr<SWidget>* HostWidget = HostWidgets.Find(HostSlot);
+		return HostWidget ? HostWidget->Pin() : TSharedPtr<SWidget>();
 	};
 	Context.ResolveComponentsRowGeometry = [this](
 		const FBlueprintHelperReviewVisibleChange& RoutedChange,
@@ -2623,9 +2541,7 @@ bool SBlueprintHelperReviewPanel::ResolveDetailsRowGeometry(
 UObject* SBlueprintHelperReviewPanel::ResolveDetailsObjectForSelectedChange() const
 {
 	const EBlueprintHelperReviewSurface SelectedDetailsSurface = ResolveDetailsSurfaceFromSelectedChange();
-	if (SelectedDetailsSurface == EBlueprintHelperReviewSurface::UMGWidgetTree
-		|| SelectedDetailsSurface == EBlueprintHelperReviewSurface::DataTable
-		|| SelectedDetailsSurface == EBlueprintHelperReviewSurface::DataAsset)
+	if (!FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault()->UsesDetailsObject(SelectedDetailsSurface))
 	{
 		return nullptr;
 	}

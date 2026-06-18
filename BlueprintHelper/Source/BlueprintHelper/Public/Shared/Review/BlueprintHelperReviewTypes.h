@@ -273,6 +273,7 @@ struct FBlueprintHelperReviewVisibleChange
 	int32 TaskStepIndex = INDEX_NONE;
 	int32 AtomicIndex = INDEX_NONE;
 	bool bIsAssetLifecycleRoot = false;
+	bool bIsObjectLifecycleRoot = false;
 	bool bRejectRemovesChildren = false;
 };
 

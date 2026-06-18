@@ -238,7 +238,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
       surface_adapter: 'material_instance',
     },
     debug: { projection_adapter: 'material_instance_debug_projection' },
-    read_context: { projection_adapter: 'material_instance_projection', route_refs: [] },
+    read_context: { projection_adapter: 'material_instance_projection', route_refs: ['material_instance.schema.asset'] },
     ui: { presenter_adapter: 'material_instance_presenter', surface: 'material_instance' },
     safety: { risk: 'high', reserved_only: false, write_approval_required: true },
   }),

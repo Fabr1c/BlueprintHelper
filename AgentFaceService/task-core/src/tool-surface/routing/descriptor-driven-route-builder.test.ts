@@ -115,6 +115,8 @@ test('descriptor-driven route builder creates MaterialInstance route after P4 ru
   assert.equal(route.plan.bridge_command, 'execute_task_plan');
   assert.equal(route.plan.payload['file'], 'material_instance_taskspec.json');
   assert.equal(route.plan.descriptor_refs.review_evidence_adapter, 'material_instance_review_evidence');
+  assert.equal(route.plan.descriptor_refs.read_context_projection_adapter, 'material_instance_projection');
+  assert.deepEqual(route.plan.descriptor_refs.read_context_route_refs, ['material_instance.schema.asset']);
 });
 
 test('descriptor-driven route builder respects write and high-risk runtime policies', () => {

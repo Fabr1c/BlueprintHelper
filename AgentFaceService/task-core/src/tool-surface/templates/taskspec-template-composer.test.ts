@@ -712,6 +712,7 @@ test('TaskSpec template composer writes supported non-GraphWrite base templates'
     'data_table',
     'object_properties',
     'asset_factory',
+    'material_instance',
   ] as const;
   for (const family of families) {
     const outputPath = path.join(
@@ -797,6 +798,43 @@ test('TaskSpec template composer writes schema-valid MaterialGraph append scaffo
   assert.equal(Object.hasOwn(taskSpec['behavior'] as Record<string, unknown>, 'merges'), false);
 });
 
+test('TaskSpec template composer writes schema-valid MaterialInstance scalar override scaffold', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'material-instance-scalar.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'material_instance',
+    writeMode: 'material.instance',
+    templateIds: ['material_instance.material_instance.set_scalar_override'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok', JSON.stringify(result));
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    schema: string;
+    task_type: string;
+    target: { target_type?: string };
+    behavior: {
+      material_instance_strategy: string;
+      operations: Array<Record<string, unknown>>;
+    };
+  };
+  assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1');
+  assert.equal(taskSpec.task_type, 'edit_material_instance');
+  assert.equal(taskSpec.target.target_type, 'material_instance');
+  assert.equal(taskSpec.behavior.material_instance_strategy, 'material_instance_edit');
+  assert.deepEqual(taskSpec.behavior.operations, [{
+    op: 'set_scalar_override',
+    parameter_name: '__REQUIRED_PARAMETER_NAME__',
+    value: 0.5,
+  }]);
+
+  const parseResult = TaskSpecSchema.safeParse(taskSpec);
+  assert.equal(parseResult.success, true, parseResult.success ? undefined : parseResult.error.message);
+});
+
 test('supported TaskSpec template families have discoverable operations quick-access and composable scaffolds', () => {
   const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' }).items;
   assert.equal(families.length > 0, true);
@@ -875,6 +913,8 @@ function writeModeForFamily(family: string): string {
       return 'object.properties';
     case 'asset_factory':
       return 'asset.create';
+    case 'material_instance':
+      return 'material.instance';
     default:
       throw new Error(`Unexpected test family: ${family}`);
   }

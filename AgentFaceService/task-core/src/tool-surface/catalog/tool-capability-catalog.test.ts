@@ -305,7 +305,12 @@ test('tool catalog gates descriptor-driven material write discovery by runtime a
       allow_high_risk_capabilities: true,
     },
   });
-  assert.equal(materialInstanceVisible.items.some((item) => item.id === 'material.write.taskspec.execute'), true);
+  const materialInstanceExecute = materialInstanceVisible.items.find((item) => item.id === 'material.write.taskspec.execute');
+  assert.equal(materialInstanceExecute !== undefined, true);
+  assert.equal(
+    getToolCapabilityDescriptor('material.write.taskspec.execute')?.route_refs.includes('material.instance'),
+    true,
+  );
 });
 
 test('tool catalog derives task runtime capability truth from active non-reserved descriptors', () => {
@@ -338,6 +343,14 @@ test('tool catalog derives task runtime capability truth from active non-reserve
   });
   assert.equal(materialWrite.items.some((item) => item.id === 'material.write.taskspec.execute'), true);
   assert.equal(materialWrite.items[0]?.purpose.includes('MaterialInstance'), true);
+  assert.equal(
+    getToolCapabilityDescriptor('material.write.taskspec.execute')?.route_refs.includes('material.graph'),
+    true,
+  );
+  assert.equal(
+    getToolCapabilityDescriptor('material.write.taskspec.execute')?.route_refs.includes('material.instance'),
+    true,
+  );
 });
 
 test('tool catalog hides write capabilities when descriptor safety disallows writes', () => {

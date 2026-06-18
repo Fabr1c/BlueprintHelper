@@ -297,6 +297,7 @@ void FBlueprintHelperReviewStoreMergeUtils::MergeReviewRecord(FBlueprintHelperRe
 			ExistingChange->TaskStepIndex = IncomingChange.TaskStepIndex;
 			ExistingChange->AtomicIndex = IncomingChange.AtomicIndex;
 			ExistingChange->bIsAssetLifecycleRoot = IncomingChange.bIsAssetLifecycleRoot;
+			ExistingChange->bIsObjectLifecycleRoot = IncomingChange.bIsObjectLifecycleRoot;
 			ExistingChange->bRejectRemovesChildren = IncomingChange.bRejectRemovesChildren;
 			if (IncomingChange.Status == EBlueprintHelperReviewChangeStatus::NeedsAction
 				|| IncomingChange.Status == EBlueprintHelperReviewChangeStatus::RejectFailed)

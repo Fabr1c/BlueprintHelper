@@ -275,6 +275,7 @@ TSharedRef<FJsonObject> FBlueprintHelperReviewStoreJsonUtils::ReviewVisibleChang
 		if (Change.TaskStepIndex != INDEX_NONE) Json->SetNumberField(TEXT("task_step_index"), Change.TaskStepIndex);
 		if (Change.AtomicIndex != INDEX_NONE) Json->SetNumberField(TEXT("atomic_index"), Change.AtomicIndex);
 		if (Change.bIsAssetLifecycleRoot) Json->SetBoolField(TEXT("is_asset_lifecycle_root"), true);
+		if (Change.bIsObjectLifecycleRoot) Json->SetBoolField(TEXT("is_object_lifecycle_root"), true);
 		if (Change.bRejectRemovesChildren) Json->SetBoolField(TEXT("reject_removes_children"), true);
 
 		TArray<TSharedPtr<FJsonValue>> Targets;
@@ -502,6 +503,7 @@ bool FBlueprintHelperReviewStoreJsonUtils::ReadReviewRecordFromJson(const TShare
 					Change.AtomicIndex = static_cast<int32>(OrderValue);
 				}
 				ChangeJson->TryGetBoolField(TEXT("is_asset_lifecycle_root"), Change.bIsAssetLifecycleRoot);
+				ChangeJson->TryGetBoolField(TEXT("is_object_lifecycle_root"), Change.bIsObjectLifecycleRoot);
 				ChangeJson->TryGetBoolField(TEXT("reject_removes_children"), Change.bRejectRemovesChildren);
 
 				const TArray<TSharedPtr<FJsonValue>>* Targets = nullptr;

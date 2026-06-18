@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/Review/BlueprintHelperReviewPresenterTypes.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceContentPresenterTypes.h"
 
 class SWidget;
 
@@ -12,6 +13,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewSurfaceGeometryResolutionContex
 {
 	FString ReviewAssetPath;
 	TFunction<TSharedPtr<SWidget>(EBlueprintHelperReviewSurface)> ResolveOverlayWidget;
+	TArray<FBlueprintHelperReviewSurfaceHostBinding> HostBindings;
+	TFunction<TSharedPtr<SWidget>(EBlueprintHelperReviewSurfaceHostSlot)> ResolveHostWidget;
 	TFunction<bool(
 		const FBlueprintHelperReviewVisibleChange&,
 		const TSharedPtr<SWidget>&,

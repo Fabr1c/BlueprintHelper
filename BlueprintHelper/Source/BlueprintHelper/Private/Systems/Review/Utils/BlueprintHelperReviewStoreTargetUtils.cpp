@@ -309,6 +309,7 @@ void FBlueprintHelperReviewStoreTargetUtils::ApplyAssetLifecycleRootMetadata(FBl
 		}
 
 		Change.bIsAssetLifecycleRoot = true;
+		Change.bIsObjectLifecycleRoot = true;
 		Change.bRejectRemovesChildren = true;
 		Change.ParentChangeId.Reset();
 	}
@@ -518,6 +519,11 @@ void FBlueprintHelperReviewStoreTargetUtils::EnsureLifecycleMetadata(FBlueprintH
 		{
 			BlueprintHelperReviewEnsureAtomicTargetLifecycleMetadata(Target);
 		}
+		Change.bIsObjectLifecycleRoot = Change.bIsAssetLifecycleRoot || Change.AtomicTargets.ContainsByPredicate(
+			[](const FBlueprintHelperReviewAtomicTarget& Target)
+			{
+				return !Target.LifecycleObjectKey.IsEmpty() && Target.LifecycleParentKey.IsEmpty();
+			});
 	}
 
 static bool BlueprintHelperReviewChangeHasAssetFactoryRootKey(const FBlueprintHelperReviewVisibleChange& Change)
@@ -848,6 +854,7 @@ FBlueprintHelperReviewVisibleChange FBlueprintHelperReviewStoreTargetUtils::Make
 		if (IsAssetLifecycleRootTarget(Target, Change.ChangeKind))
 		{
 			Change.bIsAssetLifecycleRoot = true;
+			Change.bIsObjectLifecycleRoot = true;
 			Change.bRejectRemovesChildren = true;
 			Change.ParentChangeId.Reset();
 		}

@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "UI/SBlueprintHelperMainWindow.h"
+#include "UI/Review/BlueprintHelperReviewDebugBundleService.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceProjectionRegistry.h"
 #include "UI/Review/SBlueprintHelperReviewPanel.h"
 
@@ -107,6 +108,22 @@ static FBlueprintHelperReviewVisibleChange BlueprintHelperReviewPanelMakeMateria
 		true);
 	Change.AtomicTargets.Add(Target);
 	return Change;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelDebugBundleDefaultPathTest,
+	"BlueprintHelper.Review.Panel.DebugBundle.DefaultPathIsUnique",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperReviewPanelDebugBundleDefaultPathTest::RunTest(const FString& Parameters)
+{
+	const FString FirstPath = FBlueprintHelperReviewDebugBundleService::MakeDefaultBundlePath();
+	const FString SecondPath = FBlueprintHelperReviewDebugBundleService::MakeDefaultBundlePath();
+
+	TestFalse(TEXT("First default DebugBundle path is not empty"), FirstPath.IsEmpty());
+	TestFalse(TEXT("Second default DebugBundle path is not empty"), SecondPath.IsEmpty());
+	TestNotEqual(TEXT("Default DebugBundle paths are unique for same-second panels"), FirstPath, SecondPath);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

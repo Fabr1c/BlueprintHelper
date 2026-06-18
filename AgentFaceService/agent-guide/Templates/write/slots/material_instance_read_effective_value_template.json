@@ -1,0 +1,5 @@
+{
+  "op": "read_effective_value",
+  "parameter_name": "__REQUIRED_PARAMETER_NAME__",
+  "parameter_type": "scalar"
+}

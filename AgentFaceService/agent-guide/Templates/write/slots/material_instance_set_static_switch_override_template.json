@@ -1,0 +1,5 @@
+{
+  "op": "set_static_switch_override",
+  "parameter_name": "__REQUIRED_PARAMETER_NAME__",
+  "value": true
+}

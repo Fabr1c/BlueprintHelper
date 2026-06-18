@@ -111,6 +111,16 @@ export const NON_GRAPHWRITE_TEMPLATE_FAMILIES: readonly NonGraphWriteTemplateFam
     status: 'supported',
     write_mode: 'material.graph',
   },
+  {
+    family: 'material_instance',
+    task_type: 'edit_material_instance',
+    description: 'Edit MaterialInstance parent and parameter overrides through MaterialInstance TaskSpec routes.',
+    strategy_field: 'material_instance_strategy',
+    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_instance_edit_template.json',
+    insert_targets: ['behavior.operations[]'],
+    status: 'supported',
+    write_mode: 'material.instance',
+  },
 ];
 
 export function getSupportedNonGraphWriteTemplateFamilies(): readonly NonGraphWriteTemplateFamilyMetadata[] {
@@ -260,6 +270,7 @@ function describeNonGraphWriteCluster(clusterId: string): string {
     class_settings: 'Blueprint class setting operations including interfaces, defaults, and reparenting.',
     signature: 'Blueprint function, event, macro, and dispatcher signature operations.',
     material_graph: 'MaterialGraph expression block operations and material output link operations.',
+    material_instance: 'MaterialInstance parent and parameter override operations.',
   };
   return descriptions[clusterId] ?? `Non-GraphWrite ${clusterId} operations.`;
 }

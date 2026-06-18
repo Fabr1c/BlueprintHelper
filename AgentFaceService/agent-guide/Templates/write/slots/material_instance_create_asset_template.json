@@ -1,0 +1,4 @@
+{
+  "op": "create_material_instance",
+  "parent_material": "__OPTIONAL_PARENT_MATERIAL_PATH__"
+}

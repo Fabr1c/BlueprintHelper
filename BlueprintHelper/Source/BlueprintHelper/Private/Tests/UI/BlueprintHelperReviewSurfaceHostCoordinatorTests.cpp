@@ -1,8 +1,11 @@
 // BlueprintHelper Review surface host coordinator tests.
 
 #include "UI/Review/BlueprintHelperReviewSurfaceHostCoordinator.h"
+#include "UI/Review/BlueprintHelperReviewSurfacePresenterRegistry.h"
 
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -22,17 +25,29 @@ public:
 		TMap<FString, int32>& Counters)
 	{
 		FBlueprintHelperReviewSurfaceHostCoordinatorDelegates Delegates;
-		Delegates.StructureOverlayRefresh = Count(Counters, TEXT("structure_overlay"));
-		Delegates.MyBlueprintOverlayRefresh = Count(Counters, TEXT("my_blueprint_overlay"));
-		Delegates.DetailsOverlayRefresh = Count(Counters, TEXT("details_overlay"));
-		Delegates.MainWorkspaceOverlayRefresh = Count(Counters, TEXT("main_workspace_overlay"));
-		Delegates.ComponentsRowsRefresh = Count(Counters, TEXT("components_rows"));
-		Delegates.WidgetTreeRowsRefresh = Count(Counters, TEXT("widget_tree_rows"));
-		Delegates.MyBlueprintRowsRefresh = Count(Counters, TEXT("my_blueprint_rows"));
-		Delegates.DetailsRowsRefresh = Count(Counters, TEXT("details_rows"));
-		Delegates.DataTableRowsRefresh = Count(Counters, TEXT("data_table_rows"));
-		Delegates.DataAssetRowsRefresh = Count(Counters, TEXT("data_asset_rows"));
-		Delegates.MaterialRowsRefresh = Count(Counters, TEXT("material_rows"));
+		Delegates.HostBindings = FBlueprintHelperReviewSurfacePresenterRegistry::CreateDefault()->ListHostBindings();
+		Delegates.OverlayRefreshHandlers.Add(
+			EBlueprintHelperReviewSurfaceHostSlot::Structure,
+			Count(Counters, TEXT("structure_overlay")));
+		Delegates.OverlayRefreshHandlers.Add(
+			EBlueprintHelperReviewSurfaceHostSlot::MyBlueprint,
+			Count(Counters, TEXT("my_blueprint_overlay")));
+		Delegates.OverlayRefreshHandlers.Add(
+			EBlueprintHelperReviewSurfaceHostSlot::Details,
+			Count(Counters, TEXT("details_overlay")));
+		Delegates.OverlayRefreshHandlers.Add(
+			EBlueprintHelperReviewSurfaceHostSlot::MainWorkspace,
+			Count(Counters, TEXT("main_workspace_overlay")));
+		for (const FBlueprintHelperReviewSurfaceHostBinding& HostBinding : Delegates.HostBindings)
+		{
+			Delegates.RowRefreshHandlers.Add(
+				HostBinding.Surface,
+				Count(
+					Counters,
+					FString::Printf(
+						TEXT("%s_rows"),
+						BlueprintHelperReviewSurfaceToString(HostBinding.Surface))));
+		}
 		return Delegates;
 	}
 };
@@ -90,12 +105,50 @@ bool FBlueprintHelperReviewSurfaceHostCoordinator_KeepsRowsSurfaceSpecific::RunT
 	TestFalse(TEXT("unknown rows not handled"), SurfaceViewCoordinator.RefreshRows(EBlueprintHelperReviewSurface::Unknown));
 
 	TestEqual(TEXT("components rows count"), Counters.FindRef(TEXT("components_rows")), 1);
-	TestEqual(TEXT("widget tree rows count"), Counters.FindRef(TEXT("widget_tree_rows")), 1);
+	TestEqual(TEXT("widget tree rows count"), Counters.FindRef(TEXT("umg_widget_tree_rows")), 1);
 	TestEqual(TEXT("my blueprint rows count"), Counters.FindRef(TEXT("my_blueprint_rows")), 1);
 	TestEqual(TEXT("details rows count"), Counters.FindRef(TEXT("details_rows")), 1);
 	TestEqual(TEXT("data table rows count"), Counters.FindRef(TEXT("data_table_rows")), 1);
 	TestEqual(TEXT("data asset rows count"), Counters.FindRef(TEXT("data_asset_rows")), 1);
 	TestEqual(TEXT("material rows count"), Counters.FindRef(TEXT("material_rows")), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReviewPanelSurfaceBranchResidualGuardTest,
+	"BlueprintHelper.Review.Panel.SurfaceHostCoordinator.PanelSurfaceBranchResidualGuard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperReviewPanelSurfaceBranchResidualGuardTest::RunTest(const FString&)
+{
+	const FString PanelSourcePath = FPaths::Combine(
+		FPaths::ProjectPluginsDir(),
+		TEXT("BlueprintHelper/BlueprintHelper/Source/BlueprintHelper/Private/UI/Review/SBlueprintHelperReviewPanel.cpp"));
+	FString PanelSource;
+	if (!FFileHelper::LoadFileToString(PanelSource, *PanelSourcePath))
+	{
+		AddError(FString::Printf(TEXT("Could not read panel source: %s"), *PanelSourcePath));
+		return false;
+	}
+
+	const TArray<FString> ForbiddenLiterals = {
+		TEXT("DataTableRowsRefresh"),
+		TEXT("DataAssetRowsRefresh"),
+		TEXT("MaterialRowsRefresh"),
+		TEXT("RoutedSurface == EBlueprintHelperReviewSurface::Material"),
+		TEXT("RoutedSurface == EBlueprintHelperReviewSurface::DataTable"),
+		TEXT("RoutedSurface == EBlueprintHelperReviewSurface::DataAsset"),
+		TEXT("EBlueprintHelperReviewSurface::Material"),
+		TEXT("EBlueprintHelperReviewSurface::DataTable"),
+		TEXT("EBlueprintHelperReviewSurface::DataAsset"),
+		TEXT("switch (HostSlot)")
+	};
+	for (const FString& ForbiddenLiteral : ForbiddenLiterals)
+	{
+		TestFalse(
+			FString::Printf(TEXT("panel source should not contain %s"), *ForbiddenLiteral),
+			PanelSource.Contains(ForbiddenLiteral));
+	}
 	return true;
 }
 

@@ -78,6 +78,15 @@ export const NON_GRAPHWRITE_OPERATION_DESCRIPTORS: readonly NonGraphWriteOperati
   op('material_graph', 'material.graph', 'material_graph', 'replace_block', 'Replace an owned Material expression block by block_id.', 'material_graph_replace_block', ['behavior.replace'], ['block_id(*)', 'node_key(*)']),
   op('material_graph', 'material.graph', 'material_graph', 'patch_block', 'Patch owned Material expressions, links, or deletes by block_id.', 'material_graph_patch_block', ['behavior.patches[]'], ['block_id(*)']),
   op('material_graph', 'material.graph', 'material_graph', 'merge_block', 'Merge additional Material expressions or links into an owned block.', 'material_graph_merge_block', ['behavior.merges[]'], ['block_id(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'create_material_instance', 'Create a MaterialInstanceConstant asset with an optional parent material.', 'material_instance_create_asset', ['behavior.operations[]'], ['parent_material']),
+  op('material_instance', 'material.instance', 'material_instance', 'set_parent', 'Set the parent material for a MaterialInstanceConstant.', 'material_instance_set_parent', ['behavior.operations[]'], ['parent_material(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'set_scalar_override', 'Set a scalar parameter override on a MaterialInstanceConstant.', 'material_instance_set_scalar_override', ['behavior.operations[]'], ['parameter_name(*)', 'value(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'set_vector_override', 'Set a vector parameter override on a MaterialInstanceConstant.', 'material_instance_set_vector_override', ['behavior.operations[]'], ['parameter_name(*)', 'value(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'set_texture_override', 'Set a texture parameter override on a MaterialInstanceConstant.', 'material_instance_set_texture_override', ['behavior.operations[]'], ['parameter_name(*)', 'texture_asset(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'set_static_switch_override', 'Set a static switch parameter override on a MaterialInstanceConstant.', 'material_instance_set_static_switch_override', ['behavior.operations[]'], ['parameter_name(*)', 'value(*)']),
+  op('material_instance', 'material.instance', 'material_instance', 'clear_override', 'Clear a parameter override on a MaterialInstanceConstant.', 'material_instance_clear_override', ['behavior.operations[]'], ['parameter_name(*)', 'parameter_type']),
+  op('material_instance', 'material.instance', 'material_instance', 'read_parameter_schema', 'Read MaterialInstance parameter metadata through the MaterialInstance task route.', 'material_instance_read_parameter_schema', ['behavior.operations[]'], ['parameter_name', 'parameter_type']),
+  op('material_instance', 'material.instance', 'material_instance', 'read_effective_value', 'Read the effective MaterialInstance parameter value through the MaterialInstance task route.', 'material_instance_read_effective_value', ['behavior.operations[]'], ['parameter_name(*)', 'parameter_type']),
 ];
 
 function op(

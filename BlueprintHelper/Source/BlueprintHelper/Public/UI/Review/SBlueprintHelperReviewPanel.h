@@ -19,6 +19,7 @@
 #include "UI/Review/BlueprintHelperReviewRejectWorkflowCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewRowHighlightSyncService.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceDiffFramePresenter.h"
+#include "UI/Review/BlueprintHelperReviewSurfaceContentPresenterTypes.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceGeometryCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceHostCoordinator.h"
 #include "UI/Review/BlueprintHelperReviewSurfaceViewCoordinator.h"
@@ -70,6 +71,7 @@ public:
 		bool bIsAssetHeader = false;
 		FString AssetPath;
 		FString ChangeId;
+		FString ParentChangeId;
 		int32 Depth = 0;
 	};
 
@@ -127,7 +129,9 @@ private:
 	TSharedRef<SWidget> BuildDetailsPanel();
 	TSharedRef<SWidget> BuildDebugPanel();
 	TSharedRef<SWidget> BuildMainWorkspaceWidget();
-	TSharedRef<SWidget> BuildGraphEditorWidget();
+	TSharedRef<SWidget> BuildSurfaceContentWidget(
+		const FBlueprintHelperReviewSurfaceDiffFrameRoute& Route,
+		EBlueprintHelperReviewSurfaceContentHost Host);
 	TSharedRef<SWidget> BuildActionButtonBar();
 	TSharedRef<SWidget> BuildAssetChangeButtonBar();
 	TSharedRef<SWidget> BuildReadonlyComponentsWidget();
@@ -143,6 +147,12 @@ private:
 	void ConfigurePanelSurfacePresenterArgs(
 		FBlueprintHelperReviewPanelSurfacePresenterArgs& Args,
 		const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>& SurfaceDiffModels);
+	void ConfigurePanelSurfaceContentArgs(
+		FBlueprintHelperReviewPanelSurfaceContentArgs& Args,
+		EBlueprintHelperReviewSurfaceContentHost Host,
+		const TArray<FBlueprintHelperReviewSurfaceDiffProjectionModel>& SurfaceDiffModels);
+	TMap<EBlueprintHelperReviewSurfaceHostSlot, TWeakPtr<SWidget>> BuildSurfaceHostWidgetMap(
+		bool bUseOverlayHosts) const;
 	TSharedRef<SWidget> BuildDetailsPanelDiffFrames();
 	TSharedRef<SWidget> BuildDiffRow(FReviewChangeItem Item, bool bShowActions);
 	TSharedRef<SWidget> BuildDiffFrame(FReviewChangeItem Item, const TSharedRef<SWidget>& Content, bool bShowActions);

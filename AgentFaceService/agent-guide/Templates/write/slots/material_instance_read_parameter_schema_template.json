@@ -1,0 +1,5 @@
+{
+  "op": "read_parameter_schema",
+  "parameter_name": "__OPTIONAL_PARAMETER_NAME__",
+  "parameter_type": "scalar"
+}

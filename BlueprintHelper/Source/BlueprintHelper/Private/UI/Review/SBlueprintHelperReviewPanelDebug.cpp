@@ -150,6 +150,8 @@ FReply SBlueprintHelperReviewPanel::OnLoadDebugBundle()
 		DebugBundlePathTextBox->SetText(FText::FromString(DebugBundlePath));
 	}
 
+	FBlueprintHelperReviewDebugBundleService::FlushAsyncWrites();
+
 	FString Error;
 	FBlueprintHelperReviewDebugPresenter DebugPresenter;
 	FBlueprintHelperReviewDebugTimelineModel TimelineModel;

@@ -1,0 +1,4 @@
+{
+  "op": "set_parent",
+  "parent_material": "__REQUIRED_PARENT_MATERIAL_PATH__"
+}

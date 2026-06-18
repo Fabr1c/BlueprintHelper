@@ -8,41 +8,37 @@ void FBlueprintHelperReviewSurfaceHostCoordinator::Configure(
 {
 	SurfaceViewCoordinator.Reset();
 
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::Components,
-		Delegates.StructureOverlayRefresh,
-		MoveTemp(Delegates.ComponentsRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::UMGWidgetTree,
-		Delegates.StructureOverlayRefresh,
-		MoveTemp(Delegates.WidgetTreeRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::MyBlueprint,
-		MoveTemp(Delegates.MyBlueprintOverlayRefresh),
-		MoveTemp(Delegates.MyBlueprintRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::Details,
-		MoveTemp(Delegates.DetailsOverlayRefresh),
-		MoveTemp(Delegates.DetailsRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::DataTable,
-		Delegates.MainWorkspaceOverlayRefresh,
-		MoveTemp(Delegates.DataTableRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::DataAsset,
-		Delegates.MainWorkspaceOverlayRefresh,
-		MoveTemp(Delegates.DataAssetRowsRefresh));
-	RegisterSurface(
-		SurfaceViewCoordinator,
-		EBlueprintHelperReviewSurface::Material,
-		Delegates.MainWorkspaceOverlayRefresh,
-		MoveTemp(Delegates.MaterialRowsRefresh));
+	for (const FBlueprintHelperReviewSurfaceHostBinding& HostBinding : Delegates.HostBindings)
+	{
+		if (HostBinding.Surface == EBlueprintHelperReviewSurface::Unknown)
+		{
+			continue;
+		}
+
+		TFunction<bool()> OverlayRefresh;
+		if (HostBinding.bSupportsOverlayRefresh)
+		{
+			if (TFunction<bool()>* OverlayHandler = Delegates.OverlayRefreshHandlers.Find(HostBinding.HostSlot))
+			{
+				OverlayRefresh = *OverlayHandler;
+			}
+		}
+
+		TFunction<bool()> RowsRefresh;
+		if (HostBinding.bSupportsRowRefresh)
+		{
+			if (TFunction<bool()>* RowsHandler = Delegates.RowRefreshHandlers.Find(HostBinding.Surface))
+			{
+				RowsRefresh = MoveTemp(*RowsHandler);
+			}
+		}
+
+		RegisterSurface(
+			SurfaceViewCoordinator,
+			HostBinding.Surface,
+			MoveTemp(OverlayRefresh),
+			MoveTemp(RowsRefresh));
+	}
 }
 
 void FBlueprintHelperReviewSurfaceHostCoordinator::RegisterSurface(

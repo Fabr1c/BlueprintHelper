@@ -93,6 +93,8 @@ test('MaterialInstance descriptor is visible only after its P4 runtime adapter i
   assert.equal(visible.some((descriptor) => descriptor.id === 'material_instance.edit'), true);
   assert.equal(getCapabilityDescriptor('material_instance.edit')?.runtime.status, 'active');
   assert.equal(getCapabilityDescriptor('material_instance.edit')?.safety.reserved_only, false);
+  assert.equal(getCapabilityDescriptor('material_instance.edit')?.read_context?.projection_adapter, 'material_instance_projection');
+  assert.deepEqual(getCapabilityDescriptor('material_instance.edit')?.read_context?.route_refs, ['material_instance.schema.asset']);
 });
 
 test('Struct fields descriptor stays hidden until a real runtime adapter is implemented', () => {

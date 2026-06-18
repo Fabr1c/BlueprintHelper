@@ -51,9 +51,20 @@ FString FBlueprintHelperReviewDebugBundleService::MakeDefaultBundlePath()
 	const FBlueprintHelperReviewDebugBundleConfig BundleConfig =
 		FBlueprintHelperReviewConfigResolver::Load().DebugBundle;
 	FString Filename = FDateTime::UtcNow().ToString(*BundleConfig.FilenamePattern);
+	const FString UniqueSuffix = FGuid::NewGuid().ToString(EGuidFormats::Short);
 	if (!Filename.EndsWith(TEXT(".json"), ESearchCase::IgnoreCase))
 	{
 		Filename += TEXT(".json");
+	}
+	FString BaseName;
+	FString Extension;
+	if (Filename.Split(TEXT("."), &BaseName, &Extension, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+	{
+		Filename = FString::Printf(TEXT("%s_%s.%s"), *BaseName, *UniqueSuffix, *Extension);
+	}
+	else
+	{
+		Filename = FString::Printf(TEXT("%s_%s"), *Filename, *UniqueSuffix);
 	}
 	return GetReviewPanelBundleDir() / Filename;
 }

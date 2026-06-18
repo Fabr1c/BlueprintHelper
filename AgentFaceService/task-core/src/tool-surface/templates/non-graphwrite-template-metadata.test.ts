@@ -27,6 +27,7 @@ test('non-GraphWrite metadata declares every TaskSpec family from design', () =>
       'blueprint_variables',
       'data_table',
       'material_graph',
+      'material_instance',
       'object_properties',
       'umg_widget',
     ],
@@ -63,6 +64,11 @@ test('dedicated Blueprint component class settings and signature families are su
   assert.equal(
     byFamily.get('material_graph')?.base_template_path,
     'AgentFaceService/agent-guide/Templates/write/routes/material_graph_edit_template.json',
+  );
+  assert.equal(byFamily.get('material_instance')?.status, 'supported');
+  assert.equal(
+    byFamily.get('material_instance')?.base_template_path,
+    'AgentFaceService/agent-guide/Templates/write/routes/material_instance_edit_template.json',
   );
 });
 
@@ -109,6 +115,15 @@ test('dedicated non-GraphWrite families expose operation quick-access templates'
   })[0];
   assert.equal(appendMaterialBlock?.template_id, 'material_graph.material_graph.append_block');
   assert.deepEqual(appendMaterialBlock?.insert_paths, ['behavior.entries[]']);
+
+  const setScalarOverride = listNonGraphWriteTemplateQuickAccess({
+    family: 'material_instance',
+    cluster: 'material_instance',
+    operation: 'set_scalar_override',
+    writeMode: 'material.instance',
+  })[0];
+  assert.equal(setScalarOverride?.template_id, 'material_instance.material_instance.set_scalar_override');
+  assert.deepEqual(setScalarOverride?.insert_paths, ['behavior.operations[]']);
 });
 
 test('non-GraphWrite operations declare preview execute validation classification', () => {

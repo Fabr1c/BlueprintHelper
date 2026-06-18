@@ -1,0 +1,5 @@
+{
+  "op": "set_texture_override",
+  "parameter_name": "__REQUIRED_PARAMETER_NAME__",
+  "texture_asset": "__REQUIRED_TEXTURE_ASSET_PATH__"
+}

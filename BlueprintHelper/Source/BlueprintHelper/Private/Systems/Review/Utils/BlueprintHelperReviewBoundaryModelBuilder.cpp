@@ -41,6 +41,7 @@ FBlueprintHelperReviewBoundaryModel FBlueprintHelperReviewBoundaryModelBuilder::
 	}
 	Boundary.bIsAssetLifecycleRoot = Change.bIsAssetLifecycleRoot;
 	Boundary.bIsObjectLifecycleRoot =
+		Change.bIsObjectLifecycleRoot ||
 		Change.bIsAssetLifecycleRoot ||
 		(!Boundary.LifecycleObjectKey.IsEmpty() && Boundary.LifecycleParentKey.IsEmpty());
 	Boundary.bRejectRemovesChildren = Change.bRejectRemovesChildren;

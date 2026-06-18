@@ -1,0 +1,10 @@
+{
+  "op": "set_vector_override",
+  "parameter_name": "__REQUIRED_PARAMETER_NAME__",
+  "value": {
+    "r": 1.0,
+    "g": 1.0,
+    "b": 1.0,
+    "a": 1.0
+  }
+}
