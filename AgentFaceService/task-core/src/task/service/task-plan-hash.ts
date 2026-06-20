@@ -12,6 +12,10 @@ export function createExecutionPolicyHash(policy: unknown): string {
   return createStableSha256(policy);
 }
 
+export function createTaskVerificationHash(verification: unknown): string {
+  return createStableSha256(verification);
+}
+
 function createStableSha256(value: unknown): string {
   return createHash('sha256')
     .update(stableJsonStringify(value))

@@ -23,6 +23,28 @@ export function writeJsonArtifact(input: {
   return filePath;
 }
 
+export interface JsonArtifactWriteOutcome {
+  ok: boolean;
+  path?: string;
+  error?: Error;
+}
+
+export function tryWriteJsonArtifact(input: {
+  root: string;
+  runId: string;
+  name: string;
+  value: unknown;
+}): JsonArtifactWriteOutcome {
+  try {
+    return { ok: true, path: writeJsonArtifact(input) };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
 export function stringifyJsonArtifact(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`.replace(/[^\u0000-\u007f]/g, (char) => {
     return `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;

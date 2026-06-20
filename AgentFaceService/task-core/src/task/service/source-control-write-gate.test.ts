@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { BRIDGE_RESPONSE_SCHEMA } from '../../bridge/bridge-response-schema.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import type { TaskRunnerBridge } from './task-spec-runner.js';
 import { runSourceControlWriteGate } from './source-control-write-gate.js';
 
 function response(result: Record<string, unknown>): BridgeResponse {
-  return { request_id: 'test', success: true, result };
+  return { schema: BRIDGE_RESPONSE_SCHEMA, request_id: 'test', success: true, result };
 }
 
 function makeBridge(result: Record<string, unknown>): {
@@ -66,6 +67,7 @@ test('source-control write gate preserves source_control_status bridge failures'
   const bridge: TaskRunnerBridge = {
     async sendCommand() {
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'status_failed',
         success: false,
         error_code: 'source_control_unavailable',
@@ -121,6 +123,7 @@ test('source-control write gate preserves source_control_checkout bridge failure
         });
       }
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'checkout_failed',
         success: false,
         error_code: 'checkout_failed',

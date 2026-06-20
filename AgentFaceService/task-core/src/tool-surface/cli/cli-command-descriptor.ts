@@ -116,7 +116,7 @@ const BASE_CLI_COMMAND_DESCRIPTORS: readonly CliCommandDescriptor[] = [
     capability_descriptor_ids: TASK_RUNTIME_CAPABILITY_DESCRIPTOR_IDS,
     input_io_kind: 'task_file',
     positionals: ['task', 'execute'],
-    option_map: { file: 'file', previewToken: 'previewToken', runtimeAdapterIds: 'runtimeAdapterIds' },
+    option_map: { file: 'file', previewToken: 'previewToken', receiptId: 'receiptId', runtimeAdapterIds: 'runtimeAdapterIds' },
     required_options: [{ option: 'file', message: 'Missing --file for bh task execute.' }],
   },
   {

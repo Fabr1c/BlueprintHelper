@@ -36,6 +36,7 @@ FString FBlueprintHelperTaskPreviewStore::Store(const FBlueprintHelperTaskPrevie
 	Entry.ActionContextRevisionManifestHash = Request.ActionContextRevisionManifestHash;
 	Entry.ActionContextRevisionManifestJson = CloneJsonObject(Request.ActionContextRevisionManifestJson);
 	Entry.GraphWriteCandidateArtifactJson = CloneJsonObject(Request.GraphWriteCandidateArtifactJson);
+	Entry.ExecutionReceiptJson = CloneJsonObject(Request.ExecutionReceiptJson);
 	Entry.GraphWriteCandidateArtifactHash = Request.GraphWriteCandidateArtifactHash;
 	Entry.CreatedAtIso = Now.ToIso8601();
 	Entry.ExpiresAtUtc = Now + TimeToLive;
@@ -88,6 +89,7 @@ FBlueprintHelperTaskPreviewStoreResolveResult FBlueprintHelperTaskPreviewStore::
 	Result.ActionContextRevisionManifestHash = Entry->ActionContextRevisionManifestHash;
 	Result.ActionContextRevisionManifestJson = CloneJsonObject(Entry->ActionContextRevisionManifestJson);
 	Result.GraphWriteCandidateArtifactJson = CloneJsonObject(Entry->GraphWriteCandidateArtifactJson);
+	Result.ExecutionReceiptJson = CloneJsonObject(Entry->ExecutionReceiptJson);
 	Result.GraphWriteCandidateArtifactHash = Entry->GraphWriteCandidateArtifactHash;
 	return Result;
 }

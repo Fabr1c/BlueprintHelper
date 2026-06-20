@@ -1029,6 +1029,8 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}
@@ -1396,6 +1398,31 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 		}
 		return true;
 	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("read_blueprint_class_default_property")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("asset_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+			{TEXT("property_path"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+			{TEXT("target_name"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, false},
+		};
+		if (!FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError))
+		{
+			return false;
+		}
+		FString PropertyPath;
+		FString TargetName;
+		if (!Payload->TryGetStringField(TEXT("property_path"), PropertyPath) &&
+			!Payload->TryGetStringField(TEXT("target_name"), TargetName))
+		{
+			OutError.Code = TEXT("invalid_request");
+			OutError.Field = TEXT("payload.property_path");
+			OutError.ExpectedType = TEXT("string");
+			OutError.ActualType = TEXT("missing");
+			OutError.Message = TEXT("payload.property_path or payload.target_name is required.");
+			return false;
+		}
+		return true;
+	}
 	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("set_class_default_properties")))
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
@@ -1432,6 +1459,13 @@ bool FBlueprintHelperRequestValidator::ValidatePayloadForCommand(
 	{
 		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
 			{TEXT("task_run_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
+		};
+		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
+	}
+	if (FBlueprintHelperRequestValidatorLocalUtils::CommandEquals(Command, TEXT("get_execution_receipt")))
+	{
+		const FBlueprintHelperRequestValidatorLocalUtils::FBlueprintHelperFieldRule Rules[] = {
+			{TEXT("receipt_id"), FBlueprintHelperRequestValidatorLocalUtils::EBlueprintHelperJsonExpectedType::String, true},
 		};
 		return FBlueprintHelperRequestValidatorLocalUtils::ValidateRules(Payload, Rules, OutError);
 	}

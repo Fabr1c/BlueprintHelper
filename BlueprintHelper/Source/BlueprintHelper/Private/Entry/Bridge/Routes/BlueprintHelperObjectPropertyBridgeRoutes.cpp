@@ -55,14 +55,49 @@ FBlueprintHelperBridgeResponse FBlueprintHelperObjectPropertyBridgeRoutes::Handl
 			return FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::MakeInvalidObjectPropertyRequest(Request, TEXT("payload requires asset_path."));
 		}
 
+		FString RequestedPropertyPath = FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::ReadObjectPropertyRouteStringField(Request.Payload, TEXT("property_path"));
+		if (RequestedPropertyPath.IsEmpty())
+		{
+			RequestedPropertyPath = FBlueprintHelperObjectPropertyBridgeRoutesLocalUtils::ReadObjectPropertyRouteStringField(Request.Payload, TEXT("target_name"));
+		}
+
 		const FBlueprintHelperObjectPropertiesResult Result =
-			PropertyReflectionService.GetObjectProperties(AssetPath);
+			RequestedPropertyPath.IsEmpty()
+			? PropertyReflectionService.GetObjectProperties(AssetPath)
+			: PropertyReflectionService.GetObjectProperties(AssetPath, RequestedPropertyPath);
 		if (!Result.bSuccess)
 		{
-			return FBlueprintHelperBridgeResponse::Error(
+			FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Error(
 				Request.RequestId,
 				EBlueprintHelperBridgeError::ExecutionFailed,
 				Result.ErrorMessage);
+			if (Result.bRouteMismatch)
+			{
+				FBlueprintHelperToolError Error;
+				Error.Code = Result.ErrorCode;
+				Error.Stage = EBlueprintHelperToolStage::ResolveTarget;
+				Error.Message = Result.ErrorMessage;
+				Error.Category = Result.ErrorCategory;
+				Error.SafeNextAction = Result.SafeNextAction;
+				Error.SuggestedRouteId = Result.SuggestedRoute;
+				Error.SuggestedReadType = Result.SuggestedReadType;
+				Error.BlockedBoundaryId = Result.BlockedBoundary;
+				Error.BlockedBoundaryDetail = Result.BlockedBoundaryDetail;
+				Error.bRetryable = false;
+				Error.RollbackResult = EBlueprintHelperRollbackResult::NotNeeded;
+				Error.Field = TEXT("property_path");
+
+				FBlueprintHelperToolResultBase ToolResult = FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("get_object_properties"),
+					FBlueprintHelperToolResultBuilder::GenerateTraceId(),
+					Error);
+				ToolResult.Target = FBlueprintHelperTargetRef();
+				ToolResult.Target->AssetPath = AssetPath;
+				ToolResult.Target->TargetType = EBlueprintHelperTargetType::Property;
+				ToolResult.Target->PropertyPath = RequestedPropertyPath;
+				Response.Result = ToolResult.ToJson();
+			}
+			return Response;
 		}
 
 		FBlueprintHelperBridgeResponse Response = FBlueprintHelperBridgeResponse::Success(Request.RequestId);

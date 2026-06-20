@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { BRIDGE_RESPONSE_SCHEMA } from '@blueprinthelper/task-core/bridge/bridge-response-schema';
 import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { createCliMetricsService, resolveCliMetricsRoot } from './metrics-runtime.js';
 import { runCli } from './run.js';
@@ -155,6 +156,7 @@ test('runCli direct read_context records manifest-owned metrics identity', async
     bridge: {
       async sendCommand() {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'read_context_metrics_request',
           result: {
@@ -327,6 +329,7 @@ test('runCli task preview records taskspec preview metrics through the default r
       async sendCommand(command) {
         assert.equal(command, 'preview_task_plan');
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'preview_metrics_request',
           result: {
@@ -394,6 +397,7 @@ test('runCli task execute records taskspec execute metrics through the default r
         bridgeCommands.push(command);
         if (command === 'preview_task_plan') {
           return {
+            schema: BRIDGE_RESPONSE_SCHEMA,
             success: true,
             request_id: 'execute_metrics_preview_request',
             result: {
@@ -418,6 +422,7 @@ test('runCli task execute records taskspec execute metrics through the default r
         }
         if (command === 'source_control_status') {
           return {
+            schema: BRIDGE_RESPONSE_SCHEMA,
             success: true,
             request_id: 'execute_metrics_source_control_request',
             result: {
@@ -436,6 +441,7 @@ test('runCli task execute records taskspec execute metrics through the default r
         }
         assert.equal(command, 'execute_task_plan');
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'execute_metrics_execute_request',
           result: {

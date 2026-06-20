@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { buildHelpText } from './help.js';
 import { runCli } from './run.js';
+import { BRIDGE_RESPONSE_SCHEMA } from '@blueprinthelper/task-core/bridge/bridge-response-schema';
 import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import {
   listReadContextTemplateClusters,
@@ -175,7 +176,7 @@ test('runCli marks empty-object tool templates as no-input requests', async () =
 	assert.match(runtimeProfile?.input_note as string, /No parameters/);
 });
 
-test('runCli exposes TaskSpec template four-layer index and compose output', async (t) => {
+test('runCli exposes GraphWrite TaskSpec template navigation and compose output', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
   const outputPath = path.join(outDir, 'graph-append.taskspec.json');
@@ -189,17 +190,14 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   );
 
   const writeModes = await runCliJson(['tools', 'templates', 'write-modes', '--family', 'graph_write', '--format', 'json']);
+  assert.equal(writeModes.output.status, 'ok');
   assert.equal(writeModes.output.items.some((item: Record<string, unknown>) => item.write_mode === 'graph.append'), true);
   assert.match(
     writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.description as string,
     /new owned graph/i,
   );
   assert.equal(
-    writeModes.output.items.find((item: Record<string, unknown>) => item.write_mode === 'graph.append')?.base_template_path,
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json',
-  );
-  assert.equal(
-    writeModes.output.items.every((item: Record<string, unknown>) => !(item.base_template_path as string).includes('/write/taskspec/')),
+    writeModes.output.items.every((item: Record<string, unknown>) => !Object.hasOwn(item, 'base_template_path')),
     true,
   );
 
@@ -280,6 +278,62 @@ test('runCli exposes TaskSpec template four-layer index and compose output', asy
   assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.entries[0].body.statements.length, 1);
 });
 
+test('runCli exposes asset_factory family-defined navigation and leaf compose', async (t) => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
+  t.after(() => fs.rm(outDir, { recursive: true, force: true }));
+  const outputPath = path.join(outDir, 'create-blueprint.taskspec.json');
+
+  const writeModes = await runCliJson(['tools', 'templates', 'write-modes', '--family', 'asset_factory', '--format', 'json']);
+  assert.equal(writeModes.output.status, 'failed');
+  assert.equal(writeModes.output.diagnostics[0].code, 'navigation_level_not_supported');
+  assert.equal(writeModes.output.diagnostics[0].safe_next_action, 'use_family_navigation_next_command');
+
+  const operations = await runCliJson([
+    'tools',
+    'templates',
+    'operations',
+    '--family',
+    'asset_factory',
+    '--format',
+    'json',
+  ]);
+  assert.equal(operations.output.write_mode, undefined);
+  assert.deepEqual(
+    operations.output.items.map((item: Record<string, unknown>) => item.operation_id).sort(),
+    ['create_blueprint', 'create_data_asset', 'create_widget_blueprint'],
+  );
+
+  const quickAccess = await runCliJson([
+    'tools',
+    'templates',
+    'quick-access',
+    '--family',
+    'asset_factory',
+    '--operation',
+    'create_blueprint',
+    '--format',
+    'json',
+  ]);
+  assert.equal(quickAccess.output.write_mode, undefined);
+  assert.equal(quickAccess.output.items[0].template_id, 'asset_factory.asset.create_blueprint');
+  assert.equal('write_mode' in quickAccess.output.items[0], false);
+
+  const { output } = await runCliJson([
+    'tools',
+    'templates',
+    'compose',
+    '--template',
+    'asset_factory.asset.create_blueprint',
+    '--out',
+    outputPath,
+    '--format',
+    'json',
+  ]);
+  assert.equal(output.status, 'ok');
+  assert.equal('write_mode' in output, false);
+  assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.asset.asset_type, 'Blueprint');
+});
+
 test('runCli composes nested slot expression without splitting inner commas', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
@@ -333,7 +387,7 @@ test('runCli composes class-backed create alias through TaskSpec template compos
   assert.equal(taskSpec.behavior.entries[0].body.statements[0].class_path, '__REQUIRED_CLASS_PATH__');
 });
 
-test('runCli composes supported non-GraphWrite base TaskSpec without template ids', async (t) => {
+test('runCli rejects non-GraphWrite legacy compose without leaf template id', async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bh-cli-template-composer-'));
   t.after(() => fs.rm(outDir, { recursive: true, force: true }));
   const outputPath = path.join(outDir, 'data-table.taskspec.json');
@@ -352,8 +406,10 @@ test('runCli composes supported non-GraphWrite base TaskSpec without template id
     'json',
   ]);
 
-  assert.equal(output.status, 'ok');
-  assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).task_type, 'edit_data_table');
+  assert.equal(output.status, 'failed');
+  assert.equal(output.diagnostics[0].code, 'compose_mode_not_supported');
+  assert.equal(output.diagnostics[0].suggested_route, 'tools.templates.compose.template');
+  await assert.rejects(() => fs.readFile(outputPath, 'utf8'), /ENOENT/);
 });
 
 test('CLI exposes blueprint_variables cluster and quick-access discovery', async () => {
@@ -378,8 +434,6 @@ test('CLI exposes blueprint_variables cluster and quick-access discovery', async
     'variables',
     '--operation',
     'ensure_member_variable',
-    '--write-mode',
-    'variables.edit',
     '--format',
     'json',
   ]);
@@ -468,8 +522,14 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
     ]);
     const expectedWriteModes = listTaskSpecTemplateWriteModes({ family: family.family });
     assert.deepEqual(jsonRows(writeModes.output.items), jsonRows(expectedWriteModes.items));
-    assertNonEmptyDescriptions(writeModes.output.items, `write modes for ${family.family}`);
-    assertTemplateGuidance(writeModes.output, /Pick a write_mode/i, `write modes for ${family.family}`);
+    if (family.navigation.requires_write_mode) {
+      assert.equal(writeModes.output.status, 'ok', `${family.family} write modes status`);
+      assertNonEmptyDescriptions(writeModes.output.items, `write modes for ${family.family}`);
+      assertTemplateGuidance(writeModes.output, /Pick a write_mode/i, `write modes for ${family.family}`);
+    } else {
+      assert.equal(writeModes.output.status, 'failed', `${family.family} write modes status`);
+      assert.equal(writeModes.output.diagnostics[0].code, 'navigation_level_not_supported');
+    }
 
     const clusters = await runCliJson([
       'tools',
@@ -484,6 +544,59 @@ test('CLI TaskSpec template index mirrors descriptor-backed template index', asy
     assert.deepEqual(jsonRows(clusters.output.items), jsonRows(expectedClusters.items));
     assertNonEmptyDescriptions(clusters.output.items, `clusters for ${family.family}`);
     assertTemplateGuidance(clusters.output, /Pick a cluster/i, `clusters for ${family.family}`);
+
+    if (!family.navigation.requires_write_mode) {
+      const familyClusters = family.navigation.levels.includes('cluster')
+        ? expectedClusters.items
+        : [{ cluster_id: '' }];
+      for (const cluster of familyClusters) {
+        const operationArgs = [
+          'tools',
+          'templates',
+          'operations',
+          '--family',
+          family.family,
+          '--format',
+          'json',
+        ];
+        if (cluster.cluster_id.length > 0) {
+          operationArgs.splice(5, 0, '--cluster', cluster.cluster_id);
+        }
+        const operations = await runCliJson(operationArgs);
+        const expectedOperations = listTaskSpecTemplateOperations({
+          family: family.family,
+          cluster: cluster.cluster_id,
+        });
+        assert.deepEqual(jsonRows(operations.output.items), jsonRows(expectedOperations.items));
+        assertNonEmptyDescriptions(operations.output.items, `operations for ${family.family}/${cluster.cluster_id}`);
+
+        for (const operation of expectedOperations.items) {
+          const quickAccessArgs = [
+            'tools',
+            'templates',
+            'quick-access',
+            '--family',
+            family.family,
+            '--operation',
+            operation.operation_id,
+            '--format',
+            'json',
+          ];
+          if (cluster.cluster_id.length > 0) {
+            quickAccessArgs.splice(5, 0, '--cluster', cluster.cluster_id);
+          }
+          const quickAccess = await runCliJson(quickAccessArgs);
+          const expectedQuickAccess = listTaskSpecTemplateQuickAccess({
+            family: family.family,
+            cluster: cluster.cluster_id,
+            operation: operation.operation_id,
+          });
+          assert.deepEqual(jsonRows(quickAccess.output.items), jsonRows(expectedQuickAccess.items));
+          assertNoTopLevelGuidance(quickAccess.output, `quick-access for ${family.family}/${cluster.cluster_id}/${operation.operation_id}`);
+        }
+      }
+      continue;
+    }
 
     for (const writeMode of expectedWriteModes.items) {
       for (const cluster of expectedClusters.items) {
@@ -599,8 +712,13 @@ test('runCli rejects old tool-id template dispatch path', async () => {
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(stdout.join(''), '');
-  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI subcommand: tools\.templates/);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /Unsupported BlueprintHelper CLI subcommand: tools\.templates/);
 });
 
 test('runCli rejects descriptor-driven task preview when runtime profile has no adapter', async (t) => {
@@ -773,7 +891,7 @@ test('global help points template selection to TaskSpec composer index', () => {
   assert.match(help, /bh tools list <domain> <kind> --format json/);
   assert.match(help, /bh tools templates families --workflow preview_execute --format json/);
   assert.match(help, /bh tools read-templates families --format json/);
-  assert.match(help, /bh tools templates compose --family <family>/);
+  assert.match(help, /bh tools templates compose \(\--template <leaf_template_id>/);
   assert.doesNotMatch(help, new RegExp(['bh tools templates', '<tool_id>'].join(' ')));
 });
 
@@ -825,6 +943,7 @@ function runtimeProfileBridge(
       assert.equal(command, 'get_runtime_profile');
       onCall?.();
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'test_runtime_profile',
         success: true,
         result: {

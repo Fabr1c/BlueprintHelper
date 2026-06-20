@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import test from 'node:test';
 
 import type { ToolResultBase } from '@blueprinthelper/task-core/result/tool-result';
@@ -209,6 +211,190 @@ test('CLI full output exposes preview-blocked issue code for selected fields', (
   assert.ok((output.artifacts as Record<string, unknown>)['full_result']);
 });
 
+test('CLI error projection preserves machine envelope fields even when selected fields omit them', () => {
+  const chunks: string[] = [];
+  const suggestedRoute = {
+    route_id: 'blueprint_class_settings.class_default',
+    family: 'blueprint_class_settings',
+    operation_id: 'set_class_default',
+    task_type: 'edit_blueprint_class_settings',
+    property_path_hint: 'WeaponComponent.PrimaryWeapon',
+  };
+  const blockedBoundary = {
+    boundary_id: 'component_tree_owned_scs_only',
+    origin: 'native',
+    blocked_operation: 'set_component_properties',
+  };
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'summary',
+    resultPolicyId: 'task.preview.default',
+    fields: ['status'],
+    omitFields: ['ok', 'operation', 'error_code', 'message', 'suggested_route', 'blocked_boundary'],
+  };
+  const toolResult: ToolResultBase = {
+    ok: false,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_projection_guard',
+    status: 'failed',
+    modified: false,
+    error: {
+      code: 'editor_not_ready',
+      category: 'runtime_unavailable',
+      stage: 'bridge',
+      message: 'Editor is not ready.',
+      retryable: true,
+      rollback_result: 'not_needed',
+      safe_next_action: 'editor.open_or_wait_then_retry',
+      allowed_recovery_actions: ['editor.open', 'bridge.ping'],
+      suggested_route: suggestedRoute,
+      blocked_boundary: blockedBoundary,
+    },
+  };
+
+  writeCliResult({
+    cwd: process.cwd(),
+    stdout: (text) => chunks.push(text),
+  }, command, toolResult);
+
+  const output = JSON.parse(chunks.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'task.preview');
+  assert.equal(output.status, 'preview_blocked');
+  assert.equal(output.error_code, 'editor_not_ready');
+  assert.equal(output.message, 'Editor is not ready.');
+  assert.equal(output.safe_next_action, 'editor.open_or_wait_then_retry');
+  assert.deepEqual(output.allowed_recovery_actions, ['editor.open', 'bridge.ping']);
+  assert.deepEqual(output.suggested_route, suggestedRoute);
+  assert.deepEqual(output.blocked_boundary, blockedBoundary);
+});
+
+test('CLI output preserves receipt identity even when selected and omitted fields remove it', () => {
+  const chunks: string[] = [];
+  const command: CliCommand = {
+    kind: 'task.execute',
+    format: 'json',
+    resultPolicyId: 'task.execute.default',
+    fields: ['status'],
+    omitFields: ['receipt_id', 'receipt', 'verification_hash', 'verification_status', 'tool_result.data.receipt'],
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'execute_task',
+    trace_id: 'trace_receipt_guard',
+    status: 'completed',
+    modified: true,
+    data: {
+      task_run_id: 'task_receipt_guard',
+      receipt: {
+        schema: 'BlueprintHelper.ExecutionReceipt.v1',
+        receipt_id: 'receipt_guard',
+        cli_run_id: 'cli_guard',
+        preview_id: 'preview_guard',
+        task_run_id: 'task_receipt_guard',
+        task_spec_hash: 'a'.repeat(64),
+        task_plan_hash: 'b'.repeat(64),
+        policy_hash: 'c'.repeat(64),
+        verification_hash: 'd'.repeat(64),
+        verification_status: 'pending_readback',
+        status: 'applied',
+        created_at: '2026-06-20T00:00:00.000Z',
+        updated_at: '2026-06-20T00:00:00.000Z',
+      },
+    },
+  };
+
+  writeCliResult({
+    cwd: process.cwd(),
+    stdout: (text) => chunks.push(text),
+  }, command, toolResult);
+
+  const output = JSON.parse(chunks.join('')) as Record<string, any>;
+  assert.equal(output.status, 'executed');
+  assert.equal(output.receipt_id, 'receipt_guard');
+  assert.equal(output.cli_run_id, 'cli_guard');
+  assert.equal(output.preview_id, 'preview_guard');
+  assert.equal(output.task_run_id, 'task_receipt_guard');
+  assert.equal(output.verification_hash, 'd'.repeat(64));
+  assert.equal(output.verification_status, 'pending_readback');
+  assert.equal(output.receipt.receipt_id, 'receipt_guard');
+  assert.equal(output.receipt.verification_hash, 'd'.repeat(64));
+  assert.equal(output.receipt.verification_status, 'pending_readback');
+});
+
+test('CLI artifact write failure still emits parseable stdout JSON with receipt identity', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bph-cli-artifact-fail-'));
+  const artifactRootFile = path.join(tempDir, 'not-a-directory');
+  fs.writeFileSync(artifactRootFile, 'occupied', 'utf8');
+  const chunks: string[] = [];
+  const command: CliCommand = {
+    kind: 'task.execute',
+    format: 'json',
+    resultPolicyId: 'task.execute.default',
+    artifactDir: artifactRootFile,
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'execute_task',
+    trace_id: 'trace_artifact_fail',
+    status: 'completed',
+    modified: true,
+    data: {
+      task_run_id: 'task_artifact_fail',
+      receipt: {
+        schema: 'BlueprintHelper.ExecutionReceipt.v1',
+        receipt_id: 'receipt_artifact_fail',
+        task_run_id: 'task_artifact_fail',
+        task_spec_hash: 'a'.repeat(64),
+        status: 'applied',
+        created_at: '2026-06-20T00:00:00.000Z',
+        updated_at: '2026-06-20T00:00:00.000Z',
+      },
+    },
+  };
+
+  assert.doesNotThrow(() => {
+    writeCliResult({
+      cwd: process.cwd(),
+      stdout: (text) => chunks.push(text),
+    }, command, toolResult);
+  });
+
+  const output = JSON.parse(chunks.join('')) as Record<string, any>;
+  assert.equal(output.ok, true);
+  assert.equal(output.receipt_id, 'receipt_artifact_fail');
+  assert.equal(output.artifact_warning.code, 'artifact_write_warning');
+  assert.match(output.artifact_warning.message, /not-a-directory/);
+});
+
+test('CLI preview summary fails closed when issues omit passed flag', () => {
+  const summary = buildCliSummary({
+    command: {
+      kind: 'task.preview',
+      format: 'summary',
+      resultPolicyId: 'task.preview.default',
+    },
+    toolResult: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'preview_task',
+      trace_id: 'trace_missing_passed',
+      status: 'dry_run',
+      modified: false,
+      data: {},
+    },
+    artifactRefs: {},
+  });
+
+  assert.equal(summary.ok, false);
+  assert.equal(summary.status, 'preview_blocked');
+  assert.equal(summary.error_code, 'preview_result_missing_passed');
+  assert.equal(summary.message, 'Preview result is missing boolean data.passed.');
+});
+
 test('CLI preview summary exposes static preflight issue from error payload', () => {
   const command: CliCommand = {
     kind: 'task.preview',
@@ -316,6 +502,117 @@ test('CLI error output omits wrapper schema by default', () => {
   assert.equal(output.operation, 'output');
   assert.equal(output.status, 'cli_error');
   assert.equal(output.message, 'Policy blocked execution.');
+});
+
+test('CLI projection preserves machine envelope fields even when selected fields omit them', () => {
+  const suggestedRoute = {
+    route_id: 'blueprint_class_settings.class_default',
+    task_type: 'edit_blueprint_class_settings',
+    property_path_hint: 'WeaponComponent.PrimaryWeapon',
+  };
+  const blockedBoundary = {
+    boundary_id: 'component_tree_owned_scs_only',
+    origin: 'native',
+    blocked_operation: 'set_component_properties',
+  };
+  const output = buildCliError({
+    operation: 'task.preview',
+    status: 'preview_blocked',
+    message: 'Preview blocked by runtime policy.',
+    safe_next_action: 'inspect.preview.result',
+    allowed_recovery_actions: ['task.preview.retry'],
+    suggested_route: suggestedRoute,
+    blocked_boundary: blockedBoundary,
+    artifactRefs: {
+      full_result: 'artifact://full',
+    },
+    fields: ['artifacts.full_result'],
+    omitFields: [
+      'ok',
+      'operation',
+      'status',
+      'error_code',
+      'message',
+      'safe_next_action',
+      'allowed_recovery_actions',
+      'suggested_route',
+      'blocked_boundary',
+    ],
+  });
+
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'task.preview');
+  assert.equal(output.status, 'preview_blocked');
+  assert.equal(output.error_code, 'preview_blocked');
+  assert.equal(output.message, 'Preview blocked by runtime policy.');
+  assert.equal(output.safe_next_action, 'inspect.preview.result');
+  assert.deepEqual(output.allowed_recovery_actions, ['task.preview.retry']);
+  assert.deepEqual(output.suggested_route, suggestedRoute);
+  assert.deepEqual(output.blocked_boundary, blockedBoundary);
+  assert.deepEqual(output.artifacts, {
+    full_result: 'artifact://full',
+  });
+});
+
+test('CLI preview status fails closed when passed flag is missing', () => {
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'summary',
+    resultPolicyId: 'task.preview.default',
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_cli_missing_preview_passed',
+    status: 'dry_run',
+    modified: false,
+    data: {
+      issues: [],
+    },
+  };
+
+  const summary = buildCliSummary({
+    command,
+    toolResult,
+    artifactRefs: {},
+  });
+
+  assert.equal(summary.ok, false);
+  assert.equal(summary.status, 'preview_blocked');
+  assert.equal(summary.error_code, 'preview_result_missing_passed');
+  assert.equal(summary.message, 'Preview result is missing boolean data.passed.');
+});
+
+test('CLI preview status fails closed when passed flag is non-boolean', () => {
+  const command: CliCommand = {
+    kind: 'task.preview',
+    format: 'summary',
+    resultPolicyId: 'task.preview.default',
+  };
+  const toolResult: ToolResultBase = {
+    ok: true,
+    schema: 'BlueprintHelper.ToolResult.v1',
+    operation: 'preview_task',
+    trace_id: 'trace_cli_non_boolean_preview_passed',
+    status: 'dry_run',
+    modified: false,
+    data: {
+      passed: 'yes',
+      issues: [],
+    },
+  };
+
+  const summary = buildCliSummary({
+    command,
+    toolResult,
+    artifactRefs: {},
+  });
+
+  assert.equal(summary.ok, false);
+  assert.equal(summary.status, 'preview_blocked');
+  assert.equal(summary.error_code, 'preview_result_missing_passed');
+  assert.equal(summary.message, 'Preview result is missing boolean data.passed.');
 });
 
 test('CLI full result keeps validation errors but drops validation policy keys', () => {

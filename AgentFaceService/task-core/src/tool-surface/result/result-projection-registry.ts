@@ -29,8 +29,8 @@ const POLICY_BY_MANIFEST_ID = new Map<ToolResultProjectionPolicyId, BuiltinResul
 ]);
 
 const BUILTIN_POLICIES = new Map<BuiltinResultProjectionPolicyId, ResultProjectionPolicy>([
-  ['task.preview.default', definePolicy('task.preview.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.preview_id', 'data.preview_token', 'data.passed', 'data.blocked', 'data.issues', 'data.candidate_search', 'data.candidates', 'error'])],
-  ['task.execute.default', definePolicy('task.execute.default', ['ok', 'operation', 'status', 'modified', 'target', 'validation', 'data.task_run_id', 'data.task', 'data.issues', 'error'], ['debug', 'trace_id'], [
+  ['task.preview.default', definePolicy('task.preview.default', ['ok', 'operation', 'status', 'modified', 'target', 'data.preview_id', 'data.preview_token', 'data.receipt', 'data.passed', 'data.blocked', 'data.issues', 'data.candidate_search', 'data.candidates', 'error'])],
+  ['task.execute.default', definePolicy('task.execute.default', ['ok', 'operation', 'status', 'modified', 'target', 'validation', 'data.task_run_id', 'data.receipt', 'data.task', 'data.issues', 'error'], ['debug', 'trace_id'], [
     { field: 'preview_id', parent_path_suffix: ['data'] },
   ])],
   ['task.result.default', definePolicy('task.result.default', ['ok', 'operation', 'status', 'modified', 'target', 'data', 'error'])],

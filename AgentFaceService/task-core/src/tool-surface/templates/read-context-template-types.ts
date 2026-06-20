@@ -26,6 +26,7 @@ export type ReadContextTemplateView =
 
 export type ReadContextRequestBuilderId =
   | 'blueprint_logic'
+  | 'class_default_property'
   | 'material_logic'
   | 'asset_context'
   | 'component_context'
@@ -39,6 +40,7 @@ export type ReadContextRequestBuilderId =
 
 export type ReadContextPayloadProjectorId =
   | 'logic'
+  | 'class_default_property'
   | 'asset_context'
   | 'widget_tree'
   | 'component_tree'

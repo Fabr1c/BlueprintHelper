@@ -8,6 +8,7 @@
 import * as net from 'node:net';
 import { performance } from 'node:perf_hooks';
 import type { TaskTimingTrace } from '../task/service/task-timing.js';
+import { parseBridgeResponse } from './bridge-response-schema.js';
 
 export interface BridgeRequest {
   request_id: string;
@@ -32,6 +33,7 @@ export interface BridgeSafetyResultFields {
 export type BridgeResult = Record<string, unknown> & Partial<BridgeSafetyResultFields>;
 
 export interface BridgeResponse extends Partial<BridgeSafetyResultFields> {
+  schema: string;
   request_id: string;
   success: boolean;
   error_code?: string;
@@ -283,14 +285,22 @@ export class BridgeClient {
       this.recvBuf = this.recvBuf.subarray(4 + bodyLen);
 
       const parseStartedAt = performance.now();
-      let resp: BridgeResponse;
+      let rawResp: unknown;
       try {
-        resp = JSON.parse(bodyStr) as BridgeResponse;
+        rawResp = JSON.parse(bodyStr) as unknown;
       } catch {
         this.resetSocket(new Error(`Failed to parse Bridge response: ${bodyStr.slice(0, 200)}`));
         return;
       }
+      const parsed = parseBridgeResponse(rawResp);
       const parseFinishedAt = performance.now();
+
+      if (!parsed.ok) {
+        this.resetSocket(new Error(`${parsed.code}: ${parsed.message}`));
+        return;
+      }
+
+      const resp = parsed.response;
 
       const pending = this.pending.get(resp.request_id);
       if (!pending) {

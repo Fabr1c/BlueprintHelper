@@ -61,6 +61,7 @@ export function makeTaskPlanWithSteps(
     task_type: taskSpec.task_type,
     context_id: taskSpec.context_id,
     target_assets: [taskSpec.target.asset_path],
+    ...(taskSpec.verification ? { verification: taskSpec.verification } : {}),
     execution_policy: makeTaskPlanExecutionPolicy(executionPolicy),
     steps: renumberSteps(steps),
   };

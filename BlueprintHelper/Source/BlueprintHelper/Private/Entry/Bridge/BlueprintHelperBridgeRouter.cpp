@@ -1096,6 +1096,7 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleRequestWithPl
 	BLUEPRINTHELPER_ROUTE("preview_task_plan", TaskRuntime, HandlePreviewTaskPlan)
 	BLUEPRINTHELPER_ROUTE("execute_task_plan", TaskRuntime, HandleExecuteTaskPlan)
 	BLUEPRINTHELPER_ROUTE("get_task_run_journal", TaskRuntime, HandleGetTaskRunJournal)
+	BLUEPRINTHELPER_ROUTE("get_execution_receipt", TaskRuntime, HandleGetExecutionReceipt)
 
 	if (RoutePlan.Cluster == EBlueprintHelperBridgeRouteCluster::GraphWrite &&
 		FBlueprintHelperGraphWriteBridgeRoutes::IsGraphWriteCommand(Request.Command))
@@ -1521,6 +1522,17 @@ FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetTaskRunJou
 		Req.Payload->TryGetStringField(TEXT("task_run_id"), TaskRunId);
 	}
 	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, TaskRuntimeService.GetTaskRunJournal(TaskRunId));
+}
+
+FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleGetExecutionReceipt(
+	const FBlueprintHelperBridgeRequest& Req) const
+{
+	FString ReceiptId;
+	if (Req.Payload.IsValid())
+	{
+		Req.Payload->TryGetStringField(TEXT("receipt_id"), ReceiptId);
+	}
+	return UBlueprintHelperBridgeUtils::MakeToolResultBridgeResponse(Req, TaskRuntimeService.GetExecutionReceipt(ReceiptId));
 }
 
 FBlueprintHelperBridgeResponse FBlueprintHelperBridgeRouter::HandleCompileBlueprintAsset(

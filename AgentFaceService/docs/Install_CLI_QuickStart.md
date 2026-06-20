@@ -195,7 +195,7 @@ Use current CLI discovery to locate the FunctionChain request template. The resu
 
 Use the current CLI discovery output or per-command help to prepare JSON input, then pass it with `--file` instead of embedding complex JSON in PowerShell.
 
-TaskSpec write templates are generated through the TaskSpec Template Composer four-layer index:
+TaskSpec write templates are generated through the TaskSpec Template Composer. Start from `families`, then follow each family-owned `navigation.levels` descriptor instead of assuming a fixed-depth path:
 
 ```powershell
 bh tools templates families --workflow preview_execute --format json
@@ -207,7 +207,7 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
 ```
 
-Do not use old tool-id template dispatch or scan template directories to choose TaskSpec files. For GraphWrite, use `quick-access.items[].slot_type` to keep expression templates nested and `quick-access.items[].arg_slots` to fill `template_id(...)` positions. Fill the generated TaskSpec with evidence from ReadContext, then preview and execute that generated file.
+Do not use old tool-id template dispatch or scan template directories to choose TaskSpec files. For GraphWrite, use `quick-access.items[].slot_type` to keep expression templates nested and `quick-access.items[].arg_slots` to fill `template_id(...)` positions. For non-GraphWrite families, compose from the discovered leaf template id with `bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json`. Fill the generated TaskSpec with evidence from ReadContext, then preview and execute that generated file.
 
 ## 8. Safe Write Checklist
 

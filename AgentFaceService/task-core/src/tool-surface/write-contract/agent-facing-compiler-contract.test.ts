@@ -41,9 +41,7 @@ test('agent-facing active write templates compile or stop at contract preflight'
 test('agent-facing compiler contract rejects removed variable default property path shape', () => {
   const taskSpec = composeFilledTaskSpec({
     family: 'blueprint_variables',
-    writeMode: 'variables.edit',
     templateId: 'blueprint_variables.variables.ensure_member_variable',
-    templateExpression: 'blueprint_variables.variables.ensure_member_variable',
     label: 'blueprint_variables.variables.ensure_member_variable',
   });
 
@@ -117,15 +115,40 @@ test('custom event route compiles without function parameter slots', () => {
 
 interface CompilerContractTemplate {
   readonly family: string;
-  readonly writeMode: string;
+  readonly writeMode?: string;
   readonly templateId: string;
-  readonly templateExpression: string;
+  readonly templateExpression?: string;
   readonly label: string;
 }
 
 function activeComposableWriteTemplates(): CompilerContractTemplate[] {
   const output: CompilerContractTemplate[] = [];
   for (const family of listTaskSpecTemplateFamilies({ workflow: 'preview_execute' }).items) {
+    if (family.family !== 'graph_write') {
+      const clusterIds = family.navigation.levels.includes('cluster')
+        ? listTaskSpecTemplateClusters({ family: family.family }).items.map((cluster) => cluster.cluster_id)
+        : [''];
+      for (const clusterId of clusterIds) {
+        for (const operation of listTaskSpecTemplateOperations({
+          family: family.family,
+          cluster: clusterId,
+        }).items) {
+          for (const item of listTaskSpecTemplateQuickAccess({
+            family: family.family,
+            cluster: clusterId,
+            operation: operation.operation_id,
+          }).items) {
+            output.push({
+              family: family.family,
+              templateId: item.template_id,
+              label: `${family.family}.${item.template_id}`,
+            });
+          }
+        }
+      }
+      continue;
+    }
+
     for (const writeMode of listTaskSpecTemplateWriteModes({ family: family.family }).items) {
       for (const cluster of listTaskSpecTemplateClusters({ family: family.family }).items) {
         if (cluster.unsupported_write_modes.includes(writeMode.write_mode)) {
@@ -167,9 +190,15 @@ function composeFilledTaskSpec(item: CompilerContractTemplate): TaskSpec {
     `${item.templateId.replaceAll('.', '-')}.taskspec.json`,
   );
   const result = composeTaskSpecTemplate({
-    family: item.family,
-    writeMode: item.writeMode,
-    templateIds: [item.templateExpression],
+    ...(item.family === 'graph_write'
+      ? {
+        family: item.family,
+        writeMode: requiredString(item.writeMode, `${item.label} write mode`),
+        templateIds: [requiredString(item.templateExpression, `${item.label} template expression`)],
+      }
+      : {
+        templateId: item.templateId,
+      }),
     outputPath,
   });
   assert.equal(result.status, 'ok', `${item.label}: ${JSON.stringify(result)}`);
@@ -181,6 +210,11 @@ function composeFilledTaskSpec(item: CompilerContractTemplate): TaskSpec {
   const parseResult = TaskSpecSchema.safeParse(adapted.task_spec);
   assert.equal(parseResult.success, true, parseResult.success ? undefined : `${item.label}: ${parseResult.error.message}`);
   return parseResult.data;
+}
+
+function requiredString(value: string | undefined, label: string): string {
+  assert.equal(typeof value, 'string', label);
+  return value ?? '';
 }
 
 function assertCompilerPreflightError(error: unknown, label: string): void {
@@ -226,10 +260,14 @@ function templateExpressionForCoverage(
   if (item.slot_type !== 'route' || !item.arg_slots.some((slot) => slot.includes('statement[]'))) {
     return item.template_id;
   }
+  const itemWriteMode = item.write_mode;
+  if (typeof itemWriteMode !== 'string') {
+    assert.fail(`${item.template_id} route has write_mode`);
+  }
   const statement = quickAccess.find((candidate) =>
     candidate.slot_type === 'statement'
-    && candidate.write_mode === item.write_mode
-    && !candidate.unsupported_write_modes.includes(item.write_mode));
+    && candidate.write_mode === itemWriteMode
+    && !candidate.unsupported_write_modes.includes(itemWriteMode));
   assert.notEqual(statement, undefined, `${item.template_id} route has statement child`);
   return `${item.template_id}(${statement?.template_id ?? ''})`;
 }

@@ -37,11 +37,15 @@ For complex CLI inputs, use the CLI catalog first:
 ```powershell
 bh tools domains --format json
 bh tools list <domain> <kind> --format json
-bh tools templates <tool_id> --format json
+bh tools templates families --workflow preview_execute --format json
+bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json
 ```
 
-Read only the concrete template paths returned by `bh tools templates <tool_id>`,
-copy a returned JSON template, and use `--file`.
+Follow `families.output.items[].navigation`. Only families that declare a `write_mode`
+navigation level, such as `graph_write`, should use `write-modes`; non-GraphWrite
+families should compose from the discovered leaf template id. Read only concrete
+template paths returned by indexed quick-access/composer output, copy a returned JSON
+template when needed, and use `--file`.
 
 Never request or forward raw Bridge auth tokens. Interactive write approval belongs to the running Editor/Bridge session.
 

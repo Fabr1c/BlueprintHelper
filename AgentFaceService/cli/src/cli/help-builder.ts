@@ -8,6 +8,7 @@ import {
   listCliSubcommandUsageLines,
   manifestSpecificNotes,
   resolveCliCommandHelpManifest,
+  resolveCliSubcommandGroupFromPositionals,
   templateNavigationUsageLinesForInputShapes,
   type CommandHelpEntry,
   type ToolCommandManifest,
@@ -40,6 +41,17 @@ export function createHelpBuilder(
       if (manifest) {
         const manifests = resolveDisplayManifests(registry, key, manifest);
         return formatManifestEntry(key, manifest, manifests);
+      }
+
+      const subcommandGroup = resolveCliSubcommandGroupFromPositionals(normalizedTarget);
+      if (subcommandGroup && subcommandGroup.command_prefix.length === normalizedTarget.length) {
+        return formatEntry(key, {
+          summary: `Family-defined template navigation group for ${key}.`,
+          usage: listCliSubcommandUsageLines(subcommandGroup.group),
+          input: ['CLI options only. Follow the family descriptor navigation returned by the families command.'],
+          templates: [],
+          notes: buildSubcommandGroupNotes(subcommandGroup),
+        });
       }
 
       const cliCommandEntry = resolveCliCommandHelpManifest(key);
@@ -109,6 +121,22 @@ function formatManifestEntry(
     templates: formatTemplateNavigation(manifests),
     notes: formatManifestNotes(manifest),
   });
+}
+
+function buildSubcommandGroupNotes(
+  group: NonNullable<ReturnType<typeof resolveCliSubcommandGroupFromPositionals>>,
+): string[] {
+  if (group.group === 'tools.templates') {
+    return [
+      `Start with: ${group.template_index_command}`,
+      'GraphWrite declares a write-mode layer; non-GraphWrite families compose scaffolds with --template <leaf_template_id>.',
+    ];
+  }
+
+  return [
+    `Start with: ${group.template_index_command}`,
+    'Read templates use families, clusters, list, then compose --template <template_id> before bh context read.',
+  ];
 }
 
 function formatEntry(name: string, entry: CommandHelpEntry): string {

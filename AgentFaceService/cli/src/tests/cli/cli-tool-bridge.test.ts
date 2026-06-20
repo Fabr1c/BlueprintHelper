@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BRIDGE_RESPONSE_SCHEMA } from '@blueprinthelper/task-core/bridge/bridge-response-schema';
 import { getActiveReadContextRouteDescriptors } from '@blueprinthelper/task-core/tool-surface/templates/read-context-template-registry';
 
 const legacyTemplateIndexName = 'SEMANTIC' + '_INDEX';
@@ -26,7 +27,7 @@ test('global help points Agents to CLI catalog and per-tool help', async () => {
   assert.match(output, /bh tools domains --format json/);
   assert.match(output, /bh tools list <domain> <kind> --format json/);
   assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /bh tools templates compose \(\--template <leaf_template_id>/);
   assert.match(output, /bh tools read-templates families --format json/);
   assert.match(
     output,
@@ -91,7 +92,7 @@ test('removed direct preview help falls back to global grouped help', async () =
   assert.equal(exitCode, 0);
   assert.match(output, /BlueprintHelper CLI/);
   assert.match(output, /bh task preview --file <task-spec\.json>/);
-  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /bh tools templates compose \(\--template <leaf_template_id>/);
   assert.doesNotMatch(output, /BlueprintHelper CLI help: blueprinthelper_preview_task/);
   assert.doesNotMatch(output, /blueprinthelper_preview_task/);
   assert.doesNotMatch(output, /Direct tool-name CLI entry was removed/);
@@ -154,6 +155,7 @@ test('direct find assets calls matching Bridge command and returns compact FindA
     sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
       calls.push({ command, payload: commandPayload });
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'find_assets',
         success: true,
         result: {
@@ -224,6 +226,7 @@ test('direct capture screenshot orchestrates open, focus, and graph-only screens
     sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
       calls.push({ command, payload: commandPayload });
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: `capture_${command}`,
         success: true,
         result: command === 'capture_focused_graph_screenshot'
@@ -305,7 +308,7 @@ test('grouped command help points TaskSpec preview to composer navigation', asyn
   assert.match(output, /BlueprintHelper CLI help: task preview/);
   assert.match(output, /Input file root: bare BlueprintHelper\.TaskSpec\.v1/);
   assert.match(output, /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(output, /bh tools templates compose --family <family>/);
+  assert.match(output, /bh tools templates compose \(\--template <leaf_template_id>/);
   assert.doesNotMatch(output, /task_preview_bare_taskspec_template\.json/);
 });
 
@@ -341,9 +344,9 @@ test('lifecycle CLI invocation is blocked and points Agents to MCP', async () =>
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /open_editor direct CLI command was removed/);
-  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.deepEqual(errors, []);
+  assertCliParseError(writes.join(''), /open_editor direct CLI command was removed/);
+  assertCliParseError(writes.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
 });
 
 test('direct blueprint_get_runtime_profile calls matching Bridge command', async () => {
@@ -353,6 +356,7 @@ test('direct blueprint_get_runtime_profile calls matching Bridge command', async
     sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
       calls.push({ command, payload });
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'runtime_profile',
         success: true,
         result: {
@@ -432,6 +436,7 @@ test('direct function chain context read calls matching Bridge command', async (
     sendCommand: async (command: string, commandPayload?: Record<string, unknown>): Promise<BridgeResponse> => {
       calls.push({ command, payload: commandPayload });
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'function_chain_context',
         success: true,
         result: {
@@ -497,6 +502,7 @@ test('delayed Bridge calls emit Agent wait hints to stderr without contaminating
         assert.deepEqual(payload, {});
         await new Promise((resolve) => setTimeout(resolve, 25));
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           request_id: 'runtime_profile',
           success: true,
           result: {
@@ -546,9 +552,9 @@ test('direct blueprint_close_editor is blocked even when expert flag is present'
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /blueprint_close_editor direct CLI command was removed/);
-  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.deepEqual(errors, []);
+  assertCliParseError(writes.join(''), /blueprint_close_editor direct CLI command was removed/);
+  assertCliParseError(writes.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
 });
 
 test('short close_editor is blocked and does not call Bridge', async () => {
@@ -566,9 +572,9 @@ test('short close_editor is blocked and does not call Bridge', async () => {
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /close_editor direct CLI command was removed/);
-  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
+  assert.deepEqual(errors, []);
+  assertCliParseError(writes.join(''), /close_editor direct CLI command was removed/);
+  assertCliParseError(writes.join(''), /mcp__blueprint_helper__blueprint_close_editor/);
 });
 
 
@@ -590,9 +596,9 @@ test('short open_editor is blocked and does not launch a process', async () => {
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /open_editor direct CLI command was removed/);
-  assert.match(errors.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
+  assert.deepEqual(errors, []);
+  assertCliParseError(writes.join(''), /open_editor direct CLI command was removed/);
+  assertCliParseError(writes.join(''), /mcp__blueprint_helper__blueprint_open_editor/);
 });
 test('frozen direct Bridge tools are not exposed through CLI tool invocation', async () => {
   const writes: string[] = [];
@@ -609,12 +615,21 @@ test('frozen direct Bridge tools are not exposed through CLI tool invocation', a
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /Unsupported BlueprintHelper CLI command/);
+  assert.deepEqual(errors, []);
+  assertCliParseError(writes.join(''), /Unsupported BlueprintHelper CLI command/);
 });
 
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function assertCliParseError(outputText: string, messagePattern: RegExp): void {
+  const output = JSON.parse(outputText) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), messagePattern);
 }
 
 function restoreEnv(name: string, value: string | undefined): void {

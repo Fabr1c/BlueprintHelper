@@ -24,12 +24,21 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
   const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' });
   assert.equal(families.schema, 'BlueprintHelper.TaskSpecTemplateFamilies.v1');
   assert.equal(families.items.some((item) => item.family === 'graph_write'), true);
+  assert.deepEqual(
+    families.items.find((item) => item.family === 'graph_write')?.navigation.levels,
+    ['write_mode', 'cluster', 'operation', 'quick_access', 'leaf_template'],
+  );
+  assert.equal(
+    families.items.find((item) => item.family === 'graph_write')?.navigation.requires_write_mode,
+    true,
+  );
   assert.match(
     families.items.find((item) => item.family === 'graph_write')?.description ?? '',
     /Blueprint graph/i,
   );
 
   const writeModes = listTaskSpecTemplateWriteModes({ family: 'graph_write' });
+  assert.equal(writeModes.status, 'ok');
   assert.deepEqual(
     writeModes.items.map((item) => item.write_mode).sort(),
     ['graph.append', 'graph.merge', 'graph.patch', 'graph.replace'],
@@ -39,11 +48,7 @@ test('TaskSpec template index exposes GraphWrite four-layer discovery', () => {
     /new owned graph/i,
   );
   assert.equal(
-    writeModes.items.find((item) => item.write_mode === 'graph.append')?.base_template_path,
-    'AgentFaceService/agent-guide/Templates/write/routes/graph_append_owned_template.json',
-  );
-  assert.equal(
-    writeModes.items.every((item) => !item.base_template_path.includes('/write/taskspec/')),
+    writeModes.items.every((item) => !Object.hasOwn(item, 'base_template_path')),
     true,
   );
 
@@ -89,6 +94,39 @@ test('TaskSpec template families reject unsupported workflows instead of falling
     () => listTaskSpecTemplateFamilies({ workflow: 'unsupported_workflow' }),
     /Unsupported TaskSpec template workflow/,
   );
+});
+
+test('asset_factory uses family-defined navigation without write-mode exposure', () => {
+  const families = listTaskSpecTemplateFamilies({ workflow: 'preview_execute' });
+  const assetFactory = families.items.find((item) => item.family === 'asset_factory');
+  assert.notEqual(assetFactory, undefined);
+  assert.deepEqual(assetFactory?.navigation.levels, ['operation', 'quick_access', 'leaf_template']);
+  assert.equal(assetFactory?.navigation.requires_write_mode, false);
+  assert.match(assetFactory?.navigation.next_command ?? '', /operations --family <family>/);
+
+  const writeModes = listTaskSpecTemplateWriteModes({ family: 'asset_factory' });
+  assert.equal(writeModes.status, 'failed');
+  assert.deepEqual(writeModes.items, []);
+  assert.equal(writeModes.diagnostics?.[0]?.code, 'navigation_level_not_supported');
+  assert.equal(writeModes.diagnostics?.[0]?.safe_next_action, 'use_family_navigation_next_command');
+  assert.match(writeModes.diagnostics?.[0]?.suggested_route ?? '', /operations --family <family>/);
+
+  const operations = listTaskSpecTemplateOperations({ family: 'asset_factory' });
+  assert.equal(operations.write_mode, undefined);
+  assert.deepEqual(operations.items.map((item) => item.operation_id).sort(), [
+    'create_blueprint',
+    'create_data_asset',
+    'create_widget_blueprint',
+  ]);
+
+  const quickAccess = listTaskSpecTemplateQuickAccess({
+    family: 'asset_factory',
+    operation: 'create_blueprint',
+  });
+  assert.equal(quickAccess.write_mode, undefined);
+  assert.equal(quickAccess.items.length, 1);
+  assert.equal(quickAccess.items[0]?.template_id, 'asset_factory.asset.create_blueprint');
+  assert.equal('write_mode' in (quickAccess.items[0] ?? {}), false);
 });
 
 test('TaskSpec template composer writes GraphWrite append TaskSpec without inserted_slots', () => {
@@ -350,9 +388,7 @@ test('TaskSpec template composer reports required placeholders for non-GraphWrit
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_variables',
-    writeMode: 'variables.edit',
-    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    templateId: 'blueprint_variables.variables.ensure_member_variable',
     outputPath,
   });
 
@@ -372,9 +408,7 @@ test('TaskSpec template composer ignores optional placeholders in required summa
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_variables',
-    writeMode: 'variables.edit',
-    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    templateId: 'blueprint_variables.variables.ensure_member_variable',
     outputPath,
   });
 
@@ -560,7 +594,7 @@ test('TaskSpec template composer failure diagnostics point agents back to templa
   assert.equal(unsupportedWriteMode.status, 'failed');
   assert.equal(unsupportedWriteMode.diagnostics[0]?.code, 'unsupported_write_mode');
   assert.match(unsupportedWriteMode.diagnostics[0]?.message ?? '', /bh tools templates families --workflow preview_execute --format json/);
-  assert.match(unsupportedWriteMode.diagnostics[0]?.message ?? '', /bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json/);
+  assert.match(unsupportedWriteMode.diagnostics[0]?.message ?? '', /GraphWrite compose/);
 
   const unsupportedFamily = composeTaskSpecTemplate({
     family: 'missing_family',
@@ -573,14 +607,12 @@ test('TaskSpec template composer failure diagnostics point agents back to templa
   assert.match(unsupportedFamily.diagnostics[0]?.message ?? '', /bh tools templates families --workflow preview_execute --format json/);
 
   const unknownQuickAccess = composeTaskSpecTemplate({
-    family: 'blueprint_components',
-    writeMode: 'components.edit',
-    templateIds: ['blueprint_components.component_tree.missing'],
+    templateId: 'blueprint_components.component_tree.missing',
     outputPath: path.join(outDir, 'unknown-quick-access.taskspec.json'),
   });
   assert.equal(unknownQuickAccess.status, 'failed');
-  assert.equal(unknownQuickAccess.diagnostics[0]?.code, 'unknown_quick_access_template');
-  assert.match(unknownQuickAccess.diagnostics[0]?.message ?? '', /bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json/);
+  assert.equal(unknownQuickAccess.diagnostics[0]?.code, 'unknown_template_id');
+  assert.match(unknownQuickAccess.diagnostics[0]?.message ?? '', /bh tools templates families --workflow preview_execute --format json/);
 });
 
 test('TaskSpec template composer writes component quick-access changes', () => {
@@ -588,9 +620,7 @@ test('TaskSpec template composer writes component quick-access changes', () => {
   const outputPath = path.join(outDir, 'components.taskspec.json');
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_components',
-    writeMode: 'components.edit',
-    templateIds: ['blueprint_components.component_tree.ensure_component_present'],
+    templateId: 'blueprint_components.component_tree.ensure_component_present',
     outputPath,
   });
 
@@ -606,31 +636,21 @@ test('TaskSpec template composer writes component quick-access changes', () => {
   assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
 });
 
-test('TaskSpec template composer writes class settings quick-access into object and array paths', () => {
+test('TaskSpec template composer writes class settings leaf quick-access into object path', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'class-settings.taskspec.json');
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_class_settings',
-    writeMode: 'class_settings.edit',
-    templateIds: [
-      'blueprint_class_settings.class_settings.add_interface',
-      'blueprint_class_settings.class_settings.reparent',
-    ],
+    templateId: 'blueprint_class_settings.class_settings.reparent',
     outputPath,
   });
 
   assert.equal(result.status, 'ok');
   const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
     behavior: {
-      interfaces: { ensure_present: unknown[]; ensure_absent: unknown[] };
-      class_defaults: unknown[];
       reparent: Record<string, unknown>;
     };
   };
-  assert.deepEqual(taskSpec.behavior.interfaces.ensure_present, ['__REQUIRED_INTERFACE_PATH__']);
-  assert.deepEqual(taskSpec.behavior.interfaces.ensure_absent, []);
-  assert.deepEqual(taskSpec.behavior.class_defaults, []);
   assert.deepEqual(taskSpec.behavior.reparent, { new_parent_class: '__REQUIRED_NEW_PARENT_CLASS__' });
 });
 
@@ -639,9 +659,7 @@ test('TaskSpec template composer writes signature quick-access changes that comp
   const outputPath = path.join(outDir, 'signature.taskspec.json');
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_signature',
-    writeMode: 'signature.edit',
-    templateIds: ['blueprint_signature.signature.ensure_function'],
+    templateId: 'blueprint_signature.signature.ensure_function',
     outputPath,
   });
 
@@ -704,7 +722,7 @@ test('active quick-access items expose slot type and arg slots without internal 
   }
 });
 
-test('TaskSpec template composer writes supported non-GraphWrite base templates', () => {
+test('TaskSpec template composer rejects non-GraphWrite base compose without leaf template id', () => {
   const families = [
     'blueprint_variables',
     'blueprint_create_feature',
@@ -721,12 +739,12 @@ test('TaskSpec template composer writes supported non-GraphWrite base templates'
     );
     const result = composeTaskSpecTemplate({
       family,
-      writeMode: writeModeForFamily(family),
       templateIds: [],
       outputPath,
     });
-    assert.equal(result.status, 'ok', family);
-    assert.equal(fs.existsSync(outputPath), true, family);
+    assert.equal(result.status, 'failed', family);
+    assert.equal(result.diagnostics[0]?.code, 'compose_mode_not_supported', family);
+    assert.equal(fs.existsSync(outputPath), false, family);
   }
 });
 
@@ -737,9 +755,7 @@ test('TaskSpec template composer writes UMG widget operation quick-access change
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'umg_widget',
-    writeMode: 'widget.edit',
-    templateIds: ['umg.widget_tree.create_widget'],
+    templateId: 'umg.widget_tree.create_widget',
     outputPath,
   });
 
@@ -752,6 +768,121 @@ test('TaskSpec template composer writes UMG widget operation quick-access change
   assert.deepEqual(taskSpec.behavior.changes.map((change) => change.kind), ['create_widget']);
 });
 
+test('asset_factory and UMG discovery prevent capability-boundary misclassification', () => {
+  const assetOperations = listTaskSpecTemplateOperations({
+    family: 'asset_factory',
+  }).items.map((item) => item.operation_id);
+  assert.deepEqual(assetOperations.sort(), ['create_blueprint', 'create_data_asset', 'create_widget_blueprint']);
+
+  for (const operation of ['create_data_asset', 'create_blueprint', 'create_widget_blueprint'] as const) {
+    const quickAccess = listTaskSpecTemplateQuickAccess({
+      family: 'asset_factory',
+      operation,
+    }).items;
+    assert.equal(quickAccess.length, 1, operation);
+    assert.equal('write_mode' in (quickAccess[0] ?? {}), false);
+  }
+
+  const umgOperations = listTaskSpecTemplateOperations({
+    family: 'umg_widget',
+    cluster: 'widget_tree',
+  }).items.map((item) => item.operation_id);
+  assert.equal(umgOperations.includes('create_widget'), true);
+  assert.equal(umgOperations.includes('update_widget_property'), true);
+  assert.equal(umgOperations.includes('set_widget_as_variable'), true);
+});
+
+test('TaskSpec template composer writes specialized asset_factory root create templates', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-asset-'));
+  const dataAssetPath = path.join(tempDir, 'create-data-asset.taskspec.json');
+  const blueprintPath = path.join(tempDir, 'create-blueprint.taskspec.json');
+  const widgetPath = path.join(tempDir, 'create-widget-blueprint.taskspec.json');
+
+  const dataAssetResult = composeTaskSpecTemplate({
+    templateId: 'asset_factory.asset.create_data_asset',
+    outputPath: dataAssetPath,
+  });
+  assert.equal(dataAssetResult.status, 'ok');
+  assert.equal('write_mode' in dataAssetResult, false);
+
+  const blueprintResult = composeTaskSpecTemplate({
+    templateId: 'asset_factory.asset.create_blueprint',
+    outputPath: blueprintPath,
+  });
+  assert.equal(blueprintResult.status, 'ok');
+  assert.equal('write_mode' in blueprintResult, false);
+
+  const widgetResult = composeTaskSpecTemplate({
+    templateId: 'asset_factory.asset.create_widget_blueprint',
+    outputPath: widgetPath,
+  });
+  assert.equal(widgetResult.status, 'ok');
+  assert.equal('write_mode' in widgetResult, false);
+
+  const dataAssetSpec = JSON.parse(fs.readFileSync(dataAssetPath, 'utf8')) as {
+    task_type: string;
+    behavior: { asset: { asset_type: string } };
+  };
+  const blueprintSpec = JSON.parse(fs.readFileSync(blueprintPath, 'utf8')) as {
+    task_type: string;
+    behavior: { asset: { asset_type: string; parent_class: string } };
+  };
+  const widgetSpec = JSON.parse(fs.readFileSync(widgetPath, 'utf8')) as {
+    task_type: string;
+    behavior: { asset: { asset_type: string; parent_class: string } };
+  };
+
+  assert.equal(dataAssetSpec.task_type, 'create_asset');
+  assert.equal(dataAssetSpec.behavior.asset.asset_type, 'data_asset');
+
+  assert.equal(blueprintSpec.task_type, 'create_asset');
+  assert.equal(blueprintSpec.behavior.asset.asset_type, 'Blueprint');
+  assert.equal(blueprintSpec.behavior.asset.parent_class, '__REQUIRED_PARENT_CLASS_PATH__');
+
+  assert.equal(widgetSpec.task_type, 'create_asset');
+  assert.equal(widgetSpec.behavior.asset.asset_type, 'WidgetBlueprint');
+  assert.equal(widgetSpec.behavior.asset.parent_class, '__REQUIRED_USER_WIDGET_PARENT_CLASS_PATH__');
+});
+
+test('non-GraphWrite legacy compose mode fails with leaf-template migration hint', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'legacy-non-graphwrite.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'asset_factory',
+    writeMode: 'legacy_asset_factory_mode',
+    templateIds: ['asset_factory.asset.create_blueprint'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'compose_mode_not_supported');
+  assert.equal(result.diagnostics[0]?.suggested_route, 'tools.templates.compose.template');
+  assert.equal(fs.existsSync(outputPath), false);
+});
+
+test('TaskSpec template composer rejects mixed leaf and slot compose inputs', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'mixed-compose.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    templateId: 'asset_factory.asset.create_blueprint',
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.call.direct'],
+    outputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'compose_mode_conflict');
+  assert.equal(result.diagnostics[0]?.safe_next_action, 'choose_single_compose_mode');
+  assert.equal(fs.existsSync(outputPath), false);
+});
+
 test('TaskSpec template composer writes Blueprint variable quick-access changes', () => {
   const outputPath = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
@@ -759,9 +890,7 @@ test('TaskSpec template composer writes Blueprint variable quick-access changes'
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'blueprint_variables',
-    writeMode: 'variables.edit',
-    templateIds: ['blueprint_variables.variables.ensure_member_variable'],
+    templateId: 'blueprint_variables.variables.ensure_member_variable',
     outputPath,
   });
 
@@ -784,9 +913,7 @@ test('TaskSpec template composer writes schema-valid MaterialGraph append scaffo
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'material_graph',
-    writeMode: 'material.graph',
-    templateIds: ['material_graph.material_graph.append_block'],
+    templateId: 'material_graph.material_graph.append_block',
     outputPath,
   });
 
@@ -805,9 +932,7 @@ test('TaskSpec template composer writes schema-valid MaterialInstance scalar ove
   );
 
   const result = composeTaskSpecTemplate({
-    family: 'material_instance',
-    writeMode: 'material.instance',
-    templateIds: ['material_instance.material_instance.set_scalar_override'],
+    templateId: 'material_instance.material_instance.set_scalar_override',
     outputPath,
   });
 
@@ -840,16 +965,71 @@ test('supported TaskSpec template families have discoverable operations quick-ac
   assert.equal(families.length > 0, true);
 
   for (const family of families) {
+    if (family.family !== 'graph_write') {
+      const writeModes = listTaskSpecTemplateWriteModes({ family: family.family });
+      assert.equal(writeModes.status, 'failed', `${family.family} write-mode navigation is not supported`);
+      assert.equal(writeModes.diagnostics?.[0]?.code, 'navigation_level_not_supported', family.family);
+
+      const clusterIds = family.navigation.levels.includes('cluster')
+        ? listTaskSpecTemplateClusters({ family: family.family }).items.map((cluster) => cluster.cluster_id)
+        : [''];
+      assert.equal(clusterIds.length > 0, true, `${family.family} family-defined clusters`);
+
+      for (const clusterId of clusterIds) {
+        const operations: ReturnType<typeof listTaskSpecTemplateOperations>['items'] = listTaskSpecTemplateOperations({
+          family: family.family,
+          cluster: clusterId,
+        }).items;
+        assert.equal(
+          operations.length > 0,
+          true,
+          `${family.family}/${clusterId} operations`,
+        );
+
+        for (const operation of operations) {
+          const quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'] = listTaskSpecTemplateQuickAccess({
+            family: family.family,
+            cluster: clusterId,
+            operation: operation.operation_id,
+          }).items;
+          assert.equal(
+            quickAccess.length > 0,
+            true,
+            `${family.family}/${clusterId}/${operation.operation_id} quick-access`,
+          );
+
+          for (const item of quickAccess) {
+            assert.equal('write_mode' in item, false, `${item.template_id} should not expose write_mode`);
+            const outputPath = path.join(
+              fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+              `${item.template_id.replaceAll('.', '-')}.taskspec.json`,
+            );
+            const result = composeTaskSpecTemplate({
+              templateId: item.template_id,
+              outputPath,
+            });
+            assert.equal(result.status, 'ok', `${item.template_id}: ${JSON.stringify(result)}`);
+            assert.equal('write_mode' in result, false, `${item.template_id} compose output should not expose write_mode`);
+            const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { schema?: string };
+            assert.equal(taskSpec.schema, 'BlueprintHelper.TaskSpec.v1', item.template_id);
+            assertComposedTaskSpecDoesNotExposeRemovedFields(taskSpec, item.template_id);
+            assertAgentFacingTaskSpecPassesInternalSchema(taskSpec, item.template_id);
+          }
+        }
+      }
+      continue;
+    }
+
     const writeModes = listTaskSpecTemplateWriteModes({ family: family.family }).items;
     assert.equal(writeModes.length > 0, true, `${family.family} write modes`);
 
     for (const writeMode of writeModes) {
-      const clusters = listTaskSpecTemplateClusters({ family: family.family }).items
+      const clusters: ReturnType<typeof listTaskSpecTemplateClusters>['items'] = listTaskSpecTemplateClusters({ family: family.family }).items
         .filter((cluster) => !cluster.unsupported_write_modes.includes(writeMode.write_mode));
       assert.equal(clusters.length > 0, true, `${family.family}/${writeMode.write_mode} clusters`);
 
       for (const cluster of clusters) {
-        const operations = listTaskSpecTemplateOperations({
+        const operations: ReturnType<typeof listTaskSpecTemplateOperations>['items'] = listTaskSpecTemplateOperations({
           family: family.family,
           cluster: cluster.cluster_id,
           writeMode: writeMode.write_mode,
@@ -861,7 +1041,7 @@ test('supported TaskSpec template families have discoverable operations quick-ac
         );
 
         for (const operation of operations) {
-          const quickAccess = listTaskSpecTemplateQuickAccess({
+          const quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'] = listTaskSpecTemplateQuickAccess({
             family: family.family,
             cluster: cluster.cluster_id,
             operation: operation.operation_id,
@@ -899,27 +1079,6 @@ test('supported TaskSpec template families have discoverable operations quick-ac
   }
 });
 
-function writeModeForFamily(family: string): string {
-  switch (family) {
-    case 'blueprint_variables':
-      return 'variables.edit';
-    case 'blueprint_create_feature':
-      return 'feature.create';
-    case 'umg_widget':
-      return 'widget.edit';
-    case 'data_table':
-      return 'table.rows';
-    case 'object_properties':
-      return 'object.properties';
-    case 'asset_factory':
-      return 'asset.create';
-    case 'material_instance':
-      return 'material.instance';
-    default:
-      throw new Error(`Unexpected test family: ${family}`);
-  }
-}
-
 function firstStatementTemplateId(
   quickAccess: ReturnType<typeof listTaskSpecTemplateQuickAccess>['items'],
   writeMode: string,
@@ -950,10 +1109,14 @@ function templateExpressionForCoverage(
   if (item.slot_type !== 'route' || !item.arg_slots.some((slot) => slot.includes('statement[]'))) {
     return item.template_id;
   }
+  const itemWriteMode = item.write_mode;
+  if (typeof itemWriteMode !== 'string') {
+    assert.fail(`${item.template_id} route has write_mode`);
+  }
   const statement = quickAccess.find((candidate) =>
     candidate.slot_type === 'statement'
-    && candidate.write_mode === item.write_mode
-    && !candidate.unsupported_write_modes.includes(item.write_mode));
+    && candidate.write_mode === itemWriteMode
+    && !candidate.unsupported_write_modes.includes(itemWriteMode));
   assert.notEqual(statement, undefined, `${item.template_id} route has statement child`);
   return `${item.template_id}(${statement?.template_id ?? ''})`;
 }

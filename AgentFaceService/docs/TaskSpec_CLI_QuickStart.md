@@ -62,7 +62,7 @@ Tool help and current CLI discovery describe the accepted input roots. Prefer co
 
 ## TaskSpec Template Composer
 
-TaskSpec writes start with the `bh tools templates` four-layer index. Do not use tool-id template dispatch or scan `AgentFaceService/agent-guide/Templates` to choose TaskSpec files.
+TaskSpec writes start with `bh tools templates families`; follow each returned `navigation.levels` entry instead of assuming a fixed index depth. Do not use tool-id template dispatch or scan `AgentFaceService/agent-guide/Templates` to choose TaskSpec files.
 
 ```powershell
 bh tools templates families --workflow preview_execute --format json
@@ -74,7 +74,15 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
 ```
 
-Use `quick-access.items[].slot_type` to choose roots: `statement` templates can be used as top-level `--templates` entries, while `expression` templates must be nested inside an input slot. Use `quick-access.items[].arg_slots` as the positional argument order for `template_id(...)`. Use `0` only as a skip placeholder, not as numeric data.
+For GraphWrite, use `quick-access.items[].slot_type` to choose roots: `statement` templates can be used as top-level `--templates` entries, while `expression` templates must be nested inside an input slot. Use `quick-access.items[].arg_slots` as the positional argument order for `template_id(...)`. Use `0` only as a skip placeholder, not as numeric data.
+
+Non-GraphWrite families expose leaf template ids through their own navigation levels and compose directly from the leaf:
+
+```powershell
+bh tools templates operations --family asset_factory --format json
+bh tools templates quick-access --family asset_factory --operation create_blueprint --format json
+bh tools templates compose --template asset_factory.asset.create_blueprint --out .tmp\taskspec-template-composer\asset_create_blueprint.taskspec.json --format json
+```
 
 After compose, fill the generated TaskSpec with concrete asset paths, graph names, selectors, and values from ReadContext evidence. The composer output includes the next preview and execute command strings for the generated file.
 

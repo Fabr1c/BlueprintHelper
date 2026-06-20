@@ -12,6 +12,20 @@ not-editable status.
 If `write_permission` is disabled, request a write session after preview only.
 The Editor prompt is accept/reject; rejection stops the write.
 
+## UMG Capability Boundary Rule
+
+`umg_widget` is an Agent-facing TaskSpec family for Widget Blueprint tree, widget property, named slot, and widget class-setting edits. A failed or skipped HUD implementation is not a capability boundary unless the agent records complete CLI discovery evidence showing the required UMG family / operation / quick-access is unavailable, or preview returns an explicit unsupported / missing capability diagnostic.
+
+## WidgetBlueprint Creation Versus UMG Editing
+
+Use `asset_factory/create_widget_blueprint` to create a WidgetBlueprint asset. Use `umg_widget` to edit an existing WidgetBlueprint tree, widget properties, named slots, or widget class settings.
+
+A skipped HUD implementation is not a capability boundary when `create_widget_blueprint` or `umg_widget` discovery exposes the required operation and quick-access template.
+
+## Classification
+
+Use the shared Report/Debug buckets from the Blueprint edit workflow: `能力边界`, `执行未完成`, `路径误选`, and `preview blocked`. For UMG/HUD work, a skipped implementation is `执行未完成` when `umg_widget` discovery exposes the needed operation family; only complete missing discovery or explicit unsupported diagnostics can become `能力边界`.
+
 ## Validation Policy
 
 - WidgetBlueprint and UMG writes may compile when the template and task require

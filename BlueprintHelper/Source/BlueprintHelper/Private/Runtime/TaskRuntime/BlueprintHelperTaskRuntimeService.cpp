@@ -56,6 +56,9 @@
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePrepareService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeReviewIoBatch.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPreviewStore.h"
+#include "Runtime/TaskRuntime/Receipt/BlueprintHelperExecutionReceiptService.h"
+#include "Runtime/TaskRuntime/Receipt/BlueprintHelperExecutionReceiptStore.h"
+#include "Runtime/TaskRuntime/Receipt/BlueprintHelperExecutionReceiptTypes.h"
 #include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipeline.h"
 #include "Runtime/TaskRuntime/Pipeline/BlueprintHelperTaskRuntimePipelineExecutors.h"
 #include "Runtime/TaskRuntime/PostOperations/BlueprintHelperTaskRuntimePostOperationTypes.h"
@@ -6844,6 +6847,40 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::GetTaskRunJou
 	return Result;
 }
 
+FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::GetExecutionReceipt(
+	const FString& ReceiptId) const
+{
+	TSharedPtr<FJsonObject> Receipt;
+	FString TaskRunId;
+	FString LoadError;
+	if (!FBlueprintHelperExecutionReceiptStore().FindReceiptById(
+		ReceiptId,
+		TaskRunJournals,
+		Receipt,
+		TaskRunId,
+		LoadError))
+	{
+		return FBlueprintHelperTaskRuntimeServiceLocalUtils::MakeFailure(
+			TEXT("get_execution_receipt"),
+			TEXT("receipt_not_found"),
+			EBlueprintHelperToolStage::ResolveTarget,
+			FString::Printf(TEXT("ExecutionReceipt not found: %s. %s"), *ReceiptId, *LoadError),
+			TEXT("receipt_id"));
+	}
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("get_execution_receipt"),
+		FBlueprintHelperToolResultBuilder::GenerateTraceId());
+	Result.Data = MakeShared<FJsonObject>();
+	Result.Data->SetStringField(FBlueprintHelperExecutionReceiptFields::ReceiptId(), ReceiptId);
+	if (!TaskRunId.IsEmpty())
+	{
+		Result.Data->SetStringField(FBlueprintHelperExecutionReceiptFields::TaskRunId(), TaskRunId);
+	}
+	Result.Data->SetObjectField(FBlueprintHelperExecutionReceiptFields::Receipt(), Receipt.ToSharedRef());
+	return Result;
+}
+
 void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 	const TSharedPtr<FJsonObject>& Payload,
 	FBlueprintHelperToolResultBase& Result) const
@@ -6894,6 +6931,10 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 	StoreRequest.ActionContextRevisionManifestHash = ContextRevisionManifest.ManifestHash;
 	StoreRequest.ActionContextRevisionManifestJson = ContextRevisionManifest.ToJson();
 	StoreRequest.bPassed = FBlueprintHelperTaskRuntimeServiceLocalUtils::IsPreviewResultExecutable(Result);
+	StoreRequest.ExecutionReceiptJson = FBlueprintHelperExecutionReceiptService::BuildPreviewReceipt(
+		*TokenRequestPtr,
+		*TaskPlanPtr,
+		StoreRequest.bPassed);
 	if (Result.Data.IsValid())
 	{
 		const TSharedPtr<FJsonObject>* CandidateArtifactPtr = nullptr;
@@ -6913,6 +6954,7 @@ void FBlueprintHelperTaskRuntimeService::AttachPreviewToken(
 		Result.Data = MakeShared<FJsonObject>();
 	}
 	Result.Data->SetStringField(TEXT("preview_token"), Token);
+	FBlueprintHelperExecutionReceiptService::AttachReceiptToResultData(Result.Data, StoreRequest.ExecutionReceiptJson);
 }
 
 FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecutePreviewTokenTaskPlan(
@@ -7023,6 +7065,17 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::ExecutePrevie
 
 	TSharedRef<FJsonObject> ResolvedPayload = MakeShared<FJsonObject>();
 	ResolvedPayload->SetObjectField(TEXT("task_plan"), ResolveResult.TaskPlan.ToSharedRef());
+	TSharedPtr<FJsonObject> ExecutionReceipt = FBlueprintHelperExecutionReceiptService::ReadReceiptFromPayload(Payload);
+	if (!ExecutionReceipt.IsValid())
+	{
+		ExecutionReceipt = FBlueprintHelperExecutionReceiptService::CloneJsonObject(ResolveResult.ExecutionReceiptJson);
+	}
+	if (ExecutionReceipt.IsValid())
+	{
+		ResolvedPayload->SetObjectField(
+			FBlueprintHelperExecutionReceiptFields::Receipt(),
+			ExecutionReceipt.ToSharedRef());
+	}
 	if (ResolveResult.GraphWriteCandidateArtifactJson.IsValid())
 	{
 		ResolvedPayload->SetObjectField(
@@ -7109,6 +7162,18 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
 	const FString& TaskRunId = PreparedRun.TaskRunId;
 	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
+	auto BuildExecutionReceipt = [&](bool bOk) -> TSharedPtr<FJsonObject>
+	{
+		if (bDryRun)
+		{
+			return nullptr;
+		}
+		return FBlueprintHelperExecutionReceiptService::BuildExecuteReceipt(
+			Payload,
+			TaskRunId,
+			bOk,
+			TaskRunId.IsEmpty() ? TEXT("") : FBlueprintHelperTaskRunJournalStoreService::MakeTaskRunJournalPath(TaskRunId));
+	};
 	FBlueprintHelperTaskRuntimePipelineRunner PipelineRunner(*TaskPlanPtr, TaskRunId, bDryRun);
 	FBlueprintHelperTaskRuntimePipelineExecutionContext PipelineContext =
 		PipelineRunner.MakeExecutionContext();
@@ -7498,6 +7563,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 			RuntimeResult.Data,
 			CachedRuntimeFactValues);
 		AttachCacheDiagnostics(RuntimeResult);
+		TSharedPtr<FJsonObject> ExecutionReceipt = BuildExecutionReceipt(RuntimeResult.bOk);
+		FBlueprintHelperExecutionReceiptService::AttachReceiptToResultData(RuntimeResult.Data, ExecutionReceipt);
 		PipelineRunner.SetStepRecords(StepRecords);
 		ExecutePipelineStage(EBlueprintHelperTaskRuntimePipelineStage::ProjectMetricsAndResult);
 
@@ -7518,6 +7585,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 						Journal,
 						ResolvedCallFunctionFacts);
 					FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
+					FBlueprintHelperExecutionReceiptService::AttachReceiptToJournal(Journal, ExecutionReceipt);
 					PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
 					return FBlueprintHelperToolResultBuilder::Applied(
 						TEXT("task_runtime_build_journal"),
@@ -8138,6 +8206,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 		RuntimeResult.Data,
 		*CallFunctionResolutionCache);
 	AttachCacheDiagnostics(RuntimeResult);
+	TSharedPtr<FJsonObject> ExecutionReceipt = BuildExecutionReceipt(RuntimeResult.bOk);
+	FBlueprintHelperExecutionReceiptService::AttachReceiptToResultData(RuntimeResult.Data, ExecutionReceipt);
 	if (TimingTrace.bEnabled)
 	{
 		FBlueprintHelperTaskRuntimeServiceLocalUtils::AttachGraphWriteExecutionStatsFromSteps(
@@ -8162,6 +8232,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 					Journal,
 					ResolvedCallFunctionFacts);
 				FBlueprintHelperTaskRuntimeTimingUtils::AttachTiming(Journal, TimingTrace);
+				FBlueprintHelperExecutionReceiptService::AttachReceiptToJournal(Journal, ExecutionReceipt);
 				PostIoBatch.SetTaskRunJournal(TaskRunId, Journal);
 				return FBlueprintHelperToolResultBuilder::Applied(
 					TEXT("task_runtime_build_journal"),

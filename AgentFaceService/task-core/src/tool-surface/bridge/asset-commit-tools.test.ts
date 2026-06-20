@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
+import { BRIDGE_RESPONSE_SCHEMA } from '../../bridge/bridge-response-schema.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import type { BlueprintHelperToolContext } from '../types.js';
 import { bridgeToolSource } from '../registry/bridge-tool-source.js';
@@ -18,6 +19,7 @@ function makeContext(): BlueprintHelperToolContext & {
       sendCommand: async (command: string, payload: Record<string, unknown> = {}) => {
         calls.push({ command, payload });
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           request_id: `req_${command}`,
           success: true,
           result: {

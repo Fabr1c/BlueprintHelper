@@ -18,6 +18,7 @@ export function buildTaskPlan(input: BuildTaskPlanInput): TaskPlan {
     task_type: input.taskSpec.task_type,
     context_id: input.taskSpec.context_id,
     target_assets: [input.taskSpec.target.asset_path],
+    ...(input.taskSpec.verification ? { verification: input.taskSpec.verification } : {}),
     execution_policy: makeTaskPlanExecutionPolicy(input.executionPolicy),
     steps: renumberTaskPlanSteps(input.steps),
   };

@@ -92,6 +92,51 @@ FBlueprintHelperToolError FBlueprintHelperClassSettingsService::MakeError(
 	return Error;
 }
 
+FBlueprintHelperToolError FBlueprintHelperClassSettingsService::MakeClassDefaultReadError(
+	const FString& Code,
+	EBlueprintHelperToolStage Stage,
+	const FString& Message,
+	const FString& Field)
+{
+	FString PublicCode = Code;
+	if (PublicCode == TEXT("blueprint_not_found"))
+	{
+		PublicCode = TEXT("asset_not_found");
+	}
+	else if (PublicCode == TEXT("interface_compile_required"))
+	{
+		PublicCode = TEXT("class_default_cdo_unavailable");
+	}
+	else if (PublicCode == TEXT("object_reference_not_found"))
+	{
+		PublicCode = TEXT("class_default_object_reference_not_found");
+	}
+	else if (PublicCode == TEXT("struct_field_invalid"))
+	{
+		PublicCode = TEXT("class_default_property_path_not_traversable");
+	}
+
+	FBlueprintHelperToolError Error = MakeError(PublicCode, Stage, Message, Field);
+	if (PublicCode == TEXT("class_default_property_not_found") ||
+		PublicCode == TEXT("class_default_object_reference_not_found") ||
+		PublicCode == TEXT("class_default_property_path_not_traversable"))
+	{
+		Error.Category = TEXT("parameter_error");
+		Error.SafeNextAction = TEXT("correct_property_path_then_retry");
+	}
+	else if (PublicCode == TEXT("class_default_cdo_unavailable"))
+	{
+		Error.Category = TEXT("runtime_state_error");
+		Error.SafeNextAction = TEXT("compile_blueprint_then_retry");
+	}
+	else
+	{
+		Error.Category = TEXT("context_error");
+		Error.SafeNextAction = TEXT("inspect_blueprint_class_settings_then_retry");
+	}
+	return Error;
+}
+
 FBlueprintHelperValidationSummary FBlueprintHelperClassSettingsService::MakeValidation(
 	bool bShouldCompile,
 	bool bShouldSave)
@@ -146,7 +191,7 @@ int32 FBlueprintHelperClassSettingsService::CountEditableClassDefaults(UObject* 
 	for (TFieldIterator<FProperty> It(CDO->GetClass()); It; ++It)
 	{
 		FProperty* Prop = *It;
-		if (FBlueprintHelperEditablePropertyPolicy::AllowsWrite(Prop))
+		if (FBlueprintHelperEditablePropertyPolicy::AllowsClassDefaultWrite(Prop))
 		{
 			++Count;
 		}
@@ -193,6 +238,75 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::ReadClassSe
 	Result.Target->AssetPath = AssetPath;
 	Result.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
 	Result.Data = Data;
+	return Result;
+}
+
+FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::ReadClassDefaultProperty(
+	const FString& AssetPath,
+	const FString& PropertyPath) const
+{
+	const FString TraceId = FBlueprintHelperToolResultBuilder::GenerateTraceId();
+	FString ErrorCode;
+	FString ErrorMessage;
+	UBlueprint* Blueprint = ResolveBlueprint(AssetPath, ErrorCode, ErrorMessage);
+	if (!Blueprint)
+	{
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("read_blueprint_class_default_property"),
+			TraceId,
+			MakeClassDefaultReadError(ErrorCode, EBlueprintHelperToolStage::ResolveTarget, ErrorMessage, TEXT("asset_path")));
+	}
+
+	FString CdoErrorCode;
+	FString CdoErrorMessage;
+	UObject* CDO = ResolveClassDefaultObject(Blueprint, CdoErrorCode, CdoErrorMessage);
+	if (!CDO)
+	{
+		return FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("read_blueprint_class_default_property"),
+			TraceId,
+			MakeClassDefaultReadError(CdoErrorCode, EBlueprintHelperToolStage::ResolveTarget, CdoErrorMessage, TEXT("property_path")));
+	}
+
+	FProperty* Property = nullptr;
+	void* ValuePtr = nullptr;
+	FString ExpectedType;
+	FString ResolveCode;
+	FString ResolveMessage;
+	if (!ResolvePropertyPath(CDO, PropertyPath, Property, ValuePtr, ExpectedType, ResolveCode, ResolveMessage))
+	{
+		FBlueprintHelperToolResultBase Failed = FBlueprintHelperToolResultBuilder::Failure(
+			TEXT("read_blueprint_class_default_property"),
+			TraceId,
+			MakeClassDefaultReadError(ResolveCode, EBlueprintHelperToolStage::ResolveTarget, ResolveMessage, TEXT("property_path")));
+		Failed.Target = FBlueprintHelperTargetRef();
+		Failed.Target->AssetPath = AssetPath;
+		Failed.Target->TargetType = EBlueprintHelperTargetType::Property;
+		Failed.Target->PropertyPath = PropertyPath;
+		return Failed;
+	}
+
+	FBlueprintHelperClassDefaultPropertyContext Context;
+	Context.AssetPath = AssetPath;
+	Context.PropertyPath = PropertyPath;
+	Context.ClassName = CDO->GetClass()->GetName();
+	Context.TypeName = ExpectedType;
+	Context.bFound = true;
+	Property->ExportTextItem_Direct(Context.Value, ValuePtr, nullptr, CDO, PPF_None);
+	if (Property->HasMetaData(TEXT("Category")))
+	{
+		Context.Category = Property->GetMetaData(TEXT("Category"));
+	}
+	Context.Flags = FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(Property->PropertyFlags);
+
+	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
+		TEXT("read_blueprint_class_default_property"),
+		TraceId);
+	Result.Target = FBlueprintHelperTargetRef();
+	Result.Target->AssetPath = AssetPath;
+	Result.Target->TargetType = EBlueprintHelperTargetType::Property;
+	Result.Target->PropertyPath = PropertyPath;
+	Result.Data = Context.ToJson();
 	return Result;
 }
 
@@ -719,7 +833,7 @@ UObject* FBlueprintHelperClassSettingsService::ResolveClassDefaultObject(
 	UObject* CDO = GeneratedClass->GetDefaultObject();
 	if (!CDO)
 	{
-		OutCode = TEXT("class_default_property_not_found");
+		OutCode = TEXT("class_default_cdo_unavailable");
 		OutMessage = TEXT("无法获取 Blueprint CDO。");
 		return nullptr;
 	}
@@ -877,7 +991,7 @@ bool FBlueprintHelperClassSettingsService::ValidateClassDefaultSetting(
 
 	OutInvalid.ExpectedType = ExpectedType;
 
-	if (!FBlueprintHelperEditablePropertyPolicy::AllowsWrite(Property))
+	if (!FBlueprintHelperEditablePropertyPolicy::AllowsClassDefaultWrite(Property))
 	{
 		OutInvalid.Code = TEXT("class_default_property_not_writable");
 		return false;

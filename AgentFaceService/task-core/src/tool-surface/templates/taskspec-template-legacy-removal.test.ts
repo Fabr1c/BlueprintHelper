@@ -32,7 +32,7 @@ test('old ToolTemplateSelection dispatch surface is removed from production code
   }
 });
 
-test('TaskSpec workflow docs require four-layer composer and grouped task commands', () => {
+test('TaskSpec workflow docs require family-defined composer and grouped task commands', () => {
   const docs = [
     'CodexPlugin/skills/blueprint-helper-task-worker/SKILL.md',
     'CodexPlugin/agents/task-worker.md',

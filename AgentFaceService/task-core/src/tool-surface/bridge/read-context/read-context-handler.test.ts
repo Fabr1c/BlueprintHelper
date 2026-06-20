@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { BRIDGE_RESPONSE_SCHEMA } from '../../../bridge/bridge-response-schema.js';
 import type { BridgeResponse } from '../../../bridge/bridge-client.js';
 import { TaskTimingTrace } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
@@ -41,6 +42,13 @@ const boundaryAnchor = {
 const duplicateBoundaryAnchor = {
   ...boundaryAnchor,
 };
+
+function makeBridgeResponse<T extends { request_id: string; success: boolean }>(response: T): T & { schema: string } {
+  return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
+    ...response,
+  };
+}
 
 test('read_context logic formats declare UE callback capabilities with task-core projection owner', () => {
   assert.deepEqual(
@@ -258,8 +266,194 @@ test('ReadContext routes material_instance_context to MaterialInstance bridge co
   }
 });
 
+test('ReadContext routes blueprint_class_default_context to ClassSettings bridge command', () => {
+  const input = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_class_default_context',
+    target: {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      target_type: 'property',
+      target_name: 'WeaponComponent.PrimaryWeapon',
+    },
+  });
+
+  const request = buildReadContextBridgeRequest(input);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.command, 'read_blueprint_class_default_property');
+    assert.equal(request.payloadSchema, 'BlueprintClassDefaultPropertyContext.v1');
+    assert.deepEqual(request.payload, {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      property_path: 'WeaponComponent.PrimaryWeapon',
+      target_name: 'WeaponComponent.PrimaryWeapon',
+    });
+  }
+});
+
+test('ReadContext routes object_property_context single target_name as property_path', () => {
+  const input = ReadContextInputSchema.parse({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'object_property_context',
+    target: {
+      asset_path: '/Game/ShooterRange/Blueprints/BP_ShooterCharacter',
+      target_type: 'property',
+      target_name: 'BlueprintCategory',
+    },
+  });
+
+  const request = buildReadContextBridgeRequest(input);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.command, 'get_object_properties');
+    assert.equal(request.payloadSchema, 'ObjectPropertyContext.v1');
+    assert.equal(request.payload['asset_path'], '/Game/ShooterRange/Blueprints/BP_ShooterCharacter');
+    assert.equal(request.payload['property_path'], 'BlueprintCategory');
+    assert.equal(request.payload['target_name'], 'BlueprintCategory');
+    assert.equal(request.route.template_id, 'blueprint.properties.object');
+  }
+});
+
+test('ReadContext class default projector preserves Blueprint CDO read facts', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'class_default_payload',
+    success: true,
+    result: {
+      ok: true,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'read_blueprint_class_default_property',
+      status: 'completed',
+      data: {
+        schema: 'BlueprintClassDefaultPropertyContext.v1',
+        asset_path: '/Game/Shooter/BP_ShooterCharacter',
+        target_type: 'property',
+        property_path: 'WeaponComponent.PrimaryWeapon',
+        found: true,
+        owner_root: 'blueprint_cdo',
+        class_name: 'BP_ShooterCharacter_C',
+        type: 'TObjectPtr<UShooterWeaponData>',
+        value: 'DA_Weapon_Rifle',
+        flags: 'Edit, BlueprintVisible',
+        category: 'Weapon',
+      },
+    },
+  });
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_class_default_context',
+    target: {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      target_type: 'property',
+      target_name: 'WeaponComponent.PrimaryWeapon',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'read_blueprint_class_default_property');
+  assert.equal(bridgeCalls[0]?.payload?.['property_path'], 'WeaponComponent.PrimaryWeapon');
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'BlueprintClassDefaultPropertyContext.v1');
+  assert.equal(payload['owner_root'], 'blueprint_cdo');
+  assert.equal(payload['property_path'], 'WeaponComponent.PrimaryWeapon');
+  assert.equal(payload['found'], true);
+});
+
+test('read_context preserves route mismatch suggested route metadata from Bridge failure', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'route_mismatch',
+    success: false,
+    error_code: 'execution_failed',
+    message: 'object_property_context reads Blueprint asset object properties, not Blueprint CDO defaults.',
+    result: {
+      ok: false,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'get_object_properties',
+      status: 'failed',
+      error: {
+        code: 'read_context_route_mismatch',
+        stage: 'resolve_target',
+        message: 'object_property_context reads Blueprint asset object properties, not Blueprint CDO defaults.',
+        category: 'parameter_error',
+        retryable: false,
+        rollback_result: 'not_needed',
+        safe_next_action: 'use_suggested_route_and_rerun_read_context',
+        suggested_route: 'blueprint.class_defaults.property',
+        suggested_read_type: 'blueprint_class_default_context',
+        blocked_boundary: 'object_property_context_asset_object_only',
+      },
+    },
+  });
+
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => bridgeResponse,
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'object_property_context',
+    target: {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      target_type: 'property',
+      target_name: 'ShooterHudWidgetClass',
+    },
+  }, context);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'read_context_route_mismatch');
+  assert.equal(result.error?.safe_next_action, 'use_suggested_route_and_rerun_read_context');
+  assert.equal(result.error?.suggested_route, 'blueprint.class_defaults.property');
+  assert.equal(result.error?.suggested_read_type, 'blueprint_class_default_context');
+  assert.equal(result.error?.blocked_boundary, 'object_property_context_asset_object_only');
+});
+
+test('read_context rejects dotted object_property_context Blueprint CDO paths before Bridge send', async () => {
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        throw new Error('Bridge should not be called for dotted object_property_context CDO route mismatch.');
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'object_property_context',
+    target: {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      target_type: 'property',
+      target_name: 'WeaponComponent.PrimaryWeapon',
+    },
+  }, context);
+
+  assert.equal(result.ok, false);
+  assert.equal(bridgeCalls.length, 0);
+  assert.equal(result.error?.code, 'read_context_route_mismatch');
+  assert.equal(result.error?.suggested_route, 'blueprint.class_defaults.property');
+  assert.equal(result.error?.blocked_boundary, 'object_property_context_asset_object_only');
+});
+
 test('ReadContext material logic_json consumes Bridge payload with runtime status and diagnostics', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'material_status_payload',
     success: true,
     result: {
@@ -278,7 +472,7 @@ test('ReadContext material logic_json consumes Bridge payload with runtime statu
         outputs: [],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -313,7 +507,7 @@ test('ReadContext material logic_json consumes Bridge payload with runtime statu
 });
 
 test('ReadContext material logic_json consumes ToolResult data wrapper payload', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'material_tool_result_payload',
     success: true,
     result: {
@@ -338,7 +532,7 @@ test('ReadContext material logic_json consumes ToolResult data wrapper payload',
         },
       },
     },
-  };
+  });
 
   const context: BlueprintHelperToolContext = {
     cwd: process.cwd(),
@@ -368,7 +562,7 @@ test('ReadContext material logic_json consumes ToolResult data wrapper payload',
 });
 
 test('ReadContext material_instance_context consumes ToolResult payload and filters requested parameter', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'material_instance_context_payload',
     success: true,
     result: {
@@ -405,7 +599,7 @@ test('ReadContext material_instance_context consumes ToolResult payload and filt
         ],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -440,6 +634,278 @@ test('ReadContext material_instance_context consumes ToolResult payload and filt
   assert.deepEqual(payload['vector_parameters'], []);
 });
 
+test('read_context asset_context routes through bridge and compacts asset diagnostics', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'asset_context_payload',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'AssetContext.v1',
+        asset_path: '/Game/Shooter/BP_ShooterCharacter',
+        path: '/Game/Shooter/BP_ShooterCharacter',
+        name: 'BP_ShooterCharacter',
+        asset_class: 'Blueprint',
+        class: 'Blueprint',
+        parent_class: '/Script/Engine.Character',
+        disk_size: 4096,
+        package_name: '/Game/Shooter/BP_ShooterCharacter',
+        exists: true,
+      },
+    },
+  });
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'asset_context',
+    target: {
+      asset_path: '/Game/Shooter/BP_ShooterCharacter',
+      target_type: 'asset',
+    },
+    view: {
+      format: 'diagnostics_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_asset_info');
+  assert.deepEqual(bridgeCalls[0]?.payload, { asset_path: '/Game/Shooter/BP_ShooterCharacter' });
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'AssetContext.v1');
+  assert.equal(payload['asset_path'], '/Game/Shooter/BP_ShooterCharacter');
+  assert.equal(payload['asset_class'], 'Blueprint');
+  assert.equal(payload['class'], 'Blueprint');
+  assert.equal(payload['parent_class'], '/Script/Engine.Character');
+  assert.equal(payload['disk_size'], 4096);
+  assert.equal(payload['exists'], true);
+  assert.equal(Object.hasOwn(payload, 'path'), false);
+  assert.equal(Object.hasOwn(payload, 'name'), false);
+});
+
+test('read_context data_table_context row request sends row_names and preserves row payload', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'data_table_row_payload',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'DataTableContext.v1',
+        asset_path: '/Game/Data/DT_Weapons',
+        row_struct: '/Script/Shooter.WeaponRow',
+        row_count: 1,
+        columns: [
+          { name: 'damage', type: 'float' },
+          { name: 'fire_rate', type: 'float' },
+        ],
+        rows: [
+          {
+            row_name: 'Rifle',
+            damage: 24,
+            fire_rate: 0.12,
+          },
+        ],
+      },
+    },
+  });
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'data_table_context',
+    target: {
+      asset_path: '/Game/Data/DT_Weapons',
+      target_type: 'data_table_row',
+      target_name: 'Rifle',
+    },
+    view: {
+      format: 'schema_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_datatable_rows');
+  assert.deepEqual(bridgeCalls[0]?.payload, {
+    asset_path: '/Game/Data/DT_Weapons',
+    row_names: ['Rifle'],
+  });
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  assert.equal(payload['schema'], 'DataTableContext.v1');
+  assert.equal(payload['row_struct'], '/Script/Shooter.WeaponRow');
+  assert.equal(payload['row_count'], 1);
+  assert.deepEqual(payload['columns'], [
+    { name: 'damage', type: 'float' },
+    { name: 'fire_rate', type: 'float' },
+  ]);
+  const rows = payload['rows'] as Record<string, unknown>[];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.['row_name'], 'Rifle');
+  assert.equal(rows[0]?.['damage'], 24);
+});
+
+test('read_context data_asset_context filters object properties after Bridge readback', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'data_asset_property_payload',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'DataAssetContext.v1',
+        asset_path: '/Game/Data/DA_PlayerTuning',
+        class_name: '/Script/Shooter.PlayerTuningData',
+        properties: [
+          {
+            property_name: 'MaxHealth',
+            value: 120,
+            property_type: 'float',
+          },
+          {
+            property_name: 'MoveSpeed',
+            value: 600,
+            property_type: 'float',
+          },
+        ],
+      },
+    },
+  });
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'data_asset_context',
+    target: {
+      asset_path: '/Game/Data/DA_PlayerTuning',
+      target_type: 'data_asset',
+      target_name: 'MaxHealth',
+    },
+    view: {
+      format: 'property_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_object_properties');
+  assert.deepEqual(bridgeCalls[0]?.payload, { asset_path: '/Game/Data/DA_PlayerTuning' });
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  const properties = payload['properties'] as Record<string, unknown>[];
+  assert.equal(payload['schema'], 'DataAssetContext.v1');
+  assert.equal(payload['asset_path'], '/Game/Data/DA_PlayerTuning');
+  assert.equal(payload['class_name'], '/Script/Shooter.PlayerTuningData');
+  assert.equal(payload['count'], 1);
+  assert.equal(properties.length, 1);
+  assert.equal(properties[0]?.['property_name'], 'MaxHealth');
+  assert.equal(properties[0]?.['value'], 120);
+});
+
+test('read_context widget property sends widget_name and filters property payload', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'widget_property_payload',
+    success: true,
+    result: {
+      ok: true,
+      data: {
+        schema: 'WidgetPropertyContext.v1',
+        asset_path: '/Game/UI/WBP_Menu',
+        properties: [
+          {
+            name: 'StartButton',
+            property_name: 'StartButton',
+            type: 'Button',
+            value: { visibility: 'Visible' },
+            flags: ['IsVariable'],
+            is_variable: true,
+            visibility: 'Visible',
+          },
+          {
+            name: 'QuitButton',
+            property_name: 'QuitButton',
+            is_variable: false,
+          },
+        ],
+      },
+    },
+  });
+
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async (command: string, payload?: Record<string, unknown>) => {
+        bridgeCalls.push({ command, payload });
+        return bridgeResponse;
+      },
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const result = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'widget_context',
+    target: {
+      asset_path: '/Game/UI/WBP_Menu',
+      target_type: 'widget',
+      target_name: 'StartButton',
+    },
+    view: {
+      format: 'property_json',
+    },
+  }, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(bridgeCalls[0]?.command, 'get_widget_properties');
+  assert.deepEqual(bridgeCalls[0]?.payload, {
+    asset_path: '/Game/UI/WBP_Menu',
+    widget_name: 'StartButton',
+  });
+
+  const payload = result.data?.['payload'] as Record<string, unknown>;
+  const properties = payload['properties'] as Record<string, unknown>[];
+  assert.equal(payload['schema'], 'WidgetPropertyContext.v1');
+  assert.equal(payload['count'], 1);
+  assert.equal(properties.length, 1);
+  assert.equal(properties[0]?.['name'], 'StartButton');
+  assert.equal(properties[0]?.['type'], 'Button');
+  assert.deepEqual(properties[0]?.['value'], { visibility: 'Visible' });
+  assert.deepEqual(properties[0]?.['flags'], ['IsVariable']);
+  assert.equal(properties[0]?.['is_variable'], true);
+});
+
 test('ReadContext material projection failures return structured material error', async () => {
   const materialPayload: Record<string, unknown> = {
     schema: 'LogicJson.v1',
@@ -456,11 +922,11 @@ test('ReadContext material projection failures return structured material error'
     },
   });
 
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'material_projection_failed_payload',
     success: true,
     result: materialPayload,
-  };
+  });
 
   const context: BlueprintHelperToolContext = {
     cwd: process.cwd(),
@@ -901,7 +1367,7 @@ test('logic_flow payload degrades to logic_json when links are unknown', () => {
 });
 
 test('read_context variable filter preserves member variable metadata fields', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'variable_metadata',
     success: true,
     result: {
@@ -926,7 +1392,7 @@ test('read_context variable filter preserves member variable metadata fields', a
         ],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -964,7 +1430,7 @@ test('read_context variable filter preserves member variable metadata fields', a
 });
 
 test('read_context component filter preserves component readback facts', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'component_facts',
     success: true,
     result: {
@@ -995,7 +1461,7 @@ test('read_context component filter preserves component readback facts', async (
         ],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -1036,7 +1502,7 @@ test('read_context component filter preserves component readback facts', async (
 });
 
 test('read_context widget tree routes through bridge and projects logic_flow', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'widget_tree',
     success: true,
     result: {
@@ -1076,7 +1542,7 @@ test('read_context widget tree routes through bridge and projects logic_flow', a
         ],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -1114,7 +1580,7 @@ test('read_context widget tree routes through bridge and projects logic_flow', a
 });
 
 test('read_context widget tree tree_json projects first-class tree payload', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'widget_tree_json',
     success: true,
     result: {
@@ -1132,7 +1598,7 @@ test('read_context widget tree tree_json projects first-class tree payload', asy
         },
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -1173,7 +1639,7 @@ test('read_context widget tree tree_json projects first-class tree payload', asy
 
 test('read_context handler records timing around bridge and post-processing stages', async () => {
   const timing = TaskTimingTrace.start('read_context_test', 'agentface_test');
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'test',
     success: true,
     result: {
@@ -1200,7 +1666,7 @@ test('read_context handler records timing around bridge and post-processing stag
         stages: [{ name: 'route_execute', started_at_ms: 0, duration_ms: 1 }],
       },
     },
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -1252,11 +1718,11 @@ test('read_context handler records timing around bridge and post-processing stag
 });
 
 test('read_context logic_flow handler omits default anchors and keeps debug anchors', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'test',
     success: true,
     result: makeLogicJsonWithExternalAnchors(),
-  };
+  });
 
   const context: BlueprintHelperToolContext = {
     cwd: process.cwd(),
@@ -1294,11 +1760,11 @@ test('read_context logic_flow handler omits default anchors and keeps debug anch
 });
 
 test('read_context logic_flow handler renders function graph synthetic entry and result boundaries', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'test',
     success: true,
     result: makeFunctionLogicJsonWithSyntheticBoundaries(),
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {
@@ -1340,11 +1806,11 @@ test('read_context logic_flow handler renders function graph synthetic entry and
 });
 
 test('read_context event logic_flow sends graph_name for adapter boundary readback', async () => {
-  const bridgeResponse: BridgeResponse = {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
     request_id: 'test',
     success: true,
     result: makeLogicJsonWithExternalAnchors(),
-  };
+  });
 
   const bridgeCalls: Array<{ command: string; payload?: Record<string, unknown> }> = [];
   const context: BlueprintHelperToolContext = {

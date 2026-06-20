@@ -16,7 +16,10 @@ TOptional<FBlueprintHelperBridgeRequest> FBlueprintHelperBridgeProtocol::ParseRe
 	}
 
 	FBlueprintHelperBridgeRequest Req;
-	Root->TryGetStringField(TEXT("request_id"), Req.RequestId);
+	if (!Root->TryGetStringField(TEXT("request_id"), Req.RequestId) || Req.RequestId.IsEmpty())
+	{
+		return {};
+	}
 	if (!Root->TryGetStringField(TEXT("command"), Req.Command) || Req.Command.IsEmpty())
 	{
 		return {};
@@ -44,15 +47,14 @@ TOptional<FBlueprintHelperBridgeRequest> FBlueprintHelperBridgeProtocol::ParseRe
 FString FBlueprintHelperBridgeProtocol::SerializeResponse(const FBlueprintHelperBridgeResponse& Response)
 {
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
-	Root->SetStringField(TEXT("request_id"), Response.RequestId);
+	Root->SetStringField(TEXT("schema"), BlueprintHelperBridgeResponseSchema());
+	Root->SetStringField(TEXT("request_id"), BlueprintHelperBridgeNormalizeResponseRequestId(Response.RequestId));
 	Root->SetBoolField(TEXT("success"), Response.bSuccess);
 
 	if (!Response.bSuccess)
 	{
-		TSharedRef<FJsonObject> ErrorObj = MakeShared<FJsonObject>();
-		ErrorObj->SetStringField(TEXT("code"), BridgeErrorToString(Response.ErrorCode));
-		ErrorObj->SetStringField(TEXT("message"), Response.Message);
-		Root->SetObjectField(TEXT("error"), ErrorObj);
+		Root->SetStringField(TEXT("error_code"), BridgeErrorToString(Response.ErrorCode));
+		Root->SetStringField(TEXT("message"), Response.Message);
 	}
 	else if (!Response.Message.IsEmpty())
 	{

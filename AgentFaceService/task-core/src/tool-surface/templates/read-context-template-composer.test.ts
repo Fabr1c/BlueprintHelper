@@ -92,6 +92,21 @@ test('ReadContext active graph logic_json route keeps blueprint logic route only
   assert.equal(routes[0]?.request_builder_id, 'blueprint_logic');
 });
 
+test('ReadContext registry exposes Blueprint class default property route', () => {
+  const route = getReadContextRouteDescriptor('blueprint.class_defaults.property');
+
+  assert.ok(route);
+  assert.equal(route.family, 'blueprint');
+  assert.equal(route.cluster, 'properties');
+  assert.equal(route.read_type, 'blueprint_class_default_context');
+  assert.equal(route.target_type, 'property');
+  assert.equal(route.bridge_command, 'read_blueprint_class_default_property');
+  assert.equal(route.output_schema, 'BlueprintClassDefaultPropertyContext.v1');
+  assert.equal(route.request_builder_id, 'class_default_property');
+  assert.equal(route.payload_projector_id, 'class_default_property');
+  assert.deepEqual(route.required_fields, ['target.asset_path', 'target.target_name']);
+});
+
 test('ReadContext flat template index exposes families clusters and flattened templates', () => {
   const families = listReadContextTemplateFamilies();
   assert.equal(families.schema, 'BlueprintHelper.ReadContextTemplateFamilies.v1');
@@ -124,6 +139,31 @@ test('ReadContext flat template index exposes families clusters and flattened te
   assert.equal(functionFlow.recommended_invocation, 'bh context read --file <read-spec.json> --format json');
   assert.deepEqual(functionFlow.allowed_tools, ['bh tools read-templates compose', 'bh context read']);
   assert.equal(functionFlow.stop_conditions.includes('read_context_screenshot_conflict'), true);
+});
+
+test('ReadContext flat composer writes Blueprint class default ReadSpec', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-read-template-')),
+    'class-default.readspec.json',
+  );
+
+  const result = composeReadContextTemplate({
+    templateId: 'blueprint.class_defaults.property',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.template_id, 'blueprint.class_defaults.property');
+
+  const readSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as Record<string, any>;
+  assert.equal(readSpec.schema, 'BlueprintHelper.ReadSpec.v1');
+  assert.equal(readSpec.read_type, 'blueprint_class_default_context');
+  assert.deepEqual(readSpec.target, {
+    asset_path: '__REQUIRED_ASSET_PATH__',
+    target_type: 'property',
+    target_name: '__REQUIRED_TARGET_NAME__',
+  });
+  assert.equal(Object.hasOwn(readSpec, 'view'), false);
 });
 
 test('ReadContext flat composer writes MaterialInstance schema ReadSpec without view format', () => {

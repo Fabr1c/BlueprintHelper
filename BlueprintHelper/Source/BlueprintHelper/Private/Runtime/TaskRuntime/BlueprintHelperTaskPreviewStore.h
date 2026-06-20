@@ -16,6 +16,7 @@ struct FBlueprintHelperTaskPreviewStoreCreateRequest
 	FString ActionContextRevisionManifestHash;
 	TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 	TSharedPtr<FJsonObject> GraphWriteCandidateArtifactJson;
+	TSharedPtr<FJsonObject> ExecutionReceiptJson;
 	FString GraphWriteCandidateArtifactHash;
 	bool bPassed = false;
 };
@@ -29,6 +30,7 @@ struct FBlueprintHelperTaskPreviewStoreResolveResult
 	FString ActionContextRevisionManifestHash;
 	TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 	TSharedPtr<FJsonObject> GraphWriteCandidateArtifactJson;
+	TSharedPtr<FJsonObject> ExecutionReceiptJson;
 	FString GraphWriteCandidateArtifactHash;
 	FString ErrorCode;
 	FString ErrorMessage;
@@ -59,6 +61,7 @@ private:
 		FString ActionContextRevisionManifestHash;
 		TSharedPtr<FJsonObject> ActionContextRevisionManifestJson;
 		TSharedPtr<FJsonObject> GraphWriteCandidateArtifactJson;
+		TSharedPtr<FJsonObject> ExecutionReceiptJson;
 		FString GraphWriteCandidateArtifactHash;
 		FString CreatedAtIso;
 		FDateTime ExpiresAtUtc;

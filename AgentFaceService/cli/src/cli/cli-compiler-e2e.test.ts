@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BRIDGE_RESPONSE_SCHEMA } from '@blueprinthelper/task-core/bridge/bridge-response-schema';
 import { graphWriteAppendTaskSpecFixture } from '@blueprinthelper/task-core/task/fixtures/task-protocol.fixtures';
 import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 import { runCli } from './run.js';
@@ -63,9 +64,14 @@ test('CLI removed direct preview command reports grouped-command replacement', a
 
   assert.equal(exitCode, 64);
   assert.deepEqual(commands, []);
-  assert.equal(stdout.join(''), '');
-  assert.match(stderr.join(''), /blueprinthelper_preview_task direct CLI command was removed/);
-  assert.match(stderr.join(''), /bh task preview --file <task-spec\.json>/);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /blueprinthelper_preview_task direct CLI command was removed/);
+  assert.match(String(output.message), /bh task preview --file <task-spec\.json>/);
 });
 
 test('CLI removed lifecycle commands report global MCP replacement without contacting Bridge', async (t) => {
@@ -107,11 +113,56 @@ test('CLI removed lifecycle commands report global MCP replacement without conta
 
     assert.equal(exitCode, 64);
     assert.deepEqual(commands, []);
-    assert.equal(stdout.join(''), '');
-    assert.match(stderr.join(''), new RegExp(`${entry.command} direct CLI command was removed`));
-    assert.match(stderr.join(''), /Editor lifecycle is not available through the BlueprintHelper CLI/);
-    assert.match(stderr.join(''), new RegExp(entry.mcpTool));
+    assert.deepEqual(stderr, []);
+    const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+    assert.equal(output.ok, false);
+    assert.equal(output.operation, 'output');
+    assert.equal(output.status, 'cli_parse_failed');
+    assert.equal(output.error_code, 'cli_parse_failed');
+    assert.match(String(output.message), new RegExp(`${entry.command} direct CLI command was removed`));
+    assert.match(String(output.message), /Editor lifecycle is not available through the BlueprintHelper CLI/);
+    assert.match(String(output.message), new RegExp(entry.mcpTool));
   }
+});
+
+test('CLI missing task preview file emits JSON envelope on stdout', async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: ['task', 'preview', '--format', 'json'],
+    cwd: process.cwd(),
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /Missing --file/);
+});
+
+test('CLI bridge call without expert emits JSON envelope on stdout', async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const exitCode = await runCli({
+    argv: ['bridge', 'call', '--command', 'ping'],
+    cwd: process.cwd(),
+    stdout: (text) => stdout.push(text),
+    stderr: (text) => stderr.push(text),
+  });
+
+  assert.equal(exitCode, 64);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'bridge.call');
+  assert.equal(output.status, 'cli_parameter_error');
+  assert.equal(output.error_code, 'bridge_call_requires_expert');
+  assert.match(String(output.message), /expert\/debug command/);
 });
 
 test('CLI task execute previews then sends execute_task_plan to mocked Bridge', async (t) => {
@@ -352,6 +403,7 @@ function assertSourceControlStatusPayload(payload: Record<string, unknown> | und
 
 function previewResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'p7_preview_request',
     result: {
@@ -377,6 +429,7 @@ function previewResponse(): BridgeResponse {
 
 function sourceControlEditableResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'p7_source_control_request',
     result: {
@@ -396,6 +449,7 @@ function sourceControlEditableResponse(): BridgeResponse {
 
 function executeResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'p7_execute_request',
     result: {
@@ -416,6 +470,7 @@ function executeResponse(): BridgeResponse {
 
 function readContextMacroLogicJsonResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'p7_read_context_request',
     result: {

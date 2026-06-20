@@ -21,22 +21,7 @@ export type NonGraphWriteFamily =
   | 'material_graph'
   | 'material_instance';
 
-export type NonGraphWriteTemplateWriteMode =
-  | 'variables.edit'
-  | 'components.edit'
-  | 'class_settings.edit'
-  | 'signature.edit'
-  | 'feature.create'
-  | 'widget.edit'
-  | 'table.rows'
-  | 'object.properties'
-  | 'asset.create'
-  | 'material.graph'
-  | 'material.instance';
-
-export type TaskSpecTemplateWriteMode =
-  | GraphWriteTemplateWriteMode
-  | NonGraphWriteTemplateWriteMode;
+export type TaskSpecTemplateWriteMode = GraphWriteTemplateWriteMode;
 
 export type WriteValidationClassification =
   | 'preview_decidable'
@@ -51,7 +36,23 @@ export interface TaskSpecTemplateDiagnostic {
   operation_id?: string;
   template_id?: string;
   path?: string;
+  safe_next_action?: string;
+  suggested_route?: string;
   message?: string;
+}
+
+export type TaskSpecTemplateNavigationLevel =
+  | 'write_mode'
+  | 'cluster'
+  | 'operation'
+  | 'quick_access'
+  | 'leaf_template';
+
+export interface TaskSpecTemplateFamilyNavigation {
+  levels: readonly TaskSpecTemplateNavigationLevel[];
+  next_command: string;
+  compose_command: string;
+  requires_write_mode: boolean;
 }
 
 export interface TaskSpecTemplateFamilyItem {
@@ -59,13 +60,13 @@ export interface TaskSpecTemplateFamilyItem {
   task_type: string;
   description: string;
   status: 'supported';
+  navigation: TaskSpecTemplateFamilyNavigation;
 }
 
 export interface TaskSpecTemplateWriteModeItem {
   family: TaskSpecTemplateFamily;
   write_mode: TaskSpecTemplateWriteMode;
   description: string;
-  base_template_path: string;
 }
 
 export interface TaskSpecTemplateClusterItem {
@@ -87,7 +88,7 @@ export interface TaskSpecTemplateOperationItem {
 export interface TaskSpecTemplateQuickAccessItem {
   template_id: string;
   family: TaskSpecTemplateFamily;
-  write_mode: TaskSpecTemplateWriteMode;
+  write_mode?: TaskSpecTemplateWriteMode;
   cluster_id: string;
   operation_id: string;
   quick_access_id: string;
@@ -111,8 +112,10 @@ export interface TaskSpecTemplateFamiliesResult {
 export interface TaskSpecTemplateWriteModesResult {
   schema: 'BlueprintHelper.TaskSpecTemplateWriteModes.v1';
   family: string;
+  status: 'ok' | 'failed';
   guidance: string;
   items: TaskSpecTemplateWriteModeItem[];
+  diagnostics?: TaskSpecTemplateDiagnostic[];
 }
 
 export interface TaskSpecTemplateClustersResult {
@@ -125,8 +128,8 @@ export interface TaskSpecTemplateClustersResult {
 export interface TaskSpecTemplateOperationsResult {
   schema: 'BlueprintHelper.TaskSpecTemplateOperations.v1';
   family: string;
-  cluster_id: string;
-  write_mode: string;
+  cluster_id?: string;
+  write_mode?: string;
   guidance: string;
   items: TaskSpecTemplateOperationItem[];
 }
@@ -134,16 +137,17 @@ export interface TaskSpecTemplateOperationsResult {
 export interface TaskSpecTemplateQuickAccessResult {
   schema: 'BlueprintHelper.TaskSpecTemplateQuickAccess.v1';
   family: string;
-  cluster_id: string;
-  operation_id: string;
-  write_mode: string;
+  cluster_id?: string;
+  operation_id?: string;
+  write_mode?: string;
   items: TaskSpecTemplateQuickAccessItem[];
 }
 
 export interface ComposeTaskSpecTemplateInput {
-  family: TaskSpecTemplateFamily | string;
-  writeMode: TaskSpecTemplateWriteMode | string;
-  templateIds: string[];
+  family?: TaskSpecTemplateFamily | string;
+  writeMode?: TaskSpecTemplateWriteMode | string;
+  templateIds?: string[];
+  templateId?: string;
   outputPath: string;
 }
 
@@ -159,7 +163,7 @@ export type TaskSpecTemplateCompositionResult =
     schema: 'BlueprintHelper.TaskSpecTemplateComposition.v1';
     status: 'ok';
     family: string;
-    write_mode: string;
+    write_mode?: string;
     output_path: string;
     required_placeholders: TaskSpecTemplateRequiredPlaceholder[];
     next: {
@@ -170,8 +174,8 @@ export type TaskSpecTemplateCompositionResult =
   | {
     schema: 'BlueprintHelper.TaskSpecTemplateComposition.v1';
     status: 'failed';
-    family: string;
-    write_mode: string;
+    family?: string;
+    write_mode?: string;
     diagnostics: TaskSpecTemplateDiagnostic[];
   };
 
@@ -180,9 +184,9 @@ export interface NonGraphWriteTemplateFamilyMetadata {
   task_type: string;
   description: string;
   strategy_field: string;
-  base_template_path: string;
+  internal_scaffold_template_path: string;
   insert_targets: string[];
+  navigation: TaskSpecTemplateFamilyNavigation;
   status: 'supported' | 'blocked';
   blocked_until?: string[];
-  write_mode?: NonGraphWriteTemplateWriteMode;
 }

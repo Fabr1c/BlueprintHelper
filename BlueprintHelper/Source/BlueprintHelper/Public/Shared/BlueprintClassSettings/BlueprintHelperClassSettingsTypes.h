@@ -53,6 +53,35 @@ struct FBlueprintHelperClassSettingsSummary
 	}
 };
 
+struct FBlueprintHelperClassDefaultPropertyContext
+{
+	FString AssetPath;
+	FString PropertyPath;
+	FString ClassName;
+	FString TypeName;
+	FString Value;
+	FString Category;
+	FString Flags;
+	bool bFound = false;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		Json->SetStringField(TEXT("schema"), TEXT("BlueprintClassDefaultPropertyContext.v1"));
+		Json->SetStringField(TEXT("asset_path"), AssetPath);
+		Json->SetStringField(TEXT("target_type"), TEXT("property"));
+		Json->SetStringField(TEXT("property_path"), PropertyPath);
+		Json->SetBoolField(TEXT("found"), bFound);
+		Json->SetStringField(TEXT("owner_root"), TEXT("blueprint_cdo"));
+		if (!ClassName.IsEmpty()) Json->SetStringField(TEXT("class_name"), ClassName);
+		if (!TypeName.IsEmpty()) Json->SetStringField(TEXT("type"), TypeName);
+		if (!Value.IsEmpty()) Json->SetStringField(TEXT("value"), Value);
+		if (!Category.IsEmpty()) Json->SetStringField(TEXT("category"), Category);
+		if (!Flags.IsEmpty()) Json->SetStringField(TEXT("flags"), Flags);
+		return Json;
+	}
+};
+
 // ─── Interface 操作返回数据 ───
 
 /** Interface 操作中的无效接口信息。 */

@@ -52,6 +52,7 @@ public:
 	FBlueprintHelperToolResultBase PreviewTaskPlan(const TSharedPtr<FJsonObject>& Payload) const;
 	FBlueprintHelperToolResultBase ExecuteTaskPlan(const TSharedPtr<FJsonObject>& Payload) const;
 	FBlueprintHelperToolResultBase GetTaskRunJournal(const FString& TaskRunId) const;
+	FBlueprintHelperToolResultBase GetExecutionReceipt(const FString& ReceiptId) const;
 
 	static FBlueprintHelperValidationSummary BuildRuntimeValidation(
 		const TSharedPtr<FJsonObject>& TaskPlan,

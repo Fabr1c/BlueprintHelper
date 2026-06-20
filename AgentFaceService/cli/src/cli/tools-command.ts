@@ -94,8 +94,8 @@ const TOOLS_COMMAND_EXECUTORS: readonly ToolsCommandExecutor[] = [
     kinds: ['tools.templates.operations'],
     run: (command) => listTaskSpecTemplateOperations({
       family: required(command.family, 'Missing template family.'),
-      cluster: required(command.cluster, 'Missing template cluster.'),
-      writeMode: required(command.writeMode, 'Missing template write mode.'),
+      cluster: command.cluster ?? '',
+      writeMode: command.writeMode ?? '',
     }) as unknown as Record<string, unknown>,
   },
   {
@@ -104,21 +104,30 @@ const TOOLS_COMMAND_EXECUTORS: readonly ToolsCommandExecutor[] = [
     kinds: ['tools.templates.quick_access'],
     run: (command) => listTaskSpecTemplateQuickAccess({
       family: required(command.family, 'Missing template family.'),
-      cluster: required(command.cluster, 'Missing template cluster.'),
-      operation: required(command.operation, 'Missing template operation.'),
-      writeMode: required(command.writeMode, 'Missing template write mode.'),
+      cluster: command.cluster ?? '',
+      operation: command.operation ?? '',
+      writeMode: command.writeMode ?? '',
     }) as unknown as Record<string, unknown>,
   },
   {
     id: 'tools.templates.compose',
     kind: 'tools.templates.compose',
     kinds: ['tools.templates.compose'],
-    run: (command) => composeTaskSpecTemplate({
-      family: required(command.family, 'Missing template family.'),
-      writeMode: required(command.writeMode, 'Missing template write mode.'),
-      templateIds: command.templateIds ?? [],
-      outputPath: required(command.outputPath, 'Missing template output path.'),
-    }) as unknown as Record<string, unknown>,
+    run: (command) => {
+      const outputPath = required(command.outputPath, 'Missing template output path.');
+      if (command.templateId) {
+        return composeTaskSpecTemplate({
+          templateId: command.templateId,
+          outputPath,
+        }) as unknown as Record<string, unknown>;
+      }
+      return composeTaskSpecTemplate({
+        family: required(command.family, 'Missing template family.'),
+        writeMode: command.writeMode,
+        templateIds: command.templateIds ?? [],
+        outputPath,
+      }) as unknown as Record<string, unknown>;
+    },
   },
   {
     id: 'tools.read_templates.families',

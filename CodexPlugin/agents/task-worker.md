@@ -86,15 +86,19 @@ return_format: "compact Chinese YAML with status, attempts, evidence, blockers, 
 
 ## Execution Policy
 
-- Discover concrete family, write mode, cluster, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands, including `bh tools templates families` and `bh tools templates compose`.
-- Use the write index in order before reporting `capability_missing`:
+- Discover concrete family, family-owned navigation levels, operation, quick-access template, TaskSpec, and readback template through BlueprintHelper CLI catalog/composer commands, including `bh tools templates families` and `bh tools templates compose`.
+- Use the write index before reporting `capability_missing`. Start with `families` and follow the returned `navigation.levels`; `write-modes` is only valid for families that declare that level, such as `graph_write`:
 
 ```powershell
 bh tools templates families --workflow preview_execute --format json
-bh tools templates write-modes --family <family> --format json
-bh tools templates clusters --family <family> --format json
-bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json
-bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json
+bh tools templates write-modes --family graph_write --format json
+bh tools templates clusters --family graph_write --format json
+bh tools templates operations --family graph_write --cluster <cluster> --write-mode <mode> --format json
+bh tools templates quick-access --family graph_write --cluster <cluster> --operation <operation> --write-mode <mode> --format json
+bh tools templates compose --family graph_write --write-mode <mode> --templates "<slot_expr>" --out <task-spec.json> --format json
+bh tools templates operations --family <non_graph_family> [--cluster <cluster>] --format json
+bh tools templates quick-access --family <non_graph_family> --operation <operation> [--cluster <cluster>] --format json
+bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json
 ```
 
 - Use the read index for required readback before reporting readback capability missing:

@@ -37,6 +37,36 @@ async function writeTaskSpec(projectDir, value = {}) {
   return taskSpecPath;
 }
 
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+const HASH_C = 'c'.repeat(64);
+
+function makeReceipt(value = {}) {
+  return {
+    schema: 'BlueprintHelper.ExecutionReceipt.v1',
+    receipt_id: 'receipt-claude',
+    cli_run_id: 'cli-claude',
+    preview_id: 'preview-claude',
+    task_spec_hash: HASH_A,
+    task_plan_hash: HASH_B,
+    policy_hash: HASH_C,
+    status: 'previewed',
+    created_at: '2026-06-20T00:00:00.000Z',
+    updated_at: '2026-06-20T00:00:00.000Z',
+    ...value,
+  };
+}
+
+function previewStdout() {
+  const receipt = makeReceipt();
+  return JSON.stringify({ ok: true, status: 'preview_passed', preview_token: 'tok', receipt });
+}
+
+function executeStdout() {
+  const receipt = makeReceipt({ status: 'applied', task_run_id: 'run-claude' });
+  return JSON.stringify({ ok: true, status: 'execute_succeeded', task_run_id: 'run-claude', receipt });
+}
+
 function parseStdoutJson(result) {
   assert.equal(result.exitCode, 0);
   assert.equal(result.stderr, '');
@@ -79,7 +109,7 @@ test('runClaudeHook adds PostToolUse readback reminder as additional context', a
         hook_event_name: 'PostToolUse',
         tool_name: 'Bash',
         tool_input: { command: `bh task preview --file "${taskSpecPath}"` },
-        tool_response: { stdout: '{"status":"completed","preview_token":"tok"}', exit_code: 0 },
+        tool_response: { stdout: previewStdout(), exit_code: 0 },
       },
     });
 
@@ -88,8 +118,8 @@ test('runClaudeHook adds PostToolUse readback reminder as additional context', a
       payload: {
         hook_event_name: 'PostToolUse',
         tool_name: 'Bash',
-        tool_input: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok` },
-        tool_response: { stdout: '{"status":"completed","task_run_id":"run-claude"}', exit_code: 0 },
+        tool_input: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-claude` },
+        tool_response: { stdout: executeStdout(), exit_code: 0 },
       },
     });
 
@@ -115,7 +145,7 @@ test('runClaudeHook blocks Stop through Claude decision control when readback is
         hook_event_name: 'PostToolUse',
         tool_name: 'Bash',
         tool_input: { command: `bh task preview --file "${taskSpecPath}"` },
-        tool_response: { stdout: '{"status":"completed","preview_token":"tok"}', exit_code: 0 },
+        tool_response: { stdout: previewStdout(), exit_code: 0 },
       },
     });
     await runClaudeHook({
@@ -123,8 +153,8 @@ test('runClaudeHook blocks Stop through Claude decision control when readback is
       payload: {
         hook_event_name: 'PostToolUse',
         tool_name: 'Bash',
-        tool_input: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok` },
-        tool_response: { stdout: '{"status":"completed","task_run_id":"run-claude"}', exit_code: 0 },
+        tool_input: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-claude` },
+        tool_response: { stdout: executeStdout(), exit_code: 0 },
       },
     });
 

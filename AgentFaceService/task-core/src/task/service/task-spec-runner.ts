@@ -59,7 +59,15 @@ import {
   createExecutionPolicyHash,
   createTaskPlanHash,
   createTaskSpecHash,
+  createTaskVerificationHash,
 } from './task-plan-hash.js';
+import {
+  buildExecuteExecutionReceipt,
+  buildPreviewExecutionReceipt,
+  extractExecutionReceipt,
+} from '../../execution-receipt/execution-receipt-builder.js';
+import type { ExecutionReceipt } from '../../execution-receipt/execution-receipt-schema.js';
+import { createPreviewTokenHash } from '../../execution-receipt/execution-receipt-hash.js';
 import { classifyEditorBlockedError } from './editor-blocked-recovery.js';
 import { runSourceControlWriteGate } from './source-control-write-gate.js';
 
@@ -68,6 +76,8 @@ export type { TaskCompiler } from '../compiler/task-compiler-service.js';
 
 const TASK_ISSUE_DETAIL_KEYS = [
   'signature_differences',
+  'suggested_route',
+  'blocked_boundary',
   'asset_path',
   'query',
   'fingerprint',
@@ -79,6 +89,8 @@ const TASK_ISSUE_DETAIL_KEYS = [
 ] as const;
 
 const TASK_PREVIEW_ASSISTANCE_DATA_KEYS = [
+  'suggested_route',
+  'blocked_boundary',
   'asset_path',
   'query',
   'fingerprint',
@@ -113,6 +125,11 @@ export interface TaskPreviewOutcome {
 
 export interface TaskExecuteOptions {
   previewToken?: TaskPreviewToken;
+  receiptId?: string;
+  cliRunId?: string;
+  previewId?: string;
+  taskPlanHash?: string;
+  policyHash?: string;
 }
 
 export interface TaskSpecRunner {
@@ -164,7 +181,7 @@ export function createTaskSpecRunner(input: {
       try {
         if (options?.previewToken) {
           return await recordAndReturn(
-            await executeTaskWithPreviewToken(bridge, taskSpec, options.previewToken, timing),
+            await executeTaskWithPreviewToken(bridge, taskSpec, options.previewToken, timing, options),
             undefined,
             true,
           );
@@ -208,6 +225,10 @@ export function createTaskSpecRunner(input: {
 
         const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
           task_plan: taskPlan,
+          ...(extractToolResultReceipt(preview.toolResult) ? { receipt: {
+            ...extractToolResultReceipt(preview.toolResult),
+            status: 'executing',
+          } } : {}),
           ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
         }, {
           timing,
@@ -237,12 +258,25 @@ export function createTaskSpecRunner(input: {
         const result = measureTaskTiming(timing, 'result_wrap', () => {
           const taskRunId = extractUeTaskRunId(writeResponse) ?? nextTaskRunId();
           const bridgeResult = asRecord(writeResponse.result);
+          const bridgeData = asRecord(bridgeResult?.['data']);
+          const receipt = buildExecuteExecutionReceipt({
+            baseReceipt: extractToolResultReceipt(preview.toolResult),
+            bridgeReceipt: bridgeData?.['receipt'],
+            taskRunId,
+            taskSpecHash: createTaskSpecHash(taskSpec),
+            taskPlanHash: createTaskPlanHash(taskPlan),
+            policyHash: createExecutionPolicyHash(taskPlan.execution_policy),
+            verificationHash: taskVerificationHashFromTaskPlan(taskPlan),
+            targetAssets: targetAssetPathsFromTaskPlan(taskPlan),
+            status: 'applied',
+          });
           const modified = isBridgeResultModified(bridgeResult);
           storeTaskResult({
             taskRunId,
             taskPlan,
             status: 'completed',
             bridgeResult,
+            receipt,
           });
 
           const toolResult = successRead(
@@ -255,6 +289,7 @@ export function createTaskSpecRunner(input: {
                 applied_steps: taskPlan.steps.length,
                 modified_assets: taskPlan.target_assets.length,
               },
+              receipt,
               ...extractDevelopExecuteDiagnostics(writeResponse, timing),
             },
           ) as ToolResultBase;
@@ -684,10 +719,28 @@ async function runPreviewTaskFromPlan(
   timing?: TaskTimingTrace,
 ): Promise<TaskPreviewOutcome> {
   const previewId = measureTaskTiming(timing, 'preview_token.allocate_preview_id', () => nextPreviewId());
+  const taskSpecHash = createTaskSpecHash(taskSpec);
+  const taskPlanHash = createTaskPlanHash(taskPlan);
+  const policyHash = createExecutionPolicyHash(taskPlan.execution_policy);
+  const verificationHash = taskVerificationHashFromTaskPlan(taskPlan);
+  const initialReceipt = buildPreviewExecutionReceipt({
+    previewId,
+    taskSpecHash,
+    taskPlanHash,
+    policyHash,
+    verificationHash,
+    targetAssets: targetAssetPathsFromTaskPlan(taskPlan),
+    status: 'created',
+  });
   const previewTokenRequest = measureTaskTiming(timing, 'preview_token.prepare_request', () => ({
-    task_spec_hash: createTaskSpecHash(taskSpec),
-    task_plan_hash: createTaskPlanHash(taskPlan),
-    execution_policy_hash: createExecutionPolicyHash(taskPlan.execution_policy),
+    task_spec_hash: taskSpecHash,
+    task_plan_hash: taskPlanHash,
+    execution_policy_hash: policyHash,
+    ...(verificationHash ? { verification_hash: verificationHash } : {}),
+    receipt_id: initialReceipt.receipt_id,
+    cli_run_id: initialReceipt.cli_run_id,
+    preview_id: previewId,
+    receipt: initialReceipt,
   }));
   const previewResponse = await measureTaskTimingAsync(timing, 'bridge.preview_task_plan', () => bridge.sendCommand('preview_task_plan', {
     task_plan: taskPlan,
@@ -716,11 +769,25 @@ async function runPreviewTaskFromPlan(
       failure.error,
     );
     const previewToken = extractPreviewToken(previewResponse);
+    const receipt = buildPreviewExecutionReceipt({
+      receiptId: initialReceipt.receipt_id,
+      cliRunId: initialReceipt.cli_run_id,
+      previewId,
+      previewToken,
+      taskSpecHash,
+      taskPlanHash,
+      policyHash,
+      verificationHash,
+      targetAssets: targetAssetPathsFromTaskPlan(taskPlan),
+      status: 'preview_blocked',
+      now: initialReceipt.created_at,
+    });
     toolResult.target = buildTaskPlanToolTarget(taskPlan);
     toolResult.data = {
       schema: TASK_PREVIEW_SCHEMA,
       preview_id: previewId,
       ...(previewToken ? { preview_token: previewToken } : {}),
+      receipt,
       passed: false,
       blocked: true,
       task_plan: summarizeTaskPlan(taskPlan),
@@ -742,6 +809,19 @@ async function runPreviewTaskFromPlan(
   const passed = dryRun.canExecute;
   const issues = dryRun.issues;
   const previewToken = extractPreviewToken(previewResponse);
+  const receipt = buildPreviewExecutionReceipt({
+    receiptId: initialReceipt.receipt_id,
+    cliRunId: initialReceipt.cli_run_id,
+    previewId,
+    previewToken,
+    taskSpecHash,
+    taskPlanHash,
+    policyHash,
+    verificationHash,
+    targetAssets: targetAssetPathsFromTaskPlan(taskPlan),
+    status: passed ? 'previewed' : 'preview_blocked',
+    now: initialReceipt.created_at,
+  });
   const assistanceData = collectPreviewAssistanceData(issues);
 
   return {
@@ -762,6 +842,7 @@ async function runPreviewTaskFromPlan(
         schema: TASK_PREVIEW_SCHEMA,
         preview_id: previewId,
         ...(previewToken ? { preview_token: previewToken } : {}),
+        receipt,
         passed,
         blocked: !passed,
         task_plan: summarizeTaskPlan(taskPlan),
@@ -885,6 +966,7 @@ async function executeTaskWithPreviewToken(
   taskSpec: TaskSpec,
   previewToken: TaskPreviewToken,
   timing?: TaskTimingTrace,
+  options: TaskExecuteOptions = {},
 ): Promise<ToolResultBase> {
   const taskSpecHash = measureTaskTiming(timing, 'preview_token.validate', () => {
     if (!isPreviewTokenFormat(previewToken)) {
@@ -907,9 +989,24 @@ async function executeTaskWithPreviewToken(
     return attachTaskTiming(sourceControlGateFailure(sourceControlGate, 'target.asset_path'), timing);
   }
 
+  const executeReceipt = buildExecuteExecutionReceipt({
+    receiptId: options.receiptId,
+    cliRunId: options.cliRunId,
+    previewId: options.previewId,
+    previewToken,
+    taskSpecHash,
+    taskPlanHash: options.taskPlanHash,
+    policyHash: options.policyHash,
+    verificationHash: taskVerificationHashFromTaskSpec(taskSpec),
+    targetAssets: targetAssetPathsFromTaskSpec(taskSpec),
+    status: 'executing',
+  });
+
   const writeResponse = await measureTaskTimingAsync(timing, 'bridge.execute_task_plan', () => bridge.sendCommand('execute_task_plan', {
     preview_token: previewToken,
     task_spec_hash: taskSpecHash,
+    receipt_id: executeReceipt.receipt_id,
+    receipt: executeReceipt,
     ...(hasTaskTiming(timing) ? { include_timing: true } : {}),
   }, {
     timing,
@@ -945,6 +1042,17 @@ async function executeTaskWithPreviewToken(
     const steps = arrayOfRecords(data?.['steps']);
     const modified = isBridgeResultModified(bridgeResult);
     const targetAsset = targetAssets[0] ?? readTaskSpecAssetPath(taskSpec);
+    const receipt = buildExecuteExecutionReceipt({
+      baseReceipt: executeReceipt,
+      bridgeReceipt: data?.['receipt'],
+      taskRunId,
+      taskSpecHash,
+      taskPlanHash: options.taskPlanHash,
+      policyHash: options.policyHash,
+      verificationHash: taskVerificationHashFromTaskSpec(taskSpec),
+      targetAssets,
+      status: 'applied',
+    });
 
     const toolResult = successRead(
       'execute_task',
@@ -957,6 +1065,7 @@ async function executeTaskWithPreviewToken(
           modified_assets: targetAssets.length,
           target_assets: targetAssets,
         },
+        receipt,
         ...extractDevelopExecuteDiagnostics(writeResponse, timing),
       },
     ) as ToolResultBase;
@@ -1135,6 +1244,8 @@ function taskFailure(
     ...(errorDetails.evidence_refs && errorDetails.evidence_refs.length > 0
       ? { evidence_refs: errorDetails.evidence_refs }
       : {}),
+    ...(errorDetails.suggested_route ? { suggested_route: errorDetails.suggested_route } : {}),
+    ...(errorDetails.blocked_boundary ? { blocked_boundary: errorDetails.blocked_boundary } : {}),
   } as ToolResultError;
 
   return failureResult(operation, toolError);
@@ -1229,8 +1340,26 @@ function bridgeFailureFromResponse(
       message,
     }];
   const issueDetailFields = collectTaskIssueDetailFields(data);
+  const suggestedRoute =
+    asRecord(errorRecord?.['suggested_route']) ??
+    asRecord(data?.['suggested_route']) ??
+    asRecord(primaryIssue?.['suggested_route']);
+  const blockedBoundary =
+    asRecord(errorRecord?.['blocked_boundary']) ??
+    asRecord(data?.['blocked_boundary']) ??
+    asRecord(primaryIssue?.['blocked_boundary']);
+  const errorDetailFields = removeUndefined({
+    suggested_route: suggestedRoute,
+    blocked_boundary: blockedBoundary,
+  });
   const normalizedIssues = normalizedIssuesBase.length === 1
-    ? [mergeTaskIssueDetailFields(normalizedIssuesBase[0], issueDetailFields)]
+    ? [mergeTaskIssueDetailFields(
+      normalizedIssuesBase[0],
+      {
+        ...issueDetailFields,
+        ...errorDetailFields,
+      },
+    )]
     : normalizedIssuesBase;
 
   return {
@@ -1259,6 +1388,8 @@ function bridgeFailureFromResponse(
       ...(arrayOfStrings(errorRecord?.['evidence_refs']).length > 0
         ? { evidence_refs: arrayOfStrings(errorRecord?.['evidence_refs']) }
         : {}),
+      ...(suggestedRoute ? { suggested_route: suggestedRoute } : {}),
+      ...(blockedBoundary ? { blocked_boundary: blockedBoundary } : {}),
     },
   };
 }
@@ -1401,6 +1532,19 @@ function collectFailedPreviewStepIssues(
   });
 
   return issues;
+}
+
+function extractToolResultReceipt(toolResult: ToolResultBase): ExecutionReceipt | undefined {
+  const data = asRecord(toolResult.data);
+  return extractExecutionReceipt(data?.['receipt']);
+}
+
+function taskVerificationHashFromTaskPlan(taskPlan: TaskPlan): string | undefined {
+  return taskPlan.verification ? createTaskVerificationHash(taskPlan.verification) : undefined;
+}
+
+function taskVerificationHashFromTaskSpec(taskSpec: TaskSpec): string | undefined {
+  return taskSpec.verification ? createTaskVerificationHash(taskSpec.verification) : undefined;
 }
 
 function collectFailedPreviewStepIssueDetailFields(

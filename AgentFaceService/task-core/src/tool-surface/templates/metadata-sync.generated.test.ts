@@ -103,7 +103,6 @@ test('UMG TaskSpec contract and template metadata are descriptor-backed', () => 
   const operations = listTaskSpecTemplateOperations({
     family: 'umg_widget',
     cluster: 'widget_tree',
-    writeMode: 'widget.edit',
   }).items.map((entry) => entry.operation_id).sort();
   assert.deepEqual(operations, operationKinds);
 
@@ -111,7 +110,6 @@ test('UMG TaskSpec contract and template metadata are descriptor-backed', () => 
     family: 'umg_widget',
     cluster: 'widget_tree',
     operation: '',
-    writeMode: 'widget.edit',
   }).items;
   const quickAccess = quickAccessItems.map((entry) => entry.operation_id).sort();
   assert.deepEqual(quickAccess, operationKinds);

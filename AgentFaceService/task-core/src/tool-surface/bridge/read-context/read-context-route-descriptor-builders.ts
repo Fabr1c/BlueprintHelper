@@ -18,6 +18,12 @@ export type ReadContextBridgeRequest =
       ok: false;
       code: string;
       message: string;
+      category?: string;
+      safe_next_action?: string;
+      suggested_route?: string;
+      suggested_read_type?: string;
+      blocked_boundary?: string;
+      blocked_boundary_detail?: string;
     };
 
 export type ReadContextLogicFormat =
@@ -62,6 +68,7 @@ const LOGIC_SCOPE_BY_TYPE: Readonly<Record<string, string>> = {
 
 const REQUEST_BUILDERS: Readonly<Record<ReadContextRequestBuilderId, ReadContextRequestBuilder>> = {
   blueprint_logic: buildBlueprintLogicBridgeRequest,
+  class_default_property: buildClassDefaultPropertyBridgeRequest,
   material_logic: buildMaterialLogicBridgeRequest,
   asset_context: buildAssetBridgeRequest,
   component_context: buildAssetBridgeRequest,
@@ -70,7 +77,7 @@ const REQUEST_BUILDERS: Readonly<Record<ReadContextRequestBuilderId, ReadContext
   widget_property: buildWidgetPropertyBridgeRequest,
   data_table: buildDataTableBridgeRequest,
   data_asset: buildAssetBridgeRequest,
-  object_property: buildAssetBridgeRequest,
+  object_property: buildObjectPropertyBridgeRequest,
   material_instance_context: buildMaterialInstanceBridgeRequest,
 };
 
@@ -234,6 +241,58 @@ function buildAssetBridgeRequest(
   return okRequest(route, requiredBridgeCommand(route), {
     asset_path: input.target.asset_path,
   }, route.output_schema);
+}
+
+function buildClassDefaultPropertyBridgeRequest(
+  input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
+): ReadContextBridgeRequest {
+  const propertyPath = input.target.target_name;
+  if (!propertyPath) {
+    return {
+      ok: false,
+      code: 'missing_target_name',
+      message: 'blueprint_class_default_context requires target.target_name as the CDO property path.',
+    };
+  }
+  return okRequest(route, requiredBridgeCommand(route), {
+    asset_path: input.target.asset_path,
+    property_path: propertyPath,
+    target_name: propertyPath,
+  }, route.output_schema);
+}
+
+function buildObjectPropertyBridgeRequest(
+  input: ReadContextInput,
+  route: ReadContextRouteDescriptor,
+): ReadContextBridgeRequest {
+  const targetName = input.target.target_name;
+  if (targetName?.includes('.')) {
+    return objectPropertyRouteMismatch(targetName);
+  }
+
+  const payload: Record<string, unknown> = {
+    asset_path: input.target.asset_path,
+  };
+  if (targetName) {
+    payload['property_path'] = targetName;
+    payload['target_name'] = targetName;
+  }
+  return okRequest(route, requiredBridgeCommand(route), payload, route.output_schema);
+}
+
+function objectPropertyRouteMismatch(propertyPathHint: string): ReadContextBridgeRequest {
+  return {
+    ok: false,
+    code: 'read_context_route_mismatch',
+    category: 'parameter_error',
+    safe_next_action: 'use_suggested_route_and_rerun_read_context',
+    suggested_route: 'blueprint.class_defaults.property',
+    suggested_read_type: 'blueprint_class_default_context',
+    blocked_boundary: 'object_property_context_asset_object_only',
+    blocked_boundary_detail: `property_path_hint=${propertyPathHint}`,
+    message: 'object_property_context reads Blueprint asset object properties, not Blueprint CDO defaults. Use blueprint.class_defaults.property for nested class defaults.',
+  };
 }
 
 function buildWidgetPropertyBridgeRequest(

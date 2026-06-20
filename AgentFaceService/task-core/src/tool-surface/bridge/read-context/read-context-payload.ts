@@ -54,6 +54,7 @@ export function resolveReadContextPostProcessStage(
 ): string {
   const stages: Readonly<Record<ReadContextRouteDescriptor['payload_projector_id'], string>> = {
     logic: 'read_context.logic_project_payload',
+    class_default_property: 'read_context.class_default_property_project_payload',
     asset_context: 'read_context.asset_project_payload',
     widget_tree: 'read_context.widget_tree_project_payload',
     component_tree: 'read_context.component_project_payload',
@@ -93,6 +94,22 @@ function projectAssetPayload({
 }: ReadContextPayloadProjectorInput): ReadContextPostProcessResult {
   return {
     payload: compactAssetContextPayload(normalizePayload(payloadSchema, payload)),
+  };
+}
+
+function projectClassDefaultPropertyPayload({
+  input,
+  payloadSchema,
+  payload,
+}: ReadContextPayloadProjectorInput): ReadContextPostProcessResult {
+  const normalized = normalizePayload(payloadSchema, payload);
+  return {
+    payload: {
+      ...normalized,
+      property_path: normalized['property_path'] ?? input.target.target_name,
+      target_type: normalized['target_type'] ?? 'property',
+      owner_root: normalized['owner_root'] ?? 'blueprint_cdo',
+    },
   };
 }
 
@@ -305,6 +322,7 @@ function filterMaterialInstanceParameterPayload(
 }
 
 registerReadContextPayloadProjector('logic', projectLogicPayload);
+registerReadContextPayloadProjector('class_default_property', projectClassDefaultPropertyPayload);
 registerReadContextPayloadProjector('asset_context', projectAssetPayload);
 registerReadContextPayloadProjector('widget_tree', projectWidgetTreePayload);
 registerReadContextPayloadProjector('component_tree', projectComponentPayload);

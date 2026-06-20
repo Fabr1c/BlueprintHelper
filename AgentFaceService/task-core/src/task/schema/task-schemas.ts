@@ -39,6 +39,7 @@ export const TASK_PREVIEW_SCHEMA = 'BlueprintHelper.TaskPreview.v1';
 export const TASK_EXECUTION_SCHEMA = 'BlueprintHelper.TaskExecution.v1';
 export const TASK_RUN_JOURNAL_SCHEMA = 'BlueprintHelper.TaskRunJournal.v1';
 export const TASK_ERROR_SCHEMA = 'BlueprintHelper.TaskError.v1';
+export const TASK_VERIFICATION_SCHEMA = 'BlueprintHelper.TaskVerification.v1';
 
 export const CONTAINER_ACTION_OPERATIONS_BY_KIND = {
   array: [
@@ -400,6 +401,33 @@ export const BlueprintLogicSpecSchema = z.object({
   statements: z.array(BlueprintLogicStatementSchema),
 }).passthrough();
 
+const TaskVerificationRequirementSchema = z.object({
+  id: z.string().min(1),
+  fact: z.string().min(1),
+  target: z.record(z.unknown()).optional(),
+  expected: z.unknown().optional(),
+  operator: z.enum(['equals', 'contains', 'exists', 'not_exists', 'matches']).optional(),
+  source_evidence: z.object({
+    read_context_id: z.string().min(1).optional(),
+    fingerprint: z.string().min(1).optional(),
+    asset_path: z.string().min(1).optional(),
+  }).strict().optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!Object.hasOwn(value, 'expected') && value.operator === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['expected'],
+      message: 'verification.requirements[] must provide expected or operator.',
+    });
+  }
+});
+
+export const TaskVerificationContractSchema = z.object({
+  schema: z.literal(TASK_VERIFICATION_SCHEMA),
+  mode: z.enum(['required', 'advisory']).optional().default('required'),
+  requirements: z.array(TaskVerificationRequirementSchema).min(1),
+}).strict();
+
 const TaskSpecBaseSchema = z.object({
   schema: z.literal(TASK_SPEC_SCHEMA),
   context_id: z.string().optional(),
@@ -409,6 +437,7 @@ const TaskSpecBaseSchema = z.object({
     asset_path: z.string().min(1),
     target_type: z.string().optional().default('blueprint'),
   }).passthrough(),
+  verification: TaskVerificationContractSchema.optional(),
 }).passthrough();
 
 function rejectAgentFacingTaskSpecPolicyFields(value: unknown, ctx: z.RefinementCtx): void {
@@ -2039,6 +2068,7 @@ export const TaskPlanSchema = z.object({
   task_type: z.string().min(1),
   context_id: z.string().optional(),
   target_assets: z.array(z.string().min(1)).min(1),
+  verification: TaskVerificationContractSchema.optional(),
   execution_policy: z.object({
     dry_run_mode: z.enum(['none', 'quick', 'full']),
     should_compile: z.boolean(),
@@ -2090,6 +2120,7 @@ export const TaskRunJournalSchema = z.object({
 }).passthrough();
 
 export type TaskSpec = z.infer<typeof TaskSpecSchema>;
+export type TaskVerificationContract = z.infer<typeof TaskVerificationContractSchema>;
 export type TaskPreviewToken = z.infer<typeof TaskPreviewTokenSchema>;
 export type BlueprintLogicStatement = z.infer<typeof BlueprintLogicStatementSchema>;
 export type BlueprintLogicSpec = z.infer<typeof BlueprintLogicSpecSchema>;

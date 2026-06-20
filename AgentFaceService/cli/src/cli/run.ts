@@ -227,7 +227,10 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
         return 2;
       }
       const routedCommand = routeCommand.command;
-      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, { previewToken: routedCommand.previewToken });
+      const toolResult = await getRunner(runtime).executeTask(taskSpec, timing, {
+        previewToken: routedCommand.previewToken,
+        receiptId: routedCommand.receiptId,
+      });
       const outcome = writeTimedCliResult(runtime, routedCommand, toolResult, timing);
       await recordCliIo(runtime, routedCommand, outcome, taskSpecInput.io, taskSpec);
       return outcome.outputTooLarge ? 3 : toolResult.ok ? 0 : 2;
@@ -271,12 +274,24 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
     kinds: commandKindsForExecutor('bridge.call'),
     execute: async ({ runtime, command, timing }) => {
       if (command.expert !== true) {
-        runtime.stderr('bh bridge call is an expert/debug command. Re-run with --expert or use named tools and templates.\n');
+        writeCliCommandError(
+          runtime,
+          command,
+          'cli_parameter_error',
+          'bridge_call_requires_expert',
+          'bh bridge call is an expert/debug command. Re-run with --expert or use named tools and templates.',
+        );
         return 64;
       }
       const bridgeCommand = required(command.bridgeCommand);
       if (!isCliBridgeCallAllowed(bridgeCommand)) {
-        runtime.stderr(`Bridge command is not allowed through CLI: ${bridgeCommand}\n`);
+        writeCliCommandError(
+          runtime,
+          command,
+          'cli_parameter_error',
+          'bridge_call_command_not_allowed',
+          `Bridge command is not allowed through CLI: ${bridgeCommand}`,
+        );
         return 64;
       }
       const response = await measureTaskTimingAsync(timing, 'bridge.call', () => getBridge(runtime).sendCommand(bridgeCommand, {}));
@@ -295,11 +310,11 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
   try {
     parsed = measureTaskTiming(cliTiming, 'cli.parse_args', () => parseArgs(runtime.argv));
   } catch (err) {
-    runtime.stderr(`${err instanceof Error ? err.message : String(err)}\n`);
+    writeCliParseError(runtime, err instanceof Error ? err.message : String(err));
     return 64;
   }
   if (!parsed.ok) {
-    runtime.stderr(`${parsed.message}\n`);
+    writeCliParseError(runtime, parsed.message);
     return 64;
   }
   if ('help' in parsed) {
@@ -313,7 +328,13 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
   try {
     const executor = resolveCliCommandExecutor(command);
     if (!executor) {
-      runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
+      writeCliCommandError(
+        runtime,
+        command,
+        'cli_unsupported_command',
+        'cli_unsupported_command',
+        `Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}`,
+      );
       return 64;
     }
     return await executor.execute({ runtime, command, timing });
@@ -338,9 +359,32 @@ export async function runCli(runtime: CliRuntime): Promise<number> {
   } finally {
     await closeCliOwnedBridge(runtime);
   }
+}
 
-  runtime.stderr(`Unsupported BlueprintHelper CLI command: ${runtime.argv.join(' ')}\n`);
-  return 64;
+function writeCliParseError(runtime: CliRuntime, message: string): void {
+  runtime.stdout(`${JSON.stringify(buildCliError({
+    operation: 'output',
+    status: 'cli_parse_failed',
+    error_code: 'cli_parse_failed',
+    message,
+  }))}\n`);
+}
+
+function writeCliCommandError(
+  runtime: CliRuntime,
+  command: CliCommand,
+  status: string,
+  errorCode: string,
+  message: string,
+): void {
+  runtime.stdout(`${JSON.stringify(buildCliError({
+    operation: command.kind,
+    status,
+    error_code: errorCode,
+    message,
+    fields: command.fields,
+    omitFields: command.omitFields,
+  }))}\n`);
 }
 
 function resolveCliCommandExecutor(command: CliCommand): CliCommandExecutor | undefined {
@@ -637,6 +681,7 @@ function parseArgs(argv: string[]): ParseResult {
     develop?: boolean;
     expert?: boolean;
     previewToken?: string;
+    receiptId?: string;
     format?: CliFormat;
     window?: '1d' | '7d' | '30d' | 'all';
     limit?: number;
@@ -728,6 +773,8 @@ function parseArgs(argv: string[]): ParseResult {
       options.compileOnly = true;
     } else if (arg === '--preview-token') {
       options.previewToken = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--receipt-id') {
+      options.receiptId = readOptionValue(argv, ++index, arg);
     } else if (arg === '--format') {
       const format = readOptionValue(argv, ++index, arg);
       if (!['summary', 'json', 'full', 'markdown'].includes(format)) {
@@ -891,6 +938,7 @@ function parseHelpTarget(argv: string[]): string[] {
     '--max-bytes',
     '--omit',
     '--preview-token',
+    '--receipt-id',
     '--audience',
     '--requires-bridge',
     '--risk',

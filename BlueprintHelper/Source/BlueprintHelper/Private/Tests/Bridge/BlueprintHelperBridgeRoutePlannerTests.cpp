@@ -21,6 +21,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/GameModeBase.h"
 #include "GameFramework/Pawn.h"
 #include "Interfaces/IPluginManager.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -31,6 +32,7 @@
 #include "Systems/ToolClusters/AssetDiscovery/BlueprintHelperAssetDiscoveryService.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
+#include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 #include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -122,6 +124,7 @@ bool FBlueprintHelperBridgeRoutePlanner_KnownCommandsMapToClusters::RunTest(cons
 		{TEXT("get_object_properties"), EBlueprintHelperBridgeRouteCluster::ObjectProperty},
 		{TEXT("get_editor_context"), EBlueprintHelperBridgeRouteCluster::Core},
 		{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
+		{TEXT("get_execution_receipt"), EBlueprintHelperBridgeRouteCluster::TaskRuntime},
 		{TEXT("diagnostics_runtime"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("get_debug_case"), EBlueprintHelperBridgeRouteCluster::Debug},
 		{TEXT("focus_blueprint_editor_target"), EBlueprintHelperBridgeRouteCluster::Debug},
@@ -675,11 +678,140 @@ bool FBlueprintHelperSecondBatchBridgeRoutes_RecognizeOnlyOwnedCommands::RunTest
 		TEXT("ClassSettings route recognizes default property batch"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("set_class_default_properties")));
 	TestTrue(
+		TEXT("ClassSettings route recognizes class default property read"),
+		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("read_blueprint_class_default_property")));
+	TestTrue(
 		TEXT("ClassSettings route recognizes reparent"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("reparent_blueprint")));
 	TestFalse(
 		TEXT("ClassSettings route rejects graph command"),
 		FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(TEXT("append_blueprint_graph")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassSettingsBridgeRoutes_ReadClassDefaultPropertyForwardsPayload,
+	"BlueprintHelper.Router.Cluster.ClassSettingsReadClassDefaultPropertyForwardsPayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperClassSettingsBridgeRoutes_ReadClassDefaultPropertyForwardsPayload::RunTest(const FString& Parameters)
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperBridge/%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		AGameModeBase::StaticClass(),
+		Package,
+		*FString::Printf(TEXT("BP_BridgeClassDefaultRead_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperBridgeRouteTests"));
+	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+	Package->SetDirtyFlag(false);
+
+	FBlueprintHelperGraphResolver Resolver;
+	const FBlueprintHelperClassSettingsService Service(Resolver);
+	const FBlueprintHelperClassSettingsBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("bridge_class_default_read_request");
+	Request.Command = TEXT("read_blueprint_class_default_property");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	Request.Payload->SetStringField(TEXT("property_path"), TEXT("PlayerControllerClass"));
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestTrue(TEXT("bridge response succeeds"), Response.bSuccess);
+	TestTrue(TEXT("bridge response carries result"), Response.Result.IsValid());
+	if (!Response.Result.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* DataObject = nullptr;
+	TestTrue(TEXT("result carries data"), Response.Result->TryGetObjectField(TEXT("data"), DataObject));
+	if (!DataObject || !DataObject->IsValid())
+	{
+		return false;
+	}
+
+	FString Schema;
+	TestTrue(TEXT("data carries schema"), (*DataObject)->TryGetStringField(TEXT("schema"), Schema));
+	TestEqual(TEXT("schema is class default context"), Schema, FString(TEXT("BlueprintClassDefaultPropertyContext.v1")));
+
+	FString PropertyPath;
+	TestTrue(TEXT("data carries property path"), (*DataObject)->TryGetStringField(TEXT("property_path"), PropertyPath));
+	TestEqual(TEXT("bridge forwarded property_path"), PropertyPath, FString(TEXT("PlayerControllerClass")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperObjectPropertyBridgeRoutes_BlueprintCdoMisrouteReturnsSuggestedRoute,
+	"BlueprintHelper.Router.Cluster.ObjectPropertyBlueprintCdoMisrouteReturnsSuggestedRoute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperObjectPropertyBridgeRoutes_BlueprintCdoMisrouteReturnsSuggestedRoute::RunTest(const FString& Parameters)
+{
+	UPackage* Package = CreatePackage(*FString::Printf(
+		TEXT("/Game/BlueprintHelperBridge/%s"),
+		*FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+	Package->SetDirtyFlag(false);
+
+	UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+		AGameModeBase::StaticClass(),
+		Package,
+		*FString::Printf(TEXT("BP_ObjectPropertyCdoMisroute_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)),
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass(),
+		TEXT("BlueprintHelperBridgeRouteTests"));
+	TestNotNull(TEXT("target Blueprint is created"), Blueprint);
+	if (!Blueprint)
+	{
+		return false;
+	}
+
+	const FBlueprintHelperPropertyReflectionService Service;
+	const FBlueprintHelperObjectPropertyBridgeRoutes Routes(Service);
+
+	FBlueprintHelperBridgeRequest Request;
+	Request.RequestId = TEXT("object_property_misroute_request");
+	Request.Command = TEXT("get_object_properties");
+	Request.Payload = MakeShared<FJsonObject>();
+	Request.Payload->SetStringField(TEXT("asset_path"), Blueprint->GetPathName());
+	Request.Payload->SetStringField(TEXT("property_path"), TEXT("PlayerControllerClass"));
+
+	const FBlueprintHelperBridgeResponse Response = Routes.HandleRequest(Request);
+
+	TestFalse(TEXT("misrouted object property read fails"), Response.bSuccess);
+	TestTrue(TEXT("response carries ToolResult"), Response.Result.IsValid());
+	if (!Response.Result.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* ErrorObject = nullptr;
+	TestTrue(TEXT("result carries error"), Response.Result->TryGetObjectField(TEXT("error"), ErrorObject));
+	if (!ErrorObject || !ErrorObject->IsValid())
+	{
+		return false;
+	}
+
+	FString Code;
+	TestTrue(TEXT("error carries code"), (*ErrorObject)->TryGetStringField(TEXT("code"), Code));
+	TestEqual(TEXT("route mismatch code"), Code, FString(TEXT("read_context_route_mismatch")));
+
+	FString SuggestedRoute;
+	TestTrue(TEXT("error carries suggested_route"), (*ErrorObject)->TryGetStringField(TEXT("suggested_route"), SuggestedRoute));
+	TestEqual(TEXT("suggested route"), SuggestedRoute, FString(TEXT("blueprint.class_defaults.property")));
 	return true;
 }
 

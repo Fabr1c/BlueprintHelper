@@ -2,9 +2,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const LEDGER_SCHEMA = 'BlueprintHelper.HookLedger.v1';
+const EXECUTION_RECEIPT_SCHEMA = 'BlueprintHelper.ExecutionReceipt.v1';
 const DEFAULT_MAX_ATTEMPTS = 3;
 const MIN_MAX_ATTEMPTS = 1;
 const MAX_MAX_ATTEMPTS = 10;
+const RECEIPT_IDENTITY_FIELDS = [
+  'receipt_id',
+  'cli_run_id',
+  'preview_id',
+  'task_run_id',
+  'task_spec_hash',
+  'task_plan_hash',
+  'policy_hash',
+  'status',
+];
 
 function classifyCommand(command) {
   const tokens = tokenize(command);
@@ -20,7 +31,8 @@ function classifyCommand(command) {
   if (tokens[1] === 'task' && tokens[2] === 'execute') {
     const file = readFlag(tokens, '--file');
     const previewToken = readFlag(tokens, '--preview-token');
-    return file ? compact({ kind: 'execute', file, previewToken }) : undefined;
+    const receiptId = readFlag(tokens, '--receipt-id');
+    return file ? compact({ kind: 'execute', file, previewToken, receiptId }) : undefined;
   }
 
   if (tokens[1] === 'task' && tokens[2] === 'result') {
@@ -30,7 +42,9 @@ function classifyCommand(command) {
 
   if (tokens[1] === 'context' && tokens[2] === 'read') {
     const file = readFlag(tokens, '--file');
-    return file ? { kind: 'context_read', file } : undefined;
+    const receiptId = readFlag(tokens, '--receipt-id');
+    const taskRunId = readFlag(tokens, '--task-run-id');
+    return file ? compact({ kind: 'context_read', file, receiptId, taskRunId }) : undefined;
   }
 
   if (tokens[1] === 'blueprinthelper_read_reference_context') {
@@ -208,6 +222,17 @@ async function runPreToolUse(input) {
     return block('preview_required_before_execute', 'BlueprintHelper execute requires a passed preview in the hook ledger.');
   }
 
+  const previewReceipt = readLedgerReceipt(ledger);
+  if (!previewReceipt) {
+    return block('receipt_missing', 'BlueprintHelper execute requires preview receipt evidence in the hook ledger.');
+  }
+  if (!command.receiptId) {
+    return block('receipt_missing', 'BlueprintHelper execute requires --receipt-id matching the preview receipt.');
+  }
+  if (command.receiptId !== previewReceipt.receipt_id) {
+    return block('receipt_hash_mismatch', 'BlueprintHelper execute receipt_id does not match the preview receipt.');
+  }
+
   if (attemptsExceeded(ledger)) {
     const maxAttempts = readMaxAttempts(ledger.retry_budget?.max_attempts);
     return block(
@@ -232,7 +257,7 @@ async function runPostToolUse(input) {
     return recordExecute(input, command);
   }
   if (command.kind === 'context_read') {
-    return recordReadback(input);
+    return recordReadback(input, command);
   }
   if (command.kind === 'result') {
     return recordResult(input, command);
@@ -260,8 +285,20 @@ async function recordPreview(input, command) {
   });
   ledger.attempts.preview += 1;
   const parsed = parseToolResult(input.toolResult);
+  const statusProblem = validateToolStatus(input.toolResult, parsed);
+  if (statusProblem) {
+    return block(statusProblem, 'BlueprintHelper hook cannot verify tool success because status is missing.');
+  }
+  const succeeded = isSuccessfulToolResult(input.toolResult, parsed);
+  const receipt = readReceiptIdentity(parsed, input.metadata);
+  if (succeeded && !receipt) {
+    return block('receipt_missing', 'BlueprintHelper preview succeeded without ExecutionReceipt evidence.');
+  }
+  if (receipt) {
+    ledger.receipt = mergeReceiptIdentity(ledger.receipt, receipt);
+  }
   ledger.last_preview = {
-    status: isSuccessfulToolResult(input.toolResult, parsed) ? 'passed' : 'failed',
+    status: succeeded ? 'passed' : 'failed',
     preview_token: readFirstString(
       parsed.preview_token,
       parsed.previewToken,
@@ -270,6 +307,7 @@ async function recordPreview(input, command) {
       parsed.tool_result?.data?.preview_token,
       parsed.tool_result?.data?.previewToken,
     ),
+    ...receiptLedgerFields(receipt),
   };
   await writeLedger({ ledgerRoot: ledgerRootResult.ledgerRoot, ledger });
   return allow();
@@ -294,16 +332,46 @@ async function recordExecute(input, command) {
   });
   ledger.attempts.execute += 1;
   const parsed = parseToolResult(input.toolResult);
+  const statusProblem = validateToolStatus(input.toolResult, parsed);
+  if (statusProblem) {
+    return block(statusProblem, 'BlueprintHelper hook cannot verify tool success because status is missing.');
+  }
   const succeeded = isSuccessfulToolResult(input.toolResult, parsed);
+  const receipt = readReceiptIdentity(parsed, input.metadata);
+  if (succeeded && !receipt) {
+    return block('receipt_missing', 'BlueprintHelper execute succeeded without ExecutionReceipt evidence.');
+  }
+  if (succeeded && command.receiptId && receipt?.receipt_id && command.receiptId !== receipt.receipt_id) {
+    return block('receipt_hash_mismatch', 'BlueprintHelper execute result receipt_id does not match command --receipt-id.');
+  }
+  const previewReceipt = readLedgerReceipt(ledger);
+  if (succeeded) {
+    const mismatch = validateReceiptMatch(previewReceipt, receipt);
+    if (mismatch) {
+      return block(mismatch, 'BlueprintHelper execute receipt does not match the preview receipt.');
+    }
+  }
+  const taskRunId = readFirstString(
+    parsed.task_run_id,
+    parsed.taskRunId,
+    parsed.tool_result?.data?.task_run_id,
+    parsed.tool_result?.data?.taskRunId,
+    receipt?.task_run_id,
+    command.id,
+  );
+  if (succeeded && !taskRunId) {
+    return block('receipt_task_run_mismatch', 'BlueprintHelper execute receipt is missing task_run_id.');
+  }
+  if (succeeded && receipt?.task_run_id && taskRunId && receipt.task_run_id !== taskRunId) {
+    return block('receipt_task_run_mismatch', 'BlueprintHelper execute task_run_id does not match receipt.task_run_id.');
+  }
+  if (receipt) {
+    ledger.receipt = mergeReceiptIdentity(ledger.receipt, receipt, { task_run_id: taskRunId });
+  }
   ledger.last_execute = {
     status: succeeded ? 'succeeded' : 'failed',
-    task_run_id: readFirstString(
-      parsed.task_run_id,
-      parsed.taskRunId,
-      parsed.tool_result?.data?.task_run_id,
-      parsed.tool_result?.data?.taskRunId,
-      command.id,
-    ),
+    task_run_id: taskRunId,
+    ...receiptLedgerFields(mergeReceiptIdentity(receipt, { task_run_id: taskRunId })),
   };
   if (ledger.readback.required) {
     ledger.readback.completed = false;
@@ -321,24 +389,62 @@ async function recordExecute(input, command) {
   return allow();
 }
 
-async function recordReadback(input) {
+async function recordReadback(input, command) {
   const taskPackageId = readTaskPackageId(undefined, input.metadata);
   const ledgerRootResult = resolveLedgerRootResult({ cwd: input.cwd, packageData: input.metadata });
   if (ledgerRootResult.error) {
     return allow();
   }
 
+  const parsed = parseToolResult(input.toolResult);
+  const statusProblem = validateToolStatus(input.toolResult, parsed);
+  if (statusProblem) {
+    return block(statusProblem, 'BlueprintHelper hook cannot verify readback because status is missing.');
+  }
+  const receipt = readReceiptIdentity(
+    parsed,
+    input.metadata,
+    {
+      receipt_id: command.receiptId,
+      task_run_id: command.taskRunId,
+    },
+  );
+  const taskRunId = readFirstString(
+    parsed.task_run_id,
+    parsed.taskRunId,
+    receipt?.task_run_id,
+    input.metadata?.task_run_id,
+    input.metadata?.taskRunId,
+    command.taskRunId,
+  );
+  const succeeded = isSuccessfulToolResult(input.toolResult, parsed);
+  if (succeeded && !receipt) {
+    return block('receipt_missing', 'BlueprintHelper readback succeeded without ExecutionReceipt evidence.');
+  }
+
   const targetLedger = taskPackageId
     ? await readLedger({ ledgerRoot: ledgerRootResult.ledgerRoot, taskPackageId })
-    : await findLatestActiveLedger(ledgerRootResult.ledgerRoot);
+    : receipt?.receipt_id
+      ? await findLedgerByReceiptId(ledgerRootResult.ledgerRoot, receipt.receipt_id)
+      : taskRunId
+        ? await findLedgerByRunId(ledgerRootResult.ledgerRoot, taskRunId)
+        : undefined;
   if (!targetLedger) {
-    return allow();
+    return block('receipt_not_found', 'BlueprintHelper readback could not find a matching receipt ledger.');
   }
 
   targetLedger.attempts.readback += 1;
-  const parsed = parseToolResult(input.toolResult);
-  targetLedger.readback.completed = isSuccessfulToolResult(input.toolResult, parsed);
+  if (succeeded) {
+    const mismatch = validateReadbackReceipt(targetLedger, receipt, taskRunId);
+    if (mismatch) {
+      return block(mismatch, 'BlueprintHelper readback receipt does not match execute receipt evidence.');
+    }
+  }
+  targetLedger.readback.completed = succeeded;
   targetLedger.readback.status = targetLedger.readback.completed ? 'completed' : 'failed';
+  targetLedger.readback.receipt_id = receipt?.receipt_id;
+  targetLedger.readback.task_run_id = taskRunId;
+  targetLedger.readback.receipt = receiptLedgerFields(receipt);
   await writeLedger({ ledgerRoot: ledgerRootResult.ledgerRoot, ledger: targetLedger });
   return allow();
 }
@@ -353,9 +459,32 @@ async function recordResult(input, command) {
     return allow();
   }
   const parsed = parseToolResult(input.toolResult);
+  const statusProblem = validateToolStatus(input.toolResult, parsed);
+  if (statusProblem) {
+    return block(statusProblem, 'BlueprintHelper hook cannot verify task result because status is missing.');
+  }
+  const succeeded = isSuccessfulToolResult(input.toolResult, parsed);
+  const receipt = readReceiptIdentity(parsed, input.metadata);
+  if (succeeded && !receipt) {
+    return block('receipt_missing', 'BlueprintHelper task result succeeded without ExecutionReceipt evidence.');
+  }
+  if (succeeded) {
+    const resultTaskRunId = readFirstString(
+      parsed.task_run_id,
+      parsed.taskRunId,
+      parsed.tool_result?.data?.task_run_id,
+      parsed.tool_result?.data?.taskRunId,
+      receipt?.task_run_id,
+    );
+    const mismatch = validateTaskResultReceipt(ledger, receipt, command.id, resultTaskRunId);
+    if (mismatch) {
+      return block(mismatch, 'BlueprintHelper task result receipt does not match execute receipt evidence.');
+    }
+  }
   ledger.last_result = {
-    status: isSuccessfulToolResult(input.toolResult, parsed) ? 'succeeded' : 'failed',
+    status: succeeded ? 'succeeded' : 'failed',
     task_run_id: command.id,
+    ...receiptLedgerFields(receipt),
   };
   await writeLedger({ ledgerRoot: ledgerRootResult.ledgerRoot, ledger });
   return allow();
@@ -490,7 +619,18 @@ async function readLedger(input) {
 async function writeLedger(input) {
   const filePath = ledgerPath(input.ledgerRoot, input.ledger.task_package_id);
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, `${JSON.stringify(cleanForJson(input.ledger), null, 2)}\n`, 'utf8');
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await fs.promises.writeFile(tempPath, `${JSON.stringify(cleanForJson(input.ledger), null, 2)}\n`, 'utf8');
+    await fs.promises.rename(tempPath, filePath);
+  } catch (error) {
+    try {
+      await fs.promises.unlink(tempPath);
+    } catch {
+      // Best-effort cleanup; preserve the original write error.
+    }
+    throw error;
+  }
 }
 
 function ledgerPath(ledgerRoot, taskPackageId) {
@@ -517,16 +657,20 @@ async function readAllLedgers(ledgerRoot) {
   return ledgers;
 }
 
-async function findLatestActiveLedger(ledgerRoot) {
-  const ledgers = await readAllLedgers(ledgerRoot);
-  return ledgers
-    .filter((ledger) => ledger.last_execute?.status === 'succeeded' && ledger.readback?.completed !== true)
-    .sort((left, right) => String(right.last_execute?.task_run_id ?? '').localeCompare(String(left.last_execute?.task_run_id ?? '')))[0];
-}
-
 async function findLedgerByRunId(ledgerRoot, taskRunId) {
   const ledgers = await readAllLedgers(ledgerRoot);
   return ledgers.find((ledger) => ledger.last_execute?.task_run_id === taskRunId);
+}
+
+async function findLedgerByReceiptId(ledgerRoot, receiptId) {
+  const ledgers = await readAllLedgers(ledgerRoot);
+  return ledgers.find((ledger) => {
+    const receipt = readLedgerReceipt(ledger);
+    return receipt?.receipt_id === receiptId
+      || ledger.last_preview?.receipt_id === receiptId
+      || ledger.last_execute?.receipt_id === receiptId
+      || ledger.readback?.receipt_id === receiptId;
+  });
 }
 
 function attemptsExceeded(ledger) {
@@ -593,6 +737,21 @@ function parseToolResult(toolResult) {
   return {};
 }
 
+function validateToolStatus(toolResult, parsed) {
+  if (isRecord(toolResult)) {
+    const exitCode = toolResult.exit_code ?? toolResult.exitCode;
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+      return undefined;
+    }
+  }
+
+  if (parsed.ok === false) {
+    return undefined;
+  }
+
+  return readToolStatus(parsed) ? undefined : 'tool_status_missing';
+}
+
 function isSuccessfulToolResult(toolResult, parsed) {
   if (isRecord(toolResult)) {
     const exitCode = toolResult.exit_code ?? toolResult.exitCode;
@@ -601,14 +760,170 @@ function isSuccessfulToolResult(toolResult, parsed) {
     }
   }
 
-  const status = readString(parsed.status) ?? readString(parsed.result);
+  if (parsed.ok === false) {
+    return false;
+  }
+
+  const status = readToolStatus(parsed);
+  if (!status) {
+    return false;
+  }
   if (parsed.ok === true && !/fail|blocked|error/i.test(status ?? '')) {
     return true;
   }
-  if (!status) {
-    return true;
-  }
   return /^(success|succeeded|passed|completed|ok)$/i.test(status) || /(?:^|_)(passed|succeeded|completed)$/i.test(status);
+}
+
+function readToolStatus(parsed) {
+  return readString(parsed?.status) ?? readString(parsed?.result);
+}
+
+function readReceiptIdentity(...sources) {
+  let merged = {};
+  for (const source of sources) {
+    for (const candidate of collectReceiptCandidates(source)) {
+      const identity = toReceiptIdentity(candidate);
+      if (identity) {
+        merged = mergeReceiptIdentity(merged, identity);
+      }
+    }
+  }
+  return readString(merged.receipt_id) ? merged : undefined;
+}
+
+function collectReceiptCandidates(source) {
+  const record = isRecord(source) ? source : undefined;
+  if (!record) {
+    return [];
+  }
+
+  const candidates = [];
+  const direct = toReceiptIdentity(record);
+  if (direct) {
+    candidates.push(record);
+  }
+  for (const pathSegments of [
+    ['receipt'],
+    ['data', 'receipt'],
+    ['tool_result', 'data', 'receipt'],
+    ['toolResult', 'data', 'receipt'],
+    ['result', 'receipt'],
+    ['metadata', 'receipt'],
+  ]) {
+    const value = readJsonPath(record, pathSegments);
+    if (isRecord(value)) {
+      candidates.push(value);
+    }
+  }
+  return candidates;
+}
+
+function toReceiptIdentity(value) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const identity = compact({
+    receipt_id: readFirstString(value.receipt_id, value.receiptId),
+    cli_run_id: readFirstString(value.cli_run_id, value.cliRunId),
+    preview_id: readFirstString(value.preview_id, value.previewId),
+    task_run_id: readFirstString(value.task_run_id, value.taskRunId),
+    task_spec_hash: readFirstString(value.task_spec_hash, value.taskSpecHash),
+    task_plan_hash: readFirstString(value.task_plan_hash, value.taskPlanHash),
+    policy_hash: readFirstString(value.policy_hash, value.policyHash),
+    status: readFirstString(value.status),
+  });
+  if (value.schema === EXECUTION_RECEIPT_SCHEMA || Object.keys(identity).some((field) => RECEIPT_IDENTITY_FIELDS.includes(field))) {
+    return Object.keys(identity).length > 0 ? identity : undefined;
+  }
+  return undefined;
+}
+
+function readLedgerReceipt(ledger) {
+  return readReceiptIdentity(
+    ledger?.receipt,
+    ledger?.last_execute,
+    ledger?.last_preview,
+  );
+}
+
+function receiptLedgerFields(receipt) {
+  if (!receipt) {
+    return {};
+  }
+  const fields = RECEIPT_IDENTITY_FIELDS.filter((field) => field !== 'status');
+  return compact(Object.fromEntries(
+    fields.map((field) => [field, receipt[field]]),
+  ));
+}
+
+function mergeReceiptIdentity(...receipts) {
+  const merged = {};
+  for (const receipt of receipts) {
+    if (!isRecord(receipt)) {
+      continue;
+    }
+    for (const field of RECEIPT_IDENTITY_FIELDS) {
+      const value = readString(receipt[field]);
+      if (value) {
+        merged[field] = value;
+      }
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function validateReceiptMatch(expected, actual) {
+  if (!expected || !actual) {
+    return 'receipt_missing';
+  }
+  if (expected.receipt_id && actual.receipt_id && expected.receipt_id !== actual.receipt_id) {
+    return 'receipt_hash_mismatch';
+  }
+  for (const field of ['task_spec_hash', 'task_plan_hash', 'policy_hash']) {
+    if (expected[field] && actual[field] && expected[field] !== actual[field]) {
+      return 'receipt_hash_mismatch';
+    }
+  }
+  return undefined;
+}
+
+function validateReadbackReceipt(ledger, actual, taskRunId) {
+  const expected = readLedgerReceipt(ledger);
+  const receiptMismatch = validateReceiptMatch(expected, actual);
+  if (receiptMismatch === 'receipt_missing') {
+    return receiptMismatch;
+  }
+  if (receiptMismatch) {
+    return 'receipt_readback_mismatch';
+  }
+  const expectedTaskRunId = readFirstString(
+    ledger?.last_execute?.task_run_id,
+    expected.task_run_id,
+  );
+  const actualTaskRunId = readFirstString(taskRunId, actual.task_run_id);
+  if (!expectedTaskRunId || !actualTaskRunId || expectedTaskRunId !== actualTaskRunId) {
+    return 'receipt_readback_mismatch';
+  }
+  return undefined;
+}
+
+function validateTaskResultReceipt(ledger, actual, commandTaskRunId, resultTaskRunId) {
+  const receiptMismatch = validateReceiptMatch(readLedgerReceipt(ledger), actual);
+  if (receiptMismatch) {
+    return receiptMismatch;
+  }
+  const expectedTaskRunId = readFirstString(
+    ledger?.last_execute?.task_run_id,
+    ledger?.receipt?.task_run_id,
+  );
+  const actualTaskRunId = readFirstString(actual?.task_run_id, resultTaskRunId);
+  if (!expectedTaskRunId || expectedTaskRunId !== commandTaskRunId) {
+    return 'receipt_task_run_mismatch';
+  }
+  if (!actualTaskRunId || expectedTaskRunId !== actualTaskRunId) {
+    return 'receipt_task_run_mismatch';
+  }
+  return undefined;
 }
 
 function resolveLedgerRootResult(input) {

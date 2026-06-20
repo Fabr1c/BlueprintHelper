@@ -1,4 +1,7 @@
-import type { NonGraphWriteTemplateFamilyMetadata } from './taskspec-template-types.js';
+import type {
+  NonGraphWriteTemplateFamilyMetadata,
+  TaskSpecTemplateFamilyNavigation,
+} from './taskspec-template-types.js';
 import {
   NON_GRAPHWRITE_OPERATION_DESCRIPTORS,
   type NonGraphWriteOperationDescriptor,
@@ -10,121 +13,135 @@ import type {
   TaskSpecTemplateQuickAccessItem,
 } from './taskspec-template-types.js';
 
+const CLUSTER_OPERATION_NAVIGATION: TaskSpecTemplateFamilyNavigation = {
+  levels: ['cluster', 'operation', 'quick_access', 'leaf_template'],
+  next_command: 'bh tools templates clusters --family <family> --format json',
+  compose_command: 'bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json',
+  requires_write_mode: false,
+};
+
+const OPERATION_NAVIGATION: TaskSpecTemplateFamilyNavigation = {
+  levels: ['operation', 'quick_access', 'leaf_template'],
+  next_command: 'bh tools templates operations --family <family> --format json',
+  compose_command: 'bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json',
+  requires_write_mode: false,
+};
+
 export const NON_GRAPHWRITE_TEMPLATE_FAMILIES: readonly NonGraphWriteTemplateFamilyMetadata[] = [
   {
     family: 'blueprint_variables',
     task_type: 'edit_blueprint_variables',
     description: 'Edit Blueprint member variables, defaults, and related variable metadata.',
     strategy_field: 'variable_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_variables_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_variables_template.json',
     insert_targets: ['behavior.variables[]', 'behavior.changes[]', 'behavior.defaults[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'variables.edit',
   },
   {
     family: 'blueprint_components',
     task_type: 'edit_blueprint_components',
     description: 'Edit Blueprint component tree entries when the dedicated component template path is active.',
     strategy_field: 'component_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_components_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_components_template.json',
     insert_targets: ['behavior.changes[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'components.edit',
   },
   {
     family: 'blueprint_class_settings',
     task_type: 'edit_blueprint_class_settings',
     description: 'Edit Blueprint class settings such as interfaces, defaults, and reparenting.',
     strategy_field: 'class_settings_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_class_settings_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_class_settings_template.json',
     insert_targets: ['behavior.interfaces.ensure_present[]', 'behavior.interfaces.ensure_absent[]', 'behavior.class_defaults[]', 'behavior.reparent'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'class_settings.edit',
   },
   {
     family: 'blueprint_signature',
     task_type: 'edit_blueprint_signature',
     description: 'Edit function, event, or macro signatures before writing bodies.',
     strategy_field: 'signature_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_signature_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_edit_signature_template.json',
     insert_targets: ['behavior.changes[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'signature.edit',
   },
   {
     family: 'blueprint_create_feature',
     task_type: 'create_blueprint_feature',
     description: 'Create a composite Blueprint feature including components, variables, class settings, and behavior.',
     strategy_field: 'composite',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/blueprint_create_feature_template.json',
     insert_targets: ['components[]', 'variables[]', 'class_settings', 'behavior'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'feature.create',
   },
   {
     family: 'umg_widget',
     task_type: 'edit_umg_widget',
     description: 'Edit Widget Blueprint tree, widget properties, named slots, and widget class settings.',
     strategy_field: 'widget_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/umg_widget_edit_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/umg_widget_edit_template.json',
     insert_targets: ['behavior.changes[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'widget.edit',
   },
   {
     family: 'data_table',
     task_type: 'edit_data_table',
     description: 'Edit DataTable rows through TaskSpec row operations.',
     strategy_field: 'row_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_table_rows_edit_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_table_rows_edit_template.json',
     insert_targets: ['behavior.rows[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'table.rows',
   },
   {
     family: 'object_properties',
     task_type: 'edit_object_properties',
     description: 'Edit UObject, DataAsset, or Blueprint object properties.',
     strategy_field: 'property_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_object_properties_edit_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_object_properties_edit_template.json',
     insert_targets: ['behavior.changes[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'object.properties',
   },
   {
     family: 'asset_factory',
     task_type: 'create_asset',
-    description: 'Create supported Unreal assets through asset factory TaskSpec routes.',
+    description: 'Create Agent-facing supported Unreal assets through specialized asset factory root TaskSpec templates.',
     strategy_field: 'asset_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_asset_create_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/data_asset_create_template.json',
     insert_targets: ['behavior.asset'],
+    navigation: OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'asset.create',
   },
   {
     family: 'material_graph',
     task_type: 'edit_material_graph',
     description: 'Edit Material graph expressions, owned blocks, and material output links through MaterialGraph TaskSpec routes.',
     strategy_field: 'graph_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_graph_edit_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_graph_edit_template.json',
     insert_targets: ['behavior.entries[]', 'behavior.replace', 'behavior.patches[]', 'behavior.merges[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'material.graph',
   },
   {
     family: 'material_instance',
     task_type: 'edit_material_instance',
     description: 'Edit MaterialInstance parent and parameter overrides through MaterialInstance TaskSpec routes.',
     strategy_field: 'material_instance_strategy',
-    base_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_instance_edit_template.json',
+    internal_scaffold_template_path: 'AgentFaceService/agent-guide/Templates/write/routes/material_instance_edit_template.json',
     insert_targets: ['behavior.operations[]'],
+    navigation: CLUSTER_OPERATION_NAVIGATION,
     status: 'supported',
-    write_mode: 'material.instance',
   },
 ];
 
 export function getSupportedNonGraphWriteTemplateFamilies(): readonly NonGraphWriteTemplateFamilyMetadata[] {
-  return NON_GRAPHWRITE_TEMPLATE_FAMILIES.filter((entry) => entry.status === 'supported' && entry.write_mode);
+  return NON_GRAPHWRITE_TEMPLATE_FAMILIES.filter((entry) => entry.status === 'supported');
 }
 
 export function getNonGraphWriteTemplateFamily(
@@ -163,13 +180,12 @@ export function listNonGraphWriteTemplateClusters(input: {
 
 export function listNonGraphWriteTemplateOperations(input: {
   family: string;
-  cluster: string;
-  writeMode: string;
+  cluster?: string;
 }): TaskSpecTemplateOperationItem[] {
+  const cluster = input.cluster ?? '';
   const descriptors = NON_GRAPHWRITE_OPERATION_DESCRIPTORS.filter((descriptor) =>
     descriptor.family === input.family
-    && descriptor.cluster_id === input.cluster
-    && descriptor.write_mode === input.writeMode);
+    && (cluster.length === 0 || descriptor.cluster_id === cluster));
   if (descriptors.length > 0) {
     return descriptors.map((descriptor) => ({
       family: descriptor.family,
@@ -180,7 +196,8 @@ export function listNonGraphWriteTemplateOperations(input: {
       runtime_only_validation_notes: descriptor.runtime_only_validation_notes ? [...descriptor.runtime_only_validation_notes] : undefined,
     }));
   }
-  if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
+  if (input.family !== 'umg_widget'
+    || (cluster.length > 0 && cluster !== 'widget_tree')) {
     return [];
   }
   return UMG_WIDGET_OPERATION_MANIFEST.map((descriptor) => ({
@@ -200,20 +217,19 @@ function describeUmgWidgetOperation(kind: string): string {
 
 export function listNonGraphWriteTemplateQuickAccess(input: {
   family: string;
-  cluster: string;
-  operation: string;
-  writeMode: string;
+  cluster?: string;
+  operation?: string;
 }): TaskSpecTemplateQuickAccessItem[] {
+  const cluster = input.cluster ?? '';
+  const operation = input.operation ?? '';
   const descriptors = NON_GRAPHWRITE_OPERATION_DESCRIPTORS.filter((descriptor) =>
     descriptor.family === input.family
-    && (input.cluster.length === 0 || descriptor.cluster_id === input.cluster)
-    && (input.operation.length === 0 || descriptor.operation_id === input.operation)
-    && (input.writeMode.length === 0 || descriptor.write_mode === input.writeMode));
+    && (cluster.length === 0 || descriptor.cluster_id === cluster)
+    && (operation.length === 0 || descriptor.operation_id === operation));
   if (descriptors.length > 0) {
     return descriptors.map((descriptor) => ({
       template_id: descriptor.template_id,
       family: descriptor.family,
-      write_mode: descriptor.write_mode,
       cluster_id: descriptor.cluster_id,
       operation_id: descriptor.operation_id,
       quick_access_id: descriptor.operation_id,
@@ -227,15 +243,15 @@ export function listNonGraphWriteTemplateQuickAccess(input: {
       runtime_only_validation_notes: descriptor.runtime_only_validation_notes ? [...descriptor.runtime_only_validation_notes] : undefined,
     }));
   }
-  if (input.family !== 'umg_widget' || input.cluster !== 'widget_tree' || input.writeMode !== 'widget.edit') {
+  if (input.family !== 'umg_widget'
+    || (cluster.length > 0 && cluster !== 'widget_tree')) {
     return [];
   }
   return UMG_WIDGET_OPERATION_MANIFEST
-    .filter((descriptor) => input.operation.length === 0 || descriptor.kind === input.operation)
+    .filter((descriptor) => operation.length === 0 || descriptor.kind === operation)
     .map((descriptor) => ({
       template_id: `umg.widget_tree.${descriptor.kind}`,
       family: 'umg_widget',
-      write_mode: 'widget.edit',
       cluster_id: 'widget_tree',
       operation_id: descriptor.kind,
       quick_access_id: descriptor.kind,

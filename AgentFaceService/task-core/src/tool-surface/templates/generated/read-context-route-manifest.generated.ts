@@ -100,6 +100,64 @@ export const READ_CONTEXT_ROUTE_MANIFEST = [
     ]
   },
   {
+    "template_id": "blueprint.class_defaults.property",
+    "family": "blueprint",
+    "cluster": "properties",
+    "description": "Read Blueprint GeneratedClass CDO default property, including nested paths.",
+    "template_path": "AgentFaceService/agent-guide/Templates/read/routes/blueprint_class_default_property_template.json",
+    "read_spec": {
+      "schema": "BlueprintHelper.ReadSpec.v1",
+      "read_type": "blueprint_class_default_context",
+      "target": {
+        "asset_path": "__REQUIRED_ASSET_PATH__",
+        "target_type": "property",
+        "target_name": "__REQUIRED_TARGET_NAME__"
+      }
+    },
+    "required_fields": [
+      "target.asset_path",
+      "target.target_name"
+    ],
+    "optional_fields": [],
+    "context_evidence": {
+      "target.target_type.allowed_values": "property",
+      "target.target_name": "Blueprint CDO property path, for example ShooterHudWidgetClass or WeaponComponent.PrimaryWeapon.",
+      "output.format": "property_json"
+    },
+    "recommended_invocation": "bh context read --file <read-spec.json> --format json",
+    "allowed_tools": [
+      "bh tools read-templates compose",
+      "bh context read"
+    ],
+    "stop_conditions": [
+      "missing_asset_path",
+      "missing_target_name",
+      "runtime_capability_missing",
+      "read_context_screenshot_conflict"
+    ],
+    "status": "active",
+    "payload_schema": "BlueprintHelper.ReadSpec.v1",
+    "route_cluster": "ClassSettings",
+    "route_source_id": "generated.read_context_manifest",
+    "route_policy_id": "generated.route_manifest",
+    "route_agent_visible": false,
+    "route_requires_game_thread": true,
+    "read_type": "blueprint_class_default_context",
+    "target_type": "property",
+    "bridge_command": "read_blueprint_class_default_property",
+    "output_schema": "BlueprintClassDefaultPropertyContext.v1",
+    "request_builder_id": "class_default_property",
+    "payload_projector_id": "class_default_property",
+    "format": "property_json",
+    "supported_asset_types": [
+      "blueprint",
+      "property"
+    ],
+    "supported_formats": [
+      "property_json"
+    ]
+  },
+  {
     "template_id": "blueprint.logic.block.json",
     "family": "blueprint",
     "cluster": "logic",

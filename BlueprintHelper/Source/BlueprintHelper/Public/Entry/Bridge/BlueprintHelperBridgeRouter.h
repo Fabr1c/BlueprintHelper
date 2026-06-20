@@ -140,6 +140,7 @@ private:
 	FBlueprintHelperBridgeResponse HandlePreviewTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleExecuteTaskPlan(const FBlueprintHelperBridgeRequest& Req) const;
 	FBlueprintHelperBridgeResponse HandleGetTaskRunJournal(const FBlueprintHelperBridgeRequest& Req) const;
+	FBlueprintHelperBridgeResponse HandleGetExecutionReceipt(const FBlueprintHelperBridgeRequest& Req) const;
 
 	// ─── CompileBlueprintAsset ───
 	FBlueprintHelperBridgeResponse HandleCompileBlueprintAsset(const FBlueprintHelperBridgeRequest& Req) const;

@@ -28,6 +28,7 @@ export const ReadContextInputSchema = z.object({
   read_type: z.enum([
     'asset_context',
     'blueprint_logic',
+    'blueprint_class_default_context',
     'component_context',
     'variable_context',
     'widget_context',

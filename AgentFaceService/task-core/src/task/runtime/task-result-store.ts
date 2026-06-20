@@ -2,6 +2,10 @@ import {
   TASK_RUN_JOURNAL_SCHEMA,
   type TaskPlan,
 } from '../schema/task-schemas.js';
+import {
+  normalizeExecutionReceipt,
+  type ExecutionReceipt,
+} from '../../execution-receipt/execution-receipt-schema.js';
 
 let taskCounter = 0;
 let previewCounter = 0;
@@ -21,6 +25,7 @@ export function storeTaskResult(input: {
   taskPlan: TaskPlan;
   status: 'completed' | 'failed';
   bridgeResult?: Record<string, unknown>;
+  receipt?: ExecutionReceipt;
 }) {
   const firstStep = input.taskPlan.steps[0];
   const bridgeStep = extractBridgeStep(input.bridgeResult, firstStep?.step_id);
@@ -34,6 +39,7 @@ export function storeTaskResult(input: {
   const generatedIntent = input.status === 'completed'
     ? generateTaskIntent(input.taskPlan, firstStep, stepCapability)
     : undefined;
+  const receipt = input.receipt ?? extractBridgeReceipt(input.bridgeResult);
   const journal = {
     schema: TASK_RUN_JOURNAL_SCHEMA,
     task_run_id: input.taskRunId,
@@ -55,6 +61,7 @@ export function storeTaskResult(input: {
         ]
       : [],
     bridge_result: input.bridgeResult,
+    ...(receipt ? { receipt } : legacyIncompleteFields()),
   };
   taskResults.set(input.taskRunId, journal);
   return journal;
@@ -181,6 +188,10 @@ const intentCapabilityByOperation: Record<string, string> = {
 
 function normalizeTaskRunJournal(taskRunId: string, journal: Record<string, unknown>) {
   const normalizedJournal = { ...journal };
+  const receiptState = normalizeExecutionReceipt(normalizedJournal);
+  if (!receiptState.ok) {
+    Object.assign(normalizedJournal, legacyIncompleteFields());
+  }
   if (
     normalizedJournal['schema'] !== TASK_RUN_JOURNAL_SCHEMA ||
     normalizedJournal['task_run_id'] !== taskRunId ||
@@ -195,6 +206,21 @@ function normalizeTaskRunJournal(taskRunId: string, journal: Record<string, unkn
     normalizedJournal['generated_intent'] = generatedIntent;
   }
   return normalizedJournal;
+}
+
+function extractBridgeReceipt(result: Record<string, unknown> | undefined): ExecutionReceipt | undefined {
+  const data = getRecord(result, 'data');
+  const receiptState = normalizeExecutionReceipt(data?.['receipt']);
+  return receiptState.ok ? receiptState.receipt : undefined;
+}
+
+function legacyIncompleteFields() {
+  return {
+    receipt_status: 'legacy_incomplete',
+    reportable: false,
+    error_code: 'journal_receipt_missing',
+    safe_next_action: 'query_execution_receipt_or_retry_journal_persist',
+  };
 }
 
 function generateTaskIntent(

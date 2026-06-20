@@ -79,6 +79,7 @@ FBlueprintHelperClassSettingsBridgeRoutes::FBlueprintHelperClassSettingsBridgeRo
 bool FBlueprintHelperClassSettingsBridgeRoutes::IsClassSettingsCommand(const FString& Command)
 {
 	return Command == TEXT("read_class_settings") ||
+		Command == TEXT("read_blueprint_class_default_property") ||
 		Command == TEXT("add_implemented_interface") ||
 		Command == TEXT("add_implemented_interfaces") ||
 		Command == TEXT("remove_implemented_interface") ||
@@ -100,6 +101,21 @@ FBlueprintHelperBridgeResponse FBlueprintHelperClassSettingsBridgeRoutes::Handle
 	if (Request.Command == TEXT("read_class_settings"))
 	{
 		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(Request, ClassSettingsService.ReadClassSettings(AssetPath));
+	}
+	if (Request.Command == TEXT("read_blueprint_class_default_property"))
+	{
+		FString PropertyPath;
+		if (Request.Payload.IsValid())
+		{
+			Request.Payload->TryGetStringField(TEXT("property_path"), PropertyPath);
+			if (PropertyPath.IsEmpty())
+			{
+				Request.Payload->TryGetStringField(TEXT("target_name"), PropertyPath);
+			}
+		}
+		return FBlueprintHelperClassSettingsBridgeRoutesLocalUtils::MakeClassSettingsResponse(
+			Request,
+			ClassSettingsService.ReadClassDefaultProperty(AssetPath, PropertyPath));
 	}
 	if (Request.Command == TEXT("add_implemented_interface"))
 	{

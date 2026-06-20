@@ -4,7 +4,13 @@ export interface MetricsErrorClassification {
   category: MetricsErrorCategory;
   code?: string;
   issue_path?: string;
+  detail_kind?: MetricsErrorDetailKind;
 }
+
+export type MetricsErrorDetailKind =
+  | 'route_mismatch_with_suggested_route'
+  | 'component_tree_safety_boundary'
+  | 'suggested_route_property_failure';
 
 interface ErrorRuleGroup {
   category: Exclude<MetricsErrorCategory, 'unknown'>;
@@ -83,6 +89,12 @@ const ERROR_CATEGORY_BY_CODE = new Map<string, Exclude<MetricsErrorCategory, 'un
   ERROR_RULE_GROUPS.flatMap((group) => group.codes.map((code) => [code, group.category] as const)),
 );
 
+const SUGGESTED_ROUTE_PROPERTY_FAILURE_CODES = new Set([
+  'class_default_property_not_writable',
+  'class_default_property_not_found',
+  'type_mismatch',
+]);
+
 export function classifyMetricsError(input: unknown): MetricsErrorClassification {
   const raw = asRecord(input);
   const hint = firstDefinedCategory([
@@ -110,10 +122,21 @@ export function classifyMetricsError(input: unknown): MetricsErrorClassification
     asRecord(raw?.['error'])?.['field'],
     issue?.['path'],
   ]);
+  const suggestedRoute = selectDetailRecord(raw, issue, 'suggested_route');
+  const blockedBoundary = selectDetailRecord(raw, issue, 'blocked_boundary');
 
   if (hint) {
     return {
       category: hint,
+      ...(code ? { code } : {}),
+      ...(issuePath ? { issue_path: issuePath } : {}),
+    };
+  }
+
+  const hintClassification = classifyHintedError(code, suggestedRoute, blockedBoundary);
+  if (hintClassification) {
+    return {
+      ...hintClassification,
       ...(code ? { code } : {}),
       ...(issuePath ? { issue_path: issuePath } : {}),
     };
@@ -130,6 +153,49 @@ export function classifyMetricsError(input: unknown): MetricsErrorClassification
   };
 }
 
+function classifyHintedError(
+  code: string | undefined,
+  suggestedRoute: Record<string, unknown> | undefined,
+  blockedBoundary: Record<string, unknown> | undefined,
+): Pick<MetricsErrorClassification, 'category' | 'detail_kind'> | undefined {
+  if (
+    code === 'component_not_owned_scs' &&
+    readString(suggestedRoute?.['route_id']) === 'blueprint_class_settings.class_default'
+  ) {
+    return {
+      category: 'parameter_error',
+      detail_kind: 'route_mismatch_with_suggested_route',
+    };
+  }
+
+  if (
+    code === 'component_not_owned_scs' &&
+    !suggestedRoute &&
+    readString(blockedBoundary?.['boundary_id']) === 'component_tree_owned_scs_only'
+  ) {
+    return {
+      category: 'capability_boundary',
+      detail_kind: 'component_tree_safety_boundary',
+    };
+  }
+
+  if (
+    code &&
+    SUGGESTED_ROUTE_PROPERTY_FAILURE_CODES.has(code) &&
+    (
+      readString(suggestedRoute?.['route_id']) === 'blueprint_class_settings.class_default' ||
+      readString(suggestedRoute?.['task_type']) === 'edit_blueprint_class_settings'
+    )
+  ) {
+    return {
+      category: 'parameter_error',
+      detail_kind: 'suggested_route_property_failure',
+    };
+  }
+
+  return undefined;
+}
+
 function selectPrimaryIssue(raw: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   const directIssue = asRecord(raw?.['issue']);
   if (directIssue) {
@@ -144,6 +210,19 @@ function selectPrimaryIssue(raw: Record<string, unknown> | undefined): Record<st
   const nestedError = asRecord(raw?.['error']);
   const nestedIssues = asIssueArray(nestedError?.['issues']);
   return nestedIssues[0];
+}
+
+function selectDetailRecord(
+  raw: Record<string, unknown> | undefined,
+  issue: Record<string, unknown> | undefined,
+  field: 'suggested_route' | 'blocked_boundary',
+): Record<string, unknown> | undefined {
+  const nestedError = asRecord(raw?.['error']);
+  const nestedData = asRecord(raw?.['data']);
+  return asRecord(raw?.[field])
+    ?? asRecord(nestedError?.[field])
+    ?? asRecord(issue?.[field])
+    ?? asRecord(nestedData?.[field]);
 }
 
 function asIssueArray(value: unknown): Record<string, unknown>[] {

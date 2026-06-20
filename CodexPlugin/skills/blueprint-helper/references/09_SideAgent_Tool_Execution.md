@@ -29,8 +29,8 @@ SideAgent 必须从主 Agent 接收一个精简任务包，而不是完整对话
 
 ## 执行规则
 
-1. 读取本文件和必要 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。构造 TaskSpec 写入 JSON 时，先走 CLI template composer 的 `families -> write-modes -> clusters -> operations -> quick-access -> compose` 导航，不扫描 `Templates/` 目录或旧语义索引。Composer 输出只是临时 TaskSpec scaffold，必须填入当前 grouped context-read 证据、选中的 anchors、目标资产数据和用户意图后再 preview。
-2. `quick-access` 返回 `slot_type` 和 `arg_slots`；`statement` 可作为 `compose --templates` 根，`expression` 只能嵌入 statement 输入位。`arg_slots` 顺序就是 `template_id(...)` 的位置顺序，需要跳过前置输入位时用 `0` 占位。
+1. 读取本文件和必要 workflow，例如 `04_TaskSpec_Edit_Blueprint_Workflow.md`。构造 TaskSpec 写入 JSON 时，先走 CLI template composer 的 `families -> family.navigation.levels -> quick-access/leaf template -> compose` 导航，不扫描 `Templates/` 目录或旧语义索引。`graph_write` 由 descriptor 声明 `write-mode` 和 slot-expression 分支；非 GraphWrite family 使用 `compose --template <leaf_template_id>`。Composer 输出只是临时 TaskSpec scaffold，必须填入当前 grouped context-read 证据、选中的 anchors、目标资产数据和用户意图后再 preview。
+2. 只有 GraphWrite quick-access 的 `slot_type` 和 `arg_slots` 用于 `compose --templates`：`statement` 可作为根，`expression` 只能嵌入 statement 输入位。非 GraphWrite quick-access 返回的 `template_id` 是 leaf compose 入口。`arg_slots` 顺序就是 `template_id(...)` 的位置顺序，需要跳过前置输入位时用 `0` 占位。
 2.0. 固定枚举/固定取值字段不得猜测或试错。只使用 CLI discovery、template `*.allowed_values`、read-template quick-access、grouped context-read 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch` 提供的值；缺失时返回 `missing_capability` 或 `clarification_required`。
 2.1. 如果主 Agent 指定的 BlueprintHelper CLI 命令在当前执行环境不可用，返回 `tool_unavailable`，并写明缺失命令名。不要把命令不可用解释为 write session 或 UE 写权限问题。
 2.2. 不要用 shell、`.vs\BlueprintCache`、Saved 导出文件或本地 JSON 解析替代不可用的 BlueprintHelper CLI 命令。命令不可用时必须回交主 Agent，由主 Agent 修复 CLI 安装、构建或命令注册问题。

@@ -92,7 +92,7 @@ test('routes tools list with descriptor positional captures and option defaults'
 });
 
 test('routes template compose subcommands through the top-level CLI command descriptor', () => {
-  const routed = routeCliCommand({
+  const graphWrite = routeCliCommand({
     positionals: ['tools', 'templates', 'compose'],
     options: {
       family: 'graphwrite',
@@ -103,12 +103,27 @@ test('routes template compose subcommands through the top-level CLI command desc
     base,
   });
 
-  assert.equal(routed.ok, true);
-  assert.equal(routed.command.kind, 'tools.templates.compose');
-  assert.equal(routed.command.family, 'graphwrite');
-  assert.equal(routed.command.writeMode, 'preview_execute');
-  assert.equal(routed.command.outputPath, 'task.json');
-  assert.deepEqual(routed.command.templateIds, ['entry@exec', 'body(args)']);
+  assert.equal(graphWrite.ok, true);
+  assert.equal(graphWrite.command.kind, 'tools.templates.compose');
+  assert.equal(graphWrite.command.family, 'graphwrite');
+  assert.equal(graphWrite.command.writeMode, 'preview_execute');
+  assert.equal(graphWrite.command.outputPath, 'task.json');
+  assert.deepEqual(graphWrite.command.templateIds, ['entry@exec', 'body(args)']);
+
+  const leaf = routeCliCommand({
+    positionals: ['tools', 'templates', 'compose'],
+    options: {
+      template: 'asset_factory.asset.create_blueprint',
+      out: 'asset.taskspec.json',
+    },
+    base,
+  });
+
+  assert.equal(leaf.ok, true);
+  assert.equal(leaf.command.kind, 'tools.templates.compose');
+  assert.equal(leaf.command.templateId, 'asset_factory.asset.create_blueprint');
+  assert.equal(leaf.command.outputPath, 'asset.taskspec.json');
+  assert.deepEqual(leaf.command.templateIds, []);
 });
 
 test('subcommand CLI positionals and template index commands come from group descriptors', () => {

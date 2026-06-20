@@ -25,7 +25,15 @@ TaskSpec 输入字段由 TaskSpec Template Composer 生成的临时 TaskSpec 和
 
 固定枚举/固定取值字段不得由 Agent 猜测或试错。`target_type`、`view.format`、`write_mode`、`cluster`、`operation`、`kind`、`container_kind`、`container_operation`、`control_operation`、`create_operation`、`transform_operation`、`schedule_operation`、delegate binding kind 等值必须来自 CLI discovery、template `*.allowed_values`、read-template quick-access、`read_context` 证据、ActionDatabase/preview candidate 或工具返回的 `suggested_patch`。如果没有来源，停止并报告 `missing_capability` / `clarification_required` / `stop_and_report`。
 
-TaskSpec 模板发现和生成只走 `bh tools templates` 四层索引，不使用旧 tool-id 模板发现入口，也不手扫 `AgentFaceService/agent-guide/Templates` 目录：
+## Blueprint Asset Creation
+
+`blueprint_create_feature` edits or scaffolds features on an existing Blueprint target. It is not the path for creating a missing Blueprint asset.
+
+If preview returns `blueprint_not_found`, classify it as `target_missing` / `wrong_path_or_missing_asset`, not `missing_capability`. To create the missing asset, discover `asset_factory` operations and use `create_blueprint` when the requested asset is a Blueprint.
+
+`create_blueprint` is an Agent-facing specialized root TaskSpec template. It still compiles to `task_type=create_asset`; do not route missing Blueprint creation through `blueprint_create_feature`.
+
+TaskSpec 模板发现和生成从 `bh tools templates families` 开始，并按返回的 `navigation.levels` 继续；不使用旧 tool-id 模板发现入口，也不手扫 `AgentFaceService/agent-guide/Templates` 目录。GraphWrite 的 descriptor 声明了 `write-mode` 层，因此 GraphWrite 示例为：
 
 ```powershell
 bh tools templates families --workflow preview_execute --format json
@@ -57,15 +65,15 @@ Use these recipes to choose the composer path. The recipe selects the scaffold; 
 
 | Scenario | Discovery path | Compose template |
 |---|---|---|
-| Ensure member variable | `family=blueprint_variables`, `write-mode=variables.edit`, `cluster=variables`, `operation=ensure_member_variable` | `blueprint_variables.variables.ensure_member_variable` |
-| Configure member variable | `family=blueprint_variables`, `write-mode=variables.edit`, `cluster=variables`, `operation=configure_member_variable` | `blueprint_variables.variables.configure_member_variable` |
+| Ensure member variable | `family=blueprint_variables`, `cluster=variables`, `operation=ensure_member_variable` | `blueprint_variables.variables.ensure_member_variable` |
+| Configure member variable | `family=blueprint_variables`, `cluster=variables`, `operation=configure_member_variable` | `blueprint_variables.variables.configure_member_variable` |
 | Replace external graph body | `family=graph_write`, `write-mode=graph.replace`, `cluster=external_body`, `operation=replace_body` | `external_body.replace_body.body(<statement>)` |
 | Set variable in graph body | `family=graph_write`, `write-mode=graph.append`, `cluster=generic_ops`, `operation=set_variable` | `generic_ops.set_variable.default(<expression>)` |
 | Branch in graph body | `family=graph_write`, `write-mode=graph.append`, `cluster=generic_ops`, `operation=branch` | `generic_ops.branch.default(<condition_expression>)` |
-| Remove signature | `family=blueprint_signature`, `write-mode=signature.edit`, `cluster=signature`, `operation=remove_signature` | `blueprint_signature.signature.remove_signature` |
-| Ensure override event | `family=blueprint_signature`, `write-mode=signature.edit`, `cluster=signature`, `operation=ensure_override_event` | `blueprint_signature.signature.ensure_override_event` |
-| Append Material graph block | `family=material_graph`, `write-mode=material.graph`, `cluster=material_graph`, `operation=append_block` | `material_graph.material_graph.append_block` |
-| Replace Material graph block | `family=material_graph`, `write-mode=material.graph`, `cluster=material_graph`, `operation=replace_block` | `material_graph.material_graph.replace_block` |
+| Remove signature | `family=blueprint_signature`, `cluster=signature`, `operation=remove_signature` | `blueprint_signature.signature.remove_signature` |
+| Ensure override event | `family=blueprint_signature`, `cluster=signature`, `operation=ensure_override_event` | `blueprint_signature.signature.ensure_override_event` |
+| Append Material graph block | `family=material_graph`, `cluster=material_graph`, `operation=append_block` | `material_graph.material_graph.append_block` |
+| Replace Material graph block | `family=material_graph`, `cluster=material_graph`, `operation=replace_block` | `material_graph.material_graph.replace_block` |
 
 For Material graph recipes, do not use K2 `graph_statement_*` or `graph_expression_*` template semantics. Material graph has its own `material_graph` family and Material-specific placeholders.
 

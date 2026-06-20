@@ -1,4 +1,10 @@
-import { failureResult, normalizeToolResult, successRead, type ToolResultBase } from '../../../result/tool-result.js';
+import {
+  failureResult,
+  normalizeToolResult,
+  successRead,
+  type ToolResultBase,
+  type ToolResultError,
+} from '../../../result/tool-result.js';
 import {
   addTaskTimingMarker,
   addNestedTaskTiming,
@@ -8,7 +14,7 @@ import {
   measureTaskTimingAsync,
 } from '../../../task/service/task-timing.js';
 import type { BlueprintHelperToolContext } from '../../types.js';
-import { extractBridgePayload } from '../bridge-tool-result-utils.js';
+import { extractBridgePayload, isRecord } from '../bridge-tool-result-utils.js';
 import { buildReadContextBridgeRequest } from './read-context-route-builder.js';
 import { buildReadContextTarget } from './read-context-target.js';
 import {
@@ -40,6 +46,12 @@ export async function executeReadContext(
       message: request.message,
       retryable: false,
       rollback_result: 'not_needed',
+      ...(request.category ? { category: request.category } : {}),
+      ...(request.safe_next_action ? { safe_next_action: request.safe_next_action } : {}),
+      ...(request.suggested_route ? { suggested_route: request.suggested_route } : {}),
+      ...(request.suggested_read_type ? { suggested_read_type: request.suggested_read_type } : {}),
+      ...(request.blocked_boundary ? { blocked_boundary: request.blocked_boundary } : {}),
+      ...(request.blocked_boundary_detail ? { blocked_boundary_detail: request.blocked_boundary_detail } : {}),
     }, buildReadContextTarget(input) as never);
   }
 
@@ -56,12 +68,14 @@ export async function executeReadContext(
   addNestedTaskTiming(timing, `bridge.${request.command}`, extractBridgeTransportTiming(response));
   addNestedTaskTiming(timing, `ue.${request.command}`, extractBridgeTiming(response.result));
   if (!response.success) {
+    const bridgeError = extractBridgeToolError(response.result);
     return normalizeToolResult(response, 'read_context', {
       target: buildReadContextTarget(input),
       error: {
-        code: response.error_code ?? 'read_context_bridge_error',
-        stage: 'bridge',
-        message: response.message ?? `${request.command} failed.`,
+        code: bridgeError.code ?? response.error_code ?? 'read_context_bridge_error',
+        stage: bridgeError.stage ?? 'bridge',
+        message: bridgeError.message ?? response.message ?? `${request.command} failed.`,
+        ...bridgeError,
       },
     });
   }
@@ -99,6 +113,44 @@ function withReadTimingPayload(
   context: BlueprintHelperToolContext,
 ): Record<string, unknown> {
   return context.timing ? { ...payload, include_timing: true } : payload;
+}
+
+function extractBridgeToolError(result: unknown): Partial<ToolResultError> {
+  if (!isRecord(result) || !isRecord(result['error'])) {
+    return {};
+  }
+  const error = result['error'];
+  const metadata: Partial<ToolResultError> = {};
+  for (const key of [
+    'code',
+    'stage',
+    'message',
+    'category',
+    'safe_next_action',
+    'suggested_route',
+    'suggested_read_type',
+    'blocked_boundary',
+    'blocked_boundary_detail',
+  ] as const) {
+    const value = error[key];
+    if (typeof value === 'string') {
+      (metadata as Record<string, string>)[key] = value;
+    }
+  }
+  const retryable = error['retryable'];
+  if (typeof retryable === 'boolean') {
+    metadata.retryable = retryable;
+  }
+  const rollbackResult = error['rollback_result'];
+  if (
+    rollbackResult === 'not_needed'
+    || rollbackResult === 'rolled_back'
+    || rollbackResult === 'rollback_failed'
+    || rollbackResult === 'unavailable'
+  ) {
+    metadata.rollback_result = rollbackResult;
+  }
+  return metadata;
 }
 
 function buildReadPayloadWithTiming(

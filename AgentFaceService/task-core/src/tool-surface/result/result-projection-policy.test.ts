@@ -246,6 +246,18 @@ test('projectToolResultForCli keeps actionable error fields for agents', () => {
         retryable: false,
         rollback_result: 'not_needed',
         safe_next_action: 'Run ReadContext asset discovery and retry with an existing asset path.',
+        suggested_route: {
+          route_id: 'blueprint_class_settings.class_default',
+          family: 'blueprint_class_settings',
+          operation_id: 'set_class_default',
+          task_type: 'edit_blueprint_class_settings',
+          property_path_hint: 'WeaponComponent.PrimaryWeapon',
+        },
+        blocked_boundary: {
+          boundary_id: 'component_tree_owned_scs_only',
+          origin: 'native',
+          blocked_operation: 'set_component_properties',
+        },
       },
     } as unknown as ToolResultBase,
     policy: GENERIC_RESULT_PROJECTION_POLICY,
@@ -256,6 +268,18 @@ test('projectToolResultForCli keeps actionable error fields for agents', () => {
   assert.equal(error['stage'], 'resolve_target');
   assert.equal(error['message'], 'Target Blueprint was not found.');
   assert.equal(error['safe_next_action'], 'Run ReadContext asset discovery and retry with an existing asset path.');
+  assert.deepEqual(error['suggested_route'], {
+    route_id: 'blueprint_class_settings.class_default',
+    family: 'blueprint_class_settings',
+    operation_id: 'set_class_default',
+    task_type: 'edit_blueprint_class_settings',
+    property_path_hint: 'WeaponComponent.PrimaryWeapon',
+  });
+  assert.deepEqual(error['blocked_boundary'], {
+    boundary_id: 'component_tree_owned_scs_only',
+    origin: 'native',
+    blocked_operation: 'set_component_properties',
+  });
   assert.equal(JSON.stringify(projected).includes('trace_projection_error_contract'), false);
 });
 

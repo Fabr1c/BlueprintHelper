@@ -13,7 +13,7 @@
 
 Preview is the write gate for every S1-S3 write. If preview returns `preview_blocked`, `context_required`, `context_stale`, or `failed`, do not execute; either repair the TaskSpec, refresh context, or stop and report.
 
-TaskSpec writes should be generated through the TaskSpec Template Composer four-layer index before preview:
+TaskSpec writes should be generated through the TaskSpec Template Composer before preview. Start from `families`, then follow the returned family-owned `navigation.levels` instead of assuming every family has a write-mode layer:
 
 ```powershell
 bh tools templates families --workflow preview_execute --format json
@@ -25,7 +25,7 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
 
-Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`.
+Do not use old tool-id template dispatch or template-directory scans as the safety entry. For GraphWrite, `quick-access.items[].slot_type` separates statement roots from nested expressions; `quick-access.items[].arg_slots` is the positional order for `template_id(...)`. For non-GraphWrite families, discover the leaf template id through family navigation and compose with `bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json`.
 
 Composer output is a temporary TaskSpec scaffold, not the final write input, but TaskSpec structure must be composed before placeholder edits. Only replace `__REQUIRED_*__` placeholders and fill concrete context-read evidence, selected anchors, target asset data, and the user's intent before preview. Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails or when the capability is unsupported by the template system; record the failed command, diagnostics, source shape, and validation outcome.
 

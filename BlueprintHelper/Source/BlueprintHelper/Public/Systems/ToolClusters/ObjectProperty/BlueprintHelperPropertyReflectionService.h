@@ -37,7 +37,15 @@ struct BLUEPRINTHELPER_API FBlueprintHelperObjectPropertyInfo
 struct BLUEPRINTHELPER_API FBlueprintHelperObjectPropertiesResult
 {
 	bool bSuccess = false;
+	bool bRouteMismatch = false;
 	FString ErrorMessage;
+	FString ErrorCode;
+	FString ErrorCategory;
+	FString SafeNextAction;
+	FString SuggestedRoute;
+	FString SuggestedReadType;
+	FString BlockedBoundary;
+	FString BlockedBoundaryDetail;
 	/** 对象类名。 */
 	FString ClassName;
 	/** 资产路径。 */
@@ -141,6 +149,10 @@ class BLUEPRINTHELPER_API FBlueprintHelperPropertyReflectionService
 public:
 	/** 获取资产的所有可编辑属性。 */
 	FBlueprintHelperObjectPropertiesResult GetObjectProperties(const FString& AssetPath) const;
+
+	FBlueprintHelperObjectPropertiesResult GetObjectProperties(
+		const FString& AssetPath,
+		const FString& PropertyPath) const;
 
 	/** 设置资产的单个属性值。 */
 	FBlueprintHelperSetPropertyResult SetObjectProperty(

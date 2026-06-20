@@ -26,6 +26,10 @@
       "types": "./build/metrics/*.d.ts",
       "import": "./build/metrics/*.js"
     },
+    "./execution-receipt/*": {
+      "types": "./build/execution-receipt/*.d.ts",
+      "import": "./build/execution-receipt/*.js"
+    },
     "./tool-surface/*": {
       "types": "./build/tool-surface/*.d.ts",
       "import": "./build/tool-surface/*.js"

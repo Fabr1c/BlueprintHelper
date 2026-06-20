@@ -126,6 +126,89 @@ test('classifyMetricsError maps expanded parameter error codes', () => {
   }
 });
 
+test('classifyMetricsError treats component route mismatch with suggested route as parameter error', () => {
+  const result = classifyMetricsError({
+    ok: false,
+    error: {
+      code: 'component_not_owned_scs',
+      suggested_route: {
+        route_id: 'blueprint_class_settings.class_default',
+        task_type: 'edit_blueprint_class_settings',
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    category: 'parameter_error',
+    code: 'component_not_owned_scs',
+    detail_kind: 'route_mismatch_with_suggested_route',
+  });
+});
+
+test('classifyMetricsError treats component owned-SCS boundary without suggested route as capability boundary', () => {
+  const result = classifyMetricsError({
+    issue_code: 'component_not_owned_scs',
+    blocked_boundary: {
+      boundary_id: 'component_tree_owned_scs_only',
+      origin: 'native',
+      blocked_operation: 'rename_component',
+    },
+  });
+
+  assert.deepEqual(result, {
+    category: 'capability_boundary',
+    code: 'component_not_owned_scs',
+    detail_kind: 'component_tree_safety_boundary',
+  });
+});
+
+test('classifyMetricsError leaves bare component_not_owned_scs unknown', () => {
+  const result = classifyMetricsError({
+    issue_code: 'component_not_owned_scs',
+  });
+
+  assert.deepEqual(result, {
+    category: 'unknown',
+    code: 'component_not_owned_scs',
+  });
+});
+
+test('classifyMetricsError treats suggested route property failures as parameter errors', () => {
+  for (const code of [
+    'class_default_property_not_writable',
+    'class_default_property_not_found',
+    'type_mismatch',
+  ]) {
+    const result = classifyMetricsError({
+      issue_code: code,
+      suggested_route: {
+        route_id: 'blueprint_class_settings.class_default',
+      },
+    });
+
+    assert.deepEqual(result, {
+      category: 'parameter_error',
+      code,
+      detail_kind: 'suggested_route_property_failure',
+    });
+  }
+});
+
+test('classifyMetricsError treats class-default task type property failures as parameter errors', () => {
+  const result = classifyMetricsError({
+    issue_code: 'type_mismatch',
+    suggested_route: {
+      task_type: 'edit_blueprint_class_settings',
+    },
+  });
+
+  assert.deepEqual(result, {
+    category: 'parameter_error',
+    code: 'type_mismatch',
+    detail_kind: 'suggested_route_property_failure',
+  });
+});
+
 test('classifyMetricsError reads nested ToolResultBase error shapes', () => {
   const result = classifyMetricsError({
     ok: false,

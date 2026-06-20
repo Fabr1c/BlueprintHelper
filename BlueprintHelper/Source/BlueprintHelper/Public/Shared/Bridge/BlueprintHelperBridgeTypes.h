@@ -5,6 +5,21 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 
+inline const TCHAR* BlueprintHelperBridgeResponseSchema()
+{
+	return TEXT("BlueprintHelper.BridgeResponse.v1");
+}
+
+inline const TCHAR* BlueprintHelperBridgeInvalidRequestId()
+{
+	return TEXT("invalid_request");
+}
+
+inline FString BlueprintHelperBridgeNormalizeResponseRequestId(const FString& InRequestId)
+{
+	return InRequestId.IsEmpty() ? FString(BlueprintHelperBridgeInvalidRequestId()) : InRequestId;
+}
+
 enum class EBlueprintHelperBridgeError : uint8
 {
 	None,
@@ -60,7 +75,7 @@ struct FBlueprintHelperBridgeResponse
 	static FBlueprintHelperBridgeResponse Success(const FString& InRequestId, const FString& InMessage = TEXT(""))
 	{
 		FBlueprintHelperBridgeResponse Resp;
-		Resp.RequestId = InRequestId;
+		Resp.RequestId = BlueprintHelperBridgeNormalizeResponseRequestId(InRequestId);
 		Resp.bSuccess = true;
 		Resp.Message = InMessage;
 		return Resp;
@@ -72,7 +87,7 @@ struct FBlueprintHelperBridgeResponse
 		const FString& InMessage)
 	{
 		FBlueprintHelperBridgeResponse Resp;
-		Resp.RequestId = InRequestId;
+		Resp.RequestId = BlueprintHelperBridgeNormalizeResponseRequestId(InRequestId);
 		Resp.bSuccess = false;
 		Resp.ErrorCode = InError;
 		Resp.Message = InMessage;

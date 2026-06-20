@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getNonGraphWriteTemplateFamily } from './non-graphwrite-template-metadata.js';
+import { getGraphWriteBaseTemplatePathForWriteMode } from './graphwrite-template-metadata.js';
 import { readJsonFile } from '../../json/json-input.js';
 import { composeSlotExpressionTemplate } from './slot-expression-composer.js';
 import {
@@ -35,13 +36,31 @@ export {
 };
 
 export function composeTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+  if (input.templateId) {
+    if (input.family || input.writeMode || (input.templateIds ?? []).length > 0) {
+      return failed(input, [{
+        code: 'compose_mode_conflict',
+        family: input.family,
+        write_mode: input.writeMode,
+        template_id: input.templateId,
+        message: 'Choose exactly one TaskSpec compose mode: --template <leaf_template_id> for non-GraphWrite, or --family graph_write --write-mode <mode> --templates <slot_expr[,slot_expr...]> for GraphWrite.',
+        safe_next_action: 'choose_single_compose_mode',
+        suggested_route: 'tools.templates.compose',
+      }]);
+    }
+    return composeLeafTaskSpecTemplate(input);
+  }
   if (input.family === 'graph_write') {
     return composeGraphWriteTaskSpecTemplate(input);
+  }
+  if (input.family) {
+    return composeNonGraphWriteTaskSpecTemplate(input);
   }
   return composeNonGraphWriteTaskSpecTemplate(input);
 }
 
 function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+  const family = input.family ?? '';
   const writeMode = input.writeMode;
   const writeModeItem = listTaskSpecTemplateWriteModes({ family: 'graph_write' })
     .items
@@ -49,7 +68,7 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
   if (!writeModeItem || !isGraphWriteTemplateWriteMode(writeMode)) {
     return failed(input, [{
       code: 'unsupported_write_mode',
-      family: input.family,
+      family,
       write_mode: writeMode,
       message: taskSpecTemplateIndexGuidance(`Unsupported GraphWrite template write mode: ${writeMode}`),
     }]);
@@ -73,7 +92,7 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
   const diagnostics: TaskSpecTemplateDiagnostic[] = [];
   const statements: unknown[] = [];
   const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
-  for (const templateId of input.templateIds) {
+  for (const templateId of input.templateIds ?? []) {
     const composed = composeSlotExpressionTemplate({
       expression: templateId,
       writeMode,
@@ -82,7 +101,7 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
     if (!composed.ok) {
       diagnostics.push(...composed.diagnostics.map((diagnostic) => ({
         ...diagnostic,
-        family: input.family,
+        family,
         write_mode: writeMode,
       })));
       continue;
@@ -94,14 +113,14 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
     return failed(input, diagnostics);
   }
 
-  const taskSpec = readJson(pluginPath(writeModeItem.base_template_path)) as Record<string, unknown>;
+  const taskSpec = readJson(pluginPath(getGraphWriteBaseTemplatePathForWriteMode(writeMode))) as Record<string, unknown>;
   if (writeMode !== 'graph.patch') {
     const target = getGraphWriteStatementTarget(taskSpec, writeMode);
     target.length = 0;
     target.push(...statements);
   }
   writeJson(input.outputPath, taskSpec);
-  return ok(input, taskSpec);
+  return ok(input, taskSpec, { family: 'graph_write', writeMode });
 }
 
 function composeGraphWriteRouteTaskSpecTemplate(
@@ -145,7 +164,7 @@ function composeGraphWriteRouteTaskSpecTemplate(
     return failed(input, diagnostics);
   }
   writeJson(input.outputPath, taskSpec);
-  return ok(input, taskSpec);
+  return ok(input, taskSpec, { family: 'graph_write', writeMode });
 }
 
 function applyRouteSpecificDefaults(taskSpec: Record<string, unknown>, routeId: string): void {
@@ -185,7 +204,7 @@ function findRouteRoot(
 ) {
   const routeItems = quickAccessCatalog.filter((item) => item.slot_type === 'route' && item.write_mode === writeMode);
   const routeRoots: Array<{ item: TaskSpecTemplateQuickAccessItem; node: SlotExpressionNode }> = [];
-  for (const templateExpression of input.templateIds) {
+  for (const templateExpression of input.templateIds ?? []) {
     let node: SlotExpressionNode;
     try {
       node = parseSlotExpression(templateExpression);
@@ -201,7 +220,7 @@ function findRouteRoot(
   if (routeRoots.length === 0) {
     return { status: 'none' };
   }
-  if (routeRoots.length > 1 || input.templateIds.length !== 1) {
+  if (routeRoots.length > 1 || (input.templateIds ?? []).length !== 1) {
     return {
       status: 'failed',
       diagnostics: [{
@@ -216,6 +235,14 @@ function findRouteRoot(
 }
 
 function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+  if (!input.family) {
+    return failed(input, [{
+      code: 'missing_template_id',
+      message: 'Missing leaf template id. Use bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json.',
+      safe_next_action: 'use_leaf_template_compose',
+      suggested_route: 'tools.templates.compose.template',
+    }]);
+  }
   const family = getNonGraphWriteTemplateFamily(input.family);
   if (!family) {
     return failed(input, [{
@@ -225,7 +252,7 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       message: taskSpecTemplateIndexGuidance(`Unsupported TaskSpec template family: ${input.family}`),
     }]);
   }
-  if (family.status !== 'supported' || !family.write_mode) {
+  if (family.status !== 'supported') {
     return failed(input, [{
       code: 'family_not_composable',
       family: input.family,
@@ -233,65 +260,84 @@ function composeNonGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInpu
       message: taskSpecTemplateIndexGuidance(family.blocked_until?.join('; ') ?? `TaskSpec template family is not composable: ${input.family}`),
     }]);
   }
-  if (family.write_mode !== input.writeMode) {
+  return failed(input, [{
+    code: 'compose_mode_not_supported',
+    family: input.family,
+    write_mode: input.writeMode,
+    message: 'Non-GraphWrite TaskSpec templates must be composed with --template <leaf_template_id>.',
+    safe_next_action: 'use_leaf_template_compose',
+    suggested_route: 'tools.templates.compose.template',
+  }]);
+}
+
+function composeLeafTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+  const templateId = input.templateId ?? '';
+  const selection = findNonGraphWriteLeafTemplate(templateId);
+  if (!selection) {
     return failed(input, [{
-      code: 'unsupported_write_mode',
-      family: input.family,
-      write_mode: input.writeMode,
-      message: taskSpecTemplateIndexGuidance(`Unsupported write mode ${input.writeMode} for family ${input.family}`),
+      code: 'unknown_template_id',
+      template_id: templateId,
+      message: taskSpecTemplateIndexGuidance(`Unknown TaskSpec leaf template id: ${templateId}`),
+      safe_next_action: 'run_family_defined_template_discovery',
+      suggested_route: 'bh tools templates families --workflow preview_execute --format json',
     }]);
   }
-  if (input.templateIds.length > 0) {
-    const taskSpec = readJson(pluginPath(family.base_template_path)) as Record<string, unknown>;
-    const diagnostics: TaskSpecTemplateDiagnostic[] = [];
-    const quickAccessCatalog = listNonGraphWriteQuickAccessCatalog(input.family, input.writeMode);
-    const items: TaskSpecTemplateQuickAccessItem[] = [];
-    for (const templateId of input.templateIds) {
-      const item = quickAccessCatalog.find((candidate) => candidate.template_id === templateId);
-      if (!item) {
-        diagnostics.push({
-          code: 'unknown_quick_access_template',
-          family: input.family,
-          write_mode: input.writeMode,
-          template_id: templateId,
-          message: taskSpecTemplateIndexGuidance(`Unknown quick-access template id: ${templateId}`),
-        });
-        continue;
-      }
-      items.push(item);
-    }
-    if (items.some((item) => item.insert_paths.length > 0)) {
-      clearInsertTargets(taskSpec, family.insert_targets);
-    }
-    for (const item of items) {
-      const fragment = readNonGraphWriteQuickAccessFragment(item);
-      for (const insertPath of item.insert_paths) {
-        insertTemplateFragment(taskSpec, insertPath, fragment);
-      }
-    }
-    syncNonGraphWriteStrategyFromItems(taskSpec, family.family, items);
-    if (diagnostics.length > 0) {
-      return failed(input, diagnostics);
-    }
-    writeJson(input.outputPath, taskSpec);
-    return ok(input, taskSpec);
+
+  const rootTemplate = readNonGraphWriteRootTaskSpecSelection(
+    { ...input, family: selection.family.family },
+    selection.family.task_type,
+    [selection.item],
+  );
+  if (rootTemplate.status === 'failed') {
+    return failed(input, rootTemplate.diagnostics);
+  }
+  if (rootTemplate.status === 'root') {
+    writeJson(input.outputPath, rootTemplate.template);
+    return ok(input, rootTemplate.template, { family: selection.family.family });
   }
 
-  const taskSpec = readJson(pluginPath(family.base_template_path));
+  const taskSpec = readJson(pluginPath(selection.family.internal_scaffold_template_path)) as Record<string, unknown>;
+  if (selection.item.insert_paths.length > 0) {
+    clearInsertTargets(taskSpec, selection.family.insert_targets);
+  }
+  const fragment = readNonGraphWriteQuickAccessFragment(selection.item);
+  for (const insertPath of selection.item.insert_paths) {
+    insertTemplateFragment(taskSpec, insertPath, fragment);
+  }
+  syncNonGraphWriteStrategyFromItems(taskSpec, selection.family.family, [selection.item]);
   writeJson(input.outputPath, taskSpec);
-  return ok(input, taskSpec);
+  return ok(input, taskSpec, { family: selection.family.family });
+}
+
+function findNonGraphWriteLeafTemplate(templateId: string): {
+  family: NonNullable<ReturnType<typeof getNonGraphWriteTemplateFamily>>;
+  item: TaskSpecTemplateQuickAccessItem;
+} | undefined {
+  for (const family of listTaskSpecTemplateFamilies({ workflow: 'preview_execute' }).items) {
+    if (family.family === 'graph_write') {
+      continue;
+    }
+    const familyMetadata = getNonGraphWriteTemplateFamily(family.family);
+    if (!familyMetadata) {
+      continue;
+    }
+    const item = listNonGraphWriteQuickAccessCatalog(family.family)
+      .find((candidate) => candidate.template_id === templateId);
+    if (item) {
+      return { family: familyMetadata, item };
+    }
+  }
+  return undefined;
 }
 
 function listNonGraphWriteQuickAccessCatalog(
   family: string,
-  writeMode: string,
 ): TaskSpecTemplateQuickAccessItem[] {
   const byTemplateId = new Map<string, TaskSpecTemplateQuickAccessItem>();
   for (const item of listTaskSpecTemplateQuickAccess({
     family,
     cluster: '',
     operation: '',
-    writeMode,
   }).items) {
     byTemplateId.set(item.template_id, item);
   }
@@ -300,12 +346,53 @@ function listNonGraphWriteQuickAccessCatalog(
       family,
       cluster: cluster.cluster_id,
       operation: '',
-      writeMode,
     }).items) {
       byTemplateId.set(item.template_id, item);
     }
   }
   return [...byTemplateId.values()];
+}
+
+type NonGraphWriteRootTaskSpecSelection =
+  | { readonly status: 'none' }
+  | { readonly status: 'root'; readonly template: Record<string, unknown> }
+  | { readonly status: 'failed'; readonly diagnostics: TaskSpecTemplateDiagnostic[] };
+
+function readNonGraphWriteRootTaskSpecSelection(
+  input: ComposeTaskSpecTemplateInput,
+  taskType: string,
+  items: readonly TaskSpecTemplateQuickAccessItem[],
+): NonGraphWriteRootTaskSpecSelection {
+  const roots: Array<{ readonly item: TaskSpecTemplateQuickAccessItem; readonly template: Record<string, unknown> }> = [];
+  for (const item of items) {
+    const insertPath = item.insert_paths[0] ?? '';
+    if (item.insert_paths.length !== 1 || insertPath.endsWith('[]')) {
+      continue;
+    }
+    const template = readJson(pluginPath(item.template_path));
+    if (isTaskSpecRootTemplate(template, taskType)) {
+      roots.push({ item, template });
+    }
+  }
+  if (roots.length === 0) {
+    return { status: 'none' };
+  }
+  if (roots.length !== 1 || items.length !== 1) {
+    return {
+      status: 'failed',
+      diagnostics: [{
+        code: 'root_template_must_be_single_root',
+        family: input.family,
+        write_mode: input.writeMode,
+        message: 'Root TaskSpec templates must be the only top-level compose expression.',
+      }],
+    };
+  }
+  const root = roots[0];
+  if (!root) {
+    return { status: 'none' };
+  }
+  return { status: 'root', template: root.template };
 }
 
 function readNonGraphWriteQuickAccessFragment(item: TaskSpecTemplateQuickAccessItem): unknown {
@@ -318,7 +405,31 @@ function readNonGraphWriteQuickAccessFragment(item: TaskSpecTemplateQuickAccessI
     }
     return fragment;
   }
-  return readJson(pluginPath(item.template_path));
+  const fragment = readJson(pluginPath(item.template_path));
+  if (item.insert_paths.length === 1) {
+    return extractFragmentFromFullTaskSpecTemplate(fragment, item.insert_paths[0] ?? '');
+  }
+  return fragment;
+}
+
+function isTaskSpecRootTemplate(template: unknown, taskType: string): template is Record<string, unknown> {
+  if (!template || typeof template !== 'object' || Array.isArray(template)) {
+    return false;
+  }
+  const record = template as Record<string, unknown>;
+  return record['schema'] === 'BlueprintHelper.TaskSpec.v1' && record['task_type'] === taskType;
+}
+
+function extractFragmentFromFullTaskSpecTemplate(template: unknown, insertPath: string): unknown {
+  if (!template || typeof template !== 'object' || Array.isArray(template)) {
+    return template;
+  }
+  const record = template as Record<string, unknown>;
+  if (record['schema'] !== 'BlueprintHelper.TaskSpec.v1' || typeof record['task_type'] !== 'string') {
+    return template;
+  }
+  const value = getPathValue(record, insertPath.endsWith('[]') ? insertPath.slice(0, -2) : insertPath);
+  return value === undefined ? template : value;
 }
 
 function syncNonGraphWriteStrategyFromItems(
@@ -396,13 +507,17 @@ function getGraphWriteStatementTarget(taskSpec: Record<string, unknown>, writeMo
   return requireArray(behavior['patches'], 'behavior.patches');
 }
 
-function ok(input: ComposeTaskSpecTemplateInput, taskSpec: unknown): TaskSpecTemplateCompositionResult {
+function ok(
+  input: ComposeTaskSpecTemplateInput,
+  taskSpec: unknown,
+  context: { family: string; writeMode?: string },
+): TaskSpecTemplateCompositionResult {
   const outputPath = normalizePath(path.resolve(input.outputPath));
   return {
     schema: 'BlueprintHelper.TaskSpecTemplateComposition.v1',
     status: 'ok',
-    family: input.family,
-    write_mode: input.writeMode,
+    family: context.family,
+    ...(context.writeMode ? { write_mode: context.writeMode } : {}),
     output_path: outputPath,
     required_placeholders: collectRequiredPlaceholders(taskSpec),
     next: {
@@ -543,6 +658,26 @@ function setPathValue(root: Record<string, unknown>, pathExpression: string, val
   parent.record[parent.key] = value;
 }
 
+function getPathValue(root: Record<string, unknown>, pathExpression: string): unknown {
+  const parts = parseTemplatePath(pathExpression);
+  let cursor: unknown = root;
+  for (const part of parts) {
+    if (!cursor || typeof cursor !== 'object') {
+      return undefined;
+    }
+    if (Array.isArray(cursor)) {
+      const index = Number(part.key);
+      if (!Number.isInteger(index)) {
+        return undefined;
+      }
+      cursor = cursor[index];
+      continue;
+    }
+    cursor = (cursor as Record<string, unknown>)[part.key];
+  }
+  return cursor;
+}
+
 function deletePath(root: Record<string, unknown>, pathExpression: string): void {
   const parent = resolvePathParent(root, pathExpression);
   if (parent) {
@@ -636,7 +771,7 @@ function resolveTemplatePathSegment(
     : undefined;
 }
 
-function isGraphWriteTemplateWriteMode(value: string): value is GraphWriteTemplateWriteMode {
+function isGraphWriteTemplateWriteMode(value: unknown): value is GraphWriteTemplateWriteMode {
   return value === 'graph.append'
     || value === 'graph.replace'
     || value === 'graph.merge'
@@ -652,9 +787,8 @@ function taskSpecTemplateIndexGuidance(message: string): string {
     message,
     'Re-run indexed discovery before reporting capability_missing:',
     'bh tools templates families --workflow preview_execute --format json',
-    'bh tools templates write-modes --family <family> --format json',
-    'bh tools templates clusters --family <family> --format json',
-    'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
-    'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
+    'follow family.navigation.levels from the families output',
+    'non-GraphWrite compose: bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json',
+    'GraphWrite compose: bh tools templates compose --family graph_write --write-mode <mode> --templates <slot_expr[,slot_expr...]> --out <task-spec.json> --format json',
   ].join(' ');
 }

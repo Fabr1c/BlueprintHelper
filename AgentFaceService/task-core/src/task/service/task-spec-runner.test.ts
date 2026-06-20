@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
+import { BRIDGE_RESPONSE_SCHEMA } from '../../bridge/bridge-response-schema.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 import type { MetricsEvent } from '../../metrics/metrics-types.js';
 import { TOOL_RESULT_SCHEMA } from '../../result/tool-result.js';
@@ -16,6 +17,7 @@ import { TaskTimingTrace } from './task-timing.js';
 import { createTaskSpecRunner, type TaskRunnerBridge } from './task-spec-runner.js';
 
 const previewBridgeResponse: BridgeResponse = {
+  schema: BRIDGE_RESPONSE_SCHEMA,
   success: true,
   request_id: 'preview_cache_test_request',
   result: {
@@ -147,6 +149,7 @@ function createSignatureMismatchPreviewStep() {
 
 function createSignatureMismatchPreviewBridgeResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_signature_mismatch_request',
     result: {
@@ -271,6 +274,7 @@ test('preview task reports TaskSpec compile failures as structured preview block
 
 test('preview task fails when a UE preview step failed even if dry_run says can_execute', async () => {
   const failedStepPreviewBridgeResponse: BridgeResponse = {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_failed_step_request',
     result: {
@@ -333,6 +337,7 @@ test('preview task fails when a UE preview step failed even if dry_run says can_
 
 test('preview task deduplicates mirrored failed preview step issues', async () => {
   const mirroredFailedStepPreviewBridgeResponse: BridgeResponse = {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_mirrored_failed_step_request',
     result: {
@@ -374,6 +379,7 @@ test('preview task deduplicates mirrored failed preview step issues', async () =
 
 test('preview task preserves dry run issues while deduplicating failed preview steps', async () => {
   const dryRunAndFailedStepPreviewBridgeResponse: BridgeResponse = {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_dry_run_issues_failed_step_request',
     result: {
@@ -445,6 +451,7 @@ test('preview task preserves candidate assistance data from failed preview steps
     },
   ];
   const candidatePreviewBridgeResponse: BridgeResponse = {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_candidate_assistance_request',
     result: {
@@ -563,6 +570,7 @@ test('preview task preserves review baseline dirty recovery fields from result e
     async sendCommand(command) {
       assert.equal(command, 'preview_task_plan');
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         success: false,
         request_id: 'preview_dirty_baseline_request',
         error_code: 'execution_failed',
@@ -639,6 +647,7 @@ test('execute task auto-checks out before write when source-control checkout is 
       }
       if (command === 'source_control_status') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'source_control_status_checkout_required',
           result: {
@@ -793,6 +802,7 @@ test('execute task with preview token preserves context_stale refresh action', a
       }
       if (command === 'execute_task_plan') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: false,
           request_id: 'context_stale_request',
           error: {
@@ -838,6 +848,7 @@ test('execute task with preview token auto-checks out before write when source-c
       calls.push(command);
       if (command === 'source_control_status') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'source_control_status_preview_token_checkout_required',
           result: {
@@ -887,6 +898,7 @@ test('execute task with preview token preserves context_stale from failed UE Too
       }
       if (command === 'execute_task_plan') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'context_stale_tool_result_request',
           result: {
@@ -946,6 +958,7 @@ test('execute task with preview token preserves signature differences from faile
       }
       if (command === 'execute_task_plan') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'signature_mismatch_execute_tool_result_request',
           result: {
@@ -1001,6 +1014,75 @@ test('execute task with preview token preserves signature differences from faile
       actual: 'int',
     },
   ]);
+});
+
+test('execute task with preview token preserves suggested route and blocked boundary from failed UE ToolResult', async () => {
+  const suggestedRoute = {
+    route_id: 'blueprint_class_settings.class_default',
+    family: 'blueprint_class_settings',
+    operation_id: 'set_class_default',
+    task_type: 'edit_blueprint_class_settings',
+    property_path_hint: 'WeaponComponent.PrimaryWeapon',
+  };
+  const blockedBoundary = {
+    boundary_id: 'component_tree_owned_scs_only',
+    origin: 'native',
+    blocked_operation: 'set_component_properties',
+  };
+  const bridge: TaskRunnerBridge = {
+    async sendCommand(command) {
+      if (command === 'source_control_status') {
+        return editableSourceControlResponse(graphWriteAppendExpectedTaskPlanFixture.target_assets[0]);
+      }
+      if (command === 'execute_task_plan') {
+        return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
+          success: true,
+          request_id: 'component_route_hint_tool_result_request',
+          result: {
+            ok: false,
+            operation: 'set_component_properties',
+            status: 'failed',
+            modified: false,
+            error: {
+              code: 'component_not_owned_scs',
+              message: 'component mutation requires owned SCS component: WeaponComponent origin=native',
+              field: 'behavior.changes[0].properties',
+              retryable: false,
+            },
+            data: {
+              suggested_route: suggestedRoute,
+              blocked_boundary: blockedBoundary,
+            },
+          },
+        } as unknown as BridgeResponse;
+      }
+      throw new Error(`Unexpected command ${command}.`);
+    },
+  };
+
+  const runner = createTaskSpecRunner({
+    bridge,
+    taskCompiler: async () => createCompiledTaskPlan({
+      taskPlan: graphWriteAppendExpectedTaskPlanFixture,
+      strategyId: 'canonical_ts',
+    }),
+  });
+
+  const result = await runner.executeTask(
+    graphWriteAppendTaskSpecFixture,
+    undefined,
+    { previewToken: '0123456789abcdef0123456789abcdef' },
+  );
+  const errorRecord = result.error as unknown as Record<string, unknown>;
+  const issues = errorRecord['issues'] as Record<string, unknown>[];
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error?.code, 'component_not_owned_scs');
+  assert.deepEqual(errorRecord['suggested_route'], suggestedRoute);
+  assert.deepEqual(errorRecord['blocked_boundary'], blockedBoundary);
+  assert.deepEqual(issues[0]?.['suggested_route'], suggestedRoute);
+  assert.deepEqual(issues[0]?.['blocked_boundary'], blockedBoundary);
 });
 
 test('execute task classifies bridge request timeout as editor blocked recovery', async () => {
@@ -1156,6 +1238,7 @@ test('preview and execute ToolResult target uses TaskPlan target type for materi
       }
       if (command === 'execute_task_plan') {
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           success: true,
           request_id: 'execute_material_target_projection',
           result: {
@@ -1205,6 +1288,7 @@ test('preview and execute ToolResult target uses TaskPlan target type for materi
 
 function editableSourceControlResponse(assetPath = '/Game/Blueprints/BP_StoneGate'): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'source_control_status_editable',
     result: {
@@ -1218,6 +1302,7 @@ function editableSourceControlResponse(assetPath = '/Game/Blueprints/BP_StoneGat
 
 function executeBridgeResponse(): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'execute_metrics_test_request',
     result: {

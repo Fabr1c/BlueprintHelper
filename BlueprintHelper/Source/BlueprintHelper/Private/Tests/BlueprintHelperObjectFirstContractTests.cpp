@@ -322,6 +322,14 @@ bool FBlueprintHelperContractTaskPlanPayloadTest::RunTest(const FString& Paramet
 			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("get_task_run_journal"), Payload, Error));
 	}
 
+	{
+		TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+		Payload->SetStringField(TEXT("receipt_id"), TEXT("receipt_001"));
+
+		TestTrue(TEXT("get_execution_receipt accepts receipt_id"),
+			FBlueprintHelperRequestValidator::ValidatePayloadForCommand(TEXT("get_execution_receipt"), Payload, Error));
+	}
+
 	return true;
 }
 
@@ -338,6 +346,8 @@ bool FBlueprintHelperContractTaskPlanWriteBoundaryTest::RunTest(const FString& P
 		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("execute_task_plan")));
 	TestFalse(TEXT("get_task_run_journal is not a write command"),
 		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("get_task_run_journal")));
+	TestFalse(TEXT("get_execution_receipt is not a write command"),
+		FBlueprintHelperRequestValidator::IsWriteCommand(TEXT("get_execution_receipt")));
 
 	return true;
 }

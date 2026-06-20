@@ -39,6 +39,10 @@ FBlueprintHelperRequestValidationRegistry::GetRepresentativeDescriptors()
 				BlueprintHelperRequestValidationField(TEXT("task_spec_hash"), EBlueprintHelperRequestFieldType::String),
 			}),
 		BlueprintHelperRequestValidationDescriptor(
+			TEXT("get_execution_receipt"),
+			{BlueprintHelperRequestValidationField(TEXT("receipt_id"), EBlueprintHelperRequestFieldType::String)},
+			{}),
+		BlueprintHelperRequestValidationDescriptor(
 			TEXT("append_blueprint_graph"),
 			{
 				BlueprintHelperRequestValidationField(TEXT("target"), EBlueprintHelperRequestFieldType::Object),

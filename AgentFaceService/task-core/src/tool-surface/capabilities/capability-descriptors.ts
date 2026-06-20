@@ -60,7 +60,7 @@ export const CAPABILITY_DESCRIPTORS: readonly CapabilityDescriptor[] = [
     id: 'asset_factory.create',
     family: 'asset_factory',
     operation: 'create',
-    asset_kinds: ['blueprint', 'widget_blueprint', 'data_asset', 'data_table', 'structure', 'material'],
+    asset_kinds: ['data_asset', 'blueprint', 'widget_blueprint'],
     routing: taskRuntimeRouting(),
     preview: TASK_PREVIEW,
     runtime: { adapter_id: 'asset_factory_runtime_adapter', status: 'active' },

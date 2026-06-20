@@ -5,6 +5,10 @@
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/Character.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/AutomationTest.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
@@ -66,6 +70,26 @@ public:
 			*MakeObjectPropertyTestObjectName(Prefix)));
 		Package->SetDirtyFlag(false);
 		return Package;
+	}
+
+	static UBlueprint* MakeCharacterBlueprint(const FString& Prefix)
+	{
+		UPackage* Package = MakeObjectPropertyTestPackage(Prefix);
+		if (!Package)
+		{
+			return nullptr;
+		}
+
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			ACharacter::StaticClass(),
+			Package,
+			*MakeObjectPropertyTestObjectName(TEXT("BP_ObjectPropertyCharacter")),
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass(),
+			TEXT("BlueprintHelperTaskPlanObjectPropertyAdapterTests"));
+		Package->SetDirtyFlag(false);
+		return Blueprint;
 	}
 
 };
@@ -299,6 +323,34 @@ bool FBlueprintHelperObjectPropertyServiceDryRunRejectsInvalidValueTest::RunTest
 	TestTrue(TEXT("failed result still records dry-run"), Result.bDryRun);
 	TestEqual(TEXT("invalid dry-run does not change render opacity"), TextBlock->GetRenderOpacity(), 1.0f);
 	TestFalse(TEXT("invalid dry-run does not dirty package"), Package->IsDirty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperObjectPropertyServiceReadsBlueprintCdoNestedNativeComponentPropertyTest,
+	"BlueprintHelper.TaskPlan.ObjectPropertyAdapter.ServiceRead.BlueprintCdoNestedNativeComponentProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperObjectPropertyServiceReadsBlueprintCdoNestedNativeComponentPropertyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* Blueprint = FBlueprintHelperTaskPlanObjectPropertyAdapterTestsLocalUtils::MakeCharacterBlueprint(TEXT("BlueprintCdoRead"));
+	TestNotNull(TEXT("character blueprint is created"), Blueprint);
+	TestNotNull(TEXT("generated class exists"), Blueprint ? Blueprint->GeneratedClass.Get() : nullptr);
+
+	FBlueprintHelperPropertyReflectionService Service;
+	const FBlueprintHelperObjectPropertiesResult Result = Service.GetObjectProperties(
+		Blueprint->GetPathName(),
+		TEXT("CharacterMovement.MaxWalkSpeed"));
+
+	TestTrue(TEXT("targeted property read succeeds"), Result.bSuccess);
+	TestEqual(TEXT("targeted property count"), Result.Properties.Num(), 1);
+	if (Result.Properties.Num() == 1)
+	{
+		TestEqual(TEXT("property path is preserved"), Result.Properties[0].Name, FString(TEXT("CharacterMovement.MaxWalkSpeed")));
+		TestTrue(TEXT("property type is exported"), !Result.Properties[0].TypeName.IsEmpty());
+		TestTrue(TEXT("property value is exported"), !Result.Properties[0].Value.IsEmpty());
+	}
 
 	return true;
 }

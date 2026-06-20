@@ -73,6 +73,8 @@ public:
 		FString ErrorMessage;
 		bool bRetryable = false;
 		FString RollbackResult = TEXT("not_needed");
+		TOptional<FBlueprintHelperToolSuggestedRoute> SuggestedRoute;
+		TOptional<FBlueprintHelperToolBlockedBoundary> BlockedBoundary;
 	};
 
 	static EBlueprintHelperToolStage ComponentErrorStageFromString(const FString& Stage)
@@ -108,6 +110,8 @@ public:
 		Error.Message = State.ErrorMessage;
 		Error.bRetryable = State.bRetryable;
 		Error.RollbackResult = ComponentRollbackFromString(State.RollbackResult);
+		Error.SuggestedRoute = State.SuggestedRoute;
+		Error.BlockedBoundary = State.BlockedBoundary;
 		return Error;
 	}
 
@@ -235,6 +239,14 @@ public:
 		{
 			Data->SetObjectField(TEXT("dry_run"), MakeComponentDryRunJson(State));
 		}
+		if (State.SuggestedRoute.IsSet())
+		{
+			Data->SetObjectField(TEXT("suggested_route"), State.SuggestedRoute->ToJson());
+		}
+		if (State.BlockedBoundary.IsSet())
+		{
+			Data->SetObjectField(TEXT("blocked_boundary"), State.BlockedBoundary->ToJson());
+		}
 
 		return Data;
 	}
@@ -303,6 +315,51 @@ public:
 		return TEXT("unknown");
 	}
 
+	static void AddOwnedScsBlockedBoundaryHint(
+		FBlueprintHelperComponentOperationState& State,
+		const FBlueprintHelperComponentInfo& Info,
+		const FString& BlockedOperation)
+	{
+		FBlueprintHelperToolBlockedBoundary Boundary;
+		Boundary.BoundaryId = TEXT("component_tree_owned_scs_only");
+		Boundary.Origin = ComponentOriginFromFacts(Info);
+		Boundary.BlockedOperation = BlockedOperation;
+		State.BlockedBoundary = MoveTemp(Boundary);
+	}
+
+	static FBlueprintHelperToolSuggestedRoute MakeClassDefaultSuggestedRoute(
+		const FString& ComponentName,
+		const TArray<FBlueprintHelperComponentPropertySetting>& Settings)
+	{
+		FBlueprintHelperToolSuggestedRoute Route;
+		Route.RouteId = TEXT("blueprint_class_settings.class_default");
+		Route.Family = TEXT("blueprint_class_settings");
+		Route.WriteMode = TEXT("class_settings.edit");
+		Route.ClusterId = TEXT("class_settings");
+		Route.OperationId = TEXT("set_class_default");
+		Route.TemplateId = TEXT("blueprint_class_settings_class_default");
+		Route.TaskType = TEXT("edit_blueprint_class_settings");
+		Route.Reason = TEXT("native_component_default_property");
+		Route.AppliesWhen = TEXT("intent_is_default_property_write");
+
+		for (const FBlueprintHelperComponentPropertySetting& Setting : Settings)
+		{
+			const FString NormalizedPropertyPath = NormalizeComponentPropertyPath(Setting.PropertyPath);
+			if (NormalizedPropertyPath.IsEmpty())
+			{
+				continue;
+			}
+			Route.PropertyPathHints.Add(ComponentName.IsEmpty()
+				? NormalizedPropertyPath
+				: ComponentName + TEXT(".") + NormalizedPropertyPath);
+		}
+		if (Route.PropertyPathHints.Num() > 0)
+		{
+			Route.PropertyPathHint = Route.PropertyPathHints[0];
+		}
+		return Route;
+	}
+
 	static bool EnsureOwnedScsMutationAllowed(
 		const FBlueprintHelperComponentInfo& Info,
 		const FString& CapabilityField,
@@ -319,6 +376,7 @@ public:
 					*Info.ComponentName,
 					*ComponentOriginFromFacts(Info)));
 			State.Component = Info;
+			AddOwnedScsBlockedBoundaryHint(State, Info, State.Operation);
 			return false;
 		}
 
@@ -1188,6 +1246,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 			TEXT("owned_scs"),
 			Result))
 		{
+			Result.SuggestedRoute = FBlueprintHelperComponentServiceLocalUtils::MakeClassDefaultSuggestedRoute(
+				Request.ComponentName,
+				Request.Settings);
 			return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 		}
 
@@ -1202,6 +1263,9 @@ FBlueprintHelperToolResultBase FBlueprintHelperComponentService::SetComponentPro
 	Result.Component = FBlueprintHelperComponentFacts::BuildReadbackFact(*Blueprint, *Node);
 	if (!FBlueprintHelperComponentServiceLocalUtils::EnsureOwnedScsMutationAllowed(Result.Component, TEXT("owned_scs"), Result))
 	{
+		Result.SuggestedRoute = FBlueprintHelperComponentServiceLocalUtils::MakeClassDefaultSuggestedRoute(
+			Request.ComponentName,
+			Request.Settings);
 		return FBlueprintHelperComponentServiceLocalUtils::BuildComponentToolResult(Result);
 	}
 

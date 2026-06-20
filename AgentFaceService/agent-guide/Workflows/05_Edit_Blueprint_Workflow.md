@@ -45,3 +45,14 @@ profile
 - Reports include task status, target assets, main changes, validation status,
   and remaining risk. Do not expand TaskPlan, internal capability payloads, or
   raw Bridge JSON in ordinary reports.
+
+## Report And Debug Classification
+
+When a write path does not complete, Report and Debug entries must use one of these classifications:
+
+- `能力边界`: complete CLI discovery is missing for the requested family / write mode / cluster / operation / quick-access, or preview returns an explicit unsupported / missing capability / reserved-only diagnostic.
+- `执行未完成`: discovery shows a supported path, but the task did not continue through execute and readback.
+- `路径误选`: the chosen family, operation, template, or target does not match the requested capability.
+- `preview blocked`: preview rejected the exact TaskSpec. Preserve the original error code and classify it further before drawing conclusions.
+
+Do not promote `blueprint_not_found`, `context_stale`, `review_baseline_dirty_target_assets`, or `target_not_found` directly to `能力边界`.

@@ -170,6 +170,16 @@ public:
 
 		return nullptr;
 	}
+
+	static FString ReadComponentName(const TSharedPtr<FJsonObject>& Component)
+	{
+		FString ComponentName;
+		if (Component.IsValid())
+		{
+			Component->TryGetStringField(TEXT("component_name"), ComponentName);
+		}
+		return ComponentName;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -531,6 +541,22 @@ bool FBlueprintHelperComponentHierarchyBlocksInheritedNativeMutationTest::RunTes
 	TestFalse(TEXT("native component rename is blocked by readback facts"), NativeRenameResult.bOk);
 	TestTrue(TEXT("native not owned SCS error is reported"),
 		NativeRenameResult.Error.IsSet() && NativeRenameResult.Error->Code == TEXT("component_not_owned_scs"));
+	TestTrue(TEXT("native structural mutation reports blocked boundary"),
+		NativeRenameResult.Error.IsSet() && NativeRenameResult.Error->BlockedBoundary.IsSet());
+	if (NativeRenameResult.Error.IsSet() && NativeRenameResult.Error->BlockedBoundary.IsSet())
+	{
+		TestEqual(TEXT("blocked boundary id"),
+			NativeRenameResult.Error->BlockedBoundary->BoundaryId,
+			FString(TEXT("component_tree_owned_scs_only")));
+		TestEqual(TEXT("blocked native origin"),
+			NativeRenameResult.Error->BlockedBoundary->Origin,
+			FString(TEXT("native")));
+		TestEqual(TEXT("blocked structural operation"),
+			NativeRenameResult.Error->BlockedBoundary->BlockedOperation,
+			FString(TEXT("rename_component")));
+		TestFalse(TEXT("structural mutation does not suggest class-default route"),
+			NativeRenameResult.Error->SuggestedRoute.IsSet());
+	}
 
 	const TSharedPtr<FJsonObject> NativeComponent =
 		FBlueprintHelperComponentMutationHierarchyTestsLocalUtils::GetResultComponent(NativeRenameResult);
@@ -547,6 +573,110 @@ bool FBlueprintHelperComponentHierarchyBlocksInheritedNativeMutationTest::RunTes
 		TestTrue(TEXT("native inherited flag is true"), bIsInherited);
 		TestTrue(TEXT("native flag is true"), bIsNative);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperComponentHierarchySuggestsClassDefaultRouteForNativePropertyTest,
+	"BlueprintHelper.Component.Hierarchy.SuggestsClassDefaultRouteForNativeProperty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperComponentHierarchySuggestsClassDefaultRouteForNativePropertyTest::RunTest(const FString& Parameters)
+{
+	UBlueprint* CharacterBlueprint = FBlueprintHelperComponentMutationHierarchyTestsLocalUtils::MakeCharacterBlueprint(TEXT("NativePropertyRoute"));
+	TestNotNull(TEXT("character Blueprint is created"), CharacterBlueprint);
+	if (!CharacterBlueprint)
+	{
+		return false;
+	}
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperComponentService ComponentService(Resolver);
+
+	FBlueprintHelperReadComponentsRequest ReadRequest;
+	ReadRequest.AssetPath = CharacterBlueprint->GetPathName();
+	const FBlueprintHelperToolResultBase ReadResult = ComponentService.ReadComponents(ReadRequest);
+	TestTrue(TEXT("native read components succeeds"), ReadResult.bOk);
+
+	const TSharedPtr<FJsonObject> NativeReadback =
+		FBlueprintHelperComponentMutationHierarchyTestsLocalUtils::FindFirstNativeComponent(ReadResult);
+	TestTrue(TEXT("native component readback exists"), NativeReadback.IsValid());
+	const FString NativeComponentName =
+		FBlueprintHelperComponentMutationHierarchyTestsLocalUtils::ReadComponentName(NativeReadback);
+	TestFalse(TEXT("native component name is non-empty"), NativeComponentName.IsEmpty());
+	if (NativeComponentName.IsEmpty())
+	{
+		return false;
+	}
+
+	FBlueprintHelperSetComponentPropertiesRequest Request;
+	Request.AssetPath = CharacterBlueprint->GetPathName();
+	Request.ComponentName = NativeComponentName;
+	Request.bDryRun = true;
+	FBlueprintHelperComponentPropertySetting Setting;
+	Setting.PropertyPath = TEXT("bAutoActivate");
+	Setting.Value = MakeShared<FJsonValueBoolean>(false);
+	Request.Settings.Add(Setting);
+
+	const FBlueprintHelperToolResultBase Result = ComponentService.SetComponentProperties(Request);
+	TestFalse(TEXT("native component property mutation is blocked"), Result.bOk);
+	TestTrue(TEXT("native component property reports owned-SCS boundary"),
+		Result.Error.IsSet() && Result.Error->Code == TEXT("component_not_owned_scs"));
+	TestTrue(TEXT("native component property includes suggested route"),
+		Result.Error.IsSet() && Result.Error->SuggestedRoute.IsSet());
+	TestTrue(TEXT("native component property includes blocked boundary"),
+		Result.Error.IsSet() && Result.Error->BlockedBoundary.IsSet());
+
+	if (Result.Error.IsSet() && Result.Error->SuggestedRoute.IsSet())
+	{
+		const FString ExpectedPathHint = NativeComponentName + TEXT(".bAutoActivate");
+		TestEqual(TEXT("route id"),
+			Result.Error->SuggestedRoute->RouteId,
+			FString(TEXT("blueprint_class_settings.class_default")));
+		TestEqual(TEXT("route family"),
+			Result.Error->SuggestedRoute->Family,
+			FString(TEXT("blueprint_class_settings")));
+		TestEqual(TEXT("route write mode"),
+			Result.Error->SuggestedRoute->WriteMode,
+			FString(TEXT("class_settings.edit")));
+		TestEqual(TEXT("route cluster"),
+			Result.Error->SuggestedRoute->ClusterId,
+			FString(TEXT("class_settings")));
+		TestEqual(TEXT("route operation"),
+			Result.Error->SuggestedRoute->OperationId,
+			FString(TEXT("set_class_default")));
+		TestEqual(TEXT("route template"),
+			Result.Error->SuggestedRoute->TemplateId,
+			FString(TEXT("blueprint_class_settings_class_default")));
+		TestEqual(TEXT("route task type"),
+			Result.Error->SuggestedRoute->TaskType,
+			FString(TEXT("edit_blueprint_class_settings")));
+		TestEqual(TEXT("route reason"),
+			Result.Error->SuggestedRoute->Reason,
+			FString(TEXT("native_component_default_property")));
+		TestEqual(TEXT("route applies_when"),
+			Result.Error->SuggestedRoute->AppliesWhen,
+			FString(TEXT("intent_is_default_property_write")));
+		TestEqual(TEXT("route property path hint"),
+			Result.Error->SuggestedRoute->PropertyPathHint,
+			ExpectedPathHint);
+		TestEqual(TEXT("route property path hints count"),
+			Result.Error->SuggestedRoute->PropertyPathHints.Num(),
+			1);
+		if (Result.Error->SuggestedRoute->PropertyPathHints.Num() > 0)
+		{
+			TestEqual(TEXT("route first property path hint"),
+				Result.Error->SuggestedRoute->PropertyPathHints[0],
+				ExpectedPathHint);
+		}
+	}
+
+	const TSharedPtr<FJsonObject>* DataSuggestedRoute = nullptr;
+	TestTrue(TEXT("data includes suggested_route"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("suggested_route"), DataSuggestedRoute));
+	const TSharedPtr<FJsonObject>* DataBlockedBoundary = nullptr;
+	TestTrue(TEXT("data includes blocked_boundary"),
+		Result.Data.IsValid() && Result.Data->TryGetObjectField(TEXT("blocked_boundary"), DataBlockedBoundary));
 	return true;
 }
 

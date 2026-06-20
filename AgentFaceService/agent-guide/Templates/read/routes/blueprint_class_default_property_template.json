@@ -1,0 +1,9 @@
+{
+  "schema": "BlueprintHelper.ReadSpec.v1",
+  "read_type": "blueprint_class_default_context",
+  "target": {
+    "asset_path": "__REQUIRED_ASSET_PATH__",
+    "target_type": "property",
+    "target_name": "__REQUIRED_TARGET_NAME__"
+  }
+}

@@ -57,5 +57,16 @@ export function compileTaskSpecToTaskPlan(taskSpec: TaskSpec): TaskPlan {
       },
     ]);
   }
-  return compiler.compile(taskSpec as never, { source: 'facade' });
+  return attachTaskVerification(taskSpec, compiler.compile(taskSpec as never, { source: 'facade' }));
+}
+
+function attachTaskVerification(taskSpec: TaskSpec, taskPlan: TaskPlan): TaskPlan {
+  if (taskSpec.verification === undefined) {
+    return taskPlan;
+  }
+
+  return {
+    ...taskPlan,
+    verification: taskSpec.verification,
+  };
 }

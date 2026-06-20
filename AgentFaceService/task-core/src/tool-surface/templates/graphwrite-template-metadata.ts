@@ -65,7 +65,6 @@ export function listGraphWriteTemplateWriteModes(): TaskSpecTemplateWriteModeIte
         family: 'graph_write' as const,
         write_mode: route.write_mode,
         description: GRAPH_WRITE_MODE_DESCRIPTIONS[route.write_mode],
-        base_template_path: getBaseTemplatePathForWriteMode(route.write_mode),
       })),
     (item) => item.write_mode,
   ).sort((a, b) => a.write_mode.localeCompare(b.write_mode));
@@ -303,7 +302,7 @@ function isGraphWriteTemplateWriteMode(value: unknown): value is GraphWriteTempl
   return typeof value === 'string' && Object.hasOwn(CANONICAL_ROUTE_BY_WRITE_MODE, value);
 }
 
-function getBaseTemplatePathForWriteMode(writeMode: GraphWriteTemplateWriteMode): string {
+export function getGraphWriteBaseTemplatePathForWriteMode(writeMode: GraphWriteTemplateWriteMode): string {
   const canonicalRoute = getGraphWriteRouteById(CANONICAL_ROUTE_BY_WRITE_MODE[writeMode]);
   if (canonicalRoute?.template_path) {
     return canonicalRoute.template_path;

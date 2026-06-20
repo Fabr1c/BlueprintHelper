@@ -75,11 +75,13 @@ static const FBlueprintHelperBridgeSystemCommandDescriptor GBlueprintHelperBridg
 	{TEXT("add_implemented_interfaces"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
 	{TEXT("remove_implemented_interface"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
 	{TEXT("remove_implemented_interfaces"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
+	{TEXT("read_blueprint_class_default_property"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
 	{TEXT("set_class_default_property"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
 	{TEXT("set_class_default_properties"), EBlueprintHelperBridgeRouteCluster::ClassSettings, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.internal_direct_route"), true, false},
 
 	{TEXT("preview_task_plan"), EBlueprintHelperBridgeRouteCluster::TaskRuntime, EBlueprintHelperBridgeCommandSource::SystemTaskRuntime, TEXT("system.task_runtime.preview"), true, false},
 	{TEXT("get_task_run_journal"), EBlueprintHelperBridgeRouteCluster::TaskRuntime, EBlueprintHelperBridgeCommandSource::SystemTaskRuntime, TEXT("system.task_runtime.journal"), true, false},
+	{TEXT("get_execution_receipt"), EBlueprintHelperBridgeRouteCluster::TaskRuntime, EBlueprintHelperBridgeCommandSource::SystemTaskRuntime, TEXT("system.task_runtime.receipt"), true, false},
 
 	{TEXT("append_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.graphwrite_direct_route"), true, false},
 	{TEXT("replace_blueprint_graph"), EBlueprintHelperBridgeRouteCluster::GraphWrite, EBlueprintHelperBridgeCommandSource::SystemInternalDirectRoute, TEXT("system.graphwrite_direct_route"), true, false},

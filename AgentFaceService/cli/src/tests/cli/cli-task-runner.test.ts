@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 import { runCli } from '../../cli/run.js';
 import type { BridgeResponse } from '@blueprinthelper/task-core/bridge/bridge-client';
+import { BRIDGE_RESPONSE_SCHEMA } from '@blueprinthelper/task-core/bridge/bridge-response-schema';
 import type { TaskSpecRunner } from '@blueprinthelper/task-core/task/service/task-spec-runner';
 import { createDescriptorFixtureRuntimeCapabilityState } from '@blueprinthelper/task-core/tool-surface/tool-registry';
 
@@ -276,7 +277,9 @@ test('task execute can project stdout to selected fields only', async () => {
 
   assert.equal(exitCode, 0);
   const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(output).sort(), ['artifacts', 'status', 'task_run_id']);
+  assert.deepEqual(Object.keys(output).sort(), ['artifacts', 'ok', 'operation', 'status', 'task_run_id']);
+  assert.equal(output.ok, true);
+  assert.equal(output.operation, 'task.execute');
   assert.equal(output.status, 'executed');
   assert.equal(output.task_run_id, 'task_cli_002');
   assert.equal(typeof (output.artifacts as Record<string, unknown>).full_result, 'string');
@@ -301,9 +304,14 @@ test('removed direct preview command reports grouped replacement without dispatc
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /blueprinthelper_preview_task direct CLI command was removed/);
-  assert.match(errors.join(''), /bh task preview --file <task-spec\.json>/);
+  assert.deepEqual(errors, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /blueprinthelper_preview_task direct CLI command was removed/);
+  assert.match(String(output.message), /bh task preview --file <task-spec\.json>/);
 });
 
 test('default task preview artifacts omit internal policy fields', async () => {
@@ -449,6 +457,7 @@ test('select is an alias for fields', async () => {
   const writes: string[] = [];
   const bridge = {
     sendCommand: async (): Promise<BridgeResponse> => ({
+      schema: BRIDGE_RESPONSE_SCHEMA,
       request_id: 'bridge_ping',
       success: true,
       result: { status: 'completed' },
@@ -464,7 +473,71 @@ test('select is an alias for fields', async () => {
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(JSON.parse(writes.join('')), { status: 'bridge_available' });
+  assert.deepEqual(JSON.parse(writes.join('')), {
+    ok: true,
+    operation: 'bridge.ping',
+    status: 'bridge_available',
+  });
+});
+
+test('task execute passes receipt id option to the TaskSpec runner', async () => {
+  const writes: string[] = [];
+  const artifactDir = makeTempDir();
+  let receivedOptions: Record<string, unknown> | undefined;
+  const runner = {
+    previewTask: async () => { throw new Error('not used'); },
+    executeTask: async (_taskSpec: unknown, _timing: unknown, options: Record<string, unknown> | undefined) => {
+      receivedOptions = options;
+      return {
+        ok: true,
+        schema: 'BlueprintHelper.ToolResult.v1',
+        operation: 'execute_task',
+        trace_id: 'trace_execute_receipt_option',
+        status: 'completed',
+        modified: true,
+        target: { target_type: 'blueprint', asset_path: '/Game/BP_Player' },
+        data: {
+          task_run_id: 'task_cli_receipt_option',
+          receipt: {
+            schema: 'BlueprintHelper.ExecutionReceipt.v1',
+            receipt_id: 'receipt_cli_option',
+            task_run_id: 'task_cli_receipt_option',
+            task_spec_hash: 'a'.repeat(64),
+            status: 'applied',
+            created_at: '2026-06-20T00:00:00.000Z',
+            updated_at: '2026-06-20T00:00:00.000Z',
+          },
+        },
+      };
+    },
+    getTaskResult: async () => { throw new Error('not used'); },
+    readReferenceContext: async () => { throw new Error('not used'); },
+  } as unknown as TaskSpecRunner;
+
+  const exitCode = await runCli({
+    argv: [
+      'task',
+      'execute',
+      '--file',
+      'task-spec.json',
+      '--preview-token',
+      '0123456789abcdef0123456789abcdef',
+      '--receipt-id',
+      'receipt_cli_option',
+      ...ACTIVE_RUNTIME_ARGS,
+      '--artifact-dir',
+      artifactDir,
+    ],
+    cwd: fixturesDir,
+    runner,
+    stdout: (line) => writes.push(line),
+    stderr: () => {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(receivedOptions?.receiptId, 'receipt_cli_option');
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.receipt_id, 'receipt_cli_option');
 });
 
 test('develop timing applies to direct CLI tool invocation', async () => {
@@ -514,6 +587,7 @@ test('develop timing records read_context logic_flow stages and UE nested timing
       sendCommand: async (command: string, payload: Record<string, unknown>): Promise<BridgeResponse> => {
         calls.push({ command, payload });
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           request_id: 'read_context_logic_flow_timing',
           success: true,
           result: {
@@ -599,10 +673,11 @@ test('develop timing records read_context logic_flow stages and UE nested timing
   )));
 });
 
-test('omit removes selected fields from compact output', async () => {
+test('omit preserves protected machine envelope fields in compact output', async () => {
   const writes: string[] = [];
   const bridge = {
     sendCommand: async (): Promise<BridgeResponse> => ({
+      schema: BRIDGE_RESPONSE_SCHEMA,
       request_id: 'bridge_ping',
       success: true,
       result: { status: 'completed' },
@@ -619,12 +694,13 @@ test('omit removes selected fields from compact output', async () => {
 
   assert.equal(exitCode, 0);
   const output = JSON.parse(writes.join('')) as Record<string, unknown>;
-  assert.equal('operation' in output, false);
-  assert.equal('status' in output, false);
+  assert.equal(output.operation, 'bridge.ping');
+  assert.equal(output.status, 'bridge_available');
   assert.equal(output.ok, true);
 });
 
-test('invalid field path exits 64', async () => {
+test('invalid field path exits 64 with JSON envelope', async () => {
+  const writes: string[] = [];
   const stderr: string[] = [];
   const exitCode = await runCli({
     argv: ['bridge', 'ping', '--fields', 'status,$schema'],
@@ -632,12 +708,18 @@ test('invalid field path exits 64', async () => {
     bridge: {
       sendCommand: async () => { throw new Error('not used'); },
     },
-    stdout: () => {},
+    stdout: (line) => writes.push(line),
     stderr: (line) => stderr.push(line),
   });
 
   assert.equal(exitCode, 64);
-  assert.match(stderr.join(''), /Invalid field path/);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /Invalid field path/);
 });
 
 test('task result reads by id and prints compact summary', async () => {
@@ -698,9 +780,14 @@ test('removed direct get task result command reports grouped replacement', async
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /blueprinthelper_get_task_result direct CLI command was removed/);
-  assert.match(errors.join(''), /bh task result --id <task_run_id>/);
+  assert.deepEqual(errors, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /blueprinthelper_get_task_result direct CLI command was removed/);
+  assert.match(String(output.message), /bh task result --id <task_run_id>/);
 });
 
 test('removed direct get task result rejects before parsing escaped JSON quotes', async () => {
@@ -722,22 +809,34 @@ test('removed direct get task result rejects before parsing escaped JSON quotes'
   });
 
   assert.equal(exitCode, 64);
-  assert.equal(writes.join(''), '');
-  assert.match(errors.join(''), /blueprinthelper_get_task_result direct CLI command was removed/);
+  assert.deepEqual(errors, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /blueprinthelper_get_task_result direct CLI command was removed/);
 });
 
-test('unknown commands exit 64', async () => {
+test('unknown commands exit 64 with JSON envelope', async () => {
+  const writes: string[] = [];
   const stderr: string[] = [];
   const exitCode = await runCli({
     argv: ['task', 'unknown'],
     cwd: fixturesDir,
     runner: {} as TaskSpecRunner,
-    stdout: () => {},
+    stdout: (line) => writes.push(line),
     stderr: (line) => stderr.push(line),
   });
 
   assert.equal(exitCode, 64);
-  assert.match(stderr.join(''), /Unsupported BlueprintHelper CLI command/);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /Unsupported BlueprintHelper CLI command/);
 });
 
 test('bridge call allows read-only commands and rejects raw write commands', async () => {
@@ -747,6 +846,7 @@ test('bridge call allows read-only commands and rejects raw write commands', asy
     sendCommand: async (command: string): Promise<BridgeResponse> => {
       calls.push(command);
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'bridge_call',
         success: true,
         result: { status: 'completed', data: { schema: 'RuntimeProfile.v1' } },
@@ -766,14 +866,23 @@ test('bridge call allows read-only commands and rejects raw write commands', asy
   assert.deepEqual(calls, ['get_runtime_profile']);
 
   for (const command of ['execute_task_plan', 'preview_task_plan', 'import_agent_graph']) {
+    const rejectedWrites: string[] = [];
+    const rejectedErrors: string[] = [];
     const exitCode = await runCli({
       argv: ['bridge', 'call', '--command', command, '--expert'],
       cwd: fixturesDir,
       bridge,
-      stdout: () => {},
-      stderr: () => {},
+      stdout: (line) => rejectedWrites.push(line),
+      stderr: (line) => rejectedErrors.push(line),
     });
     assert.equal(exitCode, 64, command);
+    assert.deepEqual(rejectedErrors, [], command);
+    const output = JSON.parse(rejectedWrites.join('')) as Record<string, unknown>;
+    assert.equal(output.ok, false, command);
+    assert.equal(output.operation, 'bridge.call', command);
+    assert.equal(output.status, 'cli_parameter_error', command);
+    assert.equal(output.error_code, 'bridge_call_command_not_allowed', command);
+    assert.match(String(output.message), new RegExp(command), command);
   }
 });
 
@@ -783,6 +892,7 @@ test('bridge ping reports bridge availability through compact output', async () 
     sendCommand: async (command: string): Promise<BridgeResponse> => {
       assert.equal(command, 'ping');
       return {
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'bridge_ping',
         success: true,
         result: { status: 'completed', data: { schema: 'BridgePing.v1' } },
@@ -804,18 +914,25 @@ test('bridge ping reports bridge availability through compact output', async () 
   assert.equal(output.status, 'bridge_available');
 });
 
-test('missing option values exit 64 without throwing', async () => {
+test('missing option values exit 64 with JSON envelope', async () => {
+  const writes: string[] = [];
   const stderr: string[] = [];
   const exitCode = await runCli({
     argv: ['task', 'preview', '--file'],
     cwd: fixturesDir,
     runner: {} as TaskSpecRunner,
-    stdout: () => {},
+    stdout: (line) => writes.push(line),
     stderr: (line) => stderr.push(line),
   });
 
   assert.equal(exitCode, 64);
-  assert.match(stderr.join(''), /Missing value for --file/);
+  assert.deepEqual(stderr, []);
+  const output = JSON.parse(writes.join('')) as Record<string, unknown>;
+  assert.equal(output.ok, false);
+  assert.equal(output.operation, 'output');
+  assert.equal(output.status, 'cli_parse_failed');
+  assert.equal(output.error_code, 'cli_parse_failed');
+  assert.match(String(output.message), /Missing value for --file/);
 });
 
 test('context read uses ReadContext Bridge route', async () => {
@@ -836,6 +953,7 @@ test('context read uses ReadContext Bridge route', async () => {
       sendCommand: async (command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> => {
         calls.push({ command, payload });
         return {
+          schema: BRIDGE_RESPONSE_SCHEMA,
           request_id: 'context_read_alias',
           success: true,
           result: {
@@ -863,6 +981,7 @@ test('develop timing applies to context read command', async () => {
   const writes: string[] = [];
   const bridge = {
     sendCommand: async (): Promise<BridgeResponse> => ({
+      schema: BRIDGE_RESPONSE_SCHEMA,
       request_id: 'context_read_develop',
       success: true,
       result: {
@@ -913,6 +1032,7 @@ test('context read artifact escapes localized node names as ascii-safe JSON', as
     runner,
     bridge: {
       sendCommand: async (): Promise<BridgeResponse> => ({
+        schema: BRIDGE_RESPONSE_SCHEMA,
         request_id: 'context_read_localized',
         success: true,
         result: {

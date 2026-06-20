@@ -160,6 +160,26 @@ export interface ToolResultValidation {
   warnings: ToolResultValidationMessage[];
 }
 
+export interface ToolResultSuggestedRoute {
+  route_id?: string;
+  family?: string;
+  write_mode?: string;
+  cluster_id?: string;
+  operation_id?: string;
+  template_id?: string;
+  task_type?: string;
+  reason?: string;
+  applies_when?: string;
+  property_path_hint?: string;
+  property_path_hints?: string[];
+}
+
+export interface ToolResultBlockedBoundary {
+  boundary_id?: string;
+  origin?: string;
+  blocked_operation?: string;
+}
+
 export interface ToolResultError {
   code: string;
   stage: ToolStage;
@@ -176,6 +196,10 @@ export interface ToolResultError {
   field?: string;
   expected?: string;
   actual?: string;
+  suggested_route?: ToolResultSuggestedRoute | string;
+  suggested_read_type?: string;
+  blocked_boundary?: ToolResultBlockedBoundary | string;
+  blocked_boundary_detail?: string;
 }
 
 export interface ToolResultReview {
@@ -357,12 +381,13 @@ export function normalizeToolResult(
   const traceId = generateTraceId();
 
   if (!resp.success) {
+    const code = resp.error_code ?? 'bridge_error';
     const error: ToolResultError = {
-      code: resp.error_code ?? 'bridge_error',
+      code,
       stage: 'bridge',
       message: resp.message ?? 'Bridge request failed.',
-      retryable: false,
       rollback_result: 'not_needed',
+      ...bridgeErrorDefaults(code),
       ...overrides?.error,
     };
 
@@ -398,6 +423,51 @@ export function normalizeToolResult(
   }
 
   return sanitizeAgentFacingToolResult(base);
+}
+
+function bridgeErrorDefaults(code: string): Pick<
+  ToolResultError,
+  'category' | 'retryable' | 'safe_next_action' | 'allowed_recovery_actions'
+> {
+  switch (code) {
+    case 'editor_not_ready':
+      return {
+        category: 'runtime_unavailable',
+        retryable: true,
+        safe_next_action: 'editor.open_or_wait_then_retry',
+        allowed_recovery_actions: ['editor.open', 'bridge.ping'],
+      };
+    case 'asset_not_found':
+    case 'graph_not_found':
+      return {
+        category: 'target_resolution_error',
+        retryable: false,
+        safe_next_action: 'read_context_or_correct_target_then_retry',
+        allowed_recovery_actions: ['context.read', 'task.preview'],
+      };
+    case 'unauthorized':
+      return {
+        category: 'authorization_error',
+        retryable: false,
+        safe_next_action: 'request_write_session_before_retry',
+        allowed_recovery_actions: ['request_write_session'],
+      };
+    case 'command_disabled':
+    case 'unknown_command':
+      return {
+        category: 'capability_unavailable',
+        retryable: false,
+        safe_next_action: 'use_tools_catalog_then_retry',
+        allowed_recovery_actions: ['tools.list', 'tools.templates'],
+      };
+    default:
+      return {
+        category: 'bridge_error',
+        retryable: false,
+        safe_next_action: 'inspect_debug_bundle_before_retry',
+        allowed_recovery_actions: ['diagnostics.runtime'],
+      };
+  }
 }
 
 /**

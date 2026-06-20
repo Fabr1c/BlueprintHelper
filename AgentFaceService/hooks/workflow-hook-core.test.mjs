@@ -53,15 +53,91 @@ async function writeProjectSetting(projectDir, value) {
   return settingPath;
 }
 
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+const HASH_C = 'c'.repeat(64);
+const RECEIPT_TIME = '2026-06-20T00:00:00.000Z';
+
+function makeReceipt(value = {}) {
+  return {
+    schema: 'BlueprintHelper.ExecutionReceipt.v1',
+    receipt_id: 'receipt-123',
+    cli_run_id: 'cli-123',
+    preview_id: 'preview-123',
+    task_spec_hash: HASH_A,
+    task_plan_hash: HASH_B,
+    policy_hash: HASH_C,
+    status: 'previewed',
+    created_at: RECEIPT_TIME,
+    updated_at: RECEIPT_TIME,
+    ...value,
+  };
+}
+
+function previewStdout(value = {}) {
+  const previewToken = value.preview_token ?? 'tok';
+  const receipt = makeReceipt({ status: 'previewed', ...value.receipt });
+  return JSON.stringify({
+    ok: true,
+    status: 'preview_passed',
+    preview_token: previewToken,
+    receipt,
+    tool_result: {
+      data: {
+        preview_token: previewToken,
+        receipt,
+      },
+    },
+  });
+}
+
+function executeStdout(value = {}) {
+  const taskRunId = value.task_run_id ?? 'run-123';
+  const receipt = makeReceipt({
+    status: 'applied',
+    task_run_id: taskRunId,
+    ...value.receipt,
+  });
+  return JSON.stringify({
+    ok: true,
+    status: 'execute_succeeded',
+    task_run_id: taskRunId,
+    receipt,
+    tool_result: {
+      data: {
+        task_run_id: taskRunId,
+        receipt,
+      },
+    },
+  });
+}
+
+function readbackStdout(value = {}) {
+  const taskRunId = value.task_run_id ?? 'run-123';
+  const receipt = makeReceipt({
+    status: 'readback_verified',
+    task_run_id: taskRunId,
+    readback_ref: 'readback://run-123',
+    ...value.receipt,
+  });
+  return JSON.stringify({
+    ok: true,
+    status: 'completed',
+    task_run_id: taskRunId,
+    receipt,
+  });
+}
+
 test('classifyCommand recognizes BlueprintHelper task/read commands and ignores unrelated commands', () => {
   assert.deepEqual(classifyCommand('bh task preview --file task-spec.json'), {
     kind: 'preview',
     file: 'task-spec.json',
   });
-  assert.deepEqual(classifyCommand('bh task execute --file task-spec.json --preview-token tok'), {
+  assert.deepEqual(classifyCommand('bh task execute --file task-spec.json --preview-token tok --receipt-id receipt-123'), {
     kind: 'execute',
     file: 'task-spec.json',
     previewToken: 'tok',
+    receiptId: 'receipt-123',
   });
   assert.deepEqual(classifyCommand('bh task result --id task-run-id'), {
     kind: 'result',
@@ -175,7 +251,7 @@ test('PostToolUse records preview, blocks retry budget after 3 attempts, and rem
         event: 'PostToolUse',
         command: `bh task preview --file "${taskSpecPath}"`,
         cwd: projectDir,
-        toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","tool_result":{"data":{"preview_token":"tok"}}}' },
+        toolResult: { exit_code: 0, stdout: previewStdout() },
       });
       assert.equal(result.action, 'allow');
     }
@@ -184,7 +260,7 @@ test('PostToolUse records preview, blocks retry budget after 3 attempts, and rem
       (
         await runWorkflowHook({
           event: 'PreToolUse',
-          command: `bh task execute --file "${taskSpecPath}" --preview-token tok`,
+          command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-123`,
           cwd: projectDir,
         })
       ).reason,
@@ -196,13 +272,13 @@ test('PostToolUse records preview, blocks retry budget after 3 attempts, and rem
       event: 'PostToolUse',
       command: `bh task preview --file "${taskSpecWithBudget}"`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-exec' } }) },
     });
     const executeResult = await runWorkflowHook({
       event: 'PostToolUse',
-      command: `bh task execute --file "${taskSpecWithBudget}" --preview-token tok`,
+      command: `bh task execute --file "${taskSpecWithBudget}" --preview-token tok --receipt-id receipt-exec`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"execute_succeeded","task_run_id":"run-123"}' },
+      toolResult: { exit_code: 0, stdout: executeStdout({ receipt: { receipt_id: 'receipt-exec' } }) },
     });
     assert.equal(executeResult.action, 'remind');
     assert.equal(executeResult.reason, 'readback_required_after_execute');
@@ -216,11 +292,26 @@ test('PostToolUse records preview, blocks retry budget after 3 attempts, and rem
     assert.equal(ledger.last_preview.preview_token, 'tok');
     assert.equal(ledger.readback.completed, false);
 
+    const resultTaskRunMismatch = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: 'bh task result --id run-123',
+      cwd: projectDir,
+      toolResult: {
+        exit_code: 0,
+        stdout: executeStdout({
+          task_run_id: 'run-wrong',
+          receipt: { receipt_id: 'receipt-exec', task_run_id: 'run-wrong' },
+        }),
+      },
+    });
+    assert.equal(resultTaskRunMismatch.action, 'block');
+    assert.equal(resultTaskRunMismatch.reason, 'receipt_task_run_mismatch');
+
     await runWorkflowHook({
       event: 'PostToolUse',
       command: 'bh task result --id run-123',
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"status":"success"}' },
+      toolResult: { exit_code: 0, stdout: executeStdout({ receipt: { receipt_id: 'receipt-exec' } }) },
     });
     const ledgerAfterResult = await readLedger({
       ledgerRoot: path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger'),
@@ -249,7 +340,7 @@ test('PostToolUse applies task-worker max attempts from project setting to hook 
         event: 'PostToolUse',
         command: `bh task preview --file "${taskSpecPath}"`,
         cwd: projectDir,
-        toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+        toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-setting-budget' } }) },
       });
       assert.equal(result.action, 'allow');
     }
@@ -264,7 +355,7 @@ test('PostToolUse applies task-worker max attempts from project setting to hook 
       (
         await runWorkflowHook({
           event: 'PreToolUse',
-          command: `bh task execute --file "${taskSpecPath}" --preview-token tok`,
+          command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-setting-budget`,
           cwd: projectDir,
         })
       ).reason,
@@ -300,7 +391,7 @@ test('PostToolUse resolves retry budget priority from package, user setting, pro
       event: 'PostToolUse',
       command: `bh task preview --file "${packageOverrideSpec}"`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-package-budget' } }) },
     });
     assert.equal(
       (
@@ -317,7 +408,7 @@ test('PostToolUse resolves retry budget priority from package, user setting, pro
       event: 'PostToolUse',
       command: `bh task preview --file "${userOverrideSpec}"`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-user-budget' } }) },
     });
     assert.equal(
       (
@@ -340,7 +431,7 @@ test('PostToolUse resolves retry budget priority from package, user setting, pro
       event: 'PostToolUse',
       command: `bh task preview --file "${fallbackSpec}"`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-fallback-budget' } }) },
     });
     assert.equal(
       (
@@ -364,13 +455,13 @@ test('PostToolUse marks readback complete and Stop blocks active ledgers missing
       event: 'PostToolUse',
       command: `bh task preview --file "${taskSpecPath}"`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+      toolResult: { exit_code: 0, stdout: previewStdout() },
     });
     await runWorkflowHook({
       event: 'PostToolUse',
-      command: `bh task execute --file "${taskSpecPath}" --preview-token tok`,
+      command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-123`,
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"execute_succeeded","task_run_id":"run-123"}' },
+      toolResult: { exit_code: 0, stdout: executeStdout() },
     });
 
     const stopBeforeReadback = await runWorkflowHook({ event: 'Stop', cwd: projectDir });
@@ -383,14 +474,169 @@ test('PostToolUse marks readback complete and Stop blocks active ledgers missing
 
     await runWorkflowHook({
       event: 'PostToolUse',
-      command: 'bh context read --file read-spec.json',
+      command: 'bh context read --file read-spec.json --receipt-id receipt-123 --task-run-id run-123',
       cwd: projectDir,
-      toolResult: { exit_code: 0, stdout: '{"status":"success"}' },
-      metadata: { task_package_id: 'pkg-123' },
+      toolResult: { exit_code: 0, stdout: readbackStdout() },
+      metadata: { task_package_id: 'pkg-123', receipt_id: 'receipt-123', task_run_id: 'run-123' },
     });
 
     const stopAfterReadback = await runWorkflowHook({ event: 'Stop', cwd: projectDir });
     assert.equal(stopAfterReadback.action, 'allow');
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('Hook ledger records preview receipt identity and writes no temp leftovers', async () => {
+  const projectDir = await makeProject();
+  try {
+    const taskSpecPath = await writeTaskSpec(projectDir, { task_package_id: 'pkg-receipt-preview' });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${taskSpecPath}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-preview-ledger' } }) },
+    });
+
+    const ledgerRoot = path.join(projectDir, 'Saved', 'BlueprintHelper', 'HookLedger');
+    const ledger = await readLedger({ ledgerRoot, taskPackageId: 'pkg-receipt-preview' });
+    assert.equal(ledger.receipt.receipt_id, 'receipt-preview-ledger');
+    assert.equal(ledger.last_preview.receipt_id, 'receipt-preview-ledger');
+    assert.equal(ledger.last_preview.task_spec_hash, HASH_A);
+
+    const entries = await readFile(path.join(ledgerRoot, 'pkg-receipt-preview.json'), 'utf8');
+    assert.match(entries, /"receipt_id": "receipt-preview-ledger"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('Hook blocks execute when command or result receipt mismatches preview receipt', async () => {
+  const projectDir = await makeProject();
+  try {
+    const taskSpecPath = await writeTaskSpec(projectDir, { task_package_id: 'pkg-receipt-mismatch' });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${taskSpecPath}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-preview-match' } }) },
+    });
+
+    const preResult = await runWorkflowHook({
+      event: 'PreToolUse',
+      command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-wrong`,
+      cwd: projectDir,
+    });
+    assert.equal(preResult.action, 'block');
+    assert.equal(preResult.reason, 'receipt_hash_mismatch');
+
+    const postResult = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-preview-match`,
+      cwd: projectDir,
+      toolResult: {
+        exit_code: 0,
+        stdout: executeStdout({
+          receipt: {
+            receipt_id: 'receipt-preview-match',
+            task_spec_hash: 'd'.repeat(64),
+          },
+        }),
+      },
+    });
+    assert.equal(postResult.action, 'block');
+    assert.equal(postResult.reason, 'receipt_hash_mismatch');
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('Hook blocks missing status and missing receipt instead of defaulting to success', async () => {
+  const projectDir = await makeProject();
+  try {
+    const taskSpecPath = await writeTaskSpec(projectDir, { task_package_id: 'pkg-fail-closed' });
+    const missingStatus = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${taskSpecPath}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: JSON.stringify({ ok: true, receipt: makeReceipt() }) },
+    });
+    assert.equal(missingStatus.action, 'block');
+    assert.equal(missingStatus.reason, 'tool_status_missing');
+
+    const missingReceipt = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${taskSpecPath}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"preview_passed","preview_token":"tok"}' },
+    });
+    assert.equal(missingReceipt.action, 'block');
+    assert.equal(missingReceipt.reason, 'receipt_missing');
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('Hook blocks readback without matching receipt identity and does not guess latest active ledger', async () => {
+  const projectDir = await makeProject();
+  try {
+    const taskSpecPath = await writeTaskSpec(projectDir, { task_package_id: 'pkg-readback-identity' });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task preview --file "${taskSpecPath}"`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: previewStdout({ receipt: { receipt_id: 'receipt-readback' } }) },
+    });
+    await runWorkflowHook({
+      event: 'PostToolUse',
+      command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-readback`,
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: executeStdout({ receipt: { receipt_id: 'receipt-readback' } }) },
+    });
+
+    const missingIdentity = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: 'bh context read --file read-spec.json',
+      cwd: projectDir,
+      toolResult: { exit_code: 0, stdout: '{"ok":true,"status":"completed"}' },
+    });
+    assert.equal(missingIdentity.action, 'block');
+    assert.equal(missingIdentity.reason, 'receipt_missing');
+
+    const mismatch = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: 'bh context read --file read-spec.json --receipt-id receipt-readback --task-run-id run-wrong',
+      cwd: projectDir,
+      metadata: { task_package_id: 'pkg-readback-identity', receipt_id: 'receipt-readback', task_run_id: 'run-wrong' },
+      toolResult: {
+        exit_code: 0,
+        stdout: readbackStdout({
+          task_run_id: 'run-wrong',
+          receipt: { receipt_id: 'receipt-readback', task_run_id: 'run-wrong' },
+        }),
+      },
+    });
+    assert.equal(mismatch.action, 'block');
+    assert.equal(mismatch.reason, 'receipt_readback_mismatch');
+
+    const hashMismatch = await runWorkflowHook({
+      event: 'PostToolUse',
+      command: 'bh context read --file read-spec.json --receipt-id receipt-readback --task-run-id run-123',
+      cwd: projectDir,
+      metadata: { task_package_id: 'pkg-readback-identity', receipt_id: 'receipt-readback', task_run_id: 'run-123' },
+      toolResult: {
+        exit_code: 0,
+        stdout: readbackStdout({
+          receipt: {
+            receipt_id: 'receipt-readback',
+            task_run_id: 'run-123',
+            task_spec_hash: 'd'.repeat(64),
+          },
+        }),
+      },
+    });
+    assert.equal(hashMismatch.action, 'block');
+    assert.equal(hashMismatch.reason, 'receipt_readback_mismatch');
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

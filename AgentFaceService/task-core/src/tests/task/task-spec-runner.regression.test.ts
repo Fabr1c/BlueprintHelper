@@ -7,7 +7,9 @@ import {
   TaskPreviewTokenSchema,
   type TaskPlan,
   type TaskSpec,
+  type TaskVerificationContract,
 } from '../../task/schema/task-schemas.js';
+import { BRIDGE_RESPONSE_SCHEMA } from '../../bridge/bridge-response-schema.js';
 import type { BridgeResponse } from '../../bridge/bridge-client.js';
 
 test('executeTask propagates modified state from Bridge execution result', async () => {
@@ -49,7 +51,7 @@ test('executeTask propagates modified state from Bridge execution result', async
   const bridge = {
     async sendCommand(command: string): Promise<BridgeResponse> {
       if (command === 'preview_task_plan') {
-        return {
+        return withBridgeSchema({
           success: true,
           request_id: 'preview_request',
           result: {
@@ -65,7 +67,7 @@ test('executeTask propagates modified state from Bridge execution result', async
               },
             },
           },
-        };
+        });
       }
 
       if (command === 'source_control_status') {
@@ -73,7 +75,7 @@ test('executeTask propagates modified state from Bridge execution result', async
       }
 
       if (command === 'execute_task_plan') {
-        return {
+        return withBridgeSchema({
           success: true,
           request_id: 'execute_request',
           result: {
@@ -101,7 +103,7 @@ test('executeTask propagates modified state from Bridge execution result', async
               ],
             },
           },
-        };
+        });
       }
 
       throw new Error(`Unexpected command: ${command}`);
@@ -230,6 +232,119 @@ test('previewTask returns and exposes a 32 hex preview token', async () => {
   assert.match(preview.previewToken ?? '', /^[0-9a-f]{32}$/);
   assert.doesNotThrow(() => TaskPreviewTokenSchema.parse(preview.previewToken));
   assert.deepEqual(data.preview_token, preview.previewToken);
+});
+
+test('previewTask sends and returns execution receipt identity', async () => {
+  const taskPlan = makeSingleStepTaskPlan('ReceiptPreview');
+  let previewPayload: Record<string, any> | undefined;
+  const runner = createTaskSpecRunner({
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> {
+        assert.equal(command, 'preview_task_plan');
+        previewPayload = payload as Record<string, any>;
+        return makePreviewBridgeResponse();
+      },
+    },
+    taskCompiler: async () => makeCompilerResult(taskPlan),
+  });
+
+  const preview = await runner.previewTask({} as TaskSpec);
+  const receipt = (preview.toolResult.data as Record<string, any>).receipt;
+
+  assert.equal(previewPayload?.preview_token_request.receipt_id, receipt.receipt_id);
+  assert.equal(previewPayload?.preview_token_request.preview_id, preview.previewId);
+  assert.equal(receipt.schema, 'BlueprintHelper.ExecutionReceipt.v1');
+  assert.equal(receipt.preview_id, preview.previewId);
+  assert.equal(receipt.preview_token_hash.length, 64);
+  assert.equal(receipt.task_spec_hash.length, 64);
+  assert.equal(receipt.task_plan_hash.length, 64);
+  assert.equal(receipt.status, 'previewed');
+});
+
+test('previewTask carries verification identity through token request and receipt', async () => {
+  const taskPlan = makeVerifiedTaskPlan('ReceiptPreviewVerification');
+  let previewPayload: Record<string, any> | undefined;
+  const runner = createTaskSpecRunner({
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> {
+        assert.equal(command, 'preview_task_plan');
+        previewPayload = payload as Record<string, any>;
+        return makePreviewBridgeResponse();
+      },
+    },
+    taskCompiler: async () => makeCompilerResult(taskPlan),
+  });
+
+  const preview = await runner.previewTask(makeVerifiedGraphWriteTaskSpec());
+  const receipt = (preview.toolResult.data as Record<string, any>).receipt;
+
+  assert.equal(typeof receipt.verification_hash, 'string');
+  assert.equal(receipt.verification_hash.length, 64);
+  assert.equal(receipt.verification_status, 'pending_readback');
+  assert.equal(previewPayload?.preview_token_request.verification_hash, receipt.verification_hash);
+  assert.equal(previewPayload?.preview_token_request.receipt.verification_hash, receipt.verification_hash);
+});
+
+test('executeTask with preview token sends receipt metadata and returns matching receipt', async () => {
+  const bridgeCalls: Array<{ command: string; payload?: Record<string, any> }> = [];
+  const runner = createTaskSpecRunner({
+    bridge: {
+      async sendCommand(command: string, payload?: Record<string, unknown>): Promise<BridgeResponse> {
+        bridgeCalls.push({ command, payload: payload as Record<string, any> });
+        if (command === 'source_control_status') {
+          return makeEditableSourceControlResponse('/Game/BP/BP_Door');
+        }
+        if (command === 'execute_task_plan') {
+          return withBridgeSchema({
+            success: true,
+            request_id: 'execute_receipt_request',
+            result: {
+              ok: true,
+              schema: 'BlueprintHelper.ToolResult.v1',
+              operation: 'execute_task_plan',
+              status: 'applied',
+              modified: true,
+              data: {
+                task_run_id: 'task_receipt_001',
+                receipt: {
+                  schema: 'BlueprintHelper.ExecutionReceipt.v1',
+                  receipt_id: 'receipt_from_cli',
+                  cli_run_id: 'cli_from_cli',
+                  task_run_id: 'task_receipt_001',
+                  task_spec_hash: 'a'.repeat(64),
+                  status: 'applied',
+                  created_at: '2026-06-20T00:00:00.000Z',
+                  updated_at: '2026-06-20T00:00:00.000Z',
+                },
+                target_assets: ['/Game/BP/BP_Door'],
+              },
+            },
+          });
+        }
+        throw new Error(`Unexpected command: ${command}`);
+      },
+    },
+    taskCompiler: async () => makeCompilerResult(makeSingleStepTaskPlan('ReceiptExecute')),
+  });
+
+  const result = await runner.executeTask(makeVerifiedGraphWriteTaskSpec(), undefined, {
+    previewToken: '0123456789abcdef0123456789abcdef',
+    receiptId: 'receipt_from_cli',
+    cliRunId: 'cli_from_cli',
+    previewId: 'preview_from_cli',
+  });
+  const executeCall = bridgeCalls.find((call) => call.command === 'execute_task_plan');
+  const resultReceipt = (result.data as Record<string, any>).receipt;
+
+  assert.equal(executeCall?.payload?.receipt.receipt_id, 'receipt_from_cli');
+  assert.equal(executeCall?.payload?.receipt.preview_id, 'preview_from_cli');
+  assert.equal(executeCall?.payload?.receipt.preview_token_hash.length, 64);
+  assert.equal(executeCall?.payload?.receipt.verification_hash.length, 64);
+  assert.equal(executeCall?.payload?.receipt.verification_status, 'pending_readback');
+  assert.equal(resultReceipt.receipt_id, 'receipt_from_cli');
+  assert.equal(resultReceipt.task_run_id, 'task_receipt_001');
+  assert.equal(resultReceipt.verification_hash, executeCall?.payload?.receipt.verification_hash);
+  assert.equal(resultReceipt.status, 'applied');
 });
 
 test('ExecuteTaskInputSchema accepts preview_token on wrapped task_spec input', () => {
@@ -425,6 +540,13 @@ function makeSingleStepTaskPlan(taskName: string, dryRunMode: 'none' | 'quick' |
   } satisfies TaskPlan;
 }
 
+function makeVerifiedTaskPlan(taskName: string): TaskPlan {
+  return {
+    ...makeSingleStepTaskPlan(taskName),
+    verification: makeVerificationContract(),
+  };
+}
+
 function makeGraphWriteTaskSpec(): TaskSpec {
   return {
     schema: 'BlueprintHelper.TaskSpec.v1',
@@ -451,6 +573,29 @@ function makeGraphWriteTaskSpec(): TaskSpec {
   } as TaskSpec;
 }
 
+function makeVerifiedGraphWriteTaskSpec(): TaskSpec {
+  return {
+    ...makeGraphWriteTaskSpec(),
+    verification: makeVerificationContract(),
+  } as TaskSpec;
+}
+
+function makeVerificationContract(): TaskVerificationContract {
+  return {
+    schema: 'BlueprintHelper.TaskVerification.v1',
+    mode: 'required',
+    requirements: [{
+      id: 'door-flow-created',
+      fact: 'blueprint.graph.node.exists',
+      target: {
+        asset_path: '/Game/BP/BP_Door',
+        graph: 'BH_Door',
+      },
+      expected: true,
+    }],
+  };
+}
+
 function makeCompilerResult(taskPlan: TaskPlan) {
   return {
     schema: 'BlueprintHelper.TaskCompilerResult.v1',
@@ -466,6 +611,7 @@ function makePreviewBridgeResponse(result: Record<string, unknown> = {}): Bridge
   const resultWithoutData = { ...result };
   delete resultWithoutData.data;
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'preview_request',
     result: {
@@ -489,6 +635,7 @@ function makePreviewBridgeResponse(result: Record<string, unknown> = {}): Bridge
 
 function makeExecuteBridgeResponse(taskRunId: string): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'execute_request',
     result: {
@@ -515,6 +662,7 @@ function makeExecuteBridgeResponse(taskRunId: string): BridgeResponse {
 
 function makeEditableSourceControlResponse(assetPath: string): BridgeResponse {
   return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
     success: true,
     request_id: 'source_control_status_editable',
     result: {
@@ -523,5 +671,12 @@ function makeEditableSourceControlResponse(assetPath: string): BridgeResponse {
         files: [{ asset_path: assetPath, status: 'editable', editable: true }],
       },
     },
+  };
+}
+
+function withBridgeSchema<T extends { request_id: string; success: boolean }>(response: T): T & { schema: string } {
+  return {
+    schema: BRIDGE_RESPONSE_SCHEMA,
+    ...response,
   };
 }

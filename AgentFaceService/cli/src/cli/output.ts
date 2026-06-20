@@ -21,12 +21,41 @@ import {
   type ResultProjectionPolicy,
   type RuntimeCapabilityState,
 } from '@blueprinthelper/task-core/tool-surface/tool-registry';
+import { extractExecutionReceipt } from '@blueprinthelper/task-core/execution-receipt/execution-receipt-builder';
+import {
+  EXECUTION_RECEIPT_IDENTITY_FIELDS,
+  mergeExecutionReceiptIdentity,
+  protectExecutionReceiptFields,
+} from '@blueprinthelper/task-core/execution-receipt/execution-receipt-projection';
 import type { MetricsReportKind } from '@blueprinthelper/task-core/metrics/metrics-reporter';
 import type { MetricsWindow } from '@blueprinthelper/task-core/metrics/metrics-store';
-import { resolveArtifactRoot, writeJsonArtifact } from './artifacts.js';
+import { resolveArtifactRoot, tryWriteJsonArtifact } from './artifacts.js';
 import { createOutputIoSummary } from './io-stats.js';
 
 export const CLI_DEBUG_RESULT_SCHEMA = 'BlueprintHelper.CliDebugResult.v1';
+export const CLI_MACHINE_ENVELOPE_FIELDS = [
+  'ok',
+  'operation',
+  'status',
+  'error_code',
+  'message',
+  'category',
+  'stage',
+  'safe_next_action',
+  'allowed_recovery_actions',
+  'suggested_route',
+  'blocked_boundary',
+  'receipt_id',
+  'cli_run_id',
+  'preview_id',
+  'task_run_id',
+  'task_spec_hash',
+  'task_plan_hash',
+  'policy_hash',
+  'verification_hash',
+  'verification_status',
+  'receipt',
+] as const;
 
 export type CliFormat = 'summary' | 'json' | 'full' | 'markdown';
 
@@ -76,6 +105,7 @@ export interface CliCommand {
   develop?: boolean;
   expert?: boolean;
   previewToken?: string;
+  receiptId?: string;
   compileOnly?: boolean;
   taskRunId?: string;
   includeReserved?: boolean;
@@ -139,10 +169,15 @@ export function buildCliSummary(input: {
   const violations = collectConnectivityViolations(data, input.toolResult.error);
   const connectivitySummary = collectConnectivitySummary(data);
   const policies = resolveCliOutputPolicies(input.command);
-  const status = mapStatus(policies.statusPolicyId, input.toolResult, data);
+  const previewStatus = policies.statusPolicyId === 'task.preview_status'
+    ? previewStatusDetails(input.toolResult, data)
+    : undefined;
+  const status = previewStatus?.status ?? mapStatus(policies.statusPolicyId, input.toolResult, data);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
   const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
   const errorRecord = asRecord(input.toolResult.error);
+  const suggestedRoute = asRecord(errorRecord?.['suggested_route']) ?? asRecord(data?.['suggested_route']);
+  const blockedBoundary = asRecord(errorRecord?.['blocked_boundary']) ?? asRecord(data?.['blocked_boundary']);
   const previewId = policies.runIdPolicyId === 'task.preview_run_id'
     ? readString(extra['previewId'])
       ?? readString(data?.['preview_id'])
@@ -157,8 +192,8 @@ export function buildCliSummary(input: {
     readString(task?.['task_run_id']) ??
     input.command.taskRunId;
 
-  return omitUndefined({
-    ok: input.toolResult.ok,
+  const summary = omitUndefined({
+    ok: previewStatus?.ok ?? input.toolResult.ok,
     operation: input.command.kind,
     tool_name: input.command.toolName,
     status,
@@ -175,8 +210,10 @@ export function buildCliSummary(input: {
       connectivity: connectivitySummary,
     }),
     artifacts: input.artifactRefs,
-    error_code: input.toolResult.ok ? blockedIssueCode : input.toolResult.error?.code,
-    message: input.toolResult.ok ? blockedIssueMessage : input.toolResult.error?.message,
+    error_code: previewStatus?.error_code
+      ?? (input.toolResult.ok ? blockedIssueCode : input.toolResult.error?.code),
+    message: previewStatus?.message
+      ?? (input.toolResult.ok ? blockedIssueMessage : input.toolResult.error?.message),
     category: readString(errorRecord?.['category']),
     stage: readString(errorRecord?.['stage']),
     dirty_state: readString(errorRecord?.['dirty_state']),
@@ -187,8 +224,11 @@ export function buildCliSummary(input: {
     allowed_recovery_actions: arrayOfStrings(errorRecord?.['allowed_recovery_actions']).length > 0
       ? arrayOfStrings(errorRecord?.['allowed_recovery_actions'])
       : undefined,
+    suggested_route: suggestedRoute,
+    blocked_boundary: blockedBoundary,
     violations: violations.length > 0 ? violations : undefined,
   });
+  return mergeExecutionReceiptIdentity(summary, extractToolResultReceipt(input.toolResult));
 }
 
 export function writeCliResult(
@@ -228,17 +268,17 @@ export function writeCliResult(
     toolResult: fullToolResult,
     extra: Object.keys(fullExtra).length > 0 ? fullExtra : undefined,
   });
-  const artifactRefs: Record<string, string> = {
-    full_result: writeJsonArtifact({
-      root: artifactRoot,
-      runId,
-      name: 'result',
-      value: fullResult,
-    }),
-  };
+  const artifactRefs: Record<string, string> = {};
+  const artifactWarnings: CliArtifactWriteWarning[] = [];
+  recordArtifactWrite(artifactRefs, artifactWarnings, 'full_result', {
+    root: artifactRoot,
+    runId,
+    name: 'result',
+    value: fullResult,
+  });
 
   if (debugResult) {
-    artifactRefs['debug_result'] = writeJsonArtifact({
+    recordArtifactWrite(artifactRefs, artifactWarnings, 'debug_result', {
       root: artifactRoot,
       runId,
       name: 'debug',
@@ -248,7 +288,7 @@ export function writeCliResult(
 
   const taskPlan = asTaskPlanLike(safeExtra['taskPlan']) ?? asTaskPlanLike(asRecord(safeToolResult.data)?.['task_plan']);
   if (taskPlan) {
-    artifactRefs['task_plan'] = writeJsonArtifact({
+    recordArtifactWrite(artifactRefs, artifactWarnings, 'task_plan', {
       root: artifactRoot,
       runId,
       name: 'task_plan',
@@ -256,16 +296,17 @@ export function writeCliResult(
     });
   }
 
+  const baseOutput = command.format === 'summary'
+    ? buildCliSummary({ command, toolResult: safeToolResult, artifactRefs, extra: safeExtra })
+    : buildOutput(command, outputPolicies, safeToolResult, fullToolResult, artifactRefs, compactCliExtraForOutput(safeExtra));
   const output = shapeCliOutput(
-    command.format === 'summary'
-      ? buildCliSummary({ command, toolResult: safeToolResult, artifactRefs, extra: safeExtra })
-      : buildOutput(command, outputPolicies, safeToolResult, fullToolResult, artifactRefs, compactCliExtraForOutput(safeExtra)),
+    attachArtifactWarnings(baseOutput, artifactWarnings),
     command.fields,
     command.omitFields,
   );
   const text = `${JSON.stringify(output)}\n`;
   if (command.maxBytes !== undefined && Buffer.byteLength(text, 'utf8') > command.maxBytes) {
-    const budgetResult = outputTooLargeResult(command, artifactRefs);
+    const budgetResult = mergeMachineEnvelopeFields(outputTooLargeResult(command, artifactRefs), output);
     const budgetText = `${JSON.stringify(budgetResult)}\n`;
     runtime.stdout(budgetText);
     return createWriteOutcome(true, artifactRefs, budgetText);
@@ -273,6 +314,49 @@ export function writeCliResult(
 
   runtime.stdout(text);
   return createWriteOutcome(false, artifactRefs, text);
+}
+
+interface CliArtifactWriteWarning {
+  readonly code: 'artifact_write_warning';
+  readonly artifact: string;
+  readonly message: string;
+}
+
+function recordArtifactWrite(
+  refs: Record<string, string>,
+  warnings: CliArtifactWriteWarning[],
+  artifact: string,
+  input: {
+    root: string;
+    runId: string;
+    name: string;
+    value: unknown;
+  },
+): void {
+  const outcome = tryWriteJsonArtifact(input);
+  if (outcome.ok && outcome.path) {
+    refs[artifact] = outcome.path;
+    return;
+  }
+  warnings.push({
+    code: 'artifact_write_warning',
+    artifact,
+    message: outcome.error?.message ?? `Failed to write CLI artifact: ${artifact}`,
+  });
+}
+
+function attachArtifactWarnings(
+  output: Record<string, unknown>,
+  warnings: readonly CliArtifactWriteWarning[],
+): Record<string, unknown> {
+  if (warnings.length === 0) {
+    return output;
+  }
+  return {
+    ...output,
+    artifact_warning: warnings[0],
+    artifact_warnings: warnings,
+  };
 }
 
 function collectConnectivitySummary(
@@ -313,6 +397,14 @@ export function buildCliError(input: {
   operation: CliCommandKind | 'output';
   status: string;
   message: string;
+  error_code?: string;
+  category?: string;
+  stage?: string;
+  retryable?: boolean;
+  safe_next_action?: string;
+  allowed_recovery_actions?: string[];
+  suggested_route?: Record<string, unknown>;
+  blocked_boundary?: Record<string, unknown>;
   artifactRefs?: Record<string, string>;
   fields?: string[];
   omitFields?: string[];
@@ -321,7 +413,15 @@ export function buildCliError(input: {
     ok: false,
     operation: input.operation,
     status: input.status,
+    error_code: input.error_code ?? input.status,
     message: input.message,
+    category: input.category,
+    stage: input.stage,
+    retryable: input.retryable,
+    safe_next_action: input.safe_next_action,
+    allowed_recovery_actions: input.allowed_recovery_actions,
+    suggested_route: input.suggested_route,
+    blocked_boundary: input.blocked_boundary,
     artifacts: input.artifactRefs,
   }), input.fields, input.omitFields);
 }
@@ -331,7 +431,8 @@ export function shapeCliOutput(
   fields?: string[],
   omitFields?: string[],
 ): Record<string, unknown> {
-  return omitCliFields(projectCliFields(output, fields), omitFields);
+  const shaped = omitCliFields(projectCliFields(output, fields), omitFields);
+  return mergeMachineEnvelopeFields(shaped, output);
 }
 
 export function projectCliFields(
@@ -343,7 +444,7 @@ export function projectCliFields(
   }
 
   const projected: Record<string, unknown> = {};
-  for (const field of fields) {
+  for (const field of protectExecutionReceiptFields(fields)) {
     const parts = field.split('.').filter((part) => part.length > 0);
     if (parts.length === 0) {
       continue;
@@ -366,6 +467,9 @@ export function omitCliFields(
 
   const omitted = cloneValue(output) as Record<string, unknown>;
   for (const field of fields) {
+    if (isProtectedReceiptField(field)) {
+      continue;
+    }
     const parts = field.split('.').filter((part) => part.length > 0);
     if (parts.length === 0) {
       continue;
@@ -373,6 +477,10 @@ export function omitCliFields(
     deletePath(omitted, parts);
   }
   return omitted;
+}
+
+function isProtectedReceiptField(field: string): boolean {
+  return field === 'receipt' || (EXECUTION_RECEIPT_IDENTITY_FIELDS as readonly string[]).includes(field);
 }
 
 function buildOutput(
@@ -384,35 +492,60 @@ function buildOutput(
   extra: Record<string, unknown>,
 ): Record<string, unknown> {
   const data = asRecord(toolResult.data);
-  const status = mapStatus(outputPolicies.statusPolicyId, toolResult, data);
+  const previewStatus = outputPolicies.statusPolicyId === 'task.preview_status'
+    ? previewStatusDetails(toolResult, data)
+    : undefined;
+  const status = previewStatus?.status ?? mapStatus(outputPolicies.statusPolicyId, toolResult, data);
   const issues = arrayOfRecords(data?.['issues']);
   const blockedIssueCode = status === 'preview_blocked' ? readString(issues[0]?.['code']) : undefined;
   const blockedIssueMessage = status === 'preview_blocked' ? readString(issues[0]?.['message']) : undefined;
+  const errorRecord = asRecord(toolResult.error);
+  const suggestedRoute = asRecord(errorRecord?.['suggested_route']) ?? asRecord(data?.['suggested_route']);
+  const blockedBoundary = asRecord(errorRecord?.['blocked_boundary']) ?? asRecord(data?.['blocked_boundary']);
+  const receipt = extractToolResultReceipt(toolResult);
 
   if (outputPolicies.outputDataPolicyId === 'metrics.report_data') {
     const metricsData = data ?? {};
-    return omitUndefined({
-      ok: toolResult.ok,
+    return mergeExecutionReceiptIdentity(omitUndefined({
+      ok: previewStatus?.ok ?? toolResult.ok,
       operation: command.kind,
       status,
       data: projectMetricsReportDataForCli(metricsData, command.format),
       artifacts: artifactRefs,
-      error_code: toolResult.error?.code,
-      message: toolResult.error?.message,
-    });
+      error_code: previewStatus?.error_code ?? toolResult.error?.code,
+      message: previewStatus?.message ?? toolResult.error?.message,
+      category: readString(errorRecord?.['category']),
+      stage: readString(errorRecord?.['stage']),
+      safe_next_action: readString(errorRecord?.['safe_next_action']),
+      allowed_recovery_actions: arrayOfStrings(errorRecord?.['allowed_recovery_actions']).length > 0
+        ? arrayOfStrings(errorRecord?.['allowed_recovery_actions'])
+        : undefined,
+      suggested_route: suggestedRoute,
+      blocked_boundary: blockedBoundary,
+    }), receipt);
   }
 
-  return {
-    ok: toolResult.ok,
+  return mergeExecutionReceiptIdentity(omitUndefined({
+    ok: previewStatus?.ok ?? toolResult.ok,
     operation: command.kind,
     tool_name: command.toolName,
     status,
     tool_result: outputToolResult,
     extra,
     artifacts: artifactRefs,
-    error_code: toolResult.ok ? blockedIssueCode : toolResult.error?.code,
-    message: toolResult.ok ? blockedIssueMessage : toolResult.error?.message,
-  };
+    error_code: previewStatus?.error_code
+      ?? (toolResult.ok ? blockedIssueCode : toolResult.error?.code),
+    message: previewStatus?.message
+      ?? (toolResult.ok ? blockedIssueMessage : toolResult.error?.message),
+    category: readString(errorRecord?.['category']),
+    stage: readString(errorRecord?.['stage']),
+    safe_next_action: readString(errorRecord?.['safe_next_action']),
+    allowed_recovery_actions: arrayOfStrings(errorRecord?.['allowed_recovery_actions']).length > 0
+      ? arrayOfStrings(errorRecord?.['allowed_recovery_actions'])
+      : undefined,
+    suggested_route: suggestedRoute,
+    blocked_boundary: blockedBoundary,
+  }), receipt);
 }
 
 function outputTooLargeResult(command: CliCommand, artifactRefs: Record<string, string>): Record<string, unknown> {
@@ -475,7 +608,7 @@ function mapStatus(
     return toolResult.ok ? 'reported' : 'report_failed';
   }
   if (statusPolicyId === 'task.preview_status') {
-    return data?.['passed'] === false || !toolResult.ok ? 'preview_blocked' : 'preview_passed';
+    return previewStatusDetails(toolResult, data).status;
   }
   if (statusPolicyId === 'task.execute_status') {
     return toolResult.ok ? 'executed' : 'execute_failed';
@@ -487,6 +620,39 @@ function mapStatus(
     return toolResult.ok ? 'bridge_available' : 'bridge_unavailable';
   }
   return toolResult.status;
+}
+
+function previewStatusDetails(
+  toolResult: ToolResultBase,
+  data: Record<string, unknown> | undefined,
+): { ok: boolean; status: 'preview_passed' | 'preview_blocked'; error_code?: string; message?: string } {
+  if (!toolResult.ok) {
+    return {
+      ok: false,
+      status: 'preview_blocked',
+    };
+  }
+
+  if (data?.['passed'] === true) {
+    return {
+      ok: true,
+      status: 'preview_passed',
+    };
+  }
+
+  if (data?.['passed'] === false) {
+    return {
+      ok: false,
+      status: 'preview_blocked',
+    };
+  }
+
+  return {
+    ok: false,
+    status: 'preview_blocked',
+    error_code: 'preview_result_missing_passed',
+    message: 'Preview result is missing boolean data.passed.',
+  };
 }
 
 function inferRunId(
@@ -501,16 +667,34 @@ function inferRunId(
 
   const data = asRecord(toolResult.data);
   const task = asRecord(data?.['task']);
+  const receipt = extractToolResultReceipt(toolResult);
   const taskRunId = readString(data?.['task_run_id'])
     ?? readString(task?.['task_run_id'])
+    ?? receipt?.task_run_id
     ?? command.taskRunId;
   if (runIdPolicyId !== 'task.preview_run_id') {
-    return taskRunId ?? `cli_${Date.now()}`;
+    return taskRunId
+      ?? receipt?.receipt_id
+      ?? receipt?.cli_run_id
+      ?? readString(toolResult.trace_id)
+      ?? safeRunId(command.kind);
   }
   return readString(extra['previewId'])
     ?? readString(data?.['preview_id'])
+    ?? receipt?.preview_id
+    ?? receipt?.receipt_id
+    ?? receipt?.cli_run_id
     ?? taskRunId
-    ?? `cli_${Date.now()}`;
+    ?? readString(toolResult.trace_id)
+    ?? safeRunId(command.kind);
+}
+
+function extractToolResultReceipt(toolResult: ToolResultBase): ReturnType<typeof extractExecutionReceipt> {
+  return extractExecutionReceipt(asRecord(toolResult.data)?.['receipt']);
+}
+
+function safeRunId(kind: CliCommandKind): string {
+  return kind.replace(/[^A-Za-z0-9_.-]/g, '_');
 }
 
 function collectTargetAssets(
@@ -686,6 +870,20 @@ function cloneValue(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function mergeMachineEnvelopeFields(
+  output: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...output };
+  for (const field of CLI_MACHINE_ENVELOPE_FIELDS) {
+    const value = source[field];
+    if (value !== undefined) {
+      merged[field] = value;
+    }
+  }
+  return merged;
 }
 
 function omitUndefined(record: Record<string, unknown>): Record<string, unknown> {

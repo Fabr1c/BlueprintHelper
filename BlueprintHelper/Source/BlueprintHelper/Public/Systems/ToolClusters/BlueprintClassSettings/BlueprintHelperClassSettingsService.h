@@ -23,6 +23,10 @@ public:
 	/** 读取蓝图 Class Settings，返。parent_class / generated_class / implemented_interfaces / class_default_count。*/
 	FBlueprintHelperToolResultBase ReadClassSettings(const FString& AssetPath) const;
 
+	FBlueprintHelperToolResultBase ReadClassDefaultProperty(
+		const FString& AssetPath,
+		const FString& PropertyPath) const;
+
 	/** 添加单个 Implemented Interface。*/
 	FBlueprintHelperToolResultBase AddImplementedInterface(
 		const FString& AssetPath,
@@ -105,6 +109,12 @@ private:
 
 	static FBlueprintHelperValidationSummary MakeValidation(bool bShouldCompile, bool bShouldSave);
 	static FBlueprintHelperToolError MakeError(
+		const FString& Code,
+		EBlueprintHelperToolStage Stage,
+		const FString& Message,
+		const FString& Field = FString());
+
+	static FBlueprintHelperToolError MakeClassDefaultReadError(
 		const FString& Code,
 		EBlueprintHelperToolStage Stage,
 		const FString& Message,

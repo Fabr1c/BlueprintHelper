@@ -271,6 +271,27 @@ struct FBlueprintHelperEditablePropertyPolicy
 			&& !Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly | CPF_EditConst | CPF_Transient);
 	}
 
+	static bool AllowsClassDefaultWrite(const FProperty* Property)
+	{
+		return Property
+			&& Property->HasAnyPropertyFlags(CPF_Edit)
+			&& !Property->HasAnyPropertyFlags(CPF_EditConst | CPF_Transient | CPF_DisableEditOnTemplate);
+	}
+
+	static bool AllowsInstanceWrite(const FProperty* Property)
+	{
+		return Property
+			&& Property->HasAnyPropertyFlags(CPF_Edit)
+			&& !Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly | CPF_EditConst | CPF_Transient | CPF_DisableEditOnInstance);
+	}
+
+	static bool AllowsGraphWrite(const FProperty* Property)
+	{
+		return Property
+			&& Property->HasAnyPropertyFlags(CPF_BlueprintVisible)
+			&& !Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly | CPF_EditConst | CPF_Transient);
+	}
+
 	static FString BuildFlagsSummary(uint64 PropertyFlags)
 	{
 		TArray<FString> Tags;

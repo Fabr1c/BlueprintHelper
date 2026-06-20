@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as net from 'node:net';
 import test from 'node:test';
+import { BRIDGE_RESPONSE_SCHEMA } from '../../bridge/bridge-response-schema.js';
 import { BridgeClient } from '../../bridge/bridge-client.js';
 import { TaskTimingTrace } from '../../task/service/task-timing.js';
 
@@ -56,6 +57,7 @@ async function startTestBridgeServer(options: TestBridgeServerOptions = {}): Pro
         seenRequests.push(request);
         seenCommands.push(request.command ?? '');
         socket.write(encodeFrame({
+          schema: BRIDGE_RESPONSE_SCHEMA,
           request_id: request.request_id,
           success: true,
           result: { command: request.command },

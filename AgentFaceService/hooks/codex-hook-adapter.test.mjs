@@ -37,6 +37,36 @@ async function writeTaskSpec(projectDir, value = {}) {
   return taskSpecPath;
 }
 
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+const HASH_C = 'c'.repeat(64);
+
+function makeReceipt(value = {}) {
+  return {
+    schema: 'BlueprintHelper.ExecutionReceipt.v1',
+    receipt_id: 'receipt-123',
+    cli_run_id: 'cli-123',
+    preview_id: 'preview-123',
+    task_spec_hash: HASH_A,
+    task_plan_hash: HASH_B,
+    policy_hash: HASH_C,
+    status: 'previewed',
+    created_at: '2026-06-20T00:00:00.000Z',
+    updated_at: '2026-06-20T00:00:00.000Z',
+    ...value,
+  };
+}
+
+function previewStdout() {
+  const receipt = makeReceipt();
+  return JSON.stringify({ ok: true, status: 'preview_passed', preview_token: 'tok', receipt });
+}
+
+function executeStdout() {
+  const receipt = makeReceipt({ status: 'applied', task_run_id: 'run-123' });
+  return JSON.stringify({ ok: true, status: 'execute_succeeded', task_run_id: 'run-123', receipt });
+}
+
 test('runCodexHook parses Codex snake_case payloads and emits machine-readable blocks', async () => {
   const projectDir = await makeProject();
   try {
@@ -70,7 +100,7 @@ test('runCodexHook parses Codex camelCase payloads and emits readback reminders 
       payload: {
         toolName: 'functions.shell_command',
         toolInput: { command: `bh task preview --file "${taskSpecPath}"` },
-        toolOutput: { stdout: '{"status":"completed","preview_token":"tok"}', exit_code: 0 },
+        toolOutput: { stdout: previewStdout(), exit_code: 0 },
       },
     });
 
@@ -79,8 +109,8 @@ test('runCodexHook parses Codex camelCase payloads and emits readback reminders 
       cwd: projectDir,
       payload: {
         toolName: 'functions.shell_command',
-        toolInput: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok` },
-        toolOutput: { stdout: '{"status":"completed","task_run_id":"run-123"}', exit_code: 0 },
+        toolInput: { command: `bh task execute --file "${taskSpecPath}" --preview-token tok --receipt-id receipt-123` },
+        toolOutput: { stdout: executeStdout(), exit_code: 0 },
       },
     });
 

@@ -513,6 +513,62 @@ struct FBlueprintHelperValidationSummary
 // ─── 7.8 FBlueprintHelperToolError ───
 
 /** 工具错误信息（失败时返回）。 */
+struct FBlueprintHelperToolSuggestedRoute
+{
+	FString RouteId;
+	FString Family;
+	FString WriteMode;
+	FString ClusterId;
+	FString OperationId;
+	FString TemplateId;
+	FString TaskType;
+	FString Reason;
+	FString AppliesWhen;
+	FString PropertyPathHint;
+	TArray<FString> PropertyPathHints;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		if (!RouteId.IsEmpty()) Json->SetStringField(TEXT("route_id"), RouteId);
+		if (!Family.IsEmpty()) Json->SetStringField(TEXT("family"), Family);
+		if (!WriteMode.IsEmpty()) Json->SetStringField(TEXT("write_mode"), WriteMode);
+		if (!ClusterId.IsEmpty()) Json->SetStringField(TEXT("cluster_id"), ClusterId);
+		if (!OperationId.IsEmpty()) Json->SetStringField(TEXT("operation_id"), OperationId);
+		if (!TemplateId.IsEmpty()) Json->SetStringField(TEXT("template_id"), TemplateId);
+		if (!TaskType.IsEmpty()) Json->SetStringField(TEXT("task_type"), TaskType);
+		if (!Reason.IsEmpty()) Json->SetStringField(TEXT("reason"), Reason);
+		if (!AppliesWhen.IsEmpty()) Json->SetStringField(TEXT("applies_when"), AppliesWhen);
+		if (!PropertyPathHint.IsEmpty()) Json->SetStringField(TEXT("property_path_hint"), PropertyPathHint);
+		if (PropertyPathHints.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const FString& Value : PropertyPathHints)
+			{
+				Values.Add(MakeShared<FJsonValueString>(Value));
+			}
+			Json->SetArrayField(TEXT("property_path_hints"), Values);
+		}
+		return Json;
+	}
+};
+
+struct FBlueprintHelperToolBlockedBoundary
+{
+	FString BoundaryId;
+	FString Origin;
+	FString BlockedOperation;
+
+	TSharedRef<FJsonObject> ToJson() const
+	{
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		if (!BoundaryId.IsEmpty()) Json->SetStringField(TEXT("boundary_id"), BoundaryId);
+		if (!Origin.IsEmpty()) Json->SetStringField(TEXT("origin"), Origin);
+		if (!BlockedOperation.IsEmpty()) Json->SetStringField(TEXT("blocked_operation"), BlockedOperation);
+		return Json;
+	}
+};
+
 struct FBlueprintHelperToolError
 {
 	/** 稳定错误码。 */
@@ -530,6 +586,12 @@ struct FBlueprintHelperToolError
 	TArray<FString> AllowedRecoveryActions;
 	TArray<FString> RiskyRecoveryActions;
 	TArray<FString> EvidenceRefs;
+	TOptional<FBlueprintHelperToolSuggestedRoute> SuggestedRoute;
+	TOptional<FBlueprintHelperToolBlockedBoundary> BlockedBoundary;
+	FString SuggestedRouteId;
+	FString SuggestedReadType;
+	FString BlockedBoundaryId;
+	FString BlockedBoundaryDetail;
 
 	/** 是否可重试。 */
 	bool bRetryable = false;
@@ -645,6 +707,12 @@ struct FBlueprintHelperToolError
 		if (!Field.IsEmpty()) Json->SetStringField(TEXT("field"), Field);
 		if (!Expected.IsEmpty()) Json->SetStringField(TEXT("expected"), Expected);
 		if (!Actual.IsEmpty()) Json->SetStringField(TEXT("actual"), Actual);
+		if (SuggestedRoute.IsSet()) Json->SetObjectField(TEXT("suggested_route"), SuggestedRoute->ToJson());
+		else if (!SuggestedRouteId.IsEmpty()) Json->SetStringField(TEXT("suggested_route"), SuggestedRouteId);
+		if (!SuggestedReadType.IsEmpty()) Json->SetStringField(TEXT("suggested_read_type"), SuggestedReadType);
+		if (BlockedBoundary.IsSet()) Json->SetObjectField(TEXT("blocked_boundary"), BlockedBoundary->ToJson());
+		else if (!BlockedBoundaryId.IsEmpty()) Json->SetStringField(TEXT("blocked_boundary"), BlockedBoundaryId);
+		if (!BlockedBoundaryDetail.IsEmpty()) Json->SetStringField(TEXT("blocked_boundary_detail"), BlockedBoundaryDetail);
 		return Json;
 	}
 };

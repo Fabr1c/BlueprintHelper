@@ -3,6 +3,7 @@
 #include "Systems/ToolClusters/ObjectProperty/BlueprintHelperPropertyReflectionService.h"
 
 #include "Dom/JsonValue.h"
+#include "Engine/Blueprint.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "UObject/FieldIterator.h"
@@ -184,6 +185,56 @@ public:
 		}
 
 		return nullptr;
+	}
+
+	static bool IsBlueprintCdoPropertyRequest(UObject* AssetObject, const FString& RequestedPropertyPath)
+	{
+		if (UBlueprint* Blueprint = Cast<UBlueprint>(AssetObject))
+		{
+			if (Blueprint->GeneratedClass && !RequestedPropertyPath.IsEmpty())
+			{
+				UObject* CDO = Blueprint->GeneratedClass->GetDefaultObject();
+				if (!CDO)
+				{
+					return false;
+				}
+
+				FProperty* Property = nullptr;
+				void* ValuePtr = nullptr;
+				FString ExpectedType;
+				FString ErrorCode;
+				FString ErrorMessage;
+				return FBlueprintHelperPropertyReflectionService::ResolvePropertyPath(
+					CDO,
+					RequestedPropertyPath,
+					Property,
+					ValuePtr,
+					ExpectedType,
+					ErrorCode,
+					ErrorMessage);
+			}
+		}
+		return false;
+	}
+
+	static FBlueprintHelperObjectPropertyInfo MakePropertyInfo(
+		FProperty* Prop,
+		const FString& Name,
+		void* ValuePtr,
+		UObject* OwnerObject)
+	{
+		FBlueprintHelperObjectPropertyInfo Info;
+		Info.Name = Name;
+		Info.TypeName = Prop->GetCPPType();
+		Prop->ExportTextItem_Direct(Info.Value, ValuePtr, nullptr, OwnerObject, PPF_None);
+
+		if (Prop->HasMetaData(TEXT("Category")))
+		{
+			Info.Category = Prop->GetMetaData(TEXT("Category"));
+		}
+
+		Info.Flags = FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(Prop->PropertyFlags);
+		return Info;
 	}
 
 };
@@ -378,6 +429,67 @@ FBlueprintHelperObjectPropertiesResult FBlueprintHelperPropertyReflectionService
 		Result.Properties.Add(MoveTemp(Info));
 	}
 
+	Result.bSuccess = true;
+	return Result;
+}
+
+FBlueprintHelperObjectPropertiesResult FBlueprintHelperPropertyReflectionService::GetObjectProperties(
+	const FString& AssetPath,
+	const FString& PropertyPath) const
+{
+	if (PropertyPath.IsEmpty())
+	{
+		return GetObjectProperties(AssetPath);
+	}
+
+	FBlueprintHelperObjectPropertiesResult Result;
+
+	UObject* Obj = ResolveAsset(AssetPath, Result.ErrorMessage);
+	if (!Obj)
+	{
+		return Result;
+	}
+
+	if (FBlueprintHelperPropertyReflectionServiceLocalUtils::IsBlueprintCdoPropertyRequest(Obj, PropertyPath))
+	{
+		Result.bRouteMismatch = true;
+		Result.ErrorCode = TEXT("read_context_route_mismatch");
+		Result.ErrorCategory = TEXT("parameter_error");
+		Result.SafeNextAction = TEXT("use_suggested_route_and_rerun_read_context");
+		Result.SuggestedRoute = TEXT("blueprint.class_defaults.property");
+		Result.SuggestedReadType = TEXT("blueprint_class_default_context");
+		Result.BlockedBoundary = TEXT("object_property_context_asset_object_only");
+		Result.BlockedBoundaryDetail = FString::Printf(TEXT("property_path_hint=%s"), *PropertyPath);
+		Result.ErrorMessage = TEXT("object_property_context reads Blueprint asset object properties, not Blueprint CDO defaults.");
+		return Result;
+	}
+
+	UObject* RootObject = Obj;
+	if (!RootObject)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Cannot resolve object property read root: %s"), *AssetPath);
+		return Result;
+	}
+
+	Result.ClassName = RootObject->GetClass()->GetName();
+	Result.AssetPath = AssetPath;
+
+	FProperty* Prop = nullptr;
+	void* ValuePtr = nullptr;
+	FString ExpectedType;
+	FString ErrorCode;
+	FString ErrorMessage;
+	if (!ResolvePropertyPath(RootObject, PropertyPath, Prop, ValuePtr, ExpectedType, ErrorCode, ErrorMessage))
+	{
+		Result.ErrorMessage = ErrorMessage;
+		return Result;
+	}
+
+	Result.Properties.Add(FBlueprintHelperPropertyReflectionServiceLocalUtils::MakePropertyInfo(
+		Prop,
+		PropertyPath,
+		ValuePtr,
+		RootObject));
 	Result.bSuccess = true;
 	return Result;
 }

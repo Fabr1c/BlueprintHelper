@@ -97,6 +97,12 @@ test('MaterialInstance descriptor is visible only after its P4 runtime adapter i
   assert.deepEqual(getCapabilityDescriptor('material_instance.edit')?.read_context?.route_refs, ['material_instance.schema.asset']);
 });
 
+test('asset_factory ordinary Agent-visible asset kinds match specialized templates', () => {
+  const descriptor = listCapabilityDescriptors().find((item) => item.id === 'asset_factory.create');
+  assert.ok(descriptor);
+  assert.deepEqual(descriptor.asset_kinds, ['data_asset', 'blueprint', 'widget_blueprint']);
+});
+
 test('Struct fields descriptor stays hidden until a real runtime adapter is implemented', () => {
   const hidden = listAgentVisibleCapabilities({
     registered_runtime_adapter_ids: [

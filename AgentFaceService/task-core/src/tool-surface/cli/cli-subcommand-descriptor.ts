@@ -84,20 +84,20 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
   {
     subcommand: 'operations',
     kind: 'tools.templates.operations',
-    usage: 'bh tools templates operations --family <family> --cluster <cluster> --write-mode <mode> --format json',
+    usage: 'bh tools templates operations --family <family> [--cluster <cluster>] [--write-mode <mode>] --format json',
     option_map: { family: 'family', cluster: 'cluster', writeMode: 'writeMode' },
   },
   {
     subcommand: 'quick-access',
     kind: 'tools.templates.quick_access',
-    usage: 'bh tools templates quick-access --family <family> --cluster <cluster> --operation <operation> --write-mode <mode> --format json',
+    usage: 'bh tools templates quick-access --family <family> --operation <operation> [--cluster <cluster>] [--write-mode <mode>] --format json',
     option_map: { family: 'family', cluster: 'cluster', operation: 'operation', writeMode: 'writeMode' },
   },
   {
     subcommand: 'compose',
     kind: 'tools.templates.compose',
-    usage: 'bh tools templates compose --family <family> --write-mode <mode> --templates <slot_expr[,slot_expr...]> --out <task-spec.json> --format json',
-    option_map: { family: 'family', writeMode: 'writeMode', outputPath: 'out' },
+    usage: 'bh tools templates compose (--template <leaf_template_id> | --family graph_write --write-mode <mode> --templates <slot_expr[,slot_expr...]>) --out <task-spec.json> --format json',
+    option_map: { family: 'family', writeMode: 'writeMode', templateId: 'template', outputPath: 'out' },
     array_option_map: { templateIds: 'templates' },
   },
 ];
