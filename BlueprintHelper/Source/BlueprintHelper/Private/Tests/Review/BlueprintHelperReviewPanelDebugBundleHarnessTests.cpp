@@ -700,6 +700,10 @@ bool FBlueprintHelperReviewPanelMainWindowE2EHarnessTest::RunTest(const FString&
 			EBlueprintHelperReviewChangeStatus::Pending));
 	}
 	ReviewPanel->RefreshVisibleChangesForTesting(Changes);
+	TestEqual(
+		TEXT("Embedded ReviewPanel pending page status text is readable Chinese"),
+		ReviewPanel->GetPendingPageStatusTextForTesting().ToString(),
+		FString(TEXT("\u5df2\u52a0\u8f7d 18 / 18")));
 
 	for (const FBlueprintHelperReviewPanelSurfaceHarnessCase& TestCase : TestCases)
 	{

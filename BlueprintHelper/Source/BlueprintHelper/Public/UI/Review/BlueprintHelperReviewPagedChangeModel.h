@@ -26,6 +26,7 @@ public:
 	bool IsPageRequestInFlight() const;
 	int32 GetTotalMatchingCount() const;
 	const FBlueprintHelperReviewPendingIndexPageCursor& GetNextCursor() const;
+	FText BuildPendingPageStatusText() const;
 
 private:
 	void RebuildLoadedChangeIds();

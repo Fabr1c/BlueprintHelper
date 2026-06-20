@@ -680,7 +680,18 @@ void SBlueprintHelperReviewPanel::RefreshVisibleChangesForTesting(
 	const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges)
 {
 	RefreshVisibleChanges(SourceChanges);
+	FBlueprintHelperReviewPendingLoadResult TestPage;
+	TestPage.Mode = EBlueprintHelperReviewPendingLoadMode::ResetToFirstPage;
+	TestPage.Changes = SourceChanges;
+	TestPage.TotalMatchingCount = SourceChanges.Num();
+	TestPage.bHasMore = false;
+	PagedChangeModel.ApplyPendingLoadResult(TestPage);
 	RefreshDiffStackWidgets();
+}
+
+FText SBlueprintHelperReviewPanel::GetPendingPageStatusTextForTesting() const
+{
+	return GetPendingPageStatusText();
 }
 
 TArray<FString> SBlueprintHelperReviewPanel::GetSurfaceDiffModelIdsForTesting(
@@ -2015,17 +2026,7 @@ int32 SBlueprintHelperReviewPanel::CountLoadedChangeTreeRows() const
 
 FText SBlueprintHelperReviewPanel::GetPendingPageStatusText() const
 {
-	const int32 Loaded = PagedChangeModel.GetLoadedChanges().Num();
-	const int32 Total = PagedChangeModel.GetTotalMatchingCount();
-	if (PagedChangeModel.IsPageRequestInFlight())
-	{
-		return FText::FromString(FString::Printf(TEXT("濮濓絽婀崝鐘烘祰 %d / %d"), Loaded, Total));
-	}
-	if (PagedChangeModel.HasMorePages())
-	{
-		return FText::FromString(FString::Printf(TEXT("瀹告彃濮炴潪?%d / %d閿涘本绮撮崝銊ュ煂鎼存洟鍎寸紒褏鐢婚崝鐘烘祰"), Loaded, Total));
-	}
-	return FText::FromString(FString::Printf(TEXT("瀹告彃濮炴潪?%d / %d"), Loaded, Total));
+	return PagedChangeModel.BuildPendingPageStatusText();
 }
 
 FReply SBlueprintHelperReviewPanel::OnLoadMorePendingChanges()

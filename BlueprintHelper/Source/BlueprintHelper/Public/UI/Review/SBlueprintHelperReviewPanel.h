@@ -82,6 +82,7 @@ public:
 	bool CaptureFocusDebugBundleForTesting(FString& OutBundlePath, FString& OutDebugMessages);
 	bool LoadDebugBundleForTesting(const FString& InBundlePath, FString& OutDebugMessages);
 	void RefreshVisibleChangesForTesting(const TArray<FBlueprintHelperReviewVisibleChange>& SourceChanges);
+	FText GetPendingPageStatusTextForTesting() const;
 	TArray<FString> GetSurfaceDiffModelIdsForTesting(EBlueprintHelperReviewSurface Surface) const;
 	int32 GetSurfaceDiffModelCountForTesting(EBlueprintHelperReviewSurface Surface) const;
 #endif

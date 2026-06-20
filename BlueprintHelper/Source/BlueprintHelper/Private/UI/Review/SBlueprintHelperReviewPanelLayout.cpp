@@ -203,7 +203,7 @@ TSharedRef<SWidget> SBlueprintHelperReviewPanel::BuildFinalChangeSidebar()
 			.Padding(6.0f, 2.0f)
 			[
 				SNew(SButton)
-				.Text(FText::FromString(TEXT("加载更多")))
+				.Text(FText::FromString(TEXT("\u52a0\u8f7d\u66f4\u591a")))
 				.Visibility_Lambda([this]()
 				{
 					return PagedChangeModel.HasMorePages() ? EVisibility::Visible : EVisibility::Collapsed;

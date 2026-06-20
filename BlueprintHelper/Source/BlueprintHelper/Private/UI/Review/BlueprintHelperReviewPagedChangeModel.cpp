@@ -126,6 +126,24 @@ const FBlueprintHelperReviewPendingIndexPageCursor& FBlueprintHelperReviewPagedC
 	return NextCursor;
 }
 
+FText FBlueprintHelperReviewPagedChangeModel::BuildPendingPageStatusText() const
+{
+	const int32 Loaded = LoadedChanges.Num();
+	const int32 Total = TotalMatchingCount;
+	if (bPageRequestInFlight)
+	{
+		return FText::FromString(FString::Printf(TEXT("\u6b63\u5728\u52a0\u8f7d %d / %d"), Loaded, Total));
+	}
+	if (bHasMorePages)
+	{
+		return FText::FromString(FString::Printf(
+			TEXT("\u5df2\u52a0\u8f7d %d / %d\uff0c\u6eda\u52a8\u5230\u5e95\u90e8\u7ee7\u7eed\u52a0\u8f7d"),
+			Loaded,
+			Total));
+	}
+	return FText::FromString(FString::Printf(TEXT("\u5df2\u52a0\u8f7d %d / %d"), Loaded, Total));
+}
+
 void FBlueprintHelperReviewPagedChangeModel::RebuildLoadedChangeIds()
 {
 	LoadedChangeIds.Reset();
