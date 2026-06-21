@@ -10,7 +10,8 @@ export interface MetricsErrorClassification {
 export type MetricsErrorDetailKind =
   | 'route_mismatch_with_suggested_route'
   | 'component_tree_safety_boundary'
-  | 'suggested_route_property_failure';
+  | 'suggested_route_property_failure'
+  | 'unsupported_property_shape';
 
 interface ErrorRuleGroup {
   category: Exclude<MetricsErrorCategory, 'unknown'>;
@@ -81,6 +82,9 @@ const ERROR_RULE_GROUPS: readonly ErrorRuleGroup[] = [
       'save_failed',
       'readback_failed',
       'review_baseline_dirty_target_assets',
+      'class_default_setter_signature_unsupported',
+      'class_default_setter_readback_mismatch',
+      'class_default_setter_restore_readback_mismatch',
     ],
   },
 ] as const;
@@ -159,6 +163,20 @@ function classifyHintedError(
   blockedBoundary: Record<string, unknown> | undefined,
 ): Pick<MetricsErrorClassification, 'category' | 'detail_kind'> | undefined {
   if (
+    code === 'class_default_property_setter_required' &&
+    (
+      readString(suggestedRoute?.['route_id']) === 'blueprint_class_settings.class_default_setter' ||
+      readString(suggestedRoute?.['operation_id']) === 'set_class_default_via_setter' ||
+      readString(suggestedRoute?.['task_type']) === 'edit_blueprint_class_settings'
+    )
+  ) {
+    return {
+      category: 'parameter_error',
+      detail_kind: 'route_mismatch_with_suggested_route',
+    };
+  }
+
+  if (
     code === 'component_not_owned_scs' &&
     readString(suggestedRoute?.['route_id']) === 'blueprint_class_settings.class_default'
   ) {
@@ -190,6 +208,13 @@ function classifyHintedError(
     return {
       category: 'parameter_error',
       detail_kind: 'suggested_route_property_failure',
+    };
+  }
+
+  if (code === 'class_default_setter_signature_unsupported') {
+    return {
+      category: 'runtime_state_error',
+      detail_kind: 'unsupported_property_shape',
     };
   }
 

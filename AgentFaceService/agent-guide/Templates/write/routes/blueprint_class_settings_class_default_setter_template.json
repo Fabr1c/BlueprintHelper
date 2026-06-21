@@ -1,0 +1,30 @@
+{
+  "schema": "BlueprintHelper.TaskSpec.v1",
+  "task_type": "edit_blueprint_class_settings",
+  "feature_name": "__REQUIRED_FEATURE_NAME__",
+  "target": {
+    "asset_path": "__REQUIRED_BLUEPRINT_ASSET_PATH__",
+    "target_type": "blueprint"
+  },
+  "behavior": {
+    "class_settings_strategy": "class_settings",
+    "class_defaults": [
+      {
+        "property_path": "__REQUIRED_PROPERTY_PATH__",
+        "value": "__REQUIRED_VALUE__",
+        "mutation_strategy": "setter_aware_property"
+      }
+    ]
+  },
+  "context_evidence": {
+    "class_default.property_path": "__REQUIRED_PROPERTY_PATH__",
+    "class_default.mutation_strategy": "setter_aware_property",
+    "class_default.setter_function": "__REQUIRED_SETTER_FUNCTION__",
+    "class_default.getter_function": "__REQUIRED_GETTER_FUNCTION__",
+    "class_default.owner_root": "blueprint_cdo",
+    "class_default.owner_object_path": "__REQUIRED_OWNER_OBJECT_PATH__",
+    "class_default.direct_write.writable": false,
+    "class_default.setter_aware_write.supported": true,
+    "class_default.setter_aware_write.source": "class_default_property read context or preview suggested_route"
+  }
+}

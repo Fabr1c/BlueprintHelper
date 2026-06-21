@@ -20,6 +20,7 @@
 #include "Shared/Services/BlueprintHelperBlueprintStructureService.h"
 #include "Systems/SharedServices/Utils/BlueprintHelperPinTypeSpecUtils.h"
 #include "Systems/ToolClusters/BlueprintSignature/BlueprintHelperSignatureService.h"
+#include "Systems/ToolClusters/BlueprintSignature/Utils/BlueprintHelperSignatureReferenceContextUtils.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperBlockIdService.h"
 #include "Tests/BlueprintSignature/BlueprintHelperSignatureTestFixtures.h"
 #include "UObject/Package.h"
@@ -1231,6 +1232,77 @@ bool FBlueprintHelperSignatureServiceRemoveNativeEventDryRunBlockedTest::RunTest
 	{
 		TestEqual(TEXT("native event remove blocked code"), Result.Error->Code, FString(TEXT("signature_remove_blocked_by_policy")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureReferenceContextEventScopeTest,
+	"BlueprintHelper.Signature.ReferenceContext.EventScopeUsesTargetAsset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureReferenceContextEventScopeTest::RunTest(const FString& Parameters)
+{
+	TestEqual(
+		TEXT("event target uses asset scope"),
+		FBlueprintHelperSignatureReferenceContextUtils::ResolveReferenceContextSearchScope(
+			TEXT("/Game/BlueprintHelper/E2E/BP_NativeEventOverrideProbe_Fresh_20260621_01"),
+			TEXT("event"),
+			TEXT("project")),
+		FString(TEXT("asset")));
+
+	TestEqual(
+		TEXT("unregistered function target also uses asset scope"),
+		FBlueprintHelperSignatureReferenceContextUtils::ResolveReferenceContextSearchScope(
+			TEXT("/Transient/BP_SignatureReferenceContextScope"),
+			TEXT("function"),
+			TEXT("project")),
+		FString(TEXT("asset")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperSignatureServiceRemoveNativeEventExecuteIfUnreferencedTest,
+	"BlueprintHelper.Signature.Service.RemoveNativeEventExecuteIfUnreferenced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperSignatureServiceRemoveNativeEventExecuteIfUnreferencedTest::RunTest(const FString& Parameters)
+{
+	FBlueprintHelperSignatureServiceTestsLocalUtils::SuppressExternalSmokeAssetCompileErrors(*this);
+
+	UBlueprint* Blueprint = FBlueprintHelperSignatureServiceTestsLocalUtils::MakeSignatureServiceActorBlueprint(TEXT("RemoveNativeEventExecute"));
+	TestNotNull(TEXT("test Blueprint exists"), Blueprint);
+	if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
+	{
+		return false;
+	}
+
+	UEdGraph* Graph = Blueprint->UbergraphPages[0];
+	TestNotNull(TEXT("test EventGraph exists"), Graph);
+
+	FBlueprintHelperGraphResolver Resolver;
+	FBlueprintHelperBlueprintStructureService StructureService(Resolver);
+	FBlueprintHelperSignatureService SignatureService(StructureService);
+
+	const FString EventName = TEXT("ReceiveAnyDamage");
+	FBlueprintHelperEnsureOverrideEventSignatureRequest EnsureRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeEnsureOverrideEventRequest(Blueprint, EventName, false);
+	EnsureRequest.GraphName = Graph->GetName();
+	EnsureRequest.ExecutePolicy = TEXT("create_if_missing");
+	const FBlueprintHelperToolResultBase EnsureResult = SignatureService.EnsureOverrideEvent(EnsureRequest);
+	TestTrue(TEXT("override event ensure succeeds"), EnsureResult.bOk);
+	TestNotNull(TEXT("override event exists before remove"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName));
+
+	FBlueprintHelperRemoveSignatureRequest RemoveRequest =
+		FBlueprintHelperSignatureServiceTestsLocalUtils::MakeRemoveSignatureRequest(Blueprint, TEXT("native_event"), EventName, false);
+	RemoveRequest.ExecutePolicy = TEXT("execute_if_unreferenced");
+	const FBlueprintHelperToolResultBase RemoveResult = SignatureService.RemoveSignature(RemoveRequest);
+
+	TestTrue(TEXT("native event remove succeeds"), RemoveResult.bOk);
+	TestEqual(TEXT("native event remove is applied"), RemoveResult.Status, EBlueprintHelperToolStatus::Applied);
+	TestTrue(TEXT("native event remove modifies"), RemoveResult.bModified);
+	TestNull(TEXT("native event removed"),
+		FBlueprintHelperSignatureServiceTestsLocalUtils::FindSignatureOverrideEvent(Blueprint, EventName));
 	return true;
 }
 

@@ -66,6 +66,7 @@ TArray<FString> FBlueprintHelperReviewSnapshotRestoreAdapter::GetSupportedTarget
 		TEXT("graph_external_link"),
 		TEXT("graph_external_node"),
 		TEXT("graph_external_body"),
+		TEXT("k2_graph_entry"),
 		TEXT("graph_node"),
 		TEXT("graph_pin"),
 		TEXT("graph_link"),

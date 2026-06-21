@@ -1,7 +1,13 @@
 {
   "kind": "remove_signature",
-  "signature_kind": "function",
+  "signature_kind": "__REQUIRED_SIGNATURE_KIND__",
   "signature_name": "__REQUIRED_SIGNATURE_NAME__",
   "require_reference_context": true,
-  "execute_policy": "blocked_preflight"
+  "execute_policy": "execute_if_unreferenced",
+  "context_evidence": {
+    "signature.kind": "__REQUIRED_SIGNATURE_KIND__",
+    "signature.kind.allowed_values": "function | interface_function | custom_event | interface_event | event_dispatcher | override_event | native_event",
+    "signature.event_like_kind.allowed_values": "custom_event | interface_event | override_event | native_event",
+    "signature.reference_policy": "execute_if_unreferenced requires current reference evidence and executes only when the signature is unreferenced"
+  }
 }

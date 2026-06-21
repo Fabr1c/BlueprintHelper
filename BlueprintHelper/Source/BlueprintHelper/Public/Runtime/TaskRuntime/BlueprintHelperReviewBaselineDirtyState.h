@@ -10,6 +10,8 @@ enum class EBlueprintHelperReviewBaselineDirtyState : uint8
 	DirtyPreexisting,
 	DirtyAfterFailedExecute,
 	DirtyWithOpenReview,
+	DirtyWithActiveSequentialReviewSession,
+	DirtyWithUnresolvedFailedSessionExecute,
 	DirtyExternalUserChange,
 	UnknownDirtyOrigin
 };
@@ -25,6 +27,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewBaselineDirtyDecision
 	TArray<FString> AllowedRecoveryActions;
 	TArray<FString> RiskyRecoveryActions;
 	TArray<FString> EvidenceRefs;
+	FString SequentialReviewSessionId;
+	FString SequentialReviewSessionArchiveSessionId;
+	bool bBlocksExecution = false;
 
 	bool IsDirty() const
 	{
@@ -35,4 +40,3 @@ struct BLUEPRINTHELPER_API FBlueprintHelperReviewBaselineDirtyDecision
 BLUEPRINTHELPER_API const TCHAR* ToString(EBlueprintHelperReviewBaselineDirtyState State);
 BLUEPRINTHELPER_API EBlueprintHelperReviewBaselineDirtyState BlueprintHelperReviewBaselineDirtyStateFromString(
 	const FString& Value);
-

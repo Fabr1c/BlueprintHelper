@@ -1070,7 +1070,10 @@ bool FBlueprintHelperTaskRuntimeReplaceExternalBodyBuildsReviewEvidenceTest::Run
 	const FBlueprintHelperReviewAtomicTarget& TargetEvidence = Evidence.AtomicTargets[0];
 	TestEqual(TEXT("target kind"),
 		TargetEvidence.TargetKind,
-		FString(TEXT("graph_external_body")));
+		FString(TEXT("k2_graph_entry")));
+	TestEqual(TEXT("target subkind"),
+		TargetEvidence.TargetSubKind,
+		FString(TEXT("custom_event")));
 	TestEqual(TEXT("handler kind is external body"),
 		static_cast<int32>(FBlueprintHelperReviewTargetKindRegistry::GetHandlerKind(TargetEvidence.TargetKind)),
 		static_cast<int32>(EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody));
@@ -1083,6 +1086,8 @@ bool FBlueprintHelperTaskRuntimeReplaceExternalBodyBuildsReviewEvidenceTest::Run
 	TestEqual(TEXT("replace scope is preserved"),
 		TargetEvidence.PropertyPath,
 		FString(TEXT("custom_event_body")));
+	TestTrue(TEXT("target key uses K2 graph entry identity"),
+		TargetEvidence.TargetKey.StartsWith(TEXT("k2_graph_entry:EventGraph:custom_event:")));
 	TestTrue(TEXT("external body does not aggregate as graph body"),
 		!FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(TargetEvidence));
 	return true;

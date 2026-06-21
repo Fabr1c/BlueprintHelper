@@ -49,6 +49,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyClassifier.h"
 #include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyDebugEvidenceProjection.h"
 #include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyEvidenceProvider.h"
+#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimeSettingsResolver.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRunJournalStoreService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskPartialPreviewCache.h"
@@ -2625,6 +2626,9 @@ public:
 		Error.AllowedRecoveryActions = Decision.AllowedRecoveryActions;
 		Error.RiskyRecoveryActions = Decision.RiskyRecoveryActions;
 		Error.EvidenceRefs = Decision.EvidenceRefs;
+		Error.SequentialReviewSessionId = Decision.SequentialReviewSessionId;
+		Error.SequentialReviewSessionArchiveSessionId = Decision.SequentialReviewSessionArchiveSessionId;
+		Error.bBlocksExecution = Decision.bBlocksExecution;
 	}
 
 	static bool EvaluateReviewBaselinePolicy(
@@ -2656,6 +2660,12 @@ public:
 		if (OutEvaluation.DirtyTargetAssets.Num() == 0)
 		{
 			OutEvaluation.SnapshotTrust = TEXT("fresh_disk_copy");
+			return true;
+		}
+		if (OutEvaluation.DirtyDecision.State ==
+			EBlueprintHelperReviewBaselineDirtyState::DirtyWithActiveSequentialReviewSession)
+		{
+			OutEvaluation.SnapshotTrust = TEXT("active_sequential_review_session");
 			return true;
 		}
 
@@ -2951,6 +2961,19 @@ public:
 		Baseline->SetStringField(TEXT("dirty_asset_policy"), BaselinePolicy.PolicyString);
 		Baseline->SetStringField(TEXT("snapshot_trust"), BaselinePolicy.SnapshotTrust);
 		Baseline->SetStringField(TEXT("dirty_state"), ToString(BaselinePolicy.DirtyDecision.State));
+		Baseline->SetBoolField(TEXT("blocks_execution"), BaselinePolicy.DirtyDecision.bBlocksExecution);
+		if (!BaselinePolicy.DirtyDecision.SequentialReviewSessionId.IsEmpty())
+		{
+			Baseline->SetStringField(
+				TEXT("sequential_review_session_id"),
+				BaselinePolicy.DirtyDecision.SequentialReviewSessionId);
+		}
+		if (!BaselinePolicy.DirtyDecision.SequentialReviewSessionArchiveSessionId.IsEmpty())
+		{
+			Baseline->SetStringField(
+				TEXT("sequential_review_session_archive_session_id"),
+				BaselinePolicy.DirtyDecision.SequentialReviewSessionArchiveSessionId);
+		}
 		if (!BaselinePolicy.DirtyDecision.SafeNextAction.IsEmpty())
 		{
 			Baseline->SetStringField(TEXT("safe_next_action"), BaselinePolicy.DirtyDecision.SafeNextAction);
@@ -5698,6 +5721,7 @@ public:
 
 			FBlueprintHelperClassDefaultPropertySetting Setting;
 			Object->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
+			Object->TryGetStringField(TEXT("mutation_strategy"), Setting.MutationStrategy);
 			Setting.Value = Object->TryGetField(TEXT("value"));
 			Settings.Add(MoveTemp(Setting));
 		}
@@ -7161,7 +7185,10 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	const FBlueprintHelperTaskRuntimeDryRunPolicy& DryRunPolicy = PreparedRun.DryRunPolicy;
 	const bool bQuickDryRun = PreparedRun.bQuickDryRun;
 	const FString& TaskRunId = PreparedRun.TaskRunId;
-	const FString& ArchiveSessionId = PreparedRun.ArchiveSessionId;
+	const FString GeneratedArchiveSessionId = PreparedRun.ArchiveSessionId;
+	FString ArchiveSessionId = GeneratedArchiveSessionId;
+	FString SequentialReviewSessionId;
+	bool bContinueSequentialReviewSession = false;
 	auto BuildExecutionReceipt = [&](bool bOk) -> TSharedPtr<FJsonObject>
 	{
 		if (bDryRun)
@@ -7343,7 +7370,24 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	}
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("review_baseline_policy"), BaselinePolicyStageStart);
 
-	if (!bDryRun)
+	bContinueSequentialReviewSession =
+		BaselinePolicy.DirtyDecision.State ==
+		EBlueprintHelperReviewBaselineDirtyState::DirtyWithActiveSequentialReviewSession;
+	if (bContinueSequentialReviewSession)
+	{
+		SequentialReviewSessionId = BaselinePolicy.DirtyDecision.SequentialReviewSessionId;
+		if (!BaselinePolicy.DirtyDecision.SequentialReviewSessionArchiveSessionId.IsEmpty())
+		{
+			ArchiveSessionId = BaselinePolicy.DirtyDecision.SequentialReviewSessionArchiveSessionId;
+		}
+	}
+	else if (!bDryRun)
+	{
+		SequentialReviewSessionId =
+			FBlueprintHelperSequentialReviewSessionService::MakeSequentialReviewSessionId();
+	}
+
+	if (!bDryRun && !bContinueSequentialReviewSession)
 	{
 		const double BaselineCaptureStageStart = FBlueprintHelperTaskRuntimeTimingUtils::StartStage(TimingTrace);
 		FBlueprintHelperReviewArchiveSession ArchiveSession;
@@ -7392,6 +7436,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 	TMap<FString, FBlueprintHelperTaskRuntimeServiceLocalUtils::FBlueprintHelperReviewTargetSnapshotCacheValue> ReviewBeforeSnapshotCache;
 	bool bSawExecutionFailure = false;
 	bool bHasFirstExecutionError = false;
+	bool bQueuedReviewEvidence = false;
 	FBlueprintHelperToolError FirstExecutionError;
 	TSharedPtr<FJsonObject> GraphWriteCandidateArtifactJson;
 	double MainThreadCommitStageStart = 0.0;
@@ -7635,6 +7680,19 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				Error.EvidenceRefs);
 			DebugInput.RecommendedNext = TEXT("get_debug_case");
 			PostIoBatch.SetDebugEvent(DebugInput, !RuntimeResult.bOk);
+		}
+
+		if (!bDryRun && bSawExecutionFailure && !SequentialReviewSessionId.IsEmpty())
+		{
+			FBlueprintHelperSequentialReviewSessionExecuteUpdate SessionUpdate;
+			SessionUpdate.SequentialReviewSessionId = SequentialReviewSessionId;
+			SessionUpdate.TaskRunId = TaskRunId;
+			SessionUpdate.ArchiveSessionId = ArchiveSessionId;
+			SessionUpdate.TargetAssets =
+				FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
+			SessionUpdate.bContinuation = bContinueSequentialReviewSession;
+			SessionUpdate.bFailed = true;
+			PostIoBatch.SetSequentialReviewSessionUpdate(SessionUpdate);
 		}
 
 		FinishMainThreadCommitStage();
@@ -8063,6 +8121,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 					RuntimeEvidence,
 					false);
 				PostIoBatch.AddReviewEvidence(RuntimeEvidence);
+				bQueuedReviewEvidence = true;
 			}
 			else if (bHasPreStepReviewEvidence)
 			{
@@ -8071,6 +8130,7 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 					FallbackEvidence,
 					false);
 				PostIoBatch.AddReviewEvidence(FallbackEvidence);
+				bQueuedReviewEvidence = true;
 			}
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				TimingTrace,
@@ -8249,6 +8309,31 @@ FBlueprintHelperToolResultBase FBlueprintHelperTaskRuntimeService::RunTaskPlan(
 				FBlueprintHelperToolResultBuilder::GenerateTraceId());
 		});
 	FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(TimingTrace, TEXT("result_wrap"), ResultWrapStageStart);
+
+	if (!bDryRun && bQueuedReviewEvidence && !SequentialReviewSessionId.IsEmpty())
+	{
+		FBlueprintHelperSequentialReviewSessionExecuteUpdate SessionUpdate;
+		SessionUpdate.SequentialReviewSessionId = SequentialReviewSessionId;
+		SessionUpdate.TaskRunId = TaskRunId;
+		SessionUpdate.ArchiveSessionId = ArchiveSessionId;
+		SessionUpdate.TargetAssets =
+			FBlueprintHelperTaskRuntimeServiceLocalUtils::ReadTargetAssets(*TaskPlanPtr);
+		SessionUpdate.bContinuation = bContinueSequentialReviewSession;
+		SessionUpdate.bSucceeded = true;
+		PostIoBatch.SetSequentialReviewSessionUpdate(SessionUpdate);
+
+		if (!RuntimeResult.Data.IsValid())
+		{
+			RuntimeResult.Data = MakeShared<FJsonObject>();
+		}
+		TSharedRef<FJsonObject> SequentialSessionJson = MakeShared<FJsonObject>();
+		SequentialSessionJson->SetStringField(
+			TEXT("sequential_review_session_id"),
+			SequentialReviewSessionId);
+		SequentialSessionJson->SetStringField(TEXT("archive_session_id"), ArchiveSessionId);
+		SequentialSessionJson->SetBoolField(TEXT("continuation"), bContinueSequentialReviewSession);
+		RuntimeResult.Data->SetObjectField(TEXT("sequential_review_session"), SequentialSessionJson);
+	}
 
 	FlushPostIo(RuntimeResult);
 	AttachTimingToResult(RuntimeResult);

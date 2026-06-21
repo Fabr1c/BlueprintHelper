@@ -323,6 +323,43 @@ static void AddTaskRuntimeReviewTargetsFromObjectArray(
 	}
 }
 
+static void AddTaskRuntimeClassDefaultReviewTargets(
+	FBlueprintHelperWriteReviewEvidence& Evidence,
+	const TSharedPtr<FJsonObject>& Payload)
+{
+	const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("settings"), Values) || !Values)
+	{
+		return;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : *Values)
+	{
+		const TSharedPtr<FJsonObject> Object = Value.IsValid() ? Value->AsObject() : nullptr;
+		FString TargetName;
+		if (!Object.IsValid() || !Object->TryGetStringField(TEXT("property_path"), TargetName) || TargetName.IsEmpty())
+		{
+			continue;
+		}
+
+		FString MutationStrategy;
+		Object->TryGetStringField(TEXT("mutation_strategy"), MutationStrategy);
+		const bool bSetterAware = MutationStrategy.Equals(TEXT("setter_aware_property"), ESearchCase::IgnoreCase);
+		FBlueprintHelperReviewAtomicTarget* Target = AddTaskRuntimeReviewTarget(
+			Evidence,
+			Payload,
+			EBlueprintHelperReviewSurface::Details,
+			bSetterAware ? TEXT("class_default_setter_property") : TEXT("class_default_property"),
+			TargetName,
+			TEXT("class_setting"),
+			FString::Printf(TEXT("class default %s"), *TargetName));
+		if (Target && bSetterAware)
+		{
+			Target->TargetSubKind = TEXT("setter_aware_property");
+		}
+	}
+}
+
 static TSharedRef<FJsonObject> MakeRuntimeTarget(
 	const FString& AssetPath,
 	const FString& TargetType,
@@ -513,6 +550,7 @@ static TArray<FBlueprintHelperClassDefaultPropertySetting> ReadTaskRuntimeClassD
 
 		FBlueprintHelperClassDefaultPropertySetting Setting;
 		Object->TryGetStringField(TEXT("property_path"), Setting.PropertyPath);
+		Object->TryGetStringField(TEXT("mutation_strategy"), Setting.MutationStrategy);
 		Setting.Value = Object->TryGetField(TEXT("value"));
 		Settings.Add(MoveTemp(Setting));
 	}
@@ -887,15 +925,7 @@ bool FBlueprintHelperTaskRuntimeClusterExecutionUtils::TryBuildTaskRuntimeReview
 				TEXT("class_setting_interface"),
 				TEXT("class_setting"),
 				TEXT("interface"));
-			AddTaskRuntimeReviewTargetsFromObjectArray(
-				OutEvidence,
-				LoweredStep.Payload,
-				TEXT("settings"),
-				TEXT("property_path"),
-				EBlueprintHelperReviewSurface::Details,
-				TEXT("class_default_property"),
-				TEXT("class_setting"),
-				TEXT("class default"));
+			AddTaskRuntimeClassDefaultReviewTargets(OutEvidence, LoweredStep.Payload);
 			AddTaskRuntimeReviewTarget(
 				OutEvidence,
 				LoweredStep.Payload,

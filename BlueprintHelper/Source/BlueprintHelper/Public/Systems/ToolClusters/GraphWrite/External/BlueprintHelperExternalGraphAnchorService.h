@@ -16,6 +16,13 @@ public:
 		FBlueprintHelperExternalGraphAnchor& OutAnchor,
 		FString& OutError) const;
 
+	bool BuildBodyEntryAnchor(
+		const FString& AssetPath,
+		const FString& GraphName,
+		const UEdGraphNode* Node,
+		FBlueprintHelperExternalGraphAnchor& OutAnchor,
+		FString& OutError) const;
+
 	bool BuildExecBoundaryAnchor(
 		const FString& AssetPath,
 		const FString& GraphName,

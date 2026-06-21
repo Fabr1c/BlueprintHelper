@@ -14,6 +14,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyTarget
 	FString GraphName;
 	FString EntryName;
 	FString BodyIdentity;
+	FString BodyEvidenceStatus;
+	FString BodyEvidenceErrorCode;
+	FString BodyEvidenceErrorMessage;
 	TArray<UEdGraphNode*> EntryBoundaryNodes;
 	TArray<UEdGraphNode*> ExitBoundaryNodes;
 	TArray<UEdGraphNode*> ProtectedNodes;

@@ -28,6 +28,7 @@
 #include "Materials/MaterialInstanceConstant.h"
 #include "HAL/FileManager.h"
 #include "ObjectTools.h"
+#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
@@ -6928,6 +6929,23 @@ bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FS
 	FString SaveError;
 	TestTrue(TEXT("record saved before reject targets"), Store.SaveReviewRecord(Record, SaveError));
 
+	FBlueprintHelperSequentialReviewSessionExecuteUpdate SessionUpdate;
+	SessionUpdate.SequentialReviewSessionId =
+		FBlueprintHelperSequentialReviewSessionService::MakeSequentialReviewSessionId();
+	SessionUpdate.TaskRunId = TEXT("task_reject_targets_purge_session");
+	SessionUpdate.ArchiveSessionId = ArchiveSessionId;
+	SessionUpdate.TargetAssets = { Target.AssetPath };
+	SessionUpdate.ReviewRecordIds = { Record.ReviewRecordId };
+	SessionUpdate.bSucceeded = true;
+	FBlueprintHelperSequentialReviewSession PersistedSession;
+	FString SessionError;
+	TestTrue(
+		TEXT("session saved before reject targets"),
+		FBlueprintHelperSequentialReviewSessionService().RecordExecuteUpdate(
+			SessionUpdate,
+			PersistedSession,
+			SessionError));
+
 	FBlueprintHelperReviewRejectOptions Options;
 	Options.CurrentHashesByTargetKey.Add(Target.TargetKey, Target.RecordedAfterHash);
 
@@ -6942,6 +6960,9 @@ bool FBlueprintHelperReviewRejectTargetsPurgesReviewRecordTest::RunTest(const FS
 	FString LoadError;
 	TestFalse(TEXT("successful reject physically removes the review record"),
 		Store.LoadReviewRecordById(Record.ReviewRecordId, Loaded, LoadError));
+	const FBlueprintHelperSequentialReviewSessionLookup ClosedLookup =
+		FBlueprintHelperSequentialReviewSessionService().FindOpenSessionForTargetAssets({ Target.AssetPath });
+	TestFalse(TEXT("reject purge closes sequential session"), ClosedLookup.bFound);
 	return true;
 }
 

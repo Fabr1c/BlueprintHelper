@@ -480,6 +480,22 @@ namespace BlueprintHelperExternalGraphAnchorTests
 			OutError);
 	}
 
+	static bool BuildBodyEntryAnchor(
+		UBlueprint* Blueprint,
+		UEdGraph* Graph,
+		UEdGraphNode* Node,
+		FBlueprintHelperExternalGraphAnchor& OutAnchor,
+		FString& OutError)
+	{
+		const FBlueprintHelperExternalGraphAnchorService Service;
+		return Service.BuildBodyEntryAnchor(
+			Blueprint ? Blueprint->GetPathName() : TEXT(""),
+			Graph ? Graph->GetName() : TEXT(""),
+			Node,
+			OutAnchor,
+			OutError);
+	}
+
 	static UBlueprint* LoadOrCreateExternalLinkPatchFixture()
 	{
 		const FString PackageName = TEXT("/Game/BlueprintHelperExternalLinkPatch/BP_ExternalLinkPatchFixture");
@@ -1332,6 +1348,48 @@ bool FBlueprintHelperExternalGraphAnchorDoesNotWriteOwnershipMetadataTest::RunTe
 		LogicNodeJson->GetStringField(TEXT("node_comment")),
 		FString(TEXT("Designer node note")));
 	TestFalse(TEXT("LogicJson does not synthesize block_id"), Payload.Groups[0].ToJson()->HasField(TEXT("block_id")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperExternalGraphAnchorBodyEntryAllowsOwnedEntryTest,
+	"BlueprintHelper.GraphWrite.ExternalAnchor.BodyEntryAllowsOwnedEntry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperExternalGraphAnchorBodyEntryAllowsOwnedEntryTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperExternalGraphAnchorTests;
+
+	UBlueprint* Blueprint = MakeBlueprint(TEXT("BodyEntryAllowsOwnedEntry"));
+	UEdGraph* Graph = GetEventGraph(Blueprint);
+	UK2Node_CustomEvent* EventNode = AddCustomEventNode(Graph, TEXT("BH_BodyEntry"));
+	if (!Blueprint || !Graph || !EventNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperPackageMetaData& MetaData = FBlueprintHelperVersionCompat::GetPackageMetaData(EventNode->GetOutermost());
+	MetaData.SetValue(EventNode, TEXT("BlueprintHelperOwned"), TEXT("true"));
+
+	FString Error;
+	FBlueprintHelperExternalGraphAnchor NodeAnchor;
+	TestFalse(TEXT("ordinary node anchor rejects owned nodes"),
+		BuildNodeAnchor(Blueprint, Graph, EventNode, NodeAnchor, Error));
+	TestEqual(TEXT("ordinary node anchor rejection code"),
+		Error,
+		FString(TEXT("external_anchor_owned_node_not_supported")));
+
+	Error.Reset();
+	FBlueprintHelperExternalGraphAnchor BodyEntryAnchor;
+	TestTrue(TEXT("body entry anchor allows owned entry nodes"),
+		BuildBodyEntryAnchor(Blueprint, Graph, EventNode, BodyEntryAnchor, Error));
+	TestEqual(TEXT("body entry semantic role"),
+		FBlueprintHelperExternalGraphAnchor::RoleToString(BodyEntryAnchor.SemanticRole),
+		FString(TEXT("body_entry")));
+	TestEqual(TEXT("body entry node guid"),
+		BodyEntryAnchor.NodeGuid,
+		EventNode->NodeGuid.ToString(EGuidFormats::Digits));
+	TestFalse(TEXT("body entry fingerprint exists"), BodyEntryAnchor.Fingerprint.IsEmpty());
 	return true;
 }
 

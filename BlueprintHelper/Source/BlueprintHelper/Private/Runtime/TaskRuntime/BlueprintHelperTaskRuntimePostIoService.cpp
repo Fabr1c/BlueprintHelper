@@ -2,6 +2,7 @@
 
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRuntimePostIoService.h"
 
+#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRunJournalStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
@@ -61,7 +62,9 @@ FBlueprintHelperTaskRuntimePostIoFlushResult FBlueprintHelperTaskRuntimePostIoSe
 		else
 		{
 			FString ReviewRecordError;
-			if (!ReviewStore.SaveReviewRecords(ReviewRecords, ReviewRecordError))
+			const bool bReviewRecordsSaved =
+				ReviewStore.SaveReviewRecords(ReviewRecords, ReviewRecordError);
+			if (!bReviewRecordsSaved)
 			{
 				AddDiagnostic(
 					Result,
@@ -69,12 +72,63 @@ FBlueprintHelperTaskRuntimePostIoFlushResult FBlueprintHelperTaskRuntimePostIoSe
 					ReviewRecordError,
 					TEXT("review.records"));
 			}
+			else if (Batch.SequentialReviewSessionUpdate.IsSet())
+			{
+				FBlueprintHelperSequentialReviewSessionExecuteUpdate Update =
+					Batch.SequentialReviewSessionUpdate.GetValue();
+				for (const FBlueprintHelperReviewRecord& ReviewRecord : ReviewRecords)
+				{
+					if (!ReviewRecord.ReviewRecordId.IsEmpty())
+					{
+						Update.ReviewRecordIds.AddUnique(ReviewRecord.ReviewRecordId);
+					}
+				}
+				FBlueprintHelperSequentialReviewSession PersistedSession;
+				FString SessionError;
+				if (!FBlueprintHelperSequentialReviewSessionService().RecordExecuteUpdate(
+					Update,
+					PersistedSession,
+					SessionError))
+				{
+					AddDiagnostic(
+						Result,
+						TEXT("sequential_review_session_update_failed"),
+						SessionError,
+						TEXT("review.sequential_session"));
+				}
+			}
 		}
 		if (TimingTrace)
 		{
 			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
 				*TimingTrace,
 				TEXT("post_io.review_record_write"),
+				StageStart);
+		}
+	}
+	else if (Batch.SequentialReviewSessionUpdate.IsSet())
+	{
+		const double StageStart = TimingTrace
+			? FBlueprintHelperTaskRuntimeTimingUtils::StartStage(*TimingTrace)
+			: 0.0;
+		FBlueprintHelperSequentialReviewSession PersistedSession;
+		FString SessionError;
+		if (!FBlueprintHelperSequentialReviewSessionService().RecordExecuteUpdate(
+			Batch.SequentialReviewSessionUpdate.GetValue(),
+			PersistedSession,
+			SessionError))
+		{
+			AddDiagnostic(
+				Result,
+				TEXT("sequential_review_session_update_failed"),
+				SessionError,
+				TEXT("review.sequential_session"));
+		}
+		if (TimingTrace)
+		{
+			FBlueprintHelperTaskRuntimeTimingUtils::FinishStage(
+				*TimingTrace,
+				TEXT("post_io.sequential_review_session_update"),
 				StageStart);
 		}
 	}

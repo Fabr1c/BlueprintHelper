@@ -283,6 +283,57 @@ test('projectToolResultForCli keeps actionable error fields for agents', () => {
   assert.equal(JSON.stringify(projected).includes('trace_projection_error_contract'), false);
 });
 
+test('projectToolResultForCli keeps setter-aware recovery and evidence fields', () => {
+  const projected = projectToolResultForCli({
+    command_kind: 'task.preview',
+    format: 'json',
+    tool_result: {
+      ok: false,
+      schema: 'BlueprintHelper.ToolResult.v1',
+      operation: 'projection_setter_contract',
+      trace_id: 'trace_projection_setter_contract',
+      status: 'failed',
+      modified: false,
+      error: {
+        code: 'class_default_property_setter_required',
+        category: 'parameter_error',
+        stage: 'preflight',
+        message: 'Setter-aware route is required for this class default property.',
+        retryable: false,
+        rollback_result: 'not_needed',
+        safe_next_action: 'use_suggested_route_and_rerun_preview',
+        setter_function: 'SetSkeletalMeshAsset',
+        getter_function: 'GetSkeletalMeshAsset',
+        mutation_strategy: 'setter_aware_property',
+        target_kind: 'class_default_setter_property',
+        suggested_route: {
+          route_id: 'blueprint_class_settings.class_default_setter',
+          family: 'blueprint_class_settings',
+          operation_id: 'set_class_default_via_setter',
+          task_type: 'edit_blueprint_class_settings',
+          target_kind: 'class_default_setter_property',
+        },
+      },
+    } as unknown as ToolResultBase,
+    policy: GENERIC_RESULT_PROJECTION_POLICY,
+  });
+  const error = projected.tool_result.error as Record<string, unknown>;
+
+  assert.equal(error['code'], 'class_default_property_setter_required');
+  assert.equal(error['safe_next_action'], 'use_suggested_route_and_rerun_preview');
+  assert.equal(error['setter_function'], 'SetSkeletalMeshAsset');
+  assert.equal(error['getter_function'], 'GetSkeletalMeshAsset');
+  assert.equal(error['mutation_strategy'], 'setter_aware_property');
+  assert.equal(error['target_kind'], 'class_default_setter_property');
+  assert.deepEqual(error['suggested_route'], {
+    route_id: 'blueprint_class_settings.class_default_setter',
+    family: 'blueprint_class_settings',
+    operation_id: 'set_class_default_via_setter',
+    task_type: 'edit_blueprint_class_settings',
+    target_kind: 'class_default_setter_property',
+  });
+});
+
 test('projectToolResultForCli keeps review baseline dirty compact error fields', () => {
   const projected = projectToolResultForCli({
     command_kind: 'task.preview',

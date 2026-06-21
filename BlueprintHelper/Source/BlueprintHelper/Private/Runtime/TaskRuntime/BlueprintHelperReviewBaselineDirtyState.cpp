@@ -14,6 +14,10 @@ const TCHAR* ToString(EBlueprintHelperReviewBaselineDirtyState State)
 		return TEXT("dirty_after_failed_execute");
 	case EBlueprintHelperReviewBaselineDirtyState::DirtyWithOpenReview:
 		return TEXT("dirty_with_open_review");
+	case EBlueprintHelperReviewBaselineDirtyState::DirtyWithActiveSequentialReviewSession:
+		return TEXT("dirty_with_active_sequential_review_session");
+	case EBlueprintHelperReviewBaselineDirtyState::DirtyWithUnresolvedFailedSessionExecute:
+		return TEXT("dirty_with_unresolved_failed_session_execute");
 	case EBlueprintHelperReviewBaselineDirtyState::DirtyExternalUserChange:
 		return TEXT("dirty_external_user_change");
 	case EBlueprintHelperReviewBaselineDirtyState::UnknownDirtyOrigin:
@@ -42,10 +46,17 @@ EBlueprintHelperReviewBaselineDirtyState BlueprintHelperReviewBaselineDirtyState
 	{
 		return EBlueprintHelperReviewBaselineDirtyState::DirtyWithOpenReview;
 	}
+	if (Value.Equals(TEXT("dirty_with_active_sequential_review_session"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperReviewBaselineDirtyState::DirtyWithActiveSequentialReviewSession;
+	}
+	if (Value.Equals(TEXT("dirty_with_unresolved_failed_session_execute"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperReviewBaselineDirtyState::DirtyWithUnresolvedFailedSessionExecute;
+	}
 	if (Value.Equals(TEXT("dirty_external_user_change"), ESearchCase::IgnoreCase))
 	{
 		return EBlueprintHelperReviewBaselineDirtyState::DirtyExternalUserChange;
 	}
 	return EBlueprintHelperReviewBaselineDirtyState::UnknownDirtyOrigin;
 }
-

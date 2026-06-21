@@ -586,6 +586,9 @@ struct FBlueprintHelperToolError
 	TArray<FString> AllowedRecoveryActions;
 	TArray<FString> RiskyRecoveryActions;
 	TArray<FString> EvidenceRefs;
+	FString SequentialReviewSessionId;
+	FString SequentialReviewSessionArchiveSessionId;
+	TOptional<bool> bBlocksExecution;
 	TOptional<FBlueprintHelperToolSuggestedRoute> SuggestedRoute;
 	TOptional<FBlueprintHelperToolBlockedBoundary> BlockedBoundary;
 	FString SuggestedRouteId;
@@ -701,6 +704,20 @@ struct FBlueprintHelperToolError
 				Values.Add(MakeShared<FJsonValueString>(Value));
 			}
 			Json->SetArrayField(TEXT("evidence_refs"), Values);
+		}
+		if (!SequentialReviewSessionId.IsEmpty())
+		{
+			Json->SetStringField(TEXT("sequential_review_session_id"), SequentialReviewSessionId);
+		}
+		if (!SequentialReviewSessionArchiveSessionId.IsEmpty())
+		{
+			Json->SetStringField(
+				TEXT("sequential_review_session_archive_session_id"),
+				SequentialReviewSessionArchiveSessionId);
+		}
+		if (bBlocksExecution.IsSet())
+		{
+			Json->SetBoolField(TEXT("blocks_execution"), bBlocksExecution.GetValue());
 		}
 		Json->SetBoolField(TEXT("retryable"), bRetryable);
 		Json->SetStringField(TEXT("rollback_result"), RollbackResultToString(RollbackResult));

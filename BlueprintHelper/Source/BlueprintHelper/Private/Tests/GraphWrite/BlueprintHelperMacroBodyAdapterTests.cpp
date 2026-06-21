@@ -687,6 +687,41 @@ bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionExternalBodyAuthoring
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyReadbackServiceSerializesMissingEntryEvidenceTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.ReadbackService.SerializesMissingEntryEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyReadbackServiceSerializesMissingEntryEvidenceTest::RunTest(const FString&)
+{
+	FBlueprintHelperGraphBodyBoundaryModel Boundary;
+	Boundary.RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
+	Boundary.TaskSpecStrategy = TEXT("replace_external_body");
+	Boundary.TargetAssetPath = TEXT("/Game/BP_MissingEntryEvidence");
+	Boundary.GraphName = TEXT("EventGraph");
+	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2ExternalBody;
+
+	FBlueprintHelperGraphBodyReadbackProjection Projection;
+	Projection.BodyEvidenceStatus = TEXT("missing_entry");
+	Projection.BodyEvidenceErrorCode = TEXT("k2_entry_identity_not_found");
+	Projection.BodyEvidenceErrorMessage = TEXT("ReadContext could not resolve the K2 entry.");
+
+	const FBlueprintHelperGraphBodyReadbackService Service;
+	const TSharedRef<FJsonObject> Json = Service.BuildAdapterBoundaryJson(Boundary, Projection);
+	TestEqual(TEXT("body evidence status is serialized"),
+		Json->GetStringField(TEXT("body_evidence_status")),
+		FString(TEXT("missing_entry")));
+	TestEqual(TEXT("body evidence error code is serialized"),
+		Json->GetStringField(TEXT("body_evidence_error_code")),
+		FString(TEXT("k2_entry_identity_not_found")));
+	TestEqual(TEXT("body evidence error message is serialized"),
+		Json->GetStringField(TEXT("body_evidence_error_message")),
+		FString(TEXT("ReadContext could not resolve the K2 entry.")));
+	TestFalse(TEXT("missing entry does not synthesize body_entry"),
+		Json->HasTypedField<EJson::Object>(TEXT("body_entry")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperK2MacroBodyAdapterExtractsTunnelBoundariesTest,
 	"BlueprintHelper.GraphWrite.GraphBodyAdapter.K2Macro.ExtractsTunnelBoundaries",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

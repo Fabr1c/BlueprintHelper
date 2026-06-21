@@ -9,6 +9,8 @@ class FBlueprintHelperTaskRuntimeReviewIoBatch
 {
 public:
 	void SetArchiveSession(const FBlueprintHelperReviewArchiveSession& InArchiveSession);
+	void SetSequentialReviewSessionUpdate(
+		const FBlueprintHelperSequentialReviewSessionExecuteUpdate& Update);
 	void AddReviewEvidence(const FBlueprintHelperWriteReviewEvidence& Evidence);
 	void SetTaskRunJournal(const FString& InTaskRunId, const TSharedPtr<FJsonObject>& Journal);
 	void SetDebugEvent(

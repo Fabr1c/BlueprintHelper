@@ -812,6 +812,37 @@ test('TaskSpec template composer writes class settings leaf quick-access into ob
   assert.deepEqual(taskSpec.behavior.reparent, { new_parent_class: '__REQUIRED_NEW_PARENT_CLASS__' });
 });
 
+test('TaskSpec template composer writes setter-aware class default route template', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'class-default-setter.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    templateId: 'blueprint_class_settings.class_settings.set_class_default_via_setter',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    task_type: string;
+    behavior: {
+      class_settings_strategy: string;
+      class_defaults: Array<Record<string, unknown>>;
+    };
+    context_evidence: Record<string, unknown>;
+  };
+
+  assert.equal(taskSpec.task_type, 'edit_blueprint_class_settings');
+  assert.equal(taskSpec.behavior.class_settings_strategy, 'class_settings');
+  assert.deepEqual(taskSpec.behavior.class_defaults, [{
+    property_path: '__REQUIRED_PROPERTY_PATH__',
+    value: '__REQUIRED_VALUE__',
+    mutation_strategy: 'setter_aware_property',
+  }]);
+  assert.equal(taskSpec.context_evidence['class_default.mutation_strategy'], 'setter_aware_property');
+  assert.equal(taskSpec.context_evidence['class_default.setter_function'], '__REQUIRED_SETTER_FUNCTION__');
+  assert.equal(taskSpec.context_evidence['class_default.getter_function'], '__REQUIRED_GETTER_FUNCTION__');
+});
+
 test('TaskSpec template composer writes signature quick-access changes that compile after placeholders are filled', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'signature.taskspec.json');
@@ -833,6 +864,40 @@ test('TaskSpec template composer writes signature quick-access changes that comp
   const plan = compileTaskSpecToTaskPlan(parsed);
   const step = plan.steps[0] as Record<string, unknown> | undefined;
   assert.equal(step?.capability, 'blueprint_signature');
+});
+
+test('TaskSpec template composer writes remove signature guidance for concrete native events', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'signature-remove.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    templateId: 'blueprint_signature.signature.remove_signature',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok');
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  taskSpec.feature_name = 'TemplateSignatureRemoveSmoke';
+  taskSpec.target.asset_path = '/Game/BH_Tests/BP_TemplateSignatureRemoveSmoke';
+  const change = taskSpec.behavior.changes[0];
+  assert.equal(change.signature_kind, '__REQUIRED_SIGNATURE_KIND__');
+  assert.equal(change.execute_policy, 'execute_if_unreferenced');
+  assert.equal(change.context_evidence['signature.kind.allowed_values'].includes('native_event'), true);
+  assert.equal(change.context_evidence['signature.event_like_kind.allowed_values'].includes('native_event'), true);
+
+  change.signature_kind = 'native_event';
+  change.signature_name = 'ReceiveBeginPlay';
+  const parsed = TaskSpecSchema.parse(taskSpec);
+  const plan = compileTaskSpecToTaskPlan(parsed);
+  const step = plan.steps[0] as Record<string, unknown> | undefined;
+  const write = step?.write as Record<string, unknown> | undefined;
+  const op = (write?.ops as Array<Record<string, unknown>> | undefined)?.[0];
+  assert.equal(step?.capability, 'blueprint_signature');
+  assert.equal(write?.strategy, 'override_event_signature');
+  assert.equal(op?.signature_kind, 'native_event');
+  assert.equal(op?.signature_name, 'ReceiveBeginPlay');
+  assert.equal(op?.execute_policy, 'execute_if_unreferenced');
+  assert.equal(op?.require_reference_context, true);
 });
 
 test('all expression quick-access templates are rejected as compose roots', () => {
@@ -1395,6 +1460,10 @@ function fillTaskSpecCoveragePlaceholders(value: unknown): unknown {
     }
     if (key === 'pin_direction' && typeof child === 'string' && child.startsWith('__REQUIRED_')) {
       output[key] = record['semantic_role'] === 'exec_boundary' ? 'output' : 'input';
+      continue;
+    }
+    if (key === 'signature_kind' && typeof child === 'string' && child.startsWith('__REQUIRED_')) {
+      output[key] = 'native_event';
       continue;
     }
     if (key === 'category' && typeof child === 'string' && child.includes('PIN_CATEGORY__')) {

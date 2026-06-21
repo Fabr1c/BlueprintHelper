@@ -37,6 +37,10 @@ private:
 		const TArray<FString>& DirtyAssets,
 		const TArray<TSharedPtr<FJsonObject>>& TaskRunJournals,
 		FBlueprintHelperReviewBaselineDirtyClassifyRequest& InOutRequest) const;
+	void ApplySequentialReviewSessionEvidence(
+		const TArray<FString>& TargetAssets,
+		const TArray<FString>& DirtyAssets,
+		FBlueprintHelperReviewBaselineDirtyClassifyRequest& InOutRequest) const;
 	static void AddUniqueNonEmptyString(TArray<FString>& Values, const FString& Value);
 	static bool ReadStringArrayField(
 		const TSharedPtr<FJsonObject>& Json,

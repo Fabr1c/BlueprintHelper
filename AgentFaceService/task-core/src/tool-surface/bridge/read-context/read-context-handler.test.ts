@@ -43,6 +43,16 @@ const duplicateBoundaryAnchor = {
   ...boundaryAnchor,
 };
 
+const bodyEntryAnchor = {
+  schema: 'BlueprintHelper.ExternalGraphAnchor.v1',
+  asset_path: '/Game/ShooterRange/Blueprints/BP_ShooterPlayerController',
+  graph_name: 'EventGraph',
+  node_guid: '11112222333344445555666677778888',
+  node_class: '/Script/BlueprintGraph.K2Node_Event',
+  semantic_role: 'body_entry',
+  fingerprint: 'anchor-fingerprint',
+};
+
 function makeBridgeResponse<T extends { request_id: string; success: boolean }>(response: T): T & { schema: string } {
   return {
     schema: BRIDGE_RESPONSE_SCHEMA,
@@ -1071,6 +1081,47 @@ function makeFunctionLogicJsonWithSyntheticBoundaries(): Record<string, unknown>
   };
 }
 
+function makeLogicJsonWithBodyBoundaryEvidence(): Record<string, unknown> {
+  return {
+    schema: 'LogicJson.v1',
+    format: 'logic_json',
+    importable: false,
+    scope: 'target_event',
+    adapter_boundary: {
+      runtime_adapter_id: 'k2.external_graph.replace_body',
+      graph_name: 'EventGraph',
+      entry_boundaries: [{ node_ref: 'BodyEntry', display_name: 'OnShooterFireStartedInput' }],
+      body_entry: bodyEntryAnchor,
+      body_fingerprint: 'body-fingerprint',
+    },
+    logic: {
+      asset_path: '/Game/ShooterRange/Blueprints/BP_ShooterPlayerController',
+      graph: 'EventGraph',
+      event: 'OnShooterFireStartedInput',
+      nodes: [
+        { node_ref: 'BodyEntry', kind: 'event', name: 'OnShooterFireStartedInput' },
+        { node_ref: 'PrintString', kind: 'call_function', name: 'Print String' },
+      ],
+      links: [
+        {
+          link_ref: 'links[0]',
+          type: 'exec',
+          from_node: 'BodyEntry',
+          from_pin: 'then',
+          to_node: 'PrintString',
+          to_pin: 'execute',
+        },
+      ],
+    },
+    stats: {
+      nodes: 2,
+      exec_links: 1,
+      data_links: 0,
+      orphan_nodes: 0,
+    },
+  };
+}
+
 function makeLogicJsonWithUnknownLink(): Record<string, unknown> {
   return {
     schema: 'LogicJson.v1',
@@ -1844,4 +1895,58 @@ test('read_context event logic_flow sends graph_name for adapter boundary readba
   assert.equal(bridgeCalls[0]?.payload?.['graph_name'], 'EventGraph');
   assert.equal(bridgeCalls[0]?.payload?.['event'], 'ReceiveTick');
   assert.equal(bridgeCalls[0]?.payload?.['scope'], 'target_event');
+});
+
+test('read_context blueprint logic preserves adapter body entry evidence for logic_json and logic_flow', async () => {
+  const bridgeResponse: BridgeResponse = makeBridgeResponse({
+    request_id: 'body_boundary_preserved',
+    success: true,
+    result: makeLogicJsonWithBodyBoundaryEvidence(),
+  });
+
+  const context: BlueprintHelperToolContext = {
+    cwd: process.cwd(),
+    bridge: {
+      sendCommand: async () => bridgeResponse,
+    } as never,
+    taskRunner: {} as never,
+  };
+
+  const logicJsonResult = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/ShooterRange/Blueprints/BP_ShooterPlayerController',
+      target_type: 'event',
+      target_name: 'OnShooterFireStartedInput',
+    },
+    view: {
+      format: 'logic_json',
+    },
+  }, context);
+
+  assert.equal(logicJsonResult.ok, true);
+  const logicJsonPayload = logicJsonResult.data?.['payload'] as Record<string, unknown>;
+  const logicJsonBoundary = logicJsonPayload['adapter_boundary'] as Record<string, unknown>;
+  assert.deepEqual(logicJsonBoundary['body_entry'], bodyEntryAnchor);
+  assert.equal(logicJsonBoundary['body_fingerprint'], 'body-fingerprint');
+
+  const logicFlowResult = await executeReadContext({
+    schema: 'BlueprintHelper.ReadSpec.v1',
+    read_type: 'blueprint_logic',
+    target: {
+      asset_path: '/Game/ShooterRange/Blueprints/BP_ShooterPlayerController',
+      target_type: 'event',
+      target_name: 'OnShooterFireStartedInput',
+    },
+    view: {
+      format: 'logic_flow',
+    },
+  }, context);
+
+  assert.equal(logicFlowResult.ok, true);
+  const logicFlowPayload = logicFlowResult.data?.['payload'] as Record<string, unknown>;
+  const logicFlowBoundary = logicFlowPayload['adapter_boundary'] as Record<string, unknown>;
+  assert.deepEqual(logicFlowBoundary['body_entry'], bodyEntryAnchor);
+  assert.equal(logicFlowBoundary['body_fingerprint'], 'body-fingerprint');
 });

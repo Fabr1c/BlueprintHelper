@@ -10,6 +10,7 @@
 #include "K2Node_FunctionResult.h"
 #include "K2Node_Tunnel.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperK2GraphEntryIdentityResolver.h"
 #include "UObject/Package.h"
 
 UEdGraph* FBlueprintHelperK2GraphBodyAdapterUtils::FindGraphByName(
@@ -31,6 +32,28 @@ FString FBlueprintHelperK2GraphBodyAdapterUtils::NodeRef(const UEdGraphNode* Nod
 	if (!Node)
 	{
 		return TEXT("Node");
+	}
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	if (Resolver.TryResolveNodeIdentity(Node, Identity))
+	{
+		switch (Identity.Kind)
+		{
+		case EBlueprintHelperK2GraphEntryKind::FunctionEntry:
+			return TEXT("FunctionEntry");
+		case EBlueprintHelperK2GraphEntryKind::FunctionResult:
+			return TEXT("FunctionResult");
+		case EBlueprintHelperK2GraphEntryKind::MacroEntry:
+			return TEXT("TunnelEntry");
+		case EBlueprintHelperK2GraphEntryKind::MacroExit:
+			return TEXT("TunnelExit");
+		case EBlueprintHelperK2GraphEntryKind::CustomEvent:
+			return FString::Printf(TEXT("CustomEvent:%s"), *Identity.StableName);
+		case EBlueprintHelperK2GraphEntryKind::Event:
+			return FString::Printf(TEXT("Event:%s"), *Identity.StableName);
+		default:
+			break;
+		}
 	}
 	if (IsFunctionEntry(Node))
 	{
@@ -125,12 +148,18 @@ void FBlueprintHelperK2GraphBodyAdapterUtils::AppendGraphLinkRefs(
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(const UEdGraphNode* Node)
 {
-	return Node && Node->IsA<UK2Node_FunctionEntry>();
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	return Resolver.TryResolveNodeIdentity(Node, Identity)
+		&& Identity.Kind == EBlueprintHelperK2GraphEntryKind::FunctionEntry;
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(const UEdGraphNode* Node)
 {
-	return Node && Node->IsA<UK2Node_FunctionResult>();
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	return Resolver.TryResolveNodeIdentity(Node, Identity)
+		&& Identity.Kind == EBlueprintHelperK2GraphEntryKind::FunctionResult;
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntryNodeClass(const UClass* NodeClass)
@@ -150,42 +179,48 @@ bool FBlueprintHelperK2GraphBodyAdapterUtils::IsProtectedFunctionBoundaryNode(co
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelEntry(const UK2Node_Tunnel* Tunnel)
 {
-	return Tunnel && (Tunnel->bCanHaveOutputs || HasExecPin(Tunnel, EGPD_Output));
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	return Resolver.TryResolveNodeIdentity(Tunnel, Identity)
+		&& (Identity.Kind == EBlueprintHelperK2GraphEntryKind::MacroEntry
+			|| Identity.Role == EBlueprintHelperK2GraphBoundaryRole::ExecBoundary);
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsTunnelExit(const UK2Node_Tunnel* Tunnel)
 {
-	return Tunnel && (Tunnel->bCanHaveInputs || HasExecPin(Tunnel, EGPD_Input));
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	return Resolver.TryResolveNodeIdentity(Tunnel, Identity)
+		&& (Identity.Kind == EBlueprintHelperK2GraphEntryKind::MacroExit
+			|| Identity.Role == EBlueprintHelperK2GraphBoundaryRole::ExecBoundary);
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsCustomEventEntry(
 	const UEdGraphNode* Node,
 	const FString& EntryName)
 {
-	const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
-	if (!CustomEvent)
-	{
-		return false;
-	}
-	return EntryName.IsEmpty() || CustomEvent->CustomFunctionName.ToString().Equals(EntryName, ESearchCase::IgnoreCase);
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	FBlueprintHelperK2GraphEntryQuery Query;
+	Query.TargetType = TEXT("custom_event");
+	Query.TargetName = EntryName;
+	Query.RequiredRole = EBlueprintHelperK2GraphBoundaryRole::BodyEntry;
+	return Resolver.TryResolveNodeIdentity(Node, Identity)
+		&& Resolver.DoesIdentityMatchQuery(Identity, Query);
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(
 	const UEdGraphNode* Node,
 	const FString& EntryName)
 {
-	const UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node);
-	if (!EventNode)
-	{
-		return false;
-	}
-	if (EntryName.IsEmpty())
-	{
-		return true;
-	}
-	const FString EventMemberName = EventNode->EventReference.GetMemberName().ToString();
-	return EventMemberName.Equals(EntryName, ESearchCase::IgnoreCase)
-		|| EventNode->GetNodeTitle(ENodeTitleType::ListView).ToString().Contains(EntryName);
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	FBlueprintHelperK2GraphEntryQuery Query;
+	Query.TargetType = TEXT("event");
+	Query.TargetName = EntryName;
+	Query.RequiredRole = EBlueprintHelperK2GraphBoundaryRole::BodyEntry;
+	return Resolver.TryResolveNodeIdentity(Node, Identity)
+		&& Resolver.DoesIdentityMatchQuery(Identity, Query);
 }
 
 bool FBlueprintHelperK2GraphBodyAdapterUtils::HasExecPin(

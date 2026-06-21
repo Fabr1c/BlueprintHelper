@@ -209,6 +209,54 @@ test('classifyMetricsError treats class-default task type property failures as p
   });
 });
 
+test('classifyMetricsError treats setter-required route mismatch as recoverable route mismatch', () => {
+  const result = classifyMetricsError({
+    ok: false,
+    error: {
+      code: 'class_default_property_setter_required',
+      suggested_route: {
+        route_id: 'blueprint_class_settings.class_default_setter',
+        operation_id: 'set_class_default_via_setter',
+        task_type: 'edit_blueprint_class_settings',
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    category: 'parameter_error',
+    code: 'class_default_property_setter_required',
+    detail_kind: 'route_mismatch_with_suggested_route',
+  });
+});
+
+test('classifyMetricsError treats setter signature failures as runtime state unsupported property shape', () => {
+  const result = classifyMetricsError({
+    issue_code: 'class_default_setter_signature_unsupported',
+  });
+
+  assert.deepEqual(result, {
+    category: 'runtime_state_error',
+    code: 'class_default_setter_signature_unsupported',
+    detail_kind: 'unsupported_property_shape',
+  });
+});
+
+test('classifyMetricsError treats setter readback failures as runtime state errors', () => {
+  for (const code of [
+    'class_default_setter_readback_mismatch',
+    'class_default_setter_restore_readback_mismatch',
+  ]) {
+    const result = classifyMetricsError({
+      issue_code: code,
+    });
+
+    assert.deepEqual(result, {
+      category: 'runtime_state_error',
+      code,
+    });
+  }
+});
+
 test('classifyMetricsError reads nested ToolResultBase error shapes', () => {
   const result = classifyMetricsError({
     ok: false,

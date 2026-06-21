@@ -22,6 +22,9 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyReadbackProjection
 	FString BodyEntryNodeClass;
 	FString BodyEntryFingerprint;
 	FString BodyFingerprint;
+	FString BodyEvidenceStatus;
+	FString BodyEvidenceErrorCode;
+	FString BodyEvidenceErrorMessage;
 	bool bSynthesizeLogicEntry = false;
 	bool bSynthesizeLogicResult = false;
 };

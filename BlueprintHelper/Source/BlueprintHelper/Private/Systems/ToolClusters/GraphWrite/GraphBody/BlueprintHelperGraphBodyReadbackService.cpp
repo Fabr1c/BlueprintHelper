@@ -36,24 +36,35 @@ public:
 		const FBlueprintHelperGraphBodyBoundaryModel& Boundary,
 		FBlueprintHelperGraphBodyReadbackProjection& InOutProjection)
 	{
-		if (!SupportsBodyEvidence(Boundary)
-			|| !Target.Graph
-			|| Target.EntryBoundaryNodes.Num() == 0
-			|| !Target.EntryBoundaryNodes[0])
+		if (!SupportsBodyEvidence(Boundary))
 		{
+			return;
+		}
+
+		if (!Target.Graph || Target.EntryBoundaryNodes.Num() == 0 || !Target.EntryBoundaryNodes[0])
+		{
+			if (InOutProjection.BodyEvidenceStatus.IsEmpty())
+			{
+				InOutProjection.BodyEvidenceStatus = TEXT("missing_entry");
+				InOutProjection.BodyEvidenceErrorCode = TEXT("k2_entry_identity_not_found");
+			}
 			return;
 		}
 
 		FBlueprintHelperExternalGraphAnchor Anchor;
 		FString AnchorError;
 		const FBlueprintHelperExternalGraphAnchorService AnchorService;
-		if (!AnchorService.BuildNodeAnchor(
+		if (!AnchorService.BuildBodyEntryAnchor(
 			Boundary.TargetAssetPath.IsEmpty() ? Target.AssetPath : Boundary.TargetAssetPath,
 			Boundary.GraphName.IsEmpty() ? Target.GraphName : Boundary.GraphName,
 			Target.EntryBoundaryNodes[0],
 			Anchor,
 			AnchorError))
 		{
+			InOutProjection.BodyEvidenceStatus = TEXT("body_entry_anchor_failed");
+			InOutProjection.BodyEvidenceErrorCode = AnchorError.IsEmpty()
+				? TEXT("body_entry_anchor_failed")
+				: AnchorError;
 			return;
 		}
 
@@ -66,10 +77,13 @@ public:
 			Snapshot,
 			SnapshotError))
 		{
+			InOutProjection.BodyEvidenceStatus = TEXT("body_fingerprint_failed");
+			InOutProjection.BodyEvidenceErrorCode = SnapshotError.IsEmpty()
+				? TEXT("body_fingerprint_failed")
+				: SnapshotError;
 			return;
 		}
 
-		Anchor.SemanticRole = EBlueprintHelperExternalGraphAnchorRole::BodyEntry;
 		InOutProjection.BodyEntryNodeGuid = Anchor.NodeGuid;
 		InOutProjection.BodyEntryNodeClass = Anchor.NodeClass;
 		InOutProjection.BodyEntryFingerprint = Anchor.Fingerprint;
@@ -213,6 +227,18 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBo
 	if (!Projection.BodyFingerprint.IsEmpty())
 	{
 		Json->SetStringField(TEXT("body_fingerprint"), Projection.BodyFingerprint);
+	}
+	if (!Projection.BodyEvidenceStatus.IsEmpty())
+	{
+		Json->SetStringField(TEXT("body_evidence_status"), Projection.BodyEvidenceStatus);
+	}
+	if (!Projection.BodyEvidenceErrorCode.IsEmpty())
+	{
+		Json->SetStringField(TEXT("body_evidence_error_code"), Projection.BodyEvidenceErrorCode);
+	}
+	if (!Projection.BodyEvidenceErrorMessage.IsEmpty())
+	{
+		Json->SetStringField(TEXT("body_evidence_error_message"), Projection.BodyEvidenceErrorMessage);
 	}
 	return Json;
 }

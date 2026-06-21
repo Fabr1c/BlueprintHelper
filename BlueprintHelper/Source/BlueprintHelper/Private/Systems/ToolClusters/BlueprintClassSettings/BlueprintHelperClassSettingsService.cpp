@@ -4,6 +4,9 @@
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/Utils/BlueprintHelperClassSettingsUtils.h"
+#include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassDefaultPropertyMutationPolicy.h"
+#include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassDefaultPropertyMutationResolver.h"
+#include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassDefaultSetterMutationService.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 
 #include "Engine/Blueprint.h"
@@ -15,6 +18,91 @@
 #include "UObject/Interface.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+
+class FBlueprintHelperClassSettingsServiceLocal
+{
+public:
+	static TArray<FString> BuildDirectWriteBlockedBy(const FProperty* Property)
+	{
+		TArray<FString> BlockedBy;
+		if (!Property)
+		{
+			BlockedBy.Add(TEXT("MissingProperty"));
+			return BlockedBy;
+		}
+		if (!Property->HasAnyPropertyFlags(CPF_Edit))
+		{
+			BlockedBy.Add(TEXT("NotEdit"));
+		}
+		if (Property->HasAnyPropertyFlags(CPF_EditConst))
+		{
+			BlockedBy.Add(TEXT("EditConst"));
+		}
+		if (Property->HasAnyPropertyFlags(CPF_Transient))
+		{
+			BlockedBy.Add(TEXT("Transient"));
+		}
+		if (Property->HasAnyPropertyFlags(CPF_DisableEditOnTemplate))
+		{
+			BlockedBy.Add(TEXT("DisableEditOnTemplate"));
+		}
+		return BlockedBy;
+	}
+
+	static bool ResolveMutationDecision(
+		UObject* CDO,
+		const FBlueprintHelperClassDefaultPropertySetting& Setting,
+		FBlueprintHelperClassDefaultResolvedMutationTarget& OutTarget,
+		FBlueprintHelperClassDefaultMutationPolicyDecision& OutDecision,
+		FBlueprintHelperInvalidClassDefaultSetting& OutInvalid)
+	{
+		OutInvalid.PropertyPath = Setting.PropertyPath;
+
+		FString ResolveCode;
+		FString ResolveMessage;
+		const FBlueprintHelperClassDefaultPropertyMutationResolver Resolver;
+		if (!Resolver.Resolve(CDO, Setting.PropertyPath, OutTarget, ResolveCode, ResolveMessage))
+		{
+			OutInvalid.Code = ResolveCode;
+			OutInvalid.ValueSummary = ResolveMessage.Left(128);
+			return false;
+		}
+
+		OutInvalid.ExpectedType = OutTarget.ExpectedType;
+		const FBlueprintHelperClassDefaultPropertyMutationPolicy Policy;
+		OutDecision = Policy.Decide(OutTarget, Setting.MutationStrategy);
+		if (OutDecision.Strategy == EBlueprintHelperClassDefaultMutationStrategy::Blocked)
+		{
+			OutInvalid.Code = OutDecision.Code;
+			OutInvalid.ValueSummary = OutDecision.Message.Left(128);
+			OutInvalid.SafeNextAction = OutDecision.SafeNextAction;
+			if (!OutDecision.SuggestedRoute.RouteId.IsEmpty())
+			{
+				OutInvalid.SuggestedRoute = OutDecision.SuggestedRoute;
+			}
+			return false;
+		}
+
+		return true;
+	}
+
+	static FBlueprintHelperClassDefaultSetterMutationResult ApplySetterMutation(
+		const FString& AssetPath,
+		UObject* CDO,
+		const FBlueprintHelperClassDefaultResolvedMutationTarget& Target,
+		const TSharedPtr<FJsonValue>& Value,
+		const bool bDryRun)
+	{
+		FBlueprintHelperClassDefaultSetterMutationRequest Request;
+		Request.AssetPath = AssetPath;
+		Request.RootObject = CDO;
+		Request.Target = Target;
+		Request.Value = Value;
+		Request.bDryRun = bDryRun;
+		const FBlueprintHelperClassDefaultSetterMutationService Service;
+		return Service.Apply(Request);
+	}
+};
 
 // ─── 构造函数 ───
 
@@ -298,6 +386,36 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::ReadClassDe
 		Context.Category = Property->GetMetaData(TEXT("Category"));
 	}
 	Context.Flags = FBlueprintHelperEditablePropertyPolicy::BuildFlagsSummary(Property->PropertyFlags);
+	Context.bDirectWriteWritable = FBlueprintHelperEditablePropertyPolicy::AllowsClassDefaultWrite(Property);
+	if (!Context.bDirectWriteWritable)
+	{
+		Context.DirectWriteBlockedBy = FBlueprintHelperClassSettingsServiceLocal::BuildDirectWriteBlockedBy(Property);
+	}
+
+	FBlueprintHelperClassDefaultResolvedMutationTarget MutationTarget;
+	FString MutationResolveCode;
+	FString MutationResolveMessage;
+	const FBlueprintHelperClassDefaultPropertyMutationResolver MutationResolver;
+	if (MutationResolver.Resolve(CDO, PropertyPath, MutationTarget, MutationResolveCode, MutationResolveMessage))
+	{
+		Context.OwnerObjectPath = MutationTarget.OwnerObjectPath;
+		Context.OwnerObjectClass = MutationTarget.OwnerObjectClass;
+		Context.SetterFunction = MutationTarget.SetterFunctionName;
+		Context.GetterFunction = MutationTarget.GetterFunctionName;
+
+		const FBlueprintHelperClassDefaultPropertyMutationPolicy MutationPolicy;
+		const FBlueprintHelperClassDefaultMutationPolicyDecision SetterDecision =
+			MutationPolicy.Decide(MutationTarget, TEXT("setter_aware_property"));
+		Context.bSetterAwareWriteSupported =
+			SetterDecision.Strategy == EBlueprintHelperClassDefaultMutationStrategy::SetterAwareProperty;
+		if (Context.bSetterAwareWriteSupported)
+		{
+			const FBlueprintHelperToolSuggestedRoute Route =
+				FBlueprintHelperClassDefaultPropertyMutationPolicy::MakeSetterAwareSuggestedRoute(PropertyPath);
+			Context.SetterAwareRouteId = Route.RouteId;
+			Context.SetterAwareTargetKind = TEXT("class_default_setter_property");
+		}
+	}
 
 	FBlueprintHelperToolResultBase Result = FBlueprintHelperToolResultBuilder::Completed(
 		TEXT("read_blueprint_class_default_property"),
@@ -973,28 +1091,35 @@ bool FBlueprintHelperClassSettingsService::ValidateClassDefaultSetting(
 	const FBlueprintHelperClassDefaultPropertySetting& Setting,
 	FBlueprintHelperInvalidClassDefaultSetting& OutInvalid)
 {
-	OutInvalid.PropertyPath = Setting.PropertyPath;
-
-	FProperty* Property = nullptr;
-	void* ValuePtr = nullptr;
-	FString ExpectedType;
-	FString ErrorCode;
-	FString ErrorMessage;
-
-	if (!ResolvePropertyPath(CDO, Setting.PropertyPath, Property, ValuePtr, ExpectedType, ErrorCode, ErrorMessage))
+	FBlueprintHelperClassDefaultResolvedMutationTarget MutationTarget;
+	FBlueprintHelperClassDefaultMutationPolicyDecision MutationDecision;
+	if (!FBlueprintHelperClassSettingsServiceLocal::ResolveMutationDecision(
+		CDO,
+		Setting,
+		MutationTarget,
+		MutationDecision,
+		OutInvalid))
 	{
-		OutInvalid.Code = ErrorCode;
-		OutInvalid.ExpectedType = ExpectedType;
-		OutInvalid.ValueSummary = ErrorMessage.Left(128);
 		return false;
 	}
 
-	OutInvalid.ExpectedType = ExpectedType;
-
-	if (!FBlueprintHelperEditablePropertyPolicy::AllowsClassDefaultWrite(Property))
+	if (MutationDecision.Strategy == EBlueprintHelperClassDefaultMutationStrategy::SetterAwareProperty)
 	{
-		OutInvalid.Code = TEXT("class_default_property_not_writable");
-		return false;
+		const FBlueprintHelperClassDefaultSetterMutationResult SetterPreview =
+			FBlueprintHelperClassSettingsServiceLocal::ApplySetterMutation(
+				FString(),
+				CDO,
+				MutationTarget,
+				Setting.Value,
+				true);
+		if (!SetterPreview.bOk)
+		{
+			OutInvalid.Code = SetterPreview.ErrorCode;
+			OutInvalid.ExpectedType = MutationTarget.ExpectedType;
+			OutInvalid.ValueSummary = SetterPreview.ErrorMessage.Left(128);
+			return false;
+		}
+		return true;
 	}
 
 	FString ImportText;
@@ -1010,10 +1135,10 @@ bool FBlueprintHelperClassSettingsService::ValidateClassDefaultSetting(
 	}
 
 	// 试导入到临时内存，验证 ImportText 格式正确。
-	void* TempValue = FMemory_Alloca(Property->GetSize());
-	Property->InitializeValue(TempValue);
-	const TCHAR* ImportEnd = Property->ImportText_Direct(*ImportText, TempValue, CDO, PPF_None);
-	Property->DestroyValue(TempValue);
+	void* TempValue = FMemory_Alloca(MutationTarget.LeafProperty->GetSize());
+	MutationTarget.LeafProperty->InitializeValue(TempValue);
+	const TCHAR* ImportEnd = MutationTarget.LeafProperty->ImportText_Direct(*ImportText, TempValue, CDO, PPF_None);
+	MutationTarget.LeafProperty->DestroyValue(TempValue);
 
 	if (!ImportEnd)
 	{
@@ -1078,12 +1203,26 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 	{
 		Data->SetObjectField(TEXT("default_property_result"), PropertyResult.ToJson());
 
+		const FBlueprintHelperInvalidClassDefaultSetting& FirstInvalid = PropertyResult.InvalidSettings[0];
+		const FString FailureCode = FirstInvalid.Code.Equals(TEXT("class_default_property_setter_required"), ESearchCase::IgnoreCase)
+			? FirstInvalid.Code
+			: TEXT("invalid_class_default_property_settings");
+		FBlueprintHelperToolError Error = MakeError(
+			FailureCode,
+			EBlueprintHelperToolStage::Preflight,
+			UBlueprintHelperClassSettingsUtils::BlueprintClassSettingsDescribeInvalidDefaultSetting(FirstInvalid),
+			FirstInvalid.PropertyPath);
+		Error.SafeNextAction = FirstInvalid.SafeNextAction;
+		if (FirstInvalid.SuggestedRoute.IsSet())
+		{
+			Error.SuggestedRoute = FirstInvalid.SuggestedRoute;
+			Data->SetObjectField(TEXT("suggested_route"), FirstInvalid.SuggestedRoute->ToJson());
+		}
+
 		FBlueprintHelperToolResultBase Failed = FBlueprintHelperToolResultBuilder::Failure(
 			TEXT("set_class_default_properties"),
 			TraceId,
-			MakeError(TEXT("invalid_class_default_property_settings"), EBlueprintHelperToolStage::Preflight,
-				UBlueprintHelperClassSettingsUtils::BlueprintClassSettingsDescribeInvalidDefaultSetting(PropertyResult.InvalidSettings[0]),
-				PropertyResult.InvalidSettings[0].PropertyPath));
+			Error);
 		Failed.Target = FBlueprintHelperTargetRef();
 		Failed.Target->AssetPath = AssetPath;
 		Failed.Target->TargetType = EBlueprintHelperTargetType::Blueprint;
@@ -1095,22 +1234,54 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 	{
 		for (const FBlueprintHelperClassDefaultPropertySetting& Setting : Settings)
 		{
-			FProperty* Property = nullptr;
-			void* ValuePtr = nullptr;
-			FString ExpectedType;
-			FString ResolveCode;
-			FString ResolveMessage;
-
-			if (!ResolvePropertyPath(CDO, Setting.PropertyPath, Property, ValuePtr, ExpectedType, ResolveCode, ResolveMessage))
+			FBlueprintHelperClassDefaultResolvedMutationTarget MutationTarget;
+			FBlueprintHelperClassDefaultMutationPolicyDecision MutationDecision;
+			FBlueprintHelperInvalidClassDefaultSetting Invalid;
+			if (!FBlueprintHelperClassSettingsServiceLocal::ResolveMutationDecision(
+				CDO,
+				Setting,
+				MutationTarget,
+				MutationDecision,
+				Invalid))
 			{
 				return FBlueprintHelperToolResultBuilder::Failure(
 					TEXT("set_class_default_properties"),
 					TraceId,
-					MakeError(ResolveCode, EBlueprintHelperToolStage::DryRun, ResolveMessage));
+					MakeError(Invalid.Code, EBlueprintHelperToolStage::DryRun, Invalid.ValueSummary, Invalid.PropertyPath));
+			}
+
+			if (MutationDecision.Strategy == EBlueprintHelperClassDefaultMutationStrategy::SetterAwareProperty)
+			{
+				const FBlueprintHelperClassDefaultSetterMutationResult SetterPreview =
+					FBlueprintHelperClassSettingsServiceLocal::ApplySetterMutation(
+						AssetPath,
+						CDO,
+						MutationTarget,
+						Setting.Value,
+						true);
+				if (!SetterPreview.bOk)
+				{
+					return FBlueprintHelperToolResultBuilder::Failure(
+						TEXT("set_class_default_properties"),
+						TraceId,
+						MakeError(SetterPreview.ErrorCode, EBlueprintHelperToolStage::DryRun, SetterPreview.ErrorMessage, Setting.PropertyPath));
+				}
+
+				PropertyResult.SetterMutationEvidence.Add(SetterPreview.Evidence);
+				++PropertyResult.AppliedCount;
+				if (SetterPreview.bWouldChange)
+				{
+					++PropertyResult.ChangedCount;
+				}
+				else
+				{
+					++PropertyResult.NoOpCount;
+				}
+				continue;
 			}
 
 			FString Before;
-			Property->ExportTextItem_Direct(Before, ValuePtr, nullptr, CDO, PPF_None);
+			MutationTarget.LeafProperty->ExportTextItem_Direct(Before, MutationTarget.LeafValuePtr, nullptr, CDO, PPF_None);
 
 			FString ImportText;
 			FString Summary;
@@ -1124,12 +1295,12 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 					MakeError(TEXT("invalid_class_default_property_settings"), EBlueprintHelperToolStage::DryRun, ConvertError));
 			}
 
-			void* TempValue = FMemory_Alloca(Property->GetSize());
-			Property->InitializeValue(TempValue);
-			const TCHAR* ImportEnd = Property->ImportText_Direct(*ImportText, TempValue, CDO, PPF_None);
+			void* TempValue = FMemory_Alloca(MutationTarget.LeafProperty->GetSize());
+			MutationTarget.LeafProperty->InitializeValue(TempValue);
+			const TCHAR* ImportEnd = MutationTarget.LeafProperty->ImportText_Direct(*ImportText, TempValue, CDO, PPF_None);
 			if (!ImportEnd)
 			{
-				Property->DestroyValue(TempValue);
+				MutationTarget.LeafProperty->DestroyValue(TempValue);
 				return FBlueprintHelperToolResultBuilder::Failure(
 					TEXT("set_class_default_properties"),
 					TraceId,
@@ -1138,8 +1309,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 			}
 
 			FString After;
-			Property->ExportTextItem_Direct(After, TempValue, nullptr, CDO, PPF_None);
-			Property->DestroyValue(TempValue);
+			MutationTarget.LeafProperty->ExportTextItem_Direct(After, TempValue, nullptr, CDO, PPF_None);
+			MutationTarget.LeafProperty->DestroyValue(TempValue);
 
 			++PropertyResult.AppliedCount;
 			if (Before == After)
@@ -1173,23 +1344,56 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 
 	for (const FBlueprintHelperClassDefaultPropertySetting& Setting : Settings)
 	{
-		FProperty* Property = nullptr;
-		void* ValuePtr = nullptr;
-		FString ExpectedType;
-		FString ResolveCode;
-		FString ResolveMessage;
-
-		if (!ResolvePropertyPath(CDO, Setting.PropertyPath, Property, ValuePtr, ExpectedType, ResolveCode, ResolveMessage))
+		FBlueprintHelperClassDefaultResolvedMutationTarget MutationTarget;
+		FBlueprintHelperClassDefaultMutationPolicyDecision MutationDecision;
+		FBlueprintHelperInvalidClassDefaultSetting Invalid;
+		if (!FBlueprintHelperClassSettingsServiceLocal::ResolveMutationDecision(
+			CDO,
+			Setting,
+			MutationTarget,
+			MutationDecision,
+			Invalid))
 		{
 			Mutation.Rollback();
 			return FBlueprintHelperToolResultBuilder::Failure(
 				TEXT("set_class_default_properties"),
 				TraceId,
-				MakeError(ResolveCode, EBlueprintHelperToolStage::Execute, ResolveMessage));
+				MakeError(Invalid.Code, EBlueprintHelperToolStage::Execute, Invalid.ValueSummary, Invalid.PropertyPath));
+		}
+
+		if (MutationDecision.Strategy == EBlueprintHelperClassDefaultMutationStrategy::SetterAwareProperty)
+		{
+			const FBlueprintHelperClassDefaultSetterMutationResult SetterExecute =
+				FBlueprintHelperClassSettingsServiceLocal::ApplySetterMutation(
+					AssetPath,
+					CDO,
+					MutationTarget,
+					Setting.Value,
+					false);
+			if (!SetterExecute.bOk)
+			{
+				Mutation.Rollback();
+				return FBlueprintHelperToolResultBuilder::Failure(
+					TEXT("set_class_default_properties"),
+					TraceId,
+					MakeError(SetterExecute.ErrorCode, EBlueprintHelperToolStage::Execute, SetterExecute.ErrorMessage, Setting.PropertyPath));
+			}
+
+			PropertyResult.SetterMutationEvidence.Add(SetterExecute.Evidence);
+			++PropertyResult.AppliedCount;
+			if (SetterExecute.bModified)
+			{
+				++PropertyResult.ChangedCount;
+			}
+			else
+			{
+				++PropertyResult.NoOpCount;
+			}
+			continue;
 		}
 
 		FString Before;
-		Property->ExportTextItem_Direct(Before, ValuePtr, nullptr, CDO, PPF_None);
+		MutationTarget.LeafProperty->ExportTextItem_Direct(Before, MutationTarget.LeafValuePtr, nullptr, CDO, PPF_None);
 
 		FString ImportText;
 		FString Summary;
@@ -1197,8 +1401,8 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 		FString ConvertError;
 		JsonValueToImportText(Setting.Value, ImportText, Summary, ActualType, ConvertError);
 
-		CDO->PreEditChange(Property);
-		const TCHAR* ImportEnd = Property->ImportText_Direct(*ImportText, ValuePtr, CDO, PPF_None);
+		CDO->PreEditChange(MutationTarget.LeafProperty);
+		const TCHAR* ImportEnd = MutationTarget.LeafProperty->ImportText_Direct(*ImportText, MutationTarget.LeafValuePtr, CDO, PPF_None);
 		if (!ImportEnd)
 		{
 			Mutation.Rollback();
@@ -1209,11 +1413,11 @@ FBlueprintHelperToolResultBase FBlueprintHelperClassSettingsService::SetClassDef
 					FString::Printf(TEXT("属性写入失败: %s"), *Setting.PropertyPath)));
 		}
 
-		FPropertyChangedEvent ChangeEvent(Property, EPropertyChangeType::ValueSet);
+		FPropertyChangedEvent ChangeEvent(MutationTarget.LeafProperty, EPropertyChangeType::ValueSet);
 		CDO->PostEditChangeProperty(ChangeEvent);
 
 		FString After;
-		Property->ExportTextItem_Direct(After, ValuePtr, nullptr, CDO, PPF_None);
+		MutationTarget.LeafProperty->ExportTextItem_Direct(After, MutationTarget.LeafValuePtr, nullptr, CDO, PPF_None);
 
 		++PropertyResult.AppliedCount;
 		if (Before == After)

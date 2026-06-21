@@ -5,6 +5,7 @@
 #include "Misc/DateTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperK2GraphEntryEvidence.h"
 #include "Runtime/TaskRuntime/Review/BlueprintHelperWriteReviewEvidenceProjection.h"
 #include "Shared/BlueprintHelperServiceTypes.h"
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
@@ -380,6 +381,56 @@ FString FBlueprintHelperGraphWriteReviewEvidenceBuilder::MakeExternalMergeBlockI
 		: FString::Printf(TEXT("%s_%s"), *GraphName, *InsertedBlockId);
 }
 
+static EBlueprintHelperK2GraphEntryKind BlueprintHelperGraphWriteReviewEntryKindForReplaceScope(
+	const FString& ReplaceScope)
+{
+	if (ReplaceScope.Equals(TEXT("event_body"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperK2GraphEntryKind::Event;
+	}
+	if (ReplaceScope.Equals(TEXT("custom_event_body"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperK2GraphEntryKind::CustomEvent;
+	}
+	if (ReplaceScope.Equals(TEXT("function_body"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperK2GraphEntryKind::FunctionEntry;
+	}
+	if (ReplaceScope.Equals(TEXT("macro_body"), ESearchCase::IgnoreCase))
+	{
+		return EBlueprintHelperK2GraphEntryKind::MacroEntry;
+	}
+	return EBlueprintHelperK2GraphEntryKind::Unknown;
+}
+
+static FString BlueprintHelperGraphWriteReviewReadStableEntryName(
+	const TSharedPtr<FJsonObject>& Anchor,
+	const FString& FallbackNodeGuid)
+{
+	static const TCHAR* StableNameFields[] =
+	{
+		TEXT("stable_name"),
+		TEXT("entry_name"),
+		TEXT("event_name"),
+		TEXT("function_name"),
+		TEXT("node_name")
+	};
+
+	for (const TCHAR* FieldName : StableNameFields)
+	{
+		FString Value;
+		if (Anchor.IsValid() && Anchor->TryGetStringField(FieldName, Value))
+		{
+			Value.TrimStartAndEndInline();
+			if (!Value.IsEmpty())
+			{
+				return Value;
+			}
+		}
+	}
+	return FallbackNodeGuid;
+}
+
 bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalMergeFlowEvidence(
 	const FBlueprintHelperGraphWriteReviewEvidenceBuildInput& Input,
 	const FString& AssetPath,
@@ -684,42 +735,69 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalBodyReplaceEv
 		return false;
 	}
 
-	const FString SafeGraphName = MakeReviewKeySegment(GraphName);
-	const FString SafeNodeGuid = MakeReviewKeySegment(NodeGuid);
-	const FString SafeScope = MakeReviewKeySegment(ReplaceScope);
+	FBlueprintHelperK2GraphEntryEvidence EntryEvidence;
+	EntryEvidence.AssetPath = AssetPath;
+	EntryEvidence.GraphName = GraphName;
+	EntryEvidence.OperationKind = OperationKind;
+	EntryEvidence.EntryIdentity.Kind = BlueprintHelperGraphWriteReviewEntryKindForReplaceScope(ReplaceScope);
+	EntryEvidence.EntryIdentity.Role = EBlueprintHelperK2GraphBoundaryRole::BodyEntry;
+	EntryEvidence.EntryIdentity.NodeGuid = NodeGuid;
+	EntryEvidence.EntryIdentity.NodeClass = ReadStringField(Anchor, TEXT("node_class"));
+	EntryEvidence.EntryIdentity.StableName = BlueprintHelperGraphWriteReviewReadStableEntryName(Anchor, NodeGuid);
+	EntryEvidence.EntryIdentity.GraphName = GraphName;
+	EntryEvidence.EntryIdentity.bValid =
+		EntryEvidence.EntryIdentity.Kind != EBlueprintHelperK2GraphEntryKind::Unknown &&
+		!EntryEvidence.EntryIdentity.StableName.IsEmpty();
+	EntryEvidence.BodyEntryAnchorJson = SerializeJsonObject(Anchor.ToSharedRef());
+	EntryEvidence.BodyFingerprint = ReadStringField(Input.LoweredStep.Payload, TEXT("expected_body_fingerprint"));
+	EntryEvidence.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
+	EntryEvidence.TargetOwnership = TEXT("external_user_authored");
+
+	if (Input.StepResult.Data.IsValid())
+	{
+		const TSharedPtr<FJsonObject> BeforeSnapshot =
+			ReadObjectField(Input.StepResult.Data, TEXT("external_body_snapshot"));
+		if (BeforeSnapshot.IsValid())
+		{
+			BeforeSnapshot->SetBoolField(TEXT("exists"), true);
+			EntryEvidence.BeforeBodySnapshotJson = SerializeJsonObject(BeforeSnapshot.ToSharedRef());
+			if (EntryEvidence.BodyFingerprint.IsEmpty())
+			{
+				EntryEvidence.BodyFingerprint = ReadStringField(BeforeSnapshot, TEXT("body_fingerprint"));
+			}
+		}
+	}
+	if (!EntryEvidence.BodyFingerprint.IsEmpty())
+	{
+		TSharedRef<FJsonObject> AfterSnapshot = MakeShared<FJsonObject>();
+		AfterSnapshot->SetBoolField(TEXT("exists"), true);
+		AfterSnapshot->SetStringField(TEXT("entry_node_guid"), NodeGuid);
+		AfterSnapshot->SetStringField(TEXT("body_fingerprint"), EntryEvidence.BodyFingerprint);
+		if (Input.StepResult.Data.IsValid())
+		{
+			const FString ReplacementBlockId = ReadStringField(Input.StepResult.Data, TEXT("replacement_block_id"));
+			if (!ReplacementBlockId.IsEmpty())
+			{
+				AfterSnapshot->SetStringField(TEXT("replacement_block_id"), ReplacementBlockId);
+			}
+		}
+		EntryEvidence.AfterBodySnapshotJson = SerializeJsonObject(AfterSnapshot);
+	}
 
 	FBlueprintHelperReviewAtomicTarget Target;
-	Target.AssetPath = AssetPath;
-	Target.Surface = EBlueprintHelperReviewSurface::Graph;
-	Target.GraphName = GraphName;
-	Target.TargetKind = TEXT("graph_external_body");
-	Target.TargetSubKind = ReplaceScope;
-	Target.TargetKey = FString::Printf(
-		TEXT("graph_external_body:%s:node:%s:scope:%s"),
-		*SafeGraphName,
-		*SafeNodeGuid,
-		*SafeScope);
-	Target.ScopeIdentity = BuildScopeIdentity(AssetPath, GraphName, Target.TargetKey);
-	Target.LifecycleObjectKey = Target.TargetKey;
-	Target.VisualGroupKey = FString::Printf(
-		TEXT("graph_external_body|%s|%s|%s"),
-		*SafeGraphName,
-		*SafeNodeGuid,
-		*SafeScope);
-	Target.DisplayLabel = FString::Printf(
-		TEXT("External body %s %s"),
-		*GraphName,
-		*ReplaceScope);
+	FString ProjectError;
+	if (!FBlueprintHelperK2GraphEntryEvidenceProjector::ProjectToAtomicTarget(
+		EntryEvidence,
+		Input.StepIndex,
+		OutEvidence.AtomicTargets.Num(),
+		Target,
+		ProjectError))
+	{
+		return false;
+	}
 	Target.LatestEvidenceId = OutEvidence.EvidenceId;
 	Target.SourceEvidenceIds.Add(OutEvidence.EvidenceId);
-	Target.Ownership = TEXT("external_user_authored");
-	Target.NodeGuid = NodeGuid;
 	Target.PropertyPath = ReplaceScope;
-	Target.AnchorJson = SerializeJsonObject(Anchor.ToSharedRef());
-	Target.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
-	Target.ExecutionOrder = Input.StepIndex;
-	Target.TaskStepIndex = Input.StepIndex;
-	Target.AtomicIndex = OutEvidence.AtomicTargets.Num();
 	OutEvidence.AtomicTargets.Add(Target);
 
 	const TArray<FBlueprintHelperDiagnosticItem> Diagnostics =

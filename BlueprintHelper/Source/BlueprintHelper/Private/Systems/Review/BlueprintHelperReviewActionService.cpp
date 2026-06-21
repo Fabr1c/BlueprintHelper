@@ -24,6 +24,7 @@
 #include "Components/ActorComponent.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -514,6 +515,14 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 	Result.NewStatus = Record.Status;
 	Result.Message = TEXT("accepted");
 	Result.bSupersededDataCompactionEligible = true;
+	if (Record.Status == EBlueprintHelperReviewChangeStatus::Accepted)
+	{
+		FString SessionError;
+		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
+			ReviewRecordId,
+			EBlueprintHelperSequentialReviewSessionStatus::Accepted,
+			SessionError);
+	}
 	return Result;
 }
 
@@ -644,6 +653,11 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		Result.RollbackMode = TEXT("archive_baseline");
 		Result.Message = LastMessage.IsEmpty() ? TEXT("rejected_purged") : LastMessage;
 		Result.bSupersededDataCompactionEligible = true;
+		FString SessionError;
+		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
+			ReviewRecordId,
+			EBlueprintHelperSequentialReviewSessionStatus::Rejected,
+			SessionError);
 		return Result;
 	}
 
@@ -677,6 +691,14 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = LastMessage;
 	Result.bSupersededDataCompactionEligible = bAllTargetStatusesRejected;
+	if (bAllTargetStatusesRejected)
+	{
+		FString SessionError;
+		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
+			ReviewRecordId,
+			EBlueprintHelperSequentialReviewSessionStatus::Rejected,
+			SessionError);
+	}
 	return Result;
 }
 

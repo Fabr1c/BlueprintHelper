@@ -19,12 +19,15 @@ static void BlueprintHelperReviewBaselineDirtyApplyCommonFields(
 	Decision.Stage = TEXT("baseline_preflight");
 	Decision.DirtyAssets = Request.DirtyAssets;
 	Decision.EvidenceRefs = Request.DiagnosticEvidenceRefs;
+	Decision.bBlocksExecution = true;
 	for (const FString& ActiveReviewEvidenceRef : Request.ActiveReviewEvidenceRefs)
 	{
 		BlueprintHelperReviewBaselineDirtyAddUnique(
 			Decision.EvidenceRefs,
 			ActiveReviewEvidenceRef);
 	}
+	Decision.SequentialReviewSessionId = Request.ActiveSequentialReviewSessionId;
+	Decision.SequentialReviewSessionArchiveSessionId = Request.ActiveSequentialReviewArchiveSessionId;
 }
 
 FBlueprintHelperReviewBaselineDirtyDecision FBlueprintHelperReviewBaselineDirtyClassifier::Classify(
@@ -37,20 +40,56 @@ FBlueprintHelperReviewBaselineDirtyDecision FBlueprintHelperReviewBaselineDirtyC
 		Decision.Category = TEXT("runtime_state");
 		Decision.Stage = TEXT("baseline_preflight");
 		Decision.SafeNextAction = TEXT("continue");
+		Decision.bBlocksExecution = false;
 		return Decision;
 	}
 
 	BlueprintHelperReviewBaselineDirtyApplyCommonFields(Request, Decision);
-	if (Request.ActiveReviewEvidenceRefs.Num() > 0)
+	if (Request.bDirtyFromExternalUserChange ||
+		Request.bSequentialReviewSessionHasExternalConflict)
 	{
-		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyWithOpenReview;
-		Decision.SafeNextAction = TEXT("review.reject_or_accept_pending_changes_then_retry");
+		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyExternalUserChange;
+		Decision.SafeNextAction = TEXT("ask_user_to_resolve_external_dirty_assets_then_retry");
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
+			TEXT("user_resolve_then_retry"));
+		return Decision;
+	}
+
+	if (Request.bDirtyFromActiveSequentialReviewSession &&
+		Request.bSequentialReviewSessionHasUnresolvedFailedExecute)
+	{
+		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyWithUnresolvedFailedSessionExecute;
+		Decision.SafeNextAction = TEXT("review.reject_or_restore_last_good_snapshot_then_retry");
 		BlueprintHelperReviewBaselineDirtyAddUnique(
 			Decision.AllowedRecoveryActions,
 			TEXT("review.reject"));
 		BlueprintHelperReviewBaselineDirtyAddUnique(
 			Decision.AllowedRecoveryActions,
+			TEXT("review.restore_last_good_snapshot"));
+		return Decision;
+	}
+
+	if (Request.bDirtyFromActiveSequentialReviewSession &&
+		Request.bSequentialReviewSessionHasLastGoodSnapshot &&
+		!Request.ActiveSequentialReviewArchiveSessionId.IsEmpty())
+	{
+		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyWithActiveSequentialReviewSession;
+		Decision.Category = TEXT("runtime_state");
+		Decision.SafeNextAction = TEXT("continue_active_sequential_review_session");
+		Decision.bBlocksExecution = false;
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
+			TEXT("task.preview"));
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
+			TEXT("task.execute"));
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
 			TEXT("review.accept"));
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
+			TEXT("review.reject"));
 		return Decision;
 	}
 
@@ -73,13 +112,16 @@ FBlueprintHelperReviewBaselineDirtyDecision FBlueprintHelperReviewBaselineDirtyC
 		return Decision;
 	}
 
-	if (Request.bDirtyFromExternalUserChange)
+	if (Request.ActiveReviewEvidenceRefs.Num() > 0)
 	{
-		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyExternalUserChange;
-		Decision.SafeNextAction = TEXT("ask_user_to_resolve_external_dirty_assets_then_retry");
+		Decision.State = EBlueprintHelperReviewBaselineDirtyState::DirtyWithOpenReview;
+		Decision.SafeNextAction = TEXT("review.reject_or_accept_pending_changes_then_retry");
 		BlueprintHelperReviewBaselineDirtyAddUnique(
 			Decision.AllowedRecoveryActions,
-			TEXT("user_resolve_then_retry"));
+			TEXT("review.reject"));
+		BlueprintHelperReviewBaselineDirtyAddUnique(
+			Decision.AllowedRecoveryActions,
+			TEXT("review.accept"));
 		return Decision;
 	}
 

@@ -1,6 +1,7 @@
 // BlueprintHelper Review adapter registry implementation.
 
 #include "Systems/Review/BlueprintHelperReviewAdapterRegistry.h"
+#include "Systems/Review/BlueprintHelperClassDefaultSetterRestoreAdapter.h"
 #include "Systems/Review/BlueprintHelperReviewAssetFactoryRestoreAdapter.h"
 #include "Systems/Review/BlueprintHelperReviewMaterialInstanceEvidenceAdapter.h"
 #include "Systems/Review/BlueprintHelperReviewMaterialInstanceRestoreAdapter.h"
@@ -105,6 +106,7 @@ void FBlueprintHelperReviewAdapterRegistry::RegisterBuiltInAdapters()
 	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceRestoreAdapter>(TEXT("material_instance")), Diagnostics);
 	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewMaterialInstanceRestoreAdapter>(TEXT("material_instance_parameter")), Diagnostics);
 	RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewAssetFactoryRestoreAdapter>(), Diagnostics);
+	RegisterRestoreAdapter(MakeShared<FBlueprintHelperClassDefaultSetterRestoreAdapter>(), Diagnostics);
 	for (const FString& TargetKind : FBlueprintHelperReviewSnapshotRestoreAdapter::GetSupportedTargetKinds())
 	{
 		RegisterRestoreAdapter(MakeShared<FBlueprintHelperReviewSnapshotRestoreAdapter>(TargetKind), Diagnostics);

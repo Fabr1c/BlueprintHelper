@@ -314,6 +314,10 @@ function fillTaskSpecCoveragePlaceholders(value: unknown): unknown {
       output[key] = record['semantic_role'] === 'exec_boundary' ? 'output' : 'input';
       continue;
     }
+    if (key === 'signature_kind' && isRequiredPlaceholder(child)) {
+      output[key] = 'native_event';
+      continue;
+    }
     if (key === 'category' && typeof child === 'string' && child.includes('PIN_CATEGORY__')) {
       output[key] = 'bool';
       continue;

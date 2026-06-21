@@ -30,6 +30,7 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 		{ TEXT("graph_external_link"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_link"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalLink },
 		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_node"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalNode },
 		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_external_body"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody },
+		{ TEXT("k2_graph_entry"), EBlueprintHelperReviewSurface::Graph, false, TEXT("k2_graph_entry"), EBlueprintHelperReviewTargetHandlerKind::GraphExternalBody },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_node"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_pin"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph, false, TEXT("graph_link"), EBlueprintHelperReviewTargetHandlerKind::GraphNode },
@@ -49,6 +50,7 @@ static const FBlueprintHelperReviewTargetKindDefinition* BlueprintHelperReviewFi
 		{ TEXT("class_setting"), EBlueprintHelperReviewSurface::Details, true, TEXT("class_setting"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
 		{ TEXT("class_setting_interface"), EBlueprintHelperReviewSurface::Details, true, TEXT("interface"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
 		{ TEXT("class_default_property"), EBlueprintHelperReviewSurface::Details, true, TEXT("property"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
+		{ TEXT("class_default_setter_property"), EBlueprintHelperReviewSurface::Details, true, TEXT("property"), EBlueprintHelperReviewTargetHandlerKind::ObjectProperty },
 		{ TEXT("umg_widget_tree"), EBlueprintHelperReviewSurface::UMGWidgetTree, false, TEXT("widget_tree"), EBlueprintHelperReviewTargetHandlerKind::UMGWidget },
 		{ TEXT("umg_widget"), EBlueprintHelperReviewSurface::UMGWidgetTree, false, TEXT("widget"), EBlueprintHelperReviewTargetHandlerKind::UMGWidget },
 		{ TEXT("umg_widget_property"), EBlueprintHelperReviewSurface::UMGWidgetTree, true, TEXT("widget_property"), EBlueprintHelperReviewTargetHandlerKind::UMGWidgetProperty },
@@ -81,6 +83,7 @@ static EBlueprintHelperReviewSurface BlueprintHelperReviewResolveSurfaceByAlias(
 		{ TEXT("graph_external_link"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_external_node"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_external_body"), EBlueprintHelperReviewSurface::Graph },
+		{ TEXT("k2_graph_entry"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_node"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_pin"), EBlueprintHelperReviewSurface::Graph },
 		{ TEXT("graph_link"), EBlueprintHelperReviewSurface::Graph },
@@ -218,7 +221,10 @@ bool FBlueprintHelperReviewTargetKindRegistry::IsClassDefaultPropertyTargetKind(
 {
 	return BlueprintHelperReviewNormalizeRegistryToken(TargetKind).Equals(
 		TEXT("class_default_property"),
-		ESearchCase::IgnoreCase);
+		ESearchCase::IgnoreCase) ||
+		BlueprintHelperReviewNormalizeRegistryToken(TargetKind).Equals(
+			TEXT("class_default_setter_property"),
+			ESearchCase::IgnoreCase);
 }
 
 bool FBlueprintHelperReviewTargetKindRegistry::IsAssetFactoryTargetKind(const FString& TargetKind)
@@ -269,7 +275,8 @@ bool FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(
 	{
 		return false;
 	}
-	if (TargetKindLower.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase))
+	if (TargetKindLower.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase)
+		|| TargetKindLower.Equals(TEXT("k2_graph_entry"), ESearchCase::IgnoreCase))
 	{
 		return false;
 	}
@@ -373,7 +380,8 @@ bool FBlueprintHelperReviewTargetKindRegistry::SupportsSnapshotRestore(const FSt
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_boundary"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_link"), ESearchCase::IgnoreCase)
 		|| NormalizedTargetKind.Equals(TEXT("graph_external_node"), ESearchCase::IgnoreCase)
-		|| NormalizedTargetKind.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase))
+		|| NormalizedTargetKind.Equals(TEXT("graph_external_body"), ESearchCase::IgnoreCase)
+		|| NormalizedTargetKind.Equals(TEXT("k2_graph_entry"), ESearchCase::IgnoreCase))
 	{
 		return true;
 	}

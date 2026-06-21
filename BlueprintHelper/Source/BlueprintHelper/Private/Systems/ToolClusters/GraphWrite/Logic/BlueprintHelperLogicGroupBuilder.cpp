@@ -21,6 +21,7 @@ public:
 		FString RuntimeAdapterId;
 		FString BodyKind;
 		FString GraphName;
+		FString BodyEntryNodeGuid;
 		TArray<FAdapterBoundaryRef> EntryBoundaries;
 		TArray<FAdapterBoundaryRef> ExitBoundaries;
 		TSet<FString> FoldedBoundaryNodeRefs;
@@ -195,6 +196,11 @@ public:
 		TryReadStringField(*Boundary, TEXT("runtime_adapter_id"), Projection.RuntimeAdapterId);
 		TryReadStringField(*Boundary, TEXT("body_kind"), Projection.BodyKind);
 		TryReadStringField(*Boundary, TEXT("graph_name"), Projection.GraphName);
+		const TSharedPtr<FJsonObject>* BodyEntry = nullptr;
+		if ((*Boundary)->TryGetObjectField(TEXT("body_entry"), BodyEntry) && BodyEntry && BodyEntry->IsValid())
+		{
+			TryReadStringField(*BodyEntry, TEXT("node_guid"), Projection.BodyEntryNodeGuid);
+		}
 		Projection.EntryBoundaries = ReadBoundaryRefArray(*Boundary, TEXT("entry_boundaries"));
 		Projection.ExitBoundaries = ReadBoundaryRefArray(*Boundary, TEXT("exit_boundaries"));
 		for (const FString& Ref : ReadStringArrayField(*Boundary, TEXT("folded_boundary_node_refs")))
@@ -470,6 +476,11 @@ public:
 		}
 
 		const FString StableNodeRef = ExtractStableNodeRef(NodeObj, NodeIndex);
+		if (!Projection.BodyEntryNodeGuid.IsEmpty() &&
+			StableNodeRef.Equals(Projection.BodyEntryNodeGuid, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
 		const FString NodeName = ExtractAdapterBoundaryComparableNodeName(NodeObj);
 		FString EventName;
 		const TSharedPtr<FJsonObject>* EventObj = nullptr;
@@ -1245,7 +1256,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 		case EBlueprintHelperLogicScope::TargetCustomEvent:
 			return Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
 		case EBlueprintHelperLogicScope::TargetEvent:
-			return Kind == EBlueprintHelperLogicNodeKind::Event || Kind == EBlueprintHelperLogicNodeKind::CustomEvent;
+			return Kind == EBlueprintHelperLogicNodeKind::Event;
 		default:
 			return true;
 		}
@@ -1305,7 +1316,7 @@ FBlueprintHelperLogicJsonPayload FBlueprintHelperLogicGroupBuilder::BuildTargetE
 					*NodeObjPtr,
 					i);
 			if ((!AdapterBoundary.IsPresent() && IsEntryNode(*NodeObjPtr) && MatchesScope(Kind) && MatchesTargetName(*NodeObjPtr)) ||
-				bAdapterBoundaryEntry)
+				(bAdapterBoundaryEntry && MatchesScope(Kind)))
 			{
 				EntryIndex = i;
 				break;

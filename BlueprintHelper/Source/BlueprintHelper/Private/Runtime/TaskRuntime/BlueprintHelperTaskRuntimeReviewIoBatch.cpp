@@ -8,6 +8,12 @@ void FBlueprintHelperTaskRuntimeReviewIoBatch::SetArchiveSession(
 	Batch.ArchiveSession = InArchiveSession;
 }
 
+void FBlueprintHelperTaskRuntimeReviewIoBatch::SetSequentialReviewSessionUpdate(
+	const FBlueprintHelperSequentialReviewSessionExecuteUpdate& Update)
+{
+	Batch.SequentialReviewSessionUpdate = Update;
+}
+
 void FBlueprintHelperTaskRuntimeReviewIoBatch::AddReviewEvidence(
 	const FBlueprintHelperWriteReviewEvidence& Evidence)
 {
@@ -43,6 +49,7 @@ const FBlueprintHelperTaskRuntimePostIoBatch& FBlueprintHelperTaskRuntimeReviewI
 bool FBlueprintHelperTaskRuntimeReviewIoBatch::HasWork() const
 {
 	return Batch.ArchiveSession.IsSet() ||
+		Batch.SequentialReviewSessionUpdate.IsSet() ||
 		Batch.ReviewEvidences.Num() > 0 ||
 		Batch.TaskRunJournal.IsValid() ||
 		Batch.DebugEventInput.IsSet() ||

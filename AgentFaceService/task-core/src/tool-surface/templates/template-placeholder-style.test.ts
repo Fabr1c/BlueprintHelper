@@ -77,6 +77,14 @@ test('enum-like placeholders expose allowed values or an authoritative source hi
 			placeholder: '__REQUIRED_BINDING_OBJECT_KIND__',
 			requiredEvidenceKeys: ['event_delegate.binding_object_kind.allowed_values'],
 		},
+		{
+			file: 'write/slots/blueprint_signature_remove_template.json',
+			placeholder: '__REQUIRED_SIGNATURE_KIND__',
+			requiredEvidenceKeys: [
+				'signature.kind.allowed_values',
+				'signature.event_like_kind.allowed_values',
+			],
+		},
 	];
 
 	for (const expectation of expectations) {

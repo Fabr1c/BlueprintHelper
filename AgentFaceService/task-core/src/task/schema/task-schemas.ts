@@ -1526,6 +1526,12 @@ export const BlueprintComponentTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpe
   }).passthrough(),
 }).passthrough());
 
+const BlueprintClassDefaultSettingSchema = z.object({
+  property_path: z.string().min(1),
+  value: z.unknown(),
+  mutation_strategy: z.enum(['direct_property', 'setter_aware_property']).optional(),
+}).passthrough();
+
 export const BlueprintClassSettingsTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpecSchema(TaskSpecBaseSchema.extend({
   task_type: z.literal('edit_blueprint_class_settings'),
   behavior: z.object({
@@ -1534,7 +1540,7 @@ export const BlueprintClassSettingsTaskSpecSchema: z.ZodTypeAny = agentFacingTas
       ensure_present: z.array(z.string().min(1)).optional(),
       ensure_absent: z.array(z.string().min(1)).optional(),
     }).passthrough().optional(),
-    class_defaults: z.array(z.record(z.unknown())).optional(),
+    class_defaults: z.array(BlueprintClassDefaultSettingSchema).optional(),
     reparent: z.object({
       new_parent_class: z.string().min(1),
     }).passthrough().optional(),
@@ -1760,7 +1766,7 @@ export const CompositeBlueprintFeatureTaskSpecSchema: z.ZodTypeAny = agentFacing
     implemented_interfaces: z.array(z.string().min(1)).optional(),
     class_defaults: z.union([
       z.record(z.unknown()),
-      z.array(z.record(z.unknown())),
+      z.array(BlueprintClassDefaultSettingSchema),
     ]).optional(),
     reparent: z.object({
       new_parent_class: z.string().min(1),

@@ -4,6 +4,7 @@
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperK2GraphBodyAdapterUtils.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperK2GraphEntryIdentityResolver.h"
 
 static void BlueprintHelperReadExternalBodyStringArray(
 	const TSharedRef<FJsonObject>& Payload,
@@ -69,6 +70,12 @@ static bool BlueprintHelperExternalBodyIsReadEntryScope(const FString& ReplaceSc
 		|| BlueprintHelperExternalBodyIsCustomEventScope(ReplaceScope);
 }
 
+static bool BlueprintHelperExternalBodyIsReadContextRequest(const FBlueprintHelperGraphBodyRequest& Request)
+{
+	return Request.OperationKind.Equals(TEXT("read_context"), ESearchCase::IgnoreCase)
+		|| Request.TaskSpecStrategy.Equals(TEXT("read_context"), ESearchCase::IgnoreCase);
+}
+
 static UEdGraph* BlueprintHelperExternalBodyFindEntryGraph(
 	const FBlueprintHelperGraphBodyRequest& Request)
 {
@@ -99,6 +106,64 @@ static UEdGraph* BlueprintHelperExternalBodyFindEntryGraph(
 		EventGraph = Request.Blueprint->UbergraphPages[0];
 	}
 	return EventGraph;
+}
+
+static FString BlueprintHelperExternalBodyTargetTypeForScope(const FString& ReplaceScope)
+{
+	if (BlueprintHelperExternalBodyIsEventScope(ReplaceScope))
+	{
+		return TEXT("event");
+	}
+	if (BlueprintHelperExternalBodyIsCustomEventScope(ReplaceScope))
+	{
+		return TEXT("custom_event");
+	}
+	if (BlueprintHelperExternalBodyIsFunctionScope(ReplaceScope))
+	{
+		return TEXT("function");
+	}
+	return TEXT("");
+}
+
+static bool BlueprintHelperExternalBodyFindMismatchedEntryIdentity(
+	UEdGraph* Graph,
+	const FBlueprintHelperK2GraphEntryQuery& Query,
+	FBlueprintHelperK2GraphEntryIdentity& OutIdentity)
+{
+	OutIdentity = FBlueprintHelperK2GraphEntryIdentity();
+	if (!Graph || Query.TargetName.IsEmpty())
+	{
+		return false;
+	}
+
+	const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		FBlueprintHelperK2GraphEntryIdentity Identity;
+		if (!Resolver.TryResolveNodeIdentity(Node, Identity))
+		{
+			continue;
+		}
+		if (!Identity.StableName.Equals(Query.TargetName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		if (!Query.GraphName.IsEmpty() && !Identity.GraphName.Equals(Query.GraphName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		if (Query.RequiredRole != EBlueprintHelperK2GraphBoundaryRole::Unknown &&
+			Identity.Role != Query.RequiredRole)
+		{
+			continue;
+		}
+		if (!Resolver.DoesIdentityMatchQuery(Identity, Query))
+		{
+			OutIdentity = Identity;
+			return true;
+		}
+	}
+	return false;
 }
 
 FBlueprintHelperExternalBodyAdapter::FBlueprintHelperExternalBodyAdapter()
@@ -138,44 +203,60 @@ bool FBlueprintHelperExternalBodyAdapter::ResolveTarget(
 
 		OutTarget.Graph = EntryGraph;
 		OutTarget.GraphName = EntryGraph->GetName();
-		for (UEdGraphNode* Node : EntryGraph->Nodes)
-		{
-			if (!Node)
-			{
-				continue;
-			}
 
-			if (BlueprintHelperExternalBodyIsFunctionScope(Request.ReplaceScope))
+		const FBlueprintHelperK2GraphEntryIdentityResolver Resolver;
+		FBlueprintHelperK2GraphEntryQuery EntryQuery;
+		EntryQuery.TargetType = BlueprintHelperExternalBodyTargetTypeForScope(Request.ReplaceScope);
+		EntryQuery.TargetName = Request.EntryName;
+		EntryQuery.GraphName = EntryGraph->GetName();
+		EntryQuery.RequiredRole = EBlueprintHelperK2GraphBoundaryRole::BodyEntry;
+
+		UEdGraphNode* EntryNode = nullptr;
+		FBlueprintHelperK2GraphEntryIdentity EntryIdentity;
+		FString EntryError;
+		if (Resolver.TryFindEntryNode(EntryGraph, EntryQuery, EntryNode, EntryIdentity, EntryError))
+		{
+			OutTarget.EntryBoundaryNodes.AddUnique(EntryNode);
+			OutTarget.ProtectedNodes.AddUnique(EntryNode);
+		}
+
+		if (BlueprintHelperExternalBodyIsFunctionScope(Request.ReplaceScope))
+		{
+			FBlueprintHelperK2GraphEntryQuery ExitQuery = EntryQuery;
+			ExitQuery.RequiredRole = EBlueprintHelperK2GraphBoundaryRole::BodyExit;
+			UEdGraphNode* ExitNode = nullptr;
+			FBlueprintHelperK2GraphEntryIdentity ExitIdentity;
+			FString ExitError;
+			if (Resolver.TryFindEntryNode(EntryGraph, ExitQuery, ExitNode, ExitIdentity, ExitError))
 			{
-				if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionEntry(Node))
-				{
-					OutTarget.EntryBoundaryNodes.AddUnique(Node);
-					OutTarget.ProtectedNodes.AddUnique(Node);
-				}
-				else if (FBlueprintHelperK2GraphBodyAdapterUtils::IsFunctionResult(Node))
-				{
-					OutTarget.ExitBoundaryNodes.AddUnique(Node);
-					OutTarget.ProtectedNodes.AddUnique(Node);
-				}
-			}
-			else if (BlueprintHelperExternalBodyIsEventScope(Request.ReplaceScope)
-				&& FBlueprintHelperK2GraphBodyAdapterUtils::IsEventEntry(Node, Request.EntryName))
-			{
-				OutTarget.EntryBoundaryNodes.AddUnique(Node);
-				OutTarget.ProtectedNodes.AddUnique(Node);
-			}
-			else if (BlueprintHelperExternalBodyIsCustomEventScope(Request.ReplaceScope)
-				&& FBlueprintHelperK2GraphBodyAdapterUtils::IsCustomEventEntry(Node, Request.EntryName))
-			{
-				OutTarget.EntryBoundaryNodes.AddUnique(Node);
-				OutTarget.ProtectedNodes.AddUnique(Node);
+				OutTarget.ExitBoundaryNodes.AddUnique(ExitNode);
+				OutTarget.ProtectedNodes.AddUnique(ExitNode);
 			}
 		}
 
 		if (OutTarget.EntryBoundaryNodes.Num() == 0)
 		{
-			OutError = FString::Printf(TEXT("External body entry %s was not found."), *Request.EntryName);
-			return false;
+			OutTarget.BodyEvidenceStatus = TEXT("missing_entry");
+			OutTarget.BodyEvidenceErrorCode = TEXT("k2_entry_identity_not_found");
+			OutTarget.BodyEvidenceErrorMessage = FString::Printf(
+				TEXT("ReadContext could not resolve a K2 %s entry for target %s."),
+				*EntryQuery.TargetType,
+				*Request.EntryName);
+			FBlueprintHelperK2GraphEntryIdentity MismatchedIdentity;
+			if (BlueprintHelperExternalBodyFindMismatchedEntryIdentity(EntryGraph, EntryQuery, MismatchedIdentity))
+			{
+				OutTarget.BodyEvidenceStatus = TEXT("target_type_mismatch");
+				OutTarget.BodyEvidenceErrorCode = TEXT("k2_entry_identity_target_type_mismatch");
+				OutTarget.BodyEvidenceErrorMessage = FString::Printf(
+					TEXT("ReadContext resolved %s but it did not match requested target_type=%s."),
+					*MismatchedIdentity.StableName,
+					*EntryQuery.TargetType);
+			}
+			if (!BlueprintHelperExternalBodyIsReadContextRequest(Request))
+			{
+				OutError = FString::Printf(TEXT("External body entry %s was not found."), *Request.EntryName);
+				return false;
+			}
 		}
 	}
 
@@ -355,7 +436,7 @@ FBlueprintHelperGraphBodyReconnectPlan FBlueprintHelperExternalBodyAdapter::Buil
 }
 
 FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperExternalBodyAdapter::BuildReadbackProjection(
-	const FBlueprintHelperGraphBodyTarget&,
+	const FBlueprintHelperGraphBodyTarget& Target,
 	const FBlueprintHelperGraphBodyBoundaryModel& Boundary) const
 {
 	FBlueprintHelperGraphBodyReadbackProjection Projection;
@@ -368,5 +449,8 @@ FBlueprintHelperGraphBodyReadbackProjection FBlueprintHelperExternalBodyAdapter:
 	Projection.VisibleBoundaryNodeRefs.Append(Boundary.ExternalAnchorRefs);
 	Projection.VisibleBoundaryNodeRefs.Append(Boundary.EntryNodeRefs);
 	Projection.VisibleBoundaryNodeRefs.Append(Boundary.ExitNodeRefs);
+	Projection.BodyEvidenceStatus = Target.BodyEvidenceStatus;
+	Projection.BodyEvidenceErrorCode = Target.BodyEvidenceErrorCode;
+	Projection.BodyEvidenceErrorMessage = Target.BodyEvidenceErrorMessage;
 	return Projection;
 }

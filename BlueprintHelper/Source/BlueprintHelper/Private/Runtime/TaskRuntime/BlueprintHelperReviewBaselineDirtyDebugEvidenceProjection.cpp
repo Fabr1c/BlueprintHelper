@@ -21,6 +21,10 @@ FString FBlueprintHelperReviewBaselineDirtyDebugEvidenceProjection::ClassifyEvid
 	{
 		return TEXT("pre_run_dirty");
 	}
+	if (EvidenceRef.StartsWith(TEXT("sequential_review_session"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("sequential_review_session");
+	}
 	return TEXT("review_baseline_dirty");
 }
 

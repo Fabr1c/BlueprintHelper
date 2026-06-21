@@ -45,7 +45,9 @@ TSharedRef<FJsonObject> FBlueprintHelperSignatureReferenceContextUtils::MakeRefe
 	{
 		ReferenceContextRequest->SetStringField(TEXT("graph_name"), GraphName);
 	}
-	ReferenceContextRequest->SetStringField(TEXT("search_scope"), Policy.ReferenceContextSearchScope);
+	ReferenceContextRequest->SetStringField(
+		TEXT("search_scope"),
+		ResolveReferenceContextSearchScope(AssetPath, TargetType, Policy.ReferenceContextSearchScope));
 	ReferenceContextRequest->SetStringField(TEXT("resolution_policy"), Policy.ReferenceContextResolutionPolicy);
 	ReferenceContextRequest->SetStringField(TEXT("detail"), Policy.ReferenceContextDetail);
 	ReferenceContextRequest->SetNumberField(TEXT("max_results"), Policy.ReferenceContextMaxResults);
@@ -75,7 +77,12 @@ void FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureRefere
 	{
 		ReferenceContextRequest->SetStringField(TEXT("graph_name"), Request.GraphName);
 	}
-	ReferenceContextRequest->SetStringField(TEXT("search_scope"), Policy.ReferenceContextSearchScope);
+	ReferenceContextRequest->SetStringField(
+		TEXT("search_scope"),
+		ResolveReferenceContextSearchScope(
+			Request.AssetPath,
+			ReferenceContextTargetTypeForSignatureKind(Request.SignatureKind),
+			Policy.ReferenceContextSearchScope));
 	ReferenceContextRequest->SetStringField(TEXT("resolution_policy"), TEXT("ue_only"));
 	ReferenceContextRequest->SetStringField(TEXT("detail"), TEXT("samples"));
 	ReferenceContextRequest->SetNumberField(TEXT("max_results"), Policy.ReferenceContextMaxResults);
@@ -123,7 +130,10 @@ bool FBlueprintHelperSignatureReferenceContextUtils::TryBuildSignatureReferenceC
 	const FBlueprintHelperSignatureToolClusterPolicy Policy =
 		FBlueprintHelperToolClusterConfigResolver::LoadSignaturePolicy();
 	FBlueprintHelperDependencyAnalysisOptions Options;
-	Options.SearchScope = IsRegisteredAssetPath(AssetPath) ? Policy.ReferenceContextSearchScope : TEXT("asset");
+	Options.SearchScope = ResolveReferenceContextSearchScope(
+		AssetPath,
+		TargetType,
+		Policy.ReferenceContextSearchScope);
 	Options.ResolutionPolicy = Policy.ReferenceContextResolutionPolicy;
 	Options.Detail = Policy.ReferenceContextDetail;
 	Options.MaxResultCount = Policy.ReferenceContextMaxResults;
@@ -152,6 +162,19 @@ bool FBlueprintHelperSignatureReferenceContextUtils::IsReferenceContextSafeForMu
 		Context.Summary.BlockingCount == 0 &&
 		!Context.Summary.bPartial &&
 		!Context.Summary.bTruncated;
+}
+
+FString FBlueprintHelperSignatureReferenceContextUtils::ResolveReferenceContextSearchScope(
+	const FString& AssetPath,
+	const FString& TargetType,
+	const FString& ConfiguredSearchScope)
+{
+	if (TargetType == TEXT("event"))
+	{
+		return TEXT("asset");
+	}
+
+	return IsRegisteredAssetPath(AssetPath) ? ConfiguredSearchScope : TEXT("asset");
 }
 
 void FBlueprintHelperSignatureReferenceContextUtils::AttachRemoveSignatureReferenceContextSummary(

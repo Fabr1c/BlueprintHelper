@@ -37,6 +37,11 @@ public:
 
 	static bool IsReferenceContextSafeForMutation(const FBlueprintHelperReferenceContextPack& Context);
 
+	static FString ResolveReferenceContextSearchScope(
+		const FString& AssetPath,
+		const FString& TargetType,
+		const FString& ConfiguredSearchScope);
+
 	static void AttachRemoveSignatureReferenceContextSummary(
 		const TSharedPtr<FJsonObject>& Data,
 		const FBlueprintHelperRemoveSignatureRequest& Request,

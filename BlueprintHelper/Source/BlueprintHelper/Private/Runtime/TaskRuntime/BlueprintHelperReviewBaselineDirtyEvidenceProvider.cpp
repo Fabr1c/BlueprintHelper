@@ -3,6 +3,7 @@
 #include "Runtime/TaskRuntime/BlueprintHelperReviewBaselineDirtyEvidenceProvider.h"
 
 #include "Runtime/TaskRuntime/BlueprintHelperTaskRunJournalStoreService.h"
+#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Systems/SourceControl/BlueprintHelperSourceControlService.h"
 #include "Systems/Review/BlueprintHelperReviewStoreService.h"
 
@@ -36,6 +37,7 @@ FBlueprintHelperReviewBaselineDirtyEvidenceProvider::BuildClassifyRequest(
 			FBlueprintHelperTaskRunJournalStoreService().QueryTaskRunJournalsForTargetAssets(DirtyAssets, 64);
 		ApplyFailedTaskRunEvidence(DirtyAssets, PersistedTaskRunJournals, Request);
 	}
+	ApplySequentialReviewSessionEvidence(TargetAssets, DirtyAssets, Request);
 	ApplySourceControlEvidence(DirtyAssets, Request);
 	return Request;
 }
@@ -192,6 +194,48 @@ void FBlueprintHelperReviewBaselineDirtyEvidenceProvider::ApplyFailedTaskRunEvid
 			InOutRequest.DiagnosticEvidenceRefs,
 			FString::Printf(TEXT("task_run:%s:partial_failure"), *FailedTaskRunId));
 		return;
+	}
+}
+
+void FBlueprintHelperReviewBaselineDirtyEvidenceProvider::ApplySequentialReviewSessionEvidence(
+	const TArray<FString>& TargetAssets,
+	const TArray<FString>& DirtyAssets,
+	FBlueprintHelperReviewBaselineDirtyClassifyRequest& InOutRequest) const
+{
+	if (DirtyAssets.Num() == 0)
+	{
+		return;
+	}
+
+	const FBlueprintHelperSequentialReviewSessionLookup Lookup =
+		FBlueprintHelperSequentialReviewSessionService().FindOpenSessionForTargetAssets(TargetAssets);
+	if (!Lookup.bFound)
+	{
+		return;
+	}
+
+	const FBlueprintHelperSequentialReviewSession& Session = Lookup.Session;
+	InOutRequest.ActiveSequentialReviewSessionId = Session.SequentialReviewSessionId;
+	InOutRequest.ActiveSequentialReviewArchiveSessionId = Session.SessionStartArchiveSessionId;
+	InOutRequest.bDirtyFromActiveSequentialReviewSession = true;
+	InOutRequest.bSequentialReviewSessionHasLastGoodSnapshot = Session.bHasLastGoodSnapshot;
+	InOutRequest.bSequentialReviewSessionHasUnresolvedFailedExecute = Session.bHasUnresolvedFailedExecute;
+	InOutRequest.bSequentialReviewSessionHasExternalConflict = Session.bHasExternalConflict;
+	AddUniqueNonEmptyString(
+		InOutRequest.DiagnosticEvidenceRefs,
+		FString::Printf(
+			TEXT("sequential_review_session:%s"),
+			*Session.SequentialReviewSessionId));
+	AddUniqueNonEmptyString(
+		InOutRequest.DiagnosticEvidenceRefs,
+		FString::Printf(
+			TEXT("sequential_review_session_archive:%s"),
+			*Session.SessionStartArchiveSessionId));
+	for (const FString& ReviewRecordId : Session.ReviewRecordIds)
+	{
+		AddUniqueNonEmptyString(
+			InOutRequest.DiagnosticEvidenceRefs,
+			FString::Printf(TEXT("sequential_review_session_review:%s"), *ReviewRecordId));
 	}
 }
 

@@ -126,6 +126,25 @@ test('dedicated non-GraphWrite families expose operation quick-access templates'
   assert.deepEqual(setScalarOverride?.insert_paths, ['behavior.operations[]']);
 });
 
+test('blueprint class settings exposes setter-aware class default quick-access template', () => {
+  const operations = listNonGraphWriteTemplateOperations({
+    family: 'blueprint_class_settings',
+    cluster: 'class_settings',
+  });
+
+  assert.equal(operations.some((item) => item.operation_id === 'set_class_default_via_setter'), true);
+
+  const quickAccess = listNonGraphWriteTemplateQuickAccess({
+    family: 'blueprint_class_settings',
+    cluster: 'class_settings',
+    operation: 'set_class_default_via_setter',
+  });
+
+  assert.equal(quickAccess[0]?.template_id, 'blueprint_class_settings.class_settings.set_class_default_via_setter');
+  assert.match(quickAccess[0]?.template_path ?? '', /blueprint_class_settings_class_default_setter_template\.json$/);
+  assert.deepEqual(quickAccess[0]?.insert_paths, ['behavior.class_defaults']);
+});
+
 test('component and class-default operation descriptions expose native component route guidance', () => {
   const componentConfigure = NON_GRAPHWRITE_OPERATION_DESCRIPTORS.find((entry) =>
     entry.family === 'blueprint_components' && entry.operation_id === 'configure_component');
