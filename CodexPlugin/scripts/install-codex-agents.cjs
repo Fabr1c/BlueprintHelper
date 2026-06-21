@@ -20,6 +20,7 @@ const targetDir = path.join(home, '.codex', 'agents');
 const agentFiles = [
   'blueprint-explorer.toml',
   'sourcecode-explorer.toml',
+  'sourcecode-worker.toml',
   'task-worker.toml',
 ];
 

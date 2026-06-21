@@ -15,6 +15,7 @@ CLI is the ordinary TaskSpec/read/debug-summary mainline. Global MCP owns Editor
 ```text
 blueprint_get_runtime_profile
 -> blueprinthelper_read_agent_guide
+-> practical C++ plus Blueprint architecture gate before write dispatch
 -> blueprinthelper_find_assets when the Unreal asset_path is unknown
 -> bh context read / blueprinthelper_read_reference_context / blueprinthelper_read_function_chain_context as needed
 -> evidence_conflict means stop_and_report, not binary fallback
@@ -111,6 +112,7 @@ Agent 面向的工具和模板选择由 CLI catalog 负责。先选择 domain/ki
 - 证据冲突时只允许 `stop_and_report`；不要把 `.uasset`、`.umap` 或其它 UE 二进制资产文件当作 fallback 事实源。
 Additional asset-path routing rules:
 
+- Before UE asset writes, decide whether complex logic belongs in C++ and whether `sourcecode-worker` must implement source contracts first.
 - Unknown Unreal `asset_path` -> `blueprinthelper_find_assets`; known Unreal `asset_path` -> compose a ReadSpec and run `bh context read`.
 - Write requests must resolve one explicit Unreal `asset_path` before `bh task preview`.
 - Do not infer Unreal `asset_path` values from filesystem `.uasset` paths.

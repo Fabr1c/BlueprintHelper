@@ -39,7 +39,14 @@ test('installProjectWorkflow creates profile, workflow markdown, AGENTS and CLAU
     assert.match(workflow, /BlueprintHelper CLI[\s\S]{0,120}ordinary UE editor asset reads and writes/i);
     assert.match(workflow, /blueprint-explorer[\s\S]{0,160}UE editor-asset evidence/i);
     assert.match(workflow, /sourcecode-explorer[\s\S]{0,160}source-side grounding/i);
-    assert.match(workflow, /source-control[\s\S]{0,80}write-session[\s\S]{0,160}task-worker/i);
+    assert.match(workflow, /Practical Development Architecture/i);
+    assert.match(workflow, /30\+ nodes[\s\S]{0,160}C\+\+/i);
+    assert.match(workflow, /less than 25 nodes[\s\S]{0,160}function\/event\/macro/i);
+    assert.match(workflow, /BlueprintImplementableEvent[\s\S]{0,80}BlueprintNativeEvent/i);
+    assert.match(workflow, /UDataAsset/i);
+    assert.match(workflow, /hardcode(?:d)? content/i);
+    assert.match(workflow, /sourcecode-worker[\s\S]{0,240}source verification/i);
+    assert.match(workflow, /source-control[\s\S]{0,80}write-session[\s\S]{0,240}task-worker/i);
     assert.match(workflow, /task-worker[\s\S]{0,160}target asset[\s\S]{0,160}evidence/i);
     assert.match(workflow, /sideAgent wait[\s\S]{0,240}progress check[\s\S]{0,240}close/i);
     assert.match(workflow, /sideagent_timeout_unconfirmed/);

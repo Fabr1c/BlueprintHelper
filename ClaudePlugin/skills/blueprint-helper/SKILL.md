@@ -34,10 +34,11 @@ The MainAgent owns:
 - user intent, clarification questions, final response, and user-facing tradeoffs;
 - target asset, graph/function/event/widget/table/object scope confirmation;
 - create-vs-modify strategy and modification boundary;
+- practical C++ plus Blueprint architecture gate before write delegation;
 - lightweight CLI/runtime preflight before delegation;
 - global MCP editor lifecycle;
 - source-control gate and write-session gate before write execution delegation;
-- deciding when to delegate BlueprintExplorer, SourceExplorer, and TaskWorker responsibilities;
+- deciding when to delegate `blueprint-explorer`, `sourcecode-explorer`, `sourcecode-worker`, and `task-worker` responsibilities;
 - translating compact worker results into user-facing success, blocker, evidence conflict, or capability-boundary reports.
 
 The MainAgent must not choose concrete read templates, write templates, composer paths, candidate shortcut entries, or TaskSpec internals for ordinary user writes. Those choices belong to worker roles.
@@ -50,10 +51,21 @@ The supported entry for ordinary BlueprintHelper reads, writes, diagnostics, com
 
 If grouped context-read evidence, Editor screenshots/visible state, preview, execute, or readback evidence disagree, report `evidence_conflict` and do not read `.uasset`, `.umap`, or other Unreal binary asset files as fallback evidence.
 
+## Practical Development Architecture
+
+- Run an architecture gate before any write delegation.
+- BlueprintHelper assists Blueprint workflows, but complex gameplay logic, heavy computation, or graph work likely to require 30+ nodes belongs in C++.
+- Simple Blueprint business logic should remain control flow with less than 25 nodes per function/event/macro.
+- C++ should expose Blueprint extension points through `BlueprintImplementableEvent`, `BlueprintNativeEvent`, or overridable interfaces.
+- Use `UDataAsset`, config structs, or explicitly exposed Blueprint config variables for data-driven content.
+- Do not hardcode content in C++ when designers or Blueprint assets should configure it.
+- Delegate `sourcecode-worker` work for bounded source implementation when this gate requires C++, DataAsset, config, or interface work before Blueprint wiring.
+
 ## Dispatch Guide
 
 - Delegate BlueprintExplorer work when UE editor-asset evidence is needed.
 - Delegate SourceExplorer work only when complementary source-side grounding is required.
+- Delegate `sourcecode-worker` work only after the architecture gate requires source edits and the write scope plus verification commands are bounded.
 - Delegate TaskWorker work only after target asset, scope, operation intent, modification boundary, safety gates, and evidence sufficiency are clear.
 - Stop or ask the user before write delegation when the target asset, scope, create/modify strategy, or modification boundary is ambiguous.
 - If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after the sideAgent completes, explicitly reports it can be closed, or reaches an errored/shutdown status. If the progress check also times out, report `sideagent_timeout_unconfirmed` to the user and ask whether to keep waiting or close it.

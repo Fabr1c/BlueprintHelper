@@ -107,21 +107,35 @@ test('update.ps1 cleans temporary update directories even when WhatIf is enabled
 });
 
 test('install prompts expose selectable Claude sideAgent model and reasoning options', () => {
-  assert.match(installPrompts, /const CLAUDE_MODEL_OPTIONS = \[[\s\S]*value: 'haiku'[\s\S]*value: 'sonnet'[\s\S]*\]/);
+  assert.match(installPrompts, /const CLAUDE_MODEL_OPTIONS = \[[\s\S]*value: 'haiku'[\s\S]*value: 'sonnet'[\s\S]*value: 'opus'[\s\S]*\]/);
   assert.match(installPrompts, /const CLAUDE_REASONING_OPTIONS = \[[\s\S]*value: 'high'[\s\S]*value: 'xhigh'[\s\S]*\]/);
   assert.match(installPrompts, /title: 'Claude sideAgent 模型配置'[\s\S]*modelOptions: CLAUDE_MODEL_OPTIONS[\s\S]*reasoningOptions: CLAUDE_REASONING_OPTIONS/);
   assert.match(installPrompts, /title: 'Claude sideAgent profiles'[\s\S]*modelOptions: CLAUDE_MODEL_OPTIONS[\s\S]*reasoningOptions: CLAUDE_REASONING_OPTIONS/);
-  assert.match(installScript, /function Read-ClaudeSubagentProfiles[\s\S]*Value = 'haiku'[\s\S]*Value = 'sonnet'[\s\S]*Value = 'high'[\s\S]*Value = 'xhigh'/);
+  assert.match(installScript, /function Read-ClaudeSubagentProfiles[\s\S]*Value = 'haiku'[\s\S]*Value = 'sonnet'[\s\S]*Value = 'opus'[\s\S]*Value = 'high'[\s\S]*Value = 'xhigh'/);
+});
+
+test('installers register sourcecode-worker with recommended strong defaults', () => {
+  assert.match(installPrompts, /const AGENT_NAMES = \[[\s\S]*'sourcecode-worker'[\s\S]*\]/);
+  assert.match(installScript, /Get-SubagentInstallNames[\s\S]*'sourcecode-worker'/);
+  assert.match(installScript, /\$Agents\['sourcecode-worker'\]\s*=\s*New-SubagentInstallProfile -Model 'gpt-5\.5' -Reasoning 'xhigh'/);
+  assert.match(installScript, /\$Agents\['sourcecode-worker'\]\s*=\s*New-SubagentInstallProfile -Model 'opus' -Reasoning 'high'/);
+  assert.match(installScript, /function Read-CodexSubagentProfiles[\s\S]*Value = 'gpt-5\.5'/);
+  assert.match(installScript, /function Read-ClaudeSubagentProfiles[\s\S]*Value = 'opus'/);
+  assert.match(codexAgentInstaller, /sourcecode-worker\.toml/);
+  assert.match(claudeAgentInstaller, /sourcecode-worker\.md/);
+  assert.match(uninstallScript, /sourcecode-worker\.toml/);
+  assert.match(uninstallScript, /sourcecode-worker\.md/);
 });
 
 test('claude agent installer rewrites task-worker model and reasoning policy template', () => {
   assert.match(claudeTaskWorkerAgent, /Always run as a sideAgent using the host task-worker model policy/);
-  assert.match(claudeAgentInstaller, /using the host task-worker model policy/);
-  assert.match(claudeAgentInstaller, /Always run as a sideAgent\[\^\\r\\n\]\*/);
+  assert.ok(claudeAgentInstaller.includes('using the host [^\\.\\r\\n]+ model policy'));
+  assert.match(claudeAgentInstaller, /Model And Reasoning/);
+  assert.match(claudeAgentInstaller, /editing source files and running verification/);
 });
 
 test('root install docs describe Claude interactive model and reasoning choices', () => {
-  assert.match(rootInstallDocs, /模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`、`xhigh`/);
+  assert.match(rootInstallDocs, /model options are `haiku`, `sonnet`, and `opus`/);
   assert.match(rootInstallDocs, /Use no-argument `install\.cmd` or `\.\\install\.cmd -Interactive` when you need to choose model and reasoning/);
 });
 

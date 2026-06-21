@@ -24,6 +24,7 @@ edit placeholders, and pass the edited file to the CLI.
 ```text
 runtime/profile preflight
 -> read this guide when needed
+-> practical C++ plus Blueprint architecture gate before write dispatch
 -> resolve an explicit Unreal asset path before writes
 -> read context or reference context
 -> evidence_conflict means stop_and_report, not binary fallback
@@ -79,6 +80,7 @@ remains available through the artifact path.
 ## Rules
 
 - UE asset writes submit `BlueprintHelper.TaskSpec.v1` only.
+- Before UE asset writes, decide whether complex logic belongs in C++ and whether `sourcecode-worker` must implement source contracts first.
 - TaskPlan, low-level capability, Bridge command, and frozen tool names are not
   ordinary Agent selection targets.
 - If preview is blocked, stop and report or repair the TaskSpec; do not fall

@@ -98,7 +98,7 @@ cd <PLUGIN_ROOT>
 
 `install.cmd` 会调用底层 PowerShell 安装脚本并规避普通用户直接运行 `.ps1` 时常见的 ExecutionPolicy 问题。安装器会构建 AgentFaceService、链接 `bh` CLI、直接写入 Codex `config.toml` 来注册本地 marketplace 并启用 `blueprint-helper@blueprint-helper-local`、安装 Codex subagents 和全局 MCP allowlist 入口，并在能确认项目和 UE 根目录时写入 `<ProjectDir>/.blueprinthelper/project-profile.json`、生成 `<ProjectDir>/.blueprinthelper/AgentWorkFlow.md`，并在项目根 `AGENTS.md` / `CLAUDE.md` 中插入 BlueprintHelper 专属入口。需要 Claude 插件支持时追加 `-InstallClaudePlugin`；只需要 Claude sideAgents 时追加 `-InstallClaudeAgents`；需要引擎级安装 UE 插件时追加 `-InstallUePluginToEngine`。
 
-交互式安装优先使用 Node.js 内置终端交互。前置安装选项使用朴素勾选菜单；安装 Codex subagents 或 Claude sideAgents 时，三个 agent 会以表格显示，并把模型与思考等级拆成独立字段。Codex 模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`，思考等级为 `high`、`xhigh`；Claude 模型选项为 `haiku`、`sonnet`，思考等级为 `high`。非交互安装会自动使用推荐默认值，其中两个 explorer 默认轻量模型，`task-worker` 默认更强模型。
+交互式安装优先使用 Node.js 内置终端交互。前置安装选项使用朴素勾选菜单；安装 Codex subagents 或 Claude sideAgents 时，四个 agent 会以表格显示，并把模型与思考等级拆成独立字段。Codex 模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.5`、`gpt-5.4`，思考等级为 `high`、`xhigh`；Claude 模型选项为 `haiku`、`sonnet`、`opus`，思考等级为 `high`、`xhigh`。非交互安装会自动使用推荐默认值，其中两个 explorer 默认轻量模型，`sourcecode-worker` 默认开发强模型，`task-worker` 默认更强任务模型。
 
 安装脚本会在 `npm link` 后移除 npm 生成的 `bh.ps1` / `blueprinthelper-cli.ps1` shim，让 PowerShell 解析到 `.cmd` 启动器，避免 ExecutionPolicy 拦截 `bh`。
 
@@ -165,7 +165,7 @@ The root keeps only `.cmd` user script entry points. PowerShell and Node impleme
 .\uninstall.cmd -RemoveUePluginFromEngine -EngineRoot E:\UE_5.6
 ```
 
-Interactive install prefers Node.js built-in terminal prompts. The first page is a plain checkbox menu for install components. When Codex subagents or Claude sideAgents are selected, the three agents are shown in a table with separate model and reasoning fields. Codex model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`, with reasoning `high` or `xhigh`; Claude model options are `haiku` and `sonnet`, with reasoning `high`. Non-interactive install uses the recommended defaults automatically, with lighter explorer models and a stronger `task-worker` model.
+Interactive install prefers Node.js built-in terminal prompts. The first page is a plain checkbox menu for install components. When Codex subagents or Claude sideAgents are selected, the four agents are shown in a table with separate model and reasoning fields. Codex model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, `gpt-5.5`, and `gpt-5.4`, with reasoning `high` or `xhigh`; Claude model options are `haiku`, `sonnet`, and `opus`, with reasoning `high` or `xhigh`. Non-interactive install uses the recommended defaults automatically, with lighter explorer models, a strong development model for `sourcecode-worker`, and a stronger task model for `task-worker`.
 
 ## 参与贡献
 

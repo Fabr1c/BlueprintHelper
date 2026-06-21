@@ -20,6 +20,8 @@ Use normal repository tools for:
 - Updating build scripts.
 - Writing AGENTS.md / memory / project instructions.
 
+For BlueprintHelper mixed source-plus-asset tasks, the Main Agent must run the practical C++ plus Blueprint architecture gate first. If the task requires C++, DataAsset, config, or interface source changes before Blueprint wiring, delegate the bounded source implementation to SourcecodeWorker instead of doing broad ad-hoc source edits in the Main Agent.
+
 When the task is ordinary BlueprintHelper plugin usage, do not inspect the BlueprintHelper plugin package or implementation source (`CodexPlugin/`, `ClaudePlugin/`, `AgentFaceService/`, or the UE `BlueprintHelper/` source) to learn how to use it. Use the installed skill instructions, AgentGuide, CLI reference, and templates instead. Reading plugin source is allowed only for explicit BlueprintHelper plugin development, installation repair, or debugging tasks.
 
 Use BlueprintHelper CLI / task-core tools for:
@@ -39,11 +41,12 @@ Do not use MCP for normal asset workflows. New Agent workflows should use CLI co
 2. Confirm the Bridge is reachable before calling editor-asset tools.
 3. Identify the exact target asset path, for example `/Game/Blueprints/BP_Player`.
 4. Identify the exact target graph when editing graph nodes, for example `EventGraph`.
-5. Prefer TaskSpec-first writes through the CLI: run `bh context read` with a `BlueprintHelper.ReadSpec.v1` -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
-6. In P4/Perforce or other UE source-control projects, call `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when assets may be read-only or save/close reports `checkout_required`. Stop on occupied, conflicted, unavailable, failed checkout, or not-editable states and report the returned agent message.
-7. If `write_permission` is disabled, call `blueprinthelper_request_write_session` after preview and before execute. The running Editor shows a simple accept/reject approval dialog; if the user rejects it, stop and report instead of trying another write path.
-8. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents can use BlueprintHelper CLI/task-core tools after approval without receiving raw session data.
-9. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
+5. Run the practical architecture gate before write delegation: complex gameplay logic, heavy computation, or graph work likely to require 30+ nodes belongs in C++; simple Blueprint business logic should remain control flow with less than 25 nodes per function/event/macro; use `BlueprintImplementableEvent`, `BlueprintNativeEvent`, overridable interfaces, `UDataAsset`, config structs, or explicit Blueprint config variables instead of hardcoded content.
+6. Prefer TaskSpec-first writes through the CLI: run `bh context read` with a `BlueprintHelper.ReadSpec.v1` -> build `BlueprintHelper.TaskSpec.v1` -> preview task -> execute task -> read task result.
+7. In P4/Perforce or other UE source-control projects, call `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` after preview and before execute when assets may be read-only or save/close reports `checkout_required`. Stop on occupied, conflicted, unavailable, failed checkout, or not-editable states and report the returned agent message.
+8. If `write_permission` is disabled, call `blueprinthelper_request_write_session` after preview and before execute. The running Editor shows a simple accept/reject approval dialog; if the user rejects it, stop and report instead of trying another write path.
+9. Do not ask for or inject `BLUEPRINTHELPER_BRIDGE_TOKEN`, `auth_token`, or `auth_session` for ordinary interactive writes. The running Editor/Bridge owns the approved scope and lifetime, so delegated SideAgents can use BlueprintHelper CLI/task-core tools after approval without receiving raw session data.
+10. Never rely on the currently focused editor tab for destructive operations unless the user explicitly says to operate on the active context.
 
 ## Fast path
 

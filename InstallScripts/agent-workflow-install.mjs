@@ -93,8 +93,11 @@ If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflic
 - Use BlueprintHelper CLI for ordinary UE editor asset reads and writes.
 - Run only bounded preflight CLI checks locally before dispatch, such as runtime profile or diagnostics.
 - If the runtime profile shows the intended Editor or Bridge is unavailable, stale, or not the target project, the Main Agent may open the target Editor once through \`mcp__blueprint_helper__blueprint_open_editor\`, then rerun runtime profile.
+- Run the Practical Development Architecture gate before any write dispatch.
 - Dispatch \`blueprint-explorer\` when UE editor-asset evidence is needed.
 - Dispatch \`sourcecode-explorer\` only when source-side grounding is required.
+- Dispatch \`sourcecode-worker\` when the architecture gate requires C++, DataAsset, config, or interface source changes before Blueprint wiring.
+- SourcecodeWorker must finish source verification before TaskWorker wires Blueprint assets that depend on those source contracts.
 - Complete source-control and write-session gates before dispatching \`task-worker\`.
 - Dispatch \`task-worker\` only after target asset, scope, and evidence are sufficient.
 - If a sideAgent wait times out after an already long wait, do not close the sideAgent directly. Send a progress check asking for current status, blockers, and whether it can be closed; wait once more for a bounded interval. Close only after completion, an explicit report that it can be closed, or an errored/shutdown status. If the progress check also times out, report \`sideagent_timeout_unconfirmed\` to the user and ask whether to keep waiting or close it.
@@ -102,9 +105,21 @@ If BlueprintHelper evidence sources disagree, stop and report \`evidence_conflic
 - If \`read_context\`, Editor screenshots/visible state, preview, execute, or readback evidence disagree, stop and report \`evidence_conflict\`; do not inspect Unreal binary asset files as fallback.
 - Do not use deprecated MCP ordinary read/write/debug/task tools as fallback paths.
 
+## Practical Development Architecture
+
+- The Main Agent owns the architecture gate before dispatching write work.
+- BlueprintHelper is a Blueprint assistance tool, not a reason to put heavy implementation into Blueprint.
+- Complex gameplay logic, heavy computation, or graph work likely to require 30+ nodes belongs in C++.
+- Simple Blueprint business logic should stay as control flow with less than 25 nodes per function/event/macro.
+- C++ should expose Blueprint extension points through \`BlueprintImplementableEvent\`, \`BlueprintNativeEvent\`, or overridable interfaces.
+- Use \`UDataAsset\`, config structs, or explicitly exposed Blueprint config variables for data-driven content.
+- Do not hardcode content in C++ when designers or Blueprint assets should configure it.
+- If source work is needed, dispatch \`sourcecode-worker\` with a bounded write scope and source verification commands before dispatching \`task-worker\`.
+
 ## Source And Documentation Work
 
 - Use normal repository tools for C++, TypeScript, Python, JSON, config, build scripts, documentation, AGENTS files, CLAUDE files, and memory files.
+- Use \`sourcecode-worker\` for BlueprintHelper tasks where the Practical Development Architecture gate requires source edits before asset wiring.
 - Do not inspect BlueprintHelper implementation source for ordinary plugin usage. Use installed skills, AgentGuide, CLI reference, and templates instead. Source reads are allowed for plugin development, installation repair, and debugging tasks.
 
 ## Safety

@@ -180,6 +180,10 @@ test('Codex plugin registers all BlueprintHelper subagents', () => {
       skill: 'blueprint-helper-sourcecode-explorer',
     },
     {
+      name: 'sourcecode-worker',
+      skill: 'blueprint-helper-sourcecode-worker',
+    },
+    {
       name: 'task-worker',
       skill: 'blueprint-helper-task-worker',
     },

@@ -48,7 +48,7 @@ install.cmd
 
 ### Codex Desktop
 
-交互式安装优先使用 Node.js 内置终端交互。启用 Codex subagents 时，`blueprint-explorer`、`sourcecode-explorer`、`task-worker` 会以表格显示，模型和思考等级是独立字段。模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`；思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`task-worker` 使用 `gpt-5.4 / high`。
+交互式安装优先使用 Node.js 内置终端交互。启用 Codex subagents 时，`blueprint-explorer`、`sourcecode-explorer`、`sourcecode-worker`、`task-worker` 会以表格显示，模型和思考等级是独立字段。模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.5`、`gpt-5.4`；思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用轻量模型，`sourcecode-worker` 使用 `gpt-5.5 / xhigh`，`task-worker` 使用 `gpt-5.4 / high`。
 
 仓库包含本地 marketplace：
 
@@ -80,7 +80,7 @@ Claude Code 插件支持是可选项：
 .\install.cmd -InstallClaudeAgents
 ```
 
-交互式安装启用 Claude sideAgents 时，也会使用同一个 Node.js 内置终端交互。三个 sideAgent 的模型和思考等级分开选择：模型选项为 `haiku`、`sonnet`，思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`task-worker` 使用 `sonnet / high`。如果需要选择模型和思考等级，请使用无参数 `install.cmd` 或 `.\install.cmd -Interactive`；带参数的非交互安装不会弹出选择表单。
+交互式安装启用 Claude sideAgents 时，也会使用同一个 Node.js 内置终端交互。四个 sideAgent 的模型和思考等级分开选择：模型选项为 `haiku`、`sonnet`、`opus`，思考等级选项为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：两个 explorer 使用 `haiku / high`，`sourcecode-worker` 使用 `opus / high`，`task-worker` 使用 `sonnet / high`。如果需要选择模型和思考等级，请使用无参数 `install.cmd` 或 `.\install.cmd -Interactive`；带参数的非交互安装不会弹出选择表单。
 
 ### Unreal Engine 插件
 
@@ -179,7 +179,7 @@ install.cmd
 
 ### Codex Desktop
 
-Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, `blueprint-explorer`, `sourcecode-explorer`, and `task-worker` are shown in a table with separate model and reasoning fields. Model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`; reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: lighter models for the two explorers, and `gpt-5.4 / high` for `task-worker`.
+Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, `blueprint-explorer`, `sourcecode-explorer`, `sourcecode-worker`, and `task-worker` are shown in a table with separate model and reasoning fields. Model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, `gpt-5.5`, and `gpt-5.4`; reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: lighter models for the two explorers, `gpt-5.5 / xhigh` for `sourcecode-worker`, and `gpt-5.4 / high` for `task-worker`.
 
 The repository includes a local marketplace:
 
@@ -213,7 +213,7 @@ If you only want to copy the sideAgent definitions without validating the Claude
 .\install.cmd -InstallClaudeAgents
 ```
 
-When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The three sideAgents expose separate model and reasoning fields: model options are `haiku` and `sonnet`, and reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, and `sonnet / high` for `task-worker`. Use no-argument `install.cmd` or `.\install.cmd -Interactive` when you need to choose model and reasoning; parameterized non-interactive installs do not show the selection form.
+When Claude sideAgents are selected in interactive install, the same Node.js built-in terminal prompt flow is used. The four sideAgents expose separate model and reasoning fields: model options are `haiku`, `sonnet`, and `opus`, and reasoning options are `high` and `xhigh`. Non-interactive install uses the recommended defaults automatically: `haiku / high` for the two explorers, `opus / high` for `sourcecode-worker`, and `sonnet / high` for `task-worker`. Use no-argument `install.cmd` or `.\install.cmd -Interactive` when you need to choose model and reasoning; parameterized non-interactive installs do not show the selection form.
 
 Claude workflow parity includes hook-enforced preview/execute/readback guards on Claude Code versions that support plugin hooks. The hook manifest uses `hooks/hooks.json`, `${CLAUDE_PLUGIN_ROOT}`, and the shared BlueprintHelper hook core.
 

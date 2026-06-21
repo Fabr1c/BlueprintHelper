@@ -11,6 +11,7 @@ SideAgents:
 ```text
 blueprint-explorer   -> Blueprint/UMG/DataAsset/DataTable/editor-asset context collection
 sourcecode-explorer  -> repository source-code/schema/template context collection
+sourcecode-worker    -> architecture-approved C++/DataAsset/interface source edits and verification
 task-worker          -> template-first TaskSpec construction, preview, execute, result filtering
 ```
 
@@ -23,12 +24,15 @@ blueprint-explorer:
 sourcecode-explorer:
   model: haiku
   reasoning: high
+sourcecode-worker:
+  model: opus
+  reasoning: high
 task-worker:
   model: sonnet
   reasoning: high
 ```
 
-Claude agent frontmatter uses `model: haiku` for explorer sideAgents and `model: sonnet` for `task-worker`. Reasoning depth is expressed in the sideAgent instructions and compact task package as `reasoning: high`; do not add undocumented frontmatter fields unless the installed Claude Code version explicitly supports them.
+Claude agent frontmatter uses `model: haiku` for explorer sideAgents, `model: opus` for `sourcecode-worker`, and `model: sonnet` for `task-worker`. Reasoning depth is expressed in the sideAgent instructions and compact task package as `reasoning: high`; do not add undocumented frontmatter fields unless the installed Claude Code version explicitly supports them.
 
 ## Main Agent ownership
 
@@ -60,6 +64,7 @@ For each user request, dispatch at most:
 
 - one `blueprint-explorer`;
 - one `sourcecode-explorer`;
+- one `sourcecode-worker` when the Main Agent architecture gate requires source edits before Blueprint wiring;
 - one `task-worker` per preview/execute attempt.
 
 If `task-worker` returns a failure, the Main Agent may dispatch one corrected package or one bounded additional context request. Do not start broad recursive exploration.

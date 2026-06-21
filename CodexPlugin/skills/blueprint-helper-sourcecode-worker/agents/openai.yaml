@@ -1,0 +1,4 @@
+interface:
+  display_name: "BlueprintHelper Sourcecode Worker"
+  short_description: "Implement architecture-approved C++ and DataAsset source changes before Blueprint wiring."
+  default_prompt: "Use the BlueprintHelper sourcecode-worker sideAgent for bounded source implementation work."

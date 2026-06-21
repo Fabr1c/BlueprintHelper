@@ -6,11 +6,12 @@ import readline from 'node:readline';
 import { readJsonFile } from './json-input.mjs';
 
 const EXIT_CANCELLED = 20;
-const AGENT_NAMES = ['blueprint-explorer', 'sourcecode-explorer', 'task-worker'];
+const AGENT_NAMES = ['blueprint-explorer', 'sourcecode-explorer', 'sourcecode-worker', 'task-worker'];
 
 const CODEX_MODEL_OPTIONS = [
   { value: 'gpt-5.4-mini', tip: '轻量上下文读取，推荐给 blueprint-explorer。' },
   { value: 'gpt-5.3-codex-spark', tip: '高强度源码和 schema 探索，推荐给 sourcecode-explorer。' },
+  { value: 'gpt-5.5', tip: '强力源码开发与架构变更，推荐给 sourcecode-worker。' },
   { value: 'gpt-5.4', tip: '更强的任务执行和 TaskSpec 构造，推荐给 task-worker。' },
 ];
 const CODEX_REASONING_OPTIONS = [
@@ -21,6 +22,7 @@ const CODEX_REASONING_OPTIONS = [
 const CLAUDE_MODEL_OPTIONS = [
   { value: 'haiku', tip: '轻量 sideAgent，推荐给 explorer 类任务。' },
   { value: 'sonnet', tip: '更强 sideAgent，推荐给 task-worker。' },
+  { value: 'opus', tip: '强力开发 sideAgent，推荐给 sourcecode-worker。' },
 ];
 const CLAUDE_REASONING_OPTIONS = [
   { value: 'high', tip: '推荐默认 extended thinking 等级。' },

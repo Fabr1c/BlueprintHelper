@@ -14,6 +14,17 @@ Ordinary plugin usage must not inspect BlueprintHelper plugin package or impleme
 
 UE asset evidence must come from BlueprintHelper CLI/Bridge, Editor-visible state/screenshots, preview/execute results, or readback results. If those evidence sources disagree, treat it as `evidence_conflict`: stop_and_report. Do not read `.uasset`, `.umap`, or other Unreal binary asset files as fallback evidence.
 
+## 1.1 Practical Development Architecture Gate
+
+Before any write dispatch, the Main Agent decides whether the change is Blueprint-only, source-plus-Blueprint, or source-only support.
+
+- BlueprintHelper is a Blueprint assistance tool; it should not move heavy implementation into Blueprint.
+- Complex gameplay logic, heavy computation, or graph work likely to require 30+ nodes belongs in C++.
+- Simple Blueprint business logic should remain light control flow with less than 25 nodes per function/event/macro.
+- C++ should expose Blueprint extension points through `BlueprintImplementableEvent`, `BlueprintNativeEvent`, or overridable interfaces.
+- Data-driven content should use `UDataAsset`, config structs, or explicit Blueprint config variables instead of hardcoded content.
+- When source changes are required before asset wiring, delegate a bounded `sourcecode-worker` package first, run source verification, then continue to TaskWorker for Blueprint wiring.
+
 ## 2. BlueprintHelper Tool Surface Scope
 
 适用:

@@ -20,6 +20,7 @@ const targetDir = path.join(home, '.claude', 'agents');
 const agentFiles = [
   'blueprint-explorer.md',
   'sourcecode-explorer.md',
+  'sourcecode-worker.md',
   'task-worker.md',
 ];
 
@@ -98,15 +99,13 @@ function applyAgentProfile(content, agentProfile, agentName) {
     nextContent = replaceFrontmatterValue(nextContent, 'model', selectedModel);
     nextContent = replacePolicyBullet(
       nextContent,
-      /- Always run as a sideAgent(?: on `[^`]+`| using the host task-worker model policy)\./,
+      /- Always run as a sideAgent(?: on `[^`]+`| using the host [^\.\r\n]+ model policy)\./,
       `- Always run as a sideAgent on \`${selectedModel}\`.`
     );
   }
 
   if (selectedReasoning) {
-    const reasoningAction = agentName === 'task-worker'
-      ? 'constructing TaskSpecs or running tools'
-      : 'choosing tools or returning';
+    const reasoningAction = getReasoningAction(agentName);
     nextContent = replaceReasoningPolicyLine(
       nextContent,
       `- Use the \`${selectedReasoning}\` reasoning level selected during install before ${reasoningAction}.`
@@ -114,6 +113,16 @@ function applyAgentProfile(content, agentProfile, agentName) {
   }
 
   return nextContent;
+}
+
+function getReasoningAction(agentName) {
+  if (agentName === 'task-worker') {
+    return 'constructing TaskSpecs or running tools';
+  }
+  if (agentName === 'sourcecode-worker') {
+    return 'editing source files and running verification';
+  }
+  return 'choosing tools or returning';
 }
 
 function replaceFrontmatterValue(content, key, value) {
@@ -138,7 +147,7 @@ function replacePolicyBullet(content, pattern, replacement) {
 
 function replaceReasoningPolicyLine(content, replacement) {
   return content.replace(
-    /(## Model and reasoning policy\r?\n\r?\n- Always run as a sideAgent[^\r\n]*\r?\n)- [^\r\n]*(\r?\n- Save tokens in the returned summary, not in your analysis process\.)/,
+    /(## Model And Reasoning\r?\n\r?\n- Always run as a sideAgent[^\r\n]*\r?\n)- [^\r\n]*(\r?\n- Save tokens in the returned summary, not by skipping (?:evidence checks|validation|source verification)\.)/,
     `$1${replacement}$2`
   );
 }
@@ -154,7 +163,7 @@ function readFrontmatterValue(content, key) {
 }
 
 function readInstalledReasoning(content) {
-  const match = content.match(/- Use the `([^`]+)` reasoning level selected during install before (?:choosing tools or returning|constructing TaskSpecs or running tools)\./);
+  const match = content.match(/- Use the `([^`]+)` reasoning level selected during install before (?:choosing tools or returning|constructing TaskSpecs or running tools|editing source files and running verification)\./);
   if (match) {
     return match[1];
   }

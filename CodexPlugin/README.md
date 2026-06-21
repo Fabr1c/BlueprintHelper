@@ -12,9 +12,9 @@ See `INSTALL.md` at the repository root for Codex Desktop, CLI, lifecycle MCP, a
 
 Use repository-root `uninstall.cmd` to remove installed Codex plugin entries, Codex subagents, lifecycle MCP config, and CLI links without deleting the source checkout.
 
-交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 时，三个 agent 会以表格显示，模型和思考等级是独立字段；模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.4`，思考等级为 `high`、`xhigh`。
+交互式安装优先使用 Node.js 内置终端交互。安装 Codex subagents 时，四个 agent 会以表格显示，模型和思考等级是独立字段；模型选项为 `gpt-5.4-mini`、`gpt-5.3-codex-spark`、`gpt-5.5`、`gpt-5.4`，思考等级为 `high`、`xhigh`。
 
-Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, the three agents are shown in a table with separate model and reasoning fields; model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, and `gpt-5.4`, with reasoning `high` or `xhigh`.
+Interactive install prefers Node.js built-in terminal prompts. When Codex subagents are selected, the four agents are shown in a table with separate model and reasoning fields; model options are `gpt-5.4-mini`, `gpt-5.3-codex-spark`, `gpt-5.5`, and `gpt-5.4`, with reasoning `high` or `xhigh`.
 
 根安装脚本会解析 `C:\Users\<username>` 下的真实 Windows 用户目录，直接写入用户 Codex 配置，将仓库根目录注册为本地 marketplace，并启用 `blueprint-helper@blueprint-helper-local`。
 
@@ -54,8 +54,10 @@ When a request involves Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, pr
 
 ```text
 Main Agent preflight
+-> practical C++ plus Blueprint architecture gate
 -> at most one blueprint-explorer
 -> at most one sourcecode-explorer
+-> sourcecode-worker when source implementation is required
 -> task-worker template-first TaskSpec construction
 -> preview
 -> write session when needed
@@ -69,6 +71,7 @@ Subagents:
 ```text
 blueprint-explorer   Collects Blueprint/UMG/DataAsset/DataTable/editor-asset context.
 sourcecode-explorer  Collects repository source-code/schema/template context.
+sourcecode-worker    Implements architecture-approved C++/DataAsset/interface source changes and verifies them.
 task-worker          Constructs TaskSpec from templates, runs preview/execute, and returns concise diagnostics.
 ```
 
@@ -78,9 +81,9 @@ Install the subagent definitions globally from the source checkout:
 node <BLUEPRINTHELPER_ROOT>\CodexPlugin\scripts\install-codex-agents.cjs
 ```
 
-默认推荐配置：`blueprint-explorer` 使用 `gpt-5.4-mini / high`，`sourcecode-explorer` 使用 `gpt-5.3-codex-spark / xhigh`，`task-worker` 使用 `gpt-5.4 / high`。
+默认推荐配置：`blueprint-explorer` 使用 `gpt-5.4-mini / high`，`sourcecode-explorer` 使用 `gpt-5.3-codex-spark / xhigh`，`sourcecode-worker` 使用 `gpt-5.5 / xhigh`，`task-worker` 使用 `gpt-5.4 / high`。
 
-Recommended defaults: `blueprint-explorer` uses `gpt-5.4-mini / high`; `sourcecode-explorer` uses `gpt-5.3-codex-spark / xhigh`; `task-worker` uses `gpt-5.4 / high`.
+Recommended defaults: `blueprint-explorer` uses `gpt-5.4-mini / high`; `sourcecode-explorer` uses `gpt-5.3-codex-spark / xhigh`; `sourcecode-worker` uses `gpt-5.5 / xhigh`; `task-worker` uses `gpt-5.4 / high`.
 
 ## CLI Entry
 

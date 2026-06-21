@@ -36,10 +36,24 @@ test('generated AgentWorkFlow stays a MainAgent bootstrap with lifecycle, CLI-fi
   assert.match(workflow, /evidence_conflict/);
   assert.match(workflow, /blueprint-explorer[\s\S]{0,160}UE editor-asset evidence/i);
   assert.match(workflow, /sourcecode-explorer[\s\S]{0,160}source-side grounding/i);
-  assert.match(workflow, /source-control[\s\S]{0,80}write-session[\s\S]{0,160}task-worker/i);
+  assert.match(workflow, /sourcecode-worker[\s\S]{0,240}C\+\+[\s\S]{0,240}DataAsset/i);
+  assert.match(workflow, /source-control[\s\S]{0,80}write-session[\s\S]{0,240}task-worker/i);
   assert.match(workflow, /task-worker[\s\S]{0,160}target asset[\s\S]{0,160}evidence/i);
   assert.match(workflow, /sideAgent wait[\s\S]{0,240}progress check[\s\S]{0,240}close/i);
   assert.match(workflow, /sideagent_timeout_unconfirmed/);
+});
+
+test('generated AgentWorkFlow includes the practical C++ plus Blueprint architecture gate', async () => {
+  const workflow = await loadGeneratedWorkflow();
+
+  assert.match(workflow, /Practical Development Architecture/i);
+  assert.match(workflow, /Main Agent[\s\S]{0,160}architecture gate/i);
+  assert.match(workflow, /30\+ nodes[\s\S]{0,160}C\+\+/i);
+  assert.match(workflow, /less than 25 nodes[\s\S]{0,160}function\/event\/macro/i);
+  assert.match(workflow, /BlueprintImplementableEvent[\s\S]{0,80}BlueprintNativeEvent/i);
+  assert.match(workflow, /UDataAsset[\s\S]{0,160}config/i);
+  assert.match(workflow, /hardcode(?:d)? content/i);
+  assert.match(workflow, /sourcecode-worker[\s\S]{0,220}source verification/i);
 });
 
 test('generated AgentWorkFlow removes legacy composer, quick-access, hook-ledger, and plugin-dev rule details', async () => {
@@ -94,6 +108,24 @@ test('MainAgent skills require progress confirmation before closing timed-out si
       assert.match(skillText, /sideAgent wait[\s\S]{0,260}progress check/i);
       assert.match(skillText, /close[\s\S]{0,220}explicitly reports it can be closed/i);
       assert.match(skillText, /sideagent_timeout_unconfirmed/);
+    });
+  }
+});
+
+test('MainAgent skills include SourcecodeWorker and the practical architecture gate', async (t) => {
+  for (const filePath of [
+    'CodexPlugin/skills/blueprint-helper/SKILL.md',
+    'ClaudePlugin/skills/blueprint-helper/SKILL.md',
+  ]) {
+    await t.test(filePath, async () => {
+      const skillText = await readRepoText(filePath);
+      assert.match(skillText, /sourcecode-worker/);
+      assert.match(skillText, /architecture gate/i);
+      assert.match(skillText, /30\+ nodes[\s\S]{0,160}C\+\+/i);
+      assert.match(skillText, /less than 25 nodes[\s\S]{0,180}function\/event\/macro/i);
+      assert.match(skillText, /BlueprintImplementableEvent[\s\S]{0,100}BlueprintNativeEvent/i);
+      assert.match(skillText, /UDataAsset/i);
+      assert.match(skillText, /hardcode(?:d)?/i);
     });
   }
 });
@@ -158,6 +190,30 @@ test('SourceExplorer skill keeps broad source evidence scope and does not feed s
       assert.match(sourceExplorerText, /runtime|adapter|coordinator|service|Review|TaskRuntime/);
       assert.match(sourceExplorerText, /task-core|result-shape|result shape/i);
       assert.doesNotMatch(sourceExplorerText, /source_context_summary/);
+    });
+  }
+});
+
+test('SourcecodeWorker contract owns architecture-approved source edits only', async (t) => {
+  for (const filePath of [
+    'CodexPlugin/skills/blueprint-helper-sourcecode-worker/SKILL.md',
+    'CodexPlugin/agents/sourcecode-worker.md',
+    'CodexPlugin/agents/sourcecode-worker.toml',
+  ]) {
+    await t.test(filePath, async () => {
+      const sourceWorkerText = await readRepoText(filePath);
+      assert.match(sourceWorkerText, /BlueprintHelper\.SourcecodeWorkerPackage\.v1/);
+      assert.match(sourceWorkerText, /write_scope/);
+      assert.match(sourceWorkerText, /C\+\+/);
+      assert.match(sourceWorkerText, /BlueprintImplementableEvent[\s\S]{0,100}BlueprintNativeEvent/);
+      assert.match(sourceWorkerText, /UDataAsset|DataAsset/);
+      assert.match(sourceWorkerText, /source verification|UBT|test/i);
+      assert.match(sourceWorkerText, /no unnamed namespace|unnamed namespace/i);
+      assert.match(sourceWorkerText, /Do not touch UE editor assets/i);
+      assert.match(sourceWorkerText, /Do not call MCP tools/i);
+      assert.match(sourceWorkerText, /Do not run BlueprintHelper task preview commands/i);
+      assert.match(sourceWorkerText, /Do not run BlueprintHelper task execute commands/i);
+      assert.match(sourceWorkerText, /Do not run BlueprintHelper readback commands/i);
     });
   }
 });

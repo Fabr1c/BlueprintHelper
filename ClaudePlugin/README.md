@@ -85,9 +85,9 @@ Add `-InstallClaudePlugin` when you want the installer to resolve the real Windo
 
 Use repository-root `uninstall.cmd` to remove installed Claude plugin entries, Claude sideAgents, Codex companion entries, and CLI links without deleting the source checkout.
 
-交互式安装优先使用 Node.js 内置终端交互。复制 Claude sideAgent 定义前，三个 sideAgent 会以表格显示，模型和思考等级是独立字段；模型选项为 `haiku`、`sonnet`，思考等级为 `high`、`xhigh`。非交互安装会自动使用推荐默认值，`task-worker` 为 `sonnet / high`。
+交互式安装优先使用 Node.js 内置终端交互。复制 Claude sideAgent 定义前，四个 sideAgent 会以表格显示，模型和思考等级是独立字段；模型选项为 `haiku`、`sonnet`、`opus`，思考等级为 `high`、`xhigh`。非交互安装会自动使用推荐默认值：explorer 使用 `haiku / high`，`sourcecode-worker` 使用 `opus / high`，`task-worker` 使用 `sonnet / high`。
 
-Interactive install prefers Node.js built-in terminal prompts. Before copying Claude sideAgent definitions, the three sideAgents are shown in a table with separate model and reasoning fields; model options are `haiku` and `sonnet`, with reasoning `high` or `xhigh`. Non-interactive install uses the recommended defaults automatically, with `task-worker` on `sonnet / high`.
+Interactive install prefers Node.js built-in terminal prompts. Before copying Claude sideAgent definitions, the four sideAgents are shown in a table with separate model and reasoning fields; model options are `haiku`, `sonnet`, and `opus`, with reasoning `high` or `xhigh`. Non-interactive install uses the recommended defaults automatically: explorers use `haiku / high`, `sourcecode-worker` uses `opus / high`, and `task-worker` uses `sonnet / high`.
 
 安装器不依赖可调用的 Claude 插件 CLI 来完成注册；它会直接更新 `enabledPlugins` 和 `extraKnownMarketplaces`。
 

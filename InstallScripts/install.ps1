@@ -423,6 +423,7 @@ function Get-SubagentInstallNames {
   return @(
     'blueprint-explorer',
     'sourcecode-explorer',
+    'sourcecode-worker',
     'task-worker'
   )
 }
@@ -447,6 +448,7 @@ function Get-DefaultCodexSubagentProfiles {
   $Agents = [ordered]@{}
   $Agents['blueprint-explorer'] = New-SubagentInstallProfile -Model 'gpt-5.4-mini' -Reasoning 'high'
   $Agents['sourcecode-explorer'] = New-SubagentInstallProfile -Model 'gpt-5.3-codex-spark' -Reasoning 'xhigh'
+  $Agents['sourcecode-worker'] = New-SubagentInstallProfile -Model 'gpt-5.5' -Reasoning 'xhigh'
   $Agents['task-worker'] = New-SubagentInstallProfile -Model 'gpt-5.4' -Reasoning 'high'
 
   return [pscustomobject]@{
@@ -458,6 +460,7 @@ function Get-DefaultClaudeSubagentProfiles {
   $Agents = [ordered]@{}
   $Agents['blueprint-explorer'] = New-SubagentInstallProfile -Model 'haiku' -Reasoning 'high'
   $Agents['sourcecode-explorer'] = New-SubagentInstallProfile -Model 'haiku' -Reasoning 'high'
+  $Agents['sourcecode-worker'] = New-SubagentInstallProfile -Model 'opus' -Reasoning 'high'
   $Agents['task-worker'] = New-SubagentInstallProfile -Model 'sonnet' -Reasoning 'high'
 
   return [pscustomobject]@{
@@ -706,7 +709,8 @@ function Read-CodexSubagentProfiles {
   $ModelChoices = @(
     [pscustomobject]@{ Number = '1'; Value = 'gpt-5.4-mini'; Label = 'gpt-5.4-mini' },
     [pscustomobject]@{ Number = '2'; Value = 'gpt-5.3-codex-spark'; Label = 'gpt-5.3-codex-spark' },
-    [pscustomobject]@{ Number = '3'; Value = 'gpt-5.4'; Label = 'gpt-5.4' }
+    [pscustomobject]@{ Number = '3'; Value = 'gpt-5.5'; Label = 'gpt-5.5' },
+    [pscustomobject]@{ Number = '4'; Value = 'gpt-5.4'; Label = 'gpt-5.4' }
   )
   $ReasoningChoices = @(
     [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' },
@@ -715,11 +719,13 @@ function Read-CodexSubagentProfiles {
   $DefaultModels = @{
     'blueprint-explorer' = 'gpt-5.4-mini'
     'sourcecode-explorer' = 'gpt-5.3-codex-spark'
+    'sourcecode-worker' = 'gpt-5.5'
     'task-worker' = 'gpt-5.4'
   }
   $DefaultReasoning = @{
     'blueprint-explorer' = 'high'
     'sourcecode-explorer' = 'xhigh'
+    'sourcecode-worker' = 'xhigh'
     'task-worker' = 'high'
   }
   $Agents = [ordered]@{}
@@ -751,7 +757,8 @@ function Read-CodexSubagentProfiles {
 function Read-ClaudeSubagentProfiles {
   $ModelChoices = @(
     [pscustomobject]@{ Number = '1'; Value = 'haiku'; Label = 'haiku' },
-    [pscustomobject]@{ Number = '2'; Value = 'sonnet'; Label = 'sonnet' }
+    [pscustomobject]@{ Number = '2'; Value = 'sonnet'; Label = 'sonnet' },
+    [pscustomobject]@{ Number = '3'; Value = 'opus'; Label = 'opus' }
   )
   $ReasoningChoices = @(
     [pscustomobject]@{ Number = '1'; Value = 'high'; Label = 'high' },
@@ -760,11 +767,13 @@ function Read-ClaudeSubagentProfiles {
   $DefaultModels = @{
     'blueprint-explorer' = 'haiku'
     'sourcecode-explorer' = 'haiku'
+    'sourcecode-worker' = 'opus'
     'task-worker' = 'sonnet'
   }
   $DefaultReasoning = @{
     'blueprint-explorer' = 'high'
     'sourcecode-explorer' = 'high'
+    'sourcecode-worker' = 'high'
     'task-worker' = 'high'
   }
   $Agents = [ordered]@{}

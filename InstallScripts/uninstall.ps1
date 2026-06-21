@@ -555,7 +555,7 @@ function Remove-ClaudePluginConfig {
 function Remove-CodexAgents {
   $HomeDir = Get-UserHome
   $AgentDir = Join-Path $HomeDir '.codex\agents'
-  foreach ($File in @('blueprint-explorer.toml', 'sourcecode-explorer.toml', 'task-worker.toml')) {
+  foreach ($File in @('blueprint-explorer.toml', 'sourcecode-explorer.toml', 'sourcecode-worker.toml', 'task-worker.toml')) {
     Remove-FileIfPresent -Path (Join-Path $AgentDir $File) -Description 'Remove Codex subagent' -RequireBlueprintHelperOwnership | Out-Null
   }
   Remove-EmptyDirectoryIfPresent -Path $AgentDir
@@ -564,7 +564,7 @@ function Remove-CodexAgents {
 function Remove-ClaudeAgents {
   $HomeDir = Get-UserHome
   $AgentDir = Join-Path $HomeDir '.claude\agents'
-  foreach ($File in @('blueprint-explorer.md', 'sourcecode-explorer.md', 'task-worker.md')) {
+  foreach ($File in @('blueprint-explorer.md', 'sourcecode-explorer.md', 'sourcecode-worker.md', 'task-worker.md')) {
     Remove-FileIfPresent -Path (Join-Path $AgentDir $File) -Description 'Remove Claude sideAgent' -RequireBlueprintHelperOwnership | Out-Null
   }
   Remove-EmptyDirectoryIfPresent -Path $AgentDir

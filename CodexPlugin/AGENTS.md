@@ -19,16 +19,19 @@ For any BlueprintHelper editor-asset task, the Main Agent must use the configure
 ```text
 blueprint-explorer   -> Blueprint/UMG/DataAsset/DataTable context collection
 sourcecode-explorer  -> repository source-code/schema/template context collection
+sourcecode-worker    -> architecture-approved C++/DataAsset/interface source edits and verification
 task-worker          -> template-first TaskSpec construction, preview, execute, result filtering
 ```
 
 The Main Agent performs preflight and owns allowed global MCP lifecycle tools. Subagents must not call MCP tools.
 
-For writes, follow the TaskSpec-first closed loop:
+For writes, follow the architecture-gated TaskSpec-first closed loop:
 
 ```text
-main preflight -> explorer context -> task-worker TaskSpec -> preview -> source-control checkout if needed -> write session if needed -> execute -> result -> main-agent next decision
+main preflight -> practical C++ plus Blueprint architecture gate -> explorer context -> sourcecode-worker when source work is required -> task-worker TaskSpec -> preview -> source-control checkout if needed -> write session if needed -> execute -> result -> main-agent next decision
 ```
+
+BlueprintHelper is a Blueprint assistance tool, not a reason to put heavy implementation into Blueprint. Complex gameplay logic, heavy computation, or graph work likely to require 30+ nodes belongs in C++. Simple Blueprint business logic should remain control flow with less than 25 nodes per function/event/macro. C++ should expose `BlueprintImplementableEvent`, `BlueprintNativeEvent`, or overridable interfaces, and data-driven content should use `UDataAsset`, config structs, or explicit Blueprint config variables instead of hardcoded content.
 
 In P4/Perforce or other UE source-control projects, run `blueprinthelper_source_control_status` or `blueprinthelper_source_control_checkout` for target assets after preview and before execute when assets may be read-only or save/close reports `checkout_required`. Stop on occupied, conflicted, unavailable, failed checkout, or not-editable states and report the returned agent message.
 

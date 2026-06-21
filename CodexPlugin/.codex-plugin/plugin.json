@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "BlueprintHelper",
     "shortDescription": "Use mandatory Codex subagents and CLI TaskSpec workflows for UE editor assets.",
-    "longDescription": "BlueprintHelper routes Codex through a mandatory subagent workflow for Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, preview, execute, compile, save, and diagnostics work. The Main Agent owns preflight and global lifecycle-only MCP tools; blueprint-explorer gathers UE asset context, sourcecode-explorer gathers repository context, and task-worker constructs template-first TaskSpecs through the CLI.",
+    "longDescription": "BlueprintHelper routes Codex through a mandatory subagent workflow for Blueprint, UMG, DataAsset, DataTable, Bridge/runtime, preview, execute, compile, save, and diagnostics work. The Main Agent owns preflight, the practical C++ plus Blueprint architecture gate, and global lifecycle-only MCP tools; blueprint-explorer gathers UE asset context, sourcecode-explorer gathers repository context, sourcecode-worker implements approved source contracts, and task-worker constructs template-first TaskSpecs through the CLI.",
     "developerName": "Fabric",
     "category": "Coding",
     "capabilities": [
