@@ -18,6 +18,11 @@ import {
   type SlotExpressionArg,
   type SlotExpressionNode,
 } from './slot-expression-parser.js';
+import {
+  parseGraphWriteEntriesFile,
+  parseGraphWriteInlineEntries,
+  type GraphWriteEntryComposeItem,
+} from './graphwrite-entry-compose-parser.js';
 import type {
   ComposeTaskSpecTemplateInput,
   GraphWriteTemplateWriteMode,
@@ -36,6 +41,30 @@ export {
 };
 
 export function composeTaskSpecTemplate(input: ComposeTaskSpecTemplateInput): TaskSpecTemplateCompositionResult {
+  const hasEntries = typeof input.entries === 'string';
+  const hasEntriesFile = typeof input.entriesFileText === 'string';
+  if (hasEntries || hasEntriesFile) {
+    if (input.templateId || (input.templateIds ?? []).length > 0 || (hasEntries && hasEntriesFile)) {
+      return failed(input, [{
+        code: 'entries_compose_mode_conflict',
+        family: input.family,
+        write_mode: input.writeMode,
+        message: 'Choose one GraphWrite compose input: --templates, --entries, or --entries-file.',
+        safe_next_action: 'choose_single_compose_mode',
+        suggested_route: 'tools.templates.compose',
+      }]);
+    }
+    if (input.family !== 'graph_write') {
+      return failed(input, [{
+        code: 'entries_only_supported_for_graph_write',
+        family: input.family,
+        write_mode: input.writeMode,
+        message: 'GraphWrite multi-entry compose requires --family graph_write.',
+        safe_next_action: 'use_graph_write_family',
+        suggested_route: 'tools.templates.compose.entries',
+      }]);
+    }
+  }
   if (input.templateId) {
     if (input.family || input.writeMode || (input.templateIds ?? []).length > 0) {
       return failed(input, [{
@@ -81,6 +110,20 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
     writeMode: '',
   }).items;
 
+  if (hasGraphWriteEntryComposeInput(input)) {
+    if (writeMode !== 'graph.append') {
+      return failed(input, [{
+        code: 'entries_only_supported_for_graph_append',
+        family,
+        write_mode: writeMode,
+        message: 'GraphWrite multi-entry compose currently supports only graph.append.',
+        safe_next_action: 'use_graph_append_or_single_route_compose',
+        suggested_route: 'tools.templates.compose.entries',
+      }]);
+    }
+    return composeGraphWriteMultiEntryTaskSpecTemplate(input, writeMode, quickAccessCatalog);
+  }
+
   const routeRoot = findRouteRoot(input, writeMode, quickAccessCatalog);
   if (routeRoot.status === 'failed') {
     return failed(input, routeRoot.diagnostics);
@@ -121,6 +164,85 @@ function composeGraphWriteTaskSpecTemplate(input: ComposeTaskSpecTemplateInput):
   }
   writeJson(input.outputPath, taskSpec);
   return ok(input, taskSpec, { family: 'graph_write', writeMode });
+}
+
+function composeGraphWriteMultiEntryTaskSpecTemplate(
+  input: ComposeTaskSpecTemplateInput,
+  writeMode: GraphWriteTemplateWriteMode,
+  quickAccessCatalog: TaskSpecTemplateQuickAccessItem[],
+): TaskSpecTemplateCompositionResult {
+  const entries = typeof input.entriesFileText === 'string'
+    ? parseGraphWriteEntriesFile(input.entriesFileText)
+    : parseGraphWriteInlineEntries(input.entries ?? '');
+  if (entries.length === 0) {
+    return failed(input, [{
+      code: 'entries_required',
+      family: input.family,
+      write_mode: writeMode,
+      message: 'GraphWrite multi-entry compose requires at least one entry.',
+      safe_next_action: 'add_entry_header_and_body',
+      suggested_route: 'tools.templates.compose.entries',
+    }]);
+  }
+  const diagnostics: TaskSpecTemplateDiagnostic[] = [];
+  const routeItems = quickAccessCatalog.filter((item) => item.slot_type === 'route' && item.write_mode === writeMode);
+  const slotQuickAccessCatalog = quickAccessCatalog.filter((item) => item.slot_type !== 'route');
+  const taskSpec = readJson(pluginPath(getGraphWriteBaseTemplatePathForWriteMode(writeMode))) as Record<string, unknown>;
+  const behaviorEntries = getGraphWriteAppendEntriesTarget(taskSpec);
+  behaviorEntries.length = 0;
+
+  entries.forEach((entry, entryIndex) => {
+    const routeItem = routeItems.find((item) => item.template_id === entry.routeExpression.templateId);
+    if (!routeItem) {
+      diagnostics.push(entryDiagnostic(input, entry, entryIndex, {
+        code: 'entry_route_unknown',
+        template_id: entry.routeExpression.templateId,
+        message: `Unknown GraphWrite entry route template: ${entry.routeExpression.templateId}`,
+      }));
+      return;
+    }
+    if (entry.bodyExpressions.length === 0) {
+      diagnostics.push(entryDiagnostic(input, entry, entryIndex, {
+        code: 'entry_body_statement_required',
+        template_id: entry.routeExpression.templateId,
+        message: 'GraphWrite entry route requires at least one body statement.',
+      }));
+      return;
+    }
+
+    const routeSpec = readJson(pluginPath(routeItem.template_path)) as Record<string, unknown>;
+    applyRouteSpecificDefaults(routeSpec, routeItem.source_slot_id);
+    clearInsertTargets(routeSpec, routeItem.insert_paths);
+    for (let statementIndex = 0; statementIndex < entry.bodyExpressions.length; statementIndex += 1) {
+      const expression = entry.bodyExpressions[statementIndex] ?? '';
+      const composed = composeSlotExpressionTemplate({
+        expression,
+        writeMode,
+        quickAccessCatalog: slotQuickAccessCatalog,
+      });
+      if (!composed.ok) {
+        diagnostics.push(...composed.diagnostics.map((diagnostic) => entryDiagnostic(input, entry, entryIndex, {
+          ...diagnostic,
+          line: entry.bodySourceLines[statementIndex],
+        })));
+        continue;
+      }
+      for (const insertPath of routeItem.insert_paths) {
+        insertTemplateFragment(routeSpec, insertPath, composed.value);
+      }
+    }
+    behaviorEntries.push(...extractGraphWriteAppendEntries(routeSpec));
+  });
+
+  if (diagnostics.length > 0) {
+    return failed(input, diagnostics);
+  }
+  writeJson(input.outputPath, taskSpec);
+  return ok(input, taskSpec, { family: 'graph_write', writeMode });
+}
+
+function hasGraphWriteEntryComposeInput(input: ComposeTaskSpecTemplateInput): boolean {
+  return typeof input.entries === 'string' || typeof input.entriesFileText === 'string';
 }
 
 function composeGraphWriteRouteTaskSpecTemplate(
@@ -507,6 +629,32 @@ function getGraphWriteStatementTarget(taskSpec: Record<string, unknown>, writeMo
   return requireArray(behavior['patches'], 'behavior.patches');
 }
 
+function getGraphWriteAppendEntriesTarget(taskSpec: Record<string, unknown>): unknown[] {
+  const behavior = requireRecord(taskSpec['behavior'], 'behavior');
+  return requireArray(behavior['entries'], 'behavior.entries');
+}
+
+function extractGraphWriteAppendEntries(taskSpec: Record<string, unknown>): unknown[] {
+  return [...getGraphWriteAppendEntriesTarget(taskSpec)];
+}
+
+function entryDiagnostic(
+  input: ComposeTaskSpecTemplateInput,
+  entry: GraphWriteEntryComposeItem,
+  entryIndex: number,
+  diagnostic: TaskSpecTemplateDiagnostic,
+): TaskSpecTemplateDiagnostic {
+  return {
+    ...diagnostic,
+    family: input.family,
+    write_mode: input.writeMode,
+    entry_index: entryIndex,
+    ...(entry.label ? { entry_label: entry.label } : {}),
+    ...(diagnostic.line !== undefined ? { line: diagnostic.line } : entry.source.line !== undefined ? { line: entry.source.line } : {}),
+    ...(diagnostic.column !== undefined ? { column: diagnostic.column } : entry.source.column !== undefined ? { column: entry.source.column } : {}),
+  };
+}
+
 function ok(
   input: ComposeTaskSpecTemplateInput,
   taskSpec: unknown,
@@ -789,6 +937,6 @@ function taskSpecTemplateIndexGuidance(message: string): string {
     'bh tools templates families --workflow preview_execute --format json',
     'follow family.navigation.levels from the families output',
     'non-GraphWrite compose: bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json',
-    'GraphWrite compose: bh tools templates compose --family graph_write --write-mode <mode> --templates <slot_expr[,slot_expr...]> --out <task-spec.json> --format json',
+    'GraphWrite compose: bh tools templates compose --family graph_write --write-mode <mode> (--templates <slot_expr[,slot_expr...]> | --entries <entry_expr[;entry_expr...]> | --entries-file <entries.bhgw>) --out <task-spec.json> --format json',
   ].join(' ');
 }

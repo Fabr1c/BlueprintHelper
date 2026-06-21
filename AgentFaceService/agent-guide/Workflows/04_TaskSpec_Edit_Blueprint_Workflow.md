@@ -45,6 +45,8 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp/taskspec-template-composer/graph_append.taskspec.json --format json
 ```
 
+For GraphWrite, compose single-root statements or route bodies with `--templates`. For multiple append entries such as several custom events, use `--entries-file <entries.bhgw>`; keep body lines as quick-access slot expressions discovered from `bh tools templates quick-access`.
+
 TaskSpec structure must be composed before placeholder edits. Only replace `__REQUIRED_*__` placeholders, fill evidence/target/selector/literal/user-intent values required by the scaffold, and keep the generated root object as `BlueprintHelper.TaskSpec.v1`. Full handwritten TaskSpec JSON is a fallback only when discovery or compose fails or when the capability is not represented by the supported template system. When fallback is used, record the failed discovery/compose command, diagnostics, historical shape source, and preview/execute/readback result in Debug or the task report.
 
 ReadSpec JSON may remain handwritten when the stable ReadSpec schema is enough. Do not treat handwritten ReadSpec files as TaskSpec composer failures.

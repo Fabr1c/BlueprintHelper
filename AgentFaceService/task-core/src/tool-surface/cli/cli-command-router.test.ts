@@ -124,6 +124,40 @@ test('routes template compose subcommands through the top-level CLI command desc
   assert.equal(leaf.command.templateId, 'asset_factory.asset.create_blueprint');
   assert.equal(leaf.command.outputPath, 'asset.taskspec.json');
   assert.deepEqual(leaf.command.templateIds, []);
+
+  const entries = routeCliCommand({
+    positionals: ['tools', 'templates', 'compose'],
+    options: {
+      family: 'graph_write',
+      writeMode: 'graph.append',
+      entries: 'generic_ops.entry.custom_event(generic_ops.call.direct)',
+      out: 'entries.taskspec.json',
+    },
+    base,
+  });
+
+  assert.equal(entries.ok, true);
+  assert.equal(entries.command.kind, 'tools.templates.compose');
+  assert.equal(entries.command.family, 'graph_write');
+  assert.equal(entries.command.writeMode, 'graph.append');
+  assert.equal(entries.command.entries, 'generic_ops.entry.custom_event(generic_ops.call.direct)');
+  assert.equal(entries.command.outputPath, 'entries.taskspec.json');
+
+  const entriesFile = routeCliCommand({
+    positionals: ['tools', 'templates', 'compose'],
+    options: {
+      family: 'graph_write',
+      writeMode: 'graph.append',
+      entriesFile: 'multi-entry.bhgw',
+      out: 'entries-file.taskspec.json',
+    },
+    base,
+  });
+
+  assert.equal(entriesFile.ok, true);
+  assert.equal(entriesFile.command.kind, 'tools.templates.compose');
+  assert.equal(entriesFile.command.entriesFile, 'multi-entry.bhgw');
+  assert.equal(entriesFile.command.outputPath, 'entries-file.taskspec.json');
 });
 
 test('subcommand CLI positionals and template index commands come from group descriptors', () => {

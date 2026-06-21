@@ -36,6 +36,10 @@ export interface TaskSpecTemplateDiagnostic {
   operation_id?: string;
   template_id?: string;
   path?: string;
+  entry_index?: number;
+  entry_label?: string;
+  line?: number;
+  column?: number;
   safe_next_action?: string;
   suggested_route?: string;
   message?: string;
@@ -148,6 +152,8 @@ export interface ComposeTaskSpecTemplateInput {
   writeMode?: TaskSpecTemplateWriteMode | string;
   templateIds?: string[];
   templateId?: string;
+  entries?: string;
+  entriesFileText?: string;
   outputPath: string;
 }
 

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import {
   composeReadContextTemplate,
   composeTaskSpecTemplate,
@@ -115,6 +116,9 @@ const TOOLS_COMMAND_EXECUTORS: readonly ToolsCommandExecutor[] = [
     kinds: ['tools.templates.compose'],
     run: (command) => {
       const outputPath = required(command.outputPath, 'Missing template output path.');
+      const entriesFileText = command.entriesFile
+        ? fs.readFileSync(command.entriesFile, 'utf8')
+        : undefined;
       if (command.templateId) {
         return composeTaskSpecTemplate({
           templateId: command.templateId,
@@ -125,6 +129,8 @@ const TOOLS_COMMAND_EXECUTORS: readonly ToolsCommandExecutor[] = [
         family: required(command.family, 'Missing template family.'),
         writeMode: command.writeMode,
         templateIds: command.templateIds ?? [],
+        entries: command.entries,
+        entriesFileText,
         outputPath,
       }) as unknown as Record<string, unknown>;
     },

@@ -96,8 +96,15 @@ const TASKSPEC_TEMPLATE_SUBCOMMANDS: readonly CliSubcommandDefinition[] = [
   {
     subcommand: 'compose',
     kind: 'tools.templates.compose',
-    usage: 'bh tools templates compose (--template <leaf_template_id> | --family graph_write --write-mode <mode> --templates <slot_expr[,slot_expr...]>) --out <task-spec.json> --format json',
-    option_map: { family: 'family', writeMode: 'writeMode', templateId: 'template', outputPath: 'out' },
+    usage: 'bh tools templates compose (--template <leaf_template_id> | --family graph_write --write-mode <mode> (--templates <slot_expr[,slot_expr...]> | --entries <entry_expr[;entry_expr...]> | --entries-file <entries.bhgw>)) --out <task-spec.json> --format json',
+    option_map: {
+      family: 'family',
+      writeMode: 'writeMode',
+      templateId: 'template',
+      entries: 'entries',
+      entriesFile: 'entriesFile',
+      outputPath: 'out',
+    },
     array_option_map: { templateIds: 'templates' },
   },
 ];

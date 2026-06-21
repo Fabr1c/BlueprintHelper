@@ -74,7 +74,25 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
 ```
 
+For GraphWrite, compose single-root statements or route bodies with `--templates`. For multiple append entries such as several custom events, use `--entries-file <entries.bhgw>`; keep body lines as quick-access slot expressions discovered from `bh tools templates quick-access`.
+
 For GraphWrite, use `quick-access.items[].slot_type` to choose roots: `statement` templates can be used as top-level `--templates` entries, while `expression` templates must be nested inside an input slot. Use `quick-access.items[].arg_slots` as the positional argument order for `template_id(...)`. Use `0` only as a skip placeholder, not as numeric data.
+
+For repeated append entries, prefer a small entries file:
+
+```text
+entry route=generic_ops.entry.custom_event label=fire
+  generic_ops.call.direct
+
+entry route=generic_ops.entry.custom_event
+  generic_ops.call.direct
+```
+
+Then compose:
+
+```powershell
+bh tools templates compose --family graph_write --write-mode graph.append --entries-file .tmp\multi-entry.bhgw --out .tmp\multi-entry.taskspec.json --format json
+```
 
 Non-GraphWrite families expose leaf template ids through their own navigation levels and compose directly from the leaf:
 

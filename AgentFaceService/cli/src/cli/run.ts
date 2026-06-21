@@ -142,7 +142,8 @@ const CLI_COMMAND_EXECUTORS: readonly CliCommandExecutor[] = [
     id: 'tools.registry',
     kinds: commandKindsForExecutor('tools.registry'),
     execute: async ({ runtime, command, timing }) => {
-      const hydratedCommand = await hydrateRuntimeCapabilityStateForCommand(runtime, command, timing, {
+      const commandWithPaths = resolveToolsCommandFilePaths(runtime.cwd, command);
+      const hydratedCommand = await hydrateRuntimeCapabilityStateForCommand(runtime, commandWithPaths, timing, {
         allowBridgeUnavailable: true,
       });
       const output = shapeCliOutput(runToolsCommand(hydratedCommand), hydratedCommand.fields, hydratedCommand.omitFields);
@@ -389,6 +390,16 @@ function writeCliCommandError(
 
 function resolveCliCommandExecutor(command: CliCommand): CliCommandExecutor | undefined {
   return resolveCliCommandExecutorDescriptor(CLI_COMMAND_EXECUTORS, command.kind);
+}
+
+function resolveToolsCommandFilePaths(cwd: string, command: CliCommand): CliCommand {
+  if (command.kind !== 'tools.templates.compose' || !command.entriesFile || path.isAbsolute(command.entriesFile)) {
+    return command;
+  }
+  return {
+    ...command,
+    entriesFile: path.resolve(cwd, command.entriesFile),
+  };
 }
 
 function writeTimedCliResult(
@@ -701,6 +712,8 @@ function parseArgs(argv: string[]): ParseResult {
     operation?: string;
     template?: string;
     templates?: string[];
+    entries?: string;
+    entriesFile?: string;
     out?: string;
     compileOnly?: boolean;
   } = {};
@@ -767,6 +780,10 @@ function parseArgs(argv: string[]): ParseResult {
       options.template = readOptionValue(argv, ++index, arg);
     } else if (arg === '--templates') {
       options.templates = splitTopLevelSlotExpressions(readOptionValue(argv, ++index, arg));
+    } else if (arg === '--entries') {
+      options.entries = readOptionValue(argv, ++index, arg);
+    } else if (arg === '--entries-file') {
+      options.entriesFile = readOptionValue(argv, ++index, arg);
     } else if (arg === '--out') {
       options.out = readOptionValue(argv, ++index, arg);
     } else if (arg === '--compile-only') {
@@ -950,6 +967,8 @@ function parseHelpTarget(argv: string[]): string[] {
     '--operation',
     '--template',
     '--templates',
+    '--entries',
+    '--entries-file',
     '--out',
     '--select',
     '--limit',

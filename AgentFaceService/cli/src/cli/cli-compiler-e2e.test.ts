@@ -309,6 +309,51 @@ test('CLI tools templates composer output is descriptor-backed and does not cont
   assert.equal(taskSpec.behavior.entries[0]?.body.statements[0]?.value.kind, 'literal');
 });
 
+test('CLI tools templates composer supports entries-file without Bridge access', async (t) => {
+  const workspace = await createTempDir(t, 'bph-cli-e2e-templates-entries-file-');
+  const stdout: string[] = [];
+  const entriesPath = path.join(workspace, 'multi-entry.bhgw');
+  const outputPath = path.join(workspace, 'graph-append-from-file.taskspec.json');
+
+  await writeFile(entriesPath, [
+    'entry route=generic_ops.entry.custom_event label=first',
+    '  generic_ops.call.direct',
+    '',
+    'entry route=generic_ops.entry.custom_event label=second',
+    '  generic_ops.call.direct',
+  ].join('\n'));
+
+  const exitCode = await runCli({
+    argv: [
+      'tools',
+      'templates',
+      'compose',
+      '--family',
+      'graph_write',
+      '--write-mode',
+      'graph.append',
+      '--entries-file',
+      path.basename(entriesPath),
+      '--out',
+      outputPath,
+      '--format',
+      'json',
+    ],
+    cwd: workspace,
+    bridge: createFailingBridge(),
+    stdout: (text) => stdout.push(text),
+    stderr: () => {},
+  });
+  const output = JSON.parse(stdout.join('')) as Record<string, unknown>;
+  const taskSpec = JSON.parse(await readFile(outputPath, 'utf8')) as {
+    behavior: { entries: Array<unknown> };
+  };
+
+  assert.equal(exitCode, 0);
+  assert.equal(output.status, 'ok');
+  assert.equal(taskSpec.behavior.entries.length, 2);
+});
+
 test('CLI read-template composer output is descriptor-backed and does not contact Bridge', async (t) => {
   const workspace = await createTempDir(t, 'bph-cli-e2e-read-templates-');
   const stdout: string[] = [];

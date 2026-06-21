@@ -207,6 +207,8 @@ bh tools templates quick-access --family graph_write --cluster generic_ops --ope
 bh tools templates compose --family graph_write --write-mode graph.append --templates "generic_ops.let.default(generic_ops.expression.literal)" --out .tmp\taskspec-template-composer\graph_append.taskspec.json --format json
 ```
 
+For GraphWrite, compose single-root statements or route bodies with `--templates`. For multiple append entries such as several custom events, use `--entries-file <entries.bhgw>`; keep body lines as quick-access slot expressions discovered from `bh tools templates quick-access`.
+
 Do not use old tool-id template dispatch or scan template directories to choose TaskSpec files. For GraphWrite, use `quick-access.items[].slot_type` to keep expression templates nested and `quick-access.items[].arg_slots` to fill `template_id(...)` positions. For non-GraphWrite families, compose from the discovered leaf template id with `bh tools templates compose --template <leaf_template_id> --out <task-spec.json> --format json`. Fill the generated TaskSpec with evidence from ReadContext, then preview and execute that generated file.
 
 ## 8. Safe Write Checklist

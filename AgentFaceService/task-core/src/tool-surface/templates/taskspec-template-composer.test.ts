@@ -156,6 +156,164 @@ test('TaskSpec template composer writes GraphWrite append TaskSpec without inser
   assert.equal(Object.hasOwn(taskSpec, 'validation'), false);
 });
 
+test('TaskSpec template composer writes GraphWrite append multi-entry inline route roots', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const outputPath = path.join(outDir, 'multi-entry-inline.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entries: 'fire:generic_ops.entry.custom_event(generic_ops.call.direct,generic_ops.call.direct);generic_ops.entry.custom_event(generic_ops.call.direct)',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok', JSON.stringify(result));
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<{ kind: string }> } }> };
+  };
+  assert.equal(taskSpec.behavior.entries.length, 2);
+  assert.deepEqual(taskSpec.behavior.entries[0]?.body.statements.map((statement) => statement.kind), ['call', 'call']);
+  assert.deepEqual(taskSpec.behavior.entries[1]?.body.statements.map((statement) => statement.kind), ['call']);
+  assert.equal(
+    result.required_placeholders.some((item) => item.path === 'behavior.entries[1].name'),
+    true,
+  );
+});
+
+test('TaskSpec template composer writes GraphWrite append multi-entry DSL file text', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'multi-entry-file.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entriesFileText: [
+      '# two generated events',
+      'entry route=generic_ops.entry.custom_event label=fire',
+      '  generic_ops.call.direct',
+      '  generic_ops.call.direct',
+      '',
+      'entry route=generic_ops.entry.custom_event',
+      '  generic_ops.call.direct',
+    ].join('\n'),
+    outputPath,
+  });
+
+  assert.equal(result.status, 'ok', JSON.stringify(result));
+  const taskSpec = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as {
+    behavior: { entries: Array<{ body: { statements: Array<{ kind: string }> } }> };
+  };
+  assert.equal(taskSpec.behavior.entries.length, 2);
+  assert.deepEqual(taskSpec.behavior.entries.map((entry) => entry.body.statements.length), [2, 1]);
+});
+
+test('TaskSpec template composer rejects mixed templates and entries compose inputs', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'mixed-entries.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    templateIds: ['generic_ops.call.direct'],
+    entries: 'generic_ops.entry.custom_event(generic_ops.call.direct)',
+    outputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'entries_compose_mode_conflict');
+  assert.equal(fs.existsSync(outputPath), false);
+});
+
+test('TaskSpec template composer rejects entries outside GraphWrite append', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+
+  const nonGraphWrite = composeTaskSpecTemplate({
+    family: 'asset_factory',
+    entries: 'generic_ops.entry.custom_event(generic_ops.call.direct)',
+    outputPath: path.join(outDir, 'asset.taskspec.json'),
+  });
+  assert.equal(nonGraphWrite.status, 'failed');
+  assert.equal(nonGraphWrite.diagnostics[0]?.code, 'entries_only_supported_for_graph_write');
+
+  const merge = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.merge',
+    entries: 'generic_ops.entry.custom_event(generic_ops.call.direct)',
+    outputPath: path.join(outDir, 'merge.taskspec.json'),
+  });
+  assert.equal(merge.status, 'failed');
+  assert.equal(merge.diagnostics[0]?.code, 'entries_only_supported_for_graph_append');
+});
+
+test('TaskSpec template composer reports entry metadata for body composition errors', () => {
+  const outputPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-')),
+    'bad-body.taskspec.json',
+  );
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entriesFileText: [
+      'entry route=generic_ops.entry.custom_event label=fire',
+      '  generic_ops.call.missing',
+    ].join('\n'),
+    outputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'unknown_quick_access_template');
+  assert.equal(result.diagnostics[0]?.entry_index, 0);
+  assert.equal(result.diagnostics[0]?.entry_label, 'fire');
+  assert.equal(result.diagnostics[0]?.line, 2);
+});
+
+test('TaskSpec template composer rejects empty GraphWrite entries-file text', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
+  const commentsOnlyOutputPath = path.join(outDir, 'comments-only-entries.taskspec.json');
+
+  const result = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entriesFileText: [
+      '# no entries here',
+      '',
+      '# still no entries',
+    ].join('\n'),
+    outputPath: commentsOnlyOutputPath,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0]?.code, 'entries_required');
+  assert.equal(fs.existsSync(commentsOnlyOutputPath), false);
+
+  const emptyFileTextOutputPath = path.join(outDir, 'empty-file-text.taskspec.json');
+  const emptyFileText = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entriesFileText: '',
+    outputPath: emptyFileTextOutputPath,
+  });
+  assert.equal(emptyFileText.status, 'failed');
+  assert.equal(emptyFileText.diagnostics[0]?.code, 'entries_required');
+  assert.equal(fs.existsSync(emptyFileTextOutputPath), false);
+
+  const whitespaceInlineOutputPath = path.join(outDir, 'whitespace-inline.taskspec.json');
+  const whitespaceInline = composeTaskSpecTemplate({
+    family: 'graph_write',
+    writeMode: 'graph.append',
+    entries: '   ',
+    outputPath: whitespaceInlineOutputPath,
+  });
+  assert.equal(whitespaceInline.status, 'failed');
+  assert.equal(whitespaceInline.diagnostics[0]?.code, 'entries_required');
+  assert.equal(fs.existsSync(whitespaceInlineOutputPath), false);
+});
+
 test('TaskSpec template composer writes replace_external_body route without Agent-facing internal policy fields', () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-template-composer-'));
   const outputPath = path.join(outDir, 'replace-external-body.taskspec.json');

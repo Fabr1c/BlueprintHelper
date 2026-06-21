@@ -276,6 +276,25 @@ test('runCli exposes GraphWrite TaskSpec template navigation and compose output'
   );
   assert.equal('inserted_slots' in composed.output, false);
   assert.equal(JSON.parse(await fs.readFile(outputPath, 'utf8')).behavior.entries[0].body.statements.length, 1);
+
+  const entriesOutputPath = path.join(outDir, 'graph-append-entries.taskspec.json');
+  const entriesComposed = await runCliJson([
+    'tools',
+    'templates',
+    'compose',
+    '--family',
+    'graph_write',
+    '--write-mode',
+    'graph.append',
+    '--entries',
+    'generic_ops.entry.custom_event(generic_ops.call.direct,generic_ops.call.direct);generic_ops.entry.custom_event(generic_ops.call.direct)',
+    '--out',
+    entriesOutputPath,
+    '--format',
+    'json',
+  ]);
+  assert.equal(entriesComposed.output.status, 'ok');
+  assert.equal(JSON.parse(await fs.readFile(entriesOutputPath, 'utf8')).behavior.entries.length, 2);
 });
 
 test('runCli exposes asset_factory family-defined navigation and leaf compose', async (t) => {

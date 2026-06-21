@@ -119,6 +119,8 @@ export interface CliCommand {
   operation?: string;
   templateIds?: string[];
   templateId?: string;
+  entries?: string;
+  entriesFile?: string;
   outputPath?: string;
   requiresBridge?: boolean;
   risks?: string[];

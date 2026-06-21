@@ -122,6 +122,8 @@ test('global help includes ReadContext template navigation', () => {
 
   assert.match(help, /bh tools read-templates families --format json/);
   assert.match(help, /bh tools read-templates compose --template <template_id>/);
+  assert.match(help, /--entries <entry_expr\[;entry_expr\.\.\.\]>/);
+  assert.match(help, /--entries-file <entries\.bhgw>/);
   assert.match(help, /bh context read \(\--file <read-spec\.json> \| --json <json> \| --stdin\)/);
   assert.match(help, /Use global MCP lifecycle tools/);
   assert.match(help, /mcp__blueprint_helper__blueprint_open_editor/);
