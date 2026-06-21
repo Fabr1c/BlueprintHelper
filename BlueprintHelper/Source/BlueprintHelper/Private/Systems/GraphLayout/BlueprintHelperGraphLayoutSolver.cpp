@@ -1,11 +1,15 @@
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutArrangeScopePolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutClassifier.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutDataInputPlacement.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutExecPinAnchor.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutGroupAvoidancePolicy.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutLayeredComponentPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutNodeInputClusterPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutOccupancyResolver.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutPriorityCollisionResolver.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutQualityGate.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRowAllocationPolicy.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutTopology.h"
 
@@ -16,7 +20,9 @@ struct FWorkingNode
 	const FNodeSnapshot* Snapshot = nullptr;
 	ENodeRole Role = ENodeRole::Unknown;
 	FVector2D Target = FVector2D::ZeroVector;
+	FVector2D PreferredTarget = FVector2D::ZeroVector;
 	bool bHasTarget = false;
+	bool bHasPreferredTarget = false;
 	bool bPinnedToCurrentPosition = false;
 	int32 SemanticRow = INDEX_NONE;
 	int32 ExecColumn = INDEX_NONE;
@@ -294,13 +300,17 @@ static void SetTarget(
 			if (Node->Snapshot && !Node->bHasTarget)
 			{
 				Node->Target = Node->Snapshot->Position;
+				Node->PreferredTarget = Node->Snapshot->Position;
 				Node->bHasTarget = true;
+				Node->bHasPreferredTarget = true;
 				Node->Reason = TEXT("existing_node_static_anchor");
 			}
 			return;
 		}
 
 		const FVector2D Size = Node->Snapshot ? Node->Snapshot->Size : FVector2D(180.0f, 80.0f);
+		Node->PreferredTarget = DesiredTarget;
+		Node->bHasPreferredTarget = true;
 		const FVector2D Target = ResolveTargetWithPolicy(
 			Occupancy,
 			NodeId,
@@ -317,17 +327,42 @@ static void SetTarget(
 	}
 }
 
-static void ReserveImmovableExistingNodes(
+static void ReserveImmovableScopeNodes(
 	const FGraphSnapshot& Snapshot,
-	const FRuleSet& RuleSet,
+	const FGraphLayoutArrangeScope& ArrangeScope,
 	FOccupancyResolver& Occupancy)
 {
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
-		if (Node.bExisting && !RuleSet.bMoveExistingNodes)
+		if (!ArrangeScope.ToArrangeNodeIds.Contains(Node.NodeId))
 		{
 			Occupancy.ReserveExistingNode(Node);
 		}
+	}
+}
+
+static bool IsLayeredSeedReason(const FString& Reason)
+{
+	return Reason == TEXT("layered_component");
+}
+
+static void SeedLayeredTargets(
+	TMap<FString, FWorkingNode>& Nodes,
+	const FGraphLayoutLayeredResult& LayeredResult)
+{
+	for (const FGraphLayoutLayeredPlacement& LayeredPlacement : LayeredResult.Placements)
+	{
+		FWorkingNode* Node = Nodes.Find(LayeredPlacement.NodeId);
+		if (!Node || Node->bPinnedToCurrentPosition)
+		{
+			continue;
+		}
+
+		Node->Target = LayeredPlacement.TargetPosition;
+		Node->PreferredTarget = LayeredPlacement.TargetPosition;
+		Node->bHasTarget = true;
+		Node->bHasPreferredTarget = true;
+		Node->Reason = TEXT("layered_component");
 	}
 }
 
@@ -454,7 +489,8 @@ static bool AlignInputsToConsumerPinOrder(
 					continue;
 				}
 
-				if (FDataInputPlacement::IsDataInputRole(SourceNode->Role) && !SourceNode->bHasTarget)
+				if (FDataInputPlacement::IsDataInputRole(SourceNode->Role) &&
+					(!SourceNode->bHasTarget || IsLayeredSeedReason(SourceNode->Reason)))
 				{
 					const int32 PlacementOrder =
 						SourceNode->Role == ENodeRole::VariableInput && !RuleSet.bUseTargetPinOrderForVariableInputs
@@ -686,7 +722,9 @@ static bool PlaceInputClusters(
 		for (const FString& ClusterNodeId : ClusterNodeIds)
 		{
 			FWorkingNode* ClusterNode = Nodes.Find(ClusterNodeId);
-			if (!ClusterNode || !ClusterNode->Snapshot || ClusterNode->bHasTarget)
+			if (!ClusterNode ||
+				!ClusterNode->Snapshot ||
+				(ClusterNode->bHasTarget && !IsLayeredSeedReason(ClusterNode->Reason)))
 			{
 				continue;
 			}
@@ -728,10 +766,14 @@ static TArray<FGraphLayoutGroupNode> BuildGroupAvoidanceNodes(
 			continue;
 		}
 
-		FGraphLayoutGroupNode& GroupNode = GroupNodes.AddDefaulted_GetRef();
 		const bool bPinnedExistingNode = Node->bPinnedToCurrentPosition;
+		if (bPinnedExistingNode && SnapshotNode.LayoutBlockId.IsEmpty())
+		{
+			continue;
+		}
+		FGraphLayoutGroupNode& GroupNode = GroupNodes.AddDefaulted_GetRef();
 		GroupNode.NodeId = SnapshotNode.NodeId;
-		GroupNode.LayoutGroupId = bPinnedExistingNode ? FString() : Node->LayoutGroupId;
+		GroupNode.LayoutGroupId = bPinnedExistingNode ? SnapshotNode.LayoutBlockId : Node->LayoutGroupId;
 		GroupNode.LayoutGroupOrder = SnapshotNode.LayoutBlockOrder;
 		GroupNode.NodeOrder = SnapshotNode.LayoutNodeOrder != INDEX_NONE
 			? SnapshotNode.LayoutNodeOrder
@@ -768,9 +810,154 @@ static void ApplyGroupOffsets(
 		}
 
 		Node.Target += Offset->Offset;
+		if (Node.bHasPreferredTarget)
+		{
+			Node.PreferredTarget += Offset->Offset;
+		}
 		Node.Reason = Node.Reason.IsEmpty()
 			? Offset->Reason
 			: FString::Printf(TEXT("%s|%s"), *Node.Reason, *Offset->Reason);
+	}
+}
+
+static float ResolveRoleCollisionPriority(const ENodeRole Role)
+{
+	switch (Role)
+	{
+	case ENodeRole::EventEntry:
+		return 100.0f;
+	case ENodeRole::ExecNode:
+	case ENodeRole::BranchControl:
+		return 90.0f;
+	case ENodeRole::AsyncNode:
+	case ENodeRole::DelegateNode:
+		return 85.0f;
+	case ENodeRole::PureFunction:
+		return 60.0f;
+	case ENodeRole::OperatorOrCompare:
+		return 55.0f;
+	case ENodeRole::VariableInput:
+		return 50.0f;
+	case ENodeRole::Comment:
+		return 10.0f;
+	default:
+		return 0.0f;
+	}
+}
+
+static TMap<FString, float> BuildCollisionPriorities(
+	const FGraphSnapshot& Snapshot,
+	const TMap<FString, FWorkingNode>& Nodes,
+	const TMap<FString, int32>& SnapshotOrderByNodeId)
+{
+	TMap<FString, float> PrioritiesByNodeId;
+	for (const FNodeSnapshot& SnapshotNode : Snapshot.Nodes)
+	{
+		const FWorkingNode* Node = Nodes.Find(SnapshotNode.NodeId);
+		float Priority = ResolveRoleCollisionPriority(Node ? Node->Role : ENodeRole::Unknown);
+		if (SnapshotNode.LayoutBlockOrder != INDEX_NONE)
+		{
+			Priority += 1.0f / static_cast<float>(SnapshotNode.LayoutBlockOrder + 2);
+		}
+		if (SnapshotNode.LayoutNodeOrder != INDEX_NONE)
+		{
+			Priority += 0.01f / static_cast<float>(SnapshotNode.LayoutNodeOrder + 2);
+		}
+		Priority -= static_cast<float>(SnapshotOrderByNodeId.FindRef(SnapshotNode.NodeId)) * 0.0001f;
+		PrioritiesByNodeId.Add(SnapshotNode.NodeId, Priority);
+	}
+
+	for (int32 PassIndex = 0; PassIndex < Snapshot.Nodes.Num(); ++PassIndex)
+	{
+		bool bChanged = false;
+		for (const FNodeSnapshot& SourceNode : Snapshot.Nodes)
+		{
+			for (const FPinSnapshot& Pin : SourceNode.Pins)
+			{
+				if (Pin.Direction != EPinDirection::Output || Pin.bExec)
+				{
+					continue;
+				}
+
+				for (const FString& TargetNodeId : Pin.LinkedNodeIds)
+				{
+					const float TargetPriority = PrioritiesByNodeId.FindRef(TargetNodeId);
+					const float CandidatePriority = TargetPriority - 0.1f;
+					float& SourcePriority = PrioritiesByNodeId.FindOrAdd(SourceNode.NodeId);
+					if (CandidatePriority > SourcePriority + KINDA_SMALL_NUMBER)
+					{
+						SourcePriority = CandidatePriority;
+						bChanged = true;
+					}
+				}
+			}
+		}
+
+		if (!bChanged)
+		{
+			break;
+		}
+	}
+
+	return PrioritiesByNodeId;
+}
+
+static TArray<FGraphLayoutCollisionNode> BuildPriorityCollisionNodes(
+	const FGraphSnapshot& Snapshot,
+	const TMap<FString, FWorkingNode>& Nodes,
+	const FGraphLayoutArrangeScope& ArrangeScope,
+	const TMap<FString, int32>& SnapshotOrderByNodeId)
+{
+	const TMap<FString, float> PrioritiesByNodeId =
+		BuildCollisionPriorities(Snapshot, Nodes, SnapshotOrderByNodeId);
+
+	TArray<FGraphLayoutCollisionNode> CollisionNodes;
+	CollisionNodes.Reserve(Snapshot.Nodes.Num());
+	for (const FNodeSnapshot& SnapshotNode : Snapshot.Nodes)
+	{
+		const FWorkingNode* Node = Nodes.Find(SnapshotNode.NodeId);
+		FGraphLayoutCollisionNode& CollisionNode = CollisionNodes.AddDefaulted_GetRef();
+		CollisionNode.NodeId = SnapshotNode.NodeId;
+		CollisionNode.LayoutGroupId = Node ? Node->LayoutGroupId : SnapshotNode.LayoutBlockId;
+		CollisionNode.Role = Node ? Node->Role : ENodeRole::Unknown;
+		CollisionNode.Position = Node && Node->bHasTarget
+			? Node->Target
+			: (Node && Node->bHasPreferredTarget ? Node->PreferredTarget : SnapshotNode.Position);
+		CollisionNode.Size = SnapshotNode.Size;
+		CollisionNode.Priority = PrioritiesByNodeId.FindRef(SnapshotNode.NodeId);
+		CollisionNode.bMovable = ArrangeScope.ToArrangeNodeIds.Contains(SnapshotNode.NodeId);
+		CollisionNode.StableOrder = SnapshotOrderByNodeId.FindRef(SnapshotNode.NodeId);
+	}
+	return CollisionNodes;
+}
+
+static void ApplyPriorityCollisionPositions(
+	TMap<FString, FWorkingNode>& Nodes,
+	const TMap<FString, FVector2D>& ResolvedPositions,
+	const FGraphLayoutArrangeScope& ArrangeScope)
+{
+	for (TPair<FString, FWorkingNode>& Pair : Nodes)
+	{
+		if (!ArrangeScope.ToArrangeNodeIds.Contains(Pair.Key))
+		{
+			continue;
+		}
+
+		FWorkingNode& Node = Pair.Value;
+		const FVector2D* ResolvedPosition = ResolvedPositions.Find(Pair.Key);
+		if (!ResolvedPosition)
+		{
+			continue;
+		}
+
+		if (!Node.bHasTarget || !Node.Target.Equals(*ResolvedPosition))
+		{
+			Node.Target = *ResolvedPosition;
+			Node.bHasTarget = true;
+			Node.Reason = Node.Reason.IsEmpty()
+				? TEXT("priority_collision_resolved")
+				: FString::Printf(TEXT("%s|priority_collision_resolved"), *Node.Reason);
+		}
 	}
 }
 
@@ -779,6 +966,10 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 	FLayoutPlan Plan;
 	Plan.Classifications = FClassifier::ClassifyGraph(Snapshot, RuleSet);
 	const FGraphTopology Topology = FGraphLayoutTopology::Build(Snapshot);
+	const FGraphLayoutArrangeScope ArrangeScope =
+		FGraphLayoutArrangeScopePolicy::Build(Snapshot, Topology, RuleSet);
+	const FGraphLayoutLayeredResult LayeredResult =
+		FGraphLayoutLayeredComponentPolicy::Layout(Snapshot, Topology, ArrangeScope, RuleSet);
 
 	TMap<FString, ENodeRole> RolesById;
 	for (const FNodeClassification& Classification : Plan.Classifications)
@@ -800,26 +991,32 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		{
 			WorkingNode.LayoutGroupId = FallbackGeneratedGroupIds.FindRef(Node.NodeId);
 		}
-		WorkingNode.bPinnedToCurrentPosition = Node.bExisting && !RuleSet.bMoveExistingNodes;
+		WorkingNode.bPinnedToCurrentPosition = !ArrangeScope.ToArrangeNodeIds.Contains(Node.NodeId);
 		if (WorkingNode.bPinnedToCurrentPosition)
 		{
 			WorkingNode.Target = Node.Position;
+			WorkingNode.PreferredTarget = Node.Position;
 			WorkingNode.bHasTarget = true;
+			WorkingNode.bHasPreferredTarget = true;
 			WorkingNode.Reason = TEXT("existing_node_static_anchor");
 		}
 		Nodes.Add(Node.NodeId, WorkingNode);
 		SnapshotOrderByNodeId.Add(Node.NodeId, SnapshotOrderByNodeId.Num());
 	}
+	SeedLayeredTargets(Nodes, LayeredResult);
 
 	FOccupancyResolver ExecOccupancy(RuleSet);
-	ReserveImmovableExistingNodes(Snapshot, RuleSet, ExecOccupancy);
+	ReserveImmovableScopeNodes(Snapshot, ArrangeScope, ExecOccupancy);
 
 	TArray<FString> Roots;
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		const ENodeRole Role = RolesById.FindRef(Node.NodeId);
 		const int32 InputCount = Topology.CountExecInputs(Node.NodeId);
-		if (Role == ENodeRole::EventEntry || (IsExecRole(Role) && InputCount == 0))
+		const bool bParticipatesInLayout =
+			ArrangeScope.ToArrangeNodeIds.Contains(Node.NodeId) ||
+			ArrangeScope.AnchorNodeIds.Contains(Node.NodeId);
+		if (bParticipatesInLayout && (Role == ENodeRole::EventEntry || (IsExecRole(Role) && InputCount == 0)))
 		{
 			Roots.Add(Node.NodeId);
 		}
@@ -839,7 +1036,9 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		const ENodeRole Role = RolesById.FindRef(Node.NodeId);
-		if (IsExecRole(Role) && !VisitedExecNodes.Contains(Node.NodeId))
+		if (IsExecRole(Role) &&
+			ArrangeScope.ToArrangeNodeIds.Contains(Node.NodeId) &&
+			!VisitedExecNodes.Contains(Node.NodeId))
 		{
 			DetachedRoots.Add(Node.NodeId);
 		}
@@ -860,7 +1059,7 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		const TMap<int32, float> BaselinesByRow = BuildAllocatedRowBaselines(Snapshot, Topology, Nodes, RuleSet);
 
 		FOccupancyResolver PatternOccupancy(RuleSet);
-		ReserveImmovableExistingNodes(Snapshot, RuleSet, PatternOccupancy);
+		ReserveImmovableScopeNodes(Snapshot, ArrangeScope, PatternOccupancy);
 		ReflowExecTargetsToAllocatedRows(Snapshot, BaselinesByRow, Nodes, RuleSet, PatternOccupancy);
 
 		if (RuleSet.bUsePureDataSubgraphLayout)
@@ -899,6 +1098,13 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 			BuildGroupAvoidanceNodes(Snapshot, Nodes, SnapshotOrderByNodeId),
 			RuleSet));
 
+	ApplyPriorityCollisionPositions(
+		Nodes,
+		FGraphLayoutPriorityCollisionResolver::Resolve(
+			BuildPriorityCollisionNodes(Snapshot, Nodes, ArrangeScope, SnapshotOrderByNodeId),
+			RuleSet),
+		ArrangeScope);
+
 	for (const FNodeSnapshot& Node : Snapshot.Nodes)
 	{
 		const FWorkingNode* WorkingNode = Nodes.Find(Node.NodeId);
@@ -907,10 +1113,20 @@ FLayoutPlan FSolver::Solve(const FGraphSnapshot& Snapshot, const FRuleSet& RuleS
 		Placement.Role = WorkingNode ? WorkingNode->Role : ENodeRole::Unknown;
 		Placement.CurrentPosition = Node.Position;
 		Placement.TargetPosition = WorkingNode && WorkingNode->bHasTarget ? WorkingNode->Target : Node.Position;
-		Placement.bMoveExisting = (!Node.bExisting && RuleSet.bMoveGeneratedNodes) ||
-			(Node.bExisting && RuleSet.bMoveExistingNodes);
+		Placement.TargetSize = Node.Size;
+		Placement.bMoveExisting = ArrangeScope.ToArrangeNodeIds.Contains(Node.NodeId);
 		Placement.Reason = WorkingNode && WorkingNode->bHasTarget ? WorkingNode->Reason : TEXT("no_target_generated");
 		Plan.Placements.Add(Placement);
+	}
+
+	for (const FString& Issue : LayeredResult.Issues)
+	{
+		Plan.Issues.Add(FString::Printf(TEXT("layered_component: %s"), *Issue));
+	}
+	const FGraphLayoutQualityResult Quality = FGraphLayoutQualityGate::Evaluate(Snapshot, Plan, RuleSet);
+	for (const FGraphLayoutQualityIssue& Issue : Quality.Issues)
+	{
+		Plan.Issues.Add(FString::Printf(TEXT("%s: %s"), *Issue.Code, *Issue.Message));
 	}
 
 	return Plan;

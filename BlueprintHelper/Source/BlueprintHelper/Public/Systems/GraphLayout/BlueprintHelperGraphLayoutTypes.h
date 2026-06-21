@@ -85,6 +85,7 @@ struct FRuleSet
 	float CollisionPaddingX = 60.0f;
 	float CollisionPaddingY = 40.0f;
 	float CollisionStepY = 64.0f;
+	float OverlapToleranceRatio = 0.0f;
 	int32 MaxCollisionAttempts = 64;
 	bool bUseTargetPinOrderForVariableInputs = true;
 	bool bMoveGeneratedNodes = true;

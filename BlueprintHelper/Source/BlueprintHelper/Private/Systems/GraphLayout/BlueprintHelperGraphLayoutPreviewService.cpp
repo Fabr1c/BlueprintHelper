@@ -98,12 +98,6 @@ bool FGraphLayoutPreviewService::BuildPreviewData(
 	const FGraphSnapshot SolverSnapshot = FGraphLayoutPreviewSolverInput::BuildSolverSnapshot(OutResult.Sample);
 	OutResult.LayoutPlan = FSolver::Solve(SolverSnapshot, RuleSet);
 	FGraphLayoutPreviewOverlayProjector::AppendOverlays(OutResult.Sample, RuleSet, OutResult.LayoutPlan);
-	if (OutResult.LayoutPlan.Issues.Num() > 0)
-	{
-		OutResult.bSuccess = false;
-		OutResult.Error = FString::Join(OutResult.LayoutPlan.Issues, TEXT(" "));
-		return false;
-	}
 
 	if (OutResult.LayoutPlan.Placements.Num() == 0)
 	{

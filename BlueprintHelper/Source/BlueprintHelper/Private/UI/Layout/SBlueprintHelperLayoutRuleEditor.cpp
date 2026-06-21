@@ -65,6 +65,7 @@ namespace BlueprintHelperLayoutRuleEditorLocal
 		CollisionPaddingX,
 		CollisionPaddingY,
 		CollisionStepY,
+		OverlapToleranceRatio,
 		MaxMillisecondsPerFrame
 	};
 
@@ -297,6 +298,11 @@ void SBlueprintHelperLayoutRuleEditor::Construct(const FArguments& InArgs)
 	SettingsDataClusterPaddingX = DefaultRuleSet.DataClusterPaddingX;
 	SettingsDataClusterPaddingY = DefaultRuleSet.DataClusterPaddingY;
 	SettingsBranchRowPaddingY = DefaultRuleSet.BranchRowPaddingY;
+	SettingsCollisionPaddingX = DefaultRuleSet.CollisionPaddingX;
+	SettingsCollisionPaddingY = DefaultRuleSet.CollisionPaddingY;
+	SettingsCollisionStepY = DefaultRuleSet.CollisionStepY;
+	SettingsOverlapToleranceRatio = DefaultRuleSet.OverlapToleranceRatio;
+	SettingsMaxCollisionAttempts = DefaultRuleSet.MaxCollisionAttempts;
 	SettingsMaxMillisecondsPerFrame = LayoutRuleEditorSettings.MaxMillisecondsPerFrame;
 	SettingsMaxNodesPerFrame = LayoutRuleEditorSettings.MaxNodesPerFrame;
 	bSettingsMoveGeneratedNodes = LayoutRuleEditorSettings.bMoveGeneratedNodes;
@@ -799,6 +805,18 @@ TSharedRef<SWidget> SBlueprintHelperLayoutRuleEditor::BuildSettingsPanel()
 		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
 		[
 			BuildFloatSettingRow(
+				LOCTEXT("OverlapToleranceRatioLabel", "重叠容忍度"),
+				LOCTEXT("OverlapToleranceRatioTooltip", "允许节点轻微重叠的面积比例，范围 0 到 0.5；超过该比例才触发避让。"),
+				[this]() { return SettingsOverlapToleranceRatio; },
+				[this](float NewValue) { HandleFloatSettingChanged(OverlapToleranceRatio, NewValue); },
+				0.0f,
+				0.5f,
+				0.01f)
+		]
+		+ SScrollBox::Slot()
+		.Padding(0.0f, 0.0f, 0.0f, 5.0f)
+		[
+			BuildFloatSettingRow(
 				LOCTEXT("CollisionPaddingXLabel", "碰撞水平边距"),
 				LOCTEXT("CollisionPaddingXTooltip", "处理重叠时预留的额外水平边距。"),
 				[this]() { return SettingsCollisionPaddingX; },
@@ -1137,6 +1155,7 @@ void SBlueprintHelperLayoutRuleEditor::RefreshSettingsFromJson()
 	SettingsCollisionPaddingX = ParsedRuleSet.CollisionPaddingX;
 	SettingsCollisionPaddingY = ParsedRuleSet.CollisionPaddingY;
 	SettingsCollisionStepY = ParsedRuleSet.CollisionStepY;
+	SettingsOverlapToleranceRatio = ParsedRuleSet.OverlapToleranceRatio;
 	SettingsMaxCollisionAttempts = ParsedRuleSet.MaxCollisionAttempts;
 	SettingsMaxNodesPerFrame = ParsedRuleSet.MaxNodesPerFrame;
 	SettingsMaxMillisecondsPerFrame =
@@ -1234,6 +1253,9 @@ void SBlueprintHelperLayoutRuleEditor::HandleFloatSettingChanged(int32 SettingId
 		break;
 	case CollisionStepY:
 		ParsedRuleSet.CollisionStepY = FMath::Clamp(NewValue, 8.0f, 400.0f);
+		break;
+	case OverlapToleranceRatio:
+		ParsedRuleSet.OverlapToleranceRatio = FMath::Clamp(NewValue, 0.0f, 0.5f);
 		break;
 	case MaxMillisecondsPerFrame:
 		ParsedRuleSet.MaxMillisecondsPerFrame = BlueprintHelperLayoutRuleEditorLocal::ClampMillisecondsPerFrame(NewValue);

@@ -12,6 +12,16 @@ const FGraphLayoutPreviewNodeSpec* FGraphLayoutPreviewOverlayProjector::FindNode
 	});
 }
 
+FGraphLayoutPreviewNodeSpec* FGraphLayoutPreviewOverlayProjector::FindMutableNodeSpec(
+	FGraphLayoutPreviewSample& Sample,
+	const FString& NodeId)
+{
+	return Sample.Nodes.FindByPredicate([&NodeId](const FGraphLayoutPreviewNodeSpec& Candidate)
+	{
+		return Candidate.NodeId == NodeId;
+	});
+}
+
 const FNodeSnapshot* FGraphLayoutPreviewOverlayProjector::FindSnapshotNode(
 	const FGraphLayoutPreviewSample& Sample,
 	const FString& NodeId)
@@ -65,13 +75,13 @@ void FGraphLayoutPreviewOverlayProjector::AddPlacement(
 }
 
 void FGraphLayoutPreviewOverlayProjector::AppendEntryAvoidanceRangeComments(
-	const FGraphLayoutPreviewSample& Sample,
+	FGraphLayoutPreviewSample& Sample,
 	const FRuleSet& RuleSet,
 	FLayoutPlan& Plan)
 {
 	const FGraphLayoutPreviewNodeSpec* EntrySpec = FindNodeSpec(Sample, TEXT("EventStart"));
-	const FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
-	const FGraphLayoutPreviewNodeSpec* VerticalSpec = FindNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
+	FGraphLayoutPreviewNodeSpec* HorizontalSpec = FindMutableNodeSpec(Sample, TEXT("HorizontalAvoidanceRange"));
+	FGraphLayoutPreviewNodeSpec* VerticalSpec = FindMutableNodeSpec(Sample, TEXT("VerticalAvoidanceRange"));
 	const FNodePlacement* EntryPlacement = EntrySpec ? FindPlacement(Plan, EntrySpec->NodeId) : nullptr;
 	if (!EntrySpec || !HorizontalSpec || !VerticalSpec || !EntryPlacement)
 	{
@@ -86,6 +96,10 @@ void FGraphLayoutPreviewOverlayProjector::AppendEntryAvoidanceRangeComments(
 	const float VerticalHeight =
 		EntrySpec->Size.Y + RuleSet.CollisionPaddingY * 2.0f +
 		RuleSet.MaxCollisionAttempts * RuleSet.CollisionStepY;
+	const FString ToleranceText = FString::Printf(TEXT("重叠容忍度 %.2f"),
+		FMath::Clamp(RuleSet.OverlapToleranceRatio, 0.0f, 0.5f));
+	HorizontalSpec->Title = FString::Printf(TEXT("%s：%s"), *HorizontalSpec->Title, *ToleranceText);
+	VerticalSpec->Title = FString::Printf(TEXT("%s：%s"), *VerticalSpec->Title, *ToleranceText);
 
 	AddPlacement(
 		Plan,
@@ -135,7 +149,7 @@ void FGraphLayoutPreviewOverlayProjector::AppendSemanticLabelComments(
 }
 
 void FGraphLayoutPreviewOverlayProjector::AppendOverlays(
-	const FGraphLayoutPreviewSample& Sample,
+	FGraphLayoutPreviewSample& Sample,
 	const FRuleSet& RuleSet,
 	FLayoutPlan& Plan)
 {

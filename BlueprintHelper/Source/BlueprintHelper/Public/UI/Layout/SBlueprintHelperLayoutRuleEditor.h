@@ -133,6 +133,7 @@ private:
 	float SettingsCollisionPaddingX = 60.0f;
 	float SettingsCollisionPaddingY = 40.0f;
 	float SettingsCollisionStepY = 64.0f;
+	float SettingsOverlapToleranceRatio = 0.0f;
 	float SettingsMaxMillisecondsPerFrame = 2.0f;
 	int32 SettingsMaxNodesPerFrame = 24;
 	int32 SettingsMaxCollisionAttempts = 64;

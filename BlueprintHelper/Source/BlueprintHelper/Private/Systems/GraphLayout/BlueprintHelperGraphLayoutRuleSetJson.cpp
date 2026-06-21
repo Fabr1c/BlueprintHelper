@@ -52,6 +52,39 @@ static bool TryReadPositiveInt(const TSharedPtr<FJsonObject>& Json, const TCHAR*
 	return true;
 }
 
+static bool TryReadRatioInRange(
+	const TSharedPtr<FJsonObject>& Json,
+	const TCHAR* FieldName,
+	float& OutValue,
+	const float MinValue,
+	const float MaxValue,
+	FValidationResult& Validation)
+{
+	if (!Json.IsValid() || !Json->HasField(FieldName))
+	{
+		return true;
+	}
+
+	double NumberValue = 0.0;
+	if (!Json->TryGetNumberField(FieldName, NumberValue))
+	{
+		Validation.AddError(FString::Printf(TEXT("Field '%s' must be a number."), FieldName));
+		return false;
+	}
+	if (NumberValue < static_cast<double>(MinValue) || NumberValue > static_cast<double>(MaxValue))
+	{
+		Validation.AddError(FString::Printf(
+			TEXT("Field '%s' must be in range %.2f..%.2f."),
+			FieldName,
+			static_cast<double>(MinValue),
+			static_cast<double>(MaxValue)));
+		return false;
+	}
+
+	OutValue = static_cast<float>(NumberValue);
+	return true;
+}
+
 static bool TryReadVector2D(const TSharedPtr<FJsonObject>& Json, FVector2D& OutValue)
 {
 	if (!Json.IsValid())
@@ -323,6 +356,7 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
 	TryReadPositiveNumber(Json, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
+	TryReadRatioInRange(Json, TEXT("overlap_tolerance_ratio"), Defaults.OverlapToleranceRatio, 0.0f, 0.5f, Validation);
 	TryReadPositiveInt(Json, TEXT("max_collision_attempts"), Defaults.MaxCollisionAttempts, Validation);
 	TryReadPositiveInt(Json, TEXT("max_nodes_per_frame"), Defaults.MaxNodesPerFrame, Validation);
 	TryReadPositiveNumber(Json, TEXT("max_ms_per_frame"), Defaults.MaxMillisecondsPerFrame, Validation);
@@ -340,6 +374,7 @@ FValidationResult FRuleSetJson::Validate(const TSharedPtr<FJsonObject>& Json)
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), Defaults.CollisionPaddingX, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), Defaults.CollisionPaddingY, Validation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), Defaults.CollisionStepY, Validation);
+		TryReadRatioInRange(*SolverObject, TEXT("overlap_tolerance_ratio"), Defaults.OverlapToleranceRatio, 0.0f, 0.5f, Validation);
 		TryReadPositiveInt(*SolverObject, TEXT("max_collision_attempts"), Defaults.MaxCollisionAttempts, Validation);
 	}
 	const TSharedPtr<FJsonObject>* ApplyObject = nullptr;
@@ -432,6 +467,7 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 	TryReadPositiveNumber(Json, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
 	TryReadPositiveNumber(Json, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);
+	TryReadRatioInRange(Json, TEXT("overlap_tolerance_ratio"), OutRuleSet.OverlapToleranceRatio, 0.0f, 0.5f, OutValidation);
 	TryReadPositiveInt(Json, TEXT("max_collision_attempts"), OutRuleSet.MaxCollisionAttempts, OutValidation);
 	Json->TryGetBoolField(TEXT("target_pin_order_variable_input_alignment"), OutRuleSet.bUseTargetPinOrderForVariableInputs);
 	Json->TryGetBoolField(TEXT("move_generated_nodes"), OutRuleSet.bMoveGeneratedNodes);
@@ -457,6 +493,7 @@ bool FRuleSetJson::Import(const TSharedPtr<FJsonObject>& Json, FRuleSet& OutRule
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_x"), OutRuleSet.CollisionPaddingX, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_padding_y"), OutRuleSet.CollisionPaddingY, OutValidation);
 		TryReadPositiveNumber(*SolverObject, TEXT("collision_step_y"), OutRuleSet.CollisionStepY, OutValidation);
+		TryReadRatioInRange(*SolverObject, TEXT("overlap_tolerance_ratio"), OutRuleSet.OverlapToleranceRatio, 0.0f, 0.5f, OutValidation);
 		TryReadPositiveInt(*SolverObject, TEXT("max_collision_attempts"), OutRuleSet.MaxCollisionAttempts, OutValidation);
 		(*SolverObject)->TryGetBoolField(TEXT("move_user_nodes"), OutRuleSet.bMoveExistingNodes);
 	}

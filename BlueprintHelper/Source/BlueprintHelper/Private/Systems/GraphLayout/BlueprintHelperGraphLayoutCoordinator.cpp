@@ -4,7 +4,6 @@
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
-#include "FileHelpers.h"
 #include "HAL/Event.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -13,12 +12,12 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Systems/Config/BlueprintHelperProjectConfigPaths.h"
+#include "Systems/GraphLayout/BlueprintHelperGraphLayoutApplyScheduler.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSourceResolver.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutRuleSetJson.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSnapshotBuilder.h"
 #include "Systems/GraphLayout/BlueprintHelperGraphLayoutSolver.h"
 #include "Templates/Atomic.h"
-#include "UObject/Package.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintHelperGraphLayout, Log, All);
 
@@ -135,88 +134,6 @@ static FPendingGraphLayout* FindPendingLayout(UEdGraph* Graph)
 	return nullptr;
 }
 
-static UEdGraphNode* FindNodeByLayoutId(UEdGraph* Graph, const FString& NodeId)
-{
-	if (!Graph || NodeId.IsEmpty())
-	{
-		return nullptr;
-	}
-
-	for (UEdGraphNode* Node : Graph->Nodes)
-	{
-		if (!Node)
-		{
-			continue;
-		}
-		if (MakeNodeId(Node) == NodeId || Node->GetName() == NodeId)
-		{
-			return Node;
-		}
-	}
-	return nullptr;
-}
-
-static bool ApplyOnePlacement(UEdGraph* Graph, const BlueprintHelper::GraphLayout::FNodePlacement& Placement)
-{
-	if (!Graph || !Placement.bMoveExisting)
-	{
-		return false;
-	}
-
-	UEdGraphNode* Node = FindNodeByLayoutId(Graph, Placement.NodeId);
-	if (!Node)
-	{
-		return false;
-	}
-
-	const int32 TargetX = FMath::RoundToInt(Placement.TargetPosition.X);
-	const int32 TargetY = FMath::RoundToInt(Placement.TargetPosition.Y);
-	if (Node->NodePosX == TargetX && Node->NodePosY == TargetY)
-	{
-		return false;
-	}
-
-	Node->Modify();
-	Node->NodePosX = TargetX;
-	Node->NodePosY = TargetY;
-	return true;
-}
-
-static void FinishChangedGraph(
-	UEdGraph* Graph,
-	const bool bChangedGraph,
-	const BlueprintHelper::GraphLayout::FRuleSet& RuleSet)
-{
-	if (Graph && bChangedGraph)
-	{
-		Graph->NotifyGraphChanged();
-		UPackage* Package = Graph->GetOutermost();
-		if ((RuleSet.bMarkDirtyAfterApply || RuleSet.bSaveAfterApply) && Package)
-		{
-			Package->MarkPackageDirty();
-		}
-		if (RuleSet.bSaveAfterApply && Package)
-		{
-			UE_LOG(LogBlueprintHelperGraphLayout, Verbose,
-				TEXT("GraphLayout save_after_apply requested for %s; task flush defers saving to TaskRuntime post-operations."),
-				*Package->GetName());
-		}
-	}
-}
-
-static void ApplyPlanImmediately(
-	UEdGraph* Graph,
-	const BlueprintHelper::GraphLayout::FLayoutPlan& Plan,
-	const BlueprintHelper::GraphLayout::FRuleSet& RuleSet)
-{
-	bool bChangedGraph = false;
-	for (const BlueprintHelper::GraphLayout::FNodePlacement& Placement : Plan.Placements)
-	{
-		bChangedGraph = ApplyOnePlacement(Graph, Placement) || bChangedGraph;
-	}
-	FinishChangedGraph(Graph, bChangedGraph, RuleSet);
-}
-
 static void SnapshotSolveAndApplyNow(const FPendingGraphLayout& Pending)
 {
 	if (bShuttingDown || !Pending.Graph.IsValid())
@@ -248,7 +165,7 @@ static void SnapshotSolveAndApplyNow(const FPendingGraphLayout& Pending)
 	BlueprintHelper::GraphLayout::FRuleSet RuleSet = LoadConfiguredRuleSet();
 	const BlueprintHelper::GraphLayout::FLayoutPlan Plan =
 		BlueprintHelper::GraphLayout::FSolver::Solve(Snapshot, RuleSet);
-	ApplyPlanImmediately(Graph, Plan, RuleSet);
+	BlueprintHelper::GraphLayout::FGraphLayoutApplyScheduler::Enqueue(Graph, Plan, RuleSet);
 }
 
 static void SnapshotSolveAndApplyNow(TArray<FPendingGraphLayout>& PendingLayouts)
