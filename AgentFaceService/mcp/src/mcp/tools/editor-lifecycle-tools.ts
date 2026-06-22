@@ -120,7 +120,7 @@ function buildLifecycleMcpStatus(): Record<string, unknown> {
     code: 'LIFECYCLE_MCP_STATUS',
     lifecycle_status: 'running',
     mcp_server: 'blueprint-helper',
-    version: '0.6.5',
+    version: '0.6.6',
     resolved_entry: resolvedEntry,
     resolved_entry_exists: resolvedEntry ? existsSync(resolvedEntry) : false,
     resolved_source: nullableEnv('BLUEPRINTHELPER_LIFECYCLE_MCP_RESOLVED_SOURCE'),

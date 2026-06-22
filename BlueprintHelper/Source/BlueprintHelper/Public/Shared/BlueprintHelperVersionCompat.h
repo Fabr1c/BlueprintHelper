@@ -63,6 +63,36 @@
 #define BLUEPRINTHELPER_UE_HAS_SHADER_PLATFORM_MATERIAL_RESOURCE 0
 #endif
 
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_VALUE_TYPE_ACCESSORS 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_VALUE_TYPE_ACCESSORS 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 3
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_STRATA_VALUE_TYPE 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_STRATA_VALUE_TYPE 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_SUBSTRATE_VALUE_TYPE 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_SUBSTRATE_VALUE_TYPE 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 5 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_COLLECTION_VALUE_TYPES 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_COLLECTION_VALUE_TYPES 0
+#endif
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 6 && ENGINE_MINOR_VERSION <= 8
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_MATERIAL_CACHE_VALUE_TYPE 1
+#else
+#define BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_MATERIAL_CACHE_VALUE_TYPE 0
+#endif
+
 #if BLUEPRINTHELPER_UE_HAS_FPACKAGE_METADATA
 using FBlueprintHelperPackageMetaData = FMetaData;
 #else
@@ -241,6 +271,32 @@ public:
 		return Material->GetMaterialResource(GMaxRHIShaderPlatform);
 #else
 		return Material->GetMaterialResource(GMaxRHIFeatureLevel);
+#endif
+	}
+
+	static FORCEINLINE uint32 GetMaterialExpressionInputValueType(UMaterialExpression* Expression, const int32 InputIndex)
+	{
+		if (!Expression)
+		{
+			return 0;
+		}
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_VALUE_TYPE_ACCESSORS
+		return static_cast<uint32>(Expression->GetInputValueType(InputIndex));
+#else
+		return Expression->GetInputType(InputIndex);
+#endif
+	}
+
+	static FORCEINLINE uint32 GetMaterialExpressionOutputValueType(UMaterialExpression* Expression, const int32 OutputIndex)
+	{
+		if (!Expression)
+		{
+			return 0;
+		}
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_VALUE_TYPE_ACCESSORS
+		return static_cast<uint32>(Expression->GetOutputValueType(OutputIndex));
+#else
+		return Expression->GetOutputType(OutputIndex);
 #endif
 	}
 };

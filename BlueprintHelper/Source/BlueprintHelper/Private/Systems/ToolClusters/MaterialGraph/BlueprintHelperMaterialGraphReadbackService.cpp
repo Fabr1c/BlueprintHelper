@@ -211,10 +211,18 @@ public:
 		{
 			TypeNames.Add(TEXT("ShadingModel"));
 		}
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_STRATA_VALUE_TYPE
+		if (Type & MCT_Strata)
+		{
+			TypeNames.Add(TEXT("Strata"));
+		}
+#endif
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_SUBSTRATE_VALUE_TYPE
 		if (Type & MCT_Substrate)
 		{
 			TypeNames.Add(TEXT("Substrate"));
 		}
+#endif
 		if (Type & MCT_LWCScalar)
 		{
 			TypeNames.Add(TEXT("LWCScalar"));
@@ -259,6 +267,7 @@ public:
 		{
 			TypeNames.Add(TEXT("UInt4"));
 		}
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_COLLECTION_VALUE_TYPES
 		if (Type & MCT_TextureCollection)
 		{
 			TypeNames.Add(TEXT("TextureCollection"));
@@ -267,10 +276,13 @@ public:
 		{
 			TypeNames.Add(TEXT("TextureMeshPaint"));
 		}
+#endif
+#if BLUEPRINTHELPER_UE_HAS_MATERIAL_TEXTURE_MATERIAL_CACHE_VALUE_TYPE
 		if (Type & MCT_TextureMaterialCache)
 		{
 			TypeNames.Add(TEXT("TextureMaterialCache"));
 		}
+#endif
 		if (Type & MCT_Unknown)
 		{
 			TypeNames.Add(TEXT("Unknown"));
@@ -293,8 +305,8 @@ public:
 			return true;
 		}
 
-		const uint32 OutputType = static_cast<uint32>(FromExpression->GetOutputValueType(OutputIndex));
-		const uint32 InputType = static_cast<uint32>(ToExpression->GetInputValueType(InputIndex));
+		const uint32 OutputType = FBlueprintHelperVersionCompat::GetMaterialExpressionOutputValueType(FromExpression, OutputIndex);
+		const uint32 InputType = FBlueprintHelperVersionCompat::GetMaterialExpressionInputValueType(ToExpression, InputIndex);
 		if (CanConnectMaterialValueTypes(InputType, OutputType))
 		{
 			return true;

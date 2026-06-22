@@ -21,7 +21,7 @@ async function main() {
 
   const server = new McpServer({
     name: 'blueprint-helper',
-    version: '0.6.5',
+    version: '0.6.6',
   });
 
   registerTools(server, bridge, { ueEngineDir: '' });

@@ -1,6 +1,6 @@
 {
   "name": "@blueprinthelper/task-core",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "BlueprintHelper Bridge and TaskSpec orchestration core shared by MCP and CLI transports",
   "type": "module",
   "main": "build/index.js",
