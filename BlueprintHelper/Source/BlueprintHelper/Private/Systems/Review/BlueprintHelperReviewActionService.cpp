@@ -1,6 +1,7 @@
 // BlueprintHelper Review action service implementation.
 
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
+#include "Systems/Review/BlueprintHelperReviewActionSessionFinalizer.h"
 #include "Systems/Review/BlueprintHelperReviewAdapterRegistry.h"
 #include "Systems/Review/BlueprintHelperReviewBaselineSnapshotService.h"
 #include "Systems/Review/BlueprintHelperReviewPerformanceTrace.h"
@@ -24,7 +25,6 @@
 #include "Components/ActorComponent.h"
 #include "Systems/Debug/BlueprintHelperDebugCaseStoreService.h"
 #include "Systems/Debug/BlueprintHelperDebugEntryService.h"
-#include "Runtime/TaskRuntime/BlueprintHelperSequentialReviewSessionService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperOwnershipService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperScopedAssetMutation.h"
@@ -83,6 +83,23 @@
 			*Message);
 		return Result;
 	}
+
+class FBlueprintHelperReviewActionServiceLocal
+{
+public:
+	static void FinalizeTerminalReviewAction(
+		const FString& ReviewRecordId,
+		EBlueprintHelperSequentialReviewSessionStatus FinalStatus,
+		FBlueprintHelperReviewActionResult& InOutResult)
+	{
+		InOutResult.bReviewActionCommitted = true;
+		const FBlueprintHelperSequentialReviewSessionCloseResult CloseResult =
+			FBlueprintHelperReviewActionSessionFinalizer().CloseReviewRecordSessions(
+				ReviewRecordId,
+				FinalStatus);
+		FBlueprintHelperReviewActionSessionFinalizer::ApplyCloseResult(CloseResult, InOutResult);
+	}
+};
 
 FBlueprintHelperReviewActionService::FBlueprintHelperReviewActionService()
 	: AdapterRegistry(FBlueprintHelperReviewAdapterRegistry::CreateDefault())
@@ -517,11 +534,10 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::AcceptRe
 	Result.bSupersededDataCompactionEligible = true;
 	if (Record.Status == EBlueprintHelperReviewChangeStatus::Accepted)
 	{
-		FString SessionError;
-		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
+		FBlueprintHelperReviewActionServiceLocal::FinalizeTerminalReviewAction(
 			ReviewRecordId,
 			EBlueprintHelperSequentialReviewSessionStatus::Accepted,
-			SessionError);
+			Result);
 	}
 	return Result;
 }
@@ -653,11 +669,10 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 		Result.RollbackMode = TEXT("archive_baseline");
 		Result.Message = LastMessage.IsEmpty() ? TEXT("rejected_purged") : LastMessage;
 		Result.bSupersededDataCompactionEligible = true;
-		FString SessionError;
-		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
+		FBlueprintHelperReviewActionServiceLocal::FinalizeTerminalReviewAction(
 			ReviewRecordId,
 			EBlueprintHelperSequentialReviewSessionStatus::Rejected,
-			SessionError);
+			Result);
 		return Result;
 	}
 
@@ -691,14 +706,6 @@ FBlueprintHelperReviewActionResult FBlueprintHelperReviewActionService::RejectRe
 	Result.RollbackMode = TEXT("archive_baseline");
 	Result.Message = LastMessage;
 	Result.bSupersededDataCompactionEligible = bAllTargetStatusesRejected;
-	if (bAllTargetStatusesRejected)
-	{
-		FString SessionError;
-		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
-			ReviewRecordId,
-			EBlueprintHelperSequentialReviewSessionStatus::Rejected,
-			SessionError);
-	}
 	return Result;
 }
 

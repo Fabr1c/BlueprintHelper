@@ -538,7 +538,20 @@ function normalizeBodyEntryBoundary(value: Record<string, unknown> | undefined):
     return undefined;
   }
   const out: Record<string, unknown> = {};
-  for (const key of ['schema', 'asset_path', 'graph_name', 'node_guid', 'node_class', 'semantic_role', 'fingerprint']) {
+  for (const key of [
+    'schema',
+    'asset_path',
+    'graph_name',
+    'node_guid',
+    'node_class',
+    'stable_name',
+    'entry_kind',
+    'member_name',
+    'function_name',
+    'display_name',
+    'semantic_role',
+    'fingerprint',
+  ]) {
     const text = readString(value, [key]);
     if (text) {
       out[key] = text;

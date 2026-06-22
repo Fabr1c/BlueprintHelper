@@ -81,7 +81,6 @@ public:
 		Snapshot->SetStringField(TEXT("asset_path"), AssetPath);
 		Snapshot->SetStringField(TEXT("target_kind"), TEXT("class_default_setter_property"));
 		Snapshot->SetStringField(TEXT("target_key"), TEXT("class_default_setter_property:Mesh_SkeletalMeshAsset"));
-		Snapshot->SetStringField(TEXT("target_name"), PropertyPath);
 		Snapshot->SetBoolField(TEXT("asset_exists"), true);
 		Snapshot->SetStringField(TEXT("surface"), TEXT("details"));
 		Snapshot->SetBoolField(TEXT("exists"), true);
@@ -94,6 +93,25 @@ public:
 		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Json);
 		FJsonSerializer::Serialize(Snapshot, Writer);
 		return Json;
+	}
+
+	static FString SerializeSnapshot(const TSharedRef<FJsonObject>& Snapshot)
+	{
+		FString Json;
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Json);
+		FJsonSerializer::Serialize(Snapshot, Writer);
+		return Json;
+	}
+
+	static FBlueprintHelperReviewVisibleChange MakeRestoreChange(const FString& SnapshotJson)
+	{
+		FBlueprintHelperReviewAtomicTarget Target;
+		Target.TargetKind = TEXT("class_default_setter_property");
+		Target.BeforeSnapshotJson = SnapshotJson;
+
+		FBlueprintHelperReviewVisibleChange Change;
+		Change.AtomicTargets.Add(Target);
+		return Change;
 	}
 };
 
@@ -316,6 +334,102 @@ bool FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterAcceptsReviewSnaps
 	{
 		TestEqual(TEXT("mesh path"), Mesh->GetPathName(), FBlueprintHelperClassDefaultSetterMutationTestUtils::MannyMeshPath());
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsRawSnapshot,
+	"BlueprintHelper.ClassSettings.SetterAware.RestoreAdapterRejectsRawSnapshot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsRawSnapshot::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Snapshot = MakeShared<FJsonObject>();
+	Snapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/Invalid.Invalid"));
+	Snapshot->SetStringField(TEXT("property_path"), TEXT("Mesh.SkeletalMeshAsset"));
+	Snapshot->SetStringField(TEXT("value"), FBlueprintHelperClassDefaultSetterMutationTestUtils::MannyMeshExportText());
+
+	const FBlueprintHelperReviewVisibleChange Change =
+		FBlueprintHelperClassDefaultSetterMutationTestUtils::MakeRestoreChange(
+			FBlueprintHelperClassDefaultSetterMutationTestUtils::SerializeSnapshot(Snapshot));
+
+	const FBlueprintHelperClassDefaultSetterRestoreAdapter Adapter;
+	const FBlueprintHelperReviewRestoreResult RestoreResult = Adapter.RestoreBeforeSnapshot(Change);
+	TestFalse(TEXT("raw snapshot rejected"), RestoreResult.bSucceeded);
+	TestEqual(TEXT("raw snapshot error"), RestoreResult.Message, FString(TEXT("class_default_setter_restore_snapshot_invalid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsWrongSchemaSnapshot,
+	"BlueprintHelper.ClassSettings.SetterAware.RestoreAdapterRejectsWrongSchemaSnapshot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsWrongSchemaSnapshot::RunTest(const FString& Parameters)
+{
+	TSharedRef<FJsonObject> Snapshot = MakeShared<FJsonObject>();
+	Snapshot->SetStringField(TEXT("schema"), TEXT("Legacy.RawSnapshot.v1"));
+	Snapshot->SetStringField(TEXT("target_kind"), TEXT("class_default_setter_property"));
+	Snapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/Invalid.Invalid"));
+	Snapshot->SetStringField(TEXT("property_path"), TEXT("Mesh.SkeletalMeshAsset"));
+	Snapshot->SetStringField(TEXT("value"), FBlueprintHelperClassDefaultSetterMutationTestUtils::MannyMeshExportText());
+
+	const FBlueprintHelperReviewVisibleChange Change =
+		FBlueprintHelperClassDefaultSetterMutationTestUtils::MakeRestoreChange(
+			FBlueprintHelperClassDefaultSetterMutationTestUtils::SerializeSnapshot(Snapshot));
+
+	const FBlueprintHelperClassDefaultSetterRestoreAdapter Adapter;
+	const FBlueprintHelperReviewRestoreResult RestoreResult = Adapter.RestoreBeforeSnapshot(Change);
+	TestFalse(TEXT("wrong schema rejected"), RestoreResult.bSucceeded);
+	TestEqual(TEXT("wrong schema error"), RestoreResult.Message, FString(TEXT("class_default_setter_restore_snapshot_invalid")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsMissingReviewSnapshotFields,
+	"BlueprintHelper.ClassSettings.SetterAware.RestoreAdapterRejectsMissingReviewSnapshotFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperClassDefaultSetterMutation_RestoreAdapterRejectsMissingReviewSnapshotFields::RunTest(const FString& Parameters)
+{
+	const FBlueprintHelperClassDefaultSetterRestoreAdapter Adapter;
+
+	auto ExpectMissingTarget = [this, &Adapter](const TSharedRef<FJsonObject>& Snapshot, const TCHAR* Label)
+	{
+		const FString RejectedLabel = FString::Printf(TEXT("%s rejected"), Label);
+		const FString ErrorLabel = FString::Printf(TEXT("%s error"), Label);
+		const FBlueprintHelperReviewVisibleChange Change =
+			FBlueprintHelperClassDefaultSetterMutationTestUtils::MakeRestoreChange(
+				FBlueprintHelperClassDefaultSetterMutationTestUtils::SerializeSnapshot(Snapshot));
+		const FBlueprintHelperReviewRestoreResult RestoreResult = Adapter.RestoreBeforeSnapshot(Change);
+		TestFalse(*RejectedLabel, RestoreResult.bSucceeded);
+		TestEqual(
+			*ErrorLabel,
+			RestoreResult.Message,
+			FString(TEXT("class_default_setter_restore_snapshot_missing_target")));
+	};
+
+	TSharedRef<FJsonObject> MissingValueSnapshot = MakeShared<FJsonObject>();
+	MissingValueSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
+	MissingValueSnapshot->SetStringField(TEXT("target_kind"), TEXT("class_default_setter_property"));
+	MissingValueSnapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/Invalid.Invalid"));
+	MissingValueSnapshot->SetStringField(TEXT("property_path"), TEXT("Mesh.SkeletalMeshAsset"));
+	ExpectMissingTarget(MissingValueSnapshot, TEXT("missing value"));
+
+	TSharedRef<FJsonObject> MissingAssetSnapshot = MakeShared<FJsonObject>();
+	MissingAssetSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
+	MissingAssetSnapshot->SetStringField(TEXT("target_kind"), TEXT("class_default_setter_property"));
+	MissingAssetSnapshot->SetStringField(TEXT("property_path"), TEXT("Mesh.SkeletalMeshAsset"));
+	MissingAssetSnapshot->SetStringField(TEXT("value"), FBlueprintHelperClassDefaultSetterMutationTestUtils::MannyMeshExportText());
+	ExpectMissingTarget(MissingAssetSnapshot, TEXT("missing asset"));
+
+	TSharedRef<FJsonObject> MissingPropertySnapshot = MakeShared<FJsonObject>();
+	MissingPropertySnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"));
+	MissingPropertySnapshot->SetStringField(TEXT("target_kind"), TEXT("class_default_setter_property"));
+	MissingPropertySnapshot->SetStringField(TEXT("asset_path"), TEXT("/Game/Invalid.Invalid"));
+	MissingPropertySnapshot->SetStringField(TEXT("value"), FBlueprintHelperClassDefaultSetterMutationTestUtils::MannyMeshExportText());
+	ExpectMissingTarget(MissingPropertySnapshot, TEXT("missing property"));
+
 	return true;
 }
 

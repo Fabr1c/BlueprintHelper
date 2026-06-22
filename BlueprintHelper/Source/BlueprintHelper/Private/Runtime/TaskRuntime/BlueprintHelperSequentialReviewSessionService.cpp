@@ -271,18 +271,19 @@ bool FBlueprintHelperSequentialReviewSessionService::RecordExecuteUpdate(
 	return true;
 }
 
-bool FBlueprintHelperSequentialReviewSessionService::CloseSessionsForReviewRecord(
+FBlueprintHelperSequentialReviewSessionCloseResult
+FBlueprintHelperSequentialReviewSessionService::CloseSessionsForReviewRecord(
 	const FString& ReviewRecordId,
-	EBlueprintHelperSequentialReviewSessionStatus FinalStatus,
-	FString& OutError) const
+	EBlueprintHelperSequentialReviewSessionStatus FinalStatus) const
 {
+	FBlueprintHelperSequentialReviewSessionCloseResult Result;
 	if (ReviewRecordId.IsEmpty())
 	{
-		OutError = TEXT("review_record_id is required");
-		return false;
+		Result.ErrorCode = TEXT("review_record_id_required");
+		Result.ErrorMessage = TEXT("review_record_id is required");
+		return Result;
 	}
 
-	bool bMatched = false;
 	for (FBlueprintHelperSequentialReviewSession Session : QuerySessions())
 	{
 		if (!Session.ReviewRecordIds.Contains(ReviewRecordId))
@@ -293,18 +294,19 @@ bool FBlueprintHelperSequentialReviewSessionService::CloseSessionsForReviewRecor
 		Session.Status = FinalStatus;
 		Session.bHasUnresolvedFailedExecute = false;
 		Session.UpdatedAt = FDateTime::UtcNow().ToIso8601();
-		if (!SaveSession(Session, OutError))
+		FString SaveError;
+		if (!SaveSession(Session, SaveError))
 		{
-			return false;
+			Result.ErrorCode = TEXT("sequential_review_session_close_save_failed");
+			Result.ErrorMessage = SaveError;
+			return Result;
 		}
-		bMatched = true;
+		Result.AffectedSessionIds.Add(Session.SequentialReviewSessionId);
+		Result.bMatched = true;
 	}
 
-	if (!bMatched)
-	{
-		OutError.Reset();
-	}
-	return true;
+	Result.bSucceeded = true;
+	return Result;
 }
 
 TArray<FBlueprintHelperSequentialReviewSession>

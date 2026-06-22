@@ -47,6 +47,7 @@ public:
 		UEdGraph* Graph = nullptr;
 		UEdGraphNode* EntryNode = nullptr;
 		FBlueprintHelperExternalBodySnapshot BeforeSnapshot;
+		FBlueprintHelperExternalBodySnapshot AfterSnapshot;
 		FBlueprintHelperExternalDependentsAnalysis DependentsAnalysis;
 		TArray<UEdGraphNode*> GeneratedNodes;
 		FString ReplacementBlockId;

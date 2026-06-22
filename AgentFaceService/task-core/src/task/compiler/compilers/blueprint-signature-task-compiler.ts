@@ -129,7 +129,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
   }
 
   if (kind === 'remove_signature') {
-    const signatureKind = optionalString(change, 'signature_kind') ?? inferRemoveSignatureKind(change);
+    const signatureKind = getRequiredString(change, 'signature_kind', `${path}.signature_kind`);
     if (change['require_reference_context'] === false) {
       throw new TaskSpecCompileError('invalid_signature_remove_policy', `${path}.require_reference_context must be true.`, [
         {
@@ -142,7 +142,7 @@ function compileBlueprintSignatureOp(change: Record<string, unknown>, path: stri
     return omitUndefined({
       op: 'remove_signature',
       signature_kind: signatureKind,
-      signature_name: removeSignatureName(change, signatureKind, path),
+      signature_name: getRequiredString(change, 'signature_name', `${path}.signature_name`),
       graph_name: change['graph_name'],
       execute_policy: optionalString(change, 'execute_policy') ?? 'blocked_preflight',
       require_reference_context: typeof change['require_reference_context'] === 'boolean'
@@ -206,26 +206,4 @@ function blueprintSignatureStrategyForOp(op: Record<string, unknown>): string {
     if (kind === 'custom_event' || kind === 'interface_event') return 'custom_event_signature';
   }
   return 'function_signature';
-}
-
-function inferRemoveSignatureKind(change: Record<string, unknown>): string {
-  if (typeof change['dispatcher_name'] === 'string') return 'event_dispatcher';
-  if (typeof change['event_name'] === 'string') return 'custom_event';
-  return 'function';
-}
-
-function removeSignatureName(change: Record<string, unknown>, signatureKind: string, path: string): string {
-  if (typeof change['signature_name'] === 'string' && change['signature_name'].length > 0) {
-    return change['signature_name'];
-  }
-  if ((signatureKind === 'function' || signatureKind === 'interface_function') && typeof change['function_name'] === 'string') {
-    return change['function_name'];
-  }
-  if ((signatureKind === 'custom_event' || signatureKind === 'interface_event' || signatureKind === 'override_event' || signatureKind === 'native_event') && typeof change['event_name'] === 'string') {
-    return change['event_name'];
-  }
-  if (signatureKind === 'event_dispatcher' && typeof change['dispatcher_name'] === 'string') {
-    return change['dispatcher_name'];
-  }
-  return getRequiredString(change, 'signature_name', `${path}.signature_name`);
 }

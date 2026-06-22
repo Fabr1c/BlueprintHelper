@@ -9,6 +9,11 @@ const externalBodyAnchor = {
   graph_name: 'EventGraph',
   node_guid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   node_class: '/Script/BlueprintGraph.K2Node_CustomEvent',
+  stable_name: 'OnOpened',
+  entry_kind: 'custom_event',
+  member_name: 'OnOpened',
+  function_name: 'OnOpened',
+  display_name: 'On Opened',
   semantic_role: 'body_entry',
   fingerprint: 'body_entry_fp',
 };
@@ -154,6 +159,20 @@ test('replace_external_body rejects broad policy, whole graph scope, missing fin
     /require_full_dry_run/,
   );
 
+});
+
+test('replace_external_body rejects body-entry anchors without stable identity before runtime', () => {
+  assert.throws(
+    () => compileTaskSpecToTaskPlan(makeReplaceExternalBodySpec({
+      externalReplace: {
+        anchor: {
+          ...externalBodyAnchor,
+          stable_name: undefined,
+        },
+      },
+    }) as never),
+    /stable_name/,
+  );
 });
 
 test('replace_external_body rejects display-name selector and owned replace mixed into external strategy', () => {

@@ -19,6 +19,7 @@
 #include "Misc/Guid.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/Adapters/BlueprintHelperExternalBodyAdapter.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyRequest.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyReadbackService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperGraphBodyTarget.h"
 #include "UObject/Package.h"
 
@@ -317,6 +318,32 @@ bool FBlueprintHelperK2GraphEntryIdentityExternalBodyAdapterTest::RunTest(const 
 	TestTrue(TEXT("event read target resolves"), Adapter.ResolveTarget(Request, Target, Error));
 	TestEqual(TEXT("one event entry selected"), Target.EntryBoundaryNodes.Num(), 1);
 	TestTrue(TEXT("native event selected"), Target.EntryBoundaryNodes.Num() == 1 && Target.EntryBoundaryNodes[0] == NativeEvent);
+
+	FBlueprintHelperTargetRef ReadbackTarget;
+	ReadbackTarget.AssetPath = Blueprint->GetPathName();
+	ReadbackTarget.TargetType = EBlueprintHelperTargetType::Event;
+	ReadbackTarget.Graph = Graph->GetName();
+	ReadbackTarget.Event = TEXT("OnShooterFireStartedInput");
+
+	FBlueprintHelperGraphBodyReadbackService ReadbackService;
+	TSharedPtr<FJsonObject> AdapterBoundary;
+	Error.Reset();
+	TestTrue(TEXT("event adapter boundary builds"),
+		ReadbackService.BuildAdapterBoundaryForTarget(ReadbackTarget, AdapterBoundary, Error));
+	TestTrue(TEXT("event adapter boundary valid"), AdapterBoundary.IsValid());
+	const TSharedPtr<FJsonObject>* BodyEntry = nullptr;
+	TestTrue(TEXT("adapter boundary has body entry"),
+		AdapterBoundary.IsValid()
+		&& AdapterBoundary->TryGetObjectField(TEXT("body_entry"), BodyEntry)
+		&& BodyEntry
+		&& BodyEntry->IsValid());
+	if (!BodyEntry || !BodyEntry->IsValid())
+	{
+		return false;
+	}
+	FString StableName;
+	TestTrue(TEXT("body entry carries stable_name"), (*BodyEntry)->TryGetStringField(TEXT("stable_name"), StableName));
+	TestEqual(TEXT("body entry stable native event name"), StableName, FString(TEXT("OnShooterFireStartedInput")));
 
 	Request.EntryName = TEXT("BH_OnShooterFireStartedInput");
 	Target = FBlueprintHelperGraphBodyTarget();

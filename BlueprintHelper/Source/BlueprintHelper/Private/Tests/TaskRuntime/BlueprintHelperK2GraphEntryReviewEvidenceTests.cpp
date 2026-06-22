@@ -2,6 +2,15 @@
 
 #include "Misc/AutomationTest.h"
 #include "Runtime/TaskRuntime/Clusters/GraphWrite/BlueprintHelperK2GraphEntryEvidence.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+
+static TSharedPtr<FJsonObject> BlueprintHelperK2GraphEntryReviewEvidenceParseJsonObject(const FString& JsonText)
+{
+	TSharedPtr<FJsonObject> JsonObject;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	return FJsonSerializer::Deserialize(Reader, JsonObject) ? JsonObject : nullptr;
+}
 
 static FBlueprintHelperK2GraphEntryEvidence BlueprintHelperK2GraphEntryReviewEvidenceMakeValidEvidence()
 {
@@ -17,7 +26,8 @@ static FBlueprintHelperK2GraphEntryEvidence BlueprintHelperK2GraphEntryReviewEvi
 	Evidence.EntryIdentity.GraphName = Evidence.GraphName;
 	Evidence.EntryIdentity.bValid = true;
 	Evidence.BodyEntryAnchorJson = TEXT("{\"schema\":\"BlueprintHelper.ExternalGraphAnchor.v1\",\"node_guid\":\"11112222333344445555666677778888\"}");
-	Evidence.BodyFingerprint = TEXT("body-fingerprint");
+	Evidence.BeforeBodyFingerprint = TEXT("before-body-fingerprint");
+	Evidence.AfterBodyFingerprint = TEXT("after-body-fingerprint");
 	Evidence.BeforeBodySnapshotJson = TEXT("{\"exists\":true,\"body_fingerprint\":\"before\"}");
 	Evidence.AfterBodySnapshotJson = TEXT("{\"exists\":true,\"body_fingerprint\":\"after\"}");
 	Evidence.GraphBodyBoundaryJson = TEXT("{\"runtime_adapter_id\":\"k2.external_body\"}");
@@ -47,19 +57,48 @@ bool FBlueprintHelperK2GraphEntryEvidenceProjectorTest::RunTest(const FString& P
 	TestEqual(TEXT("target key"),
 		Target.TargetKey,
 		FString(TEXT("k2_graph_entry:EventGraph:event:OnShooterFireStartedInput")));
-	TestEqual(TEXT("anchor json"),
-		Target.AnchorJson,
-		FString(TEXT("{\"schema\":\"BlueprintHelper.ExternalGraphAnchor.v1\",\"node_guid\":\"11112222333344445555666677778888\"}")));
-	TestEqual(TEXT("graph body boundary json"),
-		Target.GraphBodyBoundaryJson,
-		FString(TEXT("{\"runtime_adapter_id\":\"k2.external_body\"}")));
-	TestEqual(TEXT("before snapshot"),
-		Target.BeforeSnapshotJson,
-		FString(TEXT("{\"exists\":true,\"body_fingerprint\":\"before\"}")));
-	TestEqual(TEXT("after snapshot"),
-		Target.AfterSnapshotJson,
-		FString(TEXT("{\"exists\":true,\"body_fingerprint\":\"after\"}")));
-	TestEqual(TEXT("after fingerprint"), Target.ReadbackFingerprintAfter, FString(TEXT("body-fingerprint")));
+	const TSharedPtr<FJsonObject> AnchorJson =
+		BlueprintHelperK2GraphEntryReviewEvidenceParseJsonObject(Target.AnchorJson);
+	TestTrue(TEXT("anchor json parses"), AnchorJson.IsValid());
+	if (AnchorJson.IsValid())
+	{
+		TestEqual(TEXT("anchor schema"),
+			AnchorJson->GetStringField(TEXT("schema")),
+			FString(TEXT("BlueprintHelper.ExternalGraphAnchor.v1")));
+		TestEqual(TEXT("anchor node guid"),
+			AnchorJson->GetStringField(TEXT("node_guid")),
+			FString(TEXT("11112222333344445555666677778888")));
+	}
+	const TSharedPtr<FJsonObject> BoundaryJson =
+		BlueprintHelperK2GraphEntryReviewEvidenceParseJsonObject(Target.GraphBodyBoundaryJson);
+	TestTrue(TEXT("graph body boundary json parses"), BoundaryJson.IsValid());
+	if (BoundaryJson.IsValid())
+	{
+		TestEqual(TEXT("boundary runtime adapter"),
+			BoundaryJson->GetStringField(TEXT("runtime_adapter_id")),
+			FString(TEXT("k2.external_body")));
+	}
+	const TSharedPtr<FJsonObject> BeforeSnapshotJson =
+		BlueprintHelperK2GraphEntryReviewEvidenceParseJsonObject(Target.BeforeSnapshotJson);
+	TestTrue(TEXT("before snapshot json parses"), BeforeSnapshotJson.IsValid());
+	if (BeforeSnapshotJson.IsValid())
+	{
+		TestTrue(TEXT("before snapshot exists"), BeforeSnapshotJson->GetBoolField(TEXT("exists")));
+		TestEqual(TEXT("before snapshot fingerprint"),
+			BeforeSnapshotJson->GetStringField(TEXT("body_fingerprint")),
+			FString(TEXT("before")));
+	}
+	const TSharedPtr<FJsonObject> AfterSnapshotJson =
+		BlueprintHelperK2GraphEntryReviewEvidenceParseJsonObject(Target.AfterSnapshotJson);
+	TestTrue(TEXT("after snapshot json parses"), AfterSnapshotJson.IsValid());
+	if (AfterSnapshotJson.IsValid())
+	{
+		TestTrue(TEXT("after snapshot exists"), AfterSnapshotJson->GetBoolField(TEXT("exists")));
+		TestEqual(TEXT("after snapshot fingerprint"),
+			AfterSnapshotJson->GetStringField(TEXT("body_fingerprint")),
+			FString(TEXT("after")));
+	}
+	TestEqual(TEXT("after fingerprint"), Target.ReadbackFingerprintAfter, FString(TEXT("after-body-fingerprint")));
 	TestEqual(TEXT("step index"), Target.TaskStepIndex, 3);
 	TestEqual(TEXT("atomic index"), Target.AtomicIndex, 0);
 	return true;
@@ -98,6 +137,14 @@ bool FBlueprintHelperK2GraphEntryEvidenceRejectsIncompleteInputTest::RunTest(con
 	TestFalse(TEXT("missing anchor is rejected"),
 		FBlueprintHelperK2GraphEntryEvidenceProjector::ProjectToAtomicTarget(MissingAnchor, 0, 0, Target, Error));
 	TestFalse(TEXT("missing anchor error"), Error.IsEmpty());
+
+	FBlueprintHelperK2GraphEntryEvidence MissingAfterFingerprint = BlueprintHelperK2GraphEntryReviewEvidenceMakeValidEvidence();
+	MissingAfterFingerprint.AfterBodyFingerprint.Reset();
+	TestFalse(TEXT("missing after body fingerprint is rejected"),
+		FBlueprintHelperK2GraphEntryEvidenceProjector::ProjectToAtomicTarget(MissingAfterFingerprint, 0, 0, Target, Error));
+	TestEqual(TEXT("missing after body fingerprint error"),
+		Error,
+		FString(TEXT("k2_graph_entry_evidence_missing_after_body_fingerprint")));
 	return true;
 }
 

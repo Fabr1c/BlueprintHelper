@@ -112,6 +112,26 @@ TSharedRef<FJsonObject> FBlueprintHelperExternalGraphAnchor::ToJson() const
 	Json->SetStringField(TEXT("graph_name"), GraphName);
 	Json->SetStringField(TEXT("node_guid"), NodeGuid);
 	Json->SetStringField(TEXT("node_class"), NodeClass);
+	if (!StableName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("stable_name"), StableName);
+	}
+	if (!EntryKind.IsEmpty())
+	{
+		Json->SetStringField(TEXT("entry_kind"), EntryKind);
+	}
+	if (!MemberName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("member_name"), MemberName);
+	}
+	if (!FunctionName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("function_name"), FunctionName);
+	}
+	if (!DisplayName.IsEmpty())
+	{
+		Json->SetStringField(TEXT("display_name"), DisplayName);
+	}
 	if (!PinName.IsEmpty())
 	{
 		Json->SetStringField(TEXT("pin_name"), PinName);
@@ -193,6 +213,11 @@ bool FBlueprintHelperExternalGraphAnchor::FromJson(
 	Json->TryGetStringField(TEXT("graph_name"), OutAnchor.GraphName);
 	Json->TryGetStringField(TEXT("node_guid"), OutAnchor.NodeGuid);
 	Json->TryGetStringField(TEXT("node_class"), OutAnchor.NodeClass);
+	Json->TryGetStringField(TEXT("stable_name"), OutAnchor.StableName);
+	Json->TryGetStringField(TEXT("entry_kind"), OutAnchor.EntryKind);
+	Json->TryGetStringField(TEXT("member_name"), OutAnchor.MemberName);
+	Json->TryGetStringField(TEXT("function_name"), OutAnchor.FunctionName);
+	Json->TryGetStringField(TEXT("display_name"), OutAnchor.DisplayName);
 	Json->TryGetStringField(TEXT("pin_name"), OutAnchor.PinName);
 	Json->TryGetStringField(TEXT("pin_direction"), OutAnchor.PinDirection);
 	Json->TryGetStringField(TEXT("fingerprint"), OutAnchor.Fingerprint);

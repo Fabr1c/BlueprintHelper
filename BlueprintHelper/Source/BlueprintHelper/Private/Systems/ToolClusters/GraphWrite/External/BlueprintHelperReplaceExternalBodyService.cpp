@@ -251,7 +251,7 @@ namespace BlueprintHelperReplaceExternalBody
 				: 0);
 		Plan->SetObjectField(TEXT("dependents_analysis"), Context.DependentsAnalysis.ToJson());
 		Data->SetObjectField(TEXT("external_body_replace_plan"), Plan);
-		Data->SetObjectField(TEXT("external_body_snapshot"), Context.BeforeSnapshot.ToJson());
+		Data->SetObjectField(TEXT("external_body_before_snapshot"), Context.BeforeSnapshot.ToJson());
 		return Data;
 	}
 
@@ -886,7 +886,13 @@ FBlueprintHelperToolResultBase FBlueprintHelperReplaceExternalBodyService::Execu
 		TraceId);
 	TSharedRef<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetStringField(TEXT("schema"), TEXT("ReplaceExternalBody.v1"));
-	Data->SetObjectField(TEXT("external_body_snapshot"), Context.BeforeSnapshot.ToJson());
+	Data->SetObjectField(TEXT("external_body_before_snapshot"), Context.BeforeSnapshot.ToJson());
+	TSharedRef<FJsonObject> AfterSnapshotJson = Context.AfterSnapshot.ToJson();
+	if (!Context.ReplacementBlockId.IsEmpty())
+	{
+		AfterSnapshotJson->SetStringField(TEXT("replacement_block_id"), Context.ReplacementBlockId);
+	}
+	Data->SetObjectField(TEXT("external_body_after_snapshot"), AfterSnapshotJson);
 	Data->SetObjectField(TEXT("dependents_analysis"), Context.DependentsAnalysis.ToJson());
 	Data->SetStringField(TEXT("replacement_block_id"), Context.ReplacementBlockId);
 	Result.Data = Data;
@@ -1019,6 +1025,14 @@ bool FBlueprintHelperReplaceExternalBodyService::ApplyReplacement(
 	if (Context.Blueprint->GetOutermost())
 	{
 		Context.Blueprint->GetOutermost()->MarkPackageDirty();
+	}
+	FString SnapshotError;
+	if (!SnapshotService.CaptureBody(Context.Graph, Context.EntryNode, Context.AfterSnapshot, SnapshotError))
+	{
+		Mutation.Rollback();
+		OutErrorCode = SnapshotError.IsEmpty() ? TEXT("external_body_after_snapshot_failed") : SnapshotError;
+		OutErrorMessage = TEXT("replace_external_body applied but failed to capture after body snapshot.");
+		return false;
 	}
 	Mutation.Commit();
 	FBlueprintHelperGraphLayoutCoordinator::RecordGeneratedNodes(Context.Graph, Context.GeneratedNodes);

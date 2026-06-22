@@ -19,6 +19,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperExternalGraphAnchor
 	FString GraphName;
 	FString NodeGuid;
 	FString NodeClass;
+	FString StableName;
+	FString EntryKind;
+	FString MemberName;
+	FString FunctionName;
+	FString DisplayName;
 	FString PinName;
 	FString PinDirection;
 	EBlueprintHelperExternalGraphAnchorRole SemanticRole = EBlueprintHelperExternalGraphAnchorRole::Node;

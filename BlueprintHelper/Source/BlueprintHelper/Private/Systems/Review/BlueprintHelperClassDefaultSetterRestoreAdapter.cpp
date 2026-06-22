@@ -4,7 +4,6 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Shared/BlueprintClassSettings/BlueprintHelperClassDefaultMutationTypes.h"
 #include "Systems/ToolClusters/BlueprintClassSettings/BlueprintHelperClassSettingsService.h"
 #include "Systems/ToolClusters/GraphWrite/GraphSupport/BlueprintHelperGraphResolver.h"
 
@@ -25,36 +24,24 @@ public:
 
 		FString Schema;
 		Snapshot->TryGetStringField(TEXT("schema"), Schema);
-		if (Schema.Equals(TEXT("BlueprintHelper.ClassDefaultSetterMutationEvidence.v1"), ESearchCase::IgnoreCase))
+		if (!Schema.Equals(TEXT("BlueprintHelper.ReviewTargetSnapshot.v2"), ESearchCase::IgnoreCase))
 		{
-			FBlueprintHelperClassDefaultSetterMutationEvidence Evidence;
-			if (!FBlueprintHelperClassDefaultSetterMutationEvidence::FromJson(Snapshot, Evidence))
-			{
-				OutError = TEXT("class_default_setter_restore_snapshot_invalid");
-				return false;
-			}
-			if (Evidence.AssetPath.IsEmpty() || Evidence.PropertyPath.IsEmpty())
-			{
-				OutError = TEXT("class_default_setter_restore_snapshot_missing_target");
-				return false;
-			}
+			OutError = TEXT("class_default_setter_restore_snapshot_invalid");
+			return false;
+		}
 
-			OutAssetPath = Evidence.AssetPath;
-			OutSetting.PropertyPath = Evidence.PropertyPath;
-			OutSetting.Value = MakeShared<FJsonValueString>(Evidence.BeforeValue);
-			OutSetting.MutationStrategy = TEXT("setter_aware_property");
-			return true;
+		FString TargetKind;
+		Snapshot->TryGetStringField(TEXT("target_kind"), TargetKind);
+		if (!TargetKind.Equals(TEXT("class_default_setter_property"), ESearchCase::IgnoreCase))
+		{
+			OutError = TEXT("class_default_setter_restore_snapshot_invalid");
+			return false;
 		}
 
 		FString AssetPath;
 		FString PropertyPath;
 		Snapshot->TryGetStringField(TEXT("asset_path"), AssetPath);
 		Snapshot->TryGetStringField(TEXT("property_path"), PropertyPath);
-		if (PropertyPath.IsEmpty())
-		{
-			Snapshot->TryGetStringField(TEXT("target_name"), PropertyPath);
-		}
-
 		const TSharedPtr<FJsonValue> Value = Snapshot->TryGetField(TEXT("value"));
 		if (AssetPath.IsEmpty() || PropertyPath.IsEmpty() || !Value.IsValid())
 		{

@@ -49,6 +49,11 @@ const bodyEntryAnchor = {
   graph_name: 'EventGraph',
   node_guid: '11112222333344445555666677778888',
   node_class: '/Script/BlueprintGraph.K2Node_Event',
+  stable_name: 'ReceiveBeginPlay',
+  entry_kind: 'event',
+  member_name: 'ReceiveBeginPlay',
+  function_name: 'ReceiveBeginPlay',
+  display_name: 'Event ReceiveBeginPlay',
   semantic_role: 'body_entry',
   fingerprint: 'anchor-fingerprint',
 };
@@ -1949,4 +1954,12 @@ test('read_context blueprint logic preserves adapter body entry evidence for log
   const logicFlowBoundary = logicFlowPayload['adapter_boundary'] as Record<string, unknown>;
   assert.deepEqual(logicFlowBoundary['body_entry'], bodyEntryAnchor);
   assert.equal(logicFlowBoundary['body_fingerprint'], 'body-fingerprint');
+});
+
+test('logic_flow projection preserves body entry stable identity fields', () => {
+  const result = buildLogicFlowPayload(makeLogicJsonWithBodyBoundaryEvidence());
+  const adapterBoundary = result.payload['adapter_boundary'] as Record<string, unknown>;
+
+  assert.deepEqual(adapterBoundary['body_entry'], bodyEntryAnchor);
+  assert.equal(adapterBoundary['body_fingerprint'], 'body-fingerprint');
 });

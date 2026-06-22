@@ -11,7 +11,8 @@ struct BLUEPRINTHELPER_API FBlueprintHelperK2GraphEntryEvidence
 	FString OperationKind;
 	FBlueprintHelperK2GraphEntryIdentity EntryIdentity;
 	FString BodyEntryAnchorJson;
-	FString BodyFingerprint;
+	FString BeforeBodyFingerprint;
+	FString AfterBodyFingerprint;
 	FString BeforeBodySnapshotJson;
 	FString AfterBodySnapshotJson;
 	FString GraphBodyBoundaryJson;

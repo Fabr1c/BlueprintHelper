@@ -54,6 +54,11 @@ bool FBlueprintHelperK2GraphEntryEvidenceProjector::ProjectToAtomicTarget(
 		OutError = TEXT("k2_graph_entry_evidence_missing_body_entry_anchor");
 		return false;
 	}
+	if (Evidence.AfterBodyFingerprint.IsEmpty())
+	{
+		OutError = TEXT("k2_graph_entry_evidence_missing_after_body_fingerprint");
+		return false;
+	}
 
 	const FString EntryKind = BlueprintHelperK2GraphEntryEvidenceKindToString(Evidence.EntryIdentity.Kind);
 	OutTarget.AssetPath = Evidence.AssetPath;
@@ -91,7 +96,7 @@ bool FBlueprintHelperK2GraphEntryEvidenceProjector::ProjectToAtomicTarget(
 	OutTarget.GraphBodyBoundaryJson = Evidence.GraphBodyBoundaryJson;
 	OutTarget.BeforeSnapshotJson = Evidence.BeforeBodySnapshotJson;
 	OutTarget.AfterSnapshotJson = Evidence.AfterBodySnapshotJson;
-	OutTarget.ReadbackFingerprintAfter = Evidence.BodyFingerprint;
+	OutTarget.ReadbackFingerprintAfter = Evidence.AfterBodyFingerprint;
 	OutTarget.ExecutionOrder = StepIndex;
 	OutTarget.TaskStepIndex = StepIndex;
 	OutTarget.AtomicIndex = AtomicIndex;

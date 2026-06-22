@@ -123,6 +123,7 @@ test('wrapped preview adapter injects replace_external_body scope policy without
             graph_name: 'EventGraph',
             node_guid: '0123456789abcdef0123456789abcdef',
             node_class: 'K2Node_CustomEvent',
+            stable_name: 'OnExternalBodyPolicyNormalize',
             semantic_role: 'body_entry',
             fingerprint: 'body-entry-fingerprint',
           },

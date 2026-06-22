@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TaskSpecCompileError, compileTaskSpecToTaskPlan } from './task-compiler.js';
+import { TaskSpecSchema } from '../schema/task-schemas.js';
 
 function makeSignatureSpec(changes: Array<Record<string, unknown>>) {
   return {
@@ -103,4 +104,38 @@ test('remove_signature lowers reference guidance policy fields', () => {
   const op = (((plan.steps[0] as Record<string, unknown>).write as Record<string, unknown>).ops as Array<Record<string, unknown>>)[0];
   assert.equal(op.require_reference_context, true);
   assert.equal(op.execute_policy, 'execute_if_unreferenced');
+});
+
+test('remove_signature rejects legacy event_name-only lowering without explicit signature selectors', () => {
+  assert.throws(
+    () => {
+      const taskSpec = TaskSpecSchema.parse(makeSignatureSpec([{
+        kind: 'remove_signature',
+        event_name: 'ReceiveBeginPlay',
+      }]));
+      compileTaskSpecToTaskPlan(taskSpec as never);
+    },
+    (error: unknown) => error instanceof Error
+      && /signature_remove_kind_required|signature_remove_name_required/.test(error.message),
+  );
+});
+
+test('remove_signature lowers native_event from explicit signature kind and name', () => {
+  const plan = compileTaskSpecToTaskPlan(makeSignatureSpec([{
+    kind: 'remove_signature',
+    signature_kind: 'native_event',
+    signature_name: 'ReceiveBeginPlay',
+    execute_policy: 'execute_if_unreferenced',
+  }]) as never);
+
+  const step = plan.steps[0] as Record<string, unknown>;
+  const write = step.write as Record<string, unknown>;
+  const op = (write.ops as Array<Record<string, unknown>>)[0];
+  assert.equal(step.capability, 'blueprint_signature');
+  assert.equal(write.strategy, 'override_event_signature');
+  assert.equal(op.op, 'remove_signature');
+  assert.equal(op.signature_kind, 'native_event');
+  assert.equal(op.signature_name, 'ReceiveBeginPlay');
+  assert.equal(op.execute_policy, 'execute_if_unreferenced');
+  assert.equal(op.require_reference_context, true);
 });

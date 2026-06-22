@@ -129,12 +129,13 @@ bool FBlueprintHelperReviewBaselineDirtyClassifier_SequentialSessionServicePersi
 	TestTrue(TEXT("lookup found active session"), Lookup.bFound);
 	TestEqual(TEXT("lookup id"), Lookup.Session.SequentialReviewSessionId, SessionId);
 
-	TestTrue(
-		TEXT("close session"),
+	const FBlueprintHelperSequentialReviewSessionCloseResult CloseResult =
 		FBlueprintHelperSequentialReviewSessionService().CloseSessionsForReviewRecord(
 			ReviewRecordId,
-			EBlueprintHelperSequentialReviewSessionStatus::Accepted,
-			Error));
+			EBlueprintHelperSequentialReviewSessionStatus::Accepted);
+	TestTrue(TEXT("close session"), CloseResult.bSucceeded);
+	TestTrue(TEXT("close matched session"), CloseResult.bMatched);
+	TestTrue(TEXT("close affected session id"), CloseResult.AffectedSessionIds.Contains(SessionId));
 	const FBlueprintHelperSequentialReviewSessionLookup ClosedLookup =
 		FBlueprintHelperSequentialReviewSessionService().FindOpenSessionForTargetAssets(LookupTargets);
 	TestFalse(TEXT("closed session no longer active"), ClosedLookup.bFound);

@@ -723,6 +723,11 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalBodyReplaceEv
 	{
 		return false;
 	}
+	const FString StableEntryName = BlueprintHelperGraphWriteReviewReadStableEntryName(Anchor, FString());
+	if (StableEntryName.IsEmpty())
+	{
+		return false;
+	}
 
 	FString ReplaceScope = ReadStringField(Input.LoweredStep.Payload, TEXT("scope"));
 	if (ReplaceScope.IsEmpty())
@@ -743,46 +748,38 @@ bool FBlueprintHelperGraphWriteReviewEvidenceBuilder::BuildExternalBodyReplaceEv
 	EntryEvidence.EntryIdentity.Role = EBlueprintHelperK2GraphBoundaryRole::BodyEntry;
 	EntryEvidence.EntryIdentity.NodeGuid = NodeGuid;
 	EntryEvidence.EntryIdentity.NodeClass = ReadStringField(Anchor, TEXT("node_class"));
-	EntryEvidence.EntryIdentity.StableName = BlueprintHelperGraphWriteReviewReadStableEntryName(Anchor, NodeGuid);
+	EntryEvidence.EntryIdentity.StableName = StableEntryName;
 	EntryEvidence.EntryIdentity.GraphName = GraphName;
 	EntryEvidence.EntryIdentity.bValid =
 		EntryEvidence.EntryIdentity.Kind != EBlueprintHelperK2GraphEntryKind::Unknown &&
 		!EntryEvidence.EntryIdentity.StableName.IsEmpty();
 	EntryEvidence.BodyEntryAnchorJson = SerializeJsonObject(Anchor.ToSharedRef());
-	EntryEvidence.BodyFingerprint = ReadStringField(Input.LoweredStep.Payload, TEXT("expected_body_fingerprint"));
 	EntryEvidence.GraphBodyBoundaryJson = SerializeJsonObject(BuildGraphBodyBoundaryEvidence(BoundaryModel));
 	EntryEvidence.TargetOwnership = TEXT("external_user_authored");
 
-	if (Input.StepResult.Data.IsValid())
+	if (!Input.StepResult.Data.IsValid())
 	{
-		const TSharedPtr<FJsonObject> BeforeSnapshot =
-			ReadObjectField(Input.StepResult.Data, TEXT("external_body_snapshot"));
-		if (BeforeSnapshot.IsValid())
-		{
-			BeforeSnapshot->SetBoolField(TEXT("exists"), true);
-			EntryEvidence.BeforeBodySnapshotJson = SerializeJsonObject(BeforeSnapshot.ToSharedRef());
-			if (EntryEvidence.BodyFingerprint.IsEmpty())
-			{
-				EntryEvidence.BodyFingerprint = ReadStringField(BeforeSnapshot, TEXT("body_fingerprint"));
-			}
-		}
+		return false;
 	}
-	if (!EntryEvidence.BodyFingerprint.IsEmpty())
+
+	const TSharedPtr<FJsonObject> BeforeSnapshot =
+		ReadObjectField(Input.StepResult.Data, TEXT("external_body_before_snapshot"));
+	const TSharedPtr<FJsonObject> AfterSnapshot =
+		ReadObjectField(Input.StepResult.Data, TEXT("external_body_after_snapshot"));
+	if (!BeforeSnapshot.IsValid() || !AfterSnapshot.IsValid())
 	{
-		TSharedRef<FJsonObject> AfterSnapshot = MakeShared<FJsonObject>();
-		AfterSnapshot->SetBoolField(TEXT("exists"), true);
-		AfterSnapshot->SetStringField(TEXT("entry_node_guid"), NodeGuid);
-		AfterSnapshot->SetStringField(TEXT("body_fingerprint"), EntryEvidence.BodyFingerprint);
-		if (Input.StepResult.Data.IsValid())
-		{
-			const FString ReplacementBlockId = ReadStringField(Input.StepResult.Data, TEXT("replacement_block_id"));
-			if (!ReplacementBlockId.IsEmpty())
-			{
-				AfterSnapshot->SetStringField(TEXT("replacement_block_id"), ReplacementBlockId);
-			}
-		}
-		EntryEvidence.AfterBodySnapshotJson = SerializeJsonObject(AfterSnapshot);
+		return false;
 	}
+	EntryEvidence.BeforeBodyFingerprint = ReadStringField(BeforeSnapshot, TEXT("body_fingerprint"));
+	EntryEvidence.AfterBodyFingerprint = ReadStringField(AfterSnapshot, TEXT("body_fingerprint"));
+	if (EntryEvidence.BeforeBodyFingerprint.IsEmpty() || EntryEvidence.AfterBodyFingerprint.IsEmpty())
+	{
+		return false;
+	}
+	BeforeSnapshot->SetBoolField(TEXT("exists"), true);
+	AfterSnapshot->SetBoolField(TEXT("exists"), true);
+	EntryEvidence.BeforeBodySnapshotJson = SerializeJsonObject(BeforeSnapshot.ToSharedRef());
+	EntryEvidence.AfterBodySnapshotJson = SerializeJsonObject(AfterSnapshot.ToSharedRef());
 
 	FBlueprintHelperReviewAtomicTarget Target;
 	FString ProjectError;

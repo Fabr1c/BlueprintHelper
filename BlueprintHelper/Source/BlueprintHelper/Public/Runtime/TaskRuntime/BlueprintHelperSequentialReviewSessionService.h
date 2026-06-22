@@ -39,6 +39,15 @@ struct BLUEPRINTHELPER_API FBlueprintHelperSequentialReviewSessionLookup
 	FBlueprintHelperSequentialReviewSession Session;
 };
 
+struct BLUEPRINTHELPER_API FBlueprintHelperSequentialReviewSessionCloseResult
+{
+	bool bSucceeded = false;
+	bool bMatched = false;
+	TArray<FString> AffectedSessionIds;
+	FString ErrorCode;
+	FString ErrorMessage;
+};
+
 struct BLUEPRINTHELPER_API FBlueprintHelperSequentialReviewSessionExecuteUpdate
 {
 	FString SequentialReviewSessionId;
@@ -64,10 +73,9 @@ public:
 		FBlueprintHelperSequentialReviewSession& OutSession,
 		FString& OutError) const;
 
-	bool CloseSessionsForReviewRecord(
+	FBlueprintHelperSequentialReviewSessionCloseResult CloseSessionsForReviewRecord(
 		const FString& ReviewRecordId,
-		EBlueprintHelperSequentialReviewSessionStatus FinalStatus,
-		FString& OutError) const;
+		EBlueprintHelperSequentialReviewSessionStatus FinalStatus) const;
 
 private:
 	TArray<FBlueprintHelperSequentialReviewSession> QuerySessions() const;

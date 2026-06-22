@@ -20,6 +20,11 @@ struct BLUEPRINTHELPER_API FBlueprintHelperGraphBodyReadbackProjection
 	TMap<FString, FString> BoundaryDisplayNames;
 	FString BodyEntryNodeGuid;
 	FString BodyEntryNodeClass;
+	FString BodyEntryStableName;
+	FString BodyEntryKind;
+	FString BodyEntryMemberName;
+	FString BodyEntryFunctionName;
+	FString BodyEntryDisplayName;
 	FString BodyEntryFingerprint;
 	FString BodyFingerprint;
 	FString BodyEvidenceStatus;

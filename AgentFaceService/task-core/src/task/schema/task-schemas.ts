@@ -783,6 +783,11 @@ const ExternalGraphAnchorSchema = z.object({
   graph_name: z.string().min(1),
   node_guid: z.string().min(1),
   node_class: z.string().min(1),
+  stable_name: z.string().min(1).optional(),
+  entry_kind: z.string().min(1).optional(),
+  member_name: z.string().min(1).optional(),
+  function_name: z.string().min(1).optional(),
+  display_name: z.string().min(1).optional(),
   pin_name: z.string().min(1).optional(),
   pin_direction: z.enum(['input', 'output']).optional(),
   semantic_role: z.enum(['exec_boundary', 'node', 'body_entry']),
@@ -909,6 +914,13 @@ const ExternalNodeAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, c
 const ExternalBodyEntryAnchorSchema = ExternalGraphAnchorSchema.superRefine((value, ctx) => {
   if (value.semantic_role !== 'body_entry') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['semantic_role'], message: 'replace_external_body requires semantic_role="body_entry".' });
+  }
+  if (!value.stable_name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['stable_name'],
+      message: 'external_body_entry_stable_name_required: replace_external_body requires stable_name emitted by read_context.',
+    });
   }
 });
 
@@ -1709,8 +1721,30 @@ export const BlueprintSignatureTaskSpecSchema: z.ZodTypeAny = agentFacingTaskSpe
     if (change.kind === 'ensure_override_event' && !change.event_name) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'event_name'], message: 'ensure_override_event requires event_name.' });
     }
-    if (change.kind === 'remove_signature' && !(change.signature_name || change.function_name || change.event_name || change.dispatcher_name)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: 'remove_signature requires signature_name, function_name, event_name, or dispatcher_name.' });
+    if (change.kind === 'remove_signature') {
+      if (!change.signature_kind) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, 'signature_kind'],
+          message: 'signature_remove_kind_required: remove_signature requires signature_kind.',
+        });
+      }
+      if (!change.signature_name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, 'signature_name'],
+          message: 'signature_remove_name_required: remove_signature requires signature_name.',
+        });
+      }
+      for (const legacyField of ['function_name', 'event_name', 'dispatcher_name'] as const) {
+        if (change[legacyField]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, legacyField],
+            message: 'signature_remove_legacy_name_fields_removed: use signature_name with signature_kind.',
+          });
+        }
+      }
     }
     for (const field of ['inputs', 'outputs'] as const) {
       const pins = Array.isArray(change[field]) ? change[field] : undefined;

@@ -388,6 +388,24 @@ namespace BlueprintHelperReplaceExternalBodyTests
 			: FString();
 	}
 
+	static bool TryReadObjectField(
+		const TSharedPtr<FJsonObject>& Object,
+		const TCHAR* FieldName,
+		TSharedPtr<FJsonObject>& OutObject)
+	{
+		const TSharedPtr<FJsonObject>* ObjectPtr = nullptr;
+		if (!Object.IsValid() ||
+			!Object->TryGetObjectField(FieldName, ObjectPtr) ||
+			!ObjectPtr ||
+			!ObjectPtr->IsValid())
+		{
+			OutObject.Reset();
+			return false;
+		}
+		OutObject = *ObjectPtr;
+		return true;
+	}
+
 	static TSharedRef<FJsonObject> MakeReplacePayload(
 		UBlueprint* Blueprint,
 		UEdGraph* Graph,
@@ -519,6 +537,60 @@ namespace BlueprintHelperReplaceExternalBodyTests
 		}
 		return nullptr;
 	}
+
+	static FBlueprintHelperTaskRuntimeLoweredStep MakeExternalBodyReviewEvidenceStep(bool bIncludeStableName = true)
+	{
+		TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+		Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
+		Payload->SetObjectField(TEXT("target"), Target);
+		Payload->SetStringField(TEXT("scope"), TEXT("custom_event_body"));
+
+		TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
+		Anchor->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalGraphAnchor.v1"));
+		Anchor->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
+		Anchor->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
+		Anchor->SetStringField(TEXT("node_guid"), TEXT("11111111222233334444555555555555"));
+		Anchor->SetStringField(TEXT("node_class"), TEXT("/Script/BlueprintGraph.K2Node_CustomEvent"));
+		if (bIncludeStableName)
+		{
+			Anchor->SetStringField(TEXT("stable_name"), TEXT("ReplaceExternalBodyEntry"));
+		}
+		Anchor->SetStringField(TEXT("semantic_role"), TEXT("body_entry"));
+		Anchor->SetStringField(TEXT("fingerprint"), TEXT("fingerprint"));
+		Payload->SetObjectField(TEXT("anchor"), Anchor);
+		Payload->SetStringField(TEXT("expected_body_fingerprint"), TEXT("expected-preflight-fingerprint"));
+
+		FBlueprintHelperTaskRuntimeLoweredStep Step;
+		Step.Capability = TEXT("graph_write");
+		Step.AdapterOperation = TEXT("replace_external_body");
+		Step.Payload = Payload;
+		return Step;
+	}
+
+	static FBlueprintHelperToolResultBase MakeExternalBodyReviewEvidenceStepResult(bool bIncludeAfterSnapshot = true)
+	{
+		FBlueprintHelperToolResultBase StepResult =
+			FBlueprintHelperToolResultBuilder::Applied(TEXT("replace_external_body"), TEXT("trace_replace_external_body_review"));
+		TSharedRef<FJsonObject> StepData = MakeShared<FJsonObject>();
+		TSharedRef<FJsonObject> BeforeSnapshot = MakeShared<FJsonObject>();
+		BeforeSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalBodySnapshot.v1"));
+		BeforeSnapshot->SetStringField(TEXT("entry_node_guid"), TEXT("11111111222233334444555555555555"));
+		BeforeSnapshot->SetStringField(TEXT("body_fingerprint"), TEXT("before-body-fingerprint"));
+		StepData->SetObjectField(TEXT("external_body_before_snapshot"), BeforeSnapshot);
+		if (bIncludeAfterSnapshot)
+		{
+			TSharedRef<FJsonObject> AfterSnapshot = MakeShared<FJsonObject>();
+			AfterSnapshot->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalBodySnapshot.v1"));
+			AfterSnapshot->SetStringField(TEXT("entry_node_guid"), TEXT("11111111222233334444555555555555"));
+			AfterSnapshot->SetStringField(TEXT("body_fingerprint"), TEXT("after-body-fingerprint"));
+			AfterSnapshot->SetStringField(TEXT("replacement_block_id"), TEXT("replacement-block"));
+			StepData->SetObjectField(TEXT("external_body_after_snapshot"), AfterSnapshot);
+		}
+		StepResult.Data = StepData;
+		return StepResult;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -608,6 +680,20 @@ bool FBlueprintHelperReplaceExternalBodyPreviewListsExactPlanTest::RunTest(const
 
 	TestTrue(TEXT("preview ok"), Result.bOk);
 	TestNotNull(TEXT("dry-run data exists"), Result.Data.Get());
+	if (Result.Data.IsValid())
+	{
+		TestFalse(TEXT("preview legacy single external body snapshot is removed"),
+			Result.Data->HasField(TEXT("external_body_snapshot")));
+		TSharedPtr<FJsonObject> BeforeSnapshot;
+		TestTrue(TEXT("preview before snapshot exists"),
+			TryReadObjectField(Result.Data, TEXT("external_body_before_snapshot"), BeforeSnapshot));
+		if (BeforeSnapshot.IsValid())
+		{
+			TestEqual(TEXT("preview before snapshot carries body fingerprint"),
+				BeforeSnapshot->GetStringField(TEXT("body_fingerprint")),
+				Fixture.BodyFingerprint);
+		}
+	}
 	TestEqual(TEXT("dry-run leaves original body"), CountCallFunctionNodes(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(AActor, K2_DestroyActor)), 1);
 	TestEqual(TEXT("dry-run does not create replacement body"), CountCallFunctionNodes(Fixture.Graph, GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString)), 0);
 	return true;
@@ -658,6 +744,87 @@ bool FBlueprintHelperReplaceExternalBodyExecutePreservesEntryTest::RunTest(const
 		MetaData.GetValue(Fixture.EntryNode, TEXT("BlueprintHelperOwned")).IsEmpty());
 	TestTrue(TEXT("external entry has no replacement block id"),
 		MetaData.GetValue(Fixture.EntryNode, TEXT("BlueprintHelperBlockId")).IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperReplaceExternalBodyExecuteEmitsBeforeAfterSnapshotsTest,
+	"BlueprintHelper.GraphWrite.ExternalBodyReplace.ExecuteEmitsBeforeAfterSnapshots",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperReplaceExternalBodyExecuteEmitsBeforeAfterSnapshotsTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	FExternalBodyFixture Fixture = MakeExternalBodyFixture(TEXT("ExecuteEmitsBeforeAfterSnapshots"));
+	if (!Fixture.Blueprint || !Fixture.Graph || !Fixture.EntryNode || !Fixture.BodyNode)
+	{
+		return false;
+	}
+
+	FBlueprintHelperBlockIdService BlockIdService;
+	FBlueprintHelperOwnershipService OwnershipService;
+	FBlueprintHelperExternalBodySnapshotService SnapshotService;
+	FBlueprintHelperExternalDependentsAnalysisService DependentsAnalysisService;
+	FBlueprintHelperReplaceExternalBodyService Service = MakeService(
+		BlockIdService,
+		OwnershipService,
+		SnapshotService,
+		DependentsAnalysisService);
+
+	const FBlueprintHelperToolResultBase Result = Service.Execute(MakeReplacePayload(
+		Fixture.Blueprint,
+		Fixture.Graph,
+		Fixture.Anchor,
+		Fixture.BodyFingerprint,
+		TEXT("custom_event_body"),
+		false));
+
+	TestTrue(TEXT("execute ok"), Result.bOk);
+	TestNotNull(TEXT("execute data exists"), Result.Data.Get());
+	if (!Result.Data.IsValid())
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("legacy single external body snapshot is removed"),
+		Result.Data->HasField(TEXT("external_body_snapshot")));
+
+	TSharedPtr<FJsonObject> BeforeSnapshot;
+	TSharedPtr<FJsonObject> AfterSnapshot;
+	TestTrue(TEXT("before snapshot exists"),
+		TryReadObjectField(Result.Data, TEXT("external_body_before_snapshot"), BeforeSnapshot));
+	TestTrue(TEXT("after snapshot exists"),
+		TryReadObjectField(Result.Data, TEXT("external_body_after_snapshot"), AfterSnapshot));
+	if (!BeforeSnapshot.IsValid() || !AfterSnapshot.IsValid())
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("before snapshot carries preflight fingerprint"),
+		BeforeSnapshot->GetStringField(TEXT("body_fingerprint")),
+		Fixture.BodyFingerprint);
+	TestFalse(TEXT("after snapshot fingerprint is not copied from expected preflight"),
+		AfterSnapshot->GetStringField(TEXT("body_fingerprint")).Equals(Fixture.BodyFingerprint, ESearchCase::IgnoreCase));
+	FString ReplacementBlockId;
+	TestTrue(TEXT("after snapshot carries replacement block provenance"),
+		AfterSnapshot->TryGetStringField(TEXT("replacement_block_id"), ReplacementBlockId));
+	TestFalse(TEXT("replacement block provenance is non-empty"),
+		ReplacementBlockId.IsEmpty());
+
+	FBlueprintHelperExternalBodySnapshot RealAfterSnapshot;
+	FString SnapshotError;
+	TestTrue(TEXT("real post-state snapshot can be captured"),
+		SnapshotService.CaptureBody(Fixture.Graph, Fixture.EntryNode, RealAfterSnapshot, SnapshotError));
+	TestEqual(TEXT("after snapshot carries real post-state fingerprint"),
+		AfterSnapshot->GetStringField(TEXT("body_fingerprint")),
+		RealAfterSnapshot.BodyFingerprint);
+
+	const TArray<TSharedPtr<FJsonValue>>* AfterBodyNodes = nullptr;
+	TestTrue(TEXT("after snapshot carries real body nodes"),
+		AfterSnapshot->TryGetArrayField(TEXT("body_node_guids"), AfterBodyNodes) &&
+		AfterBodyNodes &&
+		AfterBodyNodes->Num() > 0);
 	return true;
 }
 
@@ -1026,32 +1193,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBlueprintHelperTaskRuntimeReplaceExternalBodyBuildsReviewEvidenceTest::RunTest(const FString& Parameters)
 {
-	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
-	TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
-	Target->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
-	Target->SetStringField(TEXT("graph"), TEXT("EventGraph"));
-	Payload->SetObjectField(TEXT("target"), Target);
-	Payload->SetStringField(TEXT("scope"), TEXT("custom_event_body"));
+	using namespace BlueprintHelperReplaceExternalBodyTests;
 
-	TSharedRef<FJsonObject> Anchor = MakeShared<FJsonObject>();
-	Anchor->SetStringField(TEXT("schema"), TEXT("BlueprintHelper.ExternalGraphAnchor.v1"));
-	Anchor->SetStringField(TEXT("asset_path"), TEXT("/Game/BP_External"));
-	Anchor->SetStringField(TEXT("graph_name"), TEXT("EventGraph"));
-	Anchor->SetStringField(TEXT("node_guid"), TEXT("11111111222233334444555555555555"));
-	Anchor->SetStringField(TEXT("node_class"), TEXT("/Script/BlueprintGraph.K2Node_CustomEvent"));
-	Anchor->SetStringField(TEXT("semantic_role"), TEXT("body_entry"));
-	Anchor->SetStringField(TEXT("fingerprint"), TEXT("fingerprint"));
-	Payload->SetObjectField(TEXT("anchor"), Anchor);
-
-	FBlueprintHelperTaskRuntimeLoweredStep Step;
-	Step.Capability = TEXT("graph_write");
-	Step.AdapterOperation = TEXT("replace_external_body");
-	Step.Payload = Payload;
+	const FBlueprintHelperTaskRuntimeLoweredStep Step = MakeExternalBodyReviewEvidenceStep();
+	const FBlueprintHelperToolResultBase StepResult = MakeExternalBodyReviewEvidenceStepResult();
 
 	FBlueprintHelperWriteReviewEvidence Evidence;
 	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
 		Step,
-		FBlueprintHelperToolResultBuilder::Applied(Step.AdapterOperation, TEXT("trace_replace_external_body_review")),
+		StepResult,
 		TEXT("archive_external_body"),
 		TEXT("task_external_body"),
 		9,
@@ -1086,10 +1236,71 @@ bool FBlueprintHelperTaskRuntimeReplaceExternalBodyBuildsReviewEvidenceTest::Run
 	TestEqual(TEXT("replace scope is preserved"),
 		TargetEvidence.PropertyPath,
 		FString(TEXT("custom_event_body")));
-	TestTrue(TEXT("target key uses K2 graph entry identity"),
-		TargetEvidence.TargetKey.StartsWith(TEXT("k2_graph_entry:EventGraph:custom_event:")));
+	TestEqual(TEXT("target key uses stable K2 graph entry identity"),
+		TargetEvidence.TargetKey,
+		FString(TEXT("k2_graph_entry:EventGraph:custom_event:ReplaceExternalBodyEntry")));
+	TestTrue(TEXT("before snapshot json is preserved"),
+		TargetEvidence.BeforeSnapshotJson.Contains(TEXT("\"body_fingerprint\":\"before-body-fingerprint\"")));
+	TestTrue(TEXT("after snapshot json is preserved"),
+		TargetEvidence.AfterSnapshotJson.Contains(TEXT("\"body_fingerprint\":\"after-body-fingerprint\"")) &&
+		TargetEvidence.AfterSnapshotJson.Contains(TEXT("\"replacement_block_id\":\"replacement-block\"")));
+	TestEqual(TEXT("after readback fingerprint uses after snapshot"),
+		TargetEvidence.ReadbackFingerprintAfter,
+		FString(TEXT("after-body-fingerprint")));
 	TestTrue(TEXT("external body does not aggregate as graph body"),
 		!FBlueprintHelperReviewTargetKindRegistry::ShouldAggregateAsGraphBody(TargetEvidence));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeReplaceExternalBodyRejectsMissingStableNameEvidenceTest,
+	"BlueprintHelper.TaskRuntime.GraphWrite.ReplaceExternalBody.RejectsMissingStableNameEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeReplaceExternalBodyRejectsMissingStableNameEvidenceTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	const FBlueprintHelperTaskRuntimeLoweredStep Step = MakeExternalBodyReviewEvidenceStep(false);
+	const FBlueprintHelperToolResultBase StepResult = MakeExternalBodyReviewEvidenceStepResult();
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		Step,
+		StepResult,
+		TEXT("archive_external_body"),
+		TEXT("task_external_body"),
+		9,
+		Evidence);
+
+	TestFalse(TEXT("missing stable entry identity rejects Review evidence"), bBuilt);
+	TestEqual(TEXT("no atomic targets emitted"), Evidence.AtomicTargets.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskRuntimeReplaceExternalBodyRejectsMissingAfterSnapshotEvidenceTest,
+	"BlueprintHelper.TaskRuntime.GraphWrite.ReplaceExternalBody.RejectsMissingAfterSnapshotEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBlueprintHelperTaskRuntimeReplaceExternalBodyRejectsMissingAfterSnapshotEvidenceTest::RunTest(const FString& Parameters)
+{
+	using namespace BlueprintHelperReplaceExternalBodyTests;
+
+	const FBlueprintHelperTaskRuntimeLoweredStep Step = MakeExternalBodyReviewEvidenceStep();
+	const FBlueprintHelperToolResultBase StepResult = MakeExternalBodyReviewEvidenceStepResult(false);
+
+	FBlueprintHelperWriteReviewEvidence Evidence;
+	const bool bBuilt = FBlueprintHelperGraphWriteTaskRuntimeCluster::BuildReviewEvidence(
+		Step,
+		StepResult,
+		TEXT("archive_external_body"),
+		TEXT("task_external_body"),
+		9,
+		Evidence);
+
+	TestFalse(TEXT("missing after snapshot rejects Review evidence"), bBuilt);
+	TestEqual(TEXT("no atomic targets emitted"), Evidence.AtomicTargets.Num(), 0);
 	return true;
 }
 

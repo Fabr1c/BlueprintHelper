@@ -5,8 +5,34 @@
 #include "EdGraphSchema_K2.h"
 #include "Shared/BlueprintHelperVersionCompat.h"
 #include "Systems/ToolClusters/GraphWrite/External/BlueprintHelperExternalGraphAnchorFingerprintService.h"
+#include "Systems/ToolClusters/GraphWrite/GraphBody/BlueprintHelperK2GraphEntryIdentityResolver.h"
 #include "UObject/MetaData.h"
 #include "UObject/Package.h"
+
+class FBlueprintHelperExternalGraphAnchorServiceLocal
+{
+public:
+	static FString EntryKindToString(EBlueprintHelperK2GraphEntryKind Kind)
+	{
+		switch (Kind)
+		{
+		case EBlueprintHelperK2GraphEntryKind::Event:
+			return TEXT("event");
+		case EBlueprintHelperK2GraphEntryKind::CustomEvent:
+			return TEXT("custom_event");
+		case EBlueprintHelperK2GraphEntryKind::FunctionEntry:
+			return TEXT("function_entry");
+		case EBlueprintHelperK2GraphEntryKind::FunctionResult:
+			return TEXT("function_result");
+		case EBlueprintHelperK2GraphEntryKind::MacroEntry:
+			return TEXT("macro_entry");
+		case EBlueprintHelperK2GraphEntryKind::MacroExit:
+			return TEXT("macro_exit");
+		default:
+			return TEXT("unknown");
+		}
+	}
+};
 
 namespace BlueprintHelperExternalGraphAnchorService
 {
@@ -90,6 +116,18 @@ bool FBlueprintHelperExternalGraphAnchorService::BuildBodyEntryAnchor(
 	OutAnchor.NodeClass = Node->GetClass() ? Node->GetClass()->GetPathName() : TEXT("");
 	OutAnchor.SemanticRole = EBlueprintHelperExternalGraphAnchorRole::BodyEntry;
 	OutAnchor.Fingerprint = FingerprintService.BuildNodeFingerprint(Node);
+
+	FBlueprintHelperK2GraphEntryIdentity Identity;
+	if (!FBlueprintHelperK2GraphEntryIdentityResolver().TryResolveNodeIdentity(Node, Identity) || !Identity.bValid)
+	{
+		OutError = TEXT("external_anchor_body_entry_identity_unresolved");
+		return false;
+	}
+	OutAnchor.StableName = Identity.StableName;
+	OutAnchor.EntryKind = FBlueprintHelperExternalGraphAnchorServiceLocal::EntryKindToString(Identity.Kind);
+	OutAnchor.MemberName = Identity.MemberName;
+	OutAnchor.FunctionName = Identity.FunctionName;
+	OutAnchor.DisplayName = Identity.DisplayName;
 	return true;
 }
 

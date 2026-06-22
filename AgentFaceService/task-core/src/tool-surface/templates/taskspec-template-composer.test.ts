@@ -881,6 +881,7 @@ test('TaskSpec template composer writes remove signature guidance for concrete n
   taskSpec.target.asset_path = '/Game/BH_Tests/BP_TemplateSignatureRemoveSmoke';
   const change = taskSpec.behavior.changes[0];
   assert.equal(change.signature_kind, '__REQUIRED_SIGNATURE_KIND__');
+  assert.equal(change.signature_name, '__REQUIRED_SIGNATURE_NAME__');
   assert.equal(change.execute_policy, 'execute_if_unreferenced');
   assert.equal(change.context_evidence['signature.kind.allowed_values'].includes('native_event'), true);
   assert.equal(change.context_evidence['signature.event_like_kind.allowed_values'].includes('native_event'), true);

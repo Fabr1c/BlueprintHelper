@@ -560,6 +560,103 @@ bool FBlueprintHelperGraphBodyReadbackServiceUsesRegistryTest::RunTest(const FSt
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperGraphBodyReadbackServiceSerializesBodyEntryIdentityWithFingerprintFailureEvidenceTest,
+	"BlueprintHelper.GraphWrite.GraphBodyAdapter.ReadbackService.SerializesBodyEntryIdentityWithFingerprintFailureEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperGraphBodyReadbackServiceSerializesBodyEntryIdentityWithFingerprintFailureEvidenceTest::RunTest(const FString&)
+{
+	FBlueprintHelperGraphBodyBoundaryModel Boundary;
+	Boundary.RuntimeAdapterId = TEXT("k2.external_graph.replace_body");
+	Boundary.TaskSpecStrategy = TEXT("replace_external_body");
+	Boundary.TargetAssetPath = TEXT("/Game/BP_BodyEntryFailureProjection");
+	Boundary.GraphName = TEXT("EventGraph");
+	Boundary.BodyKind = EBlueprintHelperGraphBodyKind::K2ExternalBody;
+
+	FBlueprintHelperGraphBodyReadbackProjection Projection;
+	Projection.BodyEntryNodeGuid = TEXT("A1B2C3D4E5F6471890ABCDEF01234567");
+	Projection.BodyEntryNodeClass = TEXT("K2Node_Event");
+	Projection.BodyEntryStableName = TEXT("ReceiveBeginPlay");
+	Projection.BodyEntryKind = TEXT("event");
+	Projection.BodyEntryMemberName = TEXT("ReceiveBeginPlay");
+	Projection.BodyEntryFunctionName = TEXT("ReceiveBeginPlay");
+	Projection.BodyEntryDisplayName = TEXT("Event ReceiveBeginPlay");
+	Projection.BodyEntryFingerprint = TEXT("sha256:body-entry-anchor");
+	Projection.BodyEvidenceStatus = TEXT("body_fingerprint_failed");
+	Projection.BodyEvidenceErrorCode = TEXT("body_snapshot_capture_failed");
+	Projection.BodyEvidenceErrorMessage = TEXT("Snapshot capture failed after body entry anchor projection.");
+
+	const FBlueprintHelperGraphBodyReadbackService Service;
+	const TSharedRef<FJsonObject> Json = Service.BuildAdapterBoundaryJson(Boundary, Projection);
+
+	const TSharedPtr<FJsonObject>* BodyEntry = nullptr;
+	TestTrue(TEXT("fingerprint failure boundary keeps body_entry"),
+		Json->TryGetObjectField(TEXT("body_entry"), BodyEntry)
+		&& BodyEntry
+		&& BodyEntry->IsValid());
+	if (!BodyEntry || !BodyEntry->IsValid())
+	{
+		return false;
+	}
+
+	FString BodyEntryNodeGuid;
+	TestTrue(TEXT("body_entry has node_guid"),
+		(*BodyEntry)->TryGetStringField(TEXT("node_guid"), BodyEntryNodeGuid));
+	TestEqual(TEXT("body_entry node_guid"), BodyEntryNodeGuid, Projection.BodyEntryNodeGuid);
+
+	FString BodyEntryNodeClass;
+	TestTrue(TEXT("body_entry has node_class"),
+		(*BodyEntry)->TryGetStringField(TEXT("node_class"), BodyEntryNodeClass));
+	TestEqual(TEXT("body_entry node_class"), BodyEntryNodeClass, Projection.BodyEntryNodeClass);
+
+	FString StableName;
+	TestTrue(TEXT("body_entry has stable_name"),
+		(*BodyEntry)->TryGetStringField(TEXT("stable_name"), StableName));
+	TestEqual(TEXT("body_entry stable_name"), StableName, Projection.BodyEntryStableName);
+
+	FString EntryKind;
+	TestTrue(TEXT("body_entry has entry_kind"),
+		(*BodyEntry)->TryGetStringField(TEXT("entry_kind"), EntryKind));
+	TestEqual(TEXT("body_entry entry_kind"), EntryKind, Projection.BodyEntryKind);
+
+	FString MemberName;
+	TestTrue(TEXT("body_entry has member_name"),
+		(*BodyEntry)->TryGetStringField(TEXT("member_name"), MemberName));
+	TestEqual(TEXT("body_entry member_name"), MemberName, Projection.BodyEntryMemberName);
+
+	FString FunctionName;
+	TestTrue(TEXT("body_entry has function_name"),
+		(*BodyEntry)->TryGetStringField(TEXT("function_name"), FunctionName));
+	TestEqual(TEXT("body_entry function_name"), FunctionName, Projection.BodyEntryFunctionName);
+
+	FString DisplayName;
+	TestTrue(TEXT("body_entry has display_name"),
+		(*BodyEntry)->TryGetStringField(TEXT("display_name"), DisplayName));
+	TestEqual(TEXT("body_entry display_name"), DisplayName, Projection.BodyEntryDisplayName);
+
+	FString Fingerprint;
+	TestTrue(TEXT("body_entry has fingerprint"),
+		(*BodyEntry)->TryGetStringField(TEXT("fingerprint"), Fingerprint));
+	TestEqual(TEXT("body_entry fingerprint"), Fingerprint, Projection.BodyEntryFingerprint);
+
+	FString BodyEvidenceStatus;
+	TestTrue(TEXT("fingerprint failure status is serialized"),
+		Json->TryGetStringField(TEXT("body_evidence_status"), BodyEvidenceStatus));
+	TestEqual(TEXT("fingerprint failure status"), BodyEvidenceStatus, Projection.BodyEvidenceStatus);
+
+	FString BodyEvidenceErrorCode;
+	TestTrue(TEXT("fingerprint failure error code is serialized"),
+		Json->TryGetStringField(TEXT("body_evidence_error_code"), BodyEvidenceErrorCode));
+	TestEqual(TEXT("fingerprint failure error code"), BodyEvidenceErrorCode, Projection.BodyEvidenceErrorCode);
+
+	FString BodyEvidenceErrorMessage;
+	TestTrue(TEXT("fingerprint failure error message is serialized"),
+		Json->TryGetStringField(TEXT("body_evidence_error_message"), BodyEvidenceErrorMessage));
+	TestEqual(TEXT("fingerprint failure error message"), BodyEvidenceErrorMessage, Projection.BodyEvidenceErrorMessage);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBlueprintHelperGraphBodyAdapterTemporaryFixturesAreTransientTest,
 	"BlueprintHelper.GraphWrite.GraphBodyAdapter.TestAssets.TemporaryFixturesAreTransient",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -680,6 +777,14 @@ bool FBlueprintHelperGraphBodyReadbackServiceBuildsFunctionExternalBodyAuthoring
 		&& AdapterBoundary->TryGetObjectField(TEXT("body_entry"), BodyEntry)
 		&& BodyEntry
 		&& BodyEntry->IsValid());
+	if (!BodyEntry || !BodyEntry->IsValid())
+	{
+		return false;
+	}
+	FString StableName;
+	TestTrue(TEXT("function external body entry has stable_name"),
+		(*BodyEntry)->TryGetStringField(TEXT("stable_name"), StableName));
+	TestEqual(TEXT("function entry stable name"), StableName, FunctionGraph->GetName());
 	TestFalse(TEXT("function external body readback includes body_fingerprint"),
 		AdapterBoundary.IsValid()
 		&& AdapterBoundary->GetStringField(TEXT("body_fingerprint")).IsEmpty());

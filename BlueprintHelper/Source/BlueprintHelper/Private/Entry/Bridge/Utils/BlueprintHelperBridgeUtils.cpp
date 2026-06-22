@@ -8,6 +8,7 @@
 #include "Shared/Review/BlueprintHelperReviewTypes.h"
 #include "Systems/Review/BlueprintHelperReviewActionService.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 FBlueprintHelperBridgeRuntimeConfig UBlueprintHelperBridgeUtils::BridgeConfigWithPort(int32 InPort)
 {
@@ -174,8 +175,31 @@ TSharedRef<FJsonObject> UBlueprintHelperBridgeUtils::ReviewActionResultToJson(co
 	TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 	Json->SetBoolField(TEXT("success"), Result.bSucceeded);
 	Json->SetStringField(TEXT("status"), BlueprintHelperReviewChangeStatusToString(Result.NewStatus));
+	Json->SetBoolField(TEXT("review_action_committed"), Result.bReviewActionCommitted);
+	Json->SetBoolField(TEXT("session_close_committed"), Result.bSessionCloseCommitted);
 	if (!Result.TargetEvidenceId.IsEmpty()) { Json->SetStringField(TEXT("target_evidence_id"), Result.TargetEvidenceId); }
 	if (!Result.Message.IsEmpty()) { Json->SetStringField(TEXT("message"), Result.Message); }
 	if (!Result.HashGuardTargetKey.IsEmpty()) { Json->SetStringField(TEXT("hash_guard_target_key"), Result.HashGuardTargetKey); }
+	if (!Result.SessionCloseErrorCode.IsEmpty())
+	{
+		Json->SetStringField(TEXT("session_close_error_code"), Result.SessionCloseErrorCode);
+	}
+	if (!Result.SessionCloseErrorMessage.IsEmpty())
+	{
+		Json->SetStringField(TEXT("session_close_error_message"), Result.SessionCloseErrorMessage);
+	}
+	if (!Result.SafeNextAction.IsEmpty()) { Json->SetStringField(TEXT("safe_next_action"), Result.SafeNextAction); }
+	if (Result.AffectedSequentialReviewSessionIds.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> AffectedSessionIds;
+		for (const FString& SessionId : Result.AffectedSequentialReviewSessionIds)
+		{
+			if (!SessionId.IsEmpty())
+			{
+				AffectedSessionIds.Add(MakeShared<FJsonValueString>(SessionId));
+			}
+		}
+		Json->SetArrayField(TEXT("affected_sequential_review_session_ids"), AffectedSessionIds);
+	}
 	return Json;
 }

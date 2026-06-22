@@ -68,6 +68,15 @@ public:
 			return;
 		}
 
+		InOutProjection.BodyEntryNodeGuid = Anchor.NodeGuid;
+		InOutProjection.BodyEntryNodeClass = Anchor.NodeClass;
+		InOutProjection.BodyEntryStableName = Anchor.StableName;
+		InOutProjection.BodyEntryKind = Anchor.EntryKind;
+		InOutProjection.BodyEntryMemberName = Anchor.MemberName;
+		InOutProjection.BodyEntryFunctionName = Anchor.FunctionName;
+		InOutProjection.BodyEntryDisplayName = Anchor.DisplayName;
+		InOutProjection.BodyEntryFingerprint = Anchor.Fingerprint;
+
 		FBlueprintHelperExternalBodySnapshot Snapshot;
 		FString SnapshotError;
 		const FBlueprintHelperExternalBodySnapshotService SnapshotService;
@@ -84,9 +93,6 @@ public:
 			return;
 		}
 
-		InOutProjection.BodyEntryNodeGuid = Anchor.NodeGuid;
-		InOutProjection.BodyEntryNodeClass = Anchor.NodeClass;
-		InOutProjection.BodyEntryFingerprint = Anchor.Fingerprint;
 		InOutProjection.BodyFingerprint = Snapshot.BodyFingerprint;
 	}
 
@@ -218,6 +224,26 @@ TSharedRef<FJsonObject> FBlueprintHelperGraphBodyReadbackService::BuildAdapterBo
 		BodyEntry->SetStringField(TEXT("graph_name"), Boundary.GraphName);
 		BodyEntry->SetStringField(TEXT("node_guid"), Projection.BodyEntryNodeGuid);
 		BodyEntry->SetStringField(TEXT("node_class"), Projection.BodyEntryNodeClass);
+		if (!Projection.BodyEntryStableName.IsEmpty())
+		{
+			BodyEntry->SetStringField(TEXT("stable_name"), Projection.BodyEntryStableName);
+		}
+		if (!Projection.BodyEntryKind.IsEmpty())
+		{
+			BodyEntry->SetStringField(TEXT("entry_kind"), Projection.BodyEntryKind);
+		}
+		if (!Projection.BodyEntryMemberName.IsEmpty())
+		{
+			BodyEntry->SetStringField(TEXT("member_name"), Projection.BodyEntryMemberName);
+		}
+		if (!Projection.BodyEntryFunctionName.IsEmpty())
+		{
+			BodyEntry->SetStringField(TEXT("function_name"), Projection.BodyEntryFunctionName);
+		}
+		if (!Projection.BodyEntryDisplayName.IsEmpty())
+		{
+			BodyEntry->SetStringField(TEXT("display_name"), Projection.BodyEntryDisplayName);
+		}
 		BodyEntry->SetStringField(
 			TEXT("semantic_role"),
 			FBlueprintHelperExternalGraphAnchor::RoleToString(EBlueprintHelperExternalGraphAnchorRole::BodyEntry));

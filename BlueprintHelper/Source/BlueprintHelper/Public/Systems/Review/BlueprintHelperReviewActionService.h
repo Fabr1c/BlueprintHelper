@@ -16,11 +16,17 @@ struct FBlueprintHelperReviewActionResult
 	FString RollbackMode;
 	FString Message;
 	bool bSupersededDataCompactionEligible = false;
+	bool bReviewActionCommitted = false;
+	bool bSessionCloseCommitted = true;
 	FString HashGuardTargetKey;
 	FString HashGuardExpectedHash;
 	FString HashGuardCurrentHash;
 	FString HashGuardCurrentSnapshotJson;
 	FString HashGuardRecordedAfterSnapshotJson;
+	FString SessionCloseErrorCode;
+	FString SessionCloseErrorMessage;
+	FString SafeNextAction;
+	TArray<FString> AffectedSequentialReviewSessionIds;
 };
 
 struct FBlueprintHelperReviewCascadeActionResult

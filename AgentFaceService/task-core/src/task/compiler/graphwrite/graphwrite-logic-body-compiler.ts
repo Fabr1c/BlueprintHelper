@@ -2400,6 +2400,18 @@ function normalizeExternalGraphAnchorBase(anchor: Record<string, unknown>, path:
     assertAllowedString(pinDirection, `${path}.pin_direction`, ['input', 'output'], 'Use input or output.');
     out['pin_direction'] = pinDirection;
   }
+  if (semanticRole === 'body_entry') {
+    out['stable_name'] = getRequiredString(anchor, 'stable_name', `${path}.stable_name`);
+  }
+  for (const field of ['stable_name', 'entry_kind', 'member_name', 'function_name', 'display_name'] as const) {
+    if (field === 'stable_name' && semanticRole === 'body_entry') {
+      continue;
+    }
+    const value = optionalString(anchor, field);
+    if (value) {
+      out[field] = value;
+    }
+  }
   return out;
 }
 

@@ -1390,6 +1390,51 @@ bool FBlueprintHelperExternalGraphAnchorBodyEntryAllowsOwnedEntryTest::RunTest(c
 		BodyEntryAnchor.NodeGuid,
 		EventNode->NodeGuid.ToString(EGuidFormats::Digits));
 	TestFalse(TEXT("body entry fingerprint exists"), BodyEntryAnchor.Fingerprint.IsEmpty());
+	TestEqual(TEXT("body entry stable name"),
+		BodyEntryAnchor.StableName,
+		FString(TEXT("BH_BodyEntry")));
+	TestEqual(TEXT("body entry kind"),
+		BodyEntryAnchor.EntryKind,
+		FString(TEXT("custom_event")));
+	TestEqual(TEXT("body entry member name"),
+		BodyEntryAnchor.MemberName,
+		FString(TEXT("BH_BodyEntry")));
+	TestEqual(TEXT("body entry function name"),
+		BodyEntryAnchor.FunctionName,
+		FString(TEXT("BH_BodyEntry")));
+	TestFalse(TEXT("body entry display name exists"), BodyEntryAnchor.DisplayName.IsEmpty());
+
+	const TSharedRef<FJsonObject> BodyEntryJson = BodyEntryAnchor.ToJson();
+	FString StableName;
+	FString EntryKind;
+	FString MemberName;
+	FString FunctionName;
+	FString DisplayName;
+	TestTrue(TEXT("body entry json has stable_name"),
+		BodyEntryJson->TryGetStringField(TEXT("stable_name"), StableName));
+	TestTrue(TEXT("body entry json has entry_kind"),
+		BodyEntryJson->TryGetStringField(TEXT("entry_kind"), EntryKind));
+	TestTrue(TEXT("body entry json has member_name"),
+		BodyEntryJson->TryGetStringField(TEXT("member_name"), MemberName));
+	TestTrue(TEXT("body entry json has function_name"),
+		BodyEntryJson->TryGetStringField(TEXT("function_name"), FunctionName));
+	TestTrue(TEXT("body entry json has display_name"),
+		BodyEntryJson->TryGetStringField(TEXT("display_name"), DisplayName));
+	TestEqual(TEXT("body entry json stable name"), StableName, BodyEntryAnchor.StableName);
+	TestEqual(TEXT("body entry json entry kind"), EntryKind, BodyEntryAnchor.EntryKind);
+	TestEqual(TEXT("body entry json member name"), MemberName, BodyEntryAnchor.MemberName);
+	TestEqual(TEXT("body entry json function name"), FunctionName, BodyEntryAnchor.FunctionName);
+	TestEqual(TEXT("body entry json display name"), DisplayName, BodyEntryAnchor.DisplayName);
+
+	FBlueprintHelperExternalGraphAnchor RoundTripAnchor;
+	FString RoundTripError;
+	TestTrue(TEXT("body entry anchor json round trips"),
+		FBlueprintHelperExternalGraphAnchor::FromJson(BodyEntryJson, RoundTripAnchor, RoundTripError));
+	TestEqual(TEXT("round-trip stable name"), RoundTripAnchor.StableName, BodyEntryAnchor.StableName);
+	TestEqual(TEXT("round-trip entry kind"), RoundTripAnchor.EntryKind, BodyEntryAnchor.EntryKind);
+	TestEqual(TEXT("round-trip member name"), RoundTripAnchor.MemberName, BodyEntryAnchor.MemberName);
+	TestEqual(TEXT("round-trip function name"), RoundTripAnchor.FunctionName, BodyEntryAnchor.FunctionName);
+	TestEqual(TEXT("round-trip display name"), RoundTripAnchor.DisplayName, BodyEntryAnchor.DisplayName);
 	return true;
 }
 

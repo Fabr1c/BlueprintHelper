@@ -4,6 +4,7 @@ import {
   isRecord,
   literalValue,
   omitUndefined,
+  optionalString,
   requiredNonEmptyArray,
   requiredRecord,
 } from '../compiler-helpers.js';
@@ -348,6 +349,12 @@ function normalizeExternalGraphAnchorBase(anchor: Record<string, unknown>, path:
     const pinDirection = anchor['pin_direction'].trim();
     assertAllowedString(pinDirection, `${path}.pin_direction`, ['input', 'output'], 'Use input or output.');
     out['pin_direction'] = pinDirection;
+  }
+  for (const field of ['stable_name', 'entry_kind', 'member_name', 'function_name', 'display_name'] as const) {
+    const value = optionalString(anchor, field);
+    if (value) {
+      out[field] = value;
+    }
   }
   return out;
 }
