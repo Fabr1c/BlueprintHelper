@@ -191,6 +191,25 @@ public:
 		return Step;
 	}
 
+	static TSharedPtr<FJsonObject> GetSingleSignatureOp(const TSharedPtr<FJsonObject>& Step)
+	{
+		const TSharedPtr<FJsonObject>* WriteObject = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Ops = nullptr;
+		if (!Step.IsValid() ||
+			!Step->TryGetObjectField(TEXT("write"), WriteObject) ||
+			!WriteObject ||
+			!WriteObject->IsValid() ||
+			!(*WriteObject)->TryGetArrayField(TEXT("ops"), Ops) ||
+			!Ops ||
+			Ops->Num() != 1 ||
+			!(*Ops)[0].IsValid())
+		{
+			return nullptr;
+		}
+
+		return (*Ops)[0]->AsObject();
+	}
+
 	static TSharedPtr<FJsonObject> MakeEventDispatcherSignatureStep()
 	{
 		TSharedPtr<FJsonObject> Step = MakeShared<FJsonObject>();
@@ -505,6 +524,117 @@ bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutReferenceContex
 
 	TestFalse(TEXT("remove without reference context is rejected"), bLowered);
 	TestEqual(TEXT("error code"), Error.Code, FString(TEXT("invalid_signature_remove_policy")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutSignatureKindTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RejectsRemoveWithoutSignatureKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutSignatureKindTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
+		TEXT("custom_event"),
+		TEXT("ToggleDoor"),
+		TEXT("custom_event_signature"));
+
+	TSharedPtr<FJsonObject> OpObject = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::GetSingleSignatureOp(Step);
+	TestTrue(TEXT("op object exists"), OpObject.IsValid());
+	if (!OpObject.IsValid())
+	{
+		return false;
+	}
+
+	OpObject->RemoveField(TEXT("signature_kind"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("remove without signature_kind is rejected"), bLowered);
+	TestEqual(TEXT("error code"), Error.Code, FString(TEXT("signature_remove_kind_required")));
+	TestEqual(TEXT("error field"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[0].signature_kind")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutSignatureNameTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RejectsRemoveWithoutSignatureName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveWithoutSignatureNameTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
+		TEXT("custom_event"),
+		TEXT("ToggleDoor"),
+		TEXT("custom_event_signature"));
+
+	TSharedPtr<FJsonObject> OpObject = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::GetSingleSignatureOp(Step);
+	TestTrue(TEXT("op object exists"), OpObject.IsValid());
+	if (!OpObject.IsValid())
+	{
+		return false;
+	}
+
+	OpObject->RemoveField(TEXT("signature_name"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("remove without signature_name is rejected"), bLowered);
+	TestEqual(TEXT("error code"), Error.Code, FString(TEXT("signature_remove_name_required")));
+	TestEqual(TEXT("error field"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[0].signature_name")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveLegacyNameFallbackTest,
+	"BlueprintHelper.TaskPlan.SignatureAdapter.RejectsRemoveLegacyNameFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBlueprintHelperTaskPlanSignatureAdapterRejectsRemoveLegacyNameFallbackTest::RunTest(const FString& Parameters)
+{
+	const TSharedPtr<FJsonObject> Step = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::MakeRemoveSignatureStep(
+		TEXT("function"),
+		TEXT("Interact"),
+		TEXT("function_signature"));
+
+	TSharedPtr<FJsonObject> OpObject = FBlueprintHelperTaskPlanSignatureAdapterTestsLocalUtils::GetSingleSignatureOp(Step);
+	TestTrue(TEXT("op object exists"), OpObject.IsValid());
+	if (!OpObject.IsValid())
+	{
+		return false;
+	}
+
+	OpObject->RemoveField(TEXT("signature_name"));
+	OpObject->SetStringField(TEXT("function_name"), TEXT("Interact"));
+	OpObject->SetStringField(TEXT("event_name"), TEXT("ToggleDoor"));
+	OpObject->SetStringField(TEXT("dispatcher_name"), TEXT("OnDoorOpened"));
+
+	FBlueprintHelperTaskRuntimeLoweredStep LoweredStep;
+	FBlueprintHelperToolError Error;
+	const bool bLowered = FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
+		TSharedPtr<FJsonObject>(),
+		Step,
+		true,
+		LoweredStep,
+		Error);
+
+	TestFalse(TEXT("legacy name fields are not accepted as remove fallback"), bLowered);
+	TestEqual(TEXT("error code"), Error.Code, FString(TEXT("signature_remove_name_required")));
+	TestEqual(TEXT("error field"), Error.Field, FString(TEXT("task_plan.steps[0].write.ops[0].signature_name")));
 	return true;
 }
 

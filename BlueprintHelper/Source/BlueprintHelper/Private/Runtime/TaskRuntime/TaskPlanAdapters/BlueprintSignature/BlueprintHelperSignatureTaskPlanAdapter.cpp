@@ -461,7 +461,11 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		FString SignatureKind;
 		if (!OpObject->TryGetStringField(TEXT("signature_kind"), SignatureKind) || SignatureKind.IsEmpty())
 		{
-			SignatureKind = Strategy == StrategyFunctionSignature ? TEXT("function") : TEXT("custom_event");
+			OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
+				TEXT("signature_remove_kind_required"),
+				TEXT("remove_signature requires signature_kind."),
+				FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureOpFieldPath(TEXT("signature_kind")));
+			return false;
 		}
 
 		if (SignatureKind != TEXT("function") &&
@@ -518,24 +522,9 @@ bool FBlueprintHelperSignatureTaskPlanAdapter::TryLowerTaskPlanStep(
 		FString SignatureName;
 		if (!OpObject->TryGetStringField(TEXT("signature_name"), SignatureName) || SignatureName.IsEmpty())
 		{
-			if (SignatureKind == TEXT("function") || SignatureKind == TEXT("interface_function"))
-			{
-				OpObject->TryGetStringField(TEXT("function_name"), SignatureName);
-			}
-			else if (SignatureKind == TEXT("event_dispatcher"))
-			{
-				OpObject->TryGetStringField(TEXT("dispatcher_name"), SignatureName);
-			}
-			else
-			{
-				OpObject->TryGetStringField(TEXT("event_name"), SignatureName);
-			}
-		}
-		if (SignatureName.IsEmpty())
-		{
 			OutError = FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::MakeSignatureAdapterError(
-				TEXT("invalid_signature_op"),
-				TEXT("remove_signature requires signature_name, function_name, event_name, or dispatcher_name."),
+				TEXT("signature_remove_name_required"),
+				TEXT("remove_signature requires signature_name."),
 				FBlueprintHelperSignatureTaskPlanAdapterLocalUtils::SignatureOpFieldPath(TEXT("signature_name")));
 			return false;
 		}

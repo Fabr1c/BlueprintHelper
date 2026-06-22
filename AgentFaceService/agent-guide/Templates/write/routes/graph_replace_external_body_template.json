@@ -17,6 +17,7 @@
         "graph_name": "__REQUIRED_GRAPH_NAME__",
         "node_guid": "__REQUIRED_BODY_ENTRY_NODE_GUID__",
         "node_class": "__REQUIRED_BODY_ENTRY_NODE_CLASS__",
+        "stable_name": "__REQUIRED_BODY_ENTRY_STABLE_NAME__",
         "semantic_role": "body_entry",
         "fingerprint": "__REQUIRED_BODY_ENTRY_FINGERPRINT__"
       },
